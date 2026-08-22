@@ -14,6 +14,14 @@
                              Exclude="$(MSBuildThisFileDirectory)**/bin/**;$(MSBuildThisFileDirectory)**/obj/**;$(MSBuildThisFileDirectory)artifacts/**" />
   </ItemGroup>
 
+  <ItemGroup Condition="'$(MSBuildProjectName)' != 'Csls.SourceGen' and
+                        Exists('$(MSBuildThisFileDirectory)src/Csls.SourceGen/Csls.SourceGen.csproj')">
+    <ProjectReference Include="$(MSBuildThisFileDirectory)src/Csls.SourceGen/Csls.SourceGen.csproj"
+                      OutputItemType="Analyzer"
+                      ReferenceOutputAssembly="false"
+                      PrivateAssets="All" />
+  </ItemGroup>
+
   <Target Name="CslsNormalizeSdkBaselineNoWarn" BeforeTargets="CslsValidateWarningPolicy">
     <CreateProperty Value="$([System.String]::Empty)"
                     Condition="'$(NoWarn)' == '1701;1702'">
@@ -37,13 +45,6 @@
   <Target Name="CslsScanForSuppressionEscapeHatches" BeforeTargets="CoreCompile">
     <Error Condition="Exists('%(CslsSuppressionScanFile.FullPath)') and $([System.Text.RegularExpressions.Regex]::IsMatch($([System.IO.File]::ReadAllText('%(CslsSuppressionScanFile.FullPath)')), '(#pragma\s+warning\s+disable)|(\[\s*(Unconditional)?Suppress[M]essage\b)|(&lt;\s*No[W]arn\b)|(&lt;\s*Warnings[N]otAsErrors\b)|(&lt;\s*Disabled[W]arnings\b)|(#nullable\s+disable)|(dotnet_diagnostic\.[^\r\n]*severity\s*=\s*(none|silent))|(dotnet_diagnostic\.(IDE0005|IDE0130|VSTHRD[0-9]+)\.severity\s*=\s*(?!error\b)[^\s#;]+)|(dotnet_analyzer_diagnostic\.category-(Design|Documentation|Globalization|Interoperability|Maintainability|Naming|Performance|Reliability|Security|Usage)\.severity\s*=\s*(?!error\b)[^\s#;]+)'))"
            Text="csls forbids warning and nullability suppression escape hatches in %(CslsSuppressionScanFile.Identity)." />
-  </Target>
-
-  <Target Name="CslsValidateDocumentationStyle" BeforeTargets="CoreCompile">
-    <Error Condition="Exists('%(CslsSuppressionScanFile.FullPath)') and '%(CslsSuppressionScanFile.Extension)' == '.cs' and $([System.Text.RegularExpressions.Regex]::IsMatch($([System.IO.File]::ReadAllText('%(CslsSuppressionScanFile.FullPath)')), '///\s*&lt;summary&gt;[^\r\n]*&lt;/summary&gt;'))"
-           Text="csls requires every XML summary to use exactly three lines in %(CslsSuppressionScanFile.Identity)." />
-    <Error Condition="Exists('%(CslsSuppressionScanFile.FullPath)') and '%(CslsSuppressionScanFile.Extension)' == '.cs' and $([System.Text.RegularExpressions.Regex]::IsMatch($([System.IO.File]::ReadAllText('%(CslsSuppressionScanFile.FullPath)')), '///\s*&lt;summary&gt;\s*\r?\n(?!\s*///[^\r\n]*\r?\n\s*///\s*&lt;/summary&gt;)'))"
-           Text="csls requires every XML summary to use exactly three lines in %(CslsSuppressionScanFile.Identity)." />
   </Target>
 
   <Target Name="CslsScanForSkippedTests"

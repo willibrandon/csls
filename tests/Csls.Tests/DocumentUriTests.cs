@@ -14,7 +14,7 @@ public sealed class DocumentUriTests
     [TestMethod]
     public void FileSystemPathRoundTripsReservedAndUnicodeCharacters()
     {
-        var path = Path.GetFullPath(Path.Combine("fixture root", "résumé #1.cs"));
+        string path = Path.GetFullPath(Path.Combine("fixture root", "résumé #1.cs"));
 
         var uri = DocumentUri.FromFileSystemPath(path);
 
@@ -28,7 +28,7 @@ public sealed class DocumentUriTests
     [TestMethod]
     public void ParseRejectsRelativeUri()
     {
-        var exception = Assert.ThrowsExactly<ArgumentException>(() =>
+        ArgumentException exception = Assert.ThrowsExactly<ArgumentException>(() =>
             DocumentUri.Parse("src/Program.cs"));
 
         Assert.Contains("absolute", exception.Message);
@@ -42,7 +42,8 @@ public sealed class DocumentUriTests
     {
         var uri = DocumentUri.Parse("csharp:/metadata/System.String.cs");
 
-        var exception = Assert.ThrowsExactly<InvalidOperationException>(uri.GetFileSystemPath);
+        InvalidOperationException exception = Assert.ThrowsExactly<InvalidOperationException>(
+            uri.GetFileSystemPath);
 
         Assert.AreEqual("Only file document URIs have filesystem paths.", exception.Message);
     }

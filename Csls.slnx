@@ -16,9 +16,11 @@
     <File Path="THIRD-PARTY-NOTICES.md" />
   </Folder>
   <Folder Name="/src/">
+    <Project Path="src/Csls.SourceGen/Csls.SourceGen.csproj" />
     <Project Path="src/Csls.Protocol/Csls.Protocol.csproj" />
   </Folder>
   <Folder Name="/tests/">
+    <Project Path="tests/Csls.SourceGen.Tests/Csls.SourceGen.Tests.csproj" />
     <Project Path="tests/Csls.Tests/Csls.Tests.csproj" />
   </Folder>
 </Solution>

@@ -21,7 +21,7 @@ public readonly record struct DocumentUri
     public static DocumentUri Parse(string value)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(value);
-        if (!Uri.TryCreate(value, UriKind.Absolute, out var uri))
+        if (!Uri.TryCreate(value, UriKind.Absolute, out Uri? uri))
         {
             throw new ArgumentException("Document URIs must be absolute.", nameof(value));
         }

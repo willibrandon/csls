@@ -1,0 +1,17 @@
+<Project Sdk="MSTest.Sdk">
+  <PropertyGroup>
+    <AssemblyName>Csls.SourceGen.Tests</AssemblyName>
+    <RootNamespace>Csls.SourceGen.Tests</RootNamespace>
+    <Description>Real Roslyn compilation tests for csls repository analyzers.</Description>
+    <MSTestAnalysisMode>All</MSTestAnalysisMode>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Using Include="Microsoft.VisualStudio.TestTools.UnitTesting" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp" />
+    <ProjectReference Include="../../src/Csls.SourceGen/Csls.SourceGen.csproj" />
+  </ItemGroup>
+</Project>
