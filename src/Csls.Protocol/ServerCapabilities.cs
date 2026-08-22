@@ -19,4 +19,9 @@ public sealed record ServerCapabilities
     /// Gets whether hover requests are supported.
     /// </summary>
     public bool HoverProvider { get; init; }
+
+    /// <summary>
+    /// Gets the pull-diagnostic provider behavior.
+    /// </summary>
+    public DiagnosticOptions? DiagnosticProvider { get; init; }
 }

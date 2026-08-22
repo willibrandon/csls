@@ -82,7 +82,13 @@ public sealed partial class LanguageServer : ILspRpcTarget, IAsyncDisposable
                     Change = TextDocumentSyncKind.Incremental,
                     Save = true
                 },
-                HoverProvider = true
+                HoverProvider = true,
+                DiagnosticProvider = new DiagnosticOptions
+                {
+                    Identifier = "csls",
+                    InterFileDependencies = true,
+                    WorkspaceDiagnostics = false
+                }
             },
             ServerInfo = new ServerInfo
             {
@@ -142,6 +148,63 @@ public sealed partial class LanguageServer : ILspRpcTarget, IAsyncDisposable
                     .OpenDocumentAsync(parameters.TextDocument, context.CancellationToken)
                     .ConfigureAwait(false);
                 return true;
+            },
+            cancellationToken);
+    }
+
+    /// <inheritdoc />
+    public Task DidChangeAsync(
+        DidChangeTextDocumentParams parameters,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(parameters);
+        EnsureRunning();
+        return _scheduler.ScheduleAsync(
+            RequestMode.ReadWrite,
+            () => _workspaceManager.Generation,
+            async context =>
+            {
+                await _workspaceManager
+                    .ChangeDocumentAsync(parameters, context.CancellationToken)
+                    .ConfigureAwait(false);
+                return true;
+            },
+            cancellationToken);
+    }
+
+    /// <inheritdoc />
+    public Task DidSaveAsync(
+        DidSaveTextDocumentParams parameters,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(parameters);
+        EnsureRunning();
+        cancellationToken.ThrowIfCancellationRequested();
+        return Task.CompletedTask;
+    }
+
+    /// <inheritdoc />
+    public Task<DocumentDiagnosticReport> DocumentDiagnosticAsync(
+        DocumentDiagnosticParams parameters,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(parameters);
+        EnsureRunning();
+        return _scheduler.ScheduleAsync(
+            RequestMode.ReadOnly,
+            () => _workspaceManager.Generation,
+            async context =>
+            {
+                DocumentDiagnosticReport report = await _workspaceManager
+                    .GetDiagnosticsAsync(parameters, context.CancellationToken)
+                    .ConfigureAwait(false);
+                if (_workspaceManager.Generation != context.WorkspaceGeneration)
+                {
+                    throw new InvalidOperationException(
+                        "The workspace changed while diagnostics were being computed.");
+                }
+
+                return report;
             },
             cancellationToken);
     }

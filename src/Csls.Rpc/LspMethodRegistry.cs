@@ -37,6 +37,19 @@ public static class LspMethodRegistry
             new Func<DidOpenTextDocumentParams, CancellationToken, Task>(target.DidOpenAsync));
         AddParameterObjectMethod(
             rpc,
+            "textDocument/didChange",
+            new Func<DidChangeTextDocumentParams, CancellationToken, Task>(target.DidChangeAsync));
+        AddParameterObjectMethod(
+            rpc,
+            "textDocument/didSave",
+            new Func<DidSaveTextDocumentParams, CancellationToken, Task>(target.DidSaveAsync));
+        AddParameterObjectMethod(
+            rpc,
+            "textDocument/diagnostic",
+            new Func<DocumentDiagnosticParams, CancellationToken, Task<DocumentDiagnosticReport>>(
+                target.DocumentDiagnosticAsync));
+        AddParameterObjectMethod(
+            rpc,
             "textDocument/hover",
             new Func<TextDocumentPositionParams, CancellationToken, Task<Hover?>>(target.HoverAsync));
     }

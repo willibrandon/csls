@@ -165,6 +165,69 @@ internal sealed class LspProcessSession : IAsyncDisposable
             cancellationToken);
 
     /// <summary>
+    /// Applies ordered incremental or full-text changes to an opened test document.
+    /// </summary>
+    /// <param name="documentPath">The absolute changed document path.</param>
+    /// <param name="version">The resulting client document version.</param>
+    /// <param name="contentChanges">The ordered content changes.</param>
+    /// <returns>A task that completes after the notification is written.</returns>
+    internal Task ChangeDocumentAsync(
+        string documentPath,
+        int version,
+        IReadOnlyList<TextDocumentContentChangeEvent> contentChanges) =>
+        _rpc.NotifyWithParameterObjectAsync(
+            "textDocument/didChange",
+            new DidChangeTextDocumentParams
+            {
+                TextDocument = new VersionedTextDocumentIdentifier
+                {
+                    Uri = DocumentUri.FromFileSystemPath(documentPath),
+                    Version = version
+                },
+                ContentChanges = contentChanges
+            });
+
+    /// <summary>
+    /// Requests current pull diagnostics for one opened test document.
+    /// </summary>
+    /// <param name="documentPath">The absolute target document path.</param>
+    /// <param name="previousResultId">The prior opaque result identifier.</param>
+    /// <param name="cancellationToken">The test cancellation token.</param>
+    /// <returns>The complete or unchanged diagnostic report.</returns>
+    internal Task<DocumentDiagnosticReport> RequestDiagnosticsAsync(
+        string documentPath,
+        string? previousResultId,
+        CancellationToken cancellationToken) =>
+        _rpc.InvokeWithParameterObjectAsync<DocumentDiagnosticReport>(
+            "textDocument/diagnostic",
+            new DocumentDiagnosticParams
+            {
+                TextDocument = new TextDocumentIdentifier
+                {
+                    Uri = DocumentUri.FromFileSystemPath(documentPath)
+                },
+                Identifier = "csls",
+                PreviousResultId = previousResultId
+            },
+            cancellationToken);
+
+    /// <summary>
+    /// Sends a document save notification through the real LSP transport.
+    /// </summary>
+    /// <param name="documentPath">The absolute saved document path.</param>
+    /// <returns>A task that completes after the notification is written.</returns>
+    internal Task SaveDocumentAsync(string documentPath) =>
+        _rpc.NotifyWithParameterObjectAsync(
+            "textDocument/didSave",
+            new DidSaveTextDocumentParams
+            {
+                TextDocument = new TextDocumentIdentifier
+                {
+                    Uri = DocumentUri.FromFileSystemPath(documentPath)
+                }
+            });
+
+    /// <summary>
     /// Performs the LSP shutdown handshake and verifies a successful process exit.
     /// </summary>
     /// <param name="cancellationToken">The test cancellation token.</param>

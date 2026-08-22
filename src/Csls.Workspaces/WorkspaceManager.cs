@@ -1,14 +1,20 @@
 using System.Collections.Immutable;
+using System.Globalization;
 using System.Text;
 using Csls.Protocol;
 using Microsoft.Build.Locator;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
+using Microsoft.CodeAnalysis.Diagnostics;
 using Microsoft.CodeAnalysis.MSBuild;
 using Microsoft.CodeAnalysis.QuickInfo;
 using Microsoft.CodeAnalysis.Text;
 using Microsoft.Extensions.Logging;
 using LspRange = Csls.Protocol.Range;
+using LspDiagnostic = Csls.Protocol.Diagnostic;
+using LspDiagnosticSeverity = Csls.Protocol.DiagnosticSeverity;
+using RoslynDiagnostic = Microsoft.CodeAnalysis.Diagnostic;
+using RoslynDiagnosticSeverity = Microsoft.CodeAnalysis.DiagnosticSeverity;
 
 namespace Csls.Workspaces;
 
@@ -21,6 +27,7 @@ public sealed partial class WorkspaceManager : IAsyncDisposable
     private static bool s_msbuildRegistered;
 
     private readonly ILogger<WorkspaceManager> _logger;
+    private readonly AnalyzerDiagnosticCache _diagnosticCache = new();
     private readonly SemaphoreSlim _mutationGate = new(1, 1);
     private readonly Dictionary<string, int> _documentVersions = new(
         OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal);
@@ -122,6 +129,7 @@ public sealed partial class WorkspaceManager : IAsyncDisposable
                 ImmutableArray<(string RootPath, Workspace Workspace, Solution Solution)> previous = _folders;
                 _folders = loadedFolders.MoveToImmutable();
                 _documentVersions.Clear();
+                _diagnosticCache.Clear();
                 Interlocked.Increment(ref _generation);
                 DisposeFolders(previous);
             }
@@ -193,12 +201,153 @@ public sealed partial class WorkspaceManager : IAsyncDisposable
 
             _folders = _folders.SetItem(folderIndex, (rootPath, workspace, workspace.CurrentSolution));
             _documentVersions[path] = document.Version;
+            _diagnosticCache.Clear();
             Interlocked.Increment(ref _generation);
         }
         finally
         {
             _mutationGate.Release();
         }
+    }
+
+    /// <summary>
+    /// Applies ordered incremental or full-text changes for an opened client document.
+    /// </summary>
+    /// <param name="parameters">The versioned document and ordered content changes.</param>
+    /// <param name="cancellationToken">The operation cancellation token.</param>
+    /// <returns>A task that completes after the mutation is published.</returns>
+    public async Task ChangeDocumentAsync(
+        DidChangeTextDocumentParams parameters,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(parameters);
+        string path = parameters.TextDocument.Uri.GetFileSystemPath();
+        await _mutationGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            if (!_documentVersions.TryGetValue(path, out int currentVersion))
+            {
+                throw new InvalidOperationException(
+                    $"Document {path} must be opened before content changes are applied.");
+            }
+
+            if (parameters.TextDocument.Version <= currentVersion)
+            {
+                throw new InvalidOperationException(
+                    $"Document version {parameters.TextDocument.Version} does not follow version {currentVersion}.");
+            }
+
+            int folderIndex = FindFolderIndex(path, _folders);
+            if (folderIndex < 0)
+            {
+                throw new InvalidOperationException($"No workspace folder owns document {path}.");
+            }
+
+            (string rootPath, Workspace workspace, Solution solution) = _folders[folderIndex];
+            Document document = FindDocument(solution, path)
+                ?? throw new InvalidOperationException($"Opened document {path} is unavailable.");
+            SourceText text = await document.GetTextAsync(cancellationToken).ConfigureAwait(false);
+            foreach (TextDocumentContentChangeEvent change in parameters.ContentChanges)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                if (change.Range is not LspRange range)
+                {
+                    text = SourceText.From(change.Text, Encoding.UTF8);
+                    continue;
+                }
+
+                int start = GetOffset(text, range.Start);
+                int end = GetOffset(text, range.End);
+                int replacedLength = end - start;
+                if (change.RangeLength is int expectedLength && expectedLength != replacedLength)
+                {
+                    throw new InvalidDataException(
+                        $"Change range length {expectedLength} does not match {replacedLength} UTF-16 code units.");
+                }
+
+                text = text.WithChanges(new TextChange(
+                    new TextSpan(start, replacedLength),
+                    change.Text));
+            }
+
+            Solution changedSolution = solution.WithDocumentText(
+                document.Id,
+                text,
+                PreservationMode.PreserveIdentity);
+            if (!workspace.TryApplyChanges(changedSolution))
+            {
+                throw new InvalidOperationException($"Roslyn rejected content changes for {path}.");
+            }
+
+            _folders = _folders.SetItem(folderIndex, (rootPath, workspace, workspace.CurrentSolution));
+            _documentVersions[path] = parameters.TextDocument.Version;
+            _diagnosticCache.Clear();
+            Interlocked.Increment(ref _generation);
+        }
+        finally
+        {
+            _mutationGate.Release();
+        }
+    }
+
+    /// <summary>
+    /// Gets compiler and analyzer diagnostics for one immutable document snapshot.
+    /// </summary>
+    /// <param name="parameters">The document and optional prior result identifier.</param>
+    /// <param name="cancellationToken">The operation cancellation token.</param>
+    /// <returns>A complete or unchanged LSP diagnostic report.</returns>
+    public async Task<DocumentDiagnosticReport> GetDiagnosticsAsync(
+        DocumentDiagnosticParams parameters,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(parameters);
+        long generation = Generation;
+        string resultId = generation.ToString(CultureInfo.InvariantCulture);
+        if (string.Equals(parameters.PreviousResultId, resultId, StringComparison.Ordinal))
+        {
+            return new DocumentDiagnosticReport
+            {
+                Kind = "unchanged",
+                ResultId = resultId
+            };
+        }
+
+        string path = parameters.TextDocument.Uri.GetFileSystemPath();
+        ImmutableArray<(string RootPath, Workspace Workspace, Solution Solution)> folders = _folders;
+        int folderIndex = FindFolderIndex(path, folders);
+        Document? document = folderIndex >= 0
+            ? FindDocument(folders[folderIndex].Solution, path)
+            : null;
+        if (document is null)
+        {
+            return new DocumentDiagnosticReport
+            {
+                Kind = "full",
+                ResultId = resultId,
+                Items = []
+            };
+        }
+
+        ImmutableArray<RoslynDiagnostic> projectDiagnostics =
+            await _diagnosticCache.GetOrAddAsync(
+                generation,
+                document.Project,
+                ComputeProjectDiagnosticsAsync,
+                cancellationToken).ConfigureAwait(false);
+        LspDiagnostic[] diagnostics =
+        [
+            .. projectDiagnostics
+                .Where(diagnostic => IsDocumentDiagnostic(diagnostic, path))
+                .OrderBy(static diagnostic => diagnostic.Location.SourceSpan.Start)
+                .ThenBy(static diagnostic => diagnostic.Id, StringComparer.Ordinal)
+                .Select(ToLspDiagnostic)
+        ];
+        return new DocumentDiagnosticReport
+        {
+            Kind = "full",
+            ResultId = resultId,
+            Items = diagnostics
+        };
     }
 
     /// <summary>
@@ -451,6 +600,73 @@ public sealed partial class WorkspaceManager : IAsyncDisposable
         }
 
         return line.Start + position.Character;
+    }
+
+    private static async Task<ImmutableArray<RoslynDiagnostic>>
+        ComputeProjectDiagnosticsAsync(Project project, CancellationToken cancellationToken)
+    {
+        Compilation compilation = await project
+            .GetCompilationAsync(cancellationToken)
+            .ConfigureAwait(false)
+            ?? throw new InvalidOperationException(
+                $"Roslyn returned no compilation for project {project.Name}.");
+        ImmutableArray<RoslynDiagnostic> compilerDiagnostics =
+            compilation.GetDiagnostics(cancellationToken);
+        ImmutableArray<DiagnosticAnalyzer> analyzers =
+        [
+            .. project.AnalyzerReferences
+                .SelectMany(reference => reference.GetAnalyzers(project.Language))
+        ];
+        if (analyzers.IsDefaultOrEmpty)
+        {
+            return compilerDiagnostics;
+        }
+
+        CompilationWithAnalyzers compilationWithAnalyzers = compilation.WithAnalyzers(
+            analyzers,
+            project.AnalyzerOptions);
+        ImmutableArray<RoslynDiagnostic> analyzerDiagnostics =
+            await compilationWithAnalyzers
+                .GetAnalyzerDiagnosticsAsync(cancellationToken)
+                .ConfigureAwait(false);
+        return compilerDiagnostics.AddRange(analyzerDiagnostics);
+    }
+
+    private static bool IsDocumentDiagnostic(
+        RoslynDiagnostic diagnostic,
+        string path)
+    {
+        return !diagnostic.IsSuppressed &&
+            diagnostic.Location.IsInSource &&
+            string.Equals(
+                diagnostic.Location.SourceTree?.FilePath,
+                path,
+                PathComparison);
+    }
+
+    private static LspDiagnostic ToLspDiagnostic(
+        RoslynDiagnostic diagnostic)
+    {
+        FileLinePositionSpan lineSpan = diagnostic.Location.GetLineSpan();
+        return new LspDiagnostic
+        {
+            Range = new LspRange(
+                new Position(lineSpan.StartLinePosition.Line, lineSpan.StartLinePosition.Character),
+                new Position(lineSpan.EndLinePosition.Line, lineSpan.EndLinePosition.Character)),
+            Severity = diagnostic.Severity switch
+            {
+                RoslynDiagnosticSeverity.Error => LspDiagnosticSeverity.Error,
+                RoslynDiagnosticSeverity.Warning => LspDiagnosticSeverity.Warning,
+                RoslynDiagnosticSeverity.Info => LspDiagnosticSeverity.Information,
+                RoslynDiagnosticSeverity.Hidden => LspDiagnosticSeverity.Hint,
+                _ => null
+            },
+            Code = diagnostic.Id,
+            Source = diagnostic.Id.StartsWith("CS", StringComparison.Ordinal)
+                ? "C#"
+                : diagnostic.Descriptor.Category,
+            Message = diagnostic.GetMessage(CultureInfo.InvariantCulture)
+        };
     }
 
     private static void DisposeFolders(

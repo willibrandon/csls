@@ -51,6 +51,36 @@ public interface ILspRpcTarget
         CancellationToken cancellationToken);
 
     /// <summary>
+    /// Applies ordered content changes to an opened document.
+    /// </summary>
+    /// <param name="parameters">The versioned document content changes.</param>
+    /// <param name="cancellationToken">The connection cancellation token.</param>
+    /// <returns>A task that completes after the document mutation retires.</returns>
+    Task DidChangeAsync(
+        DidChangeTextDocumentParams parameters,
+        CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Records a client save notification for an opened document.
+    /// </summary>
+    /// <param name="parameters">The saved document notification.</param>
+    /// <param name="cancellationToken">The connection cancellation token.</param>
+    /// <returns>A task that completes after the notification is validated.</returns>
+    Task DidSaveAsync(
+        DidSaveTextDocumentParams parameters,
+        CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Gets current compiler and analyzer diagnostics for one document.
+    /// </summary>
+    /// <param name="parameters">The document and prior diagnostic result identifier.</param>
+    /// <param name="cancellationToken">The peer cancellation token.</param>
+    /// <returns>A complete or unchanged document diagnostic report.</returns>
+    Task<DocumentDiagnosticReport> DocumentDiagnosticAsync(
+        DocumentDiagnosticParams parameters,
+        CancellationToken cancellationToken);
+
+    /// <summary>
     /// Resolves hover information at a text document position.
     /// </summary>
     /// <param name="parameters">The target document position.</param>
