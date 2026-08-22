@@ -40,6 +40,7 @@
 
   <ItemGroup Condition="'$(MSBuildProjectName)' == 'Csls.Workspaces' or
                         '$(MSBuildProjectName)' == 'Csls.Server' or
+                        '$(MSBuildProjectName)' == 'Csls.Control.Server' or
                         '$(MSBuildProjectName)' == 'Csls.Worker' or
                         '$(MSBuildProjectName)' == 'Csls.Tests'">
     <PackageReference Include="Microsoft.Build" ExcludeAssets="runtime" PrivateAssets="All" />

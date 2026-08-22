@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>csls-mcp-worker</AssemblyName>
+    <RootNamespace>Csls.Mcp.Worker</RootNamespace>
+    <Description>The self-contained ReadyToRun MCP bridge supervised by csls-mcp.</Description>
+    <PublishReadyToRun>true</PublishReadyToRun>
+    <PublishSingleFile>false</PublishSingleFile>
+    <PublishAot>false</PublishAot>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.Hosting" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Console" />
+    <PackageReference Include="ModelContextProtocol" />
+    <PackageReference Include="System.CommandLine" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../Csls.Control/Csls.Control.csproj" />
+    <ProjectReference Include="../Csls.Control.Contracts/Csls.Control.Contracts.csproj" />
+  </ItemGroup>
+</Project>

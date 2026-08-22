@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <AssemblyName>Csls.Control.Server</AssemblyName>
+    <RootNamespace>Csls.Control</RootNamespace>
+    <Description>Worker-side csls control services hosted over private Unix-domain sockets.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../Csls.Control/Csls.Control.csproj" />
+    <ProjectReference Include="../Csls.Control.Contracts/Csls.Control.Contracts.csproj" />
+    <ProjectReference Include="../Csls.Server/Csls.Server.csproj" />
+    <ProjectReference Include="../Csls.Workspaces/Csls.Workspaces.csproj" />
+  </ItemGroup>
+</Project>

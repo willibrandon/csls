@@ -1,0 +1,11 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <AssemblyName>Csls.Control.Contracts</AssemblyName>
+    <RootNamespace>Csls.Control.Contracts</RootNamespace>
+    <Description>Versioned contracts for csls control clients and session workers.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../Csls.Protocol/Csls.Protocol.csproj" />
+  </ItemGroup>
+</Project>

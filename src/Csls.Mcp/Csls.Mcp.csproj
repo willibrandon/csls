@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>csls-mcp</AssemblyName>
+    <RootNamespace>Csls.Mcp</RootNamespace>
+    <Description>Native AOT launcher for the csls Model Context Protocol worker.</Description>
+    <IsPackable>true</IsPackable>
+    <PackAsTool>true</PackAsTool>
+    <ToolCommandName>csls-mcp</ToolCommandName>
+    <PackageId>csls-mcp</PackageId>
+    <PublishAot>true</PublishAot>
+    <InvariantGlobalization>false</InvariantGlobalization>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="System.CommandLine" />
+  </ItemGroup>
+</Project>

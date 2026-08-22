@@ -44,6 +44,12 @@ public sealed partial class WorkspaceManager : IAsyncDisposable
     public long Generation => Interlocked.Read(ref _generation);
 
     /// <summary>
+    /// Gets the absolute roots in the current immutable workspace snapshot.
+    /// </summary>
+    public IReadOnlyList<string> WorkspaceRoots =>
+        [.. _folders.Select(static folder => folder.RootPath)];
+
+    /// <summary>
     /// Loads each workspace root using its solution, project, or loose C# files.
     /// </summary>
     /// <param name="rootPaths">Absolute workspace root paths.</param>

@@ -1,4 +1,6 @@
 using Csls.Core;
+using Csls.Control;
+using Csls.Control.Contracts;
 using Csls.Rpc;
 using Csls.Server;
 using Csls.Workspaces;
@@ -17,6 +19,12 @@ builder.Logging.AddConsole(options =>
 builder.Services.AddSingleton<RequestScheduler>();
 builder.Services.AddSingleton<WorkspaceManager>();
 builder.Services.AddSingleton<LanguageServer>();
+builder.Services.AddSingleton<ControlService>();
+builder.Services.AddSingleton<IControlRpcTarget>(
+    static services => services.GetRequiredService<ControlService>());
+builder.Services.AddSingleton<ControlRpcServer>();
+builder.Services.AddSingleton<IHostedService>(
+    static services => services.GetRequiredService<ControlRpcServer>());
 
 using var shutdownSource = new CancellationTokenSource();
 ConsoleCancelEventHandler cancelHandler = (_, eventArgs) =>

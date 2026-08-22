@@ -31,6 +31,11 @@ internal sealed class LspProcessSession : IAsyncDisposable
     }
 
     /// <summary>
+    /// Gets the operating-system process identifier of the real language-server process.
+    /// </summary>
+    internal int ProcessId => _process.Id;
+
+    /// <summary>
     /// Starts a real server process and connects a StreamJsonRpc LSP client to it.
     /// </summary>
     /// <param name="displayName">The diagnostic name for the JSON-RPC connection.</param>
