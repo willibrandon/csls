@@ -1,0 +1,64 @@
+<Project>
+  <ItemGroup>
+    <CslsSuppressionScanFile Include="$(MSBuildThisFileDirectory)**/*.cs"
+                             Exclude="$(MSBuildThisFileDirectory)**/bin/**;$(MSBuildThisFileDirectory)**/obj/**;$(MSBuildThisFileDirectory)artifacts/**" />
+    <CslsSuppressionScanFile Include="$(MSBuildThisFileDirectory)**/*.props"
+                             Exclude="$(MSBuildThisFileDirectory)**/bin/**;$(MSBuildThisFileDirectory)**/obj/**;$(MSBuildThisFileDirectory)artifacts/**" />
+    <CslsSuppressionScanFile Include="$(MSBuildThisFileDirectory)**/*.targets"
+                             Exclude="$(MSBuildThisFileDirectory)**/bin/**;$(MSBuildThisFileDirectory)**/obj/**;$(MSBuildThisFileDirectory)artifacts/**" />
+    <CslsSuppressionScanFile Include="$(MSBuildThisFileDirectory)**/.editorconfig" />
+    <CslsSuppressionScanFile Include="$(MSBuildThisFileDirectory)**/.globalconfig" />
+    <CslsGlobalSuppressionsFile Include="$(MSBuildThisFileDirectory)**/GlobalSuppressions.cs"
+                                Exclude="$(MSBuildThisFileDirectory)**/bin/**;$(MSBuildThisFileDirectory)**/obj/**;$(MSBuildThisFileDirectory)artifacts/**" />
+    <CslsSkippedTestScanFile Include="$(MSBuildThisFileDirectory)tests/**/*.cs"
+                             Exclude="$(MSBuildThisFileDirectory)**/bin/**;$(MSBuildThisFileDirectory)**/obj/**;$(MSBuildThisFileDirectory)artifacts/**" />
+  </ItemGroup>
+
+  <Target Name="CslsNormalizeSdkBaselineNoWarn" BeforeTargets="CslsValidateWarningPolicy">
+    <CreateProperty Value="$([System.String]::Empty)"
+                    Condition="'$(NoWarn)' == '1701;1702'">
+      <Output TaskParameter="Value" PropertyName="NoWarn" />
+    </CreateProperty>
+  </Target>
+
+  <Target Name="CslsValidateWarningPolicy" BeforeTargets="CoreCompile">
+    <Error Condition="'$(TreatWarningsAsErrors)' != 'true'"
+           Text="csls requires TreatWarningsAsErrors=true in every project." />
+    <Error Condition="'$(MSBuildTreatWarningsAsErrors)' != 'true'"
+           Text="csls requires MSBuildTreatWarningsAsErrors=true in every project." />
+    <Error Condition="'$(NoWarn)' != ''"
+           Text="csls forbids evaluated NoWarn values. Current value: $(NoWarn)" />
+    <Error Condition="'$(WarningsNotAsErrors)' != ''"
+           Text="csls forbids evaluated WarningsNotAsErrors values. Current value: $(WarningsNotAsErrors)" />
+    <Error Condition="'@(CslsGlobalSuppressionsFile)' != ''"
+           Text="csls forbids GlobalSuppressions.cs files: @(CslsGlobalSuppressionsFile)" />
+  </Target>
+
+  <Target Name="CslsScanForSuppressionEscapeHatches" BeforeTargets="CoreCompile">
+    <Error Condition="Exists('%(CslsSuppressionScanFile.FullPath)') and $([System.Text.RegularExpressions.Regex]::IsMatch($([System.IO.File]::ReadAllText('%(CslsSuppressionScanFile.FullPath)')), '(#pragma\s+warning\s+disable)|(\[\s*(Unconditional)?Suppress[M]essage\b)|(&lt;\s*No[W]arn\b)|(&lt;\s*Warnings[N]otAsErrors\b)|(&lt;\s*Disabled[W]arnings\b)|(#nullable\s+disable)|(dotnet_diagnostic\.[^\r\n]*severity\s*=\s*(none|silent))|(dotnet_diagnostic\.(IDE0005|IDE0130|VSTHRD[0-9]+)\.severity\s*=\s*(?!error\b)[^\s#;]+)|(dotnet_analyzer_diagnostic\.category-(Design|Documentation|Globalization|Interoperability|Maintainability|Naming|Performance|Reliability|Security|Usage)\.severity\s*=\s*(?!error\b)[^\s#;]+)'))"
+           Text="csls forbids warning and nullability suppression escape hatches in %(CslsSuppressionScanFile.Identity)." />
+  </Target>
+
+  <Target Name="CslsValidateDocumentationStyle" BeforeTargets="CoreCompile">
+    <Error Condition="Exists('%(CslsSuppressionScanFile.FullPath)') and '%(CslsSuppressionScanFile.Extension)' == '.cs' and $([System.Text.RegularExpressions.Regex]::IsMatch($([System.IO.File]::ReadAllText('%(CslsSuppressionScanFile.FullPath)')), '///\s*&lt;summary&gt;[^\r\n]*&lt;/summary&gt;'))"
+           Text="csls requires every XML summary to use exactly three lines in %(CslsSuppressionScanFile.Identity)." />
+    <Error Condition="Exists('%(CslsSuppressionScanFile.FullPath)') and '%(CslsSuppressionScanFile.Extension)' == '.cs' and $([System.Text.RegularExpressions.Regex]::IsMatch($([System.IO.File]::ReadAllText('%(CslsSuppressionScanFile.FullPath)')), '///\s*&lt;summary&gt;\s*\r?\n(?!\s*///[^\r\n]*\r?\n\s*///\s*&lt;/summary&gt;)'))"
+           Text="csls requires every XML summary to use exactly three lines in %(CslsSuppressionScanFile.Identity)." />
+  </Target>
+
+  <Target Name="CslsScanForSkippedTests"
+          BeforeTargets="CoreCompile"
+          Condition="'@(CslsSkippedTestScanFile)' != ''">
+    <Error Condition="Exists('%(CslsSkippedTestScanFile.FullPath)') and $([System.Text.RegularExpressions.Regex]::IsMatch($([System.IO.File]::ReadAllText('%(CslsSkippedTestScanFile.FullPath)')), '\[\s*(?:[A-Za-z_][A-Za-z0-9_.]*\.)?I[g]nore(?:Attribute)?\b'))"
+           Text="csls forbids skipped tests in %(CslsSkippedTestScanFile.Identity)." />
+  </Target>
+
+  <Target Name="ValidateCslsProject" BeforeTargets="CoreCompile">
+    <Error
+      Condition="'$(TargetFramework)' != 'net10.0' and '$(CslsAllowAlternateTargetFramework)' != 'true'"
+      Text="csls projects must target net10.0 unless an explicit distribution project documents an alternate target." />
+    <Error
+      Condition="'$(Nullable)' != 'enable'"
+      Text="Nullable reference types must remain enabled." />
+  </Target>
+</Project>

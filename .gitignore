@@ -1,0 +1,24 @@
+.dotnet/
+.env
+.idea/
+.vs/
+.vscode/
+[Bb]in/
+[Oo]bj/
+[Tt]est[Rr]esult*/
+[Aa]rtifacts/
+BenchmarkDotNet.Artifacts/
+*.binlog
+*.coverage
+*.coveragexml
+*.log
+*.rsuser
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+*.DotSettings.user
+.DS_Store
+
+# Private porting research is never committed.
+.porting/

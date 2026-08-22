@@ -1,0 +1,16 @@
+<Project Sdk="MSTest.Sdk">
+  <PropertyGroup>
+    <AssemblyName>Csls.Tests</AssemblyName>
+    <RootNamespace>Csls.Tests</RootNamespace>
+    <Description>Real behavior tests for csls.</Description>
+    <MSTestAnalysisMode>All</MSTestAnalysisMode>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Using Include="Microsoft.VisualStudio.TestTools.UnitTesting" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../../src/Csls.Protocol/Csls.Protocol.csproj" />
+  </ItemGroup>
+</Project>

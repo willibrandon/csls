@@ -1,0 +1,8 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <AssemblyName>Csls.Protocol</AssemblyName>
+    <RootNamespace>Csls.Protocol</RootNamespace>
+    <Description>Language Server Protocol contracts and validation for csls.</Description>
+    <IsAotCompatible>true</IsAotCompatible>
+  </PropertyGroup>
+</Project>
