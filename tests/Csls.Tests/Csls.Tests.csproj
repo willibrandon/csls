@@ -11,6 +11,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <PackageReference Include="Hex1b" />
     <PackageReference Include="StreamJsonRpc" />
   </ItemGroup>
 
