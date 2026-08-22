@@ -14,4 +14,9 @@ public static class ControlMethods
     /// Gets the method that resolves hover information in the current workspace snapshot.
     /// </summary>
     public const string GetHover = "csls/control/v1/hover/get";
+
+    /// <summary>
+    /// Gets the method that returns compiler and analyzer diagnostics for one document.
+    /// </summary>
+    public const string GetDiagnostics = "csls/control/v1/diagnostics/get";
 }

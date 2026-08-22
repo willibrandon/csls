@@ -68,4 +68,25 @@ public sealed class ControlService : IControlRpcTarget
             Hover = hover
         };
     }
+
+    /// <inheritdoc />
+    public Task<DocumentDiagnosticReport> GetDiagnosticsAsync(
+        ControlDiagnosticRequest request,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        ArgumentException.ThrowIfNullOrWhiteSpace(request.DocumentPath);
+        string documentPath = Path.GetFullPath(request.DocumentPath);
+        return _languageServer.DocumentDiagnosticAsync(
+            new DocumentDiagnosticParams
+            {
+                TextDocument = new TextDocumentIdentifier
+                {
+                    Uri = DocumentUri.FromFileSystemPath(documentPath)
+                },
+                Identifier = "csls",
+                PreviousResultId = request.PreviousResultId
+            },
+            cancellationToken);
+    }
 }

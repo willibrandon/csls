@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Runtime.CompilerServices;
 using System.Text.Json;
 using Csls.Control.Contracts;
+using Csls.Protocol;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
 
@@ -129,6 +130,8 @@ public sealed class McpLanguageServerTests
                     tool.Name == "get_session");
                 McpClientTool hoverTool = tools.Single(static tool =>
                     tool.Name == "get_hover");
+                McpClientTool diagnosticTool = tools.Single(static tool =>
+                    tool.Name == "get_diagnostics");
                 ToolAnnotations annotations = sessionTool.ProtocolTool.Annotations
                     ?? throw new InvalidDataException("The session tool has no MCP annotations.");
                 Assert.IsNotNull(annotations.ReadOnlyHint);
@@ -141,6 +144,7 @@ public sealed class McpLanguageServerTests
                 Assert.IsTrue(annotations.IdempotentHint.Value);
                 Assert.IsNotNull(sessionTool.ProtocolTool.OutputSchema);
                 Assert.IsNotNull(hoverTool.ProtocolTool.OutputSchema);
+                Assert.IsNotNull(diagnosticTool.ProtocolTool.OutputSchema);
 
                 CallToolResult sessionResult = await client.CallToolAsync(
                     "get_session",
@@ -171,6 +175,28 @@ public sealed class McpLanguageServerTests
                 Assert.IsTrue(hover.Found);
                 Assert.IsNotNull(hover.Hover);
                 Assert.Contains("System.Console", hover.Hover.Contents.Value);
+
+                CallToolResult diagnosticResult = await client.CallToolAsync(
+                    "get_diagnostics",
+                    new Dictionary<string, object?>
+                    {
+                        ["documentPath"] = documentPath
+                    },
+                    cancellationToken: TestContext.CancellationToken).ConfigureAwait(false);
+                Assert.IsNull(diagnosticResult.IsError);
+                Assert.IsTrue(diagnosticResult.StructuredContent.HasValue);
+                DocumentDiagnosticReport diagnosticReport =
+                    diagnosticResult.StructuredContent.Value.Deserialize(
+                        ControlJsonSerializerContext.Default.DocumentDiagnosticReport)
+                    ?? throw new InvalidDataException(
+                        "MCP returned no structured diagnostic report.");
+                Assert.AreEqual("full", diagnosticReport.Kind);
+                IReadOnlyList<Diagnostic> diagnosticItems = diagnosticReport.Items
+                    ?? throw new InvalidDataException(
+                        "MCP returned a full diagnostic report without items.");
+                Assert.Contains(
+                    "CS0103",
+                    diagnosticItems.Select(static diagnostic => diagnostic.Code));
 
                 IList<McpClientResource> resources = await client
                     .ListResourcesAsync(cancellationToken: TestContext.CancellationToken)
@@ -236,7 +262,7 @@ public sealed class McpLanguageServerTests
         {
             public static void Main()
             {
-                Console.WriteLine("hello");
+                Console.WriteLine(Missing);
             }
         }
         """;

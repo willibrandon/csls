@@ -1,5 +1,6 @@
 using System.Text.Json.Serialization;
 using Csls.Control.Contracts;
+using Csls.Protocol;
 
 namespace Csls.Cli.Worker;
 
@@ -14,5 +15,9 @@ namespace Csls.Cli.Worker;
 [JsonSerializable(typeof(CliResponseEnvelope))]
 [JsonSerializable(typeof(ControlHoverResult))]
 [JsonSerializable(typeof(ControlSessionInfo))]
+[JsonSerializable(typeof(Diagnostic))]
+[JsonSerializable(typeof(DiagnosticSeverity))]
+[JsonSerializable(typeof(DocumentDiagnosticReport))]
 [JsonSerializable(typeof(IReadOnlyList<ControlSessionInfo>))]
+[JsonSerializable(typeof(IReadOnlyList<Diagnostic>))]
 internal sealed partial class CliJsonSerializerContext : JsonSerializerContext;

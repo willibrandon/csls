@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Csls.Control.Contracts;
+using Csls.Protocol;
 
 namespace Csls.Cli.Worker;
 
@@ -93,6 +94,47 @@ internal static class CliOutputWriter
             hover.Found
                 ? hover.Hover!.Contents.Value
                 : "No hover information found.");
+    }
+
+    /// <summary>
+    /// Writes compiler and analyzer diagnostics returned by the shared control service.
+    /// </summary>
+    /// <param name="report">The complete or unchanged diagnostic report.</param>
+    /// <param name="writeJson">Whether to write a machine-readable envelope.</param>
+    internal static void WriteDiagnostics(
+        DocumentDiagnosticReport report,
+        bool writeJson)
+    {
+        ArgumentNullException.ThrowIfNull(report);
+        if (writeJson)
+        {
+            JsonElement data = JsonSerializer.SerializeToElement(
+                report,
+                typeof(DocumentDiagnosticReport),
+                CliJsonSerializerContext.Default);
+            WriteEnvelope(success: true, data);
+            return;
+        }
+
+        if (string.Equals(report.Kind, "unchanged", StringComparison.Ordinal))
+        {
+            Console.Out.WriteLine($"Diagnostics unchanged ({report.ResultId}).");
+            return;
+        }
+
+        IReadOnlyList<Diagnostic> diagnostics = report.Items ?? [];
+        if (diagnostics.Count == 0)
+        {
+            Console.Out.WriteLine("No diagnostics.");
+            return;
+        }
+
+        foreach (Diagnostic diagnostic in diagnostics)
+        {
+            Console.Out.WriteLine(
+                $"{diagnostic.Range.Start.Line + 1}:{diagnostic.Range.Start.Character + 1} " +
+                $"{diagnostic.Severity} {diagnostic.Code}: {diagnostic.Message}");
+        }
     }
 
     /// <summary>

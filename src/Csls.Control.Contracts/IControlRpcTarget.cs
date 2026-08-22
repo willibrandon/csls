@@ -1,3 +1,5 @@
+using Csls.Protocol;
+
 namespace Csls.Control.Contracts;
 
 /// <summary>
@@ -20,5 +22,15 @@ public interface IControlRpcTarget
     /// <returns>The optional hover information.</returns>
     Task<ControlHoverResult> GetHoverAsync(
         ControlHoverRequest request,
+        CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Gets compiler and analyzer diagnostics from the current workspace snapshot.
+    /// </summary>
+    /// <param name="request">The absolute document path and prior result identifier.</param>
+    /// <param name="cancellationToken">The peer cancellation token.</param>
+    /// <returns>A complete or unchanged document diagnostic report.</returns>
+    Task<DocumentDiagnosticReport> GetDiagnosticsAsync(
+        ControlDiagnosticRequest request,
         CancellationToken cancellationToken);
 }

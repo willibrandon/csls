@@ -153,6 +153,39 @@ public sealed class CliLanguageServerTests
                         ?? throw new InvalidDataException("The CLI returned null hover text."));
             }
 
+            (int diagnosticExitCode, string diagnosticOutput, string diagnosticError) =
+                await RunCliAsync(
+                    cliPath,
+                    cliWorkerPath,
+                    fixturePath,
+                    [
+                        "query",
+                        "diagnostics",
+                        documentPath,
+                        "--session",
+                        processId,
+                        "--json"
+                    ],
+                    TestContext.CancellationToken).ConfigureAwait(false);
+            Assert.AreEqual(
+                0,
+                diagnosticExitCode,
+                $"{diagnosticError}{Environment.NewLine}{diagnosticOutput}");
+            using (var diagnosticDocument = JsonDocument.Parse(diagnosticOutput))
+            {
+                JsonElement diagnosticRoot = diagnosticDocument.RootElement;
+                AssertSuccessfulEnvelope(diagnosticRoot);
+                JsonElement diagnosticData = diagnosticRoot.GetProperty("data");
+                Assert.AreEqual("full", diagnosticData.GetProperty("kind").GetString());
+                Assert.Contains(
+                    "CS0103",
+                    diagnosticData
+                        .GetProperty("items")
+                        .EnumerateArray()
+                        .Select(static diagnostic =>
+                            diagnostic.GetProperty("code").GetString()));
+            }
+
             string diagnostics = await lsp.ShutdownAsync(
                 TestContext.CancellationToken).ConfigureAwait(false);
             Assert.DoesNotContain("Unhandled exception", diagnostics, StringComparison.Ordinal);
@@ -227,7 +260,7 @@ public sealed class CliLanguageServerTests
         {
             public static void Main()
             {
-                Console.WriteLine("hello");
+                Console.WriteLine(Missing);
             }
         }
         """;

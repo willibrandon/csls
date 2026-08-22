@@ -1,4 +1,5 @@
 using Csls.Control.Contracts;
+using Csls.Protocol;
 using StreamJsonRpc;
 
 namespace Csls.Control;
@@ -25,6 +26,11 @@ internal static class ControlMethodRegistry
             ControlMethods.GetHover,
             new Func<ControlHoverRequest, CancellationToken, Task<ControlHoverResult>>(
                 target.GetHoverAsync));
+        AddParameterObjectMethod(
+            rpc,
+            ControlMethods.GetDiagnostics,
+            new Func<ControlDiagnosticRequest, CancellationToken, Task<DocumentDiagnosticReport>>(
+                target.GetDiagnosticsAsync));
     }
 
     private static void AddParameterObjectMethod(

@@ -94,4 +94,48 @@ internal sealed class CslsMcpTools
             },
             cancellationToken);
     }
+
+    /// <summary>
+    /// Gets compiler and analyzer diagnostics for one document in the attached session.
+    /// </summary>
+    /// <param name="documentPath">The absolute path of an open document.</param>
+    /// <param name="previousResultId">The optional prior opaque diagnostic result identifier.</param>
+    /// <param name="cancellationToken">The MCP request cancellation token.</param>
+    /// <returns>A complete or unchanged document diagnostic report.</returns>
+    [McpServerTool(
+        Name = "get_diagnostics",
+        Title = "Get C# diagnostics",
+        Destructive = false,
+        Idempotent = true,
+        OpenWorld = false,
+        ReadOnly = true,
+        UseStructuredContent = true)]
+    [Description("Get current compiler and analyzer diagnostics for one document in the attached csls session.")]
+    public Task<DocumentDiagnosticReport> GetDiagnosticsAsync(
+        [Description("Absolute path of the document loaded by the attached csls session.")]
+        string documentPath,
+        CancellationToken cancellationToken,
+        [Description("Optional resultId from a prior diagnostic response.")]
+        string? previousResultId = null)
+    {
+        if (string.IsNullOrWhiteSpace(documentPath) ||
+            documentPath.Length > MaximumPathLength)
+        {
+            throw new McpException(
+                $"documentPath must contain between 1 and {MaximumPathLength} characters.");
+        }
+
+        if (previousResultId is { Length: > 256 })
+        {
+            throw new McpException("previousResultId cannot exceed 256 characters.");
+        }
+
+        return _controlClient.GetDiagnosticsAsync(
+            new ControlDiagnosticRequest
+            {
+                DocumentPath = Path.GetFullPath(documentPath),
+                PreviousResultId = previousResultId
+            },
+            cancellationToken);
+    }
 }

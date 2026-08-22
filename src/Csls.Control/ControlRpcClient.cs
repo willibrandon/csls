@@ -1,5 +1,6 @@
 using System.Net.Sockets;
 using Csls.Control.Contracts;
+using Csls.Protocol;
 using StreamJsonRpc;
 
 namespace Csls.Control;
@@ -58,6 +59,24 @@ public sealed class ControlRpcClient : IAsyncDisposable
         JsonRpc rpc = await GetRpcAsync(cancellationToken).ConfigureAwait(false);
         return await rpc.InvokeWithParameterObjectAsync<ControlHoverResult>(
             ControlMethods.GetHover,
+            request,
+            cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Gets compiler and analyzer diagnostics from the attached workspace snapshot.
+    /// </summary>
+    /// <param name="request">The absolute document path and prior result identifier.</param>
+    /// <param name="cancellationToken">The request cancellation token.</param>
+    /// <returns>A complete or unchanged document diagnostic report.</returns>
+    public async Task<DocumentDiagnosticReport> GetDiagnosticsAsync(
+        ControlDiagnosticRequest request,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        JsonRpc rpc = await GetRpcAsync(cancellationToken).ConfigureAwait(false);
+        return await rpc.InvokeWithParameterObjectAsync<DocumentDiagnosticReport>(
+            ControlMethods.GetDiagnostics,
             request,
             cancellationToken).ConfigureAwait(false);
     }

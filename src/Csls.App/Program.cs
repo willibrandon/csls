@@ -82,6 +82,42 @@ hoverCommand.SetAction((parseResult, cancellationToken) =>
         ],
         cancellationToken));
 queryCommand.Subcommands.Add(hoverCommand);
+
+var diagnosticDocumentArgument = new Argument<string>("document")
+{
+    Description = "Absolute or current-directory-relative C# document path."
+};
+Option<int?> diagnosticSessionOption = CreateSessionOption();
+var previousResultOption = new Option<string?>("--previous-result-id")
+{
+    Description = "Opaque result identifier from a prior diagnostic response.",
+    HelpName = "id"
+};
+var diagnosticJsonOption = new Option<bool>("--json")
+{
+    Description = "Write the versioned machine-readable response envelope."
+};
+var diagnosticCommand = new Command(
+    "diagnostics",
+    "Get compiler and analyzer diagnostics for one document.")
+{
+    diagnosticDocumentArgument,
+    diagnosticSessionOption,
+    previousResultOption,
+    diagnosticJsonOption
+};
+diagnosticCommand.SetAction((parseResult, cancellationToken) =>
+    CliWorkerSupervisor.RunAsync(
+        [
+            "query-diagnostics",
+            (parseResult.GetValue(diagnosticSessionOption) ?? 0)
+                .ToString(CultureInfo.InvariantCulture),
+            Path.GetFullPath(parseResult.GetRequiredValue(diagnosticDocumentArgument)),
+            parseResult.GetValue(previousResultOption) ?? string.Empty,
+            parseResult.GetValue(diagnosticJsonOption).ToString(CultureInfo.InvariantCulture)
+        ],
+        cancellationToken));
+queryCommand.Subcommands.Add(diagnosticCommand);
 rootCommand.Subcommands.Add(queryCommand);
 
 return await rootCommand.Parse(args).InvokeAsync().ConfigureAwait(false);

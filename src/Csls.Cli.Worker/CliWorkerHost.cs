@@ -36,6 +36,10 @@ internal static class CliWorkerHost
                         .ConfigureAwait(false),
                     "query-hover" => await QueryHoverAsync(arguments, writeJson, cancellationToken)
                         .ConfigureAwait(false),
+                    "query-diagnostics" => await QueryDiagnosticsAsync(
+                        arguments,
+                        writeJson,
+                        cancellationToken).ConfigureAwait(false),
                     _ => Fail(
                         "invalid-request",
                         $"The launcher supplied an unknown CLI operation: {arguments[0]}",
@@ -111,6 +115,35 @@ internal static class CliWorkerHost
             },
             cancellationToken).ConfigureAwait(false);
         CliOutputWriter.WriteHover(hover, writeJson);
+        return 0;
+    }
+
+    private static async Task<int> QueryDiagnosticsAsync(
+        IReadOnlyList<string> arguments,
+        bool writeJson,
+        CancellationToken cancellationToken)
+    {
+        if (arguments.Count != 5 ||
+            !int.TryParse(arguments[1], NumberStyles.None, CultureInfo.InvariantCulture, out int processId))
+        {
+            return Fail(
+                "invalid-request",
+                "The launcher supplied an invalid diagnostic request.",
+                writeJson);
+        }
+
+        ControlSessionInfo session = await ResolveSessionAsync(processId, cancellationToken)
+            .ConfigureAwait(false);
+        var client = new ControlRpcClient(session.SocketPath);
+        await using ConfiguredAsyncDisposable clientCleanup = client.ConfigureAwait(false);
+        DocumentDiagnosticReport report = await client.GetDiagnosticsAsync(
+            new ControlDiagnosticRequest
+            {
+                DocumentPath = arguments[2],
+                PreviousResultId = string.IsNullOrEmpty(arguments[3]) ? null : arguments[3]
+            },
+            cancellationToken).ConfigureAwait(false);
+        CliOutputWriter.WriteDiagnostics(report, writeJson);
         return 0;
     }
 
