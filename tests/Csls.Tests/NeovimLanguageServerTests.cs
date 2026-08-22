@@ -65,12 +65,9 @@ public sealed class NeovimLanguageServerTests
                 CreateConfiguration(workerPath, readyPath, hoverRequestedPath),
                 TestContext.CancellationToken).ConfigureAwait(false);
 
-            Hex1bTerminal terminal = Hex1bTerminal.CreateBuilder()
-                .WithPtyProcess(options =>
-                {
-                    options.FileName = EditorToolResolver.ResolveDotNetHost();
-                    options.Arguments =
-                    [
+            var workload = new Hex1bPtyWorkload(
+                EditorToolResolver.ResolveDotNetHost(),
+                [
                         processHostPath,
                         "--environment",
                         "TERM",
@@ -101,48 +98,57 @@ public sealed class NeovimLanguageServerTests
                         "NONE",
                         "--noplugin",
                         "+call cursor(7, 10)",
-                        documentPath
-                    ];
-                    options.WorkingDirectory = fixturePath;
-                })
+                    documentPath
+                ],
+                fixturePath,
+                width: 120,
+                height: 40);
+            Hex1bTerminal terminal = Hex1bTerminal.CreateBuilder()
+                .WithWorkload(workload)
                 .WithHeadless()
                 .WithDimensions(120, 40)
                 .Build();
             try
             {
-                Task<int> runTask = terminal.RunAsync(TestContext.CancellationToken);
-                Hex1bTerminalAutomator automator = new(
+                string screenText = string.Empty;
+                int exitCode = await workload.RunAsync(
                     terminal,
-                    defaultTimeout: TimeSpan.FromSeconds(60));
-                await automator.WaitUntilTextAsync("Console.WriteLine").ConfigureAwait(false);
-                await FileTextWaiter.WaitAsync(
-                    readyPath,
-                    "ready",
-                    TimeSpan.FromSeconds(60),
-                    TestContext.CancellationToken).ConfigureAwait(false);
+                    async () =>
+                    {
+                        Hex1bTerminalAutomator automator = new(
+                            terminal,
+                            defaultTimeout: TimeSpan.FromSeconds(60));
+                        await automator.WaitUntilTextAsync("Console.WriteLine").ConfigureAwait(false);
+                        await FileTextWaiter.WaitAsync(
+                            readyPath,
+                            "ready",
+                            TimeSpan.FromSeconds(60),
+                            TestContext.CancellationToken).ConfigureAwait(false);
 
-                await automator.TypeAsync("K", TestContext.CancellationToken)
-                    .ConfigureAwait(false);
-                await FileTextWaiter.WaitAsync(
-                    hoverRequestedPath,
-                    "requested",
-                    TimeSpan.FromSeconds(60),
-                    TestContext.CancellationToken).ConfigureAwait(false);
-                await automator.WaitUntilTextAsync(
-                    "System.Console").ConfigureAwait(false);
-                using Hex1bTerminalSnapshot snapshot = automator.CreateSnapshot();
-                Assert.Contains("System.Console", snapshot.GetScreenText());
+                        await automator.TypeAsync("K", TestContext.CancellationToken)
+                            .ConfigureAwait(false);
+                        await FileTextWaiter.WaitAsync(
+                            hoverRequestedPath,
+                            "requested",
+                            TimeSpan.FromSeconds(60),
+                            TestContext.CancellationToken).ConfigureAwait(false);
+                        await automator.WaitUntilTextAsync(
+                            "System.Console").ConfigureAwait(false);
+                        using Hex1bTerminalSnapshot snapshot = automator.CreateSnapshot();
+                        screenText = snapshot.GetScreenText();
+                        Assert.Contains("System.Console", screenText);
 
-                await automator.TypeAsync(":qa!", TestContext.CancellationToken)
-                    .ConfigureAwait(false);
-                await automator.EnterAsync(TestContext.CancellationToken).ConfigureAwait(false);
-                int exitCode = await runTask.WaitAsync(TestContext.CancellationToken)
-                    .ConfigureAwait(false);
-                Assert.AreEqual(0, exitCode, snapshot.GetScreenText());
+                        await automator.TypeAsync(":qa!", TestContext.CancellationToken)
+                            .ConfigureAwait(false);
+                        await automator.EnterAsync(TestContext.CancellationToken).ConfigureAwait(false);
+                    },
+                    TestContext.CancellationToken).ConfigureAwait(false);
+                Assert.AreEqual(0, exitCode, screenText);
             }
             finally
             {
                 await terminal.DisposeAsync().ConfigureAwait(false);
+                await workload.DisposeAsync().ConfigureAwait(false);
             }
         }
         finally

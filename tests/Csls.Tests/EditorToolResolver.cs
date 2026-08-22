@@ -61,8 +61,7 @@ internal static class EditorToolResolver
         "helix",
         "25.07.1",
         GetPlatform(allowWindowsArm64: false, detectMusl: false),
-        OperatingSystem.IsWindows() ? "hx.exe" : "hx",
-        "hx");
+        OperatingSystem.IsWindows() ? "hx.exe" : "hx");
 
     /// <summary>
     /// Resolves the pinned Fresh executable with an explicit override and installed fallback.
@@ -75,8 +74,7 @@ internal static class EditorToolResolver
         "fresh",
         "0.4.10",
         GetPlatform(allowWindowsArm64: true, detectMusl: true),
-        OperatingSystem.IsWindows() ? "fresh.exe" : "fresh",
-        "fresh");
+        OperatingSystem.IsWindows() ? "fresh.exe" : "fresh");
 
     /// <summary>
     /// Resolves the pinned Neovim executable with an explicit override and installed fallback.
@@ -89,8 +87,20 @@ internal static class EditorToolResolver
         "neovim",
         "0.12.4",
         GetPlatform(allowWindowsArm64: true, detectMusl: false),
-        OperatingSystem.IsWindows() ? "nvim.exe" : "nvim",
-        "nvim");
+        OperatingSystem.IsWindows() ? "nvim.exe" : "nvim");
+
+    /// <summary>
+    /// Resolves the pinned upstream csharp-ls executable used as a parity oracle.
+    /// </summary>
+    /// <param name="repositoryRoot">The absolute repository root.</param>
+    /// <returns>The absolute provisioned oracle path.</returns>
+    internal static string ResolveCsharpLsOracle(string repositoryRoot) => Resolve(
+        repositoryRoot,
+        "CSLS_CSHARP_LS_ORACLE_PATH",
+        "csharp-ls-oracle",
+        "0.26.0",
+        GetPlatform(allowWindowsArm64: true, detectMusl: false),
+        OperatingSystem.IsWindows() ? "csharp-ls.exe" : "csharp-ls");
 
     private static string Resolve(
         string repositoryRoot,
@@ -98,8 +108,7 @@ internal static class EditorToolResolver
         string toolName,
         string version,
         string platform,
-        string executableName,
-        string fallback)
+        string executableName)
     {
         string? configuredPath = Environment.GetEnvironmentVariable(environmentVariable);
         if (!string.IsNullOrWhiteSpace(configuredPath))
@@ -119,8 +128,19 @@ internal static class EditorToolResolver
                 .EnumerateFiles(installationPath, executableName, SearchOption.AllDirectories)
                 .SingleOrDefault()
             : null;
-        return provisionedPath ?? fallback;
+        return provisionedPath ?? throw new FileNotFoundException(
+            $"The pinned {toolName} {version} executable is not provisioned. " +
+            $"Run scripts/Provision-{GetProvisionerName(toolName)}.cs.");
     }
+
+    private static string GetProvisionerName(string toolName) => toolName switch
+    {
+        "csharp-ls-oracle" => "CsharpLsOracle",
+        "fresh" => "Fresh",
+        "helix" => "Helix",
+        "neovim" => "Neovim",
+        _ => throw new ArgumentOutOfRangeException(nameof(toolName), toolName, null)
+    };
 
     private static string GetPlatform(bool allowWindowsArm64, bool detectMusl)
     {

@@ -5,6 +5,7 @@ using Microsoft.Build.Locator;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.MSBuild;
+using Microsoft.CodeAnalysis.QuickInfo;
 using Microsoft.CodeAnalysis.Text;
 using Microsoft.Extensions.Logging;
 using LspRange = Csls.Protocol.Range;
@@ -215,6 +216,38 @@ public sealed partial class WorkspaceManager : IAsyncDisposable
 
         SourceText text = await document.GetTextAsync(cancellationToken).ConfigureAwait(false);
         int offset = GetOffset(text, parameters.Position);
+        var quickInfoService = QuickInfoService.GetService(document);
+        if (quickInfoService is not null)
+        {
+            QuickInfoItem? quickInfo = await quickInfoService
+                .GetQuickInfoAsync(document, offset, cancellationToken)
+                .ConfigureAwait(false);
+            if (quickInfo is not null)
+            {
+                string markdown = QuickInfoMarkdownFormatter.Format(quickInfo);
+                if (!string.IsNullOrWhiteSpace(markdown))
+                {
+                    LinePositionSpan quickInfoLineSpan = text.Lines.GetLinePositionSpan(
+                        quickInfo.Span);
+                    return new Hover
+                    {
+                        Contents = new MarkupContent
+                        {
+                            Kind = "markdown",
+                            Value = markdown
+                        },
+                        Range = new LspRange(
+                            new Position(
+                                quickInfoLineSpan.Start.Line,
+                                quickInfoLineSpan.Start.Character),
+                            new Position(
+                                quickInfoLineSpan.End.Line,
+                                quickInfoLineSpan.End.Character))
+                    };
+                }
+            }
+        }
+
         SyntaxNode root = await document.GetSyntaxRootAsync(cancellationToken).ConfigureAwait(false)
             ?? throw new InvalidOperationException("Roslyn returned no syntax root.");
         SyntaxToken token = root.FindToken(offset, findInsideTrivia: true);

@@ -139,6 +139,9 @@ public sealed class StdioLanguageServerTests
                 TestContext.CancellationToken).ConfigureAwait(false);
             Assert.IsNotNull(hover);
             Assert.Contains("System.Console", hover.Contents.Value);
+            Assert.Contains(
+                "Represents the standard input, output, and error streams for console applications.",
+                hover.Contents.Value);
 
             object? shutdownResult = await rpc.InvokeWithCancellationAsync<object?>(
                 "shutdown",

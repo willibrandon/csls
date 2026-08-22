@@ -64,90 +64,93 @@ public sealed class FreshLanguageServerTests
                 CreateConfiguration(workerPath),
                 TestContext.CancellationToken).ConfigureAwait(false);
 
+            var workload = new Hex1bPtyWorkload(
+                EditorToolResolver.ResolveDotNetHost(),
+                [
+                    processHostPath,
+                    "--environment",
+                    "TERM",
+                    "xterm-256color",
+                    "--environment",
+                    "COLORTERM",
+                    "truecolor",
+                    "--environment",
+                    "HOME",
+                    homePath,
+                    "--environment",
+                    "XDG_CACHE_HOME",
+                    cachePath,
+                    "--environment",
+                    "XDG_CONFIG_HOME",
+                    fixturePath,
+                    "--environment",
+                    "XDG_DATA_HOME",
+                    dataPath,
+                    "--environment",
+                    "XDG_STATE_HOME",
+                    statePath,
+                    "--",
+                    freshPath,
+                    "--config",
+                    configurationPath,
+                    "--log-file",
+                    logPath,
+                    "--event-log",
+                    eventLogPath,
+                    "--no-plugins",
+                    "--no-init",
+                    "--no-restore",
+                    "--no-upgrade-check",
+                    $"{documentPath}:7:10"
+                ],
+                fixturePath,
+                width: 120,
+                height: 40);
             Hex1bTerminal terminal = Hex1bTerminal.CreateBuilder()
-                .WithPtyProcess(options =>
-                {
-                    options.FileName = EditorToolResolver.ResolveDotNetHost();
-                    options.Arguments =
-                    [
-                        processHostPath,
-                        "--environment",
-                        "TERM",
-                        "xterm-256color",
-                        "--environment",
-                        "COLORTERM",
-                        "truecolor",
-                        "--environment",
-                        "HOME",
-                        homePath,
-                        "--environment",
-                        "XDG_CACHE_HOME",
-                        cachePath,
-                        "--environment",
-                        "XDG_CONFIG_HOME",
-                        fixturePath,
-                        "--environment",
-                        "XDG_DATA_HOME",
-                        dataPath,
-                        "--environment",
-                        "XDG_STATE_HOME",
-                        statePath,
-                        "--",
-                        freshPath,
-                        "--config",
-                        configurationPath,
-                        "--log-file",
-                        logPath,
-                        "--event-log",
-                        eventLogPath,
-                        "--no-plugins",
-                        "--no-init",
-                        "--no-restore",
-                        "--no-upgrade-check",
-                        $"{documentPath}:7:10"
-                    ];
-                    options.WorkingDirectory = fixturePath;
-                })
+                .WithWorkload(workload)
                 .WithHeadless()
                 .WithDimensions(120, 40)
                 .Build();
             try
             {
-                Task<int> runTask = terminal.RunAsync(TestContext.CancellationToken);
-                Hex1bTerminalAutomator automator = new(
+                int exitCode = await workload.RunAsync(
                     terminal,
-                    defaultTimeout: TimeSpan.FromSeconds(60));
-                await automator.WaitUntilAlternateScreenAsync().ConfigureAwait(false);
-                await automator.WaitUntilTextAsync("Console.WriteLine").ConfigureAwait(false);
-                await FileTextWaiter.WaitAsync(
-                    logPath,
-                    "LSP initialization completed successfully",
-                    TimeSpan.FromSeconds(60),
-                    TestContext.CancellationToken).ConfigureAwait(false);
-                await automator.WaitUntilTextAsync("LSP (csharp) ready").ConfigureAwait(false);
+                    async () =>
+                    {
+                        Hex1bTerminalAutomator automator = new(
+                            terminal,
+                            defaultTimeout: TimeSpan.FromSeconds(60));
+                        await automator.WaitUntilAlternateScreenAsync().ConfigureAwait(false);
+                        await automator.WaitUntilTextAsync("Console.WriteLine").ConfigureAwait(false);
+                        await FileTextWaiter.WaitAsync(
+                            logPath,
+                            "LSP initialization completed successfully",
+                            TimeSpan.FromSeconds(60),
+                            TestContext.CancellationToken).ConfigureAwait(false);
+                        await automator.WaitUntilTextAsync("LSP (csharp) ready").ConfigureAwait(false);
 
-                await TerminalInput.SendAltCharacterAsync(
-                    terminal,
-                    'k',
-                    TestContext.CancellationToken).ConfigureAwait(false);
-                try
-                {
-                    await automator.WaitUntilTextAsync("System.Console").ConfigureAwait(false);
-                }
-                catch (Hex1bAutomationException)
-                {
-                    string diagnostics = await ReadDiagnosticsAsync(
-                        logPath,
-                        eventLogPath,
-                        TestContext.CancellationToken).ConfigureAwait(false);
-                    TestContext.WriteLine(diagnostics);
-                    throw;
-                }
+                        await TerminalInput.SendAltCharacterAsync(
+                            terminal,
+                            'k',
+                            TestContext.CancellationToken).ConfigureAwait(false);
+                        try
+                        {
+                            await automator.WaitUntilTextAsync("System.Console").ConfigureAwait(false);
+                        }
+                        catch (Hex1bAutomationException)
+                        {
+                            string diagnostics = await ReadDiagnosticsAsync(
+                                logPath,
+                                eventLogPath,
+                                TestContext.CancellationToken).ConfigureAwait(false);
+                            TestContext.WriteLine(diagnostics);
+                            throw;
+                        }
 
-                await automator.Ctrl().KeyAsync(Hex1bKey.Q, TestContext.CancellationToken)
-                    .ConfigureAwait(false);
-                int exitCode = await runTask.WaitAsync(TestContext.CancellationToken)
-                    .ConfigureAwait(false);
+                        await automator.Ctrl().KeyAsync(Hex1bKey.Q, TestContext.CancellationToken)
+                            .ConfigureAwait(false);
+                    },
+                    TestContext.CancellationToken).ConfigureAwait(false);
                 string log = await File.ReadAllTextAsync(
                     logPath,
                     TestContext.CancellationToken).ConfigureAwait(false);
@@ -157,6 +160,7 @@ public sealed class FreshLanguageServerTests
             finally
             {
                 await terminal.DisposeAsync().ConfigureAwait(false);
+                await workload.DisposeAsync().ConfigureAwait(false);
             }
         }
         finally

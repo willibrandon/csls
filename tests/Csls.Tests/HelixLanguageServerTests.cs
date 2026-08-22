@@ -96,12 +96,9 @@ public sealed class HelixLanguageServerTests
                 TestContext.CancellationToken).ConfigureAwait(false);
             Assert.Contains("csls", health, StringComparison.OrdinalIgnoreCase);
 
-            Hex1bTerminal terminal = Hex1bTerminal.CreateBuilder()
-                .WithPtyProcess(options =>
-                {
-                    options.FileName = EditorToolResolver.ResolveDotNetHost();
-                    options.Arguments =
-                    [
+            var workload = new Hex1bPtyWorkload(
+                EditorToolResolver.ResolveDotNetHost(),
+                [
                         processHostPath,
                         "--environment",
                         "TERM",
@@ -133,48 +130,54 @@ public sealed class HelixLanguageServerTests
                         "-vvv",
                         "--working-dir",
                         fixturePath,
-                        $"{documentPath}:7:10"
-                    ];
-                    options.WorkingDirectory = fixturePath;
-                })
+                    $"{documentPath}:7:10"
+                ],
+                fixturePath,
+                width: 120,
+                height: 40);
+            Hex1bTerminal terminal = Hex1bTerminal.CreateBuilder()
+                .WithWorkload(workload)
                 .WithHeadless()
                 .WithDimensions(120, 40)
                 .Build();
 
             try
             {
-                Task<int> runTask = terminal.RunAsync(TestContext.CancellationToken);
-                Hex1bTerminalAutomator automator = new(
+                int exitCode = await workload.RunAsync(
                     terminal,
-                    defaultTimeout: TimeSpan.FromSeconds(60));
+                    async () =>
+                    {
+                        Hex1bTerminalAutomator automator = new(
+                            terminal,
+                            defaultTimeout: TimeSpan.FromSeconds(60));
 
-                await automator.WaitUntilAlternateScreenAsync().ConfigureAwait(false);
-                await automator.WaitUntilTextAsync("Console.WriteLine").ConfigureAwait(false);
-                await automator.SpaceAsync(TestContext.CancellationToken).ConfigureAwait(false);
-                await automator.KeyAsync(Hex1bKey.K, TestContext.CancellationToken)
-                    .ConfigureAwait(false);
-                await automator.WaitUntilAsync(
-                    static snapshot =>
-                        snapshot.ContainsText("System.Console") ||
-                        snapshot.ContainsText("No configured language server supports hover"),
-                    description: "Helix to display hover information or a concrete LSP error")
-                    .ConfigureAwait(false);
+                        await automator.WaitUntilAlternateScreenAsync().ConfigureAwait(false);
+                        await automator.WaitUntilTextAsync("Console.WriteLine").ConfigureAwait(false);
+                        await automator.SpaceAsync(TestContext.CancellationToken).ConfigureAwait(false);
+                        await automator.KeyAsync(Hex1bKey.K, TestContext.CancellationToken)
+                            .ConfigureAwait(false);
+                        await automator.WaitUntilAsync(
+                            static snapshot =>
+                                snapshot.ContainsText("System.Console") ||
+                                snapshot.ContainsText("No configured language server supports hover"),
+                            description: "Helix to display hover information or a concrete LSP error")
+                            .ConfigureAwait(false);
 
-                using Hex1bTerminalSnapshot snapshot = automator.CreateSnapshot();
-                string interactionLog = File.Exists(logPath)
-                    ? await File.ReadAllTextAsync(logPath, TestContext.CancellationToken)
-                        .ConfigureAwait(false)
-                    : string.Empty;
-                Assert.Contains(
-                    "System.Console",
-                    snapshot.GetScreenText(),
-                    $"{interactionLog}{Environment.NewLine}{snapshot.GetScreenText()}");
+                        using Hex1bTerminalSnapshot snapshot = automator.CreateSnapshot();
+                        string interactionLog = File.Exists(logPath)
+                            ? await File.ReadAllTextAsync(logPath, TestContext.CancellationToken)
+                                .ConfigureAwait(false)
+                            : string.Empty;
+                        Assert.Contains(
+                            "System.Console",
+                            snapshot.GetScreenText(),
+                            $"{interactionLog}{Environment.NewLine}{snapshot.GetScreenText()}");
 
-                await automator.TypeAsync(":q!", TestContext.CancellationToken)
-                    .ConfigureAwait(false);
-                await automator.EnterAsync(TestContext.CancellationToken).ConfigureAwait(false);
-                int exitCode = await runTask.WaitAsync(TestContext.CancellationToken)
-                    .ConfigureAwait(false);
+                        await automator.TypeAsync(":q!", TestContext.CancellationToken)
+                            .ConfigureAwait(false);
+                        await automator.EnterAsync(TestContext.CancellationToken).ConfigureAwait(false);
+                    },
+                    TestContext.CancellationToken).ConfigureAwait(false);
 
                 string log = File.Exists(logPath)
                     ? await File.ReadAllTextAsync(logPath, TestContext.CancellationToken)
@@ -186,6 +189,7 @@ public sealed class HelixLanguageServerTests
             finally
             {
                 await terminal.DisposeAsync().ConfigureAwait(false);
+                await workload.DisposeAsync().ConfigureAwait(false);
             }
         }
         finally
