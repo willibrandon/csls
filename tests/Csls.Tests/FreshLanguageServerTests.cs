@@ -1,0 +1,221 @@
+using System.Text.Json;
+using Hex1b;
+using Hex1b.Automation;
+using Hex1b.Input;
+
+namespace Csls.Tests;
+
+/// <summary>
+/// Verifies csls behavior through a real Fresh process running in a Hex1b PTY.
+/// </summary>
+[TestClass]
+public sealed class FreshLanguageServerTests
+{
+    /// <summary>
+    /// Gets the active MSTest context and its framework-managed cancellation token.
+    /// </summary>
+    public TestContext TestContext { get; set; } = null!;
+
+    /// <summary>
+    /// Opens a real C# file in Fresh and displays Roslyn hover information from csls.
+    /// </summary>
+    [TestMethod]
+    public async Task FreshDisplaysHoverFromCsls()
+    {
+        string repositoryRoot = EditorToolResolver.FindRepositoryRoot();
+        string freshPath = EditorToolResolver.ResolveFresh(repositoryRoot);
+        string processHostPath = EditorToolResolver.ResolveTestProcessHost(repositoryRoot);
+        string workerPath = Path.Combine(
+            repositoryRoot,
+            "artifacts",
+            "bin",
+            "Csls.Worker",
+            "debug",
+            "csls-worker.dll");
+        Assert.IsTrue(File.Exists(workerPath), $"Worker not found at {workerPath}.");
+        Assert.IsTrue(
+            File.Exists(processHostPath),
+            $"Test process host not found at {processHostPath}.");
+
+        string fixturePath = Path.Combine(
+            Path.GetTempPath(),
+            $"csls-fresh-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(fixturePath);
+        try
+        {
+            string documentPath = Path.Combine(fixturePath, "Program.cs");
+            string configurationPath = Path.Combine(fixturePath, "fresh.json");
+            string logPath = Path.Combine(fixturePath, "fresh.log");
+            string eventLogPath = Path.Combine(fixturePath, "fresh-events.jsonl");
+            string homePath = Path.Combine(fixturePath, "home");
+            string cachePath = Path.Combine(fixturePath, "cache");
+            string dataPath = Path.Combine(fixturePath, "data");
+            string statePath = Path.Combine(fixturePath, "state");
+            Directory.CreateDirectory(homePath);
+            Directory.CreateDirectory(cachePath);
+            Directory.CreateDirectory(dataPath);
+            Directory.CreateDirectory(statePath);
+            await File.WriteAllTextAsync(
+                documentPath,
+                DocumentText,
+                TestContext.CancellationToken).ConfigureAwait(false);
+            await File.WriteAllTextAsync(
+                configurationPath,
+                CreateConfiguration(workerPath),
+                TestContext.CancellationToken).ConfigureAwait(false);
+
+            Hex1bTerminal terminal = Hex1bTerminal.CreateBuilder()
+                .WithPtyProcess(options =>
+                {
+                    options.FileName = EditorToolResolver.ResolveDotNetHost();
+                    options.Arguments =
+                    [
+                        processHostPath,
+                        "--environment",
+                        "TERM",
+                        "xterm-256color",
+                        "--environment",
+                        "COLORTERM",
+                        "truecolor",
+                        "--environment",
+                        "HOME",
+                        homePath,
+                        "--environment",
+                        "XDG_CACHE_HOME",
+                        cachePath,
+                        "--environment",
+                        "XDG_CONFIG_HOME",
+                        fixturePath,
+                        "--environment",
+                        "XDG_DATA_HOME",
+                        dataPath,
+                        "--environment",
+                        "XDG_STATE_HOME",
+                        statePath,
+                        "--",
+                        freshPath,
+                        "--config",
+                        configurationPath,
+                        "--log-file",
+                        logPath,
+                        "--event-log",
+                        eventLogPath,
+                        "--no-plugins",
+                        "--no-init",
+                        "--no-restore",
+                        "--no-upgrade-check",
+                        $"{documentPath}:7:10"
+                    ];
+                    options.WorkingDirectory = fixturePath;
+                })
+                .WithHeadless()
+                .WithDimensions(120, 40)
+                .Build();
+            try
+            {
+                Task<int> runTask = terminal.RunAsync(TestContext.CancellationToken);
+                Hex1bTerminalAutomator automator = new(
+                    terminal,
+                    defaultTimeout: TimeSpan.FromSeconds(60));
+                await automator.WaitUntilAlternateScreenAsync().ConfigureAwait(false);
+                await automator.WaitUntilTextAsync("Console.WriteLine").ConfigureAwait(false);
+                await FileTextWaiter.WaitAsync(
+                    logPath,
+                    "LSP initialization completed successfully",
+                    TimeSpan.FromSeconds(60),
+                    TestContext.CancellationToken).ConfigureAwait(false);
+                await automator.WaitUntilTextAsync("LSP (csharp) ready").ConfigureAwait(false);
+
+                await TerminalInput.SendAltCharacterAsync(
+                    terminal,
+                    'k',
+                    TestContext.CancellationToken).ConfigureAwait(false);
+                try
+                {
+                    await automator.WaitUntilTextAsync("System.Console").ConfigureAwait(false);
+                }
+                catch (Hex1bAutomationException)
+                {
+                    string diagnostics = await ReadDiagnosticsAsync(
+                        logPath,
+                        eventLogPath,
+                        TestContext.CancellationToken).ConfigureAwait(false);
+                    TestContext.WriteLine(diagnostics);
+                    throw;
+                }
+
+                await automator.Ctrl().KeyAsync(Hex1bKey.Q, TestContext.CancellationToken)
+                    .ConfigureAwait(false);
+                int exitCode = await runTask.WaitAsync(TestContext.CancellationToken)
+                    .ConfigureAwait(false);
+                string log = await File.ReadAllTextAsync(
+                    logPath,
+                    TestContext.CancellationToken).ConfigureAwait(false);
+                Assert.AreEqual(0, exitCode, log);
+                Assert.Contains("Processing Hover request", log, StringComparison.Ordinal);
+            }
+            finally
+            {
+                await terminal.DisposeAsync().ConfigureAwait(false);
+            }
+        }
+        finally
+        {
+            Directory.Delete(fixturePath, recursive: true);
+        }
+    }
+
+    private const string DocumentText = """
+        namespace Fixture;
+
+        public static class Program
+        {
+            public static void Main()
+            {
+                Console.WriteLine("hello");
+            }
+        }
+        """;
+
+    private static string CreateConfiguration(string workerPath)
+    {
+        string dotnetPath = EditorToolResolver.ResolveDotNetHost();
+        return $$"""
+            {
+              "languages": {
+                "csharp": {
+                  "extensions": ["cs"],
+                  "grammar": "c_sharp",
+                  "comment_prefix": "//",
+                  "auto_indent": true
+                }
+              },
+              "lsp": {
+                "csharp": {
+                  "command": {{ToJsonString(dotnetPath)}},
+                  "args": [{{ToJsonString(workerPath)}}],
+                  "enabled": true
+                }
+              }
+            }
+            """;
+    }
+
+    private static string ToJsonString(string value) =>
+        $"\"{JsonEncodedText.Encode(value)}\"";
+
+    private static async Task<string> ReadDiagnosticsAsync(
+        string logPath,
+        string eventLogPath,
+        CancellationToken cancellationToken)
+    {
+        string log = File.Exists(logPath)
+            ? await File.ReadAllTextAsync(logPath, cancellationToken).ConfigureAwait(false)
+            : string.Empty;
+        string events = File.Exists(eventLogPath)
+            ? await File.ReadAllTextAsync(eventLogPath, cancellationToken).ConfigureAwait(false)
+            : string.Empty;
+        return $"Fresh log:{Environment.NewLine}{log}{Environment.NewLine}" +
+            $"Fresh events:{Environment.NewLine}{events}";
+    }
+}

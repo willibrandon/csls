@@ -1,5 +1,4 @@
 using System.Diagnostics;
-using System.Runtime.InteropServices;
 using Hex1b;
 using Hex1b.Automation;
 using Hex1b.Input;
@@ -10,7 +9,6 @@ namespace Csls.Tests;
 /// Verifies csls behavior through a real Helix process running in a Hex1b PTY.
 /// </summary>
 [TestClass]
-[DoNotParallelize]
 public sealed class HelixLanguageServerTests
 {
     /// <summary>
@@ -24,8 +22,9 @@ public sealed class HelixLanguageServerTests
     [TestMethod]
     public async Task HelixDisplaysHoverFromCsls()
     {
-        string repositoryRoot = FindRepositoryRoot();
-        string helixPath = ResolveHelixExecutable(repositoryRoot);
+        string repositoryRoot = EditorToolResolver.FindRepositoryRoot();
+        string helixPath = EditorToolResolver.ResolveHelix(repositoryRoot);
+        string processHostPath = EditorToolResolver.ResolveTestProcessHost(repositoryRoot);
         string workerPath = Path.Combine(
             repositoryRoot,
             "artifacts",
@@ -34,6 +33,9 @@ public sealed class HelixLanguageServerTests
             "debug",
             "csls-worker.dll");
         Assert.IsTrue(File.Exists(workerPath), $"Worker not found at {workerPath}.");
+        Assert.IsTrue(
+            File.Exists(processHostPath),
+            $"Test process host not found at {processHostPath}.");
 
         string fixturePath = Path.Combine(
             Path.GetTempPath(),
@@ -46,10 +48,14 @@ public sealed class HelixLanguageServerTests
             string workspaceConfigurationPath = Path.Combine(fixturePath, ".helix");
             string cachePath = Path.Combine(fixturePath, "cache");
             string dataPath = Path.Combine(fixturePath, "data");
+            string statePath = Path.Combine(fixturePath, "state");
+            string homePath = Path.Combine(fixturePath, "home");
             Directory.CreateDirectory(helixConfigurationPath);
             Directory.CreateDirectory(workspaceConfigurationPath);
             Directory.CreateDirectory(cachePath);
             Directory.CreateDirectory(dataPath);
+            Directory.CreateDirectory(statePath);
+            Directory.CreateDirectory(homePath);
 
             string projectPath = Path.Combine(fixturePath, "Fixture.csproj");
             string documentPath = Path.Combine(fixturePath, "Program.cs");
@@ -84,6 +90,8 @@ public sealed class HelixLanguageServerTests
                 configurationRoot,
                 cachePath,
                 dataPath,
+                statePath,
+                homePath,
                 fixturePath,
                 TestContext.CancellationToken).ConfigureAwait(false);
             Assert.Contains("csls", health, StringComparison.OrdinalIgnoreCase);
@@ -91,9 +99,33 @@ public sealed class HelixLanguageServerTests
             Hex1bTerminal terminal = Hex1bTerminal.CreateBuilder()
                 .WithPtyProcess(options =>
                 {
-                    options.FileName = helixPath;
+                    options.FileName = EditorToolResolver.ResolveDotNetHost();
                     options.Arguments =
                     [
+                        processHostPath,
+                        "--environment",
+                        "TERM",
+                        "xterm-256color",
+                        "--environment",
+                        "COLORTERM",
+                        "truecolor",
+                        "--environment",
+                        "HOME",
+                        homePath,
+                        "--environment",
+                        "XDG_CACHE_HOME",
+                        cachePath,
+                        "--environment",
+                        "XDG_CONFIG_HOME",
+                        configurationRoot,
+                        "--environment",
+                        "XDG_DATA_HOME",
+                        dataPath,
+                        "--environment",
+                        "XDG_STATE_HOME",
+                        statePath,
+                        "--",
+                        helixPath,
                         "--config",
                         editorConfigurationPath,
                         "--log",
@@ -104,12 +136,6 @@ public sealed class HelixLanguageServerTests
                         $"{documentPath}:7:10"
                     ];
                     options.WorkingDirectory = fixturePath;
-                    options.Environment = new Dictionary<string, string>
-                    {
-                        ["XDG_CACHE_HOME"] = cachePath,
-                        ["XDG_CONFIG_HOME"] = configurationRoot,
-                        ["XDG_DATA_HOME"] = dataPath
-                    };
                 })
                 .WithHeadless()
                 .WithDimensions(120, 40)
@@ -144,7 +170,6 @@ public sealed class HelixLanguageServerTests
                     snapshot.GetScreenText(),
                     $"{interactionLog}{Environment.NewLine}{snapshot.GetScreenText()}");
 
-                await automator.EscapeAsync(TestContext.CancellationToken).ConfigureAwait(false);
                 await automator.TypeAsync(":q!", TestContext.CancellationToken)
                     .ConfigureAwait(false);
                 await automator.EnterAsync(TestContext.CancellationToken).ConfigureAwait(false);
@@ -192,7 +217,7 @@ public sealed class HelixLanguageServerTests
 
     private static string CreateLanguageConfiguration(string workerPath)
     {
-        string dotnetPath = ResolveExecutable("DOTNET_HOST_PATH", "dotnet");
+        string dotnetPath = EditorToolResolver.ResolveDotNetHost();
         return $$"""
             [language-server.csls]
             command = "{{ToTomlString(dotnetPath)}}"
@@ -211,6 +236,8 @@ public sealed class HelixLanguageServerTests
         string configurationRoot,
         string cachePath,
         string dataPath,
+        string statePath,
+        string homePath,
         string workspacePath,
         CancellationToken cancellationToken)
     {
@@ -229,6 +256,8 @@ public sealed class HelixLanguageServerTests
         startInfo.Environment["XDG_CACHE_HOME"] = cachePath;
         startInfo.Environment["XDG_CONFIG_HOME"] = configurationRoot;
         startInfo.Environment["XDG_DATA_HOME"] = dataPath;
+        startInfo.Environment["XDG_STATE_HOME"] = statePath;
+        startInfo.Environment["HOME"] = homePath;
 
         using Process process = Process.Start(startInfo)
             ?? throw new InvalidOperationException("Helix health check did not start.");
@@ -240,65 +269,6 @@ public sealed class HelixLanguageServerTests
         string standardOutput = await standardOutputTask.ConfigureAwait(false);
         string standardError = await standardErrorTask.ConfigureAwait(false);
         return $"exit code: {process.ExitCode}{Environment.NewLine}{standardOutput}{standardError}";
-    }
-
-    private static string FindRepositoryRoot()
-    {
-        var directory = new DirectoryInfo(AppContext.BaseDirectory);
-        while (directory is not null)
-        {
-            if (File.Exists(Path.Combine(directory.FullName, "Csls.slnx")))
-            {
-                return directory.FullName;
-            }
-
-            directory = directory.Parent;
-        }
-
-        throw new DirectoryNotFoundException("The csls repository root was not found.");
-    }
-
-    private static string ResolveExecutable(string environmentVariable, string fallback)
-    {
-        string? configuredPath = Environment.GetEnvironmentVariable(environmentVariable);
-        return string.IsNullOrWhiteSpace(configuredPath) ? fallback : configuredPath;
-    }
-
-    private static string ResolveHelixExecutable(string repositoryRoot)
-    {
-        string? configuredPath = Environment.GetEnvironmentVariable("CSLS_HELIX_PATH");
-        if (!string.IsNullOrWhiteSpace(configuredPath))
-        {
-            return configuredPath;
-        }
-
-        string platform = GetCurrentPlatform();
-        string executableName = OperatingSystem.IsWindows() ? "hx.exe" : "hx";
-        string provisionedPath = Path.Combine(
-            repositoryRoot,
-            "artifacts",
-            "tools",
-            "helix",
-            "25.07.1",
-            platform,
-            executableName);
-        return File.Exists(provisionedPath) ? provisionedPath : "hx";
-    }
-
-    private static string GetCurrentPlatform()
-    {
-        Architecture architecture = RuntimeInformation.OSArchitecture;
-        if (OperatingSystem.IsLinux())
-        {
-            return architecture == Architecture.Arm64 ? "linux-arm64" : "linux-x64";
-        }
-
-        if (OperatingSystem.IsMacOS())
-        {
-            return architecture == Architecture.Arm64 ? "osx-arm64" : "osx-x64";
-        }
-
-        return "win-x64";
     }
 
     private static string ToTomlString(string value) =>

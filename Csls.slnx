@@ -27,6 +27,7 @@
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/Csls.SourceGen.Tests/Csls.SourceGen.Tests.csproj" />
+    <Project Path="tests/Csls.TestProcessHost/Csls.TestProcessHost.csproj" />
     <Project Path="tests/Csls.Tests/Csls.Tests.csproj" />
   </Folder>
 </Solution>

@@ -314,12 +314,14 @@ public sealed partial class WorkspaceManager : IAsyncDisposable
             LanguageNames.CSharp,
             filePath: rootPath,
             parseOptions: new CSharpParseOptions(LanguageVersion.CSharp14),
-            metadataReferences:
-            [
-                MetadataReference.CreateFromFile(typeof(object).Assembly.Location),
-                MetadataReference.CreateFromFile(typeof(Console).Assembly.Location)
-            ]);
+            compilationOptions: new CSharpCompilationOptions(
+                OutputKind.DynamicallyLinkedLibrary),
+            metadataReferences: GetTrustedPlatformReferences());
         Solution solution = workspace.CurrentSolution.AddProject(projectInfo);
+        solution = solution.AddDocument(
+            DocumentId.CreateNewId(projectId, debugName: "Csls.ImplicitUsings.g.cs"),
+            "Csls.ImplicitUsings.g.cs",
+            SourceText.From(DefaultGlobalUsings, Encoding.UTF8));
         foreach (string path in Directory
             .EnumerateFiles(rootPath, "*.cs", SearchOption.TopDirectoryOnly)
             .Order(StringComparer.Ordinal))
@@ -338,6 +340,28 @@ public sealed partial class WorkspaceManager : IAsyncDisposable
         }
 
         return (workspace, workspace.CurrentSolution);
+    }
+
+    private const string DefaultGlobalUsings = """
+        global using System;
+        global using System.Collections.Generic;
+        global using System.IO;
+        global using System.Linq;
+        global using System.Net.Http;
+        global using System.Threading;
+        global using System.Threading.Tasks;
+        """;
+
+    private static IEnumerable<MetadataReference> GetTrustedPlatformReferences()
+    {
+        string trustedPlatformAssemblies = AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES")
+            as string
+            ?? throw new InvalidOperationException(
+                "The .NET host did not provide its trusted platform assembly set.");
+        return trustedPlatformAssemblies
+            .Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries)
+            .Distinct(PathComparer)
+            .Select(static path => MetadataReference.CreateFromFile(path));
     }
 
     private static int FindFolderIndex(
