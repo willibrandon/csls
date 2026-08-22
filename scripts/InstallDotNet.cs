@@ -1,6 +1,7 @@
 #:property PublishAot=false
 #:property PackAsTool=false
 
+using System.Diagnostics;
 using System.Formats.Tar;
 using System.IO.Compression;
 using System.Runtime.CompilerServices;
@@ -103,14 +104,14 @@ static string GetScriptDirectory([CallerFilePath] string scriptPath = "") =>
 
 static async Task<string?> ReadSdkVersionAsync(string dotnetPath)
 {
-    System.Diagnostics.ProcessStartInfo startInfo = new(dotnetPath, "--version")
+    ProcessStartInfo startInfo = new(dotnetPath, "--version")
     {
         RedirectStandardOutput = true,
         RedirectStandardError = true,
         UseShellExecute = false,
         CreateNoWindow = true
     };
-    using System.Diagnostics.Process process = System.Diagnostics.Process.Start(startInfo)
+    using Process process = Process.Start(startInfo)
         ?? throw new InvalidOperationException($"Unable to start {dotnetPath}.");
     string output = await process.StandardOutput.ReadToEndAsync().ConfigureAwait(false);
     string error = await process.StandardError.ReadToEndAsync().ConfigureAwait(false);

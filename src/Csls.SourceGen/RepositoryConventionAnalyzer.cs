@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Linq;
 using System.Text.RegularExpressions;
+using System.Threading;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Diagnostics;
@@ -115,6 +116,7 @@ public sealed class RepositoryConventionAnalyzer : DiagnosticAnalyzer
     {
         ISymbol symbol = context.Symbol;
         if (symbol.IsImplicitlyDeclared ||
+            IsTopLevelStatementsSymbol(symbol, context.CancellationToken) ||
             !RequiresDocumentation(symbol) ||
             symbol is IMethodSymbol { AssociatedSymbol: not null })
         {
@@ -147,6 +149,14 @@ public sealed class RepositoryConventionAnalyzer : DiagnosticAnalyzer
                 symbol.Locations.FirstOrDefault(),
                 symbol.Name));
         }
+    }
+
+    private static bool IsTopLevelStatementsSymbol(
+        ISymbol symbol,
+        CancellationToken cancellationToken)
+    {
+        return symbol.DeclaringSyntaxReferences.Any(
+            syntaxReference => syntaxReference.GetSyntax(cancellationToken) is CompilationUnitSyntax);
     }
 
     private static bool RequiresDocumentation(ISymbol symbol)

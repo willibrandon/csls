@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <AssemblyName>Csls.Workspaces</AssemblyName>
+    <RootNamespace>Csls.Workspaces</RootNamespace>
+    <Description>Roslyn, MSBuild, NuGet, Razor, and workspace management for csls.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Build.Locator" />
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp.Features" />
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp.Workspaces" />
+    <PackageReference Include="Microsoft.CodeAnalysis.Workspaces.MSBuild" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../Csls.Core/Csls.Core.csproj" />
+    <ProjectReference Include="../Csls.Protocol/Csls.Protocol.csproj" />
+  </ItemGroup>
+</Project>

@@ -8,7 +8,7 @@
 - Put exactly one class, interface, enum, record, struct, or delegate in each C# file.
 - Document every public or internal type and member with triple-slash XML documentation.
 - Write every XML `<summary>` as exactly three lines: opening tag, text, closing tag.
-- Use Central Package Management and committed NuGet lock files.
+- Use Central Package Management as the single package-version source.
 - Keep nullable references, analyzers, deterministic builds, and warnings-as-errors enabled.
 - Keep LSP and MCP stdout protocol-only; diagnostics and progress go to stderr.
 - Use System.CommandLine for CLI parsing, StreamJsonRpc for RPC, and Hex1b for terminal UI.

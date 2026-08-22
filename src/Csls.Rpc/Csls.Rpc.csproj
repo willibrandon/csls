@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <AssemblyName>Csls.Rpc</AssemblyName>
+    <RootNamespace>Csls.Rpc</RootNamespace>
+    <Description>Explicit StreamJsonRpc configuration for LSP and control transports.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="StreamJsonRpc" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../Csls.Protocol/Csls.Protocol.csproj" />
+  </ItemGroup>
+</Project>

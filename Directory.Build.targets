@@ -24,7 +24,8 @@
 
   <Target Name="CslsNormalizeSdkBaselineNoWarn" BeforeTargets="CslsValidateWarningPolicy">
     <CreateProperty Value="$([System.String]::Empty)"
-                    Condition="'$(NoWarn)' == '1701;1702'">
+                    Condition="'$(NoWarn)' == '1701;1702' or
+                               '$(NoWarn)' == '1701;1702;IL2121'">
       <Output TaskParameter="Value" PropertyName="NoWarn" />
     </CreateProperty>
   </Target>

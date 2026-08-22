@@ -107,7 +107,24 @@ public sealed class RepositoryConventionAnalyzerTests
         Assert.IsEmpty(diagnostics);
     }
 
-    private static async Task<ImmutableArray<Diagnostic>> AnalyzeAsync(string source)
+    /// <summary>
+    /// Verifies compiler-generated top-level entry-point symbols require no documentation.
+    /// </summary>
+    [TestMethod]
+    public async Task AcceptsTopLevelStatements()
+    {
+        const string Source = "Console.WriteLine(\"csls\");";
+
+        ImmutableArray<Diagnostic> diagnostics = await AnalyzeAsync(
+            Source,
+            OutputKind.ConsoleApplication).ConfigureAwait(false);
+
+        Assert.IsEmpty(diagnostics);
+    }
+
+    private static async Task<ImmutableArray<Diagnostic>> AnalyzeAsync(
+        string source,
+        OutputKind outputKind = OutputKind.DynamicallyLinkedLibrary)
     {
         var parseOptions = new CSharpParseOptions(
             LanguageVersion.CSharp14,
@@ -122,7 +139,7 @@ public sealed class RepositoryConventionAnalyzerTests
             "AnalyzerInput",
             [syntaxTree],
             references,
-            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
+            new CSharpCompilationOptions(outputKind));
         ImmutableArray<DiagnosticAnalyzer> analyzers =
             [new RepositoryConventionAnalyzer()];
 

@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+
 namespace Csls.Protocol;
 
 /// <summary>
@@ -10,6 +12,7 @@ public readonly record struct Position
     /// </summary>
     /// <param name="line">The zero-based line.</param>
     /// <param name="character">The zero-based UTF-16 code-unit offset.</param>
+    [JsonConstructor]
     public Position(int line, int character)
     {
         ArgumentOutOfRangeException.ThrowIfNegative(line);

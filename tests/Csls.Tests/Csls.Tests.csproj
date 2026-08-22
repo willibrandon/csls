@@ -11,6 +11,12 @@
   </ItemGroup>
 
   <ItemGroup>
+    <PackageReference Include="StreamJsonRpc" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="../../src/Csls.Protocol/Csls.Protocol.csproj" />
+    <ProjectReference Include="../../src/Csls.Worker/Csls.Worker.csproj"
+                      ReferenceOutputAssembly="false" />
   </ItemGroup>
 </Project>

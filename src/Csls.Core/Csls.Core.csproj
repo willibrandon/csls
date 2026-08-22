@@ -1,0 +1,8 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <AssemblyName>Csls.Core</AssemblyName>
+    <RootNamespace>Csls.Core</RootNamespace>
+    <Description>Scheduling, lifecycle, limits, and shared runtime primitives for csls.</Description>
+    <IsAotCompatible>true</IsAotCompatible>
+  </PropertyGroup>
+</Project>

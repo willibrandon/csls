@@ -1,8 +1,11 @@
+using System.Text.Json.Serialization;
+
 namespace Csls.Protocol;
 
 /// <summary>
 /// Represents an absolute URI used by the Language Server Protocol.
 /// </summary>
+[JsonConverter(typeof(DocumentUriJsonConverter))]
 public readonly record struct DocumentUri
 {
     private readonly Uri _value;
