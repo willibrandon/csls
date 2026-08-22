@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>csls-cli-worker</AssemblyName>
+    <RootNamespace>Csls.Cli.Worker</RootNamespace>
+    <Description>The self-contained ReadyToRun control client supervised by csls.</Description>
+    <PublishReadyToRun>true</PublishReadyToRun>
+    <PublishSingleFile>false</PublishSingleFile>
+    <PublishAot>false</PublishAot>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../Csls.Control/Csls.Control.csproj" />
+    <ProjectReference Include="../Csls.Control.Contracts/Csls.Control.Contracts.csproj" />
+  </ItemGroup>
+</Project>

@@ -17,6 +17,7 @@
   </Folder>
   <Folder Name="/src/">
     <Project Path="src/Csls.App/Csls.App.csproj" />
+    <Project Path="src/Csls.Cli.Worker/Csls.Cli.Worker.csproj" />
     <Project Path="src/Csls.Control/Csls.Control.csproj" />
     <Project Path="src/Csls.Control.Contracts/Csls.Control.Contracts.csproj" />
     <Project Path="src/Csls.Control.Server/Csls.Control.Server.csproj" />
