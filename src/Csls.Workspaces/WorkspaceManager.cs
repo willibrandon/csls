@@ -47,7 +47,9 @@ public sealed partial class WorkspaceManager : IAsyncDisposable
     /// Gets the absolute roots in the current immutable workspace snapshot.
     /// </summary>
     public IReadOnlyList<string> WorkspaceRoots =>
-        [.. _folders.Select(static folder => folder.RootPath)];
+        [.. _folders
+            .Select(static folder => folder.RootPath)
+            .Distinct(PathComparer)];
 
     /// <summary>
     /// Loads each workspace root using its solution, project, or loose C# files.
@@ -73,41 +75,45 @@ public sealed partial class WorkspaceManager : IAsyncDisposable
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 string rootPath = Path.GetFullPath(requestedRoot);
-                string? projectPath = DiscoverWorkspaceFile(rootPath);
-                if (projectPath is null)
+                IReadOnlyList<string> workspaceFiles = WorkspaceDiscovery.Discover(rootPath);
+                if (workspaceFiles.Count == 0)
                 {
                     (Workspace looseWorkspace, Solution looseSolution) = LoadLooseFiles(rootPath);
                     loadedFolders.Add((rootPath, looseWorkspace, looseSolution));
                     continue;
                 }
 
-                EnsureMsBuildRegistered();
-                var workspace = MSBuildWorkspace.Create();
-                workspace.RegisterWorkspaceFailedHandler(eventArgs =>
-                    LogWorkspaceDiagnostic(
-                        eventArgs.Diagnostic.Kind,
-                        eventArgs.Diagnostic.Message));
-                loadedFolders.Add((rootPath, workspace, workspace.CurrentSolution));
-                int loadedFolderIndex = loadedFolders.Count - 1;
-                Solution solution;
-                if (projectPath.EndsWith(".csproj", StringComparison.OrdinalIgnoreCase))
+                foreach (string workspaceFile in workspaceFiles)
                 {
-                    Project project = await workspace
-                        .OpenProjectAsync(projectPath, cancellationToken: cancellationToken)
-                        .ConfigureAwait(false);
-                    solution = project.Solution;
-                }
-                else
-                {
-                    solution = await workspace
-                        .OpenSolutionAsync(projectPath, cancellationToken: cancellationToken)
-                        .ConfigureAwait(false);
-                }
+                    cancellationToken.ThrowIfCancellationRequested();
+                    EnsureMsBuildRegistered();
+                    var workspace = MSBuildWorkspace.Create();
+                    workspace.RegisterWorkspaceFailedHandler(eventArgs =>
+                        LogWorkspaceDiagnostic(
+                            eventArgs.Diagnostic.Kind,
+                            eventArgs.Diagnostic.Message));
+                    loadedFolders.Add((rootPath, workspace, workspace.CurrentSolution));
+                    int loadedFolderIndex = loadedFolders.Count - 1;
+                    Solution solution;
+                    if (workspaceFile.EndsWith(".csproj", StringComparison.OrdinalIgnoreCase))
+                    {
+                        Project project = await workspace
+                            .OpenProjectAsync(workspaceFile, cancellationToken: cancellationToken)
+                            .ConfigureAwait(false);
+                        solution = project.Solution;
+                    }
+                    else
+                    {
+                        solution = await workspace
+                            .OpenSolutionAsync(workspaceFile, cancellationToken: cancellationToken)
+                            .ConfigureAwait(false);
+                    }
 
-                loadedFolders[loadedFolderIndex] = (rootPath, workspace, solution);
-                LogWorkspaceLoaded(
-                    solution.ProjectIds.Count,
-                    projectPath);
+                    loadedFolders[loadedFolderIndex] = (rootPath, workspace, solution);
+                    LogWorkspaceLoaded(
+                        solution.ProjectIds.Count,
+                        workspaceFile);
+                }
             }
 
             await _mutationGate.WaitAsync(cancellationToken).ConfigureAwait(false);
@@ -314,42 +320,19 @@ public sealed partial class WorkspaceManager : IAsyncDisposable
         }
     }
 
-    private static string? DiscoverWorkspaceFile(string rootPath)
-    {
-        if (File.Exists(rootPath))
-        {
-            return rootPath;
-        }
-
-        if (!Directory.Exists(rootPath))
-        {
-            throw new DirectoryNotFoundException($"Workspace root does not exist: {rootPath}");
-        }
-
-        foreach (string pattern in new[] { "*.slnx", "*.sln", "*.csproj" })
-        {
-            string? candidate = Directory
-                .EnumerateFiles(rootPath, pattern, SearchOption.TopDirectoryOnly)
-                .Order(StringComparer.Ordinal)
-                .FirstOrDefault();
-            if (candidate is not null)
-            {
-                return candidate;
-            }
-        }
-
-        return null;
-    }
-
     private static (Workspace Workspace, Solution Solution) LoadLooseFiles(string rootPath)
     {
+        bool isSourceFile = File.Exists(rootPath);
+        string projectName = isSourceFile
+            ? Path.GetFileNameWithoutExtension(rootPath)
+            : new DirectoryInfo(rootPath).Name;
         var workspace = new AdhocWorkspace();
         var projectId = ProjectId.CreateNewId(debugName: rootPath);
         var projectInfo = ProjectInfo.Create(
             projectId,
             VersionStamp.Create(),
-            Path.GetFileName(rootPath),
-            Path.GetFileName(rootPath),
+            projectName,
+            projectName,
             LanguageNames.CSharp,
             filePath: rootPath,
             parseOptions: new CSharpParseOptions(LanguageVersion.CSharp14),
@@ -361,9 +344,12 @@ public sealed partial class WorkspaceManager : IAsyncDisposable
             DocumentId.CreateNewId(projectId, debugName: "Csls.ImplicitUsings.g.cs"),
             "Csls.ImplicitUsings.g.cs",
             SourceText.From(DefaultGlobalUsings, Encoding.UTF8));
-        foreach (string path in Directory
-            .EnumerateFiles(rootPath, "*.cs", SearchOption.TopDirectoryOnly)
-            .Order(StringComparer.Ordinal))
+        IEnumerable<string> sourceFiles = isSourceFile
+            ? [rootPath]
+            : Directory
+                .EnumerateFiles(rootPath, "*.cs", SearchOption.TopDirectoryOnly)
+                .Order(StringComparer.Ordinal);
+        foreach (string path in sourceFiles)
         {
             solution = solution.AddDocument(
                 DocumentId.CreateNewId(projectId, debugName: path),
@@ -409,14 +395,26 @@ public sealed partial class WorkspaceManager : IAsyncDisposable
     {
         int bestIndex = -1;
         int bestLength = -1;
+        bool bestContainsDocument = false;
         for (int index = 0; index < folders.Length; index++)
         {
             string rootPath = Path.TrimEndingDirectorySeparator(folders[index].RootPath);
-            if (documentPath.StartsWith(rootPath + Path.DirectorySeparatorChar, PathComparison) &&
-                rootPath.Length > bestLength)
+            bool ownsPath = string.Equals(documentPath, rootPath, PathComparison) ||
+                documentPath.StartsWith(
+                    rootPath + Path.DirectorySeparatorChar,
+                    PathComparison);
+            if (!ownsPath)
+            {
+                continue;
+            }
+
+            bool containsDocument = FindDocument(folders[index].Solution, documentPath) is not null;
+            if ((containsDocument && !bestContainsDocument) ||
+                (containsDocument == bestContainsDocument && rootPath.Length > bestLength))
             {
                 bestIndex = index;
                 bestLength = rootPath.Length;
+                bestContainsDocument = containsDocument;
             }
         }
 

@@ -15,6 +15,7 @@ internal sealed class LspProcessSession : IAsyncDisposable
     private readonly SystemTextJsonFormatter _formatter;
     private readonly HeaderDelimitedMessageHandler _messageHandler;
     private readonly JsonRpc _rpc;
+    private int _initializationCompleted;
 
     private LspProcessSession(
         Process process,
@@ -119,9 +120,13 @@ internal sealed class LspProcessSession : IAsyncDisposable
     /// <returns>A task that completes after both notifications are written.</returns>
     internal async Task OpenDocumentAsync(string documentPath, string documentText)
     {
-        await _rpc.NotifyWithParameterObjectAsync(
-            "initialized",
-            new InitializedParams()).ConfigureAwait(false);
+        if (Interlocked.Exchange(ref _initializationCompleted, 1) == 0)
+        {
+            await _rpc.NotifyWithParameterObjectAsync(
+                "initialized",
+                new InitializedParams()).ConfigureAwait(false);
+        }
+
         await _rpc.NotifyWithParameterObjectAsync(
             "textDocument/didOpen",
             new DidOpenTextDocumentParams
