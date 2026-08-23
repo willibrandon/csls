@@ -30,6 +30,7 @@ namespace Csls.Control.Contracts;
 [JsonSerializable(typeof(ControlSessionInfo))]
 [JsonSerializable(typeof(ControlDashboardSnapshot))]
 [JsonSerializable(typeof(ControlDashboardRequest))]
+[JsonSerializable(typeof(ControlWorkspaceOperationResult))]
 [JsonSerializable(typeof(ControlWorkspaceInfo))]
 [JsonSerializable(typeof(ControlProjectInfo))]
 [JsonSerializable(typeof(ControlDocumentInfo))]

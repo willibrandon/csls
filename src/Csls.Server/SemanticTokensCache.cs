@@ -99,12 +99,15 @@ internal sealed class SemanticTokensCache
     /// <summary>
     /// Releases every encoded result retained by this server session.
     /// </summary>
-    internal void Clear()
+    /// <returns>The number of released semantic-token cache entries.</returns>
+    internal int Clear()
     {
         lock (_gate)
         {
+            int clearedEntryCount = _entries.Count;
             _entries.Clear();
             _entryOrder.Clear();
+            return clearedEntryCount;
         }
     }
 

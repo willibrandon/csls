@@ -716,6 +716,159 @@ public sealed class CliLanguageServerTests
         }
     }
 
+    /// <summary>
+    /// Restores, reloads, restarts, and clears a real session while preserving its unsaved overlay.
+    /// </summary>
+    [TestMethod]
+    public async Task WorkspaceCommandsUseRealToolsAndPreserveOpenDocuments()
+    {
+        string repositoryRoot = EditorToolResolver.FindRepositoryRoot();
+        string artifactsRoot = EditorToolResolver.ResolveArtifactsRoot(repositoryRoot);
+        string workerPath = Path.Join(
+            artifactsRoot,
+            "bin",
+            "Csls.Worker",
+            "debug",
+            "csls-worker.dll");
+        string cliPath = Path.Join(
+            artifactsRoot,
+            "bin",
+            "Csls.App",
+            "debug",
+            "csls.dll");
+        string cliWorkerPath = Path.Join(
+            artifactsRoot,
+            "bin",
+            "Csls.Cli.Worker",
+            "debug",
+            "csls-cli-worker.dll");
+        string fixturePath = Path.Join(
+            Path.GetTempPath(),
+            $"csls-workspace-commands-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(fixturePath);
+        try
+        {
+            string documentPath = Path.Join(fixturePath, "Program.cs");
+            string projectPath = Path.Join(fixturePath, "WorkspaceCommands.csproj");
+            await File.WriteAllTextAsync(
+                projectPath,
+                ProjectText,
+                TestContext.CancellationToken).ConfigureAwait(false);
+            await File.WriteAllTextAsync(
+                documentPath,
+                MaintenanceDiskText,
+                TestContext.CancellationToken).ConfigureAwait(false);
+
+            var lsp = LspProcessSession.Start(
+                "csls-workspace-command-worker",
+                EditorToolResolver.ResolveDotNetHost(),
+                [workerPath],
+                fixturePath);
+            await using ConfiguredAsyncDisposable lspCleanup = lsp.ConfigureAwait(false);
+            await lsp.InitializeAsync(
+                projectPath,
+                TestContext.CancellationToken).ConfigureAwait(false);
+            await lsp.OpenDocumentAsync(documentPath, MaintenanceOverlayText).ConfigureAwait(false);
+            await ControlSessionWaiter.WaitForRunningAsync(
+                projectPath,
+                TimeSpan.FromSeconds(60),
+                TestContext.CancellationToken).ConfigureAwait(false);
+            await AssertOverlayDiagnosticAsync(lsp, documentPath).ConfigureAwait(false);
+
+            JsonElement reload = await RunWorkspaceOperationAsync(
+                cliPath,
+                cliWorkerPath,
+                fixturePath,
+                documentPath,
+                "reload").ConfigureAwait(false);
+            Assert.AreEqual("reload", reload.GetProperty("operation").GetString());
+            Assert.AreEqual(
+                reload.GetProperty("previousGeneration").GetInt64() + 1,
+                reload.GetProperty("currentGeneration").GetInt64());
+            await AssertOverlayDiagnosticAsync(lsp, documentPath).ConfigureAwait(false);
+
+            JsonElement restore = await RunWorkspaceOperationAsync(
+                cliPath,
+                cliWorkerPath,
+                fixturePath,
+                documentPath,
+                "restore").ConfigureAwait(false);
+            Assert.AreEqual(1, restore.GetProperty("restoredEntryPointCount").GetInt32());
+            Assert.AreEqual(
+                restore.GetProperty("previousGeneration").GetInt64() + 1,
+                restore.GetProperty("currentGeneration").GetInt64());
+            await AssertOverlayDiagnosticAsync(lsp, documentPath).ConfigureAwait(false);
+
+            JsonElement restart = await RunWorkspaceOperationAsync(
+                cliPath,
+                cliWorkerPath,
+                fixturePath,
+                documentPath,
+                "restart-build-host").ConfigureAwait(false);
+            Assert.IsGreaterThanOrEqualTo(
+                1,
+                restart.GetProperty("restartedBuildHostCount").GetInt32());
+            Assert.AreEqual(
+                restart.GetProperty("previousGeneration").GetInt64() + 1,
+                restart.GetProperty("currentGeneration").GetInt64());
+            await AssertOverlayDiagnosticAsync(lsp, documentPath).ConfigureAwait(false);
+
+            JsonElement clear = await RunWorkspaceOperationAsync(
+                cliPath,
+                cliWorkerPath,
+                fixturePath,
+                documentPath,
+                "clear-cache").ConfigureAwait(false);
+            Assert.AreEqual(
+                clear.GetProperty("previousGeneration").GetInt64(),
+                clear.GetProperty("currentGeneration").GetInt64());
+            Assert.IsGreaterThanOrEqualTo(
+                1,
+                clear.GetProperty("clearedCacheEntryCount").GetInt32());
+            await AssertOverlayDiagnosticAsync(lsp, documentPath).ConfigureAwait(false);
+
+            string diagnostics = await lsp.ShutdownAsync(
+                TestContext.CancellationToken).ConfigureAwait(false);
+            Assert.DoesNotContain("Unhandled exception", diagnostics, StringComparison.Ordinal);
+        }
+        finally
+        {
+            Directory.Delete(fixturePath, recursive: true);
+        }
+    }
+
+    private async Task<JsonElement> RunWorkspaceOperationAsync(
+        string cliPath,
+        string cliWorkerPath,
+        string workingDirectory,
+        string workspacePath,
+        string operation)
+    {
+        (int exitCode, string output, string error) = await RunCliAsync(
+            cliPath,
+            cliWorkerPath,
+            workingDirectory,
+            ["workspace", operation, "--workspace", workspacePath, "--json"],
+            TestContext.CancellationToken).ConfigureAwait(false);
+        Assert.AreEqual(0, exitCode, $"{error}{Environment.NewLine}{output}");
+        using var document = JsonDocument.Parse(output);
+        AssertSuccessfulEnvelope(document.RootElement);
+        return document.RootElement.GetProperty("data").Clone();
+    }
+
+    private async Task AssertOverlayDiagnosticAsync(
+        LspProcessSession lsp,
+        string documentPath)
+    {
+        DocumentDiagnosticReport report = await lsp.RequestDiagnosticsAsync(
+            documentPath,
+            previousResultId: null,
+            TestContext.CancellationToken).ConfigureAwait(false);
+        Assert.Contains(
+            "CS0103",
+            (report.Items ?? []).Select(static diagnostic => diagnostic.Code));
+    }
+
     private static async Task<(int ExitCode, string StandardOutput, string StandardError)> RunCliAsync(
         string cliPath,
         string cliWorkerPath,
@@ -804,6 +957,14 @@ public sealed class CliLanguageServerTests
                 Console.WriteLine( value );
             }
         }
+        """;
+
+    private const string MaintenanceDiskText = """
+        Console.WriteLine("disk");
+        """;
+
+    private const string MaintenanceOverlayText = """
+        Console.WriteLine(missingOverlay);
         """;
 
     private const string ImportsText = """

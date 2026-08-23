@@ -25,6 +25,38 @@ public interface IControlRpcTarget
         CancellationToken cancellationToken);
 
     /// <summary>
+    /// Restores every current workspace entry point and reloads the resulting Roslyn state.
+    /// </summary>
+    /// <param name="cancellationToken">The peer cancellation token.</param>
+    /// <returns>The completed workspace operation result.</returns>
+    Task<ControlWorkspaceOperationResult> RestoreWorkspaceAsync(
+        CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Reloads every current workspace root while preserving unsaved document overlays.
+    /// </summary>
+    /// <param name="cancellationToken">The peer cancellation token.</param>
+    /// <returns>The completed workspace operation result.</returns>
+    Task<ControlWorkspaceOperationResult> ReloadWorkspaceAsync(
+        CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Recreates every Roslyn workspace host while preserving unsaved document overlays.
+    /// </summary>
+    /// <param name="cancellationToken">The peer cancellation token.</param>
+    /// <returns>The completed workspace operation result.</returns>
+    Task<ControlWorkspaceOperationResult> RestartBuildHostsAsync(
+        CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Removes every retained diagnostic, semantic-token, and pending-edit cache entry.
+    /// </summary>
+    /// <param name="cancellationToken">The peer cancellation token.</param>
+    /// <returns>The completed workspace operation result.</returns>
+    Task<ControlWorkspaceOperationResult> ClearCachesAsync(
+        CancellationToken cancellationToken);
+
+    /// <summary>
     /// Resolves hover information from the current workspace snapshot.
     /// </summary>
     /// <param name="request">The absolute document path and UTF-16 position.</param>

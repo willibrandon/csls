@@ -18,6 +18,7 @@ namespace Csls.Cli.Worker;
 [JsonSerializable(typeof(ControlDocumentPrecondition))]
 [JsonSerializable(typeof(ControlEditPlan))]
 [JsonSerializable(typeof(ControlApplyEditPlanResult))]
+[JsonSerializable(typeof(ControlWorkspaceOperationResult))]
 [JsonSerializable(typeof(ControlCodeActionPlan))]
 [JsonSerializable(typeof(ControlSessionInfo))]
 [JsonSerializable(typeof(CompletionItem))]

@@ -25,6 +25,21 @@ implementation, selection range, highlights, document symbols, and signature
 help. Position arguments use zero-based UTF-16 line and character offsets, which
 match LSP positions.
 
+## Workspace maintenance
+
+Workspace commands use the same live control service as the editor and dashboard:
+
+```console
+csls workspace restore --workspace src/MyApp
+csls workspace reload --session 12345
+csls workspace restart-build-host --workspace src/MyApp/MyApp.csproj
+csls workspace clear-cache --session 12345 --json
+```
+
+`restore` runs the real .NET CLI before reloading Roslyn. Reload and build-host
+restart preserve unsaved document text. `--workspace` may name a loaded root or
+a path inside it.
+
 ## Safe edits
 
 Rename, formatting, and code actions return a preview by default. Add `--apply`

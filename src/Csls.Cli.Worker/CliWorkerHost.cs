@@ -38,6 +38,10 @@ internal static class CliWorkerHost
                         .ConfigureAwait(false),
                     "dashboard" => await RunDashboardAsync(arguments, cancellationToken)
                         .ConfigureAwait(false),
+                    "workspace-operation" => await RunWorkspaceOperationAsync(
+                        arguments,
+                        writeJson,
+                        cancellationToken).ConfigureAwait(false),
                     "query-hover" => await QueryHoverAsync(arguments, writeJson, cancellationToken)
                         .ConfigureAwait(false),
                     "query-diagnostics" => await QueryDiagnosticsAsync(
@@ -113,7 +117,7 @@ internal static class CliWorkerHost
         IReadOnlyList<string> arguments,
         CancellationToken cancellationToken)
     {
-        if (arguments.Count != 2 ||
+        if (arguments.Count != 3 ||
             !int.TryParse(
                 arguments[1],
                 NumberStyles.None,
@@ -124,7 +128,51 @@ internal static class CliWorkerHost
                 "The launcher supplied an invalid dashboard request.");
         }
 
-        return DashboardHost.RunAsync(processId, cancellationToken);
+        string? workspacePath = string.IsNullOrWhiteSpace(arguments[2])
+            ? null
+            : arguments[2];
+        return DashboardHost.RunAsync(processId, workspacePath, cancellationToken);
+    }
+
+    private static async Task<int> RunWorkspaceOperationAsync(
+        IReadOnlyList<string> arguments,
+        bool writeJson,
+        CancellationToken cancellationToken)
+    {
+        if (arguments.Count != 5 ||
+            !int.TryParse(
+                arguments[2],
+                NumberStyles.None,
+                CultureInfo.InvariantCulture,
+                out int processId))
+        {
+            return Fail(
+                "invalid-request",
+                "The launcher supplied an invalid workspace operation.",
+                writeJson);
+        }
+
+        string? workspacePath = string.IsNullOrWhiteSpace(arguments[3])
+            ? null
+            : arguments[3];
+        ControlSessionInfo session = await ControlSessionDiscovery.ResolveAsync(
+            processId,
+            workspacePath,
+            cancellationToken).ConfigureAwait(false);
+        var client = new ControlRpcClient(session.SocketPath);
+        await using ConfiguredAsyncDisposable clientCleanup = client.ConfigureAwait(false);
+        ControlWorkspaceOperationResult result = arguments[1] switch
+        {
+            "restore" => await client.RestoreWorkspaceAsync(cancellationToken).ConfigureAwait(false),
+            "reload" => await client.ReloadWorkspaceAsync(cancellationToken).ConfigureAwait(false),
+            "restart-build-host" => await client.RestartBuildHostsAsync(cancellationToken)
+                .ConfigureAwait(false),
+            "clear-cache" => await client.ClearCachesAsync(cancellationToken).ConfigureAwait(false),
+            _ => throw new InvalidDataException(
+                $"The launcher supplied an unknown workspace operation: {arguments[1]}")
+        };
+        CliOutputWriter.WriteWorkspaceOperation(result, writeJson);
+        return 0;
     }
 
     private static async Task<int> ShowSessionAsync(
@@ -543,27 +591,11 @@ internal static class CliWorkerHost
 
     private static async Task<ControlSessionInfo> ResolveSessionAsync(
         int processId,
-        CancellationToken cancellationToken)
-    {
-        if (processId > 0)
-        {
-            var client = new ControlRpcClient(ControlEndpoint.GetSocketPath(processId));
-            await using ConfiguredAsyncDisposable clientCleanup = client.ConfigureAwait(false);
-            return await client.GetSessionAsync(cancellationToken).ConfigureAwait(false);
-        }
-
-        IReadOnlyList<ControlSessionInfo> sessions = await ControlSessionDiscovery
-            .DiscoverAsync(cancellationToken)
-            .ConfigureAwait(false);
-        return sessions.Count switch
-        {
-            0 => throw new InvalidOperationException(
-                "No live csls session was found. Start an editor session or specify --session."),
-            1 => sessions[0],
-            _ => throw new InvalidOperationException(
-                "Multiple live csls sessions were found. Specify one with --session <pid>.")
-        };
-    }
+        CancellationToken cancellationToken) =>
+        await ControlSessionDiscovery.ResolveAsync(
+            processId,
+            workspacePath: null,
+            cancellationToken).ConfigureAwait(false);
 
     private static int Fail(string code, string message, bool writeJson)
     {

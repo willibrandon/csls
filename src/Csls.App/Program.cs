@@ -49,21 +49,41 @@ sessionsCommand.Subcommands.Add(showCommand);
 rootCommand.Subcommands.Add(sessionsCommand);
 
 Option<int?> dashboardSessionOption = CreateSessionOption();
+Option<string?> dashboardWorkspaceOption = CreateWorkspaceOption();
 var dashboardCommand = new Command(
     "dashboard",
     "Inspect live language-server state in the Hex1b dashboard.")
 {
-    dashboardSessionOption
+    dashboardSessionOption,
+    dashboardWorkspaceOption
 };
 dashboardCommand.SetAction((parseResult, cancellationToken) =>
     CliWorkerSupervisor.RunAsync(
         [
             "dashboard",
             (parseResult.GetValue(dashboardSessionOption) ?? 0)
-                .ToString(CultureInfo.InvariantCulture)
+                .ToString(CultureInfo.InvariantCulture),
+            NormalizeWorkspacePath(parseResult.GetValue(dashboardWorkspaceOption))
         ],
         cancellationToken));
 rootCommand.Subcommands.Add(dashboardCommand);
+
+var workspaceCommand = new Command(
+    "workspace",
+    "Maintain workspaces attached to a live csls session.");
+workspaceCommand.Subcommands.Add(CreateWorkspaceOperationCommand(
+    "restore",
+    "Restore loaded solution and project entry points, then reload the workspace."));
+workspaceCommand.Subcommands.Add(CreateWorkspaceOperationCommand(
+    "reload",
+    "Reload the workspace while preserving unsaved document overlays."));
+workspaceCommand.Subcommands.Add(CreateWorkspaceOperationCommand(
+    "restart-build-host",
+    "Recreate Roslyn workspace hosts while preserving unsaved document overlays."));
+workspaceCommand.Subcommands.Add(CreateWorkspaceOperationCommand(
+    "clear-cache",
+    "Clear retained diagnostic, semantic-token, and pending-edit results."));
+rootCommand.Subcommands.Add(workspaceCommand);
 
 var queryCommand = new Command("query", "Query language intelligence from a live csls session.");
 var hoverDocumentArgument = new Argument<string>("document")
@@ -484,6 +504,43 @@ static Option<int> CreatePositionOption(string name, string description)
     });
     return option;
 }
+
+static Option<string?> CreateWorkspaceOption() => new("--workspace")
+{
+    Description = "Workspace or document path used to select or validate a live session.",
+    HelpName = "path"
+};
+
+static Command CreateWorkspaceOperationCommand(string name, string description)
+{
+    Option<int?> sessionOption = CreateSessionOption();
+    Option<string?> workspaceOption = CreateWorkspaceOption();
+    var jsonOption = new Option<bool>("--json")
+    {
+        Description = "Write the versioned machine-readable response envelope."
+    };
+    var command = new Command(name, description)
+    {
+        sessionOption,
+        workspaceOption,
+        jsonOption
+    };
+    command.SetAction((parseResult, cancellationToken) =>
+        CliWorkerSupervisor.RunAsync(
+            [
+                "workspace-operation",
+                name,
+                (parseResult.GetValue(sessionOption) ?? 0)
+                    .ToString(CultureInfo.InvariantCulture),
+                NormalizeWorkspacePath(parseResult.GetValue(workspaceOption)),
+                parseResult.GetValue(jsonOption).ToString(CultureInfo.InvariantCulture)
+            ],
+            cancellationToken));
+    return command;
+}
+
+static string NormalizeWorkspacePath(string? path) =>
+    string.IsNullOrWhiteSpace(path) ? string.Empty : Path.GetFullPath(path);
 
 static Command CreateNavigationCommand(
     string name,

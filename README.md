@@ -15,7 +15,9 @@ Read the [csls documentation](https://willibrandon.github.io/csls/) for editor,
 CLI, MCP, and development guidance.
 
 Run `csls dashboard` while a language-server session is active to inspect its
-workspaces, projects, documents, diagnostics, requests, caches, and logs.
+workspaces, projects, documents, diagnostics, requests, caches, and logs. The
+CLI and dashboard can also restore, reload, restart build hosts, and clear caches
+through the same live control service.
 
 ## Build
 

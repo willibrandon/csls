@@ -11,6 +11,11 @@ internal enum DashboardSection
     Sessions,
 
     /// <summary>
+    /// Shows confirmed workspace maintenance operations.
+    /// </summary>
+    Actions,
+
+    /// <summary>
     /// Shows loaded workspace folders.
     /// </summary>
     Workspaces,

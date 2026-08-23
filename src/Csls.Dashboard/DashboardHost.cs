@@ -11,14 +11,16 @@ public static class DashboardHost
     /// Discovers a live session and runs the interactive dashboard until cancellation.
     /// </summary>
     /// <param name="processId">The requested worker process, or zero to infer one.</param>
+    /// <param name="workspacePath">The optional workspace path used to select or validate a session.</param>
     /// <param name="cancellationToken">The dashboard cancellation token.</param>
     /// <returns>The successful dashboard process exit code.</returns>
     public static async Task<int> RunAsync(
         int processId,
+        string? workspacePath,
         CancellationToken cancellationToken)
     {
         DashboardState state = await DashboardState
-            .CreateAsync(processId, cancellationToken)
+            .CreateAsync(processId, workspacePath, cancellationToken)
             .ConfigureAwait(false);
         Hex1bTerminal terminal = Hex1bTerminal.CreateBuilder()
             .WithHex1bApp(context => DashboardView.Build(context, state))
