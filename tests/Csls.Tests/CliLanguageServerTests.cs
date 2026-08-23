@@ -1,10 +1,10 @@
+using Csls.Control;
+using Csls.Protocol;
 using System.Diagnostics;
 using System.Globalization;
 using System.Net.Sockets;
 using System.Runtime.CompilerServices;
 using System.Text.Json;
-using Csls.Control;
-using Csls.Protocol;
 
 namespace Csls.Tests;
 

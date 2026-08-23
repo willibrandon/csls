@@ -1,8 +1,8 @@
-using System.Collections.Frozen;
 using Csls.Protocol;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.Classification;
 using Microsoft.CodeAnalysis.Text;
+using System.Collections.Frozen;
 
 namespace Csls.Workspaces;
 

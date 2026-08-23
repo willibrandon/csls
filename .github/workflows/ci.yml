@@ -1,0 +1,173 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  DOTNET_CLI_TELEMETRY_OPTOUT: 1
+  DOTNET_NOLOGO: true
+
+jobs:
+  repository-policy:
+    name: Repository policy
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7.0.1
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v6.0.0
+        with:
+          dotnet-version: 10.0.400
+
+      - name: Verify repository policy
+        run: dotnet run --file scripts/Verify-Repository.cs
+
+      - name: Provision actionlint
+        run: dotnet run --file scripts/Provision-Actionlint.cs
+
+      - name: Verify GitHub Actions workflows
+        run: dotnet run --file scripts/Verify-GitHubActions.cs
+
+  secret-scan:
+    name: Secret scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      actions: read
+      contents: read
+      security-events: write
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Scan repository with Picket
+        uses: willibrandon/picket@115b9385bb001ac6ca6df3cc6539a98b60529f5b
+        with:
+          cache-mode: secret-hash-only
+          fail-on: findings
+          max-archive-depth: 2
+          max-archive-entries: 100000
+          max-archive-megabytes: 4096
+          max-archive-ratio: 1000
+          max-target-megabytes: 64
+          redact: 100
+          timeout: 600
+          upload-sarif: true
+
+  build-test-package:
+    name: Build, test, and package (${{ matrix.rid }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            rid: linux-x64
+          - os: ubuntu-24.04-arm
+            rid: linux-arm64
+          - os: windows-latest
+            rid: win-x64
+          - os: windows-11-arm
+            rid: win-arm64
+          - os: macos-26-intel
+            rid: osx-x64
+          - os: macos-26
+            rid: osx-arm64
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7.0.1
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v6.0.0
+        with:
+          dotnet-version: 10.0.400
+
+      - name: Restore
+        run: dotnet restore Csls.slnx
+
+      - name: Install Native AOT prerequisites
+        run: dotnet run --file scripts/Install-NativeAotPrerequisites.cs -- --runtime ${{ matrix.rid }}
+
+      - name: Verify formatting
+        run: dotnet format Csls.slnx --verify-no-changes --no-restore
+
+      - name: Provision parity oracle
+        run: dotnet run --file scripts/Provision-CsharpLsOracle.cs
+
+      - name: Provision Fresh
+        run: dotnet run --file scripts/Provision-Fresh.cs
+
+      - name: Provision GNU Emacs
+        run: dotnet run --file scripts/Provision-Emacs.cs
+
+      - name: Provision Helix
+        run: dotnet run --file scripts/Provision-Helix.cs
+
+      - name: Provision Neovim
+        run: dotnet run --file scripts/Provision-Neovim.cs
+
+      - name: Test
+        run: dotnet test --solution Csls.slnx --report-trx --results-directory TestResults/${{ matrix.rid }}
+
+      - name: Verify .NET tool packages
+        run: dotnet run --file scripts/Verify-ToolPackages.cs
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v7.0.0
+        with:
+          name: test-results-${{ matrix.rid }}
+          path: TestResults/${{ matrix.rid }}
+          if-no-files-found: warn
+
+  additional-rid-packages:
+    name: Package (${{ matrix.rid }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            rid: win-x86
+            validation: execute
+          - os: ubuntu-latest
+            rid: linux-musl-x64
+            validation: package
+          - os: ubuntu-24.04-arm
+            rid: linux-musl-arm64
+            validation: package
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7.0.1
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v6.0.0
+        with:
+          dotnet-version: 10.0.400
+
+      - name: Install Native AOT prerequisites
+        run: dotnet run --file scripts/Install-NativeAotPrerequisites.cs -- --runtime ${{ matrix.rid }}
+
+      - name: Verify additional RID packages
+        run: dotnet run --file scripts/Verify-ToolPackages.cs -- --runtime ${{ matrix.rid }} --validation ${{ matrix.validation }}

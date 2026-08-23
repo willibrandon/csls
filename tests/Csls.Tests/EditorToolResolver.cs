@@ -90,6 +90,28 @@ internal static class EditorToolResolver
         OperatingSystem.IsWindows() ? "nvim.exe" : "nvim");
 
     /// <summary>
+    /// Resolves the pinned GNU Emacs executable and its Eglot runtime environment.
+    /// </summary>
+    /// <param name="repositoryRoot">The absolute repository root.</param>
+    /// <returns>The GNU Emacs executable path.</returns>
+    internal static string ResolveEmacs(string repositoryRoot)
+    {
+        string? configuredPath = Environment.GetEnvironmentVariable("CSLS_EMACS_PATH");
+        if (!string.IsNullOrWhiteSpace(configuredPath))
+        {
+            return configuredPath;
+        }
+
+        return Resolve(
+            repositoryRoot,
+            "CSLS_EMACS_PATH",
+            "emacs",
+            "30.2",
+            GetPlatform(allowWindowsArm64: true, detectMusl: true),
+            OperatingSystem.IsWindows() ? "emacs.exe" : "emacs");
+    }
+
+    /// <summary>
     /// Resolves the pinned upstream csharp-ls executable used as a parity oracle.
     /// </summary>
     /// <param name="repositoryRoot">The absolute repository root.</param>
@@ -136,6 +158,7 @@ internal static class EditorToolResolver
     private static string GetProvisionerName(string toolName) => toolName switch
     {
         "csharp-ls-oracle" => "CsharpLsOracle",
+        "emacs" => "Emacs",
         "fresh" => "Fresh",
         "helix" => "Helix",
         "neovim" => "Neovim",

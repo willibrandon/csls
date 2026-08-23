@@ -1,7 +1,7 @@
-using System.Runtime.CompilerServices;
 using Csls.Protocol;
 using Csls.Workspaces;
 using Microsoft.Extensions.Logging.Abstractions;
+using System.Runtime.CompilerServices;
 
 namespace Csls.Tests;
 

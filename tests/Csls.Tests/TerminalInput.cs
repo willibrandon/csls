@@ -1,5 +1,5 @@
-using System.Text;
 using Hex1b;
+using System.Text;
 
 namespace Csls.Tests;
 

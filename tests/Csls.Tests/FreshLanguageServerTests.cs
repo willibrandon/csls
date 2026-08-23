@@ -1,7 +1,7 @@
-using System.Text.Json;
 using Hex1b;
 using Hex1b.Automation;
 using Hex1b.Input;
+using System.Text.Json;
 
 namespace Csls.Tests;
 

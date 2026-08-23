@@ -1,0 +1,80 @@
+name: Dev container
+
+on:
+  pull_request:
+    paths:
+      - .devcontainer/**
+      - .github/workflows/dev-container.yml
+      - .github/workflows/ci.yml
+      - Directory.Build.props
+      - Directory.Build.targets
+      - Directory.Packages.props
+      - global.json
+      - scripts/**
+      - src/**
+      - tests/**
+  push:
+    branches:
+      - main
+    paths:
+      - .devcontainer/**
+      - .github/workflows/dev-container.yml
+      - .github/workflows/ci.yml
+      - Directory.Build.props
+      - Directory.Build.targets
+      - Directory.Packages.props
+      - global.json
+      - scripts/**
+      - src/**
+      - tests/**
+  schedule:
+    - cron: '23 9 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: Build, test, and scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      actions: read
+      contents: read
+      security-events: write
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7.0.1
+
+      - name: Build and test the development container
+        uses: devcontainers/ci@v0.3
+        with:
+          imageName: csls-devcontainer
+          imageTag: ci
+          push: never
+          runCmd: dotnet test --solution Csls.slnx
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v6.0.0
+        with:
+          dotnet-version: 10.0.400
+
+      - name: Export the development container
+        run: dotnet run --file scripts/Export-ContainerImage.cs -- --image csls-devcontainer:ci --output artifacts/devcontainer/csls-devcontainer.tar
+
+      - name: Scan the development container with Picket
+        uses: willibrandon/picket@115b9385bb001ac6ca6df3cc6539a98b60529f5b
+        with:
+          docker-archive: artifacts/devcontainer/csls-devcontainer.tar
+          cache-mode: secret-hash-only
+          fail-on: findings
+          max-archive-depth: 2
+          max-archive-entries: 100000
+          max-archive-megabytes: 8192
+          max-archive-ratio: 1000
+          max-target-megabytes: 64
+          redact: 100
+          timeout: 900
+          upload-sarif: true

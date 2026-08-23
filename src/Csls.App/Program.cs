@@ -1,6 +1,6 @@
-using System.Globalization;
-using System.CommandLine;
 using Csls.App;
+using System.CommandLine;
+using System.Globalization;
 
 var rootCommand = new RootCommand(
     "Fast C# language intelligence for editors, terminals, and agents.");

@@ -1,8 +1,8 @@
+using Csls.Protocol;
+using StreamJsonRpc;
 using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.Json;
-using Csls.Protocol;
-using StreamJsonRpc;
 using LspRange = Csls.Protocol.Range;
 
 namespace Csls.Tests;

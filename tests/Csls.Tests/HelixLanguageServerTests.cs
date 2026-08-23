@@ -1,7 +1,7 @@
-using System.Diagnostics;
 using Hex1b;
 using Hex1b.Automation;
 using Hex1b.Input;
+using System.Diagnostics;
 
 namespace Csls.Tests;
 

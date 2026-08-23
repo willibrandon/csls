@@ -20,21 +20,44 @@ if (args.Length == 1 && args[0] is "--help" or "-h" or "-?")
         "Packs, installs, updates, runs, and uninstalls the csls .NET tools.")
         .ConfigureAwait(false);
     await Console.Out.WriteLineAsync(
-        "Usage: dotnet run --file scripts/Verify-ToolPackages.cs [--version <version>]")
+        "Usage: dotnet run --file scripts/Verify-ToolPackages.cs " +
+        "[--version <version>] [--runtime <rid>] [--validation <execute|package>]")
         .ConfigureAwait(false);
     return 0;
 }
 
-if (args.Length is not 0 and not 2 ||
-    args.Length == 2 && !string.Equals(args[0], "--version", StringComparison.Ordinal))
+string version = DefaultVersion;
+string? requestedRuntimeIdentifier = null;
+bool executePackages = true;
+for (int argumentIndex = 0; argumentIndex < args.Length; argumentIndex += 2)
 {
-    await Console.Error.WriteLineAsync(
-        "Usage: dotnet run --file scripts/Verify-ToolPackages.cs [--version <version>]")
-        .ConfigureAwait(false);
-    return 2;
+    if (argumentIndex + 1 >= args.Length)
+    {
+        await WriteUsageErrorAsync().ConfigureAwait(false);
+        return 2;
+    }
+
+    string value = args[argumentIndex + 1];
+    switch (args[argumentIndex])
+    {
+        case "--version":
+            version = value;
+            break;
+        case "--runtime":
+            requestedRuntimeIdentifier = value;
+            break;
+        case "--validation" when string.Equals(value, "execute", StringComparison.Ordinal):
+            executePackages = true;
+            break;
+        case "--validation" when string.Equals(value, "package", StringComparison.Ordinal):
+            executePackages = false;
+            break;
+        default:
+            await WriteUsageErrorAsync().ConfigureAwait(false);
+            return 2;
+    }
 }
 
-string version = args.Length == 2 ? args[1] : DefaultVersion;
 if (string.IsNullOrWhiteSpace(version) || version.Any(char.IsWhiteSpace))
 {
     await Console.Error.WriteLineAsync(
@@ -42,10 +65,32 @@ if (string.IsNullOrWhiteSpace(version) || version.Any(char.IsWhiteSpace))
     return 2;
 }
 
+string[] supportedRuntimeIdentifiers =
+[
+    "win-x64",
+    "win-arm64",
+    "win-x86",
+    "linux-x64",
+    "linux-arm64",
+    "linux-musl-x64",
+    "linux-musl-arm64",
+    "osx-x64",
+    "osx-arm64"
+];
+if (requestedRuntimeIdentifier is not null &&
+    !supportedRuntimeIdentifiers.Contains(requestedRuntimeIdentifier, StringComparer.Ordinal))
+{
+    await Console.Error.WriteLineAsync(
+        $"Unsupported package runtime identifier: {requestedRuntimeIdentifier}")
+        .ConfigureAwait(false);
+    return 2;
+}
+
 try
 {
     string repositoryRoot = ScriptSupport.FindRepositoryRoot();
-    string runtimeIdentifier = GetRuntimeIdentifier();
+    string runtimeIdentifier = requestedRuntimeIdentifier ?? GetRuntimeIdentifier();
+    string hostRuntimeIdentifier = GetRuntimeIdentifier();
     string verificationRoot = Path.Combine(
         repositoryRoot,
         "artifacts",
@@ -97,13 +142,33 @@ try
             "any",
             workerPaths,
             native: false);
-        await VerifyInstalledToolAsync(
-            repositoryRoot,
-            verificationRoot,
-            packageRoot,
-            packageId,
-            commandName,
-            version).ConfigureAwait(false);
+        if (executePackages)
+        {
+            if (string.Equals(
+                runtimeIdentifier,
+                hostRuntimeIdentifier,
+                StringComparison.Ordinal))
+            {
+                await VerifyInstalledToolAsync(
+                    repositoryRoot,
+                    verificationRoot,
+                    packageRoot,
+                    packageId,
+                    commandName,
+                    version).ConfigureAwait(false);
+            }
+            else
+            {
+                await VerifyImplementationToolAsync(
+                    repositoryRoot,
+                    verificationRoot,
+                    packageRoot,
+                    packageId,
+                    commandName,
+                    version,
+                    runtimeIdentifier).ConfigureAwait(false);
+            }
+        }
     }
 
     await Console.Out.WriteLineAsync(
@@ -120,6 +185,11 @@ catch (Exception exception) when (exception is
     await Console.Error.WriteLineAsync(exception.Message).ConfigureAwait(false);
     return 1;
 }
+
+static async Task WriteUsageErrorAsync() => await Console.Error.WriteLineAsync(
+    "Usage: dotnet run --file scripts/Verify-ToolPackages.cs " +
+    "[--version <version>] [--runtime <rid>] [--validation <execute|package>]")
+    .ConfigureAwait(false);
 
 static async Task PackAsync(
     string repositoryRoot,
@@ -315,6 +385,89 @@ static async Task VerifyInstalledToolAsync(
     {
         throw new InvalidDataException(
             $"Uninstalling {packageId} left its command shim at {commandPath}.");
+    }
+}
+
+static async Task VerifyImplementationToolAsync(
+    string repositoryRoot,
+    string verificationRoot,
+    string packageRoot,
+    string packageId,
+    string commandName,
+    string version,
+    string runtimeIdentifier)
+{
+    string extractionPath = Path.Combine(
+        verificationRoot,
+        "implementations",
+        packageId,
+        runtimeIdentifier);
+    Directory.CreateDirectory(extractionPath);
+    await ZipFile.ExtractToDirectoryAsync(
+        Path.Combine(
+            packageRoot,
+            $"{packageId}.{runtimeIdentifier}.{version}.nupkg"),
+        extractionPath,
+        overwriteFiles: true,
+        CancellationToken.None).ConfigureAwait(false);
+    string executableExtension = runtimeIdentifier.StartsWith(
+        "win-",
+        StringComparison.Ordinal)
+        ? ".exe"
+        : string.Empty;
+    string commandPath = Path.Combine(
+        extractionPath,
+        "tools",
+        "any",
+        runtimeIdentifier,
+        commandName + executableExtension);
+    if (!File.Exists(commandPath))
+    {
+        throw new InvalidDataException(
+            $"The extracted {packageId} implementation omitted {commandPath}.");
+    }
+
+    ScriptSupport.EnsureExecutable(commandPath);
+    var environment = new Dictionary<string, string>(StringComparer.Ordinal)
+    {
+        ["DOTNET_CLI_HOME"] = Path.Combine(
+            verificationRoot,
+            "dotnet-home",
+            packageId,
+            runtimeIdentifier),
+        ["DOTNET_NOLOGO"] = "1"
+    };
+    string versionOutput = await RunCheckedAsync(
+        commandPath,
+        ["--version"],
+        repositoryRoot,
+        environment).ConfigureAwait(false);
+    if (!versionOutput.Contains(version, StringComparison.Ordinal))
+    {
+        throw new InvalidDataException(
+            $"The {runtimeIdentifier} {packageId} implementation reported an unexpected " +
+            $"version: {versionOutput.Trim()}");
+    }
+
+    await RunCheckedAsync(
+        commandPath,
+        ["--help"],
+        repositoryRoot,
+        environment).ConfigureAwait(false);
+    if (string.Equals(commandName, "csls", StringComparison.Ordinal))
+    {
+        await VerifyLanguageServerWorkerAsync(
+            commandPath,
+            verificationRoot,
+            environment).ConfigureAwait(false);
+    }
+    else
+    {
+        await VerifyMcpWorkerAsync(
+            commandPath,
+            verificationRoot,
+            repositoryRoot,
+            environment).ConfigureAwait(false);
     }
 }
 

@@ -1,0 +1,50 @@
+{
+  "name": "csls",
+  "image": "mcr.microsoft.com/devcontainers/base:noble",
+  "features": {
+    "ghcr.io/devcontainers/features/dotnet:2": {
+      "version": "10.0.400"
+    },
+    "ghcr.io/devcontainers/features/node:2": {
+      "version": "24"
+    },
+    "ghcr.io/devcontainers/features/github-cli:1": {},
+    "ghcr.io/devcontainers/features/docker-in-docker:4": {
+      "dockerDashComposeVersion": "none"
+    }
+  },
+  "hostRequirements": {
+    "cpus": 4,
+    "memory": "8gb",
+    "storage": "64gb"
+  },
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "astro-build.astro-vscode",
+        "github.vscode-github-actions",
+        "ms-dotnettools.csdevkit"
+      ],
+      "settings": {
+        "dotnet.defaultSolution": "Csls.slnx",
+        "dotnet.preferVisualStudioCodeFileSystemWatcher": true
+      }
+    }
+  },
+  "forwardPorts": [
+    4321
+  ],
+  "portsAttributes": {
+    "4321": {
+      "label": "Documentation"
+    }
+  },
+  "postCreateCommand": [
+    "dotnet",
+    "run",
+    "--file",
+    "./scripts/Initialize-DevContainer.cs"
+  ],
+  "waitFor": "postCreateCommand",
+  "remoteUser": "vscode"
+}

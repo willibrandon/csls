@@ -1,6 +1,6 @@
+using Microsoft.CodeAnalysis;
 using System.Collections.Concurrent;
 using System.Collections.Immutable;
-using Microsoft.CodeAnalysis;
 using RoslynDiagnostic = Microsoft.CodeAnalysis.Diagnostic;
 
 namespace Csls.Workspaces;

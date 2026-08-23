@@ -1,7 +1,7 @@
-using System.Runtime.CompilerServices;
-using System.Text.Json;
 using Csls.Protocol;
 using StreamJsonRpc;
+using System.Runtime.CompilerServices;
+using System.Text.Json;
 
 namespace Csls.Tests;
 

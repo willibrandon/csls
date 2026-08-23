@@ -1,5 +1,5 @@
-using System.Text.Json.Serialization;
 using Csls.Protocol;
+using System.Text.Json.Serialization;
 
 namespace Csls.Control.Contracts;
 

@@ -1,5 +1,5 @@
-using System.Text.Json.Serialization;
 using StreamJsonRpc.Protocol;
+using System.Text.Json.Serialization;
 
 namespace Csls.Rpc;
 

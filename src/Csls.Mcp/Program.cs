@@ -1,5 +1,5 @@
-using System.CommandLine;
 using Csls.Mcp;
+using System.CommandLine;
 
 var sessionOption = new Option<int?>("--session")
 {

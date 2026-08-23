@@ -1,6 +1,6 @@
+using Csls.Protocol;
 using System.Runtime.CompilerServices;
 using System.Text.Json;
-using Csls.Protocol;
 
 namespace Csls.Tests;
 

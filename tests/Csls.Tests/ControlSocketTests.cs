@@ -1,8 +1,8 @@
+using Csls.Control;
+using Csls.Control.Contracts;
 using System.Buffers.Binary;
 using System.Net.Sockets;
 using System.Runtime.CompilerServices;
-using Csls.Control;
-using Csls.Control.Contracts;
 
 namespace Csls.Tests;
 

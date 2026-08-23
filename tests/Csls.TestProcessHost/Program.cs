@@ -1,5 +1,12 @@
 using System.Diagnostics;
 
+if (args is ["--print-environment", string environmentVariable])
+{
+    await Console.Out.WriteAsync(
+        Environment.GetEnvironmentVariable(environmentVariable) ?? string.Empty).ConfigureAwait(false);
+    return 0;
+}
+
 Dictionary<string, string> environment = new(StringComparer.Ordinal);
 int argumentIndex = 0;
 while (argumentIndex < args.Length &&
@@ -43,13 +50,8 @@ for (int index = argumentIndex + 2; index < args.Length; index++)
 
 if (!OperatingSystem.IsWindows())
 {
-    foreach ((string name, string value) in environment)
-    {
-        Environment.SetEnvironmentVariable(name, value);
-    }
-
-    UnixProcess.Execute(startInfo.FileName, startInfo.ArgumentList);
-    throw new UnreachableException("execvp returned after replacing the test host.");
+    UnixProcess.Execute(startInfo.FileName, startInfo.ArgumentList, environment);
+    throw new UnreachableException("execve returned after replacing the test host.");
 }
 
 using Process process = Process.Start(startInfo)
