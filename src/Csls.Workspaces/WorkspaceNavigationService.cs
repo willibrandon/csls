@@ -45,7 +45,10 @@ internal static class WorkspaceNavigationService
             symbol,
             sourceDocument.Project.Solution,
             cancellationToken).ConfigureAwait(false) ?? symbol;
-        return CreateNavigationLocations(definition.Locations);
+        return await CreateNavigationLocationsAsync(
+            sourceDocument.Project,
+            definition,
+            cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -69,7 +72,10 @@ internal static class WorkspaceNavigationService
             return [];
         }
 
-        IReadOnlyList<LspLocation> declarations = CreateNavigationLocations(symbol.Locations);
+        IReadOnlyList<LspLocation> declarations = await CreateNavigationLocationsAsync(
+            sourceDocument.Project,
+            symbol,
+            cancellationToken).ConfigureAwait(false);
         if (declarations.Count > 0)
         {
             return declarations;
@@ -81,7 +87,10 @@ internal static class WorkspaceNavigationService
             cancellationToken).ConfigureAwait(false);
         return sourceSymbol is null
             ? []
-            : CreateNavigationLocations(sourceSymbol.Locations);
+            : await CreateNavigationLocationsAsync(
+                sourceDocument.Project,
+                sourceSymbol,
+                cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -116,7 +125,10 @@ internal static class WorkspaceNavigationService
             typeDefinition,
             sourceDocument.Project.Solution,
             cancellationToken).ConfigureAwait(false) ?? typeDefinition;
-        return CreateNavigationLocations(sourceDefinition.Locations);
+        return await CreateNavigationLocationsAsync(
+            sourceDocument.Project,
+            sourceDefinition,
+            cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -148,7 +160,10 @@ internal static class WorkspaceNavigationService
         foreach (ISymbol implementation in implementations)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            AddNavigationLocations(locations, implementation.Locations);
+            AddNavigationLocations(
+                locations,
+                sourceDocument.Project,
+                implementation.Locations);
             if (locations.Count >= MaximumNavigationLocations)
             {
                 break;
@@ -240,6 +255,7 @@ internal static class WorkspaceNavigationService
             {
                 AddDocumentHighlight(
                     highlights,
+                    sourceDocument.Project,
                     targetUri,
                     declaration,
                     LspDocumentHighlightKind.Text);
@@ -254,6 +270,7 @@ internal static class WorkspaceNavigationService
 
                 AddDocumentHighlight(
                     highlights,
+                    sourceDocument.Project,
                     targetUri,
                     reference.Location,
                     IsWrittenReference(
@@ -318,11 +335,28 @@ internal static class WorkspaceNavigationService
             cancellationToken.ThrowIfCancellationRequested();
             if (includeDeclaration)
             {
-                AddNavigationLocations(locations, referencedSymbol.Definition.Locations);
+                int priorLocationCount = locations.Count;
+                AddNavigationLocations(
+                    locations,
+                    sourceDocument.Project,
+                    referencedSymbol.Definition.Locations);
+                if (locations.Count == priorLocationCount)
+                {
+                    LspLocation? metadataLocation = await WorkspaceVirtualDocumentService
+                        .GetMetadataLocationAsync(
+                        sourceDocument.Project,
+                        referencedSymbol.Definition,
+                        cancellationToken).ConfigureAwait(false);
+                    if (metadataLocation is not null)
+                    {
+                        locations.Add(metadataLocation);
+                    }
+                }
             }
 
             AddNavigationLocations(
                 locations,
+                sourceDocument.Project,
                 referencedSymbol.Locations.Select(static reference => reference.Location));
             if (locations.Count >= MaximumNavigationLocations)
             {
@@ -357,11 +391,24 @@ internal static class WorkspaceNavigationService
         return (document, symbol);
     }
 
-    private static IReadOnlyList<LspLocation> CreateNavigationLocations(
-        IEnumerable<RoslynLocation> sourceLocations)
+    private static async Task<IReadOnlyList<LspLocation>> CreateNavigationLocationsAsync(
+        Project project,
+        ISymbol symbol,
+        CancellationToken cancellationToken)
     {
         var locations = new HashSet<LspLocation>();
-        AddNavigationLocations(locations, sourceLocations);
+        AddNavigationLocations(locations, project, symbol.Locations);
+        if (locations.Count == 0)
+        {
+            LspLocation? metadataLocation = await WorkspaceVirtualDocumentService
+                .GetMetadataLocationAsync(project, symbol, cancellationToken)
+                .ConfigureAwait(false);
+            if (metadataLocation is not null)
+            {
+                locations.Add(metadataLocation);
+            }
+        }
+
         return OrderNavigationLocations(locations);
     }
 
@@ -425,6 +472,7 @@ internal static class WorkspaceNavigationService
 
     private static void AddDocumentHighlight(
         Dictionary<LspRange, LspDocumentHighlightKind> highlights,
+        Project project,
         DocumentUri targetUri,
         RoslynLocation sourceLocation,
         LspDocumentHighlightKind kind)
@@ -434,7 +482,7 @@ internal static class WorkspaceNavigationService
             return;
         }
 
-        LspLocation? location = ToLspLocation(sourceLocation);
+        LspLocation? location = ToLspLocation(project, sourceLocation);
         if (location is null || location.Uri != targetUri)
         {
             return;
@@ -499,6 +547,7 @@ internal static class WorkspaceNavigationService
 
     private static void AddNavigationLocations(
         HashSet<LspLocation> target,
+        Project project,
         IEnumerable<RoslynLocation> sourceLocations)
     {
         foreach (RoslynLocation sourceLocation in sourceLocations)
@@ -508,7 +557,7 @@ internal static class WorkspaceNavigationService
                 return;
             }
 
-            LspLocation? location = ToLspLocation(sourceLocation);
+            LspLocation? location = ToLspLocation(project, sourceLocation);
             if (location is not null)
             {
                 target.Add(location);
@@ -516,7 +565,7 @@ internal static class WorkspaceNavigationService
         }
     }
 
-    private static LspLocation? ToLspLocation(RoslynLocation location)
+    private static LspLocation? ToLspLocation(Project project, RoslynLocation location)
     {
         string? path = location.SourceTree?.FilePath;
         if (!location.IsInSource || string.IsNullOrWhiteSpace(path))
@@ -525,9 +574,17 @@ internal static class WorkspaceNavigationService
         }
 
         FileLinePositionSpan lineSpan = location.GetLineSpan();
+        Document? document = project.Solution.GetDocument(location.SourceTree);
+        DocumentUri uri = document is SourceGeneratedDocument generatedDocument &&
+            !string.IsNullOrWhiteSpace(generatedDocument.Project.FilePath)
+            ? VirtualDocumentUri.CreateGenerated(
+                generatedDocument.Project.FilePath,
+                generatedDocument.HintName)
+            : DocumentUri.FromFileSystemPath(path);
+
         return new LspLocation
         {
-            Uri = DocumentUri.FromFileSystemPath(path),
+            Uri = uri,
             Range = new LspRange(
                 new Position(lineSpan.StartLinePosition.Line, lineSpan.StartLinePosition.Character),
                 new Position(lineSpan.EndLinePosition.Line, lineSpan.EndLinePosition.Character))

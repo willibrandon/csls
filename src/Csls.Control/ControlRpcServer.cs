@@ -190,6 +190,11 @@ public sealed partial class ControlRpcServer : IHostedService, IAsyncDisposable
         {
             LogExpectedShutdown(exception);
         }
+        catch (ObjectDisposedException exception)
+            when (cancellationToken.IsCancellationRequested)
+        {
+            LogExpectedShutdown(exception);
+        }
     }
 
     private async Task RunConnectionAsync(
