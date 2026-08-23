@@ -141,6 +141,14 @@ public sealed class DashboardLanguageServerTests
                     await automator.WaitUntilTextAsync(
                         lsp.ProcessId.ToString(CultureInfo.InvariantCulture)).ConfigureAwait(false);
 
+                    await automator.KeyAsync(
+                        Hex1bKey.F9,
+                        TestContext.CancellationToken).ConfigureAwait(false);
+                    await automator.WaitUntilTextAsync("Run clear caches for the selected session?")
+                        .ConfigureAwait(false);
+                    await automator.EnterAsync(TestContext.CancellationToken).ConfigureAwait(false);
+                    await automator.WaitUntilTextAsync("Completed clear-cache").ConfigureAwait(false);
+                    await automator.DownAsync(TestContext.CancellationToken).ConfigureAwait(false);
                     await automator.DownAsync(TestContext.CancellationToken).ConfigureAwait(false);
                     await automator.WaitUntilTextAsync("Workspaces").ConfigureAwait(false);
                     await automator.WaitUntilTextAsync("MSBuildWorkspace").ConfigureAwait(false);
@@ -182,6 +190,9 @@ public sealed class DashboardLanguageServerTests
                 TestContext.CancellationToken).ConfigureAwait(false);
 
             Assert.AreEqual(0, exitCode);
+            string diagnostics = await lsp.ShutdownAsync(
+                TestContext.CancellationToken).ConfigureAwait(false);
+            Assert.DoesNotContain("Unhandled exception", diagnostics, StringComparison.Ordinal);
         }
         finally
         {

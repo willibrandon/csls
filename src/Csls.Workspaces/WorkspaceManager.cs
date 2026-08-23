@@ -102,6 +102,33 @@ public sealed partial class WorkspaceManager : IAsyncDisposable
         ArgumentNullException.ThrowIfNull(rootPaths);
         ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposeState) != 0, this);
 
+        ImmutableArray<(string RootPath, Workspace Workspace, Solution Solution)> loadedFolders =
+            await LoadFoldersAsync(rootPaths, cancellationToken).ConfigureAwait(false);
+        bool published = false;
+        try
+        {
+            await PublishFoldersAsync(
+                loadedFolders,
+                documentVersions: null,
+                cancellationToken).ConfigureAwait(false);
+            published = true;
+        }
+        finally
+        {
+            if (!published)
+            {
+                DisposeFolders(loadedFolders);
+            }
+        }
+    }
+
+    private async Task<ImmutableArray<(
+        string RootPath,
+        Workspace Workspace,
+        Solution Solution)>> LoadFoldersAsync(
+        IReadOnlyList<string> rootPaths,
+        CancellationToken cancellationToken)
+    {
         ImmutableArray<(string RootPath, Workspace Workspace, Solution Solution)>.Builder loadedFolders =
             ImmutableArray.CreateBuilder<(
             string RootPath,
@@ -160,26 +187,44 @@ public sealed partial class WorkspaceManager : IAsyncDisposable
                 }
             }
 
-            await _mutationGate.WaitAsync(cancellationToken).ConfigureAwait(false);
-            try
-            {
-                ImmutableArray<(string RootPath, Workspace Workspace, Solution Solution)> previous = _folders;
-                _folders = loadedFolders.MoveToImmutable();
-                _documentVersions.Clear();
-                _diagnosticCache.Clear();
-                Interlocked.Increment(ref _generation);
-                DisposeFolders(previous);
-            }
-            finally
-            {
-                _mutationGate.Release();
-            }
+            return loadedFolders.MoveToImmutable();
         }
         catch
         {
             DisposeFolders(loadedFolders.ToImmutable());
             throw;
         }
+    }
+
+    private async Task PublishFoldersAsync(
+        ImmutableArray<(string RootPath, Workspace Workspace, Solution Solution)> loadedFolders,
+        IReadOnlyDictionary<string, int>? documentVersions,
+        CancellationToken cancellationToken)
+    {
+        await _mutationGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        ImmutableArray<(string RootPath, Workspace Workspace, Solution Solution)> previous;
+        try
+        {
+            previous = _folders;
+            _folders = loadedFolders;
+            _documentVersions.Clear();
+            if (documentVersions is not null)
+            {
+                foreach ((string path, int version) in documentVersions)
+                {
+                    _documentVersions.Add(path, version);
+                }
+            }
+
+            _diagnosticCache.Clear();
+            Interlocked.Increment(ref _generation);
+        }
+        finally
+        {
+            _mutationGate.Release();
+        }
+
+        DisposeFolders(previous);
     }
 
     /// <summary>
@@ -2156,9 +2201,12 @@ public sealed partial class WorkspaceManager : IAsyncDisposable
         for (int index = 0; index < folders.Length; index++)
         {
             string rootPath = Path.TrimEndingDirectorySeparator(folders[index].RootPath);
+            string containmentRoot = IsWorkspaceEntryPoint(rootPath)
+                ? Path.GetDirectoryName(rootPath) ?? rootPath
+                : rootPath;
             bool ownsPath = string.Equals(documentPath, rootPath, PathComparison) ||
                 documentPath.StartsWith(
-                    rootPath + Path.DirectorySeparatorChar,
+                    containmentRoot + Path.DirectorySeparatorChar,
                     PathComparison);
             if (!ownsPath)
             {
@@ -2176,6 +2224,14 @@ public sealed partial class WorkspaceManager : IAsyncDisposable
         }
 
         return bestIndex;
+    }
+
+    private static bool IsWorkspaceEntryPoint(string path)
+    {
+        string extension = Path.GetExtension(path);
+        return extension.Equals(".slnx", StringComparison.OrdinalIgnoreCase) ||
+            extension.Equals(".sln", StringComparison.OrdinalIgnoreCase) ||
+            extension.Equals(".csproj", StringComparison.OrdinalIgnoreCase);
     }
 
     private static StringComparison PathComparison =>

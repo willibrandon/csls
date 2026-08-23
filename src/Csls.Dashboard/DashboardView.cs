@@ -29,33 +29,64 @@ internal static class DashboardView
                 (DashboardSection)eventArgs.SelectedIndex))
             .Fill();
         Hex1bWidget details = BuildDetails(context, state);
-        return context.VStack(vertical =>
+        return context.ZStack(stack =>
         [
-            vertical.Text(string.Create(
-                CultureInfo.InvariantCulture,
-                $"csls dashboard  session {snapshot.Session.ProcessId}  " +
-                $"{snapshot.Session.LifecycleState}  generation {snapshot.Session.WorkspaceGeneration}")),
-            vertical.HStack(horizontal =>
-            [
-                horizontal.Border(nested => [navigation]).Title("Views").FixedWidth(20).FillHeight(),
-                horizontal.Border(nested => [details]).Title(GetSectionTitle(state.Section)).Fill()
-            ]).Fill(),
-            vertical.InfoBar(string.Create(
-                CultureInfo.InvariantCulture,
-                $"↑↓ Navigate  Enter Select session  F5 Refresh  Ctrl+C Exit  " +
-                $"updated {state.RefreshedAt:HH:mm:ss} UTC"))
-        ]).InputBindings(bindings =>
-        {
-            bindings.Key(Hex1bKey.F5).Action(
-                _ => state.RefreshAsync(),
-                "Refresh live session state");
-        });
+            stack.WindowPanel()
+                .Background(background => background.VStack(vertical =>
+                [
+                    vertical.Text(string.Create(
+                        CultureInfo.InvariantCulture,
+                        $"csls dashboard  session {snapshot.Session.ProcessId}  " +
+                        $"{snapshot.Session.LifecycleState}  generation {snapshot.Session.WorkspaceGeneration}")),
+                    vertical.Text(state.OperationStatus),
+                    vertical.HStack(horizontal =>
+                    [
+                        horizontal.Border(nested => [navigation]).Title("Views").FixedWidth(20).FillHeight(),
+                        horizontal.Border(nested => [details]).Title(GetSectionTitle(state.Section)).Fill()
+                    ]).Fill(),
+                    vertical.InfoBar(string.Create(
+                        CultureInfo.InvariantCulture,
+                        $"↑↓ Navigate  Enter Select  F5 Refresh  F6-F9 Actions  Ctrl+C Exit  " +
+                        $"updated {state.RefreshedAt:HH:mm:ss} UTC"))
+                ]).InputBindings(bindings =>
+                {
+                    bindings.Key(Hex1bKey.F5).Action(
+                        _ => state.RefreshAsync(),
+                        "Refresh live session state");
+                    bindings.Key(Hex1bKey.F6).Action(
+                        eventArgs => OpenConfirmation(
+                            eventArgs.Windows,
+                            DashboardOperation.Restore,
+                            state),
+                        "Restore workspace");
+                    bindings.Key(Hex1bKey.F7).Action(
+                        eventArgs => OpenConfirmation(
+                            eventArgs.Windows,
+                            DashboardOperation.Reload,
+                            state),
+                        "Reload workspace");
+                    bindings.Key(Hex1bKey.F8).Action(
+                        eventArgs => OpenConfirmation(
+                            eventArgs.Windows,
+                            DashboardOperation.RestartBuildHosts,
+                            state),
+                        "Restart build hosts");
+                    bindings.Key(Hex1bKey.F9).Action(
+                        eventArgs => OpenConfirmation(
+                            eventArgs.Windows,
+                            DashboardOperation.ClearCaches,
+                            state),
+                        "Clear caches");
+                }))
+                .Fill()
+        ]);
     }
 
     private static Hex1bWidget BuildDetails(RootContext context, DashboardState state) =>
         state.Section switch
         {
             DashboardSection.Sessions => BuildSessions(context, state),
+            DashboardSection.Actions => BuildActions(context, state),
             DashboardSection.Workspaces => BuildWorkspaces(context, state.Snapshot),
             DashboardSection.Projects => BuildProjects(context, state.Snapshot),
             DashboardSection.Documents => BuildDocuments(context, state.Snapshot),
@@ -67,6 +98,50 @@ internal static class DashboardView
             DashboardSection.Logs => BuildLogs(context, state.Snapshot),
             _ => throw new InvalidOperationException($"Unknown dashboard section: {state.Section}.")
         };
+
+    private static VStackWidget BuildActions(RootContext context, DashboardState state) =>
+        context.VStack(vertical =>
+        [
+            vertical.Text(state.OperationStatus),
+            vertical.Text(""),
+            vertical.Button("Restore workspace").OnClick(eventArgs =>
+                OpenConfirmation(eventArgs.Windows, DashboardOperation.Restore, state)),
+            vertical.Button("Reload workspace").OnClick(eventArgs =>
+                OpenConfirmation(eventArgs.Windows, DashboardOperation.Reload, state)),
+            vertical.Button("Restart build hosts").OnClick(eventArgs =>
+                OpenConfirmation(eventArgs.Windows, DashboardOperation.RestartBuildHosts, state)),
+            vertical.Button("Clear caches").OnClick(eventArgs =>
+                OpenConfirmation(eventArgs.Windows, DashboardOperation.ClearCaches, state))
+        ]);
+
+    private static void OpenConfirmation(
+        WindowManager windows,
+        DashboardOperation operation,
+        DashboardState state)
+    {
+        string operationName = GetOperationName(operation);
+        windows.Window(window => window.VStack(vertical =>
+        [
+            vertical.Text(""),
+            vertical.Text($"  Run {operationName} for the selected session?"),
+            vertical.Text(""),
+            vertical.HStack(horizontal =>
+            [
+                horizontal.Text("  "),
+                horizontal.Button("Confirm").OnClick(async _ =>
+                {
+                    window.Window.CloseWithResult(true);
+                    await state.ExecuteOperationAsync(operation).ConfigureAwait(false);
+                }),
+                horizontal.Text(" "),
+                horizontal.Button("Cancel").OnClick(_ => window.Window.CloseWithResult(false))
+            ])
+        ]))
+        .Title("Confirm workspace operation")
+        .Size(62, 8)
+        .Modal()
+        .Open(windows);
+    }
 
     private static TableWidget<ControlSessionInfo> BuildSessions(
         RootContext context,
@@ -292,5 +367,14 @@ internal static class DashboardView
     {
         DashboardSection.BuildHosts => "Build hosts",
         _ => section.ToString()
+    };
+
+    private static string GetOperationName(DashboardOperation operation) => operation switch
+    {
+        DashboardOperation.Restore => "restore workspace",
+        DashboardOperation.Reload => "reload workspace",
+        DashboardOperation.RestartBuildHosts => "restart build hosts",
+        DashboardOperation.ClearCaches => "clear caches",
+        _ => throw new InvalidOperationException($"Unknown dashboard operation: {operation}.")
     };
 }

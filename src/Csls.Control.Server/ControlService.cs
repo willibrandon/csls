@@ -170,6 +170,38 @@ public sealed class ControlService : IControlRpcTarget
     }
 
     /// <inheritdoc />
+    public Task<ControlWorkspaceOperationResult> RestoreWorkspaceAsync(
+        CancellationToken cancellationToken) =>
+        RunWorkspaceOperationAsync(
+            "restore",
+            _languageServer.RestoreWorkspaceAsync,
+            cancellationToken);
+
+    /// <inheritdoc />
+    public Task<ControlWorkspaceOperationResult> ReloadWorkspaceAsync(
+        CancellationToken cancellationToken) =>
+        RunWorkspaceOperationAsync(
+            "reload",
+            _languageServer.ReloadWorkspaceAsync,
+            cancellationToken);
+
+    /// <inheritdoc />
+    public Task<ControlWorkspaceOperationResult> RestartBuildHostsAsync(
+        CancellationToken cancellationToken) =>
+        RunWorkspaceOperationAsync(
+            "restart-build-host",
+            _languageServer.RestartBuildHostsAsync,
+            cancellationToken);
+
+    /// <inheritdoc />
+    public Task<ControlWorkspaceOperationResult> ClearCachesAsync(
+        CancellationToken cancellationToken) =>
+        RunWorkspaceOperationAsync(
+            "clear-cache",
+            _languageServer.ClearCachesAsync,
+            cancellationToken);
+
+    /// <inheritdoc />
     public async Task<ControlHoverResult> GetHoverAsync(
         ControlHoverRequest request,
         CancellationToken cancellationToken)
@@ -507,6 +539,12 @@ public sealed class ControlService : IControlRpcTarget
         string operation,
         WorkspaceEditSnapshot snapshot)
     {
+        if (snapshot.WorkspaceGeneration != _workspaceManager.Generation)
+        {
+            throw new InvalidOperationException(
+                "The edit preview was superseded by a newer workspace generation.");
+        }
+
         DateTimeOffset now = TimeProvider.System.GetUtcNow();
         foreach ((Guid existingPlanId, PendingControlEditPlan existingPlan) in _pendingEditPlans)
         {
@@ -552,6 +590,42 @@ public sealed class ControlService : IControlRpcTarget
                     })
             ]
         };
+    }
+
+    private async Task<ControlWorkspaceOperationResult> RunWorkspaceOperationAsync(
+        string operation,
+        Func<CancellationToken, Task<WorkspaceMaintenanceResult>> action,
+        CancellationToken cancellationToken)
+    {
+        WorkspaceMaintenanceResult result = await action(cancellationToken).ConfigureAwait(false);
+        int pendingEditPlanCount = RemovePendingEditPlans(
+            clearAll: string.Equals(operation, "clear-cache", StringComparison.Ordinal),
+            result.CurrentGeneration);
+        return new ControlWorkspaceOperationResult
+        {
+            Operation = operation,
+            PreviousGeneration = result.PreviousGeneration,
+            CurrentGeneration = result.CurrentGeneration,
+            AffectedWorkspaceCount = result.AffectedWorkspaceCount,
+            RestoredEntryPointCount = result.RestoredEntryPointCount,
+            RestartedBuildHostCount = result.RestartedBuildHostCount,
+            ClearedCacheEntryCount = result.ClearedCacheEntryCount + pendingEditPlanCount
+        };
+    }
+
+    private int RemovePendingEditPlans(bool clearAll, long currentGeneration)
+    {
+        int removedCount = 0;
+        foreach ((Guid planId, PendingControlEditPlan plan) in _pendingEditPlans)
+        {
+            if ((clearAll || plan.Snapshot.WorkspaceGeneration != currentGeneration) &&
+                _pendingEditPlans.TryRemove(planId, out _))
+            {
+                removedCount++;
+            }
+        }
+
+        return removedCount;
     }
 
     private static TextDocumentPositionParams CreateNavigationParams(

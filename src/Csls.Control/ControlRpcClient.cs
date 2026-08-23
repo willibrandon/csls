@@ -64,6 +64,42 @@ public sealed class ControlRpcClient : IAsyncDisposable
     }
 
     /// <summary>
+    /// Restores every current workspace entry point through the attached session.
+    /// </summary>
+    /// <param name="cancellationToken">The request cancellation token.</param>
+    /// <returns>The completed workspace operation result.</returns>
+    public Task<ControlWorkspaceOperationResult> RestoreWorkspaceAsync(
+        CancellationToken cancellationToken) =>
+        InvokeWorkspaceOperationAsync(ControlMethods.RestoreWorkspace, cancellationToken);
+
+    /// <summary>
+    /// Reloads every current workspace root through the attached session.
+    /// </summary>
+    /// <param name="cancellationToken">The request cancellation token.</param>
+    /// <returns>The completed workspace operation result.</returns>
+    public Task<ControlWorkspaceOperationResult> ReloadWorkspaceAsync(
+        CancellationToken cancellationToken) =>
+        InvokeWorkspaceOperationAsync(ControlMethods.ReloadWorkspace, cancellationToken);
+
+    /// <summary>
+    /// Recreates every Roslyn workspace host through the attached session.
+    /// </summary>
+    /// <param name="cancellationToken">The request cancellation token.</param>
+    /// <returns>The completed workspace operation result.</returns>
+    public Task<ControlWorkspaceOperationResult> RestartBuildHostsAsync(
+        CancellationToken cancellationToken) =>
+        InvokeWorkspaceOperationAsync(ControlMethods.RestartBuildHosts, cancellationToken);
+
+    /// <summary>
+    /// Removes every retained workspace result cache entry through the attached session.
+    /// </summary>
+    /// <param name="cancellationToken">The request cancellation token.</param>
+    /// <returns>The completed workspace operation result.</returns>
+    public Task<ControlWorkspaceOperationResult> ClearCachesAsync(
+        CancellationToken cancellationToken) =>
+        InvokeWorkspaceOperationAsync(ControlMethods.ClearCaches, cancellationToken);
+
+    /// <summary>
     /// Gets hover information from the attached workspace snapshot.
     /// </summary>
     /// <param name="request">The absolute document path and UTF-16 position.</param>
@@ -350,6 +386,16 @@ public sealed class ControlRpcClient : IAsyncDisposable
             ControlMethods.ApplyEditPlan,
             request,
             cancellationToken).ConfigureAwait(false);
+    }
+
+    private async Task<ControlWorkspaceOperationResult> InvokeWorkspaceOperationAsync(
+        string methodName,
+        CancellationToken cancellationToken)
+    {
+        JsonRpc rpc = await GetRpcAsync(cancellationToken).ConfigureAwait(false);
+        return await rpc.InvokeWithCancellationAsync<ControlWorkspaceOperationResult>(
+            methodName,
+            cancellationToken: cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>

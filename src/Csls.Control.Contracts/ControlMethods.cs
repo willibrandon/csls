@@ -16,6 +16,26 @@ public static class ControlMethods
     public const string GetDashboardSnapshot = "csls/control/v1/dashboard/get";
 
     /// <summary>
+    /// Gets the method that restores every loaded workspace entry point.
+    /// </summary>
+    public const string RestoreWorkspace = "csls/control/v1/workspace/restore";
+
+    /// <summary>
+    /// Gets the method that reloads every loaded workspace root.
+    /// </summary>
+    public const string ReloadWorkspace = "csls/control/v1/workspace/reload";
+
+    /// <summary>
+    /// Gets the method that recreates every loaded Roslyn workspace host.
+    /// </summary>
+    public const string RestartBuildHosts = "csls/control/v1/build-host/restart";
+
+    /// <summary>
+    /// Gets the method that removes every retained workspace result cache entry.
+    /// </summary>
+    public const string ClearCaches = "csls/control/v1/cache/clear";
+
+    /// <summary>
     /// Gets the method that resolves hover information in the current workspace snapshot.
     /// </summary>
     public const string GetHover = "csls/control/v1/hover/get";

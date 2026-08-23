@@ -75,6 +75,35 @@ internal static class CliOutputWriter
     }
 
     /// <summary>
+    /// Writes the observable result of one completed workspace maintenance operation.
+    /// </summary>
+    /// <param name="result">The completed workspace operation result.</param>
+    /// <param name="writeJson">Whether to write a machine-readable envelope.</param>
+    internal static void WriteWorkspaceOperation(
+        ControlWorkspaceOperationResult result,
+        bool writeJson)
+    {
+        ArgumentNullException.ThrowIfNull(result);
+        if (writeJson)
+        {
+            JsonElement data = JsonSerializer.SerializeToElement(
+                result,
+                typeof(ControlWorkspaceOperationResult),
+                CliJsonSerializerContext.Default);
+            WriteEnvelope(success: true, data);
+            return;
+        }
+
+        Console.Out.WriteLine($"Operation: {result.Operation}");
+        Console.Out.WriteLine(
+            $"Generation: {result.PreviousGeneration} -> {result.CurrentGeneration}");
+        Console.Out.WriteLine($"Workspaces: {result.AffectedWorkspaceCount}");
+        Console.Out.WriteLine($"Restored entry points: {result.RestoredEntryPointCount}");
+        Console.Out.WriteLine($"Restarted build hosts: {result.RestartedBuildHostCount}");
+        Console.Out.WriteLine($"Cleared cache entries: {result.ClearedCacheEntryCount}");
+    }
+
+    /// <summary>
     /// Writes hover information returned by the shared control service.
     /// </summary>
     /// <param name="hover">The hover result.</param>
