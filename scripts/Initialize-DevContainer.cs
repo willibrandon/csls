@@ -29,6 +29,37 @@ try
 {
     string repositoryRoot = ScriptSupport.FindRepositoryRoot();
     string dotnetPath = Environment.GetEnvironmentVariable("DOTNET_HOST_PATH") ?? "dotnet";
+    if (OperatingSystem.IsLinux() && string.Equals(
+        Environment.GetEnvironmentVariable("CSLS_DEV_CONTAINER"),
+        "true",
+        StringComparison.OrdinalIgnoreCase))
+    {
+        string artifactsRoot = Environment.GetEnvironmentVariable("CSLS_ARTIFACTS_ROOT")
+            ?? throw new InvalidOperationException(
+                "CSLS_ARTIFACTS_ROOT is required in the development container.");
+        string cacheRoot = Environment.GetEnvironmentVariable("CSLS_CACHE_ROOT")
+            ?? throw new InvalidOperationException(
+                "CSLS_CACHE_ROOT is required in the development container.");
+        string normalizedCacheRoot = Path.GetFullPath(cacheRoot);
+        string normalizedArtifactsRoot = Path.GetFullPath(artifactsRoot);
+        if (!normalizedArtifactsRoot.StartsWith(
+                normalizedCacheRoot + Path.DirectorySeparatorChar,
+                StringComparison.Ordinal))
+        {
+            throw new InvalidOperationException(
+                "CSLS_ARTIFACTS_ROOT must be inside CSLS_CACHE_ROOT.");
+        }
+
+        await RunCheckedAsync(
+            "sudo",
+            [
+                "chown",
+                $"{Environment.UserName}:{Environment.UserName}",
+                normalizedCacheRoot
+            ],
+            repositoryRoot).ConfigureAwait(false);
+    }
+
     if (OperatingSystem.IsLinux() && File.Exists("/etc/debian_version"))
     {
         string packageManager = string.Equals(
@@ -78,6 +109,26 @@ try
 
     await RunCheckedAsync(dotnetPath, ["restore", "Csls.slnx"], repositoryRoot)
         .ConfigureAwait(false);
+    string scriptsDirectory = Path.Join(repositoryRoot, "scripts");
+    foreach (string fileAppPath in Directory
+        .EnumerateFiles(scriptsDirectory, "*.cs", SearchOption.TopDirectoryOnly)
+        .Order(StringComparer.Ordinal))
+    {
+        if (string.Equals(
+                Path.GetFileName(fileAppPath),
+                "Initialize-DevContainer.cs",
+                StringComparison.Ordinal) ||
+            !await IsFileAppAsync(fileAppPath).ConfigureAwait(false))
+        {
+            continue;
+        }
+
+        await RunCheckedAsync(
+            dotnetPath,
+            ["restore", Path.GetRelativePath(repositoryRoot, fileAppPath)],
+            repositoryRoot).ConfigureAwait(false);
+    }
+
     foreach (string provisioner in new[]
     {
         "Provision-Actionlint.cs",
@@ -113,6 +164,26 @@ catch (Exception exception) when (exception is
 {
     await Console.Error.WriteLineAsync(exception.Message).ConfigureAwait(false);
     return 1;
+}
+
+static async Task<bool> IsFileAppAsync(string path)
+{
+    int remainingLines = 8;
+    await foreach (string line in File.ReadLinesAsync(path).ConfigureAwait(false))
+    {
+        if (line.StartsWith("#:", StringComparison.Ordinal))
+        {
+            return true;
+        }
+
+        remainingLines--;
+        if (remainingLines == 0)
+        {
+            return false;
+        }
+    }
+
+    return false;
 }
 
 static async Task RunCheckedAsync(

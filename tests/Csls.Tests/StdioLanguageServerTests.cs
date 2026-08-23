@@ -24,10 +24,9 @@ public sealed class StdioLanguageServerTests
     [TestMethod]
     public async Task WorkerServesHoverAndShutsDownCleanly()
     {
-        string repositoryRoot = FindRepositoryRoot();
+        string repositoryRoot = EditorToolResolver.FindRepositoryRoot();
         string workerPath = Path.Join(
-            repositoryRoot,
-            "artifacts",
+            EditorToolResolver.ResolveArtifactsRoot(repositoryRoot),
             "bin",
             "Csls.Worker",
             "debug",
@@ -72,7 +71,7 @@ public sealed class StdioLanguageServerTests
 
             var startInfo = new ProcessStartInfo
             {
-                FileName = ResolveDotNetHost(),
+                FileName = EditorToolResolver.ResolveDotNetHost(),
                 RedirectStandardError = true,
                 RedirectStandardInput = true,
                 RedirectStandardOutput = true,
@@ -169,10 +168,9 @@ public sealed class StdioLanguageServerTests
     [TestMethod]
     public async Task WorkerAcceptsNullShutdownParameters()
     {
-        string repositoryRoot = FindRepositoryRoot();
+        string repositoryRoot = EditorToolResolver.FindRepositoryRoot();
         string workerPath = Path.Join(
-            repositoryRoot,
-            "artifacts",
+            EditorToolResolver.ResolveArtifactsRoot(repositoryRoot),
             "bin",
             "Csls.Worker",
             "debug",
@@ -202,7 +200,7 @@ public sealed class StdioLanguageServerTests
 
             var startInfo = new ProcessStartInfo
             {
-                FileName = ResolveDotNetHost(),
+                FileName = EditorToolResolver.ResolveDotNetHost(),
                 WorkingDirectory = workspacePath,
                 RedirectStandardError = true,
                 RedirectStandardInput = true,
@@ -331,25 +329,4 @@ public sealed class StdioLanguageServerTests
         throw new InvalidDataException("The worker returned oversized LSP headers.");
     }
 
-    private static string FindRepositoryRoot()
-    {
-        var directory = new DirectoryInfo(AppContext.BaseDirectory);
-        while (directory is not null)
-        {
-            if (File.Exists(Path.Join(directory.FullName, "Csls.slnx")))
-            {
-                return directory.FullName;
-            }
-
-            directory = directory.Parent;
-        }
-
-        throw new DirectoryNotFoundException("The csls repository root was not found.");
-    }
-
-    private static string ResolveDotNetHost()
-    {
-        string? configuredHost = Environment.GetEnvironmentVariable("DOTNET_HOST_PATH");
-        return string.IsNullOrWhiteSpace(configuredHost) ? "dotnet" : configuredHost;
-    }
 }

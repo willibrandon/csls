@@ -34,12 +34,19 @@
   "forwardPorts": [
     4321
   ],
+  "mounts": [
+    "source=csls-${devcontainerId}-home-cache,target=/home/vscode/.cache,type=volume"
+  ],
   "portsAttributes": {
     "4321": {
       "label": "Documentation"
     }
   },
   "remoteEnv": {
+    "CSLS_ARTIFACTS_ROOT": "/home/vscode/.cache/csls/artifacts",
+    "CSLS_CACHE_ROOT": "/home/vscode/.cache",
+    "CSLS_DEV_CONTAINER": "true",
+    "CSLS_REPOSITORY_ROOT": "${containerWorkspaceFolder}",
     "CSLS_TOOLS_ROOT": "/home/vscode/.cache/csls/tools"
   },
   "postCreateCommand": [

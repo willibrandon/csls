@@ -26,17 +26,16 @@ public sealed class McpLanguageServerTests
     public async Task McpExposesAttachedLanguageServerSession()
     {
         string repositoryRoot = EditorToolResolver.FindRepositoryRoot();
+        string artifactsRoot = EditorToolResolver.ResolveArtifactsRoot(repositoryRoot);
         string workerPath = Path.Join(
-            repositoryRoot,
-            "artifacts",
+            artifactsRoot,
             "bin",
             "Csls.Worker",
             "debug",
             "csls-worker.dll");
         string mcpPath = Environment.GetEnvironmentVariable("CSLS_TEST_MCP_PATH") ??
             Path.Join(
-                repositoryRoot,
-                "artifacts",
+                artifactsRoot,
                 "bin",
                 "Csls.Mcp",
                 "debug",
@@ -44,8 +43,7 @@ public sealed class McpLanguageServerTests
         string mcpWorkerPath =
             Environment.GetEnvironmentVariable("CSLS_TEST_MCP_WORKER_PATH") ??
             Path.Join(
-                repositoryRoot,
-                "artifacts",
+                artifactsRoot,
                 "bin",
                 "Csls.Mcp.Worker",
                 "debug",

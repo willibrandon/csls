@@ -26,16 +26,15 @@ public sealed class CliLanguageServerTests
     public async Task SessionDiscoveryIgnoresPeerThatDisconnectsDuringHandshake()
     {
         string repositoryRoot = EditorToolResolver.FindRepositoryRoot();
+        string artifactsRoot = EditorToolResolver.ResolveArtifactsRoot(repositoryRoot);
         string cliPath = Path.Join(
-            repositoryRoot,
-            "artifacts",
+            artifactsRoot,
             "bin",
             "Csls.App",
             "debug",
             "csls.dll");
         string cliWorkerPath = Path.Join(
-            repositoryRoot,
-            "artifacts",
+            artifactsRoot,
             "bin",
             "Csls.Cli.Worker",
             "debug",
@@ -79,17 +78,16 @@ public sealed class CliLanguageServerTests
     public async Task CliUsesVersionedControlServicesForLiveSession()
     {
         string repositoryRoot = EditorToolResolver.FindRepositoryRoot();
+        string artifactsRoot = EditorToolResolver.ResolveArtifactsRoot(repositoryRoot);
         string workerPath = Path.Join(
-            repositoryRoot,
-            "artifacts",
+            artifactsRoot,
             "bin",
             "Csls.Worker",
             "debug",
             "csls-worker.dll");
         string cliPath = Environment.GetEnvironmentVariable("CSLS_TEST_CLI_PATH") ??
             Path.Join(
-                repositoryRoot,
-                "artifacts",
+                artifactsRoot,
                 "bin",
                 "Csls.App",
                 "debug",
@@ -97,8 +95,7 @@ public sealed class CliLanguageServerTests
         string cliWorkerPath =
             Environment.GetEnvironmentVariable("CSLS_TEST_CLI_WORKER_PATH") ??
             Path.Join(
-                repositoryRoot,
-                "artifacts",
+                artifactsRoot,
                 "bin",
                 "Csls.Cli.Worker",
                 "debug",
