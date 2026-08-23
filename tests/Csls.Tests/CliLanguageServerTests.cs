@@ -717,6 +717,175 @@ public sealed class CliLanguageServerTests
     }
 
     /// <summary>
+    /// Lists, cancels, and traces a live Roslyn analyzer request through the public CLI.
+    /// </summary>
+    [TestMethod]
+    public async Task CliControlsLiveRequestTracing()
+    {
+        string repositoryRoot = EditorToolResolver.FindRepositoryRoot();
+        string artifactsRoot = EditorToolResolver.ResolveArtifactsRoot(repositoryRoot);
+        string workerPath = Path.Join(
+            artifactsRoot,
+            "bin",
+            "Csls.Worker",
+            "debug",
+            "csls-worker.dll");
+        string cliPath = Path.Join(
+            artifactsRoot,
+            "bin",
+            "Csls.App",
+            "debug",
+            "csls.dll");
+        string cliWorkerPath = Path.Join(
+            artifactsRoot,
+            "bin",
+            "Csls.Cli.Worker",
+            "debug",
+            "csls-cli-worker.dll");
+        Assert.IsTrue(File.Exists(workerPath), $"Worker not found at {workerPath}.");
+        Assert.IsTrue(File.Exists(cliPath), $"CLI launcher not found at {cliPath}.");
+        Assert.IsTrue(File.Exists(cliWorkerPath), $"CLI worker not found at {cliWorkerPath}.");
+        CancellationProbeFixture fixture = await CancellationProbeFixture.CreateAsync(
+            repositoryRoot,
+            TestContext.CancellationToken).ConfigureAwait(false);
+        await using ConfiguredAsyncDisposable fixtureCleanup = fixture.ConfigureAwait(false);
+        var lsp = LspProcessSession.Start(
+            "csls-cli-cancellation-worker",
+            EditorToolResolver.ResolveDotNetHost(),
+            [workerPath],
+            fixture.RootPath);
+        await using ConfiguredAsyncDisposable lspCleanup = lsp.ConfigureAwait(false);
+        await lsp.InitializeAsync(
+            fixture.RootPath,
+            TestContext.CancellationToken).ConfigureAwait(false);
+        await lsp.OpenDocumentAsync(
+            fixture.DocumentPath,
+            CancellationProbeFixture.DocumentText).ConfigureAwait(false);
+        string processId = lsp.ProcessId.ToString(CultureInfo.InvariantCulture);
+
+        (int startExitCode, string startOutput, string startError) = await RunCliAsync(
+            cliPath,
+            cliWorkerPath,
+            fixture.RootPath,
+            ["trace", "start", "--session", processId, "--json"],
+            TestContext.CancellationToken).ConfigureAwait(false);
+        Assert.AreEqual(0, startExitCode, $"{startError}{Environment.NewLine}{startOutput}");
+        Guid traceId;
+        using (var startDocument = JsonDocument.Parse(startOutput))
+        {
+            JsonElement root = startDocument.RootElement;
+            AssertSuccessfulEnvelope(root);
+            JsonElement trace = root.GetProperty("data");
+            Assert.IsTrue(trace.GetProperty("isActive").GetBoolean());
+            traceId = trace.GetProperty("traceId").GetGuid();
+        }
+
+        Task<DocumentDiagnosticReport> diagnosticRequest = lsp.RequestDiagnosticsAsync(
+            fixture.DocumentPath,
+            previousResultId: null,
+            TestContext.CancellationToken);
+        await FileTextWaiter.WaitAsync(
+            fixture.MarkerPath,
+            "started",
+            TimeSpan.FromSeconds(60),
+            TestContext.CancellationToken).ConfigureAwait(false);
+        (int listExitCode, string listOutput, string listError) = await RunCliAsync(
+            cliPath,
+            cliWorkerPath,
+            fixture.RootPath,
+            ["requests", "list", "--session", processId, "--json"],
+            TestContext.CancellationToken).ConfigureAwait(false);
+        Assert.AreEqual(0, listExitCode, $"{listError}{Environment.NewLine}{listOutput}");
+        Guid correlationId;
+        long workspaceGeneration;
+        using (var listDocument = JsonDocument.Parse(listOutput))
+        {
+            JsonElement root = listDocument.RootElement;
+            AssertSuccessfulEnvelope(root);
+            JsonElement data = root.GetProperty("data");
+            Assert.IsTrue(data.GetProperty("trace").GetProperty("isActive").GetBoolean());
+            JsonElement request = data
+                .GetProperty("activeRequests")
+                .EnumerateArray()
+                .Single(static item =>
+                    item.GetProperty("name").GetString() == "textDocument/diagnostic");
+            Assert.AreEqual("Running", request.GetProperty("status").GetString());
+            correlationId = request.GetProperty("correlationId").GetGuid();
+            workspaceGeneration = request.GetProperty("workspaceGeneration").GetInt64();
+        }
+
+        (int cancelExitCode, string cancelOutput, string cancelError) = await RunCliAsync(
+            cliPath,
+            cliWorkerPath,
+            fixture.RootPath,
+            [
+                "requests",
+                "cancel",
+                correlationId.ToString("D"),
+                "--session",
+                processId,
+                "--json"
+            ],
+            TestContext.CancellationToken).ConfigureAwait(false);
+        Assert.AreEqual(0, cancelExitCode, $"{cancelError}{Environment.NewLine}{cancelOutput}");
+        using (var cancelDocument = JsonDocument.Parse(cancelOutput))
+        {
+            JsonElement root = cancelDocument.RootElement;
+            AssertSuccessfulEnvelope(root);
+            Assert.AreEqual(
+                correlationId,
+                root.GetProperty("data").GetProperty("correlationId").GetGuid());
+            Assert.IsTrue(
+                root.GetProperty("data").GetProperty("cancellationRequested").GetBoolean());
+        }
+
+        await FileTextWaiter.WaitAsync(
+            fixture.MarkerPath,
+            "canceled",
+            TimeSpan.FromSeconds(60),
+            TestContext.CancellationToken).ConfigureAwait(false);
+        TaskCanceledException? canceledRequest = null;
+        try
+        {
+            await diagnosticRequest.ConfigureAwait(false);
+        }
+        catch (TaskCanceledException exception)
+        {
+            canceledRequest = exception;
+        }
+
+        Assert.IsNotNull(canceledRequest);
+        Assert.IsFalse(TestContext.CancellationToken.IsCancellationRequested);
+        (int stopExitCode, string stopOutput, string stopError) = await RunCliAsync(
+            cliPath,
+            cliWorkerPath,
+            fixture.RootPath,
+            ["trace", "stop", "--session", processId, "--json"],
+            TestContext.CancellationToken).ConfigureAwait(false);
+        Assert.AreEqual(0, stopExitCode, $"{stopError}{Environment.NewLine}{stopOutput}");
+        using (var stopDocument = JsonDocument.Parse(stopOutput))
+        {
+            JsonElement root = stopDocument.RootElement;
+            AssertSuccessfulEnvelope(root);
+            JsonElement trace = root.GetProperty("data");
+            Assert.IsFalse(trace.GetProperty("isActive").GetBoolean());
+            Assert.AreEqual(traceId, trace.GetProperty("traceId").GetGuid());
+            JsonElement entry = trace
+                .GetProperty("entries")
+                .EnumerateArray()
+                .Single(item => item.GetProperty("correlationId").GetGuid() == correlationId);
+            Assert.AreEqual("Canceled", entry.GetProperty("status").GetString());
+            Assert.AreEqual(
+                workspaceGeneration,
+                entry.GetProperty("workspaceGeneration").GetInt64());
+        }
+
+        string diagnostics = await lsp.ShutdownAsync(
+            TestContext.CancellationToken).ConfigureAwait(false);
+        Assert.DoesNotContain("Unhandled exception", diagnostics, StringComparison.Ordinal);
+    }
+
+    /// <summary>
     /// Restores, reloads, restarts, and clears a real session while preserving its unsaved overlay.
     /// </summary>
     [TestMethod]

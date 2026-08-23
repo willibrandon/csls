@@ -111,6 +111,7 @@ public sealed partial class LanguageServer
     {
         EnsureRunning();
         return _scheduler.ScheduleAsync(
+            feature,
             RequestMode.ReadOnly,
             () => _workspaceManager.Generation,
             async context =>

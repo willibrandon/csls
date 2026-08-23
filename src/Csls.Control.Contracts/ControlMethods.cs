@@ -16,6 +16,21 @@ public static class ControlMethods
     public const string GetDashboardSnapshot = "csls/control/v1/dashboard/get";
 
     /// <summary>
+    /// Gets the method that cancels one live request by correlation identifier.
+    /// </summary>
+    public const string CancelRequest = "csls/control/v1/requests/cancel";
+
+    /// <summary>
+    /// Gets the method that starts bounded request lifecycle tracing.
+    /// </summary>
+    public const string StartTrace = "csls/control/v1/trace/start";
+
+    /// <summary>
+    /// Gets the method that stops bounded request lifecycle tracing.
+    /// </summary>
+    public const string StopTrace = "csls/control/v1/trace/stop";
+
+    /// <summary>
     /// Gets the method that restores every loaded workspace entry point.
     /// </summary>
     public const string RestoreWorkspace = "csls/control/v1/workspace/restore";

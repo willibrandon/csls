@@ -27,7 +27,14 @@ of `--workspace`, `--session`, or `--socket` is required.
 
 The server provides tools for diagnostics, completion, hover, navigation, symbol
 search, signature help, rename, formatting, code actions, workspace inspection,
-restore, reload, build-host restart, and cache clearing.
+restore, reload, build-host restart, cache clearing, live request inspection,
+request cancellation, and bounded request tracing.
+
+`list_requests` returns active correlation identifiers and the current trace
+state. `cancel_request` delivers cancellation to one live request. `start_trace`
+begins a new in-memory trace, and `stop_trace` returns its retained lifecycle
+entries. Tool annotations mark cancellation as destructive and all state-changing
+tools as non-read-only.
 
 Resources expose the current session and workspace plus individual projects,
 documents, and document diagnostics. Prompts cover C# diagnosis, explanations,

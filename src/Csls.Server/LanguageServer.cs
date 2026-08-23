@@ -57,6 +57,32 @@ public sealed partial class LanguageServer : ILspRpcTarget, IAsyncDisposable
     public RequestSchedulerSnapshot GetRequestSchedulerSnapshot() => _scheduler.GetSnapshot();
 
     /// <summary>
+    /// Attempts to cancel one live scheduled request by correlation identifier.
+    /// </summary>
+    /// <param name="correlationId">The stable request correlation identifier.</param>
+    /// <returns>True when cancellation was delivered to a live request.</returns>
+    public Task<bool> TryCancelRequestAsync(Guid correlationId) =>
+        _scheduler.TryCancelAsync(correlationId);
+
+    /// <summary>
+    /// Starts one bounded trace of scheduled request lifecycle activity.
+    /// </summary>
+    /// <returns>The newly active trace observation.</returns>
+    public RequestTraceSnapshot StartRequestTrace() => _scheduler.StartTrace();
+
+    /// <summary>
+    /// Stops the active request trace and returns its final observation.
+    /// </summary>
+    /// <returns>The stopped trace observation.</returns>
+    public RequestTraceSnapshot StopRequestTrace() => _scheduler.StopTrace();
+
+    /// <summary>
+    /// Gets the current or most recently stopped request trace observation.
+    /// </summary>
+    /// <returns>The current bounded trace observation.</returns>
+    public RequestTraceSnapshot GetRequestTraceSnapshot() => _scheduler.GetTraceSnapshot();
+
+    /// <summary>
     /// Gets the number of encoded semantic-token results retained by this session.
     /// </summary>
     public int SemanticTokenCacheEntries => _semanticTokensCache.Count;
@@ -71,6 +97,7 @@ public sealed partial class LanguageServer : ILspRpcTarget, IAsyncDisposable
         bool includeDiagnostics,
         CancellationToken cancellationToken) =>
         _scheduler.ScheduleAsync(
+            "workspace/inspect",
             RequestMode.ReadOnly,
             () => _workspaceManager.Generation,
             context => new ValueTask<WorkspaceInspectionSnapshot>(
@@ -88,6 +115,7 @@ public sealed partial class LanguageServer : ILspRpcTarget, IAsyncDisposable
         Transition(ServerLifecycleState.Created, ServerLifecycleState.InitializeResponded);
         string[] rootPaths = ResolveRootPaths(parameters);
         await _scheduler.ScheduleAsync(
+            "initialize",
             RequestMode.ReadWrite,
             () => _workspaceManager.Generation,
             async context =>
@@ -216,6 +244,7 @@ public sealed partial class LanguageServer : ILspRpcTarget, IAsyncDisposable
         ArgumentNullException.ThrowIfNull(parameters);
         EnsureRunning();
         return _scheduler.ScheduleAsync(
+            "textDocument/didOpen",
             RequestMode.ReadWrite,
             () => _workspaceManager.Generation,
             async context =>
@@ -236,6 +265,7 @@ public sealed partial class LanguageServer : ILspRpcTarget, IAsyncDisposable
         ArgumentNullException.ThrowIfNull(parameters);
         EnsureRunning();
         return _scheduler.ScheduleAsync(
+            "textDocument/didChange",
             RequestMode.ReadWrite,
             () => _workspaceManager.Generation,
             async context =>
@@ -256,6 +286,7 @@ public sealed partial class LanguageServer : ILspRpcTarget, IAsyncDisposable
         ArgumentNullException.ThrowIfNull(parameters);
         EnsureRunning();
         return _scheduler.ScheduleAsync(
+            "textDocument/didClose",
             RequestMode.ReadWrite,
             () => _workspaceManager.Generation,
             async context =>
@@ -287,6 +318,7 @@ public sealed partial class LanguageServer : ILspRpcTarget, IAsyncDisposable
         ArgumentNullException.ThrowIfNull(parameters);
         EnsureRunning();
         return _scheduler.ScheduleAsync(
+            "textDocument/diagnostic",
             RequestMode.ReadOnly,
             () => _workspaceManager.Generation,
             async context =>
@@ -313,6 +345,7 @@ public sealed partial class LanguageServer : ILspRpcTarget, IAsyncDisposable
         ArgumentNullException.ThrowIfNull(parameters);
         EnsureRunning();
         return _scheduler.ScheduleAsync(
+            "textDocument/completion",
             RequestMode.ReadOnly,
             () => _workspaceManager.Generation,
             async context =>
@@ -339,6 +372,7 @@ public sealed partial class LanguageServer : ILspRpcTarget, IAsyncDisposable
         ArgumentNullException.ThrowIfNull(parameters);
         EnsureRunning();
         return _scheduler.ScheduleAsync(
+            "textDocument/definition",
             RequestMode.ReadOnly,
             () => _workspaceManager.Generation,
             async context =>
@@ -365,6 +399,7 @@ public sealed partial class LanguageServer : ILspRpcTarget, IAsyncDisposable
         ArgumentNullException.ThrowIfNull(parameters);
         EnsureRunning();
         return _scheduler.ScheduleAsync(
+            "textDocument/declaration",
             RequestMode.ReadOnly,
             () => _workspaceManager.Generation,
             async context =>
@@ -391,6 +426,7 @@ public sealed partial class LanguageServer : ILspRpcTarget, IAsyncDisposable
         ArgumentNullException.ThrowIfNull(parameters);
         EnsureRunning();
         return _scheduler.ScheduleAsync(
+            "textDocument/typeDefinition",
             RequestMode.ReadOnly,
             () => _workspaceManager.Generation,
             async context =>
@@ -417,6 +453,7 @@ public sealed partial class LanguageServer : ILspRpcTarget, IAsyncDisposable
         ArgumentNullException.ThrowIfNull(parameters);
         EnsureRunning();
         return _scheduler.ScheduleAsync(
+            "textDocument/implementation",
             RequestMode.ReadOnly,
             () => _workspaceManager.Generation,
             async context =>
@@ -443,6 +480,7 @@ public sealed partial class LanguageServer : ILspRpcTarget, IAsyncDisposable
         ArgumentNullException.ThrowIfNull(parameters);
         EnsureRunning();
         return _scheduler.ScheduleAsync(
+            "textDocument/selectionRange",
             RequestMode.ReadOnly,
             () => _workspaceManager.Generation,
             async context =>
@@ -469,6 +507,7 @@ public sealed partial class LanguageServer : ILspRpcTarget, IAsyncDisposable
         ArgumentNullException.ThrowIfNull(parameters);
         EnsureRunning();
         return _scheduler.ScheduleAsync(
+            "textDocument/documentHighlight",
             RequestMode.ReadOnly,
             () => _workspaceManager.Generation,
             async context =>
@@ -495,6 +534,7 @@ public sealed partial class LanguageServer : ILspRpcTarget, IAsyncDisposable
         ArgumentNullException.ThrowIfNull(parameters);
         EnsureRunning();
         return _scheduler.ScheduleAsync(
+            "textDocument/references",
             RequestMode.ReadOnly,
             () => _workspaceManager.Generation,
             async context =>
@@ -521,6 +561,7 @@ public sealed partial class LanguageServer : ILspRpcTarget, IAsyncDisposable
         ArgumentNullException.ThrowIfNull(parameters);
         EnsureRunning();
         return _scheduler.ScheduleAsync(
+            "textDocument/hover",
             RequestMode.ReadOnly,
             () => _workspaceManager.Generation,
             async context =>
@@ -543,6 +584,7 @@ public sealed partial class LanguageServer : ILspRpcTarget, IAsyncDisposable
         ArgumentNullException.ThrowIfNull(parameters);
         EnsureRunning();
         return _scheduler.ScheduleAsync(
+            "textDocument/documentSymbol",
             RequestMode.ReadOnly,
             () => _workspaceManager.Generation,
             async context =>
@@ -569,6 +611,7 @@ public sealed partial class LanguageServer : ILspRpcTarget, IAsyncDisposable
         ArgumentNullException.ThrowIfNull(parameters);
         EnsureRunning();
         return _scheduler.ScheduleAsync(
+            "workspace/symbol",
             RequestMode.ReadOnly,
             () => _workspaceManager.Generation,
             async context =>
@@ -595,6 +638,7 @@ public sealed partial class LanguageServer : ILspRpcTarget, IAsyncDisposable
         ArgumentNullException.ThrowIfNull(symbol);
         EnsureRunning();
         return _scheduler.ScheduleAsync(
+            "workspaceSymbol/resolve",
             RequestMode.ReadOnly,
             () => _workspaceManager.Generation,
             context =>
@@ -613,6 +657,7 @@ public sealed partial class LanguageServer : ILspRpcTarget, IAsyncDisposable
         ArgumentNullException.ThrowIfNull(parameters);
         EnsureRunning();
         return _scheduler.ScheduleAsync(
+            "textDocument/signatureHelp",
             RequestMode.ReadOnly,
             () => _workspaceManager.Generation,
             async context =>
@@ -635,6 +680,7 @@ public sealed partial class LanguageServer : ILspRpcTarget, IAsyncDisposable
         ArgumentNullException.ThrowIfNull(parameters);
         EnsureRunning();
         return _scheduler.ScheduleAsync(
+            "textDocument/prepareRename",
             RequestMode.ReadOnly,
             () => _workspaceManager.Generation,
             async context =>
@@ -657,6 +703,7 @@ public sealed partial class LanguageServer : ILspRpcTarget, IAsyncDisposable
         ArgumentNullException.ThrowIfNull(parameters);
         EnsureRunning();
         return _scheduler.ScheduleAsync(
+            "textDocument/rename",
             RequestMode.ReadOnly,
             () => _workspaceManager.Generation,
             async context =>
@@ -683,6 +730,7 @@ public sealed partial class LanguageServer : ILspRpcTarget, IAsyncDisposable
         ArgumentNullException.ThrowIfNull(parameters);
         EnsureRunning();
         return _scheduler.ScheduleAsync(
+            "textDocument/formatting",
             RequestMode.ReadOnly,
             () => _workspaceManager.Generation,
             async context =>
@@ -709,6 +757,7 @@ public sealed partial class LanguageServer : ILspRpcTarget, IAsyncDisposable
         ArgumentNullException.ThrowIfNull(parameters);
         EnsureRunning();
         return _scheduler.ScheduleAsync(
+            "textDocument/codeAction",
             RequestMode.ReadOnly,
             () => _workspaceManager.Generation,
             async context =>
@@ -740,6 +789,7 @@ public sealed partial class LanguageServer : ILspRpcTarget, IAsyncDisposable
         ArgumentNullException.ThrowIfNull(parameters);
         EnsureRunning();
         return _scheduler.ScheduleAsync(
+            "csls/edit/renamePreview",
             RequestMode.ReadOnly,
             () => _workspaceManager.Generation,
             async context =>
@@ -774,6 +824,7 @@ public sealed partial class LanguageServer : ILspRpcTarget, IAsyncDisposable
         ArgumentNullException.ThrowIfNull(parameters);
         EnsureRunning();
         return _scheduler.ScheduleAsync(
+            "csls/edit/formattingPreview",
             RequestMode.ReadOnly,
             () => _workspaceManager.Generation,
             async context =>
@@ -811,6 +862,7 @@ public sealed partial class LanguageServer : ILspRpcTarget, IAsyncDisposable
         ArgumentNullException.ThrowIfNull(parameters);
         EnsureRunning();
         return _scheduler.ScheduleAsync<IReadOnlyList<CodeActionEditSnapshot>>(
+            "csls/edit/codeActions",
             RequestMode.ReadOnly,
             () => _workspaceManager.Generation,
             async context =>
@@ -857,6 +909,7 @@ public sealed partial class LanguageServer : ILspRpcTarget, IAsyncDisposable
         ArgumentNullException.ThrowIfNull(snapshot);
         EnsureRunning();
         return _scheduler.ScheduleAsync(
+            "csls/edit/apply",
             RequestMode.ReadWrite,
             () => _workspaceManager.Generation,
             context => new ValueTask<long>(_workspaceManager.ApplyWorkspaceEditAsync(

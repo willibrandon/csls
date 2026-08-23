@@ -26,6 +26,17 @@ internal static class ControlMethodRegistry
             ControlMethods.GetDashboardSnapshot,
             new Func<ControlDashboardRequest, CancellationToken, Task<ControlDashboardSnapshot>>(
                 target.GetDashboardSnapshotAsync));
+        AddParameterObjectMethod(
+            rpc,
+            ControlMethods.CancelRequest,
+            new Func<ControlCancelRequest, CancellationToken, Task<ControlCancelRequestResult>>(
+                target.CancelRequestAsync));
+        rpc.AddLocalRpcMethod(
+            ControlMethods.StartTrace,
+            new Func<CancellationToken, Task<ControlTraceInfo>>(target.StartTraceAsync));
+        rpc.AddLocalRpcMethod(
+            ControlMethods.StopTrace,
+            new Func<CancellationToken, Task<ControlTraceInfo>>(target.StopTraceAsync));
         rpc.AddLocalRpcMethod(
             ControlMethods.RestoreWorkspace,
             new Func<CancellationToken, Task<ControlWorkspaceOperationResult>>(

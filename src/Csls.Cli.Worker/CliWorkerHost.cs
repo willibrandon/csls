@@ -42,6 +42,18 @@ internal static class CliWorkerHost
                         arguments,
                         writeJson,
                         cancellationToken).ConfigureAwait(false),
+                    "requests-list" => await ListRequestsAsync(
+                        arguments,
+                        writeJson,
+                        cancellationToken).ConfigureAwait(false),
+                    "requests-cancel" => await CancelRequestAsync(
+                        arguments,
+                        writeJson,
+                        cancellationToken).ConfigureAwait(false),
+                    "trace-operation" => await RunTraceOperationAsync(
+                        arguments,
+                        writeJson,
+                        cancellationToken).ConfigureAwait(false),
                     "query-hover" => await QueryHoverAsync(arguments, writeJson, cancellationToken)
                         .ConfigureAwait(false),
                     "query-diagnostics" => await QueryDiagnosticsAsync(
@@ -172,6 +184,98 @@ internal static class CliWorkerHost
                 $"The launcher supplied an unknown workspace operation: {arguments[1]}")
         };
         CliOutputWriter.WriteWorkspaceOperation(result, writeJson);
+        return 0;
+    }
+
+    private static async Task<int> ListRequestsAsync(
+        IReadOnlyList<string> arguments,
+        bool writeJson,
+        CancellationToken cancellationToken)
+    {
+        if (arguments.Count != 4 ||
+            !int.TryParse(
+                arguments[1],
+                NumberStyles.None,
+                CultureInfo.InvariantCulture,
+                out int processId))
+        {
+            return Fail("invalid-request", "The launcher supplied an invalid request list.", writeJson);
+        }
+
+        ControlSessionInfo session = await ControlSessionDiscovery.ResolveAsync(
+            processId,
+            string.IsNullOrWhiteSpace(arguments[2]) ? null : arguments[2],
+            cancellationToken).ConfigureAwait(false);
+        var client = new ControlRpcClient(session.SocketPath);
+        await using ConfiguredAsyncDisposable clientCleanup = client.ConfigureAwait(false);
+        ControlDashboardSnapshot dashboard = await client.GetDashboardSnapshotAsync(
+            new ControlDashboardRequest { IncludeDiagnostics = false },
+            cancellationToken).ConfigureAwait(false);
+        CliOutputWriter.WriteRequests(dashboard.Requests, writeJson);
+        return 0;
+    }
+
+    private static async Task<int> CancelRequestAsync(
+        IReadOnlyList<string> arguments,
+        bool writeJson,
+        CancellationToken cancellationToken)
+    {
+        if (arguments.Count != 5 ||
+            !int.TryParse(
+                arguments[1],
+                NumberStyles.None,
+                CultureInfo.InvariantCulture,
+                out int processId) ||
+            !Guid.TryParseExact(arguments[3], "D", out Guid correlationId))
+        {
+            return Fail(
+                "invalid-request",
+                "The launcher supplied an invalid request cancellation.",
+                writeJson);
+        }
+
+        ControlSessionInfo session = await ControlSessionDiscovery.ResolveAsync(
+            processId,
+            string.IsNullOrWhiteSpace(arguments[2]) ? null : arguments[2],
+            cancellationToken).ConfigureAwait(false);
+        var client = new ControlRpcClient(session.SocketPath);
+        await using ConfiguredAsyncDisposable clientCleanup = client.ConfigureAwait(false);
+        ControlCancelRequestResult result = await client.CancelRequestAsync(
+            new ControlCancelRequest { CorrelationId = correlationId },
+            cancellationToken).ConfigureAwait(false);
+        CliOutputWriter.WriteRequestCancellation(result, writeJson);
+        return result.CancellationRequested ? 0 : 1;
+    }
+
+    private static async Task<int> RunTraceOperationAsync(
+        IReadOnlyList<string> arguments,
+        bool writeJson,
+        CancellationToken cancellationToken)
+    {
+        if (arguments.Count != 5 ||
+            !int.TryParse(
+                arguments[2],
+                NumberStyles.None,
+                CultureInfo.InvariantCulture,
+                out int processId))
+        {
+            return Fail("invalid-request", "The launcher supplied an invalid trace request.", writeJson);
+        }
+
+        ControlSessionInfo session = await ControlSessionDiscovery.ResolveAsync(
+            processId,
+            string.IsNullOrWhiteSpace(arguments[3]) ? null : arguments[3],
+            cancellationToken).ConfigureAwait(false);
+        var client = new ControlRpcClient(session.SocketPath);
+        await using ConfiguredAsyncDisposable clientCleanup = client.ConfigureAwait(false);
+        ControlTraceInfo trace = arguments[1] switch
+        {
+            "start" => await client.StartTraceAsync(cancellationToken).ConfigureAwait(false),
+            "stop" => await client.StopTraceAsync(cancellationToken).ConfigureAwait(false),
+            _ => throw new InvalidDataException(
+                $"The launcher supplied an unknown trace operation: {arguments[1]}")
+        };
+        CliOutputWriter.WriteTrace(trace, writeJson);
         return 0;
     }
 

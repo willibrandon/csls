@@ -834,6 +834,230 @@ public sealed class McpLanguageServerTests
         }
     }
 
+    /// <summary>
+    /// Cancels and traces a live Roslyn analyzer request through official MCP client calls.
+    /// </summary>
+    [TestMethod]
+    public async Task McpCancelsLiveAnalyzerRequestAndReturnsTrace()
+    {
+        string repositoryRoot = EditorToolResolver.FindRepositoryRoot();
+        string artifactsRoot = EditorToolResolver.ResolveArtifactsRoot(repositoryRoot);
+        string workerPath = Path.Join(
+            artifactsRoot,
+            "bin",
+            "Csls.Worker",
+            "debug",
+            "csls-worker.dll");
+        string mcpPath = Path.Join(
+            artifactsRoot,
+            "bin",
+            "Csls.Mcp",
+            "debug",
+            "csls-mcp.dll");
+        string mcpWorkerPath = Path.Join(
+            artifactsRoot,
+            "bin",
+            "Csls.Mcp.Worker",
+            "debug",
+            "csls-mcp-worker.dll");
+        Assert.IsTrue(File.Exists(workerPath), $"Worker not found at {workerPath}.");
+        Assert.IsTrue(File.Exists(mcpPath), $"MCP launcher not found at {mcpPath}.");
+        Assert.IsTrue(File.Exists(mcpWorkerPath), $"MCP worker not found at {mcpWorkerPath}.");
+        CancellationProbeFixture fixture = await CancellationProbeFixture.CreateAsync(
+            repositoryRoot,
+            TestContext.CancellationToken).ConfigureAwait(false);
+        await using ConfiguredAsyncDisposable fixtureCleanup = fixture.ConfigureAwait(false);
+        var lsp = LspProcessSession.Start(
+            "csls-mcp-cancellation-worker",
+            EditorToolResolver.ResolveDotNetHost(),
+            [workerPath],
+            fixture.RootPath);
+        await using ConfiguredAsyncDisposable lspCleanup = lsp.ConfigureAwait(false);
+        await lsp.InitializeAsync(
+            fixture.RootPath,
+            TestContext.CancellationToken).ConfigureAwait(false);
+        await lsp.OpenDocumentAsync(
+            fixture.DocumentPath,
+            CancellationProbeFixture.DocumentText).ConfigureAwait(false);
+
+        string dotnetHost = EditorToolResolver.ResolveDotNetHost();
+        Dictionary<string, string?> environment =
+            StdioClientTransportOptions.GetDefaultEnvironmentVariables();
+        environment["DOTNET_ROOT"] = Path.GetDirectoryName(dotnetHost);
+        environment["CSLS_MCP_WORKER_PATH"] = mcpWorkerPath;
+        bool isManagedLauncher = string.Equals(
+            Path.GetExtension(mcpPath),
+            ".dll",
+            StringComparison.OrdinalIgnoreCase);
+        List<string> arguments = [];
+        if (isManagedLauncher)
+        {
+            arguments.Add(mcpPath);
+        }
+
+        arguments.Add("--session");
+        arguments.Add(lsp.ProcessId.ToString(CultureInfo.InvariantCulture));
+        var transport = new StdioClientTransport(
+            new StdioClientTransportOptions
+            {
+                Command = isManagedLauncher ? dotnetHost : mcpPath,
+                Arguments = arguments,
+                Name = "csls-mcp-request-control",
+                WorkingDirectory = fixture.RootPath,
+                InheritEnvironmentVariables = false,
+                EnvironmentVariables = environment,
+                StandardErrorLines = TestContext.WriteLine
+            });
+        McpClient client = await McpClient.CreateAsync(
+            transport,
+            cancellationToken: TestContext.CancellationToken).ConfigureAwait(false);
+        try
+        {
+            IList<McpClientTool> tools = await client.ListToolsAsync(
+                cancellationToken: TestContext.CancellationToken).ConfigureAwait(false);
+            McpClientTool listTool = tools.Single(static tool => tool.Name == "list_requests");
+            McpClientTool cancelTool = tools.Single(static tool => tool.Name == "cancel_request");
+            McpClientTool startTool = tools.Single(static tool => tool.Name == "start_trace");
+            McpClientTool stopTool = tools.Single(static tool => tool.Name == "stop_trace");
+            Assert.IsNotNull(listTool.ProtocolTool.OutputSchema);
+            Assert.IsNotNull(cancelTool.ProtocolTool.OutputSchema);
+            Assert.IsNotNull(startTool.ProtocolTool.OutputSchema);
+            Assert.IsNotNull(stopTool.ProtocolTool.OutputSchema);
+            ToolAnnotations listAnnotations = listTool.ProtocolTool.Annotations
+                ?? throw new InvalidDataException("The request list tool has no annotations.");
+            Assert.IsNotNull(listAnnotations.ReadOnlyHint);
+            Assert.IsTrue(listAnnotations.ReadOnlyHint.Value);
+            Assert.IsNotNull(listAnnotations.DestructiveHint);
+            Assert.IsFalse(listAnnotations.DestructiveHint.Value);
+            Assert.IsNotNull(listAnnotations.IdempotentHint);
+            Assert.IsTrue(listAnnotations.IdempotentHint.Value);
+            Assert.IsNotNull(listAnnotations.OpenWorldHint);
+            Assert.IsFalse(listAnnotations.OpenWorldHint.Value);
+            ToolAnnotations cancelAnnotations = cancelTool.ProtocolTool.Annotations
+                ?? throw new InvalidDataException("The request cancellation tool has no annotations.");
+            Assert.IsNotNull(cancelAnnotations.ReadOnlyHint);
+            Assert.IsFalse(cancelAnnotations.ReadOnlyHint.Value);
+            Assert.IsNotNull(cancelAnnotations.DestructiveHint);
+            Assert.IsTrue(cancelAnnotations.DestructiveHint.Value);
+            Assert.IsNotNull(cancelAnnotations.IdempotentHint);
+            Assert.IsTrue(cancelAnnotations.IdempotentHint.Value);
+            Assert.IsNotNull(cancelAnnotations.OpenWorldHint);
+            Assert.IsFalse(cancelAnnotations.OpenWorldHint.Value);
+            ToolAnnotations startAnnotations = startTool.ProtocolTool.Annotations
+                ?? throw new InvalidDataException("The trace start tool has no annotations.");
+            Assert.IsNotNull(startAnnotations.ReadOnlyHint);
+            Assert.IsFalse(startAnnotations.ReadOnlyHint.Value);
+            Assert.IsNotNull(startAnnotations.DestructiveHint);
+            Assert.IsFalse(startAnnotations.DestructiveHint.Value);
+            Assert.IsNotNull(startAnnotations.IdempotentHint);
+            Assert.IsFalse(startAnnotations.IdempotentHint.Value);
+            Assert.IsNotNull(startAnnotations.OpenWorldHint);
+            Assert.IsFalse(startAnnotations.OpenWorldHint.Value);
+            ToolAnnotations stopAnnotations = stopTool.ProtocolTool.Annotations
+                ?? throw new InvalidDataException("The trace stop tool has no annotations.");
+            Assert.IsNotNull(stopAnnotations.ReadOnlyHint);
+            Assert.IsFalse(stopAnnotations.ReadOnlyHint.Value);
+            Assert.IsNotNull(stopAnnotations.DestructiveHint);
+            Assert.IsFalse(stopAnnotations.DestructiveHint.Value);
+            Assert.IsNotNull(stopAnnotations.IdempotentHint);
+            Assert.IsFalse(stopAnnotations.IdempotentHint.Value);
+            Assert.IsNotNull(stopAnnotations.OpenWorldHint);
+            Assert.IsFalse(stopAnnotations.OpenWorldHint.Value);
+
+            CallToolResult invalidCancellation = await client.CallToolAsync(
+                "cancel_request",
+                new Dictionary<string, object?>
+                {
+                    ["correlationId"] = "not-a-correlation-id"
+                },
+                cancellationToken: TestContext.CancellationToken).ConfigureAwait(false);
+            Assert.IsTrue(invalidCancellation.IsError);
+            Assert.IsNull(invalidCancellation.StructuredContent);
+
+            CallToolResult startResult = await client.CallToolAsync(
+                "start_trace",
+                cancellationToken: TestContext.CancellationToken).ConfigureAwait(false);
+            Assert.IsNull(startResult.IsError);
+            Assert.IsTrue(startResult.StructuredContent.HasValue);
+            ControlTraceInfo startedTrace = startResult.StructuredContent.Value.Deserialize(
+                ControlJsonSerializerContext.Default.ControlTraceInfo)
+                ?? throw new InvalidDataException("MCP returned no started trace value.");
+            Assert.IsTrue(startedTrace.IsActive);
+            Assert.IsNotNull(startedTrace.TraceId);
+
+            Task<CallToolResult> diagnosticRequest = client.CallToolAsync(
+                "get_diagnostics",
+                new Dictionary<string, object?>
+                {
+                    ["documentPath"] = fixture.DocumentPath
+                },
+                cancellationToken: TestContext.CancellationToken).AsTask();
+            await FileTextWaiter.WaitAsync(
+                fixture.MarkerPath,
+                "started",
+                TimeSpan.FromSeconds(60),
+                TestContext.CancellationToken).ConfigureAwait(false);
+            CallToolResult listResult = await client.CallToolAsync(
+                "list_requests",
+                cancellationToken: TestContext.CancellationToken).ConfigureAwait(false);
+            Assert.IsNull(listResult.IsError);
+            Assert.IsTrue(listResult.StructuredContent.HasValue);
+            ControlRequestSchedulerInfo requests = listResult.StructuredContent.Value.Deserialize(
+                ControlJsonSerializerContext.Default.ControlRequestSchedulerInfo)
+                ?? throw new InvalidDataException("MCP returned no request scheduler value.");
+            ControlRequestInfo request = requests.ActiveRequests.Single(static item =>
+                item.Name == "textDocument/diagnostic");
+            Assert.AreEqual("Running", request.Status);
+            Assert.IsTrue(requests.Trace.IsActive);
+
+            CallToolResult cancelResult = await client.CallToolAsync(
+                "cancel_request",
+                new Dictionary<string, object?>
+                {
+                    ["correlationId"] = request.CorrelationId.ToString("D")
+                },
+                cancellationToken: TestContext.CancellationToken).ConfigureAwait(false);
+            Assert.IsNull(cancelResult.IsError);
+            Assert.IsTrue(cancelResult.StructuredContent.HasValue);
+            ControlCancelRequestResult cancellation = cancelResult.StructuredContent.Value.Deserialize(
+                ControlJsonSerializerContext.Default.ControlCancelRequestResult)
+                ?? throw new InvalidDataException("MCP returned no request cancellation value.");
+            Assert.AreEqual(request.CorrelationId, cancellation.CorrelationId);
+            Assert.IsTrue(cancellation.CancellationRequested);
+            await FileTextWaiter.WaitAsync(
+                fixture.MarkerPath,
+                "canceled",
+                TimeSpan.FromSeconds(60),
+                TestContext.CancellationToken).ConfigureAwait(false);
+            CallToolResult diagnosticResult = await diagnosticRequest.ConfigureAwait(false);
+            Assert.IsTrue(diagnosticResult.IsError);
+
+            CallToolResult stopResult = await client.CallToolAsync(
+                "stop_trace",
+                cancellationToken: TestContext.CancellationToken).ConfigureAwait(false);
+            Assert.IsNull(stopResult.IsError);
+            Assert.IsTrue(stopResult.StructuredContent.HasValue);
+            ControlTraceInfo stoppedTrace = stopResult.StructuredContent.Value.Deserialize(
+                ControlJsonSerializerContext.Default.ControlTraceInfo)
+                ?? throw new InvalidDataException("MCP returned no stopped trace value.");
+            Assert.IsFalse(stoppedTrace.IsActive);
+            Assert.AreEqual(startedTrace.TraceId, stoppedTrace.TraceId);
+            ControlTraceEntry entry = stoppedTrace.Entries.Single(item =>
+                item.CorrelationId == request.CorrelationId);
+            Assert.AreEqual("Canceled", entry.Status);
+            Assert.AreEqual(request.WorkspaceGeneration, entry.WorkspaceGeneration);
+            Assert.IsTrue(entry.IsCancellationRequested);
+        }
+        finally
+        {
+            await client.DisposeAsync().ConfigureAwait(false);
+        }
+
+        string diagnostics = await lsp.ShutdownAsync(
+            TestContext.CancellationToken).ConfigureAwait(false);
+        Assert.DoesNotContain("Unhandled exception", diagnostics, StringComparison.Ordinal);
+    }
+
     private static async Task<ControlWorkspaceOperationResult> CallWorkspaceOperationAsync(
         McpClient client,
         string toolName,

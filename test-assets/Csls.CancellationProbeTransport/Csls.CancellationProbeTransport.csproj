@@ -1,0 +1,11 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>netstandard2.0</TargetFramework>
+    <CslsAllowAlternateTargetFramework>true</CslsAllowAlternateTargetFramework>
+    <AssemblyName>Csls.CancellationProbeTransport</AssemblyName>
+    <RootNamespace>Csls.Testing</RootNamespace>
+    <Description>Cross-process marker transport for the real Roslyn cancellation probe.</Description>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <IsAotCompatible>false</IsAotCompatible>
+  </PropertyGroup>
+</Project>

@@ -61,7 +61,16 @@ public sealed partial class WorkspaceManager
                     WorkspaceRoot = rootPath,
                     Language = project.Language,
                     DocumentCount = project.DocumentIds.Count,
-                    AnalyzerReferenceCount = project.AnalyzerReferences.Count
+                    AnalyzerReferenceCount = project.AnalyzerReferences.Count,
+                    AnalyzerPaths =
+                    [
+                        .. project.AnalyzerReferences
+                            .Select(static reference => reference.FullPath)
+                            .Where(static path => path is not null)
+                            .Cast<string>()
+                            .Distinct(PathComparer)
+                            .OrderBy(static path => path, PathComparer)
+                    ]
                 });
                 foreach (Document document in project.Documents.OrderBy(
                     static document => document.FilePath ?? document.Name,

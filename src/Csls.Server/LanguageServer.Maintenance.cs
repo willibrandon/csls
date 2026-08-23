@@ -12,7 +12,10 @@ public sealed partial class LanguageServer
     /// <returns>The completed workspace maintenance result.</returns>
     public Task<WorkspaceMaintenanceResult> ReloadWorkspaceAsync(
         CancellationToken cancellationToken) =>
-        ScheduleMaintenanceAsync(_workspaceManager.ReloadAsync, cancellationToken);
+        ScheduleMaintenanceAsync(
+            "csls/workspace/reload",
+            _workspaceManager.ReloadAsync,
+            cancellationToken);
 
     /// <summary>
     /// Restores every workspace entry point and reloads the resulting Roslyn state.
@@ -21,7 +24,10 @@ public sealed partial class LanguageServer
     /// <returns>The completed workspace maintenance result.</returns>
     public Task<WorkspaceMaintenanceResult> RestoreWorkspaceAsync(
         CancellationToken cancellationToken) =>
-        ScheduleMaintenanceAsync(_workspaceManager.RestoreAsync, cancellationToken);
+        ScheduleMaintenanceAsync(
+            "csls/workspace/restore",
+            _workspaceManager.RestoreAsync,
+            cancellationToken);
 
     /// <summary>
     /// Recreates every Roslyn workspace host while preserving open document overlays.
@@ -30,7 +36,10 @@ public sealed partial class LanguageServer
     /// <returns>The completed workspace maintenance result.</returns>
     public Task<WorkspaceMaintenanceResult> RestartBuildHostsAsync(
         CancellationToken cancellationToken) =>
-        ScheduleMaintenanceAsync(_workspaceManager.RestartBuildHostsAsync, cancellationToken);
+        ScheduleMaintenanceAsync(
+            "csls/buildHost/restart",
+            _workspaceManager.RestartBuildHostsAsync,
+            cancellationToken);
 
     /// <summary>
     /// Removes retained diagnostic and semantic-token results through ordered mutation scheduling.
@@ -42,6 +51,7 @@ public sealed partial class LanguageServer
     {
         EnsureRunning();
         return _scheduler.ScheduleAsync(
+            "csls/cache/clear",
             RequestMode.ReadWrite,
             () => _workspaceManager.Generation,
             context =>
@@ -62,11 +72,13 @@ public sealed partial class LanguageServer
     }
 
     private Task<WorkspaceMaintenanceResult> ScheduleMaintenanceAsync(
+        string name,
         Func<CancellationToken, Task<WorkspaceMaintenanceResult>> operation,
         CancellationToken cancellationToken)
     {
         EnsureRunning();
         return _scheduler.ScheduleAsync(
+            name,
             RequestMode.ReadWrite,
             () => _workspaceManager.Generation,
             async context =>

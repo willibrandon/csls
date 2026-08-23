@@ -40,6 +40,30 @@ csls workspace clear-cache --session 12345 --json
 restart preserve unsaved document text. `--workspace` may name a loaded root or
 a path inside it.
 
+## Requests and traces
+
+List live requests before canceling one by its stable correlation identifier:
+
+```console
+csls requests list --session 12345
+csls requests cancel 4ef66b8d-6e71-48df-96df-7b0e53d3801b --session 12345
+```
+
+Request cancellation reaches the token owned by the active Roslyn operation.
+The result reports whether the request was still live when cancellation was
+delivered.
+
+Tracing records bounded request lifecycle data in memory:
+
+```console
+csls trace start --session 12345
+csls trace stop --session 12345 --json
+```
+
+Each retained entry includes its correlation identifier, protocol operation,
+workspace generation, duration, completion state, and cancellation state. A new
+trace replaces the previous trace. Trace data is not written to disk.
+
 ## Safe edits
 
 Rename, formatting, and code actions return a preview by default. Add `--apply`

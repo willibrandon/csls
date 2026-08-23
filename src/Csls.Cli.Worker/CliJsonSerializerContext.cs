@@ -19,6 +19,11 @@ namespace Csls.Cli.Worker;
 [JsonSerializable(typeof(ControlEditPlan))]
 [JsonSerializable(typeof(ControlApplyEditPlanResult))]
 [JsonSerializable(typeof(ControlWorkspaceOperationResult))]
+[JsonSerializable(typeof(ControlCancelRequestResult))]
+[JsonSerializable(typeof(ControlRequestInfo))]
+[JsonSerializable(typeof(ControlRequestSchedulerInfo))]
+[JsonSerializable(typeof(ControlTraceEntry))]
+[JsonSerializable(typeof(ControlTraceInfo))]
 [JsonSerializable(typeof(ControlCodeActionPlan))]
 [JsonSerializable(typeof(ControlSessionInfo))]
 [JsonSerializable(typeof(CompletionItem))]
@@ -61,4 +66,6 @@ namespace Csls.Cli.Worker;
 [JsonSerializable(typeof(IReadOnlyList<TextDocumentEdit>))]
 [JsonSerializable(typeof(IReadOnlyList<ControlDocumentPrecondition>))]
 [JsonSerializable(typeof(IReadOnlyList<ControlCodeActionPlan>))]
+[JsonSerializable(typeof(IReadOnlyList<ControlRequestInfo>))]
+[JsonSerializable(typeof(IReadOnlyList<ControlTraceEntry>))]
 internal sealed partial class CliJsonSerializerContext : JsonSerializerContext;

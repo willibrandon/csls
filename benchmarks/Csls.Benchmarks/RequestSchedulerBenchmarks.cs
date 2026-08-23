@@ -15,6 +15,12 @@ public class RequestSchedulerBenchmarks : IAsyncDisposable
     private Func<long> _workspaceGenerationProvider = null!;
 
     /// <summary>
+    /// Gets or sets whether bounded request tracing is active during measurement.
+    /// </summary>
+    [Params(false, true)]
+    public bool TraceEnabled { get; set; }
+
+    /// <summary>
     /// Creates a single-lane scheduler and reusable delegates before measurement.
     /// </summary>
     [GlobalSetup]
@@ -26,6 +32,10 @@ public class RequestSchedulerBenchmarks : IAsyncDisposable
             backgroundConcurrency: 1);
         _workspaceGenerationProvider = static () => 1;
         _operation = static context => ValueTask.FromResult(context.Ordinal);
+        if (TraceEnabled)
+        {
+            _scheduler.StartTrace();
+        }
     }
 
     /// <summary>
@@ -34,6 +44,11 @@ public class RequestSchedulerBenchmarks : IAsyncDisposable
     [GlobalCleanup]
     public async ValueTask DisposeAsync()
     {
+        if (TraceEnabled)
+        {
+            _scheduler.StopTrace();
+        }
+
         await _scheduler.DisposeAsync().ConfigureAwait(false);
         GC.SuppressFinalize(this);
     }
@@ -59,6 +74,7 @@ public class RequestSchedulerBenchmarks : IAsyncDisposable
 
     private Task<long> ScheduleAsync(RequestMode mode) =>
         _scheduler.ScheduleAsync(
+            "benchmark/request",
             mode,
             _workspaceGenerationProvider,
             _operation,

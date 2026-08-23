@@ -85,6 +85,80 @@ workspaceCommand.Subcommands.Add(CreateWorkspaceOperationCommand(
     "Clear retained diagnostic, semantic-token, and pending-edit results."));
 rootCommand.Subcommands.Add(workspaceCommand);
 
+var requestsCommand = new Command(
+    "requests",
+    "Inspect and cancel requests in a live csls session.");
+Option<int?> requestsListSessionOption = CreateSessionOption();
+Option<string?> requestsListWorkspaceOption = CreateWorkspaceOption();
+var requestsListJsonOption = new Option<bool>("--json")
+{
+    Description = "Write the versioned machine-readable response envelope."
+};
+var requestsListCommand = new Command("list", "List queued and running requests.")
+{
+    requestsListSessionOption,
+    requestsListWorkspaceOption,
+    requestsListJsonOption
+};
+requestsListCommand.SetAction((parseResult, cancellationToken) =>
+    CliWorkerSupervisor.RunAsync(
+        [
+            "requests-list",
+            (parseResult.GetValue(requestsListSessionOption) ?? 0)
+                .ToString(CultureInfo.InvariantCulture),
+            NormalizeWorkspacePath(parseResult.GetValue(requestsListWorkspaceOption)),
+            parseResult.GetValue(requestsListJsonOption).ToString(CultureInfo.InvariantCulture)
+        ],
+        cancellationToken));
+requestsCommand.Subcommands.Add(requestsListCommand);
+
+var correlationIdArgument = new Argument<Guid>("correlation-id")
+{
+    Description = "Stable correlation identifier from the live request list."
+};
+correlationIdArgument.Validators.Add(static result =>
+{
+    if (result.GetValueOrDefault<Guid>() == Guid.Empty)
+    {
+        result.AddError("correlation-id cannot be empty.");
+    }
+});
+Option<int?> requestsCancelSessionOption = CreateSessionOption();
+Option<string?> requestsCancelWorkspaceOption = CreateWorkspaceOption();
+var requestsCancelJsonOption = new Option<bool>("--json")
+{
+    Description = "Write the versioned machine-readable response envelope."
+};
+var requestsCancelCommand = new Command("cancel", "Cancel one queued or running request.")
+{
+    correlationIdArgument,
+    requestsCancelSessionOption,
+    requestsCancelWorkspaceOption,
+    requestsCancelJsonOption
+};
+requestsCancelCommand.SetAction((parseResult, cancellationToken) =>
+    CliWorkerSupervisor.RunAsync(
+        [
+            "requests-cancel",
+            (parseResult.GetValue(requestsCancelSessionOption) ?? 0)
+                .ToString(CultureInfo.InvariantCulture),
+            NormalizeWorkspacePath(parseResult.GetValue(requestsCancelWorkspaceOption)),
+            parseResult.GetRequiredValue(correlationIdArgument).ToString("D"),
+            parseResult.GetValue(requestsCancelJsonOption).ToString(CultureInfo.InvariantCulture)
+        ],
+        cancellationToken));
+requestsCommand.Subcommands.Add(requestsCancelCommand);
+rootCommand.Subcommands.Add(requestsCommand);
+
+var traceCommand = new Command("trace", "Control bounded request lifecycle tracing.");
+traceCommand.Subcommands.Add(CreateTraceCommand(
+    "start",
+    "Start request lifecycle tracing for a live session."));
+traceCommand.Subcommands.Add(CreateTraceCommand(
+    "stop",
+    "Stop request lifecycle tracing and return its entries."));
+rootCommand.Subcommands.Add(traceCommand);
+
 var queryCommand = new Command("query", "Query language intelligence from a live csls session.");
 var hoverDocumentArgument = new Argument<string>("document")
 {
@@ -529,6 +603,34 @@ static Command CreateWorkspaceOperationCommand(string name, string description)
         CliWorkerSupervisor.RunAsync(
             [
                 "workspace-operation",
+                name,
+                (parseResult.GetValue(sessionOption) ?? 0)
+                    .ToString(CultureInfo.InvariantCulture),
+                NormalizeWorkspacePath(parseResult.GetValue(workspaceOption)),
+                parseResult.GetValue(jsonOption).ToString(CultureInfo.InvariantCulture)
+            ],
+            cancellationToken));
+    return command;
+}
+
+static Command CreateTraceCommand(string name, string description)
+{
+    Option<int?> sessionOption = CreateSessionOption();
+    Option<string?> workspaceOption = CreateWorkspaceOption();
+    var jsonOption = new Option<bool>("--json")
+    {
+        Description = "Write the versioned machine-readable response envelope."
+    };
+    var command = new Command(name, description)
+    {
+        sessionOption,
+        workspaceOption,
+        jsonOption
+    };
+    command.SetAction((parseResult, cancellationToken) =>
+        CliWorkerSupervisor.RunAsync(
+            [
+                "trace-operation",
                 name,
                 (parseResult.GetValue(sessionOption) ?? 0)
                     .ToString(CultureInfo.InvariantCulture),

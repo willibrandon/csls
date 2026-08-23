@@ -58,5 +58,10 @@ internal enum DashboardSection
     /// <summary>
     /// Shows recent structured worker logs.
     /// </summary>
-    Logs
+    Logs,
+
+    /// <summary>
+    /// Shows the active or most recently stopped bounded request trace.
+    /// </summary>
+    Traces
 }

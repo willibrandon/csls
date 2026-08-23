@@ -37,6 +37,7 @@ internal static class McpHost
 
             var tools = new CslsMcpTools(controlClient);
             var workspaceTools = new CslsMcpWorkspaceTools(controlClient);
+            var requestTools = new CslsMcpRequestTools(controlClient);
             var resources = new CslsMcpResources(controlClient);
             var prompts = new CslsMcpPrompts();
             HostApplicationBuilder builder = Host.CreateApplicationBuilder();
@@ -63,6 +64,7 @@ internal static class McpHost
                 .WithStdioServerTransport()
                 .WithTools(tools, ControlJson.CreateSerializerOptions())
                 .WithTools(workspaceTools, ControlJson.CreateSerializerOptions())
+                .WithTools(requestTools, ControlJson.CreateSerializerOptions())
                 .WithResources(resources)
                 .WithPrompts(prompts);
 

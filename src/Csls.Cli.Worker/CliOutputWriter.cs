@@ -104,6 +104,97 @@ internal static class CliOutputWriter
     }
 
     /// <summary>
+    /// Writes bounded scheduler activity and current tracing state.
+    /// </summary>
+    /// <param name="requests">The live scheduler observation.</param>
+    /// <param name="writeJson">Whether to write a machine-readable envelope.</param>
+    internal static void WriteRequests(
+        ControlRequestSchedulerInfo requests,
+        bool writeJson)
+    {
+        ArgumentNullException.ThrowIfNull(requests);
+        if (writeJson)
+        {
+            JsonElement data = JsonSerializer.SerializeToElement(
+                requests,
+                CliJsonSerializerContext.Default.ControlRequestSchedulerInfo);
+            WriteEnvelope(success: true, data);
+            return;
+        }
+
+        Console.Out.WriteLine(
+            $"Trace: {(requests.Trace.IsActive ? "active" : "inactive")}; " +
+            $"retained={requests.Trace.Entries.Count}; dropped={requests.Trace.DroppedEntries}");
+        if (requests.ActiveRequests.Count == 0)
+        {
+            Console.Out.WriteLine("No queued or running requests.");
+            return;
+        }
+
+        Console.Out.WriteLine("ORDINAL\tCORRELATION\tSTATUS\tMODE\tGENERATION\tNAME");
+        foreach (ControlRequestInfo request in requests.ActiveRequests)
+        {
+            Console.Out.WriteLine(
+                $"{request.Ordinal}\t{request.CorrelationId:D}\t{request.Status}\t" +
+                $"{request.Mode}\t{request.WorkspaceGeneration?.ToString(CultureInfo.InvariantCulture) ?? "queued"}\t{request.Name}");
+        }
+    }
+
+    /// <summary>
+    /// Writes the deterministic result of one request cancellation attempt.
+    /// </summary>
+    /// <param name="result">The request cancellation result.</param>
+    /// <param name="writeJson">Whether to write a machine-readable envelope.</param>
+    internal static void WriteRequestCancellation(
+        ControlCancelRequestResult result,
+        bool writeJson)
+    {
+        ArgumentNullException.ThrowIfNull(result);
+        if (writeJson)
+        {
+            JsonElement data = JsonSerializer.SerializeToElement(
+                result,
+                CliJsonSerializerContext.Default.ControlCancelRequestResult);
+            WriteEnvelope(result.CancellationRequested, data);
+            return;
+        }
+
+        Console.Out.WriteLine(
+            result.CancellationRequested
+                ? $"Cancellation requested for {result.CorrelationId:D}."
+                : $"No live request has correlation ID {result.CorrelationId:D}.");
+    }
+
+    /// <summary>
+    /// Writes the active or stopped bounded request lifecycle trace.
+    /// </summary>
+    /// <param name="trace">The request trace observation.</param>
+    /// <param name="writeJson">Whether to write a machine-readable envelope.</param>
+    internal static void WriteTrace(ControlTraceInfo trace, bool writeJson)
+    {
+        ArgumentNullException.ThrowIfNull(trace);
+        if (writeJson)
+        {
+            JsonElement data = JsonSerializer.SerializeToElement(
+                trace,
+                CliJsonSerializerContext.Default.ControlTraceInfo);
+            WriteEnvelope(success: true, data);
+            return;
+        }
+
+        Console.Out.WriteLine($"Trace: {trace.TraceId?.ToString("D") ?? "none"}");
+        Console.Out.WriteLine($"State: {(trace.IsActive ? "active" : "stopped")}");
+        Console.Out.WriteLine($"Entries: {trace.Entries.Count}");
+        Console.Out.WriteLine($"Dropped: {trace.DroppedEntries}");
+        foreach (ControlTraceEntry entry in trace.Entries)
+        {
+            Console.Out.WriteLine(
+                $"{entry.CorrelationId:D}\t{entry.Status}\t" +
+                $"{entry.DurationMilliseconds.ToString("F3", CultureInfo.InvariantCulture)} ms\t{entry.Name}");
+        }
+    }
+
+    /// <summary>
     /// Writes hover information returned by the shared control service.
     /// </summary>
     /// <param name="hover">The hover result.</param>

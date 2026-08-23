@@ -64,9 +64,14 @@ internal sealed class DashboardState
     /// Refreshes discovery and the currently selected live session.
     /// </summary>
     /// <returns>A task that completes after real control RPC calls finish.</returns>
-    internal Task RefreshAsync() => RefreshSessionsAsync(
-        Snapshot.Session.ProcessId,
-        workspacePath: null);
+    internal async Task RefreshAsync()
+    {
+        OperationStatus = "Refreshing live session state...";
+        await RefreshSessionsAsync(
+            Snapshot.Session.ProcessId,
+            workspacePath: null).ConfigureAwait(false);
+        OperationStatus = "Refreshed live session state.";
+    }
 
     /// <summary>
     /// Selects one dashboard section and evaluates diagnostics only when requested.
@@ -142,6 +147,60 @@ internal sealed class DashboardState
         }
     }
 
+    /// <summary>
+    /// Cancels one user-confirmed live request through the shared control service.
+    /// </summary>
+    /// <param name="correlationId">The live request correlation identifier.</param>
+    /// <returns>A task that completes after cancellation and dashboard refresh finish.</returns>
+    internal async Task CancelRequestAsync(Guid correlationId)
+    {
+        int processId = Snapshot.Session.ProcessId;
+        OperationStatus = $"Canceling request {correlationId:D}...";
+        try
+        {
+            var client = new ControlRpcClient(Snapshot.Session.SocketPath);
+            await using ConfiguredAsyncDisposable cleanup = client.ConfigureAwait(false);
+            ControlCancelRequestResult result = await client.CancelRequestAsync(
+                new ControlCancelRequest { CorrelationId = correlationId },
+                _cancellationToken).ConfigureAwait(false);
+            OperationStatus = result.CancellationRequested
+                ? $"Cancellation requested for {correlationId:D}."
+                : $"Request {correlationId:D} is no longer active.";
+            await LoadSnapshotAsync(processId, includeDiagnostics: false).ConfigureAwait(false);
+        }
+        catch (Exception exception) when (IsControlException(exception))
+        {
+            OperationStatus = $"Cancellation failed: {exception.Message}";
+        }
+    }
+
+    /// <summary>
+    /// Starts or stops user-confirmed request tracing through the shared control service.
+    /// </summary>
+    /// <param name="start">Whether to start rather than stop tracing.</param>
+    /// <returns>A task that completes after trace mutation and dashboard refresh finish.</returns>
+    internal async Task SetTraceAsync(bool start)
+    {
+        int processId = Snapshot.Session.ProcessId;
+        OperationStatus = start ? "Starting request trace..." : "Stopping request trace...";
+        try
+        {
+            var client = new ControlRpcClient(Snapshot.Session.SocketPath);
+            await using ConfiguredAsyncDisposable cleanup = client.ConfigureAwait(false);
+            ControlTraceInfo trace = start
+                ? await client.StartTraceAsync(_cancellationToken).ConfigureAwait(false)
+                : await client.StopTraceAsync(_cancellationToken).ConfigureAwait(false);
+            OperationStatus = trace.TraceId is Guid traceId
+                ? $"Request trace {traceId:D} is {(trace.IsActive ? "active" : "stopped")}."
+                : "No request trace is available.";
+            await LoadSnapshotAsync(processId, includeDiagnostics: false).ConfigureAwait(false);
+        }
+        catch (Exception exception) when (IsControlException(exception))
+        {
+            OperationStatus = $"Trace operation failed: {exception.Message}";
+        }
+    }
+
     private async Task RefreshSessionsAsync(int processId, string? workspacePath)
     {
         Sessions = await ControlSessionDiscovery
@@ -187,4 +246,12 @@ internal sealed class DashboardState
         DashboardOperation.ClearCaches => "clear caches",
         _ => throw new InvalidOperationException($"Unknown dashboard operation: {operation}.")
     };
+
+    private static bool IsControlException(Exception exception) =>
+        exception is IOException or
+            InvalidDataException or
+            UnauthorizedAccessException or
+            InvalidOperationException or
+            SocketException or
+            RemoteInvocationException;
 }

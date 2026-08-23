@@ -64,6 +64,7 @@ public sealed class ControlService : IControlRpcTarget
             .InspectWorkspaceAsync(request.IncludeDiagnostics, cancellationToken)
             .ConfigureAwait(false);
         RequestSchedulerSnapshot requests = _languageServer.GetRequestSchedulerSnapshot();
+        RequestTraceSnapshot trace = _languageServer.GetRequestTraceSnapshot();
         ControlSessionInfo session = await GetSessionAsync(cancellationToken).ConfigureAwait(false);
         return new ControlDashboardSnapshot
         {
@@ -88,7 +89,8 @@ public sealed class ControlService : IControlRpcTarget
                     WorkspaceRoot = item.WorkspaceRoot,
                     Language = item.Language,
                     DocumentCount = item.DocumentCount,
-                    AnalyzerReferenceCount = item.AnalyzerReferenceCount
+                    AnalyzerReferenceCount = item.AnalyzerReferenceCount,
+                    AnalyzerPaths = item.AnalyzerPaths
                 })
             ],
             Documents =
@@ -120,6 +122,7 @@ public sealed class ControlService : IControlRpcTarget
             DiagnosticsTruncated = workspace.DiagnosticsTruncated,
             Requests = new ControlRequestSchedulerInfo
             {
+                ActivityCapacity = requests.ActivityCapacity,
                 Capacity = requests.Capacity,
                 ForegroundConcurrency = requests.ForegroundConcurrency,
                 BackgroundConcurrency = requests.BackgroundConcurrency,
@@ -129,7 +132,14 @@ public sealed class ControlService : IControlRpcTarget
                 ActiveForegroundRequests = requests.ActiveForegroundRequests,
                 ActiveBackgroundRequests = requests.ActiveBackgroundRequests,
                 IsMutationActive = requests.IsMutationActive,
-                IsStopping = requests.IsStopping
+                IsStopping = requests.IsStopping,
+                TotalActiveRequests = requests.TotalActiveRequests,
+                ActiveRequestsTruncated = requests.ActiveRequestsTruncated,
+                ActiveRequests =
+                [
+                    .. requests.ActiveRequests.Select(CreateRequestInfo)
+                ],
+                Trace = CreateTraceInfo(trace)
             },
             BuildHosts =
             [
@@ -167,6 +177,37 @@ public sealed class ControlService : IControlRpcTarget
                 })
             ]
         };
+    }
+
+    /// <inheritdoc />
+    public async Task<ControlCancelRequestResult> CancelRequestAsync(
+        ControlCancelRequest request,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        cancellationToken.ThrowIfCancellationRequested();
+        bool cancellationRequested = await _languageServer
+            .TryCancelRequestAsync(request.CorrelationId)
+            .ConfigureAwait(false);
+        return new ControlCancelRequestResult
+        {
+            CorrelationId = request.CorrelationId,
+            CancellationRequested = cancellationRequested
+        };
+    }
+
+    /// <inheritdoc />
+    public Task<ControlTraceInfo> StartTraceAsync(CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        return Task.FromResult(CreateTraceInfo(_languageServer.StartRequestTrace()));
+    }
+
+    /// <inheritdoc />
+    public Task<ControlTraceInfo> StopTraceAsync(CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        return Task.FromResult(CreateTraceInfo(_languageServer.StopRequestTrace()));
     }
 
     /// <inheritdoc />
@@ -643,4 +684,46 @@ public sealed class ControlService : IControlRpcTarget
             Position = request.Position
         };
     }
+
+    private static ControlRequestInfo CreateRequestInfo(RequestActivitySnapshot request) => new()
+    {
+        Ordinal = request.Ordinal,
+        CorrelationId = request.CorrelationId,
+        Name = request.Name,
+        Mode = request.Mode.ToString(),
+        WorkspaceGeneration = request.WorkspaceGeneration,
+        AcceptedAt = request.AcceptedAt,
+        StartedAt = request.StartedAt,
+        IsCancellationRequested = request.IsCancellationRequested,
+        Status = request.Status.ToString()
+    };
+
+    private static ControlTraceInfo CreateTraceInfo(RequestTraceSnapshot trace) => new()
+    {
+        IsActive = trace.IsActive,
+        TraceId = trace.TraceId,
+        StartedAt = trace.StartedAt,
+        StoppedAt = trace.StoppedAt,
+        Capacity = trace.Capacity,
+        DroppedEntries = trace.DroppedEntries,
+        Entries =
+        [
+            .. trace.Entries.Select(static entry => new ControlTraceEntry
+            {
+                Ordinal = entry.Ordinal,
+                CorrelationId = entry.CorrelationId,
+                Name = entry.Name,
+                Mode = entry.Mode.ToString(),
+                WorkspaceGeneration = entry.WorkspaceGeneration,
+                AcceptedAt = entry.AcceptedAt,
+                StartedAt = entry.StartedAt,
+                CompletedAt = entry.CompletedAt,
+                DurationMilliseconds = entry.Duration.TotalMilliseconds,
+                IsCancellationRequested = entry.IsCancellationRequested,
+                Status = entry.Status.ToString(),
+                ExceptionType = entry.ExceptionType,
+                ExceptionMessage = entry.ExceptionMessage
+            })
+        ]
+    };
 }
