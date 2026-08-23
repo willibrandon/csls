@@ -65,7 +65,7 @@ jobs:
         run: dotnet run --file scripts/Export-ContainerImage.cs -- --image csls-devcontainer:ci --output artifacts/devcontainer/csls-devcontainer.tar
 
       - name: Scan the development container with Picket
-        uses: willibrandon/picket@115b9385bb001ac6ca6df3cc6539a98b60529f5b
+        uses: willibrandon/picket@4c9f7d28260bfe0a7334865c84db093519f6f57f
         with:
           docker-archive: artifacts/devcontainer/csls-devcontainer.tar
           cache-mode: secret-hash-only
