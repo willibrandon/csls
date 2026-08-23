@@ -31,6 +31,9 @@
     <Project Path="src/Csls.Worker/Csls.Worker.csproj" />
     <Project Path="src/Csls.Workspaces/Csls.Workspaces.csproj" />
   </Folder>
+  <Folder Name="/benchmarks/">
+    <Project Path="benchmarks/Csls.Benchmarks/Csls.Benchmarks.csproj" />
+  </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/Csls.SourceGen.Tests/Csls.SourceGen.Tests.csproj" />
     <Project Path="tests/Csls.TestProcessHost/Csls.TestProcessHost.csproj" />
