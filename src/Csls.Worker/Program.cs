@@ -21,6 +21,7 @@ builder.Logging.AddProvider(controlLogBuffer);
 builder.Services.AddSingleton(controlLogBuffer);
 builder.Services.AddSingleton<RequestScheduler>();
 builder.Services.AddSingleton<WorkspaceManager>();
+builder.Services.AddSingleton<LspClientConnection>();
 builder.Services.AddSingleton<LanguageServer>();
 builder.Services.AddSingleton<ControlService>();
 builder.Services.AddSingleton<IControlRpcTarget>(
@@ -42,12 +43,14 @@ try
     using IHost host = builder.Build();
     await host.StartAsync(shutdownSource.Token).ConfigureAwait(false);
     LanguageServer languageServer = host.Services.GetRequiredService<LanguageServer>();
+    LspClientConnection client = host.Services.GetRequiredService<LspClientConnection>();
     using Stream input = Console.OpenStandardInput();
     using Stream output = Console.OpenStandardOutput();
     await RunSessionAsync(
         input,
         output,
         languageServer,
+        client,
         shutdownSource.Token).ConfigureAwait(false);
 
     await host.StopAsync(CancellationToken.None).ConfigureAwait(false);
@@ -66,6 +69,7 @@ static async Task RunSessionAsync(
     Stream input,
     Stream output,
     LanguageServer languageServer,
+    LspClientConnection client,
     CancellationToken cancellationToken)
 {
     using var sessionSource = CancellationTokenSource.CreateLinkedTokenSource(
@@ -77,6 +81,7 @@ static async Task RunSessionAsync(
         input,
         output,
         languageServer,
+        client,
         sessionSource.Token);
     try
     {

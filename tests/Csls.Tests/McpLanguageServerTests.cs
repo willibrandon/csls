@@ -95,7 +95,7 @@ public sealed class McpLanguageServerTests
                 "csls-mcp-worker",
                 EditorToolResolver.ResolveDotNetHost(),
                 [workerPath],
-                fixturePath);
+                repositoryRoot);
             await using ConfiguredAsyncDisposable lspCleanup = lsp.ConfigureAwait(false);
             JsonElement initialization = await lsp.InitializeAsync(
                 fixturePath,
@@ -128,7 +128,7 @@ public sealed class McpLanguageServerTests
                     Command = isManagedLauncher ? dotnetHost : mcpPath,
                     Arguments = mcpArguments,
                     Name = "csls-mcp-integration",
-                    WorkingDirectory = fixturePath,
+                    WorkingDirectory = repositoryRoot,
                     InheritEnvironmentVariables = false,
                     EnvironmentVariables = environment,
                     StandardErrorLines = TestContext.WriteLine
@@ -871,7 +871,7 @@ public sealed class McpLanguageServerTests
             "csls-mcp-cancellation-worker",
             EditorToolResolver.ResolveDotNetHost(),
             [workerPath],
-            fixture.RootPath);
+            repositoryRoot);
         await using ConfiguredAsyncDisposable lspCleanup = lsp.ConfigureAwait(false);
         await lsp.InitializeAsync(
             fixture.RootPath,
@@ -903,7 +903,7 @@ public sealed class McpLanguageServerTests
                 Command = isManagedLauncher ? dotnetHost : mcpPath,
                 Arguments = arguments,
                 Name = "csls-mcp-request-control",
-                WorkingDirectory = fixture.RootPath,
+                WorkingDirectory = repositoryRoot,
                 InheritEnvironmentVariables = false,
                 EnvironmentVariables = environment,
                 StandardErrorLines = TestContext.WriteLine

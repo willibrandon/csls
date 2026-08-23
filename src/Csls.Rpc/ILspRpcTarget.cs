@@ -41,6 +41,26 @@ public interface ILspRpcTarget
     Task ExitAsync();
 
     /// <summary>
+    /// Applies pushed settings or refreshes settings through client configuration pull.
+    /// </summary>
+    /// <param name="parameters">The client configuration change payload.</param>
+    /// <param name="cancellationToken">The connection cancellation token.</param>
+    /// <returns>A task that completes after configuration mutation retires.</returns>
+    Task DidChangeConfigurationAsync(
+        DidChangeConfigurationParams parameters,
+        CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Adds and removes workspace folders while preserving retained document overlays.
+    /// </summary>
+    /// <param name="parameters">The ordered workspace-folder change.</param>
+    /// <param name="cancellationToken">The connection cancellation token.</param>
+    /// <returns>A task that completes after workspace mutation retires.</returns>
+    Task DidChangeWorkspaceFoldersAsync(
+        DidChangeWorkspaceFoldersParams parameters,
+        CancellationToken cancellationToken);
+
+    /// <summary>
     /// Opens a text document in the active workspace snapshot.
     /// </summary>
     /// <param name="parameters">The opened document and its complete contents.</param>

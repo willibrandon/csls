@@ -45,12 +45,14 @@ internal sealed class LspProcessSession : IAsyncDisposable
     /// <param name="fileName">The server executable path.</param>
     /// <param name="arguments">The server command-line arguments.</param>
     /// <param name="workingDirectory">The isolated server working directory.</param>
+    /// <param name="client">The optional bidirectional LSP client target.</param>
     /// <returns>A connected process session.</returns>
     internal static LspProcessSession Start(
         string displayName,
         string fileName,
         IReadOnlyList<string> arguments,
-        string workingDirectory)
+        string workingDirectory,
+        LspTestClient? client = null)
     {
         var startInfo = new ProcessStartInfo
         {
@@ -82,6 +84,21 @@ internal sealed class LspProcessSession : IAsyncDisposable
             CancelLocallyInvokedMethodsWhenConnectionIsClosed = true,
             DisplayName = displayName
         };
+        if (client is not null)
+        {
+            Func<ConfigurationParams, CancellationToken, Task<JsonElement?[]>> handler =
+                client.GetConfigurationAsync;
+            var attribute = new JsonRpcMethodAttribute("workspace/configuration")
+            {
+                UseSingleObjectParameterDeserialization = true
+            };
+            rpc.AddLocalRpcMethod(
+                handler.Method,
+                handler.Target ?? throw new InvalidOperationException(
+                    "The configuration handler has no client target."),
+                attribute);
+        }
+
         rpc.StartListening();
         return new LspProcessSession(
             process,
@@ -120,16 +137,65 @@ internal sealed class LspProcessSession : IAsyncDisposable
         JsonElement capabilities,
         CancellationToken cancellationToken)
     {
+        return await InitializeAsync(
+            [workspacePath],
+            capabilities,
+            initializationOptions: null,
+            cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Initializes the server with explicit folders, capabilities, and initialization settings.
+    /// </summary>
+    /// <param name="workspacePaths">The ordered absolute workspace directories.</param>
+    /// <param name="capabilities">The exact client capability object.</param>
+    /// <param name="initializationOptions">The optional initialization configuration payload.</param>
+    /// <param name="cancellationToken">The test cancellation token.</param>
+    /// <returns>The server initialization result.</returns>
+    internal async Task<JsonElement> InitializeAsync(
+        IReadOnlyList<string> workspacePaths,
+        JsonElement capabilities,
+        JsonElement? initializationOptions,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(workspacePaths);
+        if (workspacePaths.Count == 0)
+        {
+            throw new ArgumentException("At least one workspace path is required.", nameof(workspacePaths));
+        }
+
         return await _rpc.InvokeWithParameterObjectAsync<JsonElement>(
             "initialize",
             new InitializeParams
             {
                 ProcessId = Environment.ProcessId,
                 ClientInfo = new ClientInfo { Name = "Csls.ParityTests" },
-                RootUri = DocumentUri.FromFileSystemPath(workspacePath),
-                Capabilities = capabilities
+                RootUri = DocumentUri.FromFileSystemPath(workspacePaths[0]),
+                WorkspaceFolders =
+                [
+                    .. workspacePaths.Select(path => new WorkspaceFolder
+                    {
+                        Uri = DocumentUri.FromFileSystemPath(path),
+                        Name = Path.GetFileName(path)
+                    })
+                ],
+                Capabilities = capabilities,
+                InitializationOptions = initializationOptions
             },
             cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Sends the initialized notification once for this real process session.
+    /// </summary>
+    /// <returns>A task that completes after the notification is written.</returns>
+    internal Task CompleteInitializationAsync()
+    {
+        return Interlocked.Exchange(ref _initializationCompleted, 1) == 0
+            ? _rpc.NotifyWithParameterObjectAsync(
+                "initialized",
+                new InitializedParams())
+            : Task.CompletedTask;
     }
 
     /// <summary>
@@ -140,12 +206,7 @@ internal sealed class LspProcessSession : IAsyncDisposable
     /// <returns>A task that completes after both notifications are written.</returns>
     internal async Task OpenDocumentAsync(string documentPath, string documentText)
     {
-        if (Interlocked.Exchange(ref _initializationCompleted, 1) == 0)
-        {
-            await _rpc.NotifyWithParameterObjectAsync(
-                "initialized",
-                new InitializedParams()).ConfigureAwait(false);
-        }
+        await CompleteInitializationAsync().ConfigureAwait(false);
 
         await _rpc.NotifyWithParameterObjectAsync(
             "textDocument/didOpen",
@@ -160,6 +221,36 @@ internal sealed class LspProcessSession : IAsyncDisposable
                 }
             }).ConfigureAwait(false);
     }
+
+    /// <summary>
+    /// Signals that client configuration changed and should be pulled or applied.
+    /// </summary>
+    /// <param name="settings">The pushed configuration payload.</param>
+    /// <returns>A task that completes after the notification is written.</returns>
+    internal Task ChangeConfigurationAsync(JsonElement settings) =>
+        _rpc.NotifyWithParameterObjectAsync(
+            "workspace/didChangeConfiguration",
+            new DidChangeConfigurationParams { Settings = settings });
+
+    /// <summary>
+    /// Sends one real workspace-folder change notification to the server.
+    /// </summary>
+    /// <param name="added">The absolute workspace directories to add.</param>
+    /// <param name="removed">The absolute workspace directories to remove.</param>
+    /// <returns>A task that completes after the notification is written.</returns>
+    internal Task ChangeWorkspaceFoldersAsync(
+        IReadOnlyList<string> added,
+        IReadOnlyList<string> removed) =>
+        _rpc.NotifyWithParameterObjectAsync(
+            "workspace/didChangeWorkspaceFolders",
+            new DidChangeWorkspaceFoldersParams
+            {
+                Event = new WorkspaceFoldersChangeEvent
+                {
+                    Added = [.. added.Select(CreateWorkspaceFolder)],
+                    Removed = [.. removed.Select(CreateWorkspaceFolder)]
+                }
+            });
 
     /// <summary>
     /// Requests hover information at an exact UTF-16 document position.
@@ -625,6 +716,13 @@ internal sealed class LspProcessSession : IAsyncDisposable
                 Position = position
             },
             cancellationToken);
+
+    private static WorkspaceFolder CreateWorkspaceFolder(string path) =>
+        new()
+        {
+            Uri = DocumentUri.FromFileSystemPath(path),
+            Name = Path.GetFileName(path)
+        };
 
     /// <summary>
     /// Requests the hierarchical source declarations for one opened test document.

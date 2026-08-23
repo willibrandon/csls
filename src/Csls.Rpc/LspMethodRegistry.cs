@@ -33,6 +33,16 @@ public static class LspMethodRegistry
         rpc.AddLocalRpcMethod("exit", new Func<Task>(target.ExitAsync));
         AddParameterObjectMethod(
             rpc,
+            "workspace/didChangeConfiguration",
+            new Func<DidChangeConfigurationParams, CancellationToken, Task>(
+                target.DidChangeConfigurationAsync));
+        AddParameterObjectMethod(
+            rpc,
+            "workspace/didChangeWorkspaceFolders",
+            new Func<DidChangeWorkspaceFoldersParams, CancellationToken, Task>(
+                target.DidChangeWorkspaceFoldersAsync));
+        AddParameterObjectMethod(
+            rpc,
             "textDocument/didOpen",
             new Func<DidOpenTextDocumentParams, CancellationToken, Task>(target.DidOpenAsync));
         AddParameterObjectMethod(
