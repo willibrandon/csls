@@ -17,17 +17,26 @@ internal static class McpHost
     /// Runs the standard MCP transport until the client disconnects or cancellation is requested.
     /// </summary>
     /// <param name="socketPath">The attached csls control-socket path.</param>
+    /// <param name="unlinkSocketAfterConnect">Whether to unlink an exclusively owned socket after connecting.</param>
     /// <param name="cancellationToken">The host cancellation token.</param>
     /// <returns>The successful process exit code.</returns>
     internal static async Task<int> RunAsync(
         string socketPath,
+        bool unlinkSocketAfterConnect,
         CancellationToken cancellationToken)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(socketPath);
         var controlClient = new ControlRpcClient(socketPath);
         try
         {
+            if (unlinkSocketAfterConnect)
+            {
+                await controlClient.GetSessionAsync(cancellationToken).ConfigureAwait(false);
+                File.Delete(socketPath);
+            }
+
             var tools = new CslsMcpTools(controlClient);
+            var workspaceTools = new CslsMcpWorkspaceTools(controlClient);
             var resources = new CslsMcpResources(controlClient);
             var prompts = new CslsMcpPrompts();
             HostApplicationBuilder builder = Host.CreateApplicationBuilder();
@@ -53,6 +62,7 @@ internal static class McpHost
                 })
                 .WithStdioServerTransport()
                 .WithTools(tools, ControlJson.CreateSerializerOptions())
+                .WithTools(workspaceTools, ControlJson.CreateSerializerOptions())
                 .WithResources(resources)
                 .WithPrompts(prompts);
 

@@ -22,5 +22,6 @@
   <ItemGroup>
     <ProjectReference Include="../Csls.Control/Csls.Control.csproj" />
     <ProjectReference Include="../Csls.Control.Contracts/Csls.Control.Contracts.csproj" />
+    <ProjectReference Include="../Csls.Rpc/Csls.Rpc.csproj" />
   </ItemGroup>
 </Project>

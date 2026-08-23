@@ -13,15 +13,21 @@ internal static class McpWorkerSupervisor
     /// </summary>
     /// <param name="processId">The optional language-server process identifier.</param>
     /// <param name="socketPath">The optional explicit control socket path.</param>
+    /// <param name="workspacePath">The optional transient workspace path.</param>
     /// <param name="cancellationToken">The launcher cancellation token.</param>
     /// <returns>The MCP worker exit code.</returns>
     internal static async Task<int> RunAsync(
         int? processId,
         string? socketPath,
+        string? workspacePath,
         CancellationToken cancellationToken)
     {
         string workerPath = McpWorkerLocator.Resolve();
-        ProcessStartInfo startInfo = CreateStartInfo(workerPath, processId, socketPath);
+        ProcessStartInfo startInfo = CreateStartInfo(
+            workerPath,
+            processId,
+            socketPath,
+            workspacePath);
         using Process process = Process.Start(startInfo)
             ?? throw new InvalidOperationException("The csls MCP worker did not start.");
 
@@ -46,7 +52,8 @@ internal static class McpWorkerSupervisor
     private static ProcessStartInfo CreateStartInfo(
         string workerPath,
         int? processId,
-        string? socketPath)
+        string? socketPath,
+        string? workspacePath)
     {
         bool isManagedAssembly = string.Equals(
             Path.GetExtension(workerPath),
@@ -67,10 +74,15 @@ internal static class McpWorkerSupervisor
             startInfo.ArgumentList.Add("--session");
             startInfo.ArgumentList.Add(processId.Value.ToString(CultureInfo.InvariantCulture));
         }
-        else
+        else if (!string.IsNullOrWhiteSpace(socketPath))
         {
             startInfo.ArgumentList.Add("--socket");
-            startInfo.ArgumentList.Add(Path.GetFullPath(socketPath!));
+            startInfo.ArgumentList.Add(Path.GetFullPath(socketPath));
+        }
+        else
+        {
+            startInfo.ArgumentList.Add("--workspace");
+            startInfo.ArgumentList.Add(Path.GetFullPath(workspacePath!));
         }
 
         return startInfo;
