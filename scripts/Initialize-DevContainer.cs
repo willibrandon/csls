@@ -37,16 +37,25 @@ try
         string artifactsRoot = Environment.GetEnvironmentVariable("CSLS_ARTIFACTS_ROOT")
             ?? throw new InvalidOperationException(
                 "CSLS_ARTIFACTS_ROOT is required in the development container.");
-        string cacheRoot = Path.GetDirectoryName(artifactsRoot)
+        string cacheRoot = Environment.GetEnvironmentVariable("CSLS_CACHE_ROOT")
             ?? throw new InvalidOperationException(
-                "CSLS_ARTIFACTS_ROOT must have a parent directory.");
+                "CSLS_CACHE_ROOT is required in the development container.");
+        string normalizedCacheRoot = Path.GetFullPath(cacheRoot);
+        string normalizedArtifactsRoot = Path.GetFullPath(artifactsRoot);
+        if (!normalizedArtifactsRoot.StartsWith(
+                normalizedCacheRoot + Path.DirectorySeparatorChar,
+                StringComparison.Ordinal))
+        {
+            throw new InvalidOperationException(
+                "CSLS_ARTIFACTS_ROOT must be inside CSLS_CACHE_ROOT.");
+        }
+
         await RunCheckedAsync(
             "sudo",
             [
                 "chown",
-                "--recursive",
                 $"{Environment.UserName}:{Environment.UserName}",
-                cacheRoot
+                normalizedCacheRoot
             ],
             repositoryRoot).ConfigureAwait(false);
     }
