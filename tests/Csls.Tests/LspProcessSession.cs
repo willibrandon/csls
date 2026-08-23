@@ -508,6 +508,52 @@ internal sealed class LspProcessSession : IAsyncDisposable
             cancellationToken);
 
     /// <summary>
+    /// Requests stable .NET monikers for one test document position.
+    /// </summary>
+    /// <param name="documentPath">The absolute target document path.</param>
+    /// <param name="position">The target UTF-16 document position.</param>
+    /// <param name="cancellationToken">The test cancellation token.</param>
+    /// <returns>The resolved monikers, or an empty list when none are available.</returns>
+    internal Task<IReadOnlyList<Moniker>> RequestMonikersAsync(
+        string documentPath,
+        Position position,
+        CancellationToken cancellationToken) =>
+        _rpc.InvokeWithParameterObjectAsync<IReadOnlyList<Moniker>>(
+            "textDocument/moniker",
+            new MonikerParams
+            {
+                TextDocument = new TextDocumentIdentifier
+                {
+                    Uri = DocumentUri.FromFileSystemPath(documentPath)
+                },
+                Position = position
+            },
+            cancellationToken);
+
+    /// <summary>
+    /// Requests the raw JSON moniker response for protocol-shape assertions.
+    /// </summary>
+    /// <param name="documentPath">The absolute target document path.</param>
+    /// <param name="position">The target UTF-16 document position.</param>
+    /// <param name="cancellationToken">The test cancellation token.</param>
+    /// <returns>The raw JSON moniker array returned by the server.</returns>
+    internal Task<JsonElement> RequestMonikerJsonAsync(
+        string documentPath,
+        Position position,
+        CancellationToken cancellationToken) =>
+        _rpc.InvokeWithParameterObjectAsync<JsonElement>(
+            "textDocument/moniker",
+            new MonikerParams
+            {
+                TextDocument = new TextDocumentIdentifier
+                {
+                    Uri = DocumentUri.FromFileSystemPath(documentPath)
+                },
+                Position = position
+            },
+            cancellationToken);
+
+    /// <summary>
     /// Requests source text for one virtual C# document from the real server process.
     /// </summary>
     /// <param name="documentUri">The generated or metadata-backed document URI.</param>
