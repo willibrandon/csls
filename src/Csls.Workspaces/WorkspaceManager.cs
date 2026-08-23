@@ -1600,22 +1600,25 @@ public sealed partial class WorkspaceManager : IAsyncDisposable
                 symbolInfo = semanticModel.GetSymbolInfo(
                     constructorInitializer,
                     cancellationToken);
-                candidates = symbolInfo.CandidateSymbols.OfType<IMethodSymbol>();
+                candidates = [];
                 break;
             default:
                 return ([], null);
         }
 
         var methods = new List<IMethodSymbol>();
-        foreach (IMethodSymbol method in candidates
-            .Concat(symbolInfo.CandidateSymbols.OfType<IMethodSymbol>())
-            .Append(symbolInfo.Symbol as IMethodSymbol)
-            .OfType<IMethodSymbol>()
-            .Where(method => !methods.Any(candidate =>
-                SymbolEqualityComparer.Default.Equals(candidate, method))))
+        var seenMethods = new HashSet<IMethodSymbol>(SymbolEqualityComparer.Default);
+        foreach (IMethodSymbol method in candidates)
         {
-            methods.Add(method);
+            AddSignatureMethod(methods, seenMethods, method);
         }
+
+        foreach (ISymbol candidateSymbol in symbolInfo.CandidateSymbols)
+        {
+            AddSignatureMethod(methods, seenMethods, candidateSymbol);
+        }
+
+        AddSignatureMethod(methods, seenMethods, symbolInfo.Symbol);
 
         methods.Sort(static (left, right) =>
         {
@@ -1627,6 +1630,17 @@ public sealed partial class WorkspaceManager : IAsyncDisposable
                     right.ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat));
         });
         return (methods, symbolInfo.Symbol as IMethodSymbol);
+    }
+
+    private static void AddSignatureMethod(
+        List<IMethodSymbol> methods,
+        HashSet<IMethodSymbol> seenMethods,
+        ISymbol? symbol)
+    {
+        if (symbol is IMethodSymbol method && seenMethods.Add(method))
+        {
+            methods.Add(method);
+        }
     }
 
     private static int FindBestSignature(IReadOnlyList<IMethodSymbol> methods, int activeParameter)

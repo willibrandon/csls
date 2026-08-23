@@ -113,20 +113,15 @@ internal sealed class LspJsonRpcFormatter :
         ReadOnlySequence<byte> contentBuffer,
         Encoding encoding)
     {
-        if (encoding.CodePage != Encoding.UTF8.CodePage)
+        if (encoding.CodePage != Encoding.UTF8.CodePage ||
+            !ContainsNullLiteral(contentBuffer) ||
+            !HasNullParameters(contentBuffer))
         {
             return null;
         }
 
         using var document = JsonDocument.Parse(contentBuffer);
         JsonElement root = document.RootElement;
-        if (root.ValueKind != JsonValueKind.Object ||
-            !root.TryGetProperty(ParametersPropertyName, out JsonElement parameters) ||
-            parameters.ValueKind != JsonValueKind.Null)
-        {
-            return null;
-        }
-
         var buffer = new ArrayBufferWriter<byte>(checked((int)contentBuffer.Length));
         using (var writer = new Utf8JsonWriter(buffer))
         {
@@ -142,5 +137,55 @@ internal sealed class LspJsonRpcFormatter :
         }
 
         return buffer.WrittenSpan.ToArray();
+    }
+
+    private static bool ContainsNullLiteral(ReadOnlySequence<byte> contentBuffer)
+    {
+        ReadOnlySpan<byte> literal = "null"u8;
+        int matchedLength = 0;
+        foreach (ReadOnlyMemory<byte> memory in contentBuffer)
+        {
+            foreach (byte value in memory.Span)
+            {
+                if (value == literal[matchedLength])
+                {
+                    matchedLength++;
+                    if (matchedLength == literal.Length)
+                    {
+                        return true;
+                    }
+                }
+                else
+                {
+                    matchedLength = value == literal[0] ? 1 : 0;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    private static bool HasNullParameters(ReadOnlySequence<byte> contentBuffer)
+    {
+        var reader = new Utf8JsonReader(contentBuffer);
+        bool hasNullParameters = false;
+        while (reader.Read())
+        {
+            if (reader.TokenType != JsonTokenType.PropertyName ||
+                reader.CurrentDepth != 1 ||
+                !reader.ValueTextEquals("params"u8))
+            {
+                continue;
+            }
+
+            if (!reader.Read())
+            {
+                return false;
+            }
+
+            hasNullParameters = reader.TokenType == JsonTokenType.Null;
+        }
+
+        return hasNullParameters;
     }
 }
