@@ -66,6 +66,21 @@ public sealed record ServerCapabilities
     public SemanticTokensOptions? SemanticTokensProvider { get; init; }
 
     /// <summary>
+    /// Gets whether call-hierarchy requests are supported.
+    /// </summary>
+    public bool CallHierarchyProvider { get; init; }
+
+    /// <summary>
+    /// Gets whether type-hierarchy requests are supported.
+    /// </summary>
+    public bool TypeHierarchyProvider { get; init; }
+
+    /// <summary>
+    /// Gets the inlay-hint calculation and resolve behavior.
+    /// </summary>
+    public InlayHintOptions? InlayHintProvider { get; init; }
+
+    /// <summary>
     /// Gets whether source reference requests are supported.
     /// </summary>
     public bool ReferencesProvider { get; init; }

@@ -398,6 +398,157 @@ internal sealed class LspProcessSession : IAsyncDisposable
             cancellationToken);
 
     /// <summary>
+    /// Prepares a call-hierarchy item at one test document position.
+    /// </summary>
+    /// <param name="documentPath">The absolute target document path.</param>
+    /// <param name="position">The target UTF-16 document position.</param>
+    /// <param name="cancellationToken">The test cancellation token.</param>
+    /// <returns>The prepared callable items.</returns>
+    internal Task<IReadOnlyList<CallHierarchyItem>> PrepareCallHierarchyAsync(
+        string documentPath,
+        Position position,
+        CancellationToken cancellationToken) =>
+        _rpc.InvokeWithParameterObjectAsync<IReadOnlyList<CallHierarchyItem>>(
+            "textDocument/prepareCallHierarchy",
+            new CallHierarchyPrepareParams
+            {
+                TextDocument = new TextDocumentIdentifier
+                {
+                    Uri = DocumentUri.FromFileSystemPath(documentPath)
+                },
+                Position = position
+            },
+            cancellationToken);
+
+    /// <summary>
+    /// Requests incoming calls for one prepared test item.
+    /// </summary>
+    /// <param name="item">The prepared callable item.</param>
+    /// <param name="cancellationToken">The test cancellation token.</param>
+    /// <returns>The direct incoming calls.</returns>
+    internal Task<IReadOnlyList<CallHierarchyIncomingCall>> RequestIncomingCallsAsync(
+        CallHierarchyItem item,
+        CancellationToken cancellationToken) =>
+        _rpc.InvokeWithParameterObjectAsync<IReadOnlyList<CallHierarchyIncomingCall>>(
+            "callHierarchy/incomingCalls",
+            new CallHierarchyIncomingCallsParams
+            {
+                Item = item
+            },
+            cancellationToken);
+
+    /// <summary>
+    /// Requests outgoing calls for one prepared test item.
+    /// </summary>
+    /// <param name="item">The prepared callable item.</param>
+    /// <param name="cancellationToken">The test cancellation token.</param>
+    /// <returns>The direct outgoing calls.</returns>
+    internal Task<IReadOnlyList<CallHierarchyOutgoingCall>> RequestOutgoingCallsAsync(
+        CallHierarchyItem item,
+        CancellationToken cancellationToken) =>
+        _rpc.InvokeWithParameterObjectAsync<IReadOnlyList<CallHierarchyOutgoingCall>>(
+            "callHierarchy/outgoingCalls",
+            new CallHierarchyOutgoingCallsParams
+            {
+                Item = item
+            },
+            cancellationToken);
+
+    /// <summary>
+    /// Prepares a type-hierarchy item at one test document position.
+    /// </summary>
+    /// <param name="documentPath">The absolute target document path.</param>
+    /// <param name="position">The target UTF-16 document position.</param>
+    /// <param name="cancellationToken">The test cancellation token.</param>
+    /// <returns>The prepared type items.</returns>
+    internal Task<IReadOnlyList<TypeHierarchyItem>> PrepareTypeHierarchyAsync(
+        string documentPath,
+        Position position,
+        CancellationToken cancellationToken) =>
+        _rpc.InvokeWithParameterObjectAsync<IReadOnlyList<TypeHierarchyItem>>(
+            "textDocument/prepareTypeHierarchy",
+            new TypeHierarchyPrepareParams
+            {
+                TextDocument = new TextDocumentIdentifier
+                {
+                    Uri = DocumentUri.FromFileSystemPath(documentPath)
+                },
+                Position = position
+            },
+            cancellationToken);
+
+    /// <summary>
+    /// Requests direct supertypes for one prepared test item.
+    /// </summary>
+    /// <param name="item">The prepared type item.</param>
+    /// <param name="cancellationToken">The test cancellation token.</param>
+    /// <returns>The direct source supertypes.</returns>
+    internal Task<IReadOnlyList<TypeHierarchyItem>> RequestSupertypesAsync(
+        TypeHierarchyItem item,
+        CancellationToken cancellationToken) =>
+        _rpc.InvokeWithParameterObjectAsync<IReadOnlyList<TypeHierarchyItem>>(
+            "typeHierarchy/supertypes",
+            new TypeHierarchySupertypesParams
+            {
+                Item = item
+            },
+            cancellationToken);
+
+    /// <summary>
+    /// Requests direct subtypes for one prepared test item.
+    /// </summary>
+    /// <param name="item">The prepared type item.</param>
+    /// <param name="cancellationToken">The test cancellation token.</param>
+    /// <returns>The direct source subtypes.</returns>
+    internal Task<IReadOnlyList<TypeHierarchyItem>> RequestSubtypesAsync(
+        TypeHierarchyItem item,
+        CancellationToken cancellationToken) =>
+        _rpc.InvokeWithParameterObjectAsync<IReadOnlyList<TypeHierarchyItem>>(
+            "typeHierarchy/subtypes",
+            new TypeHierarchySubtypesParams
+            {
+                Item = item
+            },
+            cancellationToken);
+
+    /// <summary>
+    /// Requests semantic inlay hints in one visible test document range.
+    /// </summary>
+    /// <param name="documentPath">The absolute target document path.</param>
+    /// <param name="range">The visible UTF-16 range.</param>
+    /// <param name="cancellationToken">The test cancellation token.</param>
+    /// <returns>The ordered inlay hints.</returns>
+    internal Task<IReadOnlyList<InlayHint>> RequestInlayHintsAsync(
+        string documentPath,
+        LspRange range,
+        CancellationToken cancellationToken) =>
+        _rpc.InvokeWithParameterObjectAsync<IReadOnlyList<InlayHint>>(
+            "textDocument/inlayHint",
+            new InlayHintParams
+            {
+                TextDocument = new TextDocumentIdentifier
+                {
+                    Uri = DocumentUri.FromFileSystemPath(documentPath)
+                },
+                Range = range
+            },
+            cancellationToken);
+
+    /// <summary>
+    /// Resolves deferred semantic details for one test inlay hint.
+    /// </summary>
+    /// <param name="hint">The server-produced hint.</param>
+    /// <param name="cancellationToken">The test cancellation token.</param>
+    /// <returns>The resolved inlay hint.</returns>
+    internal Task<InlayHint> ResolveInlayHintAsync(
+        InlayHint hint,
+        CancellationToken cancellationToken) =>
+        _rpc.InvokeWithParameterObjectAsync<InlayHint>(
+            "inlayHint/resolve",
+            hint,
+            cancellationToken);
+
+    /// <summary>
     /// Requests source references for the symbol at one test document position.
     /// </summary>
     /// <param name="documentPath">The absolute target document path.</param>

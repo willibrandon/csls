@@ -181,6 +181,86 @@ public interface ILspRpcTarget
         CancellationToken cancellationToken);
 
     /// <summary>
+    /// Prepares a callable declaration for call-hierarchy expansion.
+    /// </summary>
+    /// <param name="parameters">The target source position.</param>
+    /// <param name="cancellationToken">The peer cancellation token.</param>
+    /// <returns>The prepared source item, or an empty list when unavailable.</returns>
+    Task<IReadOnlyList<CallHierarchyItem>> PrepareCallHierarchyAsync(
+        CallHierarchyPrepareParams parameters,
+        CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Finds source declarations that call a prepared hierarchy item.
+    /// </summary>
+    /// <param name="parameters">The prepared callable item.</param>
+    /// <param name="cancellationToken">The peer cancellation token.</param>
+    /// <returns>The bounded direct incoming calls.</returns>
+    Task<IReadOnlyList<CallHierarchyIncomingCall>> CallHierarchyIncomingCallsAsync(
+        CallHierarchyIncomingCallsParams parameters,
+        CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Finds source declarations called by a prepared hierarchy item.
+    /// </summary>
+    /// <param name="parameters">The prepared callable item.</param>
+    /// <param name="cancellationToken">The peer cancellation token.</param>
+    /// <returns>The bounded direct outgoing calls.</returns>
+    Task<IReadOnlyList<CallHierarchyOutgoingCall>> CallHierarchyOutgoingCallsAsync(
+        CallHierarchyOutgoingCallsParams parameters,
+        CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Prepares a source type declaration for type-hierarchy expansion.
+    /// </summary>
+    /// <param name="parameters">The target source position.</param>
+    /// <param name="cancellationToken">The peer cancellation token.</param>
+    /// <returns>The prepared source item, or an empty list when unavailable.</returns>
+    Task<IReadOnlyList<TypeHierarchyItem>> PrepareTypeHierarchyAsync(
+        TypeHierarchyPrepareParams parameters,
+        CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Finds direct source supertypes for a prepared type item.
+    /// </summary>
+    /// <param name="parameters">The prepared type item.</param>
+    /// <param name="cancellationToken">The peer cancellation token.</param>
+    /// <returns>The bounded direct source supertypes.</returns>
+    Task<IReadOnlyList<TypeHierarchyItem>> TypeHierarchySupertypesAsync(
+        TypeHierarchySupertypesParams parameters,
+        CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Finds direct source subtypes for a prepared type item.
+    /// </summary>
+    /// <param name="parameters">The prepared type item.</param>
+    /// <param name="cancellationToken">The peer cancellation token.</param>
+    /// <returns>The bounded direct source subtypes.</returns>
+    Task<IReadOnlyList<TypeHierarchyItem>> TypeHierarchySubtypesAsync(
+        TypeHierarchySubtypesParams parameters,
+        CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Gets semantic annotations for one visible document range.
+    /// </summary>
+    /// <param name="parameters">The target document and visible range.</param>
+    /// <param name="cancellationToken">The peer cancellation token.</param>
+    /// <returns>The bounded ordered inlay hints.</returns>
+    Task<IReadOnlyList<InlayHint>> InlayHintAsync(
+        InlayHintParams parameters,
+        CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Resolves deferred semantic details for an inlay hint.
+    /// </summary>
+    /// <param name="hint">A hint previously returned by this server.</param>
+    /// <param name="cancellationToken">The peer cancellation token.</param>
+    /// <returns>The hint populated with tooltip and acceptance edits.</returns>
+    Task<InlayHint> InlayHintResolveAsync(
+        InlayHint hint,
+        CancellationToken cancellationToken);
+
+    /// <summary>
     /// Finds source references for the symbol at one document position.
     /// </summary>
     /// <param name="parameters">The target position and declaration inclusion behavior.</param>

@@ -109,6 +109,12 @@ public sealed partial class LanguageServer : ILspRpcTarget, IAsyncDisposable
                     },
                     Range = false
                 },
+                CallHierarchyProvider = true,
+                TypeHierarchyProvider = true,
+                InlayHintProvider = new InlayHintOptions
+                {
+                    ResolveProvider = true
+                },
                 ReferencesProvider = true,
                 DocumentSymbolProvider = true,
                 WorkspaceSymbolProvider = new WorkspaceSymbolOptions

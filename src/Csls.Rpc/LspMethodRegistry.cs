@@ -99,6 +99,46 @@ public static class LspMethodRegistry
                 target.SemanticTokensFullDeltaAsync));
         AddParameterObjectMethod(
             rpc,
+            "textDocument/prepareCallHierarchy",
+            new Func<CallHierarchyPrepareParams, CancellationToken, Task<IReadOnlyList<CallHierarchyItem>>>(
+                target.PrepareCallHierarchyAsync));
+        AddParameterObjectMethod(
+            rpc,
+            "callHierarchy/incomingCalls",
+            new Func<CallHierarchyIncomingCallsParams, CancellationToken, Task<IReadOnlyList<CallHierarchyIncomingCall>>>(
+                target.CallHierarchyIncomingCallsAsync));
+        AddParameterObjectMethod(
+            rpc,
+            "callHierarchy/outgoingCalls",
+            new Func<CallHierarchyOutgoingCallsParams, CancellationToken, Task<IReadOnlyList<CallHierarchyOutgoingCall>>>(
+                target.CallHierarchyOutgoingCallsAsync));
+        AddParameterObjectMethod(
+            rpc,
+            "textDocument/prepareTypeHierarchy",
+            new Func<TypeHierarchyPrepareParams, CancellationToken, Task<IReadOnlyList<TypeHierarchyItem>>>(
+                target.PrepareTypeHierarchyAsync));
+        AddParameterObjectMethod(
+            rpc,
+            "typeHierarchy/supertypes",
+            new Func<TypeHierarchySupertypesParams, CancellationToken, Task<IReadOnlyList<TypeHierarchyItem>>>(
+                target.TypeHierarchySupertypesAsync));
+        AddParameterObjectMethod(
+            rpc,
+            "typeHierarchy/subtypes",
+            new Func<TypeHierarchySubtypesParams, CancellationToken, Task<IReadOnlyList<TypeHierarchyItem>>>(
+                target.TypeHierarchySubtypesAsync));
+        AddParameterObjectMethod(
+            rpc,
+            "textDocument/inlayHint",
+            new Func<InlayHintParams, CancellationToken, Task<IReadOnlyList<InlayHint>>>(
+                target.InlayHintAsync));
+        AddParameterObjectMethod(
+            rpc,
+            "inlayHint/resolve",
+            new Func<InlayHint, CancellationToken, Task<InlayHint>>(
+                target.InlayHintResolveAsync));
+        AddParameterObjectMethod(
+            rpc,
             "textDocument/references",
             new Func<ReferenceParams, CancellationToken, Task<IReadOnlyList<Location>>>(
                 target.ReferencesAsync));
