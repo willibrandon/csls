@@ -46,13 +46,15 @@ internal sealed class LspProcessSession : IAsyncDisposable
     /// <param name="arguments">The server command-line arguments.</param>
     /// <param name="workingDirectory">The isolated server working directory.</param>
     /// <param name="client">The optional bidirectional LSP client target.</param>
+    /// <param name="environmentVariables">The optional child-process environment overrides.</param>
     /// <returns>A connected process session.</returns>
     internal static LspProcessSession Start(
         string displayName,
         string fileName,
         IReadOnlyList<string> arguments,
         string workingDirectory,
-        LspTestClient? client = null)
+        LspTestClient? client = null,
+        IReadOnlyDictionary<string, string>? environmentVariables = null)
     {
         var startInfo = new ProcessStartInfo
         {
@@ -66,6 +68,14 @@ internal sealed class LspProcessSession : IAsyncDisposable
         foreach (string argument in arguments)
         {
             startInfo.ArgumentList.Add(argument);
+        }
+
+        if (environmentVariables is not null)
+        {
+            foreach ((string name, string value) in environmentVariables)
+            {
+                startInfo.Environment[name] = value;
+            }
         }
 
         Process process = Process.Start(startInfo)

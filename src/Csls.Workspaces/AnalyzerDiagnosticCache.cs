@@ -12,7 +12,7 @@ internal sealed class AnalyzerDiagnosticCache
 {
     private readonly ConcurrentDictionary<
         (long Generation, ProjectId ProjectId),
-        Task<ImmutableArray<RoslynDiagnostic>>> _entries = new();
+        AnalyzerDiagnosticCacheEntry> _entries = new();
 
     /// <summary>
     /// Gets the number of project diagnostic computations retained by the cache.
@@ -35,23 +35,54 @@ internal sealed class AnalyzerDiagnosticCache
     {
         ArgumentNullException.ThrowIfNull(project);
         ArgumentNullException.ThrowIfNull(factory);
+        cancellationToken.ThrowIfCancellationRequested();
         (long Generation, ProjectId ProjectId) key = (generation, project.Id);
-        Task<ImmutableArray<RoslynDiagnostic>> task = _entries.GetOrAdd(
-            key,
-            _ => factory(project, cancellationToken));
+        AnalyzerDiagnosticCacheEntry entry;
+        Task<ImmutableArray<RoslynDiagnostic>> computation;
+        while (true)
+        {
+            entry = _entries.GetOrAdd(
+                key,
+                static (_, state) => new AnalyzerDiagnosticCacheEntry(
+                    state.Project,
+                    state.Factory),
+                (Project: project, Factory: factory));
+            if (entry.TryAcquire(out computation))
+            {
+                break;
+            }
+
+            _entries.TryRemove(new KeyValuePair<
+                (long Generation, ProjectId ProjectId),
+                AnalyzerDiagnosticCacheEntry>(key, entry));
+        }
+
         try
         {
-            return await task.WaitAsync(cancellationToken).ConfigureAwait(false);
+            return await computation.WaitAsync(cancellationToken).ConfigureAwait(false);
         }
-        catch
+        finally
         {
-            _entries.TryRemove(key, out _);
-            throw;
+            if (entry.Release())
+            {
+                _entries.TryRemove(new KeyValuePair<
+                    (long Generation, ProjectId ProjectId),
+                    AnalyzerDiagnosticCacheEntry>(key, entry));
+            }
         }
     }
 
     /// <summary>
     /// Removes results associated with superseded workspace snapshots.
     /// </summary>
-    internal void Clear() => _entries.Clear();
+    internal void Clear()
+    {
+        foreach (KeyValuePair<
+            (long Generation, ProjectId ProjectId),
+            AnalyzerDiagnosticCacheEntry> entry in _entries)
+        {
+            entry.Value.Dispose();
+            _entries.TryRemove(entry);
+        }
+    }
 }
