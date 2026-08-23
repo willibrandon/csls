@@ -2,6 +2,7 @@ using Csls.Protocol;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.FindSymbols;
 using Microsoft.CodeAnalysis.Text;
+using System.Collections.Immutable;
 
 namespace Csls.Workspaces;
 
@@ -137,9 +138,11 @@ internal static class WorkspaceMonikerService
 
     private static SyntaxReference? GetFirstDeclaration(ISymbol symbol)
     {
+        ImmutableArray<SyntaxReference> declarations = symbol.DeclaringSyntaxReferences;
         SyntaxReference? first = null;
-        foreach (SyntaxReference candidate in symbol.DeclaringSyntaxReferences)
+        for (int index = 0; index < declarations.Length; index++)
         {
+            SyntaxReference candidate = declarations[index];
             if (first is null ||
                 StringComparer.Ordinal.Compare(
                     candidate.SyntaxTree.FilePath,
