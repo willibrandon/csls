@@ -100,6 +100,58 @@ public sealed class ControlSocketTests
     }
 
     /// <summary>
+    /// Shuts down cleanly while a real idle control connection is blocked on input.
+    /// </summary>
+    [TestMethod]
+    public async Task ShutdownClosesIdleControlConnectionCleanly()
+    {
+        string repositoryRoot = EditorToolResolver.FindRepositoryRoot();
+        string workerPath = Path.Join(
+            EditorToolResolver.ResolveArtifactsRoot(repositoryRoot),
+            "bin",
+            "Csls.Worker",
+            "debug",
+            "csls-worker.dll");
+        Assert.IsTrue(File.Exists(workerPath), $"Worker not found at {workerPath}.");
+
+        string fixturePath = Path.Join(
+            Path.GetTempPath(),
+            $"csls-control-shutdown-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(fixturePath);
+        try
+        {
+            await File.WriteAllTextAsync(
+                Path.Join(fixturePath, "Fixture.csproj"),
+                ProjectText,
+                TestContext.CancellationToken).ConfigureAwait(false);
+            var lsp = LspProcessSession.Start(
+                "csls-control-shutdown-worker",
+                EditorToolResolver.ResolveDotNetHost(),
+                [workerPath],
+                fixturePath);
+            await using ConfiguredAsyncDisposable lspCleanup = lsp.ConfigureAwait(false);
+            await lsp.InitializeAsync(
+                fixturePath,
+                TestContext.CancellationToken).ConfigureAwait(false);
+
+            var idleClient = new ControlRpcClient(ControlEndpoint.GetSocketPath(lsp.ProcessId));
+            await using ConfiguredAsyncDisposable idleClientCleanup =
+                idleClient.ConfigureAwait(false);
+            ControlSessionInfo session = await idleClient.GetSessionAsync(
+                TestContext.CancellationToken).ConfigureAwait(false);
+            Assert.AreEqual(lsp.ProcessId, session.ProcessId);
+
+            string diagnostics = await lsp.ShutdownAsync(
+                TestContext.CancellationToken).ConfigureAwait(false);
+            Assert.DoesNotContain("Unhandled exception", diagnostics, StringComparison.Ordinal);
+        }
+        finally
+        {
+            Directory.Delete(fixturePath, recursive: true);
+        }
+    }
+
+    /// <summary>
     /// Cancels a live Roslyn analyzer request and returns its exact lifecycle trace.
     /// </summary>
     [TestMethod]
