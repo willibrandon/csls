@@ -533,6 +533,110 @@ public sealed partial class WorkspaceManager : IAsyncDisposable
     }
 
     /// <summary>
+    /// Finds source declarations for the symbol at one immutable document position.
+    /// </summary>
+    /// <param name="parameters">The target document position.</param>
+    /// <param name="cancellationToken">The operation cancellation token.</param>
+    /// <returns>The bounded source declaration locations.</returns>
+    public async Task<IReadOnlyList<LspLocation>> GetDeclarationsAsync(
+        TextDocumentPositionParams parameters,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(parameters);
+        (Document? document, ISymbol? symbol) = await FindSymbolAsync(
+            parameters,
+            cancellationToken).ConfigureAwait(false);
+        if (document is null || symbol is null)
+        {
+            return [];
+        }
+
+        IReadOnlyList<LspLocation> declarations = CreateNavigationLocations(symbol.Locations);
+        if (declarations.Count > 0)
+        {
+            return declarations;
+        }
+
+        ISymbol? sourceSymbol = await SymbolFinder.FindSourceDefinitionAsync(
+            symbol,
+            document.Project.Solution,
+            cancellationToken).ConfigureAwait(false);
+        return sourceSymbol is null
+            ? []
+            : CreateNavigationLocations(sourceSymbol.Locations);
+    }
+
+    /// <summary>
+    /// Finds source definitions for the type of a symbol at one immutable document position.
+    /// </summary>
+    /// <param name="parameters">The target document position.</param>
+    /// <param name="cancellationToken">The operation cancellation token.</param>
+    /// <returns>The bounded source type-definition locations.</returns>
+    public async Task<IReadOnlyList<LspLocation>> GetTypeDefinitionsAsync(
+        TextDocumentPositionParams parameters,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(parameters);
+        (Document? document, ISymbol? symbol) = await FindSymbolAsync(
+            parameters,
+            cancellationToken).ConfigureAwait(false);
+        if (document is null || symbol is null)
+        {
+            return [];
+        }
+
+        ITypeSymbol? type = GetSymbolType(symbol);
+        if (type is null)
+        {
+            return [];
+        }
+
+        ISymbol typeDefinition = type.OriginalDefinition;
+        ISymbol sourceDefinition = await SymbolFinder.FindSourceDefinitionAsync(
+            typeDefinition,
+            document.Project.Solution,
+            cancellationToken).ConfigureAwait(false) ?? typeDefinition;
+        return CreateNavigationLocations(sourceDefinition.Locations);
+    }
+
+    /// <summary>
+    /// Finds source implementations for a symbol at one immutable document position.
+    /// </summary>
+    /// <param name="parameters">The target document position.</param>
+    /// <param name="cancellationToken">The operation cancellation token.</param>
+    /// <returns>The bounded source implementation locations.</returns>
+    public async Task<IReadOnlyList<LspLocation>> GetImplementationsAsync(
+        TextDocumentPositionParams parameters,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(parameters);
+        (Document? document, ISymbol? symbol) = await FindSymbolAsync(
+            parameters,
+            cancellationToken).ConfigureAwait(false);
+        if (document is null || symbol is null)
+        {
+            return [];
+        }
+
+        IEnumerable<ISymbol> implementations = await SymbolFinder.FindImplementationsAsync(
+            symbol,
+            document.Project.Solution,
+            cancellationToken: cancellationToken).ConfigureAwait(false);
+        var locations = new HashSet<LspLocation>();
+        foreach (ISymbol implementation in implementations)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            AddNavigationLocations(locations, implementation.Locations);
+            if (locations.Count >= MaximumNavigationLocations)
+            {
+                break;
+            }
+        }
+
+        return OrderNavigationLocations(locations);
+    }
+
+    /// <summary>
     /// Finds source references for the symbol at one immutable document position.
     /// </summary>
     /// <param name="parameters">The target position and declaration inclusion behavior.</param>
@@ -2408,6 +2512,12 @@ public sealed partial class WorkspaceManager : IAsyncDisposable
     {
         var locations = new HashSet<LspLocation>();
         AddNavigationLocations(locations, sourceLocations);
+        return OrderNavigationLocations(locations);
+    }
+
+    private static IReadOnlyList<LspLocation> OrderNavigationLocations(
+        IEnumerable<LspLocation> locations)
+    {
         return
         [
             .. locations
@@ -2417,6 +2527,21 @@ public sealed partial class WorkspaceManager : IAsyncDisposable
                 .Take(MaximumNavigationLocations)
         ];
     }
+
+    private static ITypeSymbol? GetSymbolType(ISymbol symbol) => symbol switch
+    {
+        IAliasSymbol alias => alias.Target as ITypeSymbol,
+        ITypeSymbol type => type,
+        IEventSymbol eventSymbol => eventSymbol.Type,
+        IFieldSymbol field => field.Type,
+        ILocalSymbol local => local.Type,
+        IMethodSymbol { MethodKind: MethodKind.Constructor } constructor =>
+            constructor.ContainingType,
+        IMethodSymbol method => method.ReturnType,
+        IParameterSymbol parameter => parameter.Type,
+        IPropertySymbol property => property.Type,
+        _ => null
+    };
 
     private static void AddNavigationLocations(
         HashSet<LspLocation> target,

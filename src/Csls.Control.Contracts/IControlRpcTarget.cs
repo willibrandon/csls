@@ -55,6 +55,36 @@ public interface IControlRpcTarget
         CancellationToken cancellationToken);
 
     /// <summary>
+    /// Gets source declarations from the current workspace snapshot.
+    /// </summary>
+    /// <param name="request">The absolute document path and UTF-16 position.</param>
+    /// <param name="cancellationToken">The peer cancellation token.</param>
+    /// <returns>The bounded source declaration locations.</returns>
+    Task<IReadOnlyList<Location>> GetDeclarationAsync(
+        ControlNavigationRequest request,
+        CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Gets source type definitions from the current workspace snapshot.
+    /// </summary>
+    /// <param name="request">The absolute document path and UTF-16 position.</param>
+    /// <param name="cancellationToken">The peer cancellation token.</param>
+    /// <returns>The bounded source type-definition locations.</returns>
+    Task<IReadOnlyList<Location>> GetTypeDefinitionAsync(
+        ControlNavigationRequest request,
+        CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Gets source implementations from the current workspace snapshot.
+    /// </summary>
+    /// <param name="request">The absolute document path and UTF-16 position.</param>
+    /// <param name="cancellationToken">The peer cancellation token.</param>
+    /// <returns>The bounded source implementation locations.</returns>
+    Task<IReadOnlyList<Location>> GetImplementationAsync(
+        ControlNavigationRequest request,
+        CancellationToken cancellationToken);
+
+    /// <summary>
     /// Gets source references from the current workspace snapshot.
     /// </summary>
     /// <param name="request">The absolute document path, position, and declaration behavior.</param>

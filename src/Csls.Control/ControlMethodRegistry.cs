@@ -43,6 +43,21 @@ internal static class ControlMethodRegistry
                 target.GetDefinitionAsync));
         AddParameterObjectMethod(
             rpc,
+            ControlMethods.GetDeclaration,
+            new Func<ControlNavigationRequest, CancellationToken, Task<IReadOnlyList<Location>>>(
+                target.GetDeclarationAsync));
+        AddParameterObjectMethod(
+            rpc,
+            ControlMethods.GetTypeDefinition,
+            new Func<ControlNavigationRequest, CancellationToken, Task<IReadOnlyList<Location>>>(
+                target.GetTypeDefinitionAsync));
+        AddParameterObjectMethod(
+            rpc,
+            ControlMethods.GetImplementation,
+            new Func<ControlNavigationRequest, CancellationToken, Task<IReadOnlyList<Location>>>(
+                target.GetImplementationAsync));
+        AddParameterObjectMethod(
+            rpc,
             ControlMethods.GetReferences,
             new Func<ControlNavigationRequest, CancellationToken, Task<IReadOnlyList<Location>>>(
                 target.GetReferencesAsync));

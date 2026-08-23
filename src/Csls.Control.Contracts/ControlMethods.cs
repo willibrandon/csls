@@ -31,6 +31,21 @@ public static class ControlMethods
     public const string GetDefinition = "csls/control/v1/definition/get";
 
     /// <summary>
+    /// Gets the method that returns source declarations for one document position.
+    /// </summary>
+    public const string GetDeclaration = "csls/control/v1/declaration/get";
+
+    /// <summary>
+    /// Gets the method that returns source type definitions for one document position.
+    /// </summary>
+    public const string GetTypeDefinition = "csls/control/v1/type-definition/get";
+
+    /// <summary>
+    /// Gets the method that returns source implementations for one document position.
+    /// </summary>
+    public const string GetImplementation = "csls/control/v1/implementation/get";
+
+    /// <summary>
     /// Gets the method that returns source references for one document position.
     /// </summary>
     public const string GetReferences = "csls/control/v1/references/get";

@@ -36,6 +36,21 @@ public sealed record ServerCapabilities
     public bool DefinitionProvider { get; init; }
 
     /// <summary>
+    /// Gets whether source declaration requests are supported.
+    /// </summary>
+    public bool DeclarationProvider { get; init; }
+
+    /// <summary>
+    /// Gets whether type-definition requests are supported.
+    /// </summary>
+    public bool TypeDefinitionProvider { get; init; }
+
+    /// <summary>
+    /// Gets whether implementation requests are supported.
+    /// </summary>
+    public bool ImplementationProvider { get; init; }
+
+    /// <summary>
     /// Gets whether source reference requests are supported.
     /// </summary>
     public bool ReferencesProvider { get; init; }

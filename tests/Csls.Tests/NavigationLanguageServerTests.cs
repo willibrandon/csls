@@ -5,7 +5,7 @@ using Csls.Protocol;
 namespace Csls.Tests;
 
 /// <summary>
-/// Verifies source definition and reference navigation through a real language-server worker.
+/// Verifies semantic source navigation through a real language-server worker.
 /// </summary>
 [TestClass]
 public sealed class NavigationLanguageServerTests
@@ -16,10 +16,10 @@ public sealed class NavigationLanguageServerTests
     public TestContext TestContext { get; set; } = null!;
 
     /// <summary>
-    /// Finds the exact declaration and both usages of one source method.
+    /// Finds exact declarations, definitions, implementations, types, and references.
     /// </summary>
     [TestMethod]
-    public async Task DefinitionAndReferencesReturnExactSourceLocations()
+    public async Task SemanticNavigationReturnsExactSourceLocations()
     {
         string repositoryRoot = EditorToolResolver.FindRepositoryRoot();
         string workerPath = Path.Combine(
@@ -38,6 +38,7 @@ public sealed class NavigationLanguageServerTests
         try
         {
             string documentPath = Path.Combine(fixturePath, "Program.cs");
+            string advancedDocumentPath = Path.Combine(fixturePath, "Advanced.cs");
             await File.WriteAllTextAsync(
                 Path.Combine(fixturePath, "Fixture.csproj"),
                 ProjectText,
@@ -45,6 +46,10 @@ public sealed class NavigationLanguageServerTests
             await File.WriteAllTextAsync(
                 documentPath,
                 DocumentText,
+                TestContext.CancellationToken).ConfigureAwait(false);
+            await File.WriteAllTextAsync(
+                advancedDocumentPath,
+                AdvancedDocumentText,
                 TestContext.CancellationToken).ConfigureAwait(false);
 
             var lsp = LspProcessSession.Start(
@@ -58,6 +63,9 @@ public sealed class NavigationLanguageServerTests
                 TestContext.CancellationToken).ConfigureAwait(false);
             JsonElement capabilities = initialization.GetProperty("capabilities");
             Assert.IsTrue(capabilities.GetProperty("definitionProvider").GetBoolean());
+            Assert.IsTrue(capabilities.GetProperty("declarationProvider").GetBoolean());
+            Assert.IsTrue(capabilities.GetProperty("typeDefinitionProvider").GetBoolean());
+            Assert.IsTrue(capabilities.GetProperty("implementationProvider").GetBoolean());
             Assert.IsTrue(capabilities.GetProperty("referencesProvider").GetBoolean());
             await lsp.OpenDocumentAsync(documentPath, DocumentText).ConfigureAwait(false);
 
@@ -89,6 +97,33 @@ public sealed class NavigationLanguageServerTests
             Assert.Contains(
                 definition.Range.Start,
                 referencesWithDeclaration.Select(static location => location.Range.Start));
+
+            IReadOnlyList<Location> declarations = await lsp.RequestDeclarationsAsync(
+                advancedDocumentPath,
+                new Position(19, 17),
+                TestContext.CancellationToken).ConfigureAwait(false);
+            Location declaration = Assert.ContainsSingle(declarations);
+            Assert.AreEqual(DocumentUri.FromFileSystemPath(advancedDocumentPath), declaration.Uri);
+            Assert.AreEqual(new Position(4, 9), declaration.Range.Start);
+            Assert.AreEqual(new Position(4, 16), declaration.Range.End);
+
+            IReadOnlyList<Location> typeDefinitions = await lsp.RequestTypeDefinitionsAsync(
+                advancedDocumentPath,
+                new Position(18, 17),
+                TestContext.CancellationToken).ConfigureAwait(false);
+            Location typeDefinition = Assert.ContainsSingle(typeDefinitions);
+            Assert.AreEqual(DocumentUri.FromFileSystemPath(advancedDocumentPath), typeDefinition.Uri);
+            Assert.AreEqual(new Position(2, 17), typeDefinition.Range.Start);
+            Assert.AreEqual(new Position(2, 24), typeDefinition.Range.End);
+
+            IReadOnlyList<Location> implementations = await lsp.RequestImplementationsAsync(
+                advancedDocumentPath,
+                new Position(4, 10),
+                TestContext.CancellationToken).ConfigureAwait(false);
+            Location implementation = Assert.ContainsSingle(implementations);
+            Assert.AreEqual(DocumentUri.FromFileSystemPath(advancedDocumentPath), implementation.Uri);
+            Assert.AreEqual(new Position(9, 16), implementation.Range.Start);
+            Assert.AreEqual(new Position(9, 23), implementation.Range.End);
 
             string diagnostics = await lsp.ShutdownAsync(
                 TestContext.CancellationToken).ConfigureAwait(false);
@@ -125,6 +160,31 @@ public sealed class NavigationLanguageServerTests
             {
                 Target.Run();
                 Target.Run();
+            }
+        }
+        """;
+
+    private const string AdvancedDocumentText = """
+        namespace Fixture;
+
+        public interface IRunner
+        {
+            void Execute();
+        }
+
+        public sealed class Runner : IRunner
+        {
+            public void Execute()
+            {
+            }
+        }
+
+        public static class AdvancedProgram
+        {
+            public static void Run()
+            {
+                IRunner runner = new Runner();
+                runner.Execute();
             }
         }
         """;

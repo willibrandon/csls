@@ -111,6 +111,39 @@ public sealed class ControlRpcClient : IAsyncDisposable
         GetNavigationAsync(ControlMethods.GetDefinition, request, cancellationToken);
 
     /// <summary>
+    /// Gets source declarations from the attached workspace snapshot.
+    /// </summary>
+    /// <param name="request">The absolute document path and UTF-16 position.</param>
+    /// <param name="cancellationToken">The request cancellation token.</param>
+    /// <returns>The bounded source declaration locations.</returns>
+    public Task<IReadOnlyList<Location>> GetDeclarationAsync(
+        ControlNavigationRequest request,
+        CancellationToken cancellationToken) =>
+        GetNavigationAsync(ControlMethods.GetDeclaration, request, cancellationToken);
+
+    /// <summary>
+    /// Gets source type definitions from the attached workspace snapshot.
+    /// </summary>
+    /// <param name="request">The absolute document path and UTF-16 position.</param>
+    /// <param name="cancellationToken">The request cancellation token.</param>
+    /// <returns>The bounded source type-definition locations.</returns>
+    public Task<IReadOnlyList<Location>> GetTypeDefinitionAsync(
+        ControlNavigationRequest request,
+        CancellationToken cancellationToken) =>
+        GetNavigationAsync(ControlMethods.GetTypeDefinition, request, cancellationToken);
+
+    /// <summary>
+    /// Gets source implementations from the attached workspace snapshot.
+    /// </summary>
+    /// <param name="request">The absolute document path and UTF-16 position.</param>
+    /// <param name="cancellationToken">The request cancellation token.</param>
+    /// <returns>The bounded source implementation locations.</returns>
+    public Task<IReadOnlyList<Location>> GetImplementationAsync(
+        ControlNavigationRequest request,
+        CancellationToken cancellationToken) =>
+        GetNavigationAsync(ControlMethods.GetImplementation, request, cancellationToken);
+
+    /// <summary>
     /// Gets source references from the attached workspace snapshot.
     /// </summary>
     /// <param name="request">The absolute document path, position, and declaration behavior.</param>

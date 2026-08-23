@@ -162,6 +162,18 @@ queryCommand.Subcommands.Add(CreateNavigationCommand(
     "Find source definitions for the symbol at one document position.",
     includeDeclarationOption: false));
 queryCommand.Subcommands.Add(CreateNavigationCommand(
+    "declaration",
+    "Find source declarations for the symbol at one document position.",
+    includeDeclarationOption: false));
+queryCommand.Subcommands.Add(CreateNavigationCommand(
+    "type-definition",
+    "Find source definitions for the symbol's type.",
+    includeDeclarationOption: false));
+queryCommand.Subcommands.Add(CreateNavigationCommand(
+    "implementation",
+    "Find source implementations for the symbol at one document position.",
+    includeDeclarationOption: false));
+queryCommand.Subcommands.Add(CreateNavigationCommand(
     "references",
     "Find source references for the symbol at one document position.",
     includeDeclarationOption: true));

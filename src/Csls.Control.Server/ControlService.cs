@@ -128,6 +128,33 @@ public sealed class ControlService : IControlRpcTarget
     }
 
     /// <inheritdoc />
+    public Task<IReadOnlyList<Location>> GetDeclarationAsync(
+        ControlNavigationRequest request,
+        CancellationToken cancellationToken)
+    {
+        TextDocumentPositionParams parameters = CreateNavigationParams(request);
+        return _languageServer.DeclarationAsync(parameters, cancellationToken);
+    }
+
+    /// <inheritdoc />
+    public Task<IReadOnlyList<Location>> GetTypeDefinitionAsync(
+        ControlNavigationRequest request,
+        CancellationToken cancellationToken)
+    {
+        TextDocumentPositionParams parameters = CreateNavigationParams(request);
+        return _languageServer.TypeDefinitionAsync(parameters, cancellationToken);
+    }
+
+    /// <inheritdoc />
+    public Task<IReadOnlyList<Location>> GetImplementationAsync(
+        ControlNavigationRequest request,
+        CancellationToken cancellationToken)
+    {
+        TextDocumentPositionParams parameters = CreateNavigationParams(request);
+        return _languageServer.ImplementationAsync(parameters, cancellationToken);
+    }
+
+    /// <inheritdoc />
     public Task<IReadOnlyList<Location>> GetReferencesAsync(
         ControlNavigationRequest request,
         CancellationToken cancellationToken)

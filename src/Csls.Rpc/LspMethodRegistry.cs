@@ -64,6 +64,21 @@ public static class LspMethodRegistry
                 target.DefinitionAsync));
         AddParameterObjectMethod(
             rpc,
+            "textDocument/declaration",
+            new Func<TextDocumentPositionParams, CancellationToken, Task<IReadOnlyList<Location>>>(
+                target.DeclarationAsync));
+        AddParameterObjectMethod(
+            rpc,
+            "textDocument/typeDefinition",
+            new Func<TextDocumentPositionParams, CancellationToken, Task<IReadOnlyList<Location>>>(
+                target.TypeDefinitionAsync));
+        AddParameterObjectMethod(
+            rpc,
+            "textDocument/implementation",
+            new Func<TextDocumentPositionParams, CancellationToken, Task<IReadOnlyList<Location>>>(
+                target.ImplementationAsync));
+        AddParameterObjectMethod(
+            rpc,
             "textDocument/references",
             new Func<ReferenceParams, CancellationToken, Task<IReadOnlyList<Location>>>(
                 target.ReferencesAsync));

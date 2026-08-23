@@ -95,6 +95,9 @@ public sealed partial class LanguageServer : ILspRpcTarget, IAsyncDisposable
                     TriggerCharacters = [".", "(", "#", "\"", "<", "/"]
                 },
                 DefinitionProvider = true,
+                DeclarationProvider = true,
+                TypeDefinitionProvider = true,
+                ImplementationProvider = true,
                 ReferencesProvider = true,
                 DocumentSymbolProvider = true,
                 WorkspaceSymbolProvider = new WorkspaceSymbolOptions
@@ -301,6 +304,84 @@ public sealed partial class LanguageServer : ILspRpcTarget, IAsyncDisposable
                 {
                     throw new InvalidOperationException(
                         "The workspace changed while definitions were being computed.");
+                }
+
+                return locations;
+            },
+            cancellationToken);
+    }
+
+    /// <inheritdoc />
+    public Task<IReadOnlyList<Location>> DeclarationAsync(
+        TextDocumentPositionParams parameters,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(parameters);
+        EnsureRunning();
+        return _scheduler.ScheduleAsync(
+            RequestMode.ReadOnly,
+            () => _workspaceManager.Generation,
+            async context =>
+            {
+                IReadOnlyList<Location> locations = await _workspaceManager
+                    .GetDeclarationsAsync(parameters, context.CancellationToken)
+                    .ConfigureAwait(false);
+                if (_workspaceManager.Generation != context.WorkspaceGeneration)
+                {
+                    throw new InvalidOperationException(
+                        "The workspace changed while declarations were being computed.");
+                }
+
+                return locations;
+            },
+            cancellationToken);
+    }
+
+    /// <inheritdoc />
+    public Task<IReadOnlyList<Location>> TypeDefinitionAsync(
+        TextDocumentPositionParams parameters,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(parameters);
+        EnsureRunning();
+        return _scheduler.ScheduleAsync(
+            RequestMode.ReadOnly,
+            () => _workspaceManager.Generation,
+            async context =>
+            {
+                IReadOnlyList<Location> locations = await _workspaceManager
+                    .GetTypeDefinitionsAsync(parameters, context.CancellationToken)
+                    .ConfigureAwait(false);
+                if (_workspaceManager.Generation != context.WorkspaceGeneration)
+                {
+                    throw new InvalidOperationException(
+                        "The workspace changed while type definitions were being computed.");
+                }
+
+                return locations;
+            },
+            cancellationToken);
+    }
+
+    /// <inheritdoc />
+    public Task<IReadOnlyList<Location>> ImplementationAsync(
+        TextDocumentPositionParams parameters,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(parameters);
+        EnsureRunning();
+        return _scheduler.ScheduleAsync(
+            RequestMode.ReadOnly,
+            () => _workspaceManager.Generation,
+            async context =>
+            {
+                IReadOnlyList<Location> locations = await _workspaceManager
+                    .GetImplementationsAsync(parameters, context.CancellationToken)
+                    .ConfigureAwait(false);
+                if (_workspaceManager.Generation != context.WorkspaceGeneration)
+                {
+                    throw new InvalidOperationException(
+                        "The workspace changed while implementations were being computed.");
                 }
 
                 return locations;

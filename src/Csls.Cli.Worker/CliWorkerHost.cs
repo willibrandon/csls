@@ -217,7 +217,12 @@ internal static class CliWorkerHost
         CancellationToken cancellationToken)
     {
         if (arguments.Count != 8 ||
-            arguments[1] is not ("definition" or "references") ||
+            arguments[1] is not (
+                "definition" or
+                "declaration" or
+                "type-definition" or
+                "implementation" or
+                "references") ||
             !int.TryParse(arguments[2], NumberStyles.None, CultureInfo.InvariantCulture, out int processId) ||
             !int.TryParse(arguments[4], NumberStyles.None, CultureInfo.InvariantCulture, out int line) ||
             !int.TryParse(arguments[5], NumberStyles.None, CultureInfo.InvariantCulture, out int character) ||
@@ -239,12 +244,19 @@ internal static class CliWorkerHost
             Position = new Position(line, character),
             IncludeDeclaration = includeDeclaration
         };
-        IReadOnlyList<Location> locations = string.Equals(
-            arguments[1],
-            "definition",
-            StringComparison.Ordinal)
-            ? await client.GetDefinitionAsync(request, cancellationToken).ConfigureAwait(false)
-            : await client.GetReferencesAsync(request, cancellationToken).ConfigureAwait(false);
+        IReadOnlyList<Location> locations = arguments[1] switch
+        {
+            "definition" => await client.GetDefinitionAsync(request, cancellationToken)
+                .ConfigureAwait(false),
+            "declaration" => await client.GetDeclarationAsync(request, cancellationToken)
+                .ConfigureAwait(false),
+            "type-definition" => await client.GetTypeDefinitionAsync(request, cancellationToken)
+                .ConfigureAwait(false),
+            "implementation" => await client.GetImplementationAsync(request, cancellationToken)
+                .ConfigureAwait(false),
+            _ => await client.GetReferencesAsync(request, cancellationToken)
+                .ConfigureAwait(false)
+        };
         CliOutputWriter.WriteLocations(locations, writeJson);
         return 0;
     }

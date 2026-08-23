@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Globalization;
 using System.Runtime.CompilerServices;
 using System.Text.Json;
+using Csls.Protocol;
 
 namespace Csls.Tests;
 
@@ -60,6 +61,7 @@ public sealed class CliLanguageServerTests
             string documentPath = Path.Combine(fixturePath, "Program.cs");
             string importsPath = Path.Combine(fixturePath, "Imports.cs");
             string formattingPath = Path.Combine(fixturePath, "Formatting.cs");
+            string advancedPath = Path.Combine(fixturePath, "Advanced.cs");
             await File.WriteAllTextAsync(
                 Path.Combine(fixturePath, "Fixture.csproj"),
                 ProjectText,
@@ -75,6 +77,10 @@ public sealed class CliLanguageServerTests
             await File.WriteAllTextAsync(
                 formattingPath,
                 FormattingText,
+                TestContext.CancellationToken).ConfigureAwait(false);
+            await File.WriteAllTextAsync(
+                advancedPath,
+                AdvancedDocumentText,
                 TestContext.CancellationToken).ConfigureAwait(false);
 
             var lsp = LspProcessSession.Start(
@@ -266,6 +272,44 @@ public sealed class CliLanguageServerTests
                     24,
                     definition.GetProperty("range").GetProperty("start").GetProperty("character")
                         .GetInt32());
+            }
+
+            IReadOnlyList<(string Command, int Line, int Character, Position Expected)> navigation =
+            [
+                ("declaration", 19, 17, new Position(4, 9)),
+                ("type-definition", 18, 17, new Position(2, 17)),
+                ("implementation", 4, 10, new Position(9, 16))
+            ];
+            foreach ((string command, int line, int character, Position expected) in navigation)
+            {
+                (int exitCode, string output, string error) = await RunCliAsync(
+                    cliPath,
+                    cliWorkerPath,
+                    fixturePath,
+                    [
+                        "query",
+                        command,
+                        advancedPath,
+                        "--line",
+                        line.ToString(CultureInfo.InvariantCulture),
+                        "--character",
+                        character.ToString(CultureInfo.InvariantCulture),
+                        "--session",
+                        processId,
+                        "--json"
+                    ],
+                    TestContext.CancellationToken).ConfigureAwait(false);
+                Assert.AreEqual(0, exitCode, $"{error}{Environment.NewLine}{output}");
+                using var navigationDocument = JsonDocument.Parse(output);
+                JsonElement navigationRoot = navigationDocument.RootElement;
+                AssertSuccessfulEnvelope(navigationRoot);
+                JsonElement location = Assert.ContainsSingle(
+                    navigationRoot.GetProperty("data").EnumerateArray());
+                JsonElement start = location.GetProperty("range").GetProperty("start");
+                Assert.AreEqual(expected.Line, start.GetProperty("line").GetInt32());
+                Assert.AreEqual(
+                    expected.Character,
+                    start.GetProperty("character").GetInt32());
             }
 
             (int referencesExitCode, string referencesOutput, string referencesError) =
@@ -691,5 +735,30 @@ public sealed class CliLanguageServerTests
         namespace Fixture;
 
         public static class Formatting{public static int Add(int left,int right)=>left+right;}
+        """;
+
+    private const string AdvancedDocumentText = """
+        namespace Fixture;
+
+        public interface IRunner
+        {
+            void Execute();
+        }
+
+        public sealed class Runner : IRunner
+        {
+            public void Execute()
+            {
+            }
+        }
+
+        public static class AdvancedProgram
+        {
+            public static void Run()
+            {
+                IRunner runner = new Runner();
+                runner.Execute();
+            }
+        }
         """;
 }

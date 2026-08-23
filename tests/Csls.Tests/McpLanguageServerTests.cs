@@ -67,6 +67,7 @@ public sealed class McpLanguageServerTests
             string importsPath = Path.Combine(fixturePath, "Imports.cs");
             string formattingPath = Path.Combine(fixturePath, "Formatting.cs");
             string stalePath = Path.Combine(fixturePath, "Stale.cs");
+            string advancedPath = Path.Combine(fixturePath, "Advanced.cs");
             await File.WriteAllTextAsync(
                 projectPath,
                 ProjectText,
@@ -86,6 +87,10 @@ public sealed class McpLanguageServerTests
             await File.WriteAllTextAsync(
                 stalePath,
                 FormattingText.Replace("Formatting", "Stale", StringComparison.Ordinal),
+                TestContext.CancellationToken).ConfigureAwait(false);
+            await File.WriteAllTextAsync(
+                advancedPath,
+                AdvancedDocumentText,
                 TestContext.CancellationToken).ConfigureAwait(false);
 
             var lsp = LspProcessSession.Start(
@@ -151,6 +156,12 @@ public sealed class McpLanguageServerTests
                     tool.Name == "get_completion");
                 McpClientTool definitionTool = tools.Single(static tool =>
                     tool.Name == "get_definition");
+                McpClientTool declarationTool = tools.Single(static tool =>
+                    tool.Name == "get_declaration");
+                McpClientTool typeDefinitionTool = tools.Single(static tool =>
+                    tool.Name == "get_type_definition");
+                McpClientTool implementationTool = tools.Single(static tool =>
+                    tool.Name == "get_implementation");
                 McpClientTool referencesTool = tools.Single(static tool =>
                     tool.Name == "get_references");
                 McpClientTool documentSymbolsTool = tools.Single(static tool =>
@@ -182,6 +193,9 @@ public sealed class McpLanguageServerTests
                 Assert.IsNotNull(diagnosticTool.ProtocolTool.OutputSchema);
                 Assert.IsNotNull(completionTool.ProtocolTool.OutputSchema);
                 Assert.IsNotNull(definitionTool.ProtocolTool.OutputSchema);
+                Assert.IsNotNull(declarationTool.ProtocolTool.OutputSchema);
+                Assert.IsNotNull(typeDefinitionTool.ProtocolTool.OutputSchema);
+                Assert.IsNotNull(implementationTool.ProtocolTool.OutputSchema);
                 Assert.IsNotNull(referencesTool.ProtocolTool.OutputSchema);
                 Assert.IsNotNull(documentSymbolsTool.ProtocolTool.OutputSchema);
                 Assert.IsNotNull(workspaceSymbolsTool.ProtocolTool.OutputSchema);
@@ -289,6 +303,59 @@ public sealed class McpLanguageServerTests
                         "MCP returned no structured definition locations.");
                 Location definition = Assert.ContainsSingle(definitions);
                 Assert.AreEqual(new Position(10, 24), definition.Range.Start);
+
+                CallToolResult declarationResult = await client.CallToolAsync(
+                    "get_declaration",
+                    new Dictionary<string, object?>
+                    {
+                        ["documentPath"] = advancedPath,
+                        ["line"] = 19,
+                        ["character"] = 17
+                    },
+                    cancellationToken: TestContext.CancellationToken).ConfigureAwait(false);
+                Assert.IsNull(declarationResult.IsError);
+                Assert.IsTrue(declarationResult.StructuredContent.HasValue);
+                Location declaration = Assert.ContainsSingle(
+                    declarationResult.StructuredContent.Value.Deserialize(
+                        ControlJsonSerializerContext.Default.IReadOnlyListLocation)
+                    ?? throw new InvalidDataException("MCP returned no declaration locations."));
+                Assert.AreEqual(new Position(4, 9), declaration.Range.Start);
+
+                CallToolResult typeDefinitionResult = await client.CallToolAsync(
+                    "get_type_definition",
+                    new Dictionary<string, object?>
+                    {
+                        ["documentPath"] = advancedPath,
+                        ["line"] = 18,
+                        ["character"] = 17
+                    },
+                    cancellationToken: TestContext.CancellationToken).ConfigureAwait(false);
+                Assert.IsNull(typeDefinitionResult.IsError);
+                Assert.IsTrue(typeDefinitionResult.StructuredContent.HasValue);
+                Location typeDefinition = Assert.ContainsSingle(
+                    typeDefinitionResult.StructuredContent.Value.Deserialize(
+                        ControlJsonSerializerContext.Default.IReadOnlyListLocation)
+                    ?? throw new InvalidDataException(
+                        "MCP returned no type-definition locations."));
+                Assert.AreEqual(new Position(2, 17), typeDefinition.Range.Start);
+
+                CallToolResult implementationResult = await client.CallToolAsync(
+                    "get_implementation",
+                    new Dictionary<string, object?>
+                    {
+                        ["documentPath"] = advancedPath,
+                        ["line"] = 4,
+                        ["character"] = 10
+                    },
+                    cancellationToken: TestContext.CancellationToken).ConfigureAwait(false);
+                Assert.IsNull(implementationResult.IsError);
+                Assert.IsTrue(implementationResult.StructuredContent.HasValue);
+                Location implementation = Assert.ContainsSingle(
+                    implementationResult.StructuredContent.Value.Deserialize(
+                        ControlJsonSerializerContext.Default.IReadOnlyListLocation)
+                    ?? throw new InvalidDataException(
+                        "MCP returned no implementation locations."));
+                Assert.AreEqual(new Position(9, 16), implementation.Range.Start);
 
                 CallToolResult referencesResult = await client.CallToolAsync(
                     "get_references",
@@ -601,5 +668,30 @@ public sealed class McpLanguageServerTests
         namespace Fixture;
 
         public static class Formatting{public static int Add(int left,int right)=>left+right;}
+        """;
+
+    private const string AdvancedDocumentText = """
+        namespace Fixture;
+
+        public interface IRunner
+        {
+            void Execute();
+        }
+
+        public sealed class Runner : IRunner
+        {
+            public void Execute()
+            {
+            }
+        }
+
+        public static class AdvancedProgram
+        {
+            public static void Run()
+            {
+                IRunner runner = new Runner();
+                runner.Execute();
+            }
+        }
         """;
 }

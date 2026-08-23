@@ -251,16 +251,61 @@ internal sealed class LspProcessSession : IAsyncDisposable
         string documentPath,
         Position position,
         CancellationToken cancellationToken) =>
-        _rpc.InvokeWithParameterObjectAsync<IReadOnlyList<Location>>(
+        RequestNavigationAsync(
             "textDocument/definition",
-            new TextDocumentPositionParams
-            {
-                TextDocument = new TextDocumentIdentifier
-                {
-                    Uri = DocumentUri.FromFileSystemPath(documentPath)
-                },
-                Position = position
-            },
+            documentPath,
+            position,
+            cancellationToken);
+
+    /// <summary>
+    /// Requests source declarations for the symbol at one test document position.
+    /// </summary>
+    /// <param name="documentPath">The absolute target document path.</param>
+    /// <param name="position">The target UTF-16 document position.</param>
+    /// <param name="cancellationToken">The test cancellation token.</param>
+    /// <returns>The bounded source declaration locations.</returns>
+    internal Task<IReadOnlyList<Location>> RequestDeclarationsAsync(
+        string documentPath,
+        Position position,
+        CancellationToken cancellationToken) =>
+        RequestNavigationAsync(
+            "textDocument/declaration",
+            documentPath,
+            position,
+            cancellationToken);
+
+    /// <summary>
+    /// Requests source definitions for the type at one test document position.
+    /// </summary>
+    /// <param name="documentPath">The absolute target document path.</param>
+    /// <param name="position">The target UTF-16 document position.</param>
+    /// <param name="cancellationToken">The test cancellation token.</param>
+    /// <returns>The bounded source type-definition locations.</returns>
+    internal Task<IReadOnlyList<Location>> RequestTypeDefinitionsAsync(
+        string documentPath,
+        Position position,
+        CancellationToken cancellationToken) =>
+        RequestNavigationAsync(
+            "textDocument/typeDefinition",
+            documentPath,
+            position,
+            cancellationToken);
+
+    /// <summary>
+    /// Requests source implementations for the symbol at one test document position.
+    /// </summary>
+    /// <param name="documentPath">The absolute target document path.</param>
+    /// <param name="position">The target UTF-16 document position.</param>
+    /// <param name="cancellationToken">The test cancellation token.</param>
+    /// <returns>The bounded source implementation locations.</returns>
+    internal Task<IReadOnlyList<Location>> RequestImplementationsAsync(
+        string documentPath,
+        Position position,
+        CancellationToken cancellationToken) =>
+        RequestNavigationAsync(
+            "textDocument/implementation",
+            documentPath,
+            position,
             cancellationToken);
 
     /// <summary>
@@ -289,6 +334,23 @@ internal sealed class LspProcessSession : IAsyncDisposable
                 {
                     IncludeDeclaration = includeDeclaration
                 }
+            },
+            cancellationToken);
+
+    private Task<IReadOnlyList<Location>> RequestNavigationAsync(
+        string method,
+        string documentPath,
+        Position position,
+        CancellationToken cancellationToken) =>
+        _rpc.InvokeWithParameterObjectAsync<IReadOnlyList<Location>>(
+            method,
+            new TextDocumentPositionParams
+            {
+                TextDocument = new TextDocumentIdentifier
+                {
+                    Uri = DocumentUri.FromFileSystemPath(documentPath)
+                },
+                Position = position
             },
             cancellationToken);
 

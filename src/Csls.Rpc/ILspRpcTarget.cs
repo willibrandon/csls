@@ -111,6 +111,36 @@ public interface ILspRpcTarget
         CancellationToken cancellationToken);
 
     /// <summary>
+    /// Finds source declarations for the symbol at one document position.
+    /// </summary>
+    /// <param name="parameters">The target document position.</param>
+    /// <param name="cancellationToken">The peer cancellation token.</param>
+    /// <returns>The bounded source declaration locations.</returns>
+    Task<IReadOnlyList<Location>> DeclarationAsync(
+        TextDocumentPositionParams parameters,
+        CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Finds source definitions for the type of the symbol at one document position.
+    /// </summary>
+    /// <param name="parameters">The target document position.</param>
+    /// <param name="cancellationToken">The peer cancellation token.</param>
+    /// <returns>The bounded source type-definition locations.</returns>
+    Task<IReadOnlyList<Location>> TypeDefinitionAsync(
+        TextDocumentPositionParams parameters,
+        CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Finds source implementations for the symbol at one document position.
+    /// </summary>
+    /// <param name="parameters">The target document position.</param>
+    /// <param name="cancellationToken">The peer cancellation token.</param>
+    /// <returns>The bounded source implementation locations.</returns>
+    Task<IReadOnlyList<Location>> ImplementationAsync(
+        TextDocumentPositionParams parameters,
+        CancellationToken cancellationToken);
+
+    /// <summary>
     /// Finds source references for the symbol at one document position.
     /// </summary>
     /// <param name="parameters">The target position and declaration inclusion behavior.</param>
