@@ -59,6 +59,11 @@ public static class LspMethodRegistry
                 target.CompletionAsync));
         AddParameterObjectMethod(
             rpc,
+            "completionItem/resolve",
+            new Func<CompletionItem, CancellationToken, Task<CompletionItem>>(
+                target.CompletionResolveAsync));
+        AddParameterObjectMethod(
+            rpc,
             "textDocument/definition",
             new Func<TextDocumentPositionParams, CancellationToken, Task<IReadOnlyList<Location>>>(
                 target.DefinitionAsync));

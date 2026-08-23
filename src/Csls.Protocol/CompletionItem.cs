@@ -21,6 +21,11 @@ public sealed record CompletionItem
     public string? Detail { get; init; }
 
     /// <summary>
+    /// Gets lazily resolved Roslyn documentation for the completion candidate.
+    /// </summary>
+    public MarkupContent? Documentation { get; init; }
+
+    /// <summary>
     /// Gets the stable text used for client-side sorting.
     /// </summary>
     public string? SortText { get; init; }
@@ -39,4 +44,14 @@ public sealed record CompletionItem
     /// Gets additional edits such as a required using directive.
     /// </summary>
     public IReadOnlyList<TextEdit>? AdditionalTextEdits { get; init; }
+
+    /// <summary>
+    /// Gets how the primary completion edit text should be interpreted.
+    /// </summary>
+    public InsertTextFormat? InsertTextFormat { get; init; }
+
+    /// <summary>
+    /// Gets the stable data required to resolve this completion item.
+    /// </summary>
+    public CompletionItemData? Data { get; init; }
 }

@@ -3,6 +3,7 @@ using Csls.Protocol;
 using Csls.Rpc;
 using Csls.Workspaces;
 using Microsoft.Extensions.Logging;
+using System.Text.Json;
 
 namespace Csls.Server;
 
@@ -17,6 +18,7 @@ public sealed partial class LanguageServer : ILspRpcTarget, IAsyncDisposable
     private readonly TaskCompletionSource _exitRequested = new(
         TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly CancellationTokenSource _exitSource = new();
+    private bool _completionSnippetSupport;
     private int _lifecycleState;
     private int _disposeState;
 
@@ -113,6 +115,7 @@ public sealed partial class LanguageServer : ILspRpcTarget, IAsyncDisposable
     {
         ArgumentNullException.ThrowIfNull(parameters);
         Transition(ServerLifecycleState.Created, ServerLifecycleState.InitializeResponded);
+        _completionSnippetSupport = SupportsCompletionSnippets(parameters.Capabilities);
         string[] rootPaths = ResolveRootPaths(parameters);
         await _scheduler.ScheduleAsync(
             "initialize",
@@ -148,7 +151,7 @@ public sealed partial class LanguageServer : ILspRpcTarget, IAsyncDisposable
                 },
                 CompletionProvider = new CompletionOptions
                 {
-                    ResolveProvider = false,
+                    ResolveProvider = true,
                     TriggerCharacters = [".", "(", "#", "\"", "<", "/"]
                 },
                 DefinitionProvider = true,
@@ -351,7 +354,10 @@ public sealed partial class LanguageServer : ILspRpcTarget, IAsyncDisposable
             async context =>
             {
                 CompletionList completion = await _workspaceManager
-                    .GetCompletionsAsync(parameters, context.CancellationToken)
+                    .GetCompletionsAsync(
+                        parameters,
+                        _completionSnippetSupport,
+                        context.CancellationToken)
                     .ConfigureAwait(false);
                 if (_workspaceManager.Generation != context.WorkspaceGeneration)
                 {
@@ -360,6 +366,33 @@ public sealed partial class LanguageServer : ILspRpcTarget, IAsyncDisposable
                 }
 
                 return completion;
+            },
+            cancellationToken);
+    }
+
+    /// <inheritdoc />
+    public Task<CompletionItem> CompletionResolveAsync(
+        CompletionItem item,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(item);
+        EnsureRunning();
+        return _scheduler.ScheduleAsync(
+            "completionItem/resolve",
+            RequestMode.ReadOnly,
+            () => _workspaceManager.Generation,
+            async context =>
+            {
+                CompletionItem resolvedItem = await _workspaceManager
+                    .ResolveCompletionAsync(item, context.CancellationToken)
+                    .ConfigureAwait(false);
+                if (_workspaceManager.Generation != context.WorkspaceGeneration)
+                {
+                    throw new InvalidOperationException(
+                        "The workspace changed while completion was being resolved.");
+                }
+
+                return resolvedItem;
             },
             cancellationToken);
     }
@@ -945,6 +978,19 @@ public sealed partial class LanguageServer : ILspRpcTarget, IAsyncDisposable
         await _workspaceManager.DisposeAsync().ConfigureAwait(false);
         _exitSource.Dispose();
         GC.SuppressFinalize(this);
+    }
+
+    private static bool SupportsCompletionSnippets(JsonElement capabilities)
+    {
+        return capabilities.ValueKind == JsonValueKind.Object &&
+            capabilities.TryGetProperty("textDocument", out JsonElement textDocument) &&
+            textDocument.ValueKind == JsonValueKind.Object &&
+            textDocument.TryGetProperty("completion", out JsonElement completion) &&
+            completion.ValueKind == JsonValueKind.Object &&
+            completion.TryGetProperty("completionItem", out JsonElement completionItem) &&
+            completionItem.ValueKind == JsonValueKind.Object &&
+            completionItem.TryGetProperty("snippetSupport", out JsonElement snippetSupport) &&
+            snippetSupport.ValueKind is JsonValueKind.True;
     }
 
     private static string[] ResolveRootPaths(InitializeParams parameters)

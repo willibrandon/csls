@@ -102,6 +102,24 @@ internal sealed class LspProcessSession : IAsyncDisposable
         CancellationToken cancellationToken)
     {
         using var capabilities = JsonDocument.Parse("{}");
+        return await InitializeAsync(
+            workspacePath,
+            capabilities.RootElement,
+            cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Initializes the server with explicit client capabilities and returns its raw result.
+    /// </summary>
+    /// <param name="workspacePath">The absolute workspace directory.</param>
+    /// <param name="capabilities">The exact client capability object.</param>
+    /// <param name="cancellationToken">The test cancellation token.</param>
+    /// <returns>The server initialization result.</returns>
+    internal async Task<JsonElement> InitializeAsync(
+        string workspacePath,
+        JsonElement capabilities,
+        CancellationToken cancellationToken)
+    {
         return await _rpc.InvokeWithParameterObjectAsync<JsonElement>(
             "initialize",
             new InitializeParams
@@ -109,7 +127,7 @@ internal sealed class LspProcessSession : IAsyncDisposable
                 ProcessId = Environment.ProcessId,
                 ClientInfo = new ClientInfo { Name = "Csls.ParityTests" },
                 RootUri = DocumentUri.FromFileSystemPath(workspacePath),
-                Capabilities = capabilities.RootElement
+                Capabilities = capabilities
             },
             cancellationToken).ConfigureAwait(false);
     }
@@ -238,6 +256,20 @@ internal sealed class LspProcessSession : IAsyncDisposable
                     TriggerKind = CompletionTriggerKind.Invoked
                 }
             },
+            cancellationToken);
+
+    /// <summary>
+    /// Resolves lazy Roslyn documentation for one test completion candidate.
+    /// </summary>
+    /// <param name="item">The completion candidate returned by this session.</param>
+    /// <param name="cancellationToken">The test cancellation token.</param>
+    /// <returns>The completion candidate enriched with documentation.</returns>
+    internal Task<CompletionItem> ResolveCompletionAsync(
+        CompletionItem item,
+        CancellationToken cancellationToken) =>
+        _rpc.InvokeWithParameterObjectAsync<CompletionItem>(
+            "completionItem/resolve",
+            item,
             cancellationToken);
 
     /// <summary>

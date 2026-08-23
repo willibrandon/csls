@@ -8,10 +8,14 @@
 
   <ItemGroup>
     <PackageReference Include="BenchmarkDotNet" />
+    <PackageReference Include="StreamJsonRpc" />
   </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="../../src/Csls.Core/Csls.Core.csproj" />
     <ProjectReference Include="../../src/Csls.Protocol/Csls.Protocol.csproj" />
+    <ProjectReference Include="../../src/Csls.Rpc/Csls.Rpc.csproj" />
+    <ProjectReference Include="../../src/Csls.Worker/Csls.Worker.csproj"
+                      ReferenceOutputAssembly="false" />
   </ItemGroup>
 </Project>
