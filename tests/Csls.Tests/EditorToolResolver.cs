@@ -16,7 +16,7 @@ internal static class EditorToolResolver
         DirectoryInfo? directory = new(AppContext.BaseDirectory);
         while (directory is not null)
         {
-            if (File.Exists(Path.Combine(directory.FullName, "Csls.slnx")))
+            if (File.Exists(Path.Join(directory.FullName, "Csls.slnx")))
             {
                 return directory.FullName;
             }
@@ -42,7 +42,7 @@ internal static class EditorToolResolver
     /// </summary>
     /// <param name="repositoryRoot">The absolute repository root.</param>
     /// <returns>The absolute process host assembly path.</returns>
-    internal static string ResolveTestProcessHost(string repositoryRoot) => Path.Combine(
+    internal static string ResolveTestProcessHost(string repositoryRoot) => Path.Join(
         repositoryRoot,
         "artifacts",
         "bin",
@@ -138,7 +138,7 @@ internal static class EditorToolResolver
             return configuredPath;
         }
 
-        string installationPath = Path.Combine(
+        string installationPath = Path.Join(
             repositoryRoot,
             "artifacts",
             "tools",

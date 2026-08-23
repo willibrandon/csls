@@ -138,14 +138,20 @@ public sealed partial class ControlRpcServer : IHostedService, IAsyncDisposable
                     .ConfigureAwait(false);
             }
         }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        catch (OperationCanceledException exception)
+            when (cancellationToken.IsCancellationRequested)
         {
+            LogExpectedShutdown(exception);
         }
-        catch (ObjectDisposedException) when (cancellationToken.IsCancellationRequested)
+        catch (ObjectDisposedException exception)
+            when (cancellationToken.IsCancellationRequested)
         {
+            LogExpectedShutdown(exception);
         }
-        catch (SocketException) when (cancellationToken.IsCancellationRequested)
+        catch (SocketException exception)
+            when (cancellationToken.IsCancellationRequested)
         {
+            LogExpectedShutdown(exception);
         }
         finally
         {
@@ -179,8 +185,10 @@ public sealed partial class ControlRpcServer : IHostedService, IAsyncDisposable
                 }
             }
         }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        catch (OperationCanceledException exception)
+            when (cancellationToken.IsCancellationRequested)
         {
+            LogExpectedShutdown(exception);
         }
     }
 
@@ -234,4 +242,10 @@ public sealed partial class ControlRpcServer : IHostedService, IAsyncDisposable
         Level = LogLevel.Debug,
         Message = "Control connection ended: {Reason}")]
     private partial void LogConnectionEnded(string reason);
+
+    [LoggerMessage(
+        EventId = 3,
+        Level = LogLevel.Trace,
+        Message = "Control socket operation ended during expected shutdown")]
+    private partial void LogExpectedShutdown(Exception exception);
 }

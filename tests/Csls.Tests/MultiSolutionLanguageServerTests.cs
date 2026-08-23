@@ -22,7 +22,7 @@ public sealed class MultiSolutionLanguageServerTests
     public async Task WorkerServesEveryNestedSolution()
     {
         string repositoryRoot = EditorToolResolver.FindRepositoryRoot();
-        string workerPath = Path.Combine(
+        string workerPath = Path.Join(
             repositoryRoot,
             "artifacts",
             "bin",
@@ -31,15 +31,15 @@ public sealed class MultiSolutionLanguageServerTests
             "csls-worker.dll");
         Assert.IsTrue(File.Exists(workerPath), $"Worker not found at {workerPath}.");
 
-        string workspacePath = Path.Combine(
+        string workspacePath = Path.Join(
             Path.GetTempPath(),
             $"csls-multiple-solutions-lsp-{Guid.NewGuid():N}");
         Directory.CreateDirectory(workspacePath);
         try
         {
-            string alphaDirectory = Path.Combine(workspacePath, "alpha");
-            string betaDirectory = Path.Combine(workspacePath, "beta");
-            string excludedDirectory = Path.Combine(workspacePath, ".direnv");
+            string alphaDirectory = Path.Join(workspacePath, "alpha");
+            string betaDirectory = Path.Join(workspacePath, "beta");
+            string excludedDirectory = Path.Join(workspacePath, ".direnv");
             Directory.CreateDirectory(alphaDirectory);
             Directory.CreateDirectory(betaDirectory);
             Directory.CreateDirectory(excludedDirectory);
@@ -52,7 +52,7 @@ public sealed class MultiSolutionLanguageServerTests
                 "Beta",
                 TestContext.CancellationToken).ConfigureAwait(false);
             await File.WriteAllTextAsync(
-                Path.Combine(excludedDirectory, "Decoy.slnx"),
+                Path.Join(excludedDirectory, "Decoy.slnx"),
                 "<invalid>",
                 TestContext.CancellationToken).ConfigureAwait(false);
 
@@ -98,9 +98,9 @@ public sealed class MultiSolutionLanguageServerTests
         string projectName,
         CancellationToken cancellationToken)
     {
-        string projectPath = Path.Combine(directoryPath, $"{projectName}.csproj");
-        string solutionPath = Path.Combine(directoryPath, $"{projectName}.slnx");
-        string documentPath = Path.Combine(directoryPath, "Program.cs");
+        string projectPath = Path.Join(directoryPath, $"{projectName}.csproj");
+        string solutionPath = Path.Join(directoryPath, $"{projectName}.slnx");
+        string documentPath = Path.Join(directoryPath, "Program.cs");
         await File.WriteAllTextAsync(
             projectPath,
             ProjectText,

@@ -12,9 +12,39 @@ using System.Text.Json;
 const string SdkVersion = "10.0.400";
 var releasesUri = new Uri("https://dotnetcli.blob.core.windows.net/dotnet/release-metadata/10.0/releases.json");
 
-string repositoryRoot = Path.GetFullPath(Path.Combine(GetScriptDirectory(), ".."));
-string installDirectory = Path.Combine(repositoryRoot, ".dotnet");
-string installedDotNet = Path.Combine(
+if (args.Length == 1 && args[0] is "--help" or "-h" or "-?")
+{
+    await Console.Out.WriteLineAsync(
+        "Installs the pinned .NET SDK from verified Microsoft release metadata.")
+        .ConfigureAwait(false);
+    await Console.Out.WriteLineAsync(
+        "Usage: dotnet run --file scripts/InstallDotNet.cs [--runtime <rid>]")
+        .ConfigureAwait(false);
+    return;
+}
+
+string? requestedRuntimeIdentifier = null;
+for (int argumentIndex = 0; argumentIndex < args.Length; argumentIndex += 2)
+{
+    if (argumentIndex + 1 >= args.Length ||
+        !string.Equals(args[argumentIndex], "--runtime", StringComparison.Ordinal))
+    {
+        await Console.Error.WriteLineAsync(
+            "Usage: dotnet run --file scripts/InstallDotNet.cs [--runtime <rid>]")
+            .ConfigureAwait(false);
+        Environment.ExitCode = 2;
+        return;
+    }
+
+    requestedRuntimeIdentifier = args[argumentIndex + 1];
+}
+
+string repositoryRoot = Path.GetFullPath(Path.Join(GetScriptDirectory(), ".."));
+string runtimeIdentifier = requestedRuntimeIdentifier ?? GetHostRuntimeIdentifier();
+string installDirectory = requestedRuntimeIdentifier is null
+    ? Path.Join(repositoryRoot, ".dotnet")
+    : Path.Join(repositoryRoot, "artifacts", "tools", "dotnet", runtimeIdentifier);
+string installedDotNet = Path.Join(
     installDirectory,
     OperatingSystem.IsWindows() ? "dotnet.exe" : "dotnet");
 
@@ -23,12 +53,13 @@ if (File.Exists(installedDotNet))
     string? installedVersion = await ReadSdkVersionAsync(installedDotNet).ConfigureAwait(false);
     if (string.Equals(installedVersion, SdkVersion, StringComparison.Ordinal))
     {
-        Console.WriteLine($".NET SDK {SdkVersion} is already installed at {installDirectory}.");
+        await Console.Out.WriteLineAsync(
+            $".NET SDK {SdkVersion} is already installed at {installDirectory}.")
+            .ConfigureAwait(false);
         return;
     }
 }
 
-string runtimeIdentifier = GetRuntimeIdentifier();
 using HttpClient http = new() { Timeout = TimeSpan.FromMinutes(10) };
 using HttpResponseMessage releasesResponse = await http
     .GetAsync(releasesUri, HttpCompletionOption.ResponseHeadersRead)
@@ -40,13 +71,15 @@ using JsonDocument releases = await JsonDocument.ParseAsync(releasesStream).Conf
     releases.RootElement,
     runtimeIdentifier);
 
-string temporaryArchive = Path.Combine(
+string temporaryArchive = Path.Join(
     Path.GetTempPath(),
     $"csls-dotnet-sdk-{SdkVersion}-{Guid.NewGuid():N}{archive.Extension}");
 
 try
 {
-    Console.WriteLine($"Downloading .NET SDK {SdkVersion} for {runtimeIdentifier}...");
+    await Console.Out.WriteLineAsync(
+        $"Downloading .NET SDK {SdkVersion} for {runtimeIdentifier}...")
+        .ConfigureAwait(false);
     using HttpResponseMessage archiveResponse = await http
         .GetAsync(archive.Url, HttpCompletionOption.ResponseHeadersRead)
         .ConfigureAwait(false);
@@ -91,7 +124,9 @@ try
             $"SDK extraction completed, but {installedDotNet} reported {verifiedVersion ?? "no version"}.");
     }
 
-    Console.WriteLine($"Installed .NET SDK {SdkVersion} at {installDirectory}.");
+    await Console.Out.WriteLineAsync(
+        $"Installed .NET SDK {SdkVersion} at {installDirectory}.")
+        .ConfigureAwait(false);
 }
 finally
 {
@@ -119,7 +154,7 @@ static async Task<string?> ReadSdkVersionAsync(string dotnetPath)
     return process.ExitCode == 0 ? output.Trim() : throw new InvalidOperationException(error.Trim());
 }
 
-static string GetRuntimeIdentifier()
+static string GetHostRuntimeIdentifier()
 {
     string architecture = RuntimeInformation.OSArchitecture switch
     {

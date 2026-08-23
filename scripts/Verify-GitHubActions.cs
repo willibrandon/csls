@@ -32,7 +32,7 @@ try
     string repositoryRoot = ScriptSupport.FindRepositoryRoot();
     string platform = GetPlatform();
     string executableName = OperatingSystem.IsWindows() ? "actionlint.exe" : "actionlint";
-    string installationPath = Path.Combine(
+    string installationPath = Path.Join(
         repositoryRoot,
         "artifacts",
         "tools",
@@ -54,7 +54,7 @@ try
             $"actionlint {version} is not provisioned. Run scripts/Provision-Actionlint.cs.");
     }
 
-    string workflowPath = Path.Combine(repositoryRoot, ".github", "workflows");
+    string workflowPath = Path.Join(repositoryRoot, ".github", "workflows");
     string[] workflows =
     [
         .. Directory

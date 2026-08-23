@@ -32,8 +32,8 @@ if (args.Length != 4 ||
 
 try
 {
-    string repositoryRoot = Path.GetFullPath(Path.Combine(GetScriptDirectory(), ".."));
-    string artifactsRoot = Path.GetFullPath(Path.Combine(repositoryRoot, "artifacts")) +
+    string repositoryRoot = Path.GetFullPath(Path.Join(GetScriptDirectory(), ".."));
+    string artifactsRoot = Path.GetFullPath(Path.Join(repositoryRoot, "artifacts")) +
         Path.DirectorySeparatorChar;
     string outputPath = Path.GetFullPath(args[3]);
     if (!outputPath.StartsWith(artifactsRoot, StringComparison.Ordinal))

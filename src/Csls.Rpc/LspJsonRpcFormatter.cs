@@ -131,12 +131,11 @@ internal sealed class LspJsonRpcFormatter :
         using (var writer = new Utf8JsonWriter(buffer))
         {
             writer.WriteStartObject();
-            foreach (JsonProperty property in root.EnumerateObject())
+            foreach (JsonProperty property in root
+                .EnumerateObject()
+                .Where(static property => !property.NameEquals(ParametersPropertyName)))
             {
-                if (!property.NameEquals(ParametersPropertyName))
-                {
-                    property.WriteTo(writer);
-                }
+                property.WriteTo(writer);
             }
 
             writer.WriteEndObject();

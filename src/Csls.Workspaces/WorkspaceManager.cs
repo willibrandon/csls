@@ -126,31 +126,37 @@ public sealed partial class WorkspaceManager : IAsyncDisposable
                     cancellationToken.ThrowIfCancellationRequested();
                     EnsureMsBuildRegistered();
                     var workspace = MSBuildWorkspace.Create();
-                    workspace.RegisterWorkspaceFailedHandler(eventArgs =>
-                        LogWorkspaceDiagnostic(
-                            eventArgs.Diagnostic.Kind,
-                            eventArgs.Diagnostic.Message));
-                    loadedFolders.Add((rootPath, workspace, workspace.CurrentSolution));
-                    int loadedFolderIndex = loadedFolders.Count - 1;
-                    Solution solution;
-                    if (workspaceFile.EndsWith(".csproj", StringComparison.OrdinalIgnoreCase))
+                    try
                     {
-                        Project project = await workspace
-                            .OpenProjectAsync(workspaceFile, cancellationToken: cancellationToken)
-                            .ConfigureAwait(false);
-                        solution = project.Solution;
-                    }
-                    else
-                    {
-                        solution = await workspace
-                            .OpenSolutionAsync(workspaceFile, cancellationToken: cancellationToken)
-                            .ConfigureAwait(false);
-                    }
+                        workspace.RegisterWorkspaceFailedHandler(eventArgs =>
+                            LogWorkspaceDiagnostic(
+                                eventArgs.Diagnostic.Kind,
+                                eventArgs.Diagnostic.Message));
+                        Solution solution;
+                        if (workspaceFile.EndsWith(".csproj", StringComparison.OrdinalIgnoreCase))
+                        {
+                            Project project = await workspace
+                                .OpenProjectAsync(workspaceFile, cancellationToken: cancellationToken)
+                                .ConfigureAwait(false);
+                            solution = project.Solution;
+                        }
+                        else
+                        {
+                            solution = await workspace
+                                .OpenSolutionAsync(workspaceFile, cancellationToken: cancellationToken)
+                                .ConfigureAwait(false);
+                        }
 
-                    loadedFolders[loadedFolderIndex] = (rootPath, workspace, solution);
-                    LogWorkspaceLoaded(
-                        solution.ProjectIds.Count,
-                        workspaceFile);
+                        loadedFolders.Add((rootPath, workspace, solution));
+                        LogWorkspaceLoaded(
+                            solution.ProjectIds.Count,
+                            workspaceFile);
+                    }
+                    catch
+                    {
+                        workspace.Dispose();
+                        throw;
+                    }
                 }
             }
 
@@ -1604,12 +1610,11 @@ public sealed partial class WorkspaceManager : IAsyncDisposable
         foreach (IMethodSymbol method in candidates
             .Concat(symbolInfo.CandidateSymbols.OfType<IMethodSymbol>())
             .Append(symbolInfo.Symbol as IMethodSymbol)
-            .OfType<IMethodSymbol>())
+            .OfType<IMethodSymbol>()
+            .Where(method => !methods.Any(candidate =>
+                SymbolEqualityComparer.Default.Equals(candidate, method))))
         {
-            if (!methods.Any(candidate => SymbolEqualityComparer.Default.Equals(candidate, method)))
-            {
-                methods.Add(method);
-            }
+            methods.Add(method);
         }
 
         methods.Sort(static (left, right) =>
@@ -1869,12 +1874,10 @@ public sealed partial class WorkspaceManager : IAsyncDisposable
 
     private static string GetPreferredNewline(SourceText text)
     {
-        foreach (TextLine line in text.Lines)
+        foreach (TextLine line in text.Lines
+            .Where(static line => line.EndIncludingLineBreak > line.End))
         {
-            if (line.EndIncludingLineBreak > line.End)
-            {
-                return text.ToString(TextSpan.FromBounds(line.End, line.EndIncludingLineBreak));
-            }
+            return text.ToString(TextSpan.FromBounds(line.End, line.EndIncludingLineBreak));
         }
 
         return Environment.NewLine;
@@ -2059,44 +2062,52 @@ public sealed partial class WorkspaceManager : IAsyncDisposable
             ? Path.GetFileNameWithoutExtension(rootPath)
             : new DirectoryInfo(rootPath).Name;
         var workspace = new AdhocWorkspace();
-        var projectId = ProjectId.CreateNewId(debugName: rootPath);
-        var projectInfo = ProjectInfo.Create(
-            projectId,
-            VersionStamp.Create(),
-            projectName,
-            projectName,
-            LanguageNames.CSharp,
-            filePath: rootPath,
-            parseOptions: new CSharpParseOptions(LanguageVersion.CSharp14),
-            compilationOptions: new CSharpCompilationOptions(
-                OutputKind.DynamicallyLinkedLibrary),
-            metadataReferences: GetTrustedPlatformReferences());
-        Solution solution = workspace.CurrentSolution.AddProject(projectInfo);
-        solution = solution.AddDocument(
-            DocumentId.CreateNewId(projectId, debugName: "Csls.ImplicitUsings.g.cs"),
-            "Csls.ImplicitUsings.g.cs",
-            SourceText.From(DefaultGlobalUsings, Encoding.UTF8));
-        IEnumerable<string> sourceFiles = isSourceFile
-            ? [rootPath]
-            : Directory
-                .EnumerateFiles(rootPath, "*.cs", SearchOption.TopDirectoryOnly)
-                .Order(StringComparer.Ordinal);
-        foreach (string path in sourceFiles)
+        try
         {
+            var projectId = ProjectId.CreateNewId(debugName: rootPath);
+            var projectInfo = ProjectInfo.Create(
+                projectId,
+                VersionStamp.Create(),
+                projectName,
+                projectName,
+                LanguageNames.CSharp,
+                filePath: rootPath,
+                parseOptions: new CSharpParseOptions(LanguageVersion.CSharp14),
+                compilationOptions: new CSharpCompilationOptions(
+                    OutputKind.DynamicallyLinkedLibrary),
+                metadataReferences: GetTrustedPlatformReferences());
+            Solution solution = workspace.CurrentSolution.AddProject(projectInfo);
             solution = solution.AddDocument(
-                DocumentId.CreateNewId(projectId, debugName: path),
-                Path.GetFileName(path),
-                SourceText.From(File.ReadAllText(path), Encoding.UTF8),
-                filePath: path);
-        }
+                DocumentId.CreateNewId(projectId, debugName: "Csls.ImplicitUsings.g.cs"),
+                "Csls.ImplicitUsings.g.cs",
+                SourceText.From(DefaultGlobalUsings, Encoding.UTF8));
+            IEnumerable<string> sourceFiles = isSourceFile
+                ? [rootPath]
+                : Directory
+                    .EnumerateFiles(rootPath, "*.cs", SearchOption.TopDirectoryOnly)
+                    .Order(StringComparer.Ordinal);
+            foreach (string path in sourceFiles)
+            {
+                solution = solution.AddDocument(
+                    DocumentId.CreateNewId(projectId, debugName: path),
+                    Path.GetFileName(path),
+                    SourceText.From(File.ReadAllText(path), Encoding.UTF8),
+                    filePath: path);
+            }
 
-        if (!workspace.TryApplyChanges(solution))
+            if (!workspace.TryApplyChanges(solution))
+            {
+                throw new InvalidOperationException(
+                    $"Roslyn rejected loose files under {rootPath}.");
+            }
+
+            return (workspace, workspace.CurrentSolution);
+        }
+        catch
         {
             workspace.Dispose();
-            throw new InvalidOperationException($"Roslyn rejected loose files under {rootPath}.");
+            throw;
         }
-
-        return (workspace, workspace.CurrentSolution);
     }
 
     private const string DefaultGlobalUsings = """

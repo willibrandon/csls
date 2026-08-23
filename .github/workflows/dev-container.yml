@@ -46,10 +46,12 @@ jobs:
 
     steps:
       - name: Check out repository
-        uses: actions/checkout@v7.0.1
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Build and test the development container
-        uses: devcontainers/ci@v0.3
+        uses: devcontainers/ci@513af61f4de4f75d37e4438f184ba4358f0fc1ca # v0.3.1900000450
         with:
           imageName: csls-devcontainer
           imageTag: ci
@@ -57,7 +59,7 @@ jobs:
           runCmd: dotnet test --solution Csls.slnx
 
       - name: Set up .NET
-        uses: actions/setup-dotnet@v6.0.0
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
           dotnet-version: 10.0.400
 
@@ -70,6 +72,7 @@ jobs:
           docker-archive: artifacts/devcontainer/csls-devcontainer.tar
           cache-mode: secret-hash-only
           fail-on: findings
+          ignore-path: .picketignore
           max-archive-depth: 2
           max-archive-entries: 100000
           max-archive-megabytes: 8192

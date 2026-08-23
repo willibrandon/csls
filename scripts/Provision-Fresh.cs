@@ -34,7 +34,7 @@ try
     string repositoryRoot = ScriptSupport.FindRepositoryRoot();
     string toolsRoot = args.Length == 2
         ? Path.GetFullPath(args[1])
-        : Path.Combine(repositoryRoot, "artifacts", "tools");
+        : Path.Join(repositoryRoot, "artifacts", "tools");
     (string platform, string assetName, string expectedSha256, string executableName) =
         SelectAsset();
     var source = new Uri(

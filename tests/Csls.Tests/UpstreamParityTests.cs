@@ -23,7 +23,7 @@ public sealed class UpstreamParityTests
     public async Task HoverMatchesPinnedOracle()
     {
         string repositoryRoot = EditorToolResolver.FindRepositoryRoot();
-        string workerPath = Path.Combine(
+        string workerPath = Path.Join(
             repositoryRoot,
             "artifacts",
             "bin",
@@ -34,11 +34,11 @@ public sealed class UpstreamParityTests
         Assert.IsTrue(File.Exists(workerPath), $"Worker not found at {workerPath}.");
         Assert.IsTrue(File.Exists(oraclePath), $"Oracle not found at {oraclePath}.");
 
-        string fixtureRoot = Path.Combine(
+        string fixtureRoot = Path.Join(
             Path.GetTempPath(),
             $"csls-parity-{Guid.NewGuid():N}");
-        string cslsWorkspacePath = Path.Combine(fixtureRoot, "csls");
-        string oracleWorkspacePath = Path.Combine(fixtureRoot, "oracle");
+        string cslsWorkspacePath = Path.Join(fixtureRoot, "csls");
+        string oracleWorkspacePath = Path.Join(fixtureRoot, "oracle");
         Directory.CreateDirectory(cslsWorkspacePath);
         Directory.CreateDirectory(oracleWorkspacePath);
         try
@@ -158,8 +158,8 @@ public sealed class UpstreamParityTests
         string workspacePath,
         CancellationToken cancellationToken)
     {
-        string projectPath = Path.Combine(workspacePath, "Fixture.csproj");
-        string documentPath = Path.Combine(workspacePath, "Program.cs");
+        string projectPath = Path.Join(workspacePath, "Fixture.csproj");
+        string documentPath = Path.Join(workspacePath, "Program.cs");
         await File.WriteAllTextAsync(
             projectPath,
             ProjectText,

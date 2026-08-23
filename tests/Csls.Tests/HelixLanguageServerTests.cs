@@ -25,7 +25,7 @@ public sealed class HelixLanguageServerTests
         string repositoryRoot = EditorToolResolver.FindRepositoryRoot();
         string helixPath = EditorToolResolver.ResolveHelix(repositoryRoot);
         string processHostPath = EditorToolResolver.ResolveTestProcessHost(repositoryRoot);
-        string workerPath = Path.Combine(
+        string workerPath = Path.Join(
             repositoryRoot,
             "artifacts",
             "bin",
@@ -37,19 +37,19 @@ public sealed class HelixLanguageServerTests
             File.Exists(processHostPath),
             $"Test process host not found at {processHostPath}.");
 
-        string fixturePath = Path.Combine(
+        string fixturePath = Path.Join(
             Path.GetTempPath(),
             $"csls-helix-{Guid.NewGuid():N}");
         Directory.CreateDirectory(fixturePath);
         try
         {
-            string configurationRoot = Path.Combine(fixturePath, "config");
-            string helixConfigurationPath = Path.Combine(configurationRoot, "helix");
-            string workspaceConfigurationPath = Path.Combine(fixturePath, ".helix");
-            string cachePath = Path.Combine(fixturePath, "cache");
-            string dataPath = Path.Combine(fixturePath, "data");
-            string statePath = Path.Combine(fixturePath, "state");
-            string homePath = Path.Combine(fixturePath, "home");
+            string configurationRoot = Path.Join(fixturePath, "config");
+            string helixConfigurationPath = Path.Join(configurationRoot, "helix");
+            string workspaceConfigurationPath = Path.Join(fixturePath, ".helix");
+            string cachePath = Path.Join(fixturePath, "cache");
+            string dataPath = Path.Join(fixturePath, "data");
+            string statePath = Path.Join(fixturePath, "state");
+            string homePath = Path.Join(fixturePath, "home");
             Directory.CreateDirectory(helixConfigurationPath);
             Directory.CreateDirectory(workspaceConfigurationPath);
             Directory.CreateDirectory(cachePath);
@@ -57,15 +57,15 @@ public sealed class HelixLanguageServerTests
             Directory.CreateDirectory(statePath);
             Directory.CreateDirectory(homePath);
 
-            string projectPath = Path.Combine(fixturePath, "Fixture.csproj");
-            string documentPath = Path.Combine(fixturePath, "Program.cs");
-            string editorConfigurationPath = Path.Combine(
+            string projectPath = Path.Join(fixturePath, "Fixture.csproj");
+            string documentPath = Path.Join(fixturePath, "Program.cs");
+            string editorConfigurationPath = Path.Join(
                 helixConfigurationPath,
                 "config.toml");
-            string languageConfigurationPath = Path.Combine(
+            string languageConfigurationPath = Path.Join(
                 workspaceConfigurationPath,
                 "languages.toml");
-            string logPath = Path.Combine(fixturePath, "helix.log");
+            string logPath = Path.Join(fixturePath, "helix.log");
 
             await File.WriteAllTextAsync(
                 projectPath,
@@ -156,8 +156,7 @@ public sealed class HelixLanguageServerTests
                         await ControlSessionWaiter.WaitForRunningAsync(
                             fixturePath,
                             TimeSpan.FromSeconds(60),
-                            TestContext.CancellationToken,
-                            homePath).ConfigureAwait(false);
+                            TestContext.CancellationToken).ConfigureAwait(false);
                         await automator.SpaceAsync(TestContext.CancellationToken).ConfigureAwait(false);
                         await automator.KeyAsync(Hex1bKey.K, TestContext.CancellationToken)
                             .ConfigureAwait(false);

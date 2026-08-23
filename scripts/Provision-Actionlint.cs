@@ -35,7 +35,7 @@ try
     string repositoryRoot = ScriptSupport.FindRepositoryRoot();
     string toolsRoot = args.Length == 2
         ? Path.GetFullPath(args[1])
-        : Path.Combine(repositoryRoot, "artifacts", "tools");
+        : Path.Join(repositoryRoot, "artifacts", "tools");
     (string platform, string assetPlatform, string expectedSha256) = SelectAsset();
     string assetExtension = OperatingSystem.IsWindows() ? "zip" : "tar.gz";
     string assetName = $"actionlint_{Version}_{assetPlatform}.{assetExtension}";

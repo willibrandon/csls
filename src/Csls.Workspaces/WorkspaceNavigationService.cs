@@ -418,9 +418,9 @@ internal static class WorkspaceNavigationService
             spans.Add(new TextSpan(offset, 0));
         }
 
-        foreach (SyntaxNode node in token.Parent?.AncestorsAndSelf() ?? [])
+        foreach (TextSpan span in (token.Parent?.AncestorsAndSelf() ?? [])
+            .Select(static node => node.Span))
         {
-            TextSpan span = node.Span;
             if (span.Start <= offset &&
                 offset <= span.End &&
                 spans[^1] != span)

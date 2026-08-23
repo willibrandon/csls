@@ -26,14 +26,14 @@ public sealed class CliLanguageServerTests
     public async Task SessionDiscoveryIgnoresPeerThatDisconnectsDuringHandshake()
     {
         string repositoryRoot = EditorToolResolver.FindRepositoryRoot();
-        string cliPath = Path.Combine(
+        string cliPath = Path.Join(
             repositoryRoot,
             "artifacts",
             "bin",
             "Csls.App",
             "debug",
             "csls.dll");
-        string cliWorkerPath = Path.Combine(
+        string cliWorkerPath = Path.Join(
             repositoryRoot,
             "artifacts",
             "bin",
@@ -42,17 +42,11 @@ public sealed class CliLanguageServerTests
             "csls-cli-worker.dll");
         string socketDirectory = ControlEndpoint.GetSocketDirectory();
         Directory.CreateDirectory(socketDirectory);
-        string socketPath = Path.Combine(
+        string socketPath = Path.Join(
             socketDirectory,
             $"disconnect-{Guid.NewGuid():N}.csls.socket");
-        var listener = new Socket(
-            AddressFamily.Unix,
-            SocketType.Stream,
-            ProtocolType.Unspecified);
-        listener.Bind(new UnixDomainSocketEndPoint(socketPath));
-        listener.Listen(1);
         Task disconnectTask = AcceptAndDisconnectAsync(
-            listener,
+            socketPath,
             TestContext.CancellationToken);
         try
         {
@@ -71,7 +65,6 @@ public sealed class CliLanguageServerTests
         finally
         {
             await disconnectTask.ConfigureAwait(false);
-            listener.Dispose();
             if (File.Exists(socketPath))
             {
                 File.Delete(socketPath);
@@ -86,7 +79,7 @@ public sealed class CliLanguageServerTests
     public async Task CliUsesVersionedControlServicesForLiveSession()
     {
         string repositoryRoot = EditorToolResolver.FindRepositoryRoot();
-        string workerPath = Path.Combine(
+        string workerPath = Path.Join(
             repositoryRoot,
             "artifacts",
             "bin",
@@ -94,7 +87,7 @@ public sealed class CliLanguageServerTests
             "debug",
             "csls-worker.dll");
         string cliPath = Environment.GetEnvironmentVariable("CSLS_TEST_CLI_PATH") ??
-            Path.Combine(
+            Path.Join(
                 repositoryRoot,
                 "artifacts",
                 "bin",
@@ -103,7 +96,7 @@ public sealed class CliLanguageServerTests
                 "csls.dll");
         string cliWorkerPath =
             Environment.GetEnvironmentVariable("CSLS_TEST_CLI_WORKER_PATH") ??
-            Path.Combine(
+            Path.Join(
                 repositoryRoot,
                 "artifacts",
                 "bin",
@@ -114,18 +107,18 @@ public sealed class CliLanguageServerTests
         Assert.IsTrue(File.Exists(cliPath), $"CLI launcher not found at {cliPath}.");
         Assert.IsTrue(File.Exists(cliWorkerPath), $"CLI worker not found at {cliWorkerPath}.");
 
-        string fixturePath = Path.Combine(
+        string fixturePath = Path.Join(
             Path.GetTempPath(),
             $"csls-cli-{Guid.NewGuid():N}");
         Directory.CreateDirectory(fixturePath);
         try
         {
-            string documentPath = Path.Combine(fixturePath, "Program.cs");
-            string importsPath = Path.Combine(fixturePath, "Imports.cs");
-            string formattingPath = Path.Combine(fixturePath, "Formatting.cs");
-            string advancedPath = Path.Combine(fixturePath, "Advanced.cs");
+            string documentPath = Path.Join(fixturePath, "Program.cs");
+            string importsPath = Path.Join(fixturePath, "Imports.cs");
+            string formattingPath = Path.Join(fixturePath, "Formatting.cs");
+            string advancedPath = Path.Join(fixturePath, "Advanced.cs");
             await File.WriteAllTextAsync(
-                Path.Combine(fixturePath, "Fixture.csproj"),
+                Path.Join(fixturePath, "Fixture.csproj"),
                 ProjectText,
                 TestContext.CancellationToken).ConfigureAwait(false);
             await File.WriteAllTextAsync(
@@ -767,9 +760,15 @@ public sealed class CliLanguageServerTests
     }
 
     private static async Task AcceptAndDisconnectAsync(
-        Socket listener,
+        string socketPath,
         CancellationToken cancellationToken)
     {
+        using var listener = new Socket(
+            AddressFamily.Unix,
+            SocketType.Stream,
+            ProtocolType.Unspecified);
+        listener.Bind(new UnixDomainSocketEndPoint(socketPath));
+        listener.Listen(1);
         using Socket connection = await listener
             .AcceptAsync(cancellationToken)
             .ConfigureAwait(false);

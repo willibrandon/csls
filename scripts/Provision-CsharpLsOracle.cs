@@ -37,7 +37,7 @@ try
     string repositoryRoot = ScriptSupport.FindRepositoryRoot();
     string toolsRoot = args.Length == 2
         ? Path.GetFullPath(args[1])
-        : Path.Combine(repositoryRoot, "artifacts", "tools");
+        : Path.Join(repositoryRoot, "artifacts", "tools");
     string platform = GetPlatform();
     var packageSource = new Uri(
         $"https://api.nuget.org/v3-flatcontainer/csharp-ls/{Version}/csharp-ls.{Version}.nupkg");

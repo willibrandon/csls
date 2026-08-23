@@ -25,7 +25,7 @@ public sealed class EmacsLanguageServerTests
         string repositoryRoot = EditorToolResolver.FindRepositoryRoot();
         string emacsPath = EditorToolResolver.ResolveEmacs(repositoryRoot);
         string processHostPath = EditorToolResolver.ResolveTestProcessHost(repositoryRoot);
-        string workerPath = Path.Combine(
+        string workerPath = Path.Join(
             repositoryRoot,
             "artifacts",
             "bin",
@@ -37,15 +37,15 @@ public sealed class EmacsLanguageServerTests
             File.Exists(processHostPath),
             $"Test process host not found at {processHostPath}.");
 
-        string fixturePath = Path.Combine(
+        string fixturePath = Path.Join(
             Path.GetTempPath(),
             $"csls-emacs-{Guid.NewGuid():N}");
         Directory.CreateDirectory(fixturePath);
         try
         {
-            string alphaPath = Path.Combine(fixturePath, "alpha");
-            string betaPath = Path.Combine(fixturePath, "beta");
-            string homePath = Path.Combine(fixturePath, "home");
+            string alphaPath = Path.Join(fixturePath, "alpha");
+            string betaPath = Path.Join(fixturePath, "beta");
+            string homePath = Path.Join(fixturePath, "home");
             Directory.CreateDirectory(alphaPath);
             Directory.CreateDirectory(betaPath);
             Directory.CreateDirectory(homePath);
@@ -59,15 +59,15 @@ public sealed class EmacsLanguageServerTests
                 "Beta",
                 BetaDocumentText,
                 TestContext.CancellationToken).ConfigureAwait(false);
-            string targetPath = Path.Combine(betaPath, "Target.cs");
+            string targetPath = Path.Join(betaPath, "Target.cs");
             await File.WriteAllTextAsync(
                 targetPath,
                 TargetDocumentText,
                 TestContext.CancellationToken).ConfigureAwait(false);
 
-            string readyPath = Path.Combine(fixturePath, "eglot-ready");
-            string navigationPath = Path.Combine(fixturePath, "eglot-navigation");
-            string initializationPath = Path.Combine(fixturePath, "init.el");
+            string readyPath = Path.Join(fixturePath, "eglot-ready");
+            string navigationPath = Path.Join(fixturePath, "eglot-navigation");
+            string initializationPath = Path.Join(fixturePath, "init.el");
             await File.WriteAllTextAsync(
                 initializationPath,
                 CreateInitialization(
@@ -203,9 +203,9 @@ public sealed class EmacsLanguageServerTests
         string documentText,
         CancellationToken cancellationToken)
     {
-        string projectPath = Path.Combine(directoryPath, $"{projectName}.csproj");
-        string solutionPath = Path.Combine(directoryPath, $"{projectName}.slnx");
-        string documentPath = Path.Combine(directoryPath, "Program.cs");
+        string projectPath = Path.Join(directoryPath, $"{projectName}.csproj");
+        string solutionPath = Path.Join(directoryPath, $"{projectName}.slnx");
+        string documentPath = Path.Join(directoryPath, "Program.cs");
         await File.WriteAllTextAsync(
             projectPath,
             ProjectText,

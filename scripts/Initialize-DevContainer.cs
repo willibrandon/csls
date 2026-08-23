@@ -90,17 +90,17 @@ try
     {
         await RunCheckedAsync(
             dotnetPath,
-            ["run", "--file", Path.Combine("scripts", provisioner)],
+            ["run", "--file", Path.Join("scripts", provisioner)],
             repositoryRoot).ConfigureAwait(false);
     }
 
     await RunCheckedAsync(
         dotnetPath,
-        ["run", "--file", Path.Combine("scripts", "Verify-Repository.cs")],
+        ["run", "--file", Path.Join("scripts", "Verify-Repository.cs")],
         repositoryRoot).ConfigureAwait(false);
     await RunCheckedAsync(
         dotnetPath,
-        ["run", "--file", Path.Combine("scripts", "Verify-GitHubActions.cs")],
+        ["run", "--file", Path.Join("scripts", "Verify-GitHubActions.cs")],
         repositoryRoot).ConfigureAwait(false);
     await Console.Out.WriteLineAsync("The csls development container is ready.")
         .ConfigureAwait(false);

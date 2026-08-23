@@ -82,5 +82,6 @@ static async Task RunSessionAsync(
     }
     catch (OperationCanceledException) when (sessionSource.IsCancellationRequested)
     {
+        return;
     }
 }

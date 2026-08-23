@@ -37,7 +37,7 @@ try
     string repositoryRoot = ScriptSupport.FindRepositoryRoot();
     string toolsRoot = args.Length == 2
         ? Path.GetFullPath(args[1])
-        : Path.Combine(repositoryRoot, "artifacts", "tools");
+        : Path.Join(repositoryRoot, "artifacts", "tools");
     string platform = SelectPlatform();
     string executablePath = OperatingSystem.IsWindows()
         ? await ProvisionWindowsAsync(toolsRoot, platform).ConfigureAwait(false)
@@ -105,15 +105,15 @@ static Task<string> ProvisionWindowsAsync(string toolsRoot, string platform) =>
 
 static async Task<string> ProvisionUnixAsync(string toolsRoot, string platform)
 {
-    string installationPath = Path.Combine(toolsRoot, "emacs", Version, platform);
-    string executablePath = Path.Combine(installationPath, "bin", "emacs");
+    string installationPath = Path.Join(toolsRoot, "emacs", Version, platform);
+    string executablePath = Path.Join(installationPath, "bin", "emacs");
     if (File.Exists(executablePath))
     {
         await VerifyEglotAsync(executablePath).ConfigureAwait(false);
         return executablePath;
     }
 
-    string stagingRoot = Path.Combine(
+    string stagingRoot = Path.Join(
         toolsRoot,
         ".staging",
         $"emacs-{Version}-{Guid.NewGuid():N}");
@@ -121,8 +121,8 @@ static async Task<string> ProvisionUnixAsync(string toolsRoot, string platform)
     try
     {
         const string assetName = "emacs-30.2.tar.xz";
-        string archivePath = Path.Combine(stagingRoot, assetName);
-        string extractionPath = Path.Combine(stagingRoot, "source");
+        string archivePath = Path.Join(stagingRoot, assetName);
+        string extractionPath = Path.Join(stagingRoot, "source");
         Directory.CreateDirectory(extractionPath);
         await Console.Error.WriteLineAsync(
             $"Downloading GNU Emacs {Version} source for {platform}...").ConfigureAwait(false);
@@ -138,7 +138,7 @@ static async Task<string> ProvisionUnixAsync(string toolsRoot, string platform)
         string sourcePath = Directory
             .EnumerateDirectories(extractionPath, $"emacs-{Version}", SearchOption.TopDirectoryOnly)
             .Single();
-        string configurePath = Path.Combine(sourcePath, "configure");
+        string configurePath = Path.Join(sourcePath, "configure");
         ScriptSupport.EnsureExecutable(configurePath);
         await Console.Error.WriteLineAsync(
             $"Building terminal-only GNU Emacs {Version} for {platform}...").ConfigureAwait(false);
@@ -182,13 +182,13 @@ static async Task<string> ProvisionUnixAsync(string toolsRoot, string platform)
             ["-j", Math.Min(Environment.ProcessorCount, 8).ToString(CultureInfo.InvariantCulture)],
             sourcePath).ConfigureAwait(false);
 
-        string destinationRoot = Path.Combine(stagingRoot, "destination");
+        string destinationRoot = Path.Join(stagingRoot, "destination");
         Directory.CreateDirectory(destinationRoot);
         await RunCheckedAsync(
             "make",
             ["install", $"DESTDIR={destinationRoot}"],
             sourcePath).ConfigureAwait(false);
-        string stagedInstallationPath = Path.Combine(
+        string stagedInstallationPath = Path.Join(
             destinationRoot,
             installationPath.TrimStart(Path.DirectorySeparatorChar));
         if (!Directory.Exists(stagedInstallationPath))

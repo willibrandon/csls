@@ -116,7 +116,7 @@ internal static partial class UnixProcess
                     continue;
                 }
 
-                string candidatePath = Path.Combine(directoryPath, fileName);
+                string candidatePath = Path.Join(directoryPath, fileName);
                 if (File.Exists(candidatePath))
                 {
                     return candidatePath;

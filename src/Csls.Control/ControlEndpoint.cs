@@ -1,3 +1,6 @@
+using System.Security.Cryptography;
+using System.Text;
+
 namespace Csls.Control;
 
 /// <summary>
@@ -11,15 +14,10 @@ public static class ControlEndpoint
     /// <returns>The per-user socket directory.</returns>
     public static string GetSocketDirectory()
     {
-        string userProfile = Environment.GetFolderPath(
-            Environment.SpecialFolder.UserProfile,
-            Environment.SpecialFolderOption.DoNotVerify);
-        if (string.IsNullOrWhiteSpace(userProfile))
-        {
-            throw new InvalidOperationException("The current user profile directory is unavailable.");
-        }
-
-        return Path.Combine(userProfile, ".csls", "sockets");
+        string temporaryDirectory = OperatingSystem.IsWindows()
+            ? Path.GetTempPath()
+            : "/tmp";
+        return Path.Join(temporaryDirectory, $"csls-{GetUserKey()}");
     }
 
     /// <summary>
@@ -30,7 +28,7 @@ public static class ControlEndpoint
     public static string GetSocketPath(int processId)
     {
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(processId);
-        return Path.Combine(GetSocketDirectory(), $"{processId}.csls.socket");
+        return Path.Join(GetSocketDirectory(), $"{processId}.csls.socket");
     }
 
     /// <summary>
@@ -44,6 +42,13 @@ public static class ControlEndpoint
         Directory.CreateDirectory(socketDirectory);
         if (!OperatingSystem.IsWindows())
         {
+            var directory = new DirectoryInfo(socketDirectory);
+            if (directory.LinkTarget is not null)
+            {
+                throw new IOException(
+                    $"The csls socket directory must not be a symbolic link: {socketDirectory}");
+            }
+
             File.SetUnixFileMode(
                 socketDirectory,
                 UnixFileMode.UserRead |
@@ -73,5 +78,11 @@ public static class ControlEndpoint
                 socketPath,
                 UnixFileMode.UserRead | UnixFileMode.UserWrite);
         }
+    }
+
+    private static string GetUserKey()
+    {
+        byte[] hash = SHA256.HashData(Encoding.UTF8.GetBytes(Environment.UserName));
+        return Convert.ToHexStringLower(hash.AsSpan(0, 8));
     }
 }

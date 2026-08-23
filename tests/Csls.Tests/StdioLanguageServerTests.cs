@@ -25,7 +25,7 @@ public sealed class StdioLanguageServerTests
     public async Task WorkerServesHoverAndShutsDownCleanly()
     {
         string repositoryRoot = FindRepositoryRoot();
-        string workerPath = Path.Combine(
+        string workerPath = Path.Join(
             repositoryRoot,
             "artifacts",
             "bin",
@@ -34,14 +34,14 @@ public sealed class StdioLanguageServerTests
             "csls-worker.dll");
         Assert.IsTrue(File.Exists(workerPath), $"Worker not found at {workerPath}.");
 
-        string workspacePath = Path.Combine(
+        string workspacePath = Path.Join(
             Path.GetTempPath(),
             $"csls-lsp-{Guid.NewGuid():N}");
         Directory.CreateDirectory(workspacePath);
         try
         {
-            string projectPath = Path.Combine(workspacePath, "Fixture.csproj");
-            string documentPath = Path.Combine(workspacePath, "Program.cs");
+            string projectPath = Path.Join(workspacePath, "Fixture.csproj");
+            string documentPath = Path.Join(workspacePath, "Program.cs");
             const string ProjectText = """
                 <Project Sdk="Microsoft.NET.Sdk">
                   <PropertyGroup>
@@ -170,7 +170,7 @@ public sealed class StdioLanguageServerTests
     public async Task WorkerAcceptsNullShutdownParameters()
     {
         string repositoryRoot = FindRepositoryRoot();
-        string workerPath = Path.Combine(
+        string workerPath = Path.Join(
             repositoryRoot,
             "artifacts",
             "bin",
@@ -179,14 +179,14 @@ public sealed class StdioLanguageServerTests
             "csls-worker.dll");
         Assert.IsTrue(File.Exists(workerPath), $"Worker not found at {workerPath}.");
 
-        string workspacePath = Path.Combine(
+        string workspacePath = Path.Join(
             Path.GetTempPath(),
             $"csls-null-params-{Guid.NewGuid():N}");
         Directory.CreateDirectory(workspacePath);
         try
         {
             await File.WriteAllTextAsync(
-                Path.Combine(workspacePath, "Fixture.csproj"),
+                Path.Join(workspacePath, "Fixture.csproj"),
                 """
                 <Project Sdk="Microsoft.NET.Sdk">
                   <PropertyGroup>
@@ -196,7 +196,7 @@ public sealed class StdioLanguageServerTests
                 """,
                 TestContext.CancellationToken).ConfigureAwait(false);
             await File.WriteAllTextAsync(
-                Path.Combine(workspacePath, "Program.cs"),
+                Path.Join(workspacePath, "Program.cs"),
                 """Console.WriteLine("null parameters");""",
                 TestContext.CancellationToken).ConfigureAwait(false);
 
@@ -336,7 +336,7 @@ public sealed class StdioLanguageServerTests
         var directory = new DirectoryInfo(AppContext.BaseDirectory);
         while (directory is not null)
         {
-            if (File.Exists(Path.Combine(directory.FullName, "Csls.slnx")))
+            if (File.Exists(Path.Join(directory.FullName, "Csls.slnx")))
             {
                 return directory.FullName;
             }

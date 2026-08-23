@@ -26,10 +26,12 @@ jobs:
 
     steps:
       - name: Check out repository
-        uses: actions/checkout@v7.0.1
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Set up .NET
-        uses: actions/setup-dotnet@v6.0.0
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
           dotnet-version: 10.0.400
 
@@ -53,15 +55,17 @@ jobs:
 
     steps:
       - name: Check out repository
-        uses: actions/checkout@v7.0.1
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
+          persist-credentials: false
 
       - name: Scan repository with Picket
         uses: willibrandon/picket@4c9f7d28260bfe0a7334865c84db093519f6f57f # v0.2.12
         with:
           cache-mode: secret-hash-only
           fail-on: findings
+          ignore-path: .picketignore
           max-archive-depth: 2
           max-archive-entries: 100000
           max-archive-megabytes: 4096
@@ -75,29 +79,40 @@ jobs:
     name: Build, test, and package (${{ matrix.rid }})
     runs-on: ${{ matrix.os }}
     timeout-minutes: 60
+    permissions:
+      actions: read
+      contents: read
     strategy:
       fail-fast: false
       matrix:
         include:
           - os: ubuntu-latest
             rid: linux-x64
+            size_budget: max=8mb
           - os: ubuntu-24.04-arm
             rid: linux-arm64
+            size_budget: max=8mb
           - os: windows-latest
             rid: win-x64
+            size_budget: max=8mb
           - os: windows-11-arm
             rid: win-arm64
+            size_budget: max=8mb
           - os: macos-26-intel
             rid: osx-x64
+            size_budget: max=8mb
           - os: macos-26
             rid: osx-arm64
+            size_budget: max=8mb
 
     steps:
       - name: Check out repository
-        uses: actions/checkout@v7.0.1
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Set up .NET
-        uses: actions/setup-dotnet@v6.0.0
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
           dotnet-version: 10.0.400
 
@@ -131,9 +146,31 @@ jobs:
       - name: Verify .NET tool packages
         run: dotnet run --file scripts/Verify-ToolPackages.cs
 
+      - name: Check csls Native AOT size
+        uses: willibrandon/dotsider@6da3fc29735440fdf2aca82d148e6b497a381993 # v0.26.0
+        with:
+          target: artifacts/obj/Csls.App/release_${{ matrix.rid }}/native/csls.mstat
+          baseline-key: csls-${{ matrix.rid }}
+          budgets: ${{ matrix.size_budget }}
+          top: '20'
+          dotsider-version: v0.26.0
+          report-directory: ${{ runner.temp }}/dotsider-size-csls-${{ matrix.rid }}
+          artifact-name: dotsider-size-csls-${{ matrix.rid }}
+
+      - name: Check csls-mcp Native AOT size
+        uses: willibrandon/dotsider@6da3fc29735440fdf2aca82d148e6b497a381993 # v0.26.0
+        with:
+          target: artifacts/obj/Csls.Mcp/release_${{ matrix.rid }}/native/csls-mcp.mstat
+          baseline-key: csls-mcp-${{ matrix.rid }}
+          budgets: ${{ matrix.size_budget }}
+          top: '20'
+          dotsider-version: v0.26.0
+          report-directory: ${{ runner.temp }}/dotsider-size-csls-mcp-${{ matrix.rid }}
+          artifact-name: dotsider-size-csls-mcp-${{ matrix.rid }}
+
       - name: Upload test results
         if: always()
-        uses: actions/upload-artifact@v7.0.0
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: test-results-${{ matrix.rid }}
           path: TestResults/${{ matrix.rid }}
@@ -159,15 +196,25 @@ jobs:
 
     steps:
       - name: Check out repository
-        uses: actions/checkout@v7.0.1
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Set up .NET
-        uses: actions/setup-dotnet@v6.0.0
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
           dotnet-version: 10.0.400
 
       - name: Install Native AOT prerequisites
         run: dotnet run --file scripts/Install-NativeAotPrerequisites.cs -- --runtime ${{ matrix.rid }}
 
+      - name: Provision target .NET SDK
+        if: matrix.rid == 'win-x86'
+        run: dotnet run --file scripts/InstallDotNet.cs -- --runtime ${{ matrix.rid }}
+
       - name: Verify additional RID packages
-        run: dotnet run --file scripts/Verify-ToolPackages.cs -- --runtime ${{ matrix.rid }} --validation ${{ matrix.validation }}
+        run: >-
+          dotnet run --file scripts/Verify-ToolPackages.cs --
+          --runtime ${{ matrix.rid }}
+          --validation ${{ matrix.validation }}
+          --target-dotnet-root artifacts/tools/dotnet/${{ matrix.rid }}

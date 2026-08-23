@@ -32,6 +32,7 @@ var failures = new List<string>();
 VerifyFilePolicy(trackedPaths, failures);
 VerifyTrackedText(repositoryRoot, trackedPaths, failures);
 VerifyDependencies(repositoryRoot, failures);
+VerifyGitHubActionReferences(repositoryRoot, failures);
 if (failures.Count != 0)
 {
     foreach (string failure in failures.Order(StringComparer.Ordinal))
@@ -52,7 +53,7 @@ static string FindRepositoryRoot()
     DirectoryInfo? directory = new(AppContext.BaseDirectory);
     while (directory is not null)
     {
-        if (File.Exists(Path.Combine(directory.FullName, "Csls.slnx")))
+        if (File.Exists(Path.Join(directory.FullName, "Csls.slnx")))
         {
             return directory.FullName;
         }
@@ -63,7 +64,7 @@ static string FindRepositoryRoot()
     directory = new DirectoryInfo(Directory.GetCurrentDirectory());
     while (directory is not null)
     {
-        if (File.Exists(Path.Combine(directory.FullName, "Csls.slnx")))
+        if (File.Exists(Path.Join(directory.FullName, "Csls.slnx")))
         {
             return directory.FullName;
         }
@@ -152,7 +153,7 @@ static void VerifyTrackedText(
         RegexOptions.CultureInvariant | RegexOptions.IgnoreCase);
     foreach (string trackedPath in trackedPaths)
     {
-        string fullPath = Path.Combine(repositoryRoot, trackedPath);
+        string fullPath = Path.Join(repositoryRoot, trackedPath);
         byte[] bytes = File.ReadAllBytes(fullPath);
         if (bytes.Contains((byte)0))
         {
@@ -233,6 +234,54 @@ static void VerifyDependencies(string repositoryRoot, ICollection<string> failur
                     StringComparison.Ordinal)))
             {
                 failures.Add($"Unapproved core dependency {package}: {relativeProjectPath}");
+            }
+        }
+    }
+}
+
+static void VerifyGitHubActionReferences(
+    string repositoryRoot,
+    ICollection<string> failures)
+{
+    string workflowDirectory = Path.Join(repositoryRoot, ".github", "workflows");
+    foreach (string workflowPath in Directory.EnumerateFiles(
+        workflowDirectory,
+        "*.yml",
+        SearchOption.TopDirectoryOnly))
+    {
+        int lineNumber = 0;
+        foreach (string line in File.ReadLines(workflowPath))
+        {
+            lineNumber++;
+            string trimmedLine = line.TrimStart();
+            if (!trimmedLine.StartsWith("uses:", StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            string[] referenceParts = trimmedLine["uses:".Length..]
+                .Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries);
+            if (referenceParts.Length == 0)
+            {
+                string relativePath = Path.GetRelativePath(repositoryRoot, workflowPath);
+                failures.Add($"GitHub Action reference is empty: {relativePath}:{lineNumber}");
+                continue;
+            }
+
+            string reference = referenceParts[0];
+            if (reference.StartsWith("./", StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            int separatorIndex = reference.LastIndexOf('@');
+            string revision = separatorIndex >= 0 ? reference[(separatorIndex + 1)..] : string.Empty;
+            if (revision.Length != 40 || !revision.All(Uri.IsHexDigit))
+            {
+                string relativePath = Path.GetRelativePath(repositoryRoot, workflowPath);
+                failures.Add(
+                    $"GitHub Actions must use immutable commit SHAs: " +
+                    $"{relativePath}:{lineNumber} ({reference})");
             }
         }
     }

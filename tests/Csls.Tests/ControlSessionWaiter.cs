@@ -20,13 +20,11 @@ internal static class ControlSessionWaiter
     /// <param name="workspacePath">The absolute workspace path served by the session.</param>
     /// <param name="timeout">The maximum readiness interval.</param>
     /// <param name="cancellationToken">The test cancellation token.</param>
-    /// <param name="sessionHomePath">The optional isolated home inherited by an editor child.</param>
     /// <returns>The matching running session snapshot.</returns>
     internal static async Task<ControlSessionInfo> WaitForRunningAsync(
         string workspacePath,
         TimeSpan timeout,
-        CancellationToken cancellationToken,
-        string? sessionHomePath = null)
+        CancellationToken cancellationToken)
     {
         string expectedWorkspacePath = NormalizePath(workspacePath);
         using var timeoutSource = CancellationTokenSource.CreateLinkedTokenSource(
@@ -38,52 +36,43 @@ internal static class ControlSessionWaiter
         {
             while (await timer.WaitForNextTickAsync(timeoutSource.Token).ConfigureAwait(false))
             {
-                string[] socketDirectories = sessionHomePath is null
-                    ? [ControlEndpoint.GetSocketDirectory()]
-                    :
-                    [
-                        ControlEndpoint.GetSocketDirectory(),
-                        Path.Combine(sessionHomePath, ".csls", "sockets")
-                    ];
-                foreach (string socketDirectory in socketDirectories.Distinct(PathComparer))
+                string socketDirectory = ControlEndpoint.GetSocketDirectory();
+                if (!Directory.Exists(socketDirectory))
                 {
-                    if (!Directory.Exists(socketDirectory))
+                    continue;
+                }
+
+                foreach (string socketPath in Directory.EnumerateFiles(
+                    socketDirectory,
+                    "*.csls.socket",
+                    SearchOption.TopDirectoryOnly))
+                {
+                    ControlSessionInfo? session = await TryGetSessionAsync(
+                        socketPath,
+                        timeoutSource.Token).ConfigureAwait(false);
+                    if (session is null)
                     {
                         continue;
                     }
 
-                    foreach (string socketPath in Directory.EnumerateFiles(
-                        socketDirectory,
-                        "*.csls.socket",
-                        SearchOption.TopDirectoryOnly))
+                    bool servesWorkspace = session.WorkspaceRoots.Any(root =>
+                        PathComparer.Equals(NormalizePath(root), expectedWorkspacePath));
+                    if (!servesWorkspace)
                     {
-                        ControlSessionInfo? session = await TryGetSessionAsync(
-                            socketPath,
-                            timeoutSource.Token).ConfigureAwait(false);
-                        if (session is null)
-                        {
-                            continue;
-                        }
+                        continue;
+                    }
 
-                        bool servesWorkspace = session.WorkspaceRoots.Any(root =>
-                            PathComparer.Equals(NormalizePath(root), expectedWorkspacePath));
-                        if (!servesWorkspace)
-                        {
-                            continue;
-                        }
-
-                        observations.Clear();
-                        observations.Append("process ")
-                            .Append(session.ProcessId)
-                            .Append(" state ")
-                            .Append(session.LifecycleState);
-                        if (string.Equals(
-                            session.LifecycleState,
-                            "Running",
-                            StringComparison.Ordinal))
-                        {
-                            return session;
-                        }
+                    observations.Clear();
+                    observations.Append("process ")
+                        .Append(session.ProcessId)
+                        .Append(" state ")
+                        .Append(session.LifecycleState);
+                    if (string.Equals(
+                        session.LifecycleState,
+                        "Running",
+                        StringComparison.Ordinal))
+                    {
+                        return session;
                     }
                 }
             }

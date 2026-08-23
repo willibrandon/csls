@@ -26,7 +26,7 @@ public sealed class McpLanguageServerTests
     public async Task McpExposesAttachedLanguageServerSession()
     {
         string repositoryRoot = EditorToolResolver.FindRepositoryRoot();
-        string workerPath = Path.Combine(
+        string workerPath = Path.Join(
             repositoryRoot,
             "artifacts",
             "bin",
@@ -34,7 +34,7 @@ public sealed class McpLanguageServerTests
             "debug",
             "csls-worker.dll");
         string mcpPath = Environment.GetEnvironmentVariable("CSLS_TEST_MCP_PATH") ??
-            Path.Combine(
+            Path.Join(
                 repositoryRoot,
                 "artifacts",
                 "bin",
@@ -43,7 +43,7 @@ public sealed class McpLanguageServerTests
                 "csls-mcp.dll");
         string mcpWorkerPath =
             Environment.GetEnvironmentVariable("CSLS_TEST_MCP_WORKER_PATH") ??
-            Path.Combine(
+            Path.Join(
                 repositoryRoot,
                 "artifacts",
                 "bin",
@@ -56,18 +56,18 @@ public sealed class McpLanguageServerTests
             File.Exists(mcpWorkerPath),
             $"MCP worker not found at {mcpWorkerPath}.");
 
-        string fixturePath = Path.Combine(
+        string fixturePath = Path.Join(
             Path.GetTempPath(),
             $"csls-mcp-{Guid.NewGuid():N}");
         Directory.CreateDirectory(fixturePath);
         try
         {
-            string projectPath = Path.Combine(fixturePath, "Fixture.csproj");
-            string documentPath = Path.Combine(fixturePath, "Program.cs");
-            string importsPath = Path.Combine(fixturePath, "Imports.cs");
-            string formattingPath = Path.Combine(fixturePath, "Formatting.cs");
-            string stalePath = Path.Combine(fixturePath, "Stale.cs");
-            string advancedPath = Path.Combine(fixturePath, "Advanced.cs");
+            string projectPath = Path.Join(fixturePath, "Fixture.csproj");
+            string documentPath = Path.Join(fixturePath, "Program.cs");
+            string importsPath = Path.Join(fixturePath, "Imports.cs");
+            string formattingPath = Path.Join(fixturePath, "Formatting.cs");
+            string stalePath = Path.Join(fixturePath, "Stale.cs");
+            string advancedPath = Path.Join(fixturePath, "Advanced.cs");
             await File.WriteAllTextAsync(
                 projectPath,
                 ProjectText,

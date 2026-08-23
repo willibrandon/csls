@@ -43,4 +43,10 @@ jobs:
         run: dotnet build Csls.slnx --configuration Release --no-incremental
 
       - name: Analyze
+        id: analyze
         uses: github/codeql-action/analyze@ff2f1c621b7f889edc0d3c761ac2e6a3f8cdb0dd # v4.37.7
+        with:
+          output: artifacts/codeql-results
+
+      - name: Enforce zero CodeQL findings
+        run: dotnet run --file scripts/Verify-CodeQl.cs -- artifacts/codeql-results

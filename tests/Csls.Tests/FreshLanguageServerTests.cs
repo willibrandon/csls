@@ -25,7 +25,7 @@ public sealed class FreshLanguageServerTests
         string repositoryRoot = EditorToolResolver.FindRepositoryRoot();
         string freshPath = EditorToolResolver.ResolveFresh(repositoryRoot);
         string processHostPath = EditorToolResolver.ResolveTestProcessHost(repositoryRoot);
-        string workerPath = Path.Combine(
+        string workerPath = Path.Join(
             repositoryRoot,
             "artifacts",
             "bin",
@@ -37,20 +37,20 @@ public sealed class FreshLanguageServerTests
             File.Exists(processHostPath),
             $"Test process host not found at {processHostPath}.");
 
-        string fixturePath = Path.Combine(
+        string fixturePath = Path.Join(
             Path.GetTempPath(),
             $"csls-fresh-{Guid.NewGuid():N}");
         Directory.CreateDirectory(fixturePath);
         try
         {
-            string documentPath = Path.Combine(fixturePath, "Program.cs");
-            string configurationPath = Path.Combine(fixturePath, "fresh.json");
-            string logPath = Path.Combine(fixturePath, "fresh.log");
-            string eventLogPath = Path.Combine(fixturePath, "fresh-events.jsonl");
-            string homePath = Path.Combine(fixturePath, "home");
-            string cachePath = Path.Combine(fixturePath, "cache");
-            string dataPath = Path.Combine(fixturePath, "data");
-            string statePath = Path.Combine(fixturePath, "state");
+            string documentPath = Path.Join(fixturePath, "Program.cs");
+            string configurationPath = Path.Join(fixturePath, "fresh.json");
+            string logPath = Path.Join(fixturePath, "fresh.log");
+            string eventLogPath = Path.Join(fixturePath, "fresh-events.jsonl");
+            string homePath = Path.Join(fixturePath, "home");
+            string cachePath = Path.Join(fixturePath, "cache");
+            string dataPath = Path.Join(fixturePath, "data");
+            string statePath = Path.Join(fixturePath, "state");
             Directory.CreateDirectory(homePath);
             Directory.CreateDirectory(cachePath);
             Directory.CreateDirectory(dataPath);
@@ -127,16 +127,17 @@ public sealed class FreshLanguageServerTests
                             await ControlSessionWaiter.WaitForRunningAsync(
                                 fixturePath,
                                 TimeSpan.FromSeconds(60),
-                                TestContext.CancellationToken,
-                                homePath).ConfigureAwait(false);
+                                TestContext.CancellationToken).ConfigureAwait(false);
                             await automator.WaitUntilTextAsync("LSP (csharp) ready")
                                 .ConfigureAwait(false);
                         }
                         catch (Exception exception)
+                            when (exception is TimeoutException or Hex1bAutomationException)
                         {
                             string diagnostics = await ReadDiagnosticsAsync(
                                 logPath,
                                 eventLogPath,
+                                statePath,
                                 TestContext.CancellationToken).ConfigureAwait(false);
                             using Hex1bTerminalSnapshot snapshot = automator.CreateSnapshot();
                             throw new InvalidOperationException(
@@ -158,6 +159,7 @@ public sealed class FreshLanguageServerTests
                             string diagnostics = await ReadDiagnosticsAsync(
                                 logPath,
                                 eventLogPath,
+                                statePath,
                                 TestContext.CancellationToken).ConfigureAwait(false);
                             TestContext.WriteLine(diagnostics);
                             throw;
@@ -227,6 +229,7 @@ public sealed class FreshLanguageServerTests
     private static async Task<string> ReadDiagnosticsAsync(
         string logPath,
         string eventLogPath,
+        string statePath,
         CancellationToken cancellationToken)
     {
         string log = File.Exists(logPath)
@@ -235,7 +238,27 @@ public sealed class FreshLanguageServerTests
         string events = File.Exists(eventLogPath)
             ? await File.ReadAllTextAsync(eventLogPath, cancellationToken).ConfigureAwait(false)
             : string.Empty;
+        string languageServerLogDirectory = Path.Join(statePath, "fresh", "logs", "lsp");
+        var languageServerLogs = new List<string>();
+        if (Directory.Exists(languageServerLogDirectory))
+        {
+            foreach (string languageServerLogPath in Directory.EnumerateFiles(
+                languageServerLogDirectory,
+                "*",
+                SearchOption.AllDirectories).Order(StringComparer.Ordinal))
+            {
+                string languageServerLog = await File.ReadAllTextAsync(
+                    languageServerLogPath,
+                    cancellationToken).ConfigureAwait(false);
+                languageServerLogs.Add(
+                    $"{Path.GetRelativePath(statePath, languageServerLogPath)}:" +
+                    $"{Environment.NewLine}{languageServerLog}");
+            }
+        }
+
         return $"Fresh log:{Environment.NewLine}{log}{Environment.NewLine}" +
-            $"Fresh events:{Environment.NewLine}{events}";
+            $"Fresh events:{Environment.NewLine}{events}{Environment.NewLine}" +
+            $"Language server logs:{Environment.NewLine}" +
+            string.Join(Environment.NewLine, languageServerLogs);
     }
 }

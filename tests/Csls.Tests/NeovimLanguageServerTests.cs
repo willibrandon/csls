@@ -24,7 +24,7 @@ public sealed class NeovimLanguageServerTests
         string repositoryRoot = EditorToolResolver.FindRepositoryRoot();
         string neovimPath = EditorToolResolver.ResolveNeovim(repositoryRoot);
         string processHostPath = EditorToolResolver.ResolveTestProcessHost(repositoryRoot);
-        string workerPath = Path.Combine(
+        string workerPath = Path.Join(
             repositoryRoot,
             "artifacts",
             "bin",
@@ -36,21 +36,21 @@ public sealed class NeovimLanguageServerTests
             File.Exists(processHostPath),
             $"Test process host not found at {processHostPath}.");
 
-        string fixturePath = Path.Combine(
+        string fixturePath = Path.Join(
             Path.GetTempPath(),
             $"csls-neovim-{Guid.NewGuid():N}");
         Directory.CreateDirectory(fixturePath);
         try
         {
-            string documentPath = Path.Combine(fixturePath, "Program.cs");
-            string configurationPath = Path.Combine(fixturePath, "init.lua");
-            string readyPath = Path.Combine(fixturePath, "lsp-ready");
-            string hoverRequestedPath = Path.Combine(fixturePath, "hover-requested");
-            string homePath = Path.Combine(fixturePath, "home");
-            string cachePath = Path.Combine(fixturePath, "cache");
-            string configurationRoot = Path.Combine(fixturePath, "config");
-            string dataPath = Path.Combine(fixturePath, "data");
-            string statePath = Path.Combine(fixturePath, "state");
+            string documentPath = Path.Join(fixturePath, "Program.cs");
+            string configurationPath = Path.Join(fixturePath, "init.lua");
+            string readyPath = Path.Join(fixturePath, "lsp-ready");
+            string hoverRequestedPath = Path.Join(fixturePath, "hover-requested");
+            string homePath = Path.Join(fixturePath, "home");
+            string cachePath = Path.Join(fixturePath, "cache");
+            string configurationRoot = Path.Join(fixturePath, "config");
+            string dataPath = Path.Join(fixturePath, "data");
+            string statePath = Path.Join(fixturePath, "state");
             Directory.CreateDirectory(homePath);
             Directory.CreateDirectory(cachePath);
             Directory.CreateDirectory(configurationRoot);

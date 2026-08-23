@@ -100,12 +100,10 @@ internal static class WorkspaceDiscovery
                 }
             }
 
-            foreach (string childPath in Directory.EnumerateDirectories(
-                directoryPath,
-                "*",
-                s_enumerationOptions))
+            foreach (DirectoryInfo child in Directory
+                .EnumerateDirectories(directoryPath, "*", s_enumerationOptions)
+                .Select(static childPath => new DirectoryInfo(childPath)))
             {
-                var child = new DirectoryInfo(childPath);
                 if (!s_excludedDirectoryNames.Contains(child.Name))
                 {
                     pendingDirectories.Enqueue(child.FullName);

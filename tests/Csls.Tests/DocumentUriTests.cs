@@ -14,7 +14,7 @@ public sealed class DocumentUriTests
     [TestMethod]
     public void FileSystemPathRoundTripsReservedAndUnicodeCharacters()
     {
-        string path = Path.GetFullPath(Path.Combine("fixture root", "résumé #1.cs"));
+        string path = Path.GetFullPath(Path.Join("fixture root", "résumé #1.cs"));
 
         var uri = DocumentUri.FromFileSystemPath(path);
 
@@ -46,5 +46,25 @@ public sealed class DocumentUriTests
             uri.GetFileSystemPath);
 
         Assert.AreEqual("Only file document URIs have filesystem paths.", exception.Message);
+    }
+
+    /// <summary>
+    /// Verifies percent-encoded Windows drive roots do not become duplicated relative segments.
+    /// </summary>
+    [TestMethod]
+    public void EncodedWindowsDriveRootIsNormalizedOnce()
+    {
+        var uri = DocumentUri.Parse("file:///C%3A/Users/editor/Project/Program.cs");
+
+        string path = uri.GetFileSystemPath();
+
+        if (OperatingSystem.IsWindows())
+        {
+            Assert.AreEqual(@"C:\Users\editor\Project\Program.cs", path);
+        }
+        else
+        {
+            Assert.AreEqual("/C:/Users/editor/Project/Program.cs", path);
+        }
     }
 }

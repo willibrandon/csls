@@ -25,7 +25,7 @@ public sealed class EditLanguageServerTests
     public async Task SemanticEditsUseRoslynAndVersionedDocuments()
     {
         string repositoryRoot = EditorToolResolver.FindRepositoryRoot();
-        string workerPath = Path.Combine(
+        string workerPath = Path.Join(
             repositoryRoot,
             "artifacts",
             "bin",
@@ -34,16 +34,16 @@ public sealed class EditLanguageServerTests
             "csls-worker.dll");
         Assert.IsTrue(File.Exists(workerPath), $"Worker not found at {workerPath}.");
 
-        string fixturePath = Path.Combine(
+        string fixturePath = Path.Join(
             Path.GetTempPath(),
             $"csls-edits-{Guid.NewGuid():N}");
         Directory.CreateDirectory(fixturePath);
         try
         {
-            string programPath = Path.Combine(fixturePath, "Program.cs");
-            string consumerPath = Path.Combine(fixturePath, "Consumer.cs");
+            string programPath = Path.Join(fixturePath, "Program.cs");
+            string consumerPath = Path.Join(fixturePath, "Consumer.cs");
             await File.WriteAllTextAsync(
-                Path.Combine(fixturePath, "Fixture.csproj"),
+                Path.Join(fixturePath, "Fixture.csproj"),
                 ProjectText,
                 TestContext.CancellationToken).ConfigureAwait(false);
             await File.WriteAllTextAsync(

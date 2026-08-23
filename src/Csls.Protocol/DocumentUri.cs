@@ -55,7 +55,25 @@ public readonly record struct DocumentUri
             throw new InvalidOperationException("Only file document URIs have filesystem paths.");
         }
 
-        return Path.GetFullPath(_value.LocalPath);
+        if (!OperatingSystem.IsWindows())
+        {
+            return Path.GetFullPath(_value.LocalPath);
+        }
+
+        string path = Uri.UnescapeDataString(_value.AbsolutePath).Replace('/', '\\');
+        if (_value.IsUnc)
+        {
+            path = $"\\\\{_value.Host}{path}";
+        }
+        else if (path.Length >= 3 &&
+            path[0] == '\\' &&
+            char.IsAsciiLetter(path[1]) &&
+            path[2] == ':')
+        {
+            path = path[1..];
+        }
+
+        return Path.GetFullPath(path);
     }
 
     /// <inheritdoc />

@@ -22,7 +22,7 @@ public sealed class SemanticTokensLanguageServerTests
     public async Task SemanticTokensFullAndDeltaTrackRealDocumentChanges()
     {
         string repositoryRoot = EditorToolResolver.FindRepositoryRoot();
-        string workerPath = Path.Combine(
+        string workerPath = Path.Join(
             repositoryRoot,
             "artifacts",
             "bin",
@@ -31,16 +31,16 @@ public sealed class SemanticTokensLanguageServerTests
             "csls-worker.dll");
         Assert.IsTrue(File.Exists(workerPath), $"Worker not found at {workerPath}.");
 
-        string fixturePath = Path.Combine(
+        string fixturePath = Path.Join(
             Path.GetTempPath(),
             $"csls-semantic-tokens-{Guid.NewGuid():N}");
         Directory.CreateDirectory(fixturePath);
         try
         {
-            string documentPath = Path.Combine(fixturePath, "Tokens.cs");
-            string otherDocumentPath = Path.Combine(fixturePath, "Other.cs");
+            string documentPath = Path.Join(fixturePath, "Tokens.cs");
+            string otherDocumentPath = Path.Join(fixturePath, "Other.cs");
             await File.WriteAllTextAsync(
-                Path.Combine(fixturePath, "Fixture.csproj"),
+                Path.Join(fixturePath, "Fixture.csproj"),
                 ProjectText,
                 TestContext.CancellationToken).ConfigureAwait(false);
             await File.WriteAllTextAsync(

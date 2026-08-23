@@ -23,7 +23,7 @@ internal static class ScriptSupport
         DirectoryInfo? directory = new(Path.GetDirectoryName(sourceFilePath)!);
         while (directory is not null)
         {
-            if (File.Exists(Path.Combine(directory.FullName, "Csls.slnx")))
+            if (File.Exists(Path.Join(directory.FullName, "Csls.slnx")))
             {
                 return directory.FullName;
             }
@@ -274,7 +274,7 @@ internal static class ScriptSupport
         string expectedVersionText,
         CancellationToken cancellationToken)
     {
-        string installationPath = Path.Combine(toolsRoot, toolName, version, platform);
+        string installationPath = Path.Join(toolsRoot, toolName, version, platform);
         string executablePath = FindInstalledExecutable(
             installationPath,
             executableName);
@@ -288,15 +288,15 @@ internal static class ScriptSupport
             return executablePath;
         }
 
-        string stagingRoot = Path.Combine(
+        string stagingRoot = Path.Join(
             toolsRoot,
             ".staging",
             $"{toolName}-{version}-{Guid.NewGuid():N}");
         Directory.CreateDirectory(stagingRoot);
         try
         {
-            string archivePath = Path.Combine(stagingRoot, assetName);
-            string extractionPath = Path.Combine(stagingRoot, "extracted");
+            string archivePath = Path.Join(stagingRoot, assetName);
+            string extractionPath = Path.Join(stagingRoot, "extracted");
             Directory.CreateDirectory(extractionPath);
             await Console.Error.WriteLineAsync(
                 $"Downloading {toolName} {version} for {platform}...").ConfigureAwait(false);
@@ -334,7 +334,7 @@ internal static class ScriptSupport
             }
 
             Directory.Move(sourceInstallationPath, installationPath);
-            executablePath = Path.Combine(installationPath, executableRelativePath);
+            executablePath = Path.Join(installationPath, executableRelativePath);
             EnsureExecutable(executablePath);
             await VerifyToolAsync(
                 executablePath,
@@ -380,8 +380,8 @@ internal static class ScriptSupport
         string expectedVersionText,
         CancellationToken cancellationToken)
     {
-        string installationPath = Path.Combine(toolsRoot, toolName, version, platform);
-        string executablePath = Path.Combine(
+        string installationPath = Path.Join(toolsRoot, toolName, version, platform);
+        string executablePath = Path.Join(
             installationPath,
             OperatingSystem.IsWindows() ? $"{commandName}.exe" : commandName);
         if (File.Exists(executablePath))
@@ -394,16 +394,16 @@ internal static class ScriptSupport
             return executablePath;
         }
 
-        string stagingRoot = Path.Combine(
+        string stagingRoot = Path.Join(
             toolsRoot,
             ".staging",
             $"{toolName}-{version}-{Guid.NewGuid():N}");
         Directory.CreateDirectory(stagingRoot);
         try
         {
-            string feedPath = Path.Combine(stagingRoot, "feed");
+            string feedPath = Path.Join(stagingRoot, "feed");
             Directory.CreateDirectory(feedPath);
-            string packagePath = Path.Combine(
+            string packagePath = Path.Join(
                 feedPath,
                 $"{packageId}.{version}.nupkg");
             await Console.Error.WriteLineAsync(
@@ -414,7 +414,7 @@ internal static class ScriptSupport
                 expectedSha256,
                 cancellationToken).ConfigureAwait(false);
 
-            string configurationPath = Path.Combine(stagingRoot, "NuGet.config");
+            string configurationPath = Path.Join(stagingRoot, "NuGet.config");
             var configuration = new XDocument(
                 new XElement(
                     "configuration",
@@ -497,7 +497,7 @@ internal static class ScriptSupport
     {
         if (!Directory.Exists(installationPath))
         {
-            return Path.Combine(installationPath, executableName);
+            return Path.Join(installationPath, executableName);
         }
 
         return Directory
@@ -506,6 +506,6 @@ internal static class ScriptSupport
                 Path.GetFileName(path),
                 executableName,
                 StringComparison.Ordinal))
-            ?? Path.Combine(installationPath, executableName);
+            ?? Path.Join(installationPath, executableName);
     }
 }

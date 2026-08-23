@@ -22,7 +22,7 @@ public sealed class NavigationLanguageServerTests
     public async Task SemanticNavigationReturnsExactSourceLocations()
     {
         string repositoryRoot = EditorToolResolver.FindRepositoryRoot();
-        string workerPath = Path.Combine(
+        string workerPath = Path.Join(
             repositoryRoot,
             "artifacts",
             "bin",
@@ -31,16 +31,16 @@ public sealed class NavigationLanguageServerTests
             "csls-worker.dll");
         Assert.IsTrue(File.Exists(workerPath), $"Worker not found at {workerPath}.");
 
-        string fixturePath = Path.Combine(
+        string fixturePath = Path.Join(
             Path.GetTempPath(),
             $"csls-navigation-{Guid.NewGuid():N}");
         Directory.CreateDirectory(fixturePath);
         try
         {
-            string documentPath = Path.Combine(fixturePath, "Program.cs");
-            string advancedDocumentPath = Path.Combine(fixturePath, "Advanced.cs");
+            string documentPath = Path.Join(fixturePath, "Program.cs");
+            string advancedDocumentPath = Path.Join(fixturePath, "Advanced.cs");
             await File.WriteAllTextAsync(
-                Path.Combine(fixturePath, "Fixture.csproj"),
+                Path.Join(fixturePath, "Fixture.csproj"),
                 ProjectText,
                 TestContext.CancellationToken).ConfigureAwait(false);
             await File.WriteAllTextAsync(

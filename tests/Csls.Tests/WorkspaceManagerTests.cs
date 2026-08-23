@@ -22,13 +22,13 @@ public sealed class WorkspaceManagerTests
     [TestMethod]
     public async Task LooseFileResolvesFrameworkSymbolHover()
     {
-        string workspacePath = Path.Combine(
+        string workspacePath = Path.Join(
             Path.GetTempPath(),
             $"csls-loose-{Guid.NewGuid():N}");
         Directory.CreateDirectory(workspacePath);
         try
         {
-            string documentPath = Path.Combine(workspacePath, "Program.cs");
+            string documentPath = Path.Join(workspacePath, "Program.cs");
             await File.WriteAllTextAsync(
                 documentPath,
                 DocumentText,
@@ -75,15 +75,15 @@ public sealed class WorkspaceManagerTests
     [TestMethod]
     public async Task MultipleNestedSolutionsAreLoadedAndExcludedDirectoriesAreIgnored()
     {
-        string workspacePath = Path.Combine(
+        string workspacePath = Path.Join(
             Path.GetTempPath(),
             $"csls-multiple-solutions-{Guid.NewGuid():N}");
         Directory.CreateDirectory(workspacePath);
         try
         {
-            string alphaDirectory = Path.Combine(workspacePath, "alpha");
-            string betaDirectory = Path.Combine(workspacePath, "beta");
-            string excludedDirectory = Path.Combine(workspacePath, ".direnv");
+            string alphaDirectory = Path.Join(workspacePath, "alpha");
+            string betaDirectory = Path.Join(workspacePath, "beta");
+            string excludedDirectory = Path.Join(workspacePath, ".direnv");
             Directory.CreateDirectory(alphaDirectory);
             Directory.CreateDirectory(betaDirectory);
             Directory.CreateDirectory(excludedDirectory);
@@ -96,7 +96,7 @@ public sealed class WorkspaceManagerTests
                 "Beta",
                 TestContext.CancellationToken).ConfigureAwait(false);
             await File.WriteAllTextAsync(
-                Path.Combine(excludedDirectory, "Decoy.slnx"),
+                Path.Join(excludedDirectory, "Decoy.slnx"),
                 "<invalid>",
                 TestContext.CancellationToken).ConfigureAwait(false);
 
@@ -145,9 +145,9 @@ public sealed class WorkspaceManagerTests
         string projectName,
         CancellationToken cancellationToken)
     {
-        string projectPath = Path.Combine(directoryPath, $"{projectName}.csproj");
-        string solutionPath = Path.Combine(directoryPath, $"{projectName}.slnx");
-        string documentPath = Path.Combine(directoryPath, "Program.cs");
+        string projectPath = Path.Join(directoryPath, $"{projectName}.csproj");
+        string solutionPath = Path.Join(directoryPath, $"{projectName}.slnx");
+        string documentPath = Path.Join(directoryPath, "Program.cs");
         await File.WriteAllTextAsync(
             projectPath,
             ProjectText,

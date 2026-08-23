@@ -24,7 +24,7 @@ public sealed class HierarchyAndInlayHintLanguageServerTests
     public async Task HierarchiesAndInlayHintsReturnSemanticResults()
     {
         string repositoryRoot = EditorToolResolver.FindRepositoryRoot();
-        string workerPath = Path.Combine(
+        string workerPath = Path.Join(
             repositoryRoot,
             "artifacts",
             "bin",
@@ -33,15 +33,15 @@ public sealed class HierarchyAndInlayHintLanguageServerTests
             "csls-worker.dll");
         Assert.IsTrue(File.Exists(workerPath), $"Worker not found at {workerPath}.");
 
-        string fixturePath = Path.Combine(
+        string fixturePath = Path.Join(
             Path.GetTempPath(),
             $"csls-hierarchies-{Guid.NewGuid():N}");
         Directory.CreateDirectory(fixturePath);
         try
         {
-            string documentPath = Path.Combine(fixturePath, "Hierarchy.cs");
+            string documentPath = Path.Join(fixturePath, "Hierarchy.cs");
             await File.WriteAllTextAsync(
-                Path.Combine(fixturePath, "Fixture.csproj"),
+                Path.Join(fixturePath, "Fixture.csproj"),
                 ProjectText,
                 TestContext.CancellationToken).ConfigureAwait(false);
             await File.WriteAllTextAsync(

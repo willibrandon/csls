@@ -33,18 +33,16 @@ internal static class CliWorkerLocator
             : "csls-cli-worker";
         string[] candidates =
         [
-            Path.Combine(AppContext.BaseDirectory, "workers", "cli", executableName),
-            Path.Combine(AppContext.BaseDirectory, "workers", "cli", "csls-cli-worker.dll"),
-            Path.Combine(AppContext.BaseDirectory, executableName),
-            Path.Combine(AppContext.BaseDirectory, "csls-cli-worker.dll")
+            Path.Join(AppContext.BaseDirectory, "workers", "cli", executableName),
+            Path.Join(AppContext.BaseDirectory, "workers", "cli", "csls-cli-worker.dll"),
+            Path.Join(AppContext.BaseDirectory, executableName),
+            Path.Join(AppContext.BaseDirectory, "csls-cli-worker.dll")
         ];
 
-        foreach (string candidate in candidates)
+        string? candidate = candidates.FirstOrDefault(File.Exists);
+        if (candidate is not null)
         {
-            if (File.Exists(candidate))
-            {
-                return candidate;
-            }
+            return candidate;
         }
 
         throw new FileNotFoundException(

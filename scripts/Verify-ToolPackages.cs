@@ -21,7 +21,8 @@ if (args.Length == 1 && args[0] is "--help" or "-h" or "-?")
         .ConfigureAwait(false);
     await Console.Out.WriteLineAsync(
         "Usage: dotnet run --file scripts/Verify-ToolPackages.cs " +
-        "[--version <version>] [--runtime <rid>] [--validation <execute|package>]")
+        "[--version <version>] [--runtime <rid>] [--validation <execute|package>] " +
+        "[--target-dotnet-root <path>]")
         .ConfigureAwait(false);
     return 0;
 }
@@ -29,6 +30,7 @@ if (args.Length == 1 && args[0] is "--help" or "-h" or "-?")
 string version = DefaultVersion;
 string? requestedRuntimeIdentifier = null;
 bool executePackages = true;
+string? targetDotnetRoot = null;
 for (int argumentIndex = 0; argumentIndex < args.Length; argumentIndex += 2)
 {
     if (argumentIndex + 1 >= args.Length)
@@ -51,6 +53,9 @@ for (int argumentIndex = 0; argumentIndex < args.Length; argumentIndex += 2)
             break;
         case "--validation" when string.Equals(value, "package", StringComparison.Ordinal):
             executePackages = false;
+            break;
+        case "--target-dotnet-root":
+            targetDotnetRoot = Path.GetFullPath(value);
             break;
         default:
             await WriteUsageErrorAsync().ConfigureAwait(false);
@@ -91,12 +96,12 @@ try
     string repositoryRoot = ScriptSupport.FindRepositoryRoot();
     string runtimeIdentifier = requestedRuntimeIdentifier ?? GetRuntimeIdentifier();
     string hostRuntimeIdentifier = GetRuntimeIdentifier();
-    string verificationRoot = Path.Combine(
+    string verificationRoot = Path.Join(
         repositoryRoot,
         "artifacts",
         "tool-package-verification");
     RecreateVerificationRoot(repositoryRoot, verificationRoot);
-    string packageRoot = Path.Combine(verificationRoot, "packages");
+    string packageRoot = Path.Join(verificationRoot, "packages");
     Directory.CreateDirectory(packageRoot);
 
     (string PackageId, string CommandName, string Project, string[] WorkerPaths)[] products =
@@ -122,14 +127,14 @@ try
         await PackAsync(repositoryRoot, packageRoot, project, version, "any")
             .ConfigureAwait(false);
         ValidateManifestPackage(
-            Path.Combine(packageRoot, $"{packageId}.{version}.nupkg"),
+            Path.Join(packageRoot, $"{packageId}.{version}.nupkg"),
             packageId);
     }
 
     foreach ((string packageId, string commandName, _, string[] workerPaths) in products)
     {
         ValidateImplementationPackage(
-            Path.Combine(
+            Path.Join(
                 packageRoot,
                 $"{packageId}.{runtimeIdentifier}.{version}.nupkg"),
             commandName,
@@ -137,7 +142,7 @@ try
             workerPaths,
             native: true);
         ValidateImplementationPackage(
-            Path.Combine(packageRoot, $"{packageId}.any.{version}.nupkg"),
+            Path.Join(packageRoot, $"{packageId}.any.{version}.nupkg"),
             commandName,
             "any",
             workerPaths,
@@ -166,7 +171,8 @@ try
                     packageId,
                     commandName,
                     version,
-                    runtimeIdentifier).ConfigureAwait(false);
+                    runtimeIdentifier,
+                    targetDotnetRoot).ConfigureAwait(false);
             }
         }
     }
@@ -188,7 +194,8 @@ catch (Exception exception) when (exception is
 
 static async Task WriteUsageErrorAsync() => await Console.Error.WriteLineAsync(
     "Usage: dotnet run --file scripts/Verify-ToolPackages.cs " +
-    "[--version <version>] [--runtime <rid>] [--validation <execute|package>]")
+    "[--version <version>] [--runtime <rid>] [--validation <execute|package>] " +
+    "[--target-dotnet-root <path>]")
     .ConfigureAwait(false);
 
 static async Task PackAsync(
@@ -213,6 +220,11 @@ static async Task PackAsync(
     {
         arguments.Add("--runtime");
         arguments.Add(runtimeIdentifier);
+        if (!string.Equals(runtimeIdentifier, "any", StringComparison.Ordinal) &&
+            !string.Equals(runtimeIdentifier, "win-x86", StringComparison.Ordinal))
+        {
+            arguments.Add("-p:IlcGenerateMstatFile=true");
+        }
     }
 
     await RunCheckedAsync(
@@ -312,9 +324,9 @@ static async Task VerifyInstalledToolAsync(
     string commandName,
     string version)
 {
-    string toolPath = Path.Combine(verificationRoot, "tools", packageId);
-    string dotnetHome = Path.Combine(verificationRoot, "dotnet-home", packageId);
-    string packages = Path.Combine(verificationRoot, "nuget-packages", packageId);
+    string toolPath = Path.Join(verificationRoot, "tools", packageId);
+    string dotnetHome = Path.Join(verificationRoot, "dotnet-home", packageId);
+    string packages = Path.Join(verificationRoot, "nuget-packages", packageId);
     var environment = new Dictionary<string, string>(StringComparer.Ordinal)
     {
         ["DOTNET_CLI_HOME"] = dotnetHome,
@@ -395,16 +407,17 @@ static async Task VerifyImplementationToolAsync(
     string packageId,
     string commandName,
     string version,
-    string runtimeIdentifier)
+    string runtimeIdentifier,
+    string? targetDotnetRoot)
 {
-    string extractionPath = Path.Combine(
+    string extractionPath = Path.Join(
         verificationRoot,
         "implementations",
         packageId,
         runtimeIdentifier);
     Directory.CreateDirectory(extractionPath);
     await ZipFile.ExtractToDirectoryAsync(
-        Path.Combine(
+        Path.Join(
             packageRoot,
             $"{packageId}.{runtimeIdentifier}.{version}.nupkg"),
         extractionPath,
@@ -415,7 +428,7 @@ static async Task VerifyImplementationToolAsync(
         StringComparison.Ordinal)
         ? ".exe"
         : string.Empty;
-    string commandPath = Path.Combine(
+    string commandPath = Path.Join(
         extractionPath,
         "tools",
         "any",
@@ -430,13 +443,32 @@ static async Task VerifyImplementationToolAsync(
     ScriptSupport.EnsureExecutable(commandPath);
     var environment = new Dictionary<string, string>(StringComparer.Ordinal)
     {
-        ["DOTNET_CLI_HOME"] = Path.Combine(
+        ["DOTNET_CLI_HOME"] = Path.Join(
             verificationRoot,
             "dotnet-home",
             packageId,
             runtimeIdentifier),
         ["DOTNET_NOLOGO"] = "1"
     };
+    if (targetDotnetRoot is not null)
+    {
+        if (!File.Exists(Path.Join(
+            targetDotnetRoot,
+            OperatingSystem.IsWindows() ? "dotnet.exe" : "dotnet")))
+        {
+            throw new FileNotFoundException(
+                "The target .NET root does not contain a dotnet host.",
+                targetDotnetRoot);
+        }
+
+        string rootVariable = string.Equals(
+            runtimeIdentifier,
+            "win-x86",
+            StringComparison.Ordinal)
+            ? "DOTNET_ROOT(x86)"
+            : "DOTNET_ROOT";
+        environment[rootVariable] = targetDotnetRoot;
+    }
     string versionOutput = await RunCheckedAsync(
         commandPath,
         ["--version"],
@@ -476,10 +508,10 @@ static async Task VerifyLanguageServerWorkerAsync(
     string verificationRoot,
     IReadOnlyDictionary<string, string> environment)
 {
-    string fixturePath = Path.Combine(verificationRoot, "lsp-fixture");
+    string fixturePath = Path.Join(verificationRoot, "lsp-fixture");
     Directory.CreateDirectory(fixturePath);
     await File.WriteAllTextAsync(
-        Path.Combine(fixturePath, "Fixture.csproj"),
+        Path.Join(fixturePath, "Fixture.csproj"),
         """
         <Project Sdk="Microsoft.NET.Sdk">
           <PropertyGroup>
@@ -489,7 +521,7 @@ static async Task VerifyLanguageServerWorkerAsync(
         </Project>
         """).ConfigureAwait(false);
     await File.WriteAllTextAsync(
-        Path.Combine(fixturePath, "Program.cs"),
+        Path.Join(fixturePath, "Program.cs"),
         """Console.WriteLine("csls package verification");""").ConfigureAwait(false);
     string rootUri = new Uri(fixturePath + Path.DirectorySeparatorChar).AbsoluteUri;
     using var timeout = new CancellationTokenSource(TimeSpan.FromMinutes(1));
@@ -607,7 +639,7 @@ static async Task VerifyMcpWorkerAsync(
         UseShellExecute = false
     };
     startInfo.ArgumentList.Add("--socket");
-    startInfo.ArgumentList.Add(Path.Combine(verificationRoot, "missing-session.socket"));
+    startInfo.ArgumentList.Add(Path.Join(verificationRoot, "missing-session.socket"));
     ApplyEnvironment(startInfo, environment);
     using Process process = Process.Start(startInfo) ?? throw new InvalidOperationException(
         "The installed csls MCP server did not start.");
@@ -797,10 +829,10 @@ static string ResolveInstalledCommand(string toolPath, string commandName)
     string[] candidates = OperatingSystem.IsWindows()
         ?
         [
-            Path.Combine(toolPath, commandName + ".exe"),
-            Path.Combine(toolPath, commandName + ".cmd")
+            Path.Join(toolPath, commandName + ".exe"),
+            Path.Join(toolPath, commandName + ".cmd")
         ]
-        : [Path.Combine(toolPath, commandName)];
+        : [Path.Join(toolPath, commandName)];
     return candidates.FirstOrDefault(File.Exists) ?? throw new FileNotFoundException(
         $"The installed {commandName} command shim was not found in {toolPath}.");
 }
@@ -894,7 +926,7 @@ static string GetRuntimeIdentifier()
 
 static void RecreateVerificationRoot(string repositoryRoot, string verificationRoot)
 {
-    string requiredPrefix = Path.GetFullPath(Path.Combine(repositoryRoot, "artifacts")) +
+    string requiredPrefix = Path.GetFullPath(Path.Join(repositoryRoot, "artifacts")) +
         Path.DirectorySeparatorChar;
     string fullPath = Path.GetFullPath(verificationRoot);
     if (!fullPath.StartsWith(requiredPrefix, StringComparison.Ordinal))

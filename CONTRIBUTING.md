@@ -24,8 +24,10 @@ Repository automation is implemented only as .NET file-based C# apps under
 
 The GitHub Actions matrix runs the complete suite on x64 and arm64 Windows,
 Linux, and macOS runners. It also validates the Windows x86, Linux musl x64,
-and Linux musl arm64 tool packages. The development container installs every
-required editor oracle and build dependency through
+and Linux musl arm64 tool packages. Every Native AOT launcher is checked from
+its ILC size report by Dotsider, and CodeQL findings fail the analysis job. The
+development container installs every required editor oracle and build dependency
+through
 `scripts/Initialize-DevContainer.cs`; its exported image is scanned by Picket.
 
 Provision the real editor and parity oracles locally with:

@@ -63,6 +63,7 @@ internal static class ControlSessionDiscovery
                     ConnectionLostException ||
                 exception is OperationCanceledException && !cancellationToken.IsCancellationRequested)
             {
+                continue;
             }
         }
 
