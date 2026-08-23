@@ -25,23 +25,18 @@ public sealed partial class LanguageServer
                     parameters.Event.Removed.Select(static folder =>
                         Path.GetFullPath(folder.Uri.GetFileSystemPath())),
                     comparer);
-                var roots = new List<string>(_workspaceManager.WorkspaceRoots.Count);
-                foreach (string root in _workspaceManager.WorkspaceRoots)
-                {
-                    if (!removed.Contains(root))
-                    {
-                        roots.Add(root);
-                    }
-                }
-
-                foreach (WorkspaceFolder folder in parameters.Event.Added)
-                {
-                    string root = Path.GetFullPath(folder.Uri.GetFileSystemPath());
-                    if (!roots.Contains(root, comparer))
-                    {
-                        roots.Add(root);
-                    }
-                }
+                List<string> roots =
+                [
+                    .. _workspaceManager.WorkspaceRoots.Where(root => !removed.Contains(root))
+                ];
+                string[] addedRoots =
+                [
+                    .. parameters.Event.Added
+                        .Select(static folder => Path.GetFullPath(folder.Uri.GetFileSystemPath()))
+                        .Distinct(comparer)
+                        .Where(root => !roots.Contains(root, comparer))
+                ];
+                roots.AddRange(addedRoots);
 
                 if (_workspaceManager.WorkspaceRoots.SequenceEqual(roots, comparer))
                 {
