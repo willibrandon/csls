@@ -9,20 +9,30 @@ var socketOption = new Option<string?>("--socket")
 {
     Description = "Attach to this absolute csls Unix-domain-socket path."
 };
+var workspaceOption = new Option<string?>("--workspace")
+{
+    Description = "Start a transient csls session for this workspace path."
+};
 var rootCommand = new RootCommand(
     "Expose a live csls language-server session through the Model Context Protocol.")
 {
     sessionOption,
-    socketOption
+    socketOption,
+    workspaceOption
 };
 rootCommand.SetAction(async (parseResult, cancellationToken) =>
 {
     int? processId = parseResult.GetValue(sessionOption);
     string? socketPath = parseResult.GetValue(socketOption);
-    if (processId.HasValue == !string.IsNullOrWhiteSpace(socketPath))
+    string? workspacePath = parseResult.GetValue(workspaceOption);
+    int sourceCount = (processId.HasValue ? 1 : 0) +
+        (string.IsNullOrWhiteSpace(socketPath) ? 0 : 1) +
+        (string.IsNullOrWhiteSpace(workspacePath) ? 0 : 1);
+    if (sourceCount != 1)
     {
         await Console.Error.WriteLineAsync(
-            "Specify exactly one of --session or --socket.").ConfigureAwait(false);
+            "Specify exactly one of --session, --socket, or --workspace.")
+            .ConfigureAwait(false);
         return 2;
     }
 
@@ -36,6 +46,7 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
     return await McpWorkerSupervisor.RunAsync(
         processId,
         socketPath,
+        workspacePath,
         cancellationToken).ConfigureAwait(false);
 });
 

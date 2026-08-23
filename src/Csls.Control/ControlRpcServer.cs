@@ -225,7 +225,7 @@ public sealed partial class ControlRpcServer : IHostedService, IAsyncDisposable
 
     private void DeleteSocket()
     {
-        if (_socketPath is not null && File.Exists(_socketPath))
+        if (_socketPath is not null)
         {
             File.Delete(_socketPath);
         }

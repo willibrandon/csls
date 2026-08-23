@@ -146,6 +146,16 @@ public sealed class McpLanguageServerTests
                     .ConfigureAwait(false);
                 McpClientTool sessionTool = tools.Single(static tool =>
                     tool.Name == "get_session");
+                McpClientTool workspaceStateTool = tools.Single(static tool =>
+                    tool.Name == "get_workspace_state");
+                McpClientTool restoreWorkspaceTool = tools.Single(static tool =>
+                    tool.Name == "restore_workspace");
+                McpClientTool reloadWorkspaceTool = tools.Single(static tool =>
+                    tool.Name == "reload_workspace");
+                McpClientTool restartBuildHostsTool = tools.Single(static tool =>
+                    tool.Name == "restart_build_hosts");
+                McpClientTool clearCachesTool = tools.Single(static tool =>
+                    tool.Name == "clear_caches");
                 McpClientTool hoverTool = tools.Single(static tool =>
                     tool.Name == "get_hover");
                 McpClientTool diagnosticTool = tools.Single(static tool =>
@@ -191,6 +201,11 @@ public sealed class McpLanguageServerTests
                 Assert.IsNotNull(annotations.IdempotentHint);
                 Assert.IsTrue(annotations.IdempotentHint.Value);
                 Assert.IsNotNull(sessionTool.ProtocolTool.OutputSchema);
+                Assert.IsNotNull(workspaceStateTool.ProtocolTool.OutputSchema);
+                Assert.IsNotNull(restoreWorkspaceTool.ProtocolTool.OutputSchema);
+                Assert.IsNotNull(reloadWorkspaceTool.ProtocolTool.OutputSchema);
+                Assert.IsNotNull(restartBuildHostsTool.ProtocolTool.OutputSchema);
+                Assert.IsNotNull(clearCachesTool.ProtocolTool.OutputSchema);
                 Assert.IsNotNull(hoverTool.ProtocolTool.OutputSchema);
                 Assert.IsNotNull(diagnosticTool.ProtocolTool.OutputSchema);
                 Assert.IsNotNull(completionTool.ProtocolTool.OutputSchema);
@@ -217,6 +232,27 @@ public sealed class McpLanguageServerTests
                 Assert.IsTrue(applyAnnotations.DestructiveHint.Value);
                 Assert.IsNotNull(applyAnnotations.IdempotentHint);
                 Assert.IsFalse(applyAnnotations.IdempotentHint.Value);
+                ToolAnnotations workspaceAnnotations = workspaceStateTool.ProtocolTool.Annotations
+                    ?? throw new InvalidDataException(
+                        "The workspace state tool has no MCP annotations.");
+                Assert.IsNotNull(workspaceAnnotations.ReadOnlyHint);
+                Assert.IsTrue(workspaceAnnotations.ReadOnlyHint.Value);
+                Assert.IsNotNull(workspaceAnnotations.DestructiveHint);
+                Assert.IsFalse(workspaceAnnotations.DestructiveHint.Value);
+                ToolAnnotations restoreAnnotations = restoreWorkspaceTool.ProtocolTool.Annotations
+                    ?? throw new InvalidDataException(
+                        "The restore workspace tool has no MCP annotations.");
+                Assert.IsNotNull(restoreAnnotations.ReadOnlyHint);
+                Assert.IsFalse(restoreAnnotations.ReadOnlyHint.Value);
+                Assert.IsNotNull(restoreAnnotations.DestructiveHint);
+                Assert.IsFalse(restoreAnnotations.DestructiveHint.Value);
+                ToolAnnotations clearAnnotations = clearCachesTool.ProtocolTool.Annotations
+                    ?? throw new InvalidDataException(
+                        "The clear caches tool has no MCP annotations.");
+                Assert.IsNotNull(clearAnnotations.ReadOnlyHint);
+                Assert.IsFalse(clearAnnotations.ReadOnlyHint.Value);
+                Assert.IsNotNull(clearAnnotations.DestructiveHint);
+                Assert.IsTrue(clearAnnotations.DestructiveHint.Value);
 
                 CallToolResult sessionResult = await client.CallToolAsync(
                     "get_session",
@@ -229,6 +265,31 @@ public sealed class McpLanguageServerTests
                 Assert.AreEqual(lsp.ProcessId, session.ProcessId);
                 Assert.AreEqual("Running", session.LifecycleState);
                 Assert.AreEqual(fixturePath, session.WorkspaceRoots.Single());
+
+                CallToolResult workspaceStateResult = await client.CallToolAsync(
+                    "get_workspace_state",
+                    new Dictionary<string, object?>
+                    {
+                        ["includeDiagnostics"] = true
+                    },
+                    cancellationToken: TestContext.CancellationToken).ConfigureAwait(false);
+                Assert.IsNull(workspaceStateResult.IsError);
+                Assert.IsTrue(workspaceStateResult.StructuredContent.HasValue);
+                ControlDashboardSnapshot workspaceState = workspaceStateResult.StructuredContent
+                    .Value.Deserialize(
+                        ControlJsonSerializerContext.Default.ControlDashboardSnapshot)
+                    ?? throw new InvalidDataException(
+                        "MCP returned no structured workspace state.");
+                Assert.IsTrue(workspaceState.DiagnosticsLoaded);
+                Assert.Contains(
+                    projectPath,
+                    workspaceState.Projects.Select(static project => project.FilePath));
+                Assert.Contains(
+                    documentPath,
+                    workspaceState.Documents.Select(static document => document.FilePath));
+                Assert.Contains(
+                    "CS0103",
+                    workspaceState.Diagnostics.Select(static diagnostic => diagnostic.Id));
 
                 CallToolResult hoverResult = await client.CallToolAsync(
                     "get_hover",
@@ -628,6 +689,9 @@ public sealed class McpLanguageServerTests
                 Assert.Contains(
                     "csls://session/current",
                     resources.Select(static resource => resource.Uri));
+                Assert.Contains(
+                    "csls://workspace/current",
+                    resources.Select(static resource => resource.Uri));
                 ReadResourceResult resourceResult = await client.ReadResourceAsync(
                     new Uri("csls://session/current", UriKind.Absolute),
                     cancellationToken: TestContext.CancellationToken).ConfigureAwait(false);
@@ -639,6 +703,63 @@ public sealed class McpLanguageServerTests
                     ControlJsonSerializerContext.Default.ControlSessionInfo)
                     ?? throw new InvalidDataException("MCP returned no session resource value.");
                 Assert.AreEqual(lsp.ProcessId, resourceSession.ProcessId);
+
+                ReadResourceResult workspaceResourceResult = await client.ReadResourceAsync(
+                    new Uri("csls://workspace/current", UriKind.Absolute),
+                    cancellationToken: TestContext.CancellationToken).ConfigureAwait(false);
+                TextResourceContents workspaceResource = workspaceResourceResult.Contents
+                    .OfType<TextResourceContents>()
+                    .Single();
+                ControlDashboardSnapshot resourceWorkspace = JsonSerializer.Deserialize(
+                    workspaceResource.Text,
+                    ControlJsonSerializerContext.Default.ControlDashboardSnapshot)
+                    ?? throw new InvalidDataException(
+                        "MCP returned no workspace resource value.");
+                Assert.AreEqual(lsp.ProcessId, resourceWorkspace.Session.ProcessId);
+
+                IList<McpClientResourceTemplate> resourceTemplates = await client
+                    .ListResourceTemplatesAsync(cancellationToken: TestContext.CancellationToken)
+                    .ConfigureAwait(false);
+                IEnumerable<string> resourceTemplateUris = resourceTemplates.Select(
+                    static resource => resource.UriTemplate);
+                Assert.Contains("csls://project{?path}", resourceTemplateUris);
+                Assert.Contains("csls://document{?path}", resourceTemplateUris);
+                Assert.Contains("csls://diagnostic{?path}", resourceTemplateUris);
+
+                ReadResourceResult projectResourceResult = await client.ReadResourceAsync(
+                    "csls://project{?path}",
+                    new Dictionary<string, object?> { ["path"] = projectPath },
+                    cancellationToken: TestContext.CancellationToken).ConfigureAwait(false);
+                ControlProjectInfo resourceProject = JsonSerializer.Deserialize(
+                    projectResourceResult.Contents.OfType<TextResourceContents>().Single().Text,
+                    ControlJsonSerializerContext.Default.ControlProjectInfo)
+                    ?? throw new InvalidDataException("MCP returned no project resource value.");
+                Assert.AreEqual(projectPath, resourceProject.FilePath);
+                Assert.AreEqual("Fixture", resourceProject.Name);
+
+                ReadResourceResult documentResourceResult = await client.ReadResourceAsync(
+                    "csls://document{?path}",
+                    new Dictionary<string, object?> { ["path"] = documentPath },
+                    cancellationToken: TestContext.CancellationToken).ConfigureAwait(false);
+                ControlDocumentInfo resourceDocument = JsonSerializer.Deserialize(
+                    documentResourceResult.Contents.OfType<TextResourceContents>().Single().Text,
+                    ControlJsonSerializerContext.Default.ControlDocumentInfo)
+                    ?? throw new InvalidDataException("MCP returned no document resource value.");
+                Assert.AreEqual(documentPath, resourceDocument.FilePath);
+                Assert.IsTrue(resourceDocument.IsOpen);
+
+                ReadResourceResult diagnosticResourceResult = await client.ReadResourceAsync(
+                    "csls://diagnostic{?path}",
+                    new Dictionary<string, object?> { ["path"] = documentPath },
+                    cancellationToken: TestContext.CancellationToken).ConfigureAwait(false);
+                DocumentDiagnosticReport resourceDiagnostics = JsonSerializer.Deserialize(
+                    diagnosticResourceResult.Contents.OfType<TextResourceContents>().Single().Text,
+                    ControlJsonSerializerContext.Default.DocumentDiagnosticReport)
+                    ?? throw new InvalidDataException(
+                        "MCP returned no diagnostic resource value.");
+                Assert.Contains(
+                    "CS0103",
+                    resourceDiagnostics.Items?.Select(static diagnostic => diagnostic.Code) ?? []);
 
                 IList<McpClientPrompt> prompts = await client
                     .ListPromptsAsync(cancellationToken: TestContext.CancellationToken)
@@ -654,6 +775,49 @@ public sealed class McpLanguageServerTests
                     new Dictionary<string, object?> { ["scope"] = documentPath },
                     cancellationToken: TestContext.CancellationToken).ConfigureAwait(false);
                 Assert.IsNotEmpty(promptResult.Messages);
+
+                ControlWorkspaceOperationResult clearResult =
+                    await CallWorkspaceOperationAsync(
+                        client,
+                        "clear_caches",
+                        TestContext.CancellationToken).ConfigureAwait(false);
+                Assert.AreEqual("clear-cache", clearResult.Operation);
+                Assert.AreEqual(
+                    clearResult.PreviousGeneration,
+                    clearResult.CurrentGeneration);
+                Assert.IsGreaterThan(0, clearResult.ClearedCacheEntryCount);
+
+                ControlWorkspaceOperationResult reloadResult =
+                    await CallWorkspaceOperationAsync(
+                        client,
+                        "reload_workspace",
+                        TestContext.CancellationToken).ConfigureAwait(false);
+                Assert.AreEqual("reload", reloadResult.Operation);
+                Assert.AreEqual(
+                    reloadResult.PreviousGeneration + 1,
+                    reloadResult.CurrentGeneration);
+
+                ControlWorkspaceOperationResult restartResult =
+                    await CallWorkspaceOperationAsync(
+                        client,
+                        "restart_build_hosts",
+                        TestContext.CancellationToken).ConfigureAwait(false);
+                Assert.AreEqual("restart-build-host", restartResult.Operation);
+                Assert.AreEqual(
+                    restartResult.PreviousGeneration + 1,
+                    restartResult.CurrentGeneration);
+                Assert.IsGreaterThan(0, restartResult.RestartedBuildHostCount);
+
+                ControlWorkspaceOperationResult restoreResult =
+                    await CallWorkspaceOperationAsync(
+                        client,
+                        "restore_workspace",
+                        TestContext.CancellationToken).ConfigureAwait(false);
+                Assert.AreEqual("restore", restoreResult.Operation);
+                Assert.AreEqual(
+                    restoreResult.PreviousGeneration + 1,
+                    restoreResult.CurrentGeneration);
+                Assert.AreEqual(1, restoreResult.RestoredEntryPointCount);
             }
             finally
             {
@@ -668,6 +832,22 @@ public sealed class McpLanguageServerTests
         {
             Directory.Delete(fixturePath, recursive: true);
         }
+    }
+
+    private static async Task<ControlWorkspaceOperationResult> CallWorkspaceOperationAsync(
+        McpClient client,
+        string toolName,
+        CancellationToken cancellationToken)
+    {
+        CallToolResult result = await client.CallToolAsync(
+            toolName,
+            cancellationToken: cancellationToken).ConfigureAwait(false);
+        Assert.IsNull(result.IsError);
+        Assert.IsTrue(result.StructuredContent.HasValue);
+        return result.StructuredContent.Value.Deserialize(
+            ControlJsonSerializerContext.Default.ControlWorkspaceOperationResult)
+            ?? throw new InvalidDataException(
+                $"MCP returned no workspace operation result for {toolName}.");
     }
 
     private const string ProjectText = """
