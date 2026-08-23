@@ -35,7 +35,7 @@
     4321
   ],
   "mounts": [
-    "source=csls-${devcontainerId}-artifacts,target=${containerWorkspaceFolder}/artifacts,type=volume"
+    "source=csls-${devcontainerId}-cache,target=/home/vscode/.cache/csls,type=volume"
   ],
   "portsAttributes": {
     "4321": {
@@ -43,7 +43,9 @@
     }
   },
   "remoteEnv": {
+    "CSLS_ARTIFACTS_ROOT": "/home/vscode/.cache/csls/artifacts",
     "CSLS_DEV_CONTAINER": "true",
+    "CSLS_REPOSITORY_ROOT": "${containerWorkspaceFolder}",
     "CSLS_TOOLS_ROOT": "/home/vscode/.cache/csls/tools"
   },
   "postCreateCommand": [

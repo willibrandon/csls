@@ -14,7 +14,8 @@
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <Deterministic>true</Deterministic>
     <ContinuousIntegrationBuild Condition="'$(CI)' == 'true'">true</ContinuousIntegrationBuild>
-    <ArtifactsPath Condition="'$(CslsBundledWorkerArtifactsPath)' == ''">$(MSBuildThisFileDirectory)artifacts</ArtifactsPath>
+    <ArtifactsPath Condition="'$(CslsBundledWorkerArtifactsPath)' == '' and '$(CSLS_ARTIFACTS_ROOT)' == ''">$(MSBuildThisFileDirectory)artifacts</ArtifactsPath>
+    <ArtifactsPath Condition="'$(CslsBundledWorkerArtifactsPath)' == '' and '$(CSLS_ARTIFACTS_ROOT)' != ''">$(CSLS_ARTIFACTS_ROOT)</ArtifactsPath>
     <ArtifactsPath Condition="'$(CslsBundledWorkerArtifactsPath)' != ''">$(CslsBundledWorkerArtifactsPath)</ArtifactsPath>
     <PublishDir Condition="'$(CslsBundledWorkerPublishDir)' != ''">$(CslsBundledWorkerPublishDir)</PublishDir>
     <IsPackable>false</IsPackable>

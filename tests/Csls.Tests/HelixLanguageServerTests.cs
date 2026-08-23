@@ -26,8 +26,7 @@ public sealed class HelixLanguageServerTests
         string helixPath = EditorToolResolver.ResolveHelix(repositoryRoot);
         string processHostPath = EditorToolResolver.ResolveTestProcessHost(repositoryRoot);
         string workerPath = Path.Join(
-            repositoryRoot,
-            "artifacts",
+            EditorToolResolver.ResolveArtifactsRoot(repositoryRoot),
             "bin",
             "Csls.Worker",
             "debug",

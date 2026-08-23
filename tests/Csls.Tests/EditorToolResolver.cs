@@ -13,7 +13,41 @@ internal static class EditorToolResolver
     /// <returns>The absolute repository root.</returns>
     internal static string FindRepositoryRoot()
     {
-        DirectoryInfo? directory = new(AppContext.BaseDirectory);
+        string? configuredPath = Environment.GetEnvironmentVariable("CSLS_REPOSITORY_ROOT");
+        if (!string.IsNullOrWhiteSpace(configuredPath))
+        {
+            string configuredRoot = Path.GetFullPath(configuredPath);
+            if (File.Exists(Path.Join(configuredRoot, "Csls.slnx")))
+            {
+                return configuredRoot;
+            }
+
+            throw new DirectoryNotFoundException(
+                $"CSLS_REPOSITORY_ROOT does not contain Csls.slnx: {configuredRoot}");
+        }
+
+        string? repositoryRoot = FindRepositoryRoot(Environment.CurrentDirectory) ??
+            FindRepositoryRoot(AppContext.BaseDirectory);
+        return repositoryRoot ??
+            throw new DirectoryNotFoundException("The csls repository root was not found.");
+    }
+
+    /// <summary>
+    /// Resolves the configured build artifact root for the active test environment.
+    /// </summary>
+    /// <param name="repositoryRoot">The absolute repository root.</param>
+    /// <returns>The absolute build artifact root.</returns>
+    internal static string ResolveArtifactsRoot(string repositoryRoot)
+    {
+        string? configuredPath = Environment.GetEnvironmentVariable("CSLS_ARTIFACTS_ROOT");
+        return string.IsNullOrWhiteSpace(configuredPath)
+            ? Path.Join(repositoryRoot, "artifacts")
+            : Path.GetFullPath(configuredPath);
+    }
+
+    private static string? FindRepositoryRoot(string startingPath)
+    {
+        DirectoryInfo? directory = new(startingPath);
         while (directory is not null)
         {
             if (File.Exists(Path.Join(directory.FullName, "Csls.slnx")))
@@ -24,7 +58,7 @@ internal static class EditorToolResolver
             directory = directory.Parent;
         }
 
-        throw new DirectoryNotFoundException("The csls repository root was not found.");
+        return null;
     }
 
     /// <summary>
@@ -43,8 +77,7 @@ internal static class EditorToolResolver
     /// <param name="repositoryRoot">The absolute repository root.</param>
     /// <returns>The absolute process host assembly path.</returns>
     internal static string ResolveTestProcessHost(string repositoryRoot) => Path.Join(
-        repositoryRoot,
-        "artifacts",
+        ResolveArtifactsRoot(repositoryRoot),
         "bin",
         "Csls.TestProcessHost",
         "debug",

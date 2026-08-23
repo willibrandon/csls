@@ -27,8 +27,7 @@ public sealed class EmacsLanguageServerTests
         string emacsPath = EditorToolResolver.ResolveEmacs(repositoryRoot);
         string processHostPath = EditorToolResolver.ResolveTestProcessHost(repositoryRoot);
         string workerPath = Path.Join(
-            repositoryRoot,
-            "artifacts",
+            EditorToolResolver.ResolveArtifactsRoot(repositoryRoot),
             "bin",
             "Csls.Worker",
             "debug",

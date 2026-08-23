@@ -34,13 +34,19 @@ try
         "true",
         StringComparison.OrdinalIgnoreCase))
     {
+        string artifactsRoot = Environment.GetEnvironmentVariable("CSLS_ARTIFACTS_ROOT")
+            ?? throw new InvalidOperationException(
+                "CSLS_ARTIFACTS_ROOT is required in the development container.");
+        string cacheRoot = Path.GetDirectoryName(artifactsRoot)
+            ?? throw new InvalidOperationException(
+                "CSLS_ARTIFACTS_ROOT must have a parent directory.");
         await RunCheckedAsync(
             "sudo",
             [
                 "chown",
                 "--recursive",
                 $"{Environment.UserName}:{Environment.UserName}",
-                Path.Join(repositoryRoot, "artifacts")
+                cacheRoot
             ],
             repositoryRoot).ConfigureAwait(false);
     }
@@ -94,6 +100,26 @@ try
 
     await RunCheckedAsync(dotnetPath, ["restore", "Csls.slnx"], repositoryRoot)
         .ConfigureAwait(false);
+    string scriptsDirectory = Path.Join(repositoryRoot, "scripts");
+    foreach (string fileAppPath in Directory
+        .EnumerateFiles(scriptsDirectory, "*.cs", SearchOption.TopDirectoryOnly)
+        .Order(StringComparer.Ordinal))
+    {
+        if (string.Equals(
+                Path.GetFileName(fileAppPath),
+                "Initialize-DevContainer.cs",
+                StringComparison.Ordinal) ||
+            !await IsFileAppAsync(fileAppPath).ConfigureAwait(false))
+        {
+            continue;
+        }
+
+        await RunCheckedAsync(
+            dotnetPath,
+            ["restore", Path.GetRelativePath(repositoryRoot, fileAppPath)],
+            repositoryRoot).ConfigureAwait(false);
+    }
+
     foreach (string provisioner in new[]
     {
         "Provision-Actionlint.cs",
@@ -129,6 +155,26 @@ catch (Exception exception) when (exception is
 {
     await Console.Error.WriteLineAsync(exception.Message).ConfigureAwait(false);
     return 1;
+}
+
+static async Task<bool> IsFileAppAsync(string path)
+{
+    int remainingLines = 8;
+    await foreach (string line in File.ReadLinesAsync(path).ConfigureAwait(false))
+    {
+        if (line.StartsWith("#:", StringComparison.Ordinal))
+        {
+            return true;
+        }
+
+        remainingLines--;
+        if (remainingLines == 0)
+        {
+            return false;
+        }
+    }
+
+    return false;
 }
 
 static async Task RunCheckedAsync(

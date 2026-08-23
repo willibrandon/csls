@@ -23,8 +23,7 @@ public sealed class MultiSolutionLanguageServerTests
     {
         string repositoryRoot = EditorToolResolver.FindRepositoryRoot();
         string workerPath = Path.Join(
-            repositoryRoot,
-            "artifacts",
+            EditorToolResolver.ResolveArtifactsRoot(repositoryRoot),
             "bin",
             "Csls.Worker",
             "debug",
