@@ -190,9 +190,11 @@ jobs:
           - os: ubuntu-latest
             rid: linux-musl-x64
             validation: package
+            size_budget: max=8mb
           - os: ubuntu-24.04-arm
             rid: linux-musl-arm64
             validation: package
+            size_budget: max=8mb
 
     steps:
       - name: Check out repository
@@ -218,3 +220,27 @@ jobs:
           --runtime ${{ matrix.rid }}
           --validation ${{ matrix.validation }}
           --target-dotnet-root artifacts/tools/dotnet/${{ matrix.rid }}
+
+      - name: Check csls Native AOT size
+        if: matrix.validation == 'package'
+        uses: willibrandon/dotsider@6da3fc29735440fdf2aca82d148e6b497a381993 # v0.26.0
+        with:
+          target: artifacts/obj/Csls.App/release_${{ matrix.rid }}/native/csls.mstat
+          baseline-key: csls-${{ matrix.rid }}
+          budgets: ${{ matrix.size_budget }}
+          top: '20'
+          dotsider-version: v0.26.0
+          report-directory: ${{ runner.temp }}/dotsider-size-csls-${{ matrix.rid }}
+          artifact-name: dotsider-size-csls-${{ matrix.rid }}
+
+      - name: Check csls-mcp Native AOT size
+        if: matrix.validation == 'package'
+        uses: willibrandon/dotsider@6da3fc29735440fdf2aca82d148e6b497a381993 # v0.26.0
+        with:
+          target: artifacts/obj/Csls.Mcp/release_${{ matrix.rid }}/native/csls-mcp.mstat
+          baseline-key: csls-mcp-${{ matrix.rid }}
+          budgets: ${{ matrix.size_budget }}
+          top: '20'
+          dotsider-version: v0.26.0
+          report-directory: ${{ runner.temp }}/dotsider-size-csls-mcp-${{ matrix.rid }}
+          artifact-name: dotsider-size-csls-mcp-${{ matrix.rid }}
