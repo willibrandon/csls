@@ -66,6 +66,11 @@ public sealed record ServerCapabilities
     public bool DocumentHighlightProvider { get; init; }
 
     /// <summary>
+    /// Gets the navigable document-link behavior.
+    /// </summary>
+    public DocumentLinkOptions? DocumentLinkProvider { get; init; }
+
+    /// <summary>
     /// Gets the complete-document semantic-token behavior and token legend.
     /// </summary>
     public SemanticTokensOptions? SemanticTokensProvider { get; init; }
