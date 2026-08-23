@@ -189,6 +189,7 @@ public sealed partial class LanguageServer : ILspRpcTarget, IAsyncDisposable
                 TypeDefinitionProvider = true,
                 ImplementationProvider = true,
                 SelectionRangeProvider = true,
+                LinkedEditingRangeProvider = true,
                 DocumentHighlightProvider = true,
                 DocumentLinkProvider = new DocumentLinkOptions
                 {
@@ -563,6 +564,33 @@ public sealed partial class LanguageServer : ILspRpcTarget, IAsyncDisposable
                 {
                     throw new InvalidOperationException(
                         "The workspace changed while selection ranges were being computed.");
+                }
+
+                return ranges;
+            },
+            cancellationToken);
+    }
+
+    /// <inheritdoc />
+    public Task<LinkedEditingRanges?> LinkedEditingRangeAsync(
+        LinkedEditingRangeParams parameters,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(parameters);
+        EnsureRunning();
+        return _scheduler.ScheduleAsync(
+            "textDocument/linkedEditingRange",
+            RequestMode.ReadOnly,
+            () => _workspaceManager.Generation,
+            async context =>
+            {
+                LinkedEditingRanges? ranges = await _workspaceManager
+                    .GetLinkedEditingRangesAsync(parameters, context.CancellationToken)
+                    .ConfigureAwait(false);
+                if (_workspaceManager.Generation != context.WorkspaceGeneration)
+                {
+                    throw new InvalidOperationException(
+                        "The workspace changed while linked editing ranges were being computed.");
                 }
 
                 return ranges;

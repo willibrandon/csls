@@ -181,6 +181,16 @@ public interface ILspRpcTarget
         CancellationToken cancellationToken);
 
     /// <summary>
+    /// Gets paired C# source ranges that clients can edit together.
+    /// </summary>
+    /// <param name="parameters">The target document position.</param>
+    /// <param name="cancellationToken">The peer cancellation token.</param>
+    /// <returns>The linked ranges, or <see langword="null"/> when none apply.</returns>
+    Task<LinkedEditingRanges?> LinkedEditingRangeAsync(
+        LinkedEditingRangeParams parameters,
+        CancellationToken cancellationToken);
+
+    /// <summary>
     /// Gets semantic occurrences of one symbol within its source document.
     /// </summary>
     /// <param name="parameters">The target document position.</param>

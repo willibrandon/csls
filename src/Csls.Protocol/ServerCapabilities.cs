@@ -66,6 +66,11 @@ public sealed record ServerCapabilities
     public bool SelectionRangeProvider { get; init; }
 
     /// <summary>
+    /// Gets whether linked editing ranges are supported.
+    /// </summary>
+    public bool LinkedEditingRangeProvider { get; init; }
+
+    /// <summary>
     /// Gets whether semantic document highlight requests are supported.
     /// </summary>
     public bool DocumentHighlightProvider { get; init; }

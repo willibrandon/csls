@@ -8,7 +8,7 @@ language features include:
 
 - compiler and analyzer diagnostics
 - completion with import edits, negotiated snippets, lazy documentation, hover, and signature help
-- definitions, declarations, implementations, references, highlights, links, and monikers
+- definitions, declarations, implementations, references, highlights, links, monikers, and linked editing
 - document and workspace symbols
 - semantic tokens with full and delta responses
 - call hierarchy, type hierarchy, selection ranges, and inlay hints
@@ -28,6 +28,10 @@ changing the edit, sort text, or filter text returned by the original request.
 identities and Roslyn documentation IDs. Strong-named assembly APIs are unique
 within the scheme. Unsigned project APIs are unique within their project group,
 while non-public symbols use project or document scope.
+
+`textDocument/linkedEditingRange` links matching start and end names in XML
+documentation, including nested and custom elements. Self-closing, mismatched,
+and unrelated text do not produce linked ranges.
 
 [Configuration](../configuration/) is pulled through the standard workspace request
 when the client supports it. Push-only clients use the same settings and precedence.
