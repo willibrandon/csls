@@ -140,14 +140,23 @@ public sealed partial class WorkspaceManager
             var documentVersions = new Dictionary<string, int>(
                 retainedOverlays.Count,
                 PathComparer);
+            var razorDocuments = new Dictionary<string, SourceText>(
+                retainedOverlays.Count,
+                PathComparer);
             foreach (TextDocumentItem overlay in retainedOverlays)
             {
-                documentVersions.Add(overlay.Uri.GetFileSystemPath(), overlay.Version);
+                string path = overlay.Uri.GetFileSystemPath();
+                documentVersions.Add(path, overlay.Version);
+                if (WorkspaceRazorDiagnosticService.IsRazorDocument(path))
+                {
+                    razorDocuments.Add(path, SourceText.From(overlay.Text, Encoding.UTF8));
+                }
             }
 
             await PublishFoldersAsync(
                 loadedFolders,
                 documentVersions,
+                razorDocuments,
                 cancellationToken).ConfigureAwait(false);
             published = true;
         }
@@ -174,12 +183,25 @@ public sealed partial class WorkspaceManager
         CancellationToken cancellationToken)
     {
         ImmutableArray<(string RootPath, Workspace Workspace, Solution Solution)> folders = _folders;
+        ImmutableDictionary<string, SourceText> razorDocuments = _razorDocuments;
         var overlays = new List<TextDocumentItem>(_documentVersions.Count);
         foreach ((string path, int version) in _documentVersions.OrderBy(
             static pair => pair.Key,
             PathComparer))
         {
             cancellationToken.ThrowIfCancellationRequested();
+            if (razorDocuments.TryGetValue(path, out SourceText? razorText))
+            {
+                overlays.Add(new TextDocumentItem
+                {
+                    Uri = DocumentUri.FromFileSystemPath(path),
+                    LanguageId = "razor",
+                    Version = version,
+                    Text = razorText.ToString()
+                });
+                continue;
+            }
+
             Document? document = null;
             foreach ((string _, Workspace _, Solution solution) in folders)
             {
@@ -218,6 +240,11 @@ public sealed partial class WorkspaceManager
         foreach (TextDocumentItem overlay in overlays)
         {
             string path = overlay.Uri.GetFileSystemPath();
+            if (WorkspaceRazorDiagnosticService.IsRazorDocument(path))
+            {
+                continue;
+            }
+
             int folderIndex = FindFolderIndex(path, current);
             if (folderIndex < 0)
             {

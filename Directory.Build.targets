@@ -43,6 +43,17 @@
            Text="csls forbids GlobalSuppressions.cs files: @(CslsGlobalSuppressionsFile)" />
   </Target>
 
+  <Target Name="CslsValidateRazorCompilerReferences"
+          BeforeTargets="ResolveReferences"
+          Condition="'$(CslsRazorCompilerPath)' != ''">
+    <Error
+      Condition="!Exists('$(CslsRazorCompilerPath)/Microsoft.AspNetCore.Razor.Utilities.Shared.dll')"
+      Text="The selected .NET SDK does not contain Microsoft.AspNetCore.Razor.Utilities.Shared.dll." />
+    <Error
+      Condition="!Exists('$(CslsRazorCompilerPath)/Microsoft.CodeAnalysis.Razor.Compiler.dll')"
+      Text="The selected .NET SDK does not contain Microsoft.CodeAnalysis.Razor.Compiler.dll." />
+  </Target>
+
   <Target Name="CslsScanForSuppressionEscapeHatches" BeforeTargets="CoreCompile">
     <Error Condition="Exists('%(CslsSuppressionScanFile.FullPath)') and $([System.Text.RegularExpressions.Regex]::IsMatch($([System.IO.File]::ReadAllText('%(CslsSuppressionScanFile.FullPath)')), '(#pragma\s+warning\s+disable)|(\[\s*(Unconditional)?Suppress[M]essage\b)|(&lt;\s*No[W]arn\b)|(&lt;\s*Warnings[N]otAsErrors\b)|(&lt;\s*Disabled[W]arnings\b)|(#nullable\s+disable)|(dotnet_diagnostic\.[^\r\n]*severity\s*=\s*(none|silent))|(dotnet_diagnostic\.(IDE0001|IDE0005|IDE0130|VSTHRD[0-9]+)\.severity\s*=\s*(?!error\b)[^\s#;]+)|(dotnet_analyzer_diagnostic\.category-(Design|Documentation|Globalization|Interoperability|Maintainability|Naming|Performance|Reliability|Security|Usage)\.severity\s*=\s*(?!error\b)[^\s#;]+)'))"
            Text="csls forbids warning and nullability suppression escape hatches in %(CslsSuppressionScanFile.Identity)." />

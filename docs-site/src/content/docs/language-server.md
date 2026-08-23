@@ -6,7 +6,7 @@ description: Language Server Protocol features implemented by csls.
 `csls` advertises only capabilities backed by an active implementation. Current
 language features include:
 
-- compiler and analyzer diagnostics
+- C# compiler and analyzer diagnostics, plus Razor syntax diagnostics
 - completion with import edits, negotiated snippets, lazy documentation, hover, and signature help
 - definitions, declarations, implementations, references, highlights, links, monikers, and linked editing
 - document and workspace symbols
@@ -32,6 +32,10 @@ while non-public symbols use project or document scope.
 `textDocument/linkedEditingRange` links matching start and end names in XML
 documentation, including nested and custom elements. Self-closing, mismatched,
 and unrelated text do not produce linked ranges.
+
+Razor views and components are parsed by the compiler from the pinned .NET SDK.
+Pull diagnostics follow the current unsaved `.cshtml` or `.razor` snapshot and
+return to the persisted file after the editor closes it.
 
 [Configuration](../configuration/) is pulled through the standard workspace request
 when the client supports it. Push-only clients use the same settings and precedence.
