@@ -6,7 +6,7 @@ description: Language Server Protocol features implemented by csls.
 `csls` advertises only capabilities backed by an active implementation. Current
 language features include:
 
-- C# compiler and analyzer diagnostics, plus project-aware Razor diagnostics, completion, hover, navigation, and formatting
+- C# compiler and analyzer diagnostics, plus project-aware Razor diagnostics, completion, hover, navigation, rename, and formatting
 - completion with import edits, negotiated snippets, lazy documentation, hover, and signature help
 - definitions, declarations, implementations, references, highlights, links, monikers, and linked editing
 - document and workspace symbols
@@ -27,6 +27,11 @@ Razor views and components receive C# member and type completion from their
 generated project snapshot. Commit edits map back to Razor source, including
 `@using` directives required by types from unimported namespaces.
 
+Rename works from C# and from mapped C# expressions in `.razor` and `.cshtml`
+files. A single version-aware workspace edit updates Razor references, Razor-local
+members, and ordinary C# declarations and references. Rename is rejected when
+the new identifier would bind to a different symbol in generated Razor code.
+
 `textDocument/moniker` returns `dotnet` identifiers built from canonical assembly
 identities and Roslyn documentation IDs. Strong-named assembly APIs are unique
 within the scheme. Unsigned project APIs are unique within their project group,
@@ -43,7 +48,8 @@ snapshot and return to the persisted file after the editor closes it. Hover uses
 the same generated project snapshot and maps Roslyn content and ranges back to
 the Razor source, including symbols made available by `_Imports.razor` and
 `_ViewImports.cshtml`. Definition, declaration, type definition, implementation,
-and reference requests use that snapshot and map Razor locations back to their source files.
+and reference requests use that snapshot and map Razor locations back to their
+source files.
 Razor formatting indents markup and embedded C#, aligns multiline attributes,
 and honors the client's tab, space, newline, and trimming settings. Content in
 `pre`, `script`, `style`, and `textarea` elements is left unchanged.

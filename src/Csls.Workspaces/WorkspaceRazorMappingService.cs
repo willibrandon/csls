@@ -329,7 +329,14 @@ internal static class WorkspaceRazorMappingService
         return candidate.Length < best.Value.Length;
     }
 
-    private static bool TryGetTextSpan(
+    /// <summary>
+    /// Converts a valid UTF-16 line span to an absolute text span.
+    /// </summary>
+    /// <param name="text">The immutable source text.</param>
+    /// <param name="lineSpan">The line span to convert.</param>
+    /// <param name="textSpan">The converted text span when successful.</param>
+    /// <returns>True when both line positions are valid and ordered.</returns>
+    internal static bool TryGetTextSpan(
         SourceText text,
         LinePositionSpan lineSpan,
         out TextSpan textSpan)
