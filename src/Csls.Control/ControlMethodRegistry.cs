@@ -36,6 +36,16 @@ internal static class ControlMethodRegistry
             ControlMethods.GetCompletion,
             new Func<ControlCompletionRequest, CancellationToken, Task<CompletionList>>(
                 target.GetCompletionAsync));
+        AddParameterObjectMethod(
+            rpc,
+            ControlMethods.GetDefinition,
+            new Func<ControlNavigationRequest, CancellationToken, Task<IReadOnlyList<Location>>>(
+                target.GetDefinitionAsync));
+        AddParameterObjectMethod(
+            rpc,
+            ControlMethods.GetReferences,
+            new Func<ControlNavigationRequest, CancellationToken, Task<IReadOnlyList<Location>>>(
+                target.GetReferencesAsync));
     }
 
     private static void AddParameterObjectMethod(

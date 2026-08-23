@@ -21,8 +21,10 @@ namespace Csls.Cli.Worker;
 [JsonSerializable(typeof(Diagnostic))]
 [JsonSerializable(typeof(DiagnosticSeverity))]
 [JsonSerializable(typeof(DocumentDiagnosticReport))]
+[JsonSerializable(typeof(Location))]
 [JsonSerializable(typeof(IReadOnlyList<ControlSessionInfo>))]
 [JsonSerializable(typeof(IReadOnlyList<CompletionItem>))]
 [JsonSerializable(typeof(IReadOnlyList<TextEdit>))]
+[JsonSerializable(typeof(IReadOnlyList<Location>))]
 [JsonSerializable(typeof(IReadOnlyList<Diagnostic>))]
 internal sealed partial class CliJsonSerializerContext : JsonSerializerContext;

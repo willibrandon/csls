@@ -24,4 +24,14 @@ public static class ControlMethods
     /// Gets the method that returns bounded completion candidates for one document position.
     /// </summary>
     public const string GetCompletion = "csls/control/v1/completion/get";
+
+    /// <summary>
+    /// Gets the method that returns source definitions for one document position.
+    /// </summary>
+    public const string GetDefinition = "csls/control/v1/definition/get";
+
+    /// <summary>
+    /// Gets the method that returns source references for one document position.
+    /// </summary>
+    public const string GetReferences = "csls/control/v1/references/get";
 }

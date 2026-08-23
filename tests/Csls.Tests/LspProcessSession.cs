@@ -239,6 +239,58 @@ internal sealed class LspProcessSession : IAsyncDisposable
             cancellationToken);
 
     /// <summary>
+    /// Requests source definitions for the symbol at one test document position.
+    /// </summary>
+    /// <param name="documentPath">The absolute target document path.</param>
+    /// <param name="position">The target UTF-16 document position.</param>
+    /// <param name="cancellationToken">The test cancellation token.</param>
+    /// <returns>The bounded source definition locations.</returns>
+    internal Task<IReadOnlyList<Location>> RequestDefinitionsAsync(
+        string documentPath,
+        Position position,
+        CancellationToken cancellationToken) =>
+        _rpc.InvokeWithParameterObjectAsync<IReadOnlyList<Location>>(
+            "textDocument/definition",
+            new TextDocumentPositionParams
+            {
+                TextDocument = new TextDocumentIdentifier
+                {
+                    Uri = DocumentUri.FromFileSystemPath(documentPath)
+                },
+                Position = position
+            },
+            cancellationToken);
+
+    /// <summary>
+    /// Requests source references for the symbol at one test document position.
+    /// </summary>
+    /// <param name="documentPath">The absolute target document path.</param>
+    /// <param name="position">The target UTF-16 document position.</param>
+    /// <param name="includeDeclaration">Whether the declaration location is included.</param>
+    /// <param name="cancellationToken">The test cancellation token.</param>
+    /// <returns>The bounded source reference locations.</returns>
+    internal Task<IReadOnlyList<Location>> RequestReferencesAsync(
+        string documentPath,
+        Position position,
+        bool includeDeclaration,
+        CancellationToken cancellationToken) =>
+        _rpc.InvokeWithParameterObjectAsync<IReadOnlyList<Location>>(
+            "textDocument/references",
+            new ReferenceParams
+            {
+                TextDocument = new TextDocumentIdentifier
+                {
+                    Uri = DocumentUri.FromFileSystemPath(documentPath)
+                },
+                Position = position,
+                Context = new ReferenceContext
+                {
+                    IncludeDeclaration = includeDeclaration
+                }
+            },
+            cancellationToken);
+
+    /// <summary>
     /// Sends a document save notification through the real LSP transport.
     /// </summary>
     /// <param name="documentPath">The absolute saved document path.</param>

@@ -100,6 +100,28 @@ public sealed class ControlRpcClient : IAsyncDisposable
     }
 
     /// <summary>
+    /// Gets source definitions from the attached workspace snapshot.
+    /// </summary>
+    /// <param name="request">The absolute document path and UTF-16 position.</param>
+    /// <param name="cancellationToken">The request cancellation token.</param>
+    /// <returns>The bounded source definition locations.</returns>
+    public Task<IReadOnlyList<Location>> GetDefinitionAsync(
+        ControlNavigationRequest request,
+        CancellationToken cancellationToken) =>
+        GetNavigationAsync(ControlMethods.GetDefinition, request, cancellationToken);
+
+    /// <summary>
+    /// Gets source references from the attached workspace snapshot.
+    /// </summary>
+    /// <param name="request">The absolute document path, position, and declaration behavior.</param>
+    /// <param name="cancellationToken">The request cancellation token.</param>
+    /// <returns>The bounded source reference locations.</returns>
+    public Task<IReadOnlyList<Location>> GetReferencesAsync(
+        ControlNavigationRequest request,
+        CancellationToken cancellationToken) =>
+        GetNavigationAsync(ControlMethods.GetReferences, request, cancellationToken);
+
+    /// <summary>
     /// Closes the control RPC connection and releases its socket resources.
     /// </summary>
     /// <returns>A task that completes after the transport is closed.</returns>
@@ -182,5 +204,19 @@ public sealed class ControlRpcClient : IAsyncDisposable
         {
             _connectionGate.Release();
         }
+    }
+
+    private async Task<IReadOnlyList<Location>> GetNavigationAsync(
+        string methodName,
+        ControlNavigationRequest request,
+        CancellationToken cancellationToken)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(methodName);
+        ArgumentNullException.ThrowIfNull(request);
+        JsonRpc rpc = await GetRpcAsync(cancellationToken).ConfigureAwait(false);
+        return await rpc.InvokeWithParameterObjectAsync<IReadOnlyList<Location>>(
+            methodName,
+            request,
+            cancellationToken).ConfigureAwait(false);
     }
 }

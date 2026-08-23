@@ -221,6 +221,77 @@ public sealed class CliLanguageServerTests
                         .Select(static item => item.GetProperty("label").GetString()));
             }
 
+            (int definitionExitCode, string definitionOutput, string definitionError) =
+                await RunCliAsync(
+                    cliPath,
+                    cliWorkerPath,
+                    fixturePath,
+                    [
+                        "query",
+                        "definition",
+                        documentPath,
+                        "--line",
+                        "7",
+                        "--character",
+                        "9",
+                        "--session",
+                        processId,
+                        "--json"
+                    ],
+                    TestContext.CancellationToken).ConfigureAwait(false);
+            Assert.AreEqual(
+                0,
+                definitionExitCode,
+                $"{definitionError}{Environment.NewLine}{definitionOutput}");
+            using (var definitionDocument = JsonDocument.Parse(definitionOutput))
+            {
+                JsonElement definitionRoot = definitionDocument.RootElement;
+                AssertSuccessfulEnvelope(definitionRoot);
+                JsonElement definition = definitionRoot.GetProperty("data")[0];
+                Assert.AreEqual(
+                    10,
+                    definition.GetProperty("range").GetProperty("start").GetProperty("line")
+                        .GetInt32());
+                Assert.AreEqual(
+                    24,
+                    definition.GetProperty("range").GetProperty("start").GetProperty("character")
+                        .GetInt32());
+            }
+
+            (int referencesExitCode, string referencesOutput, string referencesError) =
+                await RunCliAsync(
+                    cliPath,
+                    cliWorkerPath,
+                    fixturePath,
+                    [
+                        "query",
+                        "references",
+                        documentPath,
+                        "--line",
+                        "7",
+                        "--character",
+                        "9",
+                        "--session",
+                        processId,
+                        "--json"
+                    ],
+                    TestContext.CancellationToken).ConfigureAwait(false);
+            Assert.AreEqual(
+                0,
+                referencesExitCode,
+                $"{referencesError}{Environment.NewLine}{referencesOutput}");
+            using (var referencesDocument = JsonDocument.Parse(referencesOutput))
+            {
+                JsonElement referencesRoot = referencesDocument.RootElement;
+                AssertSuccessfulEnvelope(referencesRoot);
+                JsonElement references = referencesRoot.GetProperty("data");
+                Assert.AreEqual(1, references.GetArrayLength());
+                Assert.AreEqual(
+                    7,
+                    references[0].GetProperty("range").GetProperty("start").GetProperty("line")
+                        .GetInt32());
+            }
+
             string diagnostics = await lsp.ShutdownAsync(
                 TestContext.CancellationToken).ConfigureAwait(false);
             Assert.DoesNotContain("Unhandled exception", diagnostics, StringComparison.Ordinal);
@@ -296,6 +367,11 @@ public sealed class CliLanguageServerTests
             public static void Main()
             {
                 Console.WriteLine(Missing);
+                Helper();
+            }
+
+            private static void Helper()
+            {
             }
         }
         """;

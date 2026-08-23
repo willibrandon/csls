@@ -190,4 +190,106 @@ internal sealed class CslsMcpTools
             },
             cancellationToken);
     }
+
+    /// <summary>
+    /// Gets source definitions for the symbol at one document position.
+    /// </summary>
+    /// <param name="documentPath">The absolute path of an open document.</param>
+    /// <param name="line">The zero-based document line.</param>
+    /// <param name="character">The zero-based UTF-16 character offset.</param>
+    /// <param name="cancellationToken">The MCP request cancellation token.</param>
+    /// <returns>The bounded source definition locations.</returns>
+    [McpServerTool(
+        Name = "get_definition",
+        Title = "Get C# definition",
+        Destructive = false,
+        Idempotent = true,
+        OpenWorld = false,
+        ReadOnly = true,
+        UseStructuredContent = true)]
+    [Description("Find source definitions for the C# symbol at a zero-based UTF-16 document position.")]
+    public Task<IReadOnlyList<Location>> GetDefinitionAsync(
+        [Description("Absolute path of the document loaded by the attached csls session.")]
+        string documentPath,
+        [Description("Zero-based document line.")]
+        int line,
+        [Description("Zero-based UTF-16 character offset.")]
+        int character,
+        CancellationToken cancellationToken)
+    {
+        ControlNavigationRequest request = CreateNavigationRequest(
+            documentPath,
+            line,
+            character,
+            includeDeclaration: false);
+        return _controlClient.GetDefinitionAsync(request, cancellationToken);
+    }
+
+    /// <summary>
+    /// Gets source references for the symbol at one document position.
+    /// </summary>
+    /// <param name="documentPath">The absolute path of an open document.</param>
+    /// <param name="line">The zero-based document line.</param>
+    /// <param name="character">The zero-based UTF-16 character offset.</param>
+    /// <param name="includeDeclaration">Whether declaration locations are included.</param>
+    /// <param name="cancellationToken">The MCP request cancellation token.</param>
+    /// <returns>The bounded source reference locations.</returns>
+    [McpServerTool(
+        Name = "get_references",
+        Title = "Get C# references",
+        Destructive = false,
+        Idempotent = true,
+        OpenWorld = false,
+        ReadOnly = true,
+        UseStructuredContent = true)]
+    [Description("Find source references for the C# symbol at a zero-based UTF-16 document position.")]
+    public Task<IReadOnlyList<Location>> GetReferencesAsync(
+        [Description("Absolute path of the document loaded by the attached csls session.")]
+        string documentPath,
+        [Description("Zero-based document line.")]
+        int line,
+        [Description("Zero-based UTF-16 character offset.")]
+        int character,
+        [Description("Include source declarations in the result.")]
+        bool includeDeclaration,
+        CancellationToken cancellationToken)
+    {
+        ControlNavigationRequest request = CreateNavigationRequest(
+            documentPath,
+            line,
+            character,
+            includeDeclaration);
+        return _controlClient.GetReferencesAsync(request, cancellationToken);
+    }
+
+    private static ControlNavigationRequest CreateNavigationRequest(
+        string documentPath,
+        int line,
+        int character,
+        bool includeDeclaration)
+    {
+        if (string.IsNullOrWhiteSpace(documentPath) ||
+            documentPath.Length > MaximumPathLength)
+        {
+            throw new McpException(
+                $"documentPath must contain between 1 and {MaximumPathLength} characters.");
+        }
+
+        if (line < 0)
+        {
+            throw new McpException("line must be zero or greater.");
+        }
+
+        if (character < 0)
+        {
+            throw new McpException("character must be zero or greater.");
+        }
+
+        return new ControlNavigationRequest
+        {
+            DocumentPath = Path.GetFullPath(documentPath),
+            Position = new Position(line, character),
+            IncludeDeclaration = includeDeclaration
+        };
+    }
 }

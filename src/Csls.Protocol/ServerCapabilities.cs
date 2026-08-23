@@ -29,4 +29,14 @@ public sealed record ServerCapabilities
     /// Gets the completion provider behavior.
     /// </summary>
     public CompletionOptions? CompletionProvider { get; init; }
+
+    /// <summary>
+    /// Gets whether source definition requests are supported.
+    /// </summary>
+    public bool DefinitionProvider { get; init; }
+
+    /// <summary>
+    /// Gets whether source reference requests are supported.
+    /// </summary>
+    public bool ReferencesProvider { get; init; }
 }

@@ -7,6 +7,7 @@ using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.Completion;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.Diagnostics;
+using Microsoft.CodeAnalysis.FindSymbols;
 using Microsoft.CodeAnalysis.MSBuild;
 using Microsoft.CodeAnalysis.QuickInfo;
 using Microsoft.CodeAnalysis.Tags;
@@ -19,11 +20,13 @@ using LspCompletionItem = Csls.Protocol.CompletionItem;
 using LspCompletionItemKind = Csls.Protocol.CompletionItemKind;
 using LspCompletionList = Csls.Protocol.CompletionList;
 using LspCompletionTriggerKind = Csls.Protocol.CompletionTriggerKind;
+using LspLocation = Csls.Protocol.Location;
 using LspTextEdit = Csls.Protocol.TextEdit;
 using RoslynDiagnostic = Microsoft.CodeAnalysis.Diagnostic;
 using RoslynDiagnosticSeverity = Microsoft.CodeAnalysis.DiagnosticSeverity;
 using RoslynCompletionItem = Microsoft.CodeAnalysis.Completion.CompletionItem;
 using RoslynCompletionList = Microsoft.CodeAnalysis.Completion.CompletionList;
+using RoslynLocation = Microsoft.CodeAnalysis.Location;
 
 namespace Csls.Workspaces;
 
@@ -33,6 +36,7 @@ namespace Csls.Workspaces;
 public sealed partial class WorkspaceManager : IAsyncDisposable
 {
     private const int MaximumCompletionItems = 200;
+    private const int MaximumNavigationLocations = 2_000;
     private static readonly Lock s_msbuildRegistrationLock = new();
     private static bool s_msbuildRegistered;
 
@@ -436,6 +440,90 @@ public sealed partial class WorkspaceManager : IAsyncDisposable
             IsIncomplete = sourceItems.Count > MaximumCompletionItems,
             Items = items
         };
+    }
+
+    /// <summary>
+    /// Finds source definitions for the symbol at one immutable document position.
+    /// </summary>
+    /// <param name="parameters">The target document position.</param>
+    /// <param name="cancellationToken">The operation cancellation token.</param>
+    /// <returns>The bounded source definition locations.</returns>
+    public async Task<IReadOnlyList<LspLocation>> GetDefinitionsAsync(
+        TextDocumentPositionParams parameters,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(parameters);
+        (Document? document, ISymbol? symbol) = await FindSymbolAsync(
+            parameters,
+            cancellationToken).ConfigureAwait(false);
+        if (document is null || symbol is null)
+        {
+            return [];
+        }
+
+        ISymbol definition = await SymbolFinder.FindSourceDefinitionAsync(
+            symbol,
+            document.Project.Solution,
+            cancellationToken).ConfigureAwait(false) ?? symbol;
+        return CreateNavigationLocations(definition.Locations);
+    }
+
+    /// <summary>
+    /// Finds source references for the symbol at one immutable document position.
+    /// </summary>
+    /// <param name="parameters">The target position and declaration inclusion behavior.</param>
+    /// <param name="cancellationToken">The operation cancellation token.</param>
+    /// <returns>The bounded deduplicated source reference locations.</returns>
+    public async Task<IReadOnlyList<LspLocation>> GetReferencesAsync(
+        ReferenceParams parameters,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(parameters);
+        var positionParameters = new TextDocumentPositionParams
+        {
+            TextDocument = parameters.TextDocument,
+            Position = parameters.Position
+        };
+        (Document? document, ISymbol? symbol) = await FindSymbolAsync(
+            positionParameters,
+            cancellationToken).ConfigureAwait(false);
+        if (document is null || symbol is null)
+        {
+            return [];
+        }
+
+        IEnumerable<ReferencedSymbol> referencedSymbols = await SymbolFinder
+            .FindReferencesAsync(
+                symbol,
+                document.Project.Solution,
+                cancellationToken)
+            .ConfigureAwait(false);
+        var locations = new HashSet<LspLocation>();
+        foreach (ReferencedSymbol referencedSymbol in referencedSymbols)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (parameters.Context.IncludeDeclaration)
+            {
+                AddNavigationLocations(locations, referencedSymbol.Definition.Locations);
+            }
+
+            AddNavigationLocations(
+                locations,
+                referencedSymbol.Locations.Select(static reference => reference.Location));
+            if (locations.Count >= MaximumNavigationLocations)
+            {
+                break;
+            }
+        }
+
+        return
+        [
+            .. locations
+                .OrderBy(static location => location.Uri.ToString(), StringComparer.Ordinal)
+                .ThenBy(static location => location.Range.Start.Line)
+                .ThenBy(static location => location.Range.Start.Character)
+                .Take(MaximumNavigationLocations)
+        ];
     }
 
     /// <summary>
@@ -930,6 +1018,87 @@ public sealed partial class WorkspaceManager : IAsyncDisposable
         return item.FilterText.Contains(filterText, StringComparison.OrdinalIgnoreCase)
             ? 2
             : 3;
+    }
+
+    private async Task<(Document? Document, ISymbol? Symbol)> FindSymbolAsync(
+        TextDocumentPositionParams parameters,
+        CancellationToken cancellationToken)
+    {
+        string path = parameters.TextDocument.Uri.GetFileSystemPath();
+        ImmutableArray<(string RootPath, Workspace Workspace, Solution Solution)> folders = _folders;
+        int folderIndex = FindFolderIndex(path, folders);
+        Document? document = folderIndex >= 0
+            ? FindDocument(folders[folderIndex].Solution, path)
+            : null;
+        if (document is null)
+        {
+            return (null, null);
+        }
+
+        SourceText text = await document.GetTextAsync(cancellationToken).ConfigureAwait(false);
+        int offset = GetOffset(text, parameters.Position);
+        SemanticModel semanticModel = await document
+            .GetSemanticModelAsync(cancellationToken)
+            .ConfigureAwait(false)
+            ?? throw new InvalidOperationException("Roslyn returned no semantic model.");
+        ISymbol? symbol = await SymbolFinder.FindSymbolAtPositionAsync(
+            semanticModel,
+            offset,
+            folders[folderIndex].Workspace,
+            cancellationToken).ConfigureAwait(false);
+        return (document, symbol);
+    }
+
+    private static IReadOnlyList<LspLocation> CreateNavigationLocations(
+        IEnumerable<RoslynLocation> sourceLocations)
+    {
+        var locations = new HashSet<LspLocation>();
+        AddNavigationLocations(locations, sourceLocations);
+        return
+        [
+            .. locations
+                .OrderBy(static location => location.Uri.ToString(), StringComparer.Ordinal)
+                .ThenBy(static location => location.Range.Start.Line)
+                .ThenBy(static location => location.Range.Start.Character)
+                .Take(MaximumNavigationLocations)
+        ];
+    }
+
+    private static void AddNavigationLocations(
+        HashSet<LspLocation> target,
+        IEnumerable<RoslynLocation> sourceLocations)
+    {
+        foreach (RoslynLocation sourceLocation in sourceLocations)
+        {
+            if (target.Count >= MaximumNavigationLocations)
+            {
+                return;
+            }
+
+            LspLocation? location = ToLspLocation(sourceLocation);
+            if (location is not null)
+            {
+                target.Add(location);
+            }
+        }
+    }
+
+    private static LspLocation? ToLspLocation(RoslynLocation location)
+    {
+        string? path = location.SourceTree?.FilePath;
+        if (!location.IsInSource || string.IsNullOrWhiteSpace(path))
+        {
+            return null;
+        }
+
+        FileLinePositionSpan lineSpan = location.GetLineSpan();
+        return new LspLocation
+        {
+            Uri = DocumentUri.FromFileSystemPath(path),
+            Range = new LspRange(
+                new Position(lineSpan.StartLinePosition.Line, lineSpan.StartLinePosition.Character),
+                new Position(lineSpan.EndLinePosition.Line, lineSpan.EndLinePosition.Character))
+        };
     }
 
     private static void DisposeFolders(

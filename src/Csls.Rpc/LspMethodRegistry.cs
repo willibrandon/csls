@@ -55,6 +55,16 @@ public static class LspMethodRegistry
                 target.CompletionAsync));
         AddParameterObjectMethod(
             rpc,
+            "textDocument/definition",
+            new Func<TextDocumentPositionParams, CancellationToken, Task<IReadOnlyList<Location>>>(
+                target.DefinitionAsync));
+        AddParameterObjectMethod(
+            rpc,
+            "textDocument/references",
+            new Func<ReferenceParams, CancellationToken, Task<IReadOnlyList<Location>>>(
+                target.ReferencesAsync));
+        AddParameterObjectMethod(
+            rpc,
             "textDocument/hover",
             new Func<TextDocumentPositionParams, CancellationToken, Task<Hover?>>(target.HoverAsync));
     }

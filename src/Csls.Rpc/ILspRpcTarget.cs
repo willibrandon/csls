@@ -91,6 +91,26 @@ public interface ILspRpcTarget
         CancellationToken cancellationToken);
 
     /// <summary>
+    /// Finds source definitions for the symbol at one document position.
+    /// </summary>
+    /// <param name="parameters">The target document position.</param>
+    /// <param name="cancellationToken">The peer cancellation token.</param>
+    /// <returns>The bounded source definition locations.</returns>
+    Task<IReadOnlyList<Location>> DefinitionAsync(
+        TextDocumentPositionParams parameters,
+        CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Finds source references for the symbol at one document position.
+    /// </summary>
+    /// <param name="parameters">The target position and declaration inclusion behavior.</param>
+    /// <param name="cancellationToken">The peer cancellation token.</param>
+    /// <returns>The bounded source reference locations.</returns>
+    Task<IReadOnlyList<Location>> ReferencesAsync(
+        ReferenceParams parameters,
+        CancellationToken cancellationToken);
+
+    /// <summary>
     /// Resolves hover information at a text document position.
     /// </summary>
     /// <param name="parameters">The target document position.</param>

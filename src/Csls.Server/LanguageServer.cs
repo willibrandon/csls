@@ -93,7 +93,9 @@ public sealed partial class LanguageServer : ILspRpcTarget, IAsyncDisposable
                 {
                     ResolveProvider = false,
                     TriggerCharacters = [".", "(", "#", "\"", "<", "/"]
-                }
+                },
+                DefinitionProvider = true,
+                ReferencesProvider = true
             },
             ServerInfo = new ServerInfo
             {
@@ -236,6 +238,58 @@ public sealed partial class LanguageServer : ILspRpcTarget, IAsyncDisposable
                 }
 
                 return completion;
+            },
+            cancellationToken);
+    }
+
+    /// <inheritdoc />
+    public Task<IReadOnlyList<Location>> DefinitionAsync(
+        TextDocumentPositionParams parameters,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(parameters);
+        EnsureRunning();
+        return _scheduler.ScheduleAsync(
+            RequestMode.ReadOnly,
+            () => _workspaceManager.Generation,
+            async context =>
+            {
+                IReadOnlyList<Location> locations = await _workspaceManager
+                    .GetDefinitionsAsync(parameters, context.CancellationToken)
+                    .ConfigureAwait(false);
+                if (_workspaceManager.Generation != context.WorkspaceGeneration)
+                {
+                    throw new InvalidOperationException(
+                        "The workspace changed while definitions were being computed.");
+                }
+
+                return locations;
+            },
+            cancellationToken);
+    }
+
+    /// <inheritdoc />
+    public Task<IReadOnlyList<Location>> ReferencesAsync(
+        ReferenceParams parameters,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(parameters);
+        EnsureRunning();
+        return _scheduler.ScheduleAsync(
+            RequestMode.ReadOnly,
+            () => _workspaceManager.Generation,
+            async context =>
+            {
+                IReadOnlyList<Location> locations = await _workspaceManager
+                    .GetReferencesAsync(parameters, context.CancellationToken)
+                    .ConfigureAwait(false);
+                if (_workspaceManager.Generation != context.WorkspaceGeneration)
+                {
+                    throw new InvalidOperationException(
+                        "The workspace changed while references were being computed.");
+                }
+
+                return locations;
             },
             cancellationToken);
     }

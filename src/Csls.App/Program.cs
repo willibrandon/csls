@@ -157,6 +157,14 @@ completionCommand.SetAction((parseResult, cancellationToken) =>
         ],
         cancellationToken));
 queryCommand.Subcommands.Add(completionCommand);
+queryCommand.Subcommands.Add(CreateNavigationCommand(
+    "definition",
+    "Find source definitions for the symbol at one document position.",
+    includeDeclarationOption: false));
+queryCommand.Subcommands.Add(CreateNavigationCommand(
+    "references",
+    "Find source references for the symbol at one document position.",
+    includeDeclarationOption: true));
 rootCommand.Subcommands.Add(queryCommand);
 
 return await rootCommand.Parse(args).InvokeAsync().ConfigureAwait(false);
@@ -195,4 +203,59 @@ static Option<int> CreatePositionOption(string name, string description)
         }
     });
     return option;
+}
+
+static Command CreateNavigationCommand(
+    string name,
+    string description,
+    bool includeDeclarationOption)
+{
+    var documentArgument = new Argument<string>("document")
+    {
+        Description = "Absolute or current-directory-relative C# document path."
+    };
+    Option<int> lineOption = CreatePositionOption(
+        "--line",
+        "Zero-based UTF-16 line number.");
+    Option<int> characterOption = CreatePositionOption(
+        "--character",
+        "Zero-based UTF-16 character offset.");
+    Option<int?> sessionOption = CreateSessionOption();
+    var includeDeclaration = new Option<bool>("--include-declaration")
+    {
+        Description = "Include symbol declaration locations in reference results."
+    };
+    var jsonOption = new Option<bool>("--json")
+    {
+        Description = "Write the versioned machine-readable response envelope."
+    };
+    var command = new Command(name, description)
+    {
+        documentArgument,
+        lineOption,
+        characterOption,
+        sessionOption,
+        jsonOption
+    };
+    if (includeDeclarationOption)
+    {
+        command.Options.Add(includeDeclaration);
+    }
+
+    command.SetAction((parseResult, cancellationToken) =>
+        CliWorkerSupervisor.RunAsync(
+            [
+                "query-navigation",
+                name,
+                (parseResult.GetValue(sessionOption) ?? 0)
+                    .ToString(CultureInfo.InvariantCulture),
+                Path.GetFullPath(parseResult.GetRequiredValue(documentArgument)),
+                parseResult.GetValue(lineOption).ToString(CultureInfo.InvariantCulture),
+                parseResult.GetValue(characterOption).ToString(CultureInfo.InvariantCulture),
+                (includeDeclarationOption && parseResult.GetValue(includeDeclaration))
+                    .ToString(CultureInfo.InvariantCulture),
+                parseResult.GetValue(jsonOption).ToString(CultureInfo.InvariantCulture)
+            ],
+            cancellationToken));
+    return command;
 }

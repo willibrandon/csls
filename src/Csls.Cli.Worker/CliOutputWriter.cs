@@ -165,6 +165,31 @@ internal static class CliOutputWriter
     }
 
     /// <summary>
+    /// Writes bounded source navigation locations returned by the shared control service.
+    /// </summary>
+    /// <param name="locations">The ordered source locations.</param>
+    /// <param name="writeJson">Whether to write a machine-readable envelope.</param>
+    internal static void WriteLocations(IReadOnlyList<Location> locations, bool writeJson)
+    {
+        ArgumentNullException.ThrowIfNull(locations);
+        if (writeJson)
+        {
+            JsonElement data = JsonSerializer.SerializeToElement(
+                locations,
+                typeof(IReadOnlyList<Location>),
+                CliJsonSerializerContext.Default);
+            WriteEnvelope(success: true, data);
+            return;
+        }
+
+        foreach (Location location in locations)
+        {
+            Console.Out.WriteLine(
+                $"{location.Uri}:{location.Range.Start.Line + 1}:{location.Range.Start.Character + 1}");
+        }
+    }
+
+    /// <summary>
     /// Writes an actionable command failure to the requested output channel.
     /// </summary>
     /// <param name="code">The stable failure category.</param>

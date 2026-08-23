@@ -134,6 +134,10 @@ public sealed class McpLanguageServerTests
                     tool.Name == "get_diagnostics");
                 McpClientTool completionTool = tools.Single(static tool =>
                     tool.Name == "get_completion");
+                McpClientTool definitionTool = tools.Single(static tool =>
+                    tool.Name == "get_definition");
+                McpClientTool referencesTool = tools.Single(static tool =>
+                    tool.Name == "get_references");
                 ToolAnnotations annotations = sessionTool.ProtocolTool.Annotations
                     ?? throw new InvalidDataException("The session tool has no MCP annotations.");
                 Assert.IsNotNull(annotations.ReadOnlyHint);
@@ -148,6 +152,8 @@ public sealed class McpLanguageServerTests
                 Assert.IsNotNull(hoverTool.ProtocolTool.OutputSchema);
                 Assert.IsNotNull(diagnosticTool.ProtocolTool.OutputSchema);
                 Assert.IsNotNull(completionTool.ProtocolTool.OutputSchema);
+                Assert.IsNotNull(definitionTool.ProtocolTool.OutputSchema);
+                Assert.IsNotNull(referencesTool.ProtocolTool.OutputSchema);
 
                 CallToolResult sessionResult = await client.CallToolAsync(
                     "get_session",
@@ -220,6 +226,45 @@ public sealed class McpLanguageServerTests
                     "WriteLine",
                     completion.Items.Select(static item => item.Label));
 
+                CallToolResult definitionResult = await client.CallToolAsync(
+                    "get_definition",
+                    new Dictionary<string, object?>
+                    {
+                        ["documentPath"] = documentPath,
+                        ["line"] = 7,
+                        ["character"] = 9
+                    },
+                    cancellationToken: TestContext.CancellationToken).ConfigureAwait(false);
+                Assert.IsNull(definitionResult.IsError);
+                Assert.IsTrue(definitionResult.StructuredContent.HasValue);
+                IReadOnlyList<Location> definitions =
+                    definitionResult.StructuredContent.Value.Deserialize(
+                        ControlJsonSerializerContext.Default.IReadOnlyListLocation)
+                    ?? throw new InvalidDataException(
+                        "MCP returned no structured definition locations.");
+                Location definition = Assert.ContainsSingle(definitions);
+                Assert.AreEqual(new Position(10, 24), definition.Range.Start);
+
+                CallToolResult referencesResult = await client.CallToolAsync(
+                    "get_references",
+                    new Dictionary<string, object?>
+                    {
+                        ["documentPath"] = documentPath,
+                        ["line"] = 7,
+                        ["character"] = 9,
+                        ["includeDeclaration"] = false
+                    },
+                    cancellationToken: TestContext.CancellationToken).ConfigureAwait(false);
+                Assert.IsNull(referencesResult.IsError);
+                Assert.IsTrue(referencesResult.StructuredContent.HasValue);
+                IReadOnlyList<Location> references =
+                    referencesResult.StructuredContent.Value.Deserialize(
+                        ControlJsonSerializerContext.Default.IReadOnlyListLocation)
+                    ?? throw new InvalidDataException(
+                        "MCP returned no structured reference locations.");
+                Location reference = Assert.ContainsSingle(references);
+                Assert.AreEqual(new Position(7, 8), reference.Range.Start);
+
                 IList<McpClientResource> resources = await client
                     .ListResourcesAsync(cancellationToken: TestContext.CancellationToken)
                     .ConfigureAwait(false);
@@ -285,6 +330,11 @@ public sealed class McpLanguageServerTests
             public static void Main()
             {
                 Console.WriteLine(Missing);
+                Helper();
+            }
+
+            private static void Helper()
+            {
             }
         }
         """;

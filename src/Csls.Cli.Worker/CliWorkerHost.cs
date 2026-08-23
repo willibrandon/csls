@@ -44,6 +44,10 @@ internal static class CliWorkerHost
                         arguments,
                         writeJson,
                         cancellationToken).ConfigureAwait(false),
+                    "query-navigation" => await QueryNavigationAsync(
+                        arguments,
+                        writeJson,
+                        cancellationToken).ConfigureAwait(false),
                     _ => Fail(
                         "invalid-request",
                         $"The launcher supplied an unknown CLI operation: {arguments[0]}",
@@ -179,6 +183,44 @@ internal static class CliWorkerHost
             },
             cancellationToken).ConfigureAwait(false);
         CliOutputWriter.WriteCompletion(completion, writeJson);
+        return 0;
+    }
+
+    private static async Task<int> QueryNavigationAsync(
+        IReadOnlyList<string> arguments,
+        bool writeJson,
+        CancellationToken cancellationToken)
+    {
+        if (arguments.Count != 8 ||
+            arguments[1] is not ("definition" or "references") ||
+            !int.TryParse(arguments[2], NumberStyles.None, CultureInfo.InvariantCulture, out int processId) ||
+            !int.TryParse(arguments[4], NumberStyles.None, CultureInfo.InvariantCulture, out int line) ||
+            !int.TryParse(arguments[5], NumberStyles.None, CultureInfo.InvariantCulture, out int character) ||
+            !bool.TryParse(arguments[6], out bool includeDeclaration))
+        {
+            return Fail(
+                "invalid-request",
+                "The launcher supplied an invalid navigation request.",
+                writeJson);
+        }
+
+        ControlSessionInfo session = await ResolveSessionAsync(processId, cancellationToken)
+            .ConfigureAwait(false);
+        var client = new ControlRpcClient(session.SocketPath);
+        await using ConfiguredAsyncDisposable clientCleanup = client.ConfigureAwait(false);
+        var request = new ControlNavigationRequest
+        {
+            DocumentPath = arguments[3],
+            Position = new Position(line, character),
+            IncludeDeclaration = includeDeclaration
+        };
+        IReadOnlyList<Location> locations = string.Equals(
+            arguments[1],
+            "definition",
+            StringComparison.Ordinal)
+            ? await client.GetDefinitionAsync(request, cancellationToken).ConfigureAwait(false)
+            : await client.GetReferencesAsync(request, cancellationToken).ConfigureAwait(false);
+        CliOutputWriter.WriteLocations(locations, writeJson);
         return 0;
     }
 

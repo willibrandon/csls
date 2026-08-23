@@ -113,4 +113,48 @@ public sealed class ControlService : IControlRpcTarget
             },
             cancellationToken);
     }
+
+    /// <inheritdoc />
+    public Task<IReadOnlyList<Location>> GetDefinitionAsync(
+        ControlNavigationRequest request,
+        CancellationToken cancellationToken)
+    {
+        TextDocumentPositionParams parameters = CreateNavigationParams(request);
+        return _languageServer.DefinitionAsync(parameters, cancellationToken);
+    }
+
+    /// <inheritdoc />
+    public Task<IReadOnlyList<Location>> GetReferencesAsync(
+        ControlNavigationRequest request,
+        CancellationToken cancellationToken)
+    {
+        TextDocumentPositionParams positionParameters = CreateNavigationParams(request);
+        return _languageServer.ReferencesAsync(
+            new ReferenceParams
+            {
+                TextDocument = positionParameters.TextDocument,
+                Position = positionParameters.Position,
+                Context = new ReferenceContext
+                {
+                    IncludeDeclaration = request.IncludeDeclaration
+                }
+            },
+            cancellationToken);
+    }
+
+    private static TextDocumentPositionParams CreateNavigationParams(
+        ControlNavigationRequest request)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        ArgumentException.ThrowIfNullOrWhiteSpace(request.DocumentPath);
+        string documentPath = Path.GetFullPath(request.DocumentPath);
+        return new TextDocumentPositionParams
+        {
+            TextDocument = new TextDocumentIdentifier
+            {
+                Uri = DocumentUri.FromFileSystemPath(documentPath)
+            },
+            Position = request.Position
+        };
+    }
 }

@@ -43,4 +43,24 @@ public interface IControlRpcTarget
     Task<CompletionList> GetCompletionAsync(
         ControlCompletionRequest request,
         CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Gets source definitions from the current workspace snapshot.
+    /// </summary>
+    /// <param name="request">The absolute document path and UTF-16 position.</param>
+    /// <param name="cancellationToken">The peer cancellation token.</param>
+    /// <returns>The bounded source definition locations.</returns>
+    Task<IReadOnlyList<Location>> GetDefinitionAsync(
+        ControlNavigationRequest request,
+        CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Gets source references from the current workspace snapshot.
+    /// </summary>
+    /// <param name="request">The absolute document path, position, and declaration behavior.</param>
+    /// <param name="cancellationToken">The peer cancellation token.</param>
+    /// <returns>The bounded source reference locations.</returns>
+    Task<IReadOnlyList<Location>> GetReferencesAsync(
+        ControlNavigationRequest request,
+        CancellationToken cancellationToken);
 }
