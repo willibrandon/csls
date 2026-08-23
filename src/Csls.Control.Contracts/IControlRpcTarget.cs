@@ -15,6 +15,16 @@ public interface IControlRpcTarget
     Task<ControlSessionInfo> GetSessionAsync(CancellationToken cancellationToken);
 
     /// <summary>
+    /// Gets the current bounded dashboard snapshot from real session state.
+    /// </summary>
+    /// <param name="request">The optional expensive dashboard data to evaluate.</param>
+    /// <param name="cancellationToken">The peer cancellation token.</param>
+    /// <returns>The current workspace, diagnostic, request, host, and cache state.</returns>
+    Task<ControlDashboardSnapshot> GetDashboardSnapshotAsync(
+        ControlDashboardRequest request,
+        CancellationToken cancellationToken);
+
+    /// <summary>
     /// Resolves hover information from the current workspace snapshot.
     /// </summary>
     /// <param name="request">The absolute document path and UTF-16 position.</param>

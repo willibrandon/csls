@@ -14,6 +14,9 @@ No unimplemented LSP capability is advertised by the server.
 Read the [csls documentation](https://willibrandon.github.io/csls/) for editor,
 CLI, MCP, and development guidance.
 
+Run `csls dashboard` while a language-server session is active to inspect its
+workspaces, projects, documents, diagnostics, requests, caches, and logs.
+
 ## Build
 
 ```console

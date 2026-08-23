@@ -11,6 +11,11 @@ public static class ControlMethods
     public const string GetSession = "csls/control/v1/session/get";
 
     /// <summary>
+    /// Gets the method that returns the current bounded dashboard snapshot.
+    /// </summary>
+    public const string GetDashboardSnapshot = "csls/control/v1/dashboard/get";
+
+    /// <summary>
     /// Gets the method that resolves hover information in the current workspace snapshot.
     /// </summary>
     public const string GetHover = "csls/control/v1/hover/get";

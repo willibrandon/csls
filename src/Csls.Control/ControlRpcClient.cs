@@ -46,6 +46,24 @@ public sealed class ControlRpcClient : IAsyncDisposable
     }
 
     /// <summary>
+    /// Gets the bounded dashboard snapshot from the attached language-server worker.
+    /// </summary>
+    /// <param name="request">The optional expensive dashboard data to evaluate.</param>
+    /// <param name="cancellationToken">The request cancellation token.</param>
+    /// <returns>The current workspace, diagnostic, request, host, and cache state.</returns>
+    public async Task<ControlDashboardSnapshot> GetDashboardSnapshotAsync(
+        ControlDashboardRequest request,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        JsonRpc rpc = await GetRpcAsync(cancellationToken).ConfigureAwait(false);
+        return await rpc.InvokeWithParameterObjectAsync<ControlDashboardSnapshot>(
+            ControlMethods.GetDashboardSnapshot,
+            request,
+            cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
     /// Gets hover information from the attached workspace snapshot.
     /// </summary>
     /// <param name="request">The absolute document path and UTF-16 position.</param>

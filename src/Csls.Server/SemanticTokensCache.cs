@@ -16,6 +16,20 @@ internal sealed class SemanticTokensCache
     private long _resultSequence;
 
     /// <summary>
+    /// Gets the number of encoded semantic-token results currently retained.
+    /// </summary>
+    internal int Count
+    {
+        get
+        {
+            lock (_gate)
+            {
+                return _entries.Count;
+            }
+        }
+    }
+
+    /// <summary>
     /// Stores and returns one complete document semantic-token result.
     /// </summary>
     /// <param name="documentUri">The result document.</param>

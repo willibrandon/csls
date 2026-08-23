@@ -15,6 +15,11 @@ internal sealed class AnalyzerDiagnosticCache
         Task<ImmutableArray<RoslynDiagnostic>>> _entries = new();
 
     /// <summary>
+    /// Gets the number of project diagnostic computations retained by the cache.
+    /// </summary>
+    internal int Count => _entries.Count;
+
+    /// <summary>
     /// Gets or computes all compiler and analyzer diagnostics for one project snapshot.
     /// </summary>
     /// <param name="generation">The immutable workspace generation.</param>

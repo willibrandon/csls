@@ -48,6 +48,23 @@ showCommand.SetAction((parseResult, cancellationToken) =>
 sessionsCommand.Subcommands.Add(showCommand);
 rootCommand.Subcommands.Add(sessionsCommand);
 
+Option<int?> dashboardSessionOption = CreateSessionOption();
+var dashboardCommand = new Command(
+    "dashboard",
+    "Inspect live language-server state in the Hex1b dashboard.")
+{
+    dashboardSessionOption
+};
+dashboardCommand.SetAction((parseResult, cancellationToken) =>
+    CliWorkerSupervisor.RunAsync(
+        [
+            "dashboard",
+            (parseResult.GetValue(dashboardSessionOption) ?? 0)
+                .ToString(CultureInfo.InvariantCulture)
+        ],
+        cancellationToken));
+rootCommand.Subcommands.Add(dashboardCommand);
+
 var queryCommand = new Command("query", "Query language intelligence from a live csls session.");
 var hoverDocumentArgument = new Argument<string>("document")
 {

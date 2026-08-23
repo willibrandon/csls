@@ -1,15 +1,13 @@
-using Csls.Control;
 using Csls.Control.Contracts;
 using StreamJsonRpc;
 using System.Net.Sockets;
-using System.Runtime.CompilerServices;
 
-namespace Csls.Cli.Worker;
+namespace Csls.Control;
 
 /// <summary>
 /// Discovers bounded live-session state through the private per-user socket directory.
 /// </summary>
-internal static class ControlSessionDiscovery
+public static class ControlSessionDiscovery
 {
     private const int MaximumSessionSockets = 256;
     private static readonly TimeSpan s_connectionTimeout = TimeSpan.FromSeconds(2);
@@ -19,7 +17,7 @@ internal static class ControlSessionDiscovery
     /// </summary>
     /// <param name="cancellationToken">The discovery cancellation token.</param>
     /// <returns>The responsive live-session snapshots.</returns>
-    internal static async Task<IReadOnlyList<ControlSessionInfo>> DiscoverAsync(
+    public static async Task<IReadOnlyList<ControlSessionInfo>> DiscoverAsync(
         CancellationToken cancellationToken)
     {
         string socketDirectory = ControlEndpoint.GetSocketDirectory();
@@ -31,9 +29,9 @@ internal static class ControlSessionDiscovery
         string[] socketPaths =
         [
             .. Directory
-            .EnumerateFiles(socketDirectory, "*.csls.socket", SearchOption.TopDirectoryOnly)
-            .Order(StringComparer.Ordinal)
-            .Take(MaximumSessionSockets + 1)
+                .EnumerateFiles(socketDirectory, "*.csls.socket", SearchOption.TopDirectoryOnly)
+                .Order(StringComparer.Ordinal)
+                .Take(MaximumSessionSockets + 1)
         ];
         if (socketPaths.Length > MaximumSessionSockets)
         {
@@ -45,29 +43,42 @@ internal static class ControlSessionDiscovery
         foreach (string socketPath in socketPaths)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            using var timeoutSource = CancellationTokenSource.CreateLinkedTokenSource(
-                cancellationToken);
-            timeoutSource.CancelAfter(s_connectionTimeout);
+            ControlSessionInfo? session = await TryGetSessionAsync(
+                socketPath,
+                cancellationToken).ConfigureAwait(false);
+            if (session is not null)
+            {
+                sessions.Add(session);
+            }
+        }
+
+        sessions.Sort(static (left, right) => left.ProcessId.CompareTo(right.ProcessId));
+        return sessions;
+    }
+
+    private static async Task<ControlSessionInfo?> TryGetSessionAsync(
+        string socketPath,
+        CancellationToken cancellationToken)
+    {
+        using var timeoutSource = CancellationTokenSource.CreateLinkedTokenSource(
+            cancellationToken);
+        timeoutSource.CancelAfter(s_connectionTimeout);
+        var client = new ControlRpcClient(socketPath);
+        await using (client.ConfigureAwait(false))
+        {
             try
             {
-                var client = new ControlRpcClient(socketPath);
-                await using ConfiguredAsyncDisposable clientCleanup =
-                    client.ConfigureAwait(false);
-                ControlSessionInfo session = await client
+                return await client
                     .GetSessionAsync(timeoutSource.Token)
                     .ConfigureAwait(false);
-                sessions.Add(session);
             }
             catch (Exception exception) when (
                 exception is IOException or SocketException or TimeoutException or
                     ConnectionLostException ||
                 exception is OperationCanceledException && !cancellationToken.IsCancellationRequested)
             {
-                continue;
+                return null;
             }
         }
-
-        sessions.Sort(static (left, right) => left.ProcessId.CompareTo(right.ProcessId));
-        return sessions;
     }
 }
