@@ -40,16 +40,22 @@ public sealed partial class WorkspaceManager
         string path = parameters.TextDocument.Uri.GetFileSystemPath();
         ImmutableArray<(string RootPath, Workspace Workspace, Solution Solution)> folders = _folders;
         int folderIndex = FindFolderIndex(path, folders);
-        Document? document = folderIndex >= 0
-            ? FindDocument(folders[folderIndex].Solution, path)
-            : null;
-        if (document is null)
+        if (folderIndex < 0)
         {
             return new LspCompletionList { Items = [], IsIncomplete = false };
         }
 
-        SourceText text = await document.GetTextAsync(cancellationToken).ConfigureAwait(false);
-        int offset = LspPositionConverter.GetOffset(text, parameters.Position);
+        (Document? document, SourceText? text, int offset, RazorMappedDocument? razorMapping) =
+            await ResolveCompletionDocumentAsync(
+                folders[folderIndex].Solution,
+                path,
+                parameters.Position,
+                cancellationToken).ConfigureAwait(false);
+        if (document is null || text is null)
+        {
+            return new LspCompletionList { Items = [], IsIncomplete = false };
+        }
+
         var service = CompletionService.GetService(document);
         if (service is null)
         {
@@ -82,19 +88,25 @@ public sealed partial class WorkspaceManager
             CompletionChange change = await service
                 .GetChangeAsync(document, sourceItem, cancellationToken: cancellationToken)
                 .ConfigureAwait(false);
-            items.Add(CreateCompletionItem(
+            LspCompletionItem? item = CreateCompletionItem(
                 text,
                 sourceItem,
                 change,
                 parameters,
                 generation,
                 index,
-                supportsSnippets));
+                supportsSnippets,
+                razorMapping,
+                cancellationToken);
+            if (item is not null)
+            {
+                items.Add(item);
+            }
         }
 
         return new LspCompletionList
         {
-            IsIncomplete = sourceItems.Count > MaximumCompletionItems,
+            IsIncomplete = sourceItems.Count > MaximumCompletionItems || items.Count < itemCount,
             Items = items
         };
     }
@@ -121,16 +133,22 @@ public sealed partial class WorkspaceManager
         string path = data.DocumentUri.GetFileSystemPath();
         ImmutableArray<(string RootPath, Workspace Workspace, Solution Solution)> folders = _folders;
         int folderIndex = FindFolderIndex(path, folders);
-        Document? document = folderIndex >= 0
-            ? FindDocument(folders[folderIndex].Solution, path)
-            : null;
-        if (document is null)
+        if (folderIndex < 0)
         {
             throw new InvalidOperationException("The completion document is no longer loaded.");
         }
 
-        SourceText text = await document.GetTextAsync(cancellationToken).ConfigureAwait(false);
-        int offset = LspPositionConverter.GetOffset(text, data.Position);
+        (Document? document, SourceText? text, int offset, _) =
+            await ResolveCompletionDocumentAsync(
+                folders[folderIndex].Solution,
+                path,
+                data.Position,
+                cancellationToken).ConfigureAwait(false);
+        if (document is null || text is null)
+        {
+            throw new InvalidOperationException("The completion document is no longer loaded.");
+        }
+
         CompletionService service = CompletionService.GetService(document)
             ?? throw new InvalidOperationException("Roslyn completion is unavailable.");
         RoslynCompletionList? completion = await service
@@ -175,14 +193,16 @@ public sealed partial class WorkspaceManager
             };
     }
 
-    private static LspCompletionItem CreateCompletionItem(
+    private static LspCompletionItem? CreateCompletionItem(
         SourceText sourceText,
         RoslynCompletionItem sourceItem,
         CompletionChange change,
         CompletionParams parameters,
         long generation,
         int itemIndex,
-        bool supportsSnippets)
+        bool supportsSnippets,
+        RazorMappedDocument? razorMapping,
+        CancellationToken cancellationToken)
     {
         ImmutableArray<TextChange> textChanges = change.TextChanges.IsDefaultOrEmpty
             ? [change.TextChange]
@@ -198,9 +218,16 @@ public sealed partial class WorkspaceManager
             }
         }
 
-        LspTextEdit primaryEdit = ToTextEdit(
+        LspTextEdit? primaryEdit = ToTextEdit(
             sourceText,
-            textChanges[primaryIndex]);
+            textChanges[primaryIndex],
+            razorMapping,
+            cancellationToken);
+        if (primaryEdit is null)
+        {
+            return null;
+        }
+
         bool usesSnippet = supportsSnippets &&
             sourceItem.Tags.Contains(WellKnownTags.Snippet);
         if (usesSnippet)
@@ -211,12 +238,27 @@ public sealed partial class WorkspaceManager
             };
         }
 
-        LspTextEdit[] additionalEdits =
-        [
-            .. textChanges
-                .Where((_, index) => index != primaryIndex)
-                .Select(change => ToTextEdit(sourceText, change))
-        ];
+        var additionalEdits = new List<LspTextEdit>(textChanges.Length - 1);
+        for (int index = 0; index < textChanges.Length; index++)
+        {
+            if (index == primaryIndex)
+            {
+                continue;
+            }
+
+            LspTextEdit? edit = ToTextEdit(
+                sourceText,
+                textChanges[index],
+                razorMapping,
+                cancellationToken);
+            if (edit is null)
+            {
+                return null;
+            }
+
+            additionalEdits.Add(edit);
+        }
+
         string label = GetCompletionLabel(sourceItem);
         return new LspCompletionItem
         {
@@ -228,7 +270,7 @@ public sealed partial class WorkspaceManager
             SortText = sourceItem.SortText,
             FilterText = sourceItem.FilterText,
             TextEdit = primaryEdit,
-            AdditionalTextEdits = additionalEdits.Length == 0 ? null : additionalEdits,
+            AdditionalTextEdits = additionalEdits.Count == 0 ? null : additionalEdits,
             InsertTextFormat = usesSnippet ? InsertTextFormat.Snippet : null,
             Data = new CompletionItemData
             {
@@ -333,15 +375,80 @@ public sealed partial class WorkspaceManager
         }
     }
 
-    private static LspTextEdit ToTextEdit(
+    private static LspTextEdit? ToTextEdit(
         SourceText sourceText,
-        TextChange change)
+        TextChange change,
+        RazorMappedDocument? razorMapping,
+        CancellationToken cancellationToken)
     {
+        if (razorMapping is not null)
+        {
+            if (WorkspaceRazorMappingService.TryMapRange(
+                razorMapping,
+                change.Span,
+                cancellationToken,
+                out LspRange range))
+            {
+                return new LspTextEdit
+                {
+                    Range = range,
+                    NewText = change.NewText ?? string.Empty
+                };
+            }
+
+            return WorkspaceRazorCompletionEditService.TryCreateUsingEdit(
+                razorMapping,
+                change,
+                out LspTextEdit edit)
+                ? edit
+                : null;
+        }
+
         return new LspTextEdit
         {
             Range = GetRange(sourceText, change.Span),
             NewText = change.NewText ?? string.Empty
         };
+    }
+
+    private static async Task<(
+        Document? Document,
+        SourceText? Text,
+        int Offset,
+        RazorMappedDocument? RazorMapping)> ResolveCompletionDocumentAsync(
+            Solution solution,
+            string path,
+            Position position,
+            CancellationToken cancellationToken)
+    {
+        if (WorkspaceRazorDiagnosticService.IsRazorDocument(path))
+        {
+            RazorMappedDocument? mapping = await WorkspaceRazorMappingService.ResolveAsync(
+                solution,
+                path,
+                position,
+                cancellationToken).ConfigureAwait(false);
+            return mapping is null
+                ? (null, null, 0, null)
+                : (
+                    mapping.Document,
+                    await mapping.Document.GetTextAsync(cancellationToken).ConfigureAwait(false),
+                    mapping.GeneratedOffset,
+                    mapping);
+        }
+
+        Document? document = FindDocument(solution, path);
+        if (document is null)
+        {
+            return (null, null, 0, null);
+        }
+
+        SourceText text = await document.GetTextAsync(cancellationToken).ConfigureAwait(false);
+        return (
+            document,
+            text,
+            LspPositionConverter.GetOffset(text, position),
+            null);
     }
 
     private static LspRange GetRange(SourceText text, TextSpan span)
