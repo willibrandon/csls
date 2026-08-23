@@ -6,6 +6,9 @@ export default defineConfig({
   site: "https://willibrandon.github.io",
   base: "/csls",
   trailingSlash: "always",
+  redirects: {
+    "/language-server/configuration": "/csls/configuration/",
+  },
   integrations: [
     starlight({
       title: "csls",
