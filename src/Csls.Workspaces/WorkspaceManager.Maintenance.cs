@@ -9,12 +9,58 @@ namespace Csls.Workspaces;
 public sealed partial class WorkspaceManager
 {
     /// <summary>
+    /// Applies diagnostic settings and invalidates results affected by a real change.
+    /// </summary>
+    /// <param name="enableAnalyzers">Whether project analyzers contribute diagnostics.</param>
+    /// <param name="cancellationToken">The operation cancellation token.</param>
+    /// <returns>True when the effective configuration changed.</returns>
+    public async Task<bool> ConfigureAsync(
+        bool enableAnalyzers,
+        CancellationToken cancellationToken)
+    {
+        ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposeState) != 0, this);
+        await _mutationGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            int value = enableAnalyzers ? 1 : 0;
+            if (Volatile.Read(ref _enableAnalyzers) == value)
+            {
+                return false;
+            }
+
+            Volatile.Write(ref _enableAnalyzers, value);
+            _diagnosticCache.Clear();
+            Interlocked.Increment(ref _generation);
+            return true;
+        }
+        finally
+        {
+            _mutationGate.Release();
+        }
+    }
+
+    /// <summary>
     /// Reloads every current workspace root while preserving unsaved client document overlays.
     /// </summary>
     /// <param name="cancellationToken">The operation cancellation token.</param>
     /// <returns>The completed workspace maintenance result.</returns>
     public Task<WorkspaceMaintenanceResult> ReloadAsync(CancellationToken cancellationToken) =>
         ReloadAsync(restoredEntryPointCount: 0, cancellationToken);
+
+    /// <summary>
+    /// Replaces workspace roots while preserving overlays still owned by the new root set.
+    /// </summary>
+    /// <param name="rootPaths">The complete ordered workspace root set.</param>
+    /// <param name="cancellationToken">The operation cancellation token.</param>
+    /// <returns>The completed workspace maintenance result.</returns>
+    public Task<WorkspaceMaintenanceResult> ChangeWorkspaceFoldersAsync(
+        IReadOnlyList<string> rootPaths,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(rootPaths);
+        ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposeState) != 0, this);
+        return ReloadAsync(rootPaths, restoredEntryPointCount: 0, cancellationToken);
+    }
 
     /// <summary>
     /// Restores every current workspace entry point and reloads the resulting Roslyn state.
@@ -62,11 +108,19 @@ public sealed partial class WorkspaceManager
         return clearedEntryCount;
     }
 
+    private Task<WorkspaceMaintenanceResult> ReloadAsync(
+        int restoredEntryPointCount,
+        CancellationToken cancellationToken) =>
+        ReloadAsync(
+            GetRequiredWorkspaceRoots(),
+            restoredEntryPointCount,
+            cancellationToken);
+
     private async Task<WorkspaceMaintenanceResult> ReloadAsync(
+        IReadOnlyList<string> roots,
         int restoredEntryPointCount,
         CancellationToken cancellationToken)
     {
-        IReadOnlyList<string> roots = GetRequiredWorkspaceRoots();
         long previousGeneration = Generation;
         int previousBuildHostCount = _folders.Length;
         int clearedCacheEntryCount = _diagnosticCache.Count;
@@ -77,9 +131,16 @@ public sealed partial class WorkspaceManager
         bool published = false;
         try
         {
-            loadedFolders = ApplyOpenDocuments(loadedFolders, overlays);
-            var documentVersions = new Dictionary<string, int>(overlays.Count, PathComparer);
-            foreach (TextDocumentItem overlay in overlays)
+            IReadOnlyList<TextDocumentItem> retainedOverlays =
+            [
+                .. overlays.Where(overlay =>
+                    FindFolderIndex(overlay.Uri.GetFileSystemPath(), loadedFolders) >= 0)
+            ];
+            loadedFolders = ApplyOpenDocuments(loadedFolders, retainedOverlays);
+            var documentVersions = new Dictionary<string, int>(
+                retainedOverlays.Count,
+                PathComparer);
+            foreach (TextDocumentItem overlay in retainedOverlays)
             {
                 documentVersions.Add(overlay.Uri.GetFileSystemPath(), overlay.Version);
             }

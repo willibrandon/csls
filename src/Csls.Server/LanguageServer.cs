@@ -14,11 +14,13 @@ public sealed partial class LanguageServer : ILspRpcTarget, IAsyncDisposable
 {
     private readonly RequestScheduler _scheduler;
     private readonly WorkspaceManager _workspaceManager;
+    private readonly LspClientConnection _client;
     private readonly ILogger<LanguageServer> _logger;
     private readonly TaskCompletionSource _exitRequested = new(
         TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly CancellationTokenSource _exitSource = new();
     private bool _completionSnippetSupport;
+    private bool _supportsConfigurationPull;
     private int _lifecycleState;
     private int _disposeState;
 
@@ -27,17 +29,21 @@ public sealed partial class LanguageServer : ILspRpcTarget, IAsyncDisposable
     /// </summary>
     /// <param name="scheduler">The bounded request scheduler.</param>
     /// <param name="workspaceManager">The Roslyn workspace manager.</param>
+    /// <param name="client">The bidirectional LSP client connection.</param>
     /// <param name="logger">The language server logger.</param>
     public LanguageServer(
         RequestScheduler scheduler,
         WorkspaceManager workspaceManager,
+        LspClientConnection client,
         ILogger<LanguageServer> logger)
     {
         ArgumentNullException.ThrowIfNull(scheduler);
         ArgumentNullException.ThrowIfNull(workspaceManager);
+        ArgumentNullException.ThrowIfNull(client);
         ArgumentNullException.ThrowIfNull(logger);
         _scheduler = scheduler;
         _workspaceManager = workspaceManager;
+        _client = client;
         _logger = logger;
     }
 
@@ -116,6 +122,12 @@ public sealed partial class LanguageServer : ILspRpcTarget, IAsyncDisposable
         ArgumentNullException.ThrowIfNull(parameters);
         Transition(ServerLifecycleState.Created, ServerLifecycleState.InitializeResponded);
         _completionSnippetSupport = SupportsCompletionSnippets(parameters.Capabilities);
+        _supportsConfigurationPull = SupportsBooleanCapability(
+            parameters.Capabilities,
+            "workspace",
+            "configuration");
+        LanguageServerConfiguration configuration = ParseConfiguration(
+            parameters.InitializationOptions);
         string[] rootPaths = ResolveRootPaths(parameters);
         await _scheduler.ScheduleAsync(
             "initialize",
@@ -123,6 +135,9 @@ public sealed partial class LanguageServer : ILspRpcTarget, IAsyncDisposable
             () => _workspaceManager.Generation,
             async context =>
             {
+                await _workspaceManager
+                    .ConfigureAsync(configuration.EnableAnalyzers, context.CancellationToken)
+                    .ConfigureAwait(false);
                 await _workspaceManager
                     .LoadAsync(rootPaths, context.CancellationToken)
                     .ConfigureAwait(false);
@@ -135,6 +150,14 @@ public sealed partial class LanguageServer : ILspRpcTarget, IAsyncDisposable
         {
             Capabilities = new ServerCapabilities
             {
+                Workspace = new WorkspaceServerCapabilities
+                {
+                    WorkspaceFolders = new WorkspaceFoldersServerCapabilities
+                    {
+                        Supported = true,
+                        ChangeNotifications = true
+                    }
+                },
                 PositionEncoding = "utf-16",
                 TextDocumentSync = new TextDocumentSyncOptions
                 {
@@ -206,14 +229,17 @@ public sealed partial class LanguageServer : ILspRpcTarget, IAsyncDisposable
     }
 
     /// <inheritdoc />
-    public Task InitializedAsync(
+    public async Task InitializedAsync(
         InitializedParams parameters,
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(parameters);
         cancellationToken.ThrowIfCancellationRequested();
         Transition(ServerLifecycleState.InitializeResponded, ServerLifecycleState.Running);
-        return Task.CompletedTask;
+        if (_supportsConfigurationPull)
+        {
+            await PullConfigurationAsync(cancellationToken).ConfigureAwait(false);
+        }
     }
 
     /// <inheritdoc />
@@ -991,6 +1017,18 @@ public sealed partial class LanguageServer : ILspRpcTarget, IAsyncDisposable
             completionItem.ValueKind == JsonValueKind.Object &&
             completionItem.TryGetProperty("snippetSupport", out JsonElement snippetSupport) &&
             snippetSupport.ValueKind is JsonValueKind.True;
+    }
+
+    private static bool SupportsBooleanCapability(
+        JsonElement capabilities,
+        string groupName,
+        string capabilityName)
+    {
+        return capabilities.ValueKind == JsonValueKind.Object &&
+            capabilities.TryGetProperty(groupName, out JsonElement group) &&
+            group.ValueKind == JsonValueKind.Object &&
+            group.TryGetProperty(capabilityName, out JsonElement capability) &&
+            capability.ValueKind is JsonValueKind.True;
     }
 
     private static string[] ResolveRootPaths(InitializeParams parameters)

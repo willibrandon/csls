@@ -54,6 +54,7 @@ public sealed partial class WorkspaceManager : IAsyncDisposable
     private readonly Dictionary<string, int> _documentVersions = new(
         OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal);
     private ImmutableArray<(string RootPath, Workspace Workspace, Solution Solution)> _folders = [];
+    private int _enableAnalyzers = 1;
     private long _generation;
     private int _disposeState;
 
@@ -2157,7 +2158,7 @@ public sealed partial class WorkspaceManager : IAsyncDisposable
             .FirstOrDefault(document => string.Equals(document.FilePath, path, PathComparison));
     }
 
-    private static async Task<ImmutableArray<RoslynDiagnostic>>
+    private async Task<ImmutableArray<RoslynDiagnostic>>
         ComputeProjectDiagnosticsAsync(Project project, CancellationToken cancellationToken)
     {
         Compilation compilation = await project
@@ -2167,6 +2168,11 @@ public sealed partial class WorkspaceManager : IAsyncDisposable
                 $"Roslyn returned no compilation for project {project.Name}.");
         ImmutableArray<RoslynDiagnostic> compilerDiagnostics =
             compilation.GetDiagnostics(cancellationToken);
+        if (Volatile.Read(ref _enableAnalyzers) == 0)
+        {
+            return compilerDiagnostics;
+        }
+
         ImmutableArray<DiagnosticAnalyzer> analyzers =
         [
             .. project.AnalyzerReferences

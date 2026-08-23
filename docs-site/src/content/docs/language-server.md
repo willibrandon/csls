@@ -15,12 +15,17 @@ language features include:
 - rename, code actions, and document formatting
 
 The server tracks open-document versions and applies incremental text changes.
-Workspace loading supports solutions, projects, and loose C# files.
+Workspace loading supports solutions, projects, loose C# files, multiple roots,
+and folder changes during a live session. Unsaved documents survive reloads when
+their workspace folder remains active.
 
 Completion edits are computed by Roslyn. Clients that advertise snippet support
 receive snippet insertion text with Roslyn's final caret position. Other clients
 receive plain text. `completionItem/resolve` adds Roslyn documentation without
 changing the edit, sort text, or filter text returned by the original request.
+
+[Configuration](./configuration/) is pulled through the standard workspace request
+when the client supports it. Push-only clients use the same settings and precedence.
 
 ## Session control
 

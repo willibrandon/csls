@@ -6,6 +6,11 @@ namespace Csls.Protocol;
 public sealed record ServerCapabilities
 {
     /// <summary>
+    /// Gets capabilities that apply to the complete workspace.
+    /// </summary>
+    public WorkspaceServerCapabilities? Workspace { get; init; }
+
+    /// <summary>
     /// Gets the negotiated position encoding.
     /// </summary>
     public string PositionEncoding { get; init; } = "utf-16";

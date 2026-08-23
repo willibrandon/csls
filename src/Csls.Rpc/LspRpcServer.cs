@@ -13,17 +13,20 @@ public static class LspRpcServer
     /// <param name="input">The protocol-only client-to-server stream.</param>
     /// <param name="output">The protocol-only server-to-client stream.</param>
     /// <param name="target">The language server method target.</param>
+    /// <param name="client">The bidirectional connection used for server-to-client requests.</param>
     /// <param name="cancellationToken">The server cancellation token.</param>
     /// <returns>A task that completes after dispatched methods have retired.</returns>
     public static async Task RunAsync(
         Stream input,
         Stream output,
         ILspRpcTarget target,
+        LspClientConnection client,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(input);
         ArgumentNullException.ThrowIfNull(output);
         ArgumentNullException.ThrowIfNull(target);
+        ArgumentNullException.ThrowIfNull(client);
 
         using var formatter = new LspJsonRpcFormatter(LspRpcJson.CreateSerializerOptions());
         using var messageHandler = new HeaderDelimitedMessageHandler(output, input, formatter);
@@ -32,12 +35,20 @@ public static class LspRpcServer
             CancelLocallyInvokedMethodsWhenConnectionIsClosed = true,
             DisplayName = "csls-lsp"
         };
-        LspMethodRegistry.Register(rpc, target);
-        rpc.StartListening();
+        client.Bind(rpc);
+        try
+        {
+            LspMethodRegistry.Register(rpc, target);
+            rpc.StartListening();
 
-        ValueTask completion = new(rpc.Completion.WaitAsync(cancellationToken));
-        await completion.ConfigureAwait(false);
-        ValueTask dispatchCompletion = new(rpc.DispatchCompletion);
-        await dispatchCompletion.ConfigureAwait(false);
+            ValueTask completion = new(rpc.Completion.WaitAsync(cancellationToken));
+            await completion.ConfigureAwait(false);
+            ValueTask dispatchCompletion = new(rpc.DispatchCompletion);
+            await dispatchCompletion.ConfigureAwait(false);
+        }
+        finally
+        {
+            client.Unbind(rpc);
+        }
     }
 }

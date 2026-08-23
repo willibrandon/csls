@@ -1,3 +1,4 @@
+using System.Text.Json;
 using System.Text.Json.Serialization;
 
 namespace Csls.Protocol;
@@ -24,6 +25,8 @@ namespace Csls.Protocol;
 [JsonSerializable(typeof(CompletionOptions))]
 [JsonSerializable(typeof(CompletionParams))]
 [JsonSerializable(typeof(CompletionTriggerKind))]
+[JsonSerializable(typeof(ConfigurationItem))]
+[JsonSerializable(typeof(ConfigurationParams))]
 [JsonSerializable(typeof(CodeAction))]
 [JsonSerializable(typeof(CodeActionContext))]
 [JsonSerializable(typeof(CodeActionOptions))]
@@ -32,6 +35,8 @@ namespace Csls.Protocol;
 [JsonSerializable(typeof(DiagnosticOptions))]
 [JsonSerializable(typeof(DiagnosticSeverity))]
 [JsonSerializable(typeof(DidChangeTextDocumentParams))]
+[JsonSerializable(typeof(DidChangeConfigurationParams))]
+[JsonSerializable(typeof(DidChangeWorkspaceFoldersParams))]
 [JsonSerializable(typeof(DidCloseTextDocumentParams))]
 [JsonSerializable(typeof(DidOpenTextDocumentParams))]
 [JsonSerializable(typeof(DidSaveTextDocumentParams))]
@@ -100,6 +105,9 @@ namespace Csls.Protocol;
 [JsonSerializable(typeof(TypeHierarchySupertypesParams))]
 [JsonSerializable(typeof(VersionedTextDocumentIdentifier))]
 [JsonSerializable(typeof(WorkspaceEdit))]
+[JsonSerializable(typeof(WorkspaceFoldersChangeEvent))]
+[JsonSerializable(typeof(WorkspaceFoldersServerCapabilities))]
+[JsonSerializable(typeof(WorkspaceServerCapabilities))]
 [JsonSerializable(typeof(WorkspaceSymbol))]
 [JsonSerializable(typeof(WorkspaceSymbolData))]
 [JsonSerializable(typeof(WorkspaceSymbolLocation))]
@@ -127,4 +135,8 @@ namespace Csls.Protocol;
 [JsonSerializable(typeof(IReadOnlyList<ParameterInformation>))]
 [JsonSerializable(typeof(IReadOnlyList<TextDocumentContentChangeEvent>))]
 [JsonSerializable(typeof(IReadOnlyList<WorkspaceFolder>))]
+[JsonSerializable(typeof(IReadOnlyList<ConfigurationItem>))]
+[JsonSerializable(
+    typeof(JsonElement?[]),
+    TypeInfoPropertyName = "NullableJsonElementArray")]
 public sealed partial class LspJsonSerializerContext : JsonSerializerContext;

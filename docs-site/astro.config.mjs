@@ -23,6 +23,7 @@ export default defineConfig({
         { slug: "getting-started" },
         { slug: "editors" },
         { slug: "language-server" },
+        { slug: "configuration" },
         { slug: "cli" },
         { slug: "dashboard" },
         { slug: "mcp" },
