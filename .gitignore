@@ -481,4 +481,6 @@ $RECYCLE.BIN/
 # Vim temporary swap files
 *.swp
 
+# Codex
 plan.md
+.testagent/
