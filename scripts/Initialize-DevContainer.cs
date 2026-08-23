@@ -153,6 +153,10 @@ try
         dotnetPath,
         ["run", "--file", Path.Join("scripts", "Verify-GitHubActions.cs")],
         repositoryRoot).ConfigureAwait(false);
+    await RunCheckedAsync(
+        "npx",
+        ["--yes", "npm@12.0.2", "ci", "--prefix", "docs-site"],
+        repositoryRoot).ConfigureAwait(false);
     await Console.Out.WriteLineAsync("The csls development container is ready.")
         .ConfigureAwait(false);
     return 0;
