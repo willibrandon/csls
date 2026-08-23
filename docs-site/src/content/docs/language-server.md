@@ -8,7 +8,7 @@ language features include:
 
 - compiler and analyzer diagnostics
 - completion with import edits, negotiated snippets, lazy documentation, hover, and signature help
-- definitions, declarations, implementations, references, and highlights
+- definitions, declarations, implementations, references, highlights, links, and monikers
 - document and workspace symbols
 - semantic tokens with full and delta responses
 - call hierarchy, type hierarchy, selection ranges, and inlay hints
@@ -23,6 +23,11 @@ Completion edits are computed by Roslyn. Clients that advertise snippet support
 receive snippet insertion text with Roslyn's final caret position. Other clients
 receive plain text. `completionItem/resolve` adds Roslyn documentation without
 changing the edit, sort text, or filter text returned by the original request.
+
+`textDocument/moniker` returns `dotnet` identifiers built from canonical assembly
+identities and Roslyn documentation IDs. Strong-named assembly APIs are unique
+within the scheme. Unsigned project APIs are unique within their project group,
+while non-public symbols use project or document scope.
 
 [Configuration](../configuration/) is pulled through the standard workspace request
 when the client supports it. Push-only clients use the same settings and precedence.

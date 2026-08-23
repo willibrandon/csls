@@ -194,6 +194,7 @@ public sealed partial class LanguageServer : ILspRpcTarget, IAsyncDisposable
                 {
                     ResolveProvider = false
                 },
+                MonikerProvider = true,
                 SemanticTokensProvider = new SemanticTokensOptions
                 {
                     Legend = CSharpSemanticTokensLegend.Create(),
@@ -619,6 +620,33 @@ public sealed partial class LanguageServer : ILspRpcTarget, IAsyncDisposable
                 }
 
                 return links;
+            },
+            cancellationToken);
+    }
+
+    /// <inheritdoc />
+    public Task<IReadOnlyList<Moniker>> MonikerAsync(
+        MonikerParams parameters,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(parameters);
+        EnsureRunning();
+        return _scheduler.ScheduleAsync(
+            "textDocument/moniker",
+            RequestMode.ReadOnly,
+            () => _workspaceManager.Generation,
+            async context =>
+            {
+                IReadOnlyList<Moniker> monikers = await _workspaceManager
+                    .GetMonikersAsync(parameters, context.CancellationToken)
+                    .ConfigureAwait(false);
+                if (_workspaceManager.Generation != context.WorkspaceGeneration)
+                {
+                    throw new InvalidOperationException(
+                        "The workspace changed while symbol monikers were being computed.");
+                }
+
+                return monikers;
             },
             cancellationToken);
     }
