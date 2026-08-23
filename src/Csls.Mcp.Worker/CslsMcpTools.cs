@@ -329,6 +329,81 @@ internal sealed class CslsMcpTools
     }
 
     /// <summary>
+    /// Gets the nested syntax selection at one document position.
+    /// </summary>
+    /// <param name="documentPath">The absolute path of an open document.</param>
+    /// <param name="line">The zero-based document line.</param>
+    /// <param name="character">The zero-based UTF-16 character offset.</param>
+    /// <param name="cancellationToken">The MCP request cancellation token.</param>
+    /// <returns>The inner-to-outer syntax selection hierarchy.</returns>
+    [McpServerTool(
+        Name = "get_selection_range",
+        Title = "Get C# selection range",
+        Destructive = false,
+        Idempotent = true,
+        OpenWorld = false,
+        ReadOnly = true,
+        UseStructuredContent = true)]
+    [Description("Get the nested C# syntax selection at a zero-based UTF-16 document position.")]
+    public async Task<SelectionRange> GetSelectionRangeAsync(
+        [Description("Absolute path of the document loaded by the attached csls session.")]
+        string documentPath,
+        [Description("Zero-based document line.")]
+        int line,
+        [Description("Zero-based UTF-16 character offset.")]
+        int character,
+        CancellationToken cancellationToken)
+    {
+        ControlNavigationRequest navigation = CreateNavigationRequest(
+            documentPath,
+            line,
+            character,
+            includeDeclaration: false);
+        IReadOnlyList<SelectionRange> ranges = await _controlClient.GetSelectionRangesAsync(
+            new ControlSelectionRangeRequest
+            {
+                DocumentPath = navigation.DocumentPath,
+                Positions = [navigation.Position]
+            },
+            cancellationToken).ConfigureAwait(false);
+        return ranges.Single();
+    }
+
+    /// <summary>
+    /// Gets semantic symbol occurrences within one source document.
+    /// </summary>
+    /// <param name="documentPath">The absolute path of an open document.</param>
+    /// <param name="line">The zero-based document line.</param>
+    /// <param name="character">The zero-based UTF-16 character offset.</param>
+    /// <param name="cancellationToken">The MCP request cancellation token.</param>
+    /// <returns>The bounded ordered document highlights.</returns>
+    [McpServerTool(
+        Name = "get_document_highlights",
+        Title = "Get C# document highlights",
+        Destructive = false,
+        Idempotent = true,
+        OpenWorld = false,
+        ReadOnly = true,
+        UseStructuredContent = true)]
+    [Description("Get semantic read, write, and declaration occurrences within one C# document.")]
+    public Task<IReadOnlyList<DocumentHighlight>> GetDocumentHighlightsAsync(
+        [Description("Absolute path of the document loaded by the attached csls session.")]
+        string documentPath,
+        [Description("Zero-based document line.")]
+        int line,
+        [Description("Zero-based UTF-16 character offset.")]
+        int character,
+        CancellationToken cancellationToken)
+    {
+        ControlNavigationRequest request = CreateNavigationRequest(
+            documentPath,
+            line,
+            character,
+            includeDeclaration: false);
+        return _controlClient.GetDocumentHighlightsAsync(request, cancellationToken);
+    }
+
+    /// <summary>
     /// Gets source references for the symbol at one document position.
     /// </summary>
     /// <param name="documentPath">The absolute path of an open document.</param>

@@ -192,6 +192,62 @@ internal static class CliOutputWriter
     }
 
     /// <summary>
+    /// Writes nested syntax selections returned by the shared control service.
+    /// </summary>
+    /// <param name="ranges">The ordered selection hierarchies.</param>
+    /// <param name="writeJson">Whether to write a machine-readable envelope.</param>
+    internal static void WriteSelectionRanges(
+        IReadOnlyList<SelectionRange> ranges,
+        bool writeJson)
+    {
+        ArgumentNullException.ThrowIfNull(ranges);
+        if (writeJson)
+        {
+            JsonElement data = JsonSerializer.SerializeToElement(
+                ranges,
+                typeof(IReadOnlyList<SelectionRange>),
+                CliJsonSerializerContext.Default);
+            WriteEnvelope(success: true, data);
+            return;
+        }
+
+        foreach (SelectionRange range in ranges)
+        {
+            Console.Out.WriteLine(
+                $"{range.Range.Start.Line + 1}:{range.Range.Start.Character + 1}-" +
+                $"{range.Range.End.Line + 1}:{range.Range.End.Character + 1}");
+        }
+    }
+
+    /// <summary>
+    /// Writes semantic symbol highlights returned by the shared control service.
+    /// </summary>
+    /// <param name="highlights">The ordered document highlights.</param>
+    /// <param name="writeJson">Whether to write a machine-readable envelope.</param>
+    internal static void WriteDocumentHighlights(
+        IReadOnlyList<DocumentHighlight> highlights,
+        bool writeJson)
+    {
+        ArgumentNullException.ThrowIfNull(highlights);
+        if (writeJson)
+        {
+            JsonElement data = JsonSerializer.SerializeToElement(
+                highlights,
+                typeof(IReadOnlyList<DocumentHighlight>),
+                CliJsonSerializerContext.Default);
+            WriteEnvelope(success: true, data);
+            return;
+        }
+
+        foreach (DocumentHighlight highlight in highlights)
+        {
+            Console.Out.WriteLine(
+                $"{highlight.Kind}\t{highlight.Range.Start.Line + 1}:" +
+                $"{highlight.Range.Start.Character + 1}");
+        }
+    }
+
+    /// <summary>
     /// Writes hierarchical source declarations returned by the shared control service.
     /// </summary>
     /// <param name="symbols">The source declaration hierarchy.</param>

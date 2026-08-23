@@ -141,6 +141,26 @@ public interface ILspRpcTarget
         CancellationToken cancellationToken);
 
     /// <summary>
+    /// Gets nested syntax selections for ordered positions in one document.
+    /// </summary>
+    /// <param name="parameters">The target document and ordered positions.</param>
+    /// <param name="cancellationToken">The peer cancellation token.</param>
+    /// <returns>One inner-to-outer selection hierarchy per position.</returns>
+    Task<IReadOnlyList<SelectionRange>> SelectionRangeAsync(
+        SelectionRangeParams parameters,
+        CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Gets semantic occurrences of one symbol within its source document.
+    /// </summary>
+    /// <param name="parameters">The target document position.</param>
+    /// <param name="cancellationToken">The peer cancellation token.</param>
+    /// <returns>The bounded ordered document highlights.</returns>
+    Task<IReadOnlyList<DocumentHighlight>> DocumentHighlightAsync(
+        TextDocumentPositionParams parameters,
+        CancellationToken cancellationToken);
+
+    /// <summary>
     /// Finds source references for the symbol at one document position.
     /// </summary>
     /// <param name="parameters">The target position and declaration inclusion behavior.</param>

@@ -155,6 +155,35 @@ public sealed class ControlService : IControlRpcTarget
     }
 
     /// <inheritdoc />
+    public Task<IReadOnlyList<SelectionRange>> GetSelectionRangesAsync(
+        ControlSelectionRangeRequest request,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        ArgumentException.ThrowIfNullOrWhiteSpace(request.DocumentPath);
+        return _languageServer.SelectionRangeAsync(
+            new SelectionRangeParams
+            {
+                TextDocument = new TextDocumentIdentifier
+                {
+                    Uri = DocumentUri.FromFileSystemPath(
+                        Path.GetFullPath(request.DocumentPath))
+                },
+                Positions = request.Positions
+            },
+            cancellationToken);
+    }
+
+    /// <inheritdoc />
+    public Task<IReadOnlyList<DocumentHighlight>> GetDocumentHighlightsAsync(
+        ControlNavigationRequest request,
+        CancellationToken cancellationToken)
+    {
+        TextDocumentPositionParams parameters = CreateNavigationParams(request);
+        return _languageServer.DocumentHighlightAsync(parameters, cancellationToken);
+    }
+
+    /// <inheritdoc />
     public Task<IReadOnlyList<Location>> GetReferencesAsync(
         ControlNavigationRequest request,
         CancellationToken cancellationToken)

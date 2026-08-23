@@ -98,6 +98,8 @@ public sealed partial class LanguageServer : ILspRpcTarget, IAsyncDisposable
                 DeclarationProvider = true,
                 TypeDefinitionProvider = true,
                 ImplementationProvider = true,
+                SelectionRangeProvider = true,
+                DocumentHighlightProvider = true,
                 ReferencesProvider = true,
                 DocumentSymbolProvider = true,
                 WorkspaceSymbolProvider = new WorkspaceSymbolOptions
@@ -385,6 +387,58 @@ public sealed partial class LanguageServer : ILspRpcTarget, IAsyncDisposable
                 }
 
                 return locations;
+            },
+            cancellationToken);
+    }
+
+    /// <inheritdoc />
+    public Task<IReadOnlyList<SelectionRange>> SelectionRangeAsync(
+        SelectionRangeParams parameters,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(parameters);
+        EnsureRunning();
+        return _scheduler.ScheduleAsync(
+            RequestMode.ReadOnly,
+            () => _workspaceManager.Generation,
+            async context =>
+            {
+                IReadOnlyList<SelectionRange> ranges = await _workspaceManager
+                    .GetSelectionRangesAsync(parameters, context.CancellationToken)
+                    .ConfigureAwait(false);
+                if (_workspaceManager.Generation != context.WorkspaceGeneration)
+                {
+                    throw new InvalidOperationException(
+                        "The workspace changed while selection ranges were being computed.");
+                }
+
+                return ranges;
+            },
+            cancellationToken);
+    }
+
+    /// <inheritdoc />
+    public Task<IReadOnlyList<DocumentHighlight>> DocumentHighlightAsync(
+        TextDocumentPositionParams parameters,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(parameters);
+        EnsureRunning();
+        return _scheduler.ScheduleAsync(
+            RequestMode.ReadOnly,
+            () => _workspaceManager.Generation,
+            async context =>
+            {
+                IReadOnlyList<DocumentHighlight> highlights = await _workspaceManager
+                    .GetDocumentHighlightsAsync(parameters, context.CancellationToken)
+                    .ConfigureAwait(false);
+                if (_workspaceManager.Generation != context.WorkspaceGeneration)
+                {
+                    throw new InvalidOperationException(
+                        "The workspace changed while document highlights were being computed.");
+                }
+
+                return highlights;
             },
             cancellationToken);
     }

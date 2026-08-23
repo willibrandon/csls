@@ -2,6 +2,7 @@ using System.Net.Sockets;
 using System.Runtime.CompilerServices;
 using Csls.Control;
 using Csls.Control.Contracts;
+using StreamJsonRpc;
 
 namespace Csls.Cli.Worker;
 
@@ -58,7 +59,8 @@ internal static class ControlSessionDiscovery
                 sessions.Add(session);
             }
             catch (Exception exception) when (
-                exception is IOException or SocketException or TimeoutException ||
+                exception is IOException or SocketException or TimeoutException or
+                    ConnectionLostException ||
                 exception is OperationCanceledException && !cancellationToken.IsCancellationRequested)
             {
             }

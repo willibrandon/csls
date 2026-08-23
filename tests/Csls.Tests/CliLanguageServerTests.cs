@@ -1,7 +1,9 @@
 using System.Diagnostics;
 using System.Globalization;
+using System.Net.Sockets;
 using System.Runtime.CompilerServices;
 using System.Text.Json;
+using Csls.Control;
 using Csls.Protocol;
 
 namespace Csls.Tests;
@@ -16,6 +18,66 @@ public sealed class CliLanguageServerTests
     /// Gets the active MSTest context and its framework-managed cancellation token.
     /// </summary>
     public TestContext TestContext { get; set; } = null!;
+
+    /// <summary>
+    /// Ignores a real session socket whose peer disconnects during the first RPC.
+    /// </summary>
+    [TestMethod]
+    public async Task SessionDiscoveryIgnoresPeerThatDisconnectsDuringHandshake()
+    {
+        string repositoryRoot = EditorToolResolver.FindRepositoryRoot();
+        string cliPath = Path.Combine(
+            repositoryRoot,
+            "artifacts",
+            "bin",
+            "Csls.App",
+            "debug",
+            "csls.dll");
+        string cliWorkerPath = Path.Combine(
+            repositoryRoot,
+            "artifacts",
+            "bin",
+            "Csls.Cli.Worker",
+            "debug",
+            "csls-cli-worker.dll");
+        string socketDirectory = ControlEndpoint.GetSocketDirectory();
+        Directory.CreateDirectory(socketDirectory);
+        string socketPath = Path.Combine(
+            socketDirectory,
+            $"disconnect-{Guid.NewGuid():N}.csls.socket");
+        var listener = new Socket(
+            AddressFamily.Unix,
+            SocketType.Stream,
+            ProtocolType.Unspecified);
+        listener.Bind(new UnixDomainSocketEndPoint(socketPath));
+        listener.Listen(1);
+        Task disconnectTask = AcceptAndDisconnectAsync(
+            listener,
+            TestContext.CancellationToken);
+        try
+        {
+            (int exitCode, string output, string error) = await RunCliAsync(
+                cliPath,
+                cliWorkerPath,
+                repositoryRoot,
+                ["sessions", "list", "--json"],
+                TestContext.CancellationToken).ConfigureAwait(false);
+            await disconnectTask.ConfigureAwait(false);
+
+            Assert.AreEqual(0, exitCode, $"{error}{Environment.NewLine}{output}");
+            using var document = JsonDocument.Parse(output);
+            AssertSuccessfulEnvelope(document.RootElement);
+        }
+        finally
+        {
+            await disconnectTask.ConfigureAwait(false);
+            listener.Dispose();
+            if (File.Exists(socketPath))
+            {
+                File.Delete(socketPath);
+            }
+        }
+    }
 
     /// <summary>
     /// Lists, inspects, and queries one real session through the public csls command tree.
@@ -274,13 +336,25 @@ public sealed class CliLanguageServerTests
                         .GetInt32());
             }
 
-            IReadOnlyList<(string Command, int Line, int Character, Position Expected)> navigation =
+            IReadOnlyList<(
+                string Command,
+                int Line,
+                int Character,
+                int ExpectedCount,
+                Position Expected)> navigation =
             [
-                ("declaration", 19, 17, new Position(4, 9)),
-                ("type-definition", 18, 17, new Position(2, 17)),
-                ("implementation", 4, 10, new Position(9, 16))
+                ("declaration", 19, 17, 1, new Position(4, 9)),
+                ("type-definition", 18, 17, 1, new Position(2, 17)),
+                ("implementation", 4, 10, 1, new Position(9, 16)),
+                ("selection-range", 19, 17, 1, new Position(19, 15)),
+                ("highlights", 18, 17, 4, new Position(18, 16))
             ];
-            foreach ((string command, int line, int character, Position expected) in navigation)
+            foreach ((
+                string command,
+                int line,
+                int character,
+                int expectedCount,
+                Position expected) in navigation)
             {
                 (int exitCode, string output, string error) = await RunCliAsync(
                     cliPath,
@@ -303,8 +377,9 @@ public sealed class CliLanguageServerTests
                 using var navigationDocument = JsonDocument.Parse(output);
                 JsonElement navigationRoot = navigationDocument.RootElement;
                 AssertSuccessfulEnvelope(navigationRoot);
-                JsonElement location = Assert.ContainsSingle(
-                    navigationRoot.GetProperty("data").EnumerateArray());
+                JsonElement data = navigationRoot.GetProperty("data");
+                Assert.AreEqual(expectedCount, data.GetArrayLength());
+                JsonElement location = data[0];
                 JsonElement start = location.GetProperty("range").GetProperty("start");
                 Assert.AreEqual(expected.Line, start.GetProperty("line").GetInt32());
                 Assert.AreEqual(
@@ -687,6 +762,15 @@ public sealed class CliLanguageServerTests
         return (process.ExitCode, standardOutput, standardError);
     }
 
+    private static async Task AcceptAndDisconnectAsync(
+        Socket listener,
+        CancellationToken cancellationToken)
+    {
+        using Socket connection = await listener
+            .AcceptAsync(cancellationToken)
+            .ConfigureAwait(false);
+    }
+
     private static void AssertSuccessfulEnvelope(JsonElement root)
     {
         Assert.AreEqual(1, root.GetProperty("schemaVersion").GetInt32());
@@ -758,6 +842,8 @@ public sealed class CliLanguageServerTests
             {
                 IRunner runner = new Runner();
                 runner.Execute();
+                runner = new Runner();
+                _ = runner;
             }
         }
         """;

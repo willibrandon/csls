@@ -66,6 +66,8 @@ public sealed class NavigationLanguageServerTests
             Assert.IsTrue(capabilities.GetProperty("declarationProvider").GetBoolean());
             Assert.IsTrue(capabilities.GetProperty("typeDefinitionProvider").GetBoolean());
             Assert.IsTrue(capabilities.GetProperty("implementationProvider").GetBoolean());
+            Assert.IsTrue(capabilities.GetProperty("selectionRangeProvider").GetBoolean());
+            Assert.IsTrue(capabilities.GetProperty("documentHighlightProvider").GetBoolean());
             Assert.IsTrue(capabilities.GetProperty("referencesProvider").GetBoolean());
             await lsp.OpenDocumentAsync(documentPath, DocumentText).ConfigureAwait(false);
 
@@ -124,6 +126,46 @@ public sealed class NavigationLanguageServerTests
             Assert.AreEqual(DocumentUri.FromFileSystemPath(advancedDocumentPath), implementation.Uri);
             Assert.AreEqual(new Position(9, 16), implementation.Range.Start);
             Assert.AreEqual(new Position(9, 23), implementation.Range.End);
+
+            IReadOnlyList<SelectionRange> selectionRanges =
+                await lsp.RequestSelectionRangesAsync(
+                    advancedDocumentPath,
+                    [new Position(19, 17), new Position(18, 17)],
+                    TestContext.CancellationToken).ConfigureAwait(false);
+            Assert.HasCount(2, selectionRanges);
+            SelectionRange invocationSelection = selectionRanges[0];
+            Assert.AreEqual(new Position(19, 15), invocationSelection.Range.Start);
+            Assert.AreEqual(new Position(19, 22), invocationSelection.Range.End);
+            Assert.IsNotNull(invocationSelection.Parent);
+            Assert.AreEqual(new Position(19, 8), invocationSelection.Parent.Range.Start);
+            Assert.AreEqual(new Position(19, 22), invocationSelection.Parent.Range.End);
+            Assert.IsNotNull(invocationSelection.Parent.Parent);
+            Assert.AreEqual(new Position(19, 24), invocationSelection.Parent.Parent.Range.End);
+            Assert.AreEqual(new Position(18, 16), selectionRanges[1].Range.Start);
+            Assert.AreEqual(new Position(18, 22), selectionRanges[1].Range.End);
+
+            IReadOnlyList<DocumentHighlight> highlights =
+                await lsp.RequestDocumentHighlightsAsync(
+                    advancedDocumentPath,
+                    new Position(18, 17),
+                    TestContext.CancellationToken).ConfigureAwait(false);
+            Assert.HasCount(4, highlights);
+            Assert.AreEqual(
+                DocumentHighlightKind.Text,
+                highlights.Single(static highlight =>
+                    highlight.Range.Start == new Position(18, 16)).Kind);
+            Assert.AreEqual(
+                DocumentHighlightKind.Read,
+                highlights.Single(static highlight =>
+                    highlight.Range.Start == new Position(19, 8)).Kind);
+            Assert.AreEqual(
+                DocumentHighlightKind.Write,
+                highlights.Single(static highlight =>
+                    highlight.Range.Start == new Position(20, 8)).Kind);
+            Assert.AreEqual(
+                DocumentHighlightKind.Read,
+                highlights.Single(static highlight =>
+                    highlight.Range.Start == new Position(21, 12)).Kind);
 
             string diagnostics = await lsp.ShutdownAsync(
                 TestContext.CancellationToken).ConfigureAwait(false);
@@ -185,6 +227,8 @@ public sealed class NavigationLanguageServerTests
             {
                 IRunner runner = new Runner();
                 runner.Execute();
+                runner = new Runner();
+                _ = runner;
             }
         }
         """;

@@ -85,6 +85,26 @@ public interface IControlRpcTarget
         CancellationToken cancellationToken);
 
     /// <summary>
+    /// Gets nested syntax selections from the current workspace snapshot.
+    /// </summary>
+    /// <param name="request">The absolute document path and ordered UTF-16 positions.</param>
+    /// <param name="cancellationToken">The peer cancellation token.</param>
+    /// <returns>One inner-to-outer selection hierarchy per position.</returns>
+    Task<IReadOnlyList<SelectionRange>> GetSelectionRangesAsync(
+        ControlSelectionRangeRequest request,
+        CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Gets semantic document highlights from the current workspace snapshot.
+    /// </summary>
+    /// <param name="request">The absolute document path and UTF-16 position.</param>
+    /// <param name="cancellationToken">The peer cancellation token.</param>
+    /// <returns>The bounded ordered document highlights.</returns>
+    Task<IReadOnlyList<DocumentHighlight>> GetDocumentHighlightsAsync(
+        ControlNavigationRequest request,
+        CancellationToken cancellationToken);
+
+    /// <summary>
     /// Gets source references from the current workspace snapshot.
     /// </summary>
     /// <param name="request">The absolute document path, position, and declaration behavior.</param>

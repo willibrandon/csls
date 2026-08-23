@@ -51,6 +51,16 @@ public sealed record ServerCapabilities
     public bool ImplementationProvider { get; init; }
 
     /// <summary>
+    /// Gets whether syntax-aware selection range requests are supported.
+    /// </summary>
+    public bool SelectionRangeProvider { get; init; }
+
+    /// <summary>
+    /// Gets whether semantic document highlight requests are supported.
+    /// </summary>
+    public bool DocumentHighlightProvider { get; init; }
+
+    /// <summary>
     /// Gets whether source reference requests are supported.
     /// </summary>
     public bool ReferencesProvider { get; init; }

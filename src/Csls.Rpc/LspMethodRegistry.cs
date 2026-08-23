@@ -79,6 +79,16 @@ public static class LspMethodRegistry
                 target.ImplementationAsync));
         AddParameterObjectMethod(
             rpc,
+            "textDocument/selectionRange",
+            new Func<SelectionRangeParams, CancellationToken, Task<IReadOnlyList<SelectionRange>>>(
+                target.SelectionRangeAsync));
+        AddParameterObjectMethod(
+            rpc,
+            "textDocument/documentHighlight",
+            new Func<TextDocumentPositionParams, CancellationToken, Task<IReadOnlyList<DocumentHighlight>>>(
+                target.DocumentHighlightAsync));
+        AddParameterObjectMethod(
+            rpc,
             "textDocument/references",
             new Func<ReferenceParams, CancellationToken, Task<IReadOnlyList<Location>>>(
                 target.ReferencesAsync));

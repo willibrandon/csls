@@ -58,6 +58,16 @@ internal static class ControlMethodRegistry
                 target.GetImplementationAsync));
         AddParameterObjectMethod(
             rpc,
+            ControlMethods.GetSelectionRanges,
+            new Func<ControlSelectionRangeRequest, CancellationToken, Task<IReadOnlyList<SelectionRange>>>(
+                target.GetSelectionRangesAsync));
+        AddParameterObjectMethod(
+            rpc,
+            ControlMethods.GetDocumentHighlights,
+            new Func<ControlNavigationRequest, CancellationToken, Task<IReadOnlyList<DocumentHighlight>>>(
+                target.GetDocumentHighlightsAsync));
+        AddParameterObjectMethod(
+            rpc,
             ControlMethods.GetReferences,
             new Func<ControlNavigationRequest, CancellationToken, Task<IReadOnlyList<Location>>>(
                 target.GetReferencesAsync));

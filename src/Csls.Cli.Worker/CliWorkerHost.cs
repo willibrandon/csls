@@ -222,6 +222,8 @@ internal static class CliWorkerHost
                 "declaration" or
                 "type-definition" or
                 "implementation" or
+                "selection-range" or
+                "highlights" or
                 "references") ||
             !int.TryParse(arguments[2], NumberStyles.None, CultureInfo.InvariantCulture, out int processId) ||
             !int.TryParse(arguments[4], NumberStyles.None, CultureInfo.InvariantCulture, out int line) ||
@@ -244,6 +246,28 @@ internal static class CliWorkerHost
             Position = new Position(line, character),
             IncludeDeclaration = includeDeclaration
         };
+        if (string.Equals(arguments[1], "selection-range", StringComparison.Ordinal))
+        {
+            IReadOnlyList<SelectionRange> ranges = await client.GetSelectionRangesAsync(
+                new ControlSelectionRangeRequest
+                {
+                    DocumentPath = arguments[3],
+                    Positions = [new Position(line, character)]
+                },
+                cancellationToken).ConfigureAwait(false);
+            CliOutputWriter.WriteSelectionRanges(ranges, writeJson);
+            return 0;
+        }
+
+        if (string.Equals(arguments[1], "highlights", StringComparison.Ordinal))
+        {
+            IReadOnlyList<DocumentHighlight> highlights = await client
+                .GetDocumentHighlightsAsync(request, cancellationToken)
+                .ConfigureAwait(false);
+            CliOutputWriter.WriteDocumentHighlights(highlights, writeJson);
+            return 0;
+        }
+
         IReadOnlyList<Location> locations = arguments[1] switch
         {
             "definition" => await client.GetDefinitionAsync(request, cancellationToken)

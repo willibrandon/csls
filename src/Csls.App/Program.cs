@@ -174,6 +174,14 @@ queryCommand.Subcommands.Add(CreateNavigationCommand(
     "Find source implementations for the symbol at one document position.",
     includeDeclarationOption: false));
 queryCommand.Subcommands.Add(CreateNavigationCommand(
+    "selection-range",
+    "Get the nested syntax selection at one document position.",
+    includeDeclarationOption: false));
+queryCommand.Subcommands.Add(CreateNavigationCommand(
+    "highlights",
+    "Get semantic symbol occurrences within one document.",
+    includeDeclarationOption: false));
+queryCommand.Subcommands.Add(CreateNavigationCommand(
     "references",
     "Find source references for the symbol at one document position.",
     includeDeclarationOption: true));

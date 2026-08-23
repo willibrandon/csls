@@ -46,6 +46,16 @@ public static class ControlMethods
     public const string GetImplementation = "csls/control/v1/implementation/get";
 
     /// <summary>
+    /// Gets the method that returns syntax selection hierarchies for document positions.
+    /// </summary>
+    public const string GetSelectionRanges = "csls/control/v1/selection-ranges/get";
+
+    /// <summary>
+    /// Gets the method that returns semantic symbol highlights within one document.
+    /// </summary>
+    public const string GetDocumentHighlights = "csls/control/v1/document-highlights/get";
+
+    /// <summary>
     /// Gets the method that returns source references for one document position.
     /// </summary>
     public const string GetReferences = "csls/control/v1/references/get";

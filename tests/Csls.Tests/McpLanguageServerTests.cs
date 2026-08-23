@@ -162,6 +162,10 @@ public sealed class McpLanguageServerTests
                     tool.Name == "get_type_definition");
                 McpClientTool implementationTool = tools.Single(static tool =>
                     tool.Name == "get_implementation");
+                McpClientTool selectionRangeTool = tools.Single(static tool =>
+                    tool.Name == "get_selection_range");
+                McpClientTool documentHighlightsTool = tools.Single(static tool =>
+                    tool.Name == "get_document_highlights");
                 McpClientTool referencesTool = tools.Single(static tool =>
                     tool.Name == "get_references");
                 McpClientTool documentSymbolsTool = tools.Single(static tool =>
@@ -196,6 +200,8 @@ public sealed class McpLanguageServerTests
                 Assert.IsNotNull(declarationTool.ProtocolTool.OutputSchema);
                 Assert.IsNotNull(typeDefinitionTool.ProtocolTool.OutputSchema);
                 Assert.IsNotNull(implementationTool.ProtocolTool.OutputSchema);
+                Assert.IsNotNull(selectionRangeTool.ProtocolTool.OutputSchema);
+                Assert.IsNotNull(documentHighlightsTool.ProtocolTool.OutputSchema);
                 Assert.IsNotNull(referencesTool.ProtocolTool.OutputSchema);
                 Assert.IsNotNull(documentSymbolsTool.ProtocolTool.OutputSchema);
                 Assert.IsNotNull(workspaceSymbolsTool.ProtocolTool.OutputSchema);
@@ -356,6 +362,44 @@ public sealed class McpLanguageServerTests
                     ?? throw new InvalidDataException(
                         "MCP returned no implementation locations."));
                 Assert.AreEqual(new Position(9, 16), implementation.Range.Start);
+
+                CallToolResult selectionRangeResult = await client.CallToolAsync(
+                    "get_selection_range",
+                    new Dictionary<string, object?>
+                    {
+                        ["documentPath"] = advancedPath,
+                        ["line"] = 19,
+                        ["character"] = 17
+                    },
+                    cancellationToken: TestContext.CancellationToken).ConfigureAwait(false);
+                Assert.IsNull(selectionRangeResult.IsError);
+                Assert.IsTrue(selectionRangeResult.StructuredContent.HasValue);
+                SelectionRange selectionRange = selectionRangeResult.StructuredContent.Value
+                    .Deserialize(ControlJsonSerializerContext.Default.SelectionRange)
+                    ?? throw new InvalidDataException("MCP returned no selection range.");
+                Assert.AreEqual(new Position(19, 15), selectionRange.Range.Start);
+                Assert.IsNotNull(selectionRange.Parent);
+
+                CallToolResult highlightsResult = await client.CallToolAsync(
+                    "get_document_highlights",
+                    new Dictionary<string, object?>
+                    {
+                        ["documentPath"] = advancedPath,
+                        ["line"] = 18,
+                        ["character"] = 17
+                    },
+                    cancellationToken: TestContext.CancellationToken).ConfigureAwait(false);
+                Assert.IsNull(highlightsResult.IsError);
+                Assert.IsTrue(highlightsResult.StructuredContent.HasValue);
+                IReadOnlyList<DocumentHighlight> highlights = highlightsResult.StructuredContent
+                    .Value.Deserialize(
+                        ControlJsonSerializerContext.Default.IReadOnlyListDocumentHighlight)
+                    ?? throw new InvalidDataException("MCP returned no document highlights.");
+                Assert.HasCount(4, highlights);
+                Assert.AreEqual(
+                    DocumentHighlightKind.Write,
+                    highlights.Single(static highlight =>
+                        highlight.Range.Start == new Position(20, 8)).Kind);
 
                 CallToolResult referencesResult = await client.CallToolAsync(
                     "get_references",
@@ -691,6 +735,8 @@ public sealed class McpLanguageServerTests
             {
                 IRunner runner = new Runner();
                 runner.Execute();
+                runner = new Runner();
+                _ = runner;
             }
         }
         """;

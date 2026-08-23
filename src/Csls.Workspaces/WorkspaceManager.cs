@@ -13,6 +13,7 @@ using Microsoft.CodeAnalysis.FindSymbols;
 using Microsoft.CodeAnalysis.Formatting;
 using Microsoft.CodeAnalysis.MSBuild;
 using Microsoft.CodeAnalysis.Options;
+using Microsoft.CodeAnalysis.Operations;
 using Microsoft.CodeAnalysis.QuickInfo;
 using Microsoft.CodeAnalysis.Rename;
 using Microsoft.CodeAnalysis.Tags;
@@ -21,6 +22,8 @@ using Microsoft.Extensions.Logging;
 using LspRange = Csls.Protocol.Range;
 using LspDiagnostic = Csls.Protocol.Diagnostic;
 using LspDiagnosticSeverity = Csls.Protocol.DiagnosticSeverity;
+using LspDocumentHighlight = Csls.Protocol.DocumentHighlight;
+using LspDocumentHighlightKind = Csls.Protocol.DocumentHighlightKind;
 using LspCompletionItem = Csls.Protocol.CompletionItem;
 using LspCompletionItemKind = Csls.Protocol.CompletionItemKind;
 using LspCompletionList = Csls.Protocol.CompletionList;
@@ -29,6 +32,7 @@ using LspCodeAction = Csls.Protocol.CodeAction;
 using LspFormattingOptions = Csls.Protocol.FormattingOptions;
 using LspLocation = Csls.Protocol.Location;
 using LspSignatureHelp = Csls.Protocol.SignatureHelp;
+using LspSelectionRange = Csls.Protocol.SelectionRange;
 using LspSymbolKind = Csls.Protocol.SymbolKind;
 using LspTextEdit = Csls.Protocol.TextEdit;
 using RoslynDiagnostic = Microsoft.CodeAnalysis.Diagnostic;
@@ -48,6 +52,7 @@ public sealed partial class WorkspaceManager : IAsyncDisposable
 {
     private const int MaximumCompletionItems = 200;
     private const int MaximumNavigationLocations = 2_000;
+    private const int MaximumSelectionPositions = 1_000;
     private const int MaximumDocumentSymbols = 2_000;
     private const int MaximumWorkspaceSymbols = 200;
     private const int MaximumSignatures = 100;
@@ -634,6 +639,134 @@ public sealed partial class WorkspaceManager : IAsyncDisposable
         }
 
         return OrderNavigationLocations(locations);
+    }
+
+    /// <summary>
+    /// Gets nested syntax selections for ordered positions in one immutable document snapshot.
+    /// </summary>
+    /// <param name="parameters">The target document and ordered UTF-16 positions.</param>
+    /// <param name="cancellationToken">The operation cancellation token.</param>
+    /// <returns>One inner-to-outer selection hierarchy per position.</returns>
+    public async Task<IReadOnlyList<LspSelectionRange>> GetSelectionRangesAsync(
+        SelectionRangeParams parameters,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(parameters);
+        if (parameters.Positions.Count > MaximumSelectionPositions)
+        {
+            throw new ArgumentException(
+                $"Selection range requests cannot exceed {MaximumSelectionPositions} positions.",
+                nameof(parameters));
+        }
+
+        string path = parameters.TextDocument.Uri.GetFileSystemPath();
+        ImmutableArray<(string RootPath, Workspace Workspace, Solution Solution)> folders = _folders;
+        int folderIndex = FindFolderIndex(path, folders);
+        Document? document = folderIndex >= 0
+            ? FindDocument(folders[folderIndex].Solution, path)
+            : null;
+        if (document is null)
+        {
+            return [];
+        }
+
+        SourceText text = await document.GetTextAsync(cancellationToken).ConfigureAwait(false);
+        SyntaxNode root = await document.GetSyntaxRootAsync(cancellationToken).ConfigureAwait(false)
+            ?? throw new InvalidOperationException("Roslyn returned no syntax root.");
+        var ranges = new List<LspSelectionRange>(parameters.Positions.Count);
+        foreach (Position position in parameters.Positions)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            int offset = GetOffset(text, position);
+            ranges.Add(CreateSelectionRange(root, text, offset));
+        }
+
+        return ranges;
+    }
+
+    /// <summary>
+    /// Gets semantic symbol occurrences within one immutable source document snapshot.
+    /// </summary>
+    /// <param name="parameters">The target document position.</param>
+    /// <param name="cancellationToken">The operation cancellation token.</param>
+    /// <returns>The bounded ordered read, write, and declaration highlights.</returns>
+    public async Task<IReadOnlyList<LspDocumentHighlight>> GetDocumentHighlightsAsync(
+        TextDocumentPositionParams parameters,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(parameters);
+        (Document? document, ISymbol? symbol) = await FindSymbolAsync(
+            parameters,
+            cancellationToken).ConfigureAwait(false);
+        if (document is null || symbol is null)
+        {
+            return [];
+        }
+
+        var targetUri = DocumentUri.FromFileSystemPath(
+            document.FilePath
+                ?? throw new InvalidOperationException("The Roslyn document has no file path."));
+        SemanticModel semanticModel = await document
+            .GetSemanticModelAsync(cancellationToken)
+            .ConfigureAwait(false)
+            ?? throw new InvalidOperationException("Roslyn returned no semantic model.");
+        SyntaxNode root = await document.GetSyntaxRootAsync(cancellationToken).ConfigureAwait(false)
+            ?? throw new InvalidOperationException("Roslyn returned no syntax root.");
+        IEnumerable<ReferencedSymbol> referencedSymbols = await SymbolFinder.FindReferencesAsync(
+            symbol,
+            document.Project.Solution,
+            cancellationToken).ConfigureAwait(false);
+        var highlights = new Dictionary<LspRange, LspDocumentHighlightKind>();
+        foreach (ReferencedSymbol referencedSymbol in referencedSymbols)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            foreach (RoslynLocation declaration in referencedSymbol.Definition.Locations)
+            {
+                AddDocumentHighlight(
+                    highlights,
+                    targetUri,
+                    declaration,
+                    LspDocumentHighlightKind.Text);
+            }
+
+            foreach (ReferenceLocation reference in referencedSymbol.Locations)
+            {
+                if (reference.Document.Id != document.Id)
+                {
+                    continue;
+                }
+
+                AddDocumentHighlight(
+                    highlights,
+                    targetUri,
+                    reference.Location,
+                    IsWrittenReference(
+                        root,
+                        semanticModel,
+                        reference.Location.SourceSpan,
+                        cancellationToken)
+                        ? LspDocumentHighlightKind.Write
+                        : LspDocumentHighlightKind.Read);
+            }
+
+            if (highlights.Count >= MaximumNavigationLocations)
+            {
+                break;
+            }
+        }
+
+        return
+        [
+            .. highlights
+                .OrderBy(static highlight => highlight.Key.Start.Line)
+                .ThenBy(static highlight => highlight.Key.Start.Character)
+                .Take(MaximumNavigationLocations)
+                .Select(static highlight => new LspDocumentHighlight
+                {
+                    Range = highlight.Key,
+                    Kind = highlight.Value
+                })
+        ];
     }
 
     /// <summary>
@@ -2526,6 +2659,114 @@ public sealed partial class WorkspaceManager : IAsyncDisposable
                 .ThenBy(static location => location.Range.Start.Character)
                 .Take(MaximumNavigationLocations)
         ];
+    }
+
+    private static LspSelectionRange CreateSelectionRange(
+        SyntaxNode root,
+        SourceText text,
+        int offset)
+    {
+        int tokenOffset = offset == text.Length && offset > 0
+            ? offset - 1
+            : offset;
+        SyntaxToken token = root.FindToken(tokenOffset, findInsideTrivia: true);
+        var spans = new List<TextSpan>();
+        if (token.Span.Length > 0 &&
+            token.Span.Start <= offset &&
+            offset < token.Span.End)
+        {
+            spans.Add(token.Span);
+        }
+        else
+        {
+            spans.Add(new TextSpan(offset, 0));
+        }
+
+        foreach (SyntaxNode node in token.Parent?.AncestorsAndSelf() ?? [])
+        {
+            TextSpan span = node.Span;
+            if (span.Start <= offset &&
+                offset <= span.End &&
+                spans[^1] != span)
+            {
+                spans.Add(span);
+            }
+        }
+
+        LspSelectionRange? parent = null;
+        for (int index = spans.Count - 1; index >= 0; index--)
+        {
+            LinePositionSpan lineSpan = text.Lines.GetLinePositionSpan(spans[index]);
+            parent = new LspSelectionRange
+            {
+                Range = new LspRange(
+                    new Position(lineSpan.Start.Line, lineSpan.Start.Character),
+                    new Position(lineSpan.End.Line, lineSpan.End.Character)),
+                Parent = parent
+            };
+        }
+
+        return parent
+            ?? throw new InvalidOperationException("No syntax selection range was produced.");
+    }
+
+    private static void AddDocumentHighlight(
+        Dictionary<LspRange, LspDocumentHighlightKind> highlights,
+        DocumentUri targetUri,
+        RoslynLocation sourceLocation,
+        LspDocumentHighlightKind kind)
+    {
+        if (highlights.Count >= MaximumNavigationLocations)
+        {
+            return;
+        }
+
+        LspLocation? location = ToLspLocation(sourceLocation);
+        if (location is null || location.Uri != targetUri)
+        {
+            return;
+        }
+
+        if (!highlights.TryGetValue(location.Range, out LspDocumentHighlightKind existing) ||
+            kind > existing)
+        {
+            highlights[location.Range] = kind;
+        }
+    }
+
+    private static bool IsWrittenReference(
+        SyntaxNode root,
+        SemanticModel semanticModel,
+        TextSpan sourceSpan,
+        CancellationToken cancellationToken)
+    {
+        SyntaxNode node = root.FindNode(sourceSpan, getInnermostNodeForTie: true);
+        IOperation? operation = semanticModel.GetOperation(node, cancellationToken);
+        while (operation?.Parent is IOperation parent)
+        {
+            if (parent is IAssignmentOperation assignment &&
+                ReferenceEquals(assignment.Target, operation))
+            {
+                return true;
+            }
+
+            if (parent is IIncrementOrDecrementOperation increment &&
+                ReferenceEquals(increment.Target, operation))
+            {
+                return true;
+            }
+
+            if (parent is IArgumentOperation argument &&
+                ReferenceEquals(argument.Value, operation) &&
+                argument.Parameter?.RefKind is RefKind.Ref or RefKind.Out)
+            {
+                return true;
+            }
+
+            operation = parent;
+        }
+
+        return false;
     }
 
     private static ITypeSymbol? GetSymbolType(ISymbol symbol) => symbol switch

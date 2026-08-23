@@ -309,6 +309,52 @@ internal sealed class LspProcessSession : IAsyncDisposable
             cancellationToken);
 
     /// <summary>
+    /// Requests nested syntax selections for ordered positions in one test document.
+    /// </summary>
+    /// <param name="documentPath">The absolute target document path.</param>
+    /// <param name="positions">The ordered UTF-16 document positions.</param>
+    /// <param name="cancellationToken">The test cancellation token.</param>
+    /// <returns>One inner-to-outer selection hierarchy per position.</returns>
+    internal Task<IReadOnlyList<SelectionRange>> RequestSelectionRangesAsync(
+        string documentPath,
+        IReadOnlyList<Position> positions,
+        CancellationToken cancellationToken) =>
+        _rpc.InvokeWithParameterObjectAsync<IReadOnlyList<SelectionRange>>(
+            "textDocument/selectionRange",
+            new SelectionRangeParams
+            {
+                TextDocument = new TextDocumentIdentifier
+                {
+                    Uri = DocumentUri.FromFileSystemPath(documentPath)
+                },
+                Positions = positions
+            },
+            cancellationToken);
+
+    /// <summary>
+    /// Requests semantic symbol highlights within one test document.
+    /// </summary>
+    /// <param name="documentPath">The absolute target document path.</param>
+    /// <param name="position">The target UTF-16 document position.</param>
+    /// <param name="cancellationToken">The test cancellation token.</param>
+    /// <returns>The bounded ordered document highlights.</returns>
+    internal Task<IReadOnlyList<DocumentHighlight>> RequestDocumentHighlightsAsync(
+        string documentPath,
+        Position position,
+        CancellationToken cancellationToken) =>
+        _rpc.InvokeWithParameterObjectAsync<IReadOnlyList<DocumentHighlight>>(
+            "textDocument/documentHighlight",
+            new TextDocumentPositionParams
+            {
+                TextDocument = new TextDocumentIdentifier
+                {
+                    Uri = DocumentUri.FromFileSystemPath(documentPath)
+                },
+                Position = position
+            },
+            cancellationToken);
+
+    /// <summary>
     /// Requests source references for the symbol at one test document position.
     /// </summary>
     /// <param name="documentPath">The absolute target document path.</param>

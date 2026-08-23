@@ -144,6 +144,42 @@ public sealed class ControlRpcClient : IAsyncDisposable
         GetNavigationAsync(ControlMethods.GetImplementation, request, cancellationToken);
 
     /// <summary>
+    /// Gets nested syntax selections from the attached workspace snapshot.
+    /// </summary>
+    /// <param name="request">The absolute document path and ordered UTF-16 positions.</param>
+    /// <param name="cancellationToken">The request cancellation token.</param>
+    /// <returns>One inner-to-outer selection hierarchy per position.</returns>
+    public async Task<IReadOnlyList<SelectionRange>> GetSelectionRangesAsync(
+        ControlSelectionRangeRequest request,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        JsonRpc rpc = await GetRpcAsync(cancellationToken).ConfigureAwait(false);
+        return await rpc.InvokeWithParameterObjectAsync<IReadOnlyList<SelectionRange>>(
+            ControlMethods.GetSelectionRanges,
+            request,
+            cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Gets semantic document highlights from the attached workspace snapshot.
+    /// </summary>
+    /// <param name="request">The absolute document path and UTF-16 position.</param>
+    /// <param name="cancellationToken">The request cancellation token.</param>
+    /// <returns>The bounded ordered document highlights.</returns>
+    public async Task<IReadOnlyList<DocumentHighlight>> GetDocumentHighlightsAsync(
+        ControlNavigationRequest request,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        JsonRpc rpc = await GetRpcAsync(cancellationToken).ConfigureAwait(false);
+        return await rpc.InvokeWithParameterObjectAsync<IReadOnlyList<DocumentHighlight>>(
+            ControlMethods.GetDocumentHighlights,
+            request,
+            cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
     /// Gets source references from the attached workspace snapshot.
     /// </summary>
     /// <param name="request">The absolute document path, position, and declaration behavior.</param>
