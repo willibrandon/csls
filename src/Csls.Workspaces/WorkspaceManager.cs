@@ -1093,6 +1093,30 @@ public sealed partial class WorkspaceManager : IAsyncDisposable
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(parameters);
+        string path = parameters.TextDocument.Uri.GetFileSystemPath();
+        ImmutableArray<(string RootPath, Workspace Workspace, Solution Solution)> folders =
+            _folders;
+        int folderIndex = FindFolderIndex(path, folders);
+        if (folderIndex >= 0 && WorkspaceRazorDiagnosticService.IsRazorDocument(path))
+        {
+            (RazorMappedDocument? _, ISymbol? razorSymbol, LspRange? razorRange) =
+                await WorkspaceRazorRenameService.ResolveTargetAsync(
+                    folders[folderIndex].Solution,
+                    path,
+                    parameters.Position,
+                    cancellationToken).ConfigureAwait(false);
+            razorSymbol = NormalizeRenameSymbol(razorSymbol);
+            return razorSymbol is not null &&
+                razorRange is not null &&
+                CanRenameSymbol(razorSymbol)
+                    ? new PrepareRenameResult
+                    {
+                        Range = razorRange.Value,
+                        Placeholder = razorSymbol.Name
+                    }
+                    : null;
+        }
+
         (Document? document, ISymbol? symbol) = await FindSymbolAsync(
             parameters,
             cancellationToken).ConfigureAwait(false);
@@ -1141,9 +1165,20 @@ public sealed partial class WorkspaceManager : IAsyncDisposable
             TextDocument = parameters.TextDocument,
             Position = parameters.Position
         };
-        (Document? document, ISymbol? symbol) = await FindSymbolAsync(
-            positionParameters,
-            cancellationToken).ConfigureAwait(false);
+        string path = parameters.TextDocument.Uri.GetFileSystemPath();
+        ImmutableArray<(string RootPath, Workspace Workspace, Solution Solution)> folders =
+            _folders;
+        int folderIndex = FindFolderIndex(path, folders);
+        (Document? document, ISymbol? symbol) =
+            folderIndex >= 0 && WorkspaceRazorDiagnosticService.IsRazorDocument(path)
+                ? await ResolveRazorRenameSymbolAsync(
+                    folders[folderIndex].Solution,
+                    path,
+                    parameters.Position,
+                    cancellationToken).ConfigureAwait(false)
+                : await FindSymbolAsync(
+                    positionParameters,
+                    cancellationToken).ConfigureAwait(false);
         symbol = NormalizeRenameSymbol(symbol);
         if (document is null || symbol is null || !CanRenameSymbol(symbol))
         {
@@ -1162,9 +1197,16 @@ public sealed partial class WorkspaceManager : IAsyncDisposable
                 RenameFile: false),
             parameters.NewName,
             cancellationToken).ConfigureAwait(false);
+        IReadOnlyDictionary<string, IReadOnlyList<LspTextEdit>> razorEdits =
+            await WorkspaceRazorRenameService.GetMappedEditsAsync(
+                originalSolution,
+                symbol,
+                parameters.NewName,
+                cancellationToken).ConfigureAwait(false);
         return await CreateWorkspaceEditAsync(
             originalSolution,
             renamedSolution,
+            razorEdits,
             cancellationToken).ConfigureAwait(false);
     }
 
@@ -1321,7 +1363,7 @@ public sealed partial class WorkspaceManager : IAsyncDisposable
         foreach (TextDocumentEdit documentEdit in edit.DocumentChanges)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            Document document = FindDocument(documentEdit.TextDocument.Uri)
+            TextDocument document = FindTextDocument(documentEdit.TextDocument.Uri)
                 ?? throw new InvalidOperationException(
                     $"Edited document {documentEdit.TextDocument.Uri} is unavailable.");
             SourceText text = await document.GetTextAsync(cancellationToken).ConfigureAwait(false);
@@ -1460,7 +1502,7 @@ public sealed partial class WorkspaceManager : IAsyncDisposable
                             $"Document {path} changed after the edit plan was created.");
                     }
 
-                    Document document = FindDocument(documentEdit.TextDocument.Uri)
+                    TextDocument document = FindTextDocument(documentEdit.TextDocument.Uri)
                         ?? throw new InvalidOperationException(
                             $"Edited document {documentEdit.TextDocument.Uri} is unavailable.");
                     SourceText workspaceText = await document
@@ -1890,6 +1932,16 @@ public sealed partial class WorkspaceManager : IAsyncDisposable
         return folderIndex >= 0 ? FindDocument(folders[folderIndex].Solution, path) : null;
     }
 
+    private TextDocument? FindTextDocument(DocumentUri uri)
+    {
+        string path = uri.GetFileSystemPath();
+        ImmutableArray<(string RootPath, Workspace Workspace, Solution Solution)> folders = _folders;
+        int folderIndex = FindFolderIndex(path, folders);
+        return folderIndex >= 0
+            ? FindTextDocument(folders[folderIndex].Solution, path)
+            : null;
+    }
+
     private static ISymbol? NormalizeRenameSymbol(ISymbol? symbol) => symbol switch
     {
         IMethodSymbol
@@ -1919,9 +1971,20 @@ public sealed partial class WorkspaceManager : IAsyncDisposable
         } &&
         symbol.Locations.Any(static location => location.IsInSource);
 
+    private Task<WorkspaceEdit> CreateWorkspaceEditAsync(
+        Solution originalSolution,
+        Solution changedSolution,
+        CancellationToken cancellationToken) =>
+        CreateWorkspaceEditAsync(
+            originalSolution,
+            changedSolution,
+            additionalEdits: null,
+            cancellationToken);
+
     private async Task<WorkspaceEdit> CreateWorkspaceEditAsync(
         Solution originalSolution,
         Solution changedSolution,
+        IReadOnlyDictionary<string, IReadOnlyList<LspTextEdit>>? additionalEdits,
         CancellationToken cancellationToken)
     {
         var editsByPath = new Dictionary<string, TextDocumentEdit>(PathComparer);
@@ -1985,6 +2048,46 @@ public sealed partial class WorkspaceManager : IAsyncDisposable
             }
         }
 
+        if (additionalEdits is not null)
+        {
+            foreach ((string path, IReadOnlyList<LspTextEdit> edits) in additionalEdits)
+            {
+                if (edits.Count == 0)
+                {
+                    continue;
+                }
+
+                if (editsByPath.TryGetValue(path, out TextDocumentEdit? existingEdit))
+                {
+                    editsByPath[path] = new TextDocumentEdit
+                    {
+                        TextDocument = existingEdit.TextDocument,
+                        Edits = MergeTextEdits(existingEdit.Edits, edits, path)
+                    };
+                    continue;
+                }
+
+                editsByPath[path] = new TextDocumentEdit
+                {
+                    TextDocument = new OptionalVersionedTextDocumentIdentifier
+                    {
+                        Uri = DocumentUri.FromFileSystemPath(path),
+                        Version = _documentVersions.TryGetValue(path, out int version)
+                            ? version
+                            : null
+                    },
+                    Edits = MergeTextEdits([], edits, path)
+                };
+            }
+        }
+
+        totalEditCount = editsByPath.Sum(static pair => pair.Value.Edits.Count);
+        if (totalEditCount > MaximumWorkspaceTextEdits)
+        {
+            throw new InvalidOperationException(
+                $"The workspace edit exceeds {MaximumWorkspaceTextEdits} text edits.");
+        }
+
         return new WorkspaceEdit
         {
             DocumentChanges =
@@ -1994,6 +2097,41 @@ public sealed partial class WorkspaceManager : IAsyncDisposable
                     .Select(static pair => pair.Value)
             ]
         };
+    }
+
+    private static LspTextEdit[] MergeTextEdits(
+        IReadOnlyList<LspTextEdit> existingEdits,
+        IReadOnlyList<LspTextEdit> additionalEdits,
+        string path)
+    {
+        LspTextEdit[] edits =
+        [
+            .. existingEdits
+                .Concat(additionalEdits)
+                .Distinct()
+                .OrderBy(static edit => edit.Range.Start.Line)
+                .ThenBy(static edit => edit.Range.Start.Character)
+                .ThenBy(static edit => edit.Range.End.Line)
+                .ThenBy(static edit => edit.Range.End.Character)
+        ];
+        for (int index = 1; index < edits.Length; index++)
+        {
+            if (ComparePositions(edits[index - 1].Range.End, edits[index].Range.Start) > 0)
+            {
+                throw new InvalidOperationException(
+                    $"Razor document {path} produced overlapping workspace edits.");
+            }
+        }
+
+        return edits;
+    }
+
+    private static int ComparePositions(Position left, Position right)
+    {
+        int lineComparison = left.Line.CompareTo(right.Line);
+        return lineComparison != 0
+            ? lineComparison
+            : left.Character.CompareTo(right.Character);
     }
 
     private static IReadOnlyList<LspTextEdit> CreateTextEdits(
@@ -2216,6 +2354,8 @@ public sealed partial class WorkspaceManager : IAsyncDisposable
                         text,
                         PreservationMode.PreserveIdentity);
                 }
+
+                solution = WithAdditionalDocumentText(solution, path, text);
             }
 
             _folders = _folders.SetItem(folderIndex, (rootPath, workspace, solution));
@@ -2384,6 +2524,23 @@ public sealed partial class WorkspaceManager : IAsyncDisposable
         return solution.Projects
             .SelectMany(static project => project.Documents)
             .FirstOrDefault(document => string.Equals(document.FilePath, path, PathComparison));
+    }
+
+    private static TextDocument? FindTextDocument(Solution solution, string path)
+    {
+        ImmutableArray<DocumentId> documentIds = solution.GetDocumentIdsWithFilePath(path);
+        for (int index = 0; index < documentIds.Length; index++)
+        {
+            DocumentId documentId = documentIds[index];
+            TextDocument? document = solution.GetDocument(documentId) ??
+                solution.GetAdditionalDocument(documentId);
+            if (document is not null)
+            {
+                return document;
+            }
+        }
+
+        return null;
     }
 
     private static bool ContainsAdditionalDocument(Project project, string path)
@@ -2607,6 +2764,22 @@ public sealed partial class WorkspaceManager : IAsyncDisposable
             folders[folderIndex].Workspace,
             cancellationToken).ConfigureAwait(false);
         return (document, symbol);
+    }
+
+    private static async Task<(Document? Document, ISymbol? Symbol)>
+        ResolveRazorRenameSymbolAsync(
+            Solution solution,
+            string path,
+            Position position,
+            CancellationToken cancellationToken)
+    {
+        (RazorMappedDocument? mappedDocument, ISymbol? symbol, LspRange? _) =
+            await WorkspaceRazorRenameService.ResolveTargetAsync(
+                solution,
+                path,
+                position,
+                cancellationToken).ConfigureAwait(false);
+        return (mappedDocument?.Document, symbol);
     }
 
     private Document? FindCurrentDocument(DocumentUri uri)

@@ -1,4 +1,5 @@
 using Csls.Control;
+using Csls.Control.Contracts;
 using Csls.Protocol;
 using System.Diagnostics;
 using System.Globalization;
@@ -18,6 +19,45 @@ public sealed class CliLanguageServerTests
     /// Gets the active MSTest context and its framework-managed cancellation token.
     /// </summary>
     public TestContext TestContext { get; set; } = null!;
+
+    /// <summary>
+    /// Prunes an abandoned real Unix-domain socket before applying the live-session bound.
+    /// </summary>
+    [TestMethod]
+    public async Task SessionDiscoveryPrunesStaleSocket()
+    {
+        string socketDirectory = ControlEndpoint.GetSocketDirectory();
+        Directory.CreateDirectory(socketDirectory);
+        string socketPath = ControlEndpoint.GetSocketPath(int.MaxValue);
+        File.Delete(socketPath);
+
+        try
+        {
+            using var socket = new Socket(
+                AddressFamily.Unix,
+                SocketType.Stream,
+                ProtocolType.Unspecified);
+            socket.Bind(new UnixDomainSocketEndPoint(socketPath));
+            socket.Listen(1);
+
+            Assert.Contains(
+                socketPath,
+                Directory.EnumerateFileSystemEntries(socketDirectory));
+            IReadOnlyList<ControlSessionInfo> sessions = await ControlSessionDiscovery
+                .DiscoverAsync(TestContext.CancellationToken)
+                .ConfigureAwait(false);
+            Assert.DoesNotContain(
+                socketPath,
+                Directory.EnumerateFileSystemEntries(socketDirectory));
+            Assert.DoesNotContain(
+                int.MaxValue,
+                sessions.Select(static session => session.ProcessId));
+        }
+        finally
+        {
+            File.Delete(socketPath);
+        }
+    }
 
     /// <summary>
     /// Ignores a real session socket whose peer disconnects during the first RPC.
@@ -64,10 +104,7 @@ public sealed class CliLanguageServerTests
         finally
         {
             await disconnectTask.ConfigureAwait(false);
-            if (File.Exists(socketPath))
-            {
-                File.Delete(socketPath);
-            }
+            File.Delete(socketPath);
         }
     }
 

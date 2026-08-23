@@ -57,11 +57,7 @@ public static class ControlEndpoint
         }
 
         string socketPath = GetSocketPath(processId);
-        if (File.Exists(socketPath))
-        {
-            File.Delete(socketPath);
-        }
-
+        File.Delete(socketPath);
         return socketPath;
     }
 
