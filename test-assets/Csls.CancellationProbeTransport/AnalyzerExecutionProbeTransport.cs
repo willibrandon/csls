@@ -23,7 +23,13 @@ public static class AnalyzerExecutionProbeTransport
     {
         string directoryPath = Path.GetDirectoryName(markerPath)
             ?? throw new InvalidOperationException("The analyzer marker has no parent directory.");
-        string releasePath = Path.Combine(directoryPath, ReleaseFileName);
+        char lastDirectoryCharacter = directoryPath[directoryPath.Length - 1];
+        bool hasTrailingSeparator =
+            lastDirectoryCharacter == Path.DirectorySeparatorChar ||
+            lastDirectoryCharacter == Path.AltDirectorySeparatorChar;
+        string releasePath = hasTrailingSeparator
+            ? directoryPath + ReleaseFileName
+            : directoryPath + Path.DirectorySeparatorChar + ReleaseFileName;
         Signal(markerPath, "started");
         if (!File.Exists(releasePath))
         {

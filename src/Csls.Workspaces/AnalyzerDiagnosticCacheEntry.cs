@@ -96,8 +96,15 @@ internal sealed class AnalyzerDiagnosticCacheEntry : IDisposable
             }
         }
 
-        sourceToCancel?.Cancel();
-        sourceToDispose?.Dispose();
+        try
+        {
+            sourceToCancel?.Cancel();
+        }
+        finally
+        {
+            sourceToDispose?.Dispose();
+        }
+
         return remove;
     }
 
@@ -125,8 +132,14 @@ internal sealed class AnalyzerDiagnosticCacheEntry : IDisposable
             }
         }
 
-        sourceToCancel?.Cancel();
-        sourceToDispose?.Dispose();
+        try
+        {
+            sourceToCancel?.Cancel();
+        }
+        finally
+        {
+            sourceToDispose?.Dispose();
+        }
     }
 
     private async Task<ImmutableArray<RoslynDiagnostic>> RunAsync(
