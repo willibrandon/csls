@@ -569,9 +569,10 @@ public sealed partial class WorkspaceManager : IAsyncDisposable
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(parameters);
-        return await WorkspaceNavigationService.GetDefinitionsAsync(
-            FindCurrentDocument(parameters.TextDocument.Uri),
-            parameters.Position,
+        return await GetNavigationAsync(
+            parameters,
+            WorkspaceNavigationService.GetDefinitionsAsync,
+            WorkspaceRazorNavigationService.GetDefinitionsAsync,
             cancellationToken).ConfigureAwait(false);
     }
 
@@ -586,9 +587,10 @@ public sealed partial class WorkspaceManager : IAsyncDisposable
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(parameters);
-        return await WorkspaceNavigationService.GetDeclarationsAsync(
-            FindCurrentDocument(parameters.TextDocument.Uri),
-            parameters.Position,
+        return await GetNavigationAsync(
+            parameters,
+            WorkspaceNavigationService.GetDeclarationsAsync,
+            WorkspaceRazorNavigationService.GetDeclarationsAsync,
             cancellationToken).ConfigureAwait(false);
     }
 
@@ -603,9 +605,10 @@ public sealed partial class WorkspaceManager : IAsyncDisposable
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(parameters);
-        return await WorkspaceNavigationService.GetTypeDefinitionsAsync(
-            FindCurrentDocument(parameters.TextDocument.Uri),
-            parameters.Position,
+        return await GetNavigationAsync(
+            parameters,
+            WorkspaceNavigationService.GetTypeDefinitionsAsync,
+            WorkspaceRazorNavigationService.GetTypeDefinitionsAsync,
             cancellationToken).ConfigureAwait(false);
     }
 
@@ -620,10 +623,40 @@ public sealed partial class WorkspaceManager : IAsyncDisposable
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(parameters);
-        return await WorkspaceNavigationService.GetImplementationsAsync(
-            FindCurrentDocument(parameters.TextDocument.Uri),
-            parameters.Position,
+        return await GetNavigationAsync(
+            parameters,
+            WorkspaceNavigationService.GetImplementationsAsync,
+            WorkspaceRazorNavigationService.GetImplementationsAsync,
             cancellationToken).ConfigureAwait(false);
+    }
+
+    private async Task<IReadOnlyList<LspLocation>> GetNavigationAsync(
+        TextDocumentPositionParams parameters,
+        Func<Document?, Position, CancellationToken, Task<IReadOnlyList<LspLocation>>>
+            getDocumentNavigationAsync,
+        Func<Solution, string, Position, CancellationToken, Task<IReadOnlyList<LspLocation>>>
+            getRazorNavigationAsync,
+        CancellationToken cancellationToken)
+    {
+        string path = parameters.TextDocument.Uri.GetFileSystemPath();
+        ImmutableArray<(string RootPath, Workspace Workspace, Solution Solution)> folders = _folders;
+        int folderIndex = FindFolderIndex(path, folders);
+        if (folderIndex < 0)
+        {
+            return [];
+        }
+
+        Solution solution = folders[folderIndex].Solution;
+        return WorkspaceRazorDiagnosticService.IsRazorDocument(path)
+            ? await getRazorNavigationAsync(
+                solution,
+                path,
+                parameters.Position,
+                cancellationToken).ConfigureAwait(false)
+            : await getDocumentNavigationAsync(
+                FindDocument(solution, path),
+                parameters.Position,
+                cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
