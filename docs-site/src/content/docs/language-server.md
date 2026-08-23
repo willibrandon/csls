@@ -6,7 +6,7 @@ description: Language Server Protocol features implemented by csls.
 `csls` advertises only capabilities backed by an active implementation. Current
 language features include:
 
-- C# compiler and analyzer diagnostics, plus project-aware Razor diagnostics, hover, and navigation
+- C# compiler and analyzer diagnostics, plus project-aware Razor diagnostics, completion, hover, and navigation
 - completion with import edits, negotiated snippets, lazy documentation, hover, and signature help
 - definitions, declarations, implementations, references, highlights, links, monikers, and linked editing
 - document and workspace symbols
@@ -23,6 +23,9 @@ Completion edits are computed by Roslyn. Clients that advertise snippet support
 receive snippet insertion text with Roslyn's final caret position. Other clients
 receive plain text. `completionItem/resolve` adds Roslyn documentation without
 changing the edit, sort text, or filter text returned by the original request.
+Razor views and components receive C# member and type completion from their
+generated project snapshot. Commit edits map back to Razor source, including
+`@using` directives required by types from unimported namespaces.
 
 `textDocument/moniker` returns `dotnet` identifiers built from canonical assembly
 identities and Roslyn documentation IDs. Strong-named assembly APIs are unique
