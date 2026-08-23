@@ -16,7 +16,7 @@ public sealed class MultiSolutionLanguageServerTests
     public TestContext TestContext { get; set; } = null!;
 
     /// <summary>
-    /// Serves documents from every nested solution while ignoring generated-directory decoys.
+    /// Serves C# and Razor documents from every nested solution while ignoring decoys.
     /// </summary>
     [TestMethod]
     public async Task WorkerServesEveryNestedSolution()
@@ -42,11 +42,11 @@ public sealed class MultiSolutionLanguageServerTests
             Directory.CreateDirectory(alphaDirectory);
             Directory.CreateDirectory(betaDirectory);
             Directory.CreateDirectory(excludedDirectory);
-            string alphaDocument = await WriteSolutionAsync(
+            (string alphaDocument, string alphaRazorDocument) = await WriteSolutionAsync(
                 alphaDirectory,
                 "Alpha",
                 TestContext.CancellationToken).ConfigureAwait(false);
-            string betaDocument = await WriteSolutionAsync(
+            (string betaDocument, string betaRazorDocument) = await WriteSolutionAsync(
                 betaDirectory,
                 "Beta",
                 TestContext.CancellationToken).ConfigureAwait(false);
@@ -65,7 +65,11 @@ public sealed class MultiSolutionLanguageServerTests
                 workspacePath,
                 TestContext.CancellationToken).ConfigureAwait(false);
 
-            foreach (string documentPath in new[] { alphaDocument, betaDocument })
+            foreach ((string documentPath, string razorDocumentPath) in new[]
+            {
+                (alphaDocument, alphaRazorDocument),
+                (betaDocument, betaRazorDocument)
+            })
             {
                 string documentText = await File.ReadAllTextAsync(
                     documentPath,
@@ -73,13 +77,33 @@ public sealed class MultiSolutionLanguageServerTests
                 await lsp.OpenDocumentAsync(documentPath, documentText).ConfigureAwait(false);
                 JsonElement hoverElement = await lsp.RequestHoverAsync(
                     documentPath,
-                    new Position(6, 10),
+                    new Position(9, 10),
                     TestContext.CancellationToken).ConfigureAwait(false)
                     ?? throw new InvalidDataException("The nested solution returned no hover.");
                 Hover hover = hoverElement.Deserialize(
                     LspJsonSerializerContext.Default.Hover)
                     ?? throw new InvalidDataException("The nested solution returned invalid hover.");
                 Assert.Contains("System.Console", hover.Contents.Value);
+
+                string razorDocumentText = await File.ReadAllTextAsync(
+                    razorDocumentPath,
+                    TestContext.CancellationToken).ConfigureAwait(false);
+                await lsp.OpenDocumentAsync(
+                    razorDocumentPath,
+                    razorDocumentText,
+                    "razor").ConfigureAwait(false);
+                DocumentDiagnosticReport report = await lsp.RequestDiagnosticsAsync(
+                    razorDocumentPath,
+                    previousResultId: null,
+                    TestContext.CancellationToken).ConfigureAwait(false);
+                Assert.AreEqual("full", report.Kind);
+                Diagnostic diagnostic = report.Items?
+                    .Single(static item => item.Code == "CS0103")
+                    ?? throw new InvalidDataException(
+                        "The nested Razor project returned no mapped compiler diagnostic.");
+                Assert.AreEqual("C#", diagnostic.Source);
+                Assert.AreEqual(new Position(0, 4), diagnostic.Range.Start);
+                Assert.AreEqual(new Position(0, 15), diagnostic.Range.End);
             }
 
             string diagnostics = await lsp.ShutdownAsync(
@@ -92,7 +116,7 @@ public sealed class MultiSolutionLanguageServerTests
         }
     }
 
-    private static async Task<string> WriteSolutionAsync(
+    private static async Task<(string DocumentPath, string RazorDocumentPath)> WriteSolutionAsync(
         string directoryPath,
         string projectName,
         CancellationToken cancellationToken)
@@ -100,6 +124,7 @@ public sealed class MultiSolutionLanguageServerTests
         string projectPath = Path.Join(directoryPath, $"{projectName}.csproj");
         string solutionPath = Path.Join(directoryPath, $"{projectName}.slnx");
         string documentPath = Path.Join(directoryPath, "Program.cs");
+        string razorDocumentPath = Path.Join(directoryPath, "Component.razor");
         await File.WriteAllTextAsync(
             projectPath,
             ProjectText,
@@ -112,11 +137,15 @@ public sealed class MultiSolutionLanguageServerTests
             documentPath,
             DocumentText.Replace("Fixture", projectName, StringComparison.Ordinal),
             cancellationToken).ConfigureAwait(false);
-        return documentPath;
+        await File.WriteAllTextAsync(
+            razorDocumentPath,
+            "<p>@MissingName</p>",
+            cancellationToken).ConfigureAwait(false);
+        return (documentPath, razorDocumentPath);
     }
 
     private const string ProjectText = """
-        <Project Sdk="Microsoft.NET.Sdk">
+        <Project Sdk="Microsoft.NET.Sdk.Web">
           <PropertyGroup>
             <TargetFramework>net10.0</TargetFramework>
             <ImplicitUsings>enable</ImplicitUsings>
@@ -127,6 +156,9 @@ public sealed class MultiSolutionLanguageServerTests
     private const string DocumentText = """
         namespace Fixture;
 
+        /// <summary>
+        /// Supplies the executable entry point for one solution fixture.
+        /// </summary>
         public static class Program
         {
             public static void Main()
