@@ -36,6 +36,22 @@
     <SymbolPackageFormat>snupkg</SymbolPackageFormat>
   </PropertyGroup>
 
+  <PropertyGroup Condition="'$(MSBuildProjectName)' == 'Csls.Workspaces' or
+                            '$(MSBuildProjectName)' == 'Csls.Worker'">
+    <CslsRazorCompilerPath>$(MSBuildSDKsPath)/Microsoft.NET.Sdk.Razor/source-generators</CslsRazorCompilerPath>
+  </PropertyGroup>
+
+  <ItemGroup Condition="'$(CslsRazorCompilerPath)' != ''">
+    <Reference Include="Microsoft.AspNetCore.Razor.Utilities.Shared">
+      <HintPath>$(CslsRazorCompilerPath)/Microsoft.AspNetCore.Razor.Utilities.Shared.dll</HintPath>
+      <Private>true</Private>
+    </Reference>
+    <Reference Include="Microsoft.CodeAnalysis.Razor.Compiler">
+      <HintPath>$(CslsRazorCompilerPath)/Microsoft.CodeAnalysis.Razor.Compiler.dll</HintPath>
+      <Private>true</Private>
+    </Reference>
+  </ItemGroup>
+
   <ItemGroup>
     <PackageReference Include="Microsoft.CodeAnalysis.NetAnalyzers" PrivateAssets="All" />
     <PackageReference Include="Microsoft.SourceLink.GitHub" PrivateAssets="All" />
