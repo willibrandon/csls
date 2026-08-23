@@ -242,6 +242,21 @@ public sealed partial class WorkspaceManager
             string path = overlay.Uri.GetFileSystemPath();
             if (WorkspaceRazorDiagnosticService.IsRazorDocument(path))
             {
+                int razorFolderIndex = FindFolderIndex(path, current);
+                if (razorFolderIndex < 0)
+                {
+                    throw new InvalidOperationException($"No workspace folder owns document {path}.");
+                }
+
+                (string razorRootPath, Workspace razorWorkspace, Solution razorSolution) =
+                    current[razorFolderIndex];
+                razorSolution = WithAdditionalDocumentText(
+                    razorSolution,
+                    path,
+                    SourceText.From(overlay.Text, Encoding.UTF8));
+                current = current.SetItem(
+                    razorFolderIndex,
+                    (razorRootPath, razorWorkspace, razorSolution));
                 continue;
             }
 
