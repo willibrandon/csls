@@ -1,6 +1,7 @@
 using Hex1b;
 using Hex1b.Automation;
 using Hex1b.Input;
+using System.Diagnostics;
 using System.Text.Json;
 
 namespace Csls.Tests;
@@ -111,6 +112,7 @@ public sealed class EmacsLanguageServerTests
                 .WithHeadless()
                 .WithDimensions(120, 40)
                 .Build();
+            int? serverProcessId = null;
             try
             {
                 string screenText = string.Empty;
@@ -131,6 +133,10 @@ public sealed class EmacsLanguageServerTests
                                 "ready",
                                 TimeSpan.FromSeconds(60),
                                 TestContext.CancellationToken).ConfigureAwait(false);
+                            serverProcessId = (await ControlSessionWaiter.WaitForRunningAsync(
+                                fixturePath,
+                                TimeSpan.FromSeconds(60),
+                                TestContext.CancellationToken).ConfigureAwait(false)).ProcessId;
                         }
                         catch (TaskCanceledException exception)
                             when (!TestContext.CancellationToken.IsCancellationRequested)
@@ -189,11 +195,39 @@ public sealed class EmacsLanguageServerTests
             {
                 await terminal.DisposeAsync().ConfigureAwait(false);
                 await workload.DisposeAsync().ConfigureAwait(false);
+                if (serverProcessId is int processId)
+                {
+                    await WaitForProcessExitAsync(
+                        processId,
+                        TestContext.CancellationToken).ConfigureAwait(false);
+                }
             }
         }
         finally
         {
             Directory.Delete(fixturePath, recursive: true);
+        }
+    }
+
+    private static async Task WaitForProcessExitAsync(
+        int processId,
+        CancellationToken cancellationToken)
+    {
+        Process process;
+        try
+        {
+            process = Process.GetProcessById(processId);
+        }
+        catch (ArgumentException)
+        {
+            return;
+        }
+
+        using (process)
+        {
+            await process.WaitForExitAsync(cancellationToken)
+                .WaitAsync(TimeSpan.FromSeconds(10), cancellationToken)
+                .ConfigureAwait(false);
         }
     }
 
