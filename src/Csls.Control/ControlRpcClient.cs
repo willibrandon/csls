@@ -122,6 +122,78 @@ public sealed class ControlRpcClient : IAsyncDisposable
         GetNavigationAsync(ControlMethods.GetReferences, request, cancellationToken);
 
     /// <summary>
+    /// Gets the hierarchical declarations in one document snapshot.
+    /// </summary>
+    /// <param name="request">The absolute document path.</param>
+    /// <param name="cancellationToken">The request cancellation token.</param>
+    /// <returns>The bounded declaration hierarchy.</returns>
+    public async Task<IReadOnlyList<DocumentSymbol>> GetDocumentSymbolsAsync(
+        ControlDocumentRequest request,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        JsonRpc rpc = await GetRpcAsync(cancellationToken).ConfigureAwait(false);
+        return await rpc.InvokeWithParameterObjectAsync<IReadOnlyList<DocumentSymbol>>(
+            ControlMethods.GetDocumentSymbols,
+            request,
+            cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Searches source declarations across the attached workspace snapshot.
+    /// </summary>
+    /// <param name="request">The declaration search pattern.</param>
+    /// <param name="cancellationToken">The request cancellation token.</param>
+    /// <returns>The bounded ordered workspace symbols.</returns>
+    public async Task<IReadOnlyList<WorkspaceSymbol>> GetWorkspaceSymbolsAsync(
+        ControlWorkspaceSymbolRequest request,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        JsonRpc rpc = await GetRpcAsync(cancellationToken).ConfigureAwait(false);
+        return await rpc.InvokeWithParameterObjectAsync<IReadOnlyList<WorkspaceSymbol>>(
+            ControlMethods.GetWorkspaceSymbols,
+            request,
+            cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Resolves the exact source range for one workspace symbol.
+    /// </summary>
+    /// <param name="symbol">The unresolved workspace symbol.</param>
+    /// <param name="cancellationToken">The request cancellation token.</param>
+    /// <returns>The resolved workspace symbol.</returns>
+    public async Task<WorkspaceSymbol> ResolveWorkspaceSymbolAsync(
+        WorkspaceSymbol symbol,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(symbol);
+        JsonRpc rpc = await GetRpcAsync(cancellationToken).ConfigureAwait(false);
+        return await rpc.InvokeWithParameterObjectAsync<WorkspaceSymbol>(
+            ControlMethods.ResolveWorkspaceSymbol,
+            symbol,
+            cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Gets overload-aware signature help from the attached workspace snapshot.
+    /// </summary>
+    /// <param name="request">The absolute document path and UTF-16 position.</param>
+    /// <param name="cancellationToken">The request cancellation token.</param>
+    /// <returns>Signature help, or null when no supported argument list is active.</returns>
+    public async Task<SignatureHelp?> GetSignatureHelpAsync(
+        ControlSignatureHelpRequest request,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        JsonRpc rpc = await GetRpcAsync(cancellationToken).ConfigureAwait(false);
+        return await rpc.InvokeWithParameterObjectAsync<SignatureHelp?>(
+            ControlMethods.GetSignatureHelp,
+            request,
+            cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
     /// Closes the control RPC connection and releases its socket resources.
     /// </summary>
     /// <returns>A task that completes after the transport is closed.</returns>
@@ -182,7 +254,7 @@ public sealed class ControlRpcClient : IAsyncDisposable
             _stream = new NetworkStream(_socket, ownsSocket: true);
             _formatter = new SystemTextJsonFormatter
             {
-                JsonSerializerOptions = ControlJson.CreateSerializerOptions()
+                JsonSerializerOptions = ControlRpcJson.CreateSerializerOptions()
             };
             _boundedStream = new BoundedMessageStream(
                 _stream,

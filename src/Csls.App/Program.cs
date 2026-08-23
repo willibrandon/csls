@@ -165,6 +165,103 @@ queryCommand.Subcommands.Add(CreateNavigationCommand(
     "references",
     "Find source references for the symbol at one document position.",
     includeDeclarationOption: true));
+
+var documentSymbolsArgument = new Argument<string>("document")
+{
+    Description = "Absolute or current-directory-relative C# document path."
+};
+Option<int?> documentSymbolsSessionOption = CreateSessionOption();
+var documentSymbolsJsonOption = new Option<bool>("--json")
+{
+    Description = "Write the versioned machine-readable response envelope."
+};
+var documentSymbolsCommand = new Command(
+    "document-symbols",
+    "Get the hierarchical declarations in one document.")
+{
+    documentSymbolsArgument,
+    documentSymbolsSessionOption,
+    documentSymbolsJsonOption
+};
+documentSymbolsCommand.SetAction((parseResult, cancellationToken) =>
+    CliWorkerSupervisor.RunAsync(
+        [
+            "query-document-symbols",
+            (parseResult.GetValue(documentSymbolsSessionOption) ?? 0)
+                .ToString(CultureInfo.InvariantCulture),
+            Path.GetFullPath(parseResult.GetRequiredValue(documentSymbolsArgument)),
+            parseResult.GetValue(documentSymbolsJsonOption).ToString(CultureInfo.InvariantCulture)
+        ],
+        cancellationToken));
+queryCommand.Subcommands.Add(documentSymbolsCommand);
+
+var workspaceSymbolsArgument = new Argument<string>("pattern")
+{
+    Description = "Declaration name or fuzzy search pattern."
+};
+Option<int?> workspaceSymbolsSessionOption = CreateSessionOption();
+var workspaceSymbolsJsonOption = new Option<bool>("--json")
+{
+    Description = "Write the versioned machine-readable response envelope."
+};
+var workspaceSymbolsCommand = new Command(
+    "symbols",
+    "Search source declarations across the current workspace.")
+{
+    workspaceSymbolsArgument,
+    workspaceSymbolsSessionOption,
+    workspaceSymbolsJsonOption
+};
+workspaceSymbolsCommand.SetAction((parseResult, cancellationToken) =>
+    CliWorkerSupervisor.RunAsync(
+        [
+            "query-workspace-symbols",
+            (parseResult.GetValue(workspaceSymbolsSessionOption) ?? 0)
+                .ToString(CultureInfo.InvariantCulture),
+            parseResult.GetRequiredValue(workspaceSymbolsArgument),
+            parseResult.GetValue(workspaceSymbolsJsonOption).ToString(CultureInfo.InvariantCulture)
+        ],
+        cancellationToken));
+queryCommand.Subcommands.Add(workspaceSymbolsCommand);
+
+var signatureDocumentArgument = new Argument<string>("document")
+{
+    Description = "Absolute or current-directory-relative C# document path."
+};
+Option<int> signatureLineOption = CreatePositionOption(
+    "--line",
+    "Zero-based UTF-16 line number.");
+Option<int> signatureCharacterOption = CreatePositionOption(
+    "--character",
+    "Zero-based UTF-16 character offset.");
+Option<int?> signatureSessionOption = CreateSessionOption();
+var signatureJsonOption = new Option<bool>("--json")
+{
+    Description = "Write the versioned machine-readable response envelope."
+};
+var signatureCommand = new Command(
+    "signature-help",
+    "Get overload-aware signature help at one document position.")
+{
+    signatureDocumentArgument,
+    signatureLineOption,
+    signatureCharacterOption,
+    signatureSessionOption,
+    signatureJsonOption
+};
+signatureCommand.SetAction((parseResult, cancellationToken) =>
+    CliWorkerSupervisor.RunAsync(
+        [
+            "query-signature-help",
+            (parseResult.GetValue(signatureSessionOption) ?? 0)
+                .ToString(CultureInfo.InvariantCulture),
+            Path.GetFullPath(parseResult.GetRequiredValue(signatureDocumentArgument)),
+            parseResult.GetValue(signatureLineOption).ToString(CultureInfo.InvariantCulture),
+            parseResult.GetValue(signatureCharacterOption).ToString(CultureInfo.InvariantCulture),
+            parseResult.GetValue(signatureJsonOption).ToString(CultureInfo.InvariantCulture)
+        ],
+        cancellationToken));
+queryCommand.Subcommands.Add(signatureCommand);
 rootCommand.Subcommands.Add(queryCommand);
 
 return await rootCommand.Parse(args).InvokeAsync().ConfigureAwait(false);

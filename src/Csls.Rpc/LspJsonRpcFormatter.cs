@@ -27,6 +27,7 @@ internal sealed class LspJsonRpcFormatter :
     internal LspJsonRpcFormatter(JsonSerializerOptions serializerOptions)
     {
         ArgumentNullException.ThrowIfNull(serializerOptions);
+        LspRpcJson.Configure(serializerOptions);
         _formatter = new SystemTextJsonFormatter
         {
             JsonSerializerOptions = serializerOptions

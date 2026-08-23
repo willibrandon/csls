@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Csls.Control.Contracts;
 using Csls.Protocol;
+using LspRange = Csls.Protocol.Range;
 
 namespace Csls.Cli.Worker;
 
@@ -190,6 +191,89 @@ internal static class CliOutputWriter
     }
 
     /// <summary>
+    /// Writes hierarchical source declarations returned by the shared control service.
+    /// </summary>
+    /// <param name="symbols">The source declaration hierarchy.</param>
+    /// <param name="writeJson">Whether to write a machine-readable envelope.</param>
+    internal static void WriteDocumentSymbols(
+        IReadOnlyList<DocumentSymbol> symbols,
+        bool writeJson)
+    {
+        ArgumentNullException.ThrowIfNull(symbols);
+        if (writeJson)
+        {
+            JsonElement data = JsonSerializer.SerializeToElement(
+                symbols,
+                typeof(IReadOnlyList<DocumentSymbol>),
+                CliJsonSerializerContext.Default);
+            WriteEnvelope(success: true, data);
+            return;
+        }
+
+        WriteDocumentSymbols(symbols, depth: 0);
+    }
+
+    /// <summary>
+    /// Writes bounded workspace declaration search results from the shared control service.
+    /// </summary>
+    /// <param name="symbols">The resolved workspace symbols.</param>
+    /// <param name="writeJson">Whether to write a machine-readable envelope.</param>
+    internal static void WriteWorkspaceSymbols(
+        IReadOnlyList<WorkspaceSymbol> symbols,
+        bool writeJson)
+    {
+        ArgumentNullException.ThrowIfNull(symbols);
+        if (writeJson)
+        {
+            JsonElement data = JsonSerializer.SerializeToElement(
+                symbols,
+                typeof(IReadOnlyList<WorkspaceSymbol>),
+                CliJsonSerializerContext.Default);
+            WriteEnvelope(success: true, data);
+            return;
+        }
+
+        foreach (WorkspaceSymbol symbol in symbols)
+        {
+            string location = symbol.Location.Range is LspRange range
+                ? $"{symbol.Location.Uri}:{range.Start.Line + 1}:{range.Start.Character + 1}"
+                : symbol.Location.Uri.ToString();
+            Console.Out.WriteLine(
+                $"{symbol.Kind}\t{symbol.Name}\t{symbol.ContainerName}\t{location}");
+        }
+    }
+
+    /// <summary>
+    /// Writes overload-aware signature help returned by the shared control service.
+    /// </summary>
+    /// <param name="signatureHelp">The optional active signature help.</param>
+    /// <param name="writeJson">Whether to write a machine-readable envelope.</param>
+    internal static void WriteSignatureHelp(SignatureHelp? signatureHelp, bool writeJson)
+    {
+        if (writeJson)
+        {
+            JsonElement data = JsonSerializer.SerializeToElement(
+                signatureHelp,
+                typeof(SignatureHelp),
+                CliJsonSerializerContext.Default);
+            WriteEnvelope(success: true, data);
+            return;
+        }
+
+        if (signatureHelp is null)
+        {
+            Console.Out.WriteLine("No signature help found.");
+            return;
+        }
+
+        for (int index = 0; index < signatureHelp.Signatures.Count; index++)
+        {
+            string marker = index == signatureHelp.ActiveSignature ? "*" : " ";
+            Console.Out.WriteLine($"{marker} {signatureHelp.Signatures[index].Label}");
+        }
+    }
+
+    /// <summary>
     /// Writes an actionable command failure to the requested output channel.
     /// </summary>
     /// <param name="code">The stable failure category.</param>
@@ -223,5 +307,19 @@ internal static class CliOutputWriter
         Console.Out.WriteLine(JsonSerializer.Serialize(
             envelope,
             CliJsonSerializerContext.Default.CliResponseEnvelope));
+    }
+
+    private static void WriteDocumentSymbols(
+        IReadOnlyList<DocumentSymbol> symbols,
+        int depth)
+    {
+        foreach (DocumentSymbol symbol in symbols)
+        {
+            Console.Out.WriteLine($"{new string(' ', depth * 2)}{symbol.Kind}\t{symbol.Name}");
+            if (symbol.Children is { Count: > 0 } children)
+            {
+                WriteDocumentSymbols(children, depth + 1);
+            }
+        }
     }
 }

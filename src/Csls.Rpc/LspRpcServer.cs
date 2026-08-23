@@ -1,4 +1,3 @@
-using Csls.Protocol;
 using StreamJsonRpc;
 
 namespace Csls.Rpc;
@@ -26,7 +25,7 @@ public static class LspRpcServer
         ArgumentNullException.ThrowIfNull(output);
         ArgumentNullException.ThrowIfNull(target);
 
-        using var formatter = new LspJsonRpcFormatter(LspJson.CreateSerializerOptions());
+        using var formatter = new LspJsonRpcFormatter(LspRpcJson.CreateSerializerOptions());
         using var messageHandler = new HeaderDelimitedMessageHandler(output, input, formatter);
         using var rpc = new JsonRpc(messageHandler)
         {

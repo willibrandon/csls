@@ -48,6 +48,18 @@ internal static class CliWorkerHost
                         arguments,
                         writeJson,
                         cancellationToken).ConfigureAwait(false),
+                    "query-document-symbols" => await QueryDocumentSymbolsAsync(
+                        arguments,
+                        writeJson,
+                        cancellationToken).ConfigureAwait(false),
+                    "query-workspace-symbols" => await QueryWorkspaceSymbolsAsync(
+                        arguments,
+                        writeJson,
+                        cancellationToken).ConfigureAwait(false),
+                    "query-signature-help" => await QuerySignatureHelpAsync(
+                        arguments,
+                        writeJson,
+                        cancellationToken).ConfigureAwait(false),
                     _ => Fail(
                         "invalid-request",
                         $"The launcher supplied an unknown CLI operation: {arguments[0]}",
@@ -221,6 +233,92 @@ internal static class CliWorkerHost
             ? await client.GetDefinitionAsync(request, cancellationToken).ConfigureAwait(false)
             : await client.GetReferencesAsync(request, cancellationToken).ConfigureAwait(false);
         CliOutputWriter.WriteLocations(locations, writeJson);
+        return 0;
+    }
+
+    private static async Task<int> QueryDocumentSymbolsAsync(
+        IReadOnlyList<string> arguments,
+        bool writeJson,
+        CancellationToken cancellationToken)
+    {
+        if (arguments.Count != 4 ||
+            !int.TryParse(arguments[1], NumberStyles.None, CultureInfo.InvariantCulture,
+                out int processId))
+        {
+            return Fail(
+                "invalid-request",
+                "The launcher supplied an invalid document symbol request.",
+                writeJson);
+        }
+
+        ControlSessionInfo session = await ResolveSessionAsync(processId, cancellationToken)
+            .ConfigureAwait(false);
+        var client = new ControlRpcClient(session.SocketPath);
+        await using ConfiguredAsyncDisposable clientCleanup = client.ConfigureAwait(false);
+        IReadOnlyList<DocumentSymbol> symbols = await client.GetDocumentSymbolsAsync(
+            new ControlDocumentRequest { DocumentPath = arguments[2] },
+            cancellationToken).ConfigureAwait(false);
+        CliOutputWriter.WriteDocumentSymbols(symbols, writeJson);
+        return 0;
+    }
+
+    private static async Task<int> QueryWorkspaceSymbolsAsync(
+        IReadOnlyList<string> arguments,
+        bool writeJson,
+        CancellationToken cancellationToken)
+    {
+        if (arguments.Count != 4 ||
+            !int.TryParse(arguments[1], NumberStyles.None, CultureInfo.InvariantCulture,
+                out int processId))
+        {
+            return Fail(
+                "invalid-request",
+                "The launcher supplied an invalid workspace symbol request.",
+                writeJson);
+        }
+
+        ControlSessionInfo session = await ResolveSessionAsync(processId, cancellationToken)
+            .ConfigureAwait(false);
+        var client = new ControlRpcClient(session.SocketPath);
+        await using ConfiguredAsyncDisposable clientCleanup = client.ConfigureAwait(false);
+        IReadOnlyList<WorkspaceSymbol> symbols = await client.GetWorkspaceSymbolsAsync(
+            new ControlWorkspaceSymbolRequest { Query = arguments[2] },
+            cancellationToken).ConfigureAwait(false);
+        CliOutputWriter.WriteWorkspaceSymbols(symbols, writeJson);
+        return 0;
+    }
+
+    private static async Task<int> QuerySignatureHelpAsync(
+        IReadOnlyList<string> arguments,
+        bool writeJson,
+        CancellationToken cancellationToken)
+    {
+        if (arguments.Count != 6 ||
+            !int.TryParse(arguments[1], NumberStyles.None, CultureInfo.InvariantCulture,
+                out int processId) ||
+            !int.TryParse(arguments[3], NumberStyles.None, CultureInfo.InvariantCulture,
+                out int line) ||
+            !int.TryParse(arguments[4], NumberStyles.None, CultureInfo.InvariantCulture,
+                out int character))
+        {
+            return Fail(
+                "invalid-request",
+                "The launcher supplied an invalid signature help request.",
+                writeJson);
+        }
+
+        ControlSessionInfo session = await ResolveSessionAsync(processId, cancellationToken)
+            .ConfigureAwait(false);
+        var client = new ControlRpcClient(session.SocketPath);
+        await using ConfiguredAsyncDisposable clientCleanup = client.ConfigureAwait(false);
+        SignatureHelp? signatureHelp = await client.GetSignatureHelpAsync(
+            new ControlSignatureHelpRequest
+            {
+                DocumentPath = arguments[2],
+                Position = new Position(line, character)
+            },
+            cancellationToken).ConfigureAwait(false);
+        CliOutputWriter.WriteSignatureHelp(signatureHelp, writeJson);
         return 0;
     }
 

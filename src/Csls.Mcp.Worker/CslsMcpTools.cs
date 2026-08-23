@@ -262,6 +262,101 @@ internal sealed class CslsMcpTools
         return _controlClient.GetReferencesAsync(request, cancellationToken);
     }
 
+    /// <summary>
+    /// Gets the hierarchical declarations in one document from the attached session.
+    /// </summary>
+    /// <param name="documentPath">The absolute path of an open document.</param>
+    /// <param name="cancellationToken">The MCP request cancellation token.</param>
+    /// <returns>The bounded source declaration hierarchy.</returns>
+    [McpServerTool(
+        Name = "get_document_symbols",
+        Title = "Get C# document symbols",
+        Destructive = false,
+        Idempotent = true,
+        OpenWorld = false,
+        ReadOnly = true,
+        UseStructuredContent = true)]
+    [Description("Get the hierarchical C# declarations in one document from the attached csls session.")]
+    public Task<IReadOnlyList<DocumentSymbol>> GetDocumentSymbolsAsync(
+        [Description("Absolute path of the document loaded by the attached csls session.")]
+        string documentPath,
+        CancellationToken cancellationToken)
+    {
+        ValidateDocumentPath(documentPath);
+        return _controlClient.GetDocumentSymbolsAsync(
+            new ControlDocumentRequest
+            {
+                DocumentPath = Path.GetFullPath(documentPath)
+            },
+            cancellationToken);
+    }
+
+    /// <summary>
+    /// Searches source declarations across the workspace attached to this MCP server.
+    /// </summary>
+    /// <param name="query">The declaration name or fuzzy pattern.</param>
+    /// <param name="cancellationToken">The MCP request cancellation token.</param>
+    /// <returns>The bounded resolved workspace symbols.</returns>
+    [McpServerTool(
+        Name = "search_workspace_symbols",
+        Title = "Search C# workspace symbols",
+        Destructive = false,
+        Idempotent = true,
+        OpenWorld = false,
+        ReadOnly = true,
+        UseStructuredContent = true)]
+    [Description("Search bounded C# source declarations across the attached csls workspace.")]
+    public Task<IReadOnlyList<WorkspaceSymbol>> SearchWorkspaceSymbolsAsync(
+        [Description("Declaration name or fuzzy pattern containing at most 256 characters.")]
+        string query,
+        CancellationToken cancellationToken)
+    {
+        if (query is null || query.Length > 256)
+        {
+            throw new McpException("query cannot exceed 256 characters.");
+        }
+
+        return _controlClient.GetWorkspaceSymbolsAsync(
+            new ControlWorkspaceSymbolRequest { Query = query },
+            cancellationToken);
+    }
+
+    /// <summary>
+    /// Gets overload-aware signature help for one position in the attached session.
+    /// </summary>
+    /// <param name="documentPath">The absolute path of an open document.</param>
+    /// <param name="line">The zero-based document line.</param>
+    /// <param name="character">The zero-based UTF-16 character offset.</param>
+    /// <param name="cancellationToken">The MCP request cancellation token.</param>
+    /// <returns>Signature help, or null when no supported argument list is active.</returns>
+    [McpServerTool(
+        Name = "get_signature_help",
+        Title = "Get C# signature help",
+        Destructive = false,
+        Idempotent = true,
+        OpenWorld = false,
+        ReadOnly = true,
+        UseStructuredContent = true)]
+    [Description("Get overload-aware C# signature help at a zero-based UTF-16 document position.")]
+    public Task<SignatureHelp?> GetSignatureHelpAsync(
+        [Description("Absolute path of the document loaded by the attached csls session.")]
+        string documentPath,
+        [Description("Zero-based document line.")]
+        int line,
+        [Description("Zero-based UTF-16 character offset.")]
+        int character,
+        CancellationToken cancellationToken)
+    {
+        ValidateDocumentPosition(documentPath, line, character);
+        return _controlClient.GetSignatureHelpAsync(
+            new ControlSignatureHelpRequest
+            {
+                DocumentPath = Path.GetFullPath(documentPath),
+                Position = new Position(line, character)
+            },
+            cancellationToken);
+    }
+
     private static ControlNavigationRequest CreateNavigationRequest(
         string documentPath,
         int line,
@@ -291,5 +386,32 @@ internal sealed class CslsMcpTools
             Position = new Position(line, character),
             IncludeDeclaration = includeDeclaration
         };
+    }
+
+    private static void ValidateDocumentPath(string documentPath)
+    {
+        if (string.IsNullOrWhiteSpace(documentPath) ||
+            documentPath.Length > MaximumPathLength)
+        {
+            throw new McpException(
+                $"documentPath must contain between 1 and {MaximumPathLength} characters.");
+        }
+    }
+
+    private static void ValidateDocumentPosition(
+        string documentPath,
+        int line,
+        int character)
+    {
+        ValidateDocumentPath(documentPath);
+        if (line < 0)
+        {
+            throw new McpException("line must be zero or greater.");
+        }
+
+        if (character < 0)
+        {
+            throw new McpException("character must be zero or greater.");
+        }
     }
 }

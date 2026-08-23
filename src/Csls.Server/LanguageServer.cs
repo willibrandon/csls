@@ -95,7 +95,17 @@ public sealed partial class LanguageServer : ILspRpcTarget, IAsyncDisposable
                     TriggerCharacters = [".", "(", "#", "\"", "<", "/"]
                 },
                 DefinitionProvider = true,
-                ReferencesProvider = true
+                ReferencesProvider = true,
+                DocumentSymbolProvider = true,
+                WorkspaceSymbolProvider = new WorkspaceSymbolOptions
+                {
+                    ResolveProvider = true
+                },
+                SignatureHelpProvider = new SignatureHelpOptions
+                {
+                    TriggerCharacters = ["(", ","],
+                    RetriggerCharacters = [")"]
+                }
             },
             ServerInfo = new ServerInfo
             {
@@ -311,6 +321,98 @@ public sealed partial class LanguageServer : ILspRpcTarget, IAsyncDisposable
                     .ConfigureAwait(false);
                 return _workspaceManager.Generation == context.WorkspaceGeneration
                     ? hover
+                    : null;
+            },
+            cancellationToken);
+    }
+
+    /// <inheritdoc />
+    public Task<IReadOnlyList<DocumentSymbol>> DocumentSymbolAsync(
+        DocumentSymbolParams parameters,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(parameters);
+        EnsureRunning();
+        return _scheduler.ScheduleAsync(
+            RequestMode.ReadOnly,
+            () => _workspaceManager.Generation,
+            async context =>
+            {
+                IReadOnlyList<DocumentSymbol> symbols = await _workspaceManager
+                    .GetDocumentSymbolsAsync(parameters, context.CancellationToken)
+                    .ConfigureAwait(false);
+                if (_workspaceManager.Generation != context.WorkspaceGeneration)
+                {
+                    throw new InvalidOperationException(
+                        "The workspace changed while document symbols were being computed.");
+                }
+
+                return symbols;
+            },
+            cancellationToken);
+    }
+
+    /// <inheritdoc />
+    public Task<IReadOnlyList<WorkspaceSymbol>> WorkspaceSymbolAsync(
+        WorkspaceSymbolParams parameters,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(parameters);
+        EnsureRunning();
+        return _scheduler.ScheduleAsync(
+            RequestMode.ReadOnly,
+            () => _workspaceManager.Generation,
+            async context =>
+            {
+                IReadOnlyList<WorkspaceSymbol> symbols = await _workspaceManager
+                    .GetWorkspaceSymbolsAsync(parameters, context.CancellationToken)
+                    .ConfigureAwait(false);
+                if (_workspaceManager.Generation != context.WorkspaceGeneration)
+                {
+                    throw new InvalidOperationException(
+                        "The workspace changed while workspace symbols were being computed.");
+                }
+
+                return symbols;
+            },
+            cancellationToken);
+    }
+
+    /// <inheritdoc />
+    public Task<WorkspaceSymbol> WorkspaceSymbolResolveAsync(
+        WorkspaceSymbol symbol,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(symbol);
+        EnsureRunning();
+        return _scheduler.ScheduleAsync(
+            RequestMode.ReadOnly,
+            () => _workspaceManager.Generation,
+            context =>
+            {
+                context.CancellationToken.ThrowIfCancellationRequested();
+                return ValueTask.FromResult(_workspaceManager.ResolveWorkspaceSymbol(symbol));
+            },
+            cancellationToken);
+    }
+
+    /// <inheritdoc />
+    public Task<SignatureHelp?> SignatureHelpAsync(
+        SignatureHelpParams parameters,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(parameters);
+        EnsureRunning();
+        return _scheduler.ScheduleAsync(
+            RequestMode.ReadOnly,
+            () => _workspaceManager.Generation,
+            async context =>
+            {
+                SignatureHelp? signatureHelp = await _workspaceManager
+                    .GetSignatureHelpAsync(parameters, context.CancellationToken)
+                    .ConfigureAwait(false);
+                return _workspaceManager.Generation == context.WorkspaceGeneration
+                    ? signatureHelp
                     : null;
             },
             cancellationToken);

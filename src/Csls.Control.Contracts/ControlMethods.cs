@@ -34,4 +34,24 @@ public static class ControlMethods
     /// Gets the method that returns source references for one document position.
     /// </summary>
     public const string GetReferences = "csls/control/v1/references/get";
+
+    /// <summary>
+    /// Gets the method that returns hierarchical declarations for one document.
+    /// </summary>
+    public const string GetDocumentSymbols = "csls/control/v1/document-symbols/get";
+
+    /// <summary>
+    /// Gets the method that searches declarations across the current workspace.
+    /// </summary>
+    public const string GetWorkspaceSymbols = "csls/control/v1/workspace-symbols/get";
+
+    /// <summary>
+    /// Gets the method that resolves an exact workspace symbol source range.
+    /// </summary>
+    public const string ResolveWorkspaceSymbol = "csls/control/v1/workspace-symbols/resolve";
+
+    /// <summary>
+    /// Gets the method that returns overload-aware signature help.
+    /// </summary>
+    public const string GetSignatureHelp = "csls/control/v1/signature-help/get";
 }

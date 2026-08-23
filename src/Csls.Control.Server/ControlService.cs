@@ -142,6 +142,75 @@ public sealed class ControlService : IControlRpcTarget
             cancellationToken);
     }
 
+    /// <inheritdoc />
+    public Task<IReadOnlyList<DocumentSymbol>> GetDocumentSymbolsAsync(
+        ControlDocumentRequest request,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        ArgumentException.ThrowIfNullOrWhiteSpace(request.DocumentPath);
+        return _languageServer.DocumentSymbolAsync(
+            new DocumentSymbolParams
+            {
+                TextDocument = new TextDocumentIdentifier
+                {
+                    Uri = DocumentUri.FromFileSystemPath(
+                        Path.GetFullPath(request.DocumentPath))
+                }
+            },
+            cancellationToken);
+    }
+
+    /// <inheritdoc />
+    public async Task<IReadOnlyList<WorkspaceSymbol>> GetWorkspaceSymbolsAsync(
+        ControlWorkspaceSymbolRequest request,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        IReadOnlyList<WorkspaceSymbol> symbols = await _languageServer.WorkspaceSymbolAsync(
+            new WorkspaceSymbolParams { Query = request.Query },
+            cancellationToken).ConfigureAwait(false);
+        return
+        [
+            .. symbols.Select(static symbol => symbol.Data is WorkspaceSymbolData data
+                ? symbol with
+                {
+                    Location = symbol.Location with { Range = data.Range }
+                }
+                : symbol)
+        ];
+    }
+
+    /// <inheritdoc />
+    public Task<WorkspaceSymbol> ResolveWorkspaceSymbolAsync(
+        WorkspaceSymbol symbol,
+        CancellationToken cancellationToken) =>
+        _languageServer.WorkspaceSymbolResolveAsync(symbol, cancellationToken);
+
+    /// <inheritdoc />
+    public Task<SignatureHelp?> GetSignatureHelpAsync(
+        ControlSignatureHelpRequest request,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        ArgumentException.ThrowIfNullOrWhiteSpace(request.DocumentPath);
+        return _languageServer.SignatureHelpAsync(
+            new SignatureHelpParams
+            {
+                TextDocument = new TextDocumentIdentifier
+                {
+                    Uri = DocumentUri.FromFileSystemPath(
+                        Path.GetFullPath(request.DocumentPath))
+                },
+                Position = request.Position,
+                Context = new SignatureHelpContext
+                {
+                    TriggerKind = SignatureHelpTriggerKind.Invoked
+                }
+            },
+            cancellationToken);
+    }
+
     private static TextDocumentPositionParams CreateNavigationParams(
         ControlNavigationRequest request)
     {

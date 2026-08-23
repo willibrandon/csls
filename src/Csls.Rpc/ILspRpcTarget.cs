@@ -119,4 +119,44 @@ public interface ILspRpcTarget
     Task<Hover?> HoverAsync(
         TextDocumentPositionParams parameters,
         CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Gets the hierarchical declarations within one source document.
+    /// </summary>
+    /// <param name="parameters">The target document.</param>
+    /// <param name="cancellationToken">The peer cancellation token.</param>
+    /// <returns>The bounded source declaration hierarchy.</returns>
+    Task<IReadOnlyList<DocumentSymbol>> DocumentSymbolAsync(
+        DocumentSymbolParams parameters,
+        CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Searches source declarations across the current workspace.
+    /// </summary>
+    /// <param name="parameters">The declaration search pattern.</param>
+    /// <param name="cancellationToken">The peer cancellation token.</param>
+    /// <returns>The bounded ordered workspace symbols.</returns>
+    Task<IReadOnlyList<WorkspaceSymbol>> WorkspaceSymbolAsync(
+        WorkspaceSymbolParams parameters,
+        CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Resolves the exact source range of one workspace symbol.
+    /// </summary>
+    /// <param name="symbol">The workspace symbol returned by this server.</param>
+    /// <param name="cancellationToken">The peer cancellation token.</param>
+    /// <returns>The resolved workspace symbol.</returns>
+    Task<WorkspaceSymbol> WorkspaceSymbolResolveAsync(
+        WorkspaceSymbol symbol,
+        CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Gets overload-aware signature help at one document position.
+    /// </summary>
+    /// <param name="parameters">The target position and client trigger context.</param>
+    /// <param name="cancellationToken">The peer cancellation token.</param>
+    /// <returns>Signature help, or null when no supported argument list is active.</returns>
+    Task<SignatureHelp?> SignatureHelpAsync(
+        SignatureHelpParams parameters,
+        CancellationToken cancellationToken);
 }

@@ -67,6 +67,26 @@ public static class LspMethodRegistry
             rpc,
             "textDocument/hover",
             new Func<TextDocumentPositionParams, CancellationToken, Task<Hover?>>(target.HoverAsync));
+        AddParameterObjectMethod(
+            rpc,
+            "textDocument/documentSymbol",
+            new Func<DocumentSymbolParams, CancellationToken, Task<IReadOnlyList<DocumentSymbol>>>(
+                target.DocumentSymbolAsync));
+        AddParameterObjectMethod(
+            rpc,
+            "workspace/symbol",
+            new Func<WorkspaceSymbolParams, CancellationToken, Task<IReadOnlyList<WorkspaceSymbol>>>(
+                target.WorkspaceSymbolAsync));
+        AddParameterObjectMethod(
+            rpc,
+            "workspaceSymbol/resolve",
+            new Func<WorkspaceSymbol, CancellationToken, Task<WorkspaceSymbol>>(
+                target.WorkspaceSymbolResolveAsync));
+        AddParameterObjectMethod(
+            rpc,
+            "textDocument/signatureHelp",
+            new Func<SignatureHelpParams, CancellationToken, Task<SignatureHelp?>>(
+                target.SignatureHelpAsync));
     }
 
     private static void AddParameterObjectMethod(

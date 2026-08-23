@@ -138,6 +138,12 @@ public sealed class McpLanguageServerTests
                     tool.Name == "get_definition");
                 McpClientTool referencesTool = tools.Single(static tool =>
                     tool.Name == "get_references");
+                McpClientTool documentSymbolsTool = tools.Single(static tool =>
+                    tool.Name == "get_document_symbols");
+                McpClientTool workspaceSymbolsTool = tools.Single(static tool =>
+                    tool.Name == "search_workspace_symbols");
+                McpClientTool signatureHelpTool = tools.Single(static tool =>
+                    tool.Name == "get_signature_help");
                 ToolAnnotations annotations = sessionTool.ProtocolTool.Annotations
                     ?? throw new InvalidDataException("The session tool has no MCP annotations.");
                 Assert.IsNotNull(annotations.ReadOnlyHint);
@@ -154,6 +160,9 @@ public sealed class McpLanguageServerTests
                 Assert.IsNotNull(completionTool.ProtocolTool.OutputSchema);
                 Assert.IsNotNull(definitionTool.ProtocolTool.OutputSchema);
                 Assert.IsNotNull(referencesTool.ProtocolTool.OutputSchema);
+                Assert.IsNotNull(documentSymbolsTool.ProtocolTool.OutputSchema);
+                Assert.IsNotNull(workspaceSymbolsTool.ProtocolTool.OutputSchema);
+                Assert.IsNotNull(signatureHelpTool.ProtocolTool.OutputSchema);
 
                 CallToolResult sessionResult = await client.CallToolAsync(
                     "get_session",
@@ -265,6 +274,69 @@ public sealed class McpLanguageServerTests
                 Location reference = Assert.ContainsSingle(references);
                 Assert.AreEqual(new Position(7, 8), reference.Range.Start);
 
+                CallToolResult documentSymbolsResult = await client.CallToolAsync(
+                    "get_document_symbols",
+                    new Dictionary<string, object?>
+                    {
+                        ["documentPath"] = documentPath
+                    },
+                    cancellationToken: TestContext.CancellationToken).ConfigureAwait(false);
+                Assert.IsNull(documentSymbolsResult.IsError);
+                Assert.IsTrue(documentSymbolsResult.StructuredContent.HasValue);
+                IReadOnlyList<DocumentSymbol> documentSymbols =
+                    documentSymbolsResult.StructuredContent.Value.Deserialize(
+                        ControlJsonSerializerContext.Default.IReadOnlyListDocumentSymbol)
+                    ?? throw new InvalidDataException(
+                        "MCP returned no structured document symbols.");
+                DocumentSymbol sourceNamespace = Assert.ContainsSingle(documentSymbols);
+                Assert.AreEqual("Fixture", sourceNamespace.Name);
+                Assert.IsNotNull(sourceNamespace.Children);
+                Assert.Contains(
+                    "Program",
+                    sourceNamespace.Children.Select(static symbol => symbol.Name));
+
+                CallToolResult workspaceSymbolsResult = await client.CallToolAsync(
+                    "search_workspace_symbols",
+                    new Dictionary<string, object?>
+                    {
+                        ["query"] = "Help"
+                    },
+                    cancellationToken: TestContext.CancellationToken).ConfigureAwait(false);
+                Assert.IsNull(workspaceSymbolsResult.IsError);
+                Assert.IsTrue(workspaceSymbolsResult.StructuredContent.HasValue);
+                IReadOnlyList<WorkspaceSymbol> workspaceSymbols =
+                    workspaceSymbolsResult.StructuredContent.Value.Deserialize(
+                        ControlJsonSerializerContext.Default.IReadOnlyListWorkspaceSymbol)
+                    ?? throw new InvalidDataException(
+                        "MCP returned no structured workspace symbols.");
+                WorkspaceSymbol helper = workspaceSymbols.Single(static symbol =>
+                    symbol.Name == "Helper");
+                Assert.IsNotNull(helper.Location.Range);
+                Assert.AreEqual(new Position(10, 24), helper.Location.Range.Value.Start);
+
+                CallToolResult signatureHelpResult = await client.CallToolAsync(
+                    "get_signature_help",
+                    new Dictionary<string, object?>
+                    {
+                        ["documentPath"] = documentPath,
+                        ["line"] = 7,
+                        ["character"] = 15
+                    },
+                    cancellationToken: TestContext.CancellationToken).ConfigureAwait(false);
+                Assert.IsNull(signatureHelpResult.IsError);
+                Assert.IsTrue(signatureHelpResult.StructuredContent.HasValue);
+                SignatureHelp signatureHelp = signatureHelpResult.StructuredContent.Value.Deserialize(
+                    ControlJsonSerializerContext.Default.SignatureHelp)
+                    ?? throw new InvalidDataException(
+                        "MCP returned no structured signature help.");
+                SignatureInformation helperSignature = Assert.ContainsSingle(
+                    signatureHelp.Signatures);
+                Assert.Contains("Helper", helperSignature.Label, StringComparison.Ordinal);
+                Assert.IsNotNull(helperSignature.Parameters);
+                ParameterInformation helperParameter = Assert.ContainsSingle(
+                    helperSignature.Parameters);
+                Assert.AreEqual("int value", helperParameter.Label);
+
                 IList<McpClientResource> resources = await client
                     .ListResourcesAsync(cancellationToken: TestContext.CancellationToken)
                     .ConfigureAwait(false);
@@ -330,11 +402,12 @@ public sealed class McpLanguageServerTests
             public static void Main()
             {
                 Console.WriteLine(Missing);
-                Helper();
+                Helper(1);
             }
 
-            private static void Helper()
+            private static void Helper(int value)
             {
+                Console.WriteLine(value);
             }
         }
         """;

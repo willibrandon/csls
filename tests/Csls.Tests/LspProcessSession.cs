@@ -1,4 +1,5 @@
 using Csls.Protocol;
+using Csls.Rpc;
 using StreamJsonRpc;
 using System.Diagnostics;
 using System.Text.Json;
@@ -69,7 +70,7 @@ internal sealed class LspProcessSession : IAsyncDisposable
         Task<string> standardErrorTask = process.StandardError.ReadToEndAsync();
         var formatter = new SystemTextJsonFormatter
         {
-            JsonSerializerOptions = LspJson.CreateSerializerOptions()
+            JsonSerializerOptions = LspRpcJson.CreateSerializerOptions()
         };
         var messageHandler = new HeaderDelimitedMessageHandler(
             process.StandardInput.BaseStream,
@@ -286,6 +287,81 @@ internal sealed class LspProcessSession : IAsyncDisposable
                 Context = new ReferenceContext
                 {
                     IncludeDeclaration = includeDeclaration
+                }
+            },
+            cancellationToken);
+
+    /// <summary>
+    /// Requests the hierarchical source declarations for one opened test document.
+    /// </summary>
+    /// <param name="documentPath">The absolute target document path.</param>
+    /// <param name="cancellationToken">The test cancellation token.</param>
+    /// <returns>The bounded declaration hierarchy.</returns>
+    internal Task<IReadOnlyList<DocumentSymbol>> RequestDocumentSymbolsAsync(
+        string documentPath,
+        CancellationToken cancellationToken) =>
+        _rpc.InvokeWithParameterObjectAsync<IReadOnlyList<DocumentSymbol>>(
+            "textDocument/documentSymbol",
+            new DocumentSymbolParams
+            {
+                TextDocument = new TextDocumentIdentifier
+                {
+                    Uri = DocumentUri.FromFileSystemPath(documentPath)
+                }
+            },
+            cancellationToken);
+
+    /// <summary>
+    /// Searches declarations across the real test workspace.
+    /// </summary>
+    /// <param name="query">The declaration search pattern.</param>
+    /// <param name="cancellationToken">The test cancellation token.</param>
+    /// <returns>The bounded ordered workspace symbols.</returns>
+    internal Task<IReadOnlyList<WorkspaceSymbol>> RequestWorkspaceSymbolsAsync(
+        string query,
+        CancellationToken cancellationToken) =>
+        _rpc.InvokeWithParameterObjectAsync<IReadOnlyList<WorkspaceSymbol>>(
+            "workspace/symbol",
+            new WorkspaceSymbolParams { Query = query },
+            cancellationToken);
+
+    /// <summary>
+    /// Resolves the exact source range for one workspace symbol.
+    /// </summary>
+    /// <param name="symbol">The unresolved workspace symbol.</param>
+    /// <param name="cancellationToken">The test cancellation token.</param>
+    /// <returns>The resolved workspace symbol.</returns>
+    internal Task<WorkspaceSymbol> ResolveWorkspaceSymbolAsync(
+        WorkspaceSymbol symbol,
+        CancellationToken cancellationToken) =>
+        _rpc.InvokeWithParameterObjectAsync<WorkspaceSymbol>(
+            "workspaceSymbol/resolve",
+            symbol,
+            cancellationToken);
+
+    /// <summary>
+    /// Requests overload-aware signature help at one opened test document position.
+    /// </summary>
+    /// <param name="documentPath">The absolute target document path.</param>
+    /// <param name="position">The target UTF-16 document position.</param>
+    /// <param name="cancellationToken">The test cancellation token.</param>
+    /// <returns>Signature help, or null when no argument list is active.</returns>
+    internal Task<SignatureHelp?> RequestSignatureHelpAsync(
+        string documentPath,
+        Position position,
+        CancellationToken cancellationToken) =>
+        _rpc.InvokeWithParameterObjectAsync<SignatureHelp?>(
+            "textDocument/signatureHelp",
+            new SignatureHelpParams
+            {
+                TextDocument = new TextDocumentIdentifier
+                {
+                    Uri = DocumentUri.FromFileSystemPath(documentPath)
+                },
+                Position = position,
+                Context = new SignatureHelpContext
+                {
+                    TriggerKind = SignatureHelpTriggerKind.Invoked
                 }
             },
             cancellationToken);

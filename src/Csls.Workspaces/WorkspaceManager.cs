@@ -6,6 +6,7 @@ using Microsoft.Build.Locator;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.Completion;
 using Microsoft.CodeAnalysis.CSharp;
+using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Diagnostics;
 using Microsoft.CodeAnalysis.FindSymbols;
 using Microsoft.CodeAnalysis.MSBuild;
@@ -21,6 +22,8 @@ using LspCompletionItemKind = Csls.Protocol.CompletionItemKind;
 using LspCompletionList = Csls.Protocol.CompletionList;
 using LspCompletionTriggerKind = Csls.Protocol.CompletionTriggerKind;
 using LspLocation = Csls.Protocol.Location;
+using LspSignatureHelp = Csls.Protocol.SignatureHelp;
+using LspSymbolKind = Csls.Protocol.SymbolKind;
 using LspTextEdit = Csls.Protocol.TextEdit;
 using RoslynDiagnostic = Microsoft.CodeAnalysis.Diagnostic;
 using RoslynDiagnosticSeverity = Microsoft.CodeAnalysis.DiagnosticSeverity;
@@ -37,6 +40,9 @@ public sealed partial class WorkspaceManager : IAsyncDisposable
 {
     private const int MaximumCompletionItems = 200;
     private const int MaximumNavigationLocations = 2_000;
+    private const int MaximumDocumentSymbols = 2_000;
+    private const int MaximumWorkspaceSymbols = 200;
+    private const int MaximumSignatures = 100;
     private static readonly Lock s_msbuildRegistrationLock = new();
     private static bool s_msbuildRegistered;
 
@@ -614,6 +620,215 @@ public sealed partial class WorkspaceManager : IAsyncDisposable
     }
 
     /// <summary>
+    /// Gets the bounded hierarchical declaration tree for one immutable document snapshot.
+    /// </summary>
+    /// <param name="parameters">The target document.</param>
+    /// <param name="cancellationToken">The operation cancellation token.</param>
+    /// <returns>The declaration hierarchy in source order.</returns>
+    public async Task<IReadOnlyList<DocumentSymbol>> GetDocumentSymbolsAsync(
+        DocumentSymbolParams parameters,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(parameters);
+        string path = parameters.TextDocument.Uri.GetFileSystemPath();
+        ImmutableArray<(string RootPath, Workspace Workspace, Solution Solution)> folders = _folders;
+        int folderIndex = FindFolderIndex(path, folders);
+        Document? document = folderIndex >= 0
+            ? FindDocument(folders[folderIndex].Solution, path)
+            : null;
+        if (document is null)
+        {
+            return [];
+        }
+
+        SyntaxNode root = await document.GetSyntaxRootAsync(cancellationToken).ConfigureAwait(false)
+            ?? throw new InvalidOperationException("Roslyn returned no syntax root.");
+        SemanticModel semanticModel = await document
+            .GetSemanticModelAsync(cancellationToken)
+            .ConfigureAwait(false)
+            ?? throw new InvalidOperationException("Roslyn returned no semantic model.");
+        SourceText text = await document.GetTextAsync(cancellationToken).ConfigureAwait(false);
+        var symbols = new List<DocumentSymbol>();
+        int symbolCount = 0;
+        AddDocumentSymbols(
+            root.ChildNodes(),
+            symbols,
+            semanticModel,
+            text,
+            ref symbolCount,
+            cancellationToken);
+        return symbols;
+    }
+
+    /// <summary>
+    /// Searches source declarations across every immutable workspace snapshot.
+    /// </summary>
+    /// <param name="parameters">The client declaration pattern.</param>
+    /// <param name="cancellationToken">The operation cancellation token.</param>
+    /// <returns>Bounded ordered workspace symbols with lazily resolved ranges.</returns>
+    public async Task<IReadOnlyList<WorkspaceSymbol>> GetWorkspaceSymbolsAsync(
+        WorkspaceSymbolParams parameters,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(parameters);
+        string query = parameters.Query.Trim();
+        long generation = Generation;
+        ImmutableArray<(string RootPath, Workspace Workspace, Solution Solution)> folders = _folders;
+        var symbols = new Dictionary<string, WorkspaceSymbol>(StringComparer.Ordinal);
+        foreach ((string _, Workspace _, Solution solution) in folders)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            IEnumerable<ISymbol> declarations = query.Length == 0
+                ? await SymbolFinder.FindSourceDeclarationsAsync(
+                    solution,
+                    static _ => true,
+                    SymbolFilter.TypeAndMember,
+                    cancellationToken).ConfigureAwait(false)
+                : await SymbolFinder.FindSourceDeclarationsWithPatternAsync(
+                    solution,
+                    query,
+                    SymbolFilter.TypeAndMember,
+                    cancellationToken).ConfigureAwait(false);
+            foreach (ISymbol declaration in declarations)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                if (declaration.IsImplicitlyDeclared ||
+                    !declaration.CanBeReferencedByName ||
+                    string.IsNullOrWhiteSpace(declaration.Name))
+                {
+                    continue;
+                }
+
+                LspLocation? location = declaration.Locations
+                    .Select(ToLspLocation)
+                    .FirstOrDefault(static candidate => candidate is not null);
+                if (location is null)
+                {
+                    continue;
+                }
+
+                LspSymbolKind kind = GetSymbolKind(declaration);
+                string key = string.Create(
+                    CultureInfo.InvariantCulture,
+                    $"{location.Uri}|{location.Range.Start.Line}|{location.Range.Start.Character}|{declaration.Name}|{kind}");
+                symbols.TryAdd(
+                    key,
+                    new WorkspaceSymbol
+                    {
+                        Name = declaration.Name,
+                        Kind = kind,
+                        ContainerName = GetContainerName(declaration),
+                        Location = new WorkspaceSymbolLocation
+                        {
+                            Uri = location.Uri
+                        },
+                        Data = new WorkspaceSymbolData
+                        {
+                            Generation = generation,
+                            Range = location.Range
+                        }
+                    });
+            }
+        }
+
+        return
+        [
+            .. symbols.Values
+                .OrderBy(symbol => GetWorkspaceSymbolMatchRank(symbol.Name, query))
+                .ThenBy(static symbol => symbol.Name, StringComparer.OrdinalIgnoreCase)
+                .ThenBy(static symbol => symbol.ContainerName, StringComparer.Ordinal)
+                .ThenBy(static symbol => symbol.Location.Uri.ToString(), StringComparer.Ordinal)
+                .Take(MaximumWorkspaceSymbols)
+        ];
+    }
+
+    /// <summary>
+    /// Completes the source range of one workspace symbol from its immutable resolve data.
+    /// </summary>
+    /// <param name="symbol">The workspace symbol returned by this server.</param>
+    /// <returns>The same symbol with its exact source range populated.</returns>
+    public WorkspaceSymbol ResolveWorkspaceSymbol(WorkspaceSymbol symbol)
+    {
+        ArgumentNullException.ThrowIfNull(symbol);
+        WorkspaceSymbolData data = symbol.Data
+            ?? throw new InvalidDataException("The workspace symbol contains no resolve data.");
+        if (data.Generation != Generation)
+        {
+            throw new InvalidOperationException(
+                "The workspace symbol belongs to a retired workspace generation.");
+        }
+
+        return symbol with
+        {
+            Location = symbol.Location with { Range = data.Range }
+        };
+    }
+
+    /// <summary>
+    /// Gets bounded overload-aware signature help for one immutable document position.
+    /// </summary>
+    /// <param name="parameters">The document position and trigger context.</param>
+    /// <param name="cancellationToken">The operation cancellation token.</param>
+    /// <returns>Signature help, or null when the position is not inside a supported argument list.</returns>
+    public async Task<LspSignatureHelp?> GetSignatureHelpAsync(
+        SignatureHelpParams parameters,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(parameters);
+        string path = parameters.TextDocument.Uri.GetFileSystemPath();
+        ImmutableArray<(string RootPath, Workspace Workspace, Solution Solution)> folders = _folders;
+        int folderIndex = FindFolderIndex(path, folders);
+        Document? document = folderIndex >= 0
+            ? FindDocument(folders[folderIndex].Solution, path)
+            : null;
+        if (document is null)
+        {
+            return null;
+        }
+
+        SourceText text = await document.GetTextAsync(cancellationToken).ConfigureAwait(false);
+        int offset = GetOffset(text, parameters.Position);
+        SyntaxNode root = await document.GetSyntaxRootAsync(cancellationToken).ConfigureAwait(false)
+            ?? throw new InvalidOperationException("Roslyn returned no syntax root.");
+        BaseArgumentListSyntax? argumentList = FindArgumentList(root, offset);
+        if (argumentList is null)
+        {
+            return null;
+        }
+
+        SemanticModel semanticModel = await document
+            .GetSemanticModelAsync(cancellationToken)
+            .ConfigureAwait(false)
+            ?? throw new InvalidOperationException("Roslyn returned no semantic model.");
+        (IReadOnlyList<IMethodSymbol> methods, IMethodSymbol? selectedMethod) =
+            GetSignatureMethods(argumentList, semanticModel, cancellationToken);
+        if (methods.Count == 0)
+        {
+            return null;
+        }
+
+        int activeParameter = argumentList.Arguments
+            .GetSeparators()
+            .Count(separator => separator.SpanStart < offset);
+        int activeSignature = selectedMethod is null
+            ? FindBestSignature(methods, activeParameter)
+            : FindSignatureIndex(methods, selectedMethod);
+        SignatureInformation[] signatures =
+        [
+            .. methods
+                .Take(MaximumSignatures)
+                .Select(method => CreateSignatureInformation(method, activeParameter))
+        ];
+        activeSignature = Math.Clamp(activeSignature, 0, signatures.Length - 1);
+        return new LspSignatureHelp
+        {
+            Signatures = signatures,
+            ActiveSignature = activeSignature,
+            ActiveParameter = activeParameter
+        };
+    }
+
+    /// <summary>
     /// Disposes every Roslyn workspace and synchronization primitive.
     /// </summary>
     /// <returns>A completed value task after resources are released.</returns>
@@ -628,6 +843,360 @@ public sealed partial class WorkspaceManager : IAsyncDisposable
         }
 
         return ValueTask.CompletedTask;
+    }
+
+    private static void AddDocumentSymbols(
+        IEnumerable<SyntaxNode> nodes,
+        List<DocumentSymbol> target,
+        SemanticModel semanticModel,
+        SourceText text,
+        ref int symbolCount,
+        CancellationToken cancellationToken)
+    {
+        foreach (SyntaxNode node in nodes)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (symbolCount >= MaximumDocumentSymbols)
+            {
+                return;
+            }
+
+            if (!TryGetDocumentSymbolIdentity(
+                node,
+                out string name,
+                out LspSymbolKind kind,
+                out TextSpan selectionSpan))
+            {
+                AddDocumentSymbols(
+                    node.ChildNodes(),
+                    target,
+                    semanticModel,
+                    text,
+                    ref symbolCount,
+                    cancellationToken);
+                continue;
+            }
+
+            symbolCount++;
+            var children = new List<DocumentSymbol>();
+            AddDocumentSymbols(
+                node.ChildNodes(),
+                children,
+                semanticModel,
+                text,
+                ref symbolCount,
+                cancellationToken);
+            ISymbol? declaredSymbol = semanticModel.GetDeclaredSymbol(node, cancellationToken);
+            target.Add(new DocumentSymbol
+            {
+                Name = name,
+                Detail = declaredSymbol?.ToDisplayString(
+                    SymbolDisplayFormat.MinimallyQualifiedFormat),
+                Kind = kind,
+                Range = ToLspRange(text, node.Span),
+                SelectionRange = ToLspRange(text, selectionSpan),
+                Children = children.Count == 0 ? null : children
+            });
+        }
+    }
+
+    private static bool TryGetDocumentSymbolIdentity(
+        SyntaxNode node,
+        out string name,
+        out LspSymbolKind kind,
+        out TextSpan selectionSpan)
+    {
+        switch (node)
+        {
+            case BaseNamespaceDeclarationSyntax namespaceDeclaration:
+                name = namespaceDeclaration.Name.ToString();
+                kind = LspSymbolKind.Namespace;
+                selectionSpan = namespaceDeclaration.Name.Span;
+                return true;
+            case ClassDeclarationSyntax classDeclaration:
+                name = classDeclaration.Identifier.ValueText;
+                kind = LspSymbolKind.Class;
+                selectionSpan = classDeclaration.Identifier.Span;
+                return true;
+            case StructDeclarationSyntax structDeclaration:
+                name = structDeclaration.Identifier.ValueText;
+                kind = LspSymbolKind.Struct;
+                selectionSpan = structDeclaration.Identifier.Span;
+                return true;
+            case InterfaceDeclarationSyntax interfaceDeclaration:
+                name = interfaceDeclaration.Identifier.ValueText;
+                kind = LspSymbolKind.Interface;
+                selectionSpan = interfaceDeclaration.Identifier.Span;
+                return true;
+            case RecordDeclarationSyntax recordDeclaration:
+                name = recordDeclaration.Identifier.ValueText;
+                kind = recordDeclaration.ClassOrStructKeyword.IsKind(SyntaxKind.StructKeyword)
+                    ? LspSymbolKind.Struct
+                    : LspSymbolKind.Class;
+                selectionSpan = recordDeclaration.Identifier.Span;
+                return true;
+            case EnumDeclarationSyntax enumDeclaration:
+                name = enumDeclaration.Identifier.ValueText;
+                kind = LspSymbolKind.Enum;
+                selectionSpan = enumDeclaration.Identifier.Span;
+                return true;
+            case DelegateDeclarationSyntax delegateDeclaration:
+                name = delegateDeclaration.Identifier.ValueText;
+                kind = LspSymbolKind.Function;
+                selectionSpan = delegateDeclaration.Identifier.Span;
+                return true;
+            case MethodDeclarationSyntax methodDeclaration:
+                name = methodDeclaration.Identifier.ValueText;
+                kind = LspSymbolKind.Method;
+                selectionSpan = methodDeclaration.Identifier.Span;
+                return true;
+            case ConstructorDeclarationSyntax constructorDeclaration:
+                name = constructorDeclaration.Identifier.ValueText;
+                kind = LspSymbolKind.Constructor;
+                selectionSpan = constructorDeclaration.Identifier.Span;
+                return true;
+            case DestructorDeclarationSyntax destructorDeclaration:
+                name = "~" + destructorDeclaration.Identifier.ValueText;
+                kind = LspSymbolKind.Constructor;
+                selectionSpan = destructorDeclaration.Identifier.Span;
+                return true;
+            case OperatorDeclarationSyntax operatorDeclaration:
+                name = "operator " + operatorDeclaration.OperatorToken.ValueText;
+                kind = LspSymbolKind.Operator;
+                selectionSpan = operatorDeclaration.OperatorToken.Span;
+                return true;
+            case ConversionOperatorDeclarationSyntax conversionDeclaration:
+                name = "operator " + conversionDeclaration.Type;
+                kind = LspSymbolKind.Operator;
+                selectionSpan = conversionDeclaration.Type.Span;
+                return true;
+            case PropertyDeclarationSyntax propertyDeclaration:
+                name = propertyDeclaration.Identifier.ValueText;
+                kind = LspSymbolKind.Property;
+                selectionSpan = propertyDeclaration.Identifier.Span;
+                return true;
+            case IndexerDeclarationSyntax indexerDeclaration:
+                name = "this";
+                kind = LspSymbolKind.Property;
+                selectionSpan = indexerDeclaration.ThisKeyword.Span;
+                return true;
+            case EventDeclarationSyntax eventDeclaration:
+                name = eventDeclaration.Identifier.ValueText;
+                kind = LspSymbolKind.Event;
+                selectionSpan = eventDeclaration.Identifier.Span;
+                return true;
+            case EnumMemberDeclarationSyntax enumMember:
+                name = enumMember.Identifier.ValueText;
+                kind = LspSymbolKind.EnumMember;
+                selectionSpan = enumMember.Identifier.Span;
+                return true;
+            case LocalFunctionStatementSyntax localFunction:
+                name = localFunction.Identifier.ValueText;
+                kind = LspSymbolKind.Function;
+                selectionSpan = localFunction.Identifier.Span;
+                return true;
+            case VariableDeclaratorSyntax variable when
+                variable.Parent?.Parent is FieldDeclarationSyntax field:
+                name = variable.Identifier.ValueText;
+                kind = field.Modifiers.Any(SyntaxKind.ConstKeyword)
+                    ? LspSymbolKind.Constant
+                    : LspSymbolKind.Field;
+                selectionSpan = variable.Identifier.Span;
+                return true;
+            case VariableDeclaratorSyntax variable when
+                variable.Parent?.Parent is EventFieldDeclarationSyntax:
+                name = variable.Identifier.ValueText;
+                kind = LspSymbolKind.Event;
+                selectionSpan = variable.Identifier.Span;
+                return true;
+            default:
+                name = string.Empty;
+                kind = default;
+                selectionSpan = default;
+                return false;
+        }
+    }
+
+    private static LspRange ToLspRange(SourceText text, TextSpan span)
+    {
+        LinePositionSpan lineSpan = text.Lines.GetLinePositionSpan(span);
+        return new LspRange(
+            new Position(lineSpan.Start.Line, lineSpan.Start.Character),
+            new Position(lineSpan.End.Line, lineSpan.End.Character));
+    }
+
+    private static LspSymbolKind GetSymbolKind(ISymbol symbol) => symbol switch
+    {
+        INamespaceSymbol => LspSymbolKind.Namespace,
+        INamedTypeSymbol { TypeKind: TypeKind.Class or TypeKind.Submission } =>
+            LspSymbolKind.Class,
+        INamedTypeSymbol { TypeKind: TypeKind.Struct } => LspSymbolKind.Struct,
+        INamedTypeSymbol { TypeKind: TypeKind.Interface } => LspSymbolKind.Interface,
+        INamedTypeSymbol { TypeKind: TypeKind.Enum } => LspSymbolKind.Enum,
+        INamedTypeSymbol { TypeKind: TypeKind.Delegate } => LspSymbolKind.Function,
+        IMethodSymbol { MethodKind: MethodKind.Constructor or MethodKind.StaticConstructor } =>
+            LspSymbolKind.Constructor,
+        IMethodSymbol
+        {
+            MethodKind: MethodKind.UserDefinedOperator or MethodKind.Conversion
+        } => LspSymbolKind.Operator,
+        IMethodSymbol { MethodKind: MethodKind.LocalFunction } => LspSymbolKind.Function,
+        IMethodSymbol => LspSymbolKind.Method,
+        IPropertySymbol => LspSymbolKind.Property,
+        IFieldSymbol { ContainingType.TypeKind: TypeKind.Enum } => LspSymbolKind.EnumMember,
+        IFieldSymbol { IsConst: true } => LspSymbolKind.Constant,
+        IFieldSymbol => LspSymbolKind.Field,
+        IEventSymbol => LspSymbolKind.Event,
+        ITypeParameterSymbol => LspSymbolKind.TypeParameter,
+        ILocalSymbol or IParameterSymbol or IRangeVariableSymbol => LspSymbolKind.Variable,
+        _ => LspSymbolKind.ObjectValue
+    };
+
+    private static string? GetContainerName(ISymbol symbol)
+    {
+        ISymbol? container = symbol.ContainingType ?? (ISymbol?)symbol.ContainingNamespace;
+        return container is null ||
+            container is INamespaceSymbol { IsGlobalNamespace: true }
+                ? null
+                : container.ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat);
+    }
+
+    private static int GetWorkspaceSymbolMatchRank(string name, string query)
+    {
+        if (query.Length == 0 || string.Equals(name, query, StringComparison.OrdinalIgnoreCase))
+        {
+            return 0;
+        }
+
+        if (name.StartsWith(query, StringComparison.OrdinalIgnoreCase))
+        {
+            return 1;
+        }
+
+        return name.Contains(query, StringComparison.OrdinalIgnoreCase) ? 2 : 3;
+    }
+
+    private static BaseArgumentListSyntax? FindArgumentList(SyntaxNode root, int offset)
+    {
+        int tokenOffset = Math.Clamp(offset == root.FullSpan.End ? offset - 1 : offset, 0,
+            Math.Max(0, root.FullSpan.End - 1));
+        SyntaxToken token = root.FindToken(tokenOffset, findInsideTrivia: true);
+        return token.Parent?
+            .AncestorsAndSelf()
+            .OfType<BaseArgumentListSyntax>()
+            .FirstOrDefault(argumentList =>
+                argumentList.SpanStart < offset && offset <= argumentList.Span.End);
+    }
+
+    private static (IReadOnlyList<IMethodSymbol> Methods, IMethodSymbol? SelectedMethod)
+        GetSignatureMethods(
+            BaseArgumentListSyntax argumentList,
+            SemanticModel semanticModel,
+            CancellationToken cancellationToken)
+    {
+        IEnumerable<IMethodSymbol> candidates;
+        SymbolInfo symbolInfo;
+        switch (argumentList.Parent)
+        {
+            case InvocationExpressionSyntax invocation:
+                symbolInfo = semanticModel.GetSymbolInfo(invocation, cancellationToken);
+                candidates = semanticModel
+                    .GetMemberGroup(invocation.Expression, cancellationToken)
+                    .OfType<IMethodSymbol>();
+                break;
+            case ObjectCreationExpressionSyntax objectCreation:
+                symbolInfo = semanticModel.GetSymbolInfo(objectCreation, cancellationToken);
+                candidates = semanticModel.GetTypeInfo(objectCreation.Type, cancellationToken).Type
+                    is INamedTypeSymbol namedType
+                        ? namedType.InstanceConstructors
+                        : [];
+                break;
+            case ConstructorInitializerSyntax constructorInitializer:
+                symbolInfo = semanticModel.GetSymbolInfo(
+                    constructorInitializer,
+                    cancellationToken);
+                candidates = symbolInfo.CandidateSymbols.OfType<IMethodSymbol>();
+                break;
+            default:
+                return ([], null);
+        }
+
+        var methods = new List<IMethodSymbol>();
+        foreach (IMethodSymbol method in candidates
+            .Concat(symbolInfo.CandidateSymbols.OfType<IMethodSymbol>())
+            .Append(symbolInfo.Symbol as IMethodSymbol)
+            .OfType<IMethodSymbol>())
+        {
+            if (!methods.Any(candidate => SymbolEqualityComparer.Default.Equals(candidate, method)))
+            {
+                methods.Add(method);
+            }
+        }
+
+        methods.Sort(static (left, right) =>
+        {
+            int parameterComparison = left.Parameters.Length.CompareTo(right.Parameters.Length);
+            return parameterComparison != 0
+                ? parameterComparison
+                : StringComparer.Ordinal.Compare(
+                    left.ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat),
+                    right.ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat));
+        });
+        return (methods, symbolInfo.Symbol as IMethodSymbol);
+    }
+
+    private static int FindBestSignature(IReadOnlyList<IMethodSymbol> methods, int activeParameter)
+    {
+        for (int index = 0; index < methods.Count; index++)
+        {
+            IMethodSymbol method = methods[index];
+            if (method.Parameters.Length > activeParameter ||
+                method.Parameters is [.., { IsParams: true }])
+            {
+                return index;
+            }
+        }
+
+        return 0;
+    }
+
+    private static int FindSignatureIndex(
+        IReadOnlyList<IMethodSymbol> methods,
+        IMethodSymbol selectedMethod)
+    {
+        for (int index = 0; index < methods.Count; index++)
+        {
+            if (SymbolEqualityComparer.Default.Equals(methods[index], selectedMethod) ||
+                SymbolEqualityComparer.Default.Equals(
+                    methods[index].OriginalDefinition,
+                    selectedMethod.OriginalDefinition))
+            {
+                return index;
+            }
+        }
+
+        return 0;
+    }
+
+    private static SignatureInformation CreateSignatureInformation(
+        IMethodSymbol method,
+        int activeParameter)
+    {
+        ParameterInformation[] parameters =
+        [
+            .. method.Parameters.Select(static parameter => new ParameterInformation
+            {
+                Label = parameter.ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat)
+            })
+        ];
+        return new SignatureInformation
+        {
+            Label = method.ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat),
+            Parameters = parameters,
+            ActiveParameter = parameters.Length == 0
+                ? null
+                : Math.Min(activeParameter, parameters.Length - 1)
+        };
     }
 
     private static StringComparer PathComparer =>

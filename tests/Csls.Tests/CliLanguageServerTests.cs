@@ -292,6 +292,113 @@ public sealed class CliLanguageServerTests
                         .GetInt32());
             }
 
+            (int documentSymbolsExitCode, string documentSymbolsOutput,
+                string documentSymbolsError) = await RunCliAsync(
+                    cliPath,
+                    cliWorkerPath,
+                    fixturePath,
+                    [
+                        "query",
+                        "document-symbols",
+                        documentPath,
+                        "--session",
+                        processId,
+                        "--json"
+                    ],
+                    TestContext.CancellationToken).ConfigureAwait(false);
+            Assert.AreEqual(
+                0,
+                documentSymbolsExitCode,
+                $"{documentSymbolsError}{Environment.NewLine}{documentSymbolsOutput}");
+            using (var documentSymbolsDocument = JsonDocument.Parse(documentSymbolsOutput))
+            {
+                JsonElement documentSymbolsRoot = documentSymbolsDocument.RootElement;
+                AssertSuccessfulEnvelope(documentSymbolsRoot);
+                JsonElement sourceNamespace = documentSymbolsRoot.GetProperty("data")[0];
+                Assert.AreEqual("Fixture", sourceNamespace.GetProperty("name").GetString());
+                Assert.Contains(
+                    "Program",
+                    sourceNamespace
+                        .GetProperty("children")
+                        .EnumerateArray()
+                        .Select(static symbol => symbol.GetProperty("name").GetString()));
+            }
+
+            (int symbolsExitCode, string symbolsOutput, string symbolsError) =
+                await RunCliAsync(
+                    cliPath,
+                    cliWorkerPath,
+                    fixturePath,
+                    [
+                        "query",
+                        "symbols",
+                        "Help",
+                        "--session",
+                        processId,
+                        "--json"
+                    ],
+                    TestContext.CancellationToken).ConfigureAwait(false);
+            Assert.AreEqual(
+                0,
+                symbolsExitCode,
+                $"{symbolsError}{Environment.NewLine}{symbolsOutput}");
+            using (var symbolsDocument = JsonDocument.Parse(symbolsOutput))
+            {
+                JsonElement symbolsRoot = symbolsDocument.RootElement;
+                AssertSuccessfulEnvelope(symbolsRoot);
+                JsonElement helper = symbolsRoot
+                    .GetProperty("data")
+                    .EnumerateArray()
+                    .Single(static symbol => symbol.GetProperty("name").GetString() == "Helper");
+                JsonElement helperStart = helper
+                    .GetProperty("location")
+                    .GetProperty("range")
+                    .GetProperty("start");
+                Assert.AreEqual(10, helperStart.GetProperty("line").GetInt32());
+                Assert.AreEqual(24, helperStart.GetProperty("character").GetInt32());
+            }
+
+            (int signatureExitCode, string signatureOutput, string signatureError) =
+                await RunCliAsync(
+                    cliPath,
+                    cliWorkerPath,
+                    fixturePath,
+                    [
+                        "query",
+                        "signature-help",
+                        documentPath,
+                        "--line",
+                        "7",
+                        "--character",
+                        "15",
+                        "--session",
+                        processId,
+                        "--json"
+                    ],
+                    TestContext.CancellationToken).ConfigureAwait(false);
+            Assert.AreEqual(
+                0,
+                signatureExitCode,
+                $"{signatureError}{Environment.NewLine}{signatureOutput}");
+            using (var signatureDocument = JsonDocument.Parse(signatureOutput))
+            {
+                JsonElement signatureRoot = signatureDocument.RootElement;
+                AssertSuccessfulEnvelope(signatureRoot);
+                JsonElement signatures = signatureRoot
+                    .GetProperty("data")
+                    .GetProperty("signatures");
+                Assert.Contains(
+                    "Helper",
+                    signatures
+                        .EnumerateArray()
+                        .Select(static signature =>
+                            signature.GetProperty("label").GetString()?.Contains(
+                                "Helper",
+                                StringComparison.Ordinal) == true
+                                ? "Helper"
+                                : string.Empty));
+            }
+
             string diagnostics = await lsp.ShutdownAsync(
                 TestContext.CancellationToken).ConfigureAwait(false);
             Assert.DoesNotContain("Unhandled exception", diagnostics, StringComparison.Ordinal);
@@ -367,11 +474,12 @@ public sealed class CliLanguageServerTests
             public static void Main()
             {
                 Console.WriteLine(Missing);
-                Helper();
+                Helper(1);
             }
 
-            private static void Helper()
+            private static void Helper(int value)
             {
+                Console.WriteLine(value);
             }
         }
         """;

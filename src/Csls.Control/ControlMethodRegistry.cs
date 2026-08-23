@@ -46,6 +46,26 @@ internal static class ControlMethodRegistry
             ControlMethods.GetReferences,
             new Func<ControlNavigationRequest, CancellationToken, Task<IReadOnlyList<Location>>>(
                 target.GetReferencesAsync));
+        AddParameterObjectMethod(
+            rpc,
+            ControlMethods.GetDocumentSymbols,
+            new Func<ControlDocumentRequest, CancellationToken, Task<IReadOnlyList<DocumentSymbol>>>(
+                target.GetDocumentSymbolsAsync));
+        AddParameterObjectMethod(
+            rpc,
+            ControlMethods.GetWorkspaceSymbols,
+            new Func<ControlWorkspaceSymbolRequest, CancellationToken, Task<IReadOnlyList<WorkspaceSymbol>>>(
+                target.GetWorkspaceSymbolsAsync));
+        AddParameterObjectMethod(
+            rpc,
+            ControlMethods.ResolveWorkspaceSymbol,
+            new Func<WorkspaceSymbol, CancellationToken, Task<WorkspaceSymbol>>(
+                target.ResolveWorkspaceSymbolAsync));
+        AddParameterObjectMethod(
+            rpc,
+            ControlMethods.GetSignatureHelp,
+            new Func<ControlSignatureHelpRequest, CancellationToken, Task<SignatureHelp?>>(
+                target.GetSignatureHelpAsync));
     }
 
     private static void AddParameterObjectMethod(

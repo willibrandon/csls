@@ -39,4 +39,19 @@ public sealed record ServerCapabilities
     /// Gets whether source reference requests are supported.
     /// </summary>
     public bool ReferencesProvider { get; init; }
+
+    /// <summary>
+    /// Gets whether hierarchical document symbol requests are supported.
+    /// </summary>
+    public bool DocumentSymbolProvider { get; init; }
+
+    /// <summary>
+    /// Gets the workspace symbol search and resolve behavior.
+    /// </summary>
+    public WorkspaceSymbolOptions? WorkspaceSymbolProvider { get; init; }
+
+    /// <summary>
+    /// Gets the signature help trigger behavior.
+    /// </summary>
+    public SignatureHelpOptions? SignatureHelpProvider { get; init; }
 }

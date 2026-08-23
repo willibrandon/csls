@@ -194,7 +194,7 @@ public sealed partial class ControlRpcServer : IHostedService, IAsyncDisposable
             stream);
         using var formatter = new SystemTextJsonFormatter
         {
-            JsonSerializerOptions = ControlJson.CreateSerializerOptions()
+            JsonSerializerOptions = ControlRpcJson.CreateSerializerOptions()
         };
         using var boundedStream = new BoundedMessageStream(
             stream,
