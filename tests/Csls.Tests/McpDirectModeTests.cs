@@ -94,7 +94,7 @@ public sealed class McpDirectModeTests
                     Command = isManagedLauncher ? dotnetHost : mcpPath,
                     Arguments = arguments,
                     Name = "csls-mcp-direct-integration",
-                    WorkingDirectory = fixturePath,
+                    WorkingDirectory = repositoryRoot,
                     InheritEnvironmentVariables = false,
                     EnvironmentVariables = environment,
                     StandardErrorLines = TestContext.WriteLine
