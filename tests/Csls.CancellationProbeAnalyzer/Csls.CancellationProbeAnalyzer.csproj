@@ -12,6 +12,7 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <Compile Include="../../test-assets/Csls.CancellationProbeAnalyzer/AnalyzerExecutionProbeAnalyzer.cs" />
     <Compile Include="../../test-assets/Csls.CancellationProbeAnalyzer/CancellationProbeAnalyzer.cs" />
     <PackageReference Include="Microsoft.CodeAnalysis.CSharp" PrivateAssets="All" />
     <ProjectReference Include="../../test-assets/Csls.CancellationProbeTransport/Csls.CancellationProbeTransport.csproj" />

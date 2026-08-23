@@ -139,7 +139,9 @@ public sealed class McpLanguageServerTests
             try
             {
                 Assert.AreEqual("csls", client.ServerInfo.Name);
-                Assert.IsNotNull(client.NegotiatedProtocolVersion);
+                string negotiatedProtocolVersion = client.NegotiatedProtocolVersion
+                    ?? throw new InvalidDataException(
+                        "The MCP client did not negotiate a protocol version.");
 
                 IList<McpClientTool> tools = await client
                     .ListToolsAsync(cancellationToken: TestContext.CancellationToken)
@@ -359,10 +361,10 @@ public sealed class McpLanguageServerTests
                         ["character"] = 9
                     },
                     cancellationToken: TestContext.CancellationToken).ConfigureAwait(false);
-                Assert.IsNull(definitionResult.IsError);
-                Assert.IsTrue(definitionResult.StructuredContent.HasValue);
                 IReadOnlyList<Location> definitions =
-                    definitionResult.StructuredContent.Value.Deserialize(
+                    GetStructuredCollection(
+                        definitionResult,
+                        negotiatedProtocolVersion).Deserialize(
                         ControlJsonSerializerContext.Default.IReadOnlyListLocation)
                     ?? throw new InvalidDataException(
                         "MCP returned no structured definition locations.");
@@ -378,10 +380,10 @@ public sealed class McpLanguageServerTests
                         ["character"] = 17
                     },
                     cancellationToken: TestContext.CancellationToken).ConfigureAwait(false);
-                Assert.IsNull(declarationResult.IsError);
-                Assert.IsTrue(declarationResult.StructuredContent.HasValue);
                 Location declaration = Assert.ContainsSingle(
-                    declarationResult.StructuredContent.Value.Deserialize(
+                    GetStructuredCollection(
+                        declarationResult,
+                        negotiatedProtocolVersion).Deserialize(
                         ControlJsonSerializerContext.Default.IReadOnlyListLocation)
                     ?? throw new InvalidDataException("MCP returned no declaration locations."));
                 Assert.AreEqual(new Position(4, 9), declaration.Range.Start);
@@ -395,10 +397,10 @@ public sealed class McpLanguageServerTests
                         ["character"] = 17
                     },
                     cancellationToken: TestContext.CancellationToken).ConfigureAwait(false);
-                Assert.IsNull(typeDefinitionResult.IsError);
-                Assert.IsTrue(typeDefinitionResult.StructuredContent.HasValue);
                 Location typeDefinition = Assert.ContainsSingle(
-                    typeDefinitionResult.StructuredContent.Value.Deserialize(
+                    GetStructuredCollection(
+                        typeDefinitionResult,
+                        negotiatedProtocolVersion).Deserialize(
                         ControlJsonSerializerContext.Default.IReadOnlyListLocation)
                     ?? throw new InvalidDataException(
                         "MCP returned no type-definition locations."));
@@ -413,10 +415,10 @@ public sealed class McpLanguageServerTests
                         ["character"] = 10
                     },
                     cancellationToken: TestContext.CancellationToken).ConfigureAwait(false);
-                Assert.IsNull(implementationResult.IsError);
-                Assert.IsTrue(implementationResult.StructuredContent.HasValue);
                 Location implementation = Assert.ContainsSingle(
-                    implementationResult.StructuredContent.Value.Deserialize(
+                    GetStructuredCollection(
+                        implementationResult,
+                        negotiatedProtocolVersion).Deserialize(
                         ControlJsonSerializerContext.Default.IReadOnlyListLocation)
                     ?? throw new InvalidDataException(
                         "MCP returned no implementation locations."));
@@ -448,10 +450,9 @@ public sealed class McpLanguageServerTests
                         ["character"] = 17
                     },
                     cancellationToken: TestContext.CancellationToken).ConfigureAwait(false);
-                Assert.IsNull(highlightsResult.IsError);
-                Assert.IsTrue(highlightsResult.StructuredContent.HasValue);
-                IReadOnlyList<DocumentHighlight> highlights = highlightsResult.StructuredContent
-                    .Value.Deserialize(
+                IReadOnlyList<DocumentHighlight> highlights = GetStructuredCollection(
+                    highlightsResult,
+                    negotiatedProtocolVersion).Deserialize(
                         ControlJsonSerializerContext.Default.IReadOnlyListDocumentHighlight)
                     ?? throw new InvalidDataException("MCP returned no document highlights.");
                 Assert.HasCount(4, highlights);
@@ -470,10 +471,10 @@ public sealed class McpLanguageServerTests
                         ["includeDeclaration"] = false
                     },
                     cancellationToken: TestContext.CancellationToken).ConfigureAwait(false);
-                Assert.IsNull(referencesResult.IsError);
-                Assert.IsTrue(referencesResult.StructuredContent.HasValue);
                 IReadOnlyList<Location> references =
-                    referencesResult.StructuredContent.Value.Deserialize(
+                    GetStructuredCollection(
+                        referencesResult,
+                        negotiatedProtocolVersion).Deserialize(
                         ControlJsonSerializerContext.Default.IReadOnlyListLocation)
                     ?? throw new InvalidDataException(
                         "MCP returned no structured reference locations.");
@@ -487,10 +488,10 @@ public sealed class McpLanguageServerTests
                         ["documentPath"] = documentPath
                     },
                     cancellationToken: TestContext.CancellationToken).ConfigureAwait(false);
-                Assert.IsNull(documentSymbolsResult.IsError);
-                Assert.IsTrue(documentSymbolsResult.StructuredContent.HasValue);
                 IReadOnlyList<DocumentSymbol> documentSymbols =
-                    documentSymbolsResult.StructuredContent.Value.Deserialize(
+                    GetStructuredCollection(
+                        documentSymbolsResult,
+                        negotiatedProtocolVersion).Deserialize(
                         ControlJsonSerializerContext.Default.IReadOnlyListDocumentSymbol)
                     ?? throw new InvalidDataException(
                         "MCP returned no structured document symbols.");
@@ -508,10 +509,10 @@ public sealed class McpLanguageServerTests
                         ["query"] = "Help"
                     },
                     cancellationToken: TestContext.CancellationToken).ConfigureAwait(false);
-                Assert.IsNull(workspaceSymbolsResult.IsError);
-                Assert.IsTrue(workspaceSymbolsResult.StructuredContent.HasValue);
                 IReadOnlyList<WorkspaceSymbol> workspaceSymbols =
-                    workspaceSymbolsResult.StructuredContent.Value.Deserialize(
+                    GetStructuredCollection(
+                        workspaceSymbolsResult,
+                        negotiatedProtocolVersion).Deserialize(
                         ControlJsonSerializerContext.Default.IReadOnlyListWorkspaceSymbol)
                     ?? throw new InvalidDataException(
                         "MCP returned no structured workspace symbols.");
@@ -672,10 +673,9 @@ public sealed class McpLanguageServerTests
                         ["kind"] = "source"
                     },
                     cancellationToken: TestContext.CancellationToken).ConfigureAwait(false);
-                Assert.IsNull(codeActionsResult.IsError);
-                Assert.IsTrue(codeActionsResult.StructuredContent.HasValue);
-                IReadOnlyList<ControlCodeActionPlan> codeActions = codeActionsResult
-                    .StructuredContent.Value
+                IReadOnlyList<ControlCodeActionPlan> codeActions = GetStructuredCollection(
+                    codeActionsResult,
+                    negotiatedProtocolVersion)
                     .Deserialize(ControlJsonSerializerContext.Default.IReadOnlyListControlCodeActionPlan)
                     ?? throw new InvalidDataException("MCP returned no code action previews.");
                 ControlCodeActionPlan organizeImports = Assert.ContainsSingle(codeActions);
@@ -1073,6 +1073,29 @@ public sealed class McpLanguageServerTests
             ?? throw new InvalidDataException(
                 $"MCP returned no workspace operation result for {toolName}.");
     }
+
+    private static JsonElement GetStructuredCollection(
+        CallToolResult result,
+        string negotiatedProtocolVersion)
+    {
+        Assert.IsNull(result.IsError);
+        Assert.IsTrue(result.StructuredContent.HasValue);
+        JsonElement structuredContent = result.StructuredContent.Value;
+        if (string.CompareOrdinal(
+                negotiatedProtocolVersion,
+                NaturalStructuredOutputProtocolVersion) >= 0)
+        {
+            Assert.AreEqual(JsonValueKind.Array, structuredContent.ValueKind);
+            return structuredContent;
+        }
+
+        Assert.AreEqual(JsonValueKind.Object, structuredContent.ValueKind);
+        Assert.IsTrue(structuredContent.TryGetProperty("result", out JsonElement collection));
+        Assert.AreEqual(JsonValueKind.Array, collection.ValueKind);
+        return collection;
+    }
+
+    private const string NaturalStructuredOutputProtocolVersion = "2026-07-28";
 
     private const string ProjectText = """
         <Project Sdk="Microsoft.NET.Sdk">
