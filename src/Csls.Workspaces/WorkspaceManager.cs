@@ -1161,6 +1161,54 @@ public sealed partial class WorkspaceManager : IAsyncDisposable
     {
         ArgumentNullException.ThrowIfNull(parameters);
         ValidateFormattingOptions(parameters.Options);
+        string path = parameters.TextDocument.Uri.GetFileSystemPath();
+        if (WorkspaceRazorDiagnosticService.IsRazorDocument(path))
+        {
+            SourceText? originalRazorText = _razorDocuments.GetValueOrDefault(path);
+            if (originalRazorText is null)
+            {
+                ImmutableArray<(string RootPath, Workspace Workspace, Solution Solution)> folders =
+                    _folders;
+                int folderIndex = FindFolderIndex(path, folders);
+                if (folderIndex >= 0)
+                {
+                    ImmutableArray<DocumentId> documentIds = folders[folderIndex]
+                        .Solution
+                        .GetDocumentIdsWithFilePath(path);
+                    for (int index = 0; index < documentIds.Length; index++)
+                    {
+                        TextDocument? razorDocument = folders[folderIndex]
+                            .Solution
+                            .GetAdditionalDocument(documentIds[index]);
+                        if (razorDocument is not null)
+                        {
+                            originalRazorText = await razorDocument
+                                .GetTextAsync(cancellationToken)
+                                .ConfigureAwait(false);
+                            break;
+                        }
+                    }
+                }
+            }
+
+            if (originalRazorText is null)
+            {
+                return [];
+            }
+
+            SourceText formattedRazorText = WorkspaceRazorFormattingService.Format(
+                originalRazorText,
+                path,
+                parameters.Options,
+                cancellationToken);
+            formattedRazorText = ApplyFinalFormattingOptions(
+                formattedRazorText,
+                parameters.Options);
+            return CreateTextEdits(
+                originalRazorText,
+                formattedRazorText.GetTextChanges(originalRazorText));
+        }
+
         Document? document = FindDocument(parameters.TextDocument.Uri);
         if (document is null)
         {
