@@ -6,7 +6,7 @@ description: Language Server Protocol features implemented by csls.
 `csls` advertises only capabilities backed by an active implementation. Current
 language features include:
 
-- C# compiler and analyzer diagnostics, plus project-aware Razor diagnostics and hover
+- C# compiler and analyzer diagnostics, plus project-aware Razor diagnostics, hover, and navigation
 - completion with import edits, negotiated snippets, lazy documentation, hover, and signature help
 - definitions, declarations, implementations, references, highlights, links, monikers, and linked editing
 - document and workspace symbols
@@ -39,7 +39,8 @@ from the owning project. They follow the current unsaved `.cshtml` or `.razor`
 snapshot and return to the persisted file after the editor closes it. Hover uses
 the same generated project snapshot and maps Roslyn content and ranges back to
 the Razor source, including symbols made available by `_Imports.razor` and
-`_ViewImports.cshtml`.
+`_ViewImports.cshtml`. Definition, declaration, type definition, and implementation
+requests use that snapshot and map Razor declarations back to their source files.
 
 [Configuration](../configuration/) is pulled through the standard workspace request
 when the client supports it. Push-only clients use the same settings and precedence.

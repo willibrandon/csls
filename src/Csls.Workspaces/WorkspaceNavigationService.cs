@@ -32,9 +32,34 @@ internal static class WorkspaceNavigationService
         Position position,
         CancellationToken cancellationToken)
     {
+        if (document is null)
+        {
+            return [];
+        }
+
+        SourceText text = await document.GetTextAsync(cancellationToken).ConfigureAwait(false);
+        int offset = LspPositionConverter.GetOffset(text, position);
+        return await GetDefinitionsAsync(
+            document,
+            offset,
+            cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Finds source definitions for a symbol at one generated document offset.
+    /// </summary>
+    /// <param name="document">The resolved Roslyn document.</param>
+    /// <param name="offset">The zero-based source offset.</param>
+    /// <param name="cancellationToken">The operation cancellation token.</param>
+    /// <returns>The bounded source definition locations.</returns>
+    internal static async Task<IReadOnlyList<LspLocation>> GetDefinitionsAsync(
+        Document document,
+        int offset,
+        CancellationToken cancellationToken)
+    {
         (Document? sourceDocument, ISymbol? symbol) = await FindSymbolAsync(
             document,
-            position,
+            offset,
             cancellationToken).ConfigureAwait(false);
         if (sourceDocument is null || symbol is null)
         {
@@ -63,9 +88,34 @@ internal static class WorkspaceNavigationService
         Position position,
         CancellationToken cancellationToken)
     {
+        if (document is null)
+        {
+            return [];
+        }
+
+        SourceText text = await document.GetTextAsync(cancellationToken).ConfigureAwait(false);
+        int offset = LspPositionConverter.GetOffset(text, position);
+        return await GetDeclarationsAsync(
+            document,
+            offset,
+            cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Finds source declarations for a symbol at one generated document offset.
+    /// </summary>
+    /// <param name="document">The resolved Roslyn document.</param>
+    /// <param name="offset">The zero-based source offset.</param>
+    /// <param name="cancellationToken">The operation cancellation token.</param>
+    /// <returns>The bounded source declaration locations.</returns>
+    internal static async Task<IReadOnlyList<LspLocation>> GetDeclarationsAsync(
+        Document document,
+        int offset,
+        CancellationToken cancellationToken)
+    {
         (Document? sourceDocument, ISymbol? symbol) = await FindSymbolAsync(
             document,
-            position,
+            offset,
             cancellationToken).ConfigureAwait(false);
         if (sourceDocument is null || symbol is null)
         {
@@ -105,9 +155,34 @@ internal static class WorkspaceNavigationService
         Position position,
         CancellationToken cancellationToken)
     {
+        if (document is null)
+        {
+            return [];
+        }
+
+        SourceText text = await document.GetTextAsync(cancellationToken).ConfigureAwait(false);
+        int offset = LspPositionConverter.GetOffset(text, position);
+        return await GetTypeDefinitionsAsync(
+            document,
+            offset,
+            cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Finds source definitions for a symbol type at one generated document offset.
+    /// </summary>
+    /// <param name="document">The resolved Roslyn document.</param>
+    /// <param name="offset">The zero-based source offset.</param>
+    /// <param name="cancellationToken">The operation cancellation token.</param>
+    /// <returns>The bounded source type-definition locations.</returns>
+    internal static async Task<IReadOnlyList<LspLocation>> GetTypeDefinitionsAsync(
+        Document document,
+        int offset,
+        CancellationToken cancellationToken)
+    {
         (Document? sourceDocument, ISymbol? symbol) = await FindSymbolAsync(
             document,
-            position,
+            offset,
             cancellationToken).ConfigureAwait(false);
         if (sourceDocument is null || symbol is null)
         {
@@ -143,9 +218,34 @@ internal static class WorkspaceNavigationService
         Position position,
         CancellationToken cancellationToken)
     {
+        if (document is null)
+        {
+            return [];
+        }
+
+        SourceText text = await document.GetTextAsync(cancellationToken).ConfigureAwait(false);
+        int offset = LspPositionConverter.GetOffset(text, position);
+        return await GetImplementationsAsync(
+            document,
+            offset,
+            cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Finds source implementations for a symbol at one generated document offset.
+    /// </summary>
+    /// <param name="document">The resolved Roslyn document.</param>
+    /// <param name="offset">The zero-based source offset.</param>
+    /// <param name="cancellationToken">The operation cancellation token.</param>
+    /// <returns>The bounded source implementation locations.</returns>
+    internal static async Task<IReadOnlyList<LspLocation>> GetImplementationsAsync(
+        Document document,
+        int offset,
+        CancellationToken cancellationToken)
+    {
         (Document? sourceDocument, ISymbol? symbol) = await FindSymbolAsync(
             document,
-            position,
+            offset,
             cancellationToken).ConfigureAwait(false);
         if (sourceDocument is null || symbol is null)
         {
@@ -379,6 +479,19 @@ internal static class WorkspaceNavigationService
 
         SourceText text = await document.GetTextAsync(cancellationToken).ConfigureAwait(false);
         int offset = LspPositionConverter.GetOffset(text, position);
+        return await FindSymbolAsync(document, offset, cancellationToken).ConfigureAwait(false);
+    }
+
+    private static async Task<(Document? Document, ISymbol? Symbol)> FindSymbolAsync(
+        Document? document,
+        int offset,
+        CancellationToken cancellationToken)
+    {
+        if (document is null)
+        {
+            return (null, null);
+        }
+
         SemanticModel semanticModel = await document
             .GetSemanticModelAsync(cancellationToken)
             .ConfigureAwait(false)
@@ -573,21 +686,42 @@ internal static class WorkspaceNavigationService
             return null;
         }
 
-        FileLinePositionSpan lineSpan = location.GetLineSpan();
         Document? document = project.Solution.GetDocument(location.SourceTree);
-        DocumentUri uri = document is SourceGeneratedDocument generatedDocument &&
-            !string.IsNullOrWhiteSpace(generatedDocument.Project.FilePath)
-            ? VirtualDocumentUri.CreateGenerated(
-                generatedDocument.Project.FilePath,
-                generatedDocument.HintName)
-            : DocumentUri.FromFileSystemPath(path);
-
-        return new LspLocation
+        if (document is SourceGeneratedDocument generatedDocument)
         {
-            Uri = uri,
-            Range = new LspRange(
-                new Position(lineSpan.StartLinePosition.Line, lineSpan.StartLinePosition.Character),
-                new Position(lineSpan.EndLinePosition.Line, lineSpan.EndLinePosition.Character))
-        };
+            FileLinePositionSpan mappedSpan = location.GetMappedLineSpan();
+            if (mappedSpan.IsValid &&
+                mappedSpan.HasMappedPath &&
+                !string.IsNullOrWhiteSpace(mappedSpan.Path))
+            {
+                return CreateLocation(
+                    DocumentUri.FromFileSystemPath(mappedSpan.Path),
+                    mappedSpan.Span);
+            }
+
+            if (!string.IsNullOrWhiteSpace(generatedDocument.Project.FilePath))
+            {
+                return CreateLocation(
+                    VirtualDocumentUri.CreateGenerated(
+                        generatedDocument.Project.FilePath,
+                        generatedDocument.HintName),
+                    location.GetLineSpan().Span);
+            }
+        }
+
+        return CreateLocation(
+            DocumentUri.FromFileSystemPath(path),
+            location.GetLineSpan().Span);
     }
+
+    private static LspLocation CreateLocation(
+        DocumentUri uri,
+        LinePositionSpan lineSpan) =>
+    new()
+    {
+        Uri = uri,
+        Range = new LspRange(
+            new Position(lineSpan.Start.Line, lineSpan.Start.Character),
+            new Position(lineSpan.End.Line, lineSpan.End.Character))
+    };
 }
