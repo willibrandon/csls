@@ -788,8 +788,27 @@ public sealed partial class WorkspaceManager : IAsyncDisposable
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(parameters);
+        string path = parameters.TextDocument.Uri.GetFileSystemPath();
+        ImmutableArray<(string RootPath, Workspace Workspace, Solution Solution)> folders = _folders;
+        int folderIndex = FindFolderIndex(path, folders);
+        if (folderIndex < 0)
+        {
+            return [];
+        }
+
+        Solution solution = folders[folderIndex].Solution;
+        if (WorkspaceRazorDiagnosticService.IsRazorDocument(path))
+        {
+            return await WorkspaceRazorNavigationService.GetReferencesAsync(
+                solution,
+                path,
+                parameters.Position,
+                parameters.Context.IncludeDeclaration,
+                cancellationToken).ConfigureAwait(false);
+        }
+
         return await WorkspaceNavigationService.GetReferencesAsync(
-            FindCurrentDocument(parameters.TextDocument.Uri),
+            FindDocument(solution, path),
             parameters.Position,
             parameters.Context.IncludeDeclaration,
             cancellationToken).ConfigureAwait(false);

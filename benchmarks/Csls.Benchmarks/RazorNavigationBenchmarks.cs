@@ -14,6 +14,7 @@ public class RazorNavigationBenchmarks : IAsyncDisposable
 {
     private WorkspaceManager _workspaceManager = null!;
     private TextDocumentPositionParams _parameters = null!;
+    private ReferenceParams _referenceParameters = null!;
     private string _fixturePath = null!;
     private int _disposeState;
 
@@ -59,6 +60,15 @@ public class RazorNavigationBenchmarks : IAsyncDisposable
             },
             Position = new Position(0, 6)
         };
+        _referenceParameters = new ReferenceParams
+        {
+            TextDocument = _parameters.TextDocument,
+            Position = _parameters.Position,
+            Context = new ReferenceContext
+            {
+                IncludeDeclaration = true
+            }
+        };
         IReadOnlyList<Location> locations = await _workspaceManager
             .GetDefinitionsAsync(_parameters, CancellationToken.None)
             .ConfigureAwait(false);
@@ -66,6 +76,15 @@ public class RazorNavigationBenchmarks : IAsyncDisposable
         {
             throw new InvalidOperationException(
                 "The Razor navigation benchmark did not resolve its fixture.");
+        }
+
+        IReadOnlyList<Location> references = await _workspaceManager
+            .GetReferencesAsync(_referenceParameters, CancellationToken.None)
+            .ConfigureAwait(false);
+        if (references.Count != 3)
+        {
+            throw new InvalidOperationException(
+                "The Razor reference benchmark did not resolve its fixture.");
         }
     }
 
@@ -75,6 +94,13 @@ public class RazorNavigationBenchmarks : IAsyncDisposable
     [Benchmark]
     public Task<IReadOnlyList<Location>> CachedDefinitionAsync() =>
         _workspaceManager.GetDefinitionsAsync(_parameters, CancellationToken.None);
+
+    /// <summary>
+    /// Measures repeated reference lookup after generated-document mapping has been indexed.
+    /// </summary>
+    [Benchmark]
+    public Task<IReadOnlyList<Location>> CachedReferencesAsync() =>
+        _workspaceManager.GetReferencesAsync(_referenceParameters, CancellationToken.None);
 
     /// <summary>
     /// Disposes the real workspace and removes the isolated project fixture.
@@ -122,5 +148,8 @@ public class RazorNavigationBenchmarks : IAsyncDisposable
         }
         """;
 
-    private const string RazorText = "<p>@Known.Value</p>";
+    private const string RazorText = """
+        <p>@Known.Value</p>
+        <span>@Known.Value</span>
+        """;
 }

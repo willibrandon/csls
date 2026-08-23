@@ -416,9 +416,37 @@ internal static class WorkspaceNavigationService
         bool includeDeclaration,
         CancellationToken cancellationToken)
     {
+        if (document is null)
+        {
+            return [];
+        }
+
+        SourceText text = await document.GetTextAsync(cancellationToken).ConfigureAwait(false);
+        int offset = LspPositionConverter.GetOffset(text, position);
+        return await GetReferencesAsync(
+            document,
+            offset,
+            includeDeclaration,
+            cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Finds source references for a symbol at one generated document offset.
+    /// </summary>
+    /// <param name="document">The resolved Roslyn document.</param>
+    /// <param name="offset">The zero-based source offset.</param>
+    /// <param name="includeDeclaration">Whether declaration locations are included.</param>
+    /// <param name="cancellationToken">The operation cancellation token.</param>
+    /// <returns>The bounded deduplicated source reference locations.</returns>
+    internal static async Task<IReadOnlyList<LspLocation>> GetReferencesAsync(
+        Document document,
+        int offset,
+        bool includeDeclaration,
+        CancellationToken cancellationToken)
+    {
         (Document? sourceDocument, ISymbol? symbol) = await FindSymbolAsync(
             document,
-            position,
+            offset,
             cancellationToken).ConfigureAwait(false);
         if (sourceDocument is null || symbol is null)
         {
@@ -430,30 +458,18 @@ internal static class WorkspaceNavigationService
             sourceDocument.Project.Solution,
             cancellationToken).ConfigureAwait(false);
         var locations = new HashSet<LspLocation>();
+        if (includeDeclaration)
+        {
+            IReadOnlyList<LspLocation> declarations = await CreateNavigationLocationsAsync(
+                sourceDocument.Project,
+                symbol,
+                cancellationToken).ConfigureAwait(false);
+            locations.UnionWith(declarations);
+        }
+
         foreach (ReferencedSymbol referencedSymbol in referencedSymbols)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            if (includeDeclaration)
-            {
-                int priorLocationCount = locations.Count;
-                AddNavigationLocations(
-                    locations,
-                    sourceDocument.Project,
-                    referencedSymbol.Definition.Locations);
-                if (locations.Count == priorLocationCount)
-                {
-                    LspLocation? metadataLocation = await WorkspaceVirtualDocumentService
-                        .GetMetadataLocationAsync(
-                        sourceDocument.Project,
-                        referencedSymbol.Definition,
-                        cancellationToken).ConfigureAwait(false);
-                    if (metadataLocation is not null)
-                    {
-                        locations.Add(metadataLocation);
-                    }
-                }
-            }
-
             AddNavigationLocations(
                 locations,
                 sourceDocument.Project,

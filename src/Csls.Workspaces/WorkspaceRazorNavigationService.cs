@@ -89,6 +89,36 @@ internal static class WorkspaceRazorNavigationService
             WorkspaceNavigationService.GetImplementationsAsync,
             cancellationToken);
 
+    /// <summary>
+    /// Finds source references for a symbol at one Razor source position.
+    /// </summary>
+    /// <param name="solution">The immutable workspace solution snapshot.</param>
+    /// <param name="path">The absolute Razor document path.</param>
+    /// <param name="position">The zero-based UTF-16 Razor position.</param>
+    /// <param name="includeDeclaration">Whether declaration locations are included.</param>
+    /// <param name="cancellationToken">The operation cancellation token.</param>
+    /// <returns>The bounded deduplicated source reference locations.</returns>
+    internal static async Task<IReadOnlyList<LspLocation>> GetReferencesAsync(
+        Solution solution,
+        string path,
+        Position position,
+        bool includeDeclaration,
+        CancellationToken cancellationToken)
+    {
+        RazorMappedDocument? mappedDocument = await WorkspaceRazorMappingService.ResolveAsync(
+            solution,
+            path,
+            position,
+            cancellationToken).ConfigureAwait(false);
+        return mappedDocument is null
+            ? []
+            : await WorkspaceNavigationService.GetReferencesAsync(
+                mappedDocument.Document,
+                mappedDocument.GeneratedOffset,
+                includeDeclaration,
+                cancellationToken).ConfigureAwait(false);
+    }
+
     private static async Task<IReadOnlyList<LspLocation>> GetAsync(
         Solution solution,
         string path,
