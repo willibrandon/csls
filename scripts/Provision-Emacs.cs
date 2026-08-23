@@ -35,9 +35,9 @@ if (args.Length is not 0 and not 2 ||
 try
 {
     string repositoryRoot = ScriptSupport.FindRepositoryRoot();
-    string toolsRoot = args.Length == 2
-        ? Path.GetFullPath(args[1])
-        : Path.Join(repositoryRoot, "artifacts", "tools");
+    string toolsRoot = ScriptSupport.ResolveToolsRoot(
+        repositoryRoot,
+        args.Length == 2 ? args[1] : null);
     string platform = SelectPlatform();
     string executablePath = OperatingSystem.IsWindows()
         ? await ProvisionWindowsAsync(toolsRoot, platform).ConfigureAwait(false)

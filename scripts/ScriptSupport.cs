@@ -35,6 +35,24 @@ internal static class ScriptSupport
     }
 
     /// <summary>
+    /// Resolves the tool installation root from an explicit path, environment, or repository default.
+    /// </summary>
+    /// <param name="repositoryRoot">The absolute repository root.</param>
+    /// <param name="explicitOutputPath">An optional command-line output path.</param>
+    /// <returns>The absolute tool installation root.</returns>
+    internal static string ResolveToolsRoot(
+        string repositoryRoot,
+        string? explicitOutputPath = null)
+    {
+        string? configuredPath = !string.IsNullOrWhiteSpace(explicitOutputPath)
+            ? explicitOutputPath
+            : Environment.GetEnvironmentVariable("CSLS_TOOLS_ROOT");
+        return string.IsNullOrWhiteSpace(configuredPath)
+            ? Path.Join(repositoryRoot, "artifacts", "tools")
+            : Path.GetFullPath(configuredPath);
+    }
+
+    /// <summary>
     /// Downloads a file and rejects it unless its SHA-256 digest matches the pin.
     /// </summary>
     /// <param name="source">The source URI.</param>

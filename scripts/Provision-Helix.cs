@@ -32,9 +32,9 @@ if (args.Length is not 0 and not 2 ||
 try
 {
     string repositoryRoot = ScriptSupport.FindRepositoryRoot();
-    string toolsRoot = args.Length == 2
-        ? Path.GetFullPath(args[1])
-        : Path.Join(repositoryRoot, "artifacts", "tools");
+    string toolsRoot = ScriptSupport.ResolveToolsRoot(
+        repositoryRoot,
+        args.Length == 2 ? args[1] : null);
     (string platform, string assetName, string expectedSha256, string executableName) =
         SelectAsset();
     var source = new Uri(

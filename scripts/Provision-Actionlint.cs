@@ -33,9 +33,9 @@ if (args.Length is not 0 and not 2 ||
 try
 {
     string repositoryRoot = ScriptSupport.FindRepositoryRoot();
-    string toolsRoot = args.Length == 2
-        ? Path.GetFullPath(args[1])
-        : Path.Join(repositoryRoot, "artifacts", "tools");
+    string toolsRoot = ScriptSupport.ResolveToolsRoot(
+        repositoryRoot,
+        args.Length == 2 ? args[1] : null);
     (string platform, string assetPlatform, string expectedSha256) = SelectAsset();
     string assetExtension = OperatingSystem.IsWindows() ? "zip" : "tar.gz";
     string assetName = $"actionlint_{Version}_{assetPlatform}.{assetExtension}";

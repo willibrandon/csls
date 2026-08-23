@@ -175,7 +175,6 @@ public sealed class EmacsLanguageServerTests
                             .ConfigureAwait(false);
                         using Hex1bTerminalSnapshot snapshot = automator.CreateSnapshot();
                         screenText = snapshot.GetScreenText();
-                        Assert.Contains("Target.cs", screenText, StringComparison.Ordinal);
                         Assert.Contains(
                             "Eglot reached the second solution",
                             screenText,

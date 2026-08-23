@@ -30,12 +30,11 @@ try
 {
     const string version = "1.7.12";
     string repositoryRoot = ScriptSupport.FindRepositoryRoot();
+    string toolsRoot = ScriptSupport.ResolveToolsRoot(repositoryRoot);
     string platform = GetPlatform();
     string executableName = OperatingSystem.IsWindows() ? "actionlint.exe" : "actionlint";
     string installationPath = Path.Join(
-        repositoryRoot,
-        "artifacts",
-        "tools",
+        toolsRoot,
         "actionlint",
         version,
         platform);

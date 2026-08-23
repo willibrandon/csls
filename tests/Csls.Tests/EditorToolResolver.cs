@@ -138,10 +138,12 @@ internal static class EditorToolResolver
             return configuredPath;
         }
 
+        string? configuredToolsRoot = Environment.GetEnvironmentVariable("CSLS_TOOLS_ROOT");
+        string toolsRoot = string.IsNullOrWhiteSpace(configuredToolsRoot)
+            ? Path.Join(repositoryRoot, "artifacts", "tools")
+            : Path.GetFullPath(configuredToolsRoot);
         string installationPath = Path.Join(
-            repositoryRoot,
-            "artifacts",
-            "tools",
+            toolsRoot,
             toolName,
             version,
             platform);

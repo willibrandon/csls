@@ -39,3 +39,7 @@ dotnet run --file scripts/Provision-Emacs.cs
 dotnet run --file scripts/Provision-Helix.cs
 dotnet run --file scripts/Provision-Neovim.cs
 ```
+
+Set `CSLS_TOOLS_ROOT` to keep provisioned tools outside the repository. The
+development container uses a container-local tool root so prefix-dependent
+editor installations never reuse artifacts from the host checkout.

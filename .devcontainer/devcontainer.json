@@ -39,6 +39,9 @@
       "label": "Documentation"
     }
   },
+  "remoteEnv": {
+    "CSLS_TOOLS_ROOT": "/home/vscode/.cache/csls/tools"
+  },
   "postCreateCommand": [
     "dotnet",
     "run",
