@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>Csls.Benchmarks</AssemblyName>
+    <RootNamespace>Csls.Benchmarks</RootNamespace>
+    <Description>BenchmarkDotNet coverage for performance-sensitive csls components.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="BenchmarkDotNet" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../../src/Csls.Core/Csls.Core.csproj" />
+    <ProjectReference Include="../../src/Csls.Protocol/Csls.Protocol.csproj" />
+  </ItemGroup>
+</Project>
