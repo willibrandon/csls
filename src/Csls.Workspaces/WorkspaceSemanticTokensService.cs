@@ -133,34 +133,47 @@ internal static class WorkspaceSemanticTokensService
                 $"Semantic classification exceeded {MaximumClassifiedSpans} spans.");
         }
 
+        var groups = new List<(TextSpan Span, int? TokenType, int Modifiers)>();
+        var groupIndices = new Dictionary<TextSpan, int>();
+        foreach (ClassifiedSpan classifiedSpan in classifiedSpans)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            TextSpan span = classifiedSpan.TextSpan;
+            if (span.Length == 0)
+            {
+                continue;
+            }
+
+            if (!groupIndices.TryGetValue(span, out int groupIndex))
+            {
+                groupIndex = groups.Count;
+                groupIndices.Add(span, groupIndex);
+                groups.Add((span, null, 0));
+            }
+
+            (TextSpan groupSpan, int? tokenType, int modifiers) = groups[groupIndex];
+            if (s_classificationModifiers.TryGetValue(
+                classifiedSpan.ClassificationType,
+                out int modifier))
+            {
+                modifiers |= modifier;
+            }
+            else if (tokenType is null &&
+                s_classificationTokenTypes.TryGetValue(
+                    classifiedSpan.ClassificationType,
+                    out string? tokenTypeName))
+            {
+                tokenType = s_tokenTypeIndices[tokenTypeName];
+            }
+
+            groups[groupIndex] = (groupSpan, tokenType, modifiers);
+        }
+
         var fragmentsByLine = new SortedDictionary<
             int,
             List<(int Start, int End, int TokenType, int Modifiers, int Specificity)>>();
-        foreach (IGrouping<TextSpan, ClassifiedSpan> group in
-            classifiedSpans
-                .Where(static span => span.TextSpan.Length > 0)
-                .GroupBy(static span => span.TextSpan))
+        foreach ((TextSpan span, int? tokenType, int modifiers) in groups)
         {
-            cancellationToken.ThrowIfCancellationRequested();
-            int? tokenType = null;
-            int modifiers = 0;
-            foreach (ClassifiedSpan classifiedSpan in group)
-            {
-                if (s_classificationModifiers.TryGetValue(
-                    classifiedSpan.ClassificationType,
-                    out int modifier))
-                {
-                    modifiers |= modifier;
-                }
-                else if (tokenType is null &&
-                    s_classificationTokenTypes.TryGetValue(
-                        classifiedSpan.ClassificationType,
-                        out string? tokenTypeName))
-                {
-                    tokenType = s_tokenTypeIndices[tokenTypeName];
-                }
-            }
-
             if (tokenType is null)
             {
                 continue;
@@ -168,7 +181,7 @@ internal static class WorkspaceSemanticTokensService
 
             AddSingleLineFragments(
                 text,
-                group.Key,
+                span,
                 tokenType.Value,
                 modifiers,
                 fragmentsByLine);

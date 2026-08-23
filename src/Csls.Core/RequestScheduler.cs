@@ -170,7 +170,7 @@ public sealed class RequestScheduler : IAsyncDisposable
     {
         try
         {
-            await Task.Run(operation, CancellationToken.None).ConfigureAwait(false);
+            await operation().ConfigureAwait(false);
         }
         finally
         {

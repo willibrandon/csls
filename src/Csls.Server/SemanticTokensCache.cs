@@ -146,9 +146,16 @@ internal sealed class SemanticTokensCache
             return [];
         }
 
-        int[]? replacement = insertCount == 0
-            ? null
-            : [.. current.Skip(prefixLength).Take(insertCount)];
+        int[]? replacement = null;
+        if (insertCount != 0)
+        {
+            replacement = new int[insertCount];
+            for (int index = 0; index < insertCount; index++)
+            {
+                replacement[index] = current[prefixLength + index];
+            }
+        }
+
         return
         [
             new SemanticTokensEdit

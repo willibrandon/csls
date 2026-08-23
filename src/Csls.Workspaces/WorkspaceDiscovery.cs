@@ -1,3 +1,5 @@
+using System.Collections.Frozen;
+
 namespace Csls.Workspaces;
 
 /// <summary>
@@ -14,8 +16,7 @@ internal static class WorkspaceDiscovery
         RecurseSubdirectories = false,
         ReturnSpecialDirectories = false
     };
-    private static readonly HashSet<string> s_excludedDirectoryNames = new(
-        StringComparer.OrdinalIgnoreCase)
+    private static readonly FrozenSet<string> s_excludedDirectoryNames = new[]
     {
         ".direnv",
         ".dotnet",
@@ -26,7 +27,7 @@ internal static class WorkspaceDiscovery
         "bin",
         "node_modules",
         "obj"
-    };
+    }.ToFrozenSet(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>
     /// Finds explicit solution or project files while excluding generated dependency trees.
@@ -100,18 +101,28 @@ internal static class WorkspaceDiscovery
                 }
             }
 
-            foreach (DirectoryInfo child in Directory
-                .EnumerateDirectories(directoryPath, "*", s_enumerationOptions)
-                .Select(static childPath => new DirectoryInfo(childPath))
-                .Where(static child => !s_excludedDirectoryNames.Contains(child.Name)))
+            foreach (string childPath in Directory.EnumerateDirectories(
+                directoryPath,
+                "*",
+                s_enumerationOptions))
             {
-                pendingDirectories.Enqueue(child.FullName);
+                EnqueueIfIncluded(pendingDirectories, childPath);
             }
         }
 
         List<string> selected = solutions.Count > 0 ? solutions : projects;
         selected.Sort(StringComparer.Ordinal);
         return selected;
+    }
+
+    private static void EnqueueIfIncluded(
+        Queue<string> pendingDirectories,
+        string directoryPath)
+    {
+        if (!s_excludedDirectoryNames.Contains(Path.GetFileName(directoryPath)))
+        {
+            pendingDirectories.Enqueue(directoryPath);
+        }
     }
 
     private static void AddWorkspaceFile(
