@@ -4,7 +4,10 @@
     <AssemblyName>csls-mcp-worker</AssemblyName>
     <RootNamespace>Csls.Mcp.Worker</RootNamespace>
     <Description>The self-contained ReadyToRun MCP bridge supervised by csls-mcp.</Description>
-    <PublishReadyToRun>true</PublishReadyToRun>
+    <PublishReadyToRun Condition="'$(RuntimeIdentifier)' != '' and '$(RuntimeIdentifier)' != 'any'">true</PublishReadyToRun>
+    <PublishReadyToRun Condition="'$(PublishReadyToRun)' == ''">false</PublishReadyToRun>
+    <SelfContained Condition="'$(RuntimeIdentifier)' != '' and '$(RuntimeIdentifier)' != 'any'">true</SelfContained>
+    <SelfContained Condition="'$(SelfContained)' == ''">false</SelfContained>
     <PublishSingleFile>false</PublishSingleFile>
     <PublishAot>false</PublishAot>
   </PropertyGroup>

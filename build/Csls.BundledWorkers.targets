@@ -1,0 +1,46 @@
+<Project>
+  <PropertyGroup>
+    <_CslsBundledWorkerBuildRoot>$([System.IO.Path]::GetFullPath('$(BaseIntermediateOutputPath)bundled-workers\$(MSBuildProjectName)\$(Configuration)\$(RuntimeIdentifier)\'))</_CslsBundledWorkerBuildRoot>
+    <_CslsBundledWorkerPropertiesToRemove>TargetFramework;TargetFrameworks;RuntimeIdentifiers;SelfContained</_CslsBundledWorkerPropertiesToRemove>
+    <_CslsBundledWorkerPropertiesToRemove>$(_CslsBundledWorkerPropertiesToRemove);PublishAot;PublishSingleFile;PublishTrimmed;PublishDir</_CslsBundledWorkerPropertiesToRemove>
+    <_CslsBundledWorkerPropertiesToRemove>$(_CslsBundledWorkerPropertiesToRemove);PublishReadyToRun;UseAppHost</_CslsBundledWorkerPropertiesToRemove>
+    <_CslsBundledWorkerPropertiesToRemove>$(_CslsBundledWorkerPropertiesToRemove);ArtifactsPath;PublishDir</_CslsBundledWorkerPropertiesToRemove>
+    <_CslsBundledWorkerPropertiesToRemove>$(_CslsBundledWorkerPropertiesToRemove);_CommandLineDefinedRuntimeIdentifier</_CslsBundledWorkerPropertiesToRemove>
+    <_CslsBundledWorkerPropertiesToRemove>$(_CslsBundledWorkerPropertiesToRemove);_CommandLineDefinedSelfContained</_CslsBundledWorkerPropertiesToRemove>
+    <_CslsBundledWorkerPropertiesToRemove>$(_CslsBundledWorkerPropertiesToRemove);_CommandLineDefinedOutputPath</_CslsBundledWorkerPropertiesToRemove>
+  </PropertyGroup>
+
+  <Target Name="_PublishCslsBundledWorkers"
+          AfterTargets="Publish"
+          Condition="'@(CslsBundledWorker)' != '' and '$(DesignTimeBuild)' != 'true'">
+    <ItemGroup>
+      <_CslsBundledWorkerProject Include="@(CslsBundledWorker)">
+        <AdditionalProperties>CslsBundledWorkerArtifactsPath=$(_CslsBundledWorkerBuildRoot)%(Filename)\artifacts\;CslsBundledWorkerPublishDir=$([System.IO.Path]::GetFullPath('$(PublishDir)%(BundlePath)\'))</AdditionalProperties>
+      </_CslsBundledWorkerProject>
+    </ItemGroup>
+
+    <MSBuild Projects="@(_CslsBundledWorkerProject)"
+             Targets="Restore;Publish"
+             BuildInParallel="false"
+             RemoveProperties="$(_CslsBundledWorkerPropertiesToRemove)" />
+  </Target>
+
+  <Target Name="_CleanCslsBundledWorkers"
+          BeforeTargets="Clean"
+          Condition="Exists('$(_CslsBundledWorkerBuildRoot)')">
+    <RemoveDir Directories="$(_CslsBundledWorkerBuildRoot)" />
+  </Target>
+
+  <Target Name="_RemoveCslsToolPackageArtifacts"
+          BeforeTargets="PackTool"
+          Condition="'$(_IsPacking)' == 'true'">
+    <ItemGroup>
+      <_CslsToolPackageArtifact Include="$(PublishDir)**\*.pdb" />
+      <_CslsToolPackageArtifact Include="$(PublishDir)**\*.xml" />
+      <_CslsToolPackageArtifact Include="$(PublishDir)**\*.dbg" />
+      <_CslsToolPackageArtifact Include="$(PublishDir)**\*.dwarf" />
+    </ItemGroup>
+    <Delete Files="@(_CslsToolPackageArtifact)" />
+    <RemoveDir Directories="$(PublishDir)$(AssemblyName).dSYM" />
+  </Target>
+</Project>

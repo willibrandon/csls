@@ -33,6 +33,8 @@ internal static class CliWorkerLocator
             : "csls-cli-worker";
         string[] candidates =
         [
+            Path.Combine(AppContext.BaseDirectory, "workers", "cli", executableName),
+            Path.Combine(AppContext.BaseDirectory, "workers", "cli", "csls-cli-worker.dll"),
             Path.Combine(AppContext.BaseDirectory, executableName),
             Path.Combine(AppContext.BaseDirectory, "csls-cli-worker.dll")
         ];

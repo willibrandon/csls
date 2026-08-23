@@ -32,6 +32,8 @@ internal static class WorkerLocator
             : "csls-worker";
         string[] candidates =
         [
+            Path.Combine(AppContext.BaseDirectory, "workers", "server", executableName),
+            Path.Combine(AppContext.BaseDirectory, "workers", "server", "csls-worker.dll"),
             Path.Combine(AppContext.BaseDirectory, executableName),
             Path.Combine(AppContext.BaseDirectory, "csls-worker.dll")
         ];

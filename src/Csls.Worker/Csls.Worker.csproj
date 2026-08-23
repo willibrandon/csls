@@ -4,7 +4,10 @@
     <AssemblyName>csls-worker</AssemblyName>
     <RootNamespace>Csls.Worker</RootNamespace>
     <Description>The self-contained ReadyToRun Roslyn worker supervised by csls.</Description>
-    <PublishReadyToRun>true</PublishReadyToRun>
+    <PublishReadyToRun Condition="'$(RuntimeIdentifier)' != '' and '$(RuntimeIdentifier)' != 'any'">true</PublishReadyToRun>
+    <PublishReadyToRun Condition="'$(PublishReadyToRun)' == ''">false</PublishReadyToRun>
+    <SelfContained Condition="'$(RuntimeIdentifier)' != '' and '$(RuntimeIdentifier)' != 'any'">true</SelfContained>
+    <SelfContained Condition="'$(SelfContained)' == ''">false</SelfContained>
     <PublishSingleFile>false</PublishSingleFile>
     <PublishAot>false</PublishAot>
   </PropertyGroup>

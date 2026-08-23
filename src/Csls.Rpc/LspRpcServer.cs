@@ -26,10 +26,7 @@ public static class LspRpcServer
         ArgumentNullException.ThrowIfNull(output);
         ArgumentNullException.ThrowIfNull(target);
 
-        using var formatter = new SystemTextJsonFormatter
-        {
-            JsonSerializerOptions = LspJson.CreateSerializerOptions()
-        };
+        using var formatter = new LspJsonRpcFormatter(LspJson.CreateSerializerOptions());
         using var messageHandler = new HeaderDelimitedMessageHandler(output, input, formatter);
         using var rpc = new JsonRpc(messageHandler)
         {

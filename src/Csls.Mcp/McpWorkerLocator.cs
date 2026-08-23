@@ -33,6 +33,8 @@ internal static class McpWorkerLocator
             : "csls-mcp-worker";
         string[] candidates =
         [
+            Path.Combine(AppContext.BaseDirectory, "workers", "mcp", executableName),
+            Path.Combine(AppContext.BaseDirectory, "workers", "mcp", "csls-mcp-worker.dll"),
             Path.Combine(AppContext.BaseDirectory, executableName),
             Path.Combine(AppContext.BaseDirectory, "csls-mcp-worker.dll")
         ];

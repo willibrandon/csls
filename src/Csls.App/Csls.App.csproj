@@ -9,10 +9,34 @@
     <ToolCommandName>csls</ToolCommandName>
     <PackageId>csls</PackageId>
     <PublishAot>true</PublishAot>
+    <PublishAot Condition="'$(RuntimeIdentifier)' == 'win-x86'">false</PublishAot>
+    <PublishReadyToRun Condition="'$(RuntimeIdentifier)' == 'win-x86'">true</PublishReadyToRun>
+    <SelfContained Condition="'$(RuntimeIdentifier)' == 'win-x86'">true</SelfContained>
     <InvariantGlobalization>false</InvariantGlobalization>
+    <RuntimeIdentifiers>win-x64;win-arm64;win-x86;linux-x64;linux-arm64;linux-musl-x64;linux-musl-arm64;osx-x64;osx-arm64</RuntimeIdentifiers>
+    <ToolPackageRuntimeIdentifiers>$(RuntimeIdentifiers);any</ToolPackageRuntimeIdentifiers>
+    <PackageTags>csharp;language-server;lsp;roslyn;editor;dotnet-tool</PackageTags>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <IncludeSymbols>false</IncludeSymbols>
   </PropertyGroup>
 
   <ItemGroup>
     <PackageReference Include="System.CommandLine" />
   </ItemGroup>
+
+  <ItemGroup>
+    <None Include="../../README.md" Pack="true" PackagePath="/" />
+    <None Include="../../LICENSE" Pack="true" PackagePath="/" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <CslsBundledWorker Include="../Csls.Worker/Csls.Worker.csproj">
+      <BundlePath>workers/server</BundlePath>
+    </CslsBundledWorker>
+    <CslsBundledWorker Include="../Csls.Cli.Worker/Csls.Cli.Worker.csproj">
+      <BundlePath>workers/cli</BundlePath>
+    </CslsBundledWorker>
+  </ItemGroup>
+
+  <Import Project="../../build/Csls.BundledWorkers.targets" />
 </Project>

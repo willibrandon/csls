@@ -9,10 +9,31 @@
     <ToolCommandName>csls-mcp</ToolCommandName>
     <PackageId>csls-mcp</PackageId>
     <PublishAot>true</PublishAot>
+    <PublishAot Condition="'$(RuntimeIdentifier)' == 'win-x86'">false</PublishAot>
+    <PublishReadyToRun Condition="'$(RuntimeIdentifier)' == 'win-x86'">true</PublishReadyToRun>
+    <SelfContained Condition="'$(RuntimeIdentifier)' == 'win-x86'">true</SelfContained>
     <InvariantGlobalization>false</InvariantGlobalization>
+    <RuntimeIdentifiers>win-x64;win-arm64;win-x86;linux-x64;linux-arm64;linux-musl-x64;linux-musl-arm64;osx-x64;osx-arm64</RuntimeIdentifiers>
+    <ToolPackageRuntimeIdentifiers>$(RuntimeIdentifiers);any</ToolPackageRuntimeIdentifiers>
+    <PackageTags>csharp;language-server;mcp;ai;roslyn;dotnet-tool</PackageTags>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <IncludeSymbols>false</IncludeSymbols>
   </PropertyGroup>
 
   <ItemGroup>
     <PackageReference Include="System.CommandLine" />
   </ItemGroup>
+
+  <ItemGroup>
+    <None Include="../../README.md" Pack="true" PackagePath="/" />
+    <None Include="../../LICENSE" Pack="true" PackagePath="/" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <CslsBundledWorker Include="../Csls.Mcp.Worker/Csls.Mcp.Worker.csproj">
+      <BundlePath>workers/mcp</BundlePath>
+    </CslsBundledWorker>
+  </ItemGroup>
+
+  <Import Project="../../build/Csls.BundledWorkers.targets" />
 </Project>
