@@ -91,8 +91,32 @@ internal static class ControlSessionWaiter
         ? StringComparer.OrdinalIgnoreCase
         : StringComparer.Ordinal;
 
-    private static string NormalizePath(string path) =>
-        Path.TrimEndingDirectorySeparator(Path.GetFullPath(path));
+    private static string NormalizePath(string path)
+    {
+        string fullPath = Path.TrimEndingDirectorySeparator(Path.GetFullPath(path));
+        if (OperatingSystem.IsWindows())
+        {
+            return fullPath;
+        }
+
+        string root = Path.GetPathRoot(fullPath)
+            ?? throw new InvalidOperationException($"The workspace path has no root: {fullPath}");
+        string currentPath = root;
+        foreach (string segment in fullPath[root.Length..].Split(
+            Path.DirectorySeparatorChar,
+            StringSplitOptions.RemoveEmptyEntries))
+        {
+            currentPath = Path.Join(currentPath, segment);
+            var directory = new DirectoryInfo(currentPath);
+            if (directory.LinkTarget is not null)
+            {
+                currentPath = directory.ResolveLinkTarget(returnFinalTarget: true)?.FullName
+                    ?? currentPath;
+            }
+        }
+
+        return Path.TrimEndingDirectorySeparator(currentPath);
+    }
 
     private static async Task<ControlSessionInfo?> TryGetSessionAsync(
         string socketPath,

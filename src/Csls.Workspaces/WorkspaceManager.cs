@@ -288,8 +288,8 @@ public sealed partial class WorkspaceManager : IAsyncDisposable
                     continue;
                 }
 
-                int start = GetOffset(text, range.Start);
-                int end = GetOffset(text, range.End);
+                int start = LspPositionConverter.GetOffset(text, range.Start);
+                int end = LspPositionConverter.GetOffset(text, range.End);
                 int replacedLength = end - start;
                 if (change.RangeLength is int expectedLength && expectedLength != replacedLength)
                 {
@@ -458,7 +458,7 @@ public sealed partial class WorkspaceManager : IAsyncDisposable
         }
 
         SourceText text = await document.GetTextAsync(cancellationToken).ConfigureAwait(false);
-        int offset = GetOffset(text, parameters.Position);
+        int offset = LspPositionConverter.GetOffset(text, parameters.Position);
         var service = CompletionService.GetService(document);
         if (service is null)
         {
@@ -675,7 +675,7 @@ public sealed partial class WorkspaceManager : IAsyncDisposable
         }
 
         SourceText text = await document.GetTextAsync(cancellationToken).ConfigureAwait(false);
-        int offset = GetOffset(text, parameters.Position);
+        int offset = LspPositionConverter.GetOffset(text, parameters.Position);
         var quickInfoService = QuickInfoService.GetService(document);
         if (quickInfoService is not null)
         {
@@ -904,7 +904,7 @@ public sealed partial class WorkspaceManager : IAsyncDisposable
         }
 
         SourceText text = await document.GetTextAsync(cancellationToken).ConfigureAwait(false);
-        int offset = GetOffset(text, parameters.Position);
+        int offset = LspPositionConverter.GetOffset(text, parameters.Position);
         SyntaxNode root = await document.GetSyntaxRootAsync(cancellationToken).ConfigureAwait(false)
             ?? throw new InvalidOperationException("Roslyn returned no syntax root.");
         BaseArgumentListSyntax? argumentList = FindArgumentList(root, offset);
@@ -966,7 +966,7 @@ public sealed partial class WorkspaceManager : IAsyncDisposable
         }
 
         SourceText text = await document.GetTextAsync(cancellationToken).ConfigureAwait(false);
-        int offset = GetOffset(text, parameters.Position);
+        int offset = LspPositionConverter.GetOffset(text, parameters.Position);
         SyntaxNode root = await document.GetSyntaxRootAsync(cancellationToken).ConfigureAwait(false)
             ?? throw new InvalidOperationException("Roslyn returned no syntax root.");
         int tokenOffset = Math.Clamp(
@@ -1909,8 +1909,8 @@ public sealed partial class WorkspaceManager : IAsyncDisposable
             .. edits
                 .Select(edit =>
                 {
-                    int start = GetOffset(originalText, edit.Range.Start);
-                    int end = GetOffset(originalText, edit.Range.End);
+                    int start = LspPositionConverter.GetOffset(originalText, edit.Range.Start);
+                    int end = LspPositionConverter.GetOffset(originalText, edit.Range.End);
                     return new TextChange(
                         TextSpan.FromBounds(start, end),
                         edit.NewText);
@@ -2174,28 +2174,6 @@ public sealed partial class WorkspaceManager : IAsyncDisposable
             .FirstOrDefault(document => string.Equals(document.FilePath, path, PathComparison));
     }
 
-    private static int GetOffset(SourceText text, Position position)
-    {
-        if (position.Line >= text.Lines.Count)
-        {
-            throw new ArgumentOutOfRangeException(
-                nameof(position),
-                position,
-                "The position line is outside the document.");
-        }
-
-        TextLine line = text.Lines[position.Line];
-        if (position.Character > line.Span.Length)
-        {
-            throw new ArgumentOutOfRangeException(
-                nameof(position),
-                position,
-                "The position character is outside the line.");
-        }
-
-        return line.Start + position.Character;
-    }
-
     private static async Task<ImmutableArray<RoslynDiagnostic>>
         ComputeProjectDiagnosticsAsync(Project project, CancellationToken cancellationToken)
     {
@@ -2454,7 +2432,7 @@ public sealed partial class WorkspaceManager : IAsyncDisposable
         }
 
         SourceText text = await document.GetTextAsync(cancellationToken).ConfigureAwait(false);
-        int offset = GetOffset(text, parameters.Position);
+        int offset = LspPositionConverter.GetOffset(text, parameters.Position);
         SemanticModel semanticModel = await document
             .GetSemanticModelAsync(cancellationToken)
             .ConfigureAwait(false)

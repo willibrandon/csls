@@ -44,7 +44,7 @@ public sealed class CliLanguageServerTests
         Directory.CreateDirectory(socketDirectory);
         string socketPath = Path.Join(
             socketDirectory,
-            $"disconnect-{Guid.NewGuid():N}.csls.socket");
+            $"d-{Guid.NewGuid():N}"[..14] + ".csls.socket");
         Task disconnectTask = AcceptAndDisconnectAsync(
             socketPath,
             TestContext.CancellationToken);

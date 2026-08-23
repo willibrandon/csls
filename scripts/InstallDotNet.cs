@@ -46,12 +46,15 @@ string installDirectory = requestedRuntimeIdentifier is null
     : Path.Join(repositoryRoot, "artifacts", "tools", "dotnet", runtimeIdentifier);
 string installedDotNet = Path.Join(
     installDirectory,
-    OperatingSystem.IsWindows() ? "dotnet.exe" : "dotnet");
+    GetDotNetExecutableName(runtimeIdentifier));
 
-if (File.Exists(installedDotNet))
+if (IsSdkLayoutInstalled(installDirectory, installedDotNet))
 {
-    string? installedVersion = await ReadSdkVersionAsync(installedDotNet).ConfigureAwait(false);
-    if (string.Equals(installedVersion, SdkVersion, StringComparison.Ordinal))
+    if (!CanExecuteTargetRuntime(runtimeIdentifier) ||
+        string.Equals(
+            await ReadSdkVersionAsync(installedDotNet).ConfigureAwait(false),
+            SdkVersion,
+            StringComparison.Ordinal))
     {
         await Console.Out.WriteLineAsync(
             $".NET SDK {SdkVersion} is already installed at {installDirectory}.")
@@ -117,11 +120,20 @@ try
             CancellationToken.None).ConfigureAwait(false);
     }
 
-    string? verifiedVersion = await ReadSdkVersionAsync(installedDotNet).ConfigureAwait(false);
-    if (!string.Equals(verifiedVersion, SdkVersion, StringComparison.Ordinal))
+    if (!IsSdkLayoutInstalled(installDirectory, installedDotNet))
     {
         throw new InvalidDataException(
-            $"SDK extraction completed, but {installedDotNet} reported {verifiedVersion ?? "no version"}.");
+            $"SDK extraction completed without the expected {SdkVersion} layout.");
+    }
+
+    if (CanExecuteTargetRuntime(runtimeIdentifier) &&
+        !string.Equals(
+            await ReadSdkVersionAsync(installedDotNet).ConfigureAwait(false),
+            SdkVersion,
+            StringComparison.Ordinal))
+    {
+        throw new InvalidDataException(
+            $"SDK extraction completed, but {installedDotNet} reported another version.");
     }
 
     await Console.Out.WriteLineAsync(
@@ -136,6 +148,28 @@ finally
 static string GetScriptDirectory([CallerFilePath] string scriptPath = "") =>
     Path.GetDirectoryName(scriptPath)
     ?? throw new InvalidOperationException("The script directory could not be determined.");
+
+static bool IsSdkLayoutInstalled(string installDirectory, string dotnetPath) =>
+    File.Exists(dotnetPath) &&
+    Directory.Exists(Path.Join(installDirectory, "sdk", SdkVersion));
+
+static string GetDotNetExecutableName(string runtimeIdentifier) =>
+    runtimeIdentifier.StartsWith("win-", StringComparison.Ordinal)
+        ? "dotnet.exe"
+        : "dotnet";
+
+static bool CanExecuteTargetRuntime(string runtimeIdentifier)
+{
+    string hostRuntimeIdentifier = GetHostRuntimeIdentifier();
+    if (string.Equals(hostRuntimeIdentifier, runtimeIdentifier, StringComparison.Ordinal))
+    {
+        return true;
+    }
+
+    return OperatingSystem.IsWindows() &&
+        runtimeIdentifier == "win-x86" &&
+        RuntimeInformation.OSArchitecture is Architecture.X64 or Architecture.Arm64;
+}
 
 static async Task<string?> ReadSdkVersionAsync(string dotnetPath)
 {
@@ -211,7 +245,20 @@ static (Uri Url, string Hash, string Extension) FindSdkArchive(
 
                 string name = file.GetProperty("name").GetString()
                     ?? throw new InvalidDataException("SDK metadata omitted the archive name.");
-                string extension = name.EndsWith(".zip", StringComparison.OrdinalIgnoreCase) ? ".zip" : ".tar.gz";
+                string extension;
+                if (name.EndsWith(".zip", StringComparison.OrdinalIgnoreCase))
+                {
+                    extension = ".zip";
+                }
+                else if (name.EndsWith(".tar.gz", StringComparison.OrdinalIgnoreCase))
+                {
+                    extension = ".tar.gz";
+                }
+                else
+                {
+                    continue;
+                }
+
                 string url = file.GetProperty("url").GetString()
                     ?? throw new InvalidDataException("SDK metadata omitted the archive URL.");
                 string hash = file.GetProperty("hash").GetString()

@@ -201,6 +201,16 @@ public sealed class HierarchyAndInlayHintLanguageServerTests
                 TestContext.CancellationToken).ConfigureAwait(false);
             Assert.HasCount(1, typeRangeHints);
             Assert.AreEqual(InlayHintKind.Type, typeRangeHints[0].Kind);
+            IReadOnlyList<InlayHint> clampedRangeHints = await lsp.RequestInlayHintsAsync(
+                documentPath,
+                new LspRange(
+                    new Position(0, 0),
+                    new Position(int.MaxValue, int.MaxValue)),
+                TestContext.CancellationToken).ConfigureAwait(false);
+            Assert.HasCount(2, clampedRangeHints);
+            AssertStringSet(
+                ["Worker", "count:"],
+                clampedRangeHints.Select(static hint => hint.Label));
 
             InlayHint resolvedParameter = await lsp.ResolveInlayHintAsync(
                 parameterHint,

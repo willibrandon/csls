@@ -189,7 +189,7 @@ internal static class WorkspaceNavigationService
         foreach (Position position in positions)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            int offset = GetOffset(text, position);
+            int offset = LspPositionConverter.GetOffset(text, position);
             ranges.Add(CreateSelectionRange(root, text, offset));
         }
 
@@ -344,7 +344,7 @@ internal static class WorkspaceNavigationService
         }
 
         SourceText text = await document.GetTextAsync(cancellationToken).ConfigureAwait(false);
-        int offset = GetOffset(text, position);
+        int offset = LspPositionConverter.GetOffset(text, position);
         SemanticModel semanticModel = await document
             .GetSemanticModelAsync(cancellationToken)
             .ConfigureAwait(false)
@@ -355,28 +355,6 @@ internal static class WorkspaceNavigationService
             document.Project.Solution.Workspace,
             cancellationToken).ConfigureAwait(false);
         return (document, symbol);
-    }
-
-    private static int GetOffset(SourceText text, Position position)
-    {
-        if (position.Line >= text.Lines.Count)
-        {
-            throw new ArgumentOutOfRangeException(
-                nameof(position),
-                position,
-                "The position line is outside the document.");
-        }
-
-        TextLine line = text.Lines[position.Line];
-        if (position.Character > line.Span.Length)
-        {
-            throw new ArgumentOutOfRangeException(
-                nameof(position),
-                position,
-                "The position character is outside the line.");
-        }
-
-        return line.Start + position.Character;
     }
 
     private static IReadOnlyList<LspLocation> CreateNavigationLocations(
@@ -419,14 +397,13 @@ internal static class WorkspaceNavigationService
         }
 
         foreach (TextSpan span in (token.Parent?.AncestorsAndSelf() ?? [])
-            .Select(static node => node.Span))
-        {
-            if (span.Start <= offset &&
+            .Select(static node => node.Span)
+            .Where(span =>
+                span.Start <= offset &&
                 offset <= span.End &&
-                spans[^1] != span)
-            {
-                spans.Add(span);
-            }
+                spans[^1] != span))
+        {
+            spans.Add(span);
         }
 
         LspSelectionRange? parent = null;

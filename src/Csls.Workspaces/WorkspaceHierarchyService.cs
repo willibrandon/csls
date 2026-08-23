@@ -359,7 +359,7 @@ internal static class WorkspaceHierarchyService
             ?? throw new InvalidOperationException("Roslyn returned no semantic model.");
         return await SymbolFinder.FindSymbolAtPositionAsync(
             semanticModel,
-            GetOffset(text, position),
+            LspPositionConverter.GetOffset(text, position),
             document.Project.Solution.Workspace,
             cancellationToken).ConfigureAwait(false);
     }
@@ -641,25 +641,4 @@ internal static class WorkspaceHierarchyService
             new Position(lineSpan.End.Line, lineSpan.End.Character));
     }
 
-    private static int GetOffset(SourceText text, Position position)
-    {
-        if (position.Line >= text.Lines.Count)
-        {
-            throw new ArgumentOutOfRangeException(
-                nameof(position),
-                position,
-                "The position line is outside the document.");
-        }
-
-        TextLine line = text.Lines[position.Line];
-        if (position.Character > line.Span.Length)
-        {
-            throw new ArgumentOutOfRangeException(
-                nameof(position),
-                position,
-                "The position character is outside the line.");
-        }
-
-        return line.Start + position.Character;
-    }
 }

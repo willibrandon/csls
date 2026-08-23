@@ -102,12 +102,10 @@ internal static class WorkspaceDiscovery
 
             foreach (DirectoryInfo child in Directory
                 .EnumerateDirectories(directoryPath, "*", s_enumerationOptions)
-                .Select(static childPath => new DirectoryInfo(childPath)))
+                .Select(static childPath => new DirectoryInfo(childPath))
+                .Where(static child => !s_excludedDirectoryNames.Contains(child.Name)))
             {
-                if (!s_excludedDirectoryNames.Contains(child.Name))
-                {
-                    pendingDirectories.Enqueue(child.FullName);
-                }
+                pendingDirectories.Enqueue(child.FullName);
             }
         }
 

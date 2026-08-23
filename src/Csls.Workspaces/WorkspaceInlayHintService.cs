@@ -346,8 +346,8 @@ internal static class WorkspaceInlayHintService
 
     private static TextSpan GetSpan(SourceText text, LspRange range)
     {
-        int start = GetOffset(text, range.Start);
-        int end = GetOffset(text, range.End);
+        int start = LspPositionConverter.GetOffset(text, range.Start);
+        int end = LspPositionConverter.GetOffset(text, range.End);
         if (end < start)
         {
             throw new ArgumentOutOfRangeException(
@@ -357,28 +357,6 @@ internal static class WorkspaceInlayHintService
         }
 
         return TextSpan.FromBounds(start, end);
-    }
-
-    private static int GetOffset(SourceText text, Position position)
-    {
-        if (position.Line >= text.Lines.Count)
-        {
-            throw new ArgumentOutOfRangeException(
-                nameof(position),
-                position,
-                "The position line is outside the document.");
-        }
-
-        TextLine line = text.Lines[position.Line];
-        if (position.Character > line.Span.Length)
-        {
-            throw new ArgumentOutOfRangeException(
-                nameof(position),
-                position,
-                "The position character is outside the line.");
-        }
-
-        return line.Start + position.Character;
     }
 
     private static Position ToPosition(SourceText text, int offset)
