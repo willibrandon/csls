@@ -43,9 +43,18 @@ public sealed class RazorDiagnosticLanguageServerTests
             Directory.CreateDirectory(componentsPath);
             string viewPath = Path.Join(pagesPath, "Index.cshtml");
             string componentPath = Path.Join(componentsPath, "Panel.razor");
+            string semanticPath = Path.Join(componentsPath, "Semantic.razor");
             await File.WriteAllTextAsync(
                 Path.Join(fixturePath, "Fixture.csproj"),
                 ProjectText,
+                TestContext.CancellationToken).ConfigureAwait(false);
+            await File.WriteAllTextAsync(
+                Path.Join(fixturePath, "Known.cs"),
+                KnownTypeText,
+                TestContext.CancellationToken).ConfigureAwait(false);
+            await File.WriteAllTextAsync(
+                Path.Join(fixturePath, "_Imports.razor"),
+                "@using Fixture",
                 TestContext.CancellationToken).ConfigureAwait(false);
             await File.WriteAllTextAsync(
                 viewPath,
@@ -54,6 +63,10 @@ public sealed class RazorDiagnosticLanguageServerTests
             await File.WriteAllTextAsync(
                 componentPath,
                 InvalidRazorText,
+                TestContext.CancellationToken).ConfigureAwait(false);
+            await File.WriteAllTextAsync(
+                semanticPath,
+                InvalidSemanticRazorText,
                 TestContext.CancellationToken).ConfigureAwait(false);
 
             var lsp = LspProcessSession.Start(
@@ -67,6 +80,8 @@ public sealed class RazorDiagnosticLanguageServerTests
                 TestContext.CancellationToken).ConfigureAwait(false);
             await lsp.OpenDocumentAsync(viewPath, InvalidRazorText, "razor").ConfigureAwait(false);
             await lsp.OpenDocumentAsync(componentPath, InvalidRazorText, "razor")
+                .ConfigureAwait(false);
+            await lsp.OpenDocumentAsync(semanticPath, InvalidSemanticRazorText, "razor")
                 .ConfigureAwait(false);
 
             DocumentDiagnosticReport viewReport = await lsp.RequestDiagnosticsAsync(
@@ -84,10 +99,24 @@ public sealed class RazorDiagnosticLanguageServerTests
                 TestContext.CancellationToken).ConfigureAwait(false);
             GetRazorCommentDiagnostic(componentReport);
 
+            DocumentDiagnosticReport semanticReport = await lsp.RequestDiagnosticsAsync(
+                semanticPath,
+                previousResultId: null,
+                TestContext.CancellationToken).ConfigureAwait(false);
+            Diagnostic semanticDiagnostic = GetMissingNameDiagnostic(semanticReport);
+            Assert.AreEqual(DiagnosticSeverity.Error, semanticDiagnostic.Severity);
+            Assert.AreEqual(new Position(1, 4), semanticDiagnostic.Range.Start);
+            Assert.AreEqual(new Position(1, 15), semanticDiagnostic.Range.End);
+
             await lsp.ChangeDocumentAsync(
                 viewPath,
                 version: 2,
                 [new TextDocumentContentChangeEvent { Text = ValidRazorText }])
+                .ConfigureAwait(false);
+            await lsp.ChangeDocumentAsync(
+                semanticPath,
+                version: 2,
+                [new TextDocumentContentChangeEvent { Text = ValidSemanticRazorText }])
                 .ConfigureAwait(false);
             DocumentDiagnosticReport fixedReport = await lsp.RequestDiagnosticsAsync(
                 viewPath,
@@ -98,6 +127,13 @@ public sealed class RazorDiagnosticLanguageServerTests
             Assert.DoesNotContain(
                 "RZ1028",
                 GetFullItems(fixedReport).Select(static diagnostic => diagnostic.Code));
+            DocumentDiagnosticReport fixedSemanticReport = await lsp.RequestDiagnosticsAsync(
+                semanticPath,
+                semanticReport.ResultId,
+                TestContext.CancellationToken).ConfigureAwait(false);
+            Assert.DoesNotContain(
+                "CS0103",
+                GetFullItems(fixedSemanticReport).Select(static diagnostic => diagnostic.Code));
 
             ControlSessionInfo session = await ControlSessionWaiter.WaitForRunningAsync(
                 fixturePath,
@@ -116,6 +152,13 @@ public sealed class RazorDiagnosticLanguageServerTests
             Assert.DoesNotContain(
                 "RZ1028",
                 GetFullItems(reloadedReport).Select(static diagnostic => diagnostic.Code));
+            DocumentDiagnosticReport reloadedSemanticReport = await lsp.RequestDiagnosticsAsync(
+                semanticPath,
+                fixedSemanticReport.ResultId,
+                TestContext.CancellationToken).ConfigureAwait(false);
+            Assert.DoesNotContain(
+                "CS0103",
+                GetFullItems(reloadedSemanticReport).Select(static diagnostic => diagnostic.Code));
 
             await lsp.CloseDocumentAsync(viewPath).ConfigureAwait(false);
             DocumentDiagnosticReport persistedReport = await lsp.RequestDiagnosticsAsync(
@@ -123,6 +166,12 @@ public sealed class RazorDiagnosticLanguageServerTests
                 reloadedReport.ResultId,
                 TestContext.CancellationToken).ConfigureAwait(false);
             GetRazorCommentDiagnostic(persistedReport);
+            await lsp.CloseDocumentAsync(semanticPath).ConfigureAwait(false);
+            DocumentDiagnosticReport persistedSemanticReport = await lsp.RequestDiagnosticsAsync(
+                semanticPath,
+                reloadedSemanticReport.ResultId,
+                TestContext.CancellationToken).ConfigureAwait(false);
+            GetMissingNameDiagnostic(persistedSemanticReport);
 
             string diagnostics = await lsp.ShutdownAsync(
                 TestContext.CancellationToken).ConfigureAwait(false);
@@ -140,6 +189,15 @@ public sealed class RazorDiagnosticLanguageServerTests
             .Single(static item => item.Code == "RZ1028");
         Assert.AreEqual("Razor", diagnostic.Source);
         Assert.Contains("terminated", diagnostic.Message, StringComparison.OrdinalIgnoreCase);
+        return diagnostic;
+    }
+
+    private static Diagnostic GetMissingNameDiagnostic(DocumentDiagnosticReport report)
+    {
+        Diagnostic diagnostic = GetFullItems(report)
+            .Single(static item => item.Code == "CS0103");
+        Assert.AreEqual("C#", diagnostic.Source);
+        Assert.Contains("does not exist", diagnostic.Message, StringComparison.OrdinalIgnoreCase);
         return diagnostic;
     }
 
@@ -162,4 +220,20 @@ public sealed class RazorDiagnosticLanguageServerTests
 
     private const string InvalidRazorText = "@* unterminated";
     private const string ValidRazorText = "@* valid *@\n<p>Hello</p>";
+    private const string KnownTypeText = """
+        namespace Fixture;
+
+        /// <summary>
+        /// Supplies a value imported by the Razor component fixture.
+        /// </summary>
+        public static class Known
+        {
+            public static string Value => "known";
+        }
+        """;
+    private const string InvalidSemanticRazorText = """
+        <p>@Known.Value</p>
+        <p>@MissingName</p>
+        """;
+    private const string ValidSemanticRazorText = "<p>@Known.Value</p>";
 }

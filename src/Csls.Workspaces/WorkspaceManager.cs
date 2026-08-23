@@ -256,10 +256,18 @@ public sealed partial class WorkspaceManager : IAsyncDisposable
 
             if (WorkspaceRazorDiagnosticService.IsRazorDocument(path))
             {
+                var razorText = SourceText.From(document.Text, Encoding.UTF8);
+                (string razorRootPath, Workspace razorWorkspace, Solution razorSolution) =
+                    _folders[folderIndex];
+                razorSolution = WithAdditionalDocumentText(razorSolution, path, razorText);
+                _folders = _folders.SetItem(
+                    folderIndex,
+                    (razorRootPath, razorWorkspace, razorSolution));
                 _razorDocuments = _razorDocuments.SetItem(
                     path,
-                    SourceText.From(document.Text, Encoding.UTF8));
+                    razorText);
                 _documentVersions[path] = document.Version;
+                _diagnosticCache.Clear();
                 Interlocked.Increment(ref _generation);
                 return;
             }
@@ -331,10 +339,21 @@ public sealed partial class WorkspaceManager : IAsyncDisposable
 
             if (_razorDocuments.TryGetValue(path, out SourceText? razorText))
             {
+                razorText = ApplyContentChanges(
+                    razorText,
+                    parameters.ContentChanges,
+                    cancellationToken);
+                (string razorRootPath, Workspace razorWorkspace, Solution razorSolution) =
+                    _folders[folderIndex];
+                razorSolution = WithAdditionalDocumentText(razorSolution, path, razorText);
+                _folders = _folders.SetItem(
+                    folderIndex,
+                    (razorRootPath, razorWorkspace, razorSolution));
                 _razorDocuments = _razorDocuments.SetItem(
                     path,
-                    ApplyContentChanges(razorText, parameters.ContentChanges, cancellationToken));
+                    razorText);
                 _documentVersions[path] = parameters.TextDocument.Version;
+                _diagnosticCache.Clear();
                 Interlocked.Increment(ref _generation);
                 return;
             }
@@ -389,6 +408,16 @@ public sealed partial class WorkspaceManager : IAsyncDisposable
             if (WorkspaceRazorDiagnosticService.IsRazorDocument(path))
             {
                 _razorDocuments = _razorDocuments.Remove(path);
+                (string razorRootPath, Workspace razorWorkspace, Solution razorSolution) =
+                    _folders[folderIndex];
+                razorSolution = await RestoreAdditionalDocumentTextAsync(
+                    razorSolution,
+                    path,
+                    cancellationToken).ConfigureAwait(false);
+                _folders = _folders.SetItem(
+                    folderIndex,
+                    (razorRootPath, razorWorkspace, razorSolution));
+                _diagnosticCache.Clear();
                 Interlocked.Increment(ref _generation);
                 return;
             }
@@ -460,6 +489,27 @@ public sealed partial class WorkspaceManager : IAsyncDisposable
                 razorText = SourceText.From(persistedText, Encoding.UTF8);
             }
 
+            ImmutableArray<RoslynDiagnostic>.Builder razorProjectDiagnostics =
+                ImmutableArray.CreateBuilder<RoslynDiagnostic>();
+            if (razorText is not null)
+            {
+                foreach (Project project in folders[folderIndex].Solution.Projects)
+                {
+                    if (!ContainsAdditionalDocument(project, path))
+                    {
+                        continue;
+                    }
+
+                    ImmutableArray<RoslynDiagnostic> projectResult =
+                        await _diagnosticCache.GetOrAddAsync(
+                            generation,
+                            project,
+                            ComputeProjectDiagnosticsAsync,
+                            cancellationToken).ConfigureAwait(false);
+                    razorProjectDiagnostics.AddRange(projectResult);
+                }
+            }
+
             return new DocumentDiagnosticReport
             {
                 Kind = "full",
@@ -469,6 +519,7 @@ public sealed partial class WorkspaceManager : IAsyncDisposable
                     : WorkspaceRazorDiagnosticService.GetDiagnostics(
                         path,
                         razorText,
+                        razorProjectDiagnostics,
                         cancellationToken)
             };
         }
@@ -2231,7 +2282,9 @@ public sealed partial class WorkspaceManager : IAsyncDisposable
                 continue;
             }
 
-            bool containsDocument = FindDocument(folders[index].Solution, documentPath) is not null;
+            bool containsDocument = FindDocument(folders[index].Solution, documentPath) is not null ||
+                folders[index].Solution.Projects.Any(project =>
+                    ContainsAdditionalDocument(project, documentPath));
             if ((containsDocument && !bestContainsDocument) ||
                 (containsDocument == bestContainsDocument && rootPath.Length > bestLength))
             {
@@ -2260,6 +2313,97 @@ public sealed partial class WorkspaceManager : IAsyncDisposable
         return solution.Projects
             .SelectMany(static project => project.Documents)
             .FirstOrDefault(document => string.Equals(document.FilePath, path, PathComparison));
+    }
+
+    private static bool ContainsAdditionalDocument(Project project, string path)
+    {
+        Solution solution = project.Solution;
+        ImmutableArray<DocumentId> documentIds = solution.GetDocumentIdsWithFilePath(path);
+        for (int index = 0; index < documentIds.Length; index++)
+        {
+            DocumentId documentId = documentIds[index];
+            if (documentId.ProjectId == project.Id &&
+                solution.GetAdditionalDocument(documentId) is not null)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static Solution WithAdditionalDocumentText(
+        Solution solution,
+        string path,
+        SourceText text)
+    {
+        ImmutableArray<DocumentId> documentIds = solution.GetDocumentIdsWithFilePath(path);
+        for (int index = 0; index < documentIds.Length; index++)
+        {
+            DocumentId documentId = documentIds[index];
+            if (solution.GetAdditionalDocument(documentId) is not null)
+            {
+                solution = solution.WithAdditionalDocumentText(
+                    documentId,
+                    text,
+                    PreservationMode.PreserveIdentity);
+            }
+        }
+
+        return solution;
+    }
+
+    private static async Task<Solution> RestoreAdditionalDocumentTextAsync(
+        Solution solution,
+        string path,
+        CancellationToken cancellationToken)
+    {
+        ImmutableArray<DocumentId> documentIds = solution.GetDocumentIdsWithFilePath(path);
+        bool containsAdditionalDocument = false;
+        for (int index = 0; index < documentIds.Length; index++)
+        {
+            if (solution.GetAdditionalDocument(documentIds[index]) is not null)
+            {
+                containsAdditionalDocument = true;
+                break;
+            }
+        }
+
+        if (!containsAdditionalDocument)
+        {
+            return solution;
+        }
+
+        if (File.Exists(path))
+        {
+            string persistedText = await File.ReadAllTextAsync(path, cancellationToken)
+                .ConfigureAwait(false);
+            var text = SourceText.From(persistedText, Encoding.UTF8);
+            for (int index = 0; index < documentIds.Length; index++)
+            {
+                DocumentId documentId = documentIds[index];
+                if (solution.GetAdditionalDocument(documentId) is not null)
+                {
+                    solution = solution.WithAdditionalDocumentText(
+                        documentId,
+                        text,
+                        PreservationMode.PreserveIdentity);
+                }
+            }
+
+            return solution;
+        }
+
+        for (int index = 0; index < documentIds.Length; index++)
+        {
+            DocumentId documentId = documentIds[index];
+            if (solution.GetAdditionalDocument(documentId) is not null)
+            {
+                solution = solution.RemoveAdditionalDocument(documentId);
+            }
+        }
+
+        return solution;
     }
 
     private async Task<ImmutableArray<RoslynDiagnostic>>
