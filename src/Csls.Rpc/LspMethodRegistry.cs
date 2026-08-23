@@ -104,6 +104,11 @@ public static class LspMethodRegistry
                 target.DocumentHighlightAsync));
         AddParameterObjectMethod(
             rpc,
+            "textDocument/documentLink",
+            new Func<DocumentLinkParams, CancellationToken, Task<IReadOnlyList<DocumentLink>>>(
+                target.DocumentLinkAsync));
+        AddParameterObjectMethod(
+            rpc,
             "textDocument/semanticTokens/full",
             new Func<SemanticTokensParams, CancellationToken, Task<SemanticTokens>>(
                 target.SemanticTokensFullAsync));

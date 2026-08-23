@@ -191,6 +191,16 @@ public interface ILspRpcTarget
         CancellationToken cancellationToken);
 
     /// <summary>
+    /// Gets navigable links to existing resources named by one source document.
+    /// </summary>
+    /// <param name="parameters">The target text document.</param>
+    /// <param name="cancellationToken">The peer cancellation token.</param>
+    /// <returns>The bounded ordered document links.</returns>
+    Task<IReadOnlyList<DocumentLink>> DocumentLinkAsync(
+        DocumentLinkParams parameters,
+        CancellationToken cancellationToken);
+
+    /// <summary>
     /// Gets complete semantic tokens for one source document.
     /// </summary>
     /// <param name="parameters">The target text document.</param>

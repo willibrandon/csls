@@ -488,6 +488,26 @@ internal sealed class LspProcessSession : IAsyncDisposable
             cancellationToken);
 
     /// <summary>
+    /// Requests navigable resource links for one test document.
+    /// </summary>
+    /// <param name="documentPath">The absolute target document path.</param>
+    /// <param name="cancellationToken">The test cancellation token.</param>
+    /// <returns>The bounded ordered document links.</returns>
+    internal Task<IReadOnlyList<DocumentLink>> RequestDocumentLinksAsync(
+        string documentPath,
+        CancellationToken cancellationToken) =>
+        _rpc.InvokeWithParameterObjectAsync<IReadOnlyList<DocumentLink>>(
+            "textDocument/documentLink",
+            new DocumentLinkParams
+            {
+                TextDocument = new TextDocumentIdentifier
+                {
+                    Uri = DocumentUri.FromFileSystemPath(documentPath)
+                }
+            },
+            cancellationToken);
+
+    /// <summary>
     /// Requests complete semantic tokens for one test document.
     /// </summary>
     /// <param name="documentPath">The absolute target document path.</param>
