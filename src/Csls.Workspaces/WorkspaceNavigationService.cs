@@ -575,18 +575,12 @@ internal static class WorkspaceNavigationService
 
         FileLinePositionSpan lineSpan = location.GetLineSpan();
         Document? document = project.Solution.GetDocument(location.SourceTree);
-        DocumentUri uri;
-        if (document is SourceGeneratedDocument generatedDocument &&
-            !string.IsNullOrWhiteSpace(generatedDocument.Project.FilePath))
-        {
-            uri = VirtualDocumentUri.CreateGenerated(
+        DocumentUri uri = document is SourceGeneratedDocument generatedDocument &&
+            !string.IsNullOrWhiteSpace(generatedDocument.Project.FilePath)
+            ? VirtualDocumentUri.CreateGenerated(
                 generatedDocument.Project.FilePath,
-                generatedDocument.HintName);
-        }
-        else
-        {
-            uri = DocumentUri.FromFileSystemPath(path);
-        }
+                generatedDocument.HintName)
+            : DocumentUri.FromFileSystemPath(path);
 
         return new LspLocation
         {
