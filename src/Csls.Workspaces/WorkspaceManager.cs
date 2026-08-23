@@ -591,6 +591,23 @@ public sealed partial class WorkspaceManager : IAsyncDisposable
     }
 
     /// <summary>
+    /// Gets the stable .NET moniker for one symbol in an immutable document snapshot.
+    /// </summary>
+    /// <param name="parameters">The target document position.</param>
+    /// <param name="cancellationToken">The operation cancellation token.</param>
+    /// <returns>The resolved moniker, or an empty list when no stable identity exists.</returns>
+    public async Task<IReadOnlyList<Moniker>> GetMonikersAsync(
+        MonikerParams parameters,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(parameters);
+        return await WorkspaceMonikerService.GetMonikersAsync(
+            FindCurrentDocument(parameters.TextDocument.Uri),
+            parameters.Position,
+            cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
     /// Gets source text for one generated or metadata-backed virtual C# document.
     /// </summary>
     /// <param name="parameters">The target virtual document.</param>

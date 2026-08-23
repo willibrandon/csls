@@ -76,6 +76,11 @@ public sealed record ServerCapabilities
     public DocumentLinkOptions? DocumentLinkProvider { get; init; }
 
     /// <summary>
+    /// Gets whether stable symbol moniker requests are supported.
+    /// </summary>
+    public bool MonikerProvider { get; init; }
+
+    /// <summary>
     /// Gets the complete-document semantic-token behavior and token legend.
     /// </summary>
     public SemanticTokensOptions? SemanticTokensProvider { get; init; }

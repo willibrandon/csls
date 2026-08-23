@@ -201,6 +201,16 @@ public interface ILspRpcTarget
         CancellationToken cancellationToken);
 
     /// <summary>
+    /// Gets stable .NET monikers for the symbol at one document position.
+    /// </summary>
+    /// <param name="parameters">The target document position.</param>
+    /// <param name="cancellationToken">The peer cancellation token.</param>
+    /// <returns>The resolved monikers, or an empty list when none are available.</returns>
+    Task<IReadOnlyList<Moniker>> MonikerAsync(
+        MonikerParams parameters,
+        CancellationToken cancellationToken);
+
+    /// <summary>
     /// Gets source text for one generated or metadata-backed virtual C# document.
     /// </summary>
     /// <param name="parameters">The target virtual document.</param>

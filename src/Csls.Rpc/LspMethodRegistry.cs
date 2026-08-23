@@ -109,6 +109,11 @@ public static class LspMethodRegistry
                 target.DocumentLinkAsync));
         AddParameterObjectMethod(
             rpc,
+            "textDocument/moniker",
+            new Func<MonikerParams, CancellationToken, Task<IReadOnlyList<Moniker>>>(
+                target.MonikerAsync));
+        AddParameterObjectMethod(
+            rpc,
             "csharp/metadata",
             new Func<CSharpMetadataParams, CancellationToken, Task<CSharpMetadataResponse?>>(
                 target.CSharpMetadataAsync));
