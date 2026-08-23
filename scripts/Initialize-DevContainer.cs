@@ -29,6 +29,22 @@ try
 {
     string repositoryRoot = ScriptSupport.FindRepositoryRoot();
     string dotnetPath = Environment.GetEnvironmentVariable("DOTNET_HOST_PATH") ?? "dotnet";
+    if (OperatingSystem.IsLinux() && string.Equals(
+        Environment.GetEnvironmentVariable("CSLS_DEV_CONTAINER"),
+        "true",
+        StringComparison.OrdinalIgnoreCase))
+    {
+        await RunCheckedAsync(
+            "sudo",
+            [
+                "chown",
+                "--recursive",
+                $"{Environment.UserName}:{Environment.UserName}",
+                Path.Join(repositoryRoot, "artifacts")
+            ],
+            repositoryRoot).ConfigureAwait(false);
+    }
+
     if (OperatingSystem.IsLinux() && File.Exists("/etc/debian_version"))
     {
         string packageManager = string.Equals(
