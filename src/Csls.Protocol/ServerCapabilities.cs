@@ -61,6 +61,11 @@ public sealed record ServerCapabilities
     public bool DocumentHighlightProvider { get; init; }
 
     /// <summary>
+    /// Gets the complete-document semantic-token behavior and token legend.
+    /// </summary>
+    public SemanticTokensOptions? SemanticTokensProvider { get; init; }
+
+    /// <summary>
     /// Gets whether source reference requests are supported.
     /// </summary>
     public bool ReferencesProvider { get; init; }

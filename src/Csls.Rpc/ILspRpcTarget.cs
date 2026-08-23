@@ -161,6 +161,26 @@ public interface ILspRpcTarget
         CancellationToken cancellationToken);
 
     /// <summary>
+    /// Gets complete semantic tokens for one source document.
+    /// </summary>
+    /// <param name="parameters">The target text document.</param>
+    /// <param name="cancellationToken">The peer cancellation token.</param>
+    /// <returns>The complete relative-encoded semantic-token sequence.</returns>
+    Task<SemanticTokens> SemanticTokensFullAsync(
+        SemanticTokensParams parameters,
+        CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Gets semantic-token edits relative to a prior complete or delta result.
+    /// </summary>
+    /// <param name="parameters">The target document and prior result identifier.</param>
+    /// <param name="cancellationToken">The peer cancellation token.</param>
+    /// <returns>Delta edits or a complete fallback token sequence.</returns>
+    Task<SemanticTokensDeltaResult> SemanticTokensFullDeltaAsync(
+        SemanticTokensDeltaParams parameters,
+        CancellationToken cancellationToken);
+
+    /// <summary>
     /// Finds source references for the symbol at one document position.
     /// </summary>
     /// <param name="parameters">The target position and declaration inclusion behavior.</param>

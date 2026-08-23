@@ -89,6 +89,16 @@ public static class LspMethodRegistry
                 target.DocumentHighlightAsync));
         AddParameterObjectMethod(
             rpc,
+            "textDocument/semanticTokens/full",
+            new Func<SemanticTokensParams, CancellationToken, Task<SemanticTokens>>(
+                target.SemanticTokensFullAsync));
+        AddParameterObjectMethod(
+            rpc,
+            "textDocument/semanticTokens/full/delta",
+            new Func<SemanticTokensDeltaParams, CancellationToken, Task<SemanticTokensDeltaResult>>(
+                target.SemanticTokensFullDeltaAsync));
+        AddParameterObjectMethod(
+            rpc,
             "textDocument/references",
             new Func<ReferenceParams, CancellationToken, Task<IReadOnlyList<Location>>>(
                 target.ReferencesAsync));

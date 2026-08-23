@@ -610,6 +610,22 @@ public sealed partial class WorkspaceManager : IAsyncDisposable
     }
 
     /// <summary>
+    /// Gets complete relative-encoded semantic tokens for one immutable document snapshot.
+    /// </summary>
+    /// <param name="parameters">The target text document.</param>
+    /// <param name="cancellationToken">The operation cancellation token.</param>
+    /// <returns>The complete five-integer token encoding.</returns>
+    public async Task<IReadOnlyList<int>> GetSemanticTokensAsync(
+        SemanticTokensParams parameters,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(parameters);
+        return await WorkspaceSemanticTokensService.GetSemanticTokensAsync(
+            FindCurrentDocument(parameters.TextDocument.Uri),
+            cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
     /// Finds source references for the symbol at one immutable document position.
     /// </summary>
     /// <param name="parameters">The target position and declaration inclusion behavior.</param>

@@ -355,6 +355,49 @@ internal sealed class LspProcessSession : IAsyncDisposable
             cancellationToken);
 
     /// <summary>
+    /// Requests complete semantic tokens for one test document.
+    /// </summary>
+    /// <param name="documentPath">The absolute target document path.</param>
+    /// <param name="cancellationToken">The test cancellation token.</param>
+    /// <returns>The complete relative-encoded semantic-token result.</returns>
+    internal Task<SemanticTokens> RequestSemanticTokensAsync(
+        string documentPath,
+        CancellationToken cancellationToken) =>
+        _rpc.InvokeWithParameterObjectAsync<SemanticTokens>(
+            "textDocument/semanticTokens/full",
+            new SemanticTokensParams
+            {
+                TextDocument = new TextDocumentIdentifier
+                {
+                    Uri = DocumentUri.FromFileSystemPath(documentPath)
+                }
+            },
+            cancellationToken);
+
+    /// <summary>
+    /// Requests semantic-token edits relative to one prior test result.
+    /// </summary>
+    /// <param name="documentPath">The absolute target document path.</param>
+    /// <param name="previousResultId">The prior opaque semantic-token result identifier.</param>
+    /// <param name="cancellationToken">The test cancellation token.</param>
+    /// <returns>Delta edits or a complete fallback token result.</returns>
+    internal Task<SemanticTokensDeltaResult> RequestSemanticTokensDeltaAsync(
+        string documentPath,
+        string previousResultId,
+        CancellationToken cancellationToken) =>
+        _rpc.InvokeWithParameterObjectAsync<SemanticTokensDeltaResult>(
+            "textDocument/semanticTokens/full/delta",
+            new SemanticTokensDeltaParams
+            {
+                TextDocument = new TextDocumentIdentifier
+                {
+                    Uri = DocumentUri.FromFileSystemPath(documentPath)
+                },
+                PreviousResultId = previousResultId
+            },
+            cancellationToken);
+
+    /// <summary>
     /// Requests source references for the symbol at one test document position.
     /// </summary>
     /// <param name="documentPath">The absolute target document path.</param>

@@ -100,6 +100,15 @@ public sealed partial class LanguageServer : ILspRpcTarget, IAsyncDisposable
                 ImplementationProvider = true,
                 SelectionRangeProvider = true,
                 DocumentHighlightProvider = true,
+                SemanticTokensProvider = new SemanticTokensOptions
+                {
+                    Legend = CSharpSemanticTokensLegend.Create(),
+                    Full = new SemanticTokensFullOptions
+                    {
+                        Delta = true
+                    },
+                    Range = false
+                },
                 ReferencesProvider = true,
                 DocumentSymbolProvider = true,
                 WorkspaceSymbolProvider = new WorkspaceSymbolOptions
@@ -844,6 +853,7 @@ public sealed partial class LanguageServer : ILspRpcTarget, IAsyncDisposable
         }
 
         await _scheduler.DisposeAsync().ConfigureAwait(false);
+        _semanticTokensCache.Clear();
         await _workspaceManager.DisposeAsync().ConfigureAwait(false);
         _exitSource.Dispose();
         GC.SuppressFinalize(this);
