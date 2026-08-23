@@ -183,6 +183,10 @@ public sealed partial class LanguageServer : ILspRpcTarget, IAsyncDisposable
                 ImplementationProvider = true,
                 SelectionRangeProvider = true,
                 DocumentHighlightProvider = true,
+                DocumentLinkProvider = new DocumentLinkOptions
+                {
+                    ResolveProvider = false
+                },
                 SemanticTokensProvider = new SemanticTokensOptions
                 {
                     Legend = CSharpSemanticTokensLegend.Create(),
@@ -581,6 +585,33 @@ public sealed partial class LanguageServer : ILspRpcTarget, IAsyncDisposable
                 }
 
                 return highlights;
+            },
+            cancellationToken);
+    }
+
+    /// <inheritdoc />
+    public Task<IReadOnlyList<DocumentLink>> DocumentLinkAsync(
+        DocumentLinkParams parameters,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(parameters);
+        EnsureRunning();
+        return _scheduler.ScheduleAsync(
+            "textDocument/documentLink",
+            RequestMode.ReadOnly,
+            () => _workspaceManager.Generation,
+            async context =>
+            {
+                IReadOnlyList<DocumentLink> links = await _workspaceManager
+                    .GetDocumentLinksAsync(parameters, context.CancellationToken)
+                    .ConfigureAwait(false);
+                if (_workspaceManager.Generation != context.WorkspaceGeneration)
+                {
+                    throw new InvalidOperationException(
+                        "The workspace changed while document links were being computed.");
+                }
+
+                return links;
             },
             cancellationToken);
     }

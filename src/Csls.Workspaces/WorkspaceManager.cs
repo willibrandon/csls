@@ -575,6 +575,22 @@ public sealed partial class WorkspaceManager : IAsyncDisposable
     }
 
     /// <summary>
+    /// Gets navigable links to existing resources named by active C# directives.
+    /// </summary>
+    /// <param name="parameters">The target text document.</param>
+    /// <param name="cancellationToken">The operation cancellation token.</param>
+    /// <returns>The bounded ordered document links.</returns>
+    public async Task<IReadOnlyList<DocumentLink>> GetDocumentLinksAsync(
+        DocumentLinkParams parameters,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(parameters);
+        return await WorkspaceDocumentLinkService.GetDocumentLinksAsync(
+            FindCurrentDocument(parameters.TextDocument.Uri),
+            cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
     /// Gets complete relative-encoded semantic tokens for one immutable document snapshot.
     /// </summary>
     /// <param name="parameters">The target text document.</param>
