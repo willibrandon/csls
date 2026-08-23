@@ -5,12 +5,14 @@ on:
     paths:
       - ".github/workflows/docs.yml"
       - "docs-site/**"
+      - "scripts/Verify-Docs.cs"
   push:
     branches:
       - main
     paths:
       - ".github/workflows/docs.yml"
       - "docs-site/**"
+      - "scripts/Verify-Docs.cs"
   workflow_dispatch:
 
 permissions:
@@ -32,12 +34,20 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Set up .NET
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          dotnet-version: 10.0.400
+
       - name: Build and upload docs
         uses: withastro/action@e84f40bd8d2caa9e768ec82ad30dd81f0b280853 # v6.1.2
         with:
           path: docs-site
           node-version: 24.19.0
           package-manager: npm@12.0.2
+
+      - name: Verify generated links
+        run: dotnet run --file scripts/Verify-Docs.cs
 
   deploy:
     name: Deploy docs
