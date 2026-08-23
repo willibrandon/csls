@@ -24,7 +24,7 @@ receive snippet insertion text with Roslyn's final caret position. Other clients
 receive plain text. `completionItem/resolve` adds Roslyn documentation without
 changing the edit, sort text, or filter text returned by the original request.
 
-[Configuration](./configuration/) is pulled through the standard workspace request
+[Configuration](../configuration/) is pulled through the standard workspace request
 when the client supports it. Push-only clients use the same settings and precedence.
 
 ## Session control

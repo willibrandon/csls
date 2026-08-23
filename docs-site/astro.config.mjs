@@ -11,6 +11,9 @@ export default defineConfig({
       title: "csls",
       description: "C# language intelligence for editors, terminals, and agents.",
       credits: false,
+      components: {
+        MarkdownContent: "./src/components/MarkdownContent.astro",
+      },
       social: [
         {
           icon: "github",
