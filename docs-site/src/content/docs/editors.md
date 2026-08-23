@@ -43,6 +43,11 @@ language-servers = ["csls"]
 
 Run `hx --health c-sharp` if Helix cannot find the command.
 
+![Helix showing Roslyn hover information from csls](../../assets/screenshots/helix-hover.svg)
+
+This screenshot is captured from the same real Helix and Hex1b session used by
+the integration test.
+
 ## Neovim
 
 Neovim 0.11 and later can register `csls` directly:

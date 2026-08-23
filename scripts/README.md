@@ -6,6 +6,8 @@ supports `--help`.
 
 | Script | Purpose |
 | --- | --- |
+| `Capture-Docs.cs` | Captures verified editor screenshots and rebuilds the documentation site. |
+| `Export-ContainerImage.cs` | Exports a container image as a Picket-scannable archive. |
 | `Initialize-DevContainer.cs` | Installs the development container dependencies and restores the repository. |
 | `InstallDotNet.cs` | Installs the pinned .NET SDK from verified Microsoft release metadata. |
 | `Install-NativeAotPrerequisites.cs` | Installs the native compiler prerequisites for a runtime identifier. |
@@ -20,7 +22,6 @@ supports `--help`.
 | `Verify-GitHubActions.cs` | Validates every workflow with actionlint. |
 | `Verify-CodeQl.cs` | Fails when CodeQL reports an unresolved finding. |
 | `Verify-ToolPackages.cs` | Packs and exercises the `csls` and `csls-mcp` tools. |
-| `Export-ContainerImage.cs` | Exports a container image as a Picket-scannable archive. |
 
 `ScriptSupport.cs` contains shared download, checksum, archive, process, and path
 helpers used by the provisioning apps.
