@@ -48,6 +48,7 @@ public sealed class RazorNavigationLanguageServerTests
             string documentPath = Path.Join(fixturePath, documentRelativePath);
             string importsPath = Path.Join(fixturePath, importsRelativePath);
             string declarationsPath = Path.Join(fixturePath, "NavigationValues.cs");
+            string referenceConsumerPath = Path.Join(fixturePath, "ReferenceConsumer.cs");
             Directory.CreateDirectory(
                 Path.GetDirectoryName(documentPath)
                     ?? throw new InvalidOperationException("The Razor fixture has no directory."));
@@ -60,6 +61,10 @@ public sealed class RazorNavigationLanguageServerTests
             await File.WriteAllTextAsync(
                 declarationsPath,
                 NavigationValuesText,
+                TestContext.CancellationToken).ConfigureAwait(false);
+            await File.WriteAllTextAsync(
+                referenceConsumerPath,
+                ReferenceConsumerText,
                 TestContext.CancellationToken).ConfigureAwait(false);
             await File.WriteAllTextAsync(
                 importsPath,
@@ -137,6 +142,58 @@ public sealed class RazorNavigationLanguageServerTests
                 new Position(7, 20),
                 new Position(7, 42));
 
+            IReadOnlyList<Location> localReferences = await lsp.RequestReferencesAsync(
+                documentPath,
+                new Position(0, 8),
+                includeDeclaration: true,
+                TestContext.CancellationToken).ConfigureAwait(false);
+            Assert.HasCount(2, localReferences);
+            AssertContainsLocation(
+                localReferences,
+                documentPath,
+                new Position(0, 4),
+                new Position(0, 14));
+            AssertContainsLocation(
+                localReferences,
+                documentPath,
+                new Position(2, 19),
+                new Position(2, 29));
+
+            IReadOnlyList<Location> externalReferences = await lsp.RequestReferencesAsync(
+                documentPath,
+                new Position(4, 13),
+                includeDeclaration: false,
+                TestContext.CancellationToken).ConfigureAwait(false);
+            Assert.HasCount(3, externalReferences);
+            AssertContainsLocation(
+                externalReferences,
+                documentPath,
+                new Position(2, 39),
+                new Position(2, 47));
+            AssertContainsLocation(
+                externalReferences,
+                documentPath,
+                new Position(4, 10),
+                new Position(4, 18));
+            AssertContainsLocation(
+                externalReferences,
+                referenceConsumerPath,
+                new Position(4, 45),
+                new Position(4, 53));
+
+            IReadOnlyList<Location> externalReferencesWithDeclaration =
+                await lsp.RequestReferencesAsync(
+                    documentPath,
+                    new Position(4, 13),
+                    includeDeclaration: true,
+                    TestContext.CancellationToken).ConfigureAwait(false);
+            Assert.HasCount(4, externalReferencesWithDeclaration);
+            AssertContainsLocation(
+                externalReferencesWithDeclaration,
+                declarationsPath,
+                new Position(14, 28),
+                new Position(14, 36));
+
             await lsp.ChangeDocumentAsync(
                 documentPath,
                 version: 2,
@@ -149,6 +206,22 @@ public sealed class RazorNavigationLanguageServerTests
                     TestContext.CancellationToken).ConfigureAwait(false));
             AssertLocation(
                 overlayDefinition,
+                documentPath,
+                new Position(2, 19),
+                new Position(2, 31));
+            IReadOnlyList<Location> overlayReferences = await lsp.RequestReferencesAsync(
+                documentPath,
+                new Position(0, 8),
+                includeDeclaration: true,
+                TestContext.CancellationToken).ConfigureAwait(false);
+            Assert.HasCount(2, overlayReferences);
+            AssertContainsLocation(
+                overlayReferences,
+                documentPath,
+                new Position(0, 4),
+                new Position(0, 16));
+            AssertContainsLocation(
+                overlayReferences,
                 documentPath,
                 new Position(2, 19),
                 new Position(2, 31));
@@ -206,6 +279,18 @@ public sealed class RazorNavigationLanguageServerTests
         Assert.AreEqual(end, location.Range.End);
     }
 
+    private static void AssertContainsLocation(
+        IReadOnlyList<Location> locations,
+        string path,
+        Position start,
+        Position end)
+    {
+        var uri = DocumentUri.FromFileSystemPath(path);
+        Location location = locations.Single(candidate =>
+            candidate.Uri == uri && candidate.Range.Start == start);
+        Assert.AreEqual(end, location.Range.End);
+    }
+
     private static string CreateRazorText(string membersDirective, string localName) =>
         string.Join(
             Environment.NewLine,
@@ -241,6 +326,15 @@ public sealed class RazorNavigationLanguageServerTests
         public static class Known
         {
             public static IContract Contract { get; } = new ContractImplementation();
+        }
+        """;
+
+    private const string ReferenceConsumerText = """
+        namespace Fixture;
+
+        public static class ReferenceConsumer
+        {
+            public static IContract Current => Known.Contract;
         }
         """;
 }

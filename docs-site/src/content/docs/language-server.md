@@ -42,8 +42,8 @@ from the owning project. They follow the current unsaved `.cshtml` or `.razor`
 snapshot and return to the persisted file after the editor closes it. Hover uses
 the same generated project snapshot and maps Roslyn content and ranges back to
 the Razor source, including symbols made available by `_Imports.razor` and
-`_ViewImports.cshtml`. Definition, declaration, type definition, and implementation
-requests use that snapshot and map Razor declarations back to their source files.
+`_ViewImports.cshtml`. Definition, declaration, type definition, implementation,
+and reference requests use that snapshot and map Razor locations back to their source files.
 Razor formatting indents markup and embedded C#, aligns multiline attributes,
 and honors the client's tab, space, newline, and trimming settings. Content in
 `pre`, `script`, `style`, and `textarea` elements is left unchanged.
