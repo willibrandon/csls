@@ -99,6 +99,11 @@ public static class LspMethodRegistry
                 target.SelectionRangeAsync));
         AddParameterObjectMethod(
             rpc,
+            "textDocument/linkedEditingRange",
+            new Func<LinkedEditingRangeParams, CancellationToken, Task<LinkedEditingRanges?>>(
+                target.LinkedEditingRangeAsync));
+        AddParameterObjectMethod(
+            rpc,
             "textDocument/documentHighlight",
             new Func<TextDocumentPositionParams, CancellationToken, Task<IReadOnlyList<DocumentHighlight>>>(
                 target.DocumentHighlightAsync));
