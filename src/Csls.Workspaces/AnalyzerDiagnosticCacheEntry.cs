@@ -96,13 +96,9 @@ internal sealed class AnalyzerDiagnosticCacheEntry : IDisposable
             }
         }
 
-        try
+        using (sourceToDispose)
         {
             sourceToCancel?.Cancel();
-        }
-        finally
-        {
-            sourceToDispose?.Dispose();
         }
 
         return remove;
@@ -132,13 +128,9 @@ internal sealed class AnalyzerDiagnosticCacheEntry : IDisposable
             }
         }
 
-        try
+        using (sourceToDispose)
         {
             sourceToCancel?.Cancel();
-        }
-        finally
-        {
-            sourceToDispose?.Dispose();
         }
     }
 
