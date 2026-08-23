@@ -1,11 +1,10 @@
 using Csls.Protocol;
-using Microsoft.CodeAnalysis;
 using System.Collections.Concurrent;
 
 namespace Csls.Workspaces;
 
 /// <summary>
-/// Holds bounded generated-document and hover results for one immutable Roslyn project.
+/// Holds bounded hover results for one immutable Roslyn project.
 /// </summary>
 internal sealed class RazorHoverProjectCache
 {
@@ -23,16 +22,10 @@ internal sealed class RazorHoverProjectCache
         StringComparer pathComparer = OperatingSystem.IsWindows()
             ? StringComparer.OrdinalIgnoreCase
             : StringComparer.Ordinal;
-        Documents = new ConcurrentDictionary<string, SourceGeneratedDocument>(pathComparer);
         _hovers = new ConcurrentDictionary<
             string,
             ConcurrentDictionary<Position, Hover>>(pathComparer);
     }
-
-    /// <summary>
-    /// Gets generated documents indexed by their mapped Razor paths.
-    /// </summary>
-    internal ConcurrentDictionary<string, SourceGeneratedDocument> Documents { get; }
 
     /// <summary>
     /// Gets a successful hover previously resolved for the same immutable snapshot.
