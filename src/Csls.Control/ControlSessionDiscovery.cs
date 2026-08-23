@@ -1,5 +1,8 @@
 using Csls.Control.Contracts;
 using StreamJsonRpc;
+using System.ComponentModel;
+using System.Diagnostics;
+using System.Globalization;
 using System.Net.Sockets;
 
 namespace Csls.Control;
@@ -10,6 +13,8 @@ namespace Csls.Control;
 public static class ControlSessionDiscovery
 {
     private const int MaximumSessionSockets = 256;
+    private const int MaximumSessionSocketEntries = 4_096;
+    private const string SocketSuffix = ".csls.socket";
     private static readonly TimeSpan s_connectionTimeout = TimeSpan.FromSeconds(2);
 
     /// <summary>
@@ -26,29 +31,43 @@ public static class ControlSessionDiscovery
             return [];
         }
 
-        string[] socketPaths =
-        [
-            .. Directory
-                .EnumerateFiles(socketDirectory, "*.csls.socket", SearchOption.TopDirectoryOnly)
-                .Order(StringComparer.Ordinal)
-                .Take(MaximumSessionSockets + 1)
-        ];
-        if (socketPaths.Length > MaximumSessionSockets)
-        {
-            throw new InvalidDataException(
-                $"Session discovery exceeded {MaximumSessionSockets} socket entries.");
-        }
-
-        var sessions = new List<ControlSessionInfo>(socketPaths.Length);
-        foreach (string socketPath in socketPaths)
+        var sessions = new List<ControlSessionInfo>();
+        int entryCount = 0;
+        foreach (string socketPath in Directory.EnumerateFiles(
+            socketDirectory,
+            $"*{SocketSuffix}",
+            SearchOption.TopDirectoryOnly))
         {
             cancellationToken.ThrowIfCancellationRequested();
+            entryCount++;
+            if (entryCount > MaximumSessionSocketEntries)
+            {
+                throw new InvalidDataException(
+                    $"Session discovery exceeded {MaximumSessionSocketEntries} socket entries.");
+            }
+
+            bool hasProcessId = TryGetProcessId(socketPath, out int processId);
+            if (hasProcessId && !IsProcessAlive(processId))
+            {
+                TryDeleteStaleSocket(socketPath);
+                continue;
+            }
+
             ControlSessionInfo? session = await TryGetSessionAsync(
                 socketPath,
                 cancellationToken).ConfigureAwait(false);
             if (session is not null)
             {
                 sessions.Add(session);
+                if (sessions.Count > MaximumSessionSockets)
+                {
+                    throw new InvalidDataException(
+                        $"Session discovery exceeded {MaximumSessionSockets} responsive sessions.");
+                }
+            }
+            else if (!hasProcessId || !IsProcessAlive(processId))
+            {
+                TryDeleteStaleSocket(socketPath);
             }
         }
 
@@ -139,6 +158,61 @@ public static class ControlSessionDiscovery
         }
 
         return false;
+    }
+
+    private static bool TryGetProcessId(string socketPath, out int processId)
+    {
+        string fileName = Path.GetFileName(socketPath);
+        if (fileName.EndsWith(SocketSuffix, StringComparison.Ordinal))
+        {
+            return int.TryParse(
+                fileName.AsSpan(0, fileName.Length - SocketSuffix.Length),
+                NumberStyles.None,
+                CultureInfo.InvariantCulture,
+                out processId) &&
+                processId > 0;
+        }
+
+        processId = 0;
+        return false;
+    }
+
+    private static bool IsProcessAlive(int processId)
+    {
+        try
+        {
+            using var process = Process.GetProcessById(processId);
+            return !process.HasExited;
+        }
+        catch (ArgumentException)
+        {
+            return false;
+        }
+        catch (InvalidOperationException)
+        {
+            return false;
+        }
+        catch (Win32Exception)
+        {
+            return true;
+        }
+    }
+
+    private static bool TryDeleteStaleSocket(string socketPath)
+    {
+        try
+        {
+            File.Delete(socketPath);
+            return true;
+        }
+        catch (IOException)
+        {
+            return false;
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return false;
+        }
     }
 
     private static bool IsWorkspaceEntryPoint(string path)
