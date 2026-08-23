@@ -519,8 +519,14 @@ static async Task VerifyLanguageServerWorkerAsync(
         using var initialize = JsonDocument.Parse(await ReadLspMessageAsync(
             process.StandardOutput.BaseStream,
             timeout.Token).ConfigureAwait(false));
-        string? serverName = initialize.RootElement
-            .GetProperty("result")
+        if (!initialize.RootElement.TryGetProperty("result", out JsonElement result))
+        {
+            throw new InvalidDataException(
+                $"The installed language server rejected initialization: " +
+                initialize.RootElement.GetRawText());
+        }
+
+        string? serverName = result
             .GetProperty("serverInfo")
             .GetProperty("name")
             .GetString();
@@ -618,8 +624,14 @@ static async Task VerifyMcpWorkerAsync(
             .ConfigureAwait(false) ?? throw new EndOfStreamException(
                 "The installed MCP server returned no initialize response.");
         using var initialize = JsonDocument.Parse(initializeText);
-        string? serverName = initialize.RootElement
-            .GetProperty("result")
+        if (!initialize.RootElement.TryGetProperty("result", out JsonElement result))
+        {
+            throw new InvalidDataException(
+                $"The installed MCP server rejected initialization: " +
+                initialize.RootElement.GetRawText());
+        }
+
+        string? serverName = result
             .GetProperty("serverInfo")
             .GetProperty("name")
             .GetString();

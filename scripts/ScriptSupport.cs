@@ -51,36 +51,60 @@ internal static class ScriptSupport
         using var handler = new HttpClientHandler
         {
             AutomaticDecompression = DecompressionMethods.All,
-            CheckCertificateRevocationList = true
+            CheckCertificateRevocationList = !OperatingSystem.IsMacOS()
         };
         using var client = new HttpClient(handler);
         client.DefaultRequestHeaders.UserAgent.ParseAdd("csls-tool-provisioner/0.1");
-        using HttpResponseMessage response = await client
-            .GetAsync(source, HttpCompletionOption.ResponseHeadersRead, cancellationToken)
-            .ConfigureAwait(false);
-        response.EnsureSuccessStatusCode();
-
-        FileStream destination = new(
-            destinationPath,
-            FileMode.CreateNew,
-            FileAccess.Write,
-            FileShare.None,
-            bufferSize: 131_072,
-            FileOptions.Asynchronous | FileOptions.SequentialScan);
-        await using (destination.ConfigureAwait(false))
+        const int maximumAttempts = 3;
+        for (int attempt = 1; ; attempt++)
         {
-            await response.Content
-                .CopyToAsync(destination, cancellationToken)
-                .ConfigureAwait(false);
-        }
+            try
+            {
+                using HttpResponseMessage response = await client
+                    .GetAsync(source, HttpCompletionOption.ResponseHeadersRead, cancellationToken)
+                    .ConfigureAwait(false);
+                response.EnsureSuccessStatusCode();
 
-        string actualSha256 = await ComputeSha256Async(
-            destinationPath,
-            cancellationToken).ConfigureAwait(false);
-        if (!string.Equals(actualSha256, expectedSha256, StringComparison.OrdinalIgnoreCase))
-        {
-            throw new InvalidDataException(
-                $"SHA-256 mismatch for {source}: expected {expectedSha256}, got {actualSha256}.");
+                FileStream destination = new(
+                    destinationPath,
+                    FileMode.CreateNew,
+                    FileAccess.Write,
+                    FileShare.None,
+                    bufferSize: 131_072,
+                    FileOptions.Asynchronous | FileOptions.SequentialScan);
+                await using (destination.ConfigureAwait(false))
+                {
+                    await response.Content
+                        .CopyToAsync(destination, cancellationToken)
+                        .ConfigureAwait(false);
+                }
+
+                string actualSha256 = await ComputeSha256Async(
+                    destinationPath,
+                    cancellationToken).ConfigureAwait(false);
+                if (!string.Equals(
+                    actualSha256,
+                    expectedSha256,
+                    StringComparison.OrdinalIgnoreCase))
+                {
+                    throw new InvalidDataException(
+                        $"SHA-256 mismatch for {source}: expected {expectedSha256}, " +
+                        $"got {actualSha256}.");
+                }
+
+                return;
+            }
+            catch (Exception exception) when (
+                attempt < maximumAttempts &&
+                exception is HttpRequestException or IOException)
+            {
+                File.Delete(destinationPath);
+                await Console.Error.WriteLineAsync(
+                    $"Download attempt {attempt} failed for {source}: " +
+                    exception.GetBaseException().Message).ConfigureAwait(false);
+                await Task.Delay(TimeSpan.FromSeconds(attempt * 2), cancellationToken)
+                    .ConfigureAwait(false);
+            }
         }
     }
 

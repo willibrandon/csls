@@ -82,12 +82,10 @@ public sealed class ControlSocketTests
                 TestContext.CancellationToken).ConfigureAwait(false);
             Assert.IsTrue(disconnected, "The oversized control client remained connected.");
 
-            var controlClient = new ControlRpcClient(socketPath);
-            await using ConfiguredAsyncDisposable controlCleanup =
-                controlClient.ConfigureAwait(false);
-            ControlSessionInfo session = await controlClient
-                .GetSessionAsync(TestContext.CancellationToken)
-                .ConfigureAwait(false);
+            ControlSessionInfo session = await ControlSessionWaiter.WaitForRunningAsync(
+                fixturePath,
+                TimeSpan.FromSeconds(60),
+                TestContext.CancellationToken).ConfigureAwait(false);
             Assert.AreEqual(lsp.ProcessId, session.ProcessId);
             Assert.AreEqual("Running", session.LifecycleState);
 

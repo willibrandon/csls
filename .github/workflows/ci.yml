@@ -58,7 +58,7 @@ jobs:
           fetch-depth: 0
 
       - name: Scan repository with Picket
-        uses: willibrandon/picket@115b9385bb001ac6ca6df3cc6539a98b60529f5b
+        uses: willibrandon/picket@4c9f7d28260bfe0a7334865c84db093519f6f57f # v0.2.12
         with:
           cache-mode: secret-hash-only
           fail-on: findings

@@ -122,12 +122,28 @@ public sealed class FreshLanguageServerTests
                             defaultTimeout: TimeSpan.FromSeconds(60));
                         await automator.WaitUntilAlternateScreenAsync().ConfigureAwait(false);
                         await automator.WaitUntilTextAsync("Console.WriteLine").ConfigureAwait(false);
-                        await FileTextWaiter.WaitAsync(
-                            logPath,
-                            "LSP initialization completed successfully",
-                            TimeSpan.FromSeconds(60),
-                            TestContext.CancellationToken).ConfigureAwait(false);
-                        await automator.WaitUntilTextAsync("LSP (csharp) ready").ConfigureAwait(false);
+                        try
+                        {
+                            await ControlSessionWaiter.WaitForRunningAsync(
+                                fixturePath,
+                                TimeSpan.FromSeconds(60),
+                                TestContext.CancellationToken,
+                                homePath).ConfigureAwait(false);
+                            await automator.WaitUntilTextAsync("LSP (csharp) ready")
+                                .ConfigureAwait(false);
+                        }
+                        catch (Exception exception)
+                        {
+                            string diagnostics = await ReadDiagnosticsAsync(
+                                logPath,
+                                eventLogPath,
+                                TestContext.CancellationToken).ConfigureAwait(false);
+                            using Hex1bTerminalSnapshot snapshot = automator.CreateSnapshot();
+                            throw new InvalidOperationException(
+                                $"Fresh did not complete LSP initialization.{Environment.NewLine}" +
+                                $"{diagnostics}{Environment.NewLine}{snapshot.GetScreenText()}",
+                                exception);
+                        }
 
                         await TerminalInput.SendAltCharacterAsync(
                             terminal,

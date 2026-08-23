@@ -53,6 +53,7 @@ try
     [
         "build-essential",
         "clang",
+        "libncurses-dev",
         "zlib1g-dev"
     ];
     if (runtimeIdentifier.StartsWith("linux-musl-", StringComparison.Ordinal))

@@ -56,6 +56,7 @@ try
                 "build-essential",
                 "clang",
                 "git",
+                "libncurses-dev",
                 "zlib1g-dev"
             ]
             :
@@ -66,6 +67,7 @@ try
                 "build-essential",
                 "clang",
                 "git",
+                "libncurses-dev",
                 "zlib1g-dev"
             ];
         await RunCheckedAsync(packageManager, updateArguments, repositoryRoot)

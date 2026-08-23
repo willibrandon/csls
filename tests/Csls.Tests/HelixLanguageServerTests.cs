@@ -153,23 +153,21 @@ public sealed class HelixLanguageServerTests
 
                         await automator.WaitUntilAlternateScreenAsync().ConfigureAwait(false);
                         await automator.WaitUntilTextAsync("Console.WriteLine").ConfigureAwait(false);
-                        await WaitForLanguageServerCapabilitiesAsync(
-                            logPath,
-                            TestContext.CancellationToken).ConfigureAwait(false);
+                        await ControlSessionWaiter.WaitForRunningAsync(
+                            fixturePath,
+                            TimeSpan.FromSeconds(60),
+                            TestContext.CancellationToken,
+                            homePath).ConfigureAwait(false);
                         await automator.SpaceAsync(TestContext.CancellationToken).ConfigureAwait(false);
                         await automator.KeyAsync(Hex1bKey.K, TestContext.CancellationToken)
                             .ConfigureAwait(false);
                         await automator.WaitUntilTextAsync("System.Console").ConfigureAwait(false);
 
                         using Hex1bTerminalSnapshot snapshot = automator.CreateSnapshot();
-                        string interactionLog = File.Exists(logPath)
-                            ? await File.ReadAllTextAsync(logPath, TestContext.CancellationToken)
-                                .ConfigureAwait(false)
-                            : string.Empty;
                         Assert.Contains(
                             "System.Console",
                             snapshot.GetScreenText(),
-                            $"{interactionLog}{Environment.NewLine}{snapshot.GetScreenText()}");
+                            snapshot.GetScreenText());
 
                         await automator.TypeAsync(":q!", TestContext.CancellationToken)
                             .ConfigureAwait(false);
@@ -230,41 +228,6 @@ public sealed class HelixLanguageServerTests
             name = "c-sharp"
             language-servers = ["csls"]
             """;
-    }
-
-    private static async Task WaitForLanguageServerCapabilitiesAsync(
-        string logPath,
-        CancellationToken cancellationToken)
-    {
-        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        timeout.CancelAfter(TimeSpan.FromSeconds(60));
-        using var timer = new PeriodicTimer(TimeSpan.FromMilliseconds(50));
-        try
-        {
-            while (await timer.WaitForNextTickAsync(timeout.Token).ConfigureAwait(false))
-            {
-                if (!File.Exists(logPath))
-                {
-                    continue;
-                }
-
-                string log = await File.ReadAllTextAsync(logPath, timeout.Token)
-                    .ConfigureAwait(false);
-                if (log.Contains("csls <-", StringComparison.Ordinal) &&
-                    log.Contains("\"hoverProvider\":true", StringComparison.Ordinal))
-                {
-                    return;
-                }
-            }
-        }
-        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
-        {
-            string log = File.Exists(logPath)
-                ? await File.ReadAllTextAsync(logPath, CancellationToken.None).ConfigureAwait(false)
-                : string.Empty;
-            throw new TimeoutException(
-                $"Helix did not receive csls hover capabilities.{Environment.NewLine}{log}");
-        }
     }
 
     private static async Task<string> RunHealthCheckAsync(

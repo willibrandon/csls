@@ -155,6 +155,10 @@ public sealed class CliLanguageServerTests
                 fixturePath,
                 TestContext.CancellationToken).ConfigureAwait(false);
             await lsp.OpenDocumentAsync(documentPath, DocumentText).ConfigureAwait(false);
+            await ControlSessionWaiter.WaitForRunningAsync(
+                fixturePath,
+                TimeSpan.FromSeconds(60),
+                TestContext.CancellationToken).ConfigureAwait(false);
 
             string processId = lsp.ProcessId.ToString(CultureInfo.InvariantCulture);
             (int listExitCode, string listOutput, string listError) = await RunCliAsync(

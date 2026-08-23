@@ -267,7 +267,8 @@ public sealed class EmacsLanguageServerTests
             """;
     }
 
-    private static string ToElispString(string value) => JsonSerializer.Serialize(value);
+    private static string ToElispString(string value) =>
+        JsonSerializer.Serialize(value.Replace('\\', '/'));
 
     private const string ProjectText = """
         <Project Sdk="Microsoft.NET.Sdk">
