@@ -1,0 +1,41 @@
+---
+title: Command line
+description: Inspect and use a live csls language-server session.
+---
+
+Start `csls` in an editor, then list the sessions visible to the current user:
+
+```console
+csls sessions list
+csls sessions show --session 12345
+```
+
+When exactly one session is live, query commands infer it. Otherwise, pass its
+process identifier with `--session`.
+
+```console
+csls query hover Program.cs --line 8 --character 20
+csls query diagnostics Program.cs --json
+csls query references Program.cs --line 8 --character 20
+csls query symbols CustomerService
+```
+
+Other query commands cover completion, definition, declaration, type definition,
+implementation, selection range, highlights, document symbols, and signature
+help. Position arguments use zero-based UTF-16 line and character offsets, which
+match LSP positions.
+
+## Safe edits
+
+Rename, formatting, and code actions return a preview by default. Add `--apply`
+only after reviewing that result:
+
+```console
+csls edit rename Program.cs Customer --line 8 --character 20
+csls edit rename Program.cs Customer --line 8 --character 20 --apply
+csls edit format Program.cs --apply
+csls edit code-action Program.cs --kind quickfix --apply
+```
+
+Every machine-readable command supports `--json`. Its response uses a versioned
+envelope so scripts and agents can reject shapes they do not understand.

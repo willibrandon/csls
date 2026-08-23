@@ -1,0 +1,37 @@
+---
+title: Development
+description: Build, test, and verify csls changes.
+---
+
+Use the pinned .NET 10 SDK and run tests through Microsoft Testing Platform:
+
+```console
+dotnet build Csls.slnx
+dotnet test --solution Csls.slnx
+dotnet format Csls.slnx --verify-no-changes
+```
+
+Tests run methods in parallel. They use real Roslyn workspaces, real LSP and MCP
+transports, and installed editor processes. Fresh, GNU Emacs with Eglot, Helix,
+and Neovim run inside Hex1b terminals so synchronization follows visible terminal
+state instead of fixed delays.
+
+Repository automation is implemented as .NET file apps under `scripts/`:
+
+```console
+dotnet run --file scripts/Verify-Repository.cs
+dotnet run --file scripts/Verify-GitHubActions.cs
+dotnet run --file scripts/Verify-ToolPackages.cs
+```
+
+The development container restores every file app and provisions its external
+test tools at pinned current releases. CI builds the supported runtime packages,
+runs CodeQL, scans the repository and container image with Picket, and checks the
+Native AOT package sizes.
+
+Build the documentation with:
+
+```console
+npm ci --prefix docs-site
+npm run build --prefix docs-site
+```
