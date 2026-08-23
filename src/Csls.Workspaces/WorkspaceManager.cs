@@ -8,7 +8,6 @@ using Microsoft.CodeAnalysis.FindSymbols;
 using Microsoft.CodeAnalysis.Formatting;
 using Microsoft.CodeAnalysis.MSBuild;
 using Microsoft.CodeAnalysis.Options;
-using Microsoft.CodeAnalysis.QuickInfo;
 using Microsoft.CodeAnalysis.Rename;
 using Microsoft.CodeAnalysis.Text;
 using Microsoft.Extensions.Logging;
@@ -782,7 +781,17 @@ public sealed partial class WorkspaceManager : IAsyncDisposable
             return null;
         }
 
-        Document? document = FindDocument(folders[folderIndex].Solution, path);
+        Solution solution = folders[folderIndex].Solution;
+        if (WorkspaceRazorDiagnosticService.IsRazorDocument(path))
+        {
+            return await WorkspaceRazorHoverService.GetHoverAsync(
+                solution,
+                path,
+                parameters.Position,
+                cancellationToken).ConfigureAwait(false);
+        }
+
+        Document? document = FindDocument(solution, path);
         if (document is null)
         {
             return null;
@@ -790,59 +799,21 @@ public sealed partial class WorkspaceManager : IAsyncDisposable
 
         SourceText text = await document.GetTextAsync(cancellationToken).ConfigureAwait(false);
         int offset = LspPositionConverter.GetOffset(text, parameters.Position);
-        var quickInfoService = QuickInfoService.GetService(document);
-        if (quickInfoService is not null)
-        {
-            QuickInfoItem? quickInfo = await quickInfoService
-                .GetQuickInfoAsync(document, offset, cancellationToken)
-                .ConfigureAwait(false);
-            if (quickInfo is not null)
-            {
-                string markdown = QuickInfoMarkdownFormatter.Format(quickInfo);
-                if (!string.IsNullOrWhiteSpace(markdown))
-                {
-                    LinePositionSpan quickInfoLineSpan = text.Lines.GetLinePositionSpan(
-                        quickInfo.Span);
-                    return new Hover
-                    {
-                        Contents = new MarkupContent
-                        {
-                            Kind = "markdown",
-                            Value = markdown
-                        },
-                        Range = new LspRange(
-                            new Position(
-                                quickInfoLineSpan.Start.Line,
-                                quickInfoLineSpan.Start.Character),
-                            new Position(
-                                quickInfoLineSpan.End.Line,
-                                quickInfoLineSpan.End.Character))
-                    };
-                }
-            }
-        }
-
-        SyntaxNode root = await document.GetSyntaxRootAsync(cancellationToken).ConfigureAwait(false)
-            ?? throw new InvalidOperationException("Roslyn returned no syntax root.");
-        SyntaxToken token = root.FindToken(offset, findInsideTrivia: true);
-        SemanticModel semanticModel = await document
-            .GetSemanticModelAsync(cancellationToken)
-            .ConfigureAwait(false)
-            ?? throw new InvalidOperationException("Roslyn returned no semantic model.");
-        ISymbol? symbol = semanticModel.GetSymbolInfo(token.Parent!, cancellationToken).Symbol
-            ?? semanticModel.GetDeclaredSymbol(token.Parent!, cancellationToken);
-        if (symbol is null)
+        (string Markdown, TextSpan Span)? hover = await WorkspaceHoverService
+            .GetAsync(document, offset, cancellationToken)
+            .ConfigureAwait(false);
+        if (hover is null)
         {
             return null;
         }
 
-        LinePositionSpan lineSpan = text.Lines.GetLinePositionSpan(token.Span);
+        LinePositionSpan lineSpan = text.Lines.GetLinePositionSpan(hover.Value.Span);
         return new Hover
         {
             Contents = new MarkupContent
             {
                 Kind = "markdown",
-                Value = $"```csharp{Environment.NewLine}{symbol.ToDisplayString()}{Environment.NewLine}```"
+                Value = hover.Value.Markdown
             },
             Range = new LspRange(
                 new Position(lineSpan.Start.Line, lineSpan.Start.Character),
