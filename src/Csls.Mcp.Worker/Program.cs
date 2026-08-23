@@ -66,6 +66,7 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
             return await hostTask.ConfigureAwait(false);
         }
 
+        int exitCode = transient.ExitCode == 0 ? 1 : transient.ExitCode;
         await hostSource.CancelAsync().ConfigureAwait(false);
         try
         {
@@ -73,9 +74,10 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
         }
         catch (OperationCanceledException) when (hostSource.IsCancellationRequested)
         {
+            return exitCode;
         }
 
-        return transient.ExitCode == 0 ? 1 : transient.ExitCode;
+        return exitCode;
     }
 
     string socketPath = processId.HasValue

@@ -173,7 +173,7 @@ public sealed class McpDirectModeTests
         }
     }
 
-    private static async Task WaitForProcessExitAsync(
+    private async Task WaitForProcessExitAsync(
         int processId,
         CancellationToken cancellationToken)
     {
@@ -186,6 +186,7 @@ public sealed class McpDirectModeTests
         }
         catch (ArgumentException)
         {
+            TestContext.WriteLine($"Process {processId} already exited.");
         }
     }
 

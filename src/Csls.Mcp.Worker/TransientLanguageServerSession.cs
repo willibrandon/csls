@@ -55,18 +55,7 @@ internal sealed class TransientLanguageServerSession : IAsyncDisposable
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(workspacePath);
         string fullWorkspacePath = Path.GetFullPath(workspacePath);
-        string workingDirectory;
-        if (Directory.Exists(fullWorkspacePath))
-        {
-            workingDirectory = fullWorkspacePath;
-        }
-        else if (File.Exists(fullWorkspacePath))
-        {
-            workingDirectory = Path.GetDirectoryName(fullWorkspacePath)
-                ?? throw new InvalidOperationException(
-                    $"Workspace {fullWorkspacePath} has no containing directory.");
-        }
-        else
+        if (!Directory.Exists(fullWorkspacePath) && !File.Exists(fullWorkspacePath))
         {
             throw new FileNotFoundException(
                 "The transient MCP workspace does not exist.",
@@ -74,6 +63,9 @@ internal sealed class TransientLanguageServerSession : IAsyncDisposable
         }
 
         string workerPath = TransientLanguageServerLocator.Resolve();
+        string workerDirectory = Path.GetDirectoryName(workerPath)
+            ?? throw new InvalidOperationException(
+                $"Language-server worker {workerPath} has no containing directory.");
         bool isManagedAssembly = string.Equals(
             Path.GetExtension(workerPath),
             ".dll",
@@ -85,7 +77,7 @@ internal sealed class TransientLanguageServerSession : IAsyncDisposable
             RedirectStandardInput = true,
             RedirectStandardOutput = true,
             UseShellExecute = false,
-            WorkingDirectory = workingDirectory
+            WorkingDirectory = workerDirectory
         };
         if (isManagedAssembly)
         {

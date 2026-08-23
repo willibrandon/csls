@@ -59,10 +59,14 @@ internal static class McpWorkerSupervisor
             Path.GetExtension(workerPath),
             ".dll",
             StringComparison.OrdinalIgnoreCase);
+        string workerDirectory = Path.GetDirectoryName(workerPath)
+            ?? throw new InvalidOperationException(
+                $"MCP worker {workerPath} has no containing directory.");
         var startInfo = new ProcessStartInfo
         {
             FileName = isManagedAssembly ? ResolveDotNetHost() : workerPath,
-            UseShellExecute = false
+            UseShellExecute = false,
+            WorkingDirectory = workerDirectory
         };
         if (isManagedAssembly)
         {
