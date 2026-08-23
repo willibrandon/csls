@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using Csls.Control.Contracts;
 using Csls.Protocol;
 using Csls.Server;
@@ -10,9 +11,12 @@ namespace Csls.Control;
 /// </summary>
 public sealed class ControlService : IControlRpcTarget
 {
+    private const int MaximumPendingEditPlans = 128;
+    private static readonly TimeSpan s_editPlanLifetime = TimeSpan.FromMinutes(5);
     private readonly LanguageServer _languageServer;
     private readonly WorkspaceManager _workspaceManager;
     private readonly string _socketPath;
+    private readonly ConcurrentDictionary<Guid, PendingControlEditPlan> _pendingEditPlans = new();
 
     /// <summary>
     /// Creates a control target for the current language-server process.
@@ -209,6 +213,168 @@ public sealed class ControlService : IControlRpcTarget
                 }
             },
             cancellationToken);
+    }
+
+    /// <inheritdoc />
+    public async Task<ControlEditPlan> PreviewRenameAsync(
+        ControlRenameRequest request,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        ArgumentException.ThrowIfNullOrWhiteSpace(request.DocumentPath);
+        ArgumentException.ThrowIfNullOrWhiteSpace(request.NewName);
+        WorkspaceEditSnapshot snapshot = await _languageServer.CreateRenameEditSnapshotAsync(
+            new RenameParams
+            {
+                TextDocument = new TextDocumentIdentifier
+                {
+                    Uri = DocumentUri.FromFileSystemPath(
+                        Path.GetFullPath(request.DocumentPath))
+                },
+                Position = request.Position,
+                NewName = request.NewName
+            },
+            cancellationToken).ConfigureAwait(false);
+        return CreateEditPlan("rename", snapshot);
+    }
+
+    /// <inheritdoc />
+    public async Task<ControlEditPlan> PreviewFormattingAsync(
+        ControlFormattingRequest request,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        ArgumentException.ThrowIfNullOrWhiteSpace(request.DocumentPath);
+        WorkspaceEditSnapshot snapshot = await _languageServer.CreateFormattingEditSnapshotAsync(
+            new DocumentFormattingParams
+            {
+                TextDocument = new TextDocumentIdentifier
+                {
+                    Uri = DocumentUri.FromFileSystemPath(
+                        Path.GetFullPath(request.DocumentPath))
+                },
+                Options = request.Options
+            },
+            cancellationToken).ConfigureAwait(false);
+        return CreateEditPlan("format", snapshot);
+    }
+
+    /// <inheritdoc />
+    public async Task<IReadOnlyList<ControlCodeActionPlan>> GetCodeActionsAsync(
+        ControlCodeActionRequest request,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        ArgumentException.ThrowIfNullOrWhiteSpace(request.DocumentPath);
+        IReadOnlyList<CodeActionEditSnapshot> snapshots = await _languageServer
+            .CreateCodeActionSnapshotsAsync(
+            new CodeActionParams
+            {
+                TextDocument = new TextDocumentIdentifier
+                {
+                    Uri = DocumentUri.FromFileSystemPath(
+                        Path.GetFullPath(request.DocumentPath))
+                },
+                Range = request.Range,
+                Context = new CodeActionContext
+                {
+                    Diagnostics = [],
+                    Only = request.Only
+                }
+            },
+            cancellationToken).ConfigureAwait(false);
+        return
+        [
+            .. snapshots.Select(snapshot => new ControlCodeActionPlan
+            {
+                Action = snapshot.Action,
+                EditPlan = snapshot.EditSnapshot is null
+                    ? null
+                    : CreateEditPlan("code-action", snapshot.EditSnapshot)
+            })
+        ];
+    }
+
+    /// <inheritdoc />
+    public async Task<ControlApplyEditPlanResult> ApplyEditPlanAsync(
+        ControlApplyEditPlanRequest request,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        if (!_pendingEditPlans.TryRemove(request.PlanId, out PendingControlEditPlan? pendingPlan))
+        {
+            throw new InvalidOperationException(
+                "The edit plan is unknown, expired, or has already been applied.");
+        }
+
+        if (pendingPlan.ExpiresAtUtc <= TimeProvider.System.GetUtcNow())
+        {
+            throw new InvalidOperationException("The edit plan has expired.");
+        }
+
+        long generation = await _languageServer.ApplyWorkspaceEditAsync(
+            pendingPlan.Snapshot,
+            cancellationToken).ConfigureAwait(false);
+        return new ControlApplyEditPlanResult
+        {
+            WorkspaceGeneration = generation,
+            DocumentPaths =
+            [
+                .. pendingPlan.Snapshot.Edit.DocumentChanges.Select(static edit =>
+                    edit.TextDocument.Uri.GetFileSystemPath())
+            ]
+        };
+    }
+
+    private ControlEditPlan CreateEditPlan(
+        string operation,
+        WorkspaceEditSnapshot snapshot)
+    {
+        DateTimeOffset now = TimeProvider.System.GetUtcNow();
+        foreach ((Guid existingPlanId, PendingControlEditPlan existingPlan) in _pendingEditPlans)
+        {
+            if (existingPlan.ExpiresAtUtc <= now)
+            {
+                _pendingEditPlans.TryRemove(existingPlanId, out _);
+            }
+        }
+
+        if (_pendingEditPlans.Count >= MaximumPendingEditPlans)
+        {
+            throw new InvalidOperationException(
+                $"The session already has {MaximumPendingEditPlans} pending edit plans.");
+        }
+
+        var planId = Guid.NewGuid();
+        DateTimeOffset expiresAtUtc = now + s_editPlanLifetime;
+        var pendingPlan = new PendingControlEditPlan
+        {
+            Snapshot = snapshot,
+            ExpiresAtUtc = expiresAtUtc
+        };
+        if (!_pendingEditPlans.TryAdd(planId, pendingPlan))
+        {
+            throw new InvalidOperationException("The edit plan identifier collided.");
+        }
+
+        return new ControlEditPlan
+        {
+            PlanId = planId,
+            Operation = operation,
+            WorkspaceGeneration = snapshot.WorkspaceGeneration,
+            ExpiresAtUtc = expiresAtUtc,
+            Edit = snapshot.Edit,
+            Preconditions =
+            [
+                .. snapshot.Preconditions.Select(static precondition =>
+                    new ControlDocumentPrecondition
+                    {
+                        DocumentPath = precondition.Uri.GetFileSystemPath(),
+                        Version = precondition.Version,
+                        Sha256 = precondition.Sha256
+                    })
+            ]
+        };
     }
 
     private static TextDocumentPositionParams CreateNavigationParams(

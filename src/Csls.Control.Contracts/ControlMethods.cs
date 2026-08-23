@@ -54,4 +54,24 @@ public static class ControlMethods
     /// Gets the method that returns overload-aware signature help.
     /// </summary>
     public const string GetSignatureHelp = "csls/control/v1/signature-help/get";
+
+    /// <summary>
+    /// Gets the method that previews a version-aware semantic rename edit.
+    /// </summary>
+    public const string PreviewRename = "csls/control/v1/rename/preview";
+
+    /// <summary>
+    /// Gets the method that previews complete-document formatting edits.
+    /// </summary>
+    public const string PreviewFormatting = "csls/control/v1/formatting/preview";
+
+    /// <summary>
+    /// Gets the method that previews concrete Roslyn code actions.
+    /// </summary>
+    public const string GetCodeActions = "csls/control/v1/code-actions/get";
+
+    /// <summary>
+    /// Gets the method that explicitly applies one previously previewed edit plan.
+    /// </summary>
+    public const string ApplyEditPlan = "csls/control/v1/edit-plans/apply";
 }

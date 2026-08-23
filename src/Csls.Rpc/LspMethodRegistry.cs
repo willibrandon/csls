@@ -41,6 +41,10 @@ public static class LspMethodRegistry
             new Func<DidChangeTextDocumentParams, CancellationToken, Task>(target.DidChangeAsync));
         AddParameterObjectMethod(
             rpc,
+            "textDocument/didClose",
+            new Func<DidCloseTextDocumentParams, CancellationToken, Task>(target.DidCloseAsync));
+        AddParameterObjectMethod(
+            rpc,
             "textDocument/didSave",
             new Func<DidSaveTextDocumentParams, CancellationToken, Task>(target.DidSaveAsync));
         AddParameterObjectMethod(
@@ -87,6 +91,25 @@ public static class LspMethodRegistry
             "textDocument/signatureHelp",
             new Func<SignatureHelpParams, CancellationToken, Task<SignatureHelp?>>(
                 target.SignatureHelpAsync));
+        AddParameterObjectMethod(
+            rpc,
+            "textDocument/prepareRename",
+            new Func<TextDocumentPositionParams, CancellationToken, Task<PrepareRenameResult?>>(
+                target.PrepareRenameAsync));
+        AddParameterObjectMethod(
+            rpc,
+            "textDocument/rename",
+            new Func<RenameParams, CancellationToken, Task<WorkspaceEdit>>(target.RenameAsync));
+        AddParameterObjectMethod(
+            rpc,
+            "textDocument/formatting",
+            new Func<DocumentFormattingParams, CancellationToken, Task<IReadOnlyList<TextEdit>>>(
+                target.FormattingAsync));
+        AddParameterObjectMethod(
+            rpc,
+            "textDocument/codeAction",
+            new Func<CodeActionParams, CancellationToken, Task<IReadOnlyList<CodeAction>>>(
+                target.CodeActionAsync));
     }
 
     private static void AddParameterObjectMethod(

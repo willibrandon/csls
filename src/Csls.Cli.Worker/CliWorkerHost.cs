@@ -4,6 +4,7 @@ using System.Runtime.CompilerServices;
 using Csls.Control;
 using Csls.Control.Contracts;
 using Csls.Protocol;
+using LspRange = Csls.Protocol.Range;
 
 namespace Csls.Cli.Worker;
 
@@ -57,6 +58,18 @@ internal static class CliWorkerHost
                         writeJson,
                         cancellationToken).ConfigureAwait(false),
                     "query-signature-help" => await QuerySignatureHelpAsync(
+                        arguments,
+                        writeJson,
+                        cancellationToken).ConfigureAwait(false),
+                    "edit-rename" => await PreviewRenameAsync(
+                        arguments,
+                        writeJson,
+                        cancellationToken).ConfigureAwait(false),
+                    "edit-format" => await PreviewFormattingAsync(
+                        arguments,
+                        writeJson,
+                        cancellationToken).ConfigureAwait(false),
+                    "edit-code-action" => await PreviewCodeActionsAsync(
                         arguments,
                         writeJson,
                         cancellationToken).ConfigureAwait(false),
@@ -319,6 +332,155 @@ internal static class CliWorkerHost
             },
             cancellationToken).ConfigureAwait(false);
         CliOutputWriter.WriteSignatureHelp(signatureHelp, writeJson);
+        return 0;
+    }
+
+    private static async Task<int> PreviewRenameAsync(
+        IReadOnlyList<string> arguments,
+        bool writeJson,
+        CancellationToken cancellationToken)
+    {
+        if (arguments.Count != 8 ||
+            !int.TryParse(arguments[1], NumberStyles.None, CultureInfo.InvariantCulture,
+                out int processId) ||
+            !int.TryParse(arguments[3], NumberStyles.None, CultureInfo.InvariantCulture,
+                out int line) ||
+            !int.TryParse(arguments[4], NumberStyles.None, CultureInfo.InvariantCulture,
+                out int character) ||
+            !bool.TryParse(arguments[6], out bool apply))
+        {
+            return Fail(
+                "invalid-request",
+                "The launcher supplied an invalid rename preview request.",
+                writeJson);
+        }
+
+        ControlSessionInfo session = await ResolveSessionAsync(processId, cancellationToken)
+            .ConfigureAwait(false);
+        var client = new ControlRpcClient(session.SocketPath);
+        await using ConfiguredAsyncDisposable clientCleanup = client.ConfigureAwait(false);
+        ControlEditPlan plan = await client.PreviewRenameAsync(
+            new ControlRenameRequest
+            {
+                DocumentPath = arguments[2],
+                Position = new Position(line, character),
+                NewName = arguments[5]
+            },
+            cancellationToken).ConfigureAwait(false);
+        if (apply)
+        {
+            ControlApplyEditPlanResult result = await client.ApplyEditPlanAsync(
+                new ControlApplyEditPlanRequest { PlanId = plan.PlanId },
+                cancellationToken).ConfigureAwait(false);
+            CliOutputWriter.WriteAppliedEditPlan(result, writeJson);
+        }
+        else
+        {
+            CliOutputWriter.WriteEditPlan(plan, writeJson);
+        }
+
+        return 0;
+    }
+
+    private static async Task<int> PreviewFormattingAsync(
+        IReadOnlyList<string> arguments,
+        bool writeJson,
+        CancellationToken cancellationToken)
+    {
+        if (arguments.Count != 7 ||
+            !int.TryParse(arguments[1], NumberStyles.None, CultureInfo.InvariantCulture,
+                out int processId) ||
+            !int.TryParse(arguments[3], NumberStyles.None, CultureInfo.InvariantCulture,
+                out int tabSize) ||
+            !bool.TryParse(arguments[4], out bool insertSpaces) ||
+            !bool.TryParse(arguments[5], out bool apply))
+        {
+            return Fail(
+                "invalid-request",
+                "The launcher supplied an invalid formatting preview request.",
+                writeJson);
+        }
+
+        ControlSessionInfo session = await ResolveSessionAsync(processId, cancellationToken)
+            .ConfigureAwait(false);
+        var client = new ControlRpcClient(session.SocketPath);
+        await using ConfiguredAsyncDisposable clientCleanup = client.ConfigureAwait(false);
+        ControlEditPlan plan = await client.PreviewFormattingAsync(
+            new ControlFormattingRequest
+            {
+                DocumentPath = arguments[2],
+                Options = new FormattingOptions
+                {
+                    TabSize = tabSize,
+                    InsertSpaces = insertSpaces,
+                    TrimTrailingWhitespace = true,
+                    InsertFinalNewline = true,
+                    TrimFinalNewlines = true
+                }
+            },
+            cancellationToken).ConfigureAwait(false);
+        if (apply)
+        {
+            ControlApplyEditPlanResult result = await client.ApplyEditPlanAsync(
+                new ControlApplyEditPlanRequest { PlanId = plan.PlanId },
+                cancellationToken).ConfigureAwait(false);
+            CliOutputWriter.WriteAppliedEditPlan(result, writeJson);
+        }
+        else
+        {
+            CliOutputWriter.WriteEditPlan(plan, writeJson);
+        }
+
+        return 0;
+    }
+
+    private static async Task<int> PreviewCodeActionsAsync(
+        IReadOnlyList<string> arguments,
+        bool writeJson,
+        CancellationToken cancellationToken)
+    {
+        if (arguments.Count != 6 ||
+            !int.TryParse(arguments[1], NumberStyles.None, CultureInfo.InvariantCulture,
+                out int processId) ||
+            !bool.TryParse(arguments[4], out bool apply))
+        {
+            return Fail(
+                "invalid-request",
+                "The launcher supplied an invalid code-action preview request.",
+                writeJson);
+        }
+
+        ControlSessionInfo session = await ResolveSessionAsync(processId, cancellationToken)
+            .ConfigureAwait(false);
+        var client = new ControlRpcClient(session.SocketPath);
+        await using ConfiguredAsyncDisposable clientCleanup = client.ConfigureAwait(false);
+        IReadOnlyList<ControlCodeActionPlan> actions = await client.GetCodeActionsAsync(
+            new ControlCodeActionRequest
+            {
+                DocumentPath = arguments[2],
+                Range = new LspRange(new Position(0, 0), new Position(0, 0)),
+                Only = [arguments[3]]
+            },
+            cancellationToken).ConfigureAwait(false);
+        if (apply)
+        {
+            ControlCodeActionPlan action = actions.Count == 1
+                ? actions[0]
+                : throw new InvalidOperationException(
+                    "Applying a code action requires exactly one matching action.");
+            ControlEditPlan editPlan = action.EditPlan
+                ?? throw new InvalidOperationException(
+                    "The selected code action does not contain a source edit plan.");
+            ControlApplyEditPlanResult result = await client.ApplyEditPlanAsync(
+                new ControlApplyEditPlanRequest { PlanId = editPlan.PlanId },
+                cancellationToken).ConfigureAwait(false);
+            CliOutputWriter.WriteAppliedEditPlan(result, writeJson);
+        }
+        else
+        {
+            CliOutputWriter.WriteCodeActionPlans(actions, writeJson);
+        }
+
         return 0;
     }
 

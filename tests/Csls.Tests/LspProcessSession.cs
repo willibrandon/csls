@@ -3,6 +3,7 @@ using Csls.Rpc;
 using StreamJsonRpc;
 using System.Diagnostics;
 using System.Text.Json;
+using LspRange = Csls.Protocol.Range;
 
 namespace Csls.Tests;
 
@@ -367,6 +368,108 @@ internal sealed class LspProcessSession : IAsyncDisposable
             cancellationToken);
 
     /// <summary>
+    /// Validates the rename target at one opened test document position.
+    /// </summary>
+    /// <param name="documentPath">The absolute target document path.</param>
+    /// <param name="position">The target UTF-16 document position.</param>
+    /// <param name="cancellationToken">The test cancellation token.</param>
+    /// <returns>The rename range and placeholder, or null when rename is unavailable.</returns>
+    internal Task<PrepareRenameResult?> PrepareRenameAsync(
+        string documentPath,
+        Position position,
+        CancellationToken cancellationToken) =>
+        _rpc.InvokeWithParameterObjectAsync<PrepareRenameResult?>(
+            "textDocument/prepareRename",
+            new TextDocumentPositionParams
+            {
+                TextDocument = new TextDocumentIdentifier
+                {
+                    Uri = DocumentUri.FromFileSystemPath(documentPath)
+                },
+                Position = position
+            },
+            cancellationToken);
+
+    /// <summary>
+    /// Requests a version-aware workspace rename edit from the real worker.
+    /// </summary>
+    /// <param name="documentPath">The absolute target document path.</param>
+    /// <param name="position">The target UTF-16 document position.</param>
+    /// <param name="newName">The requested replacement identifier.</param>
+    /// <param name="cancellationToken">The test cancellation token.</param>
+    /// <returns>The complete cross-document workspace edit.</returns>
+    internal Task<WorkspaceEdit> RequestRenameAsync(
+        string documentPath,
+        Position position,
+        string newName,
+        CancellationToken cancellationToken) =>
+        _rpc.InvokeWithParameterObjectAsync<WorkspaceEdit>(
+            "textDocument/rename",
+            new RenameParams
+            {
+                TextDocument = new TextDocumentIdentifier
+                {
+                    Uri = DocumentUri.FromFileSystemPath(documentPath)
+                },
+                Position = position,
+                NewName = newName
+            },
+            cancellationToken);
+
+    /// <summary>
+    /// Requests complete-document formatting edits from the real worker.
+    /// </summary>
+    /// <param name="documentPath">The absolute target document path.</param>
+    /// <param name="options">The editor formatting preferences.</param>
+    /// <param name="cancellationToken">The test cancellation token.</param>
+    /// <returns>The bounded non-overlapping formatting edits.</returns>
+    internal Task<IReadOnlyList<TextEdit>> RequestFormattingAsync(
+        string documentPath,
+        FormattingOptions options,
+        CancellationToken cancellationToken) =>
+        _rpc.InvokeWithParameterObjectAsync<IReadOnlyList<TextEdit>>(
+            "textDocument/formatting",
+            new DocumentFormattingParams
+            {
+                TextDocument = new TextDocumentIdentifier
+                {
+                    Uri = DocumentUri.FromFileSystemPath(documentPath)
+                },
+                Options = options
+            },
+            cancellationToken);
+
+    /// <summary>
+    /// Requests concrete code actions from the real worker.
+    /// </summary>
+    /// <param name="documentPath">The absolute target document path.</param>
+    /// <param name="range">The target UTF-16 source range.</param>
+    /// <param name="only">The optional requested code-action categories.</param>
+    /// <param name="cancellationToken">The test cancellation token.</param>
+    /// <returns>The supported code actions with concrete edits.</returns>
+    internal Task<IReadOnlyList<CodeAction>> RequestCodeActionsAsync(
+        string documentPath,
+        LspRange range,
+        IReadOnlyList<string>? only,
+        CancellationToken cancellationToken) =>
+        _rpc.InvokeWithParameterObjectAsync<IReadOnlyList<CodeAction>>(
+            "textDocument/codeAction",
+            new CodeActionParams
+            {
+                TextDocument = new TextDocumentIdentifier
+                {
+                    Uri = DocumentUri.FromFileSystemPath(documentPath)
+                },
+                Range = range,
+                Context = new CodeActionContext
+                {
+                    Diagnostics = [],
+                    Only = only
+                }
+            },
+            cancellationToken);
+
+    /// <summary>
     /// Sends a document save notification through the real LSP transport.
     /// </summary>
     /// <param name="documentPath">The absolute saved document path.</param>
@@ -375,6 +478,22 @@ internal sealed class LspProcessSession : IAsyncDisposable
         _rpc.NotifyWithParameterObjectAsync(
             "textDocument/didSave",
             new DidSaveTextDocumentParams
+            {
+                TextDocument = new TextDocumentIdentifier
+                {
+                    Uri = DocumentUri.FromFileSystemPath(documentPath)
+                }
+            });
+
+    /// <summary>
+    /// Closes one test document and removes its client-owned overlay.
+    /// </summary>
+    /// <param name="documentPath">The absolute document path.</param>
+    /// <returns>A task that completes after the notification is sent.</returns>
+    internal Task CloseDocumentAsync(string documentPath) =>
+        _rpc.NotifyWithParameterObjectAsync(
+            "textDocument/didClose",
+            new DidCloseTextDocumentParams
             {
                 TextDocument = new TextDocumentIdentifier
                 {

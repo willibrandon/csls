@@ -103,4 +103,44 @@ public interface IControlRpcTarget
     Task<SignatureHelp?> GetSignatureHelpAsync(
         ControlSignatureHelpRequest request,
         CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Previews a version-aware semantic rename edit without applying it.
+    /// </summary>
+    /// <param name="request">The target symbol and replacement identifier.</param>
+    /// <param name="cancellationToken">The peer cancellation token.</param>
+    /// <returns>The one-use edit plan and exact application preconditions.</returns>
+    Task<ControlEditPlan> PreviewRenameAsync(
+        ControlRenameRequest request,
+        CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Previews complete-document formatting without applying it.
+    /// </summary>
+    /// <param name="request">The target document and formatting preferences.</param>
+    /// <param name="cancellationToken">The peer cancellation token.</param>
+    /// <returns>The one-use formatting plan and exact application preconditions.</returns>
+    Task<ControlEditPlan> PreviewFormattingAsync(
+        ControlFormattingRequest request,
+        CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Gets concrete Roslyn code actions for one source range.
+    /// </summary>
+    /// <param name="request">The target range and optional action categories.</param>
+    /// <param name="cancellationToken">The peer cancellation token.</param>
+    /// <returns>The supported code actions with concrete edits.</returns>
+    Task<IReadOnlyList<ControlCodeActionPlan>> GetCodeActionsAsync(
+        ControlCodeActionRequest request,
+        CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Explicitly applies one unexpired edit plan after all preconditions pass.
+    /// </summary>
+    /// <param name="request">The one-use edit plan identifier.</param>
+    /// <param name="cancellationToken">The peer cancellation token.</param>
+    /// <returns>The new generation and changed document paths.</returns>
+    Task<ControlApplyEditPlanResult> ApplyEditPlanAsync(
+        ControlApplyEditPlanRequest request,
+        CancellationToken cancellationToken);
 }

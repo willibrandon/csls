@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text.Json;
 using Csls.Control.Contracts;
 using Csls.Protocol;
@@ -274,6 +275,108 @@ internal static class CliOutputWriter
     }
 
     /// <summary>
+    /// Writes a one-use edit plan and every version and content-hash precondition.
+    /// </summary>
+    /// <param name="plan">The complete one-use edit plan.</param>
+    /// <param name="writeJson">Whether to write a machine-readable envelope.</param>
+    internal static void WriteEditPlan(ControlEditPlan plan, bool writeJson)
+    {
+        ArgumentNullException.ThrowIfNull(plan);
+        if (writeJson)
+        {
+            JsonElement data = JsonSerializer.SerializeToElement(
+                plan,
+                CliJsonSerializerContext.Default.ControlEditPlan);
+            WriteEnvelope(success: true, data);
+            return;
+        }
+
+        Console.Out.WriteLine($"Plan: {plan.PlanId:D}");
+        Console.Out.WriteLine($"Operation: {plan.Operation}");
+        Console.Out.WriteLine($"Expires: {plan.ExpiresAtUtc:O}");
+        foreach (TextDocumentEdit documentEdit in plan.Edit.DocumentChanges)
+        {
+            Console.Out.WriteLine(
+                $"{documentEdit.TextDocument.Uri}\tversion=" +
+                $"{documentEdit.TextDocument.Version?.ToString(CultureInfo.InvariantCulture) ?? "closed"}");
+            WriteTextEdits(documentEdit.Edits);
+        }
+    }
+
+    /// <summary>
+    /// Writes the result of an explicitly applied one-use edit plan.
+    /// </summary>
+    /// <param name="result">The new generation and changed document paths.</param>
+    /// <param name="writeJson">Whether to write a machine-readable envelope.</param>
+    internal static void WriteAppliedEditPlan(
+        ControlApplyEditPlanResult result,
+        bool writeJson)
+    {
+        ArgumentNullException.ThrowIfNull(result);
+        if (writeJson)
+        {
+            JsonElement data = JsonSerializer.SerializeToElement(
+                result,
+                CliJsonSerializerContext.Default.ControlApplyEditPlanResult);
+            WriteEnvelope(success: true, data);
+            return;
+        }
+
+        Console.Out.WriteLine($"Applied generation {result.WorkspaceGeneration}.");
+        foreach (string documentPath in result.DocumentPaths)
+        {
+            Console.Out.WriteLine(documentPath);
+        }
+    }
+
+    /// <summary>
+    /// Writes bounded text edit previews for one source document.
+    /// </summary>
+    /// <param name="edits">The non-overlapping source edits.</param>
+    /// <param name="writeJson">Whether to write a machine-readable envelope.</param>
+    internal static void WriteTextEdits(IReadOnlyList<TextEdit> edits, bool writeJson)
+    {
+        ArgumentNullException.ThrowIfNull(edits);
+        if (writeJson)
+        {
+            JsonElement data = JsonSerializer.SerializeToElement(
+                edits,
+                typeof(IReadOnlyList<TextEdit>),
+                CliJsonSerializerContext.Default);
+            WriteEnvelope(success: true, data);
+            return;
+        }
+
+        WriteTextEdits(edits);
+    }
+
+    /// <summary>
+    /// Writes concrete code actions and their optional one-use application plans.
+    /// </summary>
+    /// <param name="actions">The supported concrete code action plans.</param>
+    /// <param name="writeJson">Whether to write a machine-readable envelope.</param>
+    internal static void WriteCodeActionPlans(
+        IReadOnlyList<ControlCodeActionPlan> actions,
+        bool writeJson)
+    {
+        ArgumentNullException.ThrowIfNull(actions);
+        if (writeJson)
+        {
+            JsonElement data = JsonSerializer.SerializeToElement(
+                actions,
+                typeof(IReadOnlyList<ControlCodeActionPlan>),
+                CliJsonSerializerContext.Default);
+            WriteEnvelope(success: true, data);
+            return;
+        }
+
+        foreach (ControlCodeActionPlan action in actions)
+        {
+            Console.Out.WriteLine($"{action.Action.Kind}\t{action.Action.Title}");
+        }
+    }
+
+    /// <summary>
     /// Writes an actionable command failure to the requested output channel.
     /// </summary>
     /// <param name="code">The stable failure category.</param>
@@ -320,6 +423,19 @@ internal static class CliOutputWriter
             {
                 WriteDocumentSymbols(children, depth + 1);
             }
+        }
+    }
+
+    private static void WriteTextEdits(IReadOnlyList<TextEdit> edits)
+    {
+        foreach (TextEdit edit in edits)
+        {
+            string newText = JsonSerializer.Serialize(
+                edit.NewText,
+                CliJsonSerializerContext.Default.String);
+            Console.Out.WriteLine(
+                $"  {edit.Range.Start.Line}:{edit.Range.Start.Character}-" +
+                $"{edit.Range.End.Line}:{edit.Range.End.Character}\t{newText}");
         }
     }
 }

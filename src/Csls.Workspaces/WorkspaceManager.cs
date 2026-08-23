@@ -1,5 +1,6 @@
 using System.Collections.Immutable;
 using System.Globalization;
+using System.Security.Cryptography;
 using System.Text;
 using Csls.Protocol;
 using Microsoft.Build.Locator;
@@ -9,8 +10,11 @@ using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Diagnostics;
 using Microsoft.CodeAnalysis.FindSymbols;
+using Microsoft.CodeAnalysis.Formatting;
 using Microsoft.CodeAnalysis.MSBuild;
+using Microsoft.CodeAnalysis.Options;
 using Microsoft.CodeAnalysis.QuickInfo;
+using Microsoft.CodeAnalysis.Rename;
 using Microsoft.CodeAnalysis.Tags;
 using Microsoft.CodeAnalysis.Text;
 using Microsoft.Extensions.Logging;
@@ -21,6 +25,8 @@ using LspCompletionItem = Csls.Protocol.CompletionItem;
 using LspCompletionItemKind = Csls.Protocol.CompletionItemKind;
 using LspCompletionList = Csls.Protocol.CompletionList;
 using LspCompletionTriggerKind = Csls.Protocol.CompletionTriggerKind;
+using LspCodeAction = Csls.Protocol.CodeAction;
+using LspFormattingOptions = Csls.Protocol.FormattingOptions;
 using LspLocation = Csls.Protocol.Location;
 using LspSignatureHelp = Csls.Protocol.SignatureHelp;
 using LspSymbolKind = Csls.Protocol.SymbolKind;
@@ -29,7 +35,9 @@ using RoslynDiagnostic = Microsoft.CodeAnalysis.Diagnostic;
 using RoslynDiagnosticSeverity = Microsoft.CodeAnalysis.DiagnosticSeverity;
 using RoslynCompletionItem = Microsoft.CodeAnalysis.Completion.CompletionItem;
 using RoslynCompletionList = Microsoft.CodeAnalysis.Completion.CompletionList;
+using RoslynFormattingOptions = Microsoft.CodeAnalysis.Formatting.FormattingOptions;
 using RoslynLocation = Microsoft.CodeAnalysis.Location;
+using RoslynSymbolKind = Microsoft.CodeAnalysis.SymbolKind;
 
 namespace Csls.Workspaces;
 
@@ -43,6 +51,8 @@ public sealed partial class WorkspaceManager : IAsyncDisposable
     private const int MaximumDocumentSymbols = 2_000;
     private const int MaximumWorkspaceSymbols = 200;
     private const int MaximumSignatures = 100;
+    private const int MaximumWorkspaceTextEdits = 10_000;
+    private const string OrganizeImportsCodeActionKind = "source.organizeImports";
     private static readonly Lock s_msbuildRegistrationLock = new();
     private static bool s_msbuildRegistered;
 
@@ -214,12 +224,7 @@ public sealed partial class WorkspaceManager : IAsyncDisposable
                     PreservationMode.PreserveIdentity);
             }
 
-            if (!workspace.TryApplyChanges(solution))
-            {
-                throw new InvalidOperationException($"Roslyn rejected the document overlay for {path}.");
-            }
-
-            _folders = _folders.SetItem(folderIndex, (rootPath, workspace, workspace.CurrentSolution));
+            _folders = _folders.SetItem(folderIndex, (rootPath, workspace, solution));
             _documentVersions[path] = document.Version;
             _diagnosticCache.Clear();
             Interlocked.Increment(ref _generation);
@@ -294,13 +299,66 @@ public sealed partial class WorkspaceManager : IAsyncDisposable
                 document.Id,
                 text,
                 PreservationMode.PreserveIdentity);
-            if (!workspace.TryApplyChanges(changedSolution))
+            _folders = _folders.SetItem(folderIndex, (rootPath, workspace, changedSolution));
+            _documentVersions[path] = parameters.TextDocument.Version;
+            _diagnosticCache.Clear();
+            Interlocked.Increment(ref _generation);
+        }
+        finally
+        {
+            _mutationGate.Release();
+        }
+    }
+
+    /// <summary>
+    /// Removes an open overlay and restores the document contents persisted on disk.
+    /// </summary>
+    /// <param name="parameters">The closed text document.</param>
+    /// <param name="cancellationToken">The operation cancellation token.</param>
+    /// <returns>A task that completes after the persisted snapshot is published.</returns>
+    public async Task CloseDocumentAsync(
+        DidCloseTextDocumentParams parameters,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(parameters);
+        string path = parameters.TextDocument.Uri.GetFileSystemPath();
+        await _mutationGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            if (!_documentVersions.Remove(path))
             {
-                throw new InvalidOperationException($"Roslyn rejected content changes for {path}.");
+                return;
             }
 
-            _folders = _folders.SetItem(folderIndex, (rootPath, workspace, workspace.CurrentSolution));
-            _documentVersions[path] = parameters.TextDocument.Version;
+            int folderIndex = FindFolderIndex(path, _folders);
+            if (folderIndex < 0)
+            {
+                return;
+            }
+
+            (string rootPath, Workspace workspace, Solution solution) = _folders[folderIndex];
+            Document? document = FindDocument(solution, path);
+            if (document is null)
+            {
+                return;
+            }
+
+            Solution changedSolution;
+            if (File.Exists(path))
+            {
+                string persistedText = await File.ReadAllTextAsync(path, cancellationToken)
+                    .ConfigureAwait(false);
+                changedSolution = solution.WithDocumentText(
+                    document.Id,
+                    SourceText.From(persistedText, Encoding.UTF8),
+                    PreservationMode.PreserveIdentity);
+            }
+            else
+            {
+                changedSolution = solution.RemoveDocument(document.Id);
+            }
+
+            _folders = _folders.SetItem(folderIndex, (rootPath, workspace, changedSolution));
             _diagnosticCache.Clear();
             Interlocked.Increment(ref _generation);
         }
@@ -829,6 +887,374 @@ public sealed partial class WorkspaceManager : IAsyncDisposable
     }
 
     /// <summary>
+    /// Validates a source symbol and returns the identifier range accepted by rename.
+    /// </summary>
+    /// <param name="parameters">The target document position.</param>
+    /// <param name="cancellationToken">The operation cancellation token.</param>
+    /// <returns>The rename range and placeholder, or null when rename is unavailable.</returns>
+    public async Task<PrepareRenameResult?> PrepareRenameAsync(
+        TextDocumentPositionParams parameters,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(parameters);
+        (Document? document, ISymbol? symbol) = await FindSymbolAsync(
+            parameters,
+            cancellationToken).ConfigureAwait(false);
+        symbol = NormalizeRenameSymbol(symbol);
+        if (document is null || symbol is null || !CanRenameSymbol(symbol))
+        {
+            return null;
+        }
+
+        SourceText text = await document.GetTextAsync(cancellationToken).ConfigureAwait(false);
+        int offset = GetOffset(text, parameters.Position);
+        SyntaxNode root = await document.GetSyntaxRootAsync(cancellationToken).ConfigureAwait(false)
+            ?? throw new InvalidOperationException("Roslyn returned no syntax root.");
+        int tokenOffset = Math.Clamp(
+            offset == root.FullSpan.End ? offset - 1 : offset,
+            0,
+            Math.Max(0, root.FullSpan.End - 1));
+        SyntaxToken token = root.FindToken(tokenOffset, findInsideTrivia: true);
+        return new PrepareRenameResult
+        {
+            Range = ToLspRange(text, token.Span),
+            Placeholder = symbol.Name
+        };
+    }
+
+    /// <summary>
+    /// Computes a bounded version-aware workspace edit for one Roslyn symbol rename.
+    /// </summary>
+    /// <param name="parameters">The target symbol and requested replacement identifier.</param>
+    /// <param name="cancellationToken">The operation cancellation token.</param>
+    /// <returns>The complete cross-document rename edit.</returns>
+    public async Task<WorkspaceEdit> GetRenameEditAsync(
+        RenameParams parameters,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(parameters);
+        ArgumentException.ThrowIfNullOrWhiteSpace(parameters.NewName);
+        if (!SyntaxFacts.IsValidIdentifier(parameters.NewName))
+        {
+            throw new InvalidDataException(
+                $"'{parameters.NewName}' is not a valid C# identifier.");
+        }
+
+        var positionParameters = new TextDocumentPositionParams
+        {
+            TextDocument = parameters.TextDocument,
+            Position = parameters.Position
+        };
+        (Document? document, ISymbol? symbol) = await FindSymbolAsync(
+            positionParameters,
+            cancellationToken).ConfigureAwait(false);
+        symbol = NormalizeRenameSymbol(symbol);
+        if (document is null || symbol is null || !CanRenameSymbol(symbol))
+        {
+            throw new InvalidOperationException(
+                "The requested document position does not contain a renameable source symbol.");
+        }
+
+        Solution originalSolution = document.Project.Solution;
+        Solution renamedSolution = await Renamer.RenameSymbolAsync(
+            originalSolution,
+            symbol,
+            new SymbolRenameOptions(
+                RenameOverloads: false,
+                RenameInStrings: false,
+                RenameInComments: false,
+                RenameFile: false),
+            parameters.NewName,
+            cancellationToken).ConfigureAwait(false);
+        return await CreateWorkspaceEditAsync(
+            originalSolution,
+            renamedSolution,
+            cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Formats a complete document using Roslyn and the editor's indentation preferences.
+    /// </summary>
+    /// <param name="parameters">The target document and formatting preferences.</param>
+    /// <param name="cancellationToken">The operation cancellation token.</param>
+    /// <returns>The bounded non-overlapping document edits.</returns>
+    public async Task<IReadOnlyList<LspTextEdit>> GetFormattingEditsAsync(
+        DocumentFormattingParams parameters,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(parameters);
+        ValidateFormattingOptions(parameters.Options);
+        Document? document = FindDocument(parameters.TextDocument.Uri);
+        if (document is null)
+        {
+            return [];
+        }
+
+        OptionSet options = document.Project.Solution.Options
+            .WithChangedOption(
+                RoslynFormattingOptions.UseTabs,
+                LanguageNames.CSharp,
+                !parameters.Options.InsertSpaces)
+            .WithChangedOption(
+                RoslynFormattingOptions.TabSize,
+                LanguageNames.CSharp,
+                parameters.Options.TabSize)
+            .WithChangedOption(
+                RoslynFormattingOptions.IndentationSize,
+                LanguageNames.CSharp,
+                parameters.Options.TabSize);
+        Document formattedDocument = await Formatter.FormatAsync(
+            document,
+            options,
+            cancellationToken).ConfigureAwait(false);
+        SourceText originalText = await document.GetTextAsync(cancellationToken)
+            .ConfigureAwait(false);
+        SourceText formattedText = await formattedDocument.GetTextAsync(cancellationToken)
+            .ConfigureAwait(false);
+        formattedText = ApplyFinalFormattingOptions(formattedText, parameters.Options);
+        return CreateTextEdits(originalText, formattedText.GetTextChanges(originalText));
+    }
+
+    /// <summary>
+    /// Gets concrete Roslyn code actions supported for one immutable document snapshot.
+    /// </summary>
+    /// <param name="parameters">The target range and requested action context.</param>
+    /// <param name="cancellationToken">The operation cancellation token.</param>
+    /// <returns>The supported actions with concrete version-aware edits.</returns>
+    public async Task<IReadOnlyList<LspCodeAction>> GetCodeActionsAsync(
+        CodeActionParams parameters,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(parameters);
+        if (!IsCodeActionRequested(parameters.Context.Only, OrganizeImportsCodeActionKind))
+        {
+            return [];
+        }
+
+        Document? document = FindDocument(parameters.TextDocument.Uri);
+        if (document is null)
+        {
+            return [];
+        }
+
+        Document organizedDocument = await Formatter.OrganizeImportsAsync(
+            document,
+            cancellationToken).ConfigureAwait(false);
+        WorkspaceEdit edit = await CreateWorkspaceEditAsync(
+            document.Project.Solution,
+            organizedDocument.Project.Solution,
+            cancellationToken).ConfigureAwait(false);
+        if (edit.DocumentChanges.Count == 0)
+        {
+            return [];
+        }
+
+        return
+        [
+            new LspCodeAction
+            {
+                Title = "Organize Imports",
+                Kind = OrganizeImportsCodeActionKind,
+                IsPreferred = true,
+                Edit = edit
+            }
+        ];
+    }
+
+    /// <summary>
+    /// Binds a workspace edit to the current generation and exact document content hashes.
+    /// </summary>
+    /// <param name="edit">The concrete workspace edit produced from the current snapshot.</param>
+    /// <param name="cancellationToken">The operation cancellation token.</param>
+    /// <returns>The immutable edit snapshot and application preconditions.</returns>
+    public async Task<WorkspaceEditSnapshot> CreateEditSnapshotAsync(
+        WorkspaceEdit edit,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(edit);
+        long generation = Generation;
+        var preconditions = new List<DocumentEditPrecondition>(edit.DocumentChanges.Count);
+        foreach (TextDocumentEdit documentEdit in edit.DocumentChanges)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            Document document = FindDocument(documentEdit.TextDocument.Uri)
+                ?? throw new InvalidOperationException(
+                    $"Edited document {documentEdit.TextDocument.Uri} is unavailable.");
+            SourceText text = await document.GetTextAsync(cancellationToken).ConfigureAwait(false);
+            preconditions.Add(new DocumentEditPrecondition
+            {
+                Uri = documentEdit.TextDocument.Uri,
+                Version = documentEdit.TextDocument.Version,
+                Sha256 = ComputeTextHash(text.ToString())
+            });
+        }
+
+        if (Generation != generation)
+        {
+            throw new InvalidOperationException(
+                "The workspace changed while edit preconditions were being computed.");
+        }
+
+        return new WorkspaceEditSnapshot
+        {
+            WorkspaceGeneration = generation,
+            Edit = edit,
+            Preconditions = preconditions
+        };
+    }
+
+    /// <summary>
+    /// Wraps one document's text edits in a version-aware workspace edit.
+    /// </summary>
+    /// <param name="uri">The target source document URI.</param>
+    /// <param name="edits">The bounded non-overlapping text edits.</param>
+    /// <returns>The version-aware workspace edit.</returns>
+    public WorkspaceEdit CreateDocumentWorkspaceEdit(
+        DocumentUri uri,
+        IReadOnlyList<LspTextEdit> edits)
+    {
+        ArgumentNullException.ThrowIfNull(edits);
+        if (edits.Count == 0)
+        {
+            return new WorkspaceEdit { DocumentChanges = [] };
+        }
+
+        string path = uri.GetFileSystemPath();
+        return new WorkspaceEdit
+        {
+            DocumentChanges =
+            [
+                new TextDocumentEdit
+                {
+                    TextDocument = new OptionalVersionedTextDocumentIdentifier
+                    {
+                        Uri = uri,
+                        Version = _documentVersions.TryGetValue(path, out int version)
+                            ? version
+                            : null
+                    },
+                    Edits = edits
+                }
+            ]
+        };
+    }
+
+    /// <summary>
+    /// Applies a closed-document edit snapshot after generation and SHA-256 validation.
+    /// </summary>
+    /// <param name="snapshot">The one-use edit snapshot to apply.</param>
+    /// <param name="cancellationToken">The operation cancellation token.</param>
+    /// <returns>The workspace generation published after application.</returns>
+    public async Task<long> ApplyWorkspaceEditAsync(
+        WorkspaceEditSnapshot snapshot,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(snapshot);
+        await _mutationGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            if (Generation != snapshot.WorkspaceGeneration)
+            {
+                throw new InvalidOperationException(
+                    "The edit plan belongs to a retired workspace generation.");
+            }
+
+            var preconditions = snapshot
+                .Preconditions
+                .ToDictionary(static precondition => precondition.Uri);
+            if (preconditions.Count != snapshot.Edit.DocumentChanges.Count)
+            {
+                throw new InvalidDataException(
+                    "The edit plan does not contain exactly one precondition per document.");
+            }
+
+            if (snapshot.Edit.DocumentChanges.Count == 0)
+            {
+                return Generation;
+            }
+
+            var stagedFiles = new Dictionary<
+                string,
+                (string TempPath, string BackupPath, SourceText Text)>(PathComparer);
+            try
+            {
+                foreach (TextDocumentEdit documentEdit in snapshot.Edit.DocumentChanges)
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    if (!preconditions.TryGetValue(
+                        documentEdit.TextDocument.Uri,
+                        out DocumentEditPrecondition? precondition))
+                    {
+                        throw new InvalidDataException(
+                            $"The edit plan is missing a precondition for {documentEdit.TextDocument.Uri}.");
+                    }
+
+                    if (precondition.Version is not null ||
+                        documentEdit.TextDocument.Version is not null)
+                    {
+                        throw new InvalidOperationException(
+                            $"Document {documentEdit.TextDocument.Uri} is owned by an editor; " +
+                            "apply the returned workspace edit through that editor.");
+                    }
+
+                    string path = documentEdit.TextDocument.Uri.GetFileSystemPath();
+                    if (!File.Exists(path))
+                    {
+                        throw new FileNotFoundException(
+                            "An edited source document no longer exists.",
+                            path);
+                    }
+
+                    string persistedText = await File.ReadAllTextAsync(path, cancellationToken)
+                        .ConfigureAwait(false);
+                    if (!string.Equals(
+                        ComputeTextHash(persistedText),
+                        precondition.Sha256,
+                        StringComparison.Ordinal))
+                    {
+                        throw new InvalidOperationException(
+                            $"Document {path} changed after the edit plan was created.");
+                    }
+
+                    Document document = FindDocument(documentEdit.TextDocument.Uri)
+                        ?? throw new InvalidOperationException(
+                            $"Edited document {documentEdit.TextDocument.Uri} is unavailable.");
+                    SourceText workspaceText = await document
+                        .GetTextAsync(cancellationToken)
+                        .ConfigureAwait(false);
+                    var originalText = SourceText.From(
+                        persistedText,
+                        workspaceText.Encoding ?? new UTF8Encoding(encoderShouldEmitUTF8Identifier: false),
+                        workspaceText.ChecksumAlgorithm);
+                    SourceText changedText = ApplyTextEdits(originalText, documentEdit.Edits);
+                    string tempPath = path + $".csls-{Guid.NewGuid():N}.tmp";
+                    string backupPath = path + $".csls-{Guid.NewGuid():N}.bak";
+                    await File.WriteAllTextAsync(
+                        tempPath,
+                        changedText.ToString(),
+                        changedText.Encoding ?? new UTF8Encoding(encoderShouldEmitUTF8Identifier: false),
+                        cancellationToken).ConfigureAwait(false);
+                    stagedFiles.Add(path, (tempPath, backupPath, changedText));
+                }
+
+                cancellationToken.ThrowIfCancellationRequested();
+                ReplaceStagedFiles(stagedFiles);
+                PublishAppliedTexts(stagedFiles);
+                _diagnosticCache.Clear();
+                return Interlocked.Increment(ref _generation);
+            }
+            finally
+            {
+                CleanupStagedFiles(stagedFiles);
+            }
+        }
+        finally
+        {
+            _mutationGate.Release();
+        }
+    }
+
+    /// <summary>
     /// Disposes every Roslyn workspace and synchronization primitive.
     /// </summary>
     /// <returns>A completed value task after resources are released.</returns>
@@ -1197,6 +1623,365 @@ public sealed partial class WorkspaceManager : IAsyncDisposable
                 ? null
                 : Math.Min(activeParameter, parameters.Length - 1)
         };
+    }
+
+    private Document? FindDocument(DocumentUri uri)
+    {
+        string path = uri.GetFileSystemPath();
+        ImmutableArray<(string RootPath, Workspace Workspace, Solution Solution)> folders = _folders;
+        int folderIndex = FindFolderIndex(path, folders);
+        return folderIndex >= 0 ? FindDocument(folders[folderIndex].Solution, path) : null;
+    }
+
+    private static ISymbol? NormalizeRenameSymbol(ISymbol? symbol) => symbol switch
+    {
+        IMethodSymbol
+        {
+            MethodKind: MethodKind.Constructor or MethodKind.StaticConstructor,
+            ContainingType: { } containingType
+        } => containingType,
+        _ => symbol
+    };
+
+    private static bool CanRenameSymbol(ISymbol? symbol) =>
+        symbol is
+        {
+            IsImplicitlyDeclared: false,
+            Kind: RoslynSymbolKind.Alias or
+                RoslynSymbolKind.Event or
+                RoslynSymbolKind.Field or
+                RoslynSymbolKind.Label or
+                RoslynSymbolKind.Local or
+                RoslynSymbolKind.Method or
+                RoslynSymbolKind.NamedType or
+                RoslynSymbolKind.Namespace or
+                RoslynSymbolKind.Parameter or
+                RoslynSymbolKind.Property or
+                RoslynSymbolKind.RangeVariable or
+                RoslynSymbolKind.TypeParameter
+        } &&
+        symbol.Locations.Any(static location => location.IsInSource);
+
+    private async Task<WorkspaceEdit> CreateWorkspaceEditAsync(
+        Solution originalSolution,
+        Solution changedSolution,
+        CancellationToken cancellationToken)
+    {
+        var editsByPath = new Dictionary<string, TextDocumentEdit>(PathComparer);
+        int totalEditCount = 0;
+        foreach (ProjectChanges projectChanges in changedSolution
+            .GetChanges(originalSolution)
+            .GetProjectChanges())
+        {
+            foreach (DocumentId documentId in projectChanges.GetChangedDocuments())
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                Document? originalDocument = originalSolution.GetDocument(documentId);
+                Document? changedDocument = changedSolution.GetDocument(documentId);
+                string? path = changedDocument?.FilePath ?? originalDocument?.FilePath;
+                if (originalDocument is null ||
+                    changedDocument is null ||
+                    string.IsNullOrWhiteSpace(path))
+                {
+                    continue;
+                }
+
+                SourceText originalText = await originalDocument
+                    .GetTextAsync(cancellationToken)
+                    .ConfigureAwait(false);
+                IReadOnlyList<LspTextEdit> documentEdits = CreateTextEdits(
+                    originalText,
+                    await changedDocument
+                        .GetTextChangesAsync(originalDocument, cancellationToken)
+                        .ConfigureAwait(false));
+                if (documentEdits.Count == 0)
+                {
+                    continue;
+                }
+
+                totalEditCount += documentEdits.Count;
+                if (totalEditCount > MaximumWorkspaceTextEdits)
+                {
+                    throw new InvalidOperationException(
+                        $"The workspace edit exceeds {MaximumWorkspaceTextEdits} text edits.");
+                }
+
+                var documentEdit = new TextDocumentEdit
+                {
+                    TextDocument = new OptionalVersionedTextDocumentIdentifier
+                    {
+                        Uri = DocumentUri.FromFileSystemPath(path),
+                        Version = _documentVersions.TryGetValue(path, out int version)
+                            ? version
+                            : null
+                    },
+                    Edits = documentEdits
+                };
+                if (editsByPath.TryGetValue(path, out TextDocumentEdit? existingEdit) &&
+                    !existingEdit.Edits.SequenceEqual(documentEdit.Edits))
+                {
+                    throw new InvalidOperationException(
+                        $"Linked document {path} produced conflicting workspace edits.");
+                }
+
+                editsByPath[path] = documentEdit;
+            }
+        }
+
+        return new WorkspaceEdit
+        {
+            DocumentChanges =
+            [
+                .. editsByPath
+                    .OrderBy(static pair => pair.Key, PathComparer)
+                    .Select(static pair => pair.Value)
+            ]
+        };
+    }
+
+    private static IReadOnlyList<LspTextEdit> CreateTextEdits(
+        SourceText originalText,
+        IEnumerable<TextChange> changes)
+    {
+        TextChange[] orderedChanges =
+        [
+            .. changes.OrderBy(static change => change.Span.Start)
+        ];
+        if (orderedChanges.Length > MaximumWorkspaceTextEdits)
+        {
+            throw new InvalidOperationException(
+                $"The document edit exceeds {MaximumWorkspaceTextEdits} text edits.");
+        }
+
+        return
+        [
+            .. orderedChanges.Select(change => new LspTextEdit
+            {
+                Range = ToLspRange(originalText, change.Span),
+                NewText = change.NewText ?? string.Empty
+            })
+        ];
+    }
+
+    private static void ValidateFormattingOptions(LspFormattingOptions options)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+        if (options.TabSize is < 1 or > 32)
+        {
+            throw new InvalidDataException("Formatting tabSize must be between 1 and 32.");
+        }
+    }
+
+    private static SourceText ApplyFinalFormattingOptions(
+        SourceText text,
+        LspFormattingOptions options)
+    {
+        string originalValue = text.ToString();
+        string value = originalValue;
+        string newline = GetPreferredNewline(text);
+        if (options.TrimTrailingWhitespace is true)
+        {
+            var builder = new StringBuilder(value.Length);
+            foreach (TextLine line in text.Lines)
+            {
+                int end = line.End;
+                while (end > line.Start && char.IsWhiteSpace(value[end - 1]))
+                {
+                    end--;
+                }
+
+                builder.Append(value, line.Start, end - line.Start);
+                builder.Append(value, line.End, line.EndIncludingLineBreak - line.End);
+            }
+
+            value = builder.ToString();
+        }
+
+        if (options.TrimFinalNewlines is true)
+        {
+            value = value.TrimEnd('\r', '\n');
+        }
+
+        if (options.InsertFinalNewline is true &&
+            !value.EndsWith('\n') &&
+            !value.EndsWith('\r'))
+        {
+            value += newline;
+        }
+
+        return string.Equals(value, originalValue, StringComparison.Ordinal)
+            ? text
+            : SourceText.From(value, text.Encoding, text.ChecksumAlgorithm);
+    }
+
+    private static string GetPreferredNewline(SourceText text)
+    {
+        foreach (TextLine line in text.Lines)
+        {
+            if (line.EndIncludingLineBreak > line.End)
+            {
+                return text.ToString(TextSpan.FromBounds(line.End, line.EndIncludingLineBreak));
+            }
+        }
+
+        return Environment.NewLine;
+    }
+
+    private static bool IsCodeActionRequested(
+        IReadOnlyList<string>? requestedKinds,
+        string candidateKind) =>
+        requestedKinds is not { Count: > 0 } ||
+        requestedKinds.Any(requestedKind =>
+            string.Equals(candidateKind, requestedKind, StringComparison.Ordinal) ||
+            candidateKind.StartsWith(requestedKind + '.', StringComparison.Ordinal));
+
+    private static string ComputeTextHash(string text) =>
+        Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(text)));
+
+    private static SourceText ApplyTextEdits(
+        SourceText originalText,
+        IReadOnlyList<LspTextEdit> edits)
+    {
+        if (edits.Count > MaximumWorkspaceTextEdits)
+        {
+            throw new InvalidDataException(
+                $"The edit plan exceeds {MaximumWorkspaceTextEdits} edits in one document.");
+        }
+
+        TextChange[] changes =
+        [
+            .. edits
+                .Select(edit =>
+                {
+                    int start = GetOffset(originalText, edit.Range.Start);
+                    int end = GetOffset(originalText, edit.Range.End);
+                    return new TextChange(
+                        TextSpan.FromBounds(start, end),
+                        edit.NewText);
+                })
+                .OrderBy(static change => change.Span.Start)
+                .ThenBy(static change => change.Span.End)
+        ];
+        int priorEnd = 0;
+        foreach (TextChange change in changes)
+        {
+            if (change.Span.Start < priorEnd)
+            {
+                throw new InvalidDataException("The edit plan contains overlapping text edits.");
+            }
+
+            priorEnd = change.Span.End;
+        }
+
+        return originalText.WithChanges(changes);
+    }
+
+    private void ReplaceStagedFiles(
+        Dictionary<string, (string TempPath, string BackupPath, SourceText Text)> stagedFiles)
+    {
+        var replacedPaths = new List<string>(stagedFiles.Count);
+        try
+        {
+            foreach ((string path, (string tempPath, string backupPath, SourceText _)) in
+                stagedFiles)
+            {
+                File.Replace(tempPath, path, backupPath);
+                replacedPaths.Add(path);
+            }
+        }
+        catch (Exception replacementException) when (
+            replacementException is IOException or UnauthorizedAccessException)
+        {
+            var rollbackExceptions = new List<Exception>();
+            for (int index = replacedPaths.Count - 1; index >= 0; index--)
+            {
+                string path = replacedPaths[index];
+                string backupPath = stagedFiles[path].BackupPath;
+                try
+                {
+                    if (File.Exists(backupPath))
+                    {
+                        File.Move(backupPath, path, overwrite: true);
+                    }
+                }
+                catch (Exception rollbackException) when (
+                    rollbackException is IOException or UnauthorizedAccessException)
+                {
+                    rollbackExceptions.Add(rollbackException);
+                }
+            }
+
+            if (rollbackExceptions.Count > 0)
+            {
+                rollbackExceptions.Insert(0, replacementException);
+                throw new AggregateException(
+                    "Applying the edit failed and at least one document could not be restored.",
+                    rollbackExceptions);
+            }
+
+            throw;
+        }
+
+        foreach ((string _, (string _, string backupPath, SourceText _)) in stagedFiles)
+        {
+            try
+            {
+                File.Delete(backupPath);
+            }
+            catch (Exception exception) when (
+                exception is IOException or UnauthorizedAccessException)
+            {
+                LogEditArtifactCleanupFailure(backupPath, exception);
+            }
+        }
+    }
+
+    private void PublishAppliedTexts(
+        Dictionary<string, (string TempPath, string BackupPath, SourceText Text)> stagedFiles)
+    {
+        for (int folderIndex = 0; folderIndex < _folders.Length; folderIndex++)
+        {
+            (string rootPath, Workspace workspace, Solution solution) = _folders[folderIndex];
+            foreach ((string path, (string _, string _, SourceText text)) in stagedFiles)
+            {
+                DocumentId[] documentIds =
+                [
+                    .. solution.Projects
+                        .SelectMany(static project => project.Documents)
+                        .Where(document => string.Equals(
+                            document.FilePath,
+                            path,
+                            PathComparison))
+                        .Select(static document => document.Id)
+                ];
+                foreach (DocumentId documentId in documentIds)
+                {
+                    solution = solution.WithDocumentText(
+                        documentId,
+                        text,
+                        PreservationMode.PreserveIdentity);
+                }
+            }
+
+            _folders = _folders.SetItem(folderIndex, (rootPath, workspace, solution));
+        }
+    }
+
+    private void CleanupStagedFiles(
+        Dictionary<string, (string TempPath, string BackupPath, SourceText Text)> stagedFiles)
+    {
+        foreach ((string _, (string tempPath, string _, SourceText _)) in stagedFiles)
+        {
+            try
+            {
+                File.Delete(tempPath);
+            }
+            catch (Exception exception) when (
+                exception is IOException or UnauthorizedAccessException)
+            {
+                LogEditArtifactCleanupFailure(tempPath, exception);
+            }
+        }
     }
 
     private static StringComparer PathComparer =>
@@ -1690,4 +2475,10 @@ public sealed partial class WorkspaceManager : IAsyncDisposable
         Level = LogLevel.Information,
         Message = "Loaded {ProjectCount} projects from {WorkspaceFile}")]
     private partial void LogWorkspaceLoaded(int projectCount, string workspaceFile);
+
+    [LoggerMessage(
+        EventId = 3,
+        Level = LogLevel.Warning,
+        Message = "Could not remove edit transaction artifact {Path}")]
+    private partial void LogEditArtifactCleanupFailure(string path, Exception exception);
 }

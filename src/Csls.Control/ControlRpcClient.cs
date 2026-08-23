@@ -194,6 +194,78 @@ public sealed class ControlRpcClient : IAsyncDisposable
     }
 
     /// <summary>
+    /// Previews a version-aware semantic rename edit without applying it.
+    /// </summary>
+    /// <param name="request">The target symbol and replacement identifier.</param>
+    /// <param name="cancellationToken">The request cancellation token.</param>
+    /// <returns>The one-use edit plan and exact application preconditions.</returns>
+    public async Task<ControlEditPlan> PreviewRenameAsync(
+        ControlRenameRequest request,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        JsonRpc rpc = await GetRpcAsync(cancellationToken).ConfigureAwait(false);
+        return await rpc.InvokeWithParameterObjectAsync<ControlEditPlan>(
+            ControlMethods.PreviewRename,
+            request,
+            cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Previews complete-document formatting without applying it.
+    /// </summary>
+    /// <param name="request">The target document and formatting preferences.</param>
+    /// <param name="cancellationToken">The request cancellation token.</param>
+    /// <returns>The one-use formatting plan and exact application preconditions.</returns>
+    public async Task<ControlEditPlan> PreviewFormattingAsync(
+        ControlFormattingRequest request,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        JsonRpc rpc = await GetRpcAsync(cancellationToken).ConfigureAwait(false);
+        return await rpc.InvokeWithParameterObjectAsync<ControlEditPlan>(
+            ControlMethods.PreviewFormatting,
+            request,
+            cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Gets concrete Roslyn code actions for one source range.
+    /// </summary>
+    /// <param name="request">The target range and optional action categories.</param>
+    /// <param name="cancellationToken">The request cancellation token.</param>
+    /// <returns>The supported code actions with concrete edits.</returns>
+    public async Task<IReadOnlyList<ControlCodeActionPlan>> GetCodeActionsAsync(
+        ControlCodeActionRequest request,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        JsonRpc rpc = await GetRpcAsync(cancellationToken).ConfigureAwait(false);
+        return await rpc.InvokeWithParameterObjectAsync<IReadOnlyList<ControlCodeActionPlan>>(
+            ControlMethods.GetCodeActions,
+            request,
+            cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Explicitly applies one unexpired edit plan after every precondition passes.
+    /// </summary>
+    /// <param name="request">The one-use edit plan identifier.</param>
+    /// <param name="cancellationToken">The request cancellation token.</param>
+    /// <returns>The new generation and changed document paths.</returns>
+    public async Task<ControlApplyEditPlanResult> ApplyEditPlanAsync(
+        ControlApplyEditPlanRequest request,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        JsonRpc rpc = await GetRpcAsync(cancellationToken).ConfigureAwait(false);
+        return await rpc.InvokeWithParameterObjectAsync<ControlApplyEditPlanResult>(
+            ControlMethods.ApplyEditPlan,
+            request,
+            cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
     /// Closes the control RPC connection and releases its socket resources.
     /// </summary>
     /// <returns>A task that completes after the transport is closed.</returns>

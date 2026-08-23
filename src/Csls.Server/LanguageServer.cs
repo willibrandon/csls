@@ -105,6 +105,16 @@ public sealed partial class LanguageServer : ILspRpcTarget, IAsyncDisposable
                 {
                     TriggerCharacters = ["(", ","],
                     RetriggerCharacters = [")"]
+                },
+                RenameProvider = new RenameOptions
+                {
+                    PrepareProvider = true
+                },
+                DocumentFormattingProvider = true,
+                CodeActionProvider = new CodeActionOptions
+                {
+                    CodeActionKinds = ["source.organizeImports"],
+                    ResolveProvider = false
                 }
             },
             ServerInfo = new ServerInfo
@@ -183,6 +193,26 @@ public sealed partial class LanguageServer : ILspRpcTarget, IAsyncDisposable
             {
                 await _workspaceManager
                     .ChangeDocumentAsync(parameters, context.CancellationToken)
+                    .ConfigureAwait(false);
+                return true;
+            },
+            cancellationToken);
+    }
+
+    /// <inheritdoc />
+    public Task DidCloseAsync(
+        DidCloseTextDocumentParams parameters,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(parameters);
+        EnsureRunning();
+        return _scheduler.ScheduleAsync(
+            RequestMode.ReadWrite,
+            () => _workspaceManager.Generation,
+            async context =>
+            {
+                await _workspaceManager
+                    .CloseDocumentAsync(parameters, context.CancellationToken)
                     .ConfigureAwait(false);
                 return true;
             },
@@ -415,6 +445,244 @@ public sealed partial class LanguageServer : ILspRpcTarget, IAsyncDisposable
                     ? signatureHelp
                     : null;
             },
+            cancellationToken);
+    }
+
+    /// <inheritdoc />
+    public Task<PrepareRenameResult?> PrepareRenameAsync(
+        TextDocumentPositionParams parameters,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(parameters);
+        EnsureRunning();
+        return _scheduler.ScheduleAsync(
+            RequestMode.ReadOnly,
+            () => _workspaceManager.Generation,
+            async context =>
+            {
+                PrepareRenameResult? result = await _workspaceManager
+                    .PrepareRenameAsync(parameters, context.CancellationToken)
+                    .ConfigureAwait(false);
+                return _workspaceManager.Generation == context.WorkspaceGeneration
+                    ? result
+                    : null;
+            },
+            cancellationToken);
+    }
+
+    /// <inheritdoc />
+    public Task<WorkspaceEdit> RenameAsync(
+        RenameParams parameters,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(parameters);
+        EnsureRunning();
+        return _scheduler.ScheduleAsync(
+            RequestMode.ReadOnly,
+            () => _workspaceManager.Generation,
+            async context =>
+            {
+                WorkspaceEdit edit = await _workspaceManager
+                    .GetRenameEditAsync(parameters, context.CancellationToken)
+                    .ConfigureAwait(false);
+                if (_workspaceManager.Generation != context.WorkspaceGeneration)
+                {
+                    throw new InvalidOperationException(
+                        "The workspace changed while rename edits were being computed.");
+                }
+
+                return edit;
+            },
+            cancellationToken);
+    }
+
+    /// <inheritdoc />
+    public Task<IReadOnlyList<TextEdit>> FormattingAsync(
+        DocumentFormattingParams parameters,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(parameters);
+        EnsureRunning();
+        return _scheduler.ScheduleAsync(
+            RequestMode.ReadOnly,
+            () => _workspaceManager.Generation,
+            async context =>
+            {
+                IReadOnlyList<TextEdit> edits = await _workspaceManager
+                    .GetFormattingEditsAsync(parameters, context.CancellationToken)
+                    .ConfigureAwait(false);
+                if (_workspaceManager.Generation != context.WorkspaceGeneration)
+                {
+                    throw new InvalidOperationException(
+                        "The workspace changed while formatting edits were being computed.");
+                }
+
+                return edits;
+            },
+            cancellationToken);
+    }
+
+    /// <inheritdoc />
+    public Task<IReadOnlyList<CodeAction>> CodeActionAsync(
+        CodeActionParams parameters,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(parameters);
+        EnsureRunning();
+        return _scheduler.ScheduleAsync(
+            RequestMode.ReadOnly,
+            () => _workspaceManager.Generation,
+            async context =>
+            {
+                IReadOnlyList<CodeAction> actions = await _workspaceManager
+                    .GetCodeActionsAsync(parameters, context.CancellationToken)
+                    .ConfigureAwait(false);
+                if (_workspaceManager.Generation != context.WorkspaceGeneration)
+                {
+                    throw new InvalidOperationException(
+                        "The workspace changed while code actions were being computed.");
+                }
+
+                return actions;
+            },
+            cancellationToken);
+    }
+
+    /// <summary>
+    /// Creates an immutable rename edit plan for control-protocol clients.
+    /// </summary>
+    /// <param name="parameters">The target symbol and replacement identifier.</param>
+    /// <param name="cancellationToken">The peer cancellation token.</param>
+    /// <returns>The workspace edit, generation, and exact content preconditions.</returns>
+    public Task<WorkspaceEditSnapshot> CreateRenameEditSnapshotAsync(
+        RenameParams parameters,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(parameters);
+        EnsureRunning();
+        return _scheduler.ScheduleAsync(
+            RequestMode.ReadOnly,
+            () => _workspaceManager.Generation,
+            async context =>
+            {
+                WorkspaceEdit edit = await _workspaceManager
+                    .GetRenameEditAsync(parameters, context.CancellationToken)
+                    .ConfigureAwait(false);
+                WorkspaceEditSnapshot snapshot = await _workspaceManager
+                    .CreateEditSnapshotAsync(edit, context.CancellationToken)
+                    .ConfigureAwait(false);
+                if (_workspaceManager.Generation != context.WorkspaceGeneration)
+                {
+                    throw new InvalidOperationException(
+                        "The workspace changed while the rename plan was being created.");
+                }
+
+                return snapshot;
+            },
+            cancellationToken);
+    }
+
+    /// <summary>
+    /// Creates an immutable formatting edit plan for control-protocol clients.
+    /// </summary>
+    /// <param name="parameters">The target document and formatting preferences.</param>
+    /// <param name="cancellationToken">The peer cancellation token.</param>
+    /// <returns>The workspace edit, generation, and exact content preconditions.</returns>
+    public Task<WorkspaceEditSnapshot> CreateFormattingEditSnapshotAsync(
+        DocumentFormattingParams parameters,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(parameters);
+        EnsureRunning();
+        return _scheduler.ScheduleAsync(
+            RequestMode.ReadOnly,
+            () => _workspaceManager.Generation,
+            async context =>
+            {
+                IReadOnlyList<TextEdit> edits = await _workspaceManager
+                    .GetFormattingEditsAsync(parameters, context.CancellationToken)
+                    .ConfigureAwait(false);
+                WorkspaceEdit edit = _workspaceManager.CreateDocumentWorkspaceEdit(
+                    parameters.TextDocument.Uri,
+                    edits);
+                WorkspaceEditSnapshot snapshot = await _workspaceManager
+                    .CreateEditSnapshotAsync(edit, context.CancellationToken)
+                    .ConfigureAwait(false);
+                if (_workspaceManager.Generation != context.WorkspaceGeneration)
+                {
+                    throw new InvalidOperationException(
+                        "The workspace changed while the formatting plan was being created.");
+                }
+
+                return snapshot;
+            },
+            cancellationToken);
+    }
+
+    /// <summary>
+    /// Creates immutable code-action edit plans for control-protocol clients.
+    /// </summary>
+    /// <param name="parameters">The target range and requested action context.</param>
+    /// <param name="cancellationToken">The peer cancellation token.</param>
+    /// <returns>The concrete actions and optional exact edit preconditions.</returns>
+    public Task<IReadOnlyList<CodeActionEditSnapshot>> CreateCodeActionSnapshotsAsync(
+        CodeActionParams parameters,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(parameters);
+        EnsureRunning();
+        return _scheduler.ScheduleAsync<IReadOnlyList<CodeActionEditSnapshot>>(
+            RequestMode.ReadOnly,
+            () => _workspaceManager.Generation,
+            async context =>
+            {
+                IReadOnlyList<CodeAction> actions = await _workspaceManager
+                    .GetCodeActionsAsync(parameters, context.CancellationToken)
+                    .ConfigureAwait(false);
+                var snapshots = new List<CodeActionEditSnapshot>(actions.Count);
+                foreach (CodeAction action in actions)
+                {
+                    WorkspaceEditSnapshot? editSnapshot = action.Edit is null
+                        ? null
+                        : await _workspaceManager
+                            .CreateEditSnapshotAsync(action.Edit, context.CancellationToken)
+                            .ConfigureAwait(false);
+                    snapshots.Add(new CodeActionEditSnapshot
+                    {
+                        Action = action,
+                        EditSnapshot = editSnapshot
+                    });
+                }
+
+                if (_workspaceManager.Generation != context.WorkspaceGeneration)
+                {
+                    throw new InvalidOperationException(
+                        "The workspace changed while code-action plans were being created.");
+                }
+
+                return snapshots;
+            },
+            cancellationToken);
+    }
+
+    /// <summary>
+    /// Applies one control edit plan after all generation and content checks pass.
+    /// </summary>
+    /// <param name="snapshot">The immutable one-use edit snapshot.</param>
+    /// <param name="cancellationToken">The peer cancellation token.</param>
+    /// <returns>The workspace generation published after application.</returns>
+    public Task<long> ApplyWorkspaceEditAsync(
+        WorkspaceEditSnapshot snapshot,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(snapshot);
+        EnsureRunning();
+        return _scheduler.ScheduleAsync(
+            RequestMode.ReadWrite,
+            () => _workspaceManager.Generation,
+            context => new ValueTask<long>(_workspaceManager.ApplyWorkspaceEditAsync(
+                snapshot,
+                context.CancellationToken)),
             cancellationToken);
     }
 

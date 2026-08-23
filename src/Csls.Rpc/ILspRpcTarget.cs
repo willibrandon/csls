@@ -61,6 +61,16 @@ public interface ILspRpcTarget
         CancellationToken cancellationToken);
 
     /// <summary>
+    /// Removes a client-owned text overlay and restores the persisted document snapshot.
+    /// </summary>
+    /// <param name="parameters">The closed document notification.</param>
+    /// <param name="cancellationToken">The connection cancellation token.</param>
+    /// <returns>A task that completes after the document mutation retires.</returns>
+    Task DidCloseAsync(
+        DidCloseTextDocumentParams parameters,
+        CancellationToken cancellationToken);
+
+    /// <summary>
     /// Records a client save notification for an opened document.
     /// </summary>
     /// <param name="parameters">The saved document notification.</param>
@@ -158,5 +168,45 @@ public interface ILspRpcTarget
     /// <returns>Signature help, or null when no supported argument list is active.</returns>
     Task<SignatureHelp?> SignatureHelpAsync(
         SignatureHelpParams parameters,
+        CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Validates that the symbol at one document position can be renamed.
+    /// </summary>
+    /// <param name="parameters">The target document position.</param>
+    /// <param name="cancellationToken">The peer cancellation token.</param>
+    /// <returns>The editable identifier range, or null when rename is unavailable.</returns>
+    Task<PrepareRenameResult?> PrepareRenameAsync(
+        TextDocumentPositionParams parameters,
+        CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Computes a version-aware workspace edit that renames one source symbol.
+    /// </summary>
+    /// <param name="parameters">The target symbol and replacement identifier.</param>
+    /// <param name="cancellationToken">The peer cancellation token.</param>
+    /// <returns>The complete cross-document rename edit.</returns>
+    Task<WorkspaceEdit> RenameAsync(
+        RenameParams parameters,
+        CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Formats one complete source document using editor indentation preferences.
+    /// </summary>
+    /// <param name="parameters">The target document and formatting preferences.</param>
+    /// <param name="cancellationToken">The peer cancellation token.</param>
+    /// <returns>The bounded non-overlapping document edits.</returns>
+    Task<IReadOnlyList<TextEdit>> FormattingAsync(
+        DocumentFormattingParams parameters,
+        CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Gets concrete Roslyn source transformations for one document range.
+    /// </summary>
+    /// <param name="parameters">The target range and requested action context.</param>
+    /// <param name="cancellationToken">The peer cancellation token.</param>
+    /// <returns>The supported code actions with concrete edits.</returns>
+    Task<IReadOnlyList<CodeAction>> CodeActionAsync(
+        CodeActionParams parameters,
         CancellationToken cancellationToken);
 }

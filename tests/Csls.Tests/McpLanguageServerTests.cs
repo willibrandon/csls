@@ -64,6 +64,9 @@ public sealed class McpLanguageServerTests
         {
             string projectPath = Path.Combine(fixturePath, "Fixture.csproj");
             string documentPath = Path.Combine(fixturePath, "Program.cs");
+            string importsPath = Path.Combine(fixturePath, "Imports.cs");
+            string formattingPath = Path.Combine(fixturePath, "Formatting.cs");
+            string stalePath = Path.Combine(fixturePath, "Stale.cs");
             await File.WriteAllTextAsync(
                 projectPath,
                 ProjectText,
@@ -71,6 +74,18 @@ public sealed class McpLanguageServerTests
             await File.WriteAllTextAsync(
                 documentPath,
                 DocumentText,
+                TestContext.CancellationToken).ConfigureAwait(false);
+            await File.WriteAllTextAsync(
+                importsPath,
+                ImportsText,
+                TestContext.CancellationToken).ConfigureAwait(false);
+            await File.WriteAllTextAsync(
+                formattingPath,
+                FormattingText,
+                TestContext.CancellationToken).ConfigureAwait(false);
+            await File.WriteAllTextAsync(
+                stalePath,
+                FormattingText.Replace("Formatting", "Stale", StringComparison.Ordinal),
                 TestContext.CancellationToken).ConfigureAwait(false);
 
             var lsp = LspProcessSession.Start(
@@ -144,6 +159,14 @@ public sealed class McpLanguageServerTests
                     tool.Name == "search_workspace_symbols");
                 McpClientTool signatureHelpTool = tools.Single(static tool =>
                     tool.Name == "get_signature_help");
+                McpClientTool renameTool = tools.Single(static tool =>
+                    tool.Name == "preview_rename");
+                McpClientTool formattingTool = tools.Single(static tool =>
+                    tool.Name == "preview_formatting");
+                McpClientTool codeActionsTool = tools.Single(static tool =>
+                    tool.Name == "get_code_actions");
+                McpClientTool applyEditPlanTool = tools.Single(static tool =>
+                    tool.Name == "apply_edit_plan");
                 ToolAnnotations annotations = sessionTool.ProtocolTool.Annotations
                     ?? throw new InvalidDataException("The session tool has no MCP annotations.");
                 Assert.IsNotNull(annotations.ReadOnlyHint);
@@ -163,6 +186,19 @@ public sealed class McpLanguageServerTests
                 Assert.IsNotNull(documentSymbolsTool.ProtocolTool.OutputSchema);
                 Assert.IsNotNull(workspaceSymbolsTool.ProtocolTool.OutputSchema);
                 Assert.IsNotNull(signatureHelpTool.ProtocolTool.OutputSchema);
+                Assert.IsNotNull(renameTool.ProtocolTool.OutputSchema);
+                Assert.IsNotNull(formattingTool.ProtocolTool.OutputSchema);
+                Assert.IsNotNull(codeActionsTool.ProtocolTool.OutputSchema);
+                Assert.IsNotNull(applyEditPlanTool.ProtocolTool.OutputSchema);
+                ToolAnnotations applyAnnotations = applyEditPlanTool.ProtocolTool.Annotations
+                    ?? throw new InvalidDataException(
+                        "The apply edit plan tool has no MCP annotations.");
+                Assert.IsNotNull(applyAnnotations.ReadOnlyHint);
+                Assert.IsFalse(applyAnnotations.ReadOnlyHint.Value);
+                Assert.IsNotNull(applyAnnotations.DestructiveHint);
+                Assert.IsTrue(applyAnnotations.DestructiveHint.Value);
+                Assert.IsNotNull(applyAnnotations.IdempotentHint);
+                Assert.IsFalse(applyAnnotations.IdempotentHint.Value);
 
                 CallToolResult sessionResult = await client.CallToolAsync(
                     "get_session",
@@ -337,6 +373,146 @@ public sealed class McpLanguageServerTests
                     helperSignature.Parameters);
                 Assert.AreEqual("int value", helperParameter.Label);
 
+                CallToolResult renameResult = await client.CallToolAsync(
+                    "preview_rename",
+                    new Dictionary<string, object?>
+                    {
+                        ["documentPath"] = documentPath,
+                        ["line"] = 7,
+                        ["character"] = 10,
+                        ["newName"] = "RenamedHelper"
+                    },
+                    cancellationToken: TestContext.CancellationToken).ConfigureAwait(false);
+                Assert.IsNull(renameResult.IsError);
+                Assert.IsTrue(renameResult.StructuredContent.HasValue);
+                ControlEditPlan rename = renameResult.StructuredContent.Value.Deserialize(
+                    ControlJsonSerializerContext.Default.ControlEditPlan)
+                    ?? throw new InvalidDataException("MCP returned no rename edit plan.");
+                TextDocumentEdit renameDocument = Assert.ContainsSingle(
+                    rename.Edit.DocumentChanges);
+                Assert.AreEqual(1, renameDocument.TextDocument.Version);
+                Assert.HasCount(2, renameDocument.Edits);
+                Assert.IsTrue(renameDocument.Edits.All(static edit =>
+                    edit.NewText == "Renamed"));
+                CallToolResult openApplyResult = await client.CallToolAsync(
+                    "apply_edit_plan",
+                    new Dictionary<string, object?>
+                    {
+                        ["planId"] = rename.PlanId.ToString("D")
+                    },
+                    cancellationToken: TestContext.CancellationToken).ConfigureAwait(false);
+                Assert.IsTrue(openApplyResult.IsError);
+                Assert.Contains(
+                    "Helper(1)",
+                    await File.ReadAllTextAsync(
+                        documentPath,
+                        TestContext.CancellationToken).ConfigureAwait(false),
+                    StringComparison.Ordinal);
+
+                CallToolResult formattingResult = await client.CallToolAsync(
+                    "preview_formatting",
+                    new Dictionary<string, object?>
+                    {
+                        ["documentPath"] = formattingPath,
+                        ["tabSize"] = 4,
+                        ["insertSpaces"] = true
+                    },
+                    cancellationToken: TestContext.CancellationToken).ConfigureAwait(false);
+                Assert.IsNull(formattingResult.IsError);
+                Assert.IsTrue(formattingResult.StructuredContent.HasValue);
+                ControlEditPlan formatting = formattingResult.StructuredContent.Value.Deserialize(
+                    ControlJsonSerializerContext.Default.ControlEditPlan)
+                    ?? throw new InvalidDataException("MCP returned no formatting edit plan.");
+                TextDocumentEdit formattingDocument = Assert.ContainsSingle(
+                    formatting.Edit.DocumentChanges);
+                Assert.IsNull(formattingDocument.TextDocument.Version);
+                Assert.IsNotEmpty(formattingDocument.Edits);
+
+                CallToolResult applyResult = await client.CallToolAsync(
+                    "apply_edit_plan",
+                    new Dictionary<string, object?>
+                    {
+                        ["planId"] = formatting.PlanId.ToString("D")
+                    },
+                    cancellationToken: TestContext.CancellationToken).ConfigureAwait(false);
+                Assert.IsNull(applyResult.IsError);
+                Assert.IsTrue(applyResult.StructuredContent.HasValue);
+                ControlApplyEditPlanResult applied = applyResult.StructuredContent.Value.Deserialize(
+                    ControlJsonSerializerContext.Default.ControlApplyEditPlanResult)
+                    ?? throw new InvalidDataException("MCP returned no applied edit result.");
+                Assert.Contains(formattingPath, applied.DocumentPaths);
+                string appliedFormatting = await File.ReadAllTextAsync(
+                    formattingPath,
+                    TestContext.CancellationToken).ConfigureAwait(false);
+                Assert.Contains(
+                    "Add(int left, int right) => left + right",
+                    appliedFormatting,
+                    StringComparison.Ordinal);
+                CallToolResult duplicateApplyResult = await client.CallToolAsync(
+                    "apply_edit_plan",
+                    new Dictionary<string, object?>
+                    {
+                        ["planId"] = formatting.PlanId.ToString("D")
+                    },
+                    cancellationToken: TestContext.CancellationToken).ConfigureAwait(false);
+                Assert.IsTrue(duplicateApplyResult.IsError);
+
+                CallToolResult stalePreviewResult = await client.CallToolAsync(
+                    "preview_formatting",
+                    new Dictionary<string, object?>
+                    {
+                        ["documentPath"] = stalePath,
+                        ["tabSize"] = 4,
+                        ["insertSpaces"] = true
+                    },
+                    cancellationToken: TestContext.CancellationToken).ConfigureAwait(false);
+                Assert.IsNull(stalePreviewResult.IsError);
+                Assert.IsTrue(stalePreviewResult.StructuredContent.HasValue);
+                ControlEditPlan stalePlan = stalePreviewResult.StructuredContent.Value.Deserialize(
+                    ControlJsonSerializerContext.Default.ControlEditPlan)
+                    ?? throw new InvalidDataException("MCP returned no stale edit plan.");
+                await File.AppendAllTextAsync(
+                    stalePath,
+                    $"{Environment.NewLine}// external change",
+                    TestContext.CancellationToken).ConfigureAwait(false);
+                CallToolResult staleApplyResult = await client.CallToolAsync(
+                    "apply_edit_plan",
+                    new Dictionary<string, object?>
+                    {
+                        ["planId"] = stalePlan.PlanId.ToString("D")
+                    },
+                    cancellationToken: TestContext.CancellationToken).ConfigureAwait(false);
+                Assert.IsTrue(staleApplyResult.IsError);
+                Assert.EndsWith(
+                    "// external change",
+                    await File.ReadAllTextAsync(
+                        stalePath,
+                        TestContext.CancellationToken).ConfigureAwait(false),
+                    StringComparison.Ordinal);
+
+                CallToolResult codeActionsResult = await client.CallToolAsync(
+                    "get_code_actions",
+                    new Dictionary<string, object?>
+                    {
+                        ["documentPath"] = importsPath,
+                        ["startLine"] = 0,
+                        ["startCharacter"] = 0,
+                        ["endLine"] = 1,
+                        ["endCharacter"] = 13,
+                        ["kind"] = "source"
+                    },
+                    cancellationToken: TestContext.CancellationToken).ConfigureAwait(false);
+                Assert.IsNull(codeActionsResult.IsError);
+                Assert.IsTrue(codeActionsResult.StructuredContent.HasValue);
+                IReadOnlyList<ControlCodeActionPlan> codeActions = codeActionsResult
+                    .StructuredContent.Value
+                    .Deserialize(ControlJsonSerializerContext.Default.IReadOnlyListControlCodeActionPlan)
+                    ?? throw new InvalidDataException("MCP returned no code action previews.");
+                ControlCodeActionPlan organizeImports = Assert.ContainsSingle(codeActions);
+                Assert.AreEqual("source.organizeImports", organizeImports.Action.Kind);
+                Assert.IsNotNull(organizeImports.EditPlan);
+                Assert.IsNotEmpty(organizeImports.EditPlan.Edit.DocumentChanges);
+
                 IList<McpClientResource> resources = await client
                     .ListResourcesAsync(cancellationToken: TestContext.CancellationToken)
                     .ConfigureAwait(false);
@@ -407,8 +583,23 @@ public sealed class McpLanguageServerTests
 
             private static void Helper(int value)
             {
-                Console.WriteLine(value);
+                Console.WriteLine( value );
             }
         }
+        """;
+
+    private const string ImportsText = """
+        using System.Text;
+        using System;
+
+        namespace Fixture;
+
+        public static class Imports;
+        """;
+
+    private const string FormattingText = """
+        namespace Fixture;
+
+        public static class Formatting{public static int Add(int left,int right)=>left+right;}
         """;
 }

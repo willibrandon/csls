@@ -264,6 +264,152 @@ signatureCommand.SetAction((parseResult, cancellationToken) =>
 queryCommand.Subcommands.Add(signatureCommand);
 rootCommand.Subcommands.Add(queryCommand);
 
+var editCommand = new Command(
+    "edit",
+    "Preview semantic workspace edits through a live csls session.");
+var renameDocumentArgument = new Argument<string>("document")
+{
+    Description = "Absolute or current-directory-relative C# document path."
+};
+var renameNameArgument = new Argument<string>("new-name")
+{
+    Description = "Valid replacement C# identifier."
+};
+Option<int> renameLineOption = CreatePositionOption("--line", "Zero-based UTF-16 line number.");
+Option<int> renameCharacterOption = CreatePositionOption(
+    "--character",
+    "Zero-based UTF-16 character offset.");
+Option<int?> renameSessionOption = CreateSessionOption();
+var renameJsonOption = new Option<bool>("--json")
+{
+    Description = "Write the versioned machine-readable response envelope."
+};
+var renameApplyOption = new Option<bool>("--apply")
+{
+    Description = "Explicitly apply the one-use plan after all preconditions pass."
+};
+var renameCommand = new Command("rename", "Preview a semantic cross-document rename.")
+{
+    renameDocumentArgument,
+    renameNameArgument,
+    renameLineOption,
+    renameCharacterOption,
+    renameSessionOption,
+    renameApplyOption,
+    renameJsonOption
+};
+renameCommand.SetAction((parseResult, cancellationToken) =>
+    CliWorkerSupervisor.RunAsync(
+        [
+            "edit-rename",
+            (parseResult.GetValue(renameSessionOption) ?? 0)
+                .ToString(CultureInfo.InvariantCulture),
+            Path.GetFullPath(parseResult.GetRequiredValue(renameDocumentArgument)),
+            parseResult.GetValue(renameLineOption).ToString(CultureInfo.InvariantCulture),
+            parseResult.GetValue(renameCharacterOption).ToString(CultureInfo.InvariantCulture),
+            parseResult.GetRequiredValue(renameNameArgument),
+            parseResult.GetValue(renameApplyOption).ToString(CultureInfo.InvariantCulture),
+            parseResult.GetValue(renameJsonOption).ToString(CultureInfo.InvariantCulture)
+        ],
+        cancellationToken));
+editCommand.Subcommands.Add(renameCommand);
+
+var formatDocumentArgument = new Argument<string>("document")
+{
+    Description = "Absolute or current-directory-relative C# document path."
+};
+var formatTabSizeOption = new Option<int>("--tab-size")
+{
+    Description = "Indentation width from 1 through 32.",
+    HelpName = "number",
+    DefaultValueFactory = static _ => 4
+};
+formatTabSizeOption.Validators.Add(static result =>
+{
+    if (result.GetValueOrDefault<int>() is < 1 or > 32)
+    {
+        result.AddError("--tab-size must be between 1 and 32.");
+    }
+});
+var formatTabsOption = new Option<bool>("--tabs")
+{
+    Description = "Use tabs instead of spaces for indentation."
+};
+Option<int?> formatSessionOption = CreateSessionOption();
+var formatJsonOption = new Option<bool>("--json")
+{
+    Description = "Write the versioned machine-readable response envelope."
+};
+var formatApplyOption = new Option<bool>("--apply")
+{
+    Description = "Explicitly apply the one-use plan after all preconditions pass."
+};
+var formatCommand = new Command("format", "Preview complete-document Roslyn formatting.")
+{
+    formatDocumentArgument,
+    formatTabSizeOption,
+    formatTabsOption,
+    formatSessionOption,
+    formatApplyOption,
+    formatJsonOption
+};
+formatCommand.SetAction((parseResult, cancellationToken) =>
+    CliWorkerSupervisor.RunAsync(
+        [
+            "edit-format",
+            (parseResult.GetValue(formatSessionOption) ?? 0)
+                .ToString(CultureInfo.InvariantCulture),
+            Path.GetFullPath(parseResult.GetRequiredValue(formatDocumentArgument)),
+            parseResult.GetValue(formatTabSizeOption).ToString(CultureInfo.InvariantCulture),
+            (!parseResult.GetValue(formatTabsOption)).ToString(CultureInfo.InvariantCulture),
+            parseResult.GetValue(formatApplyOption).ToString(CultureInfo.InvariantCulture),
+            parseResult.GetValue(formatJsonOption).ToString(CultureInfo.InvariantCulture)
+        ],
+        cancellationToken));
+editCommand.Subcommands.Add(formatCommand);
+
+var codeActionDocumentArgument = new Argument<string>("document")
+{
+    Description = "Absolute or current-directory-relative C# document path."
+};
+var codeActionKindOption = new Option<string>("--kind")
+{
+    Description = "Hierarchical code-action category.",
+    HelpName = "category",
+    DefaultValueFactory = static _ => "source.organizeImports"
+};
+Option<int?> codeActionSessionOption = CreateSessionOption();
+var codeActionJsonOption = new Option<bool>("--json")
+{
+    Description = "Write the versioned machine-readable response envelope."
+};
+var codeActionApplyOption = new Option<bool>("--apply")
+{
+    Description = "Explicitly apply the single returned action after all preconditions pass."
+};
+var codeActionCommand = new Command("code-action", "Preview concrete Roslyn code actions.")
+{
+    codeActionDocumentArgument,
+    codeActionKindOption,
+    codeActionSessionOption,
+    codeActionApplyOption,
+    codeActionJsonOption
+};
+codeActionCommand.SetAction((parseResult, cancellationToken) =>
+    CliWorkerSupervisor.RunAsync(
+        [
+            "edit-code-action",
+            (parseResult.GetValue(codeActionSessionOption) ?? 0)
+                .ToString(CultureInfo.InvariantCulture),
+            Path.GetFullPath(parseResult.GetRequiredValue(codeActionDocumentArgument)),
+            parseResult.GetRequiredValue(codeActionKindOption),
+            parseResult.GetValue(codeActionApplyOption).ToString(CultureInfo.InvariantCulture),
+            parseResult.GetValue(codeActionJsonOption).ToString(CultureInfo.InvariantCulture)
+        ],
+        cancellationToken));
+editCommand.Subcommands.Add(codeActionCommand);
+rootCommand.Subcommands.Add(editCommand);
+
 return await rootCommand.Parse(args).InvokeAsync().ConfigureAwait(false);
 
 static Option<int?> CreateSessionOption()

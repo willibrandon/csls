@@ -54,4 +54,19 @@ public sealed record ServerCapabilities
     /// Gets the signature help trigger behavior.
     /// </summary>
     public SignatureHelpOptions? SignatureHelpProvider { get; init; }
+
+    /// <summary>
+    /// Gets the rename preparation and edit behavior.
+    /// </summary>
+    public RenameOptions? RenameProvider { get; init; }
+
+    /// <summary>
+    /// Gets whether complete-document formatting is supported.
+    /// </summary>
+    public bool DocumentFormattingProvider { get; init; }
+
+    /// <summary>
+    /// Gets the supported code-action categories.
+    /// </summary>
+    public CodeActionOptions? CodeActionProvider { get; init; }
 }

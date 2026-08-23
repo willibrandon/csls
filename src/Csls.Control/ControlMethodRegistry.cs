@@ -66,6 +66,26 @@ internal static class ControlMethodRegistry
             ControlMethods.GetSignatureHelp,
             new Func<ControlSignatureHelpRequest, CancellationToken, Task<SignatureHelp?>>(
                 target.GetSignatureHelpAsync));
+        AddParameterObjectMethod(
+            rpc,
+            ControlMethods.PreviewRename,
+            new Func<ControlRenameRequest, CancellationToken, Task<ControlEditPlan>>(
+                target.PreviewRenameAsync));
+        AddParameterObjectMethod(
+            rpc,
+            ControlMethods.PreviewFormatting,
+            new Func<ControlFormattingRequest, CancellationToken, Task<ControlEditPlan>>(
+                target.PreviewFormattingAsync));
+        AddParameterObjectMethod(
+            rpc,
+            ControlMethods.GetCodeActions,
+            new Func<ControlCodeActionRequest, CancellationToken, Task<IReadOnlyList<ControlCodeActionPlan>>>(
+                target.GetCodeActionsAsync));
+        AddParameterObjectMethod(
+            rpc,
+            ControlMethods.ApplyEditPlan,
+            new Func<ControlApplyEditPlanRequest, CancellationToken, Task<ControlApplyEditPlanResult>>(
+                target.ApplyEditPlanAsync));
     }
 
     private static void AddParameterObjectMethod(

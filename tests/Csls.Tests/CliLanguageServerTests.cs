@@ -58,6 +58,8 @@ public sealed class CliLanguageServerTests
         try
         {
             string documentPath = Path.Combine(fixturePath, "Program.cs");
+            string importsPath = Path.Combine(fixturePath, "Imports.cs");
+            string formattingPath = Path.Combine(fixturePath, "Formatting.cs");
             await File.WriteAllTextAsync(
                 Path.Combine(fixturePath, "Fixture.csproj"),
                 ProjectText,
@@ -65,6 +67,14 @@ public sealed class CliLanguageServerTests
             await File.WriteAllTextAsync(
                 documentPath,
                 DocumentText,
+                TestContext.CancellationToken).ConfigureAwait(false);
+            await File.WriteAllTextAsync(
+                importsPath,
+                ImportsText,
+                TestContext.CancellationToken).ConfigureAwait(false);
+            await File.WriteAllTextAsync(
+                formattingPath,
+                FormattingText,
                 TestContext.CancellationToken).ConfigureAwait(false);
 
             var lsp = LspProcessSession.Start(
@@ -399,6 +409,190 @@ public sealed class CliLanguageServerTests
                                 : string.Empty));
             }
 
+            (int renameExitCode, string renameOutput, string renameError) =
+                await RunCliAsync(
+                    cliPath,
+                    cliWorkerPath,
+                    fixturePath,
+                    [
+                        "edit",
+                        "rename",
+                        documentPath,
+                        "RenamedHelper",
+                        "--line",
+                        "7",
+                        "--character",
+                        "10",
+                        "--session",
+                        processId,
+                        "--json"
+                    ],
+                    TestContext.CancellationToken).ConfigureAwait(false);
+            Assert.AreEqual(
+                0,
+                renameExitCode,
+                $"{renameError}{Environment.NewLine}{renameOutput}");
+            using (var renameDocument = JsonDocument.Parse(renameOutput))
+            {
+                JsonElement renameRoot = renameDocument.RootElement;
+                AssertSuccessfulEnvelope(renameRoot);
+                JsonElement renameDocumentEdit = Assert.ContainsSingle(
+                    renameRoot
+                        .GetProperty("data")
+                        .GetProperty("edit")
+                        .GetProperty("documentChanges")
+                        .EnumerateArray());
+                Assert.AreEqual(
+                    1,
+                    renameDocumentEdit
+                        .GetProperty("textDocument")
+                        .GetProperty("version")
+                        .GetInt32());
+                JsonElement[] renameEdits =
+                [
+                    .. renameDocumentEdit.GetProperty("edits").EnumerateArray()
+                ];
+                Assert.HasCount(2, renameEdits);
+                Assert.IsTrue(renameEdits.All(static edit =>
+                    edit.GetProperty("newText").GetString() == "Renamed"));
+            }
+
+            (int formatExitCode, string formatOutput, string formatError) =
+                await RunCliAsync(
+                    cliPath,
+                    cliWorkerPath,
+                    fixturePath,
+                    [
+                        "edit",
+                        "format",
+                        documentPath,
+                        "--session",
+                        processId,
+                        "--json"
+                    ],
+                    TestContext.CancellationToken).ConfigureAwait(false);
+            Assert.AreEqual(
+                0,
+                formatExitCode,
+                $"{formatError}{Environment.NewLine}{formatOutput}");
+            using (var formatDocument = JsonDocument.Parse(formatOutput))
+            {
+                JsonElement formatRoot = formatDocument.RootElement;
+                AssertSuccessfulEnvelope(formatRoot);
+                JsonElement formatDocumentEdit = Assert.ContainsSingle(formatRoot
+                    .GetProperty("data")
+                    .GetProperty("edit")
+                    .GetProperty("documentChanges")
+                    .EnumerateArray());
+                Assert.IsNotEmpty(formatDocumentEdit
+                    .GetProperty("edits")
+                    .EnumerateArray());
+            }
+
+            (int actionExitCode, string actionOutput, string actionError) =
+                await RunCliAsync(
+                    cliPath,
+                    cliWorkerPath,
+                    fixturePath,
+                    [
+                        "edit",
+                        "code-action",
+                        importsPath,
+                        "--session",
+                        processId,
+                        "--json"
+                    ],
+                    TestContext.CancellationToken).ConfigureAwait(false);
+            Assert.AreEqual(
+                0,
+                actionExitCode,
+                $"{actionError}{Environment.NewLine}{actionOutput}");
+            using (var actionDocument = JsonDocument.Parse(actionOutput))
+            {
+                JsonElement actionRoot = actionDocument.RootElement;
+                AssertSuccessfulEnvelope(actionRoot);
+                JsonElement action = Assert.ContainsSingle(
+                    actionRoot.GetProperty("data").EnumerateArray());
+                Assert.AreEqual(
+                    "source.organizeImports",
+                    action.GetProperty("action").GetProperty("kind").GetString());
+                Assert.IsNotEmpty(action
+                    .GetProperty("editPlan")
+                    .GetProperty("edit")
+                    .GetProperty("documentChanges")
+                    .EnumerateArray());
+            }
+
+            (int actionApplyExitCode, string actionApplyOutput, string actionApplyError) =
+                await RunCliAsync(
+                    cliPath,
+                    cliWorkerPath,
+                    fixturePath,
+                    [
+                        "edit",
+                        "code-action",
+                        importsPath,
+                        "--apply",
+                        "--session",
+                        processId,
+                        "--json"
+                    ],
+                    TestContext.CancellationToken).ConfigureAwait(false);
+            Assert.AreEqual(
+                0,
+                actionApplyExitCode,
+                $"{actionApplyError}{Environment.NewLine}{actionApplyOutput}");
+            using (var actionApplyDocument = JsonDocument.Parse(actionApplyOutput))
+            {
+                AssertSuccessfulEnvelope(actionApplyDocument.RootElement);
+            }
+
+            string appliedImports = await File.ReadAllTextAsync(
+                importsPath,
+                TestContext.CancellationToken).ConfigureAwait(false);
+            Assert.Contains("using System;", appliedImports);
+            Assert.Contains("using System.Text;", appliedImports);
+            Assert.IsLessThan(
+                appliedImports.IndexOf("using System.Text;", StringComparison.Ordinal),
+                appliedImports.IndexOf("using System;", StringComparison.Ordinal));
+
+            (int applyExitCode, string applyOutput, string applyError) =
+                await RunCliAsync(
+                    cliPath,
+                    cliWorkerPath,
+                    fixturePath,
+                    [
+                        "edit",
+                        "format",
+                        formattingPath,
+                        "--apply",
+                        "--session",
+                        processId,
+                        "--json"
+                    ],
+                    TestContext.CancellationToken).ConfigureAwait(false);
+            Assert.AreEqual(
+                0,
+                applyExitCode,
+                $"{applyError}{Environment.NewLine}{applyOutput}");
+            using (var applyDocument = JsonDocument.Parse(applyOutput))
+            {
+                JsonElement applyRoot = applyDocument.RootElement;
+                AssertSuccessfulEnvelope(applyRoot);
+                Assert.Contains(
+                    formattingPath,
+                    applyRoot
+                        .GetProperty("data")
+                        .GetProperty("documentPaths")
+                        .EnumerateArray()
+                        .Select(static path => path.GetString()));
+            }
+
+            string appliedFormatting = await File.ReadAllTextAsync(
+                formattingPath,
+                TestContext.CancellationToken).ConfigureAwait(false);
+            Assert.Contains("Add(int left, int right) => left + right", appliedFormatting);
+
             string diagnostics = await lsp.ShutdownAsync(
                 TestContext.CancellationToken).ConfigureAwait(false);
             Assert.DoesNotContain("Unhandled exception", diagnostics, StringComparison.Ordinal);
@@ -479,8 +673,23 @@ public sealed class CliLanguageServerTests
 
             private static void Helper(int value)
             {
-                Console.WriteLine(value);
+                Console.WriteLine( value );
             }
         }
+        """;
+
+    private const string ImportsText = """
+        using System.Text;
+        using System;
+
+        namespace Fixture;
+
+        public static class Imports;
+        """;
+
+    private const string FormattingText = """
+        namespace Fixture;
+
+        public static class Formatting{public static int Add(int left,int right)=>left+right;}
         """;
 }
