@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>netstandard2.0</TargetFramework>
+    <CslsAllowAlternateTargetFramework>true</CslsAllowAlternateTargetFramework>
+    <OutputType>Library</OutputType>
+    <AssemblyName>Csls.TestSourceGenerator</AssemblyName>
+    <RootNamespace>Csls.Testing</RootNamespace>
+    <Description>Real incremental source generator used by csls integration tests.</Description>
+    <IsAotCompatible>false</IsAotCompatible>
+    <IsRoslynComponent>true</IsRoslynComponent>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <EnforceExtendedAnalyzerRules>true</EnforceExtendedAnalyzerRules>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="../../test-assets/Csls.TestSourceGenerator/GeneratedApiSourceGenerator.cs" />
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp" PrivateAssets="All" />
+  </ItemGroup>
+</Project>

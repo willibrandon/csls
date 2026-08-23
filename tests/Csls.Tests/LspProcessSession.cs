@@ -508,6 +508,23 @@ internal sealed class LspProcessSession : IAsyncDisposable
             cancellationToken);
 
     /// <summary>
+    /// Requests source text for one virtual C# document from the real server process.
+    /// </summary>
+    /// <param name="documentUri">The generated or metadata-backed document URI.</param>
+    /// <param name="cancellationToken">The test cancellation token.</param>
+    /// <returns>The virtual document response, when the URI resolves.</returns>
+    internal Task<CSharpMetadataResponse?> RequestCSharpMetadataAsync(
+        DocumentUri documentUri,
+        CancellationToken cancellationToken) =>
+        _rpc.InvokeWithParameterObjectAsync<CSharpMetadataResponse?>(
+            "csharp/metadata",
+            new CSharpMetadataParams
+            {
+                TextDocument = new TextDocumentIdentifier { Uri = documentUri }
+            },
+            cancellationToken);
+
+    /// <summary>
     /// Requests complete semantic tokens for one test document.
     /// </summary>
     /// <param name="documentPath">The absolute target document path.</param>

@@ -6,6 +6,11 @@ namespace Csls.Protocol;
 public sealed record ServerCapabilities
 {
     /// <summary>
+    /// Gets negotiated extensions outside the stable LSP capability set.
+    /// </summary>
+    public ExperimentalServerCapabilities? Experimental { get; init; }
+
+    /// <summary>
     /// Gets capabilities that apply to the complete workspace.
     /// </summary>
     public WorkspaceServerCapabilities? Workspace { get; init; }

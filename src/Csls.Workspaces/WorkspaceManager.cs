@@ -591,6 +591,24 @@ public sealed partial class WorkspaceManager : IAsyncDisposable
     }
 
     /// <summary>
+    /// Gets source text for one generated or metadata-backed virtual C# document.
+    /// </summary>
+    /// <param name="parameters">The target virtual document.</param>
+    /// <param name="cancellationToken">The operation cancellation token.</param>
+    /// <returns>The resolved virtual document, when present.</returns>
+    public async Task<CSharpMetadataResponse?> GetCSharpMetadataAsync(
+        CSharpMetadataParams parameters,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(parameters);
+        ImmutableArray<(string RootPath, Workspace Workspace, Solution Solution)> folders = _folders;
+        return await WorkspaceVirtualDocumentService.GetAsync(
+            folders.SelectMany(static folder => folder.Solution.Projects),
+            parameters.TextDocument.Uri,
+            cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
     /// Gets complete relative-encoded semantic tokens for one immutable document snapshot.
     /// </summary>
     /// <param name="parameters">The target text document.</param>

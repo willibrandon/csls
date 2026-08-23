@@ -201,6 +201,16 @@ public interface ILspRpcTarget
         CancellationToken cancellationToken);
 
     /// <summary>
+    /// Gets source text for one generated or metadata-backed virtual C# document.
+    /// </summary>
+    /// <param name="parameters">The target virtual document.</param>
+    /// <param name="cancellationToken">The peer cancellation token.</param>
+    /// <returns>The virtual document response, when the URI resolves.</returns>
+    Task<CSharpMetadataResponse?> CSharpMetadataAsync(
+        CSharpMetadataParams parameters,
+        CancellationToken cancellationToken);
+
+    /// <summary>
     /// Gets complete semantic tokens for one source document.
     /// </summary>
     /// <param name="parameters">The target text document.</param>
