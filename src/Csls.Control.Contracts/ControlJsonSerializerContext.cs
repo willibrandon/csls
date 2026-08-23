@@ -13,7 +13,11 @@ namespace Csls.Control.Contracts;
 [JsonSerializable(typeof(ControlHoverRequest))]
 [JsonSerializable(typeof(ControlHoverResult))]
 [JsonSerializable(typeof(ControlDiagnosticRequest))]
+[JsonSerializable(typeof(ControlCompletionRequest))]
 [JsonSerializable(typeof(ControlSessionInfo))]
+[JsonSerializable(typeof(CompletionItem))]
+[JsonSerializable(typeof(CompletionItemKind))]
+[JsonSerializable(typeof(CompletionList))]
 [JsonSerializable(typeof(Diagnostic))]
 [JsonSerializable(typeof(DiagnosticSeverity))]
 [JsonSerializable(typeof(DocumentDiagnosticReport))]
@@ -22,4 +26,6 @@ namespace Csls.Control.Contracts;
 [JsonSerializable(typeof(object))]
 [JsonSerializable(typeof(Position))]
 [JsonSerializable(typeof(IReadOnlyList<Diagnostic>))]
+[JsonSerializable(typeof(IReadOnlyList<CompletionItem>))]
+[JsonSerializable(typeof(IReadOnlyList<TextEdit>))]
 public sealed partial class ControlJsonSerializerContext : JsonSerializerContext;

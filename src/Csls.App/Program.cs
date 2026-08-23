@@ -118,6 +118,45 @@ diagnosticCommand.SetAction((parseResult, cancellationToken) =>
         ],
         cancellationToken));
 queryCommand.Subcommands.Add(diagnosticCommand);
+
+var completionDocumentArgument = new Argument<string>("document")
+{
+    Description = "Absolute or current-directory-relative C# document path."
+};
+Option<int> completionLineOption = CreatePositionOption(
+    "--line",
+    "Zero-based UTF-16 line number.");
+Option<int> completionCharacterOption = CreatePositionOption(
+    "--character",
+    "Zero-based UTF-16 character offset.");
+Option<int?> completionSessionOption = CreateSessionOption();
+var completionJsonOption = new Option<bool>("--json")
+{
+    Description = "Write the versioned machine-readable response envelope."
+};
+var completionCommand = new Command(
+    "completion",
+    "Get bounded Roslyn completion candidates at one document position.")
+{
+    completionDocumentArgument,
+    completionLineOption,
+    completionCharacterOption,
+    completionSessionOption,
+    completionJsonOption
+};
+completionCommand.SetAction((parseResult, cancellationToken) =>
+    CliWorkerSupervisor.RunAsync(
+        [
+            "query-completion",
+            (parseResult.GetValue(completionSessionOption) ?? 0)
+                .ToString(CultureInfo.InvariantCulture),
+            Path.GetFullPath(parseResult.GetRequiredValue(completionDocumentArgument)),
+            parseResult.GetValue(completionLineOption).ToString(CultureInfo.InvariantCulture),
+            parseResult.GetValue(completionCharacterOption).ToString(CultureInfo.InvariantCulture),
+            parseResult.GetValue(completionJsonOption).ToString(CultureInfo.InvariantCulture)
+        ],
+        cancellationToken));
+queryCommand.Subcommands.Add(completionCommand);
 rootCommand.Subcommands.Add(queryCommand);
 
 return await rootCommand.Parse(args).InvokeAsync().ConfigureAwait(false);

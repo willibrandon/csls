@@ -81,6 +81,16 @@ public interface ILspRpcTarget
         CancellationToken cancellationToken);
 
     /// <summary>
+    /// Gets bounded completion candidates at one document position.
+    /// </summary>
+    /// <param name="parameters">The document position and trigger context.</param>
+    /// <param name="cancellationToken">The peer cancellation token.</param>
+    /// <returns>The ordered completion list.</returns>
+    Task<CompletionList> CompletionAsync(
+        CompletionParams parameters,
+        CancellationToken cancellationToken);
+
+    /// <summary>
     /// Resolves hover information at a text document position.
     /// </summary>
     /// <param name="parameters">The target document position.</param>

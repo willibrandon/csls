@@ -24,4 +24,9 @@ public sealed record ServerCapabilities
     /// Gets the pull-diagnostic provider behavior.
     /// </summary>
     public DiagnosticOptions? DiagnosticProvider { get; init; }
+
+    /// <summary>
+    /// Gets the completion provider behavior.
+    /// </summary>
+    public CompletionOptions? CompletionProvider { get; init; }
 }

@@ -138,4 +138,56 @@ internal sealed class CslsMcpTools
             },
             cancellationToken);
     }
+
+    /// <summary>
+    /// Gets bounded Roslyn completion candidates at one document position.
+    /// </summary>
+    /// <param name="documentPath">The absolute path of an open document.</param>
+    /// <param name="line">The zero-based document line.</param>
+    /// <param name="character">The zero-based UTF-16 character offset.</param>
+    /// <param name="cancellationToken">The MCP request cancellation token.</param>
+    /// <returns>The ordered completion list and exact commit edits.</returns>
+    [McpServerTool(
+        Name = "get_completion",
+        Title = "Get C# completion",
+        Destructive = false,
+        Idempotent = true,
+        OpenWorld = false,
+        ReadOnly = true,
+        UseStructuredContent = true)]
+    [Description("Get bounded C# completion candidates and exact commit edits at a zero-based UTF-16 position.")]
+    public Task<CompletionList> GetCompletionAsync(
+        [Description("Absolute path of the document loaded by the attached csls session.")]
+        string documentPath,
+        [Description("Zero-based document line.")]
+        int line,
+        [Description("Zero-based UTF-16 character offset.")]
+        int character,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(documentPath) ||
+            documentPath.Length > MaximumPathLength)
+        {
+            throw new McpException(
+                $"documentPath must contain between 1 and {MaximumPathLength} characters.");
+        }
+
+        if (line < 0)
+        {
+            throw new McpException("line must be zero or greater.");
+        }
+
+        if (character < 0)
+        {
+            throw new McpException("character must be zero or greater.");
+        }
+
+        return _controlClient.GetCompletionAsync(
+            new ControlCompletionRequest
+            {
+                DocumentPath = Path.GetFullPath(documentPath),
+                Position = new Position(line, character)
+            },
+            cancellationToken);
+    }
 }

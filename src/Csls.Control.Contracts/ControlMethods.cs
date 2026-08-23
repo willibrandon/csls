@@ -19,4 +19,9 @@ public static class ControlMethods
     /// Gets the method that returns compiler and analyzer diagnostics for one document.
     /// </summary>
     public const string GetDiagnostics = "csls/control/v1/diagnostics/get";
+
+    /// <summary>
+    /// Gets the method that returns bounded completion candidates for one document position.
+    /// </summary>
+    public const string GetCompletion = "csls/control/v1/completion/get";
 }

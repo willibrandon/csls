@@ -212,6 +212,33 @@ internal sealed class LspProcessSession : IAsyncDisposable
             cancellationToken);
 
     /// <summary>
+    /// Requests bounded completion candidates at one opened test document position.
+    /// </summary>
+    /// <param name="documentPath">The absolute target document path.</param>
+    /// <param name="position">The target UTF-16 document position.</param>
+    /// <param name="cancellationToken">The test cancellation token.</param>
+    /// <returns>The ordered completion list.</returns>
+    internal Task<CompletionList> RequestCompletionAsync(
+        string documentPath,
+        Position position,
+        CancellationToken cancellationToken) =>
+        _rpc.InvokeWithParameterObjectAsync<CompletionList>(
+            "textDocument/completion",
+            new CompletionParams
+            {
+                TextDocument = new TextDocumentIdentifier
+                {
+                    Uri = DocumentUri.FromFileSystemPath(documentPath)
+                },
+                Position = position,
+                Context = new CompletionContext
+                {
+                    TriggerKind = CompletionTriggerKind.Invoked
+                }
+            },
+            cancellationToken);
+
+    /// <summary>
     /// Sends a document save notification through the real LSP transport.
     /// </summary>
     /// <param name="documentPath">The absolute saved document path.</param>

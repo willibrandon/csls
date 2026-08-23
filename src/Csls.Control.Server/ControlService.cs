@@ -89,4 +89,28 @@ public sealed class ControlService : IControlRpcTarget
             },
             cancellationToken);
     }
+
+    /// <inheritdoc />
+    public Task<CompletionList> GetCompletionAsync(
+        ControlCompletionRequest request,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        ArgumentException.ThrowIfNullOrWhiteSpace(request.DocumentPath);
+        string documentPath = Path.GetFullPath(request.DocumentPath);
+        return _languageServer.CompletionAsync(
+            new CompletionParams
+            {
+                TextDocument = new TextDocumentIdentifier
+                {
+                    Uri = DocumentUri.FromFileSystemPath(documentPath)
+                },
+                Position = request.Position,
+                Context = new CompletionContext
+                {
+                    TriggerKind = CompletionTriggerKind.Invoked
+                }
+            },
+            cancellationToken);
+    }
 }

@@ -82,6 +82,24 @@ public sealed class ControlRpcClient : IAsyncDisposable
     }
 
     /// <summary>
+    /// Gets bounded completion candidates from the attached workspace snapshot.
+    /// </summary>
+    /// <param name="request">The absolute document path and UTF-16 position.</param>
+    /// <param name="cancellationToken">The request cancellation token.</param>
+    /// <returns>The ordered completion list.</returns>
+    public async Task<CompletionList> GetCompletionAsync(
+        ControlCompletionRequest request,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        JsonRpc rpc = await GetRpcAsync(cancellationToken).ConfigureAwait(false);
+        return await rpc.InvokeWithParameterObjectAsync<CompletionList>(
+            ControlMethods.GetCompletion,
+            request,
+            cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
     /// Closes the control RPC connection and releases its socket resources.
     /// </summary>
     /// <returns>A task that completes after the transport is closed.</returns>

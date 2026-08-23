@@ -33,4 +33,14 @@ public interface IControlRpcTarget
     Task<DocumentDiagnosticReport> GetDiagnosticsAsync(
         ControlDiagnosticRequest request,
         CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Gets bounded completion candidates from the current workspace snapshot.
+    /// </summary>
+    /// <param name="request">The absolute document path and UTF-16 position.</param>
+    /// <param name="cancellationToken">The peer cancellation token.</param>
+    /// <returns>The ordered completion list.</returns>
+    Task<CompletionList> GetCompletionAsync(
+        ControlCompletionRequest request,
+        CancellationToken cancellationToken);
 }

@@ -31,6 +31,11 @@ internal static class ControlMethodRegistry
             ControlMethods.GetDiagnostics,
             new Func<ControlDiagnosticRequest, CancellationToken, Task<DocumentDiagnosticReport>>(
                 target.GetDiagnosticsAsync));
+        AddParameterObjectMethod(
+            rpc,
+            ControlMethods.GetCompletion,
+            new Func<ControlCompletionRequest, CancellationToken, Task<CompletionList>>(
+                target.GetCompletionAsync));
     }
 
     private static void AddParameterObjectMethod(

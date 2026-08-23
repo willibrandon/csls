@@ -50,6 +50,11 @@ public static class LspMethodRegistry
                 target.DocumentDiagnosticAsync));
         AddParameterObjectMethod(
             rpc,
+            "textDocument/completion",
+            new Func<CompletionParams, CancellationToken, Task<CompletionList>>(
+                target.CompletionAsync));
+        AddParameterObjectMethod(
+            rpc,
             "textDocument/hover",
             new Func<TextDocumentPositionParams, CancellationToken, Task<Hover?>>(target.HoverAsync));
     }

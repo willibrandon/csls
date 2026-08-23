@@ -132,6 +132,8 @@ public sealed class McpLanguageServerTests
                     tool.Name == "get_hover");
                 McpClientTool diagnosticTool = tools.Single(static tool =>
                     tool.Name == "get_diagnostics");
+                McpClientTool completionTool = tools.Single(static tool =>
+                    tool.Name == "get_completion");
                 ToolAnnotations annotations = sessionTool.ProtocolTool.Annotations
                     ?? throw new InvalidDataException("The session tool has no MCP annotations.");
                 Assert.IsNotNull(annotations.ReadOnlyHint);
@@ -145,6 +147,7 @@ public sealed class McpLanguageServerTests
                 Assert.IsNotNull(sessionTool.ProtocolTool.OutputSchema);
                 Assert.IsNotNull(hoverTool.ProtocolTool.OutputSchema);
                 Assert.IsNotNull(diagnosticTool.ProtocolTool.OutputSchema);
+                Assert.IsNotNull(completionTool.ProtocolTool.OutputSchema);
 
                 CallToolResult sessionResult = await client.CallToolAsync(
                     "get_session",
@@ -197,6 +200,25 @@ public sealed class McpLanguageServerTests
                 Assert.Contains(
                     "CS0103",
                     diagnosticItems.Select(static diagnostic => diagnostic.Code));
+
+                CallToolResult completionResult = await client.CallToolAsync(
+                    "get_completion",
+                    new Dictionary<string, object?>
+                    {
+                        ["documentPath"] = documentPath,
+                        ["line"] = 6,
+                        ["character"] = 19
+                    },
+                    cancellationToken: TestContext.CancellationToken).ConfigureAwait(false);
+                Assert.IsNull(completionResult.IsError);
+                Assert.IsTrue(completionResult.StructuredContent.HasValue);
+                CompletionList completion = completionResult.StructuredContent.Value.Deserialize(
+                    ControlJsonSerializerContext.Default.CompletionList)
+                    ?? throw new InvalidDataException(
+                        "MCP returned no structured completion list.");
+                Assert.Contains(
+                    "WriteLine",
+                    completion.Items.Select(static item => item.Label));
 
                 IList<McpClientResource> resources = await client
                     .ListResourcesAsync(cancellationToken: TestContext.CancellationToken)

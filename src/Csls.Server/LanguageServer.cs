@@ -88,6 +88,11 @@ public sealed partial class LanguageServer : ILspRpcTarget, IAsyncDisposable
                     Identifier = "csls",
                     InterFileDependencies = true,
                     WorkspaceDiagnostics = false
+                },
+                CompletionProvider = new CompletionOptions
+                {
+                    ResolveProvider = false,
+                    TriggerCharacters = [".", "(", "#", "\"", "<", "/"]
                 }
             },
             ServerInfo = new ServerInfo
@@ -205,6 +210,32 @@ public sealed partial class LanguageServer : ILspRpcTarget, IAsyncDisposable
                 }
 
                 return report;
+            },
+            cancellationToken);
+    }
+
+    /// <inheritdoc />
+    public Task<CompletionList> CompletionAsync(
+        CompletionParams parameters,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(parameters);
+        EnsureRunning();
+        return _scheduler.ScheduleAsync(
+            RequestMode.ReadOnly,
+            () => _workspaceManager.Generation,
+            async context =>
+            {
+                CompletionList completion = await _workspaceManager
+                    .GetCompletionsAsync(parameters, context.CancellationToken)
+                    .ConfigureAwait(false);
+                if (_workspaceManager.Generation != context.WorkspaceGeneration)
+                {
+                    throw new InvalidOperationException(
+                        "The workspace changed while completion was being computed.");
+                }
+
+                return completion;
             },
             cancellationToken);
     }

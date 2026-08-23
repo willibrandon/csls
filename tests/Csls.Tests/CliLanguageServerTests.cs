@@ -186,6 +186,41 @@ public sealed class CliLanguageServerTests
                             diagnostic.GetProperty("code").GetString()));
             }
 
+            (int completionExitCode, string completionOutput, string completionError) =
+                await RunCliAsync(
+                    cliPath,
+                    cliWorkerPath,
+                    fixturePath,
+                    [
+                        "query",
+                        "completion",
+                        documentPath,
+                        "--line",
+                        "6",
+                        "--character",
+                        "19",
+                        "--session",
+                        processId,
+                        "--json"
+                    ],
+                    TestContext.CancellationToken).ConfigureAwait(false);
+            Assert.AreEqual(
+                0,
+                completionExitCode,
+                $"{completionError}{Environment.NewLine}{completionOutput}");
+            using (var completionDocument = JsonDocument.Parse(completionOutput))
+            {
+                JsonElement completionRoot = completionDocument.RootElement;
+                AssertSuccessfulEnvelope(completionRoot);
+                Assert.Contains(
+                    "WriteLine",
+                    completionRoot
+                        .GetProperty("data")
+                        .GetProperty("items")
+                        .EnumerateArray()
+                        .Select(static item => item.GetProperty("label").GetString()));
+            }
+
             string diagnostics = await lsp.ShutdownAsync(
                 TestContext.CancellationToken).ConfigureAwait(false);
             Assert.DoesNotContain("Unhandled exception", diagnostics, StringComparison.Ordinal);

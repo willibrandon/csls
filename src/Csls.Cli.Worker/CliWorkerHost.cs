@@ -40,6 +40,10 @@ internal static class CliWorkerHost
                         arguments,
                         writeJson,
                         cancellationToken).ConfigureAwait(false),
+                    "query-completion" => await QueryCompletionAsync(
+                        arguments,
+                        writeJson,
+                        cancellationToken).ConfigureAwait(false),
                     _ => Fail(
                         "invalid-request",
                         $"The launcher supplied an unknown CLI operation: {arguments[0]}",
@@ -144,6 +148,37 @@ internal static class CliWorkerHost
             },
             cancellationToken).ConfigureAwait(false);
         CliOutputWriter.WriteDiagnostics(report, writeJson);
+        return 0;
+    }
+
+    private static async Task<int> QueryCompletionAsync(
+        IReadOnlyList<string> arguments,
+        bool writeJson,
+        CancellationToken cancellationToken)
+    {
+        if (arguments.Count != 6 ||
+            !int.TryParse(arguments[1], NumberStyles.None, CultureInfo.InvariantCulture, out int processId) ||
+            !int.TryParse(arguments[3], NumberStyles.None, CultureInfo.InvariantCulture, out int line) ||
+            !int.TryParse(arguments[4], NumberStyles.None, CultureInfo.InvariantCulture, out int character))
+        {
+            return Fail(
+                "invalid-request",
+                "The launcher supplied an invalid completion request.",
+                writeJson);
+        }
+
+        ControlSessionInfo session = await ResolveSessionAsync(processId, cancellationToken)
+            .ConfigureAwait(false);
+        var client = new ControlRpcClient(session.SocketPath);
+        await using ConfiguredAsyncDisposable clientCleanup = client.ConfigureAwait(false);
+        CompletionList completion = await client.GetCompletionAsync(
+            new ControlCompletionRequest
+            {
+                DocumentPath = arguments[2],
+                Position = new Position(line, character)
+            },
+            cancellationToken).ConfigureAwait(false);
+        CliOutputWriter.WriteCompletion(completion, writeJson);
         return 0;
     }
 

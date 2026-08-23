@@ -138,6 +138,33 @@ internal static class CliOutputWriter
     }
 
     /// <summary>
+    /// Writes bounded Roslyn completion candidates returned by the shared control service.
+    /// </summary>
+    /// <param name="completion">The ordered completion list.</param>
+    /// <param name="writeJson">Whether to write a machine-readable envelope.</param>
+    internal static void WriteCompletion(CompletionList completion, bool writeJson)
+    {
+        ArgumentNullException.ThrowIfNull(completion);
+        if (writeJson)
+        {
+            JsonElement data = JsonSerializer.SerializeToElement(
+                completion,
+                typeof(CompletionList),
+                CliJsonSerializerContext.Default);
+            WriteEnvelope(success: true, data);
+            return;
+        }
+
+        foreach (CompletionItem item in completion.Items)
+        {
+            Console.Out.WriteLine(
+                string.IsNullOrWhiteSpace(item.Detail)
+                    ? item.Label
+                    : $"{item.Label}\t{item.Detail}");
+        }
+    }
+
+    /// <summary>
     /// Writes an actionable command failure to the requested output channel.
     /// </summary>
     /// <param name="code">The stable failure category.</param>
