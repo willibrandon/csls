@@ -166,6 +166,19 @@ public sealed class HelixLanguageServerTests
                             "System.Console",
                             snapshot.GetScreenText(),
                             snapshot.GetScreenText());
+                        string? screenshotPath = Environment.GetEnvironmentVariable(
+                            DocsScreenshotPathEnvironmentVariable);
+                        if (!string.IsNullOrWhiteSpace(screenshotPath))
+                        {
+                            string svg = snapshot.ToSvg(new TerminalSvgOptions
+                            {
+                                ShowCellGrid = false
+                            });
+                            await File.WriteAllTextAsync(
+                                screenshotPath,
+                                svg,
+                                TestContext.CancellationToken).ConfigureAwait(false);
+                        }
 
                         await automator.TypeAsync(":q!", TestContext.CancellationToken)
                             .ConfigureAwait(false);
@@ -200,6 +213,9 @@ public sealed class HelixLanguageServerTests
           </PropertyGroup>
         </Project>
         """;
+
+    private const string DocsScreenshotPathEnvironmentVariable =
+        "CSLS_DOCS_SCREENSHOT_PATH";
 
     private const string DocumentText = """
         namespace Fixture;
