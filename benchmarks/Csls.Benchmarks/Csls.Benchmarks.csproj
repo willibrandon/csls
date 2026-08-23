@@ -8,6 +8,9 @@
 
   <ItemGroup>
     <PackageReference Include="BenchmarkDotNet" />
+    <PackageReference Include="Microsoft.NET.StringTools"
+                      ExcludeAssets="runtime"
+                      PrivateAssets="all" />
     <PackageReference Include="StreamJsonRpc" />
   </ItemGroup>
 
@@ -15,6 +18,7 @@
     <ProjectReference Include="../../src/Csls.Core/Csls.Core.csproj" />
     <ProjectReference Include="../../src/Csls.Protocol/Csls.Protocol.csproj" />
     <ProjectReference Include="../../src/Csls.Rpc/Csls.Rpc.csproj" />
+    <ProjectReference Include="../../src/Csls.Workspaces/Csls.Workspaces.csproj" />
     <ProjectReference Include="../../src/Csls.Worker/Csls.Worker.csproj"
                       ReferenceOutputAssembly="false" />
   </ItemGroup>
