@@ -21,6 +21,7 @@ supports `--help`.
 | `Verify-Repository.cs` | Checks repository, dependency, and automation policies. |
 | `Verify-GitHubActions.cs` | Validates every workflow with actionlint. |
 | `Verify-CodeQl.cs` | Fails when CodeQL reports an unresolved finding. |
+| `Verify-Docs.cs` | Checks every generated documentation link and asset target. |
 | `Verify-ToolPackages.cs` | Packs and exercises the `csls` and `csls-mcp` tools. |
 
 `ScriptSupport.cs` contains shared download, checksum, archive, process, and path

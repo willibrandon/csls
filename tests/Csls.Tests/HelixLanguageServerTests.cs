@@ -132,12 +132,12 @@ public sealed class HelixLanguageServerTests
                     $"{documentPath}:7:10"
                 ],
                 fixturePath,
-                width: 120,
-                height: 40);
+                width: 100,
+                height: 24);
             Hex1bTerminal terminal = Hex1bTerminal.CreateBuilder()
                 .WithWorkload(workload)
                 .WithHeadless()
-                .WithDimensions(120, 40)
+                .WithDimensions(100, 24)
                 .Build();
 
             try
