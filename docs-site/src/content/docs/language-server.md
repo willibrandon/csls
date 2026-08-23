@@ -6,7 +6,7 @@ description: Language Server Protocol features implemented by csls.
 `csls` advertises only capabilities backed by an active implementation. Current
 language features include:
 
-- C# compiler and analyzer diagnostics, plus project-aware Razor diagnostics, completion, hover, and navigation
+- C# compiler and analyzer diagnostics, plus project-aware Razor diagnostics, completion, hover, navigation, and formatting
 - completion with import edits, negotiated snippets, lazy documentation, hover, and signature help
 - definitions, declarations, implementations, references, highlights, links, monikers, and linked editing
 - document and workspace symbols
@@ -44,6 +44,9 @@ the same generated project snapshot and maps Roslyn content and ranges back to
 the Razor source, including symbols made available by `_Imports.razor` and
 `_ViewImports.cshtml`. Definition, declaration, type definition, and implementation
 requests use that snapshot and map Razor declarations back to their source files.
+Razor formatting indents markup and embedded C#, aligns multiline attributes,
+and honors the client's tab, space, newline, and trimming settings. Content in
+`pre`, `script`, `style`, and `textarea` elements is left unchanged.
 
 [Configuration](../configuration/) is pulled through the standard workspace request
 when the client supports it. Push-only clients use the same settings and precedence.
