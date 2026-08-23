@@ -558,6 +558,23 @@ public sealed partial class WorkspaceManager : IAsyncDisposable
     }
 
     /// <summary>
+    /// Gets paired XML documentation names at one immutable document position.
+    /// </summary>
+    /// <param name="parameters">The target document position.</param>
+    /// <param name="cancellationToken">The operation cancellation token.</param>
+    /// <returns>The linked ranges, or <see langword="null"/> when none apply.</returns>
+    public async Task<LinkedEditingRanges?> GetLinkedEditingRangesAsync(
+        LinkedEditingRangeParams parameters,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(parameters);
+        return await WorkspaceLinkedEditingService.GetLinkedEditingRangesAsync(
+            FindCurrentDocument(parameters.TextDocument.Uri),
+            parameters.Position,
+            cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
     /// Gets semantic symbol occurrences within one immutable source document snapshot.
     /// </summary>
     /// <param name="parameters">The target document position.</param>

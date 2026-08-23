@@ -465,6 +465,52 @@ internal sealed class LspProcessSession : IAsyncDisposable
             cancellationToken);
 
     /// <summary>
+    /// Requests paired linked editing ranges for one test document position.
+    /// </summary>
+    /// <param name="documentPath">The absolute target document path.</param>
+    /// <param name="position">The target UTF-16 document position.</param>
+    /// <param name="cancellationToken">The test cancellation token.</param>
+    /// <returns>The linked ranges, or <see langword="null"/> when none apply.</returns>
+    internal Task<LinkedEditingRanges?> RequestLinkedEditingRangesAsync(
+        string documentPath,
+        Position position,
+        CancellationToken cancellationToken) =>
+        _rpc.InvokeWithParameterObjectAsync<LinkedEditingRanges?>(
+            "textDocument/linkedEditingRange",
+            new LinkedEditingRangeParams
+            {
+                TextDocument = new TextDocumentIdentifier
+                {
+                    Uri = DocumentUri.FromFileSystemPath(documentPath)
+                },
+                Position = position
+            },
+            cancellationToken);
+
+    /// <summary>
+    /// Requests raw linked editing JSON for protocol-shape assertions.
+    /// </summary>
+    /// <param name="documentPath">The absolute target document path.</param>
+    /// <param name="position">The target UTF-16 document position.</param>
+    /// <param name="cancellationToken">The test cancellation token.</param>
+    /// <returns>The raw linked editing response.</returns>
+    internal Task<JsonElement> RequestLinkedEditingRangesJsonAsync(
+        string documentPath,
+        Position position,
+        CancellationToken cancellationToken) =>
+        _rpc.InvokeWithParameterObjectAsync<JsonElement>(
+            "textDocument/linkedEditingRange",
+            new LinkedEditingRangeParams
+            {
+                TextDocument = new TextDocumentIdentifier
+                {
+                    Uri = DocumentUri.FromFileSystemPath(documentPath)
+                },
+                Position = position
+            },
+            cancellationToken);
+
+    /// <summary>
     /// Requests semantic symbol highlights within one test document.
     /// </summary>
     /// <param name="documentPath">The absolute target document path.</param>
