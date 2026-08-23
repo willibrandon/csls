@@ -54,6 +54,8 @@ public sealed partial class WorkspaceManager : IAsyncDisposable
     private readonly Dictionary<string, int> _documentVersions = new(
         OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal);
     private ImmutableArray<(string RootPath, Workspace Workspace, Solution Solution)> _folders = [];
+    private ImmutableDictionary<string, SourceText> _razorDocuments =
+        ImmutableDictionary.Create<string, SourceText>(PathComparer);
     private int _enableAnalyzers = 1;
     private long _generation;
     private int _disposeState;
@@ -102,6 +104,7 @@ public sealed partial class WorkspaceManager : IAsyncDisposable
             await PublishFoldersAsync(
                 loadedFolders,
                 documentVersions: null,
+                razorDocuments: null,
                 cancellationToken).ConfigureAwait(false);
             published = true;
         }
@@ -191,6 +194,7 @@ public sealed partial class WorkspaceManager : IAsyncDisposable
     private async Task PublishFoldersAsync(
         ImmutableArray<(string RootPath, Workspace Workspace, Solution Solution)> loadedFolders,
         IReadOnlyDictionary<string, int>? documentVersions,
+        IReadOnlyDictionary<string, SourceText>? razorDocuments,
         CancellationToken cancellationToken)
     {
         await _mutationGate.WaitAsync(cancellationToken).ConfigureAwait(false);
@@ -200,6 +204,9 @@ public sealed partial class WorkspaceManager : IAsyncDisposable
             previous = _folders;
             _folders = loadedFolders;
             _documentVersions.Clear();
+            _razorDocuments = razorDocuments is null
+                ? ImmutableDictionary.Create<string, SourceText>(PathComparer)
+                : razorDocuments.ToImmutableDictionary(PathComparer);
             if (documentVersions is not null)
             {
                 foreach ((string path, int version) in documentVersions)
@@ -245,6 +252,16 @@ public sealed partial class WorkspaceManager : IAsyncDisposable
             if (folderIndex < 0)
             {
                 throw new InvalidOperationException($"No workspace folder owns document {path}.");
+            }
+
+            if (WorkspaceRazorDiagnosticService.IsRazorDocument(path))
+            {
+                _razorDocuments = _razorDocuments.SetItem(
+                    path,
+                    SourceText.From(document.Text, Encoding.UTF8));
+                _documentVersions[path] = document.Version;
+                Interlocked.Increment(ref _generation);
+                return;
             }
 
             (string rootPath, Workspace workspace, Solution solution) = _folders[folderIndex];
@@ -312,32 +329,21 @@ public sealed partial class WorkspaceManager : IAsyncDisposable
                 throw new InvalidOperationException($"No workspace folder owns document {path}.");
             }
 
+            if (_razorDocuments.TryGetValue(path, out SourceText? razorText))
+            {
+                _razorDocuments = _razorDocuments.SetItem(
+                    path,
+                    ApplyContentChanges(razorText, parameters.ContentChanges, cancellationToken));
+                _documentVersions[path] = parameters.TextDocument.Version;
+                Interlocked.Increment(ref _generation);
+                return;
+            }
+
             (string rootPath, Workspace workspace, Solution solution) = _folders[folderIndex];
             Document document = FindDocument(solution, path)
                 ?? throw new InvalidOperationException($"Opened document {path} is unavailable.");
             SourceText text = await document.GetTextAsync(cancellationToken).ConfigureAwait(false);
-            foreach (TextDocumentContentChangeEvent change in parameters.ContentChanges)
-            {
-                cancellationToken.ThrowIfCancellationRequested();
-                if (change.Range is not LspRange range)
-                {
-                    text = SourceText.From(change.Text, Encoding.UTF8);
-                    continue;
-                }
-
-                int start = LspPositionConverter.GetOffset(text, range.Start);
-                int end = LspPositionConverter.GetOffset(text, range.End);
-                int replacedLength = end - start;
-                if (change.RangeLength is int expectedLength && expectedLength != replacedLength)
-                {
-                    throw new InvalidDataException(
-                        $"Change range length {expectedLength} does not match {replacedLength} UTF-16 code units.");
-                }
-
-                text = text.WithChanges(new TextChange(
-                    new TextSpan(start, replacedLength),
-                    change.Text));
-            }
+            text = ApplyContentChanges(text, parameters.ContentChanges, cancellationToken);
 
             Solution changedSolution = solution.WithDocumentText(
                 document.Id,
@@ -377,6 +383,13 @@ public sealed partial class WorkspaceManager : IAsyncDisposable
             int folderIndex = FindFolderIndex(path, _folders);
             if (folderIndex < 0)
             {
+                return;
+            }
+
+            if (WorkspaceRazorDiagnosticService.IsRazorDocument(path))
+            {
+                _razorDocuments = _razorDocuments.Remove(path);
+                Interlocked.Increment(ref _generation);
                 return;
             }
 
@@ -437,6 +450,29 @@ public sealed partial class WorkspaceManager : IAsyncDisposable
         string path = parameters.TextDocument.Uri.GetFileSystemPath();
         ImmutableArray<(string RootPath, Workspace Workspace, Solution Solution)> folders = _folders;
         int folderIndex = FindFolderIndex(path, folders);
+        if (folderIndex >= 0 && WorkspaceRazorDiagnosticService.IsRazorDocument(path))
+        {
+            SourceText? razorText = _razorDocuments.GetValueOrDefault(path);
+            if (razorText is null && File.Exists(path))
+            {
+                string persistedText = await File.ReadAllTextAsync(path, cancellationToken)
+                    .ConfigureAwait(false);
+                razorText = SourceText.From(persistedText, Encoding.UTF8);
+            }
+
+            return new DocumentDiagnosticReport
+            {
+                Kind = "full",
+                ResultId = resultId,
+                Items = razorText is null
+                    ? []
+                    : WorkspaceRazorDiagnosticService.GetDiagnostics(
+                        path,
+                        razorText,
+                        cancellationToken)
+            };
+        }
+
         Document? document = folderIndex >= 0
             ? FindDocument(folders[folderIndex].Solution, path)
             : null;
@@ -2271,6 +2307,37 @@ public sealed partial class WorkspaceManager : IAsyncDisposable
                 diagnostic.Location.SourceTree?.FilePath,
                 path,
                 PathComparison);
+    }
+
+    private static SourceText ApplyContentChanges(
+        SourceText text,
+        IReadOnlyList<TextDocumentContentChangeEvent> changes,
+        CancellationToken cancellationToken)
+    {
+        foreach (TextDocumentContentChangeEvent change in changes)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (change.Range is not LspRange range)
+            {
+                text = SourceText.From(change.Text, Encoding.UTF8);
+                continue;
+            }
+
+            int start = LspPositionConverter.GetOffset(text, range.Start);
+            int end = LspPositionConverter.GetOffset(text, range.End);
+            int replacedLength = end - start;
+            if (change.RangeLength is int expectedLength && expectedLength != replacedLength)
+            {
+                throw new InvalidDataException(
+                    $"Change range length {expectedLength} does not match {replacedLength} UTF-16 code units.");
+            }
+
+            text = text.WithChanges(new TextChange(
+                new TextSpan(start, replacedLength),
+                change.Text));
+        }
+
+        return text;
     }
 
     private static LspDiagnostic ToLspDiagnostic(

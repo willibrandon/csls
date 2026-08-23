@@ -213,8 +213,12 @@ internal sealed class LspProcessSession : IAsyncDisposable
     /// </summary>
     /// <param name="documentPath">The absolute document path.</param>
     /// <param name="documentText">The exact on-disk document text.</param>
+    /// <param name="languageId">The client language identifier.</param>
     /// <returns>A task that completes after both notifications are written.</returns>
-    internal async Task OpenDocumentAsync(string documentPath, string documentText)
+    internal async Task OpenDocumentAsync(
+        string documentPath,
+        string documentText,
+        string languageId = "csharp")
     {
         await CompleteInitializationAsync().ConfigureAwait(false);
 
@@ -225,7 +229,7 @@ internal sealed class LspProcessSession : IAsyncDisposable
                 TextDocument = new TextDocumentItem
                 {
                     Uri = DocumentUri.FromFileSystemPath(documentPath),
-                    LanguageId = "csharp",
+                    LanguageId = languageId,
                     Version = 1,
                     Text = documentText
                 }
