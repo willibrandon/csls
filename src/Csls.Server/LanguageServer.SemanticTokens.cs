@@ -18,6 +18,7 @@ public sealed partial class LanguageServer
         ArgumentNullException.ThrowIfNull(parameters);
         EnsureRunning();
         return _scheduler.ScheduleAsync(
+            "textDocument/semanticTokens/full",
             RequestMode.ReadOnly,
             () => _workspaceManager.Generation,
             async context =>
@@ -47,6 +48,7 @@ public sealed partial class LanguageServer
         ArgumentNullException.ThrowIfNull(parameters);
         EnsureRunning();
         return _scheduler.ScheduleAsync(
+            "textDocument/semanticTokens/full/delta",
             RequestMode.ReadOnly,
             () => _workspaceManager.Generation,
             async context =>

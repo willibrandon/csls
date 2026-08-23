@@ -36,6 +36,8 @@
     <Project Path="benchmarks/Csls.Benchmarks/Csls.Benchmarks.csproj" />
   </Folder>
   <Folder Name="/tests/">
+    <Project Path="test-assets/Csls.CancellationProbeTransport/Csls.CancellationProbeTransport.csproj" />
+    <Project Path="tests/Csls.CancellationProbeAnalyzer/Csls.CancellationProbeAnalyzer.csproj" />
     <Project Path="tests/Csls.SourceGen.Tests/Csls.SourceGen.Tests.csproj" />
     <Project Path="tests/Csls.TestProcessHost/Csls.TestProcessHost.csproj" />
     <Project Path="tests/Csls.Tests/Csls.Tests.csproj" />

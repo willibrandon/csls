@@ -30,6 +30,11 @@ namespace Csls.Control.Contracts;
 [JsonSerializable(typeof(ControlSessionInfo))]
 [JsonSerializable(typeof(ControlDashboardSnapshot))]
 [JsonSerializable(typeof(ControlDashboardRequest))]
+[JsonSerializable(typeof(ControlCancelRequest))]
+[JsonSerializable(typeof(ControlCancelRequestResult))]
+[JsonSerializable(typeof(ControlRequestInfo))]
+[JsonSerializable(typeof(ControlTraceEntry))]
+[JsonSerializable(typeof(ControlTraceInfo))]
 [JsonSerializable(typeof(ControlWorkspaceOperationResult))]
 [JsonSerializable(typeof(ControlWorkspaceInfo))]
 [JsonSerializable(typeof(ControlProjectInfo))]
@@ -89,4 +94,6 @@ namespace Csls.Control.Contracts;
 [JsonSerializable(typeof(IReadOnlyList<ControlBuildHostInfo>))]
 [JsonSerializable(typeof(IReadOnlyList<ControlCacheInfo>))]
 [JsonSerializable(typeof(IReadOnlyList<ControlLogEntry>))]
+[JsonSerializable(typeof(IReadOnlyList<ControlRequestInfo>))]
+[JsonSerializable(typeof(IReadOnlyList<ControlTraceEntry>))]
 public sealed partial class ControlJsonSerializerContext : JsonSerializerContext;

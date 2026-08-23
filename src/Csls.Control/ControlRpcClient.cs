@@ -64,6 +64,50 @@ public sealed class ControlRpcClient : IAsyncDisposable
     }
 
     /// <summary>
+    /// Attempts to cancel one live request through the attached session.
+    /// </summary>
+    /// <param name="request">The request correlation identifier.</param>
+    /// <param name="cancellationToken">The request cancellation token.</param>
+    /// <returns>The deterministic cancellation result.</returns>
+    public async Task<ControlCancelRequestResult> CancelRequestAsync(
+        ControlCancelRequest request,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        JsonRpc rpc = await GetRpcAsync(cancellationToken).ConfigureAwait(false);
+        return await rpc.InvokeWithParameterObjectAsync<ControlCancelRequestResult>(
+            ControlMethods.CancelRequest,
+            request,
+            cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Starts bounded request lifecycle tracing through the attached session.
+    /// </summary>
+    /// <param name="cancellationToken">The request cancellation token.</param>
+    /// <returns>The newly active trace observation.</returns>
+    public async Task<ControlTraceInfo> StartTraceAsync(CancellationToken cancellationToken)
+    {
+        JsonRpc rpc = await GetRpcAsync(cancellationToken).ConfigureAwait(false);
+        return await rpc.InvokeWithCancellationAsync<ControlTraceInfo>(
+            ControlMethods.StartTrace,
+            cancellationToken: cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Stops bounded request lifecycle tracing through the attached session.
+    /// </summary>
+    /// <param name="cancellationToken">The request cancellation token.</param>
+    /// <returns>The stopped trace observation.</returns>
+    public async Task<ControlTraceInfo> StopTraceAsync(CancellationToken cancellationToken)
+    {
+        JsonRpc rpc = await GetRpcAsync(cancellationToken).ConfigureAwait(false);
+        return await rpc.InvokeWithCancellationAsync<ControlTraceInfo>(
+            ControlMethods.StopTrace,
+            cancellationToken: cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
     /// Restores every current workspace entry point through the attached session.
     /// </summary>
     /// <param name="cancellationToken">The request cancellation token.</param>

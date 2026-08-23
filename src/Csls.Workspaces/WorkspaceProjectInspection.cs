@@ -39,4 +39,9 @@ public sealed class WorkspaceProjectInspection
     /// Gets the number of configured analyzer references.
     /// </summary>
     public int AnalyzerReferenceCount { get; init; }
+
+    /// <summary>
+    /// Gets the configured analyzer assembly paths in stable order.
+    /// </summary>
+    public required IReadOnlyList<string> AnalyzerPaths { get; init; }
 }

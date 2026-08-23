@@ -9,6 +9,7 @@
 using System.Diagnostics;
 
 string? job = null;
+string filter = "*";
 for (int index = 0; index < args.Length; index++)
 {
     switch (args[index])
@@ -16,11 +17,14 @@ for (int index = 0; index < args.Length; index++)
         case "--job" when index + 1 < args.Length:
             job = args[++index];
             break;
+        case "--filter" when index + 1 < args.Length:
+            filter = args[++index];
+            break;
         case "--help" or "-h" or "-?":
             await Console.Out.WriteLineAsync(
                 "Builds and runs the permanent BenchmarkDotNet suite.").ConfigureAwait(false);
             await Console.Out.WriteLineAsync(
-                "Usage: dotnet run --file scripts/Run-Benchmarks.cs -- [--job Dry|Short]")
+                "Usage: dotnet run --file scripts/Run-Benchmarks.cs -- [--job Dry|Short] [--filter pattern]")
                 .ConfigureAwait(false);
             return 0;
         default:
@@ -33,6 +37,12 @@ for (int index = 0; index < args.Length; index++)
 if (job is not null && job is not ("Dry" or "Short"))
 {
     await Console.Error.WriteLineAsync("--job must be Dry or Short.").ConfigureAwait(false);
+    return 2;
+}
+
+if (string.IsNullOrWhiteSpace(filter))
+{
+    await Console.Error.WriteLineAsync("--filter must not be empty.").ConfigureAwait(false);
     return 2;
 }
 
@@ -63,7 +73,7 @@ try
         "--no-build",
         "--",
         "--filter",
-        "*",
+        filter,
         "--artifacts",
         artifactDirectory,
         "--noOverwrite",

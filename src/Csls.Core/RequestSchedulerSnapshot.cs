@@ -6,6 +6,11 @@ namespace Csls.Core;
 public sealed class RequestSchedulerSnapshot
 {
     /// <summary>
+    /// Gets the maximum number of retained request observations.
+    /// </summary>
+    public int ActivityCapacity { get; init; }
+
+    /// <summary>
     /// Gets the configured bounded queue capacity.
     /// </summary>
     public int Capacity { get; init; }
@@ -54,4 +59,19 @@ public sealed class RequestSchedulerSnapshot
     /// Gets whether the scheduler has begun stopping.
     /// </summary>
     public bool IsStopping { get; init; }
+
+    /// <summary>
+    /// Gets the total number of queued and running requests before result bounding.
+    /// </summary>
+    public int TotalActiveRequests { get; init; }
+
+    /// <summary>
+    /// Gets whether older active request observations were omitted.
+    /// </summary>
+    public bool ActiveRequestsTruncated { get; init; }
+
+    /// <summary>
+    /// Gets the retained queued and running request observations in receive order.
+    /// </summary>
+    public required IReadOnlyList<RequestActivitySnapshot> ActiveRequests { get; init; }
 }

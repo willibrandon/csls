@@ -25,6 +25,30 @@ public interface IControlRpcTarget
         CancellationToken cancellationToken);
 
     /// <summary>
+    /// Attempts to cancel one live request by correlation identifier.
+    /// </summary>
+    /// <param name="request">The request correlation identifier.</param>
+    /// <param name="cancellationToken">The peer cancellation token.</param>
+    /// <returns>The deterministic cancellation result.</returns>
+    Task<ControlCancelRequestResult> CancelRequestAsync(
+        ControlCancelRequest request,
+        CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Starts one bounded request lifecycle trace.
+    /// </summary>
+    /// <param name="cancellationToken">The peer cancellation token.</param>
+    /// <returns>The newly active trace observation.</returns>
+    Task<ControlTraceInfo> StartTraceAsync(CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Stops the active request lifecycle trace.
+    /// </summary>
+    /// <param name="cancellationToken">The peer cancellation token.</param>
+    /// <returns>The stopped trace observation.</returns>
+    Task<ControlTraceInfo> StopTraceAsync(CancellationToken cancellationToken);
+
+    /// <summary>
     /// Restores every current workspace entry point and reloads the resulting Roslyn state.
     /// </summary>
     /// <param name="cancellationToken">The peer cancellation token.</param>

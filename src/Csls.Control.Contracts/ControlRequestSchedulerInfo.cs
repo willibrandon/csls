@@ -6,6 +6,11 @@ namespace Csls.Control.Contracts;
 public sealed class ControlRequestSchedulerInfo
 {
     /// <summary>
+    /// Gets the maximum number of retained active request observations.
+    /// </summary>
+    public int ActivityCapacity { get; init; }
+
+    /// <summary>
     /// Gets the configured queue capacity.
     /// </summary>
     public int Capacity { get; init; }
@@ -54,4 +59,24 @@ public sealed class ControlRequestSchedulerInfo
     /// Gets whether the request scheduler is stopping.
     /// </summary>
     public bool IsStopping { get; init; }
+
+    /// <summary>
+    /// Gets the total number of queued and running requests before result bounding.
+    /// </summary>
+    public int TotalActiveRequests { get; init; }
+
+    /// <summary>
+    /// Gets whether older active request observations were omitted.
+    /// </summary>
+    public bool ActiveRequestsTruncated { get; init; }
+
+    /// <summary>
+    /// Gets the retained queued and running requests in receive order.
+    /// </summary>
+    public required IReadOnlyList<ControlRequestInfo> ActiveRequests { get; init; }
+
+    /// <summary>
+    /// Gets the active or most recently stopped bounded request trace.
+    /// </summary>
+    public required ControlTraceInfo Trace { get; init; }
 }

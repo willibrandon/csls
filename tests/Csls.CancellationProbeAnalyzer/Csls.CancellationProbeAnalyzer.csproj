@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>netstandard2.0</TargetFramework>
+    <CslsAllowAlternateTargetFramework>true</CslsAllowAlternateTargetFramework>
+    <OutputType>Library</OutputType>
+    <AssemblyName>Csls.CancellationProbeAnalyzer</AssemblyName>
+    <RootNamespace>Csls.Testing</RootNamespace>
+    <Description>Real Roslyn cancellation probe used by csls integration tests.</Description>
+    <IsAotCompatible>false</IsAotCompatible>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <EnforceExtendedAnalyzerRules>true</EnforceExtendedAnalyzerRules>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="../../test-assets/Csls.CancellationProbeAnalyzer/CancellationProbeAnalyzer.cs" />
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp" PrivateAssets="All" />
+    <ProjectReference Include="../../test-assets/Csls.CancellationProbeTransport/Csls.CancellationProbeTransport.csproj" />
+  </ItemGroup>
+</Project>

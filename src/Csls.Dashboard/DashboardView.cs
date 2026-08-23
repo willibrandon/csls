@@ -25,6 +25,7 @@ internal static class DashboardView
         ControlDashboardSnapshot snapshot = state.Snapshot;
         ListWidget<string> navigation = context
             .List(s_sectionNames)
+            .FocusedIndex((int)state.Section)
             .OnSelectionChanged(eventArgs => state.SelectSectionAsync(
                 (DashboardSection)eventArgs.SelectedIndex))
             .Fill();
@@ -46,10 +47,17 @@ internal static class DashboardView
                     ]).Fill(),
                     vertical.InfoBar(string.Create(
                         CultureInfo.InvariantCulture,
-                        $"↑↓ Navigate  Enter Select  F5 Refresh  F6-F9 Actions  Ctrl+C Exit  " +
+                        $"↑↓ Navigate  F2 Requests  F3 Traces  F5 Refresh  F6-F9 Workspace  " +
+                        $"F10 Cancel  F11 Trace  Ctrl+C Exit  " +
                         $"updated {state.RefreshedAt:HH:mm:ss} UTC"))
                 ]).InputBindings(bindings =>
                 {
+                    bindings.Key(Hex1bKey.F2).Action(
+                        _ => state.SelectSectionAsync(DashboardSection.Requests),
+                        "Show active requests");
+                    bindings.Key(Hex1bKey.F3).Action(
+                        _ => state.SelectSectionAsync(DashboardSection.Traces),
+                        "Show request traces");
                     bindings.Key(Hex1bKey.F5).Action(
                         _ => state.RefreshAsync(),
                         "Refresh live session state");
@@ -77,6 +85,12 @@ internal static class DashboardView
                             DashboardOperation.ClearCaches,
                             state),
                         "Clear caches");
+                    bindings.Key(Hex1bKey.F10).Action(
+                        eventArgs => OpenRequestCancellation(eventArgs.Windows, state),
+                        "Cancel oldest active request");
+                    bindings.Key(Hex1bKey.F11).Action(
+                        eventArgs => OpenTraceConfirmation(eventArgs.Windows, state),
+                        "Start or stop request tracing");
                 }))
                 .Fill()
         ]);
@@ -96,6 +110,7 @@ internal static class DashboardView
             DashboardSection.BuildHosts => BuildBuildHosts(context, state.Snapshot),
             DashboardSection.Caches => BuildCaches(context, state.Snapshot),
             DashboardSection.Logs => BuildLogs(context, state.Snapshot),
+            DashboardSection.Traces => BuildTraces(context, state.Snapshot),
             _ => throw new InvalidOperationException($"Unknown dashboard section: {state.Section}.")
         };
 
@@ -111,7 +126,13 @@ internal static class DashboardView
             vertical.Button("Restart build hosts").OnClick(eventArgs =>
                 OpenConfirmation(eventArgs.Windows, DashboardOperation.RestartBuildHosts, state)),
             vertical.Button("Clear caches").OnClick(eventArgs =>
-                OpenConfirmation(eventArgs.Windows, DashboardOperation.ClearCaches, state))
+                OpenConfirmation(eventArgs.Windows, DashboardOperation.ClearCaches, state)),
+            vertical.Button("Cancel oldest active request").OnClick(eventArgs =>
+                OpenRequestCancellation(eventArgs.Windows, state)),
+            vertical.Button(state.Snapshot.Requests.Trace.IsActive
+                ? "Stop request trace"
+                : "Start request trace").OnClick(eventArgs =>
+                    OpenTraceConfirmation(eventArgs.Windows, state))
         ]);
 
     private static void OpenConfirmation(
@@ -138,6 +159,93 @@ internal static class DashboardView
             ])
         ]))
         .Title("Confirm workspace operation")
+        .Size(62, 8)
+        .Modal()
+        .Open(windows);
+    }
+
+    private static void OpenRequestCancellation(
+        WindowManager windows,
+        DashboardState state)
+    {
+        IReadOnlyList<ControlRequestInfo> activeRequests =
+            state.Snapshot.Requests.ActiveRequests;
+        if (activeRequests.Count == 0)
+        {
+            OpenMessage(windows, "Request cancellation", "No active request is available.");
+            return;
+        }
+
+        ControlRequestInfo request = activeRequests[0];
+        windows.Window(window => window.VStack(vertical =>
+        [
+            vertical.Text(""),
+            vertical.Text($"  Cancel {request.Name}?"),
+            vertical.Text($"  {request.CorrelationId:D}"),
+            vertical.Text(""),
+            vertical.HStack(horizontal =>
+            [
+                horizontal.Text("  "),
+                horizontal.Button("Confirm").OnClick(async _ =>
+                {
+                    window.Window.CloseWithResult(true);
+                    await state.CancelRequestAsync(request.CorrelationId).ConfigureAwait(false);
+                }),
+                horizontal.Text(" "),
+                horizontal.Button("Cancel").OnClick(_ => window.Window.CloseWithResult(false))
+            ])
+        ]))
+        .Title("Confirm request cancellation")
+        .Size(72, 9)
+        .Modal()
+        .Open(windows);
+    }
+
+    private static void OpenTraceConfirmation(
+        WindowManager windows,
+        DashboardState state)
+    {
+        bool start = !state.Snapshot.Requests.Trace.IsActive;
+        windows.Window(window => window.VStack(vertical =>
+        [
+            vertical.Text(""),
+            vertical.Text(start ? "  Start request tracing?" : "  Stop request tracing?"),
+            vertical.Text(""),
+            vertical.HStack(horizontal =>
+            [
+                horizontal.Text("  "),
+                horizontal.Button("Confirm").OnClick(async _ =>
+                {
+                    window.Window.CloseWithResult(true);
+                    await state.SetTraceAsync(start).ConfigureAwait(false);
+                }),
+                horizontal.Text(" "),
+                horizontal.Button("Cancel").OnClick(_ => window.Window.CloseWithResult(false))
+            ])
+        ]))
+        .Title("Confirm trace operation")
+        .Size(62, 8)
+        .Modal()
+        .Open(windows);
+    }
+
+    private static void OpenMessage(
+        WindowManager windows,
+        string title,
+        string message)
+    {
+        windows.Window(window => window.VStack(vertical =>
+        [
+            vertical.Text(""),
+            vertical.Text($"  {message}"),
+            vertical.Text(""),
+            vertical.HStack(horizontal =>
+            [
+                horizontal.Text("  "),
+                horizontal.Button("Close").OnClick(_ => window.Window.CloseWithResult(true))
+            ])
+        ]))
+        .Title(title)
         .Size(62, 8)
         .Modal()
         .Open(windows);
@@ -282,8 +390,60 @@ internal static class DashboardView
             vertical.Text($"Active foreground: {requests.ActiveForegroundRequests}"),
             vertical.Text($"Active background: {requests.ActiveBackgroundRequests}"),
             vertical.Text($"Mutation active: {(requests.IsMutationActive ? "yes" : "no")}"),
-            vertical.Text($"Stopping: {(requests.IsStopping ? "yes" : "no")}")
-        ]);
+            vertical.Text($"Stopping: {(requests.IsStopping ? "yes" : "no")}"),
+            vertical.Text(requests.ActiveRequestsTruncated
+                ? $"Active requests: showing {requests.ActiveRequests.Count} of " +
+                    requests.TotalActiveRequests.ToString(CultureInfo.InvariantCulture)
+                : $"Active requests: {requests.TotalActiveRequests}"),
+            vertical.Table(requests.ActiveRequests)
+                .RowKey(static request => request.CorrelationId)
+                .Header(header =>
+                [
+                    header.Cell("Request").Width(SizeHint.Fill),
+                    header.Cell("Mode").Width(SizeHint.Fixed(14)),
+                    header.Cell("State").Width(SizeHint.Fixed(12)),
+                    header.Cell("Correlation").Width(SizeHint.Fixed(36))
+                ])
+                .Row((row, request, _) =>
+                [
+                    row.Cell(request.Name),
+                    row.Cell(request.Mode),
+                    row.Cell(request.Status),
+                    row.Cell(request.CorrelationId.ToString("D"))
+                ])
+                .Fill()
+        ]).Fill();
+    }
+
+    private static VStackWidget BuildTraces(
+        RootContext context,
+        ControlDashboardSnapshot snapshot)
+    {
+        ControlTraceInfo trace = snapshot.Requests.Trace;
+        return context.VStack(vertical =>
+        [
+            vertical.Text(trace.IsActive ? "Trace: active" : "Trace: stopped"),
+            vertical.Text($"Trace ID: {trace.TraceId?.ToString("D") ?? "none"}"),
+            vertical.Text($"Entries: {trace.Entries.Count} / {trace.Capacity}"),
+            vertical.Text($"Dropped: {trace.DroppedEntries}"),
+            vertical.Table(trace.Entries)
+                .RowKey(static entry => entry.Ordinal)
+                .Header(header =>
+                [
+                    header.Cell("Request").Width(SizeHint.Fill),
+                    header.Cell("State").Width(SizeHint.Fixed(12)),
+                    header.Cell("Duration ms").Width(SizeHint.Fixed(14)),
+                    header.Cell("Correlation").Width(SizeHint.Fixed(36))
+                ])
+                .Row((row, entry, _) =>
+                [
+                    row.Cell(entry.Name),
+                    row.Cell(entry.Status),
+                    row.Cell(entry.DurationMilliseconds.ToString("0.###", CultureInfo.InvariantCulture)),
+                    row.Cell(entry.CorrelationId.ToString("D"))
+                ])
+                .Fill()
+        ]).Fill();
     }
 
     private static VStackWidget BuildQueues(

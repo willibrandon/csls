@@ -1,5 +1,6 @@
 using Csls.Control;
 using Csls.Control.Contracts;
+using Csls.Protocol;
 using System.Buffers.Binary;
 using System.Net.Sockets;
 using System.Runtime.CompilerServices;
@@ -96,6 +97,120 @@ public sealed class ControlSocketTests
         {
             Directory.Delete(fixturePath, recursive: true);
         }
+    }
+
+    /// <summary>
+    /// Cancels a live Roslyn analyzer request and returns its exact lifecycle trace.
+    /// </summary>
+    [TestMethod]
+    public async Task ControlCancelsLiveAnalyzerRequestAndReturnsTrace()
+    {
+        string repositoryRoot = EditorToolResolver.FindRepositoryRoot();
+        string workerPath = Path.Join(
+            EditorToolResolver.ResolveArtifactsRoot(repositoryRoot),
+            "bin",
+            "Csls.Worker",
+            "debug",
+            "csls-worker.dll");
+        Assert.IsTrue(File.Exists(workerPath), $"Worker not found at {workerPath}.");
+        CancellationProbeFixture fixture = await CancellationProbeFixture.CreateAsync(
+            repositoryRoot,
+            TestContext.CancellationToken).ConfigureAwait(false);
+        await using ConfiguredAsyncDisposable fixtureCleanup = fixture.ConfigureAwait(false);
+        var lsp = LspProcessSession.Start(
+            "csls-cancellation-worker",
+            EditorToolResolver.ResolveDotNetHost(),
+            [workerPath],
+            fixture.RootPath);
+        await using ConfiguredAsyncDisposable lspCleanup = lsp.ConfigureAwait(false);
+        await lsp.InitializeAsync(
+            fixture.RootPath,
+            TestContext.CancellationToken).ConfigureAwait(false);
+        await lsp.OpenDocumentAsync(
+            fixture.DocumentPath,
+            CancellationProbeFixture.DocumentText).ConfigureAwait(false);
+
+        var controlClient = new ControlRpcClient(ControlEndpoint.GetSocketPath(lsp.ProcessId));
+        await using ConfiguredAsyncDisposable controlCleanup =
+            controlClient.ConfigureAwait(false);
+        ControlTraceInfo startedTrace = await controlClient.StartTraceAsync(
+            TestContext.CancellationToken).ConfigureAwait(false);
+        Assert.IsTrue(startedTrace.IsActive);
+        Assert.IsNotNull(startedTrace.TraceId);
+        ControlDashboardSnapshot loadedDashboard = await controlClient.GetDashboardSnapshotAsync(
+            new ControlDashboardRequest { IncludeDiagnostics = false },
+            TestContext.CancellationToken).ConfigureAwait(false);
+        ControlProjectInfo loadedProject = loadedDashboard.Projects.Single();
+        Assert.Contains(
+            "Csls.CancellationProbeAnalyzer.dll",
+            loadedProject.AnalyzerPaths.Select(Path.GetFileName));
+        Assert.Contains(
+            "Csls.CancellationProbeTransport.dll",
+            loadedProject.AnalyzerPaths.Select(Path.GetFileName));
+
+        Task<DocumentDiagnosticReport> diagnosticRequest = lsp.RequestDiagnosticsAsync(
+            fixture.DocumentPath,
+            previousResultId: null,
+            TestContext.CancellationToken);
+        await FileTextWaiter.WaitAsync(
+            fixture.MarkerPath,
+            "started",
+            TimeSpan.FromSeconds(60),
+            TestContext.CancellationToken).ConfigureAwait(false);
+        ControlDashboardSnapshot dashboard = await controlClient.GetDashboardSnapshotAsync(
+            new ControlDashboardRequest { IncludeDiagnostics = false },
+            TestContext.CancellationToken).ConfigureAwait(false);
+        ControlRequestInfo request = dashboard.Requests.ActiveRequests.Single(
+            static item => item.Name == "textDocument/diagnostic");
+        Assert.AreEqual("Running", request.Status);
+        Assert.AreEqual("ReadOnly", request.Mode);
+        Assert.IsNotNull(request.WorkspaceGeneration);
+        Assert.IsNotNull(request.StartedAt);
+        Assert.IsFalse(request.IsCancellationRequested);
+
+        ControlCancelRequestResult cancellation = await controlClient.CancelRequestAsync(
+            new ControlCancelRequest { CorrelationId = request.CorrelationId },
+            TestContext.CancellationToken).ConfigureAwait(false);
+        Assert.AreEqual(request.CorrelationId, cancellation.CorrelationId);
+        Assert.IsTrue(cancellation.CancellationRequested);
+        await FileTextWaiter.WaitAsync(
+            fixture.MarkerPath,
+            "canceled",
+            TimeSpan.FromSeconds(60),
+            TestContext.CancellationToken).ConfigureAwait(false);
+        TaskCanceledException? canceledRequest = null;
+        try
+        {
+            await diagnosticRequest.ConfigureAwait(false);
+        }
+        catch (TaskCanceledException exception)
+        {
+            canceledRequest = exception;
+        }
+
+        Assert.IsNotNull(canceledRequest);
+        Assert.IsFalse(TestContext.CancellationToken.IsCancellationRequested);
+
+        ControlCancelRequestResult retiredCancellation = await controlClient.CancelRequestAsync(
+            new ControlCancelRequest { CorrelationId = request.CorrelationId },
+            TestContext.CancellationToken).ConfigureAwait(false);
+        Assert.IsFalse(retiredCancellation.CancellationRequested);
+        ControlTraceInfo stoppedTrace = await controlClient.StopTraceAsync(
+            TestContext.CancellationToken).ConfigureAwait(false);
+        Assert.IsFalse(stoppedTrace.IsActive);
+        Assert.AreEqual(startedTrace.TraceId, stoppedTrace.TraceId);
+        ControlTraceEntry traceEntry = stoppedTrace.Entries.Single(
+            item => item.CorrelationId == request.CorrelationId);
+        Assert.AreEqual("textDocument/diagnostic", traceEntry.Name);
+        Assert.AreEqual("Canceled", traceEntry.Status);
+        Assert.AreEqual(request.WorkspaceGeneration, traceEntry.WorkspaceGeneration);
+        Assert.IsTrue(traceEntry.IsCancellationRequested);
+        Assert.IsNotNull(traceEntry.CompletedAt);
+        Assert.IsGreaterThanOrEqualTo(0D, traceEntry.DurationMilliseconds);
+
+        string diagnostics = await lsp.ShutdownAsync(
+            TestContext.CancellationToken).ConfigureAwait(false);
+        Assert.DoesNotContain("Unhandled exception", diagnostics, StringComparison.Ordinal);
     }
 
     private static async Task<bool> WaitForDisconnectionAsync(
