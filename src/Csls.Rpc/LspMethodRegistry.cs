@@ -109,6 +109,11 @@ public static class LspMethodRegistry
                 target.DocumentLinkAsync));
         AddParameterObjectMethod(
             rpc,
+            "csharp/metadata",
+            new Func<CSharpMetadataParams, CancellationToken, Task<CSharpMetadataResponse?>>(
+                target.CSharpMetadataAsync));
+        AddParameterObjectMethod(
+            rpc,
             "textDocument/semanticTokens/full",
             new Func<SemanticTokensParams, CancellationToken, Task<SemanticTokens>>(
                 target.SemanticTokensFullAsync));

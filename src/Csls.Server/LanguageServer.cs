@@ -150,6 +150,13 @@ public sealed partial class LanguageServer : ILspRpcTarget, IAsyncDisposable
         {
             Capabilities = new ServerCapabilities
             {
+                Experimental = new ExperimentalServerCapabilities
+                {
+                    CSharp = new CSharpExperimentalServerCapabilities
+                    {
+                        MetadataUris = true
+                    }
+                },
                 Workspace = new WorkspaceServerCapabilities
                 {
                     WorkspaceFolders = new WorkspaceFoldersServerCapabilities
@@ -612,6 +619,33 @@ public sealed partial class LanguageServer : ILspRpcTarget, IAsyncDisposable
                 }
 
                 return links;
+            },
+            cancellationToken);
+    }
+
+    /// <inheritdoc />
+    public Task<CSharpMetadataResponse?> CSharpMetadataAsync(
+        CSharpMetadataParams parameters,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(parameters);
+        EnsureRunning();
+        return _scheduler.ScheduleAsync(
+            "csharp/metadata",
+            RequestMode.ReadOnly,
+            () => _workspaceManager.Generation,
+            async context =>
+            {
+                CSharpMetadataResponse? response = await _workspaceManager
+                    .GetCSharpMetadataAsync(parameters, context.CancellationToken)
+                    .ConfigureAwait(false);
+                if (_workspaceManager.Generation != context.WorkspaceGeneration)
+                {
+                    throw new InvalidOperationException(
+                        "The workspace changed while virtual source was being produced.");
+                }
+
+                return response;
             },
             cancellationToken);
     }
