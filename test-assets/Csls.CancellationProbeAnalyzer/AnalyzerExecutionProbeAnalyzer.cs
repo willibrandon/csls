@@ -1,5 +1,6 @@
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.Diagnostics;
+using Microsoft.CodeAnalysis.Text;
 using System;
 using System.Collections.Immutable;
 using System.IO;
@@ -8,26 +9,27 @@ using System.Linq;
 namespace Csls.Testing;
 
 /// <summary>
-/// Waits inside real Roslyn analyzer execution until its request token is canceled.
+/// Reports real source diagnostics after an observable project-wide analyzer execution.
 /// </summary>
 [DiagnosticAnalyzer(LanguageNames.CSharp)]
-public sealed class CancellationProbeAnalyzer : DiagnosticAnalyzer
+public sealed class AnalyzerExecutionProbeAnalyzer : DiagnosticAnalyzer
 {
     private static readonly DiagnosticDescriptor s_descriptor = new(
-        "CSLSTEST001",
-        "Cancellation probe",
-        "Cancellation probe",
+        "CSLSTEST002",
+        "Analyzer execution probe",
+        "Analyzer execution probe",
         "Testing",
-        DiagnosticSeverity.Hidden,
-        isEnabledByDefault: true);
+        DiagnosticSeverity.Warning,
+        isEnabledByDefault: true,
+        customTags: [WellKnownDiagnosticTags.CompilationEnd]);
 
     /// <summary>
-    /// Gets the diagnostic contract that makes the cancellation probe executable by Roslyn.
+    /// Gets the diagnostic contract reported once for every source document.
     /// </summary>
     public override ImmutableArray<DiagnosticDescriptor> SupportedDiagnostics => [s_descriptor];
 
     /// <summary>
-    /// Registers one real compilation action that observes analyzer cancellation.
+    /// Registers one real project-wide analyzer execution probe.
     /// </summary>
     /// <param name="context">The Roslyn analyzer initialization context.</param>
     public override void Initialize(AnalysisContext context)
@@ -47,15 +49,21 @@ public sealed class CancellationProbeAnalyzer : DiagnosticAnalyzer
         AdditionalText? marker = context.Options.AdditionalFiles.SingleOrDefault(static file =>
             string.Equals(
                 Path.GetFileName(file.Path),
-                "CancellationProbe.marker",
+                "AnalyzerExecutionProbe.marker",
                 StringComparison.Ordinal));
         if (marker is null)
         {
             return;
         }
 
-        CancellationProbeTransport.WaitForCancellation(
+        AnalyzerExecutionProbeTransport.WaitForRelease(
             marker.Path,
             context.CancellationToken);
+        foreach (SyntaxTree syntaxTree in context.Compilation.SyntaxTrees)
+        {
+            context.ReportDiagnostic(Diagnostic.Create(
+                s_descriptor,
+                Location.Create(syntaxTree, new TextSpan(0, 0))));
+        }
     }
 }
