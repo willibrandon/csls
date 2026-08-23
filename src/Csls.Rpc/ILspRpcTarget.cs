@@ -101,6 +101,16 @@ public interface ILspRpcTarget
         CancellationToken cancellationToken);
 
     /// <summary>
+    /// Resolves lazy Roslyn documentation for one completion candidate.
+    /// </summary>
+    /// <param name="item">The completion candidate returned by this session.</param>
+    /// <param name="cancellationToken">The peer cancellation token.</param>
+    /// <returns>The completion candidate enriched with documentation.</returns>
+    Task<CompletionItem> CompletionResolveAsync(
+        CompletionItem item,
+        CancellationToken cancellationToken);
+
+    /// <summary>
     /// Finds source definitions for the symbol at one document position.
     /// </summary>
     /// <param name="parameters">The target document position.</param>

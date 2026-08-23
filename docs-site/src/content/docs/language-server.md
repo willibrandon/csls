@@ -7,7 +7,7 @@ description: Language Server Protocol features implemented by csls.
 language features include:
 
 - compiler and analyzer diagnostics
-- completion, hover, and signature help
+- completion with import edits, negotiated snippets, lazy documentation, hover, and signature help
 - definitions, declarations, implementations, references, and highlights
 - document and workspace symbols
 - semantic tokens with full and delta responses
@@ -16,6 +16,11 @@ language features include:
 
 The server tracks open-document versions and applies incremental text changes.
 Workspace loading supports solutions, projects, and loose C# files.
+
+Completion edits are computed by Roslyn. Clients that advertise snippet support
+receive snippet insertion text with Roslyn's final caret position. Other clients
+receive plain text. `completionItem/resolve` adds Roslyn documentation without
+changing the edit, sort text, or filter text returned by the original request.
 
 ## Session control
 

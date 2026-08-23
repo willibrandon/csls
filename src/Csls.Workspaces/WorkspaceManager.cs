@@ -1,7 +1,6 @@
 using Csls.Protocol;
 using Microsoft.Build.Locator;
 using Microsoft.CodeAnalysis;
-using Microsoft.CodeAnalysis.Completion;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Diagnostics;
@@ -11,7 +10,6 @@ using Microsoft.CodeAnalysis.MSBuild;
 using Microsoft.CodeAnalysis.Options;
 using Microsoft.CodeAnalysis.QuickInfo;
 using Microsoft.CodeAnalysis.Rename;
-using Microsoft.CodeAnalysis.Tags;
 using Microsoft.CodeAnalysis.Text;
 using Microsoft.Extensions.Logging;
 using System.Collections.Immutable;
@@ -19,10 +17,6 @@ using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
 using LspCodeAction = Csls.Protocol.CodeAction;
-using LspCompletionItem = Csls.Protocol.CompletionItem;
-using LspCompletionItemKind = Csls.Protocol.CompletionItemKind;
-using LspCompletionList = Csls.Protocol.CompletionList;
-using LspCompletionTriggerKind = Csls.Protocol.CompletionTriggerKind;
 using LspDiagnostic = Csls.Protocol.Diagnostic;
 using LspDiagnosticSeverity = Csls.Protocol.DiagnosticSeverity;
 using LspDocumentHighlight = Csls.Protocol.DocumentHighlight;
@@ -33,8 +27,6 @@ using LspSelectionRange = Csls.Protocol.SelectionRange;
 using LspSignatureHelp = Csls.Protocol.SignatureHelp;
 using LspSymbolKind = Csls.Protocol.SymbolKind;
 using LspTextEdit = Csls.Protocol.TextEdit;
-using RoslynCompletionItem = Microsoft.CodeAnalysis.Completion.CompletionItem;
-using RoslynCompletionList = Microsoft.CodeAnalysis.Completion.CompletionList;
 using RoslynDiagnostic = Microsoft.CodeAnalysis.Diagnostic;
 using RoslynDiagnosticSeverity = Microsoft.CodeAnalysis.DiagnosticSeverity;
 using RoslynFormattingOptions = Microsoft.CodeAnalysis.Formatting.FormattingOptions;
@@ -48,7 +40,6 @@ namespace Csls.Workspaces;
 /// </summary>
 public sealed partial class WorkspaceManager : IAsyncDisposable
 {
-    private const int MaximumCompletionItems = 200;
     private const int MaximumDocumentSymbols = 2_000;
     private const int MaximumWorkspaceSymbols = 200;
     private const int MaximumSignatures = 100;
@@ -477,84 +468,6 @@ public sealed partial class WorkspaceManager : IAsyncDisposable
             Kind = "full",
             ResultId = resultId,
             Items = diagnostics
-        };
-    }
-
-    /// <summary>
-    /// Gets bounded Roslyn completion candidates and exact commit edits for one document position.
-    /// </summary>
-    /// <param name="parameters">The document position and optional completion trigger.</param>
-    /// <param name="cancellationToken">The operation cancellation token.</param>
-    /// <returns>The ordered completion candidates.</returns>
-    public async Task<LspCompletionList> GetCompletionsAsync(
-        CompletionParams parameters,
-        CancellationToken cancellationToken)
-    {
-        ArgumentNullException.ThrowIfNull(parameters);
-        string path = parameters.TextDocument.Uri.GetFileSystemPath();
-        ImmutableArray<(string RootPath, Workspace Workspace, Solution Solution)> folders = _folders;
-        int folderIndex = FindFolderIndex(path, folders);
-        Document? document = folderIndex >= 0
-            ? FindDocument(folders[folderIndex].Solution, path)
-            : null;
-        if (document is null)
-        {
-            return new LspCompletionList { Items = [], IsIncomplete = false };
-        }
-
-        SourceText text = await document.GetTextAsync(cancellationToken).ConfigureAwait(false);
-        int offset = LspPositionConverter.GetOffset(text, parameters.Position);
-        var service = CompletionService.GetService(document);
-        if (service is null)
-        {
-            return new LspCompletionList { Items = [], IsIncomplete = false };
-        }
-
-        CompletionTrigger trigger =
-            parameters.Context is
-            {
-                TriggerKind: LspCompletionTriggerKind.TriggerCharacter,
-                TriggerCharacter.Length: 1
-            } context
-                ? CompletionTrigger.CreateInsertionTrigger(context.TriggerCharacter[0])
-                : CompletionTrigger.Invoke;
-        RoslynCompletionList? completion = await service
-            .GetCompletionsAsync(
-                document,
-                offset,
-                trigger: trigger,
-                cancellationToken: cancellationToken)
-            .ConfigureAwait(false);
-        if (completion is null)
-        {
-            return new LspCompletionList { Items = [], IsIncomplete = false };
-        }
-
-        string filterText = text.ToString(completion.Span);
-        IReadOnlyList<RoslynCompletionItem> sourceItems =
-        [
-            .. completion.ItemsList
-                .Select(static (item, index) => (Item: item, Index: index))
-                .OrderBy(candidate => GetCompletionMatchRank(candidate.Item, filterText))
-                .ThenBy(static candidate => candidate.Index)
-                .Select(static candidate => candidate.Item)
-        ];
-        int itemCount = Math.Min(sourceItems.Count, MaximumCompletionItems);
-        var items = new List<LspCompletionItem>(itemCount);
-        for (int index = 0; index < itemCount; index++)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            RoslynCompletionItem sourceItem = sourceItems[index];
-            CompletionChange change = await service
-                .GetChangeAsync(document, sourceItem, cancellationToken: cancellationToken)
-                .ConfigureAwait(false);
-            items.Add(CreateCompletionItem(text, sourceItem, change));
-        }
-
-        return new LspCompletionList
-        {
-            IsIncomplete = sourceItems.Count > MaximumCompletionItems,
-            Items = items
         };
     }
 
@@ -2309,181 +2222,6 @@ public sealed partial class WorkspaceManager : IAsyncDisposable
                 : diagnostic.Descriptor.Category,
             Message = diagnostic.GetMessage(CultureInfo.InvariantCulture)
         };
-    }
-
-    private static LspCompletionItem CreateCompletionItem(
-        SourceText sourceText,
-        RoslynCompletionItem sourceItem,
-        CompletionChange change)
-    {
-        ImmutableArray<TextChange> textChanges = change.TextChanges.IsDefaultOrEmpty
-            ? [change.TextChange]
-            : change.TextChanges;
-        int primaryIndex = 0;
-        for (int index = 0; index < textChanges.Length; index++)
-        {
-            TextSpan span = textChanges[index].Span;
-            if (span == sourceItem.Span || span.IntersectsWith(sourceItem.Span))
-            {
-                primaryIndex = index;
-                break;
-            }
-        }
-
-        LspTextEdit primaryEdit = ToTextEdit(
-            sourceText,
-            textChanges[primaryIndex]);
-        LspTextEdit[] additionalEdits =
-        [
-            .. textChanges
-                .Where((_, index) => index != primaryIndex)
-                .Select(change => ToTextEdit(sourceText, change))
-        ];
-        return new LspCompletionItem
-        {
-            Label = string.Concat(
-                sourceItem.DisplayTextPrefix,
-                sourceItem.DisplayText,
-                sourceItem.DisplayTextSuffix),
-            Kind = GetCompletionKind(sourceItem.Tags),
-            Detail = string.IsNullOrWhiteSpace(sourceItem.InlineDescription)
-                ? null
-                : sourceItem.InlineDescription,
-            SortText = sourceItem.SortText,
-            FilterText = sourceItem.FilterText,
-            TextEdit = primaryEdit,
-            AdditionalTextEdits = additionalEdits.Length == 0 ? null : additionalEdits
-        };
-    }
-
-    private static LspTextEdit ToTextEdit(
-        SourceText sourceText,
-        TextChange change)
-    {
-        return new LspTextEdit
-        {
-            Range = GetRange(sourceText, change.Span),
-            NewText = change.NewText ?? string.Empty
-        };
-    }
-
-    private static LspRange GetRange(SourceText text, TextSpan span)
-    {
-        LinePositionSpan lineSpan = text.Lines.GetLinePositionSpan(span);
-        return new LspRange(
-            new Position(lineSpan.Start.Line, lineSpan.Start.Character),
-            new Position(lineSpan.End.Line, lineSpan.End.Character));
-    }
-
-    private static LspCompletionItemKind GetCompletionKind(ImmutableArray<string> tags)
-    {
-        if (tags.Contains(WellKnownTags.Method))
-        {
-            return LspCompletionItemKind.Method;
-        }
-
-        if (tags.Contains(WellKnownTags.ExtensionMethod))
-        {
-            return LspCompletionItemKind.Method;
-        }
-
-        if (tags.Contains(WellKnownTags.Property))
-        {
-            return LspCompletionItemKind.Property;
-        }
-
-        if (tags.Contains(WellKnownTags.Field))
-        {
-            return LspCompletionItemKind.Field;
-        }
-
-        if (tags.Contains(WellKnownTags.Event))
-        {
-            return LspCompletionItemKind.Event;
-        }
-
-        if (tags.Contains(WellKnownTags.Class))
-        {
-            return LspCompletionItemKind.Class;
-        }
-
-        if (tags.Contains(WellKnownTags.Structure))
-        {
-            return LspCompletionItemKind.Struct;
-        }
-
-        if (tags.Contains(WellKnownTags.Interface))
-        {
-            return LspCompletionItemKind.Interface;
-        }
-
-        if (tags.Contains(WellKnownTags.EnumMember))
-        {
-            return LspCompletionItemKind.EnumMember;
-        }
-
-        if (tags.Contains(WellKnownTags.Enum))
-        {
-            return LspCompletionItemKind.Enum;
-        }
-
-        if (tags.Contains(WellKnownTags.Constant))
-        {
-            return LspCompletionItemKind.Constant;
-        }
-
-        if (tags.Contains(WellKnownTags.Namespace) || tags.Contains(WellKnownTags.Module))
-        {
-            return LspCompletionItemKind.Module;
-        }
-
-        if (tags.Contains(WellKnownTags.TypeParameter))
-        {
-            return LspCompletionItemKind.TypeParameter;
-        }
-
-        if (tags.Contains(WellKnownTags.Keyword))
-        {
-            return LspCompletionItemKind.Keyword;
-        }
-
-        if (tags.Contains(WellKnownTags.Snippet))
-        {
-            return LspCompletionItemKind.Snippet;
-        }
-
-        if (tags.Contains(WellKnownTags.Local) ||
-            tags.Contains(WellKnownTags.Parameter) ||
-            tags.Contains(WellKnownTags.RangeVariable))
-        {
-            return LspCompletionItemKind.Variable;
-        }
-
-        return LspCompletionItemKind.Text;
-    }
-
-    private static int GetCompletionMatchRank(
-        RoslynCompletionItem item,
-        string filterText)
-    {
-        if (filterText.Length == 0)
-        {
-            return 0;
-        }
-
-        if (string.Equals(item.FilterText, filterText, StringComparison.OrdinalIgnoreCase))
-        {
-            return 0;
-        }
-
-        if (item.FilterText.StartsWith(filterText, StringComparison.OrdinalIgnoreCase))
-        {
-            return 1;
-        }
-
-        return item.FilterText.Contains(filterText, StringComparison.OrdinalIgnoreCase)
-            ? 2
-            : 3;
     }
 
     private async Task<(Document? Document, ISymbol? Symbol)> FindSymbolAsync(
