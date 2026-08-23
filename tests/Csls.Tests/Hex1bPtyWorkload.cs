@@ -19,18 +19,39 @@ internal sealed class Hex1bPtyWorkload : IHex1bTerminalWorkloadAdapter
     /// <param name="workingDirectory">The isolated process working directory.</param>
     /// <param name="width">The initial terminal width.</param>
     /// <param name="height">The initial terminal height.</param>
+    /// <param name="environment">Optional environment variables added to the inherited process environment.</param>
     internal Hex1bPtyWorkload(
         string fileName,
         IReadOnlyList<string> arguments,
         string workingDirectory,
         int width,
-        int height)
+        int height,
+        IReadOnlyDictionary<string, string>? environment = null)
     {
+        string processFileName = fileName;
+        string[] processArguments = [.. arguments];
+        Dictionary<string, string>? childEnvironment = environment is null
+            ? null
+            : new Dictionary<string, string>(environment, StringComparer.Ordinal);
+        if (!OperatingSystem.IsWindows() && childEnvironment is { Count: > 0 })
+        {
+            processFileName = "env";
+            processArguments =
+            [
+                .. childEnvironment
+                    .OrderBy(static item => item.Key, StringComparer.Ordinal)
+                    .Select(static item => string.Concat(item.Key, "=", item.Value)),
+                fileName,
+                .. arguments
+            ];
+            childEnvironment = null;
+        }
+
         _process = new Hex1bTerminalChildProcess(
-            fileName,
-            [.. arguments],
+            processFileName,
+            processArguments,
             workingDirectory,
-            environment: null,
+            childEnvironment,
             inheritEnvironment: true,
             width,
             height);

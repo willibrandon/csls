@@ -22,6 +22,7 @@
     <Project Path="src/Csls.Control.Contracts/Csls.Control.Contracts.csproj" />
     <Project Path="src/Csls.Control.Server/Csls.Control.Server.csproj" />
     <Project Path="src/Csls.Core/Csls.Core.csproj" />
+    <Project Path="src/Csls.Dashboard/Csls.Dashboard.csproj" />
     <Project Path="src/Csls.Mcp/Csls.Mcp.csproj" />
     <Project Path="src/Csls.Mcp.Worker/Csls.Mcp.Worker.csproj" />
     <Project Path="src/Csls.SourceGen/Csls.SourceGen.csproj" />

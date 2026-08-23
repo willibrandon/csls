@@ -11,7 +11,16 @@ public sealed class RequestScheduler : IAsyncDisposable
     private readonly SemaphoreSlim _foregroundConcurrency;
     private readonly SemaphoreSlim _backgroundConcurrency;
     private readonly ValueTask _processingTask;
+    private readonly int _capacity;
+    private readonly int _foregroundLimit;
+    private readonly int _backgroundLimit;
     private long _nextOrdinal;
+    private long _acceptedRequests;
+    private long _completedRequests;
+    private int _queuedRequests;
+    private int _activeForegroundRequests;
+    private int _activeBackgroundRequests;
+    private int _mutationActive;
     private int _disposeState;
 
     /// <summary>
@@ -31,6 +40,9 @@ public sealed class RequestScheduler : IAsyncDisposable
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(foregroundLimit);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(backgroundLimit);
 
+        _capacity = capacity;
+        _foregroundLimit = foregroundLimit;
+        _backgroundLimit = backgroundLimit;
         _queue = Channel.CreateBounded<(RequestMode, Func<Task>)>(new BoundedChannelOptions(capacity)
         {
             AllowSynchronousContinuations = false,
@@ -47,6 +59,24 @@ public sealed class RequestScheduler : IAsyncDisposable
     /// Gets whether the scheduler has started shutting down.
     /// </summary>
     public bool IsStopping => Volatile.Read(ref _disposeState) != 0;
+
+    /// <summary>
+    /// Gets one lock-free observation of scheduler capacity and activity.
+    /// </summary>
+    /// <returns>The current scheduler counters and limits.</returns>
+    public RequestSchedulerSnapshot GetSnapshot() => new()
+    {
+        Capacity = _capacity,
+        ForegroundConcurrency = _foregroundLimit,
+        BackgroundConcurrency = _backgroundLimit,
+        AcceptedRequests = Interlocked.Read(ref _acceptedRequests),
+        CompletedRequests = Interlocked.Read(ref _completedRequests),
+        QueuedRequests = Volatile.Read(ref _queuedRequests),
+        ActiveForegroundRequests = Volatile.Read(ref _activeForegroundRequests),
+        ActiveBackgroundRequests = Volatile.Read(ref _activeBackgroundRequests),
+        IsMutationActive = Volatile.Read(ref _mutationActive) != 0,
+        IsStopping = IsStopping
+    };
 
     /// <summary>
     /// Queues a typed operation and returns its eventual result.
@@ -82,24 +112,51 @@ public sealed class RequestScheduler : IAsyncDisposable
 
         async Task ExecuteAsync()
         {
+            Interlocked.Decrement(ref _queuedRequests);
             if (cancellationToken.IsCancellationRequested)
             {
                 admission.TrySetCanceled(cancellationToken);
+                Interlocked.Increment(ref _completedRequests);
                 return;
             }
 
+            IncrementActive(mode);
             var context = new RequestContext(
                 ordinal,
                 Guid.NewGuid(),
                 workspaceGenerationProvider(),
                 cancellationToken);
-            admission.TrySetResult(context);
-            await retirement.Reader.ReadAsync(CancellationToken.None).ConfigureAwait(false);
+            if (!admission.TrySetResult(context))
+            {
+                DecrementActive(mode);
+                Interlocked.Increment(ref _completedRequests);
+                return;
+            }
+
+            try
+            {
+                await retirement.Reader.ReadAsync(CancellationToken.None).ConfigureAwait(false);
+            }
+            finally
+            {
+                DecrementActive(mode);
+                Interlocked.Increment(ref _completedRequests);
+            }
         }
 
-        await _queue.Writer
-            .WriteAsync((mode, ExecuteAsync), cancellationToken)
-            .ConfigureAwait(false);
+        Interlocked.Increment(ref _queuedRequests);
+        try
+        {
+            await _queue.Writer
+                .WriteAsync((mode, ExecuteAsync), cancellationToken)
+                .ConfigureAwait(false);
+            Interlocked.Increment(ref _acceptedRequests);
+        }
+        catch
+        {
+            Interlocked.Decrement(ref _queuedRequests);
+            throw;
+        }
 
         RequestContext context = await admission.Task.ConfigureAwait(false);
         try
@@ -175,6 +232,42 @@ public sealed class RequestScheduler : IAsyncDisposable
         finally
         {
             semaphore.Release();
+        }
+    }
+
+    private void IncrementActive(RequestMode mode)
+    {
+        switch (mode)
+        {
+            case RequestMode.ReadOnly:
+                Interlocked.Increment(ref _activeForegroundRequests);
+                break;
+            case RequestMode.ReadOnlyBackground:
+                Interlocked.Increment(ref _activeBackgroundRequests);
+                break;
+            case RequestMode.ReadWrite:
+                Volatile.Write(ref _mutationActive, 1);
+                break;
+            default:
+                throw new InvalidOperationException($"Unknown request mode: {mode}.");
+        }
+    }
+
+    private void DecrementActive(RequestMode mode)
+    {
+        switch (mode)
+        {
+            case RequestMode.ReadOnly:
+                Interlocked.Decrement(ref _activeForegroundRequests);
+                break;
+            case RequestMode.ReadOnlyBackground:
+                Interlocked.Decrement(ref _activeBackgroundRequests);
+                break;
+            case RequestMode.ReadWrite:
+                Volatile.Write(ref _mutationActive, 0);
+                break;
+            default:
+                throw new InvalidOperationException($"Unknown request mode: {mode}.");
         }
     }
 }

@@ -154,6 +154,11 @@ static void VerifyTrackedText(
     foreach (string trackedPath in trackedPaths)
     {
         string fullPath = Path.Join(repositoryRoot, trackedPath);
+        if (!File.Exists(fullPath))
+        {
+            continue;
+        }
+
         byte[] bytes = File.ReadAllBytes(fullPath);
         if (bytes.Contains((byte)0))
         {
@@ -180,6 +185,7 @@ static void VerifyDependencies(string repositoryRoot, ICollection<string> failur
 {
     string[] approvedCorePrefixes =
     [
+        "Hex1b",
         "Microsoft.Build",
         "Microsoft.CodeAnalysis",
         "Microsoft.Extensions",

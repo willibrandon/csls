@@ -50,6 +50,35 @@ public sealed partial class LanguageServer : ILspRpcTarget, IAsyncDisposable
     /// </summary>
     public CancellationToken ExitToken => _exitSource.Token;
 
+    /// <summary>
+    /// Gets one lock-free observation of the bounded request scheduler.
+    /// </summary>
+    /// <returns>The current scheduler counters and limits.</returns>
+    public RequestSchedulerSnapshot GetRequestSchedulerSnapshot() => _scheduler.GetSnapshot();
+
+    /// <summary>
+    /// Gets the number of encoded semantic-token results retained by this session.
+    /// </summary>
+    public int SemanticTokenCacheEntries => _semanticTokensCache.Count;
+
+    /// <summary>
+    /// Inspects the current immutable workspace generation through scheduler ordering.
+    /// </summary>
+    /// <param name="includeDiagnostics">Whether to evaluate compiler and analyzer diagnostics.</param>
+    /// <param name="cancellationToken">The inspection cancellation token.</param>
+    /// <returns>The current workspace, project, document, diagnostic, host, and cache state.</returns>
+    public Task<WorkspaceInspectionSnapshot> InspectWorkspaceAsync(
+        bool includeDiagnostics,
+        CancellationToken cancellationToken) =>
+        _scheduler.ScheduleAsync(
+            RequestMode.ReadOnly,
+            () => _workspaceManager.Generation,
+            context => new ValueTask<WorkspaceInspectionSnapshot>(
+                _workspaceManager.InspectAsync(
+                    includeDiagnostics,
+                    context.CancellationToken)),
+            cancellationToken);
+
     /// <inheritdoc />
     public async Task<InitializeResult> InitializeAsync(
         InitializeParams parameters,

@@ -16,6 +16,9 @@ builder.Logging.AddConsole(options =>
     options.FormatterName = ConsoleFormatterNames.Simple;
     options.LogToStandardErrorThreshold = LogLevel.Trace;
 });
+using var controlLogBuffer = new ControlLogBuffer();
+builder.Logging.AddProvider(controlLogBuffer);
+builder.Services.AddSingleton(controlLogBuffer);
 builder.Services.AddSingleton<RequestScheduler>();
 builder.Services.AddSingleton<WorkspaceManager>();
 builder.Services.AddSingleton<LanguageServer>();

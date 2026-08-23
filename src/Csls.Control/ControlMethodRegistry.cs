@@ -23,6 +23,11 @@ internal static class ControlMethodRegistry
             new Func<CancellationToken, Task<ControlSessionInfo>>(target.GetSessionAsync));
         AddParameterObjectMethod(
             rpc,
+            ControlMethods.GetDashboardSnapshot,
+            new Func<ControlDashboardRequest, CancellationToken, Task<ControlDashboardSnapshot>>(
+                target.GetDashboardSnapshotAsync));
+        AddParameterObjectMethod(
+            rpc,
             ControlMethods.GetHover,
             new Func<ControlHoverRequest, CancellationToken, Task<ControlHoverResult>>(
                 target.GetHoverAsync));

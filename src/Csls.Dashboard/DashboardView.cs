@@ -1,0 +1,296 @@
+using Csls.Control.Contracts;
+using Hex1b;
+using Hex1b.Input;
+using Hex1b.Layout;
+using Hex1b.Widgets;
+using System.Globalization;
+
+namespace Csls.Dashboard;
+
+/// <summary>
+/// Builds the declarative Hex1b widget tree for one dashboard state snapshot.
+/// </summary>
+internal static class DashboardView
+{
+    private static readonly string[] s_sectionNames = Enum.GetNames<DashboardSection>();
+
+    /// <summary>
+    /// Builds the full-screen dashboard widget tree for the current state.
+    /// </summary>
+    /// <param name="context">The Hex1b widget context.</param>
+    /// <param name="state">The selected session and immutable control data.</param>
+    /// <returns>The dashboard root widget.</returns>
+    internal static Hex1bWidget Build(RootContext context, DashboardState state)
+    {
+        ControlDashboardSnapshot snapshot = state.Snapshot;
+        ListWidget<string> navigation = context
+            .List(s_sectionNames)
+            .OnSelectionChanged(eventArgs => state.SelectSectionAsync(
+                (DashboardSection)eventArgs.SelectedIndex))
+            .Fill();
+        Hex1bWidget details = BuildDetails(context, state);
+        return context.VStack(vertical =>
+        [
+            vertical.Text(string.Create(
+                CultureInfo.InvariantCulture,
+                $"csls dashboard  session {snapshot.Session.ProcessId}  " +
+                $"{snapshot.Session.LifecycleState}  generation {snapshot.Session.WorkspaceGeneration}")),
+            vertical.HStack(horizontal =>
+            [
+                horizontal.Border(nested => [navigation]).Title("Views").FixedWidth(20).FillHeight(),
+                horizontal.Border(nested => [details]).Title(GetSectionTitle(state.Section)).Fill()
+            ]).Fill(),
+            vertical.InfoBar(string.Create(
+                CultureInfo.InvariantCulture,
+                $"↑↓ Navigate  Enter Select session  F5 Refresh  Ctrl+C Exit  " +
+                $"updated {state.RefreshedAt:HH:mm:ss} UTC"))
+        ]).InputBindings(bindings =>
+        {
+            bindings.Key(Hex1bKey.F5).Action(
+                _ => state.RefreshAsync(),
+                "Refresh live session state");
+        });
+    }
+
+    private static Hex1bWidget BuildDetails(RootContext context, DashboardState state) =>
+        state.Section switch
+        {
+            DashboardSection.Sessions => BuildSessions(context, state),
+            DashboardSection.Workspaces => BuildWorkspaces(context, state.Snapshot),
+            DashboardSection.Projects => BuildProjects(context, state.Snapshot),
+            DashboardSection.Documents => BuildDocuments(context, state.Snapshot),
+            DashboardSection.Diagnostics => BuildDiagnostics(context, state.Snapshot),
+            DashboardSection.Requests => BuildRequests(context, state.Snapshot),
+            DashboardSection.Queues => BuildQueues(context, state.Snapshot),
+            DashboardSection.BuildHosts => BuildBuildHosts(context, state.Snapshot),
+            DashboardSection.Caches => BuildCaches(context, state.Snapshot),
+            DashboardSection.Logs => BuildLogs(context, state.Snapshot),
+            _ => throw new InvalidOperationException($"Unknown dashboard section: {state.Section}.")
+        };
+
+    private static TableWidget<ControlSessionInfo> BuildSessions(
+        RootContext context,
+        DashboardState state) =>
+        context.Table(state.Sessions)
+            .RowKey(static session => session.ProcessId)
+            .Header(header =>
+            [
+                header.Cell("PID").Width(SizeHint.Fixed(10)),
+                header.Cell("State").Width(SizeHint.Fixed(20)),
+                header.Cell("Generation").Width(SizeHint.Fixed(12)),
+                header.Cell("Workspace").Width(SizeHint.Fill)
+            ])
+            .Row((row, session, _) =>
+            [
+                row.Cell(session.ProcessId.ToString(CultureInfo.InvariantCulture)),
+                row.Cell(session.LifecycleState),
+                row.Cell(session.WorkspaceGeneration.ToString(CultureInfo.InvariantCulture)),
+                row.Cell(session.WorkspaceRoots.Count == 0
+                    ? "none"
+                    : session.WorkspaceRoots[0])
+            ])
+            .Focus(state.Snapshot.Session.ProcessId)
+            .OnRowActivated((_, session) => state.SelectSessionAsync(session.ProcessId))
+            .Fill();
+
+    private static TableWidget<ControlWorkspaceInfo> BuildWorkspaces(
+        RootContext context,
+        ControlDashboardSnapshot snapshot) =>
+        context.Table(snapshot.Workspaces)
+            .RowKey(static workspace => workspace.RootPath)
+            .Header(header =>
+            [
+                header.Cell("Root").Width(SizeHint.Fill),
+                header.Cell("Kind").Width(SizeHint.Fixed(20)),
+                header.Cell("Projects").Width(SizeHint.Fixed(10)),
+                header.Cell("Documents").Width(SizeHint.Fixed(11))
+            ])
+            .Row((row, workspace, _) =>
+            [
+                row.Cell(workspace.RootPath),
+                row.Cell(workspace.WorkspaceKind),
+                row.Cell(workspace.ProjectCount.ToString(CultureInfo.InvariantCulture)),
+                row.Cell(workspace.DocumentCount.ToString(CultureInfo.InvariantCulture))
+            ])
+            .Fill();
+
+    private static TableWidget<ControlProjectInfo> BuildProjects(
+        RootContext context,
+        ControlDashboardSnapshot snapshot) =>
+        context.Table(snapshot.Projects)
+            .RowKey(static project => project.Id)
+            .Header(header =>
+            [
+                header.Cell("Project").Width(SizeHint.Fill),
+                header.Cell("Language").Width(SizeHint.Fixed(12)),
+                header.Cell("Documents").Width(SizeHint.Fixed(11)),
+                header.Cell("Analyzers").Width(SizeHint.Fixed(10))
+            ])
+            .Row((row, project, _) =>
+            [
+                row.Cell(project.Name),
+                row.Cell(project.Language),
+                row.Cell(project.DocumentCount.ToString(CultureInfo.InvariantCulture)),
+                row.Cell(project.AnalyzerReferenceCount.ToString(CultureInfo.InvariantCulture))
+            ])
+            .Fill();
+
+    private static TableWidget<ControlDocumentInfo> BuildDocuments(
+        RootContext context,
+        ControlDashboardSnapshot snapshot) =>
+        context.Table(snapshot.Documents)
+            .RowKey(static document => document.Id)
+            .Header(header =>
+            [
+                header.Cell("Document").Width(SizeHint.Fill),
+                header.Cell("Project").Width(SizeHint.Fixed(30)),
+                header.Cell("Open").Width(SizeHint.Fixed(6))
+            ])
+            .Row((row, document, _) =>
+            [
+                row.Cell(document.Name),
+                row.Cell(document.ProjectName),
+                row.Cell(document.IsOpen ? "yes" : "no")
+            ])
+            .Fill();
+
+    private static VStackWidget BuildDiagnostics(
+        RootContext context,
+        ControlDashboardSnapshot snapshot) =>
+        context.VStack(vertical =>
+        [
+            vertical.Text(!snapshot.DiagnosticsLoaded
+                ? "Diagnostics load when this view is selected"
+                : snapshot.DiagnosticsTruncated
+                    ? string.Create(
+                        CultureInfo.InvariantCulture,
+                        $"Showing {snapshot.Diagnostics.Count} of {snapshot.TotalDiagnostics} diagnostics")
+                    : string.Create(
+                        CultureInfo.InvariantCulture,
+                        $"{snapshot.TotalDiagnostics} diagnostics")),
+            vertical.Table(snapshot.Diagnostics)
+                .RowKey(static diagnostic => string.Concat(
+                    diagnostic.ProjectName,
+                    "|",
+                    diagnostic.FilePath,
+                    "|",
+                    diagnostic.Line,
+                    "|",
+                    diagnostic.Character,
+                    "|",
+                    diagnostic.Id))
+                .Header(header =>
+                [
+                    header.Cell("Severity").Width(SizeHint.Fixed(10)),
+                    header.Cell("Code").Width(SizeHint.Fixed(10)),
+                    header.Cell("Project").Width(SizeHint.Fixed(24)),
+                    header.Cell("Message").Width(SizeHint.Fill)
+                ])
+                .Row((row, diagnostic, _) =>
+                [
+                    row.Cell(diagnostic.Severity),
+                    row.Cell(diagnostic.Id),
+                    row.Cell(diagnostic.ProjectName),
+                    row.Cell(diagnostic.Message)
+                ]).Fill()
+        ]).Fill();
+
+    private static VStackWidget BuildRequests(
+        RootContext context,
+        ControlDashboardSnapshot snapshot)
+    {
+        ControlRequestSchedulerInfo requests = snapshot.Requests;
+        return context.VStack(vertical =>
+        [
+            vertical.Text($"Accepted: {requests.AcceptedRequests}"),
+            vertical.Text($"Completed: {requests.CompletedRequests}"),
+            vertical.Text($"Active foreground: {requests.ActiveForegroundRequests}"),
+            vertical.Text($"Active background: {requests.ActiveBackgroundRequests}"),
+            vertical.Text($"Mutation active: {(requests.IsMutationActive ? "yes" : "no")}"),
+            vertical.Text($"Stopping: {(requests.IsStopping ? "yes" : "no")}")
+        ]);
+    }
+
+    private static VStackWidget BuildQueues(
+        RootContext context,
+        ControlDashboardSnapshot snapshot)
+    {
+        ControlRequestSchedulerInfo requests = snapshot.Requests;
+        return context.VStack(vertical =>
+        [
+            vertical.Text($"Queued: {requests.QueuedRequests} / {requests.Capacity}"),
+            vertical.Text($"Foreground concurrency: {requests.ForegroundConcurrency}"),
+            vertical.Text($"Background concurrency: {requests.BackgroundConcurrency}")
+        ]);
+    }
+
+    private static TableWidget<ControlBuildHostInfo> BuildBuildHosts(
+        RootContext context,
+        ControlDashboardSnapshot snapshot) =>
+        context.Table(snapshot.BuildHosts)
+            .RowKey(static host => string.Concat(
+                host.ProcessId.ToString(CultureInfo.InvariantCulture),
+                "|",
+                host.WorkspaceRoot))
+            .Header(header =>
+            [
+                header.Cell("PID").Width(SizeHint.Fixed(10)),
+                header.Cell("Kind").Width(SizeHint.Fixed(24)),
+                header.Cell("Projects").Width(SizeHint.Fixed(10)),
+                header.Cell("Workspace").Width(SizeHint.Fill)
+            ])
+            .Row((row, host, _) =>
+            [
+                row.Cell(host.ProcessId.ToString(CultureInfo.InvariantCulture)),
+                row.Cell(host.Kind),
+                row.Cell(host.ProjectCount.ToString(CultureInfo.InvariantCulture)),
+                row.Cell(host.WorkspaceRoot)
+            ])
+            .Fill();
+
+    private static TableWidget<ControlCacheInfo> BuildCaches(
+        RootContext context,
+        ControlDashboardSnapshot snapshot) =>
+        context.Table(snapshot.Caches)
+            .RowKey(static cache => cache.Name)
+            .Header(header =>
+            [
+                header.Cell("Cache").Width(SizeHint.Fill),
+                header.Cell("Entries").Width(SizeHint.Fixed(12)),
+                header.Cell("Capacity").Width(SizeHint.Fixed(12))
+            ])
+            .Row((row, cache, _) =>
+            [
+                row.Cell(cache.Name),
+                row.Cell(cache.EntryCount.ToString(CultureInfo.InvariantCulture)),
+                row.Cell(cache.Capacity?.ToString(CultureInfo.InvariantCulture) ?? "dynamic")
+            ])
+            .Fill();
+
+    private static TableWidget<ControlLogEntry> BuildLogs(
+        RootContext context,
+        ControlDashboardSnapshot snapshot) =>
+        context.Table(snapshot.Logs)
+            .RowKey(static entry => entry.Sequence)
+            .Header(header =>
+            [
+                header.Cell("Time").Width(SizeHint.Fixed(12)),
+                header.Cell("Level").Width(SizeHint.Fixed(12)),
+                header.Cell("Category").Width(SizeHint.Fixed(30)),
+                header.Cell("Message").Width(SizeHint.Fill)
+            ])
+            .Row((row, entry, _) =>
+            [
+                row.Cell(entry.Timestamp.ToString("HH:mm:ss.fff", CultureInfo.InvariantCulture)),
+                row.Cell(entry.Level),
+                row.Cell(entry.Category),
+                row.Cell(entry.Message)
+            ])
+            .Fill();
+
+    private static string GetSectionTitle(DashboardSection section) => section switch
+    {
+        DashboardSection.BuildHosts => "Build hosts",
+        _ => section.ToString()
+    };
+}

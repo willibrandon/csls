@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <AssemblyName>Csls.Dashboard</AssemblyName>
+    <RootNamespace>Csls.Dashboard</RootNamespace>
+    <Description>The Hex1b dashboard for live csls language-server sessions.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Hex1b" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../Csls.Control/Csls.Control.csproj" />
+    <ProjectReference Include="../Csls.Control.Contracts/Csls.Control.Contracts.csproj" />
+  </ItemGroup>
+</Project>

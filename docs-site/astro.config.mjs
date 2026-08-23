@@ -24,6 +24,7 @@ export default defineConfig({
         { slug: "editors" },
         { slug: "language-server" },
         { slug: "cli" },
+        { slug: "dashboard" },
         { slug: "mcp" },
         { slug: "development" },
       ],

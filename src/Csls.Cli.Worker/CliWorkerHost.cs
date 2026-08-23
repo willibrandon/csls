@@ -1,5 +1,6 @@
 using Csls.Control;
 using Csls.Control.Contracts;
+using Csls.Dashboard;
 using Csls.Protocol;
 using System.Globalization;
 using System.Net.Sockets;
@@ -34,6 +35,8 @@ internal static class CliWorkerHost
                     "sessions-list" => await ListSessionsAsync(writeJson, cancellationToken)
                         .ConfigureAwait(false),
                     "sessions-show" => await ShowSessionAsync(arguments, writeJson, cancellationToken)
+                        .ConfigureAwait(false),
+                    "dashboard" => await RunDashboardAsync(arguments, cancellationToken)
                         .ConfigureAwait(false),
                     "query-hover" => await QueryHoverAsync(arguments, writeJson, cancellationToken)
                         .ConfigureAwait(false),
@@ -104,6 +107,24 @@ internal static class CliWorkerHost
             .ConfigureAwait(false);
         CliOutputWriter.WriteSessions(sessions, writeJson);
         return 0;
+    }
+
+    private static Task<int> RunDashboardAsync(
+        IReadOnlyList<string> arguments,
+        CancellationToken cancellationToken)
+    {
+        if (arguments.Count != 2 ||
+            !int.TryParse(
+                arguments[1],
+                NumberStyles.None,
+                CultureInfo.InvariantCulture,
+                out int processId))
+        {
+            throw new InvalidDataException(
+                "The launcher supplied an invalid dashboard request.");
+        }
+
+        return DashboardHost.RunAsync(processId, cancellationToken);
     }
 
     private static async Task<int> ShowSessionAsync(
