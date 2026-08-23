@@ -3,6 +3,26 @@ title: Command line
 description: Inspect and use a live csls language-server session.
 ---
 
+## Workspace doctor
+
+Inspect the SDK and Roslyn workspace that csls will use without starting an editor:
+
+```console
+csls doctor
+csls doctor src/MyApp --json
+csls doctor src/MyApp --binlog artifacts/doctor.binlog
+```
+
+The command selects the SDK from the target directory, starts a transient csls
+server, loads the real MSBuild workspace, and reports projects, documents,
+diagnostics, build hosts, and startup logs. Source errors are reported as warnings
+because the language server can still serve a project that does not compile.
+Startup, SDK, project-load, and requested-build failures return a nonzero exit code.
+`--binlog` also runs `dotnet build` and writes an MSBuild binary log for detailed
+evaluation and build analysis.
+
+## Live sessions
+
 Start `csls` in an editor, then list the sessions visible to the current user:
 
 ```console
