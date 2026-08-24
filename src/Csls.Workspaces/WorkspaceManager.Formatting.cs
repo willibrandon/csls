@@ -122,6 +122,75 @@ public sealed partial class WorkspaceManager
         return CreateTextEdits(originalText, formattedText.GetTextChanges(originalText));
     }
 
+    /// <summary>
+    /// Formats the localized source lines around one supported editor trigger.
+    /// </summary>
+    /// <param name="parameters">The target position, trigger, and formatting preferences.</param>
+    /// <param name="cancellationToken">The operation cancellation token.</param>
+    /// <returns>The localized non-overlapping formatting edits.</returns>
+    public async Task<IReadOnlyList<LspTextEdit>> GetOnTypeFormattingEditsAsync(
+        DocumentOnTypeFormattingParams parameters,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(parameters);
+        ValidateFormattingOptions(parameters.Options);
+        if (!IsOnTypeFormattingTrigger(parameters.Character))
+        {
+            return [];
+        }
+
+        string path = parameters.TextDocument.Uri.GetFileSystemPath();
+        if (WorkspaceRazorDiagnosticService.IsRazorDocument(path))
+        {
+            SourceText? originalRazorText = await GetRazorTextAsync(path, cancellationToken)
+                .ConfigureAwait(false);
+            if (originalRazorText is null)
+            {
+                return [];
+            }
+
+            (TextSpan _, int razorStartLine, int razorEndLine) = GetOnTypeFormattingSpan(
+                originalRazorText,
+                parameters.Position,
+                parameters.Character);
+            SourceText formattedRazorText = WorkspaceRazorFormattingService.Format(
+                originalRazorText,
+                path,
+                parameters.Options,
+                cancellationToken);
+            return CreateLineFormattingEdits(
+                originalRazorText,
+                formattedRazorText,
+                razorStartLine,
+                razorEndLine);
+        }
+
+        Document? document = FindDocument(parameters.TextDocument.Uri);
+        if (document is null)
+        {
+            return [];
+        }
+
+        SourceText originalText = await document.GetTextAsync(cancellationToken)
+            .ConfigureAwait(false);
+        (TextSpan span, int startLine, int endLine) = GetOnTypeFormattingSpan(
+            originalText,
+            parameters.Position,
+            parameters.Character);
+        Document formattedDocument = await Formatter.FormatAsync(
+            document,
+            span,
+            CreateFormattingOptions(document, parameters.Options),
+            cancellationToken).ConfigureAwait(false);
+        SourceText formattedText = await formattedDocument.GetTextAsync(cancellationToken)
+            .ConfigureAwait(false);
+        return CreateLineFormattingEdits(
+            originalText,
+            formattedText,
+            startLine,
+            endLine);
+    }
+
     private static void ValidateFormattingOptions(LspFormattingOptions options)
     {
         ArgumentNullException.ThrowIfNull(options);
@@ -188,17 +257,32 @@ public sealed partial class WorkspaceManager
         SourceText formattedText,
         LspRange range)
     {
-        if (formattedText.Lines.Count != originalText.Lines.Count)
-        {
-            throw new InvalidOperationException(
-                "Razor range formatting must preserve the document line count.");
-        }
-
         int start = LspPositionConverter.GetOffset(originalText, range.Start);
         int end = LspPositionConverter.GetOffset(originalText, range.End);
         int endProbe = end > start ? end - 1 : end;
         TextLine originalStartLine = originalText.Lines.GetLineFromPosition(start);
         TextLine originalEndLine = originalText.Lines.GetLineFromPosition(endProbe);
+        return CreateLineFormattingEdits(
+            originalText,
+            formattedText,
+            originalStartLine.LineNumber,
+            originalEndLine.LineNumber);
+    }
+
+    private static IReadOnlyList<LspTextEdit> CreateLineFormattingEdits(
+        SourceText originalText,
+        SourceText formattedText,
+        int startLineNumber,
+        int endLineNumber)
+    {
+        if (formattedText.Lines.Count != originalText.Lines.Count)
+        {
+            throw new InvalidOperationException(
+                "Localized formatting must preserve the document line count.");
+        }
+
+        TextLine originalStartLine = originalText.Lines[startLineNumber];
+        TextLine originalEndLine = originalText.Lines[endLineNumber];
         TextLine formattedStartLine = formattedText.Lines[originalStartLine.LineNumber];
         TextLine formattedEndLine = formattedText.Lines[originalEndLine.LineNumber];
         var originalSpan = TextSpan.FromBounds(
@@ -224,6 +308,26 @@ public sealed partial class WorkspaceManager
                 NewText = newText
             }
         ];
+    }
+
+    private static bool IsOnTypeFormattingTrigger(string character) =>
+        character is "}" or ";" or "\n";
+
+    private static (TextSpan Span, int StartLine, int EndLine) GetOnTypeFormattingSpan(
+        SourceText text,
+        Position position,
+        string character)
+    {
+        int offset = LspPositionConverter.GetOffset(text, position);
+        TextLine currentLine = text.Lines.GetLineFromPosition(offset);
+        int startLineNumber = character == "\n" && currentLine.LineNumber > 0
+            ? currentLine.LineNumber - 1
+            : currentLine.LineNumber;
+        TextLine startLine = text.Lines[startLineNumber];
+        return (
+            TextSpan.FromBounds(startLine.Start, currentLine.End),
+            startLineNumber,
+            currentLine.LineNumber);
     }
 
     private static SourceText ApplyFinalFormattingOptions(

@@ -1114,6 +1114,35 @@ internal sealed class LspProcessSession : IAsyncDisposable
             cancellationToken);
 
     /// <summary>
+    /// Requests localized formatting after one character is typed in the real worker.
+    /// </summary>
+    /// <param name="documentPath">The absolute target document path.</param>
+    /// <param name="position">The position around which formatting should occur.</param>
+    /// <param name="character">The character that triggered formatting.</param>
+    /// <param name="options">The editor formatting preferences.</param>
+    /// <param name="cancellationToken">The test cancellation token.</param>
+    /// <returns>The localized non-overlapping formatting edits.</returns>
+    internal Task<IReadOnlyList<TextEdit>> RequestOnTypeFormattingAsync(
+        string documentPath,
+        Position position,
+        string character,
+        FormattingOptions options,
+        CancellationToken cancellationToken) =>
+        _rpc.InvokeWithParameterObjectAsync<IReadOnlyList<TextEdit>>(
+            "textDocument/onTypeFormatting",
+            new DocumentOnTypeFormattingParams
+            {
+                TextDocument = new TextDocumentIdentifier
+                {
+                    Uri = DocumentUri.FromFileSystemPath(documentPath)
+                },
+                Position = position,
+                Character = character,
+                Options = options
+            },
+            cancellationToken);
+
+    /// <summary>
     /// Requests concrete code actions from the real worker.
     /// </summary>
     /// <param name="documentPath">The absolute target document path.</param>

@@ -7,7 +7,7 @@ using LspRange = Csls.Protocol.Range;
 namespace Csls.Benchmarks;
 
 /// <summary>
-/// Measures complete and range-limited formatting for a current C# project snapshot.
+/// Measures complete, range-limited, and on-type formatting for a current C# snapshot.
 /// </summary>
 [BenchmarkCategory("Formatting")]
 [MemoryDiagnoser]
@@ -15,6 +15,7 @@ public class FormattingBenchmarks : IAsyncDisposable
 {
     private WorkspaceManager _workspaceManager = null!;
     private DocumentFormattingParams _documentParameters = null!;
+    private DocumentOnTypeFormattingParams _onTypeParameters = null!;
     private DocumentRangeFormattingParams _rangeParameters = null!;
     private string _fixturePath = null!;
     private int _disposeState;
@@ -58,6 +59,16 @@ public class FormattingBenchmarks : IAsyncDisposable
             Range = new LspRange(new Position(4, 0), new Position(5, 0)),
             Options = options
         };
+        string formattedLine = DocumentText.Split('\n')[4];
+        _onTypeParameters = new DocumentOnTypeFormattingParams
+        {
+            TextDocument = identifier,
+            Position = new Position(
+                4,
+                formattedLine.IndexOf(';', StringComparison.Ordinal) + 1),
+            Character = ";",
+            Options = options
+        };
 
         IReadOnlyList<TextEdit> documentEdits = await _workspaceManager
             .GetFormattingEditsAsync(_documentParameters, CancellationToken.None)
@@ -65,7 +76,10 @@ public class FormattingBenchmarks : IAsyncDisposable
         IReadOnlyList<TextEdit> rangeEdits = await _workspaceManager
             .GetRangeFormattingEditsAsync(_rangeParameters, CancellationToken.None)
             .ConfigureAwait(false);
-        if (documentEdits.Count == 0 || rangeEdits.Count == 0)
+        IReadOnlyList<TextEdit> onTypeEdits = await _workspaceManager
+            .GetOnTypeFormattingEditsAsync(_onTypeParameters, CancellationToken.None)
+            .ConfigureAwait(false);
+        if (documentEdits.Count == 0 || rangeEdits.Count == 0 || onTypeEdits.Count == 0)
         {
             throw new InvalidOperationException(
                 "The C# formatting benchmark fixture produced no edits.");
@@ -88,6 +102,15 @@ public class FormattingBenchmarks : IAsyncDisposable
     public Task<IReadOnlyList<TextEdit>> FormatRangeAsync() =>
         _workspaceManager.GetRangeFormattingEditsAsync(
             _rangeParameters,
+            CancellationToken.None);
+
+    /// <summary>
+    /// Measures repeated localized formatting after a semicolon is typed.
+    /// </summary>
+    [Benchmark]
+    public Task<IReadOnlyList<TextEdit>> FormatOnTypeAsync() =>
+        _workspaceManager.GetOnTypeFormattingEditsAsync(
+            _onTypeParameters,
             CancellationToken.None);
 
     /// <summary>

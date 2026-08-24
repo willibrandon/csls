@@ -146,6 +146,11 @@ public sealed record ServerCapabilities
     public bool DocumentRangeFormattingProvider { get; init; }
 
     /// <summary>
+    /// Gets the formatting triggers supported while a document is edited.
+    /// </summary>
+    public DocumentOnTypeFormattingOptions? DocumentOnTypeFormattingProvider { get; init; }
+
+    /// <summary>
     /// Gets the supported code-action categories.
     /// </summary>
     public CodeActionOptions? CodeActionProvider { get; init; }
