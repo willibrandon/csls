@@ -1354,16 +1354,10 @@ public sealed partial class LanguageServer : ILspRpcTarget, IAsyncDisposable
             return true;
         }
 
-        foreach (JsonElement value in valueSet.EnumerateArray())
-        {
-            if (value.ValueKind == JsonValueKind.String &&
-                string.Equals(value.GetString(), kind, StringComparison.Ordinal))
-            {
-                return true;
-            }
-        }
-
-        return false;
+        return valueSet
+            .EnumerateArray()
+            .Where(static value => value.ValueKind is JsonValueKind.String)
+            .Any(value => string.Equals(value.GetString(), kind, StringComparison.Ordinal));
     }
 
     private static bool TryGetFoldingRangeCapability(
