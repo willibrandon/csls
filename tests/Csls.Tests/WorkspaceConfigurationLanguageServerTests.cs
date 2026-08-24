@@ -206,6 +206,142 @@ public sealed class WorkspaceConfigurationLanguageServerTests
     }
 
     /// <summary>
+    /// Reloads a real project when the selected MSBuild configuration changes.
+    /// </summary>
+    [TestMethod]
+    public async Task BuildConfigurationReloadsConditionalCompilation()
+    {
+        string repositoryRoot = EditorToolResolver.FindRepositoryRoot();
+        string workerPath = ResolveWorkerPath(repositoryRoot);
+        string fixturePath = Path.Join(
+            Path.GetTempPath(),
+            $"csls-build-configuration-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(fixturePath);
+        try
+        {
+            string documentPath = Path.Join(fixturePath, "Configured.cs");
+            await File.WriteAllTextAsync(
+                Path.Join(fixturePath, "Fixture.csproj"),
+                ConditionalProjectText,
+                TestContext.CancellationToken).ConfigureAwait(false);
+            await File.WriteAllTextAsync(
+                documentPath,
+                ConditionalDocumentText,
+                TestContext.CancellationToken).ConfigureAwait(false);
+            var lsp = LspProcessSession.Start(
+                "csls-build-configuration-worker",
+                EditorToolResolver.ResolveDotNetHost(),
+                [workerPath],
+                fixturePath);
+            await using ConfiguredAsyncDisposable lspCleanup = lsp.ConfigureAwait(false);
+            using var capabilities = JsonDocument.Parse("{}");
+            using var initializationOptions = JsonDocument.Parse(
+                """{"csls":{"configuration":"Release"}}""");
+            await lsp.InitializeAsync(
+                [fixturePath],
+                capabilities.RootElement,
+                initializationOptions.RootElement,
+                TestContext.CancellationToken).ConfigureAwait(false);
+            await lsp.CompleteInitializationAsync().ConfigureAwait(false);
+
+            IReadOnlyList<WorkspaceSymbol> releaseSymbols = await lsp
+                .RequestWorkspaceSymbolsAsync(
+                    "ReleaseConfigurationSymbol",
+                    TestContext.CancellationToken).ConfigureAwait(false);
+            Assert.ContainsSingle(releaseSymbols);
+            IReadOnlyList<WorkspaceSymbol> absentDebugSymbols = await lsp
+                .RequestWorkspaceSymbolsAsync(
+                    "DebugConfigurationSymbol",
+                    TestContext.CancellationToken).ConfigureAwait(false);
+            Assert.IsEmpty(absentDebugSymbols);
+
+            using var debugConfiguration = JsonDocument.Parse(
+                """{"csls":{"configuration":"Debug"}}""");
+            await lsp.ChangeConfigurationAsync(debugConfiguration.RootElement)
+                .ConfigureAwait(false);
+            IReadOnlyList<WorkspaceSymbol> debugSymbols = await lsp
+                .RequestWorkspaceSymbolsAsync(
+                    "DebugConfigurationSymbol",
+                    TestContext.CancellationToken).ConfigureAwait(false);
+            Assert.ContainsSingle(debugSymbols);
+            IReadOnlyList<WorkspaceSymbol> absentReleaseSymbols = await lsp
+                .RequestWorkspaceSymbolsAsync(
+                    "ReleaseConfigurationSymbol",
+                    TestContext.CancellationToken).ConfigureAwait(false);
+            Assert.IsEmpty(absentReleaseSymbols);
+
+            string diagnostics = await lsp.ShutdownAsync(
+                TestContext.CancellationToken).ConfigureAwait(false);
+            Assert.DoesNotContain("Unhandled exception", diagnostics, StringComparison.Ordinal);
+        }
+        finally
+        {
+            Directory.Delete(fixturePath, recursive: true);
+        }
+    }
+
+    /// <summary>
+    /// Filters real worker diagnostics at initialization and after a dynamic level change.
+    /// </summary>
+    [TestMethod]
+    public async Task LogLevelFiltersWorkerDiagnostics()
+    {
+        string repositoryRoot = EditorToolResolver.FindRepositoryRoot();
+        string workerPath = ResolveWorkerPath(repositoryRoot);
+        string fixturePath = Path.Join(
+            Path.GetTempPath(),
+            $"csls-log-level-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(fixturePath);
+        try
+        {
+            string documentPath = Path.Join(fixturePath, "Program.cs");
+            await WriteProjectAsync(fixturePath, documentPath, DiagnosticDocumentText)
+                .ConfigureAwait(false);
+            var lsp = LspProcessSession.Start(
+                "csls-log-level-worker",
+                EditorToolResolver.ResolveDotNetHost(),
+                [workerPath],
+                fixturePath);
+            await using ConfiguredAsyncDisposable lspCleanup = lsp.ConfigureAwait(false);
+            using var capabilities = JsonDocument.Parse("{}");
+            using var initializationOptions = JsonDocument.Parse(
+                """{"csls":{"logLevel":"Error"}}""");
+            await lsp.InitializeAsync(
+                [fixturePath],
+                capabilities.RootElement,
+                initializationOptions.RootElement,
+                TestContext.CancellationToken).ConfigureAwait(false);
+            await lsp.CompleteInitializationAsync().ConfigureAwait(false);
+            using var traceConfiguration = JsonDocument.Parse(
+                """{"csls":{"logLevel":"Trace"}}""");
+            await lsp.ChangeConfigurationAsync(traceConfiguration.RootElement)
+                .ConfigureAwait(false);
+            await lsp.RequestWorkspaceSymbolsAsync(
+                "Program",
+                TestContext.CancellationToken).ConfigureAwait(false);
+
+            string diagnostics = await lsp.ShutdownAsync(
+                TestContext.CancellationToken).ConfigureAwait(false);
+            Assert.DoesNotContain(
+                "Initialized 1 workspace folders",
+                diagnostics,
+                StringComparison.Ordinal);
+            Assert.Contains(
+                "Applied configuration:",
+                diagnostics,
+                StringComparison.Ordinal);
+            Assert.Contains(
+                "log level=Trace",
+                diagnostics,
+                StringComparison.Ordinal);
+        }
+        finally
+        {
+            Directory.Delete(fixturePath, recursive: true);
+        }
+    }
+
+    /// <summary>
     /// Adds and removes real workspace roots while retaining unsaved documents in unchanged roots.
     /// </summary>
     [TestMethod]
@@ -371,6 +507,32 @@ public sealed class WorkspaceConfigurationLanguageServerTests
             <AnalysisMode>AllEnabledByDefault</AnalysisMode>
           </PropertyGroup>
         </Project>
+        """;
+
+    private const string ConditionalProjectText = """
+        <Project Sdk="Microsoft.NET.Sdk">
+          <PropertyGroup>
+            <TargetFramework>net10.0</TargetFramework>
+            <DefineConstants Condition="'$(Configuration)' == 'Debug'">DEBUG_CONFIGURATION</DefineConstants>
+            <DefineConstants Condition="'$(Configuration)' == 'Release'">RELEASE_CONFIGURATION</DefineConstants>
+          </PropertyGroup>
+        </Project>
+        """;
+
+    private const string ConditionalDocumentText = """
+        namespace Fixture;
+
+        #if RELEASE_CONFIGURATION
+        public sealed class ReleaseConfigurationSymbol
+        {
+        }
+        #endif
+
+        #if DEBUG_CONFIGURATION
+        public sealed class DebugConfigurationSymbol
+        {
+        }
+        #endif
         """;
 
     private const string DiagnosticDocumentText = """

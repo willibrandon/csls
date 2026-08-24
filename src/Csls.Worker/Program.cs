@@ -10,7 +10,9 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Console;
 
 HostApplicationBuilder builder = Host.CreateApplicationBuilder();
+var logFilter = new LanguageServerLogFilter();
 builder.Logging.ClearProviders();
+builder.Logging.AddFilter((_, level) => logFilter.IsEnabled(level));
 builder.Logging.AddConsole(options =>
 {
     options.FormatterName = ConsoleFormatterNames.Simple;
@@ -18,6 +20,7 @@ builder.Logging.AddConsole(options =>
 });
 using var controlLogBuffer = new ControlLogBuffer();
 builder.Logging.AddProvider(controlLogBuffer);
+builder.Services.AddSingleton(logFilter);
 builder.Services.AddSingleton(controlLogBuffer);
 builder.Services.AddSingleton<RequestScheduler>();
 builder.Services.AddSingleton<WorkspaceManager>();
