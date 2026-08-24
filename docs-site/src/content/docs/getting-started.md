@@ -39,3 +39,16 @@ dotnet tool install --global csls
 dotnet tool install --global csls-mcp
 csls agent mcp --workspace .
 ```
+
+## File-based apps
+
+File-based apps use the SDK selected by `global.json` and support the standard
+`#:package`, `#:project`, `#:include`, `#:property`, and `#:sdk` directives. Add a
+shebang when the app should be found automatically beneath an editor workspace:
+
+```csharp
+#!/usr/bin/env dotnet
+#:property TargetFramework=net10.0
+
+Console.WriteLine("hello");
+```

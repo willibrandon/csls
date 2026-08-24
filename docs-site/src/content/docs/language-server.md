@@ -25,9 +25,16 @@ after documents open, change, or save. Rapid edits are coalesced, and closing a
 document clears its published diagnostics.
 
 The server tracks open-document versions and applies incremental text changes.
-Workspace loading supports solutions, projects, loose C# files, multiple roots,
-and folder changes during a live session. Unsaved documents survive reloads when
-their workspace folder remains active. Standard workspace file-operation
+Workspace loading supports solutions, projects, file-based apps, loose C# files,
+multiple roots, and folder changes during a live session. File-based apps are
+restored and evaluated by the .NET SDK selected for their directory. Package,
+project, include, property, and SDK directives therefore use the same NuGet,
+MSBuild, central package management, and `global.json` behavior as `dotnet run`.
+Folder discovery loads shebang apps and directive apps with top-level statements,
+while an explicit C# file workspace always uses file-based app semantics.
+
+Unsaved documents survive reloads when their workspace folder remains active.
+Standard workspace file-operation
 notifications refresh project topology from disk. Open unsaved documents follow
 file and folder renames, while deleted documents and stale diagnostics are removed.
 

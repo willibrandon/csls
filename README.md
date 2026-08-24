@@ -4,6 +4,9 @@
 platform for .NET developers. It targets .NET 10 and is designed for terminal
 editors, IDEs, automation, and AI agents.
 
+File-based apps are evaluated by the selected .NET SDK, including package,
+project, include, property, and SDK directives.
+
 Windows, Linux, and macOS on x64 and arm64 are first-class build and test
 targets. Real Fresh, GNU Emacs/Eglot, Helix, and Neovim sessions exercise the
 server through Hex1b terminal automation.
