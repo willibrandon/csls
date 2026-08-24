@@ -40,10 +40,16 @@ jobs:
         include:
           - os: ubuntu-latest
             rid: linux-x64
+            workspace_budget_ms: 120000
+            ready_budget_ms: 130000
           - os: windows-latest
             rid: win-x64
+            workspace_budget_ms: 165000
+            ready_budget_ms: 175000
           - os: macos-26
             rid: osx-arm64
+            workspace_budget_ms: 120000
+            ready_budget_ms: 130000
 
     steps:
       - name: Check out repository
@@ -66,14 +72,22 @@ jobs:
           github.event_name != 'schedule' &&
           github.event_name != 'release' &&
           (github.event_name != 'workflow_dispatch' || !inputs.full)
-        run: dotnet run --file scripts/Run-EndToEndPerformance.cs -- --iterations 1
+        run: >-
+          dotnet run --file scripts/Run-EndToEndPerformance.cs --
+          --iterations 1
+          --workspace-budget-ms ${{ matrix.workspace_budget_ms }}
+          --ready-budget-ms ${{ matrix.ready_budget_ms }}
 
       - name: Run complete end-to-end performance measurement
         if: >-
           github.event_name == 'schedule' ||
           github.event_name == 'release' ||
           (github.event_name == 'workflow_dispatch' && inputs.full)
-        run: dotnet run --file scripts/Run-EndToEndPerformance.cs -- --iterations 3
+        run: >-
+          dotnet run --file scripts/Run-EndToEndPerformance.cs --
+          --iterations 3
+          --workspace-budget-ms ${{ matrix.workspace_budget_ms }}
+          --ready-budget-ms ${{ matrix.ready_budget_ms }}
 
       - name: Upload end-to-end performance results
         if: always()
