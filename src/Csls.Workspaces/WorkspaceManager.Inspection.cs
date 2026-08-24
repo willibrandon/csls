@@ -98,6 +98,11 @@ public sealed partial class WorkspaceManager
                     foreach (RoslynDiagnostic diagnostic in projectDiagnostics.OrderBy(
                         static diagnostic => diagnostic.Location.SourceSpan.Start))
                     {
+                        if (diagnostic.Severity == DiagnosticSeverity.Hidden)
+                        {
+                            continue;
+                        }
+
                         totalDiagnostics++;
                         if (diagnostics.Count == MaximumInspectionDiagnostics)
                         {

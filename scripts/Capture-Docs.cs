@@ -15,7 +15,7 @@ const string Usage = "Usage: dotnet run --file scripts/Capture-Docs.cs";
 if (args.Length == 1 && args[0] is "--help" or "-h" or "-?")
 {
     await Console.Out.WriteLineAsync(
-        "Captures verified editor screenshots and rebuilds the csls documentation site.")
+        "Captures verified terminal screenshots and rebuilds the csls documentation site.")
         .ConfigureAwait(false);
     await Console.Out.WriteLineAsync(Usage).ConfigureAwait(false);
     return 0;
@@ -27,7 +27,8 @@ if (args.Length != 0)
     return 2;
 }
 
-string? generatedScreenshotPath = null;
+string? generatedHelixScreenshotPath = null;
+string? generatedDashboardScreenshotPath = null;
 try
 {
     string repositoryRoot = ScriptSupport.FindRepositoryRoot();
@@ -37,10 +38,14 @@ try
         "src",
         "assets",
         "screenshots");
-    string screenshotPath = Path.Join(screenshotDirectory, "helix-hover.svg");
-    generatedScreenshotPath = Path.Join(
+    string helixScreenshotPath = Path.Join(screenshotDirectory, "helix-hover.svg");
+    string dashboardScreenshotPath = Path.Join(screenshotDirectory, "dashboard.svg");
+    generatedHelixScreenshotPath = Path.Join(
         screenshotDirectory,
         $"helix-hover-{Guid.NewGuid():N}.svg");
+    generatedDashboardScreenshotPath = Path.Join(
+        screenshotDirectory,
+        $"dashboard-{Guid.NewGuid():N}.svg");
     Directory.CreateDirectory(screenshotDirectory);
 
     string dotnetPath = Environment.GetEnvironmentVariable("DOTNET_HOST_PATH") ?? "dotnet";
@@ -59,20 +64,32 @@ try
         ],
         repositoryRoot,
         "CSLS_DOCS_SCREENSHOT_PATH",
-        generatedScreenshotPath).ConfigureAwait(false);
+        generatedHelixScreenshotPath).ConfigureAwait(false);
+    await WriteFramedScreenshotAsync(
+        generatedHelixScreenshotPath,
+        helixScreenshotPath,
+        "Helix: Program.cs",
+        "Helix").ConfigureAwait(false);
+    generatedHelixScreenshotPath = null;
 
-    if (!File.Exists(generatedScreenshotPath) ||
-        new FileInfo(generatedScreenshotPath).Length == 0)
-    {
-        throw new InvalidDataException("The Helix screenshot was not generated.");
-    }
-
-    string terminalSvg = await File.ReadAllTextAsync(generatedScreenshotPath)
-        .ConfigureAwait(false);
-    string framedSvg = FrameTerminalSvg(terminalSvg);
-    await File.WriteAllTextAsync(screenshotPath, framedSvg).ConfigureAwait(false);
-    File.Delete(generatedScreenshotPath);
-    generatedScreenshotPath = null;
+    await RunCheckedAsync(
+        dotnetPath,
+        [
+            "test",
+            "--project",
+            Path.Join("tests", "Csls.Tests", "Csls.Tests.csproj"),
+            "--filter",
+            "FullyQualifiedName=Csls.Tests.DashboardLanguageServerTests.DashboardShowsAndRefreshesRealLanguageServerState"
+        ],
+        repositoryRoot,
+        "CSLS_DASHBOARD_DOCS_SCREENSHOT_PATH",
+        generatedDashboardScreenshotPath).ConfigureAwait(false);
+    await WriteFramedScreenshotAsync(
+        generatedDashboardScreenshotPath,
+        dashboardScreenshotPath,
+        "csls dashboard",
+        "dashboard").ConfigureAwait(false);
+    generatedDashboardScreenshotPath = null;
 
     await RunCheckedAsync(
         "npx",
@@ -86,7 +103,9 @@ try
         dotnetPath,
         ["run", "--file", Path.Join("scripts", "Verify-Docs.cs")],
         repositoryRoot).ConfigureAwait(false);
-    await Console.Out.WriteLineAsync(Path.GetRelativePath(repositoryRoot, screenshotPath))
+    await Console.Out.WriteLineAsync(Path.GetRelativePath(repositoryRoot, helixScreenshotPath))
+        .ConfigureAwait(false);
+    await Console.Out.WriteLineAsync(Path.GetRelativePath(repositoryRoot, dashboardScreenshotPath))
         .ConfigureAwait(false);
     return 0;
 }
@@ -101,10 +120,33 @@ catch (Exception exception) when (exception is
 }
 finally
 {
-    if (generatedScreenshotPath is not null)
+    DeleteGeneratedScreenshot(generatedHelixScreenshotPath);
+    DeleteGeneratedScreenshot(generatedDashboardScreenshotPath);
+}
+
+static void DeleteGeneratedScreenshot(string? path)
+{
+    if (path is not null && File.Exists(path))
     {
-        File.Delete(generatedScreenshotPath);
+        File.Delete(path);
     }
+}
+
+static async Task WriteFramedScreenshotAsync(
+    string generatedPath,
+    string destinationPath,
+    string title,
+    string screenshotName)
+{
+    if (!File.Exists(generatedPath) || new FileInfo(generatedPath).Length == 0)
+    {
+        throw new InvalidDataException($"The {screenshotName} screenshot was not generated.");
+    }
+
+    string terminalSvg = await File.ReadAllTextAsync(generatedPath).ConfigureAwait(false);
+    string framedSvg = FrameTerminalSvg(terminalSvg, title);
+    await File.WriteAllTextAsync(destinationPath, framedSvg).ConfigureAwait(false);
+    File.Delete(generatedPath);
 }
 
 static async Task RunCheckedAsync(
@@ -148,7 +190,7 @@ static async Task RunCheckedAsync(
     }
 }
 
-static string FrameTerminalSvg(string terminalSvg)
+static string FrameTerminalSvg(string terminalSvg, string title)
 {
     var document = XDocument.Parse(terminalSvg);
     XElement root = document.Root
@@ -171,6 +213,7 @@ static string FrameTerminalSvg(string terminalSvg)
     int windowWidth = terminalWidth + 24;
     int windowHeight = terminalHeight + 40;
     int titleCenter = imageWidth / 2;
+    string encodedTitle = new XText(title).ToString(SaveOptions.DisableFormatting);
     return FormattableString.Invariant($"""
         <svg xmlns="http://www.w3.org/2000/svg" width="{imageWidth}" height="{imageHeight}" viewBox="0 0 {imageWidth} {imageHeight}">
         {definitions}
@@ -181,7 +224,7 @@ static string FrameTerminalSvg(string terminalSvg)
           <circle cx="32" cy="32" r="6" fill="#ff5f57"/>
           <circle cx="52" cy="32" r="6" fill="#febc2e"/>
           <circle cx="72" cy="32" r="6" fill="#28c840"/>
-          <text x="{titleCenter}" y="37" text-anchor="middle" fill="#b1bac4" font-family="system-ui, sans-serif" font-size="14">Helix: Program.cs</text>
+          <text x="{titleCenter}" y="37" text-anchor="middle" fill="#b1bac4" font-family="system-ui, sans-serif" font-size="14">{encodedTitle}</text>
           <g transform="translate(24 52)">{terminalContent}
           </g>
         </svg>

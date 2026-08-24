@@ -26,6 +26,12 @@ server. It shows sessions, workspaces, projects, documents, diagnostics,
 requests, queues, build hosts, caches, bounded structured logs, and bounded
 request traces.
 
+![csls dashboard showing a live C# diagnostic](../../assets/screenshots/dashboard.svg)
+
+Click the screenshot for the full-size view. The capture comes from the real
+dashboard integration test and includes a Roslyn diagnostic from the connected
+workspace.
+
 Use the arrow keys to select a view. Press <kbd>F2</kbd> for live requests,
 <kbd>F3</kbd> for traces, <kbd>F5</kbd> to refresh, and
 <kbd>Ctrl</kbd>+<kbd>C</kbd> to exit. Diagnostics are evaluated when their view
