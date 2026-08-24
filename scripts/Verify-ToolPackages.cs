@@ -418,13 +418,24 @@ static void WriteVerificationNuGetConfiguration(
                 new XElement(
                     "add",
                     new XAttribute("key", "verification"),
-                    new XAttribute("value", packageRoot))),
+                    new XAttribute("value", packageRoot)),
+                new XElement(
+                    "add",
+                    new XAttribute("key", "nuget.org"),
+                    new XAttribute("value", "https://api.nuget.org/v3/index.json"),
+                    new XAttribute("protocolVersion", "3"))),
             new XElement(
                 "packageSourceMapping",
                 new XElement(
                     "packageSource",
                     new XAttribute("key", "verification"),
-                    new XElement("package", new XAttribute("pattern", "csls*"))))));
+                    new XElement("package", new XAttribute("pattern", "csls*"))),
+                new XElement(
+                    "packageSource",
+                    new XAttribute("key", "nuget.org"),
+                    new XElement(
+                        "package",
+                        new XAttribute("pattern", "Microsoft.NETCore.App.Host.*"))))));
     configuration.Save(configurationPath);
 }
 
