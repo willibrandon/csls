@@ -45,6 +45,19 @@ public sealed class LspClientConnection
     }
 
     /// <summary>
+    /// Replaces the connected client's diagnostic state for one document.
+    /// </summary>
+    /// <param name="parameters">The document version and complete diagnostic collection.</param>
+    /// <returns>A task that completes after the notification is written.</returns>
+    public Task PublishDiagnosticsAsync(PublishDiagnosticsParams parameters)
+    {
+        ArgumentNullException.ThrowIfNull(parameters);
+        JsonRpc rpc = Volatile.Read(ref _rpc)
+            ?? throw new InvalidOperationException("The LSP client is not connected.");
+        return rpc.NotifyWithParameterObjectAsync("textDocument/publishDiagnostics", parameters);
+    }
+
+    /// <summary>
     /// Binds one live StreamJsonRpc session before message dispatch begins.
     /// </summary>
     /// <param name="rpc">The live LSP connection.</param>

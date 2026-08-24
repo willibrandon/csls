@@ -4,6 +4,7 @@ using Csls.Rpc;
 using StreamJsonRpc;
 using System.Diagnostics;
 using System.Text.Json;
+using System.Threading.Channels;
 
 namespace Csls.Benchmarks;
 
@@ -19,9 +20,19 @@ public class AnalyzerDiagnosticsBenchmarks : IAsyncDisposable
     private SystemTextJsonFormatter _formatter = null!;
     private HeaderDelimitedMessageHandler _messageHandler = null!;
     private JsonRpc _rpc = null!;
+    private readonly Channel<PublishDiagnosticsParams> _publishedDiagnostics =
+        Channel.CreateUnbounded<PublishDiagnosticsParams>(
+            new UnboundedChannelOptions
+            {
+                AllowSynchronousContinuations = false,
+                SingleReader = true,
+                SingleWriter = false
+            });
     private DocumentDiagnosticParams _parameters = null!;
     private WorkspaceDiagnosticParams _workspaceParameters = null!;
+    private string _pushDocumentPath = null!;
     private string _fixturePath = null!;
+    private int _pushDocumentVersion = 1;
     private int _disposeState;
 
     /// <summary>
@@ -80,6 +91,17 @@ public class AnalyzerDiagnosticsBenchmarks : IAsyncDisposable
             CancelLocallyInvokedMethodsWhenConnectionIsClosed = true,
             DisplayName = "csls-diagnostics-benchmark"
         };
+        Func<PublishDiagnosticsParams, Task> diagnosticHandler = ReceiveDiagnosticsAsync;
+        var diagnosticAttribute = new JsonRpcMethodAttribute(
+            "textDocument/publishDiagnostics")
+        {
+            UseSingleObjectParameterDeserialization = true
+        };
+        _rpc.AddLocalRpcMethod(
+            diagnosticHandler.Method,
+            diagnosticHandler.Target ?? throw new InvalidOperationException(
+                "The benchmark diagnostic handler has no target."),
+            diagnosticAttribute);
         _rpc.StartListening();
         using var capabilities = JsonDocument.Parse("{}");
         await _rpc.InvokeWithParameterObjectAsync<InitializeResult>(
@@ -96,7 +118,9 @@ public class AnalyzerDiagnosticsBenchmarks : IAsyncDisposable
             "initialized",
             new InitializedParams()).ConfigureAwait(false);
         await OpenDocumentAsync(firstDocumentPath, FirstDocumentText).ConfigureAwait(false);
+        await _publishedDiagnostics.Reader.ReadAsync().ConfigureAwait(false);
         await OpenDocumentAsync(secondDocumentPath, SecondDocumentText).ConfigureAwait(false);
+        await _publishedDiagnostics.Reader.ReadAsync().ConfigureAwait(false);
         DocumentDiagnosticReport warmReport = await _rpc
             .InvokeWithParameterObjectAsync<DocumentDiagnosticReport>(
                 "textDocument/diagnostic",
@@ -110,6 +134,7 @@ public class AnalyzerDiagnosticsBenchmarks : IAsyncDisposable
         }
 
         _parameters = CreateParameters(secondDocumentPath);
+        _pushDocumentPath = secondDocumentPath;
         _workspaceParameters = new WorkspaceDiagnosticParams
         {
             Identifier = "csls",
@@ -142,6 +167,40 @@ public class AnalyzerDiagnosticsBenchmarks : IAsyncDisposable
             "workspace/diagnostic",
             _workspaceParameters,
             CancellationToken.None);
+
+    /// <summary>
+    /// Measures coalesced push-diagnostic delivery after a real full-document change.
+    /// </summary>
+    /// <returns>The complete diagnostics published for the new document version.</returns>
+    [Benchmark]
+    public async Task<PublishDiagnosticsParams> PushDiagnosticsAfterDocumentChangeAsync()
+    {
+        int version = Interlocked.Increment(ref _pushDocumentVersion);
+        string text = (version & 1) == 0
+            ? SecondDocumentWithErrorText
+            : SecondDocumentText;
+        await _rpc.NotifyWithParameterObjectAsync(
+            "textDocument/didChange",
+            new DidChangeTextDocumentParams
+            {
+                TextDocument = new VersionedTextDocumentIdentifier
+                {
+                    Uri = DocumentUri.FromFileSystemPath(_pushDocumentPath),
+                    Version = version
+                },
+                ContentChanges = [new TextDocumentContentChangeEvent { Text = text }]
+            }).ConfigureAwait(false);
+        PublishDiagnosticsParams published = await _publishedDiagnostics.Reader
+            .ReadAsync()
+            .ConfigureAwait(false);
+        if (published.Version != version)
+        {
+            throw new InvalidOperationException(
+                $"Expected diagnostic version {version}, received {published.Version}.");
+        }
+
+        return published;
+    }
 
     /// <summary>
     /// Shuts down the worker and releases the benchmark transport and fixture.
@@ -192,6 +251,16 @@ public class AnalyzerDiagnosticsBenchmarks : IAsyncDisposable
                     Text = text
                 }
             });
+
+    private Task ReceiveDiagnosticsAsync(PublishDiagnosticsParams parameters)
+    {
+        if (!_publishedDiagnostics.Writer.TryWrite(parameters))
+        {
+            throw new InvalidOperationException("The benchmark diagnostic could not be retained.");
+        }
+
+        return Task.CompletedTask;
+    }
 
     private static DocumentDiagnosticParams CreateParameters(string documentPath) => new()
     {
@@ -245,6 +314,15 @@ public class AnalyzerDiagnosticsBenchmarks : IAsyncDisposable
         public sealed class SecondDocument
         {
             public int GetValue() => 2;
+        }
+        """;
+
+    private const string SecondDocumentWithErrorText = """
+        namespace DiagnosticsBenchmark;
+
+        public sealed class SecondDocument
+        {
+            public int GetValue() => Missing;
         }
         """;
 }

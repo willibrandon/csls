@@ -119,6 +119,19 @@ internal sealed class LspProcessSession : IAsyncDisposable
                 progressHandler.Target ?? throw new InvalidOperationException(
                     "The progress handler has no client target."),
                 progressAttribute);
+
+            Func<PublishDiagnosticsParams, Task> diagnosticHandler =
+                client.PublishDiagnosticsAsync;
+            var diagnosticAttribute = new JsonRpcMethodAttribute(
+                "textDocument/publishDiagnostics")
+            {
+                UseSingleObjectParameterDeserialization = true
+            };
+            rpc.AddLocalRpcMethod(
+                diagnosticHandler.Method,
+                diagnosticHandler.Target ?? throw new InvalidOperationException(
+                    "The diagnostic handler has no client target."),
+                diagnosticAttribute);
         }
 
         rpc.StartListening();
@@ -140,7 +153,14 @@ internal sealed class LspProcessSession : IAsyncDisposable
         string workspacePath,
         CancellationToken cancellationToken)
     {
-        using var capabilities = JsonDocument.Parse("{}");
+        using var capabilities = JsonDocument.Parse(
+            """
+            {
+              "textDocument": {
+                "diagnostic": {}
+              }
+            }
+            """);
         return await InitializeAsync(
             workspacePath,
             capabilities.RootElement,

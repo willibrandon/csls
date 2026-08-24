@@ -22,6 +22,7 @@ public sealed partial class LanguageServer : ILspRpcTarget, IAsyncDisposable
     private readonly CancellationTokenSource _exitSource = new();
     private bool _completionSnippetSupport;
     private bool _supportsConfigurationPull;
+    private bool _supportsPullDiagnostics;
     private int _lifecycleState;
     private int _disposeState;
 
@@ -127,6 +128,10 @@ public sealed partial class LanguageServer : ILspRpcTarget, IAsyncDisposable
             parameters.Capabilities,
             "workspace",
             "configuration");
+        _supportsPullDiagnostics = SupportsObjectCapability(
+            parameters.Capabilities,
+            "textDocument",
+            "diagnostic");
         LanguageServerConfiguration configuration = ParseConfiguration(
             parameters.InitializationOptions);
         string[] rootPaths = ResolveRootPaths(parameters);
@@ -280,13 +285,13 @@ public sealed partial class LanguageServer : ILspRpcTarget, IAsyncDisposable
     }
 
     /// <inheritdoc />
-    public Task DidOpenAsync(
+    public async Task DidOpenAsync(
         DidOpenTextDocumentParams parameters,
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(parameters);
         EnsureRunning();
-        return _scheduler.ScheduleAsync(
+        long diagnosticRequestId = await _scheduler.ScheduleAsync(
             "textDocument/didOpen",
             RequestMode.ReadWrite,
             () => _workspaceManager.Generation,
@@ -295,19 +300,25 @@ public sealed partial class LanguageServer : ILspRpcTarget, IAsyncDisposable
                 await _workspaceManager
                     .OpenDocumentAsync(parameters.TextDocument, context.CancellationToken)
                     .ConfigureAwait(false);
-                return true;
+                RegisterPushDiagnosticRequest(parameters.TextDocument.Uri, context.Ordinal);
+                return context.Ordinal;
             },
-            cancellationToken);
+            cancellationToken).ConfigureAwait(false);
+        await PublishDiagnosticsAsync(
+            parameters.TextDocument.Uri,
+            diagnosticRequestId,
+            delay: false,
+            cancellationToken).ConfigureAwait(false);
     }
 
     /// <inheritdoc />
-    public Task DidChangeAsync(
+    public async Task DidChangeAsync(
         DidChangeTextDocumentParams parameters,
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(parameters);
         EnsureRunning();
-        return _scheduler.ScheduleAsync(
+        long diagnosticRequestId = await _scheduler.ScheduleAsync(
             "textDocument/didChange",
             RequestMode.ReadWrite,
             () => _workspaceManager.Generation,
@@ -316,19 +327,25 @@ public sealed partial class LanguageServer : ILspRpcTarget, IAsyncDisposable
                 await _workspaceManager
                     .ChangeDocumentAsync(parameters, context.CancellationToken)
                     .ConfigureAwait(false);
-                return true;
+                RegisterPushDiagnosticRequest(parameters.TextDocument.Uri, context.Ordinal);
+                return context.Ordinal;
             },
-            cancellationToken);
+            cancellationToken).ConfigureAwait(false);
+        await PublishDiagnosticsAsync(
+            parameters.TextDocument.Uri,
+            diagnosticRequestId,
+            delay: true,
+            cancellationToken).ConfigureAwait(false);
     }
 
     /// <inheritdoc />
-    public Task DidCloseAsync(
+    public async Task DidCloseAsync(
         DidCloseTextDocumentParams parameters,
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(parameters);
         EnsureRunning();
-        return _scheduler.ScheduleAsync(
+        long diagnosticRequestId = await _scheduler.ScheduleAsync(
             "textDocument/didClose",
             RequestMode.ReadWrite,
             () => _workspaceManager.Generation,
@@ -337,20 +354,45 @@ public sealed partial class LanguageServer : ILspRpcTarget, IAsyncDisposable
                 await _workspaceManager
                     .CloseDocumentAsync(parameters, context.CancellationToken)
                     .ConfigureAwait(false);
-                return true;
+                RegisterPushDiagnosticRequest(parameters.TextDocument.Uri, context.Ordinal);
+                return context.Ordinal;
             },
-            cancellationToken);
+            cancellationToken).ConfigureAwait(false);
+        await PublishDiagnosticsAsync(
+            parameters.TextDocument.Uri,
+            diagnosticRequestId,
+            delay: false,
+            cancellationToken).ConfigureAwait(false);
     }
 
     /// <inheritdoc />
-    public Task DidSaveAsync(
+    public async Task DidSaveAsync(
         DidSaveTextDocumentParams parameters,
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(parameters);
         EnsureRunning();
         cancellationToken.ThrowIfCancellationRequested();
-        return Task.CompletedTask;
+        if (_supportsPullDiagnostics)
+        {
+            return;
+        }
+
+        long diagnosticRequestId = await _scheduler.ScheduleAsync(
+            "textDocument/didSave",
+            RequestMode.ReadOnly,
+            () => _workspaceManager.Generation,
+            context =>
+            {
+                RegisterPushDiagnosticRequest(parameters.TextDocument.Uri, context.Ordinal);
+                return new ValueTask<long>(context.Ordinal);
+            },
+            cancellationToken).ConfigureAwait(false);
+        await PublishDiagnosticsAsync(
+            parameters.TextDocument.Uri,
+            diagnosticRequestId,
+            delay: false,
+            cancellationToken).ConfigureAwait(false);
     }
 
     /// <inheritdoc />
@@ -1192,6 +1234,7 @@ public sealed partial class LanguageServer : ILspRpcTarget, IAsyncDisposable
             return;
         }
 
+        ClearPushDiagnosticRequests();
         await _scheduler.DisposeAsync().ConfigureAwait(false);
         _semanticTokensCache.Clear();
         await _workspaceManager.DisposeAsync().ConfigureAwait(false);
@@ -1222,6 +1265,18 @@ public sealed partial class LanguageServer : ILspRpcTarget, IAsyncDisposable
             group.ValueKind == JsonValueKind.Object &&
             group.TryGetProperty(capabilityName, out JsonElement capability) &&
             capability.ValueKind is JsonValueKind.True;
+    }
+
+    private static bool SupportsObjectCapability(
+        JsonElement capabilities,
+        string groupName,
+        string capabilityName)
+    {
+        return capabilities.ValueKind == JsonValueKind.Object &&
+            capabilities.TryGetProperty(groupName, out JsonElement group) &&
+            group.ValueKind == JsonValueKind.Object &&
+            group.TryGetProperty(capabilityName, out JsonElement capability) &&
+            capability.ValueKind == JsonValueKind.Object;
     }
 
     private static string[] ResolveRootPaths(InitializeParams parameters)
