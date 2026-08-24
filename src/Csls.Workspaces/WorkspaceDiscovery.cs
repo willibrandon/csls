@@ -1,14 +1,22 @@
+using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
+using Microsoft.CodeAnalysis.CSharp.Syntax;
+using Microsoft.CodeAnalysis.Text;
 using System.Collections.Frozen;
 
 namespace Csls.Workspaces;
 
 /// <summary>
-/// Discovers all solution or project entry points beneath one bounded workspace root.
+/// Discovers solution, project, and file-based app entry points beneath one bounded workspace root.
 /// </summary>
 internal static class WorkspaceDiscovery
 {
     private const int MaximumDirectories = 10_000;
     private const int MaximumWorkspaceFiles = 1_000;
+    private static readonly CSharpParseOptions s_fileBasedAppParseOptions =
+        CSharpParseOptions.Default
+            .WithLanguageVersion(LanguageVersion.CSharp14)
+            .WithFeatures([new KeyValuePair<string, string>("FileBasedProgram", "true")]);
     private static readonly EnumerationOptions s_enumerationOptions = new()
     {
         AttributesToSkip = FileAttributes.ReparsePoint,
@@ -24,17 +32,22 @@ internal static class WorkspaceDiscovery
         ".hg",
         ".nuget",
         ".svn",
+        ".vs",
+        "artifacts",
         "bin",
         "node_modules",
         "obj"
     }.ToFrozenSet(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>
-    /// Finds explicit solution or project files while excluding generated dependency trees.
+    /// Finds explicit workspaces and file-based apps while excluding generated dependency trees.
     /// </summary>
     /// <param name="rootPath">An existing solution, project, source file, or directory.</param>
+    /// <param name="cancellationToken">The discovery cancellation token.</param>
     /// <returns>All preferred workspace entry points in deterministic path order.</returns>
-    internal static IReadOnlyList<string> Discover(string rootPath)
+    internal static IReadOnlyList<string> Discover(
+        string rootPath,
+        CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(rootPath);
         string fullPath = Path.GetFullPath(rootPath);
@@ -48,13 +61,13 @@ internal static class WorkspaceDiscovery
                 return [fullPath];
             }
 
-            if (extension.Equals(".cs", StringComparison.OrdinalIgnoreCase))
+            if (IsFileBasedApp(fullPath))
             {
-                return [];
+                return [fullPath];
             }
 
             throw new InvalidDataException(
-                $"Workspace file {fullPath} must be a .slnx, .sln, .csproj, or .cs file.");
+                $"Workspace file {fullPath} must be a solution, project, or file-based app.");
         }
 
         if (!Directory.Exists(fullPath))
@@ -64,11 +77,14 @@ internal static class WorkspaceDiscovery
 
         var solutions = new List<string>();
         var projects = new List<string>();
-        var pendingDirectories = new Queue<string>();
-        pendingDirectories.Enqueue(fullPath);
+        var fileBasedApps = new List<string>();
+        var pendingDirectories = new Queue<(string Path, bool IsProjectCone)>();
+        pendingDirectories.Enqueue((fullPath, false));
         int visitedDirectories = 0;
-        while (pendingDirectories.TryDequeue(out string? directoryPath))
+        while (pendingDirectories.TryDequeue(out (string Path, bool IsProjectCone) pending))
         {
+            cancellationToken.ThrowIfCancellationRequested();
+            string directoryPath = pending.Path;
             visitedDirectories++;
             if (visitedDirectories > MaximumDirectories)
             {
@@ -76,11 +92,14 @@ internal static class WorkspaceDiscovery
                     $"Workspace discovery exceeded {MaximumDirectories} directories beneath {fullPath}.");
             }
 
+            bool containsProject = false;
+            List<string>? fileBasedAppCandidates = null;
             foreach (string filePath in Directory.EnumerateFiles(
                 directoryPath,
                 "*",
                 s_enumerationOptions))
             {
+                cancellationToken.ThrowIfCancellationRequested();
                 string extension = Path.GetExtension(filePath);
                 if (extension.Equals(".slnx", StringComparison.OrdinalIgnoreCase) ||
                     extension.Equals(".sln", StringComparison.OrdinalIgnoreCase))
@@ -89,15 +108,34 @@ internal static class WorkspaceDiscovery
                         solutions,
                         filePath,
                         fullPath,
-                        solutions.Count + projects.Count);
+                        solutions.Count + projects.Count + fileBasedApps.Count);
                 }
                 else if (extension.Equals(".csproj", StringComparison.OrdinalIgnoreCase))
                 {
+                    containsProject = true;
                     AddWorkspaceFile(
                         projects,
                         filePath,
                         fullPath,
-                        solutions.Count + projects.Count);
+                        solutions.Count + projects.Count + fileBasedApps.Count);
+                }
+                else if (!pending.IsProjectCone &&
+                    extension.Equals(".cs", StringComparison.OrdinalIgnoreCase) &&
+                    IsDiscoverableFileBasedApp(filePath, cancellationToken))
+                {
+                    (fileBasedAppCandidates ??= []).Add(filePath);
+                }
+            }
+
+            if (!containsProject && fileBasedAppCandidates is not null)
+            {
+                foreach (string fileBasedApp in fileBasedAppCandidates)
+                {
+                    AddWorkspaceFile(
+                        fileBasedApps,
+                        fileBasedApp,
+                        fullPath,
+                        solutions.Count + projects.Count + fileBasedApps.Count);
                 }
             }
 
@@ -106,13 +144,29 @@ internal static class WorkspaceDiscovery
                 "*",
                 s_enumerationOptions))
             {
-                EnqueueIfIncluded(pendingDirectories, childPath);
+                EnqueueIfIncluded(
+                    pendingDirectories,
+                    childPath,
+                    pending.IsProjectCone || containsProject);
             }
         }
 
         List<string> selected = solutions.Count > 0 ? solutions : projects;
+        selected.AddRange(fileBasedApps);
         selected.Sort(StringComparer.Ordinal);
         return selected;
+    }
+
+    /// <summary>
+    /// Determines whether an existing path is a valid explicit file-based app entry point.
+    /// </summary>
+    /// <param name="path">The absolute source path to inspect.</param>
+    /// <returns>True for C# files and extensionless files beginning with a shebang.</returns>
+    internal static bool IsFileBasedApp(string path)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(path);
+        return Path.GetExtension(path).Equals(".cs", StringComparison.OrdinalIgnoreCase) ||
+            StartsWithShebang(path);
     }
 
     /// <summary>
@@ -138,12 +192,13 @@ internal static class WorkspaceDiscovery
     }
 
     private static void EnqueueIfIncluded(
-        Queue<string> pendingDirectories,
-        string directoryPath)
+        Queue<(string Path, bool IsProjectCone)> pendingDirectories,
+        string directoryPath,
+        bool isProjectCone)
     {
         if (!s_excludedDirectoryNames.Contains(Path.GetFileName(directoryPath)))
         {
-            pendingDirectories.Enqueue(directoryPath);
+            pendingDirectories.Enqueue((directoryPath, isProjectCone));
         }
     }
 
@@ -160,5 +215,52 @@ internal static class WorkspaceDiscovery
         }
 
         workspaceFiles.Add(Path.GetFullPath(workspaceFile));
+    }
+
+    private static bool StartsWithShebang(string path)
+    {
+        try
+        {
+            using FileStream stream = File.OpenRead(path);
+            Span<byte> prefix = stackalloc byte[5];
+            int read = stream.Read(prefix);
+            return prefix[..read] is [(byte)'#', (byte)'!', ..] or
+                [0xEF, 0xBB, 0xBF, (byte)'#', (byte)'!'];
+        }
+        catch (Exception exception) when (
+            exception is IOException or UnauthorizedAccessException)
+        {
+            return false;
+        }
+    }
+
+    private static bool IsDiscoverableFileBasedApp(
+        string path,
+        CancellationToken cancellationToken)
+    {
+        if (StartsWithShebang(path))
+        {
+            return true;
+        }
+
+        try
+        {
+            using FileStream stream = File.OpenRead(path);
+            var source = SourceText.From(stream, encoding: null);
+            CompilationUnitSyntax root = CSharpSyntaxTree
+                .ParseText(
+                    source,
+                    s_fileBasedAppParseOptions,
+                    cancellationToken: cancellationToken)
+                .GetCompilationUnitRoot(cancellationToken);
+            return root.GetLeadingTrivia().Any(
+                static trivia => trivia.IsKind(SyntaxKind.IgnoredDirectiveTrivia)) &&
+                root.Members.Any(static member => member.IsKind(SyntaxKind.GlobalStatement));
+        }
+        catch (Exception exception) when (
+            exception is IOException or UnauthorizedAccessException)
+        {
+            return false;
+        }
     }
 }

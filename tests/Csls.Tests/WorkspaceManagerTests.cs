@@ -17,10 +17,10 @@ public sealed class WorkspaceManagerTests
     public TestContext TestContext { get; set; } = null!;
 
     /// <summary>
-    /// Resolves framework symbols from a loose C# file without a project.
+    /// Resolves framework symbols from a real SDK-backed file-based app.
     /// </summary>
     [TestMethod]
-    public async Task LooseFileResolvesFrameworkSymbolHover()
+    public async Task FileBasedAppResolvesFrameworkSymbolHover()
     {
         string workspacePath = Path.Join(
             Path.GetTempPath(),
@@ -62,6 +62,94 @@ public sealed class WorkspaceManagerTests
 
             Assert.IsNotNull(hover);
             Assert.Contains("System.Console", hover.Contents.Value);
+        }
+        finally
+        {
+            Directory.Delete(workspacePath, recursive: true);
+        }
+    }
+
+    /// <summary>
+    /// Serializes concurrent SDK evaluation of the same physical file-based app.
+    /// </summary>
+    [TestMethod]
+    public async Task ConcurrentFileBasedAppLoadsDoNotCollide()
+    {
+        string workspacePath = Path.Join(
+            Path.GetTempPath(),
+            $"csls-file-app-concurrent-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(workspacePath);
+        try
+        {
+            string documentPath = Path.Join(workspacePath, "Program.cs");
+            await File.WriteAllTextAsync(
+                documentPath,
+                DocumentText,
+                TestContext.CancellationToken).ConfigureAwait(false);
+
+            var first = new WorkspaceManager(NullLogger<WorkspaceManager>.Instance);
+            await using ConfiguredAsyncDisposable firstDisposal = first.ConfigureAwait(false);
+            var second = new WorkspaceManager(NullLogger<WorkspaceManager>.Instance);
+            await using ConfiguredAsyncDisposable secondDisposal = second.ConfigureAwait(false);
+            await Task.WhenAll(
+                first.LoadAsync([documentPath], TestContext.CancellationToken),
+                second.LoadAsync([documentPath], TestContext.CancellationToken)).ConfigureAwait(false);
+
+            Assert.AreEqual(1, first.Generation);
+            Assert.AreEqual(1, second.Generation);
+            Assert.IsFalse(File.Exists(documentPath + ".csproj"));
+        }
+        finally
+        {
+            Directory.Delete(workspacePath, recursive: true);
+        }
+    }
+
+    /// <summary>
+    /// Loads an extensionless shebang app through the selected SDK.
+    /// </summary>
+    [TestMethod]
+    public async Task ExtensionlessFileBasedAppResolvesFrameworkSymbolHover()
+    {
+        string workspacePath = Path.Join(
+            Path.GetTempPath(),
+            $"csls-file-app-extensionless-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(workspacePath);
+        try
+        {
+            string documentPath = Path.Join(workspacePath, "hello");
+            await File.WriteAllTextAsync(
+                documentPath,
+                ExtensionlessDocumentText,
+                TestContext.CancellationToken).ConfigureAwait(false);
+
+            var manager = new WorkspaceManager(NullLogger<WorkspaceManager>.Instance);
+            await using ConfiguredAsyncDisposable managerDisposal =
+                manager.ConfigureAwait(false);
+            await manager.LoadAsync(
+                [documentPath],
+                TestContext.CancellationToken).ConfigureAwait(false);
+            var documentUri = DocumentUri.FromFileSystemPath(documentPath);
+            await manager.OpenDocumentAsync(
+                new TextDocumentItem
+                {
+                    Uri = documentUri,
+                    LanguageId = "csharp",
+                    Version = 1,
+                    Text = ExtensionlessDocumentText
+                },
+                TestContext.CancellationToken).ConfigureAwait(false);
+
+            Hover? hover = await manager.GetHoverAsync(
+                new TextDocumentPositionParams
+                {
+                    TextDocument = new TextDocumentIdentifier { Uri = documentUri },
+                    Position = new Position(1, 1)
+                },
+                TestContext.CancellationToken).ConfigureAwait(false);
+            Assert.IsNotNull(hover);
+            Assert.Contains("System.Console", hover.Contents.Value);
+            Assert.IsFalse(File.Exists(documentPath + ".csproj"));
         }
         finally
         {
@@ -182,5 +270,10 @@ public sealed class WorkspaceManagerTests
                 Console.WriteLine("hello");
             }
         }
+        """;
+
+    private const string ExtensionlessDocumentText = """
+        #!/usr/bin/env dotnet
+        Console.WriteLine("hello");
         """;
 }
