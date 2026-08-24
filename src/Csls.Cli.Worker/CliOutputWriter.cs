@@ -12,6 +12,26 @@ namespace Csls.Cli.Worker;
 internal static class CliOutputWriter
 {
     /// <summary>
+    /// Writes the location of a newly created agent skill file.
+    /// </summary>
+    /// <param name="result">The created skill file.</param>
+    /// <param name="writeJson">Whether to write a machine-readable envelope.</param>
+    internal static void WriteAgentInit(AgentInitResult result, bool writeJson)
+    {
+        ArgumentNullException.ThrowIfNull(result);
+        if (writeJson)
+        {
+            JsonElement data = JsonSerializer.SerializeToElement(
+                result,
+                CliJsonSerializerContext.Default.AgentInitResult);
+            WriteEnvelope(success: true, data);
+            return;
+        }
+
+        Console.Out.WriteLine($"Created: {result.OutputPath}");
+    }
+
+    /// <summary>
     /// Writes a bounded list of live sessions.
     /// </summary>
     /// <param name="sessions">The live sessions.</param>

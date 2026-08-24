@@ -106,3 +106,26 @@ csls edit code-action Program.cs --kind quickfix --apply
 
 Every machine-readable command supports `--json`. Its response uses a versioned
 envelope so scripts and agents can reject shapes they do not understand.
+
+## Agent commands
+
+Create a reusable `SKILL.md` with the supported CLI and MCP workflows:
+
+```console
+csls agent init
+csls agent init --path .agents/skills/csls/SKILL.md
+csls agent init --stdout
+```
+
+Existing files are left unchanged unless `--force` is passed. `--json` reports
+the absolute output path in the standard versioned response envelope.
+
+After installing the separate `csls-mcp` tool, start it through the main command:
+
+```console
+csls agent mcp --workspace ./MySolution.slnx
+csls agent mcp --session 12345
+```
+
+The command also accepts an absolute control socket with `--socket`. Exactly one
+connection option is required.

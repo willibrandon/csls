@@ -24,8 +24,10 @@ Run `csls doctor [path]` to verify SDK selection and load the target through a
 real transient language-server session. Add `--binlog <path>` when an MSBuild
 binary log is needed.
 
-Run `csls-mcp --workspace <path>` for an agent-owned workspace or attach it to a
-live editor session with `--session <pid>`.
+Install the separate `csls-mcp` tool. Run `csls agent mcp --workspace <path>`
+for an agent-owned workspace or attach it to a live editor session with
+`--session <pid>`. Run `csls agent init` to create reusable instructions for a
+coding agent.
 
 ## Build
 
