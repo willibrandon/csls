@@ -20,6 +20,7 @@ public class AnalyzerDiagnosticsBenchmarks : IAsyncDisposable
     private HeaderDelimitedMessageHandler _messageHandler = null!;
     private JsonRpc _rpc = null!;
     private DocumentDiagnosticParams _parameters = null!;
+    private WorkspaceDiagnosticParams _workspaceParameters = null!;
     private string _fixturePath = null!;
     private int _disposeState;
 
@@ -109,6 +110,11 @@ public class AnalyzerDiagnosticsBenchmarks : IAsyncDisposable
         }
 
         _parameters = CreateParameters(secondDocumentPath);
+        _workspaceParameters = new WorkspaceDiagnosticParams
+        {
+            Identifier = "csls",
+            PreviousResultIds = []
+        };
     }
 
     /// <summary>
@@ -125,6 +131,16 @@ public class AnalyzerDiagnosticsBenchmarks : IAsyncDisposable
         _rpc.InvokeWithParameterObjectAsync<DocumentDiagnosticReport>(
             "textDocument/diagnostic",
             _parameters,
+            CancellationToken.None);
+
+    /// <summary>
+    /// Measures a complete workspace pull that reuses cached real project analysis.
+    /// </summary>
+    [Benchmark]
+    public Task<WorkspaceDiagnosticReport> PullCachedWorkspaceDiagnosticsAsync() =>
+        _rpc.InvokeWithParameterObjectAsync<WorkspaceDiagnosticReport>(
+            "workspace/diagnostic",
+            _workspaceParameters,
             CancellationToken.None);
 
     /// <summary>

@@ -14,6 +14,12 @@ language features include:
 - call hierarchy, type hierarchy, selection ranges, and inlay hints
 - rename, code actions, and document formatting
 
+Document and workspace diagnostic pulls use the same immutable Roslyn snapshot.
+Workspace results cover user C# and Razor documents across all loaded projects,
+exclude build output, include versions for open files, and return unchanged reports
+when the client already holds the current result. Clients that provide a partial
+result token receive bounded batches through standard LSP progress notifications.
+
 The server tracks open-document versions and applies incremental text changes.
 Workspace loading supports solutions, projects, loose C# files, multiple roots,
 and folder changes during a live session. Unsaved documents survive reloads when
