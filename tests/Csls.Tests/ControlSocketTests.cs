@@ -141,6 +141,14 @@ public sealed class ControlSocketTests
                 TestContext.CancellationToken).ConfigureAwait(false);
             Assert.AreEqual(lsp.ProcessId, session.ProcessId);
 
+            using var newlyAcceptedClient = new Socket(
+                AddressFamily.Unix,
+                SocketType.Stream,
+                ProtocolType.Unspecified);
+            await newlyAcceptedClient.ConnectAsync(
+                new UnixDomainSocketEndPoint(ControlEndpoint.GetSocketPath(lsp.ProcessId)),
+                TestContext.CancellationToken).ConfigureAwait(false);
+
             string diagnostics = await lsp.ShutdownAsync(
                 TestContext.CancellationToken).ConfigureAwait(false);
             Assert.DoesNotContain("Unhandled exception", diagnostics, StringComparison.Ordinal);

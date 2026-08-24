@@ -296,6 +296,11 @@ public sealed class EmacsLanguageServerTests
                                                  {{ToElispString(targetPath)}}))
                           (with-temp-file {{ToElispString(navigationPath)}}
                             (insert "navigated")))))
+            (defun csls-test-shutdown ()
+              (interactive)
+              (eglot-shutdown-all)
+              (kill-emacs 0))
+            (global-set-key (kbd "C-x C-c") #'csls-test-shutdown)
             """;
     }
 

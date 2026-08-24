@@ -202,9 +202,6 @@ public sealed partial class ControlRpcServer : IHostedService, IAsyncDisposable
         CancellationToken cancellationToken)
     {
         using var stream = new NetworkStream(connection, ownsSocket: true);
-        using CancellationTokenRegistration shutdownRegistration = cancellationToken.Register(
-            static state => ((NetworkStream)state!).Dispose(),
-            stream);
         using var formatter = new SystemTextJsonFormatter
         {
             JsonSerializerOptions = ControlRpcJson.CreateSerializerOptions()
@@ -224,6 +221,9 @@ public sealed partial class ControlRpcServer : IHostedService, IAsyncDisposable
         };
         ControlMethodRegistry.Register(rpc, _target);
         rpc.StartListening();
+        using CancellationTokenRegistration shutdownRegistration = cancellationToken.Register(
+            static state => ((NetworkStream)state!).Dispose(),
+            stream);
         await rpc.Completion.ConfigureAwait(false);
         await rpc.DispatchCompletion.ConfigureAwait(false);
     }

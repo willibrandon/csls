@@ -191,6 +191,16 @@ public interface ILspRpcTarget
         CancellationToken cancellationToken);
 
     /// <summary>
+    /// Gets bounded syntax, comment, import, and region folds for one document.
+    /// </summary>
+    /// <param name="parameters">The target text document.</param>
+    /// <param name="cancellationToken">The peer cancellation token.</param>
+    /// <returns>The ordered folding ranges negotiated with the client.</returns>
+    Task<IReadOnlyList<FoldingRange>> FoldingRangeAsync(
+        FoldingRangeParams parameters,
+        CancellationToken cancellationToken);
+
+    /// <summary>
     /// Gets paired C# source ranges that clients can edit together.
     /// </summary>
     /// <param name="parameters">The target document position.</param>
