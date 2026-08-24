@@ -46,6 +46,23 @@ showCommand.SetAction((parseResult, cancellationToken) =>
         ],
         cancellationToken));
 sessionsCommand.Subcommands.Add(showCommand);
+
+var watchJsonOption = new Option<bool>("--json")
+{
+    Description = "Write one versioned JSON envelope per observed session change."
+};
+var watchCommand = new Command("watch", "Watch live csls sessions until canceled.")
+{
+    watchJsonOption
+};
+watchCommand.SetAction((parseResult, cancellationToken) =>
+    CliWorkerSupervisor.RunAsync(
+        [
+            "sessions-watch",
+            parseResult.GetValue(watchJsonOption).ToString(CultureInfo.InvariantCulture)
+        ],
+        cancellationToken));
+sessionsCommand.Subcommands.Add(watchCommand);
 rootCommand.Subcommands.Add(sessionsCommand);
 
 Option<int?> dashboardSessionOption = CreateSessionOption();

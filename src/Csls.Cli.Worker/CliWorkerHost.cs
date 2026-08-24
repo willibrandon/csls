@@ -36,6 +36,10 @@ internal static class CliWorkerHost
                         .ConfigureAwait(false),
                     "sessions-show" => await ShowSessionAsync(arguments, writeJson, cancellationToken)
                         .ConfigureAwait(false),
+                    "sessions-watch" => await SessionWatchCommandHost.RunAsync(
+                        arguments,
+                        writeJson,
+                        cancellationToken).ConfigureAwait(false),
                     "dashboard" => await RunDashboardAsync(arguments, cancellationToken)
                         .ConfigureAwait(false),
                     "doctor" => await DoctorCommandHost.RunAsync(

@@ -38,6 +38,18 @@ public static class ControlEndpoint
     /// <returns>The prepared absolute socket path.</returns>
     internal static string PrepareSocketPath(int processId)
     {
+        EnsureSocketDirectory();
+        string socketPath = GetSocketPath(processId);
+        File.Delete(socketPath);
+        return socketPath;
+    }
+
+    /// <summary>
+    /// Creates and secures the private socket directory for discovery and listening.
+    /// </summary>
+    /// <returns>The absolute private socket directory.</returns>
+    internal static string EnsureSocketDirectory()
+    {
         string socketDirectory = GetSocketDirectory();
         Directory.CreateDirectory(socketDirectory);
         if (!OperatingSystem.IsWindows())
@@ -56,9 +68,7 @@ public static class ControlEndpoint
                 UnixFileMode.UserExecute);
         }
 
-        string socketPath = GetSocketPath(processId);
-        File.Delete(socketPath);
-        return socketPath;
+        return socketDirectory;
     }
 
     /// <summary>
