@@ -1,14 +1,14 @@
-namespace Csls.Mcp.Worker;
+namespace Csls.Client;
 
 /// <summary>
-/// Resolves the language-server worker bundled with the MCP tool.
+/// Resolves the language-server worker bundled with a csls client tool.
 /// </summary>
-internal static class TransientLanguageServerLocator
+internal static class LanguageServerWorkerLocator
 {
     private const string WorkerPathEnvironmentVariable = "CSLS_SERVER_WORKER_PATH";
 
     /// <summary>
-    /// Returns the validated language-server worker path for a transient MCP session.
+    /// Returns the validated language-server worker path for a transient session.
     /// </summary>
     /// <returns>The absolute worker path.</returns>
     internal static string Resolve()
@@ -48,7 +48,7 @@ internal static class TransientLanguageServerLocator
         }
 
         throw new FileNotFoundException(
-            "The csls language-server worker was not found beside the MCP worker. " +
-            "Reinstall csls-mcp.");
+            "The csls language-server worker was not found beside the client worker. " +
+            "Reinstall the csls tool.");
     }
 }

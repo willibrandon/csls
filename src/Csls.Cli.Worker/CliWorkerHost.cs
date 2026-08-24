@@ -38,6 +38,10 @@ internal static class CliWorkerHost
                         .ConfigureAwait(false),
                     "dashboard" => await RunDashboardAsync(arguments, cancellationToken)
                         .ConfigureAwait(false),
+                    "doctor" => await DoctorCommandHost.RunAsync(
+                        arguments,
+                        writeJson,
+                        cancellationToken).ConfigureAwait(false),
                     "workspace-operation" => await RunWorkspaceOperationAsync(
                         arguments,
                         writeJson,

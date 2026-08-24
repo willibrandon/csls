@@ -553,6 +553,34 @@ internal static class CliOutputWriter
     }
 
     /// <summary>
+    /// Writes the complete result of one real workspace doctor inspection.
+    /// </summary>
+    /// <param name="report">The ordered checks and observed workspace state.</param>
+    /// <param name="writeJson">Whether to write a machine-readable envelope.</param>
+    internal static void WriteDoctor(DoctorReport report, bool writeJson)
+    {
+        ArgumentNullException.ThrowIfNull(report);
+        if (writeJson)
+        {
+            JsonElement data = JsonSerializer.SerializeToElement(
+                report,
+                CliJsonSerializerContext.Default.DoctorReport);
+            WriteEnvelope(report.IsHealthy, data);
+            return;
+        }
+
+        Console.Out.WriteLine($"Workspace: {report.WorkspacePath}");
+        Console.Out.WriteLine($".NET SDK: {report.SdkVersion ?? "unavailable"}");
+        Console.Out.WriteLine(
+            $"Roslyn: {report.Projects.Count} project(s), {report.DocumentCount} document(s)");
+        Console.Out.WriteLine($"Diagnostics: {report.TotalDiagnostics}");
+        foreach (DoctorCheck check in report.Checks)
+        {
+            Console.Out.WriteLine($"{check.Status.ToString().ToUpperInvariant()} {check.Name}: {check.Message}");
+        }
+    }
+
+    /// <summary>
     /// Writes an actionable command failure to the requested output channel.
     /// </summary>
     /// <param name="code">The stable failure category.</param>

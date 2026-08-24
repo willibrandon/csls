@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <AssemblyName>Csls.Client</AssemblyName>
+    <RootNamespace>Csls.Client</RootNamespace>
+    <Description>Shared process and protocol client infrastructure for csls tools.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../Csls.Protocol/Csls.Protocol.csproj" />
+    <ProjectReference Include="../Csls.Rpc/Csls.Rpc.csproj" />
+  </ItemGroup>
+</Project>

@@ -1,3 +1,4 @@
+using Csls.Client;
 using Csls.Control;
 using Csls.Mcp.Worker;
 using System.CommandLine;
@@ -50,6 +51,7 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
         TransientLanguageServerSession transient =
             await TransientLanguageServerSession.StartAsync(
                 workspacePath,
+                "csls-mcp",
                 cancellationToken).ConfigureAwait(false);
         await using ConfiguredAsyncDisposable transientCleanup =
             transient.ConfigureAwait(false);

@@ -523,6 +523,10 @@ static async Task VerifyLanguageServerWorkerAsync(
     await File.WriteAllTextAsync(
         Path.Join(fixturePath, "Program.cs"),
         """Console.WriteLine("csls package verification");""").ConfigureAwait(false);
+    await VerifyDoctorAsync(
+        commandPath,
+        fixturePath,
+        environment).ConfigureAwait(false);
     string rootUri = new Uri(fixturePath + Path.DirectorySeparatorChar).AbsoluteUri;
     using var timeout = new CancellationTokenSource(TimeSpan.FromMinutes(1));
     var startInfo = new ProcessStartInfo
@@ -619,6 +623,47 @@ static async Task VerifyLanguageServerWorkerAsync(
             process.Kill(entireProcessTree: true);
             await process.WaitForExitAsync(CancellationToken.None).ConfigureAwait(false);
         }
+    }
+}
+
+static async Task VerifyDoctorAsync(
+    string commandPath,
+    string fixturePath,
+    IReadOnlyDictionary<string, string> environment)
+{
+    using var timeout = new CancellationTokenSource(TimeSpan.FromMinutes(1));
+    var startInfo = new ProcessStartInfo
+    {
+        FileName = commandPath,
+        WorkingDirectory = fixturePath,
+        RedirectStandardError = true,
+        RedirectStandardOutput = true,
+        UseShellExecute = false
+    };
+    startInfo.ArgumentList.Add("doctor");
+    startInfo.ArgumentList.Add(fixturePath);
+    startInfo.ArgumentList.Add("--json");
+    ApplyEnvironment(startInfo, environment);
+    using Process process = Process.Start(startInfo) ?? throw new InvalidOperationException(
+        "The installed csls doctor did not start.");
+    Task<string> standardOutputTask = process.StandardOutput.ReadToEndAsync(timeout.Token);
+    Task<string> standardErrorTask = process.StandardError.ReadToEndAsync(timeout.Token);
+    await process.WaitForExitAsync(timeout.Token).ConfigureAwait(false);
+    string standardOutput = await standardOutputTask.ConfigureAwait(false);
+    string standardError = await standardErrorTask.ConfigureAwait(false);
+    if (process.ExitCode != 0)
+    {
+        throw new InvalidOperationException(
+            $"The installed csls doctor exited with {process.ExitCode}: {standardError}");
+    }
+
+    using var document = JsonDocument.Parse(standardOutput);
+    JsonElement root = document.RootElement;
+    if (!root.GetProperty("success").GetBoolean() ||
+        root.GetProperty("data").GetProperty("projects").GetArrayLength() == 0)
+    {
+        throw new InvalidDataException(
+            $"The installed csls doctor did not load its project: {standardOutput}");
     }
 }
 
