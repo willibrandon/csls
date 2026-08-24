@@ -105,6 +105,22 @@ public sealed class RazorFormattingLanguageServerTests
                 StringComparison.Ordinal);
             Assert.AreEqual(expectedRangeText, ApplyTextEdits(persistedText, rangeEdits));
 
+            string memberLine = persistedText
+                .Replace("\r\n", "\n", StringComparison.Ordinal)
+                .Split('\n')[12];
+            IReadOnlyList<TextEdit> onTypeEdits = await lsp.RequestOnTypeFormattingAsync(
+                documentPath,
+                new Position(12, memberLine.Length),
+                ";",
+                options,
+                TestContext.CancellationToken).ConfigureAwait(false);
+            Assert.IsNotEmpty(onTypeEdits);
+            string expectedOnTypeText = persistedText.Replace(
+                "private int count=0;",
+                useTabs ? "\tprivate int count = 0;" : "    private int count = 0;",
+                StringComparison.Ordinal);
+            Assert.AreEqual(expectedOnTypeText, ApplyTextEdits(persistedText, onTypeEdits));
+
             IReadOnlyList<TextEdit> edits = await lsp.RequestFormattingAsync(
                 documentPath,
                 options,

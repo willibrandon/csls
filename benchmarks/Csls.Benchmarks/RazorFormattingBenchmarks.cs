@@ -7,7 +7,7 @@ using LspRange = Csls.Protocol.Range;
 namespace Csls.Benchmarks;
 
 /// <summary>
-/// Measures complete and range-limited formatting for a current Razor project snapshot.
+/// Measures complete, range-limited, and on-type formatting for a current Razor snapshot.
 /// </summary>
 [BenchmarkCategory("Razor", "Formatting")]
 [MemoryDiagnoser]
@@ -15,6 +15,7 @@ public class RazorFormattingBenchmarks : IAsyncDisposable
 {
     private WorkspaceManager _workspaceManager = null!;
     private DocumentFormattingParams _parameters = null!;
+    private DocumentOnTypeFormattingParams _onTypeParameters = null!;
     private DocumentRangeFormattingParams _rangeParameters = null!;
     private string _fixturePath = null!;
     private int _disposeState;
@@ -71,13 +72,24 @@ public class RazorFormattingBenchmarks : IAsyncDisposable
             Range = new LspRange(new Position(1, 0), new Position(2, 0)),
             Options = _parameters.Options
         };
+        string memberLine = RazorText.Split('\n')[7];
+        _onTypeParameters = new DocumentOnTypeFormattingParams
+        {
+            TextDocument = _parameters.TextDocument,
+            Position = new Position(7, memberLine.Length),
+            Character = ";",
+            Options = _parameters.Options
+        };
         IReadOnlyList<TextEdit> edits = await _workspaceManager.GetFormattingEditsAsync(
             _parameters,
             CancellationToken.None).ConfigureAwait(false);
         IReadOnlyList<TextEdit> rangeEdits = await _workspaceManager
             .GetRangeFormattingEditsAsync(_rangeParameters, CancellationToken.None)
             .ConfigureAwait(false);
-        if (edits.Count == 0 || rangeEdits.Count == 0)
+        IReadOnlyList<TextEdit> onTypeEdits = await _workspaceManager
+            .GetOnTypeFormattingEditsAsync(_onTypeParameters, CancellationToken.None)
+            .ConfigureAwait(false);
+        if (edits.Count == 0 || rangeEdits.Count == 0 || onTypeEdits.Count == 0)
         {
             throw new InvalidOperationException(
                 "The Razor formatting benchmark fixture produced no edits.");
@@ -100,6 +112,15 @@ public class RazorFormattingBenchmarks : IAsyncDisposable
     public Task<IReadOnlyList<TextEdit>> FormatCurrentRangeAsync() =>
         _workspaceManager.GetRangeFormattingEditsAsync(
             _rangeParameters,
+            CancellationToken.None);
+
+    /// <summary>
+    /// Measures repeated localized formatting after a Razor C# semicolon is typed.
+    /// </summary>
+    [Benchmark]
+    public Task<IReadOnlyList<TextEdit>> FormatCurrentOnTypeAsync() =>
+        _workspaceManager.GetOnTypeFormattingEditsAsync(
+            _onTypeParameters,
             CancellationToken.None);
 
     /// <summary>

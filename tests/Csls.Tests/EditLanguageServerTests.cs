@@ -69,6 +69,19 @@ public sealed class EditLanguageServerTests
             Assert.IsTrue(capabilities.GetProperty("documentFormattingProvider").GetBoolean());
             Assert.IsTrue(
                 capabilities.GetProperty("documentRangeFormattingProvider").GetBoolean());
+            JsonElement onTypeFormatting = capabilities.GetProperty(
+                "documentOnTypeFormattingProvider");
+            Assert.AreEqual(
+                "}",
+                onTypeFormatting.GetProperty("firstTriggerCharacter").GetString());
+            JsonElement.ArrayEnumerator additionalFormattingTriggers = onTypeFormatting
+                .GetProperty("moreTriggerCharacter")
+                .EnumerateArray();
+            Assert.IsTrue(additionalFormattingTriggers.MoveNext());
+            Assert.AreEqual(";", additionalFormattingTriggers.Current.GetString());
+            Assert.IsTrue(additionalFormattingTriggers.MoveNext());
+            Assert.AreEqual("\n", additionalFormattingTriggers.Current.GetString());
+            Assert.IsFalse(additionalFormattingTriggers.MoveNext());
             Assert.Contains(
                 "source.organizeImports",
                 capabilities
@@ -139,6 +152,48 @@ public sealed class EditLanguageServerTests
                 "public static class Program{public static void Main(){Console.WriteLine(Calculator.Add(1,2));}}",
                 rangeFormattedText,
                 StringComparison.Ordinal);
+
+            string calculatorLine = ProgramText.Split('\n')[5];
+            int semicolonPosition = calculatorLine.IndexOf(';', StringComparison.Ordinal) + 1;
+            (string Character, Position Position)[] onTypeRequests =
+            [
+                (";", new Position(5, semicolonPosition)),
+                ("}", new Position(5, calculatorLine.Length)),
+                ("\n", new Position(6, 0))
+            ];
+            foreach ((string character, Position position) in onTypeRequests)
+            {
+                IReadOnlyList<TextEdit> onTypeFormattingEdits = await lsp
+                    .RequestOnTypeFormattingAsync(
+                        programPath,
+                        position,
+                        character,
+                        formattingOptions,
+                        TestContext.CancellationToken)
+                    .ConfigureAwait(false);
+                Assert.IsNotEmpty(onTypeFormattingEdits);
+                string onTypeFormattedText = ApplyTextEdits(
+                    ProgramText,
+                    onTypeFormattingEdits);
+                Assert.Contains(
+                    "public static class Calculator { public static int Add(int left, int right) => left + right; }",
+                    onTypeFormattedText,
+                    StringComparison.Ordinal);
+                Assert.Contains(
+                    "public static class Program{public static void Main(){Console.WriteLine(Calculator.Add(1,2));}}",
+                    onTypeFormattedText,
+                    StringComparison.Ordinal);
+            }
+
+            IReadOnlyList<TextEdit> unsupportedOnTypeFormatting = await lsp
+                .RequestOnTypeFormattingAsync(
+                    programPath,
+                    new Position(5, 0),
+                    "(",
+                    formattingOptions,
+                    TestContext.CancellationToken)
+                .ConfigureAwait(false);
+            Assert.IsEmpty(unsupportedOnTypeFormatting);
 
             IReadOnlyList<TextEdit> formatting = await lsp.RequestFormattingAsync(
                 programPath,

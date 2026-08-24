@@ -257,6 +257,11 @@ public sealed partial class LanguageServer : ILspRpcTarget, IAsyncDisposable
                 },
                 DocumentFormattingProvider = true,
                 DocumentRangeFormattingProvider = true,
+                DocumentOnTypeFormattingProvider = new DocumentOnTypeFormattingOptions
+                {
+                    FirstTriggerCharacter = "}",
+                    MoreTriggerCharacter = [";", "\n"]
+                },
                 CodeActionProvider = new CodeActionOptions
                 {
                     CodeActionKinds = ["source.organizeImports"],
@@ -1122,6 +1127,33 @@ public sealed partial class LanguageServer : ILspRpcTarget, IAsyncDisposable
                 {
                     throw new InvalidOperationException(
                         "The workspace changed while range formatting edits were being computed.");
+                }
+
+                return edits;
+            },
+            cancellationToken);
+    }
+
+    /// <inheritdoc />
+    public Task<IReadOnlyList<TextEdit>> OnTypeFormattingAsync(
+        DocumentOnTypeFormattingParams parameters,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(parameters);
+        EnsureRunning();
+        return _scheduler.ScheduleAsync(
+            "textDocument/onTypeFormatting",
+            RequestMode.ReadOnly,
+            () => _workspaceManager.Generation,
+            async context =>
+            {
+                IReadOnlyList<TextEdit> edits = await _workspaceManager
+                    .GetOnTypeFormattingEditsAsync(parameters, context.CancellationToken)
+                    .ConfigureAwait(false);
+                if (_workspaceManager.Generation != context.WorkspaceGeneration)
+                {
+                    throw new InvalidOperationException(
+                        "The workspace changed while on-type formatting edits were being computed.");
                 }
 
                 return edits;
