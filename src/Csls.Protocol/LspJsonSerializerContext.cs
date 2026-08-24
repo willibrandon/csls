@@ -79,6 +79,7 @@ namespace Csls.Protocol;
 [JsonSerializable(typeof(OptionalVersionedTextDocumentIdentifier))]
 [JsonSerializable(typeof(Position))]
 [JsonSerializable(typeof(PreviousResultId))]
+[JsonSerializable(typeof(PublishDiagnosticsParams))]
 [JsonSerializable(typeof(Range))]
 [JsonSerializable(typeof(ReferenceContext))]
 [JsonSerializable(typeof(ReferenceParams))]

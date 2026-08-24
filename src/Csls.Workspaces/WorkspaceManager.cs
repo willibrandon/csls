@@ -559,6 +559,17 @@ public sealed partial class WorkspaceManager : IAsyncDisposable
     }
 
     /// <summary>
+    /// Gets the client version for a document with a live open overlay.
+    /// </summary>
+    /// <param name="uri">The document URI to inspect.</param>
+    /// <returns>The open version, or null when the document is closed.</returns>
+    public int? GetOpenDocumentVersion(DocumentUri uri)
+    {
+        string path = uri.GetFileSystemPath();
+        return _documentVersions.TryGetValue(path, out int version) ? version : null;
+    }
+
+    /// <summary>
     /// Finds source definitions for the symbol at one immutable document position.
     /// </summary>
     /// <param name="parameters">The target document position.</param>

@@ -19,6 +19,9 @@ Workspace results cover user C# and Razor documents across all loaded projects,
 exclude build output, include versions for open files, and return unchanged reports
 when the client already holds the current result. Clients that provide a partial
 result token receive bounded batches through standard LSP progress notifications.
+Clients without pull-diagnostic support receive complete versioned push diagnostics
+after documents open, change, or save. Rapid edits are coalesced, and closing a
+document clears its published diagnostics.
 
 The server tracks open-document versions and applies incremental text changes.
 Workspace loading supports solutions, projects, loose C# files, multiple roots,
