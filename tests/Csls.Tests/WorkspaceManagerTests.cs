@@ -106,6 +106,60 @@ public sealed class WorkspaceManagerTests
     }
 
     /// <summary>
+    /// Loads one real solution once when clients repeat the same workspace root.
+    /// </summary>
+    [TestMethod]
+    public async Task DuplicateWorkspaceRootsLoadOnce()
+    {
+        string workspacePath = Path.Join(
+            Path.GetTempPath(),
+            $"csls-duplicate-workspace-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(workspacePath);
+        try
+        {
+            string documentPath = await WriteSolutionAsync(
+                workspacePath,
+                "DuplicateWorkspace",
+                TestContext.CancellationToken).ConfigureAwait(false);
+            var manager = new WorkspaceManager(NullLogger<WorkspaceManager>.Instance);
+            await using ConfiguredAsyncDisposable managerDisposal =
+                manager.ConfigureAwait(false);
+
+            await manager.LoadAsync(
+                [workspacePath, workspacePath],
+                TestContext.CancellationToken).ConfigureAwait(false);
+
+            Assert.AreEqual(workspacePath, Assert.ContainsSingle(manager.WorkspaceRoots));
+            string documentText = await File.ReadAllTextAsync(
+                documentPath,
+                TestContext.CancellationToken).ConfigureAwait(false);
+            var documentUri = DocumentUri.FromFileSystemPath(documentPath);
+            await manager.OpenDocumentAsync(
+                new TextDocumentItem
+                {
+                    Uri = documentUri,
+                    LanguageId = "csharp",
+                    Version = 1,
+                    Text = documentText
+                },
+                TestContext.CancellationToken).ConfigureAwait(false);
+            Hover? hover = await manager.GetHoverAsync(
+                new TextDocumentPositionParams
+                {
+                    TextDocument = new TextDocumentIdentifier { Uri = documentUri },
+                    Position = new Position(6, 10)
+                },
+                TestContext.CancellationToken).ConfigureAwait(false);
+            Assert.IsNotNull(hover);
+            Assert.Contains("System.Console", hover.Contents.Value);
+        }
+        finally
+        {
+            Directory.Delete(workspacePath, recursive: true);
+        }
+    }
+
+    /// <summary>
     /// Loads an extensionless shebang app through the selected SDK.
     /// </summary>
     [TestMethod]

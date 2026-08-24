@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>Csls.EndToEndPerformance</AssemblyName>
+    <RootNamespace>Csls.EndToEndPerformance</RootNamespace>
+    <Description>Real-process startup, workspace-load, memory, and process measurements for csls.</Description>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.StringTools"
+                      ExcludeAssets="runtime"
+                      PrivateAssets="all" />
+    <PackageReference Include="StreamJsonRpc" />
+    <PackageReference Include="System.CommandLine" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../../src/Csls.App/Csls.App.csproj"
+                      ReferenceOutputAssembly="false" />
+    <ProjectReference Include="../../src/Csls.Protocol/Csls.Protocol.csproj" />
+    <ProjectReference Include="../../src/Csls.Rpc/Csls.Rpc.csproj" />
+    <ProjectReference Include="../../src/Csls.Worker/Csls.Worker.csproj"
+                      ReferenceOutputAssembly="false" />
+  </ItemGroup>
+</Project>
