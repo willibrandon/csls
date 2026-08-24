@@ -71,8 +71,7 @@ public sealed class UnityWorkspaceLanguageServerTests
             Directory.CreateDirectory(Path.Join(unityPath, "UserSettings", "Layouts"));
 
             var manager = new WorkspaceManager(NullLogger<WorkspaceManager>.Instance);
-            await using (ConfiguredAsyncDisposable managerDisposal =
-                manager.ConfigureAwait(false))
+            await using (manager.ConfigureAwait(false))
             {
                 await manager.LoadAsync(
                     [workspacePath],
@@ -155,8 +154,7 @@ public sealed class UnityWorkspaceLanguageServerTests
 
             string createdPath = Path.Join(projectPath, "CreatedLibraryType.cs");
             var manager = new WorkspaceManager(NullLogger<WorkspaceManager>.Instance);
-            await using (ConfiguredAsyncDisposable managerDisposal =
-                manager.ConfigureAwait(false))
+            await using (manager.ConfigureAwait(false))
             {
                 await manager.LoadAsync(
                     [workspacePath],
