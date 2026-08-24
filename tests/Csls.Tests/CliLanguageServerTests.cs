@@ -153,7 +153,7 @@ public sealed class CliLanguageServerTests
         using Process watchProcess = StartCliProcess(
             cliPath,
             cliWorkerPath,
-            fixturePath,
+            repositoryRoot,
             ["sessions", "watch", "--json"]);
         Task<string> watchErrorTask = watchProcess.StandardError.ReadToEndAsync(
             TestContext.CancellationToken);
