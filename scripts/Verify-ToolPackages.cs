@@ -327,6 +327,8 @@ static async Task VerifyInstalledToolAsync(
     string toolPath = Path.Join(verificationRoot, "tools", packageId);
     string dotnetHome = Path.Join(verificationRoot, "dotnet-home", packageId);
     string packages = Path.Join(verificationRoot, "nuget-packages", packageId);
+    string nugetConfiguration = Path.Join(verificationRoot, "NuGet.Config");
+    WriteVerificationNuGetConfiguration(nugetConfiguration, packageRoot);
     var environment = new Dictionary<string, string>(StringComparer.Ordinal)
     {
         ["DOTNET_CLI_HOME"] = dotnetHome,
@@ -339,10 +341,9 @@ static async Task VerifyInstalledToolAsync(
         version,
         "--tool-path",
         toolPath,
-        "--add-source",
-        packageRoot,
+        "--configfile",
+        nugetConfiguration,
         "--no-cache",
-        "--ignore-failed-sources"
     ];
     await RunCheckedAsync(
         ResolveDotNetHost(),
@@ -402,6 +403,29 @@ static async Task VerifyInstalledToolAsync(
         throw new InvalidDataException(
             $"Uninstalling {packageId} left its command shim at {commandPath}.");
     }
+}
+
+static void WriteVerificationNuGetConfiguration(
+    string configurationPath,
+    string packageRoot)
+{
+    var configuration = new XDocument(
+        new XElement(
+            "configuration",
+            new XElement(
+                "packageSources",
+                new XElement("clear"),
+                new XElement(
+                    "add",
+                    new XAttribute("key", "verification"),
+                    new XAttribute("value", packageRoot))),
+            new XElement(
+                "packageSourceMapping",
+                new XElement(
+                    "packageSource",
+                    new XAttribute("key", "verification"),
+                    new XElement("package", new XAttribute("pattern", "csls*"))))));
+    configuration.Save(configurationPath);
 }
 
 static async Task VerifyImplementationToolAsync(
