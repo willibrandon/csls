@@ -627,14 +627,9 @@ public sealed partial class WorkspaceManager
         IMethodSymbol? bestMethod = null;
         int bestRequiredParameterCount = int.MaxValue;
         int bestParameterCount = int.MaxValue;
-        foreach (ISymbol candidate in candidates)
+        foreach (IMethodSymbol method in candidates.OfType<IMethodSymbol>())
         {
             cancellationToken.ThrowIfCancellationRequested();
-            if (candidate is not IMethodSymbol method)
-            {
-                continue;
-            }
-
             int requiredParameterCount = 0;
             foreach (IParameterSymbol parameter in method.Parameters)
             {
