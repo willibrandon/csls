@@ -630,14 +630,8 @@ public sealed partial class WorkspaceManager
         foreach (IMethodSymbol method in candidates.OfType<IMethodSymbol>())
         {
             cancellationToken.ThrowIfCancellationRequested();
-            int requiredParameterCount = 0;
-            foreach (IParameterSymbol parameter in method.Parameters)
-            {
-                if (!parameter.IsOptional)
-                {
-                    requiredParameterCount++;
-                }
-            }
+            int requiredParameterCount = method.Parameters.Count(
+                static parameter => !parameter.IsOptional);
 
             if (requiredParameterCount > bestRequiredParameterCount ||
                 requiredParameterCount == bestRequiredParameterCount &&
