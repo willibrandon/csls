@@ -1,7 +1,6 @@
 using Hex1b;
 using Hex1b.Automation;
 using Hex1b.Input;
-using System.Diagnostics;
 using System.Text.Json;
 
 namespace Csls.Tests;
@@ -195,8 +194,9 @@ public sealed class EmacsLanguageServerTests
                 await workload.DisposeAsync().ConfigureAwait(false);
                 if (serverProcessId is int processId)
                 {
-                    await WaitForProcessExitAsync(
+                    await ProcessExitWaiter.WaitAsync(
                         processId,
+                        TimeSpan.FromSeconds(10),
                         TestContext.CancellationToken).ConfigureAwait(false);
                 }
             }
@@ -204,28 +204,6 @@ public sealed class EmacsLanguageServerTests
         finally
         {
             Directory.Delete(fixturePath, recursive: true);
-        }
-    }
-
-    private static async Task WaitForProcessExitAsync(
-        int processId,
-        CancellationToken cancellationToken)
-    {
-        Process process;
-        try
-        {
-            process = Process.GetProcessById(processId);
-        }
-        catch (ArgumentException)
-        {
-            return;
-        }
-
-        using (process)
-        {
-            await process.WaitForExitAsync(cancellationToken)
-                .WaitAsync(TimeSpan.FromSeconds(10), cancellationToken)
-                .ConfigureAwait(false);
         }
     }
 

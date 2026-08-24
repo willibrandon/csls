@@ -21,6 +21,7 @@ public sealed partial class LanguageServer : ILspRpcTarget, IAsyncDisposable
     private readonly TaskCompletionSource _exitRequested = new(
         TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly CancellationTokenSource _exitSource = new();
+    private bool _completionMarkdownSupport;
     private bool _completionSnippetSupport;
     private int _foldingRangeLimit = MaximumFoldingRanges;
     private bool _lineFoldingOnly;
@@ -30,6 +31,8 @@ public sealed partial class LanguageServer : ILspRpcTarget, IAsyncDisposable
     private bool _supportsRegionFoldingKind = true;
     private bool _supportsConfigurationPull;
     private bool _supportsPullDiagnostics;
+    private bool _hoverMarkdownSupport;
+    private bool _signatureMarkdownSupport;
     private LanguageServerConfiguration _configuration = new();
     private int _lifecycleState;
     private int _disposeState;
@@ -131,7 +134,16 @@ public sealed partial class LanguageServer : ILspRpcTarget, IAsyncDisposable
     {
         ArgumentNullException.ThrowIfNull(parameters);
         Transition(ServerLifecycleState.Created, ServerLifecycleState.InitializeResponded);
+        _completionMarkdownSupport = SupportsDocumentationMarkdown(
+            parameters.Capabilities,
+            "completion");
         _completionSnippetSupport = SupportsCompletionSnippets(parameters.Capabilities);
+        _hoverMarkdownSupport = SupportsDocumentationMarkdown(
+            parameters.Capabilities,
+            "hover");
+        _signatureMarkdownSupport = SupportsDocumentationMarkdown(
+            parameters.Capabilities,
+            "signatureHelp");
         _foldingRangeLimit = GetFoldingRangeLimit(parameters.Capabilities);
         _lineFoldingOnly = SupportsFoldingRangeBoolean(
             parameters.Capabilities,
@@ -613,7 +625,10 @@ public sealed partial class LanguageServer : ILspRpcTarget, IAsyncDisposable
             async context =>
             {
                 CompletionItem resolvedItem = await _workspaceManager
-                    .ResolveCompletionAsync(item, context.CancellationToken)
+                    .ResolveCompletionAsync(
+                        item,
+                        context.CancellationToken,
+                        _completionMarkdownSupport)
                     .ConfigureAwait(false);
                 if (_workspaceManager.Generation != context.WorkspaceGeneration)
                 {
@@ -972,7 +987,10 @@ public sealed partial class LanguageServer : ILspRpcTarget, IAsyncDisposable
             async context =>
             {
                 Hover? hover = await _workspaceManager
-                    .GetHoverAsync(parameters, context.CancellationToken)
+                    .GetHoverAsync(
+                        parameters,
+                        context.CancellationToken,
+                        _hoverMarkdownSupport)
                     .ConfigureAwait(false);
                 return _workspaceManager.Generation == context.WorkspaceGeneration
                     ? hover
@@ -1068,7 +1086,10 @@ public sealed partial class LanguageServer : ILspRpcTarget, IAsyncDisposable
             async context =>
             {
                 SignatureHelp? signatureHelp = await _workspaceManager
-                    .GetSignatureHelpAsync(parameters, context.CancellationToken)
+                    .GetSignatureHelpAsync(
+                        parameters,
+                        context.CancellationToken,
+                        _signatureMarkdownSupport)
                     .ConfigureAwait(false);
                 return _workspaceManager.Generation == context.WorkspaceGeneration
                     ? signatureHelp
@@ -1418,6 +1439,54 @@ public sealed partial class LanguageServer : ILspRpcTarget, IAsyncDisposable
             completionItem.ValueKind == JsonValueKind.Object &&
             completionItem.TryGetProperty("snippetSupport", out JsonElement snippetSupport) &&
             snippetSupport.ValueKind is JsonValueKind.True;
+    }
+
+    private static bool SupportsDocumentationMarkdown(
+        JsonElement capabilities,
+        string featureName)
+    {
+        if (capabilities.ValueKind != JsonValueKind.Object ||
+            !capabilities.TryGetProperty("textDocument", out JsonElement textDocument) ||
+            textDocument.ValueKind != JsonValueKind.Object ||
+            !textDocument.TryGetProperty(featureName, out JsonElement feature) ||
+            feature.ValueKind != JsonValueKind.Object)
+        {
+            return false;
+        }
+
+        JsonElement owner = feature;
+        string formatProperty = "contentFormat";
+        if (string.Equals(featureName, "completion", StringComparison.Ordinal))
+        {
+            if (!feature.TryGetProperty("completionItem", out owner) ||
+                owner.ValueKind != JsonValueKind.Object)
+            {
+                return false;
+            }
+
+            formatProperty = "documentationFormat";
+        }
+        else if (string.Equals(featureName, "signatureHelp", StringComparison.Ordinal))
+        {
+            if (!feature.TryGetProperty("signatureInformation", out owner) ||
+                owner.ValueKind != JsonValueKind.Object)
+            {
+                return false;
+            }
+
+            formatProperty = "documentationFormat";
+        }
+
+        return owner.TryGetProperty(formatProperty, out JsonElement formats) &&
+            formats.ValueKind == JsonValueKind.Array &&
+            formats
+                .EnumerateArray()
+                .Any(static format =>
+                    format.ValueKind == JsonValueKind.String &&
+                    string.Equals(
+                        format.GetString(),
+                        "markdown",
+                        StringComparison.Ordinal));
     }
 
     private static int GetFoldingRangeLimit(JsonElement capabilities)

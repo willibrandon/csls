@@ -1,3 +1,4 @@
+using Csls.Protocol;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.QuickInfo;
 using Microsoft.CodeAnalysis.Text;
@@ -10,15 +11,17 @@ namespace Csls.Workspaces;
 internal static class WorkspaceHoverService
 {
     /// <summary>
-    /// Gets stable Markdown and its generated or source document span.
+    /// Gets stable documentation and its generated or source document span.
     /// </summary>
     /// <param name="document">The immutable Roslyn document snapshot.</param>
     /// <param name="offset">The zero-based UTF-16 document offset.</param>
+    /// <param name="supportsMarkdown">Whether the receiving client accepts Markdown.</param>
     /// <param name="cancellationToken">The operation cancellation token.</param>
     /// <returns>The hover content and document span, or null when no symbol is present.</returns>
-    internal static async Task<(string Markdown, TextSpan Span)?> GetAsync(
+    internal static async Task<(MarkupContent Content, TextSpan Span)?> GetAsync(
         Document document,
         int offset,
+        bool supportsMarkdown,
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(document);
@@ -30,30 +33,72 @@ internal static class WorkspaceHoverService
                 .ConfigureAwait(false);
             if (quickInfo is not null)
             {
-                string markdown = QuickInfoMarkdownFormatter.Format(quickInfo);
-                if (!string.IsNullOrWhiteSpace(markdown))
+                MarkupContent content = QuickInfoMarkupFormatter.Format(
+                    quickInfo,
+                    supportsMarkdown);
+                if (!string.IsNullOrWhiteSpace(content.Value))
                 {
-                    return (markdown, quickInfo.Span);
+                    (ISymbol? quickInfoSymbol, Compilation compilation, _) =
+                        await ResolveSymbolAsync(
+                            document,
+                            offset,
+                            cancellationToken).ConfigureAwait(false);
+                    MarkupContent? supplemental = quickInfoSymbol is null
+                        ? null
+                        : SymbolDocumentationFormatter
+                            .FormatSymbol(
+                                quickInfoSymbol,
+                                compilation,
+                                supportsMarkdown,
+                                cancellationToken)
+                            .SupplementalDocumentation;
+                    return (
+                        TaggedTextMarkupFormatter.Combine(content, supplemental),
+                        quickInfo.Span);
                 }
             }
         }
 
-        SyntaxNode root = await document.GetSyntaxRootAsync(cancellationToken).ConfigureAwait(false)
-            ?? throw new InvalidOperationException("Roslyn returned no syntax root.");
-        SyntaxToken token = root.FindToken(offset, findInsideTrivia: true);
-        if (token.Parent is not SyntaxNode parent)
+        (ISymbol? symbol, _, TextSpan span) = await ResolveSymbolAsync(
+            document,
+            offset,
+            cancellationToken).ConfigureAwait(false);
+        if (symbol is null)
         {
             return null;
         }
 
+        string display = symbol.ToDisplayString();
+        return (
+            new MarkupContent
+            {
+                Kind = supportsMarkdown ? "markdown" : "plaintext",
+                Value = supportsMarkdown
+                    ? $"```csharp{Environment.NewLine}{display}{Environment.NewLine}```"
+                    : display
+            },
+            span);
+    }
+
+    private static async Task<(
+        ISymbol? Symbol,
+        Compilation Compilation,
+        TextSpan Span)> ResolveSymbolAsync(
+        Document document,
+        int offset,
+        CancellationToken cancellationToken)
+    {
+        SyntaxNode root = await document.GetSyntaxRootAsync(cancellationToken).ConfigureAwait(false)
+            ?? throw new InvalidOperationException("Roslyn returned no syntax root.");
+        SyntaxToken token = root.FindToken(offset, findInsideTrivia: true);
         SemanticModel semanticModel = await document
             .GetSemanticModelAsync(cancellationToken)
             .ConfigureAwait(false)
             ?? throw new InvalidOperationException("Roslyn returned no semantic model.");
-        ISymbol? symbol = semanticModel.GetSymbolInfo(parent, cancellationToken).Symbol
-            ?? semanticModel.GetDeclaredSymbol(parent, cancellationToken);
-        return symbol is null
+        ISymbol? symbol = token.Parent is null
             ? null
-            : ($"```csharp{Environment.NewLine}{symbol.ToDisplayString()}{Environment.NewLine}```", token.Span);
+            : semanticModel.GetSymbolInfo(token.Parent, cancellationToken).Symbol
+                ?? semanticModel.GetDeclaredSymbol(token.Parent, cancellationToken);
+        return (symbol, semanticModel.Compilation, token.Span);
     }
 }

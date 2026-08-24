@@ -139,6 +139,7 @@ public sealed class HelixLanguageServerTests
                 .WithHeadless()
                 .WithDimensions(100, 24)
                 .Build();
+            int? serverProcessId = null;
 
             try
             {
@@ -152,10 +153,10 @@ public sealed class HelixLanguageServerTests
 
                         await automator.WaitUntilAlternateScreenAsync().ConfigureAwait(false);
                         await automator.WaitUntilTextAsync("Console.WriteLine").ConfigureAwait(false);
-                        await ControlSessionWaiter.WaitForRunningAsync(
+                        serverProcessId = (await ControlSessionWaiter.WaitForRunningAsync(
                             fixturePath,
                             TimeSpan.FromSeconds(60),
-                            TestContext.CancellationToken).ConfigureAwait(false);
+                            TestContext.CancellationToken).ConfigureAwait(false)).ProcessId;
                         await automator.SpaceAsync(TestContext.CancellationToken).ConfigureAwait(false);
                         await automator.KeyAsync(Hex1bKey.K, TestContext.CancellationToken)
                             .ConfigureAwait(false);
@@ -197,6 +198,13 @@ public sealed class HelixLanguageServerTests
             {
                 await terminal.DisposeAsync().ConfigureAwait(false);
                 await workload.DisposeAsync().ConfigureAwait(false);
+                if (serverProcessId is int processId)
+                {
+                    await ProcessExitWaiter.WaitAsync(
+                        processId,
+                        TimeSpan.FromSeconds(10),
+                        TestContext.CancellationToken).ConfigureAwait(false);
+                }
             }
         }
         finally

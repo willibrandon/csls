@@ -13,5 +13,5 @@ public sealed record ParameterInformation
     /// <summary>
     /// Gets optional parameter documentation.
     /// </summary>
-    public string? Documentation { get; init; }
+    public MarkupContent? Documentation { get; init; }
 }

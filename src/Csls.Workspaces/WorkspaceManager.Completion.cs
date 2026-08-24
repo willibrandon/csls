@@ -1,6 +1,7 @@
 using Csls.Protocol;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.Completion;
+using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Tags;
 using Microsoft.CodeAnalysis.Text;
 using System.Collections.Immutable;
@@ -116,10 +117,12 @@ public sealed partial class WorkspaceManager
     /// </summary>
     /// <param name="item">The completion candidate returned by this workspace generation.</param>
     /// <param name="cancellationToken">The operation cancellation token.</param>
-    /// <returns>The completion candidate enriched with plain-text documentation.</returns>
+    /// <param name="supportsMarkdown">Whether the receiving client accepts Markdown.</param>
+    /// <returns>The completion candidate enriched with documentation.</returns>
     public async Task<LspCompletionItem> ResolveCompletionAsync(
         LspCompletionItem item,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool supportsMarkdown = false)
     {
         ArgumentNullException.ThrowIfNull(item);
         CompletionItemData data = item.Data
@@ -180,17 +183,123 @@ public sealed partial class WorkspaceManager
         CompletionDescription? description = await service
             .GetDescriptionAsync(document, sourceItem, cancellationToken)
             .ConfigureAwait(false);
-        string? documentation = description?.Text.Trim();
-        return string.IsNullOrEmpty(documentation)
+        MarkupContent? documentation = description is null ||
+            description.TaggedParts.IsDefaultOrEmpty
+                ? null
+                : TaggedTextMarkupFormatter.Format(
+                    description.TaggedParts,
+                    supportsMarkdown);
+        (ISymbol? documentationSymbol, Compilation? compilation) =
+            await ResolveCompletionSymbolAsync(
+                document,
+                sourceItem,
+                offset,
+                cancellationToken).ConfigureAwait(false);
+        if (documentationSymbol is not null && compilation is not null)
+        {
+            MarkupContent? supplemental = SymbolDocumentationFormatter
+                .FormatSymbol(
+                    documentationSymbol,
+                    compilation,
+                    supportsMarkdown,
+                    cancellationToken)
+                .SupplementalDocumentation;
+            documentation = documentation is null
+                ? supplemental
+                : TaggedTextMarkupFormatter.Combine(documentation, supplemental);
+        }
+
+        return documentation is null || string.IsNullOrEmpty(documentation.Value)
             ? item
             : item with
             {
-                Documentation = new MarkupContent
-                {
-                    Kind = "plaintext",
-                    Value = documentation
-                }
+                Documentation = documentation
             };
+    }
+
+    private static async Task<(ISymbol? Symbol, Compilation? Compilation)>
+        ResolveCompletionSymbolAsync(
+            Document document,
+            RoslynCompletionItem item,
+            int offset,
+            CancellationToken cancellationToken)
+    {
+        SemanticModel semanticModel = await document
+            .GetSemanticModelAsync(cancellationToken)
+            .ConfigureAwait(false)
+            ?? throw new InvalidOperationException("Roslyn returned no semantic model.");
+        string name = item.Properties.TryGetValue("SymbolName", out string? symbolName)
+            ? symbolName
+            : item.DisplayText;
+        SyntaxNode root = await document.GetSyntaxRootAsync(cancellationToken)
+            .ConfigureAwait(false)
+            ?? throw new InvalidOperationException("Roslyn returned no syntax root.");
+        int tokenOffset = Math.Clamp(offset - 1, 0, Math.Max(0, root.FullSpan.End - 1));
+        MemberAccessExpressionSyntax? memberAccess = root
+            .FindToken(tokenOffset, findInsideTrivia: true)
+            .Parent?
+            .AncestorsAndSelf()
+            .OfType<MemberAccessExpressionSyntax>()
+            .FirstOrDefault();
+        if (memberAccess is not null)
+        {
+            ITypeSymbol? receiverType = semanticModel
+                .GetTypeInfo(memberAccess.Expression, cancellationToken)
+                .Type;
+            if (receiverType is not null)
+            {
+                ISymbol? member = SelectDocumentedSymbol(
+                    semanticModel.LookupSymbols(
+                        offset,
+                        receiverType,
+                        name,
+                        includeReducedExtensionMethods: true),
+                    cancellationToken);
+                if (member is not null)
+                {
+                    return (member, semanticModel.Compilation);
+                }
+            }
+        }
+
+        ISymbol? visibleSymbol = SelectDocumentedSymbol(
+            semanticModel.LookupSymbols(
+                offset,
+                name: name,
+                includeReducedExtensionMethods: true),
+            cancellationToken);
+        if (visibleSymbol is not null)
+        {
+            return (visibleSymbol, semanticModel.Compilation);
+        }
+
+        ISymbol? compilationSymbol = SelectDocumentedSymbol(
+            semanticModel.Compilation.GetSymbolsWithName(
+                name,
+                SymbolFilter.TypeAndMember,
+                cancellationToken),
+            cancellationToken);
+        return (compilationSymbol, semanticModel.Compilation);
+    }
+
+    private static ISymbol? SelectDocumentedSymbol(
+        IEnumerable<ISymbol> symbols,
+        CancellationToken cancellationToken)
+    {
+        ISymbol? first = null;
+        foreach (ISymbol symbol in symbols)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            first ??= symbol;
+            if (!string.IsNullOrWhiteSpace(symbol.GetDocumentationCommentXml(
+                expandIncludes: true,
+                cancellationToken: cancellationToken)))
+            {
+                return symbol;
+            }
+        }
+
+        return first;
     }
 
     private static LspCompletionItem? CreateCompletionItem(
