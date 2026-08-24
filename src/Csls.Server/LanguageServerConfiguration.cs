@@ -1,3 +1,5 @@
+using Microsoft.Extensions.Logging;
+
 namespace Csls.Server;
 
 /// <summary>
@@ -14,4 +16,14 @@ public sealed record LanguageServerConfiguration
     /// Gets whether the server returns document formatting edits before a save.
     /// </summary>
     public bool FormatOnSave { get; init; }
+
+    /// <summary>
+    /// Gets the MSBuild configuration used to evaluate loaded projects.
+    /// </summary>
+    public string BuildConfiguration { get; init; } = "Debug";
+
+    /// <summary>
+    /// Gets the minimum level written by language-server logging providers.
+    /// </summary>
+    public LogLevel LogLevel { get; init; } = LogLevel.Information;
 }

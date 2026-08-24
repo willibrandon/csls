@@ -63,12 +63,18 @@ public sealed partial class LanguageServer
                     ParseConfigurationSection(values[0], LegacyConfigurationSection),
                     ParseConfigurationSection(values[1], PreferredConfigurationSection));
                 bool changed = await _workspaceManager
-                    .ConfigureAsync(configuration.EnableAnalyzers, context.CancellationToken)
+                    .ConfigureAsync(
+                        configuration.EnableAnalyzers,
+                        configuration.BuildConfiguration,
+                        context.CancellationToken)
                     .ConfigureAwait(false);
                 _configuration = configuration;
+                _logFilter.SetMinimumLevel(configuration.LogLevel);
                 LogConfigurationApplied(
                     configuration.EnableAnalyzers,
                     configuration.FormatOnSave,
+                    configuration.BuildConfiguration,
+                    configuration.LogLevel,
                     changed);
                 return changed;
             },
@@ -88,11 +94,15 @@ public sealed partial class LanguageServer
             {
                 bool changed = await _workspaceManager.ConfigureAsync(
                     configuration.EnableAnalyzers,
+                    configuration.BuildConfiguration,
                     context.CancellationToken).ConfigureAwait(false);
                 _configuration = configuration;
+                _logFilter.SetMinimumLevel(configuration.LogLevel);
                 LogConfigurationApplied(
                     configuration.EnableAnalyzers,
                     configuration.FormatOnSave,
+                    configuration.BuildConfiguration,
+                    configuration.LogLevel,
                     changed);
                 return changed;
             },
@@ -134,7 +144,11 @@ public sealed partial class LanguageServer
                 PreferredConfigurationSection));
     }
 
-    private static (bool? EnableAnalyzers, bool? FormatOnSave) ParseConfigurationSection(
+    private static (
+        bool? EnableAnalyzers,
+        bool? FormatOnSave,
+        string? BuildConfiguration,
+        LogLevel? LogLevel) ParseConfigurationSection(
         JsonElement? section,
         string sectionName)
     {
@@ -151,7 +165,50 @@ public sealed partial class LanguageServer
 
         return (
             ParseBooleanSetting(value, sectionName, "enableAnalyzers"),
-            ParseBooleanSetting(value, sectionName, "formatOnSave"));
+            ParseBooleanSetting(value, sectionName, "formatOnSave"),
+            ParseStringSetting(value, sectionName, "configuration"),
+            ParseLogLevelSetting(value, sectionName));
+    }
+
+    private static string? ParseStringSetting(
+        JsonElement section,
+        string sectionName,
+        string settingName)
+    {
+        if (!section.TryGetProperty(settingName, out JsonElement setting) ||
+            setting.ValueKind is JsonValueKind.Null or JsonValueKind.Undefined)
+        {
+            return null;
+        }
+
+        if (setting.ValueKind is not JsonValueKind.String ||
+            string.IsNullOrWhiteSpace(setting.GetString()))
+        {
+            throw new InvalidDataException(
+                $"The {sectionName}.{settingName} setting must be a non-empty string.");
+        }
+
+        return setting.GetString();
+    }
+
+    private static LogLevel? ParseLogLevelSetting(
+        JsonElement section,
+        string sectionName)
+    {
+        string? value = ParseStringSetting(section, sectionName, "logLevel");
+        if (value is null)
+        {
+            return null;
+        }
+
+        if (!Enum.TryParse(value, ignoreCase: true, out LogLevel level) ||
+            !Enum.IsDefined(level))
+        {
+            throw new InvalidDataException(
+                $"The {sectionName}.logLevel setting must be a Microsoft logging level.");
+        }
+
+        return level;
     }
 
     private static bool? ParseBooleanSetting(
@@ -175,23 +232,37 @@ public sealed partial class LanguageServer
     }
 
     private static LanguageServerConfiguration MergeConfiguration(
-        (bool? EnableAnalyzers, bool? FormatOnSave) legacy,
-        (bool? EnableAnalyzers, bool? FormatOnSave) preferred)
+        (
+            bool? EnableAnalyzers,
+            bool? FormatOnSave,
+            string? BuildConfiguration,
+            LogLevel? LogLevel) legacy,
+        (
+            bool? EnableAnalyzers,
+            bool? FormatOnSave,
+            string? BuildConfiguration,
+            LogLevel? LogLevel) preferred)
     {
         return new LanguageServerConfiguration
         {
             EnableAnalyzers = preferred.EnableAnalyzers ?? legacy.EnableAnalyzers ?? true,
-            FormatOnSave = preferred.FormatOnSave ?? legacy.FormatOnSave ?? false
+            FormatOnSave = preferred.FormatOnSave ?? legacy.FormatOnSave ?? false,
+            BuildConfiguration = preferred.BuildConfiguration ??
+                legacy.BuildConfiguration ??
+                "Debug",
+            LogLevel = preferred.LogLevel ?? legacy.LogLevel ?? LogLevel.Information
         };
     }
 
     [LoggerMessage(
         EventId = 2,
         Level = LogLevel.Information,
-        Message = "Applied configuration: analyzer diagnostics enabled={EnableAnalyzers}, format on save={FormatOnSave}, workspace changed={Changed}")]
+        Message = "Applied configuration: analyzer diagnostics enabled={EnableAnalyzers}, format on save={FormatOnSave}, build configuration={BuildConfiguration}, log level={LogLevel}, workspace changed={Changed}")]
     private partial void LogConfigurationApplied(
         bool enableAnalyzers,
         bool formatOnSave,
+        string buildConfiguration,
+        LogLevel logLevel,
         bool changed);
 
     [LoggerMessage(
