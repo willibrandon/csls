@@ -121,3 +121,10 @@ Linux, and macOS. It is not exposed over the network.
 The CLI and MCP server authenticate through operating-system file permissions and
 connect to this socket. This keeps editor requests, terminal commands, and agent
 requests on one Roslyn workspace.
+
+## Debug information
+
+`$/csharp/debugInfo` returns the live workspace phase, loaded folders, active
+requests, queue counters, and cumulative request timings. It bypasses normal
+request scheduling, so clients and tests can inspect a blocked or shutting-down
+session without waiting for queued language work.

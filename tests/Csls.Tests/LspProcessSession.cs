@@ -17,6 +17,7 @@ internal sealed class LspProcessSession : IAsyncDisposable
     private readonly SystemTextJsonFormatter _formatter;
     private readonly HeaderDelimitedMessageHandler _messageHandler;
     private readonly JsonRpc _rpc;
+    private readonly ExternalWorkloadLease _workloadLease;
     private int _initializationCompleted;
 
     private LspProcessSession(
@@ -24,13 +25,15 @@ internal sealed class LspProcessSession : IAsyncDisposable
         Task<string> standardErrorTask,
         SystemTextJsonFormatter formatter,
         HeaderDelimitedMessageHandler messageHandler,
-        JsonRpc rpc)
+        JsonRpc rpc,
+        ExternalWorkloadLease workloadLease)
     {
         _process = process;
         _standardErrorTask = standardErrorTask;
         _formatter = formatter;
         _messageHandler = messageHandler;
         _rpc = rpc;
+        _workloadLease = workloadLease;
     }
 
     /// <summary>
@@ -78,69 +81,101 @@ internal sealed class LspProcessSession : IAsyncDisposable
             }
         }
 
-        Process process = Process.Start(startInfo)
-            ?? throw new InvalidOperationException($"The {displayName} process did not start.");
-        Task<string> standardErrorTask = process.StandardError.ReadToEndAsync();
-        var formatter = new SystemTextJsonFormatter
+        var workloadLease = ExternalWorkloadLease.Acquire();
+        Process process;
+        try
         {
-            JsonSerializerOptions = LspRpcJson.CreateSerializerOptions()
-        };
-        var messageHandler = new HeaderDelimitedMessageHandler(
-            process.StandardInput.BaseStream,
-            process.StandardOutput.BaseStream,
-            formatter);
-        var rpc = new JsonRpc(messageHandler)
+            process = Process.Start(startInfo)
+                ?? throw new InvalidOperationException($"The {displayName} process did not start.");
+        }
+        catch
         {
-            CancelLocallyInvokedMethodsWhenConnectionIsClosed = true,
-            DisplayName = displayName
-        };
-        if (client is not null)
-        {
-            Func<ConfigurationParams, CancellationToken, Task<JsonElement?[]>> handler =
-                client.GetConfigurationAsync;
-            var attribute = new JsonRpcMethodAttribute("workspace/configuration")
-            {
-                UseSingleObjectParameterDeserialization = true
-            };
-            rpc.AddLocalRpcMethod(
-                handler.Method,
-                handler.Target ?? throw new InvalidOperationException(
-                    "The configuration handler has no client target."),
-                attribute);
-
-            Func<WorkspaceDiagnosticProgressParams, Task> progressHandler =
-                client.PublishWorkspaceDiagnosticProgressAsync;
-            var progressAttribute = new JsonRpcMethodAttribute("$/progress")
-            {
-                UseSingleObjectParameterDeserialization = true
-            };
-            rpc.AddLocalRpcMethod(
-                progressHandler.Method,
-                progressHandler.Target ?? throw new InvalidOperationException(
-                    "The progress handler has no client target."),
-                progressAttribute);
-
-            Func<PublishDiagnosticsParams, Task> diagnosticHandler =
-                client.PublishDiagnosticsAsync;
-            var diagnosticAttribute = new JsonRpcMethodAttribute(
-                "textDocument/publishDiagnostics")
-            {
-                UseSingleObjectParameterDeserialization = true
-            };
-            rpc.AddLocalRpcMethod(
-                diagnosticHandler.Method,
-                diagnosticHandler.Target ?? throw new InvalidOperationException(
-                    "The diagnostic handler has no client target."),
-                diagnosticAttribute);
+            workloadLease.Dispose();
+            throw;
         }
 
-        rpc.StartListening();
-        return new LspProcessSession(
-            process,
-            standardErrorTask,
-            formatter,
-            messageHandler,
-            rpc);
+        try
+        {
+            Task<string> standardErrorTask = process.StandardError.ReadToEndAsync();
+            var formatter = new SystemTextJsonFormatter
+            {
+                JsonSerializerOptions = LspRpcJson.CreateSerializerOptions()
+            };
+            var messageHandler = new HeaderDelimitedMessageHandler(
+                process.StandardInput.BaseStream,
+                process.StandardOutput.BaseStream,
+                formatter);
+            var rpc = new JsonRpc(messageHandler)
+            {
+                CancelLocallyInvokedMethodsWhenConnectionIsClosed = true,
+                DisplayName = displayName
+            };
+            if (client is not null)
+            {
+                Func<ConfigurationParams, CancellationToken, Task<JsonElement?[]>> handler =
+                    client.GetConfigurationAsync;
+                var attribute = new JsonRpcMethodAttribute("workspace/configuration")
+                {
+                    UseSingleObjectParameterDeserialization = true
+                };
+                rpc.AddLocalRpcMethod(
+                    handler.Method,
+                    handler.Target ?? throw new InvalidOperationException(
+                        "The configuration handler has no client target."),
+                    attribute);
+
+                Func<WorkspaceDiagnosticProgressParams, Task> progressHandler =
+                    client.PublishWorkspaceDiagnosticProgressAsync;
+                var progressAttribute = new JsonRpcMethodAttribute("$/progress")
+                {
+                    UseSingleObjectParameterDeserialization = true
+                };
+                rpc.AddLocalRpcMethod(
+                    progressHandler.Method,
+                    progressHandler.Target ?? throw new InvalidOperationException(
+                        "The progress handler has no client target."),
+                    progressAttribute);
+
+                Func<PublishDiagnosticsParams, Task> diagnosticHandler =
+                    client.PublishDiagnosticsAsync;
+                var diagnosticAttribute = new JsonRpcMethodAttribute(
+                    "textDocument/publishDiagnostics")
+                {
+                    UseSingleObjectParameterDeserialization = true
+                };
+                rpc.AddLocalRpcMethod(
+                    diagnosticHandler.Method,
+                    diagnosticHandler.Target ?? throw new InvalidOperationException(
+                        "The diagnostic handler has no client target."),
+                    diagnosticAttribute);
+            }
+
+            rpc.StartListening();
+            return new LspProcessSession(
+                process,
+                standardErrorTask,
+                formatter,
+                messageHandler,
+                rpc,
+                workloadLease);
+        }
+        catch
+        {
+            try
+            {
+                if (!process.HasExited)
+                {
+                    process.Kill(entireProcessTree: true);
+                }
+            }
+            finally
+            {
+                process.Dispose();
+                workloadLease.Dispose();
+            }
+
+            throw;
+        }
     }
 
     /// <summary>
@@ -752,6 +787,18 @@ internal sealed class LspProcessSession : IAsyncDisposable
             cancellationToken);
 
     /// <summary>
+    /// Requests the live scheduler-independent debug observation from the real server process.
+    /// </summary>
+    /// <param name="cancellationToken">The test cancellation token.</param>
+    /// <returns>The current workspace and request diagnostics.</returns>
+    internal Task<CSharpDebugInfo> RequestDebugInfoAsync(
+        CancellationToken cancellationToken) =>
+        _rpc.InvokeWithParameterObjectAsync<CSharpDebugInfo>(
+            "$/csharp/debugInfo",
+            new InitializedParams(),
+            cancellationToken);
+
+    /// <summary>
     /// Requests complete semantic tokens for one test document.
     /// </summary>
     /// <param name="documentPath">The absolute target document path.</param>
@@ -1313,6 +1360,17 @@ internal sealed class LspProcessSession : IAsyncDisposable
     /// <returns>The captured server diagnostics.</returns>
     internal async Task<string> ShutdownAsync(CancellationToken cancellationToken)
     {
+        await RequestShutdownAsync(cancellationToken).ConfigureAwait(false);
+        return await ExitAsync(cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Sends shutdown without exit so the terminating workspace state remains observable.
+    /// </summary>
+    /// <param name="cancellationToken">The test cancellation token.</param>
+    /// <returns>A task that completes after the server acknowledges shutdown.</returns>
+    internal async Task RequestShutdownAsync(CancellationToken cancellationToken)
+    {
         object? shutdownResult = await _rpc.InvokeWithParameterObjectAsync<object?>(
             "shutdown",
             new InitializedParams(),
@@ -1321,7 +1379,15 @@ internal sealed class LspProcessSession : IAsyncDisposable
         {
             throw new InvalidDataException("The LSP shutdown response must be null.");
         }
+    }
 
+    /// <summary>
+    /// Sends exit and verifies that the real language-server process terminates successfully.
+    /// </summary>
+    /// <param name="cancellationToken">The test cancellation token.</param>
+    /// <returns>The captured server diagnostics.</returns>
+    internal async Task<string> ExitAsync(CancellationToken cancellationToken)
+    {
         await _rpc.NotifyWithParameterObjectAsync(
             "exit",
             new InitializedParams()).ConfigureAwait(false);
@@ -1343,15 +1409,22 @@ internal sealed class LspProcessSession : IAsyncDisposable
     /// <returns>A task that completes after process cleanup.</returns>
     public async ValueTask DisposeAsync()
     {
-        _rpc.Dispose();
-        await _messageHandler.DisposeAsync().ConfigureAwait(false);
-        _formatter.Dispose();
-        if (!_process.HasExited)
+        try
         {
-            _process.Kill(entireProcessTree: true);
-            await _process.WaitForExitAsync().ConfigureAwait(false);
-        }
+            _rpc.Dispose();
+            await _messageHandler.DisposeAsync().ConfigureAwait(false);
+            _formatter.Dispose();
+            if (!_process.HasExited)
+            {
+                _process.Kill(entireProcessTree: true);
+                await _process.WaitForExitAsync().ConfigureAwait(false);
+            }
 
-        _process.Dispose();
+            _process.Dispose();
+        }
+        finally
+        {
+            _workloadLease.Dispose();
+        }
     }
 }

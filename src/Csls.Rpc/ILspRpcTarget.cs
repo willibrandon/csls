@@ -41,6 +41,13 @@ public interface ILspRpcTarget
     Task ExitAsync();
 
     /// <summary>
+    /// Gets scheduler-independent workspace and request diagnostics for this session.
+    /// </summary>
+    /// <param name="cancellationToken">The peer cancellation token.</param>
+    /// <returns>The current live debug observation.</returns>
+    Task<CSharpDebugInfo> GetDebugInfoAsync(CancellationToken cancellationToken);
+
+    /// <summary>
     /// Applies pushed settings or refreshes settings through client configuration pull.
     /// </summary>
     /// <param name="parameters">The client configuration change payload.</param>

@@ -14,6 +14,8 @@ public sealed class RequestScheduler : IAsyncDisposable
     private readonly SemaphoreSlim _backgroundConcurrency;
     private readonly ValueTask _processingTask;
     private readonly ConcurrentDictionary<Guid, RequestActivityState> _requests = new();
+    private readonly ConcurrentDictionary<string, RequestStatisticsState> _statistics = new(
+        StringComparer.Ordinal);
     private readonly Lock _traceGate = new();
     private readonly Queue<(RequestActivityState State, RequestTraceRecord Record)> _traceRecords = new();
     private readonly TimeProvider _timeProvider;
@@ -109,7 +111,14 @@ public sealed class RequestScheduler : IAsyncDisposable
             IsStopping = IsStopping,
             TotalActiveRequests = totalActiveRequests,
             ActiveRequestsTruncated = totalActiveRequests > activeRequests.Length,
-            ActiveRequests = activeRequests
+            ActiveRequests = activeRequests,
+            Statistics =
+            [
+                .. _statistics
+                    .Select(static pair => pair.Value.GetSnapshot(pair.Key))
+                    .OrderByDescending(static item => item.AverageDuration)
+                    .ThenBy(static item => item.Name, StringComparer.Ordinal)
+            ]
         };
     }
 
@@ -302,6 +311,7 @@ public sealed class RequestScheduler : IAsyncDisposable
         RequestContext context = await admission.Task.ConfigureAwait(false);
         RequestExecutionStatus status = RequestExecutionStatus.Failed;
         Exception? failure = null;
+        long executionStartedTimestamp = _timeProvider.GetTimestamp();
         try
         {
             requestCancellationToken.ThrowIfCancellationRequested();
@@ -324,6 +334,9 @@ public sealed class RequestScheduler : IAsyncDisposable
         }
         finally
         {
+            _statistics
+                .GetOrAdd(request.Name, static _ => new RequestStatisticsState())
+                .Record(_timeProvider.GetElapsedTime(executionStartedTimestamp));
             CompleteRequest(request, status, failure);
             retirement.Writer.TryWrite(true);
         }

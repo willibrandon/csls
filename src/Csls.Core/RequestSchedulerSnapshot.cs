@@ -74,4 +74,9 @@ public sealed class RequestSchedulerSnapshot
     /// Gets the retained queued and running request observations in receive order.
     /// </summary>
     public required IReadOnlyList<RequestActivitySnapshot> ActiveRequests { get; init; }
+
+    /// <summary>
+    /// Gets cumulative completed execution timings grouped by request name.
+    /// </summary>
+    public required IReadOnlyList<RequestStatisticsSnapshot> Statistics { get; init; }
 }
