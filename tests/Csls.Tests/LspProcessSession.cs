@@ -1212,6 +1212,27 @@ internal sealed class LspProcessSession : IAsyncDisposable
         string documentPath,
         LspRange range,
         IReadOnlyList<string>? only,
+        CancellationToken cancellationToken) => RequestCodeActionsAsync(
+            documentPath,
+            range,
+            only,
+            [],
+            cancellationToken);
+
+    /// <summary>
+    /// Requests concrete code actions with the client diagnostics for the target range.
+    /// </summary>
+    /// <param name="documentPath">The absolute target document path.</param>
+    /// <param name="range">The target UTF-16 source range.</param>
+    /// <param name="only">The optional requested code-action categories.</param>
+    /// <param name="diagnostics">The client diagnostics intersecting the action context.</param>
+    /// <param name="cancellationToken">The test cancellation token.</param>
+    /// <returns>The supported code actions with concrete edits.</returns>
+    internal Task<IReadOnlyList<CodeAction>> RequestCodeActionsAsync(
+        string documentPath,
+        LspRange range,
+        IReadOnlyList<string>? only,
+        IReadOnlyList<Diagnostic> diagnostics,
         CancellationToken cancellationToken) =>
         _rpc.InvokeWithParameterObjectAsync<IReadOnlyList<CodeAction>>(
             "textDocument/codeAction",
@@ -1224,7 +1245,7 @@ internal sealed class LspProcessSession : IAsyncDisposable
                 Range = range,
                 Context = new CodeActionContext
                 {
-                    Diagnostics = [],
+                    Diagnostics = diagnostics,
                     Only = only
                 }
             },

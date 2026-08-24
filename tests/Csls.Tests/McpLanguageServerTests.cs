@@ -63,6 +63,7 @@ public sealed class McpLanguageServerTests
             string projectPath = Path.Join(fixturePath, "Fixture.csproj");
             string documentPath = Path.Join(fixturePath, "Program.cs");
             string importsPath = Path.Join(fixturePath, "Imports.cs");
+            string missingUsingPath = Path.Join(fixturePath, "MissingUsing.cs");
             string formattingPath = Path.Join(fixturePath, "Formatting.cs");
             string stalePath = Path.Join(fixturePath, "Stale.cs");
             string advancedPath = Path.Join(fixturePath, "Advanced.cs");
@@ -77,6 +78,10 @@ public sealed class McpLanguageServerTests
             await File.WriteAllTextAsync(
                 importsPath,
                 ImportsText,
+                TestContext.CancellationToken).ConfigureAwait(false);
+            await File.WriteAllTextAsync(
+                missingUsingPath,
+                MissingUsingText,
                 TestContext.CancellationToken).ConfigureAwait(false);
             await File.WriteAllTextAsync(
                 formattingPath,
@@ -683,6 +688,49 @@ public sealed class McpLanguageServerTests
                 Assert.IsNotNull(organizeImports.EditPlan);
                 Assert.IsNotEmpty(organizeImports.EditPlan.Edit.DocumentChanges);
 
+                CallToolResult quickFixResult = await client.CallToolAsync(
+                    "get_code_actions",
+                    new Dictionary<string, object?>
+                    {
+                        ["documentPath"] = missingUsingPath,
+                        ["startLine"] = 6,
+                        ["startCharacter"] = 26,
+                        ["endLine"] = 6,
+                        ["endCharacter"] = 39,
+                        ["kind"] = "quickfix"
+                    },
+                    cancellationToken: TestContext.CancellationToken).ConfigureAwait(false);
+                IReadOnlyList<ControlCodeActionPlan> quickFixes = GetStructuredCollection(
+                    quickFixResult,
+                    negotiatedProtocolVersion)
+                    .Deserialize(
+                        ControlJsonSerializerContext.Default.IReadOnlyListControlCodeActionPlan)
+                    ?? throw new InvalidDataException("MCP returned no quick-fix previews.");
+                ControlCodeActionPlan quickFix = Assert.ContainsSingle(quickFixes);
+                Assert.AreEqual("Add using System.Text", quickFix.Action.Title);
+                Assert.AreEqual("quickfix", quickFix.Action.Kind);
+                ControlEditPlan quickFixPlan = quickFix.EditPlan
+                    ?? throw new InvalidDataException("MCP returned no quick-fix edit plan.");
+                CallToolResult quickFixApplyResult = await client.CallToolAsync(
+                    "apply_edit_plan",
+                    new Dictionary<string, object?>
+                    {
+                        ["planId"] = quickFixPlan.PlanId.ToString("D")
+                    },
+                    cancellationToken: TestContext.CancellationToken).ConfigureAwait(false);
+                Assert.IsNull(quickFixApplyResult.IsError);
+                string fixedMissingUsing = await File.ReadAllTextAsync(
+                    missingUsingPath,
+                    TestContext.CancellationToken).ConfigureAwait(false);
+                Assert.StartsWith(
+                    "using System.Text;",
+                    fixedMissingUsing,
+                    StringComparison.Ordinal);
+                Assert.Contains(
+                    "new StringBuilder()",
+                    fixedMissingUsing,
+                    StringComparison.Ordinal);
+
                 IList<McpClientResource> resources = await client
                     .ListResourcesAsync(cancellationToken: TestContext.CancellationToken)
                     .ConfigureAwait(false);
@@ -1137,6 +1185,19 @@ public sealed class McpLanguageServerTests
         namespace Fixture;
 
         public static class Formatting{public static int Add(int left,int right)=>left+right;}
+        """;
+
+    private const string MissingUsingText = """
+        namespace Fixture;
+
+        public static class MissingUsing
+        {
+            public static string Build()
+            {
+                var builder = new StringBuilder();
+                return builder.ToString();
+            }
+        }
         """;
 
     private const string AdvancedDocumentText = """
