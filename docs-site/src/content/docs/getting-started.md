@@ -1,54 +1,37 @@
 ---
 title: Getting started
-description: Build csls and start the language server.
+description: Install csls and start the language server.
 ---
 
-The .NET 10 SDK version is pinned in `global.json`. Install that SDK, clone the
-repository, then build and test it:
+Install the language server as a global .NET tool:
 
 ```console
-dotnet build Csls.slnx
-dotnet test --solution Csls.slnx
+dotnet tool install --global csls
 ```
 
-If the pinned SDK is not installed, the repository includes a cross-platform C#
-file app that installs it locally:
+Start the language server with:
 
 ```console
-dotnet run --file scripts/InstallDotNet.cs
-```
-
-Run the language server from a source checkout with:
-
-```console
-dotnet run --project src/Csls.App -- lsp
+csls lsp
 ```
 
 The default `csls` command and the explicit `csls lsp` command both serve LSP
 over standard input and output. Editors should use `csls lsp` because the intent
 is visible in their configuration.
 
+## File-based apps
+
+Open a file-based C# app directly or open its containing directory. csls uses
+the selected .NET SDK and honors `#:package`, `#:project`, `#:include`,
+`#:property`, and `#:sdk` directives.
+
 The `csls` and `csls-mcp` .NET tool packages are prepared for Windows, Linux,
 and macOS on x64 and Arm64. Linux musl and Windows x86 packages are also built
 and verified in CI.
 
-Install both tools when an MCP client will use the language server:
+Install the separate MCP tool when an MCP client will use the language server:
 
 ```console
-dotnet tool install --global csls
 dotnet tool install --global csls-mcp
 csls agent mcp --workspace .
-```
-
-## File-based apps
-
-File-based apps use the SDK selected by `global.json` and support the standard
-`#:package`, `#:project`, `#:include`, `#:property`, and `#:sdk` directives. Add a
-shebang when the app should be found automatically beneath an editor workspace:
-
-```csharp
-#!/usr/bin/env dotnet
-#:property TargetFramework=net10.0
-
-Console.WriteLine("hello");
 ```
