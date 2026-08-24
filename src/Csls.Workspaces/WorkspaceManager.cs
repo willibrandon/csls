@@ -12,7 +12,6 @@ using Microsoft.CodeAnalysis.Text;
 using Microsoft.Extensions.Logging;
 using System.Collections.Immutable;
 using System.Globalization;
-using System.Security.Cryptography;
 using System.Text;
 using LspCodeAction = Csls.Protocol.CodeAction;
 using LspDiagnostic = Csls.Protocol.Diagnostic;
@@ -40,8 +39,10 @@ public sealed partial class WorkspaceManager : IAsyncDisposable
     private const int MaximumWorkspaceSymbols = 200;
     private const int MaximumSignatures = 100;
     private const int MaximumWorkspaceTextEdits = 10_000;
+    private const int MaximumWorkspaceResourceOperations = 1_000;
     private const string OrganizeImportsCodeActionKind = "source.organizeImports";
     private const string QuickFixCodeActionKind = "quickfix";
+    private const string RefactorCodeActionKind = "refactor";
     private static readonly Lock s_msbuildRegistrationLock = new();
     private static bool s_msbuildRegistered;
 
@@ -1295,10 +1296,12 @@ public sealed partial class WorkspaceManager : IAsyncDisposable
     /// Gets concrete Roslyn code actions supported for one immutable document snapshot.
     /// </summary>
     /// <param name="parameters">The target range and requested action context.</param>
+    /// <param name="supportsCreateFile">Whether the requesting peer supports create-file edits.</param>
     /// <param name="cancellationToken">The operation cancellation token.</param>
     /// <returns>The supported actions with concrete version-aware edits.</returns>
     public async Task<IReadOnlyList<LspCodeAction>> GetCodeActionsAsync(
         CodeActionParams parameters,
+        bool supportsCreateFile,
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(parameters);
@@ -1344,6 +1347,22 @@ public sealed partial class WorkspaceManager : IAsyncDisposable
             }
         }
 
+        if (supportsCreateFile &&
+            IsCodeActionRequested(parameters.Context.Only, RefactorCodeActionKind))
+        {
+            LspCodeAction? moveTypeAction = await WorkspaceMoveTypeCodeActionService
+                .GetActionAsync(
+                    document,
+                    parameters,
+                    CreateWorkspaceEditAsync,
+                    cancellationToken)
+                .ConfigureAwait(false);
+            if (moveTypeAction is not null)
+            {
+                actions.Add(moveTypeAction);
+            }
+        }
+
         return actions;
     }
 
@@ -1359,20 +1378,57 @@ public sealed partial class WorkspaceManager : IAsyncDisposable
     {
         ArgumentNullException.ThrowIfNull(edit);
         long generation = Generation;
-        var preconditions = new List<DocumentEditPrecondition>(edit.DocumentChanges.Count);
-        foreach (TextDocumentEdit documentEdit in edit.DocumentChanges)
+        var preconditions = new Dictionary<DocumentUri, WorkspaceResourcePrecondition>();
+        foreach (WorkspaceDocumentChange change in edit.DocumentChanges)
         {
             cancellationToken.ThrowIfCancellationRequested();
+            if (change is CreateFile createFile)
+            {
+                string path = createFile.Uri.GetFileSystemPath();
+                EnsureWorkspaceResourcePath(path);
+                if (File.Exists(path) || Directory.Exists(path))
+                {
+                    throw new InvalidOperationException(
+                        $"The created resource {path} already exists.");
+                }
+
+                preconditions.Add(
+                    createFile.Uri,
+                    new WorkspaceResourcePrecondition
+                    {
+                        Uri = createFile.Uri,
+                        Exists = false
+                    });
+                continue;
+            }
+
+            if (change is not TextDocumentEdit documentEdit)
+            {
+                throw new NotSupportedException(
+                    $"Control edit plans cannot apply {change.GetType().Name} operations.");
+            }
+
+            if (preconditions.TryGetValue(
+                documentEdit.TextDocument.Uri,
+                out WorkspaceResourcePrecondition? existingPrecondition) &&
+                !existingPrecondition.Exists)
+            {
+                continue;
+            }
+
             TextDocument document = FindTextDocument(documentEdit.TextDocument.Uri)
                 ?? throw new InvalidOperationException(
                     $"Edited document {documentEdit.TextDocument.Uri} is unavailable.");
             SourceText text = await document.GetTextAsync(cancellationToken).ConfigureAwait(false);
-            preconditions.Add(new DocumentEditPrecondition
-            {
-                Uri = documentEdit.TextDocument.Uri,
-                Version = documentEdit.TextDocument.Version,
-                Sha256 = ComputeTextHash(text.ToString())
-            });
+            preconditions.Add(
+                documentEdit.TextDocument.Uri,
+                new WorkspaceResourcePrecondition
+                {
+                    Uri = documentEdit.TextDocument.Uri,
+                    Exists = true,
+                    Version = documentEdit.TextDocument.Version,
+                    Sha256 = ComputeTextHash(text.ToString())
+                });
         }
 
         if (Generation != generation)
@@ -1385,7 +1441,7 @@ public sealed partial class WorkspaceManager : IAsyncDisposable
         {
             WorkspaceGeneration = generation,
             Edit = edit,
-            Preconditions = preconditions
+            Preconditions = [.. preconditions.Values]
         };
     }
 
@@ -1448,28 +1504,67 @@ public sealed partial class WorkspaceManager : IAsyncDisposable
             var preconditions = snapshot
                 .Preconditions
                 .ToDictionary(static precondition => precondition.Uri);
-            if (preconditions.Count != snapshot.Edit.DocumentChanges.Count)
-            {
-                throw new InvalidDataException(
-                    "The edit plan does not contain exactly one precondition per document.");
-            }
-
             if (snapshot.Edit.DocumentChanges.Count == 0)
             {
                 return Generation;
             }
 
-            var stagedFiles = new Dictionary<
-                string,
-                (string TempPath, string BackupPath, SourceText Text)>(PathComparer);
+            var stagedFiles = new Dictionary<string, StagedWorkspaceFile>(PathComparer);
             try
             {
-                foreach (TextDocumentEdit documentEdit in snapshot.Edit.DocumentChanges)
+                foreach (WorkspaceDocumentChange change in snapshot.Edit.DocumentChanges)
                 {
                     cancellationToken.ThrowIfCancellationRequested();
+                    if (change is CreateFile createFile)
+                    {
+                        if (!preconditions.TryGetValue(
+                            createFile.Uri,
+                            out WorkspaceResourcePrecondition? createPrecondition) ||
+                            createPrecondition.Exists)
+                        {
+                            throw new InvalidDataException(
+                                $"The edit plan has no absence precondition for {createFile.Uri}.");
+                        }
+
+                        string createPath = createFile.Uri.GetFileSystemPath();
+                        EnsureWorkspaceResourcePath(createPath);
+                        if (File.Exists(createPath) || Directory.Exists(createPath))
+                        {
+                            throw new InvalidOperationException(
+                                $"Resource {createPath} appeared after the edit plan was created.");
+                        }
+
+                        string? parentPath = Path.GetDirectoryName(createPath);
+                        if (string.IsNullOrWhiteSpace(parentPath) ||
+                            !Directory.Exists(parentPath))
+                        {
+                            throw new DirectoryNotFoundException(
+                                $"The parent directory for {createPath} does not exist.");
+                        }
+
+                        stagedFiles.Add(
+                            createPath,
+                            new StagedWorkspaceFile
+                            {
+                                Path = createPath,
+                                TempPath = createPath + $".csls-{Guid.NewGuid():N}.tmp",
+                                Text = SourceText.From(
+                                    string.Empty,
+                                    new UTF8Encoding(encoderShouldEmitUTF8Identifier: false)),
+                                IsNew = true
+                            });
+                        continue;
+                    }
+
+                    if (change is not TextDocumentEdit documentEdit)
+                    {
+                        throw new NotSupportedException(
+                            $"Applying {change.GetType().Name} operations is not supported.");
+                    }
+
                     if (!preconditions.TryGetValue(
                         documentEdit.TextDocument.Uri,
-                        out DocumentEditPrecondition? precondition))
+                        out WorkspaceResourcePrecondition? precondition))
                     {
                         throw new InvalidDataException(
                             $"The edit plan is missing a precondition for {documentEdit.TextDocument.Uri}.");
@@ -1484,6 +1579,27 @@ public sealed partial class WorkspaceManager : IAsyncDisposable
                     }
 
                     string path = documentEdit.TextDocument.Uri.GetFileSystemPath();
+                    if (stagedFiles.TryGetValue(path, out StagedWorkspaceFile? stagedFile))
+                    {
+                        if (!stagedFile.IsNew || precondition.Exists)
+                        {
+                            throw new InvalidDataException(
+                                $"The edit plan contains duplicate edits for {path}.");
+                        }
+
+                        stagedFiles[path] = stagedFile with
+                        {
+                            Text = ApplyTextEdits(stagedFile.Text, documentEdit.Edits)
+                        };
+                        continue;
+                    }
+
+                    if (!precondition.Exists || string.IsNullOrWhiteSpace(precondition.Sha256))
+                    {
+                        throw new InvalidDataException(
+                            $"The edit plan has no content precondition for {path}.");
+                    }
+
                     if (!File.Exists(path))
                     {
                         throw new FileNotFoundException(
@@ -1515,19 +1631,52 @@ public sealed partial class WorkspaceManager : IAsyncDisposable
                     SourceText changedText = ApplyTextEdits(originalText, documentEdit.Edits);
                     string tempPath = path + $".csls-{Guid.NewGuid():N}.tmp";
                     string backupPath = path + $".csls-{Guid.NewGuid():N}.bak";
+                    stagedFiles.Add(
+                        path,
+                        new StagedWorkspaceFile
+                        {
+                            Path = path,
+                            TempPath = tempPath,
+                            BackupPath = backupPath,
+                            Text = changedText,
+                            IsNew = false
+                        });
+                }
+
+                foreach (StagedWorkspaceFile stagedFile in stagedFiles.Values)
+                {
                     await File.WriteAllTextAsync(
-                        tempPath,
-                        changedText.ToString(),
-                        changedText.Encoding ?? new UTF8Encoding(encoderShouldEmitUTF8Identifier: false),
+                        stagedFile.TempPath,
+                        stagedFile.Text.ToString(),
+                        stagedFile.Text.Encoding ??
+                            new UTF8Encoding(encoderShouldEmitUTF8Identifier: false),
                         cancellationToken).ConfigureAwait(false);
-                    stagedFiles.Add(path, (tempPath, backupPath, changedText));
                 }
 
                 cancellationToken.ThrowIfCancellationRequested();
-                ReplaceStagedFiles(stagedFiles);
-                PublishAppliedTexts(stagedFiles);
-                _diagnosticCache.Clear();
-                return Interlocked.Increment(ref _generation);
+                CommitStagedFiles(stagedFiles);
+                try
+                {
+                    _diagnosticCache.Clear();
+                    if (stagedFiles.Values.Any(static file => file.IsNew))
+                    {
+                        await ReloadFoldersAfterResourceEditAsync(cancellationToken)
+                            .ConfigureAwait(false);
+                    }
+                    else
+                    {
+                        PublishAppliedTexts(stagedFiles);
+                        Interlocked.Increment(ref _generation);
+                    }
+                }
+                catch (Exception applicationException)
+                {
+                    RollbackCommittedFiles(stagedFiles, applicationException);
+                    throw;
+                }
+
+                CleanupStagedBackups(stagedFiles);
+                return Generation;
             }
             finally
             {
@@ -2004,11 +2153,60 @@ public sealed partial class WorkspaceManager : IAsyncDisposable
         CancellationToken cancellationToken)
     {
         var editsByPath = new Dictionary<string, TextDocumentEdit>(PathComparer);
+        var createdDocuments = new Dictionary<
+            string,
+            (CreateFile CreateFile, TextDocumentEdit DocumentEdit)>(PathComparer);
         int totalEditCount = 0;
+        int resourceOperationCount = 0;
         foreach (ProjectChanges projectChanges in changedSolution
             .GetChanges(originalSolution)
             .GetProjectChanges())
         {
+            foreach (DocumentId documentId in projectChanges.GetAddedDocuments())
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                Document? changedDocument = changedSolution.GetDocument(documentId);
+                string? path = changedDocument?.FilePath;
+                if (changedDocument is null || string.IsNullOrWhiteSpace(path))
+                {
+                    continue;
+                }
+
+                resourceOperationCount++;
+                if (resourceOperationCount > MaximumWorkspaceResourceOperations)
+                {
+                    throw new InvalidOperationException(
+                        "The workspace edit contains too many resource operations.");
+                }
+
+                SourceText text = await changedDocument
+                    .GetTextAsync(cancellationToken)
+                    .ConfigureAwait(false);
+                totalEditCount++;
+                createdDocuments[path] =
+                (
+                    new CreateFile { Uri = DocumentUri.FromFileSystemPath(path) },
+                    new TextDocumentEdit
+                    {
+                        TextDocument = new OptionalVersionedTextDocumentIdentifier
+                        {
+                            Uri = DocumentUri.FromFileSystemPath(path),
+                            Version = null
+                        },
+                        Edits =
+                        [
+                            new LspTextEdit
+                            {
+                                Range = new LspRange(
+                                    new Position(0, 0),
+                                    new Position(0, 0)),
+                                NewText = text.ToString()
+                            }
+                        ]
+                    }
+                );
+            }
+
             foreach (DocumentId documentId in projectChanges.GetChangedDocuments())
             {
                 cancellationToken.ThrowIfCancellationRequested();
@@ -2097,7 +2295,8 @@ public sealed partial class WorkspaceManager : IAsyncDisposable
             }
         }
 
-        totalEditCount = editsByPath.Sum(static pair => pair.Value.Edits.Count);
+        totalEditCount = createdDocuments.Count +
+            editsByPath.Sum(static pair => pair.Value.Edits.Count);
         if (totalEditCount > MaximumWorkspaceTextEdits)
         {
             throw new InvalidOperationException(
@@ -2108,6 +2307,13 @@ public sealed partial class WorkspaceManager : IAsyncDisposable
         {
             DocumentChanges =
             [
+                .. createdDocuments
+                    .OrderBy(static pair => pair.Key, PathComparer)
+                    .SelectMany(static pair => new WorkspaceDocumentChange[]
+                    {
+                        pair.Value.CreateFile,
+                        pair.Value.DocumentEdit
+                    }),
                 .. editsByPath
                     .OrderBy(static pair => pair.Key, PathComparer)
                     .Select(static pair => pair.Value)
@@ -2181,157 +2387,6 @@ public sealed partial class WorkspaceManager : IAsyncDisposable
         requestedKinds.Any(requestedKind =>
             string.Equals(candidateKind, requestedKind, StringComparison.Ordinal) ||
             candidateKind.StartsWith(requestedKind + '.', StringComparison.Ordinal));
-
-    private static string ComputeTextHash(string text) =>
-        Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(text)));
-
-    private static SourceText ApplyTextEdits(
-        SourceText originalText,
-        IReadOnlyList<LspTextEdit> edits)
-    {
-        if (edits.Count > MaximumWorkspaceTextEdits)
-        {
-            throw new InvalidDataException(
-                $"The edit plan exceeds {MaximumWorkspaceTextEdits} edits in one document.");
-        }
-
-        TextChange[] changes =
-        [
-            .. edits
-                .Select(edit =>
-                {
-                    int start = LspPositionConverter.GetOffset(originalText, edit.Range.Start);
-                    int end = LspPositionConverter.GetOffset(originalText, edit.Range.End);
-                    return new TextChange(
-                        TextSpan.FromBounds(start, end),
-                        edit.NewText);
-                })
-                .OrderBy(static change => change.Span.Start)
-                .ThenBy(static change => change.Span.End)
-        ];
-        int priorEnd = 0;
-        foreach (TextChange change in changes)
-        {
-            if (change.Span.Start < priorEnd)
-            {
-                throw new InvalidDataException("The edit plan contains overlapping text edits.");
-            }
-
-            priorEnd = change.Span.End;
-        }
-
-        return originalText.WithChanges(changes);
-    }
-
-    private void ReplaceStagedFiles(
-        Dictionary<string, (string TempPath, string BackupPath, SourceText Text)> stagedFiles)
-    {
-        var replacedPaths = new List<string>(stagedFiles.Count);
-        try
-        {
-            foreach ((string path, (string tempPath, string backupPath, SourceText _)) in
-                stagedFiles)
-            {
-                File.Replace(tempPath, path, backupPath);
-                replacedPaths.Add(path);
-            }
-        }
-        catch (Exception replacementException) when (
-            replacementException is IOException or UnauthorizedAccessException)
-        {
-            var rollbackExceptions = new List<Exception>();
-            for (int index = replacedPaths.Count - 1; index >= 0; index--)
-            {
-                string path = replacedPaths[index];
-                string backupPath = stagedFiles[path].BackupPath;
-                try
-                {
-                    if (File.Exists(backupPath))
-                    {
-                        File.Move(backupPath, path, overwrite: true);
-                    }
-                }
-                catch (Exception rollbackException) when (
-                    rollbackException is IOException or UnauthorizedAccessException)
-                {
-                    rollbackExceptions.Add(rollbackException);
-                }
-            }
-
-            if (rollbackExceptions.Count > 0)
-            {
-                rollbackExceptions.Insert(0, replacementException);
-                throw new AggregateException(
-                    "Applying the edit failed and at least one document could not be restored.",
-                    rollbackExceptions);
-            }
-
-            throw;
-        }
-
-        foreach ((string _, (string _, string backupPath, SourceText _)) in stagedFiles)
-        {
-            try
-            {
-                File.Delete(backupPath);
-            }
-            catch (Exception exception) when (
-                exception is IOException or UnauthorizedAccessException)
-            {
-                LogEditArtifactCleanupFailure(backupPath, exception);
-            }
-        }
-    }
-
-    private void PublishAppliedTexts(
-        Dictionary<string, (string TempPath, string BackupPath, SourceText Text)> stagedFiles)
-    {
-        for (int folderIndex = 0; folderIndex < _folders.Length; folderIndex++)
-        {
-            (string rootPath, Workspace workspace, Solution solution) = _folders[folderIndex];
-            foreach ((string path, (string _, string _, SourceText text)) in stagedFiles)
-            {
-                DocumentId[] documentIds =
-                [
-                    .. solution.Projects
-                        .SelectMany(static project => project.Documents)
-                        .Where(document => string.Equals(
-                            document.FilePath,
-                            path,
-                            PathComparison))
-                        .Select(static document => document.Id)
-                ];
-                foreach (DocumentId documentId in documentIds)
-                {
-                    solution = solution.WithDocumentText(
-                        documentId,
-                        text,
-                        PreservationMode.PreserveIdentity);
-                }
-
-                solution = WithAdditionalDocumentText(solution, path, text);
-            }
-
-            _folders = _folders.SetItem(folderIndex, (rootPath, workspace, solution));
-        }
-    }
-
-    private void CleanupStagedFiles(
-        Dictionary<string, (string TempPath, string BackupPath, SourceText Text)> stagedFiles)
-    {
-        foreach ((string _, (string tempPath, string _, SourceText _)) in stagedFiles)
-        {
-            try
-            {
-                File.Delete(tempPath);
-            }
-            catch (Exception exception) when (
-                exception is IOException or UnauthorizedAccessException)
-            {
-                LogEditArtifactCleanupFailure(tempPath, exception);
-            }
-        }
-    }
 
     private static StringComparer PathComparer =>
         OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal;

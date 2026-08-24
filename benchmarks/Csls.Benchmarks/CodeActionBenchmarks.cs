@@ -17,6 +17,7 @@ public class CodeActionBenchmarks : IAsyncDisposable
     private WorkspaceManager _workspaceManager = null!;
     private CodeActionParams _parameters = null!;
     private CodeActionParams _implementInterfaceParameters = null!;
+    private CodeActionParams _moveTypeParameters = null!;
     private string _fixturePath = null!;
     private int _disposeState;
 
@@ -32,12 +33,14 @@ public class CodeActionBenchmarks : IAsyncDisposable
         Directory.CreateDirectory(_fixturePath);
         string documentPath = Path.Join(_fixturePath, "Program.cs");
         string implementInterfacePath = Path.Join(_fixturePath, "ImplementInterface.cs");
+        string moveTypePath = Path.Join(_fixturePath, "MoveTypes.cs");
         await File.WriteAllTextAsync(
             Path.Join(_fixturePath, "Fixture.csproj"),
             ProjectText).ConfigureAwait(false);
         await File.WriteAllTextAsync(documentPath, DocumentText).ConfigureAwait(false);
         await File.WriteAllTextAsync(implementInterfacePath, ImplementInterfaceText)
             .ConfigureAwait(false);
+        await File.WriteAllTextAsync(moveTypePath, MoveTypeText).ConfigureAwait(false);
 
         _workspaceManager = new WorkspaceManager(NullLogger<WorkspaceManager>.Instance);
         await _workspaceManager.LoadAsync([_fixturePath], CancellationToken.None)
@@ -68,9 +71,23 @@ public class CodeActionBenchmarks : IAsyncDisposable
                 Only = ["quickfix"]
             }
         };
+        _moveTypeParameters = new CodeActionParams
+        {
+            TextDocument = new TextDocumentIdentifier
+            {
+                Uri = DocumentUri.FromFileSystemPath(moveTypePath)
+            },
+            Range = new LspRange(new Position(7, 22), new Position(7, 28)),
+            Context = new CodeActionContext
+            {
+                Diagnostics = [],
+                Only = ["refactor"]
+            }
+        };
 
         IReadOnlyList<LspCodeAction> actions = await _workspaceManager.GetCodeActionsAsync(
             _parameters,
+            supportsCreateFile: false,
             CancellationToken.None).ConfigureAwait(false);
         LspCodeAction action = actions.Count == 1
             ? actions[0]
@@ -86,6 +103,7 @@ public class CodeActionBenchmarks : IAsyncDisposable
         IReadOnlyList<LspCodeAction> implementations =
             await _workspaceManager.GetCodeActionsAsync(
                 _implementInterfaceParameters,
+                supportsCreateFile: false,
                 CancellationToken.None).ConfigureAwait(false);
         LspCodeAction implementation = implementations.Count == 1
             ? implementations[0]
@@ -97,6 +115,21 @@ public class CodeActionBenchmarks : IAsyncDisposable
             throw new InvalidOperationException(
                 "The implement-interface benchmark fixture produced no verified edit.");
         }
+
+        IReadOnlyList<LspCodeAction> moveTypes = await _workspaceManager.GetCodeActionsAsync(
+            _moveTypeParameters,
+            supportsCreateFile: true,
+            CancellationToken.None).ConfigureAwait(false);
+        LspCodeAction moveType = moveTypes.Count == 1
+            ? moveTypes[0]
+            : throw new InvalidOperationException(
+                "The move-to-file benchmark fixture produced an unexpected action count.");
+        if (moveType.Title != "Move Helper to Helper.cs" ||
+            moveType.Edit is not { DocumentChanges.Count: 3 })
+        {
+            throw new InvalidOperationException(
+                "The move-to-file benchmark fixture produced no ordered resource edit.");
+        }
     }
 
     /// <summary>
@@ -104,7 +137,10 @@ public class CodeActionBenchmarks : IAsyncDisposable
     /// </summary>
     [Benchmark]
     public Task<IReadOnlyList<LspCodeAction>> AddMissingUsingAsync() =>
-        _workspaceManager.GetCodeActionsAsync(_parameters, CancellationToken.None);
+        _workspaceManager.GetCodeActionsAsync(
+            _parameters,
+            supportsCreateFile: false,
+            CancellationToken.None);
 
     /// <summary>
     /// Measures required-member discovery, generation, validation, and edit conversion.
@@ -113,6 +149,17 @@ public class CodeActionBenchmarks : IAsyncDisposable
     public Task<IReadOnlyList<LspCodeAction>> ImplementInterfaceAsync() =>
         _workspaceManager.GetCodeActionsAsync(
             _implementInterfaceParameters,
+            supportsCreateFile: false,
+            CancellationToken.None);
+
+    /// <summary>
+    /// Measures syntax extraction, formatting, and ordered create-file edit conversion.
+    /// </summary>
+    [Benchmark]
+    public Task<IReadOnlyList<LspCodeAction>> MoveTypeToFileAsync() =>
+        _workspaceManager.GetCodeActionsAsync(
+            _moveTypeParameters,
+            supportsCreateFile: true,
             CancellationToken.None);
 
     /// <summary>
@@ -169,6 +216,20 @@ public class CodeActionBenchmarks : IAsyncDisposable
 
         public sealed class Runner : IRunner
         {
+        }
+        """;
+
+    private const string MoveTypeText = """
+        namespace Fixture;
+
+        public static class MoveTypes
+        {
+            public static int Read() => Helper.Value;
+        }
+
+        internal static class Helper
+        {
+            public static int Value => 42;
         }
         """;
 }

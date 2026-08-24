@@ -67,7 +67,9 @@ public class RazorRenameBenchmarks : IAsyncDisposable
             _parameters,
             CancellationToken.None).ConfigureAwait(false);
         if (edit.DocumentChanges.Count != 3 ||
-            edit.DocumentChanges.Sum(static document => document.Edits.Count) != 4)
+            edit.DocumentChanges
+                .OfType<TextDocumentEdit>()
+                .Sum(static document => document.Edits.Count) != 4)
         {
             throw new InvalidOperationException(
                 "The Razor rename benchmark did not resolve its cross-language fixture.");

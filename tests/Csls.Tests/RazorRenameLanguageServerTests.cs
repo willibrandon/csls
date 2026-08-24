@@ -104,7 +104,7 @@ public sealed class RazorRenameLanguageServerTests
                 "CurrentValue",
                 TestContext.CancellationToken).ConfigureAwait(false);
             TextDocumentEdit localDocumentEdit = Assert.ContainsSingle(
-                localRename.DocumentChanges);
+                localRename.DocumentChanges.OfType<TextDocumentEdit>());
             Assert.AreEqual(
                 DocumentUri.FromFileSystemPath(documentPath),
                 localDocumentEdit.TextDocument.Uri);
@@ -306,8 +306,10 @@ public sealed class RazorRenameLanguageServerTests
         string originalText,
         string expectedText)
     {
-        TextDocumentEdit documentEdit = workspaceEdit.DocumentChanges.Single(edit =>
-            edit.TextDocument.Uri == DocumentUri.FromFileSystemPath(path));
+        TextDocumentEdit documentEdit = workspaceEdit.DocumentChanges
+            .OfType<TextDocumentEdit>()
+            .Single(edit =>
+                edit.TextDocument.Uri == DocumentUri.FromFileSystemPath(path));
         Assert.AreEqual(expectedVersion, documentEdit.TextDocument.Version);
         Assert.HasCount(expectedEditCount, documentEdit.Edits);
         Assert.AreEqual(expectedText, ApplyTextEdits(originalText, documentEdit.Edits));
