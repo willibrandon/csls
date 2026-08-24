@@ -109,6 +109,137 @@ public sealed class CliLanguageServerTests
     }
 
     /// <summary>
+    /// Streams added, updated, and removed events for one real language-server session.
+    /// </summary>
+    [TestMethod]
+    public async Task SessionWatchStreamsRealSessionChanges()
+    {
+        string repositoryRoot = EditorToolResolver.FindRepositoryRoot();
+        string artifactsRoot = EditorToolResolver.ResolveArtifactsRoot(repositoryRoot);
+        string workerPath = Path.Join(
+            artifactsRoot,
+            "bin",
+            "Csls.Worker",
+            "debug",
+            "csls-worker.dll");
+        string cliPath = Path.Join(
+            artifactsRoot,
+            "bin",
+            "Csls.App",
+            "debug",
+            "csls.dll");
+        string cliWorkerPath = Path.Join(
+            artifactsRoot,
+            "bin",
+            "Csls.Cli.Worker",
+            "debug",
+            "csls-cli-worker.dll");
+        string fixturePath = Path.Join(
+            Path.GetTempPath(),
+            $"csls-session-watch-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(fixturePath);
+        await File.WriteAllTextAsync(
+            Path.Join(fixturePath, "SessionWatch.csproj"),
+            ProjectText,
+            TestContext.CancellationToken).ConfigureAwait(false);
+        await File.WriteAllTextAsync(
+            Path.Join(fixturePath, "Program.cs"),
+            "Console.WriteLine(\"watch\");",
+            TestContext.CancellationToken).ConfigureAwait(false);
+
+        using var watchTimeout = CancellationTokenSource.CreateLinkedTokenSource(
+            TestContext.CancellationToken);
+        watchTimeout.CancelAfter(TimeSpan.FromSeconds(60));
+        using Process watchProcess = StartCliProcess(
+            cliPath,
+            cliWorkerPath,
+            repositoryRoot,
+            ["sessions", "watch", "--json"]);
+        Task<string> watchErrorTask = watchProcess.StandardError.ReadToEndAsync(
+            TestContext.CancellationToken);
+        try
+        {
+            JsonElement snapshot = await ReadWatchEventAsync(
+                watchProcess.StandardOutput,
+                static data => data.GetProperty("kind").GetString() == "Snapshot",
+                watchTimeout.Token).ConfigureAwait(false);
+            Assert.AreEqual(1L, snapshot.GetProperty("sequence").GetInt64());
+            Assert.AreEqual(JsonValueKind.Null, snapshot.GetProperty("session").ValueKind);
+
+            var lsp = LspProcessSession.Start(
+                "csls-session-watch-worker",
+                EditorToolResolver.ResolveDotNetHost(),
+                [workerPath],
+                fixturePath);
+            await using ConfiguredAsyncDisposable lspCleanup = lsp.ConfigureAwait(false);
+            await lsp.InitializeAsync(
+                fixturePath,
+                TestContext.CancellationToken).ConfigureAwait(false);
+            await lsp.CompleteInitializationAsync().ConfigureAwait(false);
+            ControlSessionInfo runningSession = await ControlSessionWaiter.WaitForRunningAsync(
+                fixturePath,
+                TimeSpan.FromSeconds(60),
+                TestContext.CancellationToken).ConfigureAwait(false);
+
+            JsonElement added = await ReadWatchEventAsync(
+                watchProcess.StandardOutput,
+                data => IsWatchEvent(data, "Added", lsp.ProcessId),
+                watchTimeout.Token).ConfigureAwait(false);
+            Assert.IsGreaterThan(
+                snapshot.GetProperty("sequence").GetInt64(),
+                added.GetProperty("sequence").GetInt64());
+            Assert.Contains(
+                lsp.ProcessId,
+                added.GetProperty("sessions")
+                    .EnumerateArray()
+                    .Select(static session => session.GetProperty("processId").GetInt32()));
+
+            var client = new ControlRpcClient(runningSession.SocketPath);
+            await using ConfiguredAsyncDisposable clientCleanup = client.ConfigureAwait(false);
+            ControlWorkspaceOperationResult reload = await client.ReloadWorkspaceAsync(
+                TestContext.CancellationToken).ConfigureAwait(false);
+            JsonElement updated = await ReadWatchEventAsync(
+                watchProcess.StandardOutput,
+                data => IsWatchEvent(data, "Updated", lsp.ProcessId) &&
+                    data.GetProperty("session").GetProperty("workspaceGeneration").GetInt64() ==
+                    reload.CurrentGeneration,
+                watchTimeout.Token).ConfigureAwait(false);
+            Assert.IsGreaterThan(
+                added.GetProperty("sequence").GetInt64(),
+                updated.GetProperty("sequence").GetInt64());
+
+            string diagnostics = await lsp.ShutdownAsync(
+                TestContext.CancellationToken).ConfigureAwait(false);
+            Assert.DoesNotContain("Unhandled exception", diagnostics, StringComparison.Ordinal);
+            JsonElement removed = await ReadWatchEventAsync(
+                watchProcess.StandardOutput,
+                data => IsWatchEvent(data, "Removed", lsp.ProcessId),
+                watchTimeout.Token).ConfigureAwait(false);
+            Assert.IsGreaterThan(
+                updated.GetProperty("sequence").GetInt64(),
+                removed.GetProperty("sequence").GetInt64());
+            Assert.DoesNotContain(
+                lsp.ProcessId,
+                removed.GetProperty("sessions")
+                    .EnumerateArray()
+                    .Select(static session => session.GetProperty("processId").GetInt32()));
+        }
+        finally
+        {
+            if (!watchProcess.HasExited)
+            {
+                watchProcess.Kill(entireProcessTree: true);
+                await watchProcess.WaitForExitAsync(CancellationToken.None).ConfigureAwait(false);
+            }
+
+            Directory.Delete(fixturePath, recursive: true);
+        }
+
+        string watchError = await watchErrorTask.ConfigureAwait(false);
+        Assert.DoesNotContain("Unhandled exception", watchError, StringComparison.Ordinal);
+    }
+
+    /// <summary>
     /// Lists, inspects, and queries one real session through the public csls command tree.
     /// </summary>
     [TestMethod]
@@ -1114,6 +1245,69 @@ public sealed class CliLanguageServerTests
         string standardError = await standardErrorTask.ConfigureAwait(false);
         return (process.ExitCode, standardOutput, standardError);
     }
+
+    private static Process StartCliProcess(
+        string cliPath,
+        string cliWorkerPath,
+        string workingDirectory,
+        IReadOnlyList<string> arguments)
+    {
+        bool isManagedLauncher = string.Equals(
+            Path.GetExtension(cliPath),
+            ".dll",
+            StringComparison.OrdinalIgnoreCase);
+        var startInfo = new ProcessStartInfo
+        {
+            FileName = isManagedLauncher ? EditorToolResolver.ResolveDotNetHost() : cliPath,
+            RedirectStandardError = true,
+            RedirectStandardOutput = true,
+            UseShellExecute = false,
+            WorkingDirectory = workingDirectory
+        };
+        if (isManagedLauncher)
+        {
+            startInfo.ArgumentList.Add(cliPath);
+        }
+
+        foreach (string argument in arguments)
+        {
+            startInfo.ArgumentList.Add(argument);
+        }
+
+        startInfo.Environment["CSLS_CLI_WORKER_PATH"] = cliWorkerPath;
+        return Process.Start(startInfo)
+            ?? throw new InvalidOperationException("The csls CLI process did not start.");
+    }
+
+    private static async Task<JsonElement> ReadWatchEventAsync(
+        StreamReader standardOutput,
+        Func<JsonElement, bool> predicate,
+        CancellationToken cancellationToken)
+    {
+        while (true)
+        {
+            string? line = await standardOutput
+                .ReadLineAsync(cancellationToken)
+                .ConfigureAwait(false);
+            if (line is null)
+            {
+                throw new EndOfStreamException(
+                    "The csls session watch stream closed before the expected event.");
+            }
+
+            using var document = JsonDocument.Parse(line);
+            AssertSuccessfulEnvelope(document.RootElement);
+            JsonElement data = document.RootElement.GetProperty("data");
+            if (predicate(data))
+            {
+                return data.Clone();
+            }
+        }
+    }
+
+    private static bool IsWatchEvent(JsonElement data, string kind, int processId) =>
+        data.GetProperty("kind").GetString() == kind &&
+        data.GetProperty("session").GetProperty("processId").GetInt32() == processId;
 
     private static async Task AcceptAndDisconnectAsync(
         string socketPath,

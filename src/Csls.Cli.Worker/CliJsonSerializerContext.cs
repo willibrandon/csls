@@ -17,6 +17,8 @@ namespace Csls.Cli.Worker;
 [JsonSerializable(typeof(DoctorCheckStatus))]
 [JsonSerializable(typeof(DoctorProject))]
 [JsonSerializable(typeof(DoctorReport))]
+[JsonSerializable(typeof(SessionWatchEvent))]
+[JsonSerializable(typeof(SessionWatchEventKind))]
 [JsonSerializable(typeof(string))]
 [JsonSerializable(typeof(ControlHoverResult))]
 [JsonSerializable(typeof(ControlDocumentPrecondition))]

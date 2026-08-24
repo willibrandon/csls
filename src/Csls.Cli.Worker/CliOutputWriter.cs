@@ -75,6 +75,43 @@ internal static class CliOutputWriter
     }
 
     /// <summary>
+    /// Writes one ordered live-session watch observation.
+    /// </summary>
+    /// <param name="watchEvent">The changed session and complete current snapshot.</param>
+    /// <param name="writeJson">Whether to write a machine-readable envelope.</param>
+    internal static void WriteSessionWatchEvent(
+        SessionWatchEvent watchEvent,
+        bool writeJson)
+    {
+        ArgumentNullException.ThrowIfNull(watchEvent);
+        if (writeJson)
+        {
+            JsonElement data = JsonSerializer.SerializeToElement(
+                watchEvent,
+                CliJsonSerializerContext.Default.SessionWatchEvent);
+            WriteEnvelope(success: true, data);
+            return;
+        }
+
+        if (watchEvent.Kind == SessionWatchEventKind.Snapshot)
+        {
+            Console.Out.WriteLine(
+                $"SNAPSHOT {watchEvent.Sessions.Count.ToString(CultureInfo.InvariantCulture)} live session(s)");
+            return;
+        }
+
+        ControlSessionInfo session = watchEvent.Session
+            ?? throw new InvalidDataException(
+                $"The {watchEvent.Kind} watch event did not include a session.");
+        Console.Out.WriteLine(
+            $"{watchEvent.Kind.ToString().ToUpperInvariant()} " +
+            $"{session.ProcessId.ToString(CultureInfo.InvariantCulture)} " +
+            $"{session.LifecycleState} " +
+            $"{session.WorkspaceGeneration.ToString(CultureInfo.InvariantCulture)} " +
+            string.Join(';', session.WorkspaceRoots));
+    }
+
+    /// <summary>
     /// Writes the observable result of one completed workspace maintenance operation.
     /// </summary>
     /// <param name="result">The completed workspace operation result.</param>
