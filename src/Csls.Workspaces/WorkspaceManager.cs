@@ -43,9 +43,6 @@ public sealed partial class WorkspaceManager : IAsyncDisposable
     private const string OrganizeImportsCodeActionKind = "source.organizeImports";
     private const string QuickFixCodeActionKind = "quickfix";
     private const string RefactorCodeActionKind = "refactor";
-    private static readonly Lock s_msbuildRegistrationLock = new();
-    private static bool s_msbuildRegistered;
-
     private readonly ILogger<WorkspaceManager> _logger;
     private readonly AnalyzerDiagnosticCache _diagnosticCache = new();
     private readonly SemaphoreSlim _mutationGate = new(1, 1);
@@ -178,7 +175,16 @@ public sealed partial class WorkspaceManager : IAsyncDisposable
         string workspaceFile,
         CancellationToken cancellationToken)
     {
-        EnsureMsBuildRegistered();
+        VisualStudioInstance? msBuildInstance = MSBuildRegistration.EnsureRegistered(workspaceFile);
+        if (msBuildInstance is not null)
+        {
+            LogMSBuildRegistered(
+                msBuildInstance.Name,
+                msBuildInstance.Version,
+                msBuildInstance.MSBuildPath,
+                workspaceFile);
+        }
+
         var workspace = MSBuildWorkspace.Create();
         try
         {
@@ -2391,18 +2397,6 @@ public sealed partial class WorkspaceManager : IAsyncDisposable
     private static StringComparer PathComparer =>
         OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal;
 
-    private static void EnsureMsBuildRegistered()
-    {
-        lock (s_msbuildRegistrationLock)
-        {
-            if (!s_msbuildRegistered)
-            {
-                MSBuildLocator.RegisterDefaults();
-                s_msbuildRegistered = true;
-            }
-        }
-    }
-
     private static (Workspace Workspace, Solution Solution) LoadLooseFiles(string rootPath)
     {
         bool isSourceFile = File.Exists(rootPath);
@@ -2846,4 +2840,14 @@ public sealed partial class WorkspaceManager : IAsyncDisposable
         Level = LogLevel.Warning,
         Message = "Could not remove edit transaction artifact {Path}")]
     private partial void LogEditArtifactCleanupFailure(string path, Exception exception);
+
+    [LoggerMessage(
+        EventId = 4,
+        Level = LogLevel.Information,
+        Message = "Registered MSBuild {Name} {Version} from {Path} for {WorkspaceFile}")]
+    private partial void LogMSBuildRegistered(
+        string name,
+        Version version,
+        string path,
+        string workspaceFile);
 }
