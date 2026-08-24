@@ -13,6 +13,7 @@ using System.Text.Json;
 using System.Xml.Linq;
 
 const string DefaultVersion = "0.1.0-verification";
+const double ProcessTimeoutMinutes = 3;
 
 if (args.Length == 1 && args[0] is "--help" or "-h" or "-?")
 {
@@ -601,7 +602,7 @@ static async Task VerifyLanguageServerWorkerAsync(
         fixturePath,
         environment).ConfigureAwait(false);
     string rootUri = new Uri(fixturePath + Path.DirectorySeparatorChar).AbsoluteUri;
-    using var timeout = new CancellationTokenSource(TimeSpan.FromMinutes(1));
+    using var timeout = new CancellationTokenSource(TimeSpan.FromMinutes(ProcessTimeoutMinutes));
     var startInfo = new ProcessStartInfo
     {
         FileName = commandPath,
@@ -704,7 +705,7 @@ static async Task VerifyDoctorAsync(
     string fixturePath,
     IReadOnlyDictionary<string, string> environment)
 {
-    using var timeout = new CancellationTokenSource(TimeSpan.FromMinutes(1));
+    using var timeout = new CancellationTokenSource(TimeSpan.FromMinutes(ProcessTimeoutMinutes));
     var startInfo = new ProcessStartInfo
     {
         FileName = commandPath,
@@ -719,9 +720,21 @@ static async Task VerifyDoctorAsync(
     ApplyEnvironment(startInfo, environment);
     using Process process = Process.Start(startInfo) ?? throw new InvalidOperationException(
         "The installed csls doctor did not start.");
-    Task<string> standardOutputTask = process.StandardOutput.ReadToEndAsync(timeout.Token);
-    Task<string> standardErrorTask = process.StandardError.ReadToEndAsync(timeout.Token);
-    await process.WaitForExitAsync(timeout.Token).ConfigureAwait(false);
+    Task<string> standardOutputTask = process.StandardOutput.ReadToEndAsync();
+    Task<string> standardErrorTask = process.StandardError.ReadToEndAsync();
+    try
+    {
+        await process.WaitForExitAsync(timeout.Token).ConfigureAwait(false);
+    }
+    catch (OperationCanceledException) when (timeout.IsCancellationRequested)
+    {
+        process.Kill(entireProcessTree: true);
+        await process.WaitForExitAsync(CancellationToken.None).ConfigureAwait(false);
+        string timedOutStandardError = await standardErrorTask.ConfigureAwait(false);
+        throw new InvalidOperationException(
+            $"The installed csls doctor exceeded the {ProcessTimeoutMinutes}-minute limit: " +
+            timedOutStandardError);
+    }
     string standardOutput = await standardOutputTask.ConfigureAwait(false);
     string standardError = await standardErrorTask.ConfigureAwait(false);
     if (process.ExitCode != 0)
@@ -746,7 +759,7 @@ static async Task VerifyMcpWorkerAsync(
     string workingDirectory,
     IReadOnlyDictionary<string, string> environment)
 {
-    using var timeout = new CancellationTokenSource(TimeSpan.FromMinutes(1));
+    using var timeout = new CancellationTokenSource(TimeSpan.FromMinutes(ProcessTimeoutMinutes));
     var startInfo = new ProcessStartInfo
     {
         FileName = commandPath,
