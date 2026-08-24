@@ -81,5 +81,5 @@ csls lsp
 ```
 
 Use the workspace folder URI during `initialize`. The server discovers `.slnx`,
-`.sln`, and `.csproj` files below that folder. Multi-root clients can add and remove
-folders without restarting the server.
+`.sln`, `.csproj`, and file-based app entry points below that folder. Multi-root
+clients can add and remove folders without restarting the server.

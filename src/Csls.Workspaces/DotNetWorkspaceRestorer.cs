@@ -27,7 +27,7 @@ internal static class DotNetWorkspaceRestorer
         string[] entryPoints =
         [
             .. workspaceRoots
-                .SelectMany(WorkspaceDiscovery.Discover)
+                .SelectMany(root => WorkspaceDiscovery.Discover(root, cancellationToken))
                 .Distinct(PathComparer)
                 .Order(StringComparer.Ordinal)
         ];

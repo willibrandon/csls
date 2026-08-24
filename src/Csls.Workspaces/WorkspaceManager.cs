@@ -131,7 +131,9 @@ public sealed partial class WorkspaceManager : IAsyncDisposable
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 string rootPath = Path.GetFullPath(requestedRoot);
-                IReadOnlyList<string> workspaceFiles = WorkspaceDiscovery.Discover(rootPath);
+                IReadOnlyList<string> workspaceFiles = WorkspaceDiscovery.Discover(
+                    rootPath,
+                    cancellationToken);
                 if (workspaceFiles.Count == 0)
                 {
                     (Workspace looseWorkspace, Solution looseSolution) = LoadLooseFiles(rootPath);
@@ -142,37 +144,20 @@ public sealed partial class WorkspaceManager : IAsyncDisposable
                 foreach (string workspaceFile in workspaceFiles)
                 {
                     cancellationToken.ThrowIfCancellationRequested();
-                    EnsureMsBuildRegistered();
-                    var workspace = MSBuildWorkspace.Create();
+                    (Workspace Workspace, Solution Solution) loaded =
+                        await LoadWorkspaceFileAsync(
+                            workspaceFile,
+                            cancellationToken).ConfigureAwait(false);
                     try
                     {
-                        workspace.RegisterWorkspaceFailedHandler(eventArgs =>
-                            LogWorkspaceDiagnostic(
-                                eventArgs.Diagnostic.Kind,
-                                eventArgs.Diagnostic.Message));
-                        Solution solution;
-                        if (workspaceFile.EndsWith(".csproj", StringComparison.OrdinalIgnoreCase))
-                        {
-                            Project project = await workspace
-                                .OpenProjectAsync(workspaceFile, cancellationToken: cancellationToken)
-                                .ConfigureAwait(false);
-                            solution = project.Solution;
-                        }
-                        else
-                        {
-                            solution = await workspace
-                                .OpenSolutionAsync(workspaceFile, cancellationToken: cancellationToken)
-                                .ConfigureAwait(false);
-                        }
-
-                        loadedFolders.Add((rootPath, workspace, solution));
+                        loadedFolders.Add((rootPath, loaded.Workspace, loaded.Solution));
                         LogWorkspaceLoaded(
-                            solution.ProjectIds.Count,
+                            loaded.Solution.ProjectIds.Count,
                             workspaceFile);
                     }
                     catch
                     {
-                        workspace.Dispose();
+                        loaded.Workspace.Dispose();
                         throw;
                     }
                 }
@@ -183,6 +168,53 @@ public sealed partial class WorkspaceManager : IAsyncDisposable
         catch
         {
             DisposeFolders(loadedFolders.ToImmutable());
+            throw;
+        }
+    }
+
+    private async Task<(Workspace Workspace, Solution Solution)> LoadWorkspaceFileAsync(
+        string workspaceFile,
+        CancellationToken cancellationToken)
+    {
+        EnsureMsBuildRegistered();
+        var workspace = MSBuildWorkspace.Create();
+        try
+        {
+            workspace.RegisterWorkspaceFailedHandler(eventArgs =>
+                LogWorkspaceDiagnostic(
+                    eventArgs.Diagnostic.Kind,
+                    eventArgs.Diagnostic.Message));
+            Solution solution;
+            if (WorkspaceDiscovery.IsFileBasedApp(workspaceFile))
+            {
+                Project project = await FileBasedAppProjectLoader.OpenProjectAsync(
+                    workspace,
+                    workspaceFile,
+                    LogWorkspaceDiagnostic,
+                    cancellationToken).ConfigureAwait(false);
+                solution = project.Solution;
+            }
+            else if (workspaceFile.EndsWith(
+                ".csproj",
+                StringComparison.OrdinalIgnoreCase))
+            {
+                Project project = await workspace
+                    .OpenProjectAsync(workspaceFile, cancellationToken: cancellationToken)
+                    .ConfigureAwait(false);
+                solution = project.Solution;
+            }
+            else
+            {
+                solution = await workspace
+                    .OpenSolutionAsync(workspaceFile, cancellationToken: cancellationToken)
+                    .ConfigureAwait(false);
+            }
+
+            return (workspace, solution);
+        }
+        catch
+        {
+            workspace.Dispose();
             throw;
         }
     }
@@ -2402,7 +2434,8 @@ public sealed partial class WorkspaceManager : IAsyncDisposable
         string extension = Path.GetExtension(path);
         return extension.Equals(".slnx", StringComparison.OrdinalIgnoreCase) ||
             extension.Equals(".sln", StringComparison.OrdinalIgnoreCase) ||
-            extension.Equals(".csproj", StringComparison.OrdinalIgnoreCase);
+            extension.Equals(".csproj", StringComparison.OrdinalIgnoreCase) ||
+            WorkspaceDiscovery.IsFileBasedApp(path);
     }
 
     private static StringComparison PathComparison =>
