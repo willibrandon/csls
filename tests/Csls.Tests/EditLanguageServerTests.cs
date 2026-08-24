@@ -67,6 +67,8 @@ public sealed class EditLanguageServerTests
             Assert.IsTrue(capabilities.GetProperty("renameProvider").GetProperty(
                 "prepareProvider").GetBoolean());
             Assert.IsTrue(capabilities.GetProperty("documentFormattingProvider").GetBoolean());
+            Assert.IsTrue(
+                capabilities.GetProperty("documentRangeFormattingProvider").GetBoolean());
             Assert.Contains(
                 "source.organizeImports",
                 capabilities
@@ -114,16 +116,33 @@ public sealed class EditLanguageServerTests
                     .ConfigureAwait(false);
             Assert.Contains("valid C# identifier", invalidRename.Message, StringComparison.Ordinal);
 
+            var formattingOptions = new FormattingOptions
+            {
+                TabSize = 4,
+                InsertSpaces = true,
+                TrimTrailingWhitespace = true,
+                InsertFinalNewline = true,
+                TrimFinalNewlines = true
+            };
+            IReadOnlyList<TextEdit> rangeFormatting = await lsp.RequestRangeFormattingAsync(
+                programPath,
+                new LspRange(new Position(5, 0), new Position(6, 0)),
+                formattingOptions,
+                TestContext.CancellationToken).ConfigureAwait(false);
+            Assert.IsNotEmpty(rangeFormatting);
+            string rangeFormattedText = ApplyTextEdits(ProgramText, rangeFormatting);
+            Assert.Contains(
+                "public static class Calculator { public static int Add(int left, int right) => left + right; }",
+                rangeFormattedText,
+                StringComparison.Ordinal);
+            Assert.Contains(
+                "public static class Program{public static void Main(){Console.WriteLine(Calculator.Add(1,2));}}",
+                rangeFormattedText,
+                StringComparison.Ordinal);
+
             IReadOnlyList<TextEdit> formatting = await lsp.RequestFormattingAsync(
                 programPath,
-                new FormattingOptions
-                {
-                    TabSize = 4,
-                    InsertSpaces = true,
-                    TrimTrailingWhitespace = true,
-                    InsertFinalNewline = true,
-                    TrimFinalNewlines = true
-                },
+                formattingOptions,
                 TestContext.CancellationToken).ConfigureAwait(false);
             Assert.IsNotEmpty(formatting);
             string formattedText = ApplyTextEdits(ProgramText, formatting);

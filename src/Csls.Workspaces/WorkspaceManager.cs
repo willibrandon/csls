@@ -7,7 +7,6 @@ using Microsoft.CodeAnalysis.Diagnostics;
 using Microsoft.CodeAnalysis.FindSymbols;
 using Microsoft.CodeAnalysis.Formatting;
 using Microsoft.CodeAnalysis.MSBuild;
-using Microsoft.CodeAnalysis.Options;
 using Microsoft.CodeAnalysis.Rename;
 using Microsoft.CodeAnalysis.Text;
 using Microsoft.Extensions.Logging;
@@ -19,7 +18,6 @@ using LspCodeAction = Csls.Protocol.CodeAction;
 using LspDiagnostic = Csls.Protocol.Diagnostic;
 using LspDiagnosticSeverity = Csls.Protocol.DiagnosticSeverity;
 using LspDocumentHighlight = Csls.Protocol.DocumentHighlight;
-using LspFormattingOptions = Csls.Protocol.FormattingOptions;
 using LspLocation = Csls.Protocol.Location;
 using LspRange = Csls.Protocol.Range;
 using LspSelectionRange = Csls.Protocol.SelectionRange;
@@ -28,7 +26,6 @@ using LspSymbolKind = Csls.Protocol.SymbolKind;
 using LspTextEdit = Csls.Protocol.TextEdit;
 using RoslynDiagnostic = Microsoft.CodeAnalysis.Diagnostic;
 using RoslynDiagnosticSeverity = Microsoft.CodeAnalysis.DiagnosticSeverity;
-using RoslynFormattingOptions = Microsoft.CodeAnalysis.Formatting.FormattingOptions;
 using RoslynLocation = Microsoft.CodeAnalysis.Location;
 using RoslynSymbolKind = Microsoft.CodeAnalysis.SymbolKind;
 
@@ -1256,97 +1253,6 @@ public sealed partial class WorkspaceManager : IAsyncDisposable
     }
 
     /// <summary>
-    /// Formats a complete document using Roslyn and the editor's indentation preferences.
-    /// </summary>
-    /// <param name="parameters">The target document and formatting preferences.</param>
-    /// <param name="cancellationToken">The operation cancellation token.</param>
-    /// <returns>The bounded non-overlapping document edits.</returns>
-    public async Task<IReadOnlyList<LspTextEdit>> GetFormattingEditsAsync(
-        DocumentFormattingParams parameters,
-        CancellationToken cancellationToken)
-    {
-        ArgumentNullException.ThrowIfNull(parameters);
-        ValidateFormattingOptions(parameters.Options);
-        string path = parameters.TextDocument.Uri.GetFileSystemPath();
-        if (WorkspaceRazorDiagnosticService.IsRazorDocument(path))
-        {
-            SourceText? originalRazorText = _razorDocuments.GetValueOrDefault(path);
-            if (originalRazorText is null)
-            {
-                ImmutableArray<(string RootPath, Workspace Workspace, Solution Solution)> folders =
-                    _folders;
-                int folderIndex = FindFolderIndex(path, folders);
-                if (folderIndex >= 0)
-                {
-                    ImmutableArray<DocumentId> documentIds = folders[folderIndex]
-                        .Solution
-                        .GetDocumentIdsWithFilePath(path);
-                    for (int index = 0; index < documentIds.Length; index++)
-                    {
-                        TextDocument? razorDocument = folders[folderIndex]
-                            .Solution
-                            .GetAdditionalDocument(documentIds[index]);
-                        if (razorDocument is not null)
-                        {
-                            originalRazorText = await razorDocument
-                                .GetTextAsync(cancellationToken)
-                                .ConfigureAwait(false);
-                            break;
-                        }
-                    }
-                }
-            }
-
-            if (originalRazorText is null)
-            {
-                return [];
-            }
-
-            SourceText formattedRazorText = WorkspaceRazorFormattingService.Format(
-                originalRazorText,
-                path,
-                parameters.Options,
-                cancellationToken);
-            formattedRazorText = ApplyFinalFormattingOptions(
-                formattedRazorText,
-                parameters.Options);
-            return CreateTextEdits(
-                originalRazorText,
-                formattedRazorText.GetTextChanges(originalRazorText));
-        }
-
-        Document? document = FindDocument(parameters.TextDocument.Uri);
-        if (document is null)
-        {
-            return [];
-        }
-
-        OptionSet options = document.Project.Solution.Options
-            .WithChangedOption(
-                RoslynFormattingOptions.UseTabs,
-                LanguageNames.CSharp,
-                !parameters.Options.InsertSpaces)
-            .WithChangedOption(
-                RoslynFormattingOptions.TabSize,
-                LanguageNames.CSharp,
-                parameters.Options.TabSize)
-            .WithChangedOption(
-                RoslynFormattingOptions.IndentationSize,
-                LanguageNames.CSharp,
-                parameters.Options.TabSize);
-        Document formattedDocument = await Formatter.FormatAsync(
-            document,
-            options,
-            cancellationToken).ConfigureAwait(false);
-        SourceText originalText = await document.GetTextAsync(cancellationToken)
-            .ConfigureAwait(false);
-        SourceText formattedText = await formattedDocument.GetTextAsync(cancellationToken)
-            .ConfigureAwait(false);
-        formattedText = ApplyFinalFormattingOptions(formattedText, parameters.Options);
-        return CreateTextEdits(originalText, formattedText.GetTextChanges(originalText));
-    }
-
-    /// <summary>
     /// Gets concrete Roslyn code actions supported for one immutable document snapshot.
     /// </summary>
     /// <param name="parameters">The target range and requested action context.</param>
@@ -2201,68 +2107,6 @@ public sealed partial class WorkspaceManager : IAsyncDisposable
                 NewText = change.NewText ?? string.Empty
             })
         ];
-    }
-
-    private static void ValidateFormattingOptions(LspFormattingOptions options)
-    {
-        ArgumentNullException.ThrowIfNull(options);
-        if (options.TabSize is < 1 or > 32)
-        {
-            throw new InvalidDataException("Formatting tabSize must be between 1 and 32.");
-        }
-    }
-
-    private static SourceText ApplyFinalFormattingOptions(
-        SourceText text,
-        LspFormattingOptions options)
-    {
-        string originalValue = text.ToString();
-        string value = originalValue;
-        string newline = GetPreferredNewline(text);
-        if (options.TrimTrailingWhitespace is true)
-        {
-            var builder = new StringBuilder(value.Length);
-            foreach (TextLine line in text.Lines)
-            {
-                int end = line.End;
-                while (end > line.Start && char.IsWhiteSpace(value[end - 1]))
-                {
-                    end--;
-                }
-
-                builder.Append(value, line.Start, end - line.Start);
-                builder.Append(value, line.End, line.EndIncludingLineBreak - line.End);
-            }
-
-            value = builder.ToString();
-        }
-
-        if (options.TrimFinalNewlines is true)
-        {
-            value = value.TrimEnd('\r', '\n');
-        }
-
-        if (options.InsertFinalNewline is true &&
-            !value.EndsWith('\n') &&
-            !value.EndsWith('\r'))
-        {
-            value += newline;
-        }
-
-        return string.Equals(value, originalValue, StringComparison.Ordinal)
-            ? text
-            : SourceText.From(value, text.Encoding, text.ChecksumAlgorithm);
-    }
-
-    private static string GetPreferredNewline(SourceText text)
-    {
-        foreach (TextLine line in text.Lines
-            .Where(static line => line.EndIncludingLineBreak > line.End))
-        {
-            return text.ToString(TextSpan.FromBounds(line.End, line.EndIncludingLineBreak));
-        }
-
-        return Environment.NewLine;
     }
 
     private static bool IsCodeActionRequested(

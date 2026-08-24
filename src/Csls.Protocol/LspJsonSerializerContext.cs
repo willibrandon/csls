@@ -44,6 +44,7 @@ namespace Csls.Protocol;
 [JsonSerializable(typeof(DidOpenTextDocumentParams))]
 [JsonSerializable(typeof(DidSaveTextDocumentParams))]
 [JsonSerializable(typeof(DocumentFormattingParams))]
+[JsonSerializable(typeof(DocumentRangeFormattingParams))]
 [JsonSerializable(typeof(DocumentHighlight))]
 [JsonSerializable(typeof(DocumentHighlightKind))]
 [JsonSerializable(typeof(DocumentLink))]

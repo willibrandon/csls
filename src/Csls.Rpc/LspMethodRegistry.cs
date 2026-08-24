@@ -227,6 +227,11 @@ public static class LspMethodRegistry
                 target.FormattingAsync));
         AddParameterObjectMethod(
             rpc,
+            "textDocument/rangeFormatting",
+            new Func<DocumentRangeFormattingParams, CancellationToken, Task<IReadOnlyList<TextEdit>>>(
+                target.RangeFormattingAsync));
+        AddParameterObjectMethod(
+            rpc,
             "textDocument/codeAction",
             new Func<CodeActionParams, CancellationToken, Task<IReadOnlyList<CodeAction>>>(
                 target.CodeActionAsync));

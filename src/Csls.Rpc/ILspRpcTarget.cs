@@ -441,6 +441,16 @@ public interface ILspRpcTarget
         CancellationToken cancellationToken);
 
     /// <summary>
+    /// Formats whitespace within one bounded document range.
+    /// </summary>
+    /// <param name="parameters">The target document range and formatting preferences.</param>
+    /// <param name="cancellationToken">The peer cancellation token.</param>
+    /// <returns>The bounded non-overlapping formatting edits.</returns>
+    Task<IReadOnlyList<TextEdit>> RangeFormattingAsync(
+        DocumentRangeFormattingParams parameters,
+        CancellationToken cancellationToken);
+
+    /// <summary>
     /// Gets concrete Roslyn source transformations for one document range.
     /// </summary>
     /// <param name="parameters">The target range and requested action context.</param>
