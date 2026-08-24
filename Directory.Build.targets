@@ -6,8 +6,10 @@
                              Exclude="$(MSBuildThisFileDirectory)**/bin/**;$(MSBuildThisFileDirectory)**/obj/**;$(MSBuildThisFileDirectory)artifacts/**" />
     <CslsSuppressionScanFile Include="$(MSBuildThisFileDirectory)**/*.targets"
                              Exclude="$(MSBuildThisFileDirectory)**/bin/**;$(MSBuildThisFileDirectory)**/obj/**;$(MSBuildThisFileDirectory)artifacts/**" />
-    <CslsSuppressionScanFile Include="$(MSBuildThisFileDirectory)**/.editorconfig" />
-    <CslsSuppressionScanFile Include="$(MSBuildThisFileDirectory)**/.globalconfig" />
+    <CslsSuppressionScanFile Include="$(MSBuildThisFileDirectory)**/.editorconfig"
+                             Exclude="$(MSBuildThisFileDirectory)**/bin/**;$(MSBuildThisFileDirectory)**/obj/**;$(MSBuildThisFileDirectory)artifacts/**" />
+    <CslsSuppressionScanFile Include="$(MSBuildThisFileDirectory)**/.globalconfig"
+                             Exclude="$(MSBuildThisFileDirectory)**/bin/**;$(MSBuildThisFileDirectory)**/obj/**;$(MSBuildThisFileDirectory)artifacts/**" />
     <CslsGlobalSuppressionsFile Include="$(MSBuildThisFileDirectory)**/GlobalSuppressions.cs"
                                 Exclude="$(MSBuildThisFileDirectory)**/bin/**;$(MSBuildThisFileDirectory)**/obj/**;$(MSBuildThisFileDirectory)artifacts/**" />
     <CslsSkippedTestScanFile Include="$(MSBuildThisFileDirectory)tests/**/*.cs"

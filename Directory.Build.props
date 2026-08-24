@@ -37,8 +37,7 @@
     <CslsRazorCompilerVersion>10.4.0-preview.26423.112</CslsRazorCompilerVersion>
   </PropertyGroup>
 
-  <PropertyGroup Condition="'$(MSBuildProjectName)' == 'Csls.Workspaces' or
-                            '$(MSBuildProjectName)' == 'Csls.Worker'">
+  <PropertyGroup Condition="'$(MSBuildProjectName)' == 'Csls.Workspaces'">
     <CslsUsesRazorCompiler>true</CslsUsesRazorCompiler>
   </PropertyGroup>
 
