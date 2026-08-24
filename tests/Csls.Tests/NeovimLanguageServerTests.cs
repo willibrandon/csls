@@ -107,6 +107,7 @@ public sealed class NeovimLanguageServerTests
                 .WithHeadless()
                 .WithDimensions(120, 40)
                 .Build();
+            int? serverProcessId = null;
             try
             {
                 string screenText = string.Empty;
@@ -123,6 +124,10 @@ public sealed class NeovimLanguageServerTests
                             "ready",
                             TimeSpan.FromSeconds(60),
                             TestContext.CancellationToken).ConfigureAwait(false);
+                        serverProcessId = (await ControlSessionWaiter.WaitForRunningAsync(
+                            fixturePath,
+                            TimeSpan.FromSeconds(60),
+                            TestContext.CancellationToken).ConfigureAwait(false)).ProcessId;
 
                         await automator.TypeAsync("K", TestContext.CancellationToken)
                             .ConfigureAwait(false);
@@ -148,6 +153,13 @@ public sealed class NeovimLanguageServerTests
             {
                 await terminal.DisposeAsync().ConfigureAwait(false);
                 await workload.DisposeAsync().ConfigureAwait(false);
+                if (serverProcessId is int processId)
+                {
+                    await ProcessExitWaiter.WaitAsync(
+                        processId,
+                        TimeSpan.FromSeconds(10),
+                        TestContext.CancellationToken).ConfigureAwait(false);
+                }
             }
         }
         finally

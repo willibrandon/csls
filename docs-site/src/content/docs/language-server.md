@@ -42,6 +42,11 @@ Completion edits are computed by Roslyn. Clients that advertise snippet support
 receive snippet insertion text with Roslyn's final caret position. Other clients
 receive plain text. `completionItem/resolve` adds Roslyn documentation without
 changing the edit, sort text, or filter text returned by the original request.
+Hover, completion resolve, signature help, and parameter help preserve structured
+C# XML documentation such as references, paragraphs, code, and lists. Markdown is
+returned only when the client includes it in the corresponding content formats.
+Inherited method and parameter documentation follows overrides and interface
+implementations.
 Razor views and components receive C# member and type completion from their
 generated project snapshot. Commit edits map back to Razor source, including
 `@using` directives required by types from unimported namespaces.
