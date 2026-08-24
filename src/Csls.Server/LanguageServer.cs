@@ -268,7 +268,7 @@ public sealed partial class LanguageServer : ILspRpcTarget, IAsyncDisposable
                 },
                 CodeActionProvider = new CodeActionOptions
                 {
-                    CodeActionKinds = ["source.organizeImports"],
+                    CodeActionKinds = ["quickfix", "source.organizeImports"],
                     ResolveProvider = false
                 }
             },

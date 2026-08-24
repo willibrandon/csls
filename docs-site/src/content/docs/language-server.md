@@ -12,7 +12,7 @@ language features include:
 - document and workspace symbols
 - semantic tokens with full and delta responses
 - call hierarchy, type hierarchy, selection ranges, folding ranges, and inlay hints
-- rename, code actions, and document, range, on-type, or opt-in save formatting
+- rename, missing-using quick fixes, import organization, and document, range, on-type, or opt-in save formatting
 - project-aware file creation, rename, folder move, and deletion tracking
 
 Document and workspace diagnostic pulls use the same immutable Roslyn snapshot.
@@ -50,6 +50,11 @@ Rename works from C# and from mapped C# expressions in `.razor` and `.cshtml`
 files. A single version-aware workspace edit updates Razor references, Razor-local
 members, and ordinary C# declarations and references. Rename is rejected when
 the new identifier would bind to a different symbol in generated Razor code.
+
+Missing-using quick fixes use Roslyn's project and metadata indexes. Each proposed
+import is applied to a temporary document, simplified, formatted, and kept only
+when the unresolved name binds to the selected accessible type. The returned edit
+includes the current document version when the file is open.
 
 `textDocument/moniker` returns `dotnet` identifiers built from canonical assembly
 identities and Roslyn documentation IDs. Strong-named assembly APIs are unique

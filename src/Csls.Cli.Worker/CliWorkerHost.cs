@@ -660,10 +660,16 @@ internal static class CliWorkerHost
         bool writeJson,
         CancellationToken cancellationToken)
     {
-        if (arguments.Count != 6 ||
+        if (arguments.Count != 8 ||
             !int.TryParse(arguments[1], NumberStyles.None, CultureInfo.InvariantCulture,
                 out int processId) ||
-            !bool.TryParse(arguments[4], out bool apply))
+            !int.TryParse(arguments[3], NumberStyles.None, CultureInfo.InvariantCulture,
+                out int line) ||
+            !int.TryParse(arguments[4], NumberStyles.None, CultureInfo.InvariantCulture,
+                out int character) ||
+            line < 0 ||
+            character < 0 ||
+            !bool.TryParse(arguments[6], out bool apply))
         {
             return Fail(
                 "invalid-request",
@@ -679,8 +685,10 @@ internal static class CliWorkerHost
             new ControlCodeActionRequest
             {
                 DocumentPath = arguments[2],
-                Range = new LspRange(new Position(0, 0), new Position(0, 0)),
-                Only = [arguments[3]]
+                Range = new LspRange(
+                    new Position(line, character),
+                    new Position(line, character)),
+                Only = [arguments[5]]
             },
             cancellationToken).ConfigureAwait(false);
         if (apply)

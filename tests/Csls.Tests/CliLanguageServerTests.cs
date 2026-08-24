@@ -441,6 +441,7 @@ public sealed class CliLanguageServerTests
         {
             string documentPath = Path.Join(fixturePath, "Program.cs");
             string importsPath = Path.Join(fixturePath, "Imports.cs");
+            string missingUsingPath = Path.Join(fixturePath, "MissingUsing.cs");
             string formattingPath = Path.Join(fixturePath, "Formatting.cs");
             string advancedPath = Path.Join(fixturePath, "Advanced.cs");
             await File.WriteAllTextAsync(
@@ -454,6 +455,10 @@ public sealed class CliLanguageServerTests
             await File.WriteAllTextAsync(
                 importsPath,
                 ImportsText,
+                TestContext.CancellationToken).ConfigureAwait(false);
+            await File.WriteAllTextAsync(
+                missingUsingPath,
+                MissingUsingText,
                 TestContext.CancellationToken).ConfigureAwait(false);
             await File.WriteAllTextAsync(
                 formattingPath,
@@ -998,6 +1003,85 @@ public sealed class CliLanguageServerTests
                 appliedImports.IndexOf("using System.Text;", StringComparison.Ordinal),
                 appliedImports.IndexOf("using System;", StringComparison.Ordinal));
 
+            (int quickFixExitCode, string quickFixOutput, string quickFixError) =
+                await RunCliAsync(
+                    cliPath,
+                    cliWorkerPath,
+                    fixturePath,
+                    [
+                        "edit",
+                        "code-action",
+                        missingUsingPath,
+                        "--kind",
+                        "quickfix",
+                        "--line",
+                        "6",
+                        "--character",
+                        "26",
+                        "--session",
+                        processId,
+                        "--json"
+                    ],
+                    TestContext.CancellationToken).ConfigureAwait(false);
+            Assert.AreEqual(
+                0,
+                quickFixExitCode,
+                $"{quickFixError}{Environment.NewLine}{quickFixOutput}");
+            using (var quickFixDocument = JsonDocument.Parse(quickFixOutput))
+            {
+                JsonElement quickFixRoot = quickFixDocument.RootElement;
+                AssertSuccessfulEnvelope(quickFixRoot);
+                JsonElement quickFix = Assert.ContainsSingle(
+                    quickFixRoot.GetProperty("data").EnumerateArray());
+                Assert.AreEqual(
+                    "Add using System.Text",
+                    quickFix.GetProperty("action").GetProperty("title").GetString());
+                Assert.AreEqual(
+                    "quickfix",
+                    quickFix.GetProperty("action").GetProperty("kind").GetString());
+                Assert.IsNotEmpty(quickFix
+                    .GetProperty("editPlan")
+                    .GetProperty("edit")
+                    .GetProperty("documentChanges")
+                    .EnumerateArray());
+            }
+
+            (int quickFixApplyExitCode, string quickFixApplyOutput, string quickFixApplyError) =
+                await RunCliAsync(
+                    cliPath,
+                    cliWorkerPath,
+                    fixturePath,
+                    [
+                        "edit",
+                        "code-action",
+                        missingUsingPath,
+                        "--kind",
+                        "quickfix",
+                        "--line",
+                        "6",
+                        "--character",
+                        "26",
+                        "--apply",
+                        "--session",
+                        processId,
+                        "--json"
+                    ],
+                    TestContext.CancellationToken).ConfigureAwait(false);
+            Assert.AreEqual(
+                0,
+                quickFixApplyExitCode,
+                $"{quickFixApplyError}{Environment.NewLine}{quickFixApplyOutput}");
+            using (var quickFixApplyDocument = JsonDocument.Parse(quickFixApplyOutput))
+            {
+                AssertSuccessfulEnvelope(quickFixApplyDocument.RootElement);
+            }
+
+            string fixedMissingUsing = await File.ReadAllTextAsync(
+                missingUsingPath,
+                TestContext.CancellationToken).ConfigureAwait(false);
+            Assert.StartsWith("using System.Text;", fixedMissingUsing, StringComparison.Ordinal);
+            Assert.Contains("new StringBuilder()", fixedMissingUsing, StringComparison.Ordinal);
+
             (int applyExitCode, string applyOutput, string applyError) =
                 await RunCliAsync(
                     cliPath,
@@ -1541,6 +1625,19 @@ public sealed class CliLanguageServerTests
         namespace Fixture;
 
         public static class Formatting{public static int Add(int left,int right)=>left+right;}
+        """;
+
+    private const string MissingUsingText = """
+        namespace Fixture;
+
+        public static class MissingUsing
+        {
+            public static string Build()
+            {
+                var builder = new StringBuilder();
+                return builder.ToString();
+            }
+        }
         """;
 
     private const string AdvancedDocumentText = """
