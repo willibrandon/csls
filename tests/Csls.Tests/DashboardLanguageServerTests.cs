@@ -1,3 +1,5 @@
+using Csls.Control;
+using Csls.Control.Contracts;
 using Csls.Protocol;
 using Hex1b;
 using Hex1b.Automation;
@@ -26,6 +28,8 @@ public sealed class DashboardLanguageServerTests
     private const string DocumentText = """
         Console.WriteLine(missingName);
         """;
+    private const string DocsScreenshotPathEnvironmentVariable =
+        "CSLS_DASHBOARD_DOCS_SCREENSHOT_PATH";
 
     /// <summary>
     /// Gets the active MSTest context and its framework-managed cancellation token.
@@ -88,10 +92,24 @@ public sealed class DashboardLanguageServerTests
                 fixturePath,
                 TestContext.CancellationToken).ConfigureAwait(false);
             await lsp.OpenDocumentAsync(documentPath, DocumentText).ConfigureAwait(false);
-            await ControlSessionWaiter.WaitForRunningAsync(
+            ControlSessionInfo session = await ControlSessionWaiter.WaitForRunningAsync(
                 fixturePath,
                 TimeSpan.FromSeconds(60),
                 TestContext.CancellationToken).ConfigureAwait(false);
+            var control = new ControlRpcClient(session.SocketPath);
+            await using ConfiguredAsyncDisposable controlCleanup = control.ConfigureAwait(false);
+            ControlDashboardSnapshot workspaceSnapshot =
+                await control.GetDashboardSnapshotAsync(
+                    new ControlDashboardRequest { IncludeDiagnostics = true },
+                    TestContext.CancellationToken).ConfigureAwait(false);
+            Assert.AreEqual(
+                1,
+                workspaceSnapshot.TotalDiagnostics,
+                string.Join(
+                    Environment.NewLine,
+                    workspaceSnapshot.Diagnostics.Select(static diagnostic =>
+                        $"{diagnostic.Id}: {diagnostic.FilePath}: {diagnostic.Message}")));
+            Assert.AreEqual("CS0103", workspaceSnapshot.Diagnostics.Single().Id);
 
             var environment = new Dictionary<string, string>(StringComparer.Ordinal)
             {
@@ -160,6 +178,24 @@ public sealed class DashboardLanguageServerTests
                     await automator.WaitUntilTextAsync("yes").ConfigureAwait(false);
                     await automator.DownAsync(TestContext.CancellationToken).ConfigureAwait(false);
                     await automator.WaitUntilTextAsync("CS0103").ConfigureAwait(false);
+                    using (Hex1bTerminalSnapshot diagnosticsSnapshot =
+                        automator.CreateSnapshot())
+                    {
+                        string? screenshotPath = Environment.GetEnvironmentVariable(
+                            DocsScreenshotPathEnvironmentVariable);
+                        if (!string.IsNullOrWhiteSpace(screenshotPath))
+                        {
+                            string svg = diagnosticsSnapshot.ToSvg(new TerminalSvgOptions
+                            {
+                                ShowCellGrid = false
+                            });
+                            await File.WriteAllTextAsync(
+                                screenshotPath,
+                                svg,
+                                TestContext.CancellationToken).ConfigureAwait(false);
+                        }
+                    }
+
                     await automator.DownAsync(TestContext.CancellationToken).ConfigureAwait(false);
                     await automator.WaitUntilTextAsync("Accepted:").ConfigureAwait(false);
 
