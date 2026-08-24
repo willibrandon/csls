@@ -1,5 +1,6 @@
 using Csls.Protocol;
 using System.Runtime.CompilerServices;
+using System.Text;
 using System.Text.Json;
 
 namespace Csls.Tests;
@@ -35,8 +36,8 @@ public sealed class WorkspaceConfigurationLanguageServerTests
                 documentPath,
                 DiagnosticDocumentText).ConfigureAwait(false);
             var client = new LspTestClient(
-                """{"enableAnalyzers":false}""",
-                """{"enableAnalyzers":true}""");
+                """{"enableAnalyzers":false,"formatOnSave":true}""",
+                """{"enableAnalyzers":true,"formatOnSave":false}""");
             var lsp = LspProcessSession.Start(
                 "csls-configuration-worker",
                 EditorToolResolver.ResolveDotNetHost(),
@@ -61,6 +62,22 @@ public sealed class WorkspaceConfigurationLanguageServerTests
             await client.WaitForConfigurationRequestAsync(
                 expectedCount: 1,
                 TestContext.CancellationToken).ConfigureAwait(false);
+            string unformattedText = DiagnosticDocumentText.Replace(
+                "public int GetValue() => 42;",
+                "public int GetValue()=>42;",
+                StringComparison.Ordinal);
+            await lsp.ChangeDocumentAsync(
+                documentPath,
+                version: 2,
+                [new TextDocumentContentChangeEvent { Text = unformattedText }])
+                .ConfigureAwait(false);
+            IReadOnlyList<TextEdit> preferredSaveFormatting = await lsp
+                .RequestSaveFormattingAsync(
+                    documentPath,
+                    TextDocumentSaveReason.Manual,
+                    TestContext.CancellationToken)
+                .ConfigureAwait(false);
+            Assert.IsEmpty(preferredSaveFormatting);
 
             DocumentDiagnosticReport enabled = await lsp.RequestDiagnosticsAsync(
                 documentPath,
@@ -72,7 +89,7 @@ public sealed class WorkspaceConfigurationLanguageServerTests
             Assert.Contains("CA1822", enabledItems.Select(static diagnostic => diagnostic.Code));
 
             client.SetConfiguration(
-                """{"enableAnalyzers":false}""",
+                """{"enableAnalyzers":false,"formatOnSave":true}""",
                 preferredConfiguration: null);
             using var emptySettings = JsonDocument.Parse("{}");
             await lsp.ChangeConfigurationAsync(emptySettings.RootElement).ConfigureAwait(false);
@@ -83,8 +100,6 @@ public sealed class WorkspaceConfigurationLanguageServerTests
                 documentPath,
                 enabled.ResultId,
                 TestContext.CancellationToken).ConfigureAwait(false);
-            string diagnostics = await lsp.ShutdownAsync(
-                TestContext.CancellationToken).ConfigureAwait(false);
             Assert.AreEqual("full", disabled.Kind);
             Assert.AreNotEqual(enabled.ResultId, disabled.ResultId);
             IReadOnlyList<Diagnostic> disabledItems = disabled.Items
@@ -93,7 +108,20 @@ public sealed class WorkspaceConfigurationLanguageServerTests
             Assert.DoesNotContain(
                 "CA1822",
                 disabledItems.Select(static diagnostic => diagnostic.Code));
+            IReadOnlyList<TextEdit> legacySaveFormatting = await lsp
+                .RequestSaveFormattingAsync(
+                    documentPath,
+                    TextDocumentSaveReason.Manual,
+                    TestContext.CancellationToken)
+                .ConfigureAwait(false);
+            Assert.IsNotEmpty(legacySaveFormatting);
+            Assert.Contains(
+                "public int GetValue() => 42;",
+                ApplyTextEdits(unformattedText, legacySaveFormatting),
+                StringComparison.Ordinal);
 
+            string diagnostics = await lsp.ShutdownAsync(
+                TestContext.CancellationToken).ConfigureAwait(false);
             Assert.DoesNotContain("Unhandled exception", diagnostics, StringComparison.Ordinal);
         }
         finally
@@ -292,6 +320,45 @@ public sealed class WorkspaceConfigurationLanguageServerTests
         return File.Exists(workerPath)
             ? workerPath
             : throw new FileNotFoundException("The language-server worker was not built.", workerPath);
+    }
+
+    private static string ApplyTextEdits(string text, IReadOnlyList<TextEdit> edits)
+    {
+        (int Start, int End, string NewText)[] replacements =
+        [
+            .. edits
+                .Select(edit => (
+                    Start: GetOffset(text, edit.Range.Start),
+                    End: GetOffset(text, edit.Range.End),
+                    edit.NewText))
+                .OrderByDescending(static edit => edit.Start)
+        ];
+        var builder = new StringBuilder(text);
+        foreach ((int start, int end, string newText) in replacements)
+        {
+            builder.Remove(start, end - start);
+            builder.Insert(start, newText);
+        }
+
+        return builder.ToString();
+    }
+
+    private static int GetOffset(string text, Position position)
+    {
+        int line = 0;
+        int offset = 0;
+        while (line < position.Line && offset < text.Length)
+        {
+            if (text[offset++] == '\n')
+            {
+                line++;
+            }
+        }
+
+        Assert.AreEqual(position.Line, line);
+        int result = offset + position.Character;
+        Assert.IsLessThanOrEqualTo(text.Length, result);
+        return result;
     }
 
     private const string ProjectText = """

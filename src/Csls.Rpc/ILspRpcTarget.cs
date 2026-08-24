@@ -101,6 +101,16 @@ public interface ILspRpcTarget
         CancellationToken cancellationToken);
 
     /// <summary>
+    /// Gets configured edits to apply immediately before one document is saved.
+    /// </summary>
+    /// <param name="parameters">The document and reason for the pending save.</param>
+    /// <param name="cancellationToken">The peer cancellation token.</param>
+    /// <returns>The bounded non-overlapping save-time edits.</returns>
+    Task<IReadOnlyList<TextEdit>> WillSaveWaitUntilAsync(
+        WillSaveTextDocumentParams parameters,
+        CancellationToken cancellationToken);
+
+    /// <summary>
     /// Gets current compiler and analyzer diagnostics for one document.
     /// </summary>
     /// <param name="parameters">The document and prior diagnostic result identifier.</param>

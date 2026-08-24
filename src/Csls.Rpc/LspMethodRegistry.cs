@@ -59,6 +59,11 @@ public static class LspMethodRegistry
             new Func<DidSaveTextDocumentParams, CancellationToken, Task>(target.DidSaveAsync));
         AddParameterObjectMethod(
             rpc,
+            "textDocument/willSaveWaitUntil",
+            new Func<WillSaveTextDocumentParams, CancellationToken, Task<IReadOnlyList<TextEdit>>>(
+                target.WillSaveWaitUntilAsync));
+        AddParameterObjectMethod(
+            rpc,
             "textDocument/diagnostic",
             new Func<DocumentDiagnosticParams, CancellationToken, Task<DocumentDiagnosticReport>>(
                 target.DocumentDiagnosticAsync));

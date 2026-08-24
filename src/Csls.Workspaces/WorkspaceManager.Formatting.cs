@@ -14,6 +14,12 @@ namespace Csls.Workspaces;
 
 public sealed partial class WorkspaceManager
 {
+    private static readonly LspFormattingOptions s_saveFormattingOptions = new()
+    {
+        TabSize = 4,
+        InsertSpaces = true
+    };
+
     /// <summary>
     /// Formats a complete document using Roslyn and the editor's indentation preferences.
     /// </summary>
@@ -65,6 +71,53 @@ public sealed partial class WorkspaceManager
         SourceText formattedText = await formattedDocument.GetTextAsync(cancellationToken)
             .ConfigureAwait(false);
         formattedText = ApplyFinalFormattingOptions(formattedText, parameters.Options);
+        return CreateTextEdits(originalText, formattedText.GetTextChanges(originalText));
+    }
+
+    /// <summary>
+    /// Formats a document before save using project settings and stable Razor defaults.
+    /// </summary>
+    /// <param name="textDocument">The document that the editor is about to save.</param>
+    /// <param name="cancellationToken">The operation cancellation token.</param>
+    /// <returns>The bounded non-overlapping save-time edits.</returns>
+    public async Task<IReadOnlyList<LspTextEdit>> GetSaveFormattingEditsAsync(
+        TextDocumentIdentifier textDocument,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(textDocument);
+        string path = textDocument.Uri.GetFileSystemPath();
+        if (WorkspaceRazorDiagnosticService.IsRazorDocument(path))
+        {
+            SourceText? originalRazorText = await GetRazorTextAsync(path, cancellationToken)
+                .ConfigureAwait(false);
+            if (originalRazorText is null)
+            {
+                return [];
+            }
+
+            SourceText formattedRazorText = WorkspaceRazorFormattingService.Format(
+                originalRazorText,
+                path,
+                s_saveFormattingOptions,
+                cancellationToken);
+            return CreateTextEdits(
+                originalRazorText,
+                formattedRazorText.GetTextChanges(originalRazorText));
+        }
+
+        Document? document = FindDocument(textDocument.Uri);
+        if (document is null)
+        {
+            return [];
+        }
+
+        Document formattedDocument = await Formatter.FormatAsync(
+            document,
+            cancellationToken: cancellationToken).ConfigureAwait(false);
+        SourceText originalText = await document.GetTextAsync(cancellationToken)
+            .ConfigureAwait(false);
+        SourceText formattedText = await formattedDocument.GetTextAsync(cancellationToken)
+            .ConfigureAwait(false);
         return CreateTextEdits(originalText, formattedText.GetTextChanges(originalText));
     }
 

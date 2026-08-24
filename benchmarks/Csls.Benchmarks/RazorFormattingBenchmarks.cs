@@ -7,7 +7,7 @@ using LspRange = Csls.Protocol.Range;
 namespace Csls.Benchmarks;
 
 /// <summary>
-/// Measures complete, range-limited, and on-type formatting for a current Razor snapshot.
+/// Measures complete, range-limited, on-type, and save formatting for a Razor snapshot.
 /// </summary>
 [BenchmarkCategory("Razor", "Formatting")]
 [MemoryDiagnoser]
@@ -89,7 +89,15 @@ public class RazorFormattingBenchmarks : IAsyncDisposable
         IReadOnlyList<TextEdit> onTypeEdits = await _workspaceManager
             .GetOnTypeFormattingEditsAsync(_onTypeParameters, CancellationToken.None)
             .ConfigureAwait(false);
-        if (edits.Count == 0 || rangeEdits.Count == 0 || onTypeEdits.Count == 0)
+        IReadOnlyList<TextEdit> saveEdits = await _workspaceManager
+            .GetSaveFormattingEditsAsync(
+                _parameters.TextDocument,
+                CancellationToken.None)
+            .ConfigureAwait(false);
+        if (edits.Count == 0 ||
+            rangeEdits.Count == 0 ||
+            onTypeEdits.Count == 0 ||
+            saveEdits.Count == 0)
         {
             throw new InvalidOperationException(
                 "The Razor formatting benchmark fixture produced no edits.");
@@ -121,6 +129,15 @@ public class RazorFormattingBenchmarks : IAsyncDisposable
     public Task<IReadOnlyList<TextEdit>> FormatCurrentOnTypeAsync() =>
         _workspaceManager.GetOnTypeFormattingEditsAsync(
             _onTypeParameters,
+            CancellationToken.None);
+
+    /// <summary>
+    /// Measures repeated formatting before a current Razor document is saved.
+    /// </summary>
+    [Benchmark]
+    public Task<IReadOnlyList<TextEdit>> FormatCurrentOnSaveAsync() =>
+        _workspaceManager.GetSaveFormattingEditsAsync(
+            _parameters.TextDocument,
             CancellationToken.None);
 
     /// <summary>

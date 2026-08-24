@@ -19,4 +19,9 @@ public sealed record TextDocumentSyncOptions
     /// Gets whether the client sends save notifications.
     /// </summary>
     public bool Save { get; init; }
+
+    /// <summary>
+    /// Gets whether the server can return edits immediately before a save.
+    /// </summary>
+    public bool WillSaveWaitUntil { get; init; }
 }

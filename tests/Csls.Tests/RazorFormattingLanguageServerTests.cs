@@ -3,6 +3,7 @@ using Csls.Control.Contracts;
 using Csls.Protocol;
 using System.Runtime.CompilerServices;
 using System.Text;
+using System.Text.Json;
 using LspRange = Csls.Protocol.Range;
 
 namespace Csls.Tests;
@@ -84,6 +85,20 @@ public sealed class RazorFormattingLanguageServerTests
                 TestContext.CancellationToken).ConfigureAwait(false);
             await lsp.OpenDocumentAsync(documentPath, persistedText, "razor")
                 .ConfigureAwait(false);
+            using var saveConfiguration = JsonDocument.Parse(
+                """{"csls":{"formatOnSave":true}}""");
+            await lsp.ChangeConfigurationAsync(saveConfiguration.RootElement)
+                .ConfigureAwait(false);
+            IReadOnlyList<TextEdit> saveEdits = await lsp.RequestSaveFormattingAsync(
+                documentPath,
+                TextDocumentSaveReason.Manual,
+                TestContext.CancellationToken).ConfigureAwait(false);
+            Assert.IsNotEmpty(saveEdits);
+            string expectedSaveText = CreateText(
+                ExpectedSpaces,
+                membersDirective,
+                newline).TrimEnd('\r', '\n');
+            Assert.AreEqual(expectedSaveText, ApplyTextEdits(persistedText, saveEdits));
 
             var options = new FormattingOptions
             {

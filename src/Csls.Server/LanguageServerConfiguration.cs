@@ -9,4 +9,9 @@ public sealed record LanguageServerConfiguration
     /// Gets whether project analyzers contribute document diagnostics.
     /// </summary>
     public bool EnableAnalyzers { get; init; } = true;
+
+    /// <summary>
+    /// Gets whether the server returns document formatting edits before a save.
+    /// </summary>
+    public bool FormatOnSave { get; init; }
 }
