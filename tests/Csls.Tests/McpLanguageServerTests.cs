@@ -68,6 +68,8 @@ public sealed class McpLanguageServerTests
             string formattingPath = Path.Join(fixturePath, "Formatting.cs");
             string stalePath = Path.Join(fixturePath, "Stale.cs");
             string advancedPath = Path.Join(fixturePath, "Advanced.cs");
+            string moveTypePath = Path.Join(fixturePath, "MoveTypes.cs");
+            string movedTypePath = Path.Join(fixturePath, "McpHelper.cs");
             await File.WriteAllTextAsync(
                 projectPath,
                 ProjectText,
@@ -99,6 +101,10 @@ public sealed class McpLanguageServerTests
             await File.WriteAllTextAsync(
                 advancedPath,
                 AdvancedDocumentText,
+                TestContext.CancellationToken).ConfigureAwait(false);
+            await File.WriteAllTextAsync(
+                moveTypePath,
+                MoveTypeDocumentText,
                 TestContext.CancellationToken).ConfigureAwait(false);
 
             var lsp = LspProcessSession.Start(
@@ -570,7 +576,7 @@ public sealed class McpLanguageServerTests
                     ControlJsonSerializerContext.Default.ControlEditPlan)
                     ?? throw new InvalidDataException("MCP returned no rename edit plan.");
                 TextDocumentEdit renameDocument = Assert.ContainsSingle(
-                    rename.Edit.DocumentChanges);
+                    rename.Edit.DocumentChanges.OfType<TextDocumentEdit>());
                 Assert.AreEqual(1, renameDocument.TextDocument.Version);
                 Assert.HasCount(2, renameDocument.Edits);
                 Assert.IsTrue(renameDocument.Edits.All(static edit =>
@@ -605,7 +611,7 @@ public sealed class McpLanguageServerTests
                     ControlJsonSerializerContext.Default.ControlEditPlan)
                     ?? throw new InvalidDataException("MCP returned no formatting edit plan.");
                 TextDocumentEdit formattingDocument = Assert.ContainsSingle(
-                    formatting.Edit.DocumentChanges);
+                    formatting.Edit.DocumentChanges.OfType<TextDocumentEdit>());
                 Assert.IsNull(formattingDocument.TextDocument.Version);
                 Assert.IsNotEmpty(formattingDocument.Edits);
 
@@ -779,6 +785,58 @@ public sealed class McpLanguageServerTests
                 Assert.Contains(
                     "throw new NotImplementedException();",
                     implementedInterface,
+                    StringComparison.Ordinal);
+
+                CallToolResult moveActionResult = await client.CallToolAsync(
+                    "get_code_actions",
+                    new Dictionary<string, object?>
+                    {
+                        ["documentPath"] = moveTypePath,
+                        ["startLine"] = 7,
+                        ["startCharacter"] = 22,
+                        ["endLine"] = 7,
+                        ["endCharacter"] = 31,
+                        ["kind"] = "refactor"
+                    },
+                    cancellationToken: TestContext.CancellationToken).ConfigureAwait(false);
+                IReadOnlyList<ControlCodeActionPlan> moveActions =
+                    GetStructuredCollection(moveActionResult, negotiatedProtocolVersion)
+                        .Deserialize(
+                            ControlJsonSerializerContext
+                                .Default
+                                .IReadOnlyListControlCodeActionPlan)
+                    ?? throw new InvalidDataException(
+                        "MCP returned no move-to-file refactoring preview.");
+                ControlCodeActionPlan moveAction = Assert.ContainsSingle(moveActions);
+                Assert.AreEqual("Move McpHelper to McpHelper.cs", moveAction.Action.Title);
+                ControlEditPlan movePlan = moveAction.EditPlan
+                    ?? throw new InvalidDataException(
+                        "MCP returned no move-to-file refactoring edit plan.");
+                Assert.HasCount(3, movePlan.Edit.DocumentChanges);
+                Assert.HasCount(2, movePlan.Preconditions);
+                ControlResourcePrecondition createPrecondition = Assert.ContainsSingle(
+                    movePlan.Preconditions.Where(static precondition => !precondition.Exists));
+                Assert.AreEqual(movedTypePath, createPrecondition.ResourcePath);
+                CallToolResult moveApplyResult = await client.CallToolAsync(
+                    "apply_edit_plan",
+                    new Dictionary<string, object?>
+                    {
+                        ["planId"] = movePlan.PlanId.ToString("D")
+                    },
+                    cancellationToken: TestContext.CancellationToken).ConfigureAwait(false);
+                Assert.IsNull(moveApplyResult.IsError);
+                Assert.IsTrue(File.Exists(movedTypePath));
+                Assert.Contains(
+                    "internal static class McpHelper",
+                    await File.ReadAllTextAsync(
+                        movedTypePath,
+                        TestContext.CancellationToken).ConfigureAwait(false),
+                    StringComparison.Ordinal);
+                Assert.DoesNotContain(
+                    "class McpHelper",
+                    await File.ReadAllTextAsync(
+                        moveTypePath,
+                        TestContext.CancellationToken).ConfigureAwait(false),
                     StringComparison.Ordinal);
 
                 IList<McpClientResource> resources = await client
@@ -1287,6 +1345,20 @@ public sealed class McpLanguageServerTests
                 runner = new Runner();
                 _ = runner;
             }
+        }
+        """;
+
+    private const string MoveTypeDocumentText = """
+        namespace Fixture;
+
+        public static class MoveTypes
+        {
+            public static int Read() => McpHelper.Value;
+        }
+
+        internal static class McpHelper
+        {
+            public static int Value => 42;
         }
         """;
 }

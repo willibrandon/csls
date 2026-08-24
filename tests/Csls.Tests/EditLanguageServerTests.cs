@@ -109,15 +109,20 @@ public sealed class EditLanguageServerTests
                 "Arithmetic",
                 TestContext.CancellationToken).ConfigureAwait(false);
             Assert.HasCount(2, rename.DocumentChanges);
-            TextDocumentEdit programRename = rename.DocumentChanges.Single(edit =>
-                edit.TextDocument.Uri == DocumentUri.FromFileSystemPath(programPath));
-            TextDocumentEdit consumerRename = rename.DocumentChanges.Single(edit =>
-                edit.TextDocument.Uri == DocumentUri.FromFileSystemPath(consumerPath));
+            TextDocumentEdit programRename = rename.DocumentChanges
+                .OfType<TextDocumentEdit>()
+                .Single(edit =>
+                    edit.TextDocument.Uri == DocumentUri.FromFileSystemPath(programPath));
+            TextDocumentEdit consumerRename = rename.DocumentChanges
+                .OfType<TextDocumentEdit>()
+                .Single(edit =>
+                    edit.TextDocument.Uri == DocumentUri.FromFileSystemPath(consumerPath));
             Assert.AreEqual(1, programRename.TextDocument.Version);
             Assert.IsNull(consumerRename.TextDocument.Version);
             Assert.HasCount(2, programRename.Edits);
             Assert.HasCount(1, consumerRename.Edits);
             Assert.IsTrue(rename.DocumentChanges
+                .OfType<TextDocumentEdit>()
                 .SelectMany(static edit => edit.Edits)
                 .All(static edit => edit.NewText == "Arithmetic"));
 
@@ -254,7 +259,7 @@ public sealed class EditLanguageServerTests
             Assert.AreEqual("source.organizeImports", organizeImports.Kind);
             Assert.IsNotNull(organizeImports.Edit);
             TextDocumentEdit organizeProgram = Assert.ContainsSingle(
-                organizeImports.Edit.DocumentChanges);
+                organizeImports.Edit.DocumentChanges.OfType<TextDocumentEdit>());
             Assert.AreEqual(1, organizeProgram.TextDocument.Version);
             string organizedText = ApplyTextEdits(ProgramText, organizeProgram.Edits);
             Assert.StartsWith(

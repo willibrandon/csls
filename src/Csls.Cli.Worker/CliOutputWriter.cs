@@ -527,12 +527,29 @@ internal static class CliOutputWriter
         Console.Out.WriteLine($"Plan: {plan.PlanId:D}");
         Console.Out.WriteLine($"Operation: {plan.Operation}");
         Console.Out.WriteLine($"Expires: {plan.ExpiresAtUtc:O}");
-        foreach (TextDocumentEdit documentEdit in plan.Edit.DocumentChanges)
+        foreach (WorkspaceDocumentChange change in plan.Edit.DocumentChanges)
         {
-            Console.Out.WriteLine(
-                $"{documentEdit.TextDocument.Uri}\tversion=" +
-                $"{documentEdit.TextDocument.Version?.ToString(CultureInfo.InvariantCulture) ?? "closed"}");
-            WriteTextEdits(documentEdit.Edits);
+            switch (change)
+            {
+                case TextDocumentEdit documentEdit:
+                    Console.Out.WriteLine(
+                        $"{documentEdit.TextDocument.Uri}\tversion=" +
+                        $"{documentEdit.TextDocument.Version?.ToString(CultureInfo.InvariantCulture) ?? "closed"}");
+                    WriteTextEdits(documentEdit.Edits);
+                    break;
+                case CreateFile createFile:
+                    Console.Out.WriteLine($"create\t{createFile.Uri}");
+                    break;
+                case RenameFile renameFile:
+                    Console.Out.WriteLine($"rename\t{renameFile.OldUri}\t{renameFile.NewUri}");
+                    break;
+                case DeleteFile deleteFile:
+                    Console.Out.WriteLine($"delete\t{deleteFile.Uri}");
+                    break;
+                default:
+                    throw new InvalidDataException(
+                        $"Unsupported workspace document change {change.GetType().Name}.");
+            }
         }
     }
 

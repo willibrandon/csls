@@ -3,7 +3,7 @@ namespace Csls.Protocol;
 /// <summary>
 /// Groups ordered text edits under one document version precondition.
 /// </summary>
-public sealed record TextDocumentEdit
+public sealed record TextDocumentEdit : WorkspaceDocumentChange
 {
     /// <summary>
     /// Gets the target document and optional client version.

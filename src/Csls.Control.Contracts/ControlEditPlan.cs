@@ -33,7 +33,7 @@ public sealed record ControlEditPlan
     public required WorkspaceEdit Edit { get; init; }
 
     /// <summary>
-    /// Gets exact version and content-hash preconditions for edited documents.
+    /// Gets exact existence, version, and content preconditions for touched resources.
     /// </summary>
-    public required IReadOnlyList<ControlDocumentPrecondition> Preconditions { get; init; }
+    public required IReadOnlyList<ControlResourcePrecondition> Preconditions { get; init; }
 }

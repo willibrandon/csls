@@ -103,6 +103,7 @@ csls edit rename Program.cs Customer --line 8 --character 20 --apply
 csls edit format Program.cs --apply
 csls edit code-action Program.cs --kind quickfix --line 8 --character 20
 csls edit code-action Program.cs --kind quickfix --line 8 --character 20 --apply
+csls edit code-action Program.cs --kind refactor --line 20 --character 15 --apply
 ```
 
 Missing-using quick fixes search the loaded project and its references, then keep

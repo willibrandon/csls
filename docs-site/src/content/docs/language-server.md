@@ -12,7 +12,7 @@ language features include:
 - document and workspace symbols
 - semantic tokens with full and delta responses
 - call hierarchy, type hierarchy, selection ranges, folding ranges, and inlay hints
-- rename, missing-using and interface implementation quick fixes, import organization, and document, range, on-type, or opt-in save formatting
+- rename, move-to-file refactoring, missing-using and interface implementation quick fixes, import organization, and document, range, on-type, or opt-in save formatting
 - project-aware file creation, rename, folder move, and deletion tracking
 
 Document and workspace diagnostic pulls use the same immutable Roslyn snapshot.
@@ -65,6 +65,14 @@ Interface implementation quick fixes generate required inherited methods,
 properties, indexers, events, and static abstract members. Existing and default
 members are left alone. csls compiles the temporary document and returns the edit
 only when the selected interface is fully implemented without new compiler errors.
+
+Move to file extracts a top-level class, struct, interface, record, enum, or
+delegate from a file that contains another declaration. The result creates the
+matching `.cs` file before inserting its formatted source and removing the
+original declaration. The action is offered only when the client supports
+ordered document changes and create-file resource operations. CLI and MCP
+previews record both the source hash and the requirement that the target path
+does not exist before `--apply` can write either file.
 
 `textDocument/moniker` returns `dotnet` identifiers built from canonical assembly
 identities and Roslyn documentation IDs. Strong-named assembly APIs are unique

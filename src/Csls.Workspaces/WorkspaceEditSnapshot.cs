@@ -18,7 +18,7 @@ public sealed record WorkspaceEditSnapshot
     public required WorkspaceEdit Edit { get; init; }
 
     /// <summary>
-    /// Gets the exact content preconditions for every edited document.
+    /// Gets the exact existence and content preconditions for touched resources.
     /// </summary>
-    public required IReadOnlyList<DocumentEditPrecondition> Preconditions { get; init; }
+    public required IReadOnlyList<WorkspaceResourcePrecondition> Preconditions { get; init; }
 }
