@@ -240,6 +240,158 @@ public sealed class CliLanguageServerTests
     }
 
     /// <summary>
+    /// Creates, protects, replaces, and streams a reusable skill through the public CLI.
+    /// </summary>
+    [TestMethod]
+    public async Task AgentInitManagesReusableSkillFile()
+    {
+        string repositoryRoot = EditorToolResolver.FindRepositoryRoot();
+        string artifactsRoot = EditorToolResolver.ResolveArtifactsRoot(repositoryRoot);
+        string cliPath = Environment.GetEnvironmentVariable("CSLS_TEST_CLI_PATH") ??
+            Path.Join(
+                artifactsRoot,
+                "bin",
+                "Csls.App",
+                "debug",
+                "csls.dll");
+        string cliWorkerPath =
+            Environment.GetEnvironmentVariable("CSLS_TEST_CLI_WORKER_PATH") ??
+            Path.Join(
+                artifactsRoot,
+                "bin",
+                "Csls.Cli.Worker",
+                "debug",
+                "csls-cli-worker.dll");
+        string fixturePath = Path.Join(
+            Path.GetTempPath(),
+            $"csls-agent-init-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(fixturePath);
+        try
+        {
+            (int createExitCode, string createOutput, string createError) =
+                await RunCliAsync(
+                    cliPath,
+                    cliWorkerPath,
+                    fixturePath,
+                    ["agent", "init", "--json"],
+                    TestContext.CancellationToken).ConfigureAwait(false);
+            Assert.AreEqual(
+                0,
+                createExitCode,
+                $"{createError}{Environment.NewLine}{createOutput}");
+            using var createDocument = JsonDocument.Parse(createOutput);
+            AssertSuccessfulEnvelope(createDocument.RootElement);
+            string outputPath = createDocument.RootElement
+                .GetProperty("data")
+                .GetProperty("outputPath")
+                .GetString() ?? throw new InvalidDataException(
+                    "Agent initialization returned no output path.");
+            Assert.AreEqual(Path.Join(fixturePath, "SKILL.md"), outputPath);
+
+            byte[] skillBytes = await File.ReadAllBytesAsync(
+                outputPath,
+                TestContext.CancellationToken).ConfigureAwait(false);
+            Assert.IsGreaterThan(0, skillBytes.Length);
+            Assert.AreEqual((byte)'-', skillBytes[0]);
+            string skillContent = await File.ReadAllTextAsync(
+                outputPath,
+                TestContext.CancellationToken).ConfigureAwait(false);
+            Assert.Contains("name: csls", skillContent, StringComparison.Ordinal);
+            Assert.Contains(
+                "csls agent mcp --workspace .",
+                skillContent,
+                StringComparison.Ordinal);
+            Assert.Contains(
+                "Edit commands preview guarded plans by default.",
+                skillContent,
+                StringComparison.Ordinal);
+
+            const string retainedContent = "retain existing instructions";
+            await File.WriteAllTextAsync(
+                outputPath,
+                retainedContent,
+                TestContext.CancellationToken).ConfigureAwait(false);
+            (int existingExitCode, string existingOutput, string existingError) =
+                await RunCliAsync(
+                    cliPath,
+                    cliWorkerPath,
+                    fixturePath,
+                    ["agent", "init", "--json"],
+                    TestContext.CancellationToken).ConfigureAwait(false);
+            Assert.AreEqual(
+                1,
+                existingExitCode,
+                $"{existingError}{Environment.NewLine}{existingOutput}");
+            using (var existingDocument = JsonDocument.Parse(existingOutput))
+            {
+                Assert.IsFalse(existingDocument.RootElement.GetProperty("success").GetBoolean());
+                Assert.AreEqual(
+                    "file-exists",
+                    existingDocument.RootElement
+                        .GetProperty("data")
+                        .GetProperty("code")
+                        .GetString());
+            }
+
+            Assert.AreEqual(
+                retainedContent,
+                await File.ReadAllTextAsync(
+                    outputPath,
+                    TestContext.CancellationToken).ConfigureAwait(false));
+            Assert.IsEmpty(Directory.GetFiles(fixturePath, "*.tmp"));
+
+            (int forceExitCode, string forceOutput, string forceError) = await RunCliAsync(
+                cliPath,
+                cliWorkerPath,
+                fixturePath,
+                ["agent", "init", "--force", "--json"],
+                TestContext.CancellationToken).ConfigureAwait(false);
+            Assert.AreEqual(
+                0,
+                forceExitCode,
+                $"{forceError}{Environment.NewLine}{forceOutput}");
+            using (var forceDocument = JsonDocument.Parse(forceOutput))
+            {
+                AssertSuccessfulEnvelope(forceDocument.RootElement);
+            }
+
+            string replacedContent = await File.ReadAllTextAsync(
+                outputPath,
+                TestContext.CancellationToken).ConfigureAwait(false);
+            Assert.AreNotEqual(retainedContent, replacedContent);
+            Assert.IsEmpty(Directory.GetFiles(fixturePath, "*.tmp"));
+
+            (int stdoutExitCode, string stdoutOutput, string stdoutError) = await RunCliAsync(
+                cliPath,
+                cliWorkerPath,
+                fixturePath,
+                ["agent", "init", "--stdout"],
+                TestContext.CancellationToken).ConfigureAwait(false);
+            Assert.AreEqual(
+                0,
+                stdoutExitCode,
+                $"{stdoutError}{Environment.NewLine}{stdoutOutput}");
+            Assert.AreEqual(replacedContent, stdoutOutput);
+
+            (int conflictExitCode, _, string conflictError) = await RunCliAsync(
+                cliPath,
+                cliWorkerPath,
+                fixturePath,
+                ["agent", "init", "--stdout", "--json"],
+                TestContext.CancellationToken).ConfigureAwait(false);
+            Assert.AreEqual(2, conflictExitCode);
+            Assert.Contains(
+                "--stdout cannot be combined",
+                conflictError,
+                StringComparison.Ordinal);
+        }
+        finally
+        {
+            Directory.Delete(fixturePath, recursive: true);
+        }
+    }
+
+    /// <summary>
     /// Lists, inspects, and queries one real session through the public csls command tree.
     /// </summary>
     [TestMethod]

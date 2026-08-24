@@ -369,6 +369,10 @@ static async Task VerifyInstalledToolAsync(
         environment).ConfigureAwait(false);
     if (string.Equals(commandName, "csls", StringComparison.Ordinal))
     {
+        await VerifyAgentCommandsAsync(
+            commandPath,
+            repositoryRoot,
+            environment).ConfigureAwait(false);
         await VerifyLanguageServerWorkerAsync(
             commandPath,
             verificationRoot,
@@ -488,6 +492,10 @@ static async Task VerifyImplementationToolAsync(
         environment).ConfigureAwait(false);
     if (string.Equals(commandName, "csls", StringComparison.Ordinal))
     {
+        await VerifyAgentCommandsAsync(
+            commandPath,
+            repositoryRoot,
+            environment).ConfigureAwait(false);
         await VerifyLanguageServerWorkerAsync(
             commandPath,
             verificationRoot,
@@ -500,6 +508,36 @@ static async Task VerifyImplementationToolAsync(
             verificationRoot,
             repositoryRoot,
             environment).ConfigureAwait(false);
+    }
+}
+
+static async Task VerifyAgentCommandsAsync(
+    string commandPath,
+    string workingDirectory,
+    IReadOnlyDictionary<string, string> environment)
+{
+    string mcpHelp = await RunCheckedAsync(
+        commandPath,
+        ["agent", "mcp", "--help"],
+        workingDirectory,
+        environment).ConfigureAwait(false);
+    string[] requiredOptions = ["--session", "--socket", "--workspace"];
+    if (requiredOptions.Any(option => !mcpHelp.Contains(option, StringComparison.Ordinal)))
+    {
+        throw new InvalidDataException(
+            "The installed csls agent MCP command omitted a required connection option.");
+    }
+
+    string skill = await RunCheckedAsync(
+        commandPath,
+        ["agent", "init", "--stdout"],
+        workingDirectory,
+        environment).ConfigureAwait(false);
+    if (!skill.Contains("name: csls", StringComparison.Ordinal) ||
+        !skill.Contains("csls agent mcp --workspace .", StringComparison.Ordinal))
+    {
+        throw new InvalidDataException(
+            "The installed csls agent init command returned incomplete skill content.");
     }
 }
 

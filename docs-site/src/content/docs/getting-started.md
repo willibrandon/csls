@@ -31,3 +31,11 @@ is visible in their configuration.
 The `csls` and `csls-mcp` .NET tool packages are prepared for Windows, Linux,
 and macOS on x64 and Arm64. Linux musl and Windows x86 packages are also built
 and verified in CI.
+
+Install both tools when an MCP client will use the language server:
+
+```console
+dotnet tool install --global csls
+dotnet tool install --global csls-mcp
+csls agent mcp --workspace .
+```

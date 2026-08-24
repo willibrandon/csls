@@ -590,6 +590,7 @@ codeActionCommand.SetAction((parseResult, cancellationToken) =>
         cancellationToken));
 editCommand.Subcommands.Add(codeActionCommand);
 rootCommand.Subcommands.Add(editCommand);
+rootCommand.Subcommands.Add(AgentCommand.Create());
 
 return await rootCommand.Parse(args).InvokeAsync().ConfigureAwait(false);
 

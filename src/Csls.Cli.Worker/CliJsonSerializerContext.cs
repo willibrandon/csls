@@ -13,6 +13,7 @@ namespace Csls.Cli.Worker;
     GenerationMode = JsonSourceGenerationMode.Metadata)]
 [JsonSerializable(typeof(CliError))]
 [JsonSerializable(typeof(CliResponseEnvelope))]
+[JsonSerializable(typeof(AgentInitResult))]
 [JsonSerializable(typeof(DoctorCheck))]
 [JsonSerializable(typeof(DoctorCheckStatus))]
 [JsonSerializable(typeof(DoctorProject))]

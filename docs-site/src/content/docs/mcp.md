@@ -9,7 +9,8 @@ live `csls` session through the official Model Context Protocol C# SDK.
 Start a workspace-owned session directly:
 
 ```console
-csls-mcp --workspace ./MySolution.slnx
+dotnet tool install --global csls-mcp
+csls agent mcp --workspace ./MySolution.slnx
 ```
 
 Direct mode starts a real language-server worker, loads the requested directory,
@@ -19,11 +20,16 @@ To use an editor-owned session, find its process identifier and attach:
 
 ```console
 csls sessions list
-csls-mcp --session 12345
+csls agent mcp --session 12345
 ```
 
 An MCP client may also pass the absolute socket path with `--socket`. Exactly one
 of `--workspace`, `--session`, or `--socket` is required.
+
+`csls-mcp` remains a separate .NET tool and may also be invoked directly. The
+nested `csls agent mcp` command finds that installed tool, forwards the selected
+connection, and supervises its lifetime. Run `csls agent init` to create a
+reusable `SKILL.md` that documents the supported CLI and MCP operations.
 
 The server provides tools for diagnostics, completion, hover, navigation, symbol
 search, signature help, rename, formatting, code actions, workspace inspection,
