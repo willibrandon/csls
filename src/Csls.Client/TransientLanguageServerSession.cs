@@ -4,12 +4,12 @@ using StreamJsonRpc;
 using System.Diagnostics;
 using System.Text.Json;
 
-namespace Csls.Mcp.Worker;
+namespace Csls.Client;
 
 /// <summary>
-/// Owns one real language-server worker used by MCP direct mode.
+/// Owns one real transient csls language-server process and its LSP transport.
 /// </summary>
-internal sealed class TransientLanguageServerSession : IAsyncDisposable
+public sealed class TransientLanguageServerSession : IAsyncDisposable
 {
     private readonly Process _process;
     private readonly Task _standardErrorPump;
@@ -36,33 +36,36 @@ internal sealed class TransientLanguageServerSession : IAsyncDisposable
     /// <summary>
     /// Gets the operating-system identifier of the transient language-server process.
     /// </summary>
-    internal int ProcessId => _process.Id;
+    public int ProcessId => _process.Id;
 
     /// <summary>
     /// Gets the completed transient language-server exit code.
     /// </summary>
-    internal int ExitCode => _process.ExitCode;
+    public int ExitCode => _process.ExitCode;
 
     /// <summary>
     /// Starts and initializes a real transient language-server worker for one workspace.
     /// </summary>
-    /// <param name="workspacePath">The workspace directory, solution, or project path.</param>
+    /// <param name="workspacePath">The workspace directory, solution, project, or document path.</param>
+    /// <param name="clientName">The LSP client name reported during initialization.</param>
     /// <param name="cancellationToken">The startup cancellation token.</param>
     /// <returns>The initialized transient session.</returns>
-    internal static async Task<TransientLanguageServerSession> StartAsync(
+    public static async Task<TransientLanguageServerSession> StartAsync(
         string workspacePath,
+        string clientName,
         CancellationToken cancellationToken)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(workspacePath);
+        ArgumentException.ThrowIfNullOrWhiteSpace(clientName);
         string fullWorkspacePath = Path.GetFullPath(workspacePath);
         if (!Directory.Exists(fullWorkspacePath) && !File.Exists(fullWorkspacePath))
         {
             throw new FileNotFoundException(
-                "The transient MCP workspace does not exist.",
+                "The transient csls workspace does not exist.",
                 fullWorkspacePath);
         }
 
-        string workerPath = TransientLanguageServerLocator.Resolve();
+        string workerPath = LanguageServerWorkerLocator.Resolve();
         string workerDirectory = Path.GetDirectoryName(workerPath)
             ?? throw new InvalidOperationException(
                 $"Language-server worker {workerPath} has no containing directory.");
@@ -103,7 +106,7 @@ internal sealed class TransientLanguageServerSession : IAsyncDisposable
         var rpc = new JsonRpc(messageHandler)
         {
             CancelLocallyInvokedMethodsWhenConnectionIsClosed = true,
-            DisplayName = "csls-mcp-direct"
+            DisplayName = clientName
         };
         rpc.StartListening();
         var session = new TransientLanguageServerSession(
@@ -116,6 +119,7 @@ internal sealed class TransientLanguageServerSession : IAsyncDisposable
         {
             await session.InitializeAsync(
                 fullWorkspacePath,
+                clientName,
                 cancellationToken).ConfigureAwait(false);
             return session;
         }
@@ -131,7 +135,7 @@ internal sealed class TransientLanguageServerSession : IAsyncDisposable
     /// </summary>
     /// <param name="cancellationToken">The wait cancellation token.</param>
     /// <returns>A task that completes when the process exits.</returns>
-    internal Task WaitForExitAsync(CancellationToken cancellationToken) =>
+    public Task WaitForExitAsync(CancellationToken cancellationToken) =>
         _process.WaitForExitAsync(cancellationToken);
 
     /// <summary>
@@ -206,6 +210,7 @@ internal sealed class TransientLanguageServerSession : IAsyncDisposable
 
     private async Task InitializeAsync(
         string workspacePath,
+        string clientName,
         CancellationToken cancellationToken)
     {
         using var capabilities = JsonDocument.Parse("{}");
@@ -214,7 +219,7 @@ internal sealed class TransientLanguageServerSession : IAsyncDisposable
             new InitializeParams
             {
                 ProcessId = Environment.ProcessId,
-                ClientInfo = new ClientInfo { Name = "csls-mcp" },
+                ClientInfo = new ClientInfo { Name = clientName },
                 RootUri = DocumentUri.FromFileSystemPath(workspacePath),
                 Capabilities = capabilities.RootElement
             },
