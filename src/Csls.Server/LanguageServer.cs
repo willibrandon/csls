@@ -12,6 +12,7 @@ namespace Csls.Server;
 /// </summary>
 public sealed partial class LanguageServer : ILspRpcTarget, IAsyncDisposable
 {
+    private const int MaximumFoldingRanges = 5_000;
     private const int WorkspaceDiagnosticPartialResultSize = 128;
     private readonly RequestScheduler _scheduler;
     private readonly WorkspaceManager _workspaceManager;
@@ -21,6 +22,12 @@ public sealed partial class LanguageServer : ILspRpcTarget, IAsyncDisposable
         TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly CancellationTokenSource _exitSource = new();
     private bool _completionSnippetSupport;
+    private int _foldingRangeLimit = MaximumFoldingRanges;
+    private bool _lineFoldingOnly;
+    private bool _supportsCollapsedFoldingText;
+    private bool _supportsCommentFoldingKind = true;
+    private bool _supportsImportsFoldingKind = true;
+    private bool _supportsRegionFoldingKind = true;
     private bool _supportsConfigurationPull;
     private bool _supportsPullDiagnostics;
     private int _lifecycleState;
@@ -124,6 +131,21 @@ public sealed partial class LanguageServer : ILspRpcTarget, IAsyncDisposable
         ArgumentNullException.ThrowIfNull(parameters);
         Transition(ServerLifecycleState.Created, ServerLifecycleState.InitializeResponded);
         _completionSnippetSupport = SupportsCompletionSnippets(parameters.Capabilities);
+        _foldingRangeLimit = GetFoldingRangeLimit(parameters.Capabilities);
+        _lineFoldingOnly = SupportsFoldingRangeBoolean(
+            parameters.Capabilities,
+            "lineFoldingOnly");
+        _supportsCollapsedFoldingText = SupportsCollapsedFoldingText(
+            parameters.Capabilities);
+        _supportsCommentFoldingKind = SupportsFoldingRangeKind(
+            parameters.Capabilities,
+            FoldingRangeKind.Comment);
+        _supportsImportsFoldingKind = SupportsFoldingRangeKind(
+            parameters.Capabilities,
+            FoldingRangeKind.Imports);
+        _supportsRegionFoldingKind = SupportsFoldingRangeKind(
+            parameters.Capabilities,
+            FoldingRangeKind.Region);
         _supportsConfigurationPull = SupportsBooleanCapability(
             parameters.Capabilities,
             "workspace",
@@ -195,6 +217,7 @@ public sealed partial class LanguageServer : ILspRpcTarget, IAsyncDisposable
                 TypeDefinitionProvider = true,
                 ImplementationProvider = true,
                 SelectionRangeProvider = true,
+                FoldingRangeProvider = true,
                 LinkedEditingRangeProvider = true,
                 DocumentHighlightProvider = true,
                 DocumentLinkProvider = new DocumentLinkOptions
@@ -678,6 +701,41 @@ public sealed partial class LanguageServer : ILspRpcTarget, IAsyncDisposable
                 {
                     throw new InvalidOperationException(
                         "The workspace changed while selection ranges were being computed.");
+                }
+
+                return ranges;
+            },
+            cancellationToken);
+    }
+
+    /// <inheritdoc />
+    public Task<IReadOnlyList<FoldingRange>> FoldingRangeAsync(
+        FoldingRangeParams parameters,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(parameters);
+        EnsureRunning();
+        return _scheduler.ScheduleAsync(
+            "textDocument/foldingRange",
+            RequestMode.ReadOnly,
+            () => _workspaceManager.Generation,
+            async context =>
+            {
+                IReadOnlyList<FoldingRange> ranges = await _workspaceManager
+                    .GetFoldingRangesAsync(
+                        parameters,
+                        _foldingRangeLimit,
+                        _lineFoldingOnly,
+                        _supportsCollapsedFoldingText,
+                        _supportsCommentFoldingKind,
+                        _supportsImportsFoldingKind,
+                        _supportsRegionFoldingKind,
+                        context.CancellationToken)
+                    .ConfigureAwait(false);
+                if (_workspaceManager.Generation != context.WorkspaceGeneration)
+                {
+                    throw new InvalidOperationException(
+                        "The workspace changed while folding ranges were being computed.");
                 }
 
                 return ranges;
@@ -1253,6 +1311,76 @@ public sealed partial class LanguageServer : ILspRpcTarget, IAsyncDisposable
             completionItem.ValueKind == JsonValueKind.Object &&
             completionItem.TryGetProperty("snippetSupport", out JsonElement snippetSupport) &&
             snippetSupport.ValueKind is JsonValueKind.True;
+    }
+
+    private static int GetFoldingRangeLimit(JsonElement capabilities)
+    {
+        return TryGetFoldingRangeCapability(capabilities, out JsonElement foldingRange) &&
+            foldingRange.TryGetProperty("rangeLimit", out JsonElement rangeLimit) &&
+            rangeLimit.TryGetInt32(out int value) &&
+            value >= 0
+                ? Math.Min(value, MaximumFoldingRanges)
+                : MaximumFoldingRanges;
+    }
+
+    private static bool SupportsFoldingRangeBoolean(
+        JsonElement capabilities,
+        string propertyName)
+    {
+        return TryGetFoldingRangeCapability(capabilities, out JsonElement foldingRange) &&
+            foldingRange.TryGetProperty(propertyName, out JsonElement property) &&
+            property.ValueKind is JsonValueKind.True;
+    }
+
+    private static bool SupportsCollapsedFoldingText(JsonElement capabilities)
+    {
+        return TryGetFoldingRangeCapability(capabilities, out JsonElement foldingRange) &&
+            foldingRange.TryGetProperty("foldingRange", out JsonElement foldingRangeShape) &&
+            foldingRangeShape.ValueKind == JsonValueKind.Object &&
+            foldingRangeShape.TryGetProperty("collapsedText", out JsonElement collapsedText) &&
+            collapsedText.ValueKind is JsonValueKind.True;
+    }
+
+    private static bool SupportsFoldingRangeKind(
+        JsonElement capabilities,
+        string kind)
+    {
+        if (!TryGetFoldingRangeCapability(capabilities, out JsonElement foldingRange) ||
+            !foldingRange.TryGetProperty("foldingRangeKind", out JsonElement kindCapability) ||
+            kindCapability.ValueKind != JsonValueKind.Object ||
+            !kindCapability.TryGetProperty("valueSet", out JsonElement valueSet) ||
+            valueSet.ValueKind != JsonValueKind.Array)
+        {
+            return true;
+        }
+
+        foreach (JsonElement value in valueSet.EnumerateArray())
+        {
+            if (value.ValueKind == JsonValueKind.String &&
+                string.Equals(value.GetString(), kind, StringComparison.Ordinal))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool TryGetFoldingRangeCapability(
+        JsonElement capabilities,
+        out JsonElement foldingRange)
+    {
+        if (capabilities.ValueKind == JsonValueKind.Object &&
+            capabilities.TryGetProperty("textDocument", out JsonElement textDocument) &&
+            textDocument.ValueKind == JsonValueKind.Object &&
+            textDocument.TryGetProperty("foldingRange", out foldingRange) &&
+            foldingRange.ValueKind == JsonValueKind.Object)
+        {
+            return true;
+        }
+
+        foldingRange = default;
+        return false;
     }
 
     private static bool SupportsBooleanCapability(

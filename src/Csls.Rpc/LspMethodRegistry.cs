@@ -104,6 +104,11 @@ public static class LspMethodRegistry
                 target.SelectionRangeAsync));
         AddParameterObjectMethod(
             rpc,
+            "textDocument/foldingRange",
+            new Func<FoldingRangeParams, CancellationToken, Task<IReadOnlyList<FoldingRange>>>(
+                target.FoldingRangeAsync));
+        AddParameterObjectMethod(
+            rpc,
             "textDocument/linkedEditingRange",
             new Func<LinkedEditingRangeParams, CancellationToken, Task<LinkedEditingRanges?>>(
                 target.LinkedEditingRangeAsync));

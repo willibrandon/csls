@@ -688,6 +688,40 @@ public sealed partial class WorkspaceManager : IAsyncDisposable
     }
 
     /// <summary>
+    /// Gets bounded foldable ranges from one immutable document snapshot.
+    /// </summary>
+    /// <param name="parameters">The target text document.</param>
+    /// <param name="maximumRangeCount">The negotiated maximum result count.</param>
+    /// <param name="lineFoldingOnly">Whether the client accepts line-only ranges.</param>
+    /// <param name="includeCollapsedText">Whether collapsed display text is supported.</param>
+    /// <param name="includeCommentKind">Whether the comment kind is supported.</param>
+    /// <param name="includeImportsKind">Whether the imports kind is supported.</param>
+    /// <param name="includeRegionKind">Whether the region kind is supported.</param>
+    /// <param name="cancellationToken">The operation cancellation token.</param>
+    /// <returns>The ordered syntax, comment, import, and region folding ranges.</returns>
+    public async Task<IReadOnlyList<FoldingRange>> GetFoldingRangesAsync(
+        FoldingRangeParams parameters,
+        int maximumRangeCount,
+        bool lineFoldingOnly,
+        bool includeCollapsedText,
+        bool includeCommentKind,
+        bool includeImportsKind,
+        bool includeRegionKind,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(parameters);
+        return await WorkspaceFoldingRangeService.GetFoldingRangesAsync(
+            FindCurrentDocument(parameters.TextDocument.Uri),
+            maximumRangeCount,
+            lineFoldingOnly,
+            includeCollapsedText,
+            includeCommentKind,
+            includeImportsKind,
+            includeRegionKind,
+            cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
     /// Gets paired XML documentation names at one immutable document position.
     /// </summary>
     /// <param name="parameters">The target document position.</param>

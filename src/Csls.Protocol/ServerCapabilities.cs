@@ -66,6 +66,11 @@ public sealed record ServerCapabilities
     public bool SelectionRangeProvider { get; init; }
 
     /// <summary>
+    /// Gets whether syntax-aware folding range requests are supported.
+    /// </summary>
+    public bool FoldingRangeProvider { get; init; }
+
+    /// <summary>
     /// Gets whether linked editing ranges are supported.
     /// </summary>
     public bool LinkedEditingRangeProvider { get; init; }
