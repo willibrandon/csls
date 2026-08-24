@@ -60,12 +60,16 @@ public sealed partial class LanguageServer
                 }
 
                 LanguageServerConfiguration configuration = MergeConfiguration(
-                    ParseAnalyzerSetting(values[0], LegacyConfigurationSection),
-                    ParseAnalyzerSetting(values[1], PreferredConfigurationSection));
+                    ParseConfigurationSection(values[0], LegacyConfigurationSection),
+                    ParseConfigurationSection(values[1], PreferredConfigurationSection));
                 bool changed = await _workspaceManager
                     .ConfigureAsync(configuration.EnableAnalyzers, context.CancellationToken)
                     .ConfigureAwait(false);
-                LogConfigurationApplied(configuration.EnableAnalyzers, changed);
+                _configuration = configuration;
+                LogConfigurationApplied(
+                    configuration.EnableAnalyzers,
+                    configuration.FormatOnSave,
+                    changed);
                 return changed;
             },
             cancellationToken);
@@ -85,7 +89,11 @@ public sealed partial class LanguageServer
                 bool changed = await _workspaceManager.ConfigureAsync(
                     configuration.EnableAnalyzers,
                     context.CancellationToken).ConfigureAwait(false);
-                LogConfigurationApplied(configuration.EnableAnalyzers, changed);
+                _configuration = configuration;
+                LogConfigurationApplied(
+                    configuration.EnableAnalyzers,
+                    configuration.FormatOnSave,
+                    changed);
                 return changed;
             },
             cancellationToken);
@@ -113,25 +121,27 @@ public sealed partial class LanguageServer
         if (!hasLegacy && !hasPreferred)
         {
             return MergeConfiguration(
-                legacyEnableAnalyzers: null,
-                ParseAnalyzerSetting(root, PreferredConfigurationSection));
+                default,
+                ParseConfigurationSection(root, PreferredConfigurationSection));
         }
 
         return MergeConfiguration(
-            ParseAnalyzerSetting(
+            ParseConfigurationSection(
                 hasLegacy ? legacySection : null,
                 LegacyConfigurationSection),
-            ParseAnalyzerSetting(
+            ParseConfigurationSection(
                 hasPreferred ? preferredSection : null,
                 PreferredConfigurationSection));
     }
 
-    private static bool? ParseAnalyzerSetting(JsonElement? section, string sectionName)
+    private static (bool? EnableAnalyzers, bool? FormatOnSave) ParseConfigurationSection(
+        JsonElement? section,
+        string sectionName)
     {
         if (section is not JsonElement value ||
             value.ValueKind is JsonValueKind.Null or JsonValueKind.Undefined)
         {
-            return null;
+            return default;
         }
 
         if (value.ValueKind != JsonValueKind.Object)
@@ -139,36 +149,50 @@ public sealed partial class LanguageServer
             throw new InvalidDataException($"The {sectionName} configuration must be an object.");
         }
 
-        if (!value.TryGetProperty("enableAnalyzers", out JsonElement enableAnalyzers) ||
-            enableAnalyzers.ValueKind is JsonValueKind.Null or JsonValueKind.Undefined)
+        return (
+            ParseBooleanSetting(value, sectionName, "enableAnalyzers"),
+            ParseBooleanSetting(value, sectionName, "formatOnSave"));
+    }
+
+    private static bool? ParseBooleanSetting(
+        JsonElement section,
+        string sectionName,
+        string settingName)
+    {
+        if (!section.TryGetProperty(settingName, out JsonElement setting) ||
+            setting.ValueKind is JsonValueKind.Null or JsonValueKind.Undefined)
         {
             return null;
         }
 
-        return enableAnalyzers.ValueKind switch
+        return setting.ValueKind switch
         {
             JsonValueKind.True => true,
             JsonValueKind.False => false,
             _ => throw new InvalidDataException(
-                $"The {sectionName}.enableAnalyzers setting must be a boolean.")
+                $"The {sectionName}.{settingName} setting must be a boolean.")
         };
     }
 
     private static LanguageServerConfiguration MergeConfiguration(
-        bool? legacyEnableAnalyzers,
-        bool? preferredEnableAnalyzers)
+        (bool? EnableAnalyzers, bool? FormatOnSave) legacy,
+        (bool? EnableAnalyzers, bool? FormatOnSave) preferred)
     {
         return new LanguageServerConfiguration
         {
-            EnableAnalyzers = preferredEnableAnalyzers ?? legacyEnableAnalyzers ?? true
+            EnableAnalyzers = preferred.EnableAnalyzers ?? legacy.EnableAnalyzers ?? true,
+            FormatOnSave = preferred.FormatOnSave ?? legacy.FormatOnSave ?? false
         };
     }
 
     [LoggerMessage(
         EventId = 2,
         Level = LogLevel.Information,
-        Message = "Applied configuration: analyzer diagnostics enabled={EnableAnalyzers}, changed={Changed}")]
-    private partial void LogConfigurationApplied(bool enableAnalyzers, bool changed);
+        Message = "Applied configuration: analyzer diagnostics enabled={EnableAnalyzers}, format on save={FormatOnSave}, workspace changed={Changed}")]
+    private partial void LogConfigurationApplied(
+        bool enableAnalyzers,
+        bool formatOnSave,
+        bool changed);
 
     [LoggerMessage(
         EventId = 3,

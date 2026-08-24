@@ -64,6 +64,8 @@ public sealed class EditLanguageServerTests
                 fixturePath,
                 TestContext.CancellationToken).ConfigureAwait(false);
             JsonElement capabilities = initialization.GetProperty("capabilities");
+            JsonElement textDocumentSync = capabilities.GetProperty("textDocumentSync");
+            Assert.IsTrue(textDocumentSync.GetProperty("willSaveWaitUntil").GetBoolean());
             Assert.IsTrue(capabilities.GetProperty("renameProvider").GetProperty(
                 "prepareProvider").GetBoolean());
             Assert.IsTrue(capabilities.GetProperty("documentFormattingProvider").GetBoolean());
@@ -137,6 +139,40 @@ public sealed class EditLanguageServerTests
                 InsertFinalNewline = true,
                 TrimFinalNewlines = true
             };
+            IReadOnlyList<TextEdit> defaultSaveFormatting = await lsp
+                .RequestSaveFormattingAsync(
+                    programPath,
+                    TextDocumentSaveReason.Manual,
+                    TestContext.CancellationToken)
+                .ConfigureAwait(false);
+            Assert.IsEmpty(defaultSaveFormatting);
+            RemoteInvocationException invalidSaveReason =
+                await Assert.ThrowsExactlyAsync<RemoteInvocationException>(
+                    async () => await lsp.RequestSaveFormattingAsync(
+                        programPath,
+                        TextDocumentSaveReason.None,
+                        TestContext.CancellationToken).ConfigureAwait(false))
+                    .ConfigureAwait(false);
+            Assert.Contains(
+                "Unsupported text document save reason 0",
+                invalidSaveReason.Message,
+                StringComparison.Ordinal);
+            using var saveConfiguration = JsonDocument.Parse(
+                """{"csls":{"formatOnSave":true}}""");
+            await lsp.ChangeConfigurationAsync(saveConfiguration.RootElement)
+                .ConfigureAwait(false);
+            IReadOnlyList<TextEdit> saveFormatting = await lsp.RequestSaveFormattingAsync(
+                programPath,
+                TextDocumentSaveReason.Manual,
+                TestContext.CancellationToken).ConfigureAwait(false);
+            Assert.IsNotEmpty(saveFormatting);
+            string saveFormattedText = ApplyTextEdits(ProgramText, saveFormatting);
+            Assert.Contains(
+                "public static class Calculator { public static int Add(int left, int right) => left + right; }",
+                saveFormattedText,
+                StringComparison.Ordinal);
+            Assert.Contains("Calculator.Add(1, 2)", saveFormattedText, StringComparison.Ordinal);
+
             IReadOnlyList<TextEdit> rangeFormatting = await lsp.RequestRangeFormattingAsync(
                 programPath,
                 new LspRange(new Position(5, 0), new Position(6, 0)),

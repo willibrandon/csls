@@ -9,13 +9,17 @@ is also accepted. When both sections define a setting, `csls` takes precedence.
 ```json
 {
   "csls": {
-    "enableAnalyzers": true
+    "enableAnalyzers": true,
+    "formatOnSave": false
   }
 }
 ```
 
 `enableAnalyzers` defaults to `true`. Disable it to return compiler diagnostics
 without running analyzers referenced by the loaded project.
+
+`formatOnSave` defaults to `false`. Set it to `true` when the client should request
+server formatting edits before saving C#, Razor, or cshtml files.
 
 Clients that advertise `workspace.configuration` are queried after initialization
 and whenever they send `workspace/didChangeConfiguration`. Other clients can push
