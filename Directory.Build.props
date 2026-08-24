@@ -34,22 +34,18 @@
     <PackageRequireLicenseAcceptance>false</PackageRequireLicenseAcceptance>
     <IncludeSymbols>true</IncludeSymbols>
     <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+    <CslsRazorCompilerVersion>10.4.0-preview.26423.112</CslsRazorCompilerVersion>
   </PropertyGroup>
 
-  <PropertyGroup Condition="'$(MSBuildProjectName)' == 'Csls.Workspaces' or
-                            '$(MSBuildProjectName)' == 'Csls.Worker'">
-    <CslsRazorCompilerPath>$(MSBuildSDKsPath)/Microsoft.NET.Sdk.Razor/source-generators</CslsRazorCompilerPath>
+  <PropertyGroup Condition="'$(MSBuildProjectName)' == 'Csls.Workspaces'">
+    <CslsUsesRazorCompiler>true</CslsUsesRazorCompiler>
   </PropertyGroup>
 
-  <ItemGroup Condition="'$(CslsRazorCompilerPath)' != ''">
-    <Reference Include="Microsoft.AspNetCore.Razor.Utilities.Shared">
-      <HintPath>$(CslsRazorCompilerPath)/Microsoft.AspNetCore.Razor.Utilities.Shared.dll</HintPath>
-      <Private>true</Private>
-    </Reference>
-    <Reference Include="Microsoft.CodeAnalysis.Razor.Compiler">
-      <HintPath>$(CslsRazorCompilerPath)/Microsoft.CodeAnalysis.Razor.Compiler.dll</HintPath>
-      <Private>true</Private>
-    </Reference>
+  <ItemGroup Condition="'$(CslsUsesRazorCompiler)' == 'true'">
+    <PackageDownload Include="Microsoft.AspNetCore.Razor.Utilities.Shared"
+                     Version="[$(CslsRazorCompilerVersion)]" />
+    <PackageDownload Include="Microsoft.CodeAnalysis.Razor.Compiler"
+                     Version="[$(CslsRazorCompilerVersion)]" />
   </ItemGroup>
 
   <ItemGroup>
