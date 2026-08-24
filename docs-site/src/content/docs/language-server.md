@@ -12,7 +12,7 @@ language features include:
 - document and workspace symbols
 - semantic tokens with full and delta responses
 - call hierarchy, type hierarchy, selection ranges, folding ranges, and inlay hints
-- rename, code actions, and document formatting
+- rename, code actions, and document or range formatting
 
 Document and workspace diagnostic pulls use the same immutable Roslyn snapshot.
 Workspace results cover user C# and Razor documents across all loaded projects,
@@ -64,8 +64,9 @@ the Razor source, including symbols made available by `_Imports.razor` and
 and reference requests use that snapshot and map Razor locations back to their
 source files.
 Razor formatting indents markup and embedded C#, aligns multiline attributes,
-and honors the client's tab, space, newline, and trimming settings. Content in
-`pre`, `script`, `style`, and `textarea` elements is left unchanged.
+and honors the client's tab, space, newline, and trimming settings. Range
+formatting updates only the selected lines. Content in `pre`, `script`, `style`,
+and `textarea` elements is left unchanged.
 
 [Configuration](../configuration/) is pulled through the standard workspace request
 when the client supports it. Push-only clients use the same settings and precedence.

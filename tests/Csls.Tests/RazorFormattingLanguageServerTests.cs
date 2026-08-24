@@ -3,6 +3,7 @@ using Csls.Control.Contracts;
 using Csls.Protocol;
 using System.Runtime.CompilerServices;
 using System.Text;
+using LspRange = Csls.Protocol.Range;
 
 namespace Csls.Tests;
 
@@ -92,6 +93,18 @@ public sealed class RazorFormattingLanguageServerTests
                 InsertFinalNewline = true,
                 TrimFinalNewlines = true
             };
+            IReadOnlyList<TextEdit> rangeEdits = await lsp.RequestRangeFormattingAsync(
+                documentPath,
+                new LspRange(new Position(1, 0), new Position(2, 0)),
+                options,
+                TestContext.CancellationToken).ConfigureAwait(false);
+            Assert.IsNotEmpty(rangeEdits);
+            string expectedRangeText = persistedText.Replace(
+                "<p>@(1+2)</p>",
+                useTabs ? "\t<p>@(1 + 2)</p>" : "    <p>@(1 + 2)</p>",
+                StringComparison.Ordinal);
+            Assert.AreEqual(expectedRangeText, ApplyTextEdits(persistedText, rangeEdits));
+
             IReadOnlyList<TextEdit> edits = await lsp.RequestFormattingAsync(
                 documentPath,
                 options,
