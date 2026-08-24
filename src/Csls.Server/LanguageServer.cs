@@ -256,6 +256,7 @@ public sealed partial class LanguageServer : ILspRpcTarget, IAsyncDisposable
                     PrepareProvider = true
                 },
                 DocumentFormattingProvider = true,
+                DocumentRangeFormattingProvider = true,
                 CodeActionProvider = new CodeActionOptions
                 {
                     CodeActionKinds = ["source.organizeImports"],
@@ -1094,6 +1095,33 @@ public sealed partial class LanguageServer : ILspRpcTarget, IAsyncDisposable
                 {
                     throw new InvalidOperationException(
                         "The workspace changed while formatting edits were being computed.");
+                }
+
+                return edits;
+            },
+            cancellationToken);
+    }
+
+    /// <inheritdoc />
+    public Task<IReadOnlyList<TextEdit>> RangeFormattingAsync(
+        DocumentRangeFormattingParams parameters,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(parameters);
+        EnsureRunning();
+        return _scheduler.ScheduleAsync(
+            "textDocument/rangeFormatting",
+            RequestMode.ReadOnly,
+            () => _workspaceManager.Generation,
+            async context =>
+            {
+                IReadOnlyList<TextEdit> edits = await _workspaceManager
+                    .GetRangeFormattingEditsAsync(parameters, context.CancellationToken)
+                    .ConfigureAwait(false);
+                if (_workspaceManager.Generation != context.WorkspaceGeneration)
+                {
+                    throw new InvalidOperationException(
+                        "The workspace changed while range formatting edits were being computed.");
                 }
 
                 return edits;

@@ -141,6 +141,11 @@ public sealed record ServerCapabilities
     public bool DocumentFormattingProvider { get; init; }
 
     /// <summary>
+    /// Gets whether range-limited document formatting is supported.
+    /// </summary>
+    public bool DocumentRangeFormattingProvider { get; init; }
+
+    /// <summary>
     /// Gets the supported code-action categories.
     /// </summary>
     public CodeActionOptions? CodeActionProvider { get; init; }

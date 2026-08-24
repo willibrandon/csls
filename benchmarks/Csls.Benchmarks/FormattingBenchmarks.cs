@@ -7,97 +7,85 @@ using LspRange = Csls.Protocol.Range;
 namespace Csls.Benchmarks;
 
 /// <summary>
-/// Measures complete and range-limited formatting for a current Razor project snapshot.
+/// Measures complete and range-limited formatting for a current C# project snapshot.
 /// </summary>
-[BenchmarkCategory("Razor", "Formatting")]
+[BenchmarkCategory("Formatting")]
 [MemoryDiagnoser]
-public class RazorFormattingBenchmarks : IAsyncDisposable
+public class FormattingBenchmarks : IAsyncDisposable
 {
     private WorkspaceManager _workspaceManager = null!;
-    private DocumentFormattingParams _parameters = null!;
+    private DocumentFormattingParams _documentParameters = null!;
     private DocumentRangeFormattingParams _rangeParameters = null!;
     private string _fixturePath = null!;
     private int _disposeState;
 
     /// <summary>
-    /// Loads a real SDK Web project and verifies its Razor formatting fixture.
+    /// Loads a real SDK project and verifies both formatting benchmark paths.
     /// </summary>
     [GlobalSetup]
     public async Task SetupAsync()
     {
         _fixturePath = Path.Join(
             Path.GetTempPath(),
-            $"csls-razor-formatting-benchmark-{Guid.NewGuid():N}");
+            $"csls-formatting-benchmark-{Guid.NewGuid():N}");
         Directory.CreateDirectory(_fixturePath);
-        string documentPath = Path.Join(_fixturePath, "Component.razor");
+        string documentPath = Path.Join(_fixturePath, "Program.cs");
         await File.WriteAllTextAsync(
             Path.Join(_fixturePath, "Fixture.csproj"),
             ProjectText).ConfigureAwait(false);
-        await File.WriteAllTextAsync(
-            Path.Join(_fixturePath, "_Imports.razor"),
-            string.Empty).ConfigureAwait(false);
-        await File.WriteAllTextAsync(documentPath, RazorText).ConfigureAwait(false);
+        await File.WriteAllTextAsync(documentPath, DocumentText).ConfigureAwait(false);
 
         _workspaceManager = new WorkspaceManager(NullLogger<WorkspaceManager>.Instance);
         await _workspaceManager.LoadAsync([_fixturePath], CancellationToken.None)
             .ConfigureAwait(false);
-        await _workspaceManager.OpenDocumentAsync(
-            new TextDocumentItem
-            {
-                Uri = DocumentUri.FromFileSystemPath(documentPath),
-                LanguageId = "razor",
-                Version = 1,
-                Text = RazorText
-            },
-            CancellationToken.None).ConfigureAwait(false);
-        _parameters = new DocumentFormattingParams
+        var identifier = new TextDocumentIdentifier
         {
-            TextDocument = new TextDocumentIdentifier
-            {
-                Uri = DocumentUri.FromFileSystemPath(documentPath)
-            },
-            Options = new FormattingOptions
-            {
-                TabSize = 4,
-                InsertSpaces = true,
-                TrimTrailingWhitespace = true,
-                InsertFinalNewline = true,
-                TrimFinalNewlines = true
-            }
+            Uri = DocumentUri.FromFileSystemPath(documentPath)
+        };
+        var options = new FormattingOptions
+        {
+            TabSize = 4,
+            InsertSpaces = true
+        };
+        _documentParameters = new DocumentFormattingParams
+        {
+            TextDocument = identifier,
+            Options = options
         };
         _rangeParameters = new DocumentRangeFormattingParams
         {
-            TextDocument = _parameters.TextDocument,
-            Range = new LspRange(new Position(1, 0), new Position(2, 0)),
-            Options = _parameters.Options
+            TextDocument = identifier,
+            Range = new LspRange(new Position(4, 0), new Position(5, 0)),
+            Options = options
         };
-        IReadOnlyList<TextEdit> edits = await _workspaceManager.GetFormattingEditsAsync(
-            _parameters,
-            CancellationToken.None).ConfigureAwait(false);
+
+        IReadOnlyList<TextEdit> documentEdits = await _workspaceManager
+            .GetFormattingEditsAsync(_documentParameters, CancellationToken.None)
+            .ConfigureAwait(false);
         IReadOnlyList<TextEdit> rangeEdits = await _workspaceManager
             .GetRangeFormattingEditsAsync(_rangeParameters, CancellationToken.None)
             .ConfigureAwait(false);
-        if (edits.Count == 0 || rangeEdits.Count == 0)
+        if (documentEdits.Count == 0 || rangeEdits.Count == 0)
         {
             throw new InvalidOperationException(
-                "The Razor formatting benchmark fixture produced no edits.");
+                "The C# formatting benchmark fixture produced no edits.");
         }
     }
 
     /// <summary>
-    /// Measures repeated formatting of an immutable current Razor document.
+    /// Measures repeated complete formatting of an immutable C# document.
     /// </summary>
     [Benchmark(Baseline = true)]
-    public Task<IReadOnlyList<TextEdit>> FormatCurrentDocumentAsync() =>
+    public Task<IReadOnlyList<TextEdit>> FormatDocumentAsync() =>
         _workspaceManager.GetFormattingEditsAsync(
-            _parameters,
+            _documentParameters,
             CancellationToken.None);
 
     /// <summary>
-    /// Measures repeated range formatting of an immutable current Razor document.
+    /// Measures repeated range formatting of an immutable C# document.
     /// </summary>
     [Benchmark]
-    public Task<IReadOnlyList<TextEdit>> FormatCurrentRangeAsync() =>
+    public Task<IReadOnlyList<TextEdit>> FormatRangeAsync() =>
         _workspaceManager.GetRangeFormattingEditsAsync(
             _rangeParameters,
             CancellationToken.None);
@@ -125,23 +113,20 @@ public class RazorFormattingBenchmarks : IAsyncDisposable
     }
 
     private const string ProjectText = """
-        <Project Sdk="Microsoft.NET.Sdk.Web">
+        <Project Sdk="Microsoft.NET.Sdk">
           <PropertyGroup>
             <TargetFramework>net10.0</TargetFramework>
-            <Nullable>enable</Nullable>
           </PropertyGroup>
         </Project>
         """;
 
-    private const string RazorText = """
-        <div>
-        @if(true)
+    private const string DocumentText = """
+        namespace FormattingBenchmark;
+
+        public static class Calculator
         {
-        <span>@(1+2)</span>
-        }
-        </div>
-        @code{
-        private int count=0;
+        public static int Add(int left,int right)=>left+right;
+        public static int Subtract(int left,int right)=>left-right;
         }
         """;
 }

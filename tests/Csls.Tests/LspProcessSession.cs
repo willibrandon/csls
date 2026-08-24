@@ -1088,6 +1088,32 @@ internal sealed class LspProcessSession : IAsyncDisposable
             cancellationToken);
 
     /// <summary>
+    /// Requests range-limited formatting edits from the real worker.
+    /// </summary>
+    /// <param name="documentPath">The absolute target document path.</param>
+    /// <param name="range">The target UTF-16 source range.</param>
+    /// <param name="options">The editor formatting preferences.</param>
+    /// <param name="cancellationToken">The test cancellation token.</param>
+    /// <returns>The bounded non-overlapping formatting edits.</returns>
+    internal Task<IReadOnlyList<TextEdit>> RequestRangeFormattingAsync(
+        string documentPath,
+        LspRange range,
+        FormattingOptions options,
+        CancellationToken cancellationToken) =>
+        _rpc.InvokeWithParameterObjectAsync<IReadOnlyList<TextEdit>>(
+            "textDocument/rangeFormatting",
+            new DocumentRangeFormattingParams
+            {
+                TextDocument = new TextDocumentIdentifier
+                {
+                    Uri = DocumentUri.FromFileSystemPath(documentPath)
+                },
+                Range = range,
+                Options = options
+            },
+            cancellationToken);
+
+    /// <summary>
     /// Requests concrete code actions from the real worker.
     /// </summary>
     /// <param name="documentPath">The absolute target document path.</param>
