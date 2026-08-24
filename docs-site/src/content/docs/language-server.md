@@ -11,7 +11,7 @@ language features include:
 - definitions, declarations, implementations, references, highlights, links, monikers, and linked editing
 - document and workspace symbols
 - semantic tokens with full and delta responses
-- call hierarchy, type hierarchy, selection ranges, and inlay hints
+- call hierarchy, type hierarchy, selection ranges, folding ranges, and inlay hints
 - rename, code actions, and document formatting
 
 Document and workspace diagnostic pulls use the same immutable Roslyn snapshot.
@@ -49,6 +49,10 @@ while non-public symbols use project or document scope.
 `textDocument/linkedEditingRange` links matching start and end names in XML
 documentation, including nested and custom elements. Self-closing, mismatched,
 and unrelated text do not produce linked ranges.
+
+`textDocument/foldingRange` returns C# syntax, comment, import, and region folds
+from the current Roslyn document snapshot. Results honor the client range limit,
+line-only mode, supported kinds, and collapsed text capability.
 
 Razor views and components use the compiler from the pinned .NET SDK. Pull
 diagnostics include Razor findings and mapped C# compiler or analyzer findings

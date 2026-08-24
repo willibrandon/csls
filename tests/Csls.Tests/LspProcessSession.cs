@@ -522,6 +522,26 @@ internal sealed class LspProcessSession : IAsyncDisposable
             cancellationToken);
 
     /// <summary>
+    /// Requests negotiated folding ranges for one test document.
+    /// </summary>
+    /// <param name="documentPath">The absolute target document path.</param>
+    /// <param name="cancellationToken">The test cancellation token.</param>
+    /// <returns>The bounded ordered folding ranges.</returns>
+    internal Task<IReadOnlyList<FoldingRange>> RequestFoldingRangesAsync(
+        string documentPath,
+        CancellationToken cancellationToken) =>
+        _rpc.InvokeWithParameterObjectAsync<IReadOnlyList<FoldingRange>>(
+            "textDocument/foldingRange",
+            new FoldingRangeParams
+            {
+                TextDocument = new TextDocumentIdentifier
+                {
+                    Uri = DocumentUri.FromFileSystemPath(documentPath)
+                }
+            },
+            cancellationToken);
+
+    /// <summary>
     /// Requests paired linked editing ranges for one test document position.
     /// </summary>
     /// <param name="documentPath">The absolute target document path.</param>
