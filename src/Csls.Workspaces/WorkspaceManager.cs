@@ -162,7 +162,7 @@ public sealed partial class WorkspaceManager : IAsyncDisposable
                 }
             }
 
-            return loadedFolders.MoveToImmutable();
+            return loadedFolders.ToImmutable();
         }
         catch
         {

@@ -30,6 +30,59 @@ env:
   DOTNET_NOLOGO: true
 
 jobs:
+  end-to-end:
+    name: End-to-end performance (${{ matrix.rid }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            rid: linux-x64
+          - os: windows-latest
+            rid: win-x64
+          - os: macos-26
+            rid: osx-arm64
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          dotnet-version: 10.0.400
+
+      - name: Install Native AOT prerequisites
+        run: >-
+          dotnet run --file scripts/Install-NativeAotPrerequisites.cs --
+          --runtime ${{ matrix.rid }}
+
+      - name: Run end-to-end performance smoke
+        if: >-
+          github.event_name != 'schedule' &&
+          github.event_name != 'release' &&
+          (github.event_name != 'workflow_dispatch' || !inputs.full)
+        run: dotnet run --file scripts/Run-EndToEndPerformance.cs -- --iterations 1
+
+      - name: Run complete end-to-end performance measurement
+        if: >-
+          github.event_name == 'schedule' ||
+          github.event_name == 'release' ||
+          (github.event_name == 'workflow_dispatch' && inputs.full)
+        run: dotnet run --file scripts/Run-EndToEndPerformance.cs -- --iterations 3
+
+      - name: Upload end-to-end performance results
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: end-to-end-performance-results-${{ matrix.rid }}
+          path: artifacts/end-to-end-performance
+          if-no-files-found: error
+
   smoke:
     name: Benchmark smoke
     if: >-
