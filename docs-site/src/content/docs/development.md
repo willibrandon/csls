@@ -29,6 +29,10 @@ test tools at pinned current releases. CI builds the supported runtime packages,
 runs CodeQL, scans the repository and container image with Picket, and checks the
 Native AOT package sizes.
 
+Read [testing](../testing/) for the real process and editor fixtures,
+[performance](../performance/) for both measurement programs, and
+[architecture](../architecture/) before changing project boundaries.
+
 Build the documentation with:
 
 ```console

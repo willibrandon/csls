@@ -10,7 +10,9 @@ is also accepted. When both sections define a setting, `csls` takes precedence.
 {
   "csls": {
     "enableAnalyzers": true,
-    "formatOnSave": false
+    "formatOnSave": false,
+    "configuration": "Debug",
+    "logLevel": "Information"
   }
 }
 ```
@@ -21,10 +23,17 @@ without running analyzers referenced by the loaded project.
 `formatOnSave` defaults to `false`. Set it to `true` when the client should request
 server formatting edits before saving C#, Razor, or cshtml files.
 
+`configuration` defaults to `Debug`. Changing it reloads each MSBuild workspace
+with the selected configuration while preserving open document text and versions.
+
+`logLevel` defaults to `Information` and accepts the Microsoft logging levels from
+`Trace` through `Critical`, plus `None`. Changes apply to both standard error and
+the session log exposed to the dashboard, CLI, and MCP server.
+
 Clients that advertise `workspace.configuration` are queried after initialization
 and whenever they send `workspace/didChangeConfiguration`. Other clients can push
-the same settings in that notification. Configuration changes invalidate affected
-diagnostic results before later requests run.
+the same settings in that notification. Configuration changes reload or invalidate
+only the state affected by the new values before later requests run.
 
 ## Workspace folders
 
