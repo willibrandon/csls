@@ -13,7 +13,7 @@ public sealed record SignatureInformation
     /// <summary>
     /// Gets optional callable documentation.
     /// </summary>
-    public string? Documentation { get; init; }
+    public MarkupContent? Documentation { get; init; }
 
     /// <summary>
     /// Gets the ordered callable parameters.

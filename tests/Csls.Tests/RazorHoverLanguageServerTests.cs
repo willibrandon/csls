@@ -84,6 +84,7 @@ public sealed class RazorHoverLanguageServerTests
                 componentPath,
                 new Position(0, 12),
                 TestContext.CancellationToken).ConfigureAwait(false);
+            Assert.AreEqual("plaintext", persistedHover.Contents.Kind);
             Assert.Contains("Known.Value", persistedHover.Contents.Value, StringComparison.Ordinal);
             Assert.Contains("persisted value", persistedHover.Contents.Value, StringComparison.Ordinal);
             Assert.AreEqual(

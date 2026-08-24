@@ -22,12 +22,14 @@ internal static class WorkspaceRazorHoverService
     /// <param name="solution">The immutable workspace solution snapshot.</param>
     /// <param name="path">The absolute Razor document path.</param>
     /// <param name="position">The zero-based UTF-16 Razor position.</param>
+    /// <param name="supportsMarkdown">Whether the receiving client accepts Markdown.</param>
     /// <param name="cancellationToken">The operation cancellation token.</param>
     /// <returns>Mapped Razor hover, or null when the position has no generated C# symbol.</returns>
     internal static async Task<Hover?> GetHoverAsync(
         Solution solution,
         string path,
         Position position,
+        bool supportsMarkdown,
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(solution);
@@ -45,6 +47,7 @@ internal static class WorkspaceRazorHoverService
                     razorDocument,
                     path,
                     position,
+                    supportsMarkdown,
                     cancellationToken).ConfigureAwait(false);
                 if (hover is not null)
                 {
@@ -61,6 +64,7 @@ internal static class WorkspaceRazorHoverService
         TextDocument razorDocument,
         string path,
         Position position,
+        bool supportsMarkdown,
         CancellationToken cancellationToken)
     {
         RazorHoverProjectCache cache = s_projectCache.GetValue(
@@ -84,10 +88,11 @@ internal static class WorkspaceRazorHoverService
             return null;
         }
 
-        (string Markdown, TextSpan Span)? hover = await WorkspaceHoverService
+        (MarkupContent Content, TextSpan Span)? hover = await WorkspaceHoverService
             .GetAsync(
                 mappedDocument.Document,
                 mappedDocument.GeneratedOffset,
+                supportsMarkdown,
                 cancellationToken)
             .ConfigureAwait(false);
         if (hover is null ||
@@ -102,11 +107,7 @@ internal static class WorkspaceRazorHoverService
 
         var result = new Hover
         {
-            Contents = new MarkupContent
-            {
-                Kind = "markdown",
-                Value = hover.Value.Markdown
-            },
+            Contents = hover.Value.Content,
             Range = range
         };
         cache.TryAddHover(path, position, result);

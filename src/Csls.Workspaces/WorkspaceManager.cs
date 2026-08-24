@@ -894,10 +894,12 @@ public sealed partial class WorkspaceManager : IAsyncDisposable
     /// </summary>
     /// <param name="parameters">The target document position.</param>
     /// <param name="cancellationToken">The operation cancellation token.</param>
+    /// <param name="supportsMarkdown">Whether the receiving client accepts Markdown.</param>
     /// <returns>Hover information, or null when no symbol is present.</returns>
     public async Task<Hover?> GetHoverAsync(
         TextDocumentPositionParams parameters,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool supportsMarkdown = true)
     {
         ArgumentNullException.ThrowIfNull(parameters);
         string path = parameters.TextDocument.Uri.GetFileSystemPath();
@@ -915,6 +917,7 @@ public sealed partial class WorkspaceManager : IAsyncDisposable
                 solution,
                 path,
                 parameters.Position,
+                supportsMarkdown,
                 cancellationToken).ConfigureAwait(false);
         }
 
@@ -926,8 +929,8 @@ public sealed partial class WorkspaceManager : IAsyncDisposable
 
         SourceText text = await document.GetTextAsync(cancellationToken).ConfigureAwait(false);
         int offset = LspPositionConverter.GetOffset(text, parameters.Position);
-        (string Markdown, TextSpan Span)? hover = await WorkspaceHoverService
-            .GetAsync(document, offset, cancellationToken)
+        (MarkupContent Content, TextSpan Span)? hover = await WorkspaceHoverService
+            .GetAsync(document, offset, supportsMarkdown, cancellationToken)
             .ConfigureAwait(false);
         if (hover is null)
         {
@@ -937,11 +940,7 @@ public sealed partial class WorkspaceManager : IAsyncDisposable
         LinePositionSpan lineSpan = text.Lines.GetLinePositionSpan(hover.Value.Span);
         return new Hover
         {
-            Contents = new MarkupContent
-            {
-                Kind = "markdown",
-                Value = hover.Value.Markdown
-            },
+            Contents = hover.Value.Content,
             Range = new LspRange(
                 new Position(lineSpan.Start.Line, lineSpan.Start.Character),
                 new Position(lineSpan.End.Line, lineSpan.End.Character))
@@ -1098,10 +1097,12 @@ public sealed partial class WorkspaceManager : IAsyncDisposable
     /// </summary>
     /// <param name="parameters">The document position and trigger context.</param>
     /// <param name="cancellationToken">The operation cancellation token.</param>
+    /// <param name="supportsMarkdown">Whether the receiving client accepts Markdown.</param>
     /// <returns>Signature help, or null when the position is not inside a supported argument list.</returns>
     public async Task<LspSignatureHelp?> GetSignatureHelpAsync(
         SignatureHelpParams parameters,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool supportsMarkdown = false)
     {
         ArgumentNullException.ThrowIfNull(parameters);
         string path = parameters.TextDocument.Uri.GetFileSystemPath();
@@ -1142,12 +1143,17 @@ public sealed partial class WorkspaceManager : IAsyncDisposable
         int activeSignature = selectedMethod is null
             ? FindBestSignature(methods, activeParameter)
             : FindSignatureIndex(methods, selectedMethod);
-        SignatureInformation[] signatures =
-        [
-            .. methods
-                .Take(MaximumSignatures)
-                .Select(method => CreateSignatureInformation(method, activeParameter))
-        ];
+        int signatureCount = Math.Min(methods.Count, MaximumSignatures);
+        var signatures = new SignatureInformation[signatureCount];
+        for (int index = 0; index < signatureCount; index++)
+        {
+            signatures[index] = CreateSignatureInformation(
+                methods[index],
+                activeParameter,
+                semanticModel.Compilation,
+                supportsMarkdown,
+                cancellationToken);
+        }
         activeSignature = Math.Clamp(activeSignature, 0, signatures.Length - 1);
         return new LspSignatureHelp
         {
@@ -1899,18 +1905,34 @@ public sealed partial class WorkspaceManager : IAsyncDisposable
 
     private static SignatureInformation CreateSignatureInformation(
         IMethodSymbol method,
-        int activeParameter)
+        int activeParameter,
+        Compilation compilation,
+        bool supportsMarkdown,
+        CancellationToken cancellationToken)
     {
-        ParameterInformation[] parameters =
-        [
-            .. method.Parameters.Select(static parameter => new ParameterInformation
+        (MarkupContent? Documentation,
+            MarkupContent? SupplementalDocumentation,
+            IReadOnlyDictionary<string, MarkupContent> Parameters) documentation =
+            SymbolDocumentationFormatter.FormatSymbol(
+                method,
+                compilation,
+                supportsMarkdown,
+                cancellationToken);
+        var parameters = new ParameterInformation[method.Parameters.Length];
+        for (int index = 0; index < parameters.Length; index++)
+        {
+            IParameterSymbol parameter = method.Parameters[index];
+            parameters[index] = new ParameterInformation
             {
-                Label = parameter.ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat)
-            })
-        ];
+                Label = parameter.ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat),
+                Documentation = documentation.Parameters.GetValueOrDefault(parameter.Name)
+            };
+        }
+
         return new SignatureInformation
         {
             Label = method.ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat),
+            Documentation = documentation.Documentation,
             Parameters = parameters,
             ActiveParameter = parameters.Length == 0
                 ? null
