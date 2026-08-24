@@ -28,7 +28,15 @@ Start `csls` in an editor, then list the sessions visible to the current user:
 ```console
 csls sessions list
 csls sessions show --session 12345
+csls sessions watch
+csls sessions watch --json
 ```
+
+`sessions watch` writes an initial snapshot and then reports each added, updated,
+or removed session until canceled. JSON mode writes one complete response envelope
+per line, so agents can process the stream without waiting for it to close. Each
+event includes its sequence, the changed session, and the current bounded session
+snapshot.
 
 When exactly one session is live, query commands infer it. Otherwise, pass its
 process identifier with `--session`.
