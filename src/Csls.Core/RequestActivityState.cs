@@ -217,6 +217,9 @@ internal sealed class RequestActivityState
         WorkspaceGeneration = _workspaceGeneration,
         AcceptedAt = AcceptedAt,
         StartedAt = _startedAt,
+        Duration = _timeProvider.GetElapsedTime(
+            _startedTimestamp ?? AcceptedTimestamp,
+            _timeProvider.GetTimestamp()),
         IsCancellationRequested = _isCancellationRequested,
         Status = _status
     };

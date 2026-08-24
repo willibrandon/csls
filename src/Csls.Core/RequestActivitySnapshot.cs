@@ -41,6 +41,11 @@ public sealed class RequestActivitySnapshot
     public DateTimeOffset? StartedAt { get; init; }
 
     /// <summary>
+    /// Gets the elapsed queued or execution duration through this observation.
+    /// </summary>
+    public TimeSpan Duration { get; init; }
+
+    /// <summary>
     /// Gets whether peer or server cancellation was requested.
     /// </summary>
     public bool IsCancellationRequested { get; init; }

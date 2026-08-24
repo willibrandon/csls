@@ -10,6 +10,31 @@ public sealed partial class WorkspaceManager
     private const int MaximumInspectionDiagnostics = 500;
 
     /// <summary>
+    /// Inspects only the current workspace generation and loaded folder summaries.
+    /// </summary>
+    /// <returns>The allocation-bounded workspace summary.</returns>
+    public WorkspaceSummarySnapshot InspectSummary()
+    {
+        ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposeState) != 0, this);
+        ImmutableArray<(string RootPath, Workspace Workspace, Solution Solution)> folders = _folders;
+        return new WorkspaceSummarySnapshot
+        {
+            Generation = Generation,
+            Workspaces =
+            [
+                .. folders.Select(static folder => new WorkspaceFolderInspection
+                {
+                    RootPath = folder.RootPath,
+                    WorkspaceKind = folder.Workspace.GetType().Name,
+                    ProjectCount = folder.Solution.ProjectIds.Count,
+                    DocumentCount = folder.Solution.Projects.Sum(
+                        static project => project.DocumentIds.Count)
+                })
+            ]
+        };
+    }
+
+    /// <summary>
     /// Inspects the current immutable workspace generation using real Roslyn state.
     /// </summary>
     /// <param name="includeDiagnostics">Whether to evaluate compiler and analyzer diagnostics.</param>
