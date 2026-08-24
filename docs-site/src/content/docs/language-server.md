@@ -12,7 +12,7 @@ language features include:
 - document and workspace symbols
 - semantic tokens with full and delta responses
 - call hierarchy, type hierarchy, selection ranges, folding ranges, and inlay hints
-- rename, missing-using quick fixes, import organization, and document, range, on-type, or opt-in save formatting
+- rename, missing-using and interface implementation quick fixes, import organization, and document, range, on-type, or opt-in save formatting
 - project-aware file creation, rename, folder move, and deletion tracking
 
 Document and workspace diagnostic pulls use the same immutable Roslyn snapshot.
@@ -55,6 +55,11 @@ Missing-using quick fixes use Roslyn's project and metadata indexes. Each propos
 import is applied to a temporary document, simplified, formatted, and kept only
 when the unresolved name binds to the selected accessible type. The returned edit
 includes the current document version when the file is open.
+
+Interface implementation quick fixes generate required inherited methods,
+properties, indexers, events, and static abstract members. Existing and default
+members are left alone. csls compiles the temporary document and returns the edit
+only when the selected interface is fully implemented without new compiler errors.
 
 `textDocument/moniker` returns `dotnet` identifiers built from canonical assembly
 identities and Roslyn documentation IDs. Strong-named assembly APIs are unique

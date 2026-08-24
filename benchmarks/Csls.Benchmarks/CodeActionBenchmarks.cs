@@ -8,7 +8,7 @@ using LspRange = Csls.Protocol.Range;
 namespace Csls.Benchmarks;
 
 /// <summary>
-/// Measures verified missing-using quick fixes against an immutable C# project snapshot.
+/// Measures verified semantic code actions against an immutable C# project snapshot.
 /// </summary>
 [BenchmarkCategory("CodeActions")]
 [MemoryDiagnoser]
@@ -16,6 +16,7 @@ public class CodeActionBenchmarks : IAsyncDisposable
 {
     private WorkspaceManager _workspaceManager = null!;
     private CodeActionParams _parameters = null!;
+    private CodeActionParams _implementInterfaceParameters = null!;
     private string _fixturePath = null!;
     private int _disposeState;
 
@@ -30,10 +31,13 @@ public class CodeActionBenchmarks : IAsyncDisposable
             $"csls-code-action-benchmark-{Guid.NewGuid():N}");
         Directory.CreateDirectory(_fixturePath);
         string documentPath = Path.Join(_fixturePath, "Program.cs");
+        string implementInterfacePath = Path.Join(_fixturePath, "ImplementInterface.cs");
         await File.WriteAllTextAsync(
             Path.Join(_fixturePath, "Fixture.csproj"),
             ProjectText).ConfigureAwait(false);
         await File.WriteAllTextAsync(documentPath, DocumentText).ConfigureAwait(false);
+        await File.WriteAllTextAsync(implementInterfacePath, ImplementInterfaceText)
+            .ConfigureAwait(false);
 
         _workspaceManager = new WorkspaceManager(NullLogger<WorkspaceManager>.Instance);
         await _workspaceManager.LoadAsync([_fixturePath], CancellationToken.None)
@@ -45,6 +49,19 @@ public class CodeActionBenchmarks : IAsyncDisposable
                 Uri = DocumentUri.FromFileSystemPath(documentPath)
             },
             Range = new LspRange(new Position(6, 26), new Position(6, 39)),
+            Context = new CodeActionContext
+            {
+                Diagnostics = [],
+                Only = ["quickfix"]
+            }
+        };
+        _implementInterfaceParameters = new CodeActionParams
+        {
+            TextDocument = new TextDocumentIdentifier
+            {
+                Uri = DocumentUri.FromFileSystemPath(implementInterfacePath)
+            },
+            Range = new LspRange(new Position(7, 29), new Position(7, 36)),
             Context = new CodeActionContext
             {
                 Diagnostics = [],
@@ -65,6 +82,21 @@ public class CodeActionBenchmarks : IAsyncDisposable
             throw new InvalidOperationException(
                 "The missing-using benchmark fixture produced no verified edit.");
         }
+
+        IReadOnlyList<LspCodeAction> implementations =
+            await _workspaceManager.GetCodeActionsAsync(
+                _implementInterfaceParameters,
+                CancellationToken.None).ConfigureAwait(false);
+        LspCodeAction implementation = implementations.Count == 1
+            ? implementations[0]
+            : throw new InvalidOperationException(
+                "The implement-interface benchmark fixture produced an unexpected action count.");
+        if (implementation.Title != "Implement interface" ||
+            implementation.Edit is not { DocumentChanges.Count: > 0 })
+        {
+            throw new InvalidOperationException(
+                "The implement-interface benchmark fixture produced no verified edit.");
+        }
     }
 
     /// <summary>
@@ -73,6 +105,15 @@ public class CodeActionBenchmarks : IAsyncDisposable
     [Benchmark]
     public Task<IReadOnlyList<LspCodeAction>> AddMissingUsingAsync() =>
         _workspaceManager.GetCodeActionsAsync(_parameters, CancellationToken.None);
+
+    /// <summary>
+    /// Measures required-member discovery, generation, validation, and edit conversion.
+    /// </summary>
+    [Benchmark]
+    public Task<IReadOnlyList<LspCodeAction>> ImplementInterfaceAsync() =>
+        _workspaceManager.GetCodeActionsAsync(
+            _implementInterfaceParameters,
+            CancellationToken.None);
 
     /// <summary>
     /// Disposes the real workspace and removes the isolated project fixture.
@@ -115,6 +156,19 @@ public class CodeActionBenchmarks : IAsyncDisposable
                 var builder = new StringBuilder();
                 return builder.ToString();
             }
+        }
+        """;
+
+    private const string ImplementInterfaceText = """
+        namespace InterfaceActions;
+
+        public interface IRunner
+        {
+            string Run(int value);
+        }
+
+        public sealed class Runner : IRunner
+        {
         }
         """;
 }

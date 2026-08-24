@@ -48,6 +48,7 @@ review, refactoring, and csls troubleshooting.
 
 Edit tools preview changes unless the caller explicitly requests an apply step.
 Code-action requests accept an exact zero-based UTF-16 range, including
-missing-using quick fixes that return guarded edit plans.
+missing-using and interface implementation quick fixes that return guarded edit
+plans.
 Attached sessions remain owned by their editor. Direct sessions stop with the MCP
 process.
