@@ -36,7 +36,7 @@ npm ci --prefix docs-site
 npm run build --prefix docs-site
 ```
 
-Regenerate the verified editor screenshot and rebuild the site with:
+Regenerate the verified terminal screenshots and rebuild the site with:
 
 ```console
 dotnet run --file scripts/Capture-Docs.cs
