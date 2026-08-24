@@ -147,9 +147,6 @@ public sealed class CliLanguageServerTests
             "Console.WriteLine(\"watch\");",
             TestContext.CancellationToken).ConfigureAwait(false);
 
-        using var watchTimeout = CancellationTokenSource.CreateLinkedTokenSource(
-            TestContext.CancellationToken);
-        watchTimeout.CancelAfter(TimeSpan.FromSeconds(60));
         using Process watchProcess = StartCliProcess(
             cliPath,
             cliWorkerPath,
@@ -162,7 +159,7 @@ public sealed class CliLanguageServerTests
             JsonElement snapshot = await ReadWatchEventAsync(
                 watchProcess.StandardOutput,
                 static data => data.GetProperty("kind").GetString() == "Snapshot",
-                watchTimeout.Token).ConfigureAwait(false);
+                TestContext.CancellationToken).ConfigureAwait(false);
             Assert.AreEqual(1L, snapshot.GetProperty("sequence").GetInt64());
             Assert.AreEqual(JsonValueKind.Null, snapshot.GetProperty("session").ValueKind);
 
@@ -184,7 +181,7 @@ public sealed class CliLanguageServerTests
             JsonElement added = await ReadWatchEventAsync(
                 watchProcess.StandardOutput,
                 data => IsWatchEvent(data, "Added", lsp.ProcessId),
-                watchTimeout.Token).ConfigureAwait(false);
+                TestContext.CancellationToken).ConfigureAwait(false);
             Assert.IsGreaterThan(
                 snapshot.GetProperty("sequence").GetInt64(),
                 added.GetProperty("sequence").GetInt64());
@@ -203,7 +200,7 @@ public sealed class CliLanguageServerTests
                 data => IsWatchEvent(data, "Updated", lsp.ProcessId) &&
                     data.GetProperty("session").GetProperty("workspaceGeneration").GetInt64() ==
                     reload.CurrentGeneration,
-                watchTimeout.Token).ConfigureAwait(false);
+                TestContext.CancellationToken).ConfigureAwait(false);
             Assert.IsGreaterThan(
                 added.GetProperty("sequence").GetInt64(),
                 updated.GetProperty("sequence").GetInt64());
@@ -214,7 +211,7 @@ public sealed class CliLanguageServerTests
             JsonElement removed = await ReadWatchEventAsync(
                 watchProcess.StandardOutput,
                 data => IsWatchEvent(data, "Removed", lsp.ProcessId),
-                watchTimeout.Token).ConfigureAwait(false);
+                TestContext.CancellationToken).ConfigureAwait(false);
             Assert.IsGreaterThan(
                 updated.GetProperty("sequence").GetInt64(),
                 removed.GetProperty("sequence").GetInt64());
@@ -1617,10 +1614,13 @@ public sealed class CliLanguageServerTests
         Func<JsonElement, bool> predicate,
         CancellationToken cancellationToken)
     {
+        using var timeoutSource = CancellationTokenSource.CreateLinkedTokenSource(
+            cancellationToken);
+        timeoutSource.CancelAfter(TimeSpan.FromSeconds(60));
         while (true)
         {
             string? line = await standardOutput
-                .ReadLineAsync(cancellationToken)
+                .ReadLineAsync(timeoutSource.Token)
                 .ConfigureAwait(false);
             if (line is null)
             {

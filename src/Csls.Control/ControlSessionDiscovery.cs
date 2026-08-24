@@ -14,6 +14,7 @@ public static class ControlSessionDiscovery
 {
     private const int MaximumSessionSockets = 256;
     private const int MaximumSessionSocketEntries = 4_096;
+    private const int MaximumConcurrentSessionConnections = 16;
     private const string SocketSuffix = ".csls.socket";
     private static readonly TimeSpan s_connectionTimeout = TimeSpan.FromSeconds(2);
 
@@ -31,48 +32,65 @@ public static class ControlSessionDiscovery
             return [];
         }
 
-        var sessions = new List<ControlSessionInfo>();
-        int entryCount = 0;
-        foreach (string socketPath in Directory.EnumerateFiles(
-            socketDirectory,
-            $"*{SocketSuffix}",
-            SearchOption.TopDirectoryOnly))
+        string[] socketPaths =
+        [
+            .. Directory
+                .EnumerateFiles(
+                    socketDirectory,
+                    $"*{SocketSuffix}",
+                    SearchOption.TopDirectoryOnly)
+                .Take(MaximumSessionSocketEntries + 1)
+        ];
+        if (socketPaths.Length > MaximumSessionSocketEntries)
         {
-            cancellationToken.ThrowIfCancellationRequested();
-            entryCount++;
-            if (entryCount > MaximumSessionSocketEntries)
-            {
-                throw new InvalidDataException(
-                    $"Session discovery exceeded {MaximumSessionSocketEntries} socket entries.");
-            }
-
-            bool hasProcessId = TryGetProcessId(socketPath, out int processId);
-            if (hasProcessId && !IsProcessAlive(processId))
-            {
-                TryDeleteStaleSocket(socketPath);
-                continue;
-            }
-
-            ControlSessionInfo? session = await TryGetSessionAsync(
-                socketPath,
-                cancellationToken).ConfigureAwait(false);
-            if (session is not null)
-            {
-                sessions.Add(session);
-                if (sessions.Count > MaximumSessionSockets)
-                {
-                    throw new InvalidDataException(
-                        $"Session discovery exceeded {MaximumSessionSockets} responsive sessions.");
-                }
-            }
-            else if (!hasProcessId || !IsProcessAlive(processId))
-            {
-                TryDeleteStaleSocket(socketPath);
-            }
+            throw new InvalidDataException(
+                $"Session discovery exceeded {MaximumSessionSocketEntries} socket entries.");
         }
 
-        sessions.Sort(static (left, right) => left.ProcessId.CompareTo(right.ProcessId));
-        return sessions;
+        var sessions = new ControlSessionInfo?[socketPaths.Length];
+        await Parallel.ForAsync(
+            0,
+            socketPaths.Length,
+            new ParallelOptions
+            {
+                CancellationToken = cancellationToken,
+                MaxDegreeOfParallelism = MaximumConcurrentSessionConnections
+            },
+            async (index, operationCancellationToken) =>
+            {
+                string socketPath = socketPaths[index];
+                bool hasProcessId = TryGetProcessId(socketPath, out int processId);
+                if (hasProcessId && !IsProcessAlive(processId))
+                {
+                    TryDeleteStaleSocket(socketPath);
+                    return;
+                }
+
+                ControlSessionInfo? session = await TryGetSessionAsync(
+                    socketPath,
+                    operationCancellationToken).ConfigureAwait(false);
+                if (session is not null)
+                {
+                    sessions[index] = session;
+                }
+                else if (!hasProcessId || !IsProcessAlive(processId))
+                {
+                    TryDeleteStaleSocket(socketPath);
+                }
+            }).ConfigureAwait(false);
+
+        List<ControlSessionInfo> responsiveSessions =
+        [
+            .. sessions.OfType<ControlSessionInfo>()
+        ];
+        if (responsiveSessions.Count > MaximumSessionSockets)
+        {
+            throw new InvalidDataException(
+                $"Session discovery exceeded {MaximumSessionSockets} responsive sessions.");
+        }
+
+        responsiveSessions.Sort(static (left, right) => left.ProcessId.CompareTo(right.ProcessId));
+        return responsiveSessions;
     }
 
     /// <summary>
