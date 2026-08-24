@@ -59,21 +59,18 @@ internal static class EndToEndPerformanceRunner
             Directory.CreateDirectory(outputDirectory);
         }
 
-        FileStream output = new(
+        using FileStream output = new(
             options.OutputPath,
             FileMode.Create,
             FileAccess.Write,
             FileShare.Read,
             bufferSize: 16_384,
             FileOptions.Asynchronous | FileOptions.SequentialScan);
-        await using (output.ConfigureAwait(false))
-        {
-            await JsonSerializer.SerializeAsync(
-                output,
-                report,
-                PerformanceReportJsonContext.Default.PerformanceReport,
-                cancellationToken).ConfigureAwait(false);
-        }
+        await JsonSerializer.SerializeAsync(
+            output,
+            report,
+            PerformanceReportJsonContext.Default.PerformanceReport,
+            cancellationToken).ConfigureAwait(false);
 
         WriteSummary(summary, violations, options.OutputPath);
         return report.Passed ? 0 : 1;

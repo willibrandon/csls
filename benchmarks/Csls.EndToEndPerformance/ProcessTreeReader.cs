@@ -47,6 +47,7 @@ internal static partial class ProcessTreeReader
                 NotSupportedException or
                 Win32Exception)
             {
+                continue;
             }
         }
 
@@ -126,6 +127,7 @@ internal static partial class ProcessTreeReader
                 IOException or
                 UnauthorizedAccessException)
             {
+                continue;
             }
         }
 
