@@ -451,6 +451,16 @@ public interface ILspRpcTarget
         CancellationToken cancellationToken);
 
     /// <summary>
+    /// Formats the source around one supported character typed by the editor.
+    /// </summary>
+    /// <param name="parameters">The target position, trigger, and formatting preferences.</param>
+    /// <param name="cancellationToken">The peer cancellation token.</param>
+    /// <returns>The localized non-overlapping formatting edits.</returns>
+    Task<IReadOnlyList<TextEdit>> OnTypeFormattingAsync(
+        DocumentOnTypeFormattingParams parameters,
+        CancellationToken cancellationToken);
+
+    /// <summary>
     /// Gets concrete Roslyn source transformations for one document range.
     /// </summary>
     /// <param name="parameters">The target range and requested action context.</param>
