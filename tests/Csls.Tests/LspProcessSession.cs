@@ -90,7 +90,7 @@ internal sealed class LspProcessSession : IAsyncDisposable
         }
         catch
         {
-            workloadLease.Dispose();
+            workloadLease.Release();
             throw;
         }
 
@@ -161,18 +161,7 @@ internal sealed class LspProcessSession : IAsyncDisposable
         }
         catch
         {
-            try
-            {
-                if (!process.HasExited)
-                {
-                    process.Kill(entireProcessTree: true);
-                }
-            }
-            finally
-            {
-                process.Dispose();
-                workloadLease.Dispose();
-            }
+            DisposeFailedStart(process, workloadLease);
 
             throw;
         }
@@ -1424,7 +1413,25 @@ internal sealed class LspProcessSession : IAsyncDisposable
         }
         finally
         {
-            _workloadLease.Dispose();
+            _workloadLease.Release();
+        }
+    }
+
+    private static void DisposeFailedStart(
+        Process process,
+        ExternalWorkloadLease workloadLease)
+    {
+        try
+        {
+            if (!process.HasExited)
+            {
+                process.Kill(entireProcessTree: true);
+            }
+        }
+        finally
+        {
+            process.Dispose();
+            workloadLease.Release();
         }
     }
 }

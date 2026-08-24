@@ -63,6 +63,11 @@ internal sealed class ExternalWorkloadLease : IDisposable
         s_capacity.Release();
     }
 
+    /// <summary>
+    /// Releases a lease owned by a longer-lived test fixture.
+    /// </summary>
+    internal void Release() => Dispose();
+
     private static int CalculateCapacity()
     {
         int processorCapacity = Math.Max(
