@@ -45,9 +45,11 @@ notifications refresh project topology from disk. Open unsaved documents follow
 file and folder renames, while deleted documents and stale diagnostics are removed.
 
 Completion edits are computed by Roslyn. Clients that advertise snippet support
-receive snippet insertion text with Roslyn's final caret position. Other clients
-receive plain text. `completionItem/resolve` adds Roslyn documentation without
-changing the edit, sort text, or filter text returned by the original request.
+receive snippet insertion text with Roslyn's final caret position. Method completion
+adds tab stops for required parameters and leaves optional parameters for signature
+help. Other clients receive plain text. `completionItem/resolve` adds Roslyn
+documentation without changing the edit, sort text, or filter text returned by the
+original request.
 Hover, completion resolve, signature help, and parameter help preserve structured
 C# XML documentation such as references, paragraphs, code, and lists. Markdown is
 returned only when the client includes it in the corresponding content formats.
@@ -93,12 +95,12 @@ and unrelated text do not produce linked ranges.
 from the current Roslyn document snapshot. Results honor the client range limit,
 line-only mode, supported kinds, and collapsed text capability.
 
-Razor views and components use the compiler from the pinned .NET SDK. Pull
-diagnostics include Razor findings and mapped C# compiler or analyzer findings
-from the owning project. They follow the current unsaved `.cshtml` or `.razor`
-snapshot and return to the persisted file after the editor closes it. Hover uses
-the same generated project snapshot and maps Roslyn content and ranges back to
-the Razor source, including symbols made available by `_Imports.razor` and
+Razor views and components use the pinned Microsoft Razor compiler packages. Pull
+diagnostics include Razor findings and mapped C# compiler or analyzer findings from
+the owning project. They follow the current unsaved `.cshtml` or `.razor` snapshot
+and return to the persisted file after the editor closes it. Hover uses the same
+generated project snapshot and maps Roslyn content and ranges back to the Razor
+source, including symbols made available by `_Imports.razor` and
 `_ViewImports.cshtml`. Definition, declaration, type definition, implementation,
 and reference requests use that snapshot and map Razor locations back to their
 source files.
