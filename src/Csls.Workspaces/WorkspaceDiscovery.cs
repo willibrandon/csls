@@ -38,6 +38,13 @@ internal static class WorkspaceDiscovery
         "node_modules",
         "obj"
     }.ToFrozenSet(StringComparer.OrdinalIgnoreCase);
+    private static readonly FrozenSet<string> s_unityGeneratedDirectoryNames = new[]
+    {
+        "Library",
+        "Logs",
+        "Temp",
+        "UserSettings"
+    }.ToFrozenSet(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>
     /// Finds explicit workspaces and file-based apps while excluding generated dependency trees.
@@ -184,11 +191,27 @@ internal static class WorkspaceDiscovery
             : rootPath;
         string? relativeDirectory = Path.GetDirectoryName(
             Path.GetRelativePath(containmentRoot, candidatePath));
-        return relativeDirectory is not null && relativeDirectory
-            .Split(
-                [Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar],
-                StringSplitOptions.RemoveEmptyEntries)
-            .Any(s_excludedDirectoryNames.Contains);
+        if (relativeDirectory is null)
+        {
+            return false;
+        }
+
+        string currentDirectory = containmentRoot;
+        foreach (string segment in relativeDirectory.Split(
+            [Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar],
+            StringSplitOptions.RemoveEmptyEntries))
+        {
+            if (s_excludedDirectoryNames.Contains(segment) ||
+                s_unityGeneratedDirectoryNames.Contains(segment) &&
+                IsUnityProjectDirectory(currentDirectory))
+            {
+                return true;
+            }
+
+            currentDirectory = Path.Join(currentDirectory, segment);
+        }
+
+        return false;
     }
 
     private static void EnqueueIfIncluded(
@@ -196,11 +219,20 @@ internal static class WorkspaceDiscovery
         string directoryPath,
         bool isProjectCone)
     {
-        if (!s_excludedDirectoryNames.Contains(Path.GetFileName(directoryPath)))
+        string directoryName = Path.GetFileName(directoryPath);
+        string? parentDirectory = Path.GetDirectoryName(directoryPath);
+        if (!s_excludedDirectoryNames.Contains(directoryName) &&
+            !(s_unityGeneratedDirectoryNames.Contains(directoryName) &&
+                parentDirectory is not null &&
+                IsUnityProjectDirectory(parentDirectory)))
         {
             pendingDirectories.Enqueue((directoryPath, isProjectCone));
         }
     }
+
+    private static bool IsUnityProjectDirectory(string directoryPath) =>
+        Directory.Exists(Path.Join(directoryPath, "Assets")) &&
+        File.Exists(Path.Join(directoryPath, "ProjectSettings", "ProjectVersion.txt"));
 
     private static void AddWorkspaceFile(
         List<string> workspaceFiles,
