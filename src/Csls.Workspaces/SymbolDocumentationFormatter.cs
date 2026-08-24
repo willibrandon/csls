@@ -198,12 +198,11 @@ internal static class SymbolDocumentationFormatter
             keys.Add(GetSectionKey(element));
         }
 
-        foreach (XElement element in inheritedRoot.Elements())
+        foreach (XElement element in inheritedRoot
+            .Elements()
+            .Where(element => keys.Add(GetSectionKey(element))))
         {
-            if (keys.Add(GetSectionKey(element)))
-            {
-                merged.Add(new XElement(element));
-            }
+            merged.Add(new XElement(element));
         }
 
         return merged;
