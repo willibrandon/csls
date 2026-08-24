@@ -107,6 +107,18 @@ internal sealed class LspProcessSession : IAsyncDisposable
                 handler.Target ?? throw new InvalidOperationException(
                     "The configuration handler has no client target."),
                 attribute);
+
+            Func<WorkspaceDiagnosticProgressParams, Task> progressHandler =
+                client.PublishWorkspaceDiagnosticProgressAsync;
+            var progressAttribute = new JsonRpcMethodAttribute("$/progress")
+            {
+                UseSingleObjectParameterDeserialization = true
+            };
+            rpc.AddLocalRpcMethod(
+                progressHandler.Method,
+                progressHandler.Target ?? throw new InvalidOperationException(
+                    "The progress handler has no client target."),
+                progressAttribute);
         }
 
         rpc.StartListening();
@@ -333,6 +345,27 @@ internal sealed class LspProcessSession : IAsyncDisposable
                 },
                 Identifier = "csls",
                 PreviousResultId = previousResultId
+            },
+            cancellationToken);
+
+    /// <summary>
+    /// Requests current pull diagnostics for every document in the loaded test workspace.
+    /// </summary>
+    /// <param name="previousResultIds">The document results already retained by the test client.</param>
+    /// <param name="partialResultToken">The optional token for bounded progress notifications.</param>
+    /// <param name="cancellationToken">The test cancellation token.</param>
+    /// <returns>The ordered complete or unchanged workspace diagnostic reports.</returns>
+    internal Task<WorkspaceDiagnosticReport> RequestWorkspaceDiagnosticsAsync(
+        IReadOnlyList<PreviousResultId> previousResultIds,
+        JsonElement? partialResultToken,
+        CancellationToken cancellationToken) =>
+        _rpc.InvokeWithParameterObjectAsync<WorkspaceDiagnosticReport>(
+            "workspace/diagnostic",
+            new WorkspaceDiagnosticParams
+            {
+                Identifier = "csls",
+                PartialResultToken = partialResultToken,
+                PreviousResultIds = previousResultIds
             },
             cancellationToken);
 

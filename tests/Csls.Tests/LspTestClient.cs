@@ -5,7 +5,7 @@ using System.Threading.Channels;
 namespace Csls.Tests;
 
 /// <summary>
-/// Implements the client side of real bidirectional LSP configuration requests.
+/// Implements the client side of real bidirectional LSP requests and notifications.
 /// </summary>
 internal sealed class LspTestClient
 {
@@ -17,6 +17,14 @@ internal sealed class LspTestClient
             SingleReader = true,
             SingleWriter = false
         });
+    private readonly Channel<WorkspaceDiagnosticProgressParams> _workspaceDiagnosticProgress =
+        Channel.CreateUnbounded<WorkspaceDiagnosticProgressParams>(
+            new UnboundedChannelOptions
+            {
+                AllowSynchronousContinuations = false,
+                SingleReader = true,
+                SingleWriter = false
+            });
     private JsonElement? _legacyConfiguration;
     private JsonElement? _preferredConfiguration;
     private int _configurationRequestCount;
@@ -100,6 +108,33 @@ internal sealed class LspTestClient
             return Task.FromResult(values);
         }
     }
+
+    /// <summary>
+    /// Records one workspace diagnostic partial result received over the real LSP connection.
+    /// </summary>
+    /// <param name="parameters">The partial result token and diagnostic batch.</param>
+    /// <returns>A completed task after the notification is retained.</returns>
+    internal Task PublishWorkspaceDiagnosticProgressAsync(
+        WorkspaceDiagnosticProgressParams parameters)
+    {
+        ArgumentNullException.ThrowIfNull(parameters);
+        if (!_workspaceDiagnosticProgress.Writer.TryWrite(parameters))
+        {
+            throw new InvalidOperationException(
+                "The workspace diagnostic partial result could not be observed.");
+        }
+
+        return Task.CompletedTask;
+    }
+
+    /// <summary>
+    /// Reads the next workspace diagnostic partial result from the real LSP connection.
+    /// </summary>
+    /// <param name="cancellationToken">The test cancellation token.</param>
+    /// <returns>The next partial result notification.</returns>
+    internal ValueTask<WorkspaceDiagnosticProgressParams> ReadWorkspaceDiagnosticProgressAsync(
+        CancellationToken cancellationToken) =>
+        _workspaceDiagnosticProgress.Reader.ReadAsync(cancellationToken);
 
     private static JsonElement? Parse(string? json)
     {

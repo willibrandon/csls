@@ -111,6 +111,16 @@ public interface ILspRpcTarget
         CancellationToken cancellationToken);
 
     /// <summary>
+    /// Gets current compiler and analyzer diagnostics for every workspace document.
+    /// </summary>
+    /// <param name="parameters">The provider identifier and client-retained result identifiers.</param>
+    /// <param name="cancellationToken">The peer cancellation token.</param>
+    /// <returns>Ordered complete or unchanged document diagnostic reports.</returns>
+    Task<WorkspaceDiagnosticReport> WorkspaceDiagnosticAsync(
+        WorkspaceDiagnosticParams parameters,
+        CancellationToken cancellationToken);
+
+    /// <summary>
     /// Gets bounded completion candidates at one document position.
     /// </summary>
     /// <param name="parameters">The document position and trigger context.</param>

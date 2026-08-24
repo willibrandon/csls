@@ -12,6 +12,7 @@ namespace Csls.Server;
 /// </summary>
 public sealed partial class LanguageServer : ILspRpcTarget, IAsyncDisposable
 {
+    private const int WorkspaceDiagnosticPartialResultSize = 128;
     private readonly RequestScheduler _scheduler;
     private readonly WorkspaceManager _workspaceManager;
     private readonly LspClientConnection _client;
@@ -177,7 +178,7 @@ public sealed partial class LanguageServer : ILspRpcTarget, IAsyncDisposable
                 {
                     Identifier = "csls",
                     InterFileDependencies = true,
-                    WorkspaceDiagnostics = false
+                    WorkspaceDiagnostics = true
                 },
                 CompletionProvider = new CompletionOptions
                 {
@@ -372,6 +373,77 @@ public sealed partial class LanguageServer : ILspRpcTarget, IAsyncDisposable
                 {
                     throw new InvalidOperationException(
                         "The workspace changed while diagnostics were being computed.");
+                }
+
+                return report;
+            },
+            cancellationToken);
+    }
+
+    private async Task PublishWorkspaceDiagnosticPartialResultsAsync(
+        WorkspaceDiagnosticReport report,
+        JsonElement token,
+        CancellationToken cancellationToken)
+    {
+        for (int offset = 0; offset < report.Items.Count; offset +=
+            WorkspaceDiagnosticPartialResultSize)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            int count = Math.Min(
+                WorkspaceDiagnosticPartialResultSize,
+                report.Items.Count - offset);
+            var items = new WorkspaceDocumentDiagnosticReport[count];
+            for (int index = 0; index < count; index++)
+            {
+                items[index] = report.Items[offset + index];
+            }
+
+            await _client.PublishWorkspaceDiagnosticProgressAsync(
+                new WorkspaceDiagnosticProgressParams
+                {
+                    Token = token,
+                    Value = new WorkspaceDiagnosticReport { Items = items }
+                }).ConfigureAwait(false);
+        }
+    }
+
+    /// <inheritdoc />
+    public Task<WorkspaceDiagnosticReport> WorkspaceDiagnosticAsync(
+        WorkspaceDiagnosticParams parameters,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(parameters);
+        EnsureRunning();
+        if (parameters.PartialResultToken is JsonElement token &&
+            (token.ValueKind is not (JsonValueKind.Number or JsonValueKind.String) ||
+                token.ValueKind == JsonValueKind.Number && !token.TryGetInt32(out _)))
+        {
+            throw new InvalidDataException(
+                "A workspace diagnostic partial result token must be an integer or string.");
+        }
+
+        return _scheduler.ScheduleAsync(
+            "workspace/diagnostic",
+            RequestMode.ReadOnly,
+            () => _workspaceManager.Generation,
+            async context =>
+            {
+                WorkspaceDiagnosticReport report = await _workspaceManager
+                    .GetWorkspaceDiagnosticsAsync(parameters, context.CancellationToken)
+                    .ConfigureAwait(false);
+                if (_workspaceManager.Generation != context.WorkspaceGeneration)
+                {
+                    throw new InvalidOperationException(
+                        "The workspace changed while diagnostics were being computed.");
+                }
+
+                if (parameters.PartialResultToken is JsonElement partialResultToken)
+                {
+                    await PublishWorkspaceDiagnosticPartialResultsAsync(
+                        report,
+                        partialResultToken,
+                        context.CancellationToken).ConfigureAwait(false);
+                    return new WorkspaceDiagnosticReport();
                 }
 
                 return report;

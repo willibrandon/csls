@@ -115,6 +115,28 @@ internal static class WorkspaceDiscovery
         return selected;
     }
 
+    /// <summary>
+    /// Determines whether a path is beneath a generated or dependency directory excluded from discovery.
+    /// </summary>
+    /// <param name="rootPath">The workspace root, solution, project, or source file path.</param>
+    /// <param name="candidatePath">The document path to inspect.</param>
+    /// <returns>True when an excluded directory segment contains the candidate.</returns>
+    internal static bool IsExcludedPath(string rootPath, string candidatePath)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(rootPath);
+        ArgumentException.ThrowIfNullOrWhiteSpace(candidatePath);
+        string containmentRoot = File.Exists(rootPath)
+            ? Path.GetDirectoryName(rootPath) ?? rootPath
+            : rootPath;
+        string? relativeDirectory = Path.GetDirectoryName(
+            Path.GetRelativePath(containmentRoot, candidatePath));
+        return relativeDirectory is not null && relativeDirectory
+            .Split(
+                [Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar],
+                StringSplitOptions.RemoveEmptyEntries)
+            .Any(s_excludedDirectoryNames.Contains);
+    }
+
     private static void EnqueueIfIncluded(
         Queue<string> pendingDirectories,
         string directoryPath)

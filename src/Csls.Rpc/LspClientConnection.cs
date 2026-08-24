@@ -31,6 +31,20 @@ public sealed class LspClientConnection
     }
 
     /// <summary>
+    /// Publishes one bounded workspace diagnostic batch through the client's partial result token.
+    /// </summary>
+    /// <param name="parameters">The client token and next diagnostic batch.</param>
+    /// <returns>A task that completes after the notification is written.</returns>
+    public Task PublishWorkspaceDiagnosticProgressAsync(
+        WorkspaceDiagnosticProgressParams parameters)
+    {
+        ArgumentNullException.ThrowIfNull(parameters);
+        JsonRpc rpc = Volatile.Read(ref _rpc)
+            ?? throw new InvalidOperationException("The LSP client is not connected.");
+        return rpc.NotifyWithParameterObjectAsync("$/progress", parameters);
+    }
+
+    /// <summary>
     /// Binds one live StreamJsonRpc session before message dispatch begins.
     /// </summary>
     /// <param name="rpc">The live LSP connection.</param>
