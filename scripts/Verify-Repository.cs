@@ -32,6 +32,7 @@ var failures = new List<string>();
 VerifyFilePolicy(trackedPaths, failures);
 VerifyTrackedText(repositoryRoot, trackedPaths, failures);
 VerifyDependencies(repositoryRoot, failures);
+VerifyPackageSources(repositoryRoot, failures);
 VerifyGitHubActionReferences(repositoryRoot, failures);
 if (failures.Count != 0)
 {
@@ -148,6 +149,7 @@ static void VerifyTrackedText(
     string upstreamQualifiedName = $"{upstreamOwner}/{upstreamRepository}";
     string issuePath = $"github.com/{upstreamQualifiedName}/issues/";
     string pullPath = $"github.com/{upstreamQualifiedName}/pull/";
+    string privateRazorSdkPath = "Microsoft.NET.Sdk.Razor/" + "source-generators";
     var qualifiedItem = new Regex(
         $"{Regex.Escape(upstreamQualifiedName)}#[0-9]+",
         RegexOptions.CultureInvariant | RegexOptions.IgnoreCase);
@@ -178,6 +180,11 @@ static void VerifyTrackedText(
         {
             failures.Add($"Production assemblies must not expose internals to another assembly: {trackedPath}");
         }
+
+        if (text.Contains(privateRazorSdkPath, StringComparison.Ordinal))
+        {
+            failures.Add($"Razor assemblies must come from pinned Microsoft packages: {trackedPath}");
+        }
     }
 }
 
@@ -186,6 +193,7 @@ static void VerifyDependencies(string repositoryRoot, ICollection<string> failur
     string[] approvedCorePrefixes =
     [
         "Hex1b",
+        "Microsoft.AspNetCore.Razor",
         "Microsoft.Build",
         "Microsoft.CodeAnalysis",
         "Microsoft.Extensions",
@@ -206,14 +214,14 @@ static void VerifyDependencies(string repositoryRoot, ICollection<string> failur
         "NSubstitute",
         "Rhino.Mocks"
     ];
-    foreach (string projectPath in Directory.EnumerateFiles(
-        repositoryRoot,
-        "*.csproj",
-        SearchOption.AllDirectories))
+    IEnumerable<string> dependencyFiles = Directory.EnumerateFiles(
+            repositoryRoot,
+            "*.csproj",
+            SearchOption.AllDirectories)
+        .Append(Path.Join(repositoryRoot, "Directory.Build.props"));
+    foreach (string projectPath in dependencyFiles)
     {
-        if (projectPath.Contains(
-            $"{Path.DirectorySeparatorChar}artifacts{Path.DirectorySeparatorChar}",
-            StringComparison.Ordinal))
+        if (IsGeneratedPath(projectPath))
         {
             continue;
         }
@@ -242,8 +250,88 @@ static void VerifyDependencies(string repositoryRoot, ICollection<string> failur
                 failures.Add($"Unapproved core dependency {package}: {relativeProjectPath}");
             }
         }
+
+        foreach (XElement download in project.Descendants("PackageDownload"))
+        {
+            string package = (string?)download.Attribute("Include") ?? string.Empty;
+            string version = (string?)download.Attribute("Version") ?? string.Empty;
+            string relativeProjectPath = Path.GetRelativePath(repositoryRoot, projectPath);
+            if (!approvedCorePrefixes.Any(prefix => package.StartsWith(
+                    prefix,
+                    StringComparison.Ordinal)))
+            {
+                failures.Add($"Unapproved downloaded dependency {package}: {relativeProjectPath}");
+            }
+
+            if (version.Length < 3 || version[0] != '[' || version[^1] != ']')
+            {
+                failures.Add(
+                    $"Downloaded dependency versions must be exact: {package} in {relativeProjectPath}");
+            }
+        }
     }
 }
+
+static void VerifyPackageSources(string repositoryRoot, ICollection<string> failures)
+{
+    string configurationPath = Path.Join(repositoryRoot, "NuGet.Config");
+    if (!File.Exists(configurationPath))
+    {
+        failures.Add("NuGet.Config must define the Microsoft Razor package source.");
+        return;
+    }
+
+    var configuration = XDocument.Load(configurationPath, LoadOptions.None);
+    XElement? source = configuration
+        .Descendants("packageSources")
+        .Elements("add")
+        .SingleOrDefault(element => string.Equals(
+            (string?)element.Attribute("key"),
+            "dotnet-tools",
+            StringComparison.Ordinal));
+    const string expectedSource =
+        "https://pkgs.dev.azure.com/dnceng/public/_packaging/dotnet-tools/nuget/v3/index.json";
+    if (!string.Equals(
+            (string?)source?.Attribute("value"),
+            expectedSource,
+            StringComparison.Ordinal))
+    {
+        failures.Add("NuGet.Config must use the public Microsoft dotnet-tools feed.");
+    }
+
+    var mappedPackages = configuration
+        .Descendants("packageSource")
+        .Where(element => string.Equals(
+            (string?)element.Attribute("key"),
+            "dotnet-tools",
+            StringComparison.Ordinal))
+        .Elements("package")
+        .Select(element => (string?)element.Attribute("pattern") ?? string.Empty)
+        .ToHashSet(StringComparer.Ordinal);
+    string[] requiredPackages =
+    [
+        "Microsoft.AspNetCore.Razor.Utilities.Shared",
+        "Microsoft.CodeAnalysis.Razor.Compiler"
+    ];
+    foreach (string package in requiredPackages)
+    {
+        if (!mappedPackages.Contains(package))
+        {
+            failures.Add($"NuGet.Config must map {package} to dotnet-tools.");
+        }
+    }
+}
+
+static bool IsGeneratedPath(string path) =>
+    path.Contains(
+        $"{Path.DirectorySeparatorChar}artifacts{Path.DirectorySeparatorChar}",
+        StringComparison.Ordinal) ||
+    path.Contains(
+        $"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}",
+        StringComparison.Ordinal) ||
+    path.Contains(
+        $"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}",
+        StringComparison.Ordinal);
 
 static void VerifyGitHubActionReferences(
     string repositoryRoot,
