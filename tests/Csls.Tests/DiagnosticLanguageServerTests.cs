@@ -61,7 +61,7 @@ public sealed class DiagnosticLanguageServerTests
                 .GetProperty("diagnosticProvider");
             Assert.AreEqual("csls", diagnosticProvider.GetProperty("identifier").GetString());
             Assert.IsTrue(diagnosticProvider.GetProperty("interFileDependencies").GetBoolean());
-            Assert.IsFalse(diagnosticProvider.GetProperty("workspaceDiagnostics").GetBoolean());
+            Assert.IsTrue(diagnosticProvider.GetProperty("workspaceDiagnostics").GetBoolean());
             await lsp.OpenDocumentAsync(documentPath, DocumentText).ConfigureAwait(false);
 
             DocumentDiagnosticReport initial = await lsp.RequestDiagnosticsAsync(

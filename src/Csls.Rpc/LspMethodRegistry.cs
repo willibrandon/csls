@@ -64,6 +64,11 @@ public static class LspMethodRegistry
                 target.DocumentDiagnosticAsync));
         AddParameterObjectMethod(
             rpc,
+            "workspace/diagnostic",
+            new Func<WorkspaceDiagnosticParams, CancellationToken, Task<WorkspaceDiagnosticReport>>(
+                target.WorkspaceDiagnosticAsync));
+        AddParameterObjectMethod(
+            rpc,
             "textDocument/completion",
             new Func<CompletionParams, CancellationToken, Task<CompletionList>>(
                 target.CompletionAsync));
