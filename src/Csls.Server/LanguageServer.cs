@@ -193,7 +193,8 @@ public sealed partial class LanguageServer : ILspRpcTarget, IAsyncDisposable
                     {
                         Supported = true,
                         ChangeNotifications = true
-                    }
+                    },
+                    FileOperations = CreateFileOperationOptions()
                 },
                 PositionEncoding = "utf-16",
                 TextDocumentSync = new TextDocumentSyncOptions
