@@ -19,4 +19,4 @@ sessions in the test suite. The protocol also works with other LSP clients.
 The dashboard shows the active workspace, diagnostics, requests, caches, logs,
 and traces. Click the screenshot to view the verified Hex1b capture at full size.
 
-[Build csls from source](./getting-started/) or [configure an editor](./editors/).
+[Install csls](./getting-started/) or [configure an editor](./editors/).
