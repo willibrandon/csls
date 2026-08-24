@@ -25,6 +25,14 @@ internal sealed class LspTestClient
                 SingleReader = true,
                 SingleWriter = false
             });
+    private readonly Channel<PublishDiagnosticsParams> _publishedDiagnostics =
+        Channel.CreateUnbounded<PublishDiagnosticsParams>(
+            new UnboundedChannelOptions
+            {
+                AllowSynchronousContinuations = false,
+                SingleReader = true,
+                SingleWriter = false
+            });
     private JsonElement? _legacyConfiguration;
     private JsonElement? _preferredConfiguration;
     private int _configurationRequestCount;
@@ -135,6 +143,40 @@ internal sealed class LspTestClient
     internal ValueTask<WorkspaceDiagnosticProgressParams> ReadWorkspaceDiagnosticProgressAsync(
         CancellationToken cancellationToken) =>
         _workspaceDiagnosticProgress.Reader.ReadAsync(cancellationToken);
+
+    /// <summary>
+    /// Records one complete document diagnostic state received over the real LSP connection.
+    /// </summary>
+    /// <param name="parameters">The published document version and diagnostics.</param>
+    /// <returns>A completed task after the notification is retained.</returns>
+    internal Task PublishDiagnosticsAsync(PublishDiagnosticsParams parameters)
+    {
+        ArgumentNullException.ThrowIfNull(parameters);
+        if (!_publishedDiagnostics.Writer.TryWrite(parameters))
+        {
+            throw new InvalidOperationException("The published diagnostics could not be observed.");
+        }
+
+        return Task.CompletedTask;
+    }
+
+    /// <summary>
+    /// Reads the next complete document diagnostic state from the real LSP connection.
+    /// </summary>
+    /// <param name="cancellationToken">The test cancellation token.</param>
+    /// <returns>The next published document diagnostic notification.</returns>
+    internal ValueTask<PublishDiagnosticsParams> ReadPublishedDiagnosticsAsync(
+        CancellationToken cancellationToken) =>
+        _publishedDiagnostics.Reader.ReadAsync(cancellationToken);
+
+    /// <summary>
+    /// Attempts to read a published diagnostic state without waiting.
+    /// </summary>
+    /// <param name="parameters">The published state when one is already available.</param>
+    /// <returns>True when a diagnostic notification was available.</returns>
+    internal bool TryReadPublishedDiagnostics(
+        out PublishDiagnosticsParams? parameters) =>
+        _publishedDiagnostics.Reader.TryRead(out parameters);
 
     private static JsonElement? Parse(string? json)
     {
