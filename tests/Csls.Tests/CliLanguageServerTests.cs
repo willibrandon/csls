@@ -442,6 +442,7 @@ public sealed class CliLanguageServerTests
             string documentPath = Path.Join(fixturePath, "Program.cs");
             string importsPath = Path.Join(fixturePath, "Imports.cs");
             string missingUsingPath = Path.Join(fixturePath, "MissingUsing.cs");
+            string implementInterfacePath = Path.Join(fixturePath, "ImplementInterface.cs");
             string formattingPath = Path.Join(fixturePath, "Formatting.cs");
             string advancedPath = Path.Join(fixturePath, "Advanced.cs");
             await File.WriteAllTextAsync(
@@ -459,6 +460,10 @@ public sealed class CliLanguageServerTests
             await File.WriteAllTextAsync(
                 missingUsingPath,
                 MissingUsingText,
+                TestContext.CancellationToken).ConfigureAwait(false);
+            await File.WriteAllTextAsync(
+                implementInterfacePath,
+                ImplementInterfaceText,
                 TestContext.CancellationToken).ConfigureAwait(false);
             await File.WriteAllTextAsync(
                 formattingPath,
@@ -1082,6 +1087,89 @@ public sealed class CliLanguageServerTests
             Assert.StartsWith("using System.Text;", fixedMissingUsing, StringComparison.Ordinal);
             Assert.Contains("new StringBuilder()", fixedMissingUsing, StringComparison.Ordinal);
 
+            (int implementationExitCode, string implementationOutput, string implementationError) =
+                await RunCliAsync(
+                    cliPath,
+                    cliWorkerPath,
+                    fixturePath,
+                    [
+                        "edit",
+                        "code-action",
+                        implementInterfacePath,
+                        "--kind",
+                        "quickfix",
+                        "--line",
+                        "7",
+                        "--character",
+                        "29",
+                        "--session",
+                        processId,
+                        "--json"
+                    ],
+                    TestContext.CancellationToken).ConfigureAwait(false);
+            Assert.AreEqual(
+                0,
+                implementationExitCode,
+                $"{implementationError}{Environment.NewLine}{implementationOutput}");
+            using (var implementationDocument = JsonDocument.Parse(implementationOutput))
+            {
+                JsonElement implementation = Assert.ContainsSingle(
+                    implementationDocument.RootElement
+                        .GetProperty("data")
+                        .EnumerateArray());
+                Assert.AreEqual(
+                    "Implement interface",
+                    implementation.GetProperty("action").GetProperty("title").GetString());
+                Assert.IsNotEmpty(implementation
+                    .GetProperty("editPlan")
+                    .GetProperty("edit")
+                    .GetProperty("documentChanges")
+                    .EnumerateArray());
+            }
+
+            (int implementationApplyExitCode, string implementationApplyOutput,
+                string implementationApplyError) = await RunCliAsync(
+                    cliPath,
+                    cliWorkerPath,
+                    fixturePath,
+                    [
+                        "edit",
+                        "code-action",
+                        implementInterfacePath,
+                        "--kind",
+                        "quickfix",
+                        "--line",
+                        "7",
+                        "--character",
+                        "29",
+                        "--apply",
+                        "--session",
+                        processId,
+                        "--json"
+                    ],
+                    TestContext.CancellationToken).ConfigureAwait(false);
+            Assert.AreEqual(
+                0,
+                implementationApplyExitCode,
+                $"{implementationApplyError}{Environment.NewLine}{implementationApplyOutput}");
+            using (var implementationApplyDocument =
+                JsonDocument.Parse(implementationApplyOutput))
+            {
+                AssertSuccessfulEnvelope(implementationApplyDocument.RootElement);
+            }
+
+            string implementedInterface = await File.ReadAllTextAsync(
+                implementInterfacePath,
+                TestContext.CancellationToken).ConfigureAwait(false);
+            Assert.Contains(
+                "public string Run(int value)",
+                implementedInterface,
+                StringComparison.Ordinal);
+            Assert.Contains(
+                "throw new NotImplementedException();",
+                implementedInterface,
+                StringComparison.Ordinal);
+
             (int applyExitCode, string applyOutput, string applyError) =
                 await RunCliAsync(
                     cliPath,
@@ -1637,6 +1725,19 @@ public sealed class CliLanguageServerTests
                 var builder = new StringBuilder();
                 return builder.ToString();
             }
+        }
+        """;
+
+    private const string ImplementInterfaceText = """
+        namespace InterfaceActions;
+
+        public interface IRunner
+        {
+            string Run(int value);
+        }
+
+        public sealed class Runner : IRunner
+        {
         }
         """;
 
