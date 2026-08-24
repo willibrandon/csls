@@ -31,6 +31,9 @@ public static class LspMethodRegistry
             "shutdown",
             new Func<CancellationToken, Task<object?>>(target.ShutdownAsync));
         rpc.AddLocalRpcMethod("exit", new Func<Task>(target.ExitAsync));
+        rpc.AddLocalRpcMethod(
+            "$/csharp/debugInfo",
+            new Func<CancellationToken, Task<CSharpDebugInfo>>(target.GetDebugInfoAsync));
         AddParameterObjectMethod(
             rpc,
             "workspace/didChangeConfiguration",

@@ -36,6 +36,7 @@ public sealed partial class LanguageServer : ILspRpcTarget, IAsyncDisposable
     private bool _signatureMarkdownSupport;
     private LanguageServerConfiguration _configuration = new();
     private int _lifecycleState;
+    private int _workspacePhase;
     private int _disposeState;
 
     /// <summary>
@@ -175,21 +176,32 @@ public sealed partial class LanguageServer : ILspRpcTarget, IAsyncDisposable
             parameters.InitializationOptions);
         _configuration = configuration;
         string[] rootPaths = ResolveRootPaths(parameters);
-        await _scheduler.ScheduleAsync(
-            "initialize",
-            RequestMode.ReadWrite,
-            () => _workspaceManager.Generation,
-            async context =>
-            {
-                await _workspaceManager
-                    .ConfigureAsync(configuration.EnableAnalyzers, context.CancellationToken)
-                    .ConfigureAwait(false);
-                await _workspaceManager
-                    .LoadAsync(rootPaths, context.CancellationToken)
-                    .ConfigureAwait(false);
-                return true;
-            },
-            cancellationToken).ConfigureAwait(false);
+        Volatile.Write(ref _workspacePhase, (int)ServerWorkspacePhase.Configured);
+        try
+        {
+            Volatile.Write(ref _workspacePhase, (int)ServerWorkspacePhase.Loading);
+            await _scheduler.ScheduleAsync(
+                "initialize",
+                RequestMode.ReadWrite,
+                () => _workspaceManager.Generation,
+                async context =>
+                {
+                    await _workspaceManager
+                        .ConfigureAsync(configuration.EnableAnalyzers, context.CancellationToken)
+                        .ConfigureAwait(false);
+                    await _workspaceManager
+                        .LoadAsync(rootPaths, context.CancellationToken)
+                        .ConfigureAwait(false);
+                    return true;
+                },
+                cancellationToken).ConfigureAwait(false);
+            Volatile.Write(ref _workspacePhase, (int)ServerWorkspacePhase.Configured);
+        }
+        catch
+        {
+            Volatile.Write(ref _workspacePhase, (int)ServerWorkspacePhase.Uninitialized);
+            throw;
+        }
 
         LogInitialized(rootPaths.Length);
         return new InitializeResult
@@ -310,6 +322,8 @@ public sealed partial class LanguageServer : ILspRpcTarget, IAsyncDisposable
         {
             await PullConfigurationAsync(cancellationToken).ConfigureAwait(false);
         }
+
+        Volatile.Write(ref _workspacePhase, (int)ServerWorkspacePhase.Ready);
     }
 
     /// <inheritdoc />
@@ -324,6 +338,7 @@ public sealed partial class LanguageServer : ILspRpcTarget, IAsyncDisposable
         }
 
         Volatile.Write(ref _lifecycleState, (int)ServerLifecycleState.ShuttingDown);
+        Volatile.Write(ref _workspacePhase, (int)ServerWorkspacePhase.ShuttingDown);
         return Task.FromResult<object?>(null);
     }
 
@@ -331,6 +346,7 @@ public sealed partial class LanguageServer : ILspRpcTarget, IAsyncDisposable
     public async Task ExitAsync()
     {
         Volatile.Write(ref _lifecycleState, (int)ServerLifecycleState.Exited);
+        Volatile.Write(ref _workspacePhase, (int)ServerWorkspacePhase.ShuttingDown);
         _exitRequested.TrySetResult();
         await _exitSource.CancelAsync().ConfigureAwait(false);
     }

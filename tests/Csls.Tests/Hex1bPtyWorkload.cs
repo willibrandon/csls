@@ -78,6 +78,9 @@ internal sealed class Hex1bPtyWorkload : IHex1bTerminalWorkloadAdapter
     {
         ArgumentNullException.ThrowIfNull(terminal);
         ArgumentNullException.ThrowIfNull(interaction);
+        using ExternalWorkloadLease workloadLease = await ExternalWorkloadLease
+            .AcquireAsync(cancellationToken)
+            .ConfigureAwait(false);
         await _process.StartAsync(cancellationToken).ConfigureAwait(false);
         Task<int> processTask = _process.WaitForExitAsync(cancellationToken);
         Task<int> terminalTask = terminal.RunAsync(cancellationToken);
