@@ -9,4 +9,9 @@ public sealed record WorkspaceServerCapabilities
     /// Gets the server's workspace-folder behavior.
     /// </summary>
     public WorkspaceFoldersServerCapabilities? WorkspaceFolders { get; init; }
+
+    /// <summary>
+    /// Gets the workspace file-operation notifications consumed by the server.
+    /// </summary>
+    public FileOperationOptions? FileOperations { get; init; }
 }

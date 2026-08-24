@@ -116,9 +116,22 @@ public sealed partial class WorkspaceManager
             restoredEntryPointCount,
             cancellationToken);
 
+    private Task<WorkspaceMaintenanceResult> ReloadAsync(
+        IReadOnlyList<string> roots,
+        int restoredEntryPointCount,
+        CancellationToken cancellationToken) =>
+        ReloadAsync(
+            roots,
+            restoredEntryPointCount,
+            renamedFiles: [],
+            deletedFiles: [],
+            cancellationToken);
+
     private async Task<WorkspaceMaintenanceResult> ReloadAsync(
         IReadOnlyList<string> roots,
         int restoredEntryPointCount,
+        IReadOnlyList<FileRename> renamedFiles,
+        IReadOnlyList<FileDelete> deletedFiles,
         CancellationToken cancellationToken)
     {
         long previousGeneration = Generation;
@@ -126,6 +139,7 @@ public sealed partial class WorkspaceManager
         int clearedCacheEntryCount = _diagnosticCache.Count;
         IReadOnlyList<TextDocumentItem> overlays = await CaptureOpenDocumentsAsync(cancellationToken)
             .ConfigureAwait(false);
+        overlays = TransformFileOperationOverlays(overlays, renamedFiles, deletedFiles);
         ImmutableArray<(string RootPath, Workspace Workspace, Solution Solution)> loadedFolders =
             await LoadFoldersAsync(roots, cancellationToken).ConfigureAwait(false);
         bool published = false;

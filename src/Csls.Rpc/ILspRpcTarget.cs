@@ -61,6 +61,36 @@ public interface ILspRpcTarget
         CancellationToken cancellationToken);
 
     /// <summary>
+    /// Refreshes workspace topology after the client creates files or folders.
+    /// </summary>
+    /// <param name="parameters">The created workspace resources.</param>
+    /// <param name="cancellationToken">The connection cancellation token.</param>
+    /// <returns>A task that completes after workspace mutation retires.</returns>
+    Task DidCreateFilesAsync(
+        CreateFilesParams parameters,
+        CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Refreshes workspace topology after the client renames files or folders.
+    /// </summary>
+    /// <param name="parameters">The renamed workspace resources.</param>
+    /// <param name="cancellationToken">The connection cancellation token.</param>
+    /// <returns>A task that completes after workspace mutation retires.</returns>
+    Task DidRenameFilesAsync(
+        RenameFilesParams parameters,
+        CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Refreshes workspace topology after the client deletes files or folders.
+    /// </summary>
+    /// <param name="parameters">The deleted workspace resources.</param>
+    /// <param name="cancellationToken">The connection cancellation token.</param>
+    /// <returns>A task that completes after workspace mutation retires.</returns>
+    Task DidDeleteFilesAsync(
+        DeleteFilesParams parameters,
+        CancellationToken cancellationToken);
+
+    /// <summary>
     /// Opens a text document in the active workspace snapshot.
     /// </summary>
     /// <param name="parameters">The opened document and its complete contents.</param>
