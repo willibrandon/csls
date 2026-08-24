@@ -570,8 +570,11 @@ public sealed class ControlService : IControlRpcTarget
             WorkspaceGeneration = generation,
             DocumentPaths =
             [
-                .. pendingPlan.Snapshot.Edit.DocumentChanges.Select(static edit =>
-                    edit.TextDocument.Uri.GetFileSystemPath())
+                .. pendingPlan.Snapshot.Edit.DocumentChanges
+                    .SelectMany(GetWorkspaceChangePaths)
+                    .Distinct(OperatingSystem.IsWindows()
+                        ? StringComparer.OrdinalIgnoreCase
+                        : StringComparer.Ordinal)
             ]
         };
     }
@@ -623,15 +626,33 @@ public sealed class ControlService : IControlRpcTarget
             Preconditions =
             [
                 .. snapshot.Preconditions.Select(static precondition =>
-                    new ControlDocumentPrecondition
+                    new ControlResourcePrecondition
                     {
-                        DocumentPath = precondition.Uri.GetFileSystemPath(),
+                        ResourcePath = precondition.Uri.GetFileSystemPath(),
+                        Exists = precondition.Exists,
                         Version = precondition.Version,
                         Sha256 = precondition.Sha256
                     })
             ]
         };
     }
+
+    private static IReadOnlyList<string> GetWorkspaceChangePaths(
+        WorkspaceDocumentChange change) =>
+        change switch
+        {
+            TextDocumentEdit documentEdit =>
+                [documentEdit.TextDocument.Uri.GetFileSystemPath()],
+            CreateFile createFile => [createFile.Uri.GetFileSystemPath()],
+            RenameFile renameFile =>
+                [
+                    renameFile.OldUri.GetFileSystemPath(),
+                    renameFile.NewUri.GetFileSystemPath()
+                ],
+            DeleteFile deleteFile => [deleteFile.Uri.GetFileSystemPath()],
+            _ => throw new InvalidDataException(
+                $"Unsupported workspace document change {change.GetType().Name}.")
+        };
 
     private async Task<ControlWorkspaceOperationResult> RunWorkspaceOperationAsync(
         string operation,

@@ -94,7 +94,8 @@ public sealed class ImplementInterfaceCodeActionLanguageServerTests
             Assert.HasCount(4, action.Diagnostics ?? []);
             WorkspaceEdit edit = action.Edit
                 ?? throw new InvalidDataException("The implementation action had no edit.");
-            TextDocumentEdit documentEdit = Assert.ContainsSingle(edit.DocumentChanges);
+            TextDocumentEdit documentEdit = Assert.ContainsSingle(
+                edit.DocumentChanges.OfType<TextDocumentEdit>());
             Assert.AreEqual(DocumentUri.FromFileSystemPath(documentPath), documentEdit.TextDocument.Uri);
             Assert.AreEqual(1, documentEdit.TextDocument.Version);
             string changedText = ApplyTextEdits(DocumentText, documentEdit.Edits);
@@ -157,7 +158,7 @@ public sealed class ImplementInterfaceCodeActionLanguageServerTests
                 TestContext.CancellationToken).ConfigureAwait(false);
             CodeAction operatorAction = Assert.ContainsSingle(operatorActions);
             TextDocumentEdit operatorEdit = Assert.ContainsSingle(
-                operatorAction.Edit?.DocumentChanges ?? []);
+                operatorAction.Edit?.DocumentChanges.OfType<TextDocumentEdit>() ?? []);
             string operatorText = ApplyTextEdits(OperatorDocumentText, operatorEdit.Edits);
             Assert.Contains(
                 "public static Factory Create()",

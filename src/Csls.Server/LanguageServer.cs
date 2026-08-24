@@ -30,6 +30,7 @@ public sealed partial class LanguageServer : ILspRpcTarget, IAsyncDisposable
     private bool _supportsImportsFoldingKind = true;
     private bool _supportsRegionFoldingKind = true;
     private bool _supportsConfigurationPull;
+    private bool _supportsCreateFileWorkspaceEdits;
     private bool _supportsPullDiagnostics;
     private bool _hoverMarkdownSupport;
     private bool _signatureMarkdownSupport;
@@ -163,6 +164,9 @@ public sealed partial class LanguageServer : ILspRpcTarget, IAsyncDisposable
             parameters.Capabilities,
             "workspace",
             "configuration");
+        _supportsCreateFileWorkspaceEdits = SupportsWorkspaceResourceOperation(
+            parameters.Capabilities,
+            "create");
         _supportsPullDiagnostics = SupportsObjectCapability(
             parameters.Capabilities,
             "textDocument",
@@ -280,7 +284,9 @@ public sealed partial class LanguageServer : ILspRpcTarget, IAsyncDisposable
                 },
                 CodeActionProvider = new CodeActionOptions
                 {
-                    CodeActionKinds = ["quickfix", "source.organizeImports"],
+                    CodeActionKinds = _supportsCreateFileWorkspaceEdits
+                        ? ["quickfix", "refactor", "source.organizeImports"]
+                        : ["quickfix", "source.organizeImports"],
                     ResolveProvider = false
                 }
             },
@@ -1243,7 +1249,10 @@ public sealed partial class LanguageServer : ILspRpcTarget, IAsyncDisposable
             async context =>
             {
                 IReadOnlyList<CodeAction> actions = await _workspaceManager
-                    .GetCodeActionsAsync(parameters, context.CancellationToken)
+                    .GetCodeActionsAsync(
+                        parameters,
+                        _supportsCreateFileWorkspaceEdits,
+                        context.CancellationToken)
                     .ConfigureAwait(false);
                 if (_workspaceManager.Generation != context.WorkspaceGeneration)
                 {
@@ -1348,7 +1357,10 @@ public sealed partial class LanguageServer : ILspRpcTarget, IAsyncDisposable
             async context =>
             {
                 IReadOnlyList<CodeAction> actions = await _workspaceManager
-                    .GetCodeActionsAsync(parameters, context.CancellationToken)
+                    .GetCodeActionsAsync(
+                        parameters,
+                        supportsCreateFile: true,
+                        context.CancellationToken)
                     .ConfigureAwait(false);
                 var snapshots = new List<CodeActionEditSnapshot>(actions.Count);
                 foreach (CodeAction action in actions)
@@ -1575,6 +1587,32 @@ public sealed partial class LanguageServer : ILspRpcTarget, IAsyncDisposable
             group.ValueKind == JsonValueKind.Object &&
             group.TryGetProperty(capabilityName, out JsonElement capability) &&
             capability.ValueKind == JsonValueKind.Object;
+    }
+
+    private static bool SupportsWorkspaceResourceOperation(
+        JsonElement capabilities,
+        string operation)
+    {
+        if (capabilities.ValueKind != JsonValueKind.Object ||
+            !capabilities.TryGetProperty("workspace", out JsonElement workspace) ||
+            workspace.ValueKind != JsonValueKind.Object ||
+            !workspace.TryGetProperty("workspaceEdit", out JsonElement workspaceEdit) ||
+            workspaceEdit.ValueKind != JsonValueKind.Object ||
+            !workspaceEdit.TryGetProperty(
+                "resourceOperations",
+                out JsonElement resourceOperations) ||
+            resourceOperations.ValueKind != JsonValueKind.Array)
+        {
+            return false;
+        }
+
+        return resourceOperations
+            .EnumerateArray()
+            .Where(static value => value.ValueKind == JsonValueKind.String)
+            .Any(value => string.Equals(
+                value.GetString(),
+                operation,
+                StringComparison.Ordinal));
     }
 
     private static string[] ResolveRootPaths(InitializeParams parameters)

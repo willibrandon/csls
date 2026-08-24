@@ -101,7 +101,8 @@ public sealed class CodeActionLanguageServerTests
             Assert.AreEqual("CS0246", attachedDiagnostic.Code);
             WorkspaceEdit edit = action.Edit
                 ?? throw new InvalidDataException("The missing-using action had no edit.");
-            TextDocumentEdit documentEdit = Assert.ContainsSingle(edit.DocumentChanges);
+            TextDocumentEdit documentEdit = Assert.ContainsSingle(
+                edit.DocumentChanges.OfType<TextDocumentEdit>());
             Assert.AreEqual(DocumentUri.FromFileSystemPath(documentPath), documentEdit.TextDocument.Uri);
             Assert.AreEqual(1, documentEdit.TextDocument.Version);
             string changedText = ApplyTextEdits(DocumentText, documentEdit.Edits);
