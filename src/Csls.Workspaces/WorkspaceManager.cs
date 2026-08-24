@@ -1310,6 +1310,11 @@ public sealed partial class WorkspaceManager : IAsyncDisposable
                 parameters,
                 CreateWorkspaceEditAsync,
                 cancellationToken).ConfigureAwait(false));
+            actions.AddRange(await WorkspaceImplementInterfaceCodeActionService.GetActionsAsync(
+                document,
+                parameters,
+                CreateWorkspaceEditAsync,
+                cancellationToken).ConfigureAwait(false));
         }
 
         if (IsCodeActionRequested(parameters.Context.Only, OrganizeImportsCodeActionKind))

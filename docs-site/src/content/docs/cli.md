@@ -107,6 +107,7 @@ csls edit code-action Program.cs --kind quickfix --line 8 --character 20 --apply
 
 Missing-using quick fixes search the loaded project and its references, then keep
 only imports that make the unresolved type bind to the intended Roslyn symbol.
+The same command implements the interface selected by the supplied position.
 Source actions such as `source.organizeImports` do not require a target position.
 
 Every machine-readable command supports `--json`. Its response uses a versioned

@@ -64,6 +64,7 @@ public sealed class McpLanguageServerTests
             string documentPath = Path.Join(fixturePath, "Program.cs");
             string importsPath = Path.Join(fixturePath, "Imports.cs");
             string missingUsingPath = Path.Join(fixturePath, "MissingUsing.cs");
+            string implementInterfacePath = Path.Join(fixturePath, "ImplementInterface.cs");
             string formattingPath = Path.Join(fixturePath, "Formatting.cs");
             string stalePath = Path.Join(fixturePath, "Stale.cs");
             string advancedPath = Path.Join(fixturePath, "Advanced.cs");
@@ -82,6 +83,10 @@ public sealed class McpLanguageServerTests
             await File.WriteAllTextAsync(
                 missingUsingPath,
                 MissingUsingText,
+                TestContext.CancellationToken).ConfigureAwait(false);
+            await File.WriteAllTextAsync(
+                implementInterfacePath,
+                ImplementInterfaceText,
                 TestContext.CancellationToken).ConfigureAwait(false);
             await File.WriteAllTextAsync(
                 formattingPath,
@@ -731,6 +736,51 @@ public sealed class McpLanguageServerTests
                     fixedMissingUsing,
                     StringComparison.Ordinal);
 
+                CallToolResult implementActionResult = await client.CallToolAsync(
+                    "get_code_actions",
+                    new Dictionary<string, object?>
+                    {
+                        ["documentPath"] = implementInterfacePath,
+                        ["startLine"] = 7,
+                        ["startCharacter"] = 29,
+                        ["endLine"] = 7,
+                        ["endCharacter"] = 29,
+                        ["kind"] = "quickfix"
+                    },
+                    cancellationToken: TestContext.CancellationToken).ConfigureAwait(false);
+                IReadOnlyList<ControlCodeActionPlan> implementations =
+                    GetStructuredCollection(implementActionResult, negotiatedProtocolVersion)
+                        .Deserialize(
+                            ControlJsonSerializerContext
+                                .Default
+                                .IReadOnlyListControlCodeActionPlan)
+                    ?? throw new InvalidDataException(
+                        "MCP returned no interface implementation previews.");
+                ControlCodeActionPlan implementAction = Assert.ContainsSingle(implementations);
+                Assert.AreEqual("Implement interface", implementAction.Action.Title);
+                ControlEditPlan implementationPlan = implementAction.EditPlan
+                    ?? throw new InvalidDataException(
+                        "MCP returned no interface implementation edit plan.");
+                CallToolResult implementationApplyResult = await client.CallToolAsync(
+                    "apply_edit_plan",
+                    new Dictionary<string, object?>
+                    {
+                        ["planId"] = implementationPlan.PlanId.ToString("D")
+                    },
+                    cancellationToken: TestContext.CancellationToken).ConfigureAwait(false);
+                Assert.IsNull(implementationApplyResult.IsError);
+                string implementedInterface = await File.ReadAllTextAsync(
+                    implementInterfacePath,
+                    TestContext.CancellationToken).ConfigureAwait(false);
+                Assert.Contains(
+                    "public string Run(int value)",
+                    implementedInterface,
+                    StringComparison.Ordinal);
+                Assert.Contains(
+                    "throw new NotImplementedException();",
+                    implementedInterface,
+                    StringComparison.Ordinal);
+
                 IList<McpClientResource> resources = await client
                     .ListResourcesAsync(cancellationToken: TestContext.CancellationToken)
                     .ConfigureAwait(false);
@@ -1197,6 +1247,19 @@ public sealed class McpLanguageServerTests
                 var builder = new StringBuilder();
                 return builder.ToString();
             }
+        }
+        """;
+
+    private const string ImplementInterfaceText = """
+        namespace InterfaceActions;
+
+        public interface IRunner
+        {
+            string Run(int value);
+        }
+
+        public sealed class Runner : IRunner
+        {
         }
         """;
 
