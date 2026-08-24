@@ -299,6 +299,64 @@ internal sealed class LspProcessSession : IAsyncDisposable
             });
 
     /// <summary>
+    /// Notifies the real server that the client created files or folders.
+    /// </summary>
+    /// <param name="paths">The absolute created resource paths.</param>
+    /// <returns>A task that completes after the notification is written.</returns>
+    internal Task CreateFilesAsync(IReadOnlyList<string> paths) =>
+        _rpc.NotifyWithParameterObjectAsync(
+            "workspace/didCreateFiles",
+            new CreateFilesParams
+            {
+                Files =
+                [
+                    .. paths.Select(path => new FileCreate
+                    {
+                        Uri = DocumentUri.FromFileSystemPath(path)
+                    })
+                ]
+            });
+
+    /// <summary>
+    /// Notifies the real server that the client renamed files or folders.
+    /// </summary>
+    /// <param name="renames">The ordered original and new absolute paths.</param>
+    /// <returns>A task that completes after the notification is written.</returns>
+    internal Task RenameFilesAsync(IReadOnlyList<(string OldPath, string NewPath)> renames) =>
+        _rpc.NotifyWithParameterObjectAsync(
+            "workspace/didRenameFiles",
+            new RenameFilesParams
+            {
+                Files =
+                [
+                    .. renames.Select(static rename => new FileRename
+                    {
+                        OldUri = DocumentUri.FromFileSystemPath(rename.OldPath),
+                        NewUri = DocumentUri.FromFileSystemPath(rename.NewPath)
+                    })
+                ]
+            });
+
+    /// <summary>
+    /// Notifies the real server that the client deleted files or folders.
+    /// </summary>
+    /// <param name="paths">The absolute deleted resource paths.</param>
+    /// <returns>A task that completes after the notification is written.</returns>
+    internal Task DeleteFilesAsync(IReadOnlyList<string> paths) =>
+        _rpc.NotifyWithParameterObjectAsync(
+            "workspace/didDeleteFiles",
+            new DeleteFilesParams
+            {
+                Files =
+                [
+                    .. paths.Select(path => new FileDelete
+                    {
+                        Uri = DocumentUri.FromFileSystemPath(path)
+                    })
+                ]
+            });
+
+    /// <summary>
     /// Requests hover information at an exact UTF-16 document position.
     /// </summary>
     /// <param name="documentPath">The absolute document path.</param>

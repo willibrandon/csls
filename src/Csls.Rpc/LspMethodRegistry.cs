@@ -43,6 +43,18 @@ public static class LspMethodRegistry
                 target.DidChangeWorkspaceFoldersAsync));
         AddParameterObjectMethod(
             rpc,
+            "workspace/didCreateFiles",
+            new Func<CreateFilesParams, CancellationToken, Task>(target.DidCreateFilesAsync));
+        AddParameterObjectMethod(
+            rpc,
+            "workspace/didRenameFiles",
+            new Func<RenameFilesParams, CancellationToken, Task>(target.DidRenameFilesAsync));
+        AddParameterObjectMethod(
+            rpc,
+            "workspace/didDeleteFiles",
+            new Func<DeleteFilesParams, CancellationToken, Task>(target.DidDeleteFilesAsync));
+        AddParameterObjectMethod(
+            rpc,
             "textDocument/didOpen",
             new Func<DidOpenTextDocumentParams, CancellationToken, Task>(target.DidOpenAsync));
         AddParameterObjectMethod(
