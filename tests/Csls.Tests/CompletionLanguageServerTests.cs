@@ -242,6 +242,25 @@ public sealed class CompletionLanguageServerTests
             Assert.Contains("$0", forSnippet.TextEdit.NewText, StringComparison.Ordinal);
             Assert.IsNotNull(forSnippet.Data);
 
+            await lsp.ChangeDocumentAsync(
+                documentPath,
+                version: 2,
+                [new TextDocumentContentChangeEvent { Text = MethodSnippetDocumentText }])
+                .ConfigureAwait(false);
+            CompletionList methodCompletion = await lsp.RequestCompletionAsync(
+                documentPath,
+                new Position(6, 14),
+                TestContext.CancellationToken).ConfigureAwait(false);
+            CompletionItem calculate = methodCompletion.Items.Single(
+                static item => item.Label == "Calculate");
+            Assert.AreEqual(CompletionItemKind.Method, calculate.Kind);
+            Assert.AreEqual(InsertTextFormat.Snippet, calculate.InsertTextFormat);
+            Assert.IsNotNull(calculate.TextEdit);
+            Assert.AreEqual(
+                "Calculate(${1:value}, ${2:text})$0",
+                calculate.TextEdit.NewText);
+            Assert.DoesNotContain("optional", calculate.TextEdit.NewText, StringComparison.Ordinal);
+
             string diagnostics = await lsp.ShutdownAsync(
                 TestContext.CancellationToken).ConfigureAwait(false);
             Assert.DoesNotContain("Unhandled exception", diagnostics, StringComparison.Ordinal);
@@ -294,6 +313,21 @@ public sealed class CompletionLanguageServerTests
             {
                 fo
             }
+        }
+        """;
+
+    private const string MethodSnippetDocumentText = """
+        namespace Fixture;
+
+        public static class Program
+        {
+            public static void Main()
+            {
+                Calcul
+            }
+
+            private static int Calculate(int value, string text, int optional = 0) =>
+                value + text.Length + optional;
         }
         """;
 }
