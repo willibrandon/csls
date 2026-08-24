@@ -14,4 +14,9 @@ another compiler process.
 Fresh, GNU Emacs with Eglot, Helix, and Neovim are exercised through real editor
 sessions in the test suite. The protocol also works with other LSP clients.
 
+![csls dashboard showing a live C# diagnostic](../../assets/screenshots/dashboard.svg)
+
+The dashboard shows the active workspace, diagnostics, requests, caches, logs,
+and traces. Click the screenshot to view the verified Hex1b capture at full size.
+
 [Build csls from source](./getting-started/) or [configure an editor](./editors/).

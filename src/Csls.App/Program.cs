@@ -559,6 +559,14 @@ var codeActionKindOption = new Option<string>("--kind")
     HelpName = "category",
     DefaultValueFactory = static _ => "source.organizeImports"
 };
+Option<int> codeActionLineOption = CreatePositionOption(
+    "--line",
+    "Zero-based line containing the code-action target.",
+    required: false);
+Option<int> codeActionCharacterOption = CreatePositionOption(
+    "--character",
+    "Zero-based UTF-16 character containing the code-action target.",
+    required: false);
 Option<int?> codeActionSessionOption = CreateSessionOption();
 var codeActionJsonOption = new Option<bool>("--json")
 {
@@ -572,6 +580,8 @@ var codeActionCommand = new Command("code-action", "Preview concrete Roslyn code
 {
     codeActionDocumentArgument,
     codeActionKindOption,
+    codeActionLineOption,
+    codeActionCharacterOption,
     codeActionSessionOption,
     codeActionApplyOption,
     codeActionJsonOption
@@ -583,6 +593,8 @@ codeActionCommand.SetAction((parseResult, cancellationToken) =>
             (parseResult.GetValue(codeActionSessionOption) ?? 0)
                 .ToString(CultureInfo.InvariantCulture),
             Path.GetFullPath(parseResult.GetRequiredValue(codeActionDocumentArgument)),
+            parseResult.GetValue(codeActionLineOption).ToString(CultureInfo.InvariantCulture),
+            parseResult.GetValue(codeActionCharacterOption).ToString(CultureInfo.InvariantCulture),
             parseResult.GetRequiredValue(codeActionKindOption),
             parseResult.GetValue(codeActionApplyOption).ToString(CultureInfo.InvariantCulture),
             parseResult.GetValue(codeActionJsonOption).ToString(CultureInfo.InvariantCulture)
@@ -612,13 +624,16 @@ static Option<int?> CreateSessionOption()
     return option;
 }
 
-static Option<int> CreatePositionOption(string name, string description)
+static Option<int> CreatePositionOption(
+    string name,
+    string description,
+    bool required = true)
 {
     var option = new Option<int>(name)
     {
         Description = description,
         HelpName = "number",
-        Required = true
+        Required = required
     };
     option.Validators.Add(static result =>
     {

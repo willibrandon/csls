@@ -47,7 +47,7 @@ internal static class AgentSkillContent
         ```console
         csls edit rename Program.cs NewName --line 12 --character 8 --session <pid> --json
         csls edit format Program.cs --session <pid> --json
-        csls edit code-action Program.cs --kind quickfix --session <pid> --json
+        csls edit code-action Program.cs --kind quickfix --line 12 --character 8 --session <pid> --json
         ```
 
         Edit commands preview guarded plans by default. Inspect the document preconditions and changes before repeating the command with `--apply`.

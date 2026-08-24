@@ -41,6 +41,7 @@ public sealed partial class WorkspaceManager : IAsyncDisposable
     private const int MaximumSignatures = 100;
     private const int MaximumWorkspaceTextEdits = 10_000;
     private const string OrganizeImportsCodeActionKind = "source.organizeImports";
+    private const string QuickFixCodeActionKind = "quickfix";
     private static readonly Lock s_msbuildRegistrationLock = new();
     private static bool s_msbuildRegistered;
 
@@ -1295,39 +1296,44 @@ public sealed partial class WorkspaceManager : IAsyncDisposable
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(parameters);
-        if (!IsCodeActionRequested(parameters.Context.Only, OrganizeImportsCodeActionKind))
-        {
-            return [];
-        }
-
         Document? document = FindDocument(parameters.TextDocument.Uri);
         if (document is null)
         {
             return [];
         }
 
-        Document organizedDocument = await Formatter.OrganizeImportsAsync(
-            document,
-            cancellationToken).ConfigureAwait(false);
-        WorkspaceEdit edit = await CreateWorkspaceEditAsync(
-            document.Project.Solution,
-            organizedDocument.Project.Solution,
-            cancellationToken).ConfigureAwait(false);
-        if (edit.DocumentChanges.Count == 0)
+        var actions = new List<LspCodeAction>();
+        if (IsCodeActionRequested(parameters.Context.Only, QuickFixCodeActionKind))
         {
-            return [];
+            actions.AddRange(await WorkspaceCodeActionService.GetMissingUsingActionsAsync(
+                document,
+                parameters,
+                CreateWorkspaceEditAsync,
+                cancellationToken).ConfigureAwait(false));
         }
 
-        return
-        [
-            new LspCodeAction
+        if (IsCodeActionRequested(parameters.Context.Only, OrganizeImportsCodeActionKind))
+        {
+            Document organizedDocument = await Formatter.OrganizeImportsAsync(
+                document,
+                cancellationToken).ConfigureAwait(false);
+            WorkspaceEdit edit = await CreateWorkspaceEditAsync(
+                document.Project.Solution,
+                organizedDocument.Project.Solution,
+                cancellationToken).ConfigureAwait(false);
+            if (edit.DocumentChanges.Count != 0)
             {
-                Title = "Organize Imports",
-                Kind = OrganizeImportsCodeActionKind,
-                IsPreferred = true,
-                Edit = edit
+                actions.Add(new LspCodeAction
+                {
+                    Title = "Organize Imports",
+                    Kind = OrganizeImportsCodeActionKind,
+                    IsPreferred = true,
+                    Edit = edit
+                });
             }
-        ];
+        }
+
+        return actions;
     }
 
     /// <summary>
