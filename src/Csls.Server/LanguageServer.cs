@@ -30,6 +30,7 @@ public sealed partial class LanguageServer : ILspRpcTarget, IAsyncDisposable
     private bool _supportsRegionFoldingKind = true;
     private bool _supportsConfigurationPull;
     private bool _supportsPullDiagnostics;
+    private LanguageServerConfiguration _configuration = new();
     private int _lifecycleState;
     private int _disposeState;
 
@@ -156,6 +157,7 @@ public sealed partial class LanguageServer : ILspRpcTarget, IAsyncDisposable
             "diagnostic");
         LanguageServerConfiguration configuration = ParseConfiguration(
             parameters.InitializationOptions);
+        _configuration = configuration;
         string[] rootPaths = ResolveRootPaths(parameters);
         await _scheduler.ScheduleAsync(
             "initialize",
@@ -198,7 +200,8 @@ public sealed partial class LanguageServer : ILspRpcTarget, IAsyncDisposable
                 {
                     OpenClose = true,
                     Change = TextDocumentSyncKind.Incremental,
-                    Save = true
+                    Save = true,
+                    WillSaveWaitUntil = true
                 },
                 HoverProvider = true,
                 DiagnosticProvider = new DiagnosticOptions
@@ -422,6 +425,49 @@ public sealed partial class LanguageServer : ILspRpcTarget, IAsyncDisposable
             diagnosticRequestId,
             delay: false,
             cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <inheritdoc />
+    public Task<IReadOnlyList<TextEdit>> WillSaveWaitUntilAsync(
+        WillSaveTextDocumentParams parameters,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(parameters);
+        if (parameters.Reason is not (
+            TextDocumentSaveReason.Manual or
+            TextDocumentSaveReason.AfterDelay or
+            TextDocumentSaveReason.FocusOut))
+        {
+            throw new InvalidDataException(
+                $"Unsupported text document save reason {(int)parameters.Reason}.");
+        }
+
+        EnsureRunning();
+        return _scheduler.ScheduleAsync(
+            "textDocument/willSaveWaitUntil",
+            RequestMode.ReadOnly,
+            () => _workspaceManager.Generation,
+            async context =>
+            {
+                if (!_configuration.FormatOnSave)
+                {
+                    return [];
+                }
+
+                IReadOnlyList<TextEdit> edits = await _workspaceManager
+                    .GetSaveFormattingEditsAsync(
+                        parameters.TextDocument,
+                        context.CancellationToken)
+                    .ConfigureAwait(false);
+                if (_workspaceManager.Generation != context.WorkspaceGeneration)
+                {
+                    throw new InvalidOperationException(
+                        "The workspace changed while save-time formatting edits were being computed.");
+                }
+
+                return edits;
+            },
+            cancellationToken);
     }
 
     /// <inheritdoc />

@@ -1189,6 +1189,29 @@ internal sealed class LspProcessSession : IAsyncDisposable
             });
 
     /// <summary>
+    /// Requests configured edits immediately before one document is saved.
+    /// </summary>
+    /// <param name="documentPath">The absolute document path.</param>
+    /// <param name="reason">The reason the editor is saving the document.</param>
+    /// <param name="cancellationToken">The test cancellation token.</param>
+    /// <returns>The bounded non-overlapping save-time edits.</returns>
+    internal Task<IReadOnlyList<TextEdit>> RequestSaveFormattingAsync(
+        string documentPath,
+        TextDocumentSaveReason reason,
+        CancellationToken cancellationToken) =>
+        _rpc.InvokeWithParameterObjectAsync<IReadOnlyList<TextEdit>>(
+            "textDocument/willSaveWaitUntil",
+            new WillSaveTextDocumentParams
+            {
+                TextDocument = new TextDocumentIdentifier
+                {
+                    Uri = DocumentUri.FromFileSystemPath(documentPath)
+                },
+                Reason = reason
+            },
+            cancellationToken);
+
+    /// <summary>
     /// Closes one test document and removes its client-owned overlay.
     /// </summary>
     /// <param name="documentPath">The absolute document path.</param>

@@ -7,7 +7,7 @@ using LspRange = Csls.Protocol.Range;
 namespace Csls.Benchmarks;
 
 /// <summary>
-/// Measures complete, range-limited, and on-type formatting for a current C# snapshot.
+/// Measures complete, range-limited, on-type, and save formatting for a current C# snapshot.
 /// </summary>
 [BenchmarkCategory("Formatting")]
 [MemoryDiagnoser]
@@ -21,7 +21,7 @@ public class FormattingBenchmarks : IAsyncDisposable
     private int _disposeState;
 
     /// <summary>
-    /// Loads a real SDK project and verifies both formatting benchmark paths.
+    /// Loads a real SDK project and verifies each formatting benchmark path.
     /// </summary>
     [GlobalSetup]
     public async Task SetupAsync()
@@ -79,7 +79,15 @@ public class FormattingBenchmarks : IAsyncDisposable
         IReadOnlyList<TextEdit> onTypeEdits = await _workspaceManager
             .GetOnTypeFormattingEditsAsync(_onTypeParameters, CancellationToken.None)
             .ConfigureAwait(false);
-        if (documentEdits.Count == 0 || rangeEdits.Count == 0 || onTypeEdits.Count == 0)
+        IReadOnlyList<TextEdit> saveEdits = await _workspaceManager
+            .GetSaveFormattingEditsAsync(
+                _documentParameters.TextDocument,
+                CancellationToken.None)
+            .ConfigureAwait(false);
+        if (documentEdits.Count == 0 ||
+            rangeEdits.Count == 0 ||
+            onTypeEdits.Count == 0 ||
+            saveEdits.Count == 0)
         {
             throw new InvalidOperationException(
                 "The C# formatting benchmark fixture produced no edits.");
@@ -111,6 +119,15 @@ public class FormattingBenchmarks : IAsyncDisposable
     public Task<IReadOnlyList<TextEdit>> FormatOnTypeAsync() =>
         _workspaceManager.GetOnTypeFormattingEditsAsync(
             _onTypeParameters,
+            CancellationToken.None);
+
+    /// <summary>
+    /// Measures repeated project-configured formatting before a C# document is saved.
+    /// </summary>
+    [Benchmark]
+    public Task<IReadOnlyList<TextEdit>> FormatOnSaveAsync() =>
+        _workspaceManager.GetSaveFormattingEditsAsync(
+            _documentParameters.TextDocument,
             CancellationToken.None);
 
     /// <summary>
