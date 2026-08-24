@@ -33,6 +33,12 @@ MSBuild, central package management, and `global.json` behavior as `dotnet run`.
 Folder discovery loads shebang apps and directive apps with top-level statements,
 while an explicit C# file workspace always uses file-based app semantics.
 
+Unity projects are detected by their `Assets` directory and
+`ProjectSettings/ProjectVersion.txt` file. csls loads the generated solution at
+the project root and skips Unity's generated `Library`, `Temp`, `Logs`, and
+`UserSettings` trees. A normal .NET project in a directory named `Library`
+remains discoverable.
+
 Unsaved documents survive reloads when their workspace folder remains active.
 Standard workspace file-operation
 notifications refresh project topology from disk. Open unsaved documents follow
