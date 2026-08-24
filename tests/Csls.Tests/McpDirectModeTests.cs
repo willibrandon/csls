@@ -20,7 +20,7 @@ public sealed class McpDirectModeTests
     public TestContext TestContext { get; set; } = null!;
 
     /// <summary>
-    /// Starts a project-scoped transient session and removes it when the MCP client disconnects.
+    /// Starts direct MCP mode through csls agent and removes its transient server on disconnect.
     /// </summary>
     [TestMethod]
     public async Task WorkspaceModeOwnsTransientLanguageServerLifetime()
@@ -33,6 +33,13 @@ public sealed class McpDirectModeTests
             "Csls.Worker",
             "debug",
             "csls-worker.dll");
+        string cliPath = Environment.GetEnvironmentVariable("CSLS_TEST_CLI_PATH") ??
+            Path.Join(
+                artifactsRoot,
+                "bin",
+                "Csls.App",
+                "debug",
+                "csls.dll");
         string mcpPath = Environment.GetEnvironmentVariable("CSLS_TEST_MCP_PATH") ??
             Path.Join(
                 artifactsRoot,
@@ -49,6 +56,7 @@ public sealed class McpDirectModeTests
                 "debug",
                 "csls-mcp-worker.dll");
         Assert.IsTrue(File.Exists(serverWorkerPath));
+        Assert.IsTrue(File.Exists(cliPath));
         Assert.IsTrue(File.Exists(mcpPath));
         Assert.IsTrue(File.Exists(mcpWorkerPath));
 
@@ -74,26 +82,30 @@ public sealed class McpDirectModeTests
             Dictionary<string, string?> environment =
                 StdioClientTransportOptions.GetDefaultEnvironmentVariables();
             environment["DOTNET_ROOT"] = Path.GetDirectoryName(dotnetHost);
+            environment["DOTNET_HOST_PATH"] = dotnetHost;
+            environment["CSLS_MCP_LAUNCHER_PATH"] = mcpPath;
             environment["CSLS_MCP_WORKER_PATH"] = mcpWorkerPath;
             environment["CSLS_SERVER_WORKER_PATH"] = serverWorkerPath;
             bool isManagedLauncher = string.Equals(
-                Path.GetExtension(mcpPath),
+                Path.GetExtension(cliPath),
                 ".dll",
                 StringComparison.OrdinalIgnoreCase);
             List<string> arguments = [];
             if (isManagedLauncher)
             {
-                arguments.Add(mcpPath);
+                arguments.Add(cliPath);
             }
 
+            arguments.Add("agent");
+            arguments.Add("mcp");
             arguments.Add("--workspace");
             arguments.Add(projectPath);
             var transport = new StdioClientTransport(
                 new StdioClientTransportOptions
                 {
-                    Command = isManagedLauncher ? dotnetHost : mcpPath,
+                    Command = isManagedLauncher ? dotnetHost : cliPath,
                     Arguments = arguments,
-                    Name = "csls-mcp-direct-integration",
+                    Name = "csls-agent-mcp-direct-integration",
                     WorkingDirectory = repositoryRoot,
                     InheritEnvironmentVariables = false,
                     EnvironmentVariables = environment,

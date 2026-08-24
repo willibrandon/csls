@@ -40,6 +40,10 @@ internal static class CliWorkerHost
                         arguments,
                         writeJson,
                         cancellationToken).ConfigureAwait(false),
+                    "agent-init" => await AgentInitCommandHost.RunAsync(
+                        arguments,
+                        writeJson,
+                        cancellationToken).ConfigureAwait(false),
                     "dashboard" => await RunDashboardAsync(arguments, cancellationToken)
                         .ConfigureAwait(false),
                     "doctor" => await DoctorCommandHost.RunAsync(
