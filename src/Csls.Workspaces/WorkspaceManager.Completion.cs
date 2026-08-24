@@ -80,6 +80,26 @@ public sealed partial class WorkspaceManager
             completion,
             text);
         int itemCount = Math.Min(sourceItems.Count, MaximumCompletionItems);
+        bool resolvesInvocationSnippets = false;
+        if (supportsSnippets)
+        {
+            for (int index = 0; index < itemCount; index++)
+            {
+                ImmutableArray<string> tags = sourceItems[index].Tags;
+                if (tags.Contains(WellKnownTags.Method) ||
+                    tags.Contains(WellKnownTags.ExtensionMethod))
+                {
+                    resolvesInvocationSnippets = true;
+                    break;
+                }
+            }
+        }
+        SemanticModel? semanticModel = resolvesInvocationSnippets
+            ? await document.GetSemanticModelAsync(cancellationToken).ConfigureAwait(false)
+            : null;
+        SyntaxNode? syntaxRoot = resolvesInvocationSnippets
+            ? await document.GetSyntaxRootAsync(cancellationToken).ConfigureAwait(false)
+            : null;
         var items = new List<LspCompletionItem>(itemCount);
         long generation = Generation;
         for (int index = 0; index < itemCount; index++)
@@ -89,6 +109,14 @@ public sealed partial class WorkspaceManager
             CompletionChange change = await service
                 .GetChangeAsync(document, sourceItem, cancellationToken: cancellationToken)
                 .ConfigureAwait(false);
+            IMethodSymbol? invocationMethod = semanticModel is null || syntaxRoot is null
+                ? null
+                : ResolveCompletionMethod(
+                    semanticModel,
+                    syntaxRoot,
+                    sourceItem,
+                    offset,
+                    cancellationToken);
             LspCompletionItem? item = CreateCompletionItem(
                 text,
                 sourceItem,
@@ -97,6 +125,7 @@ public sealed partial class WorkspaceManager
                 generation,
                 index,
                 supportsSnippets,
+                invocationMethod,
                 razorMapping,
                 cancellationToken);
             if (item is not null)
@@ -310,6 +339,7 @@ public sealed partial class WorkspaceManager
         long generation,
         int itemIndex,
         bool supportsSnippets,
+        IMethodSymbol? invocationMethod,
         RazorMappedDocument? razorMapping,
         CancellationToken cancellationToken)
     {
@@ -337,13 +367,28 @@ public sealed partial class WorkspaceManager
             return null;
         }
 
-        bool usesSnippet = supportsSnippets &&
+        bool usesRoslynSnippet = supportsSnippets &&
             sourceItem.Tags.Contains(WellKnownTags.Snippet);
-        if (usesSnippet)
+        bool usesInvocationSnippet = supportsSnippets &&
+            invocationMethod is not null &&
+            ShouldCreateInvocationSnippet(
+                sourceText,
+                textChanges[primaryIndex],
+                primaryEdit.NewText);
+        if (usesRoslynSnippet)
         {
             primaryEdit = primaryEdit with
             {
                 NewText = CreateSnippetText(change, textChanges, primaryIndex)
+            };
+        }
+        else if (usesInvocationSnippet)
+        {
+            primaryEdit = primaryEdit with
+            {
+                NewText = CreateMethodInvocationSnippet(
+                    primaryEdit.NewText,
+                    invocationMethod!)
             };
         }
 
@@ -380,7 +425,9 @@ public sealed partial class WorkspaceManager
             FilterText = sourceItem.FilterText,
             TextEdit = primaryEdit,
             AdditionalTextEdits = additionalEdits.Count == 0 ? null : additionalEdits,
-            InsertTextFormat = usesSnippet ? InsertTextFormat.Snippet : null,
+            InsertTextFormat = usesRoslynSnippet || usesInvocationSnippet
+                ? InsertTextFormat.Snippet
+                : null,
             Data = new CompletionItemData
             {
                 DocumentUri = parameters.TextDocument.Uri,
@@ -467,6 +514,138 @@ public sealed partial class WorkspaceManager
         snippet.Append("$0");
         AppendEscapedSnippetText(snippet, text.AsSpan(caretOffset));
         return snippet.ToString();
+    }
+
+    private static bool ShouldCreateInvocationSnippet(
+        SourceText sourceText,
+        TextChange primaryChange,
+        string insertionText)
+    {
+        if (insertionText.Contains('(', StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        int offset = primaryChange.Span.End;
+        while (offset < sourceText.Length && char.IsWhiteSpace(sourceText[offset]))
+        {
+            offset++;
+        }
+
+        return offset >= sourceText.Length || sourceText[offset] != '(';
+    }
+
+    private static string CreateMethodInvocationSnippet(
+        string insertionText,
+        IMethodSymbol method)
+    {
+        var snippet = new StringBuilder(insertionText.Length + 16);
+        AppendEscapedSnippetText(snippet, insertionText);
+        snippet.Append('(');
+        int tabStop = 1;
+        bool hasParameter = false;
+        foreach (IParameterSymbol parameter in method.Parameters)
+        {
+            if (parameter.IsOptional)
+            {
+                continue;
+            }
+
+            if (hasParameter)
+            {
+                snippet.Append(", ");
+            }
+
+            snippet.Append(parameter.RefKind switch
+            {
+                RefKind.Ref => "ref ",
+                RefKind.Out => "out ",
+                RefKind.In => "in ",
+                _ => string.Empty
+            });
+            snippet.Append("${");
+            snippet.Append(tabStop);
+            snippet.Append(':');
+            AppendEscapedSnippetText(snippet, parameter.Name);
+            snippet.Append('}');
+            tabStop++;
+            hasParameter = true;
+        }
+
+        snippet.Append(")$0");
+        return snippet.ToString();
+    }
+
+    private static IMethodSymbol? ResolveCompletionMethod(
+        SemanticModel semanticModel,
+        SyntaxNode syntaxRoot,
+        RoslynCompletionItem item,
+        int offset,
+        CancellationToken cancellationToken)
+    {
+        if (!item.Tags.Contains(WellKnownTags.Method) &&
+            !item.Tags.Contains(WellKnownTags.ExtensionMethod))
+        {
+            return null;
+        }
+
+        string name = item.Properties.TryGetValue("SymbolName", out string? symbolName)
+            ? symbolName
+            : item.DisplayText;
+        int tokenOffset = Math.Clamp(offset - 1, 0, Math.Max(0, syntaxRoot.FullSpan.End - 1));
+        MemberAccessExpressionSyntax? memberAccess = syntaxRoot
+            .FindToken(tokenOffset, findInsideTrivia: true)
+            .Parent?
+            .AncestorsAndSelf()
+            .OfType<MemberAccessExpressionSyntax>()
+            .FirstOrDefault();
+        IEnumerable<ISymbol> candidates;
+        if (memberAccess is null)
+        {
+            candidates = semanticModel.LookupSymbols(
+                offset,
+                name: name,
+                includeReducedExtensionMethods: true);
+        }
+        else
+        {
+            ITypeSymbol? receiverType = semanticModel
+                .GetTypeInfo(memberAccess.Expression, cancellationToken)
+                .Type;
+            if (receiverType is null)
+            {
+                return null;
+            }
+
+            candidates = semanticModel.LookupSymbols(
+                offset,
+                receiverType,
+                name,
+                includeReducedExtensionMethods: true);
+        }
+
+        IMethodSymbol? bestMethod = null;
+        int bestRequiredParameterCount = int.MaxValue;
+        int bestParameterCount = int.MaxValue;
+        foreach (IMethodSymbol method in candidates.OfType<IMethodSymbol>())
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            int requiredParameterCount = method.Parameters.Count(
+                static parameter => !parameter.IsOptional);
+
+            if (requiredParameterCount > bestRequiredParameterCount ||
+                requiredParameterCount == bestRequiredParameterCount &&
+                method.Parameters.Length >= bestParameterCount)
+            {
+                continue;
+            }
+
+            bestMethod = method;
+            bestRequiredParameterCount = requiredParameterCount;
+            bestParameterCount = method.Parameters.Length;
+        }
+
+        return bestMethod;
     }
 
     private static void AppendEscapedSnippetText(

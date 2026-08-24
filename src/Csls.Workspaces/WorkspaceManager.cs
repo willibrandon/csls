@@ -51,6 +51,7 @@ public sealed partial class WorkspaceManager : IAsyncDisposable
     private ImmutableArray<(string RootPath, Workspace Workspace, Solution Solution)> _folders = [];
     private ImmutableDictionary<string, SourceText> _razorDocuments =
         ImmutableDictionary.Create<string, SourceText>(PathComparer);
+    private string _buildConfiguration = "Debug";
     private int _enableAnalyzers = 1;
     private long _generation;
     private int _disposeState;
@@ -112,11 +113,23 @@ public sealed partial class WorkspaceManager : IAsyncDisposable
         }
     }
 
+    private Task<ImmutableArray<(
+        string RootPath,
+        Workspace Workspace,
+        Solution Solution)>> LoadFoldersAsync(
+        IReadOnlyList<string> rootPaths,
+        CancellationToken cancellationToken) =>
+        LoadFoldersAsync(
+            rootPaths,
+            Volatile.Read(ref _buildConfiguration),
+            cancellationToken);
+
     private async Task<ImmutableArray<(
         string RootPath,
         Workspace Workspace,
         Solution Solution)>> LoadFoldersAsync(
         IReadOnlyList<string> rootPaths,
+        string buildConfiguration,
         CancellationToken cancellationToken)
     {
         ImmutableArray<(string RootPath, Workspace Workspace, Solution Solution)>.Builder loadedFolders =
@@ -146,6 +159,7 @@ public sealed partial class WorkspaceManager : IAsyncDisposable
                     (Workspace Workspace, Solution Solution) loaded =
                         await LoadWorkspaceFileAsync(
                             workspaceFile,
+                            buildConfiguration,
                             cancellationToken).ConfigureAwait(false);
                     try
                     {
@@ -173,6 +187,7 @@ public sealed partial class WorkspaceManager : IAsyncDisposable
 
     private async Task<(Workspace Workspace, Solution Solution)> LoadWorkspaceFileAsync(
         string workspaceFile,
+        string buildConfiguration,
         CancellationToken cancellationToken)
     {
         VisualStudioInstance? msBuildInstance = MSBuildRegistration.EnsureRegistered(workspaceFile);
@@ -185,7 +200,11 @@ public sealed partial class WorkspaceManager : IAsyncDisposable
                 workspaceFile);
         }
 
-        var workspace = MSBuildWorkspace.Create();
+        var workspace = MSBuildWorkspace.Create(
+            new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["Configuration"] = buildConfiguration
+            });
         try
         {
             workspace.RegisterWorkspaceFailedHandler(eventArgs =>
@@ -231,7 +250,9 @@ public sealed partial class WorkspaceManager : IAsyncDisposable
         ImmutableArray<(string RootPath, Workspace Workspace, Solution Solution)> loadedFolders,
         IReadOnlyDictionary<string, int>? documentVersions,
         IReadOnlyDictionary<string, SourceText>? razorDocuments,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        string? buildConfiguration = null,
+        bool? enableAnalyzers = null)
     {
         await _mutationGate.WaitAsync(cancellationToken).ConfigureAwait(false);
         ImmutableArray<(string RootPath, Workspace Workspace, Solution Solution)> previous;
@@ -239,6 +260,16 @@ public sealed partial class WorkspaceManager : IAsyncDisposable
         {
             previous = _folders;
             _folders = loadedFolders;
+            if (buildConfiguration is not null)
+            {
+                Volatile.Write(ref _buildConfiguration, buildConfiguration);
+            }
+
+            if (enableAnalyzers is bool analyzersEnabled)
+            {
+                Volatile.Write(ref _enableAnalyzers, analyzersEnabled ? 1 : 0);
+            }
+
             _documentVersions.Clear();
             _razorDocuments = razorDocuments is null
                 ? ImmutableDictionary.Create<string, SourceText>(PathComparer)

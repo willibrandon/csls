@@ -12,23 +12,61 @@ public sealed partial class WorkspaceManager
     /// Applies diagnostic settings and invalidates results affected by a real change.
     /// </summary>
     /// <param name="enableAnalyzers">Whether project analyzers contribute diagnostics.</param>
+    /// <param name="buildConfiguration">The MSBuild configuration used to evaluate projects.</param>
     /// <param name="cancellationToken">The operation cancellation token.</param>
     /// <returns>True when the effective configuration changed.</returns>
     public async Task<bool> ConfigureAsync(
         bool enableAnalyzers,
+        string buildConfiguration,
         CancellationToken cancellationToken)
     {
+        ArgumentException.ThrowIfNullOrWhiteSpace(buildConfiguration);
         ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposeState) != 0, this);
-        await _mutationGate.WaitAsync(cancellationToken).ConfigureAwait(false);
-        try
+        int analyzerValue = enableAnalyzers ? 1 : 0;
+        bool analyzerChanged = Volatile.Read(ref _enableAnalyzers) != analyzerValue;
+        bool buildConfigurationChanged = !string.Equals(
+            Volatile.Read(ref _buildConfiguration),
+            buildConfiguration,
+            StringComparison.OrdinalIgnoreCase);
+        if (!buildConfigurationChanged)
         {
-            int value = enableAnalyzers ? 1 : 0;
-            if (Volatile.Read(ref _enableAnalyzers) == value)
+            if (!analyzerChanged)
             {
                 return false;
             }
 
-            Volatile.Write(ref _enableAnalyzers, value);
+            await _mutationGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+            try
+            {
+                Volatile.Write(ref _enableAnalyzers, analyzerValue);
+                _diagnosticCache.Clear();
+                Interlocked.Increment(ref _generation);
+                return true;
+            }
+            finally
+            {
+                _mutationGate.Release();
+            }
+        }
+
+        if (!_folders.IsDefaultOrEmpty)
+        {
+            await ReloadAsync(
+                GetRequiredWorkspaceRoots(),
+                restoredEntryPointCount: 0,
+                renamedFiles: [],
+                deletedFiles: [],
+                buildConfiguration,
+                enableAnalyzers,
+                cancellationToken).ConfigureAwait(false);
+            return true;
+        }
+
+        await _mutationGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            Volatile.Write(ref _enableAnalyzers, analyzerValue);
+            Volatile.Write(ref _buildConfiguration, buildConfiguration);
             _diagnosticCache.Clear();
             Interlocked.Increment(ref _generation);
             return true;
@@ -132,6 +170,23 @@ public sealed partial class WorkspaceManager
         int restoredEntryPointCount,
         IReadOnlyList<FileRename> renamedFiles,
         IReadOnlyList<FileDelete> deletedFiles,
+        CancellationToken cancellationToken) =>
+        await ReloadAsync(
+            roots,
+            restoredEntryPointCount,
+            renamedFiles,
+            deletedFiles,
+            Volatile.Read(ref _buildConfiguration),
+            Volatile.Read(ref _enableAnalyzers) != 0,
+            cancellationToken).ConfigureAwait(false);
+
+    private async Task<WorkspaceMaintenanceResult> ReloadAsync(
+        IReadOnlyList<string> roots,
+        int restoredEntryPointCount,
+        IReadOnlyList<FileRename> renamedFiles,
+        IReadOnlyList<FileDelete> deletedFiles,
+        string buildConfiguration,
+        bool enableAnalyzers,
         CancellationToken cancellationToken)
     {
         long previousGeneration = Generation;
@@ -141,7 +196,8 @@ public sealed partial class WorkspaceManager
             .ConfigureAwait(false);
         overlays = TransformFileOperationOverlays(overlays, renamedFiles, deletedFiles);
         ImmutableArray<(string RootPath, Workspace Workspace, Solution Solution)> loadedFolders =
-            await LoadFoldersAsync(roots, cancellationToken).ConfigureAwait(false);
+            await LoadFoldersAsync(roots, buildConfiguration, cancellationToken)
+                .ConfigureAwait(false);
         bool published = false;
         try
         {
@@ -171,7 +227,9 @@ public sealed partial class WorkspaceManager
                 loadedFolders,
                 documentVersions,
                 razorDocuments,
-                cancellationToken).ConfigureAwait(false);
+                cancellationToken,
+                buildConfiguration,
+                enableAnalyzers).ConfigureAwait(false);
             published = true;
         }
         finally

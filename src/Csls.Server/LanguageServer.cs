@@ -18,6 +18,7 @@ public sealed partial class LanguageServer : ILspRpcTarget, IAsyncDisposable
     private readonly WorkspaceManager _workspaceManager;
     private readonly LspClientConnection _client;
     private readonly ILogger<LanguageServer> _logger;
+    private readonly LanguageServerLogFilter _logFilter;
     private readonly TaskCompletionSource _exitRequested = new(
         TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly CancellationTokenSource _exitSource = new();
@@ -46,20 +47,24 @@ public sealed partial class LanguageServer : ILspRpcTarget, IAsyncDisposable
     /// <param name="workspaceManager">The Roslyn workspace manager.</param>
     /// <param name="client">The bidirectional LSP client connection.</param>
     /// <param name="logger">The language server logger.</param>
+    /// <param name="logFilter">The dynamic logging level filter.</param>
     public LanguageServer(
         RequestScheduler scheduler,
         WorkspaceManager workspaceManager,
         LspClientConnection client,
-        ILogger<LanguageServer> logger)
+        ILogger<LanguageServer> logger,
+        LanguageServerLogFilter logFilter)
     {
         ArgumentNullException.ThrowIfNull(scheduler);
         ArgumentNullException.ThrowIfNull(workspaceManager);
         ArgumentNullException.ThrowIfNull(client);
         ArgumentNullException.ThrowIfNull(logger);
+        ArgumentNullException.ThrowIfNull(logFilter);
         _scheduler = scheduler;
         _workspaceManager = workspaceManager;
         _client = client;
         _logger = logger;
+        _logFilter = logFilter;
     }
 
     /// <summary>
@@ -175,6 +180,7 @@ public sealed partial class LanguageServer : ILspRpcTarget, IAsyncDisposable
         LanguageServerConfiguration configuration = ParseConfiguration(
             parameters.InitializationOptions);
         _configuration = configuration;
+        _logFilter.SetMinimumLevel(configuration.LogLevel);
         string[] rootPaths = ResolveRootPaths(parameters);
         Volatile.Write(ref _workspacePhase, (int)ServerWorkspacePhase.Configured);
         try
@@ -187,7 +193,10 @@ public sealed partial class LanguageServer : ILspRpcTarget, IAsyncDisposable
                 async context =>
                 {
                     await _workspaceManager
-                        .ConfigureAsync(configuration.EnableAnalyzers, context.CancellationToken)
+                        .ConfigureAsync(
+                            configuration.EnableAnalyzers,
+                            configuration.BuildConfiguration,
+                            context.CancellationToken)
                         .ConfigureAwait(false);
                     await _workspaceManager
                         .LoadAsync(rootPaths, context.CancellationToken)
