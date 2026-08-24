@@ -286,7 +286,11 @@ public sealed class CliLanguageServerTests
                 .GetProperty("outputPath")
                 .GetString() ?? throw new InvalidDataException(
                     "Agent initialization returned no output path.");
-            Assert.AreEqual(Path.Join(fixturePath, "SKILL.md"), outputPath);
+            string expectedPath = Path.Join(fixturePath, "SKILL.md");
+            Assert.IsTrue(Path.IsPathFullyQualified(outputPath));
+            Assert.AreEqual("SKILL.md", Path.GetFileName(outputPath));
+            Assert.IsTrue(File.Exists(expectedPath));
+            Assert.IsTrue(File.Exists(outputPath));
 
             byte[] skillBytes = await File.ReadAllBytesAsync(
                 outputPath,
@@ -311,6 +315,11 @@ public sealed class CliLanguageServerTests
                 outputPath,
                 retainedContent,
                 TestContext.CancellationToken).ConfigureAwait(false);
+            Assert.AreEqual(
+                retainedContent,
+                await File.ReadAllTextAsync(
+                    expectedPath,
+                    TestContext.CancellationToken).ConfigureAwait(false));
             (int existingExitCode, string existingOutput, string existingError) =
                 await RunCliAsync(
                     cliPath,
