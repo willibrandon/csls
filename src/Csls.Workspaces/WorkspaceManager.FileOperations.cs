@@ -91,8 +91,19 @@ public sealed partial class WorkspaceManager
         cancellationToken.ThrowIfCancellationRequested();
         ImmutableArray<(string RootPath, Workspace Workspace, Solution Solution)> folders =
             _folders;
-        if (affectedPaths.Length == 0 ||
-            !affectedPaths.Any(path => FindFolderIndex(path, folders) >= 0))
+        bool affectsLoadedSource = false;
+        foreach (string path in affectedPaths)
+        {
+            int folderIndex = FindFolderIndex(path, folders);
+            if (folderIndex >= 0 &&
+                !WorkspaceDiscovery.IsExcludedPath(folders[folderIndex].RootPath, path))
+            {
+                affectsLoadedSource = true;
+                break;
+            }
+        }
+
+        if (!affectsLoadedSource)
         {
             return null;
         }
