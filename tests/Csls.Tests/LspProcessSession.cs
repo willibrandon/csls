@@ -1423,14 +1423,16 @@ internal sealed class LspProcessSession : IAsyncDisposable
     {
         try
         {
-            if (!process.HasExited)
+            using (process)
             {
-                process.Kill(entireProcessTree: true);
+                if (!process.HasExited)
+                {
+                    process.Kill(entireProcessTree: true);
+                }
             }
         }
         finally
         {
-            process.Dispose();
             workloadLease.Release();
         }
     }
