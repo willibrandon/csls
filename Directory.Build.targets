@@ -1,4 +1,32 @@
 <Project>
+  <Target Name="_CslsGenerateTestingPlatformConfiguration"
+          BeforeTargets="AssignTargetPaths"
+          Condition="'$(IsTestingPlatformApplication)' == 'true' and '$(TargetFramework)' != ''">
+    <PropertyGroup>
+      <CslsTestResultsDirectory>$([MSBuild]::NormalizePath('$(ArtifactsPath)', 'test-results'))</CslsTestResultsDirectory>
+      <CslsTestResultsDirectory>$(CslsTestResultsDirectory.Replace('\', '/'))</CslsTestResultsDirectory>
+      <CslsTestingPlatformConfigurationFile>$([MSBuild]::NormalizePath('$(IntermediateOutputPath)', 'csls.testconfig.json'))</CslsTestingPlatformConfigurationFile>
+    </PropertyGroup>
+    <ItemGroup>
+      <_CslsTestingPlatformConfigurationLine Include="{" />
+      <_CslsTestingPlatformConfigurationLine Include="  &quot;commandLineOptions&quot;: {" />
+      <_CslsTestingPlatformConfigurationLine Include="    &quot;results-directory&quot;: &quot;$(CslsTestResultsDirectory)&quot;" />
+      <_CslsTestingPlatformConfigurationLine Include="  }" />
+      <_CslsTestingPlatformConfigurationLine Include="}" />
+    </ItemGroup>
+    <MakeDir Directories="$([System.IO.Path]::GetDirectoryName('$(CslsTestingPlatformConfigurationFile)'))" />
+    <WriteLinesToFile File="$(CslsTestingPlatformConfigurationFile)"
+                      Lines="@(_CslsTestingPlatformConfigurationLine)"
+                      Overwrite="true"
+                      WriteOnlyWhenDifferent="true" />
+    <ItemGroup>
+      <None Include="$(CslsTestingPlatformConfigurationFile)"
+            TargetPath="$(AssemblyName).testconfig.json"
+            CopyToOutputDirectory="PreserveNewest" />
+      <FileWrites Include="$(CslsTestingPlatformConfigurationFile)" />
+    </ItemGroup>
+  </Target>
+
   <ItemGroup>
     <CslsSuppressionScanFile Include="$(MSBuildThisFileDirectory)**/*.cs"
                              Exclude="$(MSBuildThisFileDirectory)**/bin/**;$(MSBuildThisFileDirectory)**/obj/**;$(MSBuildThisFileDirectory)artifacts/**" />
