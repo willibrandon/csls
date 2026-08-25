@@ -7,6 +7,9 @@ csls uses two StreamJsonRpc connections with separate contracts and framing. LSP
 the editor-facing protocol on standard input and output. The control protocol is a
 versioned local API for the CLI, dashboard, and MCP server.
 
+The [generated contract reference](../contract-reference/) lists the public LSP
+and control types from the assemblies and their XML documentation.
+
 ## LSP connection
 
 The server uses standard `Content-Length` header framing over its inherited streams.

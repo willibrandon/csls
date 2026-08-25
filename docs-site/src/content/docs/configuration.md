@@ -5,6 +5,8 @@ description: Configure csls through standard Language Server Protocol settings.
 
 The preferred configuration section is `csls`. The compatible `csharp` section
 is also accepted. When both sections define a setting, `csls` takes precedence.
+The [configuration reference](../configuration-reference/) is generated from the
+server contract and records the current defaults.
 
 ```json
 {

@@ -51,10 +51,10 @@ runs it on Windows, Linux, and macOS. Scheduled runs use three iterations.
 ## Native AOT size
 
 Each runtime package enables Native AOT compiler statistics for the `csls` and
-`csls-mcp` launchers. Dotsider compares those reports with the stored runtime
-baseline and enforces the package size budget. Managed workers are measured through
-package verification and end-to-end memory rather than being folded into the native
-launcher total.
+`csls-mcp` launchers. [Dotsider](https://dotsider.dev/) compares those reports
+with the stored runtime baseline and enforces the package size budget. Managed
+workers are measured through package verification and end-to-end memory rather than
+being folded into the native launcher total.
 
 When changing a hot path, keep the BenchmarkDotNet report, the end-to-end JSON
 report, and the Native AOT size result together. A faster microbenchmark does not
