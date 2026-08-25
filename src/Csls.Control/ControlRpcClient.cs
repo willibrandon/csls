@@ -41,10 +41,9 @@ public sealed class ControlRpcClient : IAsyncDisposable
     public async Task<ControlSessionInfo> GetSessionAsync(
         CancellationToken cancellationToken)
     {
-        JsonRpc rpc = await GetRpcAsync(cancellationToken).ConfigureAwait(false);
-        return await rpc.InvokeWithCancellationAsync<ControlSessionInfo>(
+        return await InvokeReadAsync<ControlSessionInfo>(
             ControlMethods.GetSession,
-            cancellationToken: cancellationToken).ConfigureAwait(false);
+            cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -58,8 +57,7 @@ public sealed class ControlRpcClient : IAsyncDisposable
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(request);
-        JsonRpc rpc = await GetRpcAsync(cancellationToken).ConfigureAwait(false);
-        return await rpc.InvokeWithParameterObjectAsync<ControlDashboardSnapshot>(
+        return await InvokeReadAsync<ControlDashboardSnapshot>(
             ControlMethods.GetDashboardSnapshot,
             request,
             cancellationToken).ConfigureAwait(false);
@@ -156,8 +154,7 @@ public sealed class ControlRpcClient : IAsyncDisposable
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(request);
-        JsonRpc rpc = await GetRpcAsync(cancellationToken).ConfigureAwait(false);
-        return await rpc.InvokeWithParameterObjectAsync<ControlHoverResult>(
+        return await InvokeReadAsync<ControlHoverResult>(
             ControlMethods.GetHover,
             request,
             cancellationToken).ConfigureAwait(false);
@@ -174,8 +171,7 @@ public sealed class ControlRpcClient : IAsyncDisposable
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(request);
-        JsonRpc rpc = await GetRpcAsync(cancellationToken).ConfigureAwait(false);
-        return await rpc.InvokeWithParameterObjectAsync<DocumentDiagnosticReport>(
+        return await InvokeReadAsync<DocumentDiagnosticReport>(
             ControlMethods.GetDiagnostics,
             request,
             cancellationToken).ConfigureAwait(false);
@@ -192,8 +188,7 @@ public sealed class ControlRpcClient : IAsyncDisposable
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(request);
-        JsonRpc rpc = await GetRpcAsync(cancellationToken).ConfigureAwait(false);
-        return await rpc.InvokeWithParameterObjectAsync<CompletionList>(
+        return await InvokeReadAsync<CompletionList>(
             ControlMethods.GetCompletion,
             request,
             cancellationToken).ConfigureAwait(false);
@@ -254,8 +249,7 @@ public sealed class ControlRpcClient : IAsyncDisposable
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(request);
-        JsonRpc rpc = await GetRpcAsync(cancellationToken).ConfigureAwait(false);
-        return await rpc.InvokeWithParameterObjectAsync<IReadOnlyList<SelectionRange>>(
+        return await InvokeReadAsync<IReadOnlyList<SelectionRange>>(
             ControlMethods.GetSelectionRanges,
             request,
             cancellationToken).ConfigureAwait(false);
@@ -272,8 +266,7 @@ public sealed class ControlRpcClient : IAsyncDisposable
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(request);
-        JsonRpc rpc = await GetRpcAsync(cancellationToken).ConfigureAwait(false);
-        return await rpc.InvokeWithParameterObjectAsync<IReadOnlyList<DocumentHighlight>>(
+        return await InvokeReadAsync<IReadOnlyList<DocumentHighlight>>(
             ControlMethods.GetDocumentHighlights,
             request,
             cancellationToken).ConfigureAwait(false);
@@ -301,8 +294,7 @@ public sealed class ControlRpcClient : IAsyncDisposable
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(request);
-        JsonRpc rpc = await GetRpcAsync(cancellationToken).ConfigureAwait(false);
-        return await rpc.InvokeWithParameterObjectAsync<IReadOnlyList<DocumentSymbol>>(
+        return await InvokeReadAsync<IReadOnlyList<DocumentSymbol>>(
             ControlMethods.GetDocumentSymbols,
             request,
             cancellationToken).ConfigureAwait(false);
@@ -319,8 +311,7 @@ public sealed class ControlRpcClient : IAsyncDisposable
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(request);
-        JsonRpc rpc = await GetRpcAsync(cancellationToken).ConfigureAwait(false);
-        return await rpc.InvokeWithParameterObjectAsync<IReadOnlyList<WorkspaceSymbol>>(
+        return await InvokeReadAsync<IReadOnlyList<WorkspaceSymbol>>(
             ControlMethods.GetWorkspaceSymbols,
             request,
             cancellationToken).ConfigureAwait(false);
@@ -337,8 +328,7 @@ public sealed class ControlRpcClient : IAsyncDisposable
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(symbol);
-        JsonRpc rpc = await GetRpcAsync(cancellationToken).ConfigureAwait(false);
-        return await rpc.InvokeWithParameterObjectAsync<WorkspaceSymbol>(
+        return await InvokeReadAsync<WorkspaceSymbol>(
             ControlMethods.ResolveWorkspaceSymbol,
             symbol,
             cancellationToken).ConfigureAwait(false);
@@ -355,8 +345,7 @@ public sealed class ControlRpcClient : IAsyncDisposable
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(request);
-        JsonRpc rpc = await GetRpcAsync(cancellationToken).ConfigureAwait(false);
-        return await rpc.InvokeWithParameterObjectAsync<SignatureHelp?>(
+        return await InvokeReadAsync<SignatureHelp?>(
             ControlMethods.GetSignatureHelp,
             request,
             cancellationToken).ConfigureAwait(false);
@@ -373,8 +362,7 @@ public sealed class ControlRpcClient : IAsyncDisposable
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(request);
-        JsonRpc rpc = await GetRpcAsync(cancellationToken).ConfigureAwait(false);
-        return await rpc.InvokeWithParameterObjectAsync<ControlEditPlan>(
+        return await InvokeReadAsync<ControlEditPlan>(
             ControlMethods.PreviewRename,
             request,
             cancellationToken).ConfigureAwait(false);
@@ -391,8 +379,7 @@ public sealed class ControlRpcClient : IAsyncDisposable
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(request);
-        JsonRpc rpc = await GetRpcAsync(cancellationToken).ConfigureAwait(false);
-        return await rpc.InvokeWithParameterObjectAsync<ControlEditPlan>(
+        return await InvokeReadAsync<ControlEditPlan>(
             ControlMethods.PreviewFormatting,
             request,
             cancellationToken).ConfigureAwait(false);
@@ -409,8 +396,7 @@ public sealed class ControlRpcClient : IAsyncDisposable
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(request);
-        JsonRpc rpc = await GetRpcAsync(cancellationToken).ConfigureAwait(false);
-        return await rpc.InvokeWithParameterObjectAsync<IReadOnlyList<ControlCodeActionPlan>>(
+        return await InvokeReadAsync<IReadOnlyList<ControlCodeActionPlan>>(
             ControlMethods.GetCodeActions,
             request,
             cancellationToken).ConfigureAwait(false);
@@ -548,6 +534,76 @@ public sealed class ControlRpcClient : IAsyncDisposable
         }
     }
 
+    private async Task<TResult> InvokeReadAsync<TResult>(
+        string methodName,
+        CancellationToken cancellationToken)
+    {
+        bool canRetry = true;
+        while (true)
+        {
+            JsonRpc rpc = await GetRpcAsync(cancellationToken).ConfigureAwait(false);
+            try
+            {
+                return await rpc.InvokeWithCancellationAsync<TResult>(
+                    methodName,
+                    cancellationToken: cancellationToken).ConfigureAwait(false);
+            }
+            catch (Exception exception) when (
+                canRetry &&
+                !cancellationToken.IsCancellationRequested &&
+                Volatile.Read(ref _disposeState) == 0 &&
+                IsRecoverableConnectionFailure(exception))
+            {
+                canRetry = false;
+                await InvalidateConnectionAsync(rpc).ConfigureAwait(false);
+            }
+        }
+    }
+
+    private async Task<TResult> InvokeReadAsync<TResult>(
+        string methodName,
+        object request,
+        CancellationToken cancellationToken)
+    {
+        bool canRetry = true;
+        while (true)
+        {
+            JsonRpc rpc = await GetRpcAsync(cancellationToken).ConfigureAwait(false);
+            try
+            {
+                return await rpc.InvokeWithParameterObjectAsync<TResult>(
+                    methodName,
+                    request,
+                    cancellationToken).ConfigureAwait(false);
+            }
+            catch (Exception exception) when (
+                canRetry &&
+                !cancellationToken.IsCancellationRequested &&
+                Volatile.Read(ref _disposeState) == 0 &&
+                IsRecoverableConnectionFailure(exception))
+            {
+                canRetry = false;
+                await InvalidateConnectionAsync(rpc).ConfigureAwait(false);
+            }
+        }
+    }
+
+    private async Task InvalidateConnectionAsync(JsonRpc failedRpc)
+    {
+        await _connectionGate.WaitAsync(CancellationToken.None).ConfigureAwait(false);
+        try
+        {
+            if (ReferenceEquals(Volatile.Read(ref _rpc), failedRpc))
+            {
+                await DisposeConnectionAsync().ConfigureAwait(false);
+            }
+        }
+        finally
+        {
+            _connectionGate.Release();
+        }
+    }
+
     private async Task DisposeConnectionAsync()
     {
         CancellationTokenSource? keepAliveSource = _keepAliveSource;
@@ -607,6 +663,12 @@ public sealed class ControlRpcClient : IAsyncDisposable
         rpc is not null &&
         !rpc.Completion.IsCompleted &&
         keepAliveTask is { IsCompleted: false };
+
+    private static bool IsRecoverableConnectionFailure(Exception exception) =>
+        exception is ConnectionLostException or
+            IOException or
+            ObjectDisposedException or
+            SocketException;
 
     private static TimeSpan ValidateConnectionInfo(ControlConnectionInfo connectionInfo)
     {
@@ -672,8 +734,7 @@ public sealed class ControlRpcClient : IAsyncDisposable
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(methodName);
         ArgumentNullException.ThrowIfNull(request);
-        JsonRpc rpc = await GetRpcAsync(cancellationToken).ConfigureAwait(false);
-        return await rpc.InvokeWithParameterObjectAsync<IReadOnlyList<Location>>(
+        return await InvokeReadAsync<IReadOnlyList<Location>>(
             methodName,
             request,
             cancellationToken).ConfigureAwait(false);
