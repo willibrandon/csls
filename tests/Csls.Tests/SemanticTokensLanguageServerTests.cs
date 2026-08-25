@@ -1,5 +1,7 @@
 using Csls.Protocol;
+using System.Globalization;
 using System.Runtime.CompilerServices;
+using System.Text;
 using System.Text.Json;
 
 namespace Csls.Tests;
@@ -10,6 +12,8 @@ namespace Csls.Tests;
 [TestClass]
 public sealed class SemanticTokensLanguageServerTests
 {
+    private const int LongLineVariableCount = 1_000;
+
     /// <summary>
     /// Gets the active MSTest context and its framework-managed cancellation token.
     /// </summary>
@@ -90,7 +94,7 @@ public sealed class SemanticTokensLanguageServerTests
                 TestContext.CancellationToken).ConfigureAwait(false);
             Assert.IsNotNull(original.ResultId);
             Assert.AreEqual(0, original.Data.Count % 5);
-            IReadOnlyList<(
+            List<(
                 int Line,
                 int Start,
                 int Length,
@@ -182,6 +186,132 @@ public sealed class SemanticTokensLanguageServerTests
         {
             Directory.Delete(fixturePath, recursive: true);
         }
+    }
+
+    /// <summary>
+    /// Normalizes a large single-line classification set without losing declaration tokens.
+    /// </summary>
+    [TestMethod]
+    public async Task SemanticTokensPreserveLargeSingleLineDocuments()
+    {
+        string repositoryRoot = EditorToolResolver.FindRepositoryRoot();
+        string workerPath = Path.Join(
+            EditorToolResolver.ResolveArtifactsRoot(repositoryRoot),
+            "bin",
+            "Csls.Worker",
+            "debug",
+            "csls-worker.dll");
+        Assert.IsTrue(File.Exists(workerPath), $"Worker not found at {workerPath}.");
+
+        string fixturePath = Path.Join(
+            Path.GetTempPath(),
+            $"csls-semantic-tokens-long-line-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(fixturePath);
+        try
+        {
+            string documentPath = Path.Join(fixturePath, "LongLine.cs");
+            string documentText = CreateLongLineDocument();
+            await File.WriteAllTextAsync(
+                Path.Join(fixturePath, "Fixture.csproj"),
+                ProjectText,
+                TestContext.CancellationToken).ConfigureAwait(false);
+            await File.WriteAllTextAsync(
+                documentPath,
+                documentText,
+                TestContext.CancellationToken).ConfigureAwait(false);
+
+            var lsp = LspProcessSession.Start(
+                "csls-semantic-tokens-long-line-worker",
+                EditorToolResolver.ResolveDotNetHost(),
+                [workerPath],
+                fixturePath);
+            await using ConfiguredAsyncDisposable lspCleanup = lsp.ConfigureAwait(false);
+            JsonElement initialization = await lsp.InitializeAsync(
+                fixturePath,
+                TestContext.CancellationToken).ConfigureAwait(false);
+            JsonElement legend = initialization
+                .GetProperty("capabilities")
+                .GetProperty("semanticTokensProvider")
+                .GetProperty("legend");
+            IReadOnlyList<string> tokenTypes =
+            [
+                .. legend
+                    .GetProperty("tokenTypes")
+                    .EnumerateArray()
+                    .Select(static item => item.GetString()!)
+            ];
+            IReadOnlyList<string> tokenModifiers =
+            [
+                .. legend
+                    .GetProperty("tokenModifiers")
+                    .EnumerateArray()
+                    .Select(static item => item.GetString()!)
+            ];
+            await lsp.OpenDocumentAsync(documentPath, documentText).ConfigureAwait(false);
+
+            SemanticTokens result = await lsp.RequestSemanticTokensAsync(
+                documentPath,
+                TestContext.CancellationToken).ConfigureAwait(false);
+            List<(
+                int Line,
+                int Start,
+                int Length,
+                string TokenType,
+                IReadOnlyList<string> Modifiers)> tokens = DecodeTokens(
+                    result.Data,
+                    tokenTypes,
+                    tokenModifiers);
+            Assert.IsGreaterThan(LongLineVariableCount, tokens.Count);
+            AssertLongLineVariable(tokens, documentText, 0);
+            AssertLongLineVariable(tokens, documentText, LongLineVariableCount / 2);
+            AssertLongLineVariable(tokens, documentText, LongLineVariableCount - 1);
+
+            string diagnostics = await lsp.ShutdownAsync(
+                TestContext.CancellationToken).ConfigureAwait(false);
+            Assert.DoesNotContain("Unhandled exception", diagnostics, StringComparison.Ordinal);
+        }
+        finally
+        {
+            Directory.Delete(fixturePath, recursive: true);
+        }
+    }
+
+    private static void AssertLongLineVariable(
+        IReadOnlyList<(
+            int Line,
+            int Start,
+            int Length,
+            string TokenType,
+            IReadOnlyList<string> Modifiers)> tokens,
+        string documentText,
+        int index)
+    {
+        string name = $"value{index}";
+        int start = documentText.IndexOf(name, StringComparison.Ordinal);
+        Assert.IsGreaterThanOrEqualTo(0, start);
+        AssertToken(tokens, 0, start, name.Length, "variable");
+    }
+
+    private static string CreateLongLineDocument()
+    {
+        var builder = new StringBuilder(LongLineVariableCount * 24);
+        builder.Append(
+            "namespace Tokens; public static class LongLineTarget { " +
+            "public static int Measure() { ");
+        for (int index = 0; index < LongLineVariableCount; index++)
+        {
+            string indexText = index.ToString(CultureInfo.InvariantCulture);
+            builder.Append("int value");
+            builder.Append(indexText);
+            builder.Append(" = ");
+            builder.Append(indexText);
+            builder.Append("; ");
+        }
+
+        builder.Append("return value");
+        builder.Append((LongLineVariableCount - 1).ToString(CultureInfo.InvariantCulture));
+        builder.Append("; } }");
+        return builder.ToString();
     }
 
     private static List<(
