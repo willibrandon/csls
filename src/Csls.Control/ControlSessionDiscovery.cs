@@ -151,6 +151,34 @@ public static class ControlSessionDiscovery
         };
     }
 
+    /// <summary>
+    /// Resolves one live session containing a workspace without requiring a match.
+    /// </summary>
+    /// <param name="workspacePath">The workspace, project, or document path to match.</param>
+    /// <param name="cancellationToken">The discovery cancellation token.</param>
+    /// <returns>The matching session, or null when no live session contains the path.</returns>
+    public static async Task<ControlSessionInfo?> TryResolveWorkspaceAsync(
+        string workspacePath,
+        CancellationToken cancellationToken)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(workspacePath);
+        string fullWorkspacePath = Path.GetFullPath(workspacePath);
+        IReadOnlyList<ControlSessionInfo> discovered = await DiscoverAsync(cancellationToken)
+            .ConfigureAwait(false);
+        ControlSessionInfo[] matches =
+        [
+            .. discovered.Where(session => ContainsWorkspace(session, fullWorkspacePath))
+        ];
+        return matches.Length switch
+        {
+            0 => null,
+            1 => matches[0],
+            _ => throw new InvalidOperationException(
+                $"Multiple live csls sessions contain workspace {fullWorkspacePath}. " +
+                "Specify --session.")
+        };
+    }
+
     private static bool ContainsWorkspace(ControlSessionInfo session, string workspacePath)
     {
         StringComparison comparison = OperatingSystem.IsWindows()

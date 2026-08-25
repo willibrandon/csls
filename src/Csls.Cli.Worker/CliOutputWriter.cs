@@ -36,9 +36,11 @@ internal static class CliOutputWriter
     /// </summary>
     /// <param name="sessions">The live sessions.</param>
     /// <param name="writeJson">Whether to write a machine-readable envelope.</param>
+    /// <param name="nextCursor">The continuation cursor when another page is available.</param>
     internal static void WriteSessions(
         IReadOnlyList<ControlSessionInfo> sessions,
-        bool writeJson)
+        bool writeJson,
+        string? nextCursor)
     {
         ArgumentNullException.ThrowIfNull(sessions);
         if (writeJson)
@@ -47,7 +49,7 @@ internal static class CliOutputWriter
                 sessions,
                 typeof(IReadOnlyList<ControlSessionInfo>),
                 CliJsonSerializerContext.Default);
-            WriteEnvelope(success: true, data);
+            WriteEnvelope(success: true, data, nextCursor);
             return;
         }
 
@@ -165,9 +167,11 @@ internal static class CliOutputWriter
     /// </summary>
     /// <param name="requests">The live scheduler observation.</param>
     /// <param name="writeJson">Whether to write a machine-readable envelope.</param>
+    /// <param name="nextCursor">The continuation cursor when another page is available.</param>
     internal static void WriteRequests(
         ControlRequestSchedulerInfo requests,
-        bool writeJson)
+        bool writeJson,
+        string? nextCursor)
     {
         ArgumentNullException.ThrowIfNull(requests);
         if (writeJson)
@@ -175,7 +179,7 @@ internal static class CliOutputWriter
             JsonElement data = JsonSerializer.SerializeToElement(
                 requests,
                 CliJsonSerializerContext.Default.ControlRequestSchedulerInfo);
-            WriteEnvelope(success: true, data);
+            WriteEnvelope(success: true, data, nextCursor);
             return;
         }
 
@@ -280,9 +284,11 @@ internal static class CliOutputWriter
     /// </summary>
     /// <param name="report">The complete or unchanged diagnostic report.</param>
     /// <param name="writeJson">Whether to write a machine-readable envelope.</param>
+    /// <param name="nextCursor">The continuation cursor when another page is available.</param>
     internal static void WriteDiagnostics(
         DocumentDiagnosticReport report,
-        bool writeJson)
+        bool writeJson,
+        string? nextCursor)
     {
         ArgumentNullException.ThrowIfNull(report);
         if (writeJson)
@@ -291,7 +297,7 @@ internal static class CliOutputWriter
                 report,
                 typeof(DocumentDiagnosticReport),
                 CliJsonSerializerContext.Default);
-            WriteEnvelope(success: true, data);
+            WriteEnvelope(success: true, data, nextCursor);
             return;
         }
 
@@ -321,7 +327,11 @@ internal static class CliOutputWriter
     /// </summary>
     /// <param name="completion">The ordered completion list.</param>
     /// <param name="writeJson">Whether to write a machine-readable envelope.</param>
-    internal static void WriteCompletion(CompletionList completion, bool writeJson)
+    /// <param name="nextCursor">The continuation cursor when another page is available.</param>
+    internal static void WriteCompletion(
+        CompletionList completion,
+        bool writeJson,
+        string? nextCursor)
     {
         ArgumentNullException.ThrowIfNull(completion);
         if (writeJson)
@@ -330,7 +340,7 @@ internal static class CliOutputWriter
                 completion,
                 typeof(CompletionList),
                 CliJsonSerializerContext.Default);
-            WriteEnvelope(success: true, data);
+            WriteEnvelope(success: true, data, nextCursor);
             return;
         }
 
@@ -348,7 +358,11 @@ internal static class CliOutputWriter
     /// </summary>
     /// <param name="locations">The ordered source locations.</param>
     /// <param name="writeJson">Whether to write a machine-readable envelope.</param>
-    internal static void WriteLocations(IReadOnlyList<Location> locations, bool writeJson)
+    /// <param name="nextCursor">The continuation cursor when another page is available.</param>
+    internal static void WriteLocations(
+        IReadOnlyList<Location> locations,
+        bool writeJson,
+        string? nextCursor)
     {
         ArgumentNullException.ThrowIfNull(locations);
         if (writeJson)
@@ -357,7 +371,7 @@ internal static class CliOutputWriter
                 locations,
                 typeof(IReadOnlyList<Location>),
                 CliJsonSerializerContext.Default);
-            WriteEnvelope(success: true, data);
+            WriteEnvelope(success: true, data, nextCursor);
             return;
         }
 
@@ -373,9 +387,11 @@ internal static class CliOutputWriter
     /// </summary>
     /// <param name="ranges">The ordered selection hierarchies.</param>
     /// <param name="writeJson">Whether to write a machine-readable envelope.</param>
+    /// <param name="nextCursor">The continuation cursor when another page is available.</param>
     internal static void WriteSelectionRanges(
         IReadOnlyList<SelectionRange> ranges,
-        bool writeJson)
+        bool writeJson,
+        string? nextCursor)
     {
         ArgumentNullException.ThrowIfNull(ranges);
         if (writeJson)
@@ -384,7 +400,7 @@ internal static class CliOutputWriter
                 ranges,
                 typeof(IReadOnlyList<SelectionRange>),
                 CliJsonSerializerContext.Default);
-            WriteEnvelope(success: true, data);
+            WriteEnvelope(success: true, data, nextCursor);
             return;
         }
 
@@ -401,9 +417,11 @@ internal static class CliOutputWriter
     /// </summary>
     /// <param name="highlights">The ordered document highlights.</param>
     /// <param name="writeJson">Whether to write a machine-readable envelope.</param>
+    /// <param name="nextCursor">The continuation cursor when another page is available.</param>
     internal static void WriteDocumentHighlights(
         IReadOnlyList<DocumentHighlight> highlights,
-        bool writeJson)
+        bool writeJson,
+        string? nextCursor)
     {
         ArgumentNullException.ThrowIfNull(highlights);
         if (writeJson)
@@ -412,7 +430,7 @@ internal static class CliOutputWriter
                 highlights,
                 typeof(IReadOnlyList<DocumentHighlight>),
                 CliJsonSerializerContext.Default);
-            WriteEnvelope(success: true, data);
+            WriteEnvelope(success: true, data, nextCursor);
             return;
         }
 
@@ -429,9 +447,11 @@ internal static class CliOutputWriter
     /// </summary>
     /// <param name="symbols">The source declaration hierarchy.</param>
     /// <param name="writeJson">Whether to write a machine-readable envelope.</param>
+    /// <param name="nextCursor">The continuation cursor when another page is available.</param>
     internal static void WriteDocumentSymbols(
         IReadOnlyList<DocumentSymbol> symbols,
-        bool writeJson)
+        bool writeJson,
+        string? nextCursor)
     {
         ArgumentNullException.ThrowIfNull(symbols);
         if (writeJson)
@@ -440,7 +460,7 @@ internal static class CliOutputWriter
                 symbols,
                 typeof(IReadOnlyList<DocumentSymbol>),
                 CliJsonSerializerContext.Default);
-            WriteEnvelope(success: true, data);
+            WriteEnvelope(success: true, data, nextCursor);
             return;
         }
 
@@ -452,9 +472,11 @@ internal static class CliOutputWriter
     /// </summary>
     /// <param name="symbols">The resolved workspace symbols.</param>
     /// <param name="writeJson">Whether to write a machine-readable envelope.</param>
+    /// <param name="nextCursor">The continuation cursor when another page is available.</param>
     internal static void WriteWorkspaceSymbols(
         IReadOnlyList<WorkspaceSymbol> symbols,
-        bool writeJson)
+        bool writeJson,
+        string? nextCursor)
     {
         ArgumentNullException.ThrowIfNull(symbols);
         if (writeJson)
@@ -463,7 +485,7 @@ internal static class CliOutputWriter
                 symbols,
                 typeof(IReadOnlyList<WorkspaceSymbol>),
                 CliJsonSerializerContext.Default);
-            WriteEnvelope(success: true, data);
+            WriteEnvelope(success: true, data, nextCursor);
             return;
         }
 
@@ -605,9 +627,11 @@ internal static class CliOutputWriter
     /// </summary>
     /// <param name="actions">The supported concrete code action plans.</param>
     /// <param name="writeJson">Whether to write a machine-readable envelope.</param>
+    /// <param name="nextCursor">The continuation cursor when another page is available.</param>
     internal static void WriteCodeActionPlans(
         IReadOnlyList<ControlCodeActionPlan> actions,
-        bool writeJson)
+        bool writeJson,
+        string? nextCursor)
     {
         ArgumentNullException.ThrowIfNull(actions);
         if (writeJson)
@@ -616,7 +640,7 @@ internal static class CliOutputWriter
                 actions,
                 typeof(IReadOnlyList<ControlCodeActionPlan>),
                 CliJsonSerializerContext.Default);
-            WriteEnvelope(success: true, data);
+            WriteEnvelope(success: true, data, nextCursor);
             return;
         }
 
@@ -676,14 +700,17 @@ internal static class CliOutputWriter
         WriteEnvelope(success: false, data);
     }
 
-    private static void WriteEnvelope(bool success, JsonElement data)
+    private static void WriteEnvelope(
+        bool success,
+        JsonElement data,
+        string? nextCursor = null)
     {
         var envelope = new CliResponseEnvelope
         {
             CorrelationId = Guid.NewGuid().ToString("D"),
             Success = success,
             Data = data,
-            NextCursor = null
+            NextCursor = nextCursor
         };
         Console.Out.WriteLine(JsonSerializer.Serialize(
             envelope,

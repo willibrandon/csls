@@ -17,13 +17,22 @@ var listJsonOption = new Option<bool>("--json")
 {
     Description = "Write the versioned machine-readable response envelope."
 };
+Option<string?> listCursorOption = CreateCursorOption();
+Option<int> listLimitOption = CreateLimitOption();
 var listCommand = new Command("list", "List every live csls session.")
 {
+    listCursorOption,
+    listLimitOption,
     listJsonOption
 };
 listCommand.SetAction((parseResult, cancellationToken) =>
     CliWorkerSupervisor.RunAsync(
-        ["sessions-list", parseResult.GetValue(listJsonOption).ToString(CultureInfo.InvariantCulture)],
+        [
+            "sessions-list",
+            parseResult.GetValue(listCursorOption) ?? string.Empty,
+            parseResult.GetValue(listLimitOption).ToString(CultureInfo.InvariantCulture),
+            parseResult.GetValue(listJsonOption).ToString(CultureInfo.InvariantCulture)
+        ],
         cancellationToken));
 sessionsCommand.Subcommands.Add(listCommand);
 
@@ -69,11 +78,15 @@ Option<int?> dashboardSessionOption = CreateSessionOption();
 Option<string?> dashboardWorkspaceOption = CreateWorkspaceOption();
 var dashboardCommand = new Command(
     "dashboard",
-    "Inspect live language-server state in the Hex1b dashboard.")
+    "Inspect language-server state in the Hex1b dashboard.")
 {
     dashboardSessionOption,
     dashboardWorkspaceOption
 };
+AddSessionWorkspaceValidator(
+    dashboardCommand,
+    dashboardSessionOption,
+    dashboardWorkspaceOption);
 dashboardCommand.SetAction((parseResult, cancellationToken) =>
     CliWorkerSupervisor.RunAsync(
         [
@@ -120,7 +133,7 @@ rootCommand.Subcommands.Add(doctorCommand);
 
 var workspaceCommand = new Command(
     "workspace",
-    "Maintain workspaces attached to a live csls session.");
+    "Maintain workspaces through a csls session.");
 workspaceCommand.Subcommands.Add(CreateWorkspaceOperationCommand(
     "restore",
     "Restore loaded solution and project entry points, then reload the workspace."));
@@ -137,9 +150,11 @@ rootCommand.Subcommands.Add(workspaceCommand);
 
 var requestsCommand = new Command(
     "requests",
-    "Inspect and cancel requests in a live csls session.");
+    "Inspect and cancel requests in a csls session.");
 Option<int?> requestsListSessionOption = CreateSessionOption();
 Option<string?> requestsListWorkspaceOption = CreateWorkspaceOption();
+Option<string?> requestsListCursorOption = CreateCursorOption();
+Option<int> requestsListLimitOption = CreateLimitOption();
 var requestsListJsonOption = new Option<bool>("--json")
 {
     Description = "Write the versioned machine-readable response envelope."
@@ -148,8 +163,14 @@ var requestsListCommand = new Command("list", "List queued and running requests.
 {
     requestsListSessionOption,
     requestsListWorkspaceOption,
+    requestsListCursorOption,
+    requestsListLimitOption,
     requestsListJsonOption
 };
+AddSessionWorkspaceValidator(
+    requestsListCommand,
+    requestsListSessionOption,
+    requestsListWorkspaceOption);
 requestsListCommand.SetAction((parseResult, cancellationToken) =>
     CliWorkerSupervisor.RunAsync(
         [
@@ -157,6 +178,8 @@ requestsListCommand.SetAction((parseResult, cancellationToken) =>
             (parseResult.GetValue(requestsListSessionOption) ?? 0)
                 .ToString(CultureInfo.InvariantCulture),
             NormalizeWorkspacePath(parseResult.GetValue(requestsListWorkspaceOption)),
+            parseResult.GetValue(requestsListCursorOption) ?? string.Empty,
+            parseResult.GetValue(requestsListLimitOption).ToString(CultureInfo.InvariantCulture),
             parseResult.GetValue(requestsListJsonOption).ToString(CultureInfo.InvariantCulture)
         ],
         cancellationToken));
@@ -186,6 +209,10 @@ var requestsCancelCommand = new Command("cancel", "Cancel one queued or running 
     requestsCancelWorkspaceOption,
     requestsCancelJsonOption
 };
+AddSessionWorkspaceValidator(
+    requestsCancelCommand,
+    requestsCancelSessionOption,
+    requestsCancelWorkspaceOption);
 requestsCancelCommand.SetAction((parseResult, cancellationToken) =>
     CliWorkerSupervisor.RunAsync(
         [
@@ -203,13 +230,13 @@ rootCommand.Subcommands.Add(requestsCommand);
 var traceCommand = new Command("trace", "Control bounded request lifecycle tracing.");
 traceCommand.Subcommands.Add(CreateTraceCommand(
     "start",
-    "Start request lifecycle tracing for a live session."));
+    "Start request lifecycle tracing for a session."));
 traceCommand.Subcommands.Add(CreateTraceCommand(
     "stop",
     "Stop request lifecycle tracing and return its entries."));
 rootCommand.Subcommands.Add(traceCommand);
 
-var queryCommand = new Command("query", "Query language intelligence from a live csls session.");
+var queryCommand = new Command("query", "Query language intelligence from a csls session.");
 var hoverDocumentArgument = new Argument<string>("document")
 {
     Description = "Absolute or current-directory-relative C# document path."
@@ -219,6 +246,7 @@ Option<int> hoverCharacterOption = CreatePositionOption(
     "--character",
     "Zero-based UTF-16 character offset.");
 Option<int?> hoverSessionOption = CreateSessionOption();
+Option<string?> hoverWorkspaceOption = CreateWorkspaceOption();
 var hoverJsonOption = new Option<bool>("--json")
 {
     Description = "Write the versioned machine-readable response envelope."
@@ -229,13 +257,16 @@ var hoverCommand = new Command("hover", "Resolve hover information at a document
     hoverLineOption,
     hoverCharacterOption,
     hoverSessionOption,
+    hoverWorkspaceOption,
     hoverJsonOption
 };
+AddSessionWorkspaceValidator(hoverCommand, hoverSessionOption, hoverWorkspaceOption);
 hoverCommand.SetAction((parseResult, cancellationToken) =>
     CliWorkerSupervisor.RunAsync(
         [
             "query-hover",
             (parseResult.GetValue(hoverSessionOption) ?? 0).ToString(CultureInfo.InvariantCulture),
+            NormalizeWorkspacePath(parseResult.GetValue(hoverWorkspaceOption)),
             Path.GetFullPath(parseResult.GetRequiredValue(hoverDocumentArgument)),
             parseResult.GetValue(hoverLineOption).ToString(CultureInfo.InvariantCulture),
             parseResult.GetValue(hoverCharacterOption).ToString(CultureInfo.InvariantCulture),
@@ -249,6 +280,9 @@ var diagnosticDocumentArgument = new Argument<string>("document")
     Description = "Absolute or current-directory-relative C# document path."
 };
 Option<int?> diagnosticSessionOption = CreateSessionOption();
+Option<string?> diagnosticWorkspaceOption = CreateWorkspaceOption();
+Option<string?> diagnosticCursorOption = CreateCursorOption();
+Option<int> diagnosticLimitOption = CreateLimitOption();
 var previousResultOption = new Option<string?>("--previous-result-id")
 {
     Description = "Opaque result identifier from a prior diagnostic response.",
@@ -264,17 +298,27 @@ var diagnosticCommand = new Command(
 {
     diagnosticDocumentArgument,
     diagnosticSessionOption,
+    diagnosticWorkspaceOption,
     previousResultOption,
+    diagnosticCursorOption,
+    diagnosticLimitOption,
     diagnosticJsonOption
 };
+AddSessionWorkspaceValidator(
+    diagnosticCommand,
+    diagnosticSessionOption,
+    diagnosticWorkspaceOption);
 diagnosticCommand.SetAction((parseResult, cancellationToken) =>
     CliWorkerSupervisor.RunAsync(
         [
             "query-diagnostics",
             (parseResult.GetValue(diagnosticSessionOption) ?? 0)
                 .ToString(CultureInfo.InvariantCulture),
+            NormalizeWorkspacePath(parseResult.GetValue(diagnosticWorkspaceOption)),
             Path.GetFullPath(parseResult.GetRequiredValue(diagnosticDocumentArgument)),
             parseResult.GetValue(previousResultOption) ?? string.Empty,
+            parseResult.GetValue(diagnosticCursorOption) ?? string.Empty,
+            parseResult.GetValue(diagnosticLimitOption).ToString(CultureInfo.InvariantCulture),
             parseResult.GetValue(diagnosticJsonOption).ToString(CultureInfo.InvariantCulture)
         ],
         cancellationToken));
@@ -291,6 +335,9 @@ Option<int> completionCharacterOption = CreatePositionOption(
     "--character",
     "Zero-based UTF-16 character offset.");
 Option<int?> completionSessionOption = CreateSessionOption();
+Option<string?> completionWorkspaceOption = CreateWorkspaceOption();
+Option<string?> completionCursorOption = CreateCursorOption();
+Option<int> completionLimitOption = CreateLimitOption();
 var completionJsonOption = new Option<bool>("--json")
 {
     Description = "Write the versioned machine-readable response envelope."
@@ -303,17 +350,27 @@ var completionCommand = new Command(
     completionLineOption,
     completionCharacterOption,
     completionSessionOption,
+    completionWorkspaceOption,
+    completionCursorOption,
+    completionLimitOption,
     completionJsonOption
 };
+AddSessionWorkspaceValidator(
+    completionCommand,
+    completionSessionOption,
+    completionWorkspaceOption);
 completionCommand.SetAction((parseResult, cancellationToken) =>
     CliWorkerSupervisor.RunAsync(
         [
             "query-completion",
             (parseResult.GetValue(completionSessionOption) ?? 0)
                 .ToString(CultureInfo.InvariantCulture),
+            NormalizeWorkspacePath(parseResult.GetValue(completionWorkspaceOption)),
             Path.GetFullPath(parseResult.GetRequiredValue(completionDocumentArgument)),
             parseResult.GetValue(completionLineOption).ToString(CultureInfo.InvariantCulture),
             parseResult.GetValue(completionCharacterOption).ToString(CultureInfo.InvariantCulture),
+            parseResult.GetValue(completionCursorOption) ?? string.Empty,
+            parseResult.GetValue(completionLimitOption).ToString(CultureInfo.InvariantCulture),
             parseResult.GetValue(completionJsonOption).ToString(CultureInfo.InvariantCulture)
         ],
         cancellationToken));
@@ -352,6 +409,9 @@ var documentSymbolsArgument = new Argument<string>("document")
     Description = "Absolute or current-directory-relative C# document path."
 };
 Option<int?> documentSymbolsSessionOption = CreateSessionOption();
+Option<string?> documentSymbolsWorkspaceOption = CreateWorkspaceOption();
+Option<string?> documentSymbolsCursorOption = CreateCursorOption();
+Option<int> documentSymbolsLimitOption = CreateLimitOption();
 var documentSymbolsJsonOption = new Option<bool>("--json")
 {
     Description = "Write the versioned machine-readable response envelope."
@@ -362,15 +422,25 @@ var documentSymbolsCommand = new Command(
 {
     documentSymbolsArgument,
     documentSymbolsSessionOption,
+    documentSymbolsWorkspaceOption,
+    documentSymbolsCursorOption,
+    documentSymbolsLimitOption,
     documentSymbolsJsonOption
 };
+AddSessionWorkspaceValidator(
+    documentSymbolsCommand,
+    documentSymbolsSessionOption,
+    documentSymbolsWorkspaceOption);
 documentSymbolsCommand.SetAction((parseResult, cancellationToken) =>
     CliWorkerSupervisor.RunAsync(
         [
             "query-document-symbols",
             (parseResult.GetValue(documentSymbolsSessionOption) ?? 0)
                 .ToString(CultureInfo.InvariantCulture),
+            NormalizeWorkspacePath(parseResult.GetValue(documentSymbolsWorkspaceOption)),
             Path.GetFullPath(parseResult.GetRequiredValue(documentSymbolsArgument)),
+            parseResult.GetValue(documentSymbolsCursorOption) ?? string.Empty,
+            parseResult.GetValue(documentSymbolsLimitOption).ToString(CultureInfo.InvariantCulture),
             parseResult.GetValue(documentSymbolsJsonOption).ToString(CultureInfo.InvariantCulture)
         ],
         cancellationToken));
@@ -381,6 +451,9 @@ var workspaceSymbolsArgument = new Argument<string>("pattern")
     Description = "Declaration name or fuzzy search pattern."
 };
 Option<int?> workspaceSymbolsSessionOption = CreateSessionOption();
+Option<string?> workspaceSymbolsWorkspaceOption = CreateWorkspaceOption();
+Option<string?> workspaceSymbolsCursorOption = CreateCursorOption();
+Option<int> workspaceSymbolsLimitOption = CreateLimitOption();
 var workspaceSymbolsJsonOption = new Option<bool>("--json")
 {
     Description = "Write the versioned machine-readable response envelope."
@@ -391,15 +464,25 @@ var workspaceSymbolsCommand = new Command(
 {
     workspaceSymbolsArgument,
     workspaceSymbolsSessionOption,
+    workspaceSymbolsWorkspaceOption,
+    workspaceSymbolsCursorOption,
+    workspaceSymbolsLimitOption,
     workspaceSymbolsJsonOption
 };
+AddSessionWorkspaceValidator(
+    workspaceSymbolsCommand,
+    workspaceSymbolsSessionOption,
+    workspaceSymbolsWorkspaceOption);
 workspaceSymbolsCommand.SetAction((parseResult, cancellationToken) =>
     CliWorkerSupervisor.RunAsync(
         [
             "query-workspace-symbols",
             (parseResult.GetValue(workspaceSymbolsSessionOption) ?? 0)
                 .ToString(CultureInfo.InvariantCulture),
+            NormalizeWorkspacePath(parseResult.GetValue(workspaceSymbolsWorkspaceOption)),
             parseResult.GetRequiredValue(workspaceSymbolsArgument),
+            parseResult.GetValue(workspaceSymbolsCursorOption) ?? string.Empty,
+            parseResult.GetValue(workspaceSymbolsLimitOption).ToString(CultureInfo.InvariantCulture),
             parseResult.GetValue(workspaceSymbolsJsonOption).ToString(CultureInfo.InvariantCulture)
         ],
         cancellationToken));
@@ -416,6 +499,7 @@ Option<int> signatureCharacterOption = CreatePositionOption(
     "--character",
     "Zero-based UTF-16 character offset.");
 Option<int?> signatureSessionOption = CreateSessionOption();
+Option<string?> signatureWorkspaceOption = CreateWorkspaceOption();
 var signatureJsonOption = new Option<bool>("--json")
 {
     Description = "Write the versioned machine-readable response envelope."
@@ -428,14 +512,20 @@ var signatureCommand = new Command(
     signatureLineOption,
     signatureCharacterOption,
     signatureSessionOption,
+    signatureWorkspaceOption,
     signatureJsonOption
 };
+AddSessionWorkspaceValidator(
+    signatureCommand,
+    signatureSessionOption,
+    signatureWorkspaceOption);
 signatureCommand.SetAction((parseResult, cancellationToken) =>
     CliWorkerSupervisor.RunAsync(
         [
             "query-signature-help",
             (parseResult.GetValue(signatureSessionOption) ?? 0)
                 .ToString(CultureInfo.InvariantCulture),
+            NormalizeWorkspacePath(parseResult.GetValue(signatureWorkspaceOption)),
             Path.GetFullPath(parseResult.GetRequiredValue(signatureDocumentArgument)),
             parseResult.GetValue(signatureLineOption).ToString(CultureInfo.InvariantCulture),
             parseResult.GetValue(signatureCharacterOption).ToString(CultureInfo.InvariantCulture),
@@ -447,7 +537,7 @@ rootCommand.Subcommands.Add(queryCommand);
 
 var editCommand = new Command(
     "edit",
-    "Preview semantic workspace edits through a live csls session.");
+    "Preview semantic workspace edits through a csls session.");
 var renameDocumentArgument = new Argument<string>("document")
 {
     Description = "Absolute or current-directory-relative C# document path."
@@ -461,6 +551,7 @@ Option<int> renameCharacterOption = CreatePositionOption(
     "--character",
     "Zero-based UTF-16 character offset.");
 Option<int?> renameSessionOption = CreateSessionOption();
+Option<string?> renameWorkspaceOption = CreateWorkspaceOption();
 var renameJsonOption = new Option<bool>("--json")
 {
     Description = "Write the versioned machine-readable response envelope."
@@ -476,15 +567,18 @@ var renameCommand = new Command("rename", "Preview a semantic cross-document ren
     renameLineOption,
     renameCharacterOption,
     renameSessionOption,
+    renameWorkspaceOption,
     renameApplyOption,
     renameJsonOption
 };
+AddSessionWorkspaceValidator(renameCommand, renameSessionOption, renameWorkspaceOption);
 renameCommand.SetAction((parseResult, cancellationToken) =>
     CliWorkerSupervisor.RunAsync(
         [
             "edit-rename",
             (parseResult.GetValue(renameSessionOption) ?? 0)
                 .ToString(CultureInfo.InvariantCulture),
+            NormalizeWorkspacePath(parseResult.GetValue(renameWorkspaceOption)),
             Path.GetFullPath(parseResult.GetRequiredValue(renameDocumentArgument)),
             parseResult.GetValue(renameLineOption).ToString(CultureInfo.InvariantCulture),
             parseResult.GetValue(renameCharacterOption).ToString(CultureInfo.InvariantCulture),
@@ -517,6 +611,7 @@ var formatTabsOption = new Option<bool>("--tabs")
     Description = "Use tabs instead of spaces for indentation."
 };
 Option<int?> formatSessionOption = CreateSessionOption();
+Option<string?> formatWorkspaceOption = CreateWorkspaceOption();
 var formatJsonOption = new Option<bool>("--json")
 {
     Description = "Write the versioned machine-readable response envelope."
@@ -531,15 +626,18 @@ var formatCommand = new Command("format", "Preview complete-document Roslyn form
     formatTabSizeOption,
     formatTabsOption,
     formatSessionOption,
+    formatWorkspaceOption,
     formatApplyOption,
     formatJsonOption
 };
+AddSessionWorkspaceValidator(formatCommand, formatSessionOption, formatWorkspaceOption);
 formatCommand.SetAction((parseResult, cancellationToken) =>
     CliWorkerSupervisor.RunAsync(
         [
             "edit-format",
             (parseResult.GetValue(formatSessionOption) ?? 0)
                 .ToString(CultureInfo.InvariantCulture),
+            NormalizeWorkspacePath(parseResult.GetValue(formatWorkspaceOption)),
             Path.GetFullPath(parseResult.GetRequiredValue(formatDocumentArgument)),
             parseResult.GetValue(formatTabSizeOption).ToString(CultureInfo.InvariantCulture),
             (!parseResult.GetValue(formatTabsOption)).ToString(CultureInfo.InvariantCulture),
@@ -568,6 +666,9 @@ Option<int> codeActionCharacterOption = CreatePositionOption(
     "Zero-based UTF-16 character containing the code-action target.",
     required: false);
 Option<int?> codeActionSessionOption = CreateSessionOption();
+Option<string?> codeActionWorkspaceOption = CreateWorkspaceOption();
+Option<string?> codeActionCursorOption = CreateCursorOption();
+Option<int> codeActionLimitOption = CreateLimitOption();
 var codeActionJsonOption = new Option<bool>("--json")
 {
     Description = "Write the versioned machine-readable response envelope."
@@ -583,19 +684,29 @@ var codeActionCommand = new Command("code-action", "Preview concrete Roslyn code
     codeActionLineOption,
     codeActionCharacterOption,
     codeActionSessionOption,
+    codeActionWorkspaceOption,
+    codeActionCursorOption,
+    codeActionLimitOption,
     codeActionApplyOption,
     codeActionJsonOption
 };
+AddSessionWorkspaceValidator(
+    codeActionCommand,
+    codeActionSessionOption,
+    codeActionWorkspaceOption);
 codeActionCommand.SetAction((parseResult, cancellationToken) =>
     CliWorkerSupervisor.RunAsync(
         [
             "edit-code-action",
             (parseResult.GetValue(codeActionSessionOption) ?? 0)
                 .ToString(CultureInfo.InvariantCulture),
+            NormalizeWorkspacePath(parseResult.GetValue(codeActionWorkspaceOption)),
             Path.GetFullPath(parseResult.GetRequiredValue(codeActionDocumentArgument)),
             parseResult.GetValue(codeActionLineOption).ToString(CultureInfo.InvariantCulture),
             parseResult.GetValue(codeActionCharacterOption).ToString(CultureInfo.InvariantCulture),
             parseResult.GetRequiredValue(codeActionKindOption),
+            parseResult.GetValue(codeActionCursorOption) ?? string.Empty,
+            parseResult.GetValue(codeActionLimitOption).ToString(CultureInfo.InvariantCulture),
             parseResult.GetValue(codeActionApplyOption).ToString(CultureInfo.InvariantCulture),
             parseResult.GetValue(codeActionJsonOption).ToString(CultureInfo.InvariantCulture)
         ],
@@ -647,9 +758,48 @@ static Option<int> CreatePositionOption(
 
 static Option<string?> CreateWorkspaceOption() => new("--workspace")
 {
-    Description = "Workspace or document path used to select or validate a live session.",
+    Description = "Select this workspace or start a transient session when none is live.",
     HelpName = "path"
 };
+
+static Option<string?> CreateCursorOption() => new("--cursor")
+{
+    Description = "Opaque continuation cursor returned by the previous JSON result page.",
+    HelpName = "cursor"
+};
+
+static Option<int> CreateLimitOption()
+{
+    var option = new Option<int>("--limit")
+    {
+        Description = "Maximum number of result items from 1 through 200.",
+        HelpName = "count",
+        DefaultValueFactory = static _ => 100
+    };
+    option.Validators.Add(static result =>
+    {
+        if (result.GetValueOrDefault<int>() is < 1 or > 200)
+        {
+            result.AddError("--limit must be between 1 and 200.");
+        }
+    });
+    return option;
+}
+
+static void AddSessionWorkspaceValidator(
+    Command command,
+    Option<int?> sessionOption,
+    Option<string?> workspaceOption)
+{
+    command.Validators.Add(result =>
+    {
+        if (result.GetValue(sessionOption).HasValue &&
+            !string.IsNullOrWhiteSpace(result.GetValue(workspaceOption)))
+        {
+            result.AddError("Specify --session or --workspace, but not both.");
+        }
+    });
+}
 
 static Command CreateWorkspaceOperationCommand(string name, string description)
 {
@@ -665,6 +815,7 @@ static Command CreateWorkspaceOperationCommand(string name, string description)
         workspaceOption,
         jsonOption
     };
+    AddSessionWorkspaceValidator(command, sessionOption, workspaceOption);
     command.SetAction((parseResult, cancellationToken) =>
         CliWorkerSupervisor.RunAsync(
             [
@@ -693,6 +844,7 @@ static Command CreateTraceCommand(string name, string description)
         workspaceOption,
         jsonOption
     };
+    AddSessionWorkspaceValidator(command, sessionOption, workspaceOption);
     command.SetAction((parseResult, cancellationToken) =>
         CliWorkerSupervisor.RunAsync(
             [
@@ -726,6 +878,9 @@ static Command CreateNavigationCommand(
         "--character",
         "Zero-based UTF-16 character offset.");
     Option<int?> sessionOption = CreateSessionOption();
+    Option<string?> workspaceOption = CreateWorkspaceOption();
+    Option<string?> cursorOption = CreateCursorOption();
+    Option<int> limitOption = CreateLimitOption();
     var includeDeclaration = new Option<bool>("--include-declaration")
     {
         Description = "Include symbol declaration locations in reference results."
@@ -740,12 +895,17 @@ static Command CreateNavigationCommand(
         lineOption,
         characterOption,
         sessionOption,
+        workspaceOption,
+        cursorOption,
+        limitOption,
         jsonOption
     };
     if (includeDeclarationOption)
     {
         command.Options.Add(includeDeclaration);
     }
+
+    AddSessionWorkspaceValidator(command, sessionOption, workspaceOption);
 
     command.SetAction((parseResult, cancellationToken) =>
         CliWorkerSupervisor.RunAsync(
@@ -754,11 +914,14 @@ static Command CreateNavigationCommand(
                 name,
                 (parseResult.GetValue(sessionOption) ?? 0)
                     .ToString(CultureInfo.InvariantCulture),
+                NormalizeWorkspacePath(parseResult.GetValue(workspaceOption)),
                 Path.GetFullPath(parseResult.GetRequiredValue(documentArgument)),
                 parseResult.GetValue(lineOption).ToString(CultureInfo.InvariantCulture),
                 parseResult.GetValue(characterOption).ToString(CultureInfo.InvariantCulture),
                 (includeDeclarationOption && parseResult.GetValue(includeDeclaration))
                     .ToString(CultureInfo.InvariantCulture),
+                parseResult.GetValue(cursorOption) ?? string.Empty,
+                parseResult.GetValue(limitOption).ToString(CultureInfo.InvariantCulture),
                 parseResult.GetValue(jsonOption).ToString(CultureInfo.InvariantCulture)
             ],
             cancellationToken));
