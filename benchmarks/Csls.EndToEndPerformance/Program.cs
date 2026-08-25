@@ -1,11 +1,12 @@
 using Csls.EndToEndPerformance;
 using System.CommandLine;
 
-const int DefaultTimeoutSeconds = 180;
+const int DefaultTimeoutSeconds = 600;
 const double DefaultStartupBudgetMilliseconds = 10_000;
 const double DefaultWorkspaceLoadBudgetMilliseconds = 120_000;
 const double DefaultReadyBudgetMilliseconds = 130_000;
-const double DefaultMemoryBudgetMebibytes = 2_048;
+const double DefaultOperationBudgetMilliseconds = 180_000;
+const double DefaultMemoryBudgetMebibytes = 3_072;
 const int DefaultProcessCountBudget = 32;
 const long BytesPerMebibyte = 1024 * 1024;
 
@@ -16,6 +17,10 @@ var serverArgument = new Argument<string>("server")
 var workspaceArgument = new Argument<string>("workspace")
 {
     Description = "Absolute workspace directory measured by csls."
+};
+var mcpServerArgument = new Argument<string>("mcp-server")
+{
+    Description = "Absolute path to the published csls-mcp launcher."
 };
 var outputOption = new Option<string>("--output")
 {
@@ -54,6 +59,10 @@ Option<double> readyBudgetOption = CreatePositiveDoubleOption(
     "--ready-budget-ms",
     "Maximum median process-start through workspace-ready time.",
     DefaultReadyBudgetMilliseconds);
+Option<double> operationBudgetOption = CreatePositiveDoubleOption(
+    "--operation-budget-ms",
+    "Maximum median duration for any measured product operation.",
+    DefaultOperationBudgetMilliseconds);
 Option<double> workingSetBudgetOption = CreatePositiveDoubleOption(
     "--working-set-budget-mib",
     "Maximum process-tree working set.",
@@ -68,9 +77,10 @@ Option<int> processCountBudgetOption = CreatePositiveOption(
     DefaultProcessCountBudget);
 
 var rootCommand = new RootCommand(
-    "Measure published csls startup, workspace load, memory, and process count.")
+    "Measure published csls LSP, MCP, CLI, dashboard, and process resources.")
 {
     serverArgument,
+    mcpServerArgument,
     workspaceArgument,
     outputOption,
     iterationsOption,
@@ -78,6 +88,7 @@ var rootCommand = new RootCommand(
     startupBudgetOption,
     workspaceBudgetOption,
     readyBudgetOption,
+    operationBudgetOption,
     workingSetBudgetOption,
     privateMemoryBudgetOption,
     processCountBudgetOption
@@ -85,11 +96,20 @@ var rootCommand = new RootCommand(
 rootCommand.SetAction((parseResult, cancellationToken) =>
 {
     string serverPath = Path.GetFullPath(parseResult.GetRequiredValue(serverArgument));
+    string mcpServerPath = Path.GetFullPath(
+        parseResult.GetRequiredValue(mcpServerArgument));
     string workspacePath = Path.GetFullPath(parseResult.GetRequiredValue(workspaceArgument));
     string outputPath = Path.GetFullPath(parseResult.GetRequiredValue(outputOption));
     if (!File.Exists(serverPath))
     {
         throw new FileNotFoundException("The published csls launcher was not found.", serverPath);
+    }
+
+    if (!File.Exists(mcpServerPath))
+    {
+        throw new FileNotFoundException(
+            "The published csls-mcp launcher was not found.",
+            mcpServerPath);
     }
 
     if (!Directory.Exists(workspacePath))
@@ -102,6 +122,7 @@ rootCommand.SetAction((parseResult, cancellationToken) =>
         new PerformanceOptions
         {
             ServerPath = serverPath,
+            McpServerPath = mcpServerPath,
             WorkspacePath = workspacePath,
             OutputPath = outputPath,
             Iterations = parseResult.GetValue(iterationsOption),
@@ -109,6 +130,7 @@ rootCommand.SetAction((parseResult, cancellationToken) =>
             StartupBudgetMilliseconds = parseResult.GetValue(startupBudgetOption),
             WorkspaceLoadBudgetMilliseconds = parseResult.GetValue(workspaceBudgetOption),
             ReadyBudgetMilliseconds = parseResult.GetValue(readyBudgetOption),
+            OperationBudgetMilliseconds = parseResult.GetValue(operationBudgetOption),
             WorkingSetBudgetBytes = checked(
                 (long)(parseResult.GetValue(workingSetBudgetOption) * BytesPerMebibyte)),
             PrivateMemoryBudgetBytes = checked(
