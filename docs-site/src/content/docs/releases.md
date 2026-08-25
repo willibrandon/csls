@@ -39,7 +39,7 @@ A release candidate must pass:
 Run the package verifier with a release candidate version before publishing:
 
 ```console
-dotnet run --file scripts/Verify-ToolPackages.cs -- --version 0.1.0-rc.1
+dotnet run --file scripts/Verify-ToolPackages.cs -- --version 1.0.0-rc.1
 ```
 
 The generated package directory is temporary validation output. Release packages
