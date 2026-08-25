@@ -13,7 +13,7 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Xml.Linq;
 
-const string DefaultVersion = "0.1.0-verification";
+const string DefaultVersion = "1.0.0-verification";
 const double ProcessTimeoutMinutes = 3;
 
 if (args.Length == 1 && args[0] is "--help" or "-h" or "-?")

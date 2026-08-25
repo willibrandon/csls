@@ -14,8 +14,8 @@ targets. Real Fresh, GNU Emacs/Eglot, Helix, and Neovim sessions exercise the
 server through Hex1b terminal automation. Real VS Code and Zed processes cover
 graphical editor clients.
 
-The repository is under active development toward its complete 1.0 feature set.
-No unimplemented LSP capability is advertised by the server.
+The complete 1.0 feature set is implemented, and no unimplemented LSP capability
+is advertised by the server.
 
 Read the [csls documentation](https://willibrandon.github.io/csls/) for editor,
 CLI, MCP, and development guidance.
