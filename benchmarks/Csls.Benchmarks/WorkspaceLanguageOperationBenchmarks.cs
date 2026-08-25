@@ -3,6 +3,8 @@ using Csls.Protocol;
 using Csls.Rpc;
 using StreamJsonRpc;
 using System.Diagnostics;
+using System.Globalization;
+using System.Text;
 using System.Text.Json;
 
 namespace Csls.Benchmarks;
@@ -14,6 +16,7 @@ namespace Csls.Benchmarks;
 [MemoryDiagnoser]
 public class WorkspaceLanguageOperationBenchmarks : IAsyncDisposable
 {
+    private const int LongLineVariableCount = 1_000;
     private static readonly TimeSpan s_readyTimeout = TimeSpan.FromMinutes(2);
     private Process _process = null!;
     private Task<string> _standardErrorTask = null!;
@@ -21,6 +24,7 @@ public class WorkspaceLanguageOperationBenchmarks : IAsyncDisposable
     private HeaderDelimitedMessageHandler _messageHandler = null!;
     private JsonRpc _rpc = null!;
     private TextDocumentPositionParams _hoverParameters = null!;
+    private SemanticTokensParams _longLineSemanticTokensParameters = null!;
     private SemanticTokensParams _semanticTokensParameters = null!;
     private WorkspaceSymbolParams _workspaceSymbolParameters = null!;
     private string _fixturePath = null!;
@@ -50,6 +54,10 @@ public class WorkspaceLanguageOperationBenchmarks : IAsyncDisposable
             ProjectText).ConfigureAwait(false);
         string documentPath = Path.Join(secondWorkspacePath, "UnicodeRoutingTarget.cs");
         await File.WriteAllTextAsync(documentPath, SecondDocumentText).ConfigureAwait(false);
+        string longLineDocumentPath = Path.Join(secondWorkspacePath, "LongLine.cs");
+        string longLineDocumentText = CreateLongLineDocument();
+        await File.WriteAllTextAsync(longLineDocumentPath, longLineDocumentText)
+            .ConfigureAwait(false);
 
         string repositoryRoot = FindRepositoryRoot();
         string workerPath = Path.Join(
@@ -127,6 +135,18 @@ public class WorkspaceLanguageOperationBenchmarks : IAsyncDisposable
                     Text = SecondDocumentText
                 }
             }).ConfigureAwait(false);
+        await _rpc.NotifyWithParameterObjectAsync(
+            "textDocument/didOpen",
+            new DidOpenTextDocumentParams
+            {
+                TextDocument = new TextDocumentItem
+                {
+                    Uri = DocumentUri.FromFileSystemPath(longLineDocumentPath),
+                    LanguageId = "csharp",
+                    Version = 1,
+                    Text = longLineDocumentText
+                }
+            }).ConfigureAwait(false);
 
         string targetLine = SecondDocumentText
             .Split('\n', StringSplitOptions.None)
@@ -148,6 +168,13 @@ public class WorkspaceLanguageOperationBenchmarks : IAsyncDisposable
         {
             TextDocument = documentIdentifier
         };
+        _longLineSemanticTokensParameters = new SemanticTokensParams
+        {
+            TextDocument = new TextDocumentIdentifier
+            {
+                Uri = DocumentUri.FromFileSystemPath(longLineDocumentPath)
+            }
+        };
         _workspaceSymbolParameters = new WorkspaceSymbolParams
         {
             Query = "UnicodeRoutingTarget"
@@ -155,10 +182,13 @@ public class WorkspaceLanguageOperationBenchmarks : IAsyncDisposable
 
         Hover? hover = await HoverThroughSecondWorkspaceAsync().ConfigureAwait(false);
         SemanticTokens tokens = await GetSemanticTokensAsync().ConfigureAwait(false);
+        SemanticTokens longLineTokens = await GetLongLineSemanticTokensAsync()
+            .ConfigureAwait(false);
         IReadOnlyList<WorkspaceSymbol> symbols = await SearchWorkspaceSymbolsAsync()
             .ConfigureAwait(false);
         if (hover is null ||
             tokens.Data.Count == 0 ||
+            longLineTokens.Data.Count < LongLineVariableCount * 5 ||
             !symbols.Any(static symbol => symbol.Name == "UnicodeRoutingTarget"))
         {
             throw new InvalidOperationException(
@@ -190,6 +220,16 @@ public class WorkspaceLanguageOperationBenchmarks : IAsyncDisposable
         _rpc.InvokeWithParameterObjectAsync<SemanticTokens>(
             "textDocument/semanticTokens/full",
             _semanticTokensParameters,
+            CancellationToken.None);
+
+    /// <summary>
+    /// Measures semantic-token normalization for many classifications on one source line.
+    /// </summary>
+    [Benchmark]
+    public Task<SemanticTokens> GetLongLineSemanticTokensAsync() =>
+        _rpc.InvokeWithParameterObjectAsync<SemanticTokens>(
+            "textDocument/semanticTokens/full",
+            _longLineSemanticTokensParameters,
             CancellationToken.None);
 
     /// <summary>
@@ -272,6 +312,28 @@ public class WorkspaceLanguageOperationBenchmarks : IAsyncDisposable
         }
 
         throw new InvalidOperationException("The csls repository root was not found.");
+    }
+
+    private static string CreateLongLineDocument()
+    {
+        var builder = new StringBuilder(LongLineVariableCount * 24);
+        builder.Append(
+            "namespace Second; public static class LongLineTarget { " +
+            "public static int Measure() { ");
+        for (int index = 0; index < LongLineVariableCount; index++)
+        {
+            string indexText = index.ToString(CultureInfo.InvariantCulture);
+            builder.Append("int value");
+            builder.Append(indexText);
+            builder.Append(" = ");
+            builder.Append(indexText);
+            builder.Append("; ");
+        }
+
+        builder.Append("return value");
+        builder.Append((LongLineVariableCount - 1).ToString(CultureInfo.InvariantCulture));
+        builder.Append("; } }");
+        return builder.ToString();
     }
 
     private const string ProjectText = """

@@ -3,6 +3,8 @@ using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.Classification;
 using Microsoft.CodeAnalysis.Text;
 using System.Collections.Frozen;
+using SemanticTokenFragment = (int Start, int End, int TokenType, int Modifiers, int Specificity, int Ordinal);
+using SemanticTokenPriority = (int Specificity, int TokenType, int Ordinal);
 
 namespace Csls.Workspaces;
 
@@ -274,44 +276,82 @@ internal static class WorkspaceSemanticTokensService
             int Specificity)> fragments) in fragmentsByLine)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            IReadOnlyList<int> boundaries =
-            [
-                .. fragments
-                    .SelectMany(static fragment => new[] { fragment.Start, fragment.End })
-                    .Distinct()
-                    .Order()
-            ];
-            for (int boundaryIndex = 0; boundaryIndex + 1 < boundaries.Count; boundaryIndex++)
+            var orderedFragments = new SemanticTokenFragment[fragments.Count];
+            int[] boundaries = new int[checked(fragments.Count * 2)];
+            for (int index = 0; index < fragments.Count; index++)
+            {
+                (int start, int end, int tokenType, int modifiers, int specificity) =
+                    fragments[index];
+                orderedFragments[index] = (
+                    start,
+                    end,
+                    tokenType,
+                    modifiers,
+                    specificity,
+                    index);
+                boundaries[index * 2] = start;
+                boundaries[(index * 2) + 1] = end;
+            }
+
+            Array.Sort(
+                orderedFragments,
+                static (left, right) =>
+                {
+                    int comparison = left.Start.CompareTo(right.Start);
+                    return comparison != 0
+                        ? comparison
+                        : left.Ordinal.CompareTo(right.Ordinal);
+                });
+            Array.Sort(boundaries);
+            int boundaryCount = 1;
+            for (int index = 1; index < boundaries.Length; index++)
+            {
+                if (boundaries[index] != boundaries[boundaryCount - 1])
+                {
+                    boundaries[boundaryCount++] = boundaries[index];
+                }
+            }
+
+            var activeFragments = new PriorityQueue<
+                SemanticTokenFragment,
+                SemanticTokenPriority>();
+            int nextFragment = 0;
+            for (int boundaryIndex = 0; boundaryIndex + 1 < boundaryCount; boundaryIndex++)
             {
                 int start = boundaries[boundaryIndex];
                 int end = boundaries[boundaryIndex + 1];
-                (int Start, int End, int TokenType, int Modifiers, int Specificity)? selected = null;
-                foreach ((int fragmentStart,
-                    int fragmentEnd,
-                    int tokenType,
-                    int modifiers,
-                    int specificity) in fragments)
+                while (nextFragment < orderedFragments.Length &&
+                    orderedFragments[nextFragment].Start <= start)
                 {
-                    if (fragmentStart > start || fragmentEnd < end)
-                    {
-                        continue;
-                    }
-
-                    if (selected is null ||
-                        specificity < selected.Value.Specificity ||
-                        (specificity == selected.Value.Specificity &&
-                            tokenType < selected.Value.TokenType))
-                    {
-                        selected = (
+                    (int fragmentStart,
+                        int fragmentEnd,
+                        int tokenType,
+                        int modifiers,
+                        int specificity,
+                        int ordinal) = orderedFragments[nextFragment++];
+                    activeFragments.Enqueue(
+                        (
                             fragmentStart,
                             fragmentEnd,
                             tokenType,
                             modifiers,
-                            specificity);
-                    }
+                            specificity,
+                            ordinal),
+                        (specificity, tokenType, ordinal));
                 }
 
-                if (selected is null)
+                while (activeFragments.TryPeek(
+                        out SemanticTokenFragment expired,
+                        out _) &&
+                    expired.End <= start)
+                {
+                    activeFragments.Dequeue();
+                }
+
+                if (!activeFragments.TryPeek(
+                        out SemanticTokenFragment selected,
+                        out _) ||
+                    selected.End < end)
                 {
                     continue;
                 }
@@ -326,8 +366,8 @@ internal static class WorkspaceSemanticTokensService
                         int priorModifiers) = tokens[^1];
                     if (priorLine == lineNumber &&
                         priorStart + priorLength == start &&
-                        priorTokenType == selected.Value.TokenType &&
-                        priorModifiers == selected.Value.Modifiers)
+                        priorTokenType == selected.TokenType &&
+                        priorModifiers == selected.Modifiers)
                     {
                         tokens[^1] = (
                             priorLine,
@@ -343,8 +383,8 @@ internal static class WorkspaceSemanticTokensService
                     lineNumber,
                     start,
                     length,
-                    selected.Value.TokenType,
-                    selected.Value.Modifiers));
+                    selected.TokenType,
+                    selected.Modifiers));
             }
         }
 
