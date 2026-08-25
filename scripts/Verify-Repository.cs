@@ -29,6 +29,7 @@ string repositoryRoot = FindRepositoryRoot();
 IReadOnlyList<string> trackedPaths = await ReadTrackedPathsAsync(repositoryRoot)
     .ConfigureAwait(false);
 var failures = new List<string>();
+VerifyRepositoryRoot(repositoryRoot, failures);
 VerifyFilePolicy(trackedPaths, failures);
 VerifyTrackedText(repositoryRoot, trackedPaths, failures);
 VerifyDependencies(repositoryRoot, failures);
@@ -48,6 +49,50 @@ await Console.Out.WriteLineAsync(
     $"Verified {trackedPaths.Count} repository files and all direct package dependencies.")
     .ConfigureAwait(false);
 return 0;
+
+static void VerifyRepositoryRoot(
+    string repositoryRoot,
+    ICollection<string> failures)
+{
+    string[] forbiddenDirectories =
+    [
+        "BenchmarkDotNet.Artifacts",
+        "TestResults"
+    ];
+    foreach (string path in Directory.EnumerateDirectories(
+        repositoryRoot,
+        "*",
+        SearchOption.TopDirectoryOnly))
+    {
+        if (forbiddenDirectories.Contains(
+            Path.GetFileName(path),
+            StringComparer.OrdinalIgnoreCase))
+        {
+            failures.Add(
+                $"Build and test artifacts belong under artifacts/: {Path.GetFileName(path)}");
+        }
+    }
+
+    string[] forbiddenExtensions =
+    [
+        ".binlog",
+        ".coverage",
+        ".trx"
+    ];
+    foreach (string path in Directory.EnumerateFiles(
+        repositoryRoot,
+        "*",
+        SearchOption.TopDirectoryOnly))
+    {
+        if (forbiddenExtensions.Contains(
+            Path.GetExtension(path),
+            StringComparer.OrdinalIgnoreCase))
+        {
+            failures.Add(
+                $"Build and test artifacts belong under artifacts/: {Path.GetFileName(path)}");
+        }
+    }
+}
 
 static string FindRepositoryRoot()
 {
