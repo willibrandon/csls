@@ -20,6 +20,7 @@ supports `--help`.
 | `Provision-Neovim.cs` | Installs the pinned Neovim editor oracle. |
 | `Run-Benchmarks.cs` | Builds and runs the BenchmarkDotNet suite. |
 | `Run-EndToEndPerformance.cs` | Publishes both Native AOT tools and measures real LSP, MCP, CLI, dashboard, and process-resource workloads. |
+| `Select-DevContainerValidation.cs` | Selects full container validation when a pull request changes its inputs. |
 | `Verify-Repository.cs` | Checks repository, dependency, and automation policies. |
 | `Verify-GitHubActions.cs` | Validates every workflow with actionlint. |
 | `Verify-CodeQl.cs` | Fails when CodeQL reports an unresolved finding. |
