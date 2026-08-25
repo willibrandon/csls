@@ -153,25 +153,51 @@ public sealed partial class WorkspaceManager : IAsyncDisposable
                     continue;
                 }
 
-                foreach (string workspaceFile in workspaceFiles)
+                VisualStudioInstance? msBuildInstance = MSBuildRegistration.EnsureRegistered(
+                    workspaceFiles[0]);
+                if (msBuildInstance is not null)
                 {
-                    cancellationToken.ThrowIfCancellationRequested();
-                    (Workspace Workspace, Solution Solution) loaded =
-                        await LoadWorkspaceFileAsync(
-                            workspaceFile,
-                            buildConfiguration,
-                            cancellationToken).ConfigureAwait(false);
-                    try
+                    LogMSBuildRegistered(
+                        msBuildInstance.Name,
+                        msBuildInstance.Version,
+                        msBuildInstance.MSBuildPath,
+                        workspaceFiles[0]);
+                }
+
+                var loadedWorkspaces = new (Workspace Workspace, Solution Solution)?[
+                    workspaceFiles.Count];
+                try
+                {
+                    await Parallel.ForAsync(
+                        0,
+                        workspaceFiles.Count,
+                        cancellationToken,
+                        async (index, parallelCancellationToken) =>
+                        {
+                            loadedWorkspaces[index] = await LoadWorkspaceFileAsync(
+                                workspaceFiles[index],
+                                buildConfiguration,
+                                parallelCancellationToken).ConfigureAwait(false);
+                        }).ConfigureAwait(false);
+
+                    for (int index = 0; index < workspaceFiles.Count; index++)
                     {
+                        string workspaceFile = workspaceFiles[index];
+                        (Workspace Workspace, Solution Solution) loaded =
+                            loadedWorkspaces[index] ?? throw new InvalidOperationException(
+                                $"Workspace loading did not produce a result for {workspaceFile}.");
                         loadedFolders.Add((rootPath, loaded.Workspace, loaded.Solution));
                         LogWorkspaceLoaded(
                             loaded.Solution.ProjectIds.Count,
                             workspaceFile);
+                        loadedWorkspaces[index] = null;
                     }
-                    catch
+                }
+                finally
+                {
+                    foreach ((Workspace Workspace, Solution Solution)? loaded in loadedWorkspaces)
                     {
-                        loaded.Workspace.Dispose();
-                        throw;
+                        loaded?.Workspace.Dispose();
                     }
                 }
             }
@@ -190,16 +216,6 @@ public sealed partial class WorkspaceManager : IAsyncDisposable
         string buildConfiguration,
         CancellationToken cancellationToken)
     {
-        VisualStudioInstance? msBuildInstance = MSBuildRegistration.EnsureRegistered(workspaceFile);
-        if (msBuildInstance is not null)
-        {
-            LogMSBuildRegistered(
-                msBuildInstance.Name,
-                msBuildInstance.Version,
-                msBuildInstance.MSBuildPath,
-                workspaceFile);
-        }
-
         var globalProperties = new Dictionary<string, string>(
             StringComparer.OrdinalIgnoreCase)
         {

@@ -36,6 +36,7 @@ public sealed partial class LanguageServer : ILspRpcTarget, IAsyncDisposable
     private bool _hoverMarkdownSupport;
     private bool _signatureMarkdownSupport;
     private LanguageServerConfiguration _configuration = new();
+    private string[] _rootPaths = [];
     private int _lifecycleState;
     private int _workspacePhase;
     private int _disposeState;
@@ -135,11 +136,12 @@ public sealed partial class LanguageServer : ILspRpcTarget, IAsyncDisposable
             cancellationToken);
 
     /// <inheritdoc />
-    public async Task<InitializeResult> InitializeAsync(
+    public Task<InitializeResult> InitializeAsync(
         InitializeParams parameters,
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(parameters);
+        cancellationToken.ThrowIfCancellationRequested();
         Transition(ServerLifecycleState.Created, ServerLifecycleState.InitializeResponded);
         _completionMarkdownSupport = SupportsDocumentationMarkdown(
             parameters.Capabilities,
@@ -181,39 +183,9 @@ public sealed partial class LanguageServer : ILspRpcTarget, IAsyncDisposable
             parameters.InitializationOptions);
         _configuration = configuration;
         _logFilter.SetMinimumLevel(configuration.LogLevel);
-        string[] rootPaths = ResolveRootPaths(parameters);
+        _rootPaths = ResolveRootPaths(parameters);
         Volatile.Write(ref _workspacePhase, (int)ServerWorkspacePhase.Configured);
-        try
-        {
-            Volatile.Write(ref _workspacePhase, (int)ServerWorkspacePhase.Loading);
-            await _scheduler.ScheduleAsync(
-                "initialize",
-                RequestMode.ReadWrite,
-                () => _workspaceManager.Generation,
-                async context =>
-                {
-                    await _workspaceManager
-                        .ConfigureAsync(
-                            configuration.EnableAnalyzers,
-                            configuration.BuildConfiguration,
-                            context.CancellationToken)
-                        .ConfigureAwait(false);
-                    await _workspaceManager
-                        .LoadAsync(rootPaths, context.CancellationToken)
-                        .ConfigureAwait(false);
-                    return true;
-                },
-                cancellationToken).ConfigureAwait(false);
-            Volatile.Write(ref _workspacePhase, (int)ServerWorkspacePhase.Configured);
-        }
-        catch
-        {
-            Volatile.Write(ref _workspacePhase, (int)ServerWorkspacePhase.Uninitialized);
-            throw;
-        }
-
-        LogInitialized(rootPaths.Length);
-        return new InitializeResult
+        return Task.FromResult(new InitializeResult
         {
             Capabilities = new ServerCapabilities
             {
@@ -316,7 +288,7 @@ public sealed partial class LanguageServer : ILspRpcTarget, IAsyncDisposable
                 Name = "csls",
                 Version = typeof(LanguageServer).Assembly.GetName().Version?.ToString()
             }
-        };
+        });
     }
 
     /// <inheritdoc />
@@ -327,12 +299,42 @@ public sealed partial class LanguageServer : ILspRpcTarget, IAsyncDisposable
         ArgumentNullException.ThrowIfNull(parameters);
         cancellationToken.ThrowIfCancellationRequested();
         Transition(ServerLifecycleState.InitializeResponded, ServerLifecycleState.Running);
-        if (_supportsConfigurationPull)
+        Volatile.Write(ref _workspacePhase, (int)ServerWorkspacePhase.Loading);
+        try
         {
-            await PullConfigurationAsync(cancellationToken).ConfigureAwait(false);
+            await _scheduler.ScheduleAsync(
+                "initialized",
+                RequestMode.ReadWrite,
+                () => _workspaceManager.Generation,
+                async context =>
+                {
+                    if (_supportsConfigurationPull)
+                    {
+                        await PullConfigurationCoreAsync(context.CancellationToken)
+                            .ConfigureAwait(false);
+                    }
+                    else
+                    {
+                        await ApplyConfigurationCoreAsync(
+                            _configuration,
+                            context.CancellationToken).ConfigureAwait(false);
+                    }
+
+                    await _workspaceManager
+                        .LoadAsync(_rootPaths, context.CancellationToken)
+                        .ConfigureAwait(false);
+                    return true;
+                },
+                cancellationToken).ConfigureAwait(false);
+        }
+        catch
+        {
+            Volatile.Write(ref _workspacePhase, (int)ServerWorkspacePhase.Uninitialized);
+            throw;
         }
 
         Volatile.Write(ref _workspacePhase, (int)ServerWorkspacePhase.Ready);
+        LogInitialized(_rootPaths.Length);
     }
 
     /// <inheritdoc />
