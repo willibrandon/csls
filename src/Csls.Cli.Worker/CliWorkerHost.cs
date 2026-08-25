@@ -32,7 +32,10 @@ internal static class CliWorkerHost
                 ? Fail("invalid-request", "The launcher supplied no CLI operation.", writeJson)
                 : arguments[0] switch
                 {
-                    "sessions-list" => await ListSessionsAsync(writeJson, cancellationToken)
+                    "sessions-list" => await ListSessionsAsync(
+                        arguments,
+                        writeJson,
+                        cancellationToken)
                         .ConfigureAwait(false),
                     "sessions-show" => await ShowSessionAsync(arguments, writeJson, cancellationToken)
                         .ConfigureAwait(false),
@@ -127,13 +130,29 @@ internal static class CliWorkerHost
     }
 
     private static async Task<int> ListSessionsAsync(
+        IReadOnlyList<string> arguments,
         bool writeJson,
         CancellationToken cancellationToken)
     {
+        if (arguments.Count != 4 ||
+            !int.TryParse(
+                arguments[2],
+                NumberStyles.None,
+                CultureInfo.InvariantCulture,
+                out int limit))
+        {
+            return Fail("invalid-request", "The launcher supplied an invalid session list.", writeJson);
+        }
+
         IReadOnlyList<ControlSessionInfo> sessions = await ControlSessionDiscovery
             .DiscoverAsync(cancellationToken)
             .ConfigureAwait(false);
-        CliOutputWriter.WriteSessions(sessions, writeJson);
+        CliPage<ControlSessionInfo> page = CliPagination.Create(
+            sessions,
+            "sessions-list",
+            arguments[1],
+            limit);
+        CliOutputWriter.WriteSessions(page.Items, writeJson, page.NextCursor);
         return 0;
     }
 
@@ -179,19 +198,21 @@ internal static class CliWorkerHost
         string? workspacePath = string.IsNullOrWhiteSpace(arguments[3])
             ? null
             : arguments[3];
-        ControlSessionInfo session = await ControlSessionDiscovery.ResolveAsync(
+        CliControlSession session = await CliControlSession.ConnectAsync(
             processId,
             workspacePath,
             cancellationToken).ConfigureAwait(false);
-        var client = new ControlRpcClient(session.SocketPath);
-        await using ConfiguredAsyncDisposable clientCleanup = client.ConfigureAwait(false);
+        await using ConfiguredAsyncDisposable sessionCleanup = session.ConfigureAwait(false);
         ControlWorkspaceOperationResult result = arguments[1] switch
         {
-            "restore" => await client.RestoreWorkspaceAsync(cancellationToken).ConfigureAwait(false),
-            "reload" => await client.ReloadWorkspaceAsync(cancellationToken).ConfigureAwait(false),
-            "restart-build-host" => await client.RestartBuildHostsAsync(cancellationToken)
+            "restore" => await session.Client.RestoreWorkspaceAsync(cancellationToken)
                 .ConfigureAwait(false),
-            "clear-cache" => await client.ClearCachesAsync(cancellationToken).ConfigureAwait(false),
+            "reload" => await session.Client.ReloadWorkspaceAsync(cancellationToken)
+                .ConfigureAwait(false),
+            "restart-build-host" => await session.Client.RestartBuildHostsAsync(cancellationToken)
+                .ConfigureAwait(false),
+            "clear-cache" => await session.Client.ClearCachesAsync(cancellationToken)
+                .ConfigureAwait(false),
             _ => throw new InvalidDataException(
                 $"The launcher supplied an unknown workspace operation: {arguments[1]}")
         };
@@ -204,26 +225,38 @@ internal static class CliWorkerHost
         bool writeJson,
         CancellationToken cancellationToken)
     {
-        if (arguments.Count != 4 ||
+        if (arguments.Count != 6 ||
             !int.TryParse(
                 arguments[1],
                 NumberStyles.None,
                 CultureInfo.InvariantCulture,
-                out int processId))
+                out int processId) ||
+            !int.TryParse(
+                arguments[4],
+                NumberStyles.None,
+                CultureInfo.InvariantCulture,
+                out int limit))
         {
             return Fail("invalid-request", "The launcher supplied an invalid request list.", writeJson);
         }
 
-        ControlSessionInfo session = await ControlSessionDiscovery.ResolveAsync(
+        CliControlSession session = await CliControlSession.ConnectAsync(
             processId,
             string.IsNullOrWhiteSpace(arguments[2]) ? null : arguments[2],
             cancellationToken).ConfigureAwait(false);
-        var client = new ControlRpcClient(session.SocketPath);
-        await using ConfiguredAsyncDisposable clientCleanup = client.ConfigureAwait(false);
-        ControlDashboardSnapshot dashboard = await client.GetDashboardSnapshotAsync(
+        await using ConfiguredAsyncDisposable sessionCleanup = session.ConfigureAwait(false);
+        ControlDashboardSnapshot dashboard = await session.Client.GetDashboardSnapshotAsync(
             new ControlDashboardRequest { IncludeDiagnostics = false },
             cancellationToken).ConfigureAwait(false);
-        CliOutputWriter.WriteRequests(dashboard.Requests, writeJson);
+        CliPage<ControlRequestInfo> page = CliPagination.Create(
+            dashboard.Requests.ActiveRequests,
+            "requests-list",
+            arguments[3],
+            limit);
+        CliOutputWriter.WriteRequests(
+            CreateRequestPage(dashboard.Requests, page.Items),
+            writeJson,
+            page.NextCursor);
         return 0;
     }
 
@@ -246,13 +279,12 @@ internal static class CliWorkerHost
                 writeJson);
         }
 
-        ControlSessionInfo session = await ControlSessionDiscovery.ResolveAsync(
+        CliControlSession session = await CliControlSession.ConnectAsync(
             processId,
             string.IsNullOrWhiteSpace(arguments[2]) ? null : arguments[2],
             cancellationToken).ConfigureAwait(false);
-        var client = new ControlRpcClient(session.SocketPath);
-        await using ConfiguredAsyncDisposable clientCleanup = client.ConfigureAwait(false);
-        ControlCancelRequestResult result = await client.CancelRequestAsync(
+        await using ConfiguredAsyncDisposable sessionCleanup = session.ConfigureAwait(false);
+        ControlCancelRequestResult result = await session.Client.CancelRequestAsync(
             new ControlCancelRequest { CorrelationId = correlationId },
             cancellationToken).ConfigureAwait(false);
         CliOutputWriter.WriteRequestCancellation(result, writeJson);
@@ -274,16 +306,15 @@ internal static class CliWorkerHost
             return Fail("invalid-request", "The launcher supplied an invalid trace request.", writeJson);
         }
 
-        ControlSessionInfo session = await ControlSessionDiscovery.ResolveAsync(
+        CliControlSession session = await CliControlSession.ConnectAsync(
             processId,
             string.IsNullOrWhiteSpace(arguments[3]) ? null : arguments[3],
             cancellationToken).ConfigureAwait(false);
-        var client = new ControlRpcClient(session.SocketPath);
-        await using ConfiguredAsyncDisposable clientCleanup = client.ConfigureAwait(false);
+        await using ConfiguredAsyncDisposable sessionCleanup = session.ConfigureAwait(false);
         ControlTraceInfo trace = arguments[1] switch
         {
-            "start" => await client.StartTraceAsync(cancellationToken).ConfigureAwait(false),
-            "stop" => await client.StopTraceAsync(cancellationToken).ConfigureAwait(false),
+            "start" => await session.Client.StartTraceAsync(cancellationToken).ConfigureAwait(false),
+            "stop" => await session.Client.StopTraceAsync(cancellationToken).ConfigureAwait(false),
             _ => throw new InvalidDataException(
                 $"The launcher supplied an unknown trace operation: {arguments[1]}")
         };
@@ -313,22 +344,23 @@ internal static class CliWorkerHost
         bool writeJson,
         CancellationToken cancellationToken)
     {
-        if (arguments.Count != 6 ||
+        if (arguments.Count != 7 ||
             !int.TryParse(arguments[1], NumberStyles.None, CultureInfo.InvariantCulture, out int processId) ||
-            !int.TryParse(arguments[3], NumberStyles.None, CultureInfo.InvariantCulture, out int line) ||
-            !int.TryParse(arguments[4], NumberStyles.None, CultureInfo.InvariantCulture, out int character))
+            !int.TryParse(arguments[4], NumberStyles.None, CultureInfo.InvariantCulture, out int line) ||
+            !int.TryParse(arguments[5], NumberStyles.None, CultureInfo.InvariantCulture, out int character))
         {
             return Fail("invalid-request", "The launcher supplied an invalid hover request.", writeJson);
         }
 
-        ControlSessionInfo session = await ResolveSessionAsync(processId, cancellationToken)
-            .ConfigureAwait(false);
-        var client = new ControlRpcClient(session.SocketPath);
-        await using ConfiguredAsyncDisposable clientCleanup = client.ConfigureAwait(false);
-        ControlHoverResult hover = await client.GetHoverAsync(
+        CliControlSession session = await CliControlSession.ConnectAsync(
+            processId,
+            arguments[2],
+            cancellationToken).ConfigureAwait(false);
+        await using ConfiguredAsyncDisposable sessionCleanup = session.ConfigureAwait(false);
+        ControlHoverResult hover = await session.Client.GetHoverAsync(
             new ControlHoverRequest
             {
-                DocumentPath = arguments[2],
+                DocumentPath = arguments[3],
                 Position = new Position(line, character)
             },
             cancellationToken).ConfigureAwait(false);
@@ -341,8 +373,9 @@ internal static class CliWorkerHost
         bool writeJson,
         CancellationToken cancellationToken)
     {
-        if (arguments.Count != 5 ||
-            !int.TryParse(arguments[1], NumberStyles.None, CultureInfo.InvariantCulture, out int processId))
+        if (arguments.Count != 8 ||
+            !int.TryParse(arguments[1], NumberStyles.None, CultureInfo.InvariantCulture, out int processId) ||
+            !int.TryParse(arguments[6], NumberStyles.None, CultureInfo.InvariantCulture, out int limit))
         {
             return Fail(
                 "invalid-request",
@@ -350,18 +383,27 @@ internal static class CliWorkerHost
                 writeJson);
         }
 
-        ControlSessionInfo session = await ResolveSessionAsync(processId, cancellationToken)
-            .ConfigureAwait(false);
-        var client = new ControlRpcClient(session.SocketPath);
-        await using ConfiguredAsyncDisposable clientCleanup = client.ConfigureAwait(false);
-        DocumentDiagnosticReport report = await client.GetDiagnosticsAsync(
+        CliControlSession session = await CliControlSession.ConnectAsync(
+            processId,
+            arguments[2],
+            cancellationToken).ConfigureAwait(false);
+        await using ConfiguredAsyncDisposable sessionCleanup = session.ConfigureAwait(false);
+        DocumentDiagnosticReport report = await session.Client.GetDiagnosticsAsync(
             new ControlDiagnosticRequest
             {
-                DocumentPath = arguments[2],
-                PreviousResultId = string.IsNullOrEmpty(arguments[3]) ? null : arguments[3]
+                DocumentPath = arguments[3],
+                PreviousResultId = string.IsNullOrEmpty(arguments[4]) ? null : arguments[4]
             },
             cancellationToken).ConfigureAwait(false);
-        CliOutputWriter.WriteDiagnostics(report, writeJson);
+        CliPage<Diagnostic> page = CliPagination.Create(
+            report.Items ?? [],
+            "query-diagnostics",
+            arguments[5],
+            limit);
+        CliOutputWriter.WriteDiagnostics(
+            report with { Items = page.Items },
+            writeJson,
+            page.NextCursor);
         return 0;
     }
 
@@ -370,10 +412,11 @@ internal static class CliWorkerHost
         bool writeJson,
         CancellationToken cancellationToken)
     {
-        if (arguments.Count != 6 ||
+        if (arguments.Count != 9 ||
             !int.TryParse(arguments[1], NumberStyles.None, CultureInfo.InvariantCulture, out int processId) ||
-            !int.TryParse(arguments[3], NumberStyles.None, CultureInfo.InvariantCulture, out int line) ||
-            !int.TryParse(arguments[4], NumberStyles.None, CultureInfo.InvariantCulture, out int character))
+            !int.TryParse(arguments[4], NumberStyles.None, CultureInfo.InvariantCulture, out int line) ||
+            !int.TryParse(arguments[5], NumberStyles.None, CultureInfo.InvariantCulture, out int character) ||
+            !int.TryParse(arguments[7], NumberStyles.None, CultureInfo.InvariantCulture, out int limit))
         {
             return Fail(
                 "invalid-request",
@@ -381,18 +424,31 @@ internal static class CliWorkerHost
                 writeJson);
         }
 
-        ControlSessionInfo session = await ResolveSessionAsync(processId, cancellationToken)
-            .ConfigureAwait(false);
-        var client = new ControlRpcClient(session.SocketPath);
-        await using ConfiguredAsyncDisposable clientCleanup = client.ConfigureAwait(false);
-        CompletionList completion = await client.GetCompletionAsync(
+        CliControlSession session = await CliControlSession.ConnectAsync(
+            processId,
+            arguments[2],
+            cancellationToken).ConfigureAwait(false);
+        await using ConfiguredAsyncDisposable sessionCleanup = session.ConfigureAwait(false);
+        CompletionList completion = await session.Client.GetCompletionAsync(
             new ControlCompletionRequest
             {
-                DocumentPath = arguments[2],
+                DocumentPath = arguments[3],
                 Position = new Position(line, character)
             },
             cancellationToken).ConfigureAwait(false);
-        CliOutputWriter.WriteCompletion(completion, writeJson);
+        CliPage<CompletionItem> page = CliPagination.Create(
+            completion.Items,
+            "query-completion",
+            arguments[6],
+            limit);
+        CliOutputWriter.WriteCompletion(
+            completion with
+            {
+                IsIncomplete = completion.IsIncomplete || page.NextCursor is not null,
+                Items = page.Items
+            },
+            writeJson,
+            page.NextCursor);
         return 0;
     }
 
@@ -401,7 +457,7 @@ internal static class CliWorkerHost
         bool writeJson,
         CancellationToken cancellationToken)
     {
-        if (arguments.Count != 8 ||
+        if (arguments.Count != 11 ||
             arguments[1] is not (
                 "definition" or
                 "declaration" or
@@ -411,9 +467,10 @@ internal static class CliWorkerHost
                 "highlights" or
                 "references") ||
             !int.TryParse(arguments[2], NumberStyles.None, CultureInfo.InvariantCulture, out int processId) ||
-            !int.TryParse(arguments[4], NumberStyles.None, CultureInfo.InvariantCulture, out int line) ||
-            !int.TryParse(arguments[5], NumberStyles.None, CultureInfo.InvariantCulture, out int character) ||
-            !bool.TryParse(arguments[6], out bool includeDeclaration))
+            !int.TryParse(arguments[5], NumberStyles.None, CultureInfo.InvariantCulture, out int line) ||
+            !int.TryParse(arguments[6], NumberStyles.None, CultureInfo.InvariantCulture, out int character) ||
+            !bool.TryParse(arguments[7], out bool includeDeclaration) ||
+            !int.TryParse(arguments[9], NumberStyles.None, CultureInfo.InvariantCulture, out int limit))
         {
             return Fail(
                 "invalid-request",
@@ -421,52 +478,71 @@ internal static class CliWorkerHost
                 writeJson);
         }
 
-        ControlSessionInfo session = await ResolveSessionAsync(processId, cancellationToken)
-            .ConfigureAwait(false);
-        var client = new ControlRpcClient(session.SocketPath);
-        await using ConfiguredAsyncDisposable clientCleanup = client.ConfigureAwait(false);
+        CliControlSession session = await CliControlSession.ConnectAsync(
+            processId,
+            arguments[3],
+            cancellationToken).ConfigureAwait(false);
+        await using ConfiguredAsyncDisposable sessionCleanup = session.ConfigureAwait(false);
         var request = new ControlNavigationRequest
         {
-            DocumentPath = arguments[3],
+            DocumentPath = arguments[4],
             Position = new Position(line, character),
             IncludeDeclaration = includeDeclaration
         };
         if (string.Equals(arguments[1], "selection-range", StringComparison.Ordinal))
         {
-            IReadOnlyList<SelectionRange> ranges = await client.GetSelectionRangesAsync(
+            IReadOnlyList<SelectionRange> ranges = await session.Client.GetSelectionRangesAsync(
                 new ControlSelectionRangeRequest
                 {
-                    DocumentPath = arguments[3],
+                    DocumentPath = arguments[4],
                     Positions = [new Position(line, character)]
                 },
                 cancellationToken).ConfigureAwait(false);
-            CliOutputWriter.WriteSelectionRanges(ranges, writeJson);
+            CliPage<SelectionRange> page = CliPagination.Create(
+                ranges,
+                "query-selection-range",
+                arguments[8],
+                limit);
+            CliOutputWriter.WriteSelectionRanges(page.Items, writeJson, page.NextCursor);
             return 0;
         }
 
         if (string.Equals(arguments[1], "highlights", StringComparison.Ordinal))
         {
-            IReadOnlyList<DocumentHighlight> highlights = await client
+            IReadOnlyList<DocumentHighlight> highlights = await session.Client
                 .GetDocumentHighlightsAsync(request, cancellationToken)
                 .ConfigureAwait(false);
-            CliOutputWriter.WriteDocumentHighlights(highlights, writeJson);
+            CliPage<DocumentHighlight> page = CliPagination.Create(
+                highlights,
+                "query-highlights",
+                arguments[8],
+                limit);
+            CliOutputWriter.WriteDocumentHighlights(page.Items, writeJson, page.NextCursor);
             return 0;
         }
 
         IReadOnlyList<Location> locations = arguments[1] switch
         {
-            "definition" => await client.GetDefinitionAsync(request, cancellationToken)
+            "definition" => await session.Client.GetDefinitionAsync(request, cancellationToken)
                 .ConfigureAwait(false),
-            "declaration" => await client.GetDeclarationAsync(request, cancellationToken)
+            "declaration" => await session.Client.GetDeclarationAsync(request, cancellationToken)
                 .ConfigureAwait(false),
-            "type-definition" => await client.GetTypeDefinitionAsync(request, cancellationToken)
+            "type-definition" => await session.Client.GetTypeDefinitionAsync(request, cancellationToken)
                 .ConfigureAwait(false),
-            "implementation" => await client.GetImplementationAsync(request, cancellationToken)
+            "implementation" => await session.Client.GetImplementationAsync(request, cancellationToken)
                 .ConfigureAwait(false),
-            _ => await client.GetReferencesAsync(request, cancellationToken)
+            _ => await session.Client.GetReferencesAsync(request, cancellationToken)
                 .ConfigureAwait(false)
         };
-        CliOutputWriter.WriteLocations(locations, writeJson);
+        CliPage<Location> locationPage = CliPagination.Create(
+            locations,
+            string.Concat("query-", arguments[1]),
+            arguments[8],
+            limit);
+        CliOutputWriter.WriteLocations(
+            locationPage.Items,
+            writeJson,
+            locationPage.NextCursor);
         return 0;
     }
 
@@ -475,9 +551,11 @@ internal static class CliWorkerHost
         bool writeJson,
         CancellationToken cancellationToken)
     {
-        if (arguments.Count != 4 ||
+        if (arguments.Count != 7 ||
             !int.TryParse(arguments[1], NumberStyles.None, CultureInfo.InvariantCulture,
-                out int processId))
+                out int processId) ||
+            !int.TryParse(arguments[5], NumberStyles.None, CultureInfo.InvariantCulture,
+                out int limit))
         {
             return Fail(
                 "invalid-request",
@@ -485,14 +563,20 @@ internal static class CliWorkerHost
                 writeJson);
         }
 
-        ControlSessionInfo session = await ResolveSessionAsync(processId, cancellationToken)
-            .ConfigureAwait(false);
-        var client = new ControlRpcClient(session.SocketPath);
-        await using ConfiguredAsyncDisposable clientCleanup = client.ConfigureAwait(false);
-        IReadOnlyList<DocumentSymbol> symbols = await client.GetDocumentSymbolsAsync(
-            new ControlDocumentRequest { DocumentPath = arguments[2] },
+        CliControlSession session = await CliControlSession.ConnectAsync(
+            processId,
+            arguments[2],
             cancellationToken).ConfigureAwait(false);
-        CliOutputWriter.WriteDocumentSymbols(symbols, writeJson);
+        await using ConfiguredAsyncDisposable sessionCleanup = session.ConfigureAwait(false);
+        IReadOnlyList<DocumentSymbol> symbols = await session.Client.GetDocumentSymbolsAsync(
+            new ControlDocumentRequest { DocumentPath = arguments[3] },
+            cancellationToken).ConfigureAwait(false);
+        CliPage<DocumentSymbol> page = CliPagination.Create(
+            symbols,
+            "query-document-symbols",
+            arguments[4],
+            limit);
+        CliOutputWriter.WriteDocumentSymbols(page.Items, writeJson, page.NextCursor);
         return 0;
     }
 
@@ -501,9 +585,11 @@ internal static class CliWorkerHost
         bool writeJson,
         CancellationToken cancellationToken)
     {
-        if (arguments.Count != 4 ||
+        if (arguments.Count != 7 ||
             !int.TryParse(arguments[1], NumberStyles.None, CultureInfo.InvariantCulture,
-                out int processId))
+                out int processId) ||
+            !int.TryParse(arguments[5], NumberStyles.None, CultureInfo.InvariantCulture,
+                out int limit))
         {
             return Fail(
                 "invalid-request",
@@ -511,14 +597,20 @@ internal static class CliWorkerHost
                 writeJson);
         }
 
-        ControlSessionInfo session = await ResolveSessionAsync(processId, cancellationToken)
-            .ConfigureAwait(false);
-        var client = new ControlRpcClient(session.SocketPath);
-        await using ConfiguredAsyncDisposable clientCleanup = client.ConfigureAwait(false);
-        IReadOnlyList<WorkspaceSymbol> symbols = await client.GetWorkspaceSymbolsAsync(
-            new ControlWorkspaceSymbolRequest { Query = arguments[2] },
+        CliControlSession session = await CliControlSession.ConnectAsync(
+            processId,
+            arguments[2],
             cancellationToken).ConfigureAwait(false);
-        CliOutputWriter.WriteWorkspaceSymbols(symbols, writeJson);
+        await using ConfiguredAsyncDisposable sessionCleanup = session.ConfigureAwait(false);
+        IReadOnlyList<WorkspaceSymbol> symbols = await session.Client.GetWorkspaceSymbolsAsync(
+            new ControlWorkspaceSymbolRequest { Query = arguments[3] },
+            cancellationToken).ConfigureAwait(false);
+        CliPage<WorkspaceSymbol> page = CliPagination.Create(
+            symbols,
+            "query-workspace-symbols",
+            arguments[4],
+            limit);
+        CliOutputWriter.WriteWorkspaceSymbols(page.Items, writeJson, page.NextCursor);
         return 0;
     }
 
@@ -527,12 +619,12 @@ internal static class CliWorkerHost
         bool writeJson,
         CancellationToken cancellationToken)
     {
-        if (arguments.Count != 6 ||
+        if (arguments.Count != 7 ||
             !int.TryParse(arguments[1], NumberStyles.None, CultureInfo.InvariantCulture,
                 out int processId) ||
-            !int.TryParse(arguments[3], NumberStyles.None, CultureInfo.InvariantCulture,
-                out int line) ||
             !int.TryParse(arguments[4], NumberStyles.None, CultureInfo.InvariantCulture,
+                out int line) ||
+            !int.TryParse(arguments[5], NumberStyles.None, CultureInfo.InvariantCulture,
                 out int character))
         {
             return Fail(
@@ -541,14 +633,15 @@ internal static class CliWorkerHost
                 writeJson);
         }
 
-        ControlSessionInfo session = await ResolveSessionAsync(processId, cancellationToken)
-            .ConfigureAwait(false);
-        var client = new ControlRpcClient(session.SocketPath);
-        await using ConfiguredAsyncDisposable clientCleanup = client.ConfigureAwait(false);
-        SignatureHelp? signatureHelp = await client.GetSignatureHelpAsync(
+        CliControlSession session = await CliControlSession.ConnectAsync(
+            processId,
+            arguments[2],
+            cancellationToken).ConfigureAwait(false);
+        await using ConfiguredAsyncDisposable sessionCleanup = session.ConfigureAwait(false);
+        SignatureHelp? signatureHelp = await session.Client.GetSignatureHelpAsync(
             new ControlSignatureHelpRequest
             {
-                DocumentPath = arguments[2],
+                DocumentPath = arguments[3],
                 Position = new Position(line, character)
             },
             cancellationToken).ConfigureAwait(false);
@@ -561,14 +654,14 @@ internal static class CliWorkerHost
         bool writeJson,
         CancellationToken cancellationToken)
     {
-        if (arguments.Count != 8 ||
+        if (arguments.Count != 9 ||
             !int.TryParse(arguments[1], NumberStyles.None, CultureInfo.InvariantCulture,
                 out int processId) ||
-            !int.TryParse(arguments[3], NumberStyles.None, CultureInfo.InvariantCulture,
-                out int line) ||
             !int.TryParse(arguments[4], NumberStyles.None, CultureInfo.InvariantCulture,
+                out int line) ||
+            !int.TryParse(arguments[5], NumberStyles.None, CultureInfo.InvariantCulture,
                 out int character) ||
-            !bool.TryParse(arguments[6], out bool apply))
+            !bool.TryParse(arguments[7], out bool apply))
         {
             return Fail(
                 "invalid-request",
@@ -576,21 +669,22 @@ internal static class CliWorkerHost
                 writeJson);
         }
 
-        ControlSessionInfo session = await ResolveSessionAsync(processId, cancellationToken)
-            .ConfigureAwait(false);
-        var client = new ControlRpcClient(session.SocketPath);
-        await using ConfiguredAsyncDisposable clientCleanup = client.ConfigureAwait(false);
-        ControlEditPlan plan = await client.PreviewRenameAsync(
+        CliControlSession session = await CliControlSession.ConnectAsync(
+            processId,
+            arguments[2],
+            cancellationToken).ConfigureAwait(false);
+        await using ConfiguredAsyncDisposable sessionCleanup = session.ConfigureAwait(false);
+        ControlEditPlan plan = await session.Client.PreviewRenameAsync(
             new ControlRenameRequest
             {
-                DocumentPath = arguments[2],
+                DocumentPath = arguments[3],
                 Position = new Position(line, character),
-                NewName = arguments[5]
+                NewName = arguments[6]
             },
             cancellationToken).ConfigureAwait(false);
         if (apply)
         {
-            ControlApplyEditPlanResult result = await client.ApplyEditPlanAsync(
+            ControlApplyEditPlanResult result = await session.Client.ApplyEditPlanAsync(
                 new ControlApplyEditPlanRequest { PlanId = plan.PlanId },
                 cancellationToken).ConfigureAwait(false);
             CliOutputWriter.WriteAppliedEditPlan(result, writeJson);
@@ -608,13 +702,13 @@ internal static class CliWorkerHost
         bool writeJson,
         CancellationToken cancellationToken)
     {
-        if (arguments.Count != 7 ||
+        if (arguments.Count != 8 ||
             !int.TryParse(arguments[1], NumberStyles.None, CultureInfo.InvariantCulture,
                 out int processId) ||
-            !int.TryParse(arguments[3], NumberStyles.None, CultureInfo.InvariantCulture,
+            !int.TryParse(arguments[4], NumberStyles.None, CultureInfo.InvariantCulture,
                 out int tabSize) ||
-            !bool.TryParse(arguments[4], out bool insertSpaces) ||
-            !bool.TryParse(arguments[5], out bool apply))
+            !bool.TryParse(arguments[5], out bool insertSpaces) ||
+            !bool.TryParse(arguments[6], out bool apply))
         {
             return Fail(
                 "invalid-request",
@@ -622,14 +716,15 @@ internal static class CliWorkerHost
                 writeJson);
         }
 
-        ControlSessionInfo session = await ResolveSessionAsync(processId, cancellationToken)
-            .ConfigureAwait(false);
-        var client = new ControlRpcClient(session.SocketPath);
-        await using ConfiguredAsyncDisposable clientCleanup = client.ConfigureAwait(false);
-        ControlEditPlan plan = await client.PreviewFormattingAsync(
+        CliControlSession session = await CliControlSession.ConnectAsync(
+            processId,
+            arguments[2],
+            cancellationToken).ConfigureAwait(false);
+        await using ConfiguredAsyncDisposable sessionCleanup = session.ConfigureAwait(false);
+        ControlEditPlan plan = await session.Client.PreviewFormattingAsync(
             new ControlFormattingRequest
             {
-                DocumentPath = arguments[2],
+                DocumentPath = arguments[3],
                 Options = new FormattingOptions
                 {
                     TabSize = tabSize,
@@ -642,7 +737,7 @@ internal static class CliWorkerHost
             cancellationToken).ConfigureAwait(false);
         if (apply)
         {
-            ControlApplyEditPlanResult result = await client.ApplyEditPlanAsync(
+            ControlApplyEditPlanResult result = await session.Client.ApplyEditPlanAsync(
                 new ControlApplyEditPlanRequest { PlanId = plan.PlanId },
                 cancellationToken).ConfigureAwait(false);
             CliOutputWriter.WriteAppliedEditPlan(result, writeJson);
@@ -660,16 +755,18 @@ internal static class CliWorkerHost
         bool writeJson,
         CancellationToken cancellationToken)
     {
-        if (arguments.Count != 8 ||
+        if (arguments.Count != 11 ||
             !int.TryParse(arguments[1], NumberStyles.None, CultureInfo.InvariantCulture,
                 out int processId) ||
-            !int.TryParse(arguments[3], NumberStyles.None, CultureInfo.InvariantCulture,
-                out int line) ||
             !int.TryParse(arguments[4], NumberStyles.None, CultureInfo.InvariantCulture,
+                out int line) ||
+            !int.TryParse(arguments[5], NumberStyles.None, CultureInfo.InvariantCulture,
                 out int character) ||
             line < 0 ||
             character < 0 ||
-            !bool.TryParse(arguments[6], out bool apply))
+            !int.TryParse(arguments[8], NumberStyles.None, CultureInfo.InvariantCulture,
+                out int limit) ||
+            !bool.TryParse(arguments[9], out bool apply))
         {
             return Fail(
                 "invalid-request",
@@ -677,37 +774,46 @@ internal static class CliWorkerHost
                 writeJson);
         }
 
-        ControlSessionInfo session = await ResolveSessionAsync(processId, cancellationToken)
-            .ConfigureAwait(false);
-        var client = new ControlRpcClient(session.SocketPath);
-        await using ConfiguredAsyncDisposable clientCleanup = client.ConfigureAwait(false);
-        IReadOnlyList<ControlCodeActionPlan> actions = await client.GetCodeActionsAsync(
+        CliControlSession session = await CliControlSession.ConnectAsync(
+            processId,
+            arguments[2],
+            cancellationToken).ConfigureAwait(false);
+        await using ConfiguredAsyncDisposable sessionCleanup = session.ConfigureAwait(false);
+        IReadOnlyList<ControlCodeActionPlan> actions = await session.Client.GetCodeActionsAsync(
             new ControlCodeActionRequest
             {
-                DocumentPath = arguments[2],
+                DocumentPath = arguments[3],
                 Range = new LspRange(
                     new Position(line, character),
                     new Position(line, character)),
-                Only = [arguments[5]]
+                Only = [arguments[6]]
             },
             cancellationToken).ConfigureAwait(false);
+        CliPage<ControlCodeActionPlan> page = CliPagination.Create(
+            actions,
+            "edit-code-action",
+            arguments[7],
+            limit);
         if (apply)
         {
-            ControlCodeActionPlan action = actions.Count == 1
-                ? actions[0]
+            ControlCodeActionPlan action = page.Items.Count == 1
+                ? page.Items[0]
                 : throw new InvalidOperationException(
                     "Applying a code action requires exactly one matching action.");
             ControlEditPlan editPlan = action.EditPlan
                 ?? throw new InvalidOperationException(
                     "The selected code action does not contain a source edit plan.");
-            ControlApplyEditPlanResult result = await client.ApplyEditPlanAsync(
+            ControlApplyEditPlanResult result = await session.Client.ApplyEditPlanAsync(
                 new ControlApplyEditPlanRequest { PlanId = editPlan.PlanId },
                 cancellationToken).ConfigureAwait(false);
             CliOutputWriter.WriteAppliedEditPlan(result, writeJson);
         }
         else
         {
-            CliOutputWriter.WriteCodeActionPlans(actions, writeJson);
+            CliOutputWriter.WriteCodeActionPlans(
+                page.Items,
+                writeJson,
+                page.NextCursor);
         }
 
         return 0;
@@ -720,6 +826,29 @@ internal static class CliWorkerHost
             processId,
             workspacePath: null,
             cancellationToken).ConfigureAwait(false);
+
+    private static ControlRequestSchedulerInfo CreateRequestPage(
+        ControlRequestSchedulerInfo source,
+        IReadOnlyList<ControlRequestInfo> activeRequests) =>
+        new()
+        {
+            ActivityCapacity = source.ActivityCapacity,
+            Capacity = source.Capacity,
+            ForegroundConcurrency = source.ForegroundConcurrency,
+            BackgroundConcurrency = source.BackgroundConcurrency,
+            AcceptedRequests = source.AcceptedRequests,
+            CompletedRequests = source.CompletedRequests,
+            QueuedRequests = source.QueuedRequests,
+            ActiveForegroundRequests = source.ActiveForegroundRequests,
+            ActiveBackgroundRequests = source.ActiveBackgroundRequests,
+            IsMutationActive = source.IsMutationActive,
+            IsStopping = source.IsStopping,
+            TotalActiveRequests = source.TotalActiveRequests,
+            ActiveRequestsTruncated = source.ActiveRequestsTruncated ||
+                activeRequests.Count < source.ActiveRequests.Count,
+            ActiveRequests = activeRequests,
+            Trace = source.Trace
+        };
 
     private static int Fail(string code, string message, bool writeJson)
     {

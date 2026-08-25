@@ -26,28 +26,28 @@ internal static class AgentSkillContent
         csls sessions show --session <pid> --json
         ```
 
-        `doctor` starts a transient language server when no editor session is available. Other commands attach to a live session selected with `--session` or the current workspace.
+        `doctor` always verifies a transient workspace. Query, edit, workspace, request, and trace commands reuse a matching live session when one exists. Pass `--workspace <path>` to start a transient session when no editor owns the workspace, or pass `--session <pid>` to select an exact editor session.
 
         ## Query language intelligence
 
         ```console
-        csls query diagnostics Program.cs --session <pid> --json
-        csls query hover Program.cs --line 12 --character 8 --session <pid> --json
-        csls query completion Program.cs --line 12 --character 8 --session <pid> --json
-        csls query definition Program.cs --line 12 --character 8 --session <pid> --json
-        csls query references Program.cs --line 12 --character 8 --session <pid> --json
-        csls query document-symbols Program.cs --session <pid> --json
-        csls query symbols Service --session <pid> --json
+        csls query diagnostics Program.cs --workspace . --json
+        csls query hover Program.cs --line 12 --character 8 --workspace . --json
+        csls query completion Program.cs --line 12 --character 8 --workspace . --limit 50 --json
+        csls query definition Program.cs --line 12 --character 8 --workspace . --json
+        csls query references Program.cs --line 12 --character 8 --workspace . --json
+        csls query document-symbols Program.cs --workspace . --json
+        csls query symbols Service --workspace . --limit 50 --json
         ```
 
-        Positions are zero-based UTF-16 line and character offsets. Read the current document before choosing a position.
+        Positions are zero-based UTF-16 line and character offsets. Read the current document before choosing a position. When a JSON response contains `nextCursor`, repeat the command with `--cursor <cursor>` to read the next bounded page.
 
         ## Preview and apply edits
 
         ```console
-        csls edit rename Program.cs NewName --line 12 --character 8 --session <pid> --json
-        csls edit format Program.cs --session <pid> --json
-        csls edit code-action Program.cs --kind quickfix --line 12 --character 8 --session <pid> --json
+        csls edit rename Program.cs NewName --line 12 --character 8 --workspace . --json
+        csls edit format Program.cs --workspace . --json
+        csls edit code-action Program.cs --kind quickfix --line 12 --character 8 --workspace . --json
         ```
 
         Edit commands preview guarded plans by default. Inspect the document preconditions and changes before repeating the command with `--apply`.
