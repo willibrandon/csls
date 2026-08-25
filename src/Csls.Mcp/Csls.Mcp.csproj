@@ -6,6 +6,7 @@
     <Description>Native AOT launcher for the csls Model Context Protocol worker.</Description>
     <IsPackable>true</IsPackable>
     <PackAsTool>true</PackAsTool>
+    <PackageType>McpServer</PackageType>
     <ToolCommandName>csls-mcp</ToolCommandName>
     <PackageId>csls-mcp</PackageId>
     <PublishAot>true</PublishAot>
@@ -18,6 +19,7 @@
     <PackageTags>csharp;language-server;mcp;ai;roslyn;dotnet-tool</PackageTags>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <IncludeSymbols>false</IncludeSymbols>
+    <McpServerManifestPath Condition="'$(McpServerManifestPath)' == ''">$(MSBuildThisFileDirectory)..\..\.mcp\server.json</McpServerManifestPath>
   </PropertyGroup>
 
   <ItemGroup>
@@ -27,6 +29,10 @@
   <ItemGroup>
     <None Include="../../README.md" Pack="true" PackagePath="/" />
     <None Include="../../LICENSE" Pack="true" PackagePath="/" />
+    <None Include="$(McpServerManifestPath)"
+          Link=".mcp/server.json"
+          Pack="true"
+          PackagePath="/.mcp/" />
   </ItemGroup>
 
   <ItemGroup>

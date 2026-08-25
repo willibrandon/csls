@@ -1,0 +1,391 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Canonical NuGet version to verify without publishing
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  DOTNET_CLI_TELEMETRY_OPTOUT: 1
+  DOTNET_NOLOGO: true
+
+jobs:
+  prepare:
+    name: Prepare release
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      version: ${{ steps.release.outputs.version }}
+      tag: ${{ steps.release.outputs.tag }}
+      publish: ${{ steps.release.outputs.publish }}
+      prerelease: ${{ steps.release.outputs.prerelease }}
+      timestamp: ${{ steps.release.outputs.timestamp }}
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          dotnet-version: 10.0.400
+
+      - name: Validate release identity
+        id: release
+        run: >-
+          dotnet run --file scripts/Prepare-Release.cs --
+          --version "${{ inputs.version || github.ref_name }}"
+          --ref "${{ github.ref }}"
+          --event "${{ github.event_name }}"
+          --dry-run "${{ github.event_name == 'workflow_dispatch' }}"
+
+  native-assets:
+    name: Build release assets (${{ matrix.rid }})
+    needs: prepare
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 75
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            rid: linux-x64
+            validation: execute
+          - os: ubuntu-24.04-arm
+            rid: linux-arm64
+            validation: execute
+          - os: ubuntu-latest
+            rid: linux-musl-x64
+            validation: package
+          - os: ubuntu-24.04-arm
+            rid: linux-musl-arm64
+            validation: package
+          - os: windows-latest
+            rid: win-x64
+            validation: execute
+          - os: windows-11-arm
+            rid: win-arm64
+            validation: execute
+          - os: windows-latest
+            rid: win-x86
+            validation: execute
+          - os: macos-26-intel
+            rid: osx-x64
+            validation: execute
+          - os: macos-26
+            rid: osx-arm64
+            validation: execute
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          dotnet-version: 10.0.400
+
+      - name: Install Native AOT prerequisites
+        run: dotnet run --file scripts/Install-NativeAotPrerequisites.cs -- --runtime ${{ matrix.rid }}
+
+      - name: Provision target .NET SDK
+        if: matrix.rid == 'win-x86'
+        run: dotnet run --file scripts/InstallDotNet.cs -- --runtime ${{ matrix.rid }}
+
+      - name: Build and verify release assets
+        if: matrix.rid != 'win-x86'
+        run: >-
+          dotnet run --file scripts/Build-ReleaseAssets.cs --
+          --version "${{ needs.prepare.outputs.version }}"
+          --runtime "${{ matrix.rid }}"
+          --output "artifacts/release-input/${{ matrix.rid }}"
+          --validation "${{ matrix.validation }}"
+
+      - name: Build and verify Windows x86 release assets
+        if: matrix.rid == 'win-x86'
+        run: >-
+          dotnet run --file scripts/Build-ReleaseAssets.cs --
+          --version "${{ needs.prepare.outputs.version }}"
+          --runtime "${{ matrix.rid }}"
+          --output "artifacts/release-input/${{ matrix.rid }}"
+          --validation "${{ matrix.validation }}"
+          --target-dotnet-root "artifacts/tools/dotnet/${{ matrix.rid }}"
+
+      - name: Upload release assets
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: release-${{ matrix.rid }}
+          path: artifacts/release-input/${{ matrix.rid }}
+          if-no-files-found: error
+          retention-days: 7
+
+  assemble:
+    name: Assemble release
+    needs:
+      - prepare
+      - native-assets
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      attestations: write
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          dotnet-version: 10.0.400
+
+      - name: Download native assets
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: release-*
+          path: artifacts/release-input
+          merge-multiple: true
+
+      - name: Provision Microsoft SBOM Tool
+        id: sbom
+        run: dotnet run --file scripts/Provision-SbomTool.cs
+
+      - name: Assemble verified release
+        run: >-
+          dotnet run --file scripts/Assemble-ReleaseAssets.cs --
+          --version "${{ needs.prepare.outputs.version }}"
+          --timestamp "${{ needs.prepare.outputs.timestamp }}"
+          --input artifacts/release-input
+          --output artifacts/release-final
+          --sbom-tool "${{ steps.sbom.outputs.path }}"
+
+      - name: Attest release assets
+        if: needs.prepare.outputs.publish == 'true'
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: artifacts/release-final/public/*
+
+      - name: Attest release SBOM
+        if: needs.prepare.outputs.publish == 'true'
+        uses: actions/attest-sbom@c604332985a26aa8cf1bdc465b92731239ec6b9e # v4.1.0
+        with:
+          subject-path: artifacts/release-final/public
+          sbom-path: artifacts/release-final/public/csls-${{ needs.prepare.outputs.version }}.spdx.json
+
+      - name: Upload complete release
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: release-final
+          path: artifacts/release-final
+          if-no-files-found: error
+          retention-days: 14
+
+  containers:
+    name: Publish containers
+    if: needs.prepare.outputs.publish == 'true'
+    needs:
+      - prepare
+      - assemble
+      - validate-containers
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Download complete release
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: release-final
+          path: artifacts/release-final
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@96fe6ef7f33517b61c61be40b68a1882f3264fb8 # v4.2.0
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
+
+      - name: Sign in to GitHub Container Registry
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Publish csls container
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
+        with:
+          context: artifacts/release-final/container
+          file: deploy/Containerfile
+          target: csls
+          platforms: linux/amd64,linux/arm64
+          push: true
+          build-args: |
+            VERSION=${{ needs.prepare.outputs.version }}
+            REVISION=${{ github.sha }}
+          tags: |
+            ghcr.io/willibrandon/csls:${{ needs.prepare.outputs.version }}
+            ${{ needs.prepare.outputs.prerelease == 'false' && 'ghcr.io/willibrandon/csls:latest' || '' }}
+          sbom: true
+          provenance: mode=max
+
+      - name: Publish csls-mcp container
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
+        with:
+          context: artifacts/release-final/container
+          file: deploy/Containerfile
+          target: csls-mcp
+          platforms: linux/amd64,linux/arm64
+          push: true
+          build-args: |
+            VERSION=${{ needs.prepare.outputs.version }}
+            REVISION=${{ github.sha }}
+          tags: |
+            ghcr.io/willibrandon/csls-mcp:${{ needs.prepare.outputs.version }}
+            ${{ needs.prepare.outputs.prerelease == 'false' && 'ghcr.io/willibrandon/csls-mcp:latest' || '' }}
+          sbom: true
+          provenance: mode=max
+
+  validate-containers:
+    name: Validate containers (${{ matrix.architecture }})
+    needs:
+      - prepare
+      - assemble
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            architecture: amd64
+          - os: ubuntu-24.04-arm
+            architecture: arm64
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          dotnet-version: 10.0.400
+
+      - name: Download complete release
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: release-final
+          path: artifacts/release-final
+
+      - name: Verify release containers
+        run: >-
+          dotnet run --file scripts/Verify-ReleaseContainers.cs --
+          --version "${{ needs.prepare.outputs.version }}"
+          --revision "${{ github.sha }}"
+          --output artifacts/release-container-validation
+
+      - name: Scan csls container with Picket
+        uses: willibrandon/picket@4c9f7d28260bfe0a7334865c84db093519f6f57f # v0.2.12
+        with:
+          docker-archive: artifacts/release-container-validation/csls-${{ matrix.architecture }}.tar
+          fail-on: findings
+          ignore-path: .picketignore
+          report-directory: artifacts/picket-csls-${{ matrix.architecture }}
+          upload-sarif: false
+
+      - name: Scan csls-mcp container with Picket
+        uses: willibrandon/picket@4c9f7d28260bfe0a7334865c84db093519f6f57f # v0.2.12
+        with:
+          docker-archive: artifacts/release-container-validation/csls-mcp-${{ matrix.architecture }}.tar
+          fail-on: findings
+          ignore-path: .picketignore
+          report-directory: artifacts/picket-csls-mcp-${{ matrix.architecture }}
+          upload-sarif: false
+
+  publish:
+    name: Publish release
+    if: >-
+      always() &&
+      needs.prepare.outputs.publish == 'true' &&
+      needs.assemble.result == 'success' &&
+      needs.containers.result == 'success'
+    needs:
+      - prepare
+      - assemble
+      - containers
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: release
+    permissions:
+      contents: write
+      id-token: write
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          dotnet-version: 10.0.400
+
+      - name: Download complete release
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: release-final
+          path: artifacts/release-final
+
+      - name: Authenticate to NuGet
+        id: nuget
+        uses: NuGet/login@8d196754b4036150537f80ac539e15c2f1028841 # v1.2.0
+        with:
+          user: ${{ secrets.NUGET_USER }}
+
+      - name: Publish NuGet packages
+        env:
+          NUGET_API_KEY: ${{ steps.nuget.outputs.NUGET_API_KEY }}
+        run: >-
+          dotnet run --file scripts/Publish-NuGet.cs --
+          --packages artifacts/release-final/public
+
+      - name: Publish GitHub release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: >-
+          dotnet run --file scripts/Publish-GitHubRelease.cs --
+          --tag "${{ needs.prepare.outputs.tag }}"
+          --version "${{ needs.prepare.outputs.version }}"
+          --assets artifacts/release-final/public
+          --prerelease "${{ needs.prepare.outputs.prerelease }}"

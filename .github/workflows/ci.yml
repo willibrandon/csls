@@ -38,6 +38,9 @@ jobs:
       - name: Verify repository policy
         run: dotnet run --file scripts/Verify-Repository.cs
 
+      - name: Verify file apps
+        run: dotnet run --file scripts/Verify-FileApps.cs
+
       - name: Provision actionlint
         run: dotnet run --file scripts/Provision-Actionlint.cs
 
@@ -78,7 +81,7 @@ jobs:
   build-test-package:
     name: Build, test, and package (${{ matrix.rid }})
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 60
+    timeout-minutes: 75
     permissions:
       actions: read
       contents: read
@@ -159,8 +162,13 @@ jobs:
       - name: Test
         run: dotnet test --solution Csls.slnx --report-trx --results-directory artifacts/test-results/${{ matrix.rid }}
 
-      - name: Verify .NET tool packages
-        run: dotnet run --file scripts/Verify-ToolPackages.cs
+      - name: Verify release assets
+        run: >-
+          dotnet run --file scripts/Build-ReleaseAssets.cs --
+          --version 0.1.0-ci
+          --runtime ${{ matrix.rid }}
+          --output artifacts/release-smoke/${{ matrix.rid }}
+          --validation execute
 
       - name: Check csls Native AOT size
         uses: willibrandon/dotsider@3f243c9ab2e9d6d3432c608bebba0beaa8b239ec # Retry Dotsider baseline requests
@@ -241,7 +249,7 @@ jobs:
   additional-rid-packages:
     name: Package (${{ matrix.rid }})
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 45
+    timeout-minutes: 60
     strategy:
       fail-fast: false
       matrix:
@@ -276,10 +284,22 @@ jobs:
         if: matrix.rid == 'win-x86'
         run: dotnet run --file scripts/InstallDotNet.cs -- --runtime ${{ matrix.rid }}
 
-      - name: Verify additional RID packages
+      - name: Verify additional RID release assets
+        if: matrix.rid != 'win-x86'
         run: >-
-          dotnet run --file scripts/Verify-ToolPackages.cs --
+          dotnet run --file scripts/Build-ReleaseAssets.cs --
+          --version 0.1.0-ci
           --runtime ${{ matrix.rid }}
+          --output artifacts/release-smoke/${{ matrix.rid }}
+          --validation ${{ matrix.validation }}
+
+      - name: Verify Windows x86 release assets
+        if: matrix.rid == 'win-x86'
+        run: >-
+          dotnet run --file scripts/Build-ReleaseAssets.cs --
+          --version 0.1.0-ci
+          --runtime ${{ matrix.rid }}
+          --output artifacts/release-smoke/${{ matrix.rid }}
           --validation ${{ matrix.validation }}
           --target-dotnet-root artifacts/tools/dotnet/${{ matrix.rid }}
 

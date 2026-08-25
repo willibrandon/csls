@@ -10,6 +10,7 @@ using System.IO.Compression;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Xml.Linq;
 
 const string DefaultVersion = "0.1.0-verification";
@@ -104,6 +105,10 @@ try
     RecreateVerificationRoot(repositoryRoot, verificationRoot);
     string packageRoot = Path.Join(verificationRoot, "packages");
     Directory.CreateDirectory(packageRoot);
+    string mcpServerManifestPath = WriteMcpServerManifest(
+        repositoryRoot,
+        verificationRoot,
+        version);
 
     (string PackageId, string CommandName, string Project, string[] WorkerPaths)[] products =
     [
@@ -121,15 +126,40 @@ try
 
     foreach ((string packageId, _, string project, _) in products)
     {
-        await PackAsync(repositoryRoot, packageRoot, project, version, runtimeIdentifier: null)
+        string? manifestPath = string.Equals(
+            packageId,
+            "csls-mcp",
+            StringComparison.Ordinal)
+            ? mcpServerManifestPath
+            : null;
+        await PackAsync(
+            repositoryRoot,
+            packageRoot,
+            project,
+            version,
+            runtimeIdentifier: null,
+            manifestPath)
             .ConfigureAwait(false);
-        await PackAsync(repositoryRoot, packageRoot, project, version, runtimeIdentifier)
+        await PackAsync(
+            repositoryRoot,
+            packageRoot,
+            project,
+            version,
+            runtimeIdentifier,
+            manifestPath)
             .ConfigureAwait(false);
-        await PackAsync(repositoryRoot, packageRoot, project, version, "any")
+        await PackAsync(
+            repositoryRoot,
+            packageRoot,
+            project,
+            version,
+            "any",
+            manifestPath)
             .ConfigureAwait(false);
         ValidateManifestPackage(
             Path.Join(packageRoot, $"{packageId}.{version}.nupkg"),
-            packageId);
+            packageId,
+            version);
     }
 
     foreach ((string packageId, string commandName, _, string[] workerPaths) in products)
@@ -199,12 +229,37 @@ static async Task WriteUsageErrorAsync() => await Console.Error.WriteLineAsync(
     "[--target-dotnet-root <path>]")
     .ConfigureAwait(false);
 
+static string WriteMcpServerManifest(
+    string repositoryRoot,
+    string verificationRoot,
+    string version)
+{
+    string sourcePath = Path.Join(repositoryRoot, ".mcp", "server.json");
+    JsonObject root = JsonNode.Parse(File.ReadAllText(sourcePath)) as JsonObject
+        ?? throw new InvalidDataException("The MCP server manifest root must be an object.");
+    root["version"] = version;
+    JsonArray packages = root["packages"] as JsonArray
+        ?? throw new InvalidDataException("The MCP server manifest must declare packages.");
+    JsonObject package = packages.Single() as JsonObject
+        ?? throw new InvalidDataException("The MCP server package must be an object.");
+    package["version"] = version;
+
+    string outputPath = Path.Join(verificationRoot, "mcp", "server.json");
+    Directory.CreateDirectory(Path.GetDirectoryName(outputPath)!);
+    File.WriteAllText(
+        outputPath,
+        root.ToJsonString(new JsonSerializerOptions { WriteIndented = true }) +
+        Environment.NewLine);
+    return outputPath;
+}
+
 static async Task PackAsync(
     string repositoryRoot,
     string packageRoot,
     string project,
     string version,
-    string? runtimeIdentifier)
+    string? runtimeIdentifier,
+    string? mcpServerManifestPath)
 {
     List<string> arguments =
     [
@@ -228,6 +283,11 @@ static async Task PackAsync(
         }
     }
 
+    if (mcpServerManifestPath is not null)
+    {
+        arguments.Add($"-p:McpServerManifestPath={mcpServerManifestPath}");
+    }
+
     await RunCheckedAsync(
         ResolveDotNetHost(),
         arguments,
@@ -235,7 +295,10 @@ static async Task PackAsync(
         environment: null).ConfigureAwait(false);
 }
 
-static void ValidateManifestPackage(string packagePath, string packageId)
+static void ValidateManifestPackage(
+    string packagePath,
+    string packageId,
+    string version)
 {
     using ZipArchive archive = OpenRequiredPackage(packagePath);
     RequireEntry(archive, "README.md");
@@ -270,7 +333,19 @@ static void ValidateManifestPackage(string packagePath, string packageId)
             $"{packagePath} does not declare the exact supported RID package set.");
     }
 
-    ValidatePackageType(archive, "DotnetTool");
+    if (string.Equals(packageId, "csls-mcp", StringComparison.Ordinal))
+    {
+        ValidatePackageTypes(archive, "DotnetTool", "McpServer");
+        ValidateMcpServerManifest(
+            RequireEntry(archive, ".mcp/server.json"),
+            packageId,
+            version);
+    }
+    else
+    {
+        ValidatePackageTypes(archive, "DotnetTool");
+    }
+
     ValidateNoForbiddenEntries(archive);
 }
 
@@ -313,7 +388,7 @@ static void ValidateImplementationPackage(
             $"{packagePath} uses runner '{runner}' instead of '{expectedRunner}'.");
     }
 
-    ValidatePackageType(archive, "DotnetToolRidPackage");
+    ValidatePackageTypes(archive, "DotnetToolRidPackage");
     ValidateNoForbiddenEntries(archive);
 }
 
@@ -916,20 +991,65 @@ static XDocument LoadXml(ZipArchiveEntry entry)
     return XDocument.Load(stream, LoadOptions.None);
 }
 
-static void ValidatePackageType(ZipArchive archive, string expectedType)
+static void ValidatePackageTypes(ZipArchive archive, params string[] expectedTypes)
 {
     ZipArchiveEntry nuspec = archive.Entries.Single(static entry =>
         entry.FullName.EndsWith(".nuspec", StringComparison.OrdinalIgnoreCase));
     XDocument document = LoadXml(nuspec);
-    string? actualType = document
+    string[] actualTypes =
+    [
+        .. document
         .Descendants()
-        .Single(static element => element.Name.LocalName == "packageType")
-        .Attribute("name")?
-        .Value;
-    if (!string.Equals(actualType, expectedType, StringComparison.Ordinal))
+        .Where(static element => element.Name.LocalName == "packageType")
+        .Select(static element => element.Attribute("name")?.Value ?? string.Empty)
+    ];
+    if (!actualTypes.SequenceEqual(expectedTypes, StringComparer.Ordinal))
     {
         throw new InvalidDataException(
-            $"{nuspec.FullName} uses package type '{actualType}' instead of '{expectedType}'.");
+            $"{nuspec.FullName} uses package types " +
+            $"'{string.Join(", ", actualTypes)}' instead of " +
+            $"'{string.Join(", ", expectedTypes)}'.");
+    }
+}
+
+static void ValidateMcpServerManifest(
+    ZipArchiveEntry entry,
+    string packageId,
+    string version)
+{
+    using Stream stream = entry.Open();
+    using var document = JsonDocument.Parse(stream);
+    JsonElement root = document.RootElement;
+    RequireJsonString(
+        root,
+        "$schema",
+        "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json");
+    RequireJsonString(root, "name", "io.github.willibrandon/csls-mcp");
+    RequireJsonString(root, "version", version);
+    JsonElement package = root.GetProperty("packages").EnumerateArray().Single();
+    RequireJsonString(package, "registryType", "nuget");
+    RequireJsonString(package, "identifier", packageId);
+    RequireJsonString(package, "version", version);
+    RequireJsonString(package.GetProperty("transport"), "type", "stdio");
+    if (package.GetProperty("packageArguments").GetArrayLength() != 0 ||
+        package.GetProperty("environmentVariables").GetArrayLength() != 0)
+    {
+        throw new InvalidDataException(
+            "The csls MCP package must not require arguments or environment variables.");
+    }
+}
+
+static void RequireJsonString(
+    JsonElement element,
+    string propertyName,
+    string expectedValue)
+{
+    string? actualValue = element.GetProperty(propertyName).GetString();
+    if (!string.Equals(actualValue, expectedValue, StringComparison.Ordinal))
+    {
+        throw new InvalidDataException(
+            $"MCP manifest property '{propertyName}' is '{actualValue}' instead of " +
+            $"'{expectedValue}'.");
     }
 }
 

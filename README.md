@@ -1,5 +1,7 @@
 # csls
 
+<!-- mcp-name: io.github.willibrandon/csls-mcp -->
+
 `csls` is a Native AOT C# language server, command-line interface, and agent
 platform for .NET developers. It targets .NET 10 and is designed for terminal
 editors, IDEs, automation, and AI agents.
@@ -17,6 +19,17 @@ No unimplemented LSP capability is advertised by the server.
 
 Read the [csls documentation](https://willibrandon.github.io/csls/) for editor,
 CLI, MCP, and development guidance.
+
+Install the language server and MCP server as .NET tools:
+
+```console
+dotnet tool install --global csls
+dotnet tool install --global csls-mcp
+```
+
+Native AOT packages are selected automatically for supported Windows, Linux,
+and macOS hosts. Standalone archives and container images are published with
+each release.
 
 Run `csls dashboard` while a language-server session is active to inspect its
 workspaces, projects, documents, diagnostics, live requests, bounded traces,
