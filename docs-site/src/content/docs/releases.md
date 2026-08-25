@@ -38,19 +38,3 @@ dotnet run --file scripts/Verify-ToolPackages.cs -- --version 0.1.0-rc.1
 
 The generated package directory is temporary validation output. Release packages
 must be built from the protected `main` commit that receives the version tag.
-
-## NuGet publishing
-
-NuGet trusted publishing is the required publication mechanism. The GitHub
-environment and NuGet policy must restrict the repository, workflow, package owner,
-and release environment. The workflow exchanges GitHub's short-lived OIDC identity
-for a NuGet token only during the publish job. No long-lived NuGet API key belongs in
-repository or environment secrets.
-
-Trusted publishing is enabled after the complete release gate and package identity
-are stable. The first publication also verifies ownership of both package IDs before
-automation is allowed to create a public release.
-
-After publication, install both tools into an empty tool directory and run their
-version and help commands from the public NuGet source. The release is complete only
-when those packages select and execute the expected runtime implementation.
