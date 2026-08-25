@@ -287,7 +287,7 @@ public static class ControlSessionDiscovery
             }
             catch (Exception exception) when (
                 exception is IOException or SocketException or TimeoutException or
-                    ConnectionLostException ||
+                    ConnectionLostException or InvalidDataException or RemoteRpcException ||
                 exception is OperationCanceledException && !cancellationToken.IsCancellationRequested)
             {
                 return null;

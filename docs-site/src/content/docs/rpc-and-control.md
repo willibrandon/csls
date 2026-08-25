@@ -66,6 +66,16 @@ Method names include the control protocol version, for example
 future incompatible shape requires a new version instead of changing an existing
 method in place.
 
+Connections negotiate a 120-second inactivity limit and a shorter keepalive
+interval. A complete message or an active request resets the limit, so a restore or
+reload is never interrupted while a raw idle or partial connection is closed. Set
+`CSLS_CONTROL_IDLE_TIMEOUT_SECONDS` to an integer from 1 through 120 to shorten the
+limit for a worker process.
+
+Canceling a CLI or MCP request sends a versioned control notification with its
+connection-local request identifier. The notification uses generated JSON metadata,
+so cancellation behaves the same in managed and Native AOT tool packages.
+
 ## Ownership and shutdown
 
 An attached CLI or MCP process never owns the editor's server. Closing its control
