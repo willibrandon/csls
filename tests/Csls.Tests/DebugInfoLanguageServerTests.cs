@@ -62,28 +62,31 @@ public sealed class DebugInfoLanguageServerTests
             CSharpDebugInfo configured = await lsp.RequestDebugInfoAsync(
                 TestContext.CancellationToken).ConfigureAwait(false);
             Assert.AreEqual("Configured", configured.Workspace.Phase);
-            Assert.AreEqual(1L, configured.Workspace.Generation);
-            CSharpDebugWorkspaceFolderInfo folder = Assert.ContainsSingle(
-                configured.Workspace.Folders);
-            Assert.AreEqual(DocumentUri.FromFileSystemPath(fixturePath), folder.Uri);
-            Assert.AreEqual(Path.GetFileName(fixturePath), folder.Name);
-            Assert.AreEqual("MSBuildWorkspace", folder.WorkspaceKind);
-            Assert.AreEqual(1, folder.ProjectCount);
-            Assert.IsGreaterThanOrEqualTo(1, folder.DocumentCount);
-            CSharpDebugRequestStatisticsInfo initialize = Assert.ContainsSingle(
-                configured.RequestQueue.Stats.Where(
-                    static statistic => statistic.Name == "initialize"));
-            Assert.AreEqual(1L, initialize.Count);
-            Assert.IsGreaterThanOrEqualTo(0, initialize.AverageDurationMs);
-            Assert.IsGreaterThanOrEqualTo(
-                initialize.MaxDurationMs,
-                initialize.AverageDurationMs);
+            Assert.AreEqual(0L, configured.Workspace.Generation);
+            Assert.IsEmpty(configured.Workspace.Folders);
+            Assert.IsEmpty(configured.RequestQueue.Stats);
 
             await lsp.CompleteInitializationAsync().ConfigureAwait(false);
             CSharpDebugInfo ready = await WaitForPhaseAsync(
                 lsp,
                 "Ready",
                 TestContext.CancellationToken).ConfigureAwait(false);
+            Assert.AreEqual(1L, ready.Workspace.Generation);
+            CSharpDebugWorkspaceFolderInfo folder = Assert.ContainsSingle(
+                ready.Workspace.Folders);
+            Assert.AreEqual(DocumentUri.FromFileSystemPath(fixturePath), folder.Uri);
+            Assert.AreEqual(Path.GetFileName(fixturePath), folder.Name);
+            Assert.AreEqual("MSBuildWorkspace", folder.WorkspaceKind);
+            Assert.AreEqual(1, folder.ProjectCount);
+            Assert.IsGreaterThanOrEqualTo(1, folder.DocumentCount);
+            CSharpDebugRequestStatisticsInfo initialized = Assert.ContainsSingle(
+                ready.RequestQueue.Stats.Where(
+                    static statistic => statistic.Name == "initialized"));
+            Assert.AreEqual(1L, initialized.Count);
+            Assert.IsGreaterThanOrEqualTo(0, initialized.AverageDurationMs);
+            Assert.IsGreaterThanOrEqualTo(
+                initialized.MaxDurationMs,
+                initialized.AverageDurationMs);
             Assert.DoesNotContain(
                 "$/csharp/debugInfo",
                 ready.RequestQueue.Requests.Select(static request => request.Name));

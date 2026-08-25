@@ -31,53 +31,8 @@ public sealed partial class LanguageServer
             "workspace/configuration",
             RequestMode.ReadWrite,
             () => _workspaceManager.Generation,
-            async context =>
-            {
-                JsonElement?[] values;
-                try
-                {
-                    values = await _client.GetConfigurationAsync(
-                        new ConfigurationParams
-                        {
-                            Items =
-                            [
-                                new ConfigurationItem { Section = LegacyConfigurationSection },
-                                new ConfigurationItem { Section = PreferredConfigurationSection }
-                            ]
-                        },
-                        context.CancellationToken).ConfigureAwait(false);
-                }
-                catch (Exception exception)
-                {
-                    LogConfigurationPullFailed(exception);
-                    throw;
-                }
-
-                if (values.Length != 2)
-                {
-                    throw new InvalidDataException(
-                        $"The client returned {values.Length} configuration values for 2 sections.");
-                }
-
-                LanguageServerConfiguration configuration = MergeConfiguration(
-                    ParseConfigurationSection(values[0], LegacyConfigurationSection),
-                    ParseConfigurationSection(values[1], PreferredConfigurationSection));
-                bool changed = await _workspaceManager
-                    .ConfigureAsync(
-                        configuration.EnableAnalyzers,
-                        configuration.BuildConfiguration,
-                        context.CancellationToken)
-                    .ConfigureAwait(false);
-                _configuration = configuration;
-                _logFilter.SetMinimumLevel(configuration.LogLevel);
-                LogConfigurationApplied(
-                    configuration.EnableAnalyzers,
-                    configuration.FormatOnSave,
-                    configuration.BuildConfiguration,
-                    configuration.LogLevel,
-                    changed);
-                return changed;
-            },
+            context => new ValueTask<bool>(PullConfigurationCoreAsync(
+                context.CancellationToken)),
             cancellationToken);
     }
 
@@ -90,23 +45,64 @@ public sealed partial class LanguageServer
             requestName,
             RequestMode.ReadWrite,
             () => _workspaceManager.Generation,
-            async context =>
-            {
-                bool changed = await _workspaceManager.ConfigureAsync(
-                    configuration.EnableAnalyzers,
-                    configuration.BuildConfiguration,
-                    context.CancellationToken).ConfigureAwait(false);
-                _configuration = configuration;
-                _logFilter.SetMinimumLevel(configuration.LogLevel);
-                LogConfigurationApplied(
-                    configuration.EnableAnalyzers,
-                    configuration.FormatOnSave,
-                    configuration.BuildConfiguration,
-                    configuration.LogLevel,
-                    changed);
-                return changed;
-            },
+            context => new ValueTask<bool>(ApplyConfigurationCoreAsync(
+                configuration,
+                context.CancellationToken)),
             cancellationToken);
+    }
+
+    private async Task<bool> PullConfigurationCoreAsync(CancellationToken cancellationToken)
+    {
+        JsonElement?[] values;
+        try
+        {
+            values = await _client.GetConfigurationAsync(
+                new ConfigurationParams
+                {
+                    Items =
+                    [
+                        new ConfigurationItem { Section = LegacyConfigurationSection },
+                        new ConfigurationItem { Section = PreferredConfigurationSection }
+                    ]
+                },
+                cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception exception)
+        {
+            LogConfigurationPullFailed(exception);
+            throw;
+        }
+
+        if (values.Length != 2)
+        {
+            throw new InvalidDataException(
+                $"The client returned {values.Length} configuration values for 2 sections.");
+        }
+
+        LanguageServerConfiguration configuration = MergeConfiguration(
+            ParseConfigurationSection(values[0], LegacyConfigurationSection),
+            ParseConfigurationSection(values[1], PreferredConfigurationSection));
+        return await ApplyConfigurationCoreAsync(configuration, cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    private async Task<bool> ApplyConfigurationCoreAsync(
+        LanguageServerConfiguration configuration,
+        CancellationToken cancellationToken)
+    {
+        bool changed = await _workspaceManager.ConfigureAsync(
+            configuration.EnableAnalyzers,
+            configuration.BuildConfiguration,
+            cancellationToken).ConfigureAwait(false);
+        _configuration = configuration;
+        _logFilter.SetMinimumLevel(configuration.LogLevel);
+        LogConfigurationApplied(
+            configuration.EnableAnalyzers,
+            configuration.FormatOnSave,
+            configuration.BuildConfiguration,
+            configuration.LogLevel,
+            changed);
+        return changed;
     }
 
     private static LanguageServerConfiguration ParseConfiguration(JsonElement? settings)
