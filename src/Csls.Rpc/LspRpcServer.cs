@@ -7,6 +7,9 @@ namespace Csls.Rpc;
 /// </summary>
 public static class LspRpcServer
 {
+    private const int MaximumHeaderBytes = 8 * 1024;
+    private const int MaximumPayloadBytes = 16 * 1024 * 1024;
+
     /// <summary>
     /// Runs an LSP connection until EOF, disconnection, failure, or cancellation.
     /// </summary>
@@ -29,7 +32,15 @@ public static class LspRpcServer
         ArgumentNullException.ThrowIfNull(client);
 
         using var formatter = new LspJsonRpcFormatter(LspRpcJson.CreateSerializerOptions());
-        using var messageHandler = new HeaderDelimitedMessageHandler(output, input, formatter);
+        using var boundedInput = new BoundedLspInputStream(
+            input,
+            MaximumHeaderBytes,
+            MaximumPayloadBytes,
+            leaveOpen: true);
+        using var messageHandler = new HeaderDelimitedMessageHandler(
+            output,
+            boundedInput,
+            formatter);
         using var rpc = new JsonRpc(messageHandler)
         {
             CancelLocallyInvokedMethodsWhenConnectionIsClosed = true,

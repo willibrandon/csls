@@ -275,6 +275,113 @@ public sealed class StdioLanguageServerTests
         }
     }
 
+    /// <summary>
+    /// Rejects an oversized declared LSP payload without waiting for its body.
+    /// </summary>
+    [TestMethod]
+    public async Task WorkerRejectsOversizedPayloadBeforeReadingBody()
+    {
+        string diagnostics = await RunMalformedInputAsync(
+            "Content-Length: 16777217\r\n\r\n").ConfigureAwait(false);
+
+        Assert.Contains(
+            "outside the permitted range of 1 to 16777216 bytes",
+            diagnostics);
+    }
+
+    /// <summary>
+    /// Rejects an LSP header block that exceeds its fixed parsing bound.
+    /// </summary>
+    [TestMethod]
+    public async Task WorkerRejectsOversizedHeaders()
+    {
+        string diagnostics = await RunMalformedInputAsync(
+            new string('X', 8_193)).ConfigureAwait(false);
+
+        Assert.Contains("headers exceed the permitted 8192-byte limit", diagnostics);
+    }
+
+    /// <summary>
+    /// Rejects malformed LSP framing through the real worker process.
+    /// </summary>
+    [TestMethod]
+    [DataRow(
+        "Content-Type: application/vscode-jsonrpc; charset=utf-8\r\n\r\n",
+        "missing its Content-Length header")]
+    [DataRow(
+        "Content-Length: 1\r\nContent-Length: 1\r\n\r\n",
+        "duplicate Content-Length headers")]
+    [DataRow(
+        "Content-Length: nope\r\n\r\n",
+        "Content-Length value is invalid")]
+    [DataRow(
+        "Content-Length: 0\r\n\r\n",
+        "outside the permitted range of 1 to 16777216 bytes")]
+    [DataRow(
+        "Content-Length 1\r\n\r\n",
+        "missing its name delimiter")]
+    public async Task WorkerRejectsMalformedHeaders(
+        string input,
+        string expectedDiagnostic)
+    {
+        string diagnostics = await RunMalformedInputAsync(input).ConfigureAwait(false);
+
+        Assert.Contains(expectedDiagnostic, diagnostics);
+    }
+
+    private async Task<string> RunMalformedInputAsync(string input)
+    {
+        string repositoryRoot = EditorToolResolver.FindRepositoryRoot();
+        string workerPath = Path.Join(
+            EditorToolResolver.ResolveArtifactsRoot(repositoryRoot),
+            "bin",
+            "Csls.Worker",
+            "debug",
+            "csls-worker.dll");
+        Assert.IsTrue(File.Exists(workerPath), $"Worker not found at {workerPath}.");
+
+        var startInfo = new ProcessStartInfo
+        {
+            FileName = EditorToolResolver.ResolveDotNetHost(),
+            WorkingDirectory = repositoryRoot,
+            RedirectStandardError = true,
+            RedirectStandardInput = true,
+            RedirectStandardOutput = true,
+            UseShellExecute = false
+        };
+        startInfo.ArgumentList.Add(workerPath);
+        using Process process = Process.Start(startInfo)
+            ?? throw new InvalidOperationException("The csls worker did not start.");
+        Task<string> standardErrorTask = process.StandardError.ReadToEndAsync(
+            TestContext.CancellationToken);
+        Task<string> standardOutputTask = process.StandardOutput.ReadToEndAsync(
+            TestContext.CancellationToken);
+        try
+        {
+            await process.StandardInput.BaseStream.WriteAsync(
+                Encoding.ASCII.GetBytes(input),
+                TestContext.CancellationToken).ConfigureAwait(false);
+            await process.StandardInput.BaseStream.FlushAsync(
+                TestContext.CancellationToken).ConfigureAwait(false);
+            process.StandardInput.Close();
+
+            await process.WaitForExitAsync(TestContext.CancellationToken).ConfigureAwait(false);
+            string standardError = await standardErrorTask.ConfigureAwait(false);
+            string standardOutput = await standardOutputTask.ConfigureAwait(false);
+            Assert.AreNotEqual(0, process.ExitCode, standardError);
+            Assert.IsEmpty(standardOutput, "Malformed input produced protocol output.");
+            return standardError;
+        }
+        finally
+        {
+            if (!process.HasExited)
+            {
+                process.Kill(entireProcessTree: true);
+                await process.WaitForExitAsync(CancellationToken.None).ConfigureAwait(false);
+            }
+        }
+    }
+
     private static async Task WriteRawMessageAsync(
         Stream stream,
         string json,
