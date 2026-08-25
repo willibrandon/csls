@@ -7,17 +7,26 @@ namespace Csls.Server;
 public sealed partial class LanguageServer
 {
     /// <inheritdoc />
-    public Task<CSharpDebugInfo> GetDebugInfoAsync(
+    public async Task<CSharpDebugInfo> GetDebugInfoAsync(
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        WorkspaceSummarySnapshot workspace = _workspaceManager.InspectSummary();
+        ServerWorkspacePhase phase;
+        WorkspaceSummarySnapshot workspace;
+        do
+        {
+            phase = (ServerWorkspacePhase)Volatile.Read(ref _workspacePhase);
+            workspace = await _workspaceManager.InspectSummaryAsync(cancellationToken)
+                .ConfigureAwait(false);
+        }
+        while (phase != (ServerWorkspacePhase)Volatile.Read(ref _workspacePhase));
+
         RequestSchedulerSnapshot requests = _scheduler.GetSnapshot();
-        return Task.FromResult(new CSharpDebugInfo
+        return new CSharpDebugInfo
         {
             Workspace = new CSharpDebugWorkspaceInfo
             {
-                Phase = ((ServerWorkspacePhase)Volatile.Read(ref _workspacePhase)).ToString(),
+                Phase = phase.ToString(),
                 Generation = workspace.Generation,
                 Folders =
                 [
@@ -67,7 +76,7 @@ public sealed partial class LanguageServer
                         })
                 ]
             }
-        });
+        };
     }
 
     private static string GetWorkspaceFolderName(string rootPath)
