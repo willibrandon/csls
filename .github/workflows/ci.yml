@@ -147,7 +147,7 @@ jobs:
         run: dotnet run --file scripts/Verify-ToolPackages.cs
 
       - name: Check csls Native AOT size
-        uses: willibrandon/dotsider@6da3fc29735440fdf2aca82d148e6b497a381993 # v0.26.0
+        uses: willibrandon/dotsider@3f243c9ab2e9d6d3432c608bebba0beaa8b239ec # Retry Dotsider baseline requests
         with:
           target: artifacts/obj/Csls.App/release_${{ matrix.rid }}/native/csls.mstat
           baseline-key: csls-${{ matrix.rid }}
@@ -158,7 +158,7 @@ jobs:
           artifact-name: dotsider-size-csls-${{ matrix.rid }}
 
       - name: Check csls-mcp Native AOT size
-        uses: willibrandon/dotsider@6da3fc29735440fdf2aca82d148e6b497a381993 # v0.26.0
+        uses: willibrandon/dotsider@3f243c9ab2e9d6d3432c608bebba0beaa8b239ec # Retry Dotsider baseline requests
         with:
           target: artifacts/obj/Csls.Mcp/release_${{ matrix.rid }}/native/csls-mcp.mstat
           baseline-key: csls-mcp-${{ matrix.rid }}
@@ -269,7 +269,7 @@ jobs:
 
       - name: Check csls Native AOT size
         if: matrix.validation == 'package'
-        uses: willibrandon/dotsider@6da3fc29735440fdf2aca82d148e6b497a381993 # v0.26.0
+        uses: willibrandon/dotsider@3f243c9ab2e9d6d3432c608bebba0beaa8b239ec # Retry Dotsider baseline requests
         with:
           target: artifacts/obj/Csls.App/release_${{ matrix.rid }}/native/csls.mstat
           baseline-key: csls-${{ matrix.rid }}
@@ -281,7 +281,7 @@ jobs:
 
       - name: Check csls-mcp Native AOT size
         if: matrix.validation == 'package'
-        uses: willibrandon/dotsider@6da3fc29735440fdf2aca82d148e6b497a381993 # v0.26.0
+        uses: willibrandon/dotsider@3f243c9ab2e9d6d3432c608bebba0beaa8b239ec # Retry Dotsider baseline requests
         with:
           target: artifacts/obj/Csls.Mcp/release_${{ matrix.rid }}/native/csls-mcp.mstat
           baseline-key: csls-mcp-${{ matrix.rid }}

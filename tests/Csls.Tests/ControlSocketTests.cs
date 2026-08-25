@@ -4,6 +4,9 @@ using Csls.Protocol;
 using System.Buffers.Binary;
 using System.Net.Sockets;
 using System.Runtime.CompilerServices;
+using System.Runtime.Versioning;
+using System.Security.AccessControl;
+using System.Security.Principal;
 
 namespace Csls.Tests;
 
@@ -19,6 +22,22 @@ public sealed class ControlSocketTests
     /// Gets the active MSTest context and its framework-managed cancellation token.
     /// </summary>
     public TestContext TestContext { get; set; } = null!;
+
+    /// <summary>
+    /// Places session sockets in the stable private directory under the current user profile.
+    /// </summary>
+    [TestMethod]
+    public void SocketDirectoryUsesCurrentUserProfile()
+    {
+        string expected = Path.Join(
+            Environment.GetFolderPath(
+                Environment.SpecialFolder.UserProfile,
+                Environment.SpecialFolderOption.DoNotVerify),
+            ".csls",
+            "sockets");
+
+        Assert.AreEqual(expected, ControlEndpoint.GetSocketDirectory());
+    }
 
     /// <summary>
     /// Rejects an oversized frame before its payload while preserving subsequent control requests.
@@ -63,6 +82,7 @@ public sealed class ControlSocketTests
 
             string socketPath = ControlEndpoint.GetSocketPath(lsp.ProcessId);
             Assert.IsTrue(File.Exists(socketPath), $"Control socket not found at {socketPath}.");
+            AssertSocketSecurity(socketPath);
             using var malformedClient = new Socket(
                 AddressFamily.Unix,
                 SocketType.Stream,
@@ -290,6 +310,46 @@ public sealed class ControlSocketTests
         {
             return true;
         }
+    }
+
+    private static void AssertSocketSecurity(string socketPath)
+    {
+        string socketDirectory = Path.GetDirectoryName(socketPath)
+            ?? throw new InvalidDataException("The control socket has no parent directory.");
+        if (OperatingSystem.IsWindows())
+        {
+            AssertWindowsSocketSecurity(socketDirectory);
+            return;
+        }
+
+        Assert.AreEqual(
+            UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute,
+            File.GetUnixFileMode(socketDirectory));
+        Assert.AreEqual(
+            UnixFileMode.UserRead | UnixFileMode.UserWrite,
+            File.GetUnixFileMode(socketPath));
+    }
+
+    [SupportedOSPlatform("windows")]
+    private static void AssertWindowsSocketSecurity(string socketDirectory)
+    {
+        using var identity = WindowsIdentity.GetCurrent();
+        SecurityIdentifier user = identity.User
+            ?? throw new InvalidOperationException(
+                "The current Windows user has no security identifier.");
+        DirectorySecurity security = new DirectoryInfo(socketDirectory)
+            .GetAccessControl(AccessControlSections.Access | AccessControlSections.Owner);
+        Assert.IsTrue(security.AreAccessRulesProtected);
+        Assert.AreEqual(user, security.GetOwner(typeof(SecurityIdentifier)));
+        FileSystemAccessRule rule = Assert.ContainsSingle(
+            security.GetAccessRules(
+                    includeExplicit: true,
+                    includeInherited: false,
+                    typeof(SecurityIdentifier))
+                .Cast<FileSystemAccessRule>());
+        Assert.AreEqual(user, rule.IdentityReference);
+        Assert.AreEqual(AccessControlType.Allow, rule.AccessControlType);
+        Assert.AreEqual(FileSystemRights.FullControl, rule.FileSystemRights);
     }
 
     private const string ProjectText = """
