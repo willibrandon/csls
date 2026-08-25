@@ -85,15 +85,28 @@ public sealed partial class WorkspaceManager : IAsyncDisposable
     /// <param name="rootPaths">Absolute workspace root paths.</param>
     /// <param name="cancellationToken">The operation cancellation token.</param>
     /// <returns>A task that completes after the new generation is published.</returns>
+    public Task LoadAsync(
+        IReadOnlyList<string> rootPaths,
+        CancellationToken cancellationToken) =>
+        LoadAsync(rootPaths, progress: null, cancellationToken);
+
+    /// <summary>
+    /// Loads each workspace root while reporting each resolved project once.
+    /// </summary>
+    /// <param name="rootPaths">Absolute workspace root paths.</param>
+    /// <param name="progress">The optional ordered project progress destination.</param>
+    /// <param name="cancellationToken">The operation cancellation token.</param>
+    /// <returns>A task that completes after the new generation is published.</returns>
     public async Task LoadAsync(
         IReadOnlyList<string> rootPaths,
+        IProgress<WorkspaceLoadProgress>? progress,
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(rootPaths);
         ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposeState) != 0, this);
 
         ImmutableArray<(string RootPath, Workspace Workspace, Solution Solution)> loadedFolders =
-            await LoadFoldersAsync(rootPaths, cancellationToken).ConfigureAwait(false);
+            await LoadFoldersAsync(rootPaths, progress, cancellationToken).ConfigureAwait(false);
         bool published = false;
         try
         {
@@ -124,13 +137,27 @@ public sealed partial class WorkspaceManager : IAsyncDisposable
             Volatile.Read(ref _buildConfiguration),
             cancellationToken);
 
+    private Task<ImmutableArray<(
+        string RootPath,
+        Workspace Workspace,
+        Solution Solution)>> LoadFoldersAsync(
+        IReadOnlyList<string> rootPaths,
+        IProgress<WorkspaceLoadProgress>? progress,
+        CancellationToken cancellationToken) =>
+        LoadFoldersAsync(
+            rootPaths,
+            Volatile.Read(ref _buildConfiguration),
+            cancellationToken,
+            progress);
+
     private async Task<ImmutableArray<(
         string RootPath,
         Workspace Workspace,
         Solution Solution)>> LoadFoldersAsync(
         IReadOnlyList<string> rootPaths,
         string buildConfiguration,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        IProgress<WorkspaceLoadProgress>? progress = null)
     {
         ImmutableArray<(string RootPath, Workspace Workspace, Solution Solution)>.Builder loadedFolders =
             ImmutableArray.CreateBuilder<(
@@ -139,6 +166,9 @@ public sealed partial class WorkspaceManager : IAsyncDisposable
             Solution Solution)>(rootPaths.Count);
         try
         {
+            var loadPlans = new List<(
+                string RootPath,
+                IReadOnlyList<string> WorkspaceFiles)>();
             foreach (string requestedRoot in rootPaths.Distinct(PathComparer))
             {
                 cancellationToken.ThrowIfCancellationRequested();
@@ -146,22 +176,43 @@ public sealed partial class WorkspaceManager : IAsyncDisposable
                 IReadOnlyList<string> workspaceFiles = WorkspaceDiscovery.Discover(
                     rootPath,
                     cancellationToken);
-                if (workspaceFiles.Count == 0)
-                {
-                    (Workspace looseWorkspace, Solution looseSolution) = LoadLooseFiles(rootPath);
-                    loadedFolders.Add((rootPath, looseWorkspace, looseSolution));
-                    continue;
-                }
+                loadPlans.Add((rootPath, workspaceFiles));
+            }
 
+            string? firstWorkspaceFile = loadPlans
+                .SelectMany(static plan => plan.WorkspaceFiles)
+                .FirstOrDefault();
+            if (firstWorkspaceFile is not null)
+            {
                 VisualStudioInstance? msBuildInstance = MSBuildRegistration.EnsureRegistered(
-                    workspaceFiles[0]);
+                    firstWorkspaceFile);
                 if (msBuildInstance is not null)
                 {
                     LogMSBuildRegistered(
                         msBuildInstance.Name,
                         msBuildInstance.Version,
                         msBuildInstance.MSBuildPath,
-                        workspaceFiles[0]);
+                        firstWorkspaceFile);
+                }
+            }
+
+            WorkspaceLoadProgressReporter? progressReporter = progress is null
+                ? null
+                : new WorkspaceLoadProgressReporter(
+                    CountExpectedProjects(loadPlans),
+                    progress);
+            foreach ((string rootPath, IReadOnlyList<string> workspaceFiles) in loadPlans)
+            {
+                if (workspaceFiles.Count == 0)
+                {
+                    (Workspace looseWorkspace, Solution looseSolution) = LoadLooseFiles(rootPath);
+                    Project looseProject = looseSolution.Projects.Single();
+                    progressReporter?.ReportProject(
+                        rootPath,
+                        rootPath,
+                        looseProject.Name);
+                    loadedFolders.Add((rootPath, looseWorkspace, looseSolution));
+                    continue;
                 }
 
                 var loadedWorkspaces = new (Workspace Workspace, Solution Solution)?[
@@ -177,6 +228,8 @@ public sealed partial class WorkspaceManager : IAsyncDisposable
                             loadedWorkspaces[index] = await LoadWorkspaceFileAsync(
                                 workspaceFiles[index],
                                 buildConfiguration,
+                                string.Concat(rootPath, "\0", index.ToString(CultureInfo.InvariantCulture)),
+                                progressReporter,
                                 parallelCancellationToken).ConfigureAwait(false);
                         }).ConfigureAwait(false);
 
@@ -214,6 +267,8 @@ public sealed partial class WorkspaceManager : IAsyncDisposable
     private async Task<(Workspace Workspace, Solution Solution)> LoadWorkspaceFileAsync(
         string workspaceFile,
         string buildConfiguration,
+        string loadIdentity,
+        WorkspaceLoadProgressReporter? progressReporter,
         CancellationToken cancellationToken)
     {
         var globalProperties = new Dictionary<string, string>(
@@ -230,6 +285,8 @@ public sealed partial class WorkspaceManager : IAsyncDisposable
                 LogWorkspaceDiagnostic(
                     eventArgs.Diagnostic.Kind,
                     eventArgs.Diagnostic.Message));
+            IProgress<ProjectLoadProgress>? projectProgress = progressReporter?
+                .CreateObserver(loadIdentity);
             Solution solution;
             if (WorkspaceDiscovery.IsFileBasedApp(workspaceFile))
             {
@@ -245,15 +302,31 @@ public sealed partial class WorkspaceManager : IAsyncDisposable
                 StringComparison.OrdinalIgnoreCase))
             {
                 Project project = await workspace
-                    .OpenProjectAsync(workspaceFile, cancellationToken: cancellationToken)
+                    .OpenProjectAsync(
+                        workspaceFile,
+                        projectProgress,
+                        cancellationToken)
                     .ConfigureAwait(false);
                 solution = project.Solution;
             }
             else
             {
                 solution = await workspace
-                    .OpenSolutionAsync(workspaceFile, cancellationToken: cancellationToken)
+                    .OpenSolutionAsync(
+                        workspaceFile,
+                        projectProgress,
+                        cancellationToken)
                     .ConfigureAwait(false);
+            }
+
+            if (progressReporter is not null)
+            {
+                foreach (string projectPath in solution.Projects
+                    .Select(static project => project.FilePath)
+                    .OfType<string>())
+                {
+                    progressReporter.ReportProject(loadIdentity, projectPath);
+                }
             }
 
             return (workspace, solution);
@@ -263,6 +336,28 @@ public sealed partial class WorkspaceManager : IAsyncDisposable
             workspace.Dispose();
             throw;
         }
+    }
+
+    private static int CountExpectedProjects(
+        IReadOnlyList<(string RootPath, IReadOnlyList<string> WorkspaceFiles)> loadPlans)
+    {
+        int expectedProjectCount = 0;
+        foreach ((string _, IReadOnlyList<string> workspaceFiles) in loadPlans)
+        {
+            if (workspaceFiles.Count == 0)
+            {
+                expectedProjectCount = checked(expectedProjectCount + 1);
+                continue;
+            }
+
+            expectedProjectCount = checked(expectedProjectCount + workspaceFiles.Sum(
+                static workspaceFile => WorkspaceDiscovery.IsFileBasedApp(workspaceFile) ||
+                    workspaceFile.EndsWith(".csproj", StringComparison.OrdinalIgnoreCase)
+                    ? 1
+                    : SolutionProjectCounter.CountCSharpProjects(workspaceFile)));
+        }
+
+        return expectedProjectCount;
     }
 
     private async Task PublishFoldersAsync(

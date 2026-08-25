@@ -124,8 +124,21 @@ internal sealed class LspProcessSession : IAsyncDisposable
                         "The configuration handler has no client target."),
                     attribute);
 
-                Func<WorkspaceDiagnosticProgressParams, Task> progressHandler =
-                    client.PublishWorkspaceDiagnosticProgressAsync;
+                Func<WorkDoneProgressCreateParams, CancellationToken, Task>
+                    workDoneProgressCreateHandler = client.CreateWorkDoneProgressAsync;
+                var workDoneProgressCreateAttribute = new JsonRpcMethodAttribute(
+                    "window/workDoneProgress/create")
+                {
+                    UseSingleObjectParameterDeserialization = true
+                };
+                rpc.AddLocalRpcMethod(
+                    workDoneProgressCreateHandler.Method,
+                    workDoneProgressCreateHandler.Target ??
+                        throw new InvalidOperationException(
+                            "The work-done progress creation handler has no client target."),
+                    workDoneProgressCreateAttribute);
+
+                Func<JsonElement, Task> progressHandler = client.PublishProgressAsync;
                 var progressAttribute = new JsonRpcMethodAttribute("$/progress")
                 {
                     UseSingleObjectParameterDeserialization = true

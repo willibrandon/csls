@@ -10,7 +10,7 @@ an older test binary.
 
 ```console
 dotnet test --solution Csls.slnx
-dotnet test --project tests/Csls.Tests/Csls.Tests.csproj --filter "Name~Completion"
+dotnet test --project tests/Csls.Tests/Csls.Tests.csproj -- --filter "Name~Completion"
 ```
 
 ## Real behavior

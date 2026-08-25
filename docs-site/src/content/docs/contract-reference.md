@@ -154,6 +154,12 @@ These public wire-contract types are generated from the compiled assemblies and 
 | `Csls.Protocol.UniquenessLevel` | Identifies the scope in which a moniker identifier is unique. |
 | `Csls.Protocol.VersionedTextDocumentIdentifier` | Identifies a text document and the client version after a content mutation. |
 | `Csls.Protocol.WillSaveTextDocumentParams` | Identifies a document that the editor is about to save. |
+| `Csls.Protocol.WorkDoneProgressBegin` | Starts one client-visible work-done progress sequence. |
+| `Csls.Protocol.WorkDoneProgressCreateParams` | Requests client registration of one server-generated work-done progress token. |
+| `Csls.Protocol.WorkDoneProgressEnd` | Completes one client-visible work-done progress sequence. |
+| `Csls.Protocol.WorkDoneProgressParams` | Carries one typed work-done value through an LSP progress notification. |
+| `Csls.Protocol.WorkDoneProgressReport` | Updates one active client-visible work-done progress sequence. |
+| `Csls.Protocol.WorkDoneProgressValue` | Represents one typed value carried by an LSP work-done progress notification. |
 | `Csls.Protocol.WorkspaceDiagnosticParams` | Requests current diagnostics for every document in the loaded workspace. |
 | `Csls.Protocol.WorkspaceDiagnosticProgressParams` | Carries one workspace diagnostic partial result through an LSP progress notification. |
 | `Csls.Protocol.WorkspaceDiagnosticReport` | Returns bounded document diagnostic results for one loaded workspace snapshot. |
