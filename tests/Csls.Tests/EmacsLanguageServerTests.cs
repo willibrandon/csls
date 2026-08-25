@@ -25,12 +25,9 @@ public sealed class EmacsLanguageServerTests
         string repositoryRoot = EditorToolResolver.FindRepositoryRoot();
         string emacsPath = EditorToolResolver.ResolveEmacs(repositoryRoot);
         string processHostPath = EditorToolResolver.ResolveTestProcessHost(repositoryRoot);
-        string workerPath = Path.Join(
-            EditorToolResolver.ResolveArtifactsRoot(repositoryRoot),
-            "bin",
-            "Csls.Worker",
-            "debug",
-            "csls-worker.dll");
+        string launcherPath = EditorToolResolver.ResolveLauncher(repositoryRoot);
+        string workerPath = EditorToolResolver.ResolveServerWorker(repositoryRoot);
+        Assert.IsTrue(File.Exists(launcherPath), $"Launcher not found at {launcherPath}.");
         Assert.IsTrue(File.Exists(workerPath), $"Worker not found at {workerPath}.");
         Assert.IsTrue(
             File.Exists(processHostPath),
@@ -71,7 +68,7 @@ public sealed class EmacsLanguageServerTests
                 initializationPath,
                 CreateInitialization(
                     fixturePath,
-                    workerPath,
+                    launcherPath,
                     readyPath,
                     navigationPath,
                     targetPath),
@@ -89,6 +86,9 @@ public sealed class EmacsLanguageServerTests
                 "--environment",
                 "HOME",
                 homePath,
+                "--environment",
+                "CSLS_WORKER_PATH",
+                workerPath,
                 "--",
                 emacsPath,
                 "-nw",
@@ -235,7 +235,7 @@ public sealed class EmacsLanguageServerTests
 
     private static string CreateInitialization(
         string workspacePath,
-        string workerPath,
+        string launcherPath,
         string readyPath,
         string navigationPath,
         string targetPath)
@@ -257,7 +257,9 @@ public sealed class EmacsLanguageServerTests
             (add-to-list 'auto-mode-alist '("\\.cs\\'" . csharp-mode))
             (add-to-list 'eglot-server-programs
                          '((csharp-mode :language-id "csharp") .
-                           ({{ToElispString(dotnetPath)}} {{ToElispString(workerPath)}})))
+                           ({{ToElispString(dotnetPath)}}
+                            {{ToElispString(launcherPath)}}
+                            "lsp")))
             (cl-defmethod project-root ((project (head csls-test-project)))
               (cdr project))
             (defun csls-test-project-finder (directory)

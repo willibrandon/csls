@@ -25,12 +25,9 @@ public sealed class HelixLanguageServerTests
         string repositoryRoot = EditorToolResolver.FindRepositoryRoot();
         string helixPath = EditorToolResolver.ResolveHelix(repositoryRoot);
         string processHostPath = EditorToolResolver.ResolveTestProcessHost(repositoryRoot);
-        string workerPath = Path.Join(
-            EditorToolResolver.ResolveArtifactsRoot(repositoryRoot),
-            "bin",
-            "Csls.Worker",
-            "debug",
-            "csls-worker.dll");
+        string launcherPath = EditorToolResolver.ResolveLauncher(repositoryRoot);
+        string workerPath = EditorToolResolver.ResolveServerWorker(repositoryRoot);
+        Assert.IsTrue(File.Exists(launcherPath), $"Launcher not found at {launcherPath}.");
         Assert.IsTrue(File.Exists(workerPath), $"Worker not found at {workerPath}.");
         Assert.IsTrue(
             File.Exists(processHostPath),
@@ -80,7 +77,7 @@ public sealed class HelixLanguageServerTests
                 TestContext.CancellationToken).ConfigureAwait(false);
             await File.WriteAllTextAsync(
                 languageConfigurationPath,
-                CreateLanguageConfiguration(workerPath),
+                CreateLanguageConfiguration(launcherPath),
                 TestContext.CancellationToken).ConfigureAwait(false);
 
             string health = await RunHealthCheckAsync(
@@ -120,6 +117,9 @@ public sealed class HelixLanguageServerTests
                         "--environment",
                         "XDG_STATE_HOME",
                         statePath,
+                        "--environment",
+                        "CSLS_WORKER_PATH",
+                        workerPath,
                         "--",
                         helixPath,
                         "--config",
@@ -239,13 +239,13 @@ public sealed class HelixLanguageServerTests
         }
         """;
 
-    private static string CreateLanguageConfiguration(string workerPath)
+    private static string CreateLanguageConfiguration(string launcherPath)
     {
         string dotnetPath = EditorToolResolver.ResolveDotNetHost();
         return $$"""
             [language-server.csls]
             command = "{{ToTomlString(dotnetPath)}}"
-            args = ["{{ToTomlString(workerPath)}}"]
+            args = ["{{ToTomlString(launcherPath)}}", "lsp"]
             timeout = 60
 
             [[language]]

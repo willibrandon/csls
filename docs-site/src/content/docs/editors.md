@@ -1,6 +1,6 @@
 ---
 title: Editors
-description: Connect Fresh, Helix, Neovim, Emacs, and other LSP clients to csls.
+description: Connect Fresh, Helix, Neovim, Emacs, VS Code, Zed, and other LSP clients to csls.
 ---
 
 Configure the server command as `csls` with `lsp` as its only argument. Start the
@@ -72,9 +72,38 @@ Register `csls` with Eglot before opening a C# buffer:
 
 Run `M-x eglot` if the current C# mode does not start Eglot automatically.
 
+## Zed
+
+Select the official C# extension's `csharp-ls` adapter and replace its binary in
+Zed settings:
+
+```json
+{
+  "languages": {
+    "CSharp": {
+      "language_servers": ["csharp-ls", "!roslyn", "!omnisharp"]
+    }
+  },
+  "lsp": {
+    "csharp-ls": {
+      "binary": {
+        "path": "csls",
+        "arguments": ["lsp"]
+      }
+    }
+  }
+}
+```
+
+## VS Code
+
+VS Code language clients launch `csls` with `lsp` as the argument and register a
+`csharp` document selector. The repository verifies that contract in the real VS
+Code Electron extension host with `vscode-languageclient`.
+
 ## Other clients
 
-Any LSP client that can launch a standard input and output server can run:
+Any other LSP client that can launch a standard input and output server can run:
 
 ```console
 csls lsp

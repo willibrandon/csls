@@ -3,6 +3,7 @@
     <AssemblyName>Csls.Tests</AssemblyName>
     <RootNamespace>Csls.Tests</RootNamespace>
     <Description>Real behavior tests for csls.</Description>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <MSTestAnalysisMode>All</MSTestAnalysisMode>
   </PropertyGroup>
 

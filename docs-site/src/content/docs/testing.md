@@ -32,10 +32,11 @@ ported behavior executable without publishing private backlog references.
 
 ## Editor sessions
 
-Fresh, GNU Emacs with Eglot, Helix, and Neovim run in real Hex1b terminals. Tests
-wait for visible terminal state and editor protocol state rather than fixed delays.
-Hover, navigation, diagnostics, multi-solution loading, and shutdown are asserted
-through the editor the user sees.
+Fresh, GNU Emacs with Eglot, Helix, and Neovim run in real Hex1b terminals. VS Code
+runs in its Electron extension host, and Zed runs with the official C# extension.
+Tests wait for visible editor or protocol state rather than fixed delays. Hover,
+navigation, diagnostics, multi-solution loading, and shutdown are asserted through
+the editor process.
 
 Provisioners are .NET file-based apps. Each one selects the current pinned release
 for the host operating system and architecture, verifies its digest, extracts it
@@ -46,6 +47,8 @@ dotnet run --file scripts/Provision-Fresh.cs
 dotnet run --file scripts/Provision-Emacs.cs
 dotnet run --file scripts/Provision-Helix.cs
 dotnet run --file scripts/Provision-Neovim.cs
+dotnet run --file scripts/Provision-VsCode.cs
+dotnet run --file scripts/Provision-Zed.cs
 ```
 
 Legacy workspace jobs run old project files without reference-assembly packages.

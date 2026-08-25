@@ -24,12 +24,9 @@ public sealed class NeovimLanguageServerTests
         string repositoryRoot = EditorToolResolver.FindRepositoryRoot();
         string neovimPath = EditorToolResolver.ResolveNeovim(repositoryRoot);
         string processHostPath = EditorToolResolver.ResolveTestProcessHost(repositoryRoot);
-        string workerPath = Path.Join(
-            EditorToolResolver.ResolveArtifactsRoot(repositoryRoot),
-            "bin",
-            "Csls.Worker",
-            "debug",
-            "csls-worker.dll");
+        string launcherPath = EditorToolResolver.ResolveLauncher(repositoryRoot);
+        string workerPath = EditorToolResolver.ResolveServerWorker(repositoryRoot);
+        Assert.IsTrue(File.Exists(launcherPath), $"Launcher not found at {launcherPath}.");
         Assert.IsTrue(File.Exists(workerPath), $"Worker not found at {workerPath}.");
         Assert.IsTrue(
             File.Exists(processHostPath),
@@ -61,7 +58,7 @@ public sealed class NeovimLanguageServerTests
                 TestContext.CancellationToken).ConfigureAwait(false);
             await File.WriteAllTextAsync(
                 configurationPath,
-                CreateConfiguration(workerPath, readyPath, hoverRequestedPath),
+                CreateConfiguration(launcherPath, readyPath, hoverRequestedPath),
                 TestContext.CancellationToken).ConfigureAwait(false);
 
             var workload = new Hex1bPtyWorkload(
@@ -89,6 +86,9 @@ public sealed class NeovimLanguageServerTests
                         "--environment",
                         "XDG_STATE_HOME",
                         statePath,
+                        "--environment",
+                        "CSLS_WORKER_PATH",
+                        workerPath,
                         "--",
                         neovimPath,
                         "-u",
@@ -179,12 +179,9 @@ public sealed class NeovimLanguageServerTests
         string repositoryRoot = EditorToolResolver.FindRepositoryRoot();
         string neovimPath = EditorToolResolver.ResolveNeovim(repositoryRoot);
         string processHostPath = EditorToolResolver.ResolveTestProcessHost(repositoryRoot);
-        string workerPath = Path.Join(
-            EditorToolResolver.ResolveArtifactsRoot(repositoryRoot),
-            "bin",
-            "Csls.Worker",
-            "debug",
-            "csls-worker.dll");
+        string launcherPath = EditorToolResolver.ResolveLauncher(repositoryRoot);
+        string workerPath = EditorToolResolver.ResolveServerWorker(repositoryRoot);
+        Assert.IsTrue(File.Exists(launcherPath), $"Launcher not found at {launcherPath}.");
         Assert.IsTrue(File.Exists(workerPath), $"Worker not found at {workerPath}.");
 
         string fixturePath = Path.Join(
@@ -215,7 +212,7 @@ public sealed class NeovimLanguageServerTests
             await File.WriteAllTextAsync(
                 configurationPath,
                 CreateMoveConfiguration(
-                    workerPath,
+                    launcherPath,
                     documentPath,
                     targetPath,
                     readyPath,
@@ -247,6 +244,9 @@ public sealed class NeovimLanguageServerTests
                     "--environment",
                     "XDG_STATE_HOME",
                     statePath,
+                    "--environment",
+                    "CSLS_WORKER_PATH",
+                    workerPath,
                     "--",
                     neovimPath,
                     "-u",
@@ -364,7 +364,7 @@ public sealed class NeovimLanguageServerTests
         """;
 
     private static string CreateConfiguration(
-        string workerPath,
+        string launcherPath,
         string readyPath,
         string hoverRequestedPath)
     {
@@ -384,7 +384,7 @@ public sealed class NeovimLanguageServerTests
               end,
             })
             vim.lsp.config('csls', {
-              cmd = { {{ToLuaString(dotnetPath)}}, {{ToLuaString(workerPath)}} },
+              cmd = { {{ToLuaString(dotnetPath)}}, {{ToLuaString(launcherPath)}}, 'lsp' },
               filetypes = { 'cs' },
               root_dir = function(_, on_dir)
                 on_dir(vim.fn.getcwd())
@@ -395,7 +395,7 @@ public sealed class NeovimLanguageServerTests
     }
 
     private static string CreateMoveConfiguration(
-        string workerPath,
+        string launcherPath,
         string documentPath,
         string targetPath,
         string readyPath,
@@ -450,7 +450,7 @@ public sealed class NeovimLanguageServerTests
               end,
             })
             vim.lsp.config('csls', {
-              cmd = { {{ToLuaString(dotnetPath)}}, {{ToLuaString(workerPath)}} },
+              cmd = { {{ToLuaString(dotnetPath)}}, {{ToLuaString(launcherPath)}}, 'lsp' },
               filetypes = { 'cs' },
               root_dir = function(_, on_dir)
                 on_dir(vim.fn.getcwd())
