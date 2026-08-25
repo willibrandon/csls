@@ -12,26 +12,37 @@ public sealed partial class WorkspaceManager
     /// <summary>
     /// Inspects only the current workspace generation and loaded folder summaries.
     /// </summary>
+    /// <param name="cancellationToken">The inspection cancellation token.</param>
     /// <returns>The allocation-bounded workspace summary.</returns>
-    public WorkspaceSummarySnapshot InspectSummary()
+    public async Task<WorkspaceSummarySnapshot> InspectSummaryAsync(
+        CancellationToken cancellationToken)
     {
         ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposeState) != 0, this);
-        ImmutableArray<(string RootPath, Workspace Workspace, Solution Solution)> folders = _folders;
-        return new WorkspaceSummarySnapshot
+        await _mutationGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
         {
-            Generation = Generation,
-            Workspaces =
-            [
-                .. folders.Select(static folder => new WorkspaceFolderInspection
-                {
-                    RootPath = folder.RootPath,
-                    WorkspaceKind = folder.Workspace.GetType().Name,
-                    ProjectCount = folder.Solution.ProjectIds.Count,
-                    DocumentCount = folder.Solution.Projects.Sum(
-                        static project => project.DocumentIds.Count)
-                })
-            ]
-        };
+            ImmutableArray<(string RootPath, Workspace Workspace, Solution Solution)> folders =
+                _folders;
+            return new WorkspaceSummarySnapshot
+            {
+                Generation = Generation,
+                Workspaces =
+                [
+                    .. folders.Select(static folder => new WorkspaceFolderInspection
+                    {
+                        RootPath = folder.RootPath,
+                        WorkspaceKind = folder.Workspace.GetType().Name,
+                        ProjectCount = folder.Solution.ProjectIds.Count,
+                        DocumentCount = folder.Solution.Projects.Sum(
+                            static project => project.DocumentIds.Count)
+                    })
+                ]
+            };
+        }
+        finally
+        {
+            _mutationGate.Release();
+        }
     }
 
     /// <summary>
