@@ -72,6 +72,23 @@ try
         "git",
         ["rev-parse", "--verify", $"origin/{baseBranch}^{{commit}}"],
         repositoryRoot).ConfigureAwait(false)).Trim();
+    string changedPathOutput = await RunCapturedAsync(
+        "git",
+        ["diff", "--name-only", "--diff-filter=ACMRT", baseCommit, "HEAD"],
+        repositoryRoot).ConfigureAwait(false);
+    string[] changedPaths = changedPathOutput.Split(
+        ['\r', '\n'],
+        StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+    IReadOnlyList<string> benchmarkFilters = SelectBenchmarkFilters(changedPaths);
+    if (benchmarkFilters.Count == 0)
+    {
+        const string noChangesReport =
+            "# Benchmark regression check\n\nNo stable benchmark dependencies changed.\n";
+        await File.WriteAllTextAsync(comparisonPath, noChangesReport).ConfigureAwait(false);
+        await Console.Out.WriteAsync(noChangesReport).ConfigureAwait(false);
+        return 0;
+    }
+
     await RunCheckedAsync(
         "git",
         ["worktree", "add", "--detach", worktreePath, baseCommit],
@@ -81,15 +98,21 @@ try
     await RunBenchmarksAsync(
         dotnetPath,
         worktreePath,
-        baselineBeforePath).ConfigureAwait(false);
+        baselineBeforePath,
+        benchmarkFilters,
+        "Short").ConfigureAwait(false);
     await RunBenchmarksAsync(
         dotnetPath,
         repositoryRoot,
-        candidatePath).ConfigureAwait(false);
+        candidatePath,
+        benchmarkFilters,
+        "Short").ConfigureAwait(false);
     await RunBenchmarksAsync(
         dotnetPath,
         worktreePath,
-        baselineAfterPath).ConfigureAwait(false);
+        baselineAfterPath,
+        benchmarkFilters,
+        "Short").ConfigureAwait(false);
 
     Dictionary<string, List<double>> baselineSamples = ReadSamples(baselineBeforePath);
     MergeSamples(baselineSamples, ReadSamples(baselineAfterPath));
@@ -100,24 +123,49 @@ try
             "The base and candidate benchmark sets do not contain the same cases.");
     }
 
-    if (ContainsRegression(
+    HashSet<string> initialRegressions = FindRegressions(
         baselineSamples,
         candidateSamples,
-        maximumRegressionRatio))
+        maximumRegressionRatio);
+    if (initialRegressions.Count > 0)
     {
         await Console.Out.WriteLineAsync(
-            "Confirming the initial regression signal with another candidate and baseline run.")
+            "Confirming the initial regression signal with longer targeted measurements.")
             .ConfigureAwait(false);
+        IReadOnlyList<string> confirmationFilters = CreateConfirmationFilters(
+            initialRegressions);
         await RunBenchmarksAsync(
             dotnetPath,
             repositoryRoot,
-            candidateConfirmationPath).ConfigureAwait(false);
+            candidateConfirmationPath,
+            confirmationFilters,
+            "Medium").ConfigureAwait(false);
         await RunBenchmarksAsync(
             dotnetPath,
             worktreePath,
-            baselineConfirmationPath).ConfigureAwait(false);
-        MergeSamples(candidateSamples, ReadSamples(candidateConfirmationPath));
-        MergeSamples(baselineSamples, ReadSamples(baselineConfirmationPath));
+            baselineConfirmationPath,
+            confirmationFilters,
+            "Medium").ConfigureAwait(false);
+        Dictionary<string, List<double>> candidateConfirmationSamples =
+            ReadSamples(candidateConfirmationPath);
+        Dictionary<string, List<double>> baselineConfirmationSamples =
+            ReadSamples(baselineConfirmationPath);
+        foreach (string benchmark in initialRegressions)
+        {
+            if (!candidateConfirmationSamples.TryGetValue(
+                    benchmark,
+                    out List<double>? candidateValues) ||
+                !baselineConfirmationSamples.TryGetValue(
+                    benchmark,
+                    out List<double>? baselineValues))
+            {
+                throw new InvalidDataException(
+                    $"Confirmation results did not include {benchmark}.");
+            }
+
+            candidateSamples[benchmark] = candidateValues;
+            baselineSamples[benchmark] = baselineValues;
+        }
     }
 
     var report = new StringBuilder();
@@ -181,11 +229,12 @@ finally
     }
 }
 
-static bool ContainsRegression(
+static HashSet<string> FindRegressions(
     IReadOnlyDictionary<string, List<double>> baselineSamples,
     IReadOnlyDictionary<string, List<double>> candidateSamples,
     double maximumRatio)
 {
+    var regressions = new HashSet<string>(StringComparer.Ordinal);
     foreach ((string benchmark, List<double> candidateValues) in candidateSamples)
     {
         List<double> baselineValues = baselineSamples[benchmark];
@@ -196,12 +245,71 @@ static bool ContainsRegression(
         if (candidateMedian / baselineMedian > maximumRatio &&
             candidateLowerQuartile > baselineUpperQuartile)
         {
-            return true;
+            regressions.Add(benchmark);
         }
     }
 
-    return false;
+    return regressions;
 }
+
+static IReadOnlyList<string> CreateConfirmationFilters(
+    IEnumerable<string> benchmarkNames) =>
+    [
+        .. benchmarkNames
+            .Select(static name =>
+            {
+                int parameterIndex = name.IndexOf('(', StringComparison.Ordinal);
+                string methodName = parameterIndex >= 0 ? name[..parameterIndex] : name;
+                return $"*{methodName}*";
+            })
+            .Distinct(StringComparer.Ordinal)
+            .Order(StringComparer.Ordinal)
+    ];
+
+static IReadOnlyList<string> SelectBenchmarkFilters(IEnumerable<string> changedPaths)
+{
+    const string documentUriFilter = "*DocumentUriBenchmarks*";
+    const string protocolSerializationFilter = "*ProtocolSerializationBenchmarks*";
+    const string requestSchedulerFilter = "*RequestSchedulerBenchmarks*";
+    string[] allFilters =
+    [
+        documentUriFilter,
+        protocolSerializationFilter,
+        requestSchedulerFilter
+    ];
+    var selectedFilters = new HashSet<string>(StringComparer.Ordinal);
+    foreach (string path in changedPaths)
+    {
+        if (IsBenchmarkInfrastructure(path))
+        {
+            return allFilters;
+        }
+
+        if (path.StartsWith("src/Csls.Protocol/", StringComparison.Ordinal))
+        {
+            selectedFilters.Add(documentUriFilter);
+            selectedFilters.Add(protocolSerializationFilter);
+        }
+
+        if (path.StartsWith("src/Csls.Core/", StringComparison.Ordinal))
+        {
+            selectedFilters.Add(requestSchedulerFilter);
+        }
+    }
+
+    return [.. selectedFilters.Order(StringComparer.Ordinal)];
+}
+
+static bool IsBenchmarkInfrastructure(string path) =>
+    path.StartsWith("benchmarks/", StringComparison.Ordinal) ||
+    path is
+        ".github/workflows/benchmarks.yml" or
+        "Directory.Build.props" or
+        "Directory.Build.targets" or
+        "Directory.Packages.props" or
+        "NuGet.config" or
+        "global.json" or
+        "scripts/Verify-BenchmarkRegression.cs";
 
 static bool IsSafeBranchName(string value) =>
     value.Length <= 200 &&
@@ -213,8 +321,14 @@ static bool IsSafeBranchName(string value) =>
 static async Task RunBenchmarksAsync(
     string dotnetPath,
     string checkoutPath,
-    string artifactPath)
+    string artifactPath,
+    IReadOnlyList<string> benchmarkFilters,
+    string job)
 {
+    ArgumentOutOfRangeException.ThrowIfZero(benchmarkFilters.Count);
+    Directory.CreateDirectory(artifactPath);
+    string binlogDirectory = Path.Join(artifactPath, "binlogs");
+    Directory.CreateDirectory(binlogDirectory);
     string benchmarkProject = Path.Join(
         checkoutPath,
         "benchmarks",
@@ -222,30 +336,39 @@ static async Task RunBenchmarksAsync(
         "Csls.Benchmarks.csproj");
     await RunCheckedAsync(
         dotnetPath,
-        ["build", benchmarkProject, "--configuration", "Release"],
-        checkoutPath).ConfigureAwait(false);
-    await RunCheckedAsync(
-        dotnetPath,
         [
-            "run",
-            "--project",
+            "build",
             benchmarkProject,
             "--configuration",
             "Release",
-            "--no-build",
-            "--",
-            "--filter",
-            "*DocumentUriBenchmarks*",
-            "*ProtocolSerializationBenchmarks*",
-            "*RequestSchedulerBenchmarks*",
-            "--artifacts",
-            artifactPath,
-            "--noOverwrite",
-            "--exporters",
-            "fulljson",
-            "--job",
-            "Short"
+            $"--binaryLogger:{Path.Join(binlogDirectory, "build.binlog")}"
         ],
+        checkoutPath).ConfigureAwait(false);
+    List<string> arguments =
+    [
+        "run",
+        "--project",
+        benchmarkProject,
+        "--configuration",
+        "Release",
+        "--no-build",
+        "--",
+        "--filter"
+    ];
+    arguments.AddRange(benchmarkFilters);
+    arguments.AddRange(
+    [
+        "--artifacts",
+        artifactPath,
+        "--noOverwrite",
+        "--exporters",
+        "fulljson",
+        "--job",
+        job
+    ]);
+    await RunCheckedAsync(
+        dotnetPath,
+        arguments,
         checkoutPath).ConfigureAwait(false);
 }
 
