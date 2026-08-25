@@ -12,7 +12,8 @@ socket lets the CLI and MCP server use the same live workspace without starting
 another compiler process.
 
 Fresh, GNU Emacs with Eglot, Helix, and Neovim are exercised through real editor
-sessions in the test suite. The protocol also works with other LSP clients.
+sessions in the test suite. VS Code and Zed run in their graphical integration
+hosts. The protocol also works with other LSP clients.
 
 ![csls dashboard showing a live C# diagnostic](../../assets/screenshots/dashboard.svg)
 

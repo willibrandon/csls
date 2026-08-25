@@ -45,6 +45,30 @@ internal static class EditorToolResolver
             : Path.GetFullPath(configuredPath);
     }
 
+    /// <summary>
+    /// Resolves the built csls launcher used by editor integration tests.
+    /// </summary>
+    /// <param name="repositoryRoot">The absolute repository root.</param>
+    /// <returns>The absolute managed launcher assembly path.</returns>
+    internal static string ResolveLauncher(string repositoryRoot) => Path.Join(
+        ResolveArtifactsRoot(repositoryRoot),
+        "bin",
+        "Csls.App",
+        "debug",
+        "csls.dll");
+
+    /// <summary>
+    /// Resolves the built language-server worker supervised by the csls launcher.
+    /// </summary>
+    /// <param name="repositoryRoot">The absolute repository root.</param>
+    /// <returns>The absolute managed worker assembly path.</returns>
+    internal static string ResolveServerWorker(string repositoryRoot) => Path.Join(
+        ResolveArtifactsRoot(repositoryRoot),
+        "bin",
+        "Csls.Worker",
+        "debug",
+        "csls-worker.dll");
+
     private static string? FindRepositoryRoot(string startingPath)
     {
         DirectoryInfo? directory = new(startingPath);
@@ -145,6 +169,49 @@ internal static class EditorToolResolver
     }
 
     /// <summary>
+    /// Resolves the pinned Zed executable used by the graphical editor integration test.
+    /// </summary>
+    /// <param name="repositoryRoot">The absolute repository root.</param>
+    /// <returns>The absolute Zed executable path.</returns>
+    internal static string ResolveZed(string repositoryRoot) => Resolve(
+        repositoryRoot,
+        "CSLS_ZED_PATH",
+        "zed",
+        "1.16.2",
+        GetPlatform(allowWindowsArm64: false, detectMusl: false),
+        "zed");
+
+    /// <summary>
+    /// Resolves the pinned official C# extension used by the Zed integration test.
+    /// </summary>
+    /// <param name="repositoryRoot">The absolute repository root.</param>
+    /// <returns>The absolute extracted extension directory.</returns>
+    internal static string ResolveZedCSharpExtension(string repositoryRoot)
+    {
+        string? configuredPath = Environment.GetEnvironmentVariable(
+            "CSLS_ZED_CSHARP_EXTENSION_PATH");
+        if (!string.IsNullOrWhiteSpace(configuredPath))
+        {
+            return configuredPath;
+        }
+
+        string? configuredToolsRoot = Environment.GetEnvironmentVariable("CSLS_TOOLS_ROOT");
+        string toolsRoot = string.IsNullOrWhiteSpace(configuredToolsRoot)
+            ? Path.Join(repositoryRoot, "artifacts", "tools")
+            : Path.GetFullPath(configuredToolsRoot);
+        string extensionPath = Path.Join(
+            toolsRoot,
+            "zed-csharp-extension",
+            "1.2.2",
+            "all");
+        return File.Exists(Path.Join(extensionPath, "extension.toml"))
+            ? extensionPath
+            : throw new DirectoryNotFoundException(
+                "The pinned Zed C# extension is not provisioned. " +
+                "Run scripts/Provision-Zed.cs.");
+    }
+
+    /// <summary>
     /// Resolves the pinned upstream csharp-ls executable used as a parity oracle.
     /// </summary>
     /// <param name="repositoryRoot">The absolute repository root.</param>
@@ -197,6 +264,7 @@ internal static class EditorToolResolver
         "fresh" => "Fresh",
         "helix" => "Helix",
         "neovim" => "Neovim",
+        "zed" => "Zed",
         _ => throw new ArgumentOutOfRangeException(nameof(toolName), toolName, null)
     };
 

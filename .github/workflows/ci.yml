@@ -116,6 +116,11 @@ jobs:
         with:
           dotnet-version: 10.0.400
 
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24.19.0
+
       - name: Restore
         run: dotnet restore Csls.slnx
 
@@ -139,6 +144,17 @@ jobs:
 
       - name: Provision Neovim
         run: dotnet run --file scripts/Provision-Neovim.cs
+
+      - name: Install graphical editor test prerequisites
+        if: runner.os == 'Linux'
+        run: dotnet run --file scripts/Install-GraphicalEditorTestPrerequisites.cs
+
+      - name: Provision Zed
+        if: runner.os == 'Linux'
+        run: dotnet run --file scripts/Provision-Zed.cs
+
+      - name: Provision Visual Studio Code
+        run: dotnet run --file scripts/Provision-VsCode.cs
 
       - name: Test
         run: dotnet test --solution Csls.slnx --report-trx --results-directory artifacts/test-results/${{ matrix.rid }}
