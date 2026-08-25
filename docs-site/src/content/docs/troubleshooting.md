@@ -60,8 +60,9 @@ csls sessions list --json
 ```
 
 The control socket is local to the current operating-system user. Containers,
-elevated processes, and different user accounts do not share its per-user temporary
-directory. A stale socket is ignored when its owner process is no longer live.
+elevated processes, and different user accounts do not share the `.csls/sockets`
+directory in that user's profile. A stale socket is ignored when its owner process
+is no longer live.
 
 If one editor has several workspaces, select the session with `--workspace`. If
 several sessions own the same path, select the exact process with `--session`.

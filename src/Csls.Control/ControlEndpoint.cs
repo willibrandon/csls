@@ -1,5 +1,6 @@
-using System.Security.Cryptography;
-using System.Text;
+using System.Runtime.Versioning;
+using System.Security.AccessControl;
+using System.Security.Principal;
 
 namespace Csls.Control;
 
@@ -14,10 +15,18 @@ public static class ControlEndpoint
     /// <returns>The per-user socket directory.</returns>
     public static string GetSocketDirectory()
     {
-        string temporaryDirectory = OperatingSystem.IsWindows()
-            ? Path.GetTempPath()
-            : "/tmp";
-        return Path.Join(temporaryDirectory, $"csls-{GetUserKey()}");
+        string userProfile = OperatingSystem.IsWindows()
+            ? Environment.GetFolderPath(
+                Environment.SpecialFolder.UserProfile,
+                Environment.SpecialFolderOption.DoNotVerify)
+            : UnixUserProfileResolver.GetCurrentUserHomeDirectory();
+        if (string.IsNullOrWhiteSpace(userProfile))
+        {
+            throw new InvalidOperationException(
+                "The current user profile directory is unavailable.");
+        }
+
+        return Path.Join(userProfile, ".csls", "sockets");
     }
 
     /// <summary>
@@ -52,15 +61,19 @@ public static class ControlEndpoint
     {
         string socketDirectory = GetSocketDirectory();
         Directory.CreateDirectory(socketDirectory);
-        if (!OperatingSystem.IsWindows())
+        var directory = new DirectoryInfo(socketDirectory);
+        if (directory.LinkTarget is not null)
         {
-            var directory = new DirectoryInfo(socketDirectory);
-            if (directory.LinkTarget is not null)
-            {
-                throw new IOException(
-                    $"The csls socket directory must not be a symbolic link: {socketDirectory}");
-            }
+            throw new IOException(
+                $"The csls socket directory must not be a symbolic link: {socketDirectory}");
+        }
 
+        if (OperatingSystem.IsWindows())
+        {
+            RestrictWindowsDirectory(directory);
+        }
+        else
+        {
             File.SetUnixFileMode(
                 socketDirectory,
                 UnixFileMode.UserRead |
@@ -86,9 +99,23 @@ public static class ControlEndpoint
         }
     }
 
-    private static string GetUserKey()
+    [SupportedOSPlatform("windows")]
+    private static void RestrictWindowsDirectory(DirectoryInfo directory)
     {
-        byte[] hash = SHA256.HashData(Encoding.UTF8.GetBytes(Environment.UserName));
-        return Convert.ToHexStringLower(hash.AsSpan(0, 8));
+        using var identity = WindowsIdentity.GetCurrent();
+        SecurityIdentifier user = identity.User
+            ?? throw new InvalidOperationException(
+                "The current Windows user has no security identifier.");
+        var security = new DirectorySecurity();
+        security.SetAccessRuleProtection(isProtected: true, preserveInheritance: false);
+        security.SetOwner(user);
+        security.AddAccessRule(
+            new FileSystemAccessRule(
+                user,
+                FileSystemRights.FullControl,
+                InheritanceFlags.ContainerInherit | InheritanceFlags.ObjectInherit,
+                PropagationFlags.None,
+                AccessControlType.Allow));
+        directory.SetAccessControl(security);
     }
 }

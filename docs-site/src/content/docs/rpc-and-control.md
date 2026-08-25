@@ -45,14 +45,14 @@ diagnosis.
 
 ## Control connection
 
-Each server worker creates one Unix domain socket under a per-user temporary
-directory. .NET provides this socket family on Windows, Linux, and macOS. csls does
-not open a TCP listener.
+Each server worker creates one Unix domain socket under `.csls/sockets` in the
+current user profile. .NET provides this socket family on Windows, Linux, and macOS.
+csls does not open a TCP listener.
 
 On Unix, the directory is restricted to its owner and rejected if it is a symbolic
-link. The bound socket is readable and writable only by that owner. Windows uses a
-per-user hashed directory beneath the user temporary path. Session discovery also
-checks process identity before treating a socket as live.
+link. The bound socket is readable and writable only by that owner. Windows applies
+a protected directory ACL for the current user. Session discovery also checks process
+identity before treating a socket as live.
 
 Control messages use a four-byte big-endian length followed by JSON. The server
 rejects nonpositive payloads and payloads larger than 4 MiB before deserialization.

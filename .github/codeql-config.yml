@@ -1,0 +1,7 @@
+name: csls CodeQL configuration
+
+query-filters:
+  - exclude:
+      id:
+        - cs/call-to-unmanaged-code
+        - cs/unmanaged-code
