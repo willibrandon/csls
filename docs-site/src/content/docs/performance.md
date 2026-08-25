@@ -8,18 +8,22 @@ measured workload and a regression check that preserves those results.
 
 ## Microbenchmarks
 
-`Csls.Benchmarks` uses BenchmarkDotNet for in-process code paths such as protocol
+`Csls.Benchmarks` uses BenchmarkDotNet for focused code paths such as protocol
 serialization, scheduling, completion, diagnostics, formatting, Razor mapping,
-workspace discovery, and edit planning.
+workspace routing, semantic tokens, workspace symbols, and AF_UNIX control requests.
 
 ```console
 dotnet run --file scripts/Run-Benchmarks.cs -- --job Dry
 dotnet run --file scripts/Run-Benchmarks.cs -- --filter "*Completion*"
-dotnet run --file scripts/Run-Benchmarks.cs
+dotnet run --file scripts/Run-Benchmarks.cs -- --disassembly
 ```
 
-The dry job validates benchmark construction in pull requests. Scheduled and release
-runs use the full BenchmarkDotNet jobs and retain machine-readable reports.
+Repeat `--filter` to select several benchmark groups. The dry job validates benchmark
+construction in pull requests. Scheduled and release runs retain machine-readable
+reports, code size, and disassembly. Pull requests also run stable base and candidate
+benchmarks on the same runner. A regression fails only when the candidate median is
+more than 10 percent slower and its measurements no longer overlap the baseline
+interquartile range.
 
 ## End-to-end measurements
 

@@ -1,8 +1,15 @@
 # Performance measurement
 
 `Csls.Benchmarks` contains focused BenchmarkDotNet microbenchmarks for code paths
-that can run in process. `Csls.EndToEndPerformance` measures the published Native
-AOT tools through their real LSP, MCP, CLI, control socket, and Hex1b dashboard.
+that need isolated measurement, including real LSP workers and AF_UNIX control
+sessions. `Csls.EndToEndPerformance` measures the published Native AOT tools through
+their real LSP, MCP, CLI, control socket, and Hex1b dashboard.
+
+Run selected microbenchmarks with generated disassembly from the repository root:
+
+```console
+dotnet run --file scripts/Run-Benchmarks.cs -- --filter "*DocumentUri*" --disassembly
+```
 
 Run the complete end-to-end measurement from the repository root:
 
