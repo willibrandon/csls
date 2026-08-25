@@ -106,6 +106,49 @@ public sealed class DebugInfoLanguageServerTests
     }
 
     /// <summary>
+    /// Acknowledges shutdown while the real repository workspace is still loading.
+    /// </summary>
+    [TestMethod]
+    public async Task ShutdownRespondsWhileRepositoryWorkspaceLoads()
+    {
+        string repositoryRoot = EditorToolResolver.FindRepositoryRoot();
+        string workerPath = ResolveWorkerPath(repositoryRoot);
+        var lsp = LspProcessSession.Start(
+            "csls-shutdown-during-load-worker",
+            EditorToolResolver.ResolveDotNetHost(),
+            [workerPath],
+            repositoryRoot);
+        await using ConfiguredAsyncDisposable lspCleanup = lsp.ConfigureAwait(false);
+
+        await lsp.InitializeAsync(
+            repositoryRoot,
+            TestContext.CancellationToken).ConfigureAwait(false);
+        await lsp.CompleteInitializationAsync().ConfigureAwait(false);
+
+        using var loadingTimeout = CancellationTokenSource.CreateLinkedTokenSource(
+            TestContext.CancellationToken);
+        loadingTimeout.CancelAfter(TimeSpan.FromSeconds(10));
+        CSharpDebugInfo loading = await WaitForPhaseAsync(
+            lsp,
+            "Loading",
+            loadingTimeout.Token).ConfigureAwait(false);
+        Assert.AreEqual(0L, loading.Workspace.Generation);
+        Assert.IsEmpty(loading.Workspace.Folders);
+        CSharpDebugRequestInfo initialized = Assert.ContainsSingle(
+            loading.RequestQueue.Requests.Where(
+                static request => request.Name == "initialized"));
+        Assert.AreEqual("Running", initialized.Phase);
+
+        using var shutdownTimeout = CancellationTokenSource.CreateLinkedTokenSource(
+            TestContext.CancellationToken);
+        shutdownTimeout.CancelAfter(TimeSpan.FromSeconds(10));
+        await lsp.RequestShutdownAsync(shutdownTimeout.Token).ConfigureAwait(false);
+        string diagnostics = await lsp.ExitAsync(
+            TestContext.CancellationToken).ConfigureAwait(false);
+        Assert.DoesNotContain("Unhandled exception", diagnostics, StringComparison.Ordinal);
+    }
+
+    /// <summary>
     /// Responds while a real Roslyn analyzer holds a scheduled diagnostic request.
     /// </summary>
     [TestMethod]
