@@ -32,6 +32,8 @@ project, include, property, and SDK directives therefore use the same NuGet,
 MSBuild, central package management, and `global.json` behavior as `dotnet run`.
 Folder discovery loads shebang apps and directive apps with top-level statements,
 while an explicit C# file workspace always uses file-based app semantics.
+Clients that support work-done progress receive one update for each resolved
+project, including projects discovered through references outside the solution.
 
 Unity projects are detected by their `Assets` directory and
 `ProjectSettings/ProjectVersion.txt` file. csls loads the generated solution at

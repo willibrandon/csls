@@ -31,6 +31,38 @@ public sealed class LspClientConnection
     }
 
     /// <summary>
+    /// Creates one server-owned work-done progress token in the connected LSP client.
+    /// </summary>
+    /// <param name="parameters">The unique server-generated progress token.</param>
+    /// <param name="cancellationToken">The request cancellation token.</param>
+    /// <returns>A task that completes after the client accepts the token.</returns>
+    public async Task CreateWorkDoneProgressAsync(
+        WorkDoneProgressCreateParams parameters,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(parameters);
+        JsonRpc rpc = Volatile.Read(ref _rpc)
+            ?? throw new InvalidOperationException("The LSP client is not connected.");
+        await rpc.InvokeWithParameterObjectAsync<object?>(
+            "window/workDoneProgress/create",
+            parameters,
+            cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Publishes one begin, report, or end value for a server-owned progress token.
+    /// </summary>
+    /// <param name="parameters">The token and typed work-done progress value.</param>
+    /// <returns>A task that completes after the notification is written.</returns>
+    public Task PublishWorkDoneProgressAsync(WorkDoneProgressParams parameters)
+    {
+        ArgumentNullException.ThrowIfNull(parameters);
+        JsonRpc rpc = Volatile.Read(ref _rpc)
+            ?? throw new InvalidOperationException("The LSP client is not connected.");
+        return rpc.NotifyWithParameterObjectAsync("$/progress", parameters);
+    }
+
+    /// <summary>
     /// Publishes one bounded workspace diagnostic batch through the client's partial result token.
     /// </summary>
     /// <param name="parameters">The client token and next diagnostic batch.</param>
