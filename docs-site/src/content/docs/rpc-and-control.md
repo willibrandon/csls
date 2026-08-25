@@ -12,6 +12,8 @@ versioned local API for the CLI, dashboard, and MCP server.
 The server uses standard `Content-Length` header framing over its inherited streams.
 `LspMethodRegistry` registers supported requests and notifications explicitly. The
 initialize result advertises only handlers that are active in the current build.
+Inbound header blocks are limited to 8 KiB and declared JSON payloads are limited to
+16 MiB. The worker rejects either limit before StreamJsonRpc allocates the payload.
 
 Payloads use System.Text.Json with source-generated metadata from `Csls.Protocol`
 and `Csls.Rpc`. Document URIs, discriminated LSP response shapes, and protocol enums
