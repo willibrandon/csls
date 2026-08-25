@@ -123,6 +123,9 @@ envelope so scripts and agents can reject shapes they do not understand.
 System.CommandLine response files and completion directives are available for
 shell integrations and larger agent invocations.
 
+The [CLI reference](../cli-reference/) contains generated help for the complete
+System.CommandLine command tree.
+
 ## Agent commands
 
 Create a reusable `SKILL.md` with the supported CLI and MCP workflows:
