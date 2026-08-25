@@ -25,6 +25,22 @@ internal sealed class LspTestClient
                 SingleReader = true,
                 SingleWriter = false
             });
+    private readonly Channel<WorkDoneProgressCreateParams> _workDoneProgressCreations =
+        Channel.CreateUnbounded<WorkDoneProgressCreateParams>(
+            new UnboundedChannelOptions
+            {
+                AllowSynchronousContinuations = false,
+                SingleReader = true,
+                SingleWriter = false
+            });
+    private readonly Channel<WorkDoneProgressParams> _workDoneProgress =
+        Channel.CreateUnbounded<WorkDoneProgressParams>(
+            new UnboundedChannelOptions
+            {
+                AllowSynchronousContinuations = false,
+                SingleReader = true,
+                SingleWriter = false
+            });
     private readonly Channel<PublishDiagnosticsParams> _publishedDiagnostics =
         Channel.CreateUnbounded<PublishDiagnosticsParams>(
             new UnboundedChannelOptions
@@ -118,15 +134,56 @@ internal sealed class LspTestClient
     }
 
     /// <summary>
-    /// Records one workspace diagnostic partial result received over the real LSP connection.
+    /// Accepts one server-generated work-done progress token over the real LSP connection.
     /// </summary>
-    /// <param name="parameters">The partial result token and diagnostic batch.</param>
-    /// <returns>A completed task after the notification is retained.</returns>
-    internal Task PublishWorkspaceDiagnosticProgressAsync(
-        WorkspaceDiagnosticProgressParams parameters)
+    /// <param name="parameters">The unique progress token requested by the server.</param>
+    /// <param name="cancellationToken">The request cancellation token.</param>
+    /// <returns>A completed task after the request is retained.</returns>
+    internal Task CreateWorkDoneProgressAsync(
+        WorkDoneProgressCreateParams parameters,
+        CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(parameters);
-        if (!_workspaceDiagnosticProgress.Writer.TryWrite(parameters))
+        cancellationToken.ThrowIfCancellationRequested();
+        if (!_workDoneProgressCreations.Writer.TryWrite(parameters))
+        {
+            throw new InvalidOperationException(
+                "The work-done progress creation could not be observed.");
+        }
+
+        return Task.CompletedTask;
+    }
+
+    /// <summary>
+    /// Records one typed diagnostic or work-done progress value from the real LSP connection.
+    /// </summary>
+    /// <param name="parameters">The raw progress parameters dispatched by value shape.</param>
+    /// <returns>A completed task after the notification is retained.</returns>
+    internal Task PublishProgressAsync(JsonElement parameters)
+    {
+        if (!parameters.TryGetProperty("value", out JsonElement value))
+        {
+            throw new InvalidDataException("The progress notification has no value.");
+        }
+
+        if (value.TryGetProperty("kind", out _))
+        {
+            WorkDoneProgressParams workDone = parameters.Deserialize(
+                LspJsonSerializerContext.Default.WorkDoneProgressParams)
+                ?? throw new InvalidDataException("The work-done progress value is invalid.");
+            if (!_workDoneProgress.Writer.TryWrite(workDone))
+            {
+                throw new InvalidOperationException(
+                    "The work-done progress value could not be observed.");
+            }
+
+            return Task.CompletedTask;
+        }
+
+        WorkspaceDiagnosticProgressParams diagnostics = parameters.Deserialize(
+            LspJsonSerializerContext.Default.WorkspaceDiagnosticProgressParams)
+            ?? throw new InvalidDataException("The diagnostic progress value is invalid.");
+        if (!_workspaceDiagnosticProgress.Writer.TryWrite(diagnostics))
         {
             throw new InvalidOperationException(
                 "The workspace diagnostic partial result could not be observed.");
@@ -134,6 +191,24 @@ internal sealed class LspTestClient
 
         return Task.CompletedTask;
     }
+
+    /// <summary>
+    /// Reads the next server-generated work-done progress token request.
+    /// </summary>
+    /// <param name="cancellationToken">The test cancellation token.</param>
+    /// <returns>The next requested progress token.</returns>
+    internal ValueTask<WorkDoneProgressCreateParams> ReadWorkDoneProgressCreationAsync(
+        CancellationToken cancellationToken) =>
+        _workDoneProgressCreations.Reader.ReadAsync(cancellationToken);
+
+    /// <summary>
+    /// Reads the next work-done begin, report, or end value from the real LSP connection.
+    /// </summary>
+    /// <param name="cancellationToken">The test cancellation token.</param>
+    /// <returns>The next typed work-done progress value.</returns>
+    internal ValueTask<WorkDoneProgressParams> ReadWorkDoneProgressAsync(
+        CancellationToken cancellationToken) =>
+        _workDoneProgress.Reader.ReadAsync(cancellationToken);
 
     /// <summary>
     /// Reads the next workspace diagnostic partial result from the real LSP connection.

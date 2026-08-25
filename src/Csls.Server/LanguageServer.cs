@@ -33,6 +33,7 @@ public sealed partial class LanguageServer : ILspRpcTarget, IAsyncDisposable
     private bool _supportsConfigurationPull;
     private bool _supportsCreateFileWorkspaceEdits;
     private bool _supportsPullDiagnostics;
+    private bool _supportsWorkDoneProgress;
     private bool _hoverMarkdownSupport;
     private bool _signatureMarkdownSupport;
     private LanguageServerConfiguration _configuration = new();
@@ -179,6 +180,10 @@ public sealed partial class LanguageServer : ILspRpcTarget, IAsyncDisposable
             parameters.Capabilities,
             "textDocument",
             "diagnostic");
+        _supportsWorkDoneProgress = SupportsBooleanCapability(
+            parameters.Capabilities,
+            "window",
+            "workDoneProgress");
         LanguageServerConfiguration configuration = ParseConfiguration(
             parameters.InitializationOptions);
         _configuration = configuration;
@@ -328,8 +333,7 @@ public sealed partial class LanguageServer : ILspRpcTarget, IAsyncDisposable
                             context.CancellationToken).ConfigureAwait(false);
                     }
 
-                    await _workspaceManager
-                        .LoadAsync(_rootPaths, context.CancellationToken)
+                    await LoadWorkspaceWithProgressAsync(context.CancellationToken)
                         .ConfigureAwait(false);
                     return true;
                 },
