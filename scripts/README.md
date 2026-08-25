@@ -25,7 +25,7 @@ supports `--help`.
 | `Verify-GitHubActions.cs` | Validates every workflow with actionlint. |
 | `Verify-CodeQl.cs` | Fails when CodeQL reports an unresolved finding. |
 | `Verify-Docs.cs` | Checks every generated documentation link and asset target. |
-| `Verify-BenchmarkRegression.cs` | Compares stable base and candidate benchmarks on the same runner and rejects clear regressions above 10 percent. |
+| `Verify-BenchmarkRegression.cs` | Compares stable benchmarks affected by a change and confirms signals with longer targeted measurements before rejecting regressions above 10 percent. |
 | `Verify-ToolPackages.cs` | Packs and exercises the `csls` and `csls-mcp` tools. |
 
 `ScriptSupport.cs` contains shared download, checksum, archive, process, and path
