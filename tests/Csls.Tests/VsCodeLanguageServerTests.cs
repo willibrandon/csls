@@ -10,6 +10,8 @@ namespace Csls.Tests;
 [TestClass]
 public sealed class VsCodeLanguageServerTests
 {
+    private static readonly TimeSpan s_editorStartupTimeout = TimeSpan.FromMinutes(2);
+
     /// <summary>
     /// Gets the active MSTest context and its framework-managed cancellation token.
     /// </summary>
@@ -158,7 +160,7 @@ public sealed class VsCodeLanguageServerTests
         {
             ControlSessionInfo session = await ControlSessionWaiter.WaitForRunningAsync(
                 workspacePath,
-                TimeSpan.FromSeconds(60),
+                s_editorStartupTimeout,
                 TestContext.CancellationToken).ConfigureAwait(false);
             serverProcessId = session.ProcessId;
             await runner.WaitForExitAsync(TestContext.CancellationToken)
@@ -204,6 +206,11 @@ public sealed class VsCodeLanguageServerTests
         string toolsRoot = string.IsNullOrWhiteSpace(configuredToolsRoot)
             ? Path.Join(repositoryRoot, "artifacts", "tools")
             : Path.GetFullPath(configuredToolsRoot);
+        string vscodeCachePath = Path.Join(
+            toolsRoot,
+            "vscode",
+            "1.134.0");
+        Directory.CreateDirectory(vscodeCachePath);
         var startInfo = new ProcessStartInfo
         {
             FileName = "node",
@@ -213,10 +220,7 @@ public sealed class VsCodeLanguageServerTests
             WorkingDirectory = repositoryRoot
         };
         startInfo.ArgumentList.Add(runnerPath);
-        startInfo.Environment["CSLS_VSCODE_CACHE_PATH"] = Path.Join(
-            toolsRoot,
-            "vscode",
-            "1.134.0");
+        startInfo.Environment["CSLS_VSCODE_CACHE_PATH"] = vscodeCachePath;
         startInfo.Environment["CSLS_VSCODE_DOTNET_PATH"] =
             EditorToolResolver.ResolveDotNetHost();
         startInfo.Environment["CSLS_VSCODE_EXTENSIONS_PATH"] = extensionsPath;
