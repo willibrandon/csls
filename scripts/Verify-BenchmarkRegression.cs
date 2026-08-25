@@ -47,6 +47,8 @@ string artifactRoot = Path.Join(repositoryRoot, "artifacts", "benchmark-regressi
 string baselineBeforePath = Path.Join(artifactRoot, "baseline-before");
 string candidatePath = Path.Join(artifactRoot, "candidate");
 string baselineAfterPath = Path.Join(artifactRoot, "baseline-after");
+string candidateConfirmationPath = Path.Join(artifactRoot, "candidate-confirmation");
+string baselineConfirmationPath = Path.Join(artifactRoot, "baseline-confirmation");
 string comparisonPath = Path.Join(artifactRoot, "comparison.md");
 string worktreePath = Path.Join(
     Path.GetTempPath(),
@@ -96,6 +98,26 @@ try
     {
         throw new InvalidDataException(
             "The base and candidate benchmark sets do not contain the same cases.");
+    }
+
+    if (ContainsRegression(
+        baselineSamples,
+        candidateSamples,
+        maximumRegressionRatio))
+    {
+        await Console.Out.WriteLineAsync(
+            "Confirming the initial regression signal with another candidate and baseline run.")
+            .ConfigureAwait(false);
+        await RunBenchmarksAsync(
+            dotnetPath,
+            repositoryRoot,
+            candidateConfirmationPath).ConfigureAwait(false);
+        await RunBenchmarksAsync(
+            dotnetPath,
+            worktreePath,
+            baselineConfirmationPath).ConfigureAwait(false);
+        MergeSamples(candidateSamples, ReadSamples(candidateConfirmationPath));
+        MergeSamples(baselineSamples, ReadSamples(baselineConfirmationPath));
     }
 
     var report = new StringBuilder();
@@ -157,6 +179,28 @@ finally
     {
         Directory.Delete(worktreePath, recursive: true);
     }
+}
+
+static bool ContainsRegression(
+    IReadOnlyDictionary<string, List<double>> baselineSamples,
+    IReadOnlyDictionary<string, List<double>> candidateSamples,
+    double maximumRatio)
+{
+    foreach ((string benchmark, List<double> candidateValues) in candidateSamples)
+    {
+        List<double> baselineValues = baselineSamples[benchmark];
+        double baselineMedian = GetPercentile(baselineValues, 0.50);
+        double baselineUpperQuartile = GetPercentile(baselineValues, 0.75);
+        double candidateMedian = GetPercentile(candidateValues, 0.50);
+        double candidateLowerQuartile = GetPercentile(candidateValues, 0.25);
+        if (candidateMedian / baselineMedian > maximumRatio &&
+            candidateLowerQuartile > baselineUpperQuartile)
+        {
+            return true;
+        }
+    }
+
+    return false;
 }
 
 static bool IsSafeBranchName(string value) =>
