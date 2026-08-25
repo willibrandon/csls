@@ -26,6 +26,7 @@ supports `--help`.
 | `Provision-VsCode.cs` | Installs the pinned VS Code extension test client and editor runtime. |
 | `Provision-Zed.cs` | Installs the pinned Zed editor and official C# extension. |
 | `Prepare-Release.cs` | Validates a release version and Git tag and writes workflow outputs. |
+| `Publish-ContainerTags.cs` | Advances stable container tags to verified image digests. |
 | `Publish-GitHubRelease.cs` | Creates or updates a tagged GitHub release with verified assets. |
 | `Publish-NuGet.cs` | Publishes the complete NuGet package set with a short-lived credential. |
 | `Run-Benchmarks.cs` | Builds and runs the BenchmarkDotNet suite. |
@@ -34,6 +35,7 @@ supports `--help`.
 | `Verify-Repository.cs` | Checks repository, dependency, and automation policies. |
 | `Verify-ReleaseContainers.cs` | Builds, executes, and exports both release container images. |
 | `Verify-GitHubActions.cs` | Validates every workflow with actionlint. |
+| `Verify-PackageHealth.cs` | Rejects outdated, deprecated, and vulnerable package references before release. |
 | `Verify-CodeQl.cs` | Fails when CodeQL reports an unresolved finding. |
 | `Verify-Docs.cs` | Checks every generated documentation link and asset target. |
 | `Verify-BenchmarkRegression.cs` | Compares stable benchmarks affected by a change and confirms signals with longer targeted measurements before rejecting regressions above 10 percent. |
