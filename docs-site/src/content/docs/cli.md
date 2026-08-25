@@ -1,6 +1,6 @@
 ---
 title: Command line
-description: Inspect and use a live csls language-server session.
+description: Inspect and use live or transient csls language-server sessions.
 ---
 
 ## Workspace doctor
@@ -38,20 +38,27 @@ per line, so agents can process the stream without waiting for it to close. Each
 event includes its sequence, the changed session, and the current bounded session
 snapshot.
 
-When exactly one session is live, query commands infer it. Otherwise, pass its
-process identifier with `--session`.
+When exactly one session is live, query commands infer it. Pass its process
+identifier with `--session` to select an exact editor session. Pass `--workspace`
+to reuse the session that owns a path or start a transient server when no editor
+owns it.
 
 ```console
 csls query hover Program.cs --line 8 --character 20
 csls query diagnostics Program.cs --json
-csls query references Program.cs --line 8 --character 20
-csls query symbols CustomerService
+csls query references Program.cs --line 8 --character 20 --workspace .
+csls query symbols CustomerService --workspace . --limit 50 --json
 ```
 
 Other query commands cover completion, definition, declaration, type definition,
 implementation, selection range, highlights, document symbols, and signature
 help. Position arguments use zero-based UTF-16 line and character offsets, which
 match LSP positions.
+
+Collection commands return at most 100 items by default. Set `--limit` from 1
+through 200. When a JSON response contains `nextCursor`, repeat the same command
+with `--cursor <cursor>` to read the next page. Cursors are opaque and valid only
+for the operation that created them.
 
 ## Workspace maintenance
 
@@ -113,6 +120,8 @@ Source actions such as `source.organizeImports` do not require a target position
 
 Every machine-readable command supports `--json`. Its response uses a versioned
 envelope so scripts and agents can reject shapes they do not understand.
+System.CommandLine response files and completion directives are available for
+shell integrations and larger agent invocations.
 
 ## Agent commands
 
