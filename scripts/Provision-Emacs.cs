@@ -10,7 +10,7 @@ using System.Diagnostics;
 using System.Globalization;
 using System.Runtime.InteropServices;
 
-const string Version = "30.2";
+const string Version = "31.1";
 
 if (args.Length == 1 && args[0] is "--help" or "-h" or "-?")
 {
@@ -94,9 +94,9 @@ static Task<string> ProvisionWindowsAsync(string toolsRoot, string platform) =>
         "emacs",
         Version,
         platform,
-        new Uri("https://ftp.gnu.org/gnu/windows/emacs/emacs-30/emacs-30.2.zip"),
-        "emacs-30.2.zip",
-        "414d3a1a21147af257ebd98bdd15976fdcb5ed0563f6de89f76d4a4b5dad9c72",
+        new Uri("https://mirrors.kernel.org/gnu/windows/emacs/emacs-31/emacs-31.1.zip"),
+        "emacs-31.1.zip",
+        "96a1018e9de877e77768ca884007f1a9df44889e9ae81ae3ca3d904b5681b8b6",
         "emacs.exe",
         installationRootLevels: 1,
         versionArguments: ["--version"],
@@ -120,16 +120,16 @@ static async Task<string> ProvisionUnixAsync(string toolsRoot, string platform)
     Directory.CreateDirectory(stagingRoot);
     try
     {
-        const string assetName = "emacs-30.2.tar.xz";
+        const string assetName = "emacs-31.1.tar.xz";
         string archivePath = Path.Join(stagingRoot, assetName);
         string extractionPath = Path.Join(stagingRoot, "source");
         Directory.CreateDirectory(extractionPath);
         await Console.Error.WriteLineAsync(
             $"Downloading GNU Emacs {Version} source for {platform}...").ConfigureAwait(false);
         await ScriptSupport.DownloadVerifiedFileAsync(
-            new Uri($"https://ftp.gnu.org/gnu/emacs/{assetName}"),
+            new Uri($"https://mirrors.kernel.org/gnu/emacs/{assetName}"),
             archivePath,
-            "b3f36f18a6dd2715713370166257de2fae01f9d38cfe878ced9b1e6ded5befd9",
+            "1da5790d9580c81932b5bf700633114468da7b3412d69faa767daebf974f4586",
             CancellationToken.None).ConfigureAwait(false);
         await ScriptSupport.ExtractArchiveAsync(
             archivePath,
