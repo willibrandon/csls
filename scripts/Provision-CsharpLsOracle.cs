@@ -8,9 +8,9 @@
 
 using System.Runtime.InteropServices;
 
-const string Version = "0.26.0";
+const string Version = "0.27.0";
 const string PackageSha256 =
-    "2b03987aef07bb708bfe56a7bfb370364c7c8203e69aa677a37594bbe21a15b0";
+    "a49a34d4664e4fba4781cb50d537efad1771393828370e32ece3fe75e2bcedaf";
 
 if (args.Length == 1 && args[0] is "--help" or "-h" or "-?")
 {

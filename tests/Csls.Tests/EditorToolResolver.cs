@@ -118,7 +118,7 @@ internal static class EditorToolResolver
         repositoryRoot,
         "CSLS_NEOVIM_PATH",
         "neovim",
-        "0.12.4",
+        "0.12.5",
         GetPlatform(allowWindowsArm64: true, detectMusl: false),
         OperatingSystem.IsWindows() ? "nvim.exe" : "nvim");
 
@@ -153,7 +153,7 @@ internal static class EditorToolResolver
         repositoryRoot,
         "CSLS_CSHARP_LS_ORACLE_PATH",
         "csharp-ls-oracle",
-        "0.26.0",
+        "0.27.0",
         GetPlatform(allowWindowsArm64: true, detectMusl: false),
         OperatingSystem.IsWindows() ? "csharp-ls.exe" : "csharp-ls");
 
