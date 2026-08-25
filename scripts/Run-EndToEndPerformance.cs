@@ -19,6 +19,7 @@ var valueOptions = new HashSet<string>(StringComparer.Ordinal)
     "--startup-budget-ms",
     "--workspace-budget-ms",
     "--ready-budget-ms",
+    "--operation-budget-ms",
     "--working-set-budget-mib",
     "--private-memory-budget-mib",
     "--process-count-budget"
@@ -30,7 +31,7 @@ for (int index = 0; index < args.Length; index++)
     if (argument is "--help" or "-h" or "-?")
     {
         await Console.Out.WriteLineAsync(
-            "Publishes csls with Native AOT and measures its real process and workspace.")
+            "Publishes csls and csls-mcp with Native AOT and measures real product operations.")
             .ConfigureAwait(false);
         await Console.Out.WriteLineAsync(
             "Usage: dotnet run --file scripts/Run-EndToEndPerformance.cs -- " +
@@ -61,6 +62,11 @@ try
     string binlogDirectory = Path.Join(artifactDirectory, "binlogs");
     Directory.CreateDirectory(binlogDirectory);
     string serverProject = Path.Join(repositoryRoot, "src", "Csls.App", "Csls.App.csproj");
+    string mcpServerProject = Path.Join(
+        repositoryRoot,
+        "src",
+        "Csls.Mcp",
+        "Csls.Mcp.csproj");
     string harnessProject = Path.Join(
         repositoryRoot,
         "benchmarks",
@@ -78,6 +84,20 @@ try
             "--self-contained",
             "true",
             $"--binaryLogger:{Path.Join(binlogDirectory, "publish-csls.binlog")}" 
+        ],
+        repositoryRoot).ConfigureAwait(false);
+    await RunCheckedAsync(
+        dotnetPath,
+        [
+            "publish",
+            mcpServerProject,
+            "--configuration",
+            "Release",
+            "--runtime",
+            runtimeIdentifier,
+            "--self-contained",
+            "true",
+            $"--binaryLogger:{Path.Join(binlogDirectory, "publish-csls-mcp.binlog")}"
         ],
         repositoryRoot).ConfigureAwait(false);
     await RunCheckedAsync(
@@ -106,7 +126,16 @@ try
         "Csls.EndToEndPerformance",
         "release",
         "Csls.EndToEndPerformance.dll");
-    if (!File.Exists(serverPath) || !File.Exists(harnessPath))
+    string mcpServerPath = Path.Join(
+        repositoryRoot,
+        "artifacts",
+        "publish",
+        "Csls.Mcp",
+        $"release_{runtimeIdentifier}",
+        "csls-mcp" + executableExtension);
+    if (!File.Exists(serverPath) ||
+        !File.Exists(mcpServerPath) ||
+        !File.Exists(harnessPath))
     {
         throw new FileNotFoundException(
             "The end-to-end performance build did not produce its expected executables.");
@@ -122,6 +151,7 @@ try
     {
         harnessPath,
         serverPath,
+        mcpServerPath,
         workspacePath,
         "--output",
         outputPath

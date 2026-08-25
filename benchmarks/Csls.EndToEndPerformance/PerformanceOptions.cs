@@ -11,6 +11,11 @@ internal sealed class PerformanceOptions
     internal required string ServerPath { get; init; }
 
     /// <summary>
+    /// Gets the absolute published csls-mcp launcher path.
+    /// </summary>
+    internal required string McpServerPath { get; init; }
+
+    /// <summary>
     /// Gets the absolute workspace path measured by every iteration.
     /// </summary>
     internal required string WorkspacePath { get; init; }
@@ -44,6 +49,11 @@ internal sealed class PerformanceOptions
     /// Gets the maximum median total ready time.
     /// </summary>
     internal double ReadyBudgetMilliseconds { get; init; }
+
+    /// <summary>
+    /// Gets the maximum median duration for any measured product operation.
+    /// </summary>
+    internal double OperationBudgetMilliseconds { get; init; }
 
     /// <summary>
     /// Gets the maximum ready-state process-tree working set.

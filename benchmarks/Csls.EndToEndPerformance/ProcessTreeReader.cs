@@ -32,6 +32,7 @@ internal static partial class ProcessTreeReader
         HashSet<int> processIds = CollectProcessTree(rootProcessId, parents);
         long workingSet = 0;
         long privateMemory = 0;
+        long processorTimeTicks = 0;
         foreach (int processId in processIds)
         {
             try
@@ -40,6 +41,8 @@ internal static partial class ProcessTreeReader
                 process.Refresh();
                 workingSet = checked(workingSet + process.WorkingSet64);
                 privateMemory = checked(privateMemory + process.PrivateMemorySize64);
+                processorTimeTicks = checked(
+                    processorTimeTicks + process.TotalProcessorTime.Ticks);
             }
             catch (Exception exception) when (exception is
                 ArgumentException or
@@ -53,9 +56,11 @@ internal static partial class ProcessTreeReader
 
         return new ProcessTreeSnapshot
         {
+            ProcessIds = [.. processIds.Order()],
             ProcessCount = processIds.Count,
             WorkingSetBytes = workingSet,
-            PrivateMemoryBytes = privateMemory
+            PrivateMemoryBytes = privateMemory,
+            ProcessorTimeTicks = processorTimeTicks
         };
     }
 

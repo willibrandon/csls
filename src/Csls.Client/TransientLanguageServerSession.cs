@@ -227,6 +227,29 @@ public sealed class TransientLanguageServerSession : IAsyncDisposable
         await _rpc.NotifyWithParameterObjectAsync(
             "initialized",
             new InitializedParams()).ConfigureAwait(false);
+        await WaitUntilReadyAsync(cancellationToken).ConfigureAwait(false);
         Volatile.Write(ref _initializationCompleted, 1);
+    }
+
+    private async Task WaitUntilReadyAsync(CancellationToken cancellationToken)
+    {
+        while (true)
+        {
+            CSharpDebugInfo debugInfo = await _rpc
+                .InvokeWithParameterObjectAsync<CSharpDebugInfo>(
+                    "$/csharp/debugInfo",
+                    new InitializedParams(),
+                    cancellationToken).ConfigureAwait(false);
+            if (string.Equals(
+                    debugInfo.Workspace.Phase,
+                    "Ready",
+                    StringComparison.Ordinal))
+            {
+                return;
+            }
+
+            await Task.Delay(TimeSpan.FromMilliseconds(10), cancellationToken)
+                .ConfigureAwait(false);
+        }
     }
 }

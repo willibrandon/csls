@@ -23,6 +23,8 @@ internal static class EndToEndPerformanceRunner
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(options);
+        PerformanceEnvironment environment = await PerformanceEnvironmentReader.ReadAsync(
+            cancellationToken).ConfigureAwait(false);
         var measurements = new List<PerformanceMeasurement>(options.Iterations);
         for (int iteration = 1; iteration <= options.Iterations; iteration++)
         {
@@ -35,7 +37,7 @@ internal static class EndToEndPerformanceRunner
             await using ConfiguredAsyncDisposable cleanup = session.ConfigureAwait(false);
             PerformanceMeasurement measurement = await session.MeasureAsync(
                 iteration,
-                options.WorkspacePath,
+                options,
                 timeoutSource.Token).ConfigureAwait(false);
             measurements.Add(measurement);
             WriteMeasurement(measurement);
@@ -47,8 +49,19 @@ internal static class EndToEndPerformanceRunner
         {
             CreatedAtUtc = DateTimeOffset.UtcNow,
             RuntimeIdentifier = RuntimeInformation.RuntimeIdentifier,
+            Environment = environment,
             ServerPath = options.ServerPath,
+            McpServerPath = options.McpServerPath,
             WorkspacePath = options.WorkspacePath,
+            ProbeDocumentPath = measurements[0].ProbeDocumentPath,
+            ProbeAnalyzerNames = measurements[0].AnalyzerNames,
+            IterationCount = options.Iterations,
+            Commands =
+            [
+                "process/startup",
+                "lsp/initialize",
+                .. measurements[0].Operations.Select(static operation => operation.Name)
+            ],
             Measurements = measurements,
             Summary = summary,
             BudgetViolations = violations
@@ -96,6 +109,14 @@ internal static class EndToEndPerformanceRunner
             "Median ready",
             summary.MedianReadyMilliseconds,
             options.ReadyBudgetMilliseconds);
+        foreach (PerformanceOperationSummary operation in summary.Operations)
+        {
+            AddTimingViolation(
+                violations,
+                $"Median {operation.Name}",
+                operation.MedianMilliseconds,
+                options.OperationBudgetMilliseconds);
+        }
         AddMemoryViolation(
             violations,
             "Maximum working set",
@@ -145,8 +166,13 @@ internal static class EndToEndPerformanceRunner
 
     private static void WriteMeasurement(PerformanceMeasurement measurement)
     {
-        FormattableString message = $"Iteration {measurement.Iteration} ({measurement.CacheState}): startup {measurement.StartupMilliseconds:F1} ms, workspace {measurement.WorkspaceLoadMilliseconds:F1} ms, ready {measurement.ReadyMilliseconds:F1} ms, {measurement.ProjectCount} projects, {measurement.DocumentCount} documents, {measurement.ProcessCount} processes, {ToMebibytes(measurement.WorkingSetBytes):F1} MiB working set, {ToMebibytes(measurement.PrivateMemoryBytes):F1} MiB private memory.";
+        FormattableString message = $"Iteration {measurement.Iteration} ({measurement.CacheState}): startup {measurement.StartupMilliseconds:F1} ms, workspace {measurement.WorkspaceLoadMilliseconds:F1} ms, ready {measurement.ReadyMilliseconds:F1} ms, {measurement.ProjectCount} projects, {measurement.DocumentCount} documents, {measurement.AnalyzerReferenceCount} analyzers and generators, {measurement.ProcessCount} processes, {ToMebibytes(measurement.WorkingSetBytes):F1} MiB working set, {ToMebibytes(measurement.PrivateMemoryBytes):F1} MiB private memory, {measurement.ProcessorUtilizationPercent:F1}% CPU.";
         Console.WriteLine(message.ToString(CultureInfo.InvariantCulture));
+        foreach (PerformanceOperation operation in measurement.Operations)
+        {
+            FormattableString timing = $"  {operation.Name}: {operation.Milliseconds:F1} ms";
+            Console.WriteLine(timing.ToString(CultureInfo.InvariantCulture));
+        }
     }
 
     private static void WriteSummary(
@@ -156,8 +182,13 @@ internal static class EndToEndPerformanceRunner
     {
         FormattableString timings = $"Median: startup {summary.MedianStartupMilliseconds:F1} ms, workspace {summary.MedianWorkspaceLoadMilliseconds:F1} ms, ready {summary.MedianReadyMilliseconds:F1} ms.";
         Console.WriteLine(timings.ToString(CultureInfo.InvariantCulture));
-        FormattableString resources = $"Maximum: {summary.MaximumProcessCount} processes, {ToMebibytes(summary.MaximumWorkingSetBytes):F1} MiB working set, {ToMebibytes(summary.MaximumPrivateMemoryBytes):F1} MiB private memory.";
+        FormattableString resources = $"Maximum: {summary.MaximumProcessCount} processes, {ToMebibytes(summary.MaximumWorkingSetBytes):F1} MiB working set, {ToMebibytes(summary.MaximumPrivateMemoryBytes):F1} MiB private memory, {summary.MaximumProcessorUtilizationPercent:F1}% CPU.";
         Console.WriteLine(resources.ToString(CultureInfo.InvariantCulture));
+        foreach (PerformanceOperationSummary operation in summary.Operations)
+        {
+            FormattableString timing = $"Median {operation.Name}: {operation.MedianMilliseconds:F1} ms";
+            Console.WriteLine(timing.ToString(CultureInfo.InvariantCulture));
+        }
         foreach (string violation in violations)
         {
             Console.Error.WriteLine(violation);

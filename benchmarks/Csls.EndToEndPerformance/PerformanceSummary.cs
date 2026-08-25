@@ -21,6 +21,11 @@ internal sealed class PerformanceSummary
     public double MedianReadyMilliseconds { get; init; }
 
     /// <summary>
+    /// Gets the per-operation timing summaries in execution order.
+    /// </summary>
+    public required IReadOnlyList<PerformanceOperationSummary> Operations { get; init; }
+
+    /// <summary>
     /// Gets the largest ready-state process-tree count.
     /// </summary>
     public int MaximumProcessCount { get; init; }
@@ -34,6 +39,16 @@ internal sealed class PerformanceSummary
     /// Gets the largest ready-state process-tree private memory in bytes.
     /// </summary>
     public long MaximumPrivateMemoryBytes { get; init; }
+
+    /// <summary>
+    /// Gets the largest measured process-tree processor time in milliseconds.
+    /// </summary>
+    public double MaximumProcessorTimeMilliseconds { get; init; }
+
+    /// <summary>
+    /// Gets the largest normalized process-tree processor use percentage.
+    /// </summary>
+    public double MaximumProcessorUtilizationPercent { get; init; }
 
     /// <summary>
     /// Creates a summary from completed measurements.
@@ -58,10 +73,55 @@ internal sealed class PerformanceSummary
                 measurements.Select(static item => item.WorkspaceLoadMilliseconds)),
             MedianReadyMilliseconds = Median(
                 measurements.Select(static item => item.ReadyMilliseconds)),
+            Operations = CreateOperationSummaries(measurements),
             MaximumProcessCount = measurements.Max(static item => item.ProcessCount),
             MaximumWorkingSetBytes = measurements.Max(static item => item.WorkingSetBytes),
-            MaximumPrivateMemoryBytes = measurements.Max(static item => item.PrivateMemoryBytes)
+            MaximumPrivateMemoryBytes = measurements.Max(static item => item.PrivateMemoryBytes),
+            MaximumProcessorTimeMilliseconds = measurements.Max(
+                static item => item.ProcessorTimeMilliseconds),
+            MaximumProcessorUtilizationPercent = measurements.Max(
+                static item => item.ProcessorUtilizationPercent)
         };
+    }
+
+    private static IReadOnlyList<PerformanceOperationSummary> CreateOperationSummaries(
+        IReadOnlyList<PerformanceMeasurement> measurements)
+    {
+        string[] operationNames =
+        [
+            .. measurements[0].Operations.Select(static operation => operation.Name)
+        ];
+        bool operationOrderChanged = measurements.Any(measurement =>
+            !operationNames.SequenceEqual(
+                measurement.Operations.Select(static operation => operation.Name),
+                StringComparer.Ordinal));
+        if (operationOrderChanged)
+        {
+            throw new InvalidDataException(
+                "Every performance iteration must execute the same ordered operations.");
+        }
+
+        return
+        [
+            .. operationNames.Select(name =>
+            {
+                double[] values =
+                [
+                    .. measurements.Select(measurement => measurement.Operations
+                        .Single(operation => string.Equals(
+                            operation.Name,
+                            name,
+                            StringComparison.Ordinal))
+                        .Milliseconds)
+                ];
+                return new PerformanceOperationSummary
+                {
+                    Name = name,
+                    MedianMilliseconds = Median(values),
+                    MaximumMilliseconds = values.Max()
+                };
+            })
+        ];
     }
 
     private static double Median(IEnumerable<double> values)
