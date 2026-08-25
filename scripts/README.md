@@ -18,7 +18,7 @@ supports `--help`.
 | `Provision-Helix.cs` | Installs the pinned Helix editor oracle. |
 | `Provision-Neovim.cs` | Installs the pinned Neovim editor oracle. |
 | `Run-Benchmarks.cs` | Builds and runs the BenchmarkDotNet suite. |
-| `Run-EndToEndPerformance.cs` | Publishes csls with Native AOT and measures startup, workspace load, memory, and process count. |
+| `Run-EndToEndPerformance.cs` | Publishes both Native AOT tools and measures real LSP, MCP, CLI, dashboard, and process-resource workloads. |
 | `Verify-Repository.cs` | Checks repository, dependency, and automation policies. |
 | `Verify-GitHubActions.cs` | Validates every workflow with actionlint. |
 | `Verify-CodeQl.cs` | Fails when CodeQL reports an unresolved finding. |
