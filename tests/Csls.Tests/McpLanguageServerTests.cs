@@ -120,6 +120,10 @@ public sealed class McpLanguageServerTests
                 "csls",
                 initialization.GetProperty("serverInfo").GetProperty("name").GetString());
             await lsp.OpenDocumentAsync(documentPath, DocumentText).ConfigureAwait(false);
+            await ControlSessionWaiter.WaitForRunningAsync(
+                fixturePath,
+                TimeSpan.FromSeconds(60),
+                TestContext.CancellationToken).ConfigureAwait(false);
 
             string dotnetHost = EditorToolResolver.ResolveDotNetHost();
             Dictionary<string, string?> environment =
