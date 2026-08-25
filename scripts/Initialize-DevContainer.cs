@@ -131,13 +131,16 @@ try
 
     foreach (string provisioner in new[]
     {
+        "Install-GraphicalEditorTestPrerequisites.cs",
         "Provision-Actionlint.cs",
         "Provision-CsharpLsOracle.cs",
         "Provision-LegacyBuildHost.cs",
         "Provision-Fresh.cs",
         "Provision-Emacs.cs",
         "Provision-Helix.cs",
-        "Provision-Neovim.cs"
+        "Provision-Neovim.cs",
+        "Provision-VsCode.cs",
+        "Provision-Zed.cs"
     })
     {
         await RunCheckedAsync(

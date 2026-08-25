@@ -24,7 +24,7 @@ readmes, and forbidden build files are inspected before execution.
 A release candidate must pass:
 
 1. repository policy, formatting, analyzers, and all MSTest projects;
-2. real Fresh, Emacs, Helix, and Neovim sessions;
+2. real Fresh, Emacs, Helix, Neovim, VS Code, and Zed sessions;
 3. package install, version, help, worker handshake, update, and uninstall checks;
 4. every runtime package build and Native AOT size budget;
 5. BenchmarkDotNet validation and cross-platform end-to-end measurements;

@@ -1,0 +1,35 @@
+{
+  "name": "csls-vscode-integration",
+  "displayName": "csls VS Code integration",
+  "description": "Runs csls through a real VS Code extension host.",
+  "version": "0.0.0",
+  "private": true,
+  "publisher": "willibrandon",
+  "engines": {
+    "vscode": "^1.134.0"
+  },
+  "activationEvents": [
+    "onLanguage:csharp"
+  ],
+  "main": "./extension.cjs",
+  "contributes": {
+    "languages": [
+      {
+        "id": "csharp",
+        "aliases": [
+          "C#",
+          "csharp"
+        ],
+        "extensions": [
+          ".cs"
+        ]
+      }
+    ]
+  },
+  "dependencies": {
+    "vscode-languageclient": "10.1.0"
+  },
+  "devDependencies": {
+    "@vscode/test-electron": "3.1.0"
+  }
+}

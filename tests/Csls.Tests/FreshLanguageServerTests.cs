@@ -25,12 +25,9 @@ public sealed class FreshLanguageServerTests
         string repositoryRoot = EditorToolResolver.FindRepositoryRoot();
         string freshPath = EditorToolResolver.ResolveFresh(repositoryRoot);
         string processHostPath = EditorToolResolver.ResolveTestProcessHost(repositoryRoot);
-        string workerPath = Path.Join(
-            EditorToolResolver.ResolveArtifactsRoot(repositoryRoot),
-            "bin",
-            "Csls.Worker",
-            "debug",
-            "csls-worker.dll");
+        string launcherPath = EditorToolResolver.ResolveLauncher(repositoryRoot);
+        string workerPath = EditorToolResolver.ResolveServerWorker(repositoryRoot);
+        Assert.IsTrue(File.Exists(launcherPath), $"Launcher not found at {launcherPath}.");
         Assert.IsTrue(File.Exists(workerPath), $"Worker not found at {workerPath}.");
         Assert.IsTrue(
             File.Exists(processHostPath),
@@ -60,7 +57,7 @@ public sealed class FreshLanguageServerTests
                 TestContext.CancellationToken).ConfigureAwait(false);
             await File.WriteAllTextAsync(
                 configurationPath,
-                CreateConfiguration(workerPath),
+                CreateConfiguration(launcherPath),
                 TestContext.CancellationToken).ConfigureAwait(false);
 
             var workload = new Hex1bPtyWorkload(
@@ -88,6 +85,9 @@ public sealed class FreshLanguageServerTests
                     "--environment",
                     "XDG_STATE_HOME",
                     statePath,
+                    "--environment",
+                    "CSLS_WORKER_PATH",
+                    workerPath,
                     "--",
                     freshPath,
                     "--config",
@@ -208,7 +208,7 @@ public sealed class FreshLanguageServerTests
         }
         """;
 
-    private static string CreateConfiguration(string workerPath)
+    private static string CreateConfiguration(string launcherPath)
     {
         string dotnetPath = EditorToolResolver.ResolveDotNetHost();
         return $$"""
@@ -224,7 +224,7 @@ public sealed class FreshLanguageServerTests
               "lsp": {
                 "csharp": {
                   "command": {{ToJsonString(dotnetPath)}},
-                  "args": [{{ToJsonString(workerPath)}}],
+                  "args": [{{ToJsonString(launcherPath)}}, "lsp"],
                   "enabled": true
                 }
               }
