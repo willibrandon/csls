@@ -143,6 +143,9 @@ public sealed class DebugInfoLanguageServerTests
             TestContext.CancellationToken);
         shutdownTimeout.CancelAfter(TimeSpan.FromSeconds(10));
         await lsp.RequestShutdownAsync(shutdownTimeout.Token).ConfigureAwait(false);
+        CSharpDebugInfo shuttingDown = await lsp.RequestDebugInfoAsync(
+            shutdownTimeout.Token).ConfigureAwait(false);
+        Assert.AreEqual("ShuttingDown", shuttingDown.Workspace.Phase);
         string diagnostics = await lsp.ExitAsync(
             TestContext.CancellationToken).ConfigureAwait(false);
         Assert.DoesNotContain("Unhandled exception", diagnostics, StringComparison.Ordinal);

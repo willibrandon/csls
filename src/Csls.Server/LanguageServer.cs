@@ -299,7 +299,6 @@ public sealed partial class LanguageServer : ILspRpcTarget, IAsyncDisposable
         ArgumentNullException.ThrowIfNull(parameters);
         cancellationToken.ThrowIfCancellationRequested();
         Transition(ServerLifecycleState.InitializeResponded, ServerLifecycleState.Running);
-        Volatile.Write(ref _workspacePhase, (int)ServerWorkspacePhase.Loading);
         try
         {
             await _scheduler.ScheduleAsync(
@@ -308,6 +307,15 @@ public sealed partial class LanguageServer : ILspRpcTarget, IAsyncDisposable
                 () => _workspaceManager.Generation,
                 async context =>
                 {
+                    if (Interlocked.CompareExchange(
+                            ref _workspacePhase,
+                            (int)ServerWorkspacePhase.Loading,
+                            (int)ServerWorkspacePhase.Configured) !=
+                        (int)ServerWorkspacePhase.Configured)
+                    {
+                        return false;
+                    }
+
                     if (_supportsConfigurationPull)
                     {
                         await PullConfigurationCoreAsync(context.CancellationToken)
@@ -329,12 +337,25 @@ public sealed partial class LanguageServer : ILspRpcTarget, IAsyncDisposable
         }
         catch
         {
-            Volatile.Write(ref _workspacePhase, (int)ServerWorkspacePhase.Uninitialized);
+            Interlocked.CompareExchange(
+                ref _workspacePhase,
+                (int)ServerWorkspacePhase.Uninitialized,
+                (int)ServerWorkspacePhase.Loading);
+            Interlocked.CompareExchange(
+                ref _workspacePhase,
+                (int)ServerWorkspacePhase.Uninitialized,
+                (int)ServerWorkspacePhase.Configured);
             throw;
         }
 
-        Volatile.Write(ref _workspacePhase, (int)ServerWorkspacePhase.Ready);
-        LogInitialized(_rootPaths.Length);
+        if (Interlocked.CompareExchange(
+                ref _workspacePhase,
+                (int)ServerWorkspacePhase.Ready,
+                (int)ServerWorkspacePhase.Loading) ==
+            (int)ServerWorkspacePhase.Loading)
+        {
+            LogInitialized(_rootPaths.Length);
+        }
     }
 
     /// <inheritdoc />
