@@ -11,6 +11,7 @@ using System.Diagnostics;
 const string MonoSigningKeyFingerprint = "3FA7E0328081BFF6A14DA29AA6A19B38D3D831EF";
 const string MonoSigningKeySha256 =
     "34cde340f7208396329877f6a19b25b5e2f74fd414039d800c63375ab78f6b17";
+const string MonoRepositoryPath = "/etc/apt/sources.list.d/mono-official-stable.list";
 
 if (args.Length == 1 && args[0] is "--help" or "-h" or "-?")
 {
@@ -98,6 +99,7 @@ static async Task ProvisionLinuxMonoAsync()
         throw new PlatformNotSupportedException(
             $"Automatic Mono provisioning does not support Linux distribution '{identifier}'.");
     }
+    await RunPrivilegedAsync("rm", ["--force", MonoRepositoryPath]).ConfigureAwait(false);
     await RunPrivilegedAsync("apt-get", ["update"]).ConfigureAwait(false);
     await RunPrivilegedAsync(
         "apt-get",
@@ -126,6 +128,18 @@ static async Task ProvisionLinuxMonoAsync()
                 "The Mono repository signing key has an unexpected fingerprint.");
         }
 
+        string dearmoredSigningKeyPath = Path.Join(stagingDirectory, "xamarin-keyring.gpg");
+        await RunCheckedAsync(
+            "gpg",
+            [
+                "--batch",
+                "--yes",
+                "--dearmor",
+                "--output",
+                dearmoredSigningKeyPath,
+                signingKeyPath
+            ]).ConfigureAwait(false);
+
         string repositoryPath = Path.Join(stagingDirectory, "mono-official-stable.list");
         await File.WriteAllTextAsync(
             repositoryPath,
@@ -135,7 +149,7 @@ static async Task ProvisionLinuxMonoAsync()
             [
                 "--mode",
                 "0644",
-                signingKeyPath,
+                dearmoredSigningKeyPath,
                 "/usr/share/keyrings/mono-official-archive-keyring.gpg"
             ]).ConfigureAwait(false);
         await RunPrivilegedAsync(
@@ -144,7 +158,7 @@ static async Task ProvisionLinuxMonoAsync()
                 "--mode",
                 "0644",
                 repositoryPath,
-                "/etc/apt/sources.list.d/mono-official-stable.list"
+                MonoRepositoryPath
             ]).ConfigureAwait(false);
     }
     finally
@@ -221,37 +235,23 @@ static async Task<string> VerifyMonoBuildHostAsync()
 {
     string monoVersion = (await RunCheckedAsync("mono", ["--version"])
         .ConfigureAwait(false)).Split(Environment.NewLine, StringSplitOptions.RemoveEmptyEntries)[0];
-    string msBuildPath = FindMonoMSBuildExecutable();
+    string msBuildPath = FindMonoMSBuildCommand();
     string msBuildVersion = (await RunCheckedAsync(
-        "mono",
-        [msBuildPath, "-version", "-nologo"]).ConfigureAwait(false)).Trim();
+        msBuildPath,
+        ["-version", "-nologo"]).ConfigureAwait(false)).Trim();
     return $"{monoVersion}; Mono MSBuild {msBuildVersion} at {msBuildPath}";
 }
 
-static string FindMonoMSBuildExecutable()
+static string FindMonoMSBuildCommand()
 {
-    string[] monoLibraryRoots =
-    [
-        "/usr/lib/mono",
-        "/usr/local/lib/mono",
-        "/opt/homebrew/lib/mono",
-        "/Library/Frameworks/Mono.framework/Versions/Current/lib/mono"
-    ];
-    foreach (string libraryRoot in monoLibraryRoots.Where(Directory.Exists))
+    string? path = Environment.GetEnvironmentVariable("PATH");
+    if (path is not null)
     {
-        string msBuildRoot = Path.Join(libraryRoot, "msbuild");
-        if (!Directory.Exists(msBuildRoot))
+        foreach (string directory in path.Split(
+            Path.PathSeparator,
+            StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
         {
-            continue;
-        }
-
-        foreach (string versionDirectory in new[] { "Current", "15.0" })
-        {
-            string msBuildPath = Path.Join(
-                msBuildRoot,
-                versionDirectory,
-                "bin",
-                "MSBuild.exe");
+            string msBuildPath = Path.Join(directory, "msbuild");
             if (File.Exists(msBuildPath))
             {
                 return msBuildPath;

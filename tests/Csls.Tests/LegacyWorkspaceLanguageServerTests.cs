@@ -158,13 +158,25 @@ public sealed class LegacyWorkspaceLanguageServerTests
             await lsp.OpenDocumentAsync(documentPath, PlatformDocumentText)
                 .ConfigureAwait(false);
 
-            JsonElement hoverElement = await lsp.RequestHoverAsync(
+            JsonElement? hoverElement = await lsp.RequestHoverAsync(
                 documentPath,
                 new Position(6, 37),
-                TestContext.CancellationToken).ConfigureAwait(false)
-                ?? throw new InvalidDataException(
-                    "The platform framework reference returned no hover.");
-            Hover hover = hoverElement.Deserialize(LspJsonSerializerContext.Default.Hover)
+                TestContext.CancellationToken).ConfigureAwait(false);
+            if (hoverElement is null)
+            {
+                CSharpDebugInfo debugInfo = await lsp.RequestDebugInfoAsync(
+                    TestContext.CancellationToken).ConfigureAwait(false);
+                string failureDiagnostics = await lsp.ShutdownAsync(
+                    TestContext.CancellationToken).ConfigureAwait(false);
+                throw new InvalidDataException(
+                    "The platform framework reference returned no hover. " +
+                    $"Workspace phase: {debugInfo.Workspace.Phase}; " +
+                    $"folders: {debugInfo.Workspace.Folders.Count}." +
+                    Environment.NewLine +
+                    failureDiagnostics);
+            }
+
+            Hover hover = hoverElement.Value.Deserialize(LspJsonSerializerContext.Default.Hover)
                 ?? throw new InvalidDataException(
                     "The platform framework reference returned invalid hover.");
             Assert.Contains("string Form.Text { get; set; }", hover.Contents.Value);

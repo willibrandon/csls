@@ -200,12 +200,14 @@ public sealed partial class WorkspaceManager : IAsyncDisposable
                 workspaceFile);
         }
 
-        var workspace = MSBuildWorkspace.Create(
-            new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
-            {
-                ["Configuration"] = buildConfiguration,
-                ["EnableWindowsTargeting"] = "true"
-            });
+        var globalProperties = new Dictionary<string, string>(
+            StringComparer.OrdinalIgnoreCase)
+        {
+            ["Configuration"] = buildConfiguration,
+            ["EnableWindowsTargeting"] = "true"
+        };
+        LegacyFrameworkReferenceResolver.AddGlobalProperties(globalProperties);
+        var workspace = MSBuildWorkspace.Create(globalProperties);
         try
         {
             workspace.RegisterWorkspaceFailedHandler(eventArgs =>
