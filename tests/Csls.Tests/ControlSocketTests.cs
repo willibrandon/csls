@@ -120,6 +120,232 @@ public sealed class ControlSocketTests
     }
 
     /// <summary>
+    /// Expires a raw idle socket while an official keepalive connection remains usable.
+    /// </summary>
+    [TestMethod]
+    public async Task IdleConnectionExpiresWhileControlClientRemainsConnected()
+    {
+        string repositoryRoot = EditorToolResolver.FindRepositoryRoot();
+        string workerPath = Path.Join(
+            EditorToolResolver.ResolveArtifactsRoot(repositoryRoot),
+            "bin",
+            "Csls.Worker",
+            "debug",
+            "csls-worker.dll");
+        Assert.IsTrue(File.Exists(workerPath), $"Worker not found at {workerPath}.");
+
+        string fixturePath = Path.Join(
+            Path.GetTempPath(),
+            $"csls-control-idle-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(fixturePath);
+        try
+        {
+            await File.WriteAllTextAsync(
+                Path.Join(fixturePath, "Fixture.csproj"),
+                ProjectText,
+                TestContext.CancellationToken).ConfigureAwait(false);
+            var lsp = LspProcessSession.Start(
+                "csls-control-idle-worker",
+                EditorToolResolver.ResolveDotNetHost(),
+                [workerPath],
+                fixturePath,
+                environmentVariables: new Dictionary<string, string>(StringComparer.Ordinal)
+                {
+                    ["CSLS_CONTROL_IDLE_TIMEOUT_SECONDS"] = "1"
+                });
+            await using ConfiguredAsyncDisposable lspCleanup = lsp.ConfigureAwait(false);
+            await lsp.InitializeAsync(
+                fixturePath,
+                TestContext.CancellationToken).ConfigureAwait(false);
+            await lsp.CompleteInitializationAsync().ConfigureAwait(false);
+            ControlSessionInfo runningSession = await ControlSessionWaiter.WaitForRunningAsync(
+                fixturePath,
+                TimeSpan.FromSeconds(60),
+                TestContext.CancellationToken).ConfigureAwait(false);
+
+            string socketPath = ControlEndpoint.GetSocketPath(lsp.ProcessId);
+            var controlClient = new ControlRpcClient(socketPath);
+            await using ConfiguredAsyncDisposable controlCleanup =
+                controlClient.ConfigureAwait(false);
+            ControlSessionInfo initialSession = await controlClient.GetSessionAsync(
+                TestContext.CancellationToken).ConfigureAwait(false);
+            Assert.AreEqual(lsp.ProcessId, initialSession.ProcessId);
+            Assert.AreEqual(runningSession.ProcessId, initialSession.ProcessId);
+
+            using var idleSocket = new Socket(
+                AddressFamily.Unix,
+                SocketType.Stream,
+                ProtocolType.Unspecified);
+            using var partialSocket = new Socket(
+                AddressFamily.Unix,
+                SocketType.Stream,
+                ProtocolType.Unspecified);
+            await idleSocket.ConnectAsync(
+                new UnixDomainSocketEndPoint(socketPath),
+                TestContext.CancellationToken).ConfigureAwait(false);
+            await partialSocket.ConnectAsync(
+                new UnixDomainSocketEndPoint(socketPath),
+                TestContext.CancellationToken).ConfigureAwait(false);
+            await partialSocket.SendAsync(
+                new byte[1],
+                SocketFlags.None,
+                TestContext.CancellationToken).ConfigureAwait(false);
+            using var timeoutSource = CancellationTokenSource.CreateLinkedTokenSource(
+                TestContext.CancellationToken);
+            timeoutSource.CancelAfter(TimeSpan.FromSeconds(15));
+            bool idleDisconnected = await WaitForDisconnectionAsync(
+                idleSocket,
+                timeoutSource.Token).ConfigureAwait(false);
+            bool partialDisconnected = await WaitForDisconnectionAsync(
+                partialSocket,
+                timeoutSource.Token).ConfigureAwait(false);
+            Assert.IsTrue(idleDisconnected, "The idle control connection remained open.");
+            Assert.IsTrue(partialDisconnected, "The partial control connection remained open.");
+
+            ControlSessionInfo currentSession = await controlClient.GetSessionAsync(
+                TestContext.CancellationToken).ConfigureAwait(false);
+            Assert.AreEqual(initialSession.ProcessId, currentSession.ProcessId);
+            Assert.AreEqual("Running", currentSession.LifecycleState);
+
+            string diagnostics = await lsp.ShutdownAsync(
+                TestContext.CancellationToken).ConfigureAwait(false);
+            Assert.DoesNotContain("Unhandled exception", diagnostics, StringComparison.Ordinal);
+        }
+        finally
+        {
+            Directory.Delete(fixturePath, recursive: true);
+        }
+    }
+
+    /// <summary>
+    /// Preserves a real long-running Roslyn request beyond the connection inactivity limit.
+    /// </summary>
+    [TestMethod]
+    public async Task ActiveRequestSurvivesIdleDeadlineAndHonorsCancellation()
+    {
+        string repositoryRoot = EditorToolResolver.FindRepositoryRoot();
+        string workerPath = Path.Join(
+            EditorToolResolver.ResolveArtifactsRoot(repositoryRoot),
+            "bin",
+            "Csls.Worker",
+            "debug",
+            "csls-worker.dll");
+        Assert.IsTrue(File.Exists(workerPath), $"Worker not found at {workerPath}.");
+
+        CancellationProbeFixture fixture = await CancellationProbeFixture.CreateAsync(
+            repositoryRoot,
+            TestContext.CancellationToken).ConfigureAwait(false);
+        await using ConfiguredAsyncDisposable fixtureCleanup = fixture.ConfigureAwait(false);
+        var lsp = LspProcessSession.Start(
+            "csls-control-active-worker",
+            EditorToolResolver.ResolveDotNetHost(),
+            [workerPath],
+            fixture.RootPath,
+            environmentVariables: new Dictionary<string, string>(StringComparer.Ordinal)
+            {
+                ["CSLS_CONTROL_IDLE_TIMEOUT_SECONDS"] = "1"
+            });
+        await using ConfiguredAsyncDisposable lspCleanup = lsp.ConfigureAwait(false);
+        await lsp.InitializeAsync(
+            fixture.RootPath,
+            TestContext.CancellationToken).ConfigureAwait(false);
+        await lsp.OpenDocumentAsync(
+            fixture.DocumentPath,
+            CancellationProbeFixture.DocumentText).ConfigureAwait(false);
+
+        string socketPath = ControlEndpoint.GetSocketPath(lsp.ProcessId);
+        var controlClient = new ControlRpcClient(socketPath);
+        await using ConfiguredAsyncDisposable controlCleanup =
+            controlClient.ConfigureAwait(false);
+        using var requestSource = CancellationTokenSource.CreateLinkedTokenSource(
+            TestContext.CancellationToken);
+        Task<DocumentDiagnosticReport> diagnosticRequest = controlClient.GetDiagnosticsAsync(
+            new ControlDiagnosticRequest
+            {
+                DocumentPath = fixture.DocumentPath
+            },
+            requestSource.Token);
+        TaskCanceledException? canceledRequest = null;
+        try
+        {
+            await FileTextWaiter.WaitAsync(
+                fixture.MarkerPath,
+                "started",
+                TimeSpan.FromSeconds(60),
+                TestContext.CancellationToken).ConfigureAwait(false);
+
+            using var idleSocket = new Socket(
+                AddressFamily.Unix,
+                SocketType.Stream,
+                ProtocolType.Unspecified);
+            await idleSocket.ConnectAsync(
+                new UnixDomainSocketEndPoint(socketPath),
+                TestContext.CancellationToken).ConfigureAwait(false);
+            using var timeoutSource = CancellationTokenSource.CreateLinkedTokenSource(
+                TestContext.CancellationToken);
+            timeoutSource.CancelAfter(TimeSpan.FromSeconds(15));
+            bool disconnected = await WaitForDisconnectionAsync(
+                    idleSocket,
+                    TestContext.CancellationToken)
+                .WaitAsync(timeoutSource.Token).ConfigureAwait(false);
+            Assert.IsTrue(disconnected, "The independent idle connection remained open.");
+            Assert.IsFalse(
+                diagnosticRequest.IsCompleted,
+                "The active diagnostic request ended at the idle deadline.");
+
+            await requestSource.CancelAsync().ConfigureAwait(false);
+            await FileTextWaiter.WaitAsync(
+                fixture.MarkerPath,
+                "canceled",
+                TimeSpan.FromSeconds(15),
+                TestContext.CancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            await requestSource.CancelAsync().ConfigureAwait(false);
+            if (!diagnosticRequest.IsCompleted)
+            {
+                using var cleanupSource = CancellationTokenSource.CreateLinkedTokenSource(
+                    TestContext.CancellationToken);
+                cleanupSource.CancelAfter(TimeSpan.FromSeconds(15));
+                ControlDashboardSnapshot dashboard =
+                    await controlClient.GetDashboardSnapshotAsync(
+                        new ControlDashboardRequest { IncludeDiagnostics = false },
+                        cleanupSource.Token).ConfigureAwait(false);
+                ControlRequestInfo? request = dashboard.Requests.ActiveRequests.SingleOrDefault(
+                    static item => item.Name == "textDocument/diagnostic");
+                if (request is not null)
+                {
+                    await controlClient.CancelRequestAsync(
+                        new ControlCancelRequest { CorrelationId = request.CorrelationId },
+                        cleanupSource.Token).ConfigureAwait(false);
+                }
+            }
+
+            try
+            {
+                await diagnosticRequest.WaitAsync(
+                    TimeSpan.FromSeconds(15),
+                    TestContext.CancellationToken).ConfigureAwait(false);
+            }
+            catch (TaskCanceledException exception)
+            {
+                canceledRequest = exception;
+            }
+        }
+
+        Assert.IsNotNull(canceledRequest);
+        ControlSessionInfo session = await controlClient.GetSessionAsync(
+            TestContext.CancellationToken).ConfigureAwait(false);
+        Assert.AreEqual(lsp.ProcessId, session.ProcessId);
+        Assert.AreEqual("Running", session.LifecycleState);
+
+        string diagnostics = await lsp.ShutdownAsync(
+            TestContext.CancellationToken).ConfigureAwait(false);
+        Assert.DoesNotContain("Unhandled exception", diagnostics, StringComparison.Ordinal);
+    }
+
+    /// <summary>
     /// Shuts down cleanly while a real idle control connection is blocked on input.
     /// </summary>
     [TestMethod]

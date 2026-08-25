@@ -27,6 +27,8 @@ namespace Csls.Control.Contracts;
 [JsonSerializable(typeof(ControlEditPlan))]
 [JsonSerializable(typeof(ControlApplyEditPlanRequest))]
 [JsonSerializable(typeof(ControlApplyEditPlanResult))]
+[JsonSerializable(typeof(ControlConnectionInfo))]
+[JsonSerializable(typeof(bool))]
 [JsonSerializable(typeof(ControlSessionInfo))]
 [JsonSerializable(typeof(ControlDashboardSnapshot))]
 [JsonSerializable(typeof(ControlDashboardRequest))]

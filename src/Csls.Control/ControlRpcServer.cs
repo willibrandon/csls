@@ -1,7 +1,9 @@
 using Csls.Control.Contracts;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using StreamJsonRpc;
+using System.Globalization;
 using System.Net.Sockets;
 using System.Threading.Channels;
 
@@ -14,8 +16,15 @@ public sealed partial class ControlRpcServer : IHostedService, IAsyncDisposable
 {
     private const int MaximumConnections = 16;
     private const int MaximumMessageBytes = 4 * 1024 * 1024;
+    private const int DefaultConnectionIdleTimeoutSeconds = 120;
+    private const int MinimumConnectionIdleTimeoutSeconds = 1;
+    private const int MaximumConnectionIdleTimeoutSeconds = 120;
+    private const string IdleTimeoutConfigurationKey =
+        "CSLS_CONTROL_IDLE_TIMEOUT_SECONDS";
     private readonly IControlRpcTarget _target;
     private readonly ILogger<ControlRpcServer> _logger;
+    private readonly TimeSpan _connectionIdleTimeout;
+    private readonly ControlConnectionInfo _connectionInfo;
     private readonly Channel<Socket> _connections = Channel.CreateBounded<Socket>(
         new BoundedChannelOptions(MaximumConnections)
         {
@@ -36,14 +45,25 @@ public sealed partial class ControlRpcServer : IHostedService, IAsyncDisposable
     /// </summary>
     /// <param name="target">The explicitly registered control target.</param>
     /// <param name="logger">The structured control logger.</param>
+    /// <param name="configuration">The worker host configuration.</param>
     public ControlRpcServer(
         IControlRpcTarget target,
-        ILogger<ControlRpcServer> logger)
+        ILogger<ControlRpcServer> logger,
+        IConfiguration configuration)
     {
         ArgumentNullException.ThrowIfNull(target);
         ArgumentNullException.ThrowIfNull(logger);
+        ArgumentNullException.ThrowIfNull(configuration);
         _target = target;
         _logger = logger;
+        _connectionIdleTimeout = GetConnectionIdleTimeout(configuration);
+        int idleTimeoutMilliseconds = checked((int)_connectionIdleTimeout.TotalMilliseconds);
+        _connectionInfo = new ControlConnectionInfo
+        {
+            ProtocolVersion = ControlProtocol.CurrentVersion,
+            IdleTimeoutMilliseconds = idleTimeoutMilliseconds,
+            KeepAliveIntervalMilliseconds = Math.Max(250, idleTimeoutMilliseconds / 3)
+        };
     }
 
     /// <summary>
@@ -95,15 +115,22 @@ public sealed partial class ControlRpcServer : IHostedService, IAsyncDisposable
         await _shutdownSource.CancelAsync().ConfigureAwait(false);
         _listener?.Dispose();
         _connections.Writer.TryComplete();
-        if (_acceptTask is not null)
+        try
         {
-            await _acceptTask.WaitAsync(cancellationToken).ConfigureAwait(false);
-        }
+            if (_acceptTask is not null)
+            {
+                await _acceptTask.WaitAsync(cancellationToken).ConfigureAwait(false);
+            }
 
-        await Task.WhenAll(_connectionWorkers)
-            .WaitAsync(cancellationToken)
-            .ConfigureAwait(false);
-        DeleteSocket();
+            await Task.WhenAll(_connectionWorkers)
+                .WaitAsync(cancellationToken)
+                .ConfigureAwait(false);
+        }
+        finally
+        {
+            DisposePendingConnections();
+            DeleteSocket();
+        }
     }
 
     /// <summary>
@@ -133,9 +160,17 @@ public sealed partial class ControlRpcServer : IHostedService, IAsyncDisposable
                 Socket connection = await _listener!
                     .AcceptAsync(cancellationToken)
                     .ConfigureAwait(false);
-                await _connections.Writer
-                    .WriteAsync(connection, cancellationToken)
-                    .ConfigureAwait(false);
+                try
+                {
+                    await _connections.Writer
+                        .WriteAsync(connection, cancellationToken)
+                        .ConfigureAwait(false);
+                }
+                catch
+                {
+                    connection.Dispose();
+                    throw;
+                }
             }
         }
         catch (OperationCanceledException exception)
@@ -149,6 +184,11 @@ public sealed partial class ControlRpcServer : IHostedService, IAsyncDisposable
             LogExpectedShutdown(exception);
         }
         catch (SocketException exception)
+            when (cancellationToken.IsCancellationRequested)
+        {
+            LogExpectedShutdown(exception);
+        }
+        catch (ChannelClosedException exception)
             when (cancellationToken.IsCancellationRequested)
         {
             LogExpectedShutdown(exception);
@@ -183,6 +223,10 @@ public sealed partial class ControlRpcServer : IHostedService, IAsyncDisposable
                 {
                     LogConnectionEnded(exception.Message);
                 }
+                catch (ObjectDisposedException exception)
+                {
+                    LogConnectionEnded(exception.Message);
+                }
             }
         }
         catch (OperationCanceledException exception)
@@ -210,22 +254,88 @@ public sealed partial class ControlRpcServer : IHostedService, IAsyncDisposable
             stream,
             MaximumMessageBytes,
             leaveOpen: true);
-        using var messageHandler = new LengthHeaderMessageHandler(
+        var activity = new ControlConnectionActivity();
+        using var messageHandler = new ControlMessageHandler(
             boundedStream,
             boundedStream,
-            formatter);
-        using var rpc = new JsonRpc(messageHandler)
+            formatter,
+            activity);
+        using var rpc = new ControlJsonRpc(messageHandler, activity)
         {
             CancelLocallyInvokedMethodsWhenConnectionIsClosed = true,
             DisplayName = "csls-control-server"
         };
-        ControlMethodRegistry.Register(rpc, _target);
+        rpc.CancellationStrategy = new ControlCancellationStrategy(rpc);
+        ControlMethodRegistry.Register(rpc, _target, _connectionInfo);
         rpc.StartListening();
+        using var connectionSource = CancellationTokenSource.CreateLinkedTokenSource(
+            cancellationToken);
         using CancellationTokenRegistration shutdownRegistration = cancellationToken.Register(
-            static state => ((NetworkStream)state!).Dispose(),
-            stream);
-        await rpc.Completion.ConfigureAwait(false);
-        await rpc.DispatchCompletion.ConfigureAwait(false);
+            static state => ((Socket)state!).Dispose(),
+            connection);
+        Task idleTask = activity.WaitUntilIdleAsync(
+            _connectionIdleTimeout,
+            connectionSource.Token);
+        try
+        {
+            Task completedTask = await Task.WhenAny(rpc.Completion, idleTask)
+                .ConfigureAwait(false);
+            if (completedTask == idleTask)
+            {
+                await idleTask.ConfigureAwait(false);
+                await stream.DisposeAsync().ConfigureAwait(false);
+                LogIdleConnectionClosed(_connectionInfo.IdleTimeoutMilliseconds);
+            }
+
+            await rpc.Completion.ConfigureAwait(false);
+            await rpc.DispatchCompletion.ConfigureAwait(false);
+        }
+        finally
+        {
+            await connectionSource.CancelAsync().ConfigureAwait(false);
+            try
+            {
+                await idleTask.ConfigureAwait(false);
+            }
+            catch (OperationCanceledException exception)
+                when (connectionSource.IsCancellationRequested)
+            {
+                LogExpectedShutdown(exception);
+            }
+        }
+    }
+
+    private static TimeSpan GetConnectionIdleTimeout(IConfiguration configuration)
+    {
+        string? configuredValue = configuration[IdleTimeoutConfigurationKey];
+        if (string.IsNullOrWhiteSpace(configuredValue))
+        {
+            return TimeSpan.FromSeconds(DefaultConnectionIdleTimeoutSeconds);
+        }
+
+        if (!int.TryParse(
+                configuredValue,
+                NumberStyles.None,
+                CultureInfo.InvariantCulture,
+                out int seconds) ||
+            seconds is < MinimumConnectionIdleTimeoutSeconds or
+                > MaximumConnectionIdleTimeoutSeconds)
+        {
+            throw new InvalidOperationException(
+                $"{IdleTimeoutConfigurationKey} must be an integer from " +
+                $"{MinimumConnectionIdleTimeoutSeconds} through " +
+                $"{MaximumConnectionIdleTimeoutSeconds}.");
+        }
+
+        return TimeSpan.FromSeconds(seconds);
+    }
+
+    private void DisposePendingConnections()
+    {
+        while (_connections.Reader.TryRead(out Socket? connection))
+        {
+            connection.Dispose();
+        }
     }
 
     private void DeleteSocket()
@@ -253,4 +363,10 @@ public sealed partial class ControlRpcServer : IHostedService, IAsyncDisposable
         Level = LogLevel.Trace,
         Message = "Control socket operation ended during expected shutdown")]
     private partial void LogExpectedShutdown(Exception exception);
+
+    [LoggerMessage(
+        EventId = 4,
+        Level = LogLevel.Debug,
+        Message = "Control connection closed after {IdleTimeoutMilliseconds} ms of inactivity")]
+    private partial void LogIdleConnectionClosed(int idleTimeoutMilliseconds);
 }

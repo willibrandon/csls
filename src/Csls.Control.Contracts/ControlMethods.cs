@@ -6,6 +6,21 @@ namespace Csls.Control.Contracts;
 public static class ControlMethods
 {
     /// <summary>
+    /// Gets the method that negotiates one control connection.
+    /// </summary>
+    public const string GetConnectionInfo = "csls/control/v1/connection/get";
+
+    /// <summary>
+    /// Gets the method that keeps an active control connection open.
+    /// </summary>
+    public const string KeepAlive = "csls/control/v1/connection/keep-alive";
+
+    /// <summary>
+    /// Gets the method that cancels one request on its originating control connection.
+    /// </summary>
+    public const string CancelInvocation = "csls/control/v1/connection/cancel-request";
+
+    /// <summary>
     /// Gets the method that returns the current language-server session.
     /// </summary>
     public const string GetSession = "csls/control/v1/session/get";

@@ -14,10 +14,21 @@ internal static class ControlMethodRegistry
     /// </summary>
     /// <param name="rpc">The StreamJsonRpc connection to configure.</param>
     /// <param name="target">The control target implementation.</param>
-    internal static void Register(JsonRpc rpc, IControlRpcTarget target)
+    /// <param name="connectionInfo">The negotiated connection lifetime settings.</param>
+    internal static void Register(
+        JsonRpc rpc,
+        IControlRpcTarget target,
+        ControlConnectionInfo connectionInfo)
     {
         ArgumentNullException.ThrowIfNull(rpc);
         ArgumentNullException.ThrowIfNull(target);
+        ArgumentNullException.ThrowIfNull(connectionInfo);
+        rpc.AddLocalRpcMethod(
+            ControlMethods.GetConnectionInfo,
+            new Func<ControlConnectionInfo>(() => connectionInfo));
+        rpc.AddLocalRpcMethod(
+            ControlMethods.KeepAlive,
+            new Func<bool>(static () => true));
         rpc.AddLocalRpcMethod(
             ControlMethods.GetSession,
             new Func<CancellationToken, Task<ControlSessionInfo>>(target.GetSessionAsync));

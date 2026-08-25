@@ -8,4 +8,5 @@ namespace Csls.Control;
 /// </summary>
 [JsonSourceGenerationOptions(GenerationMode = JsonSourceGenerationMode.Metadata)]
 [JsonSerializable(typeof(CommonErrorData))]
+[JsonSerializable(typeof(ControlRpcCancellationRequest))]
 internal sealed partial class ControlRpcJsonSerializerContext : JsonSerializerContext;
