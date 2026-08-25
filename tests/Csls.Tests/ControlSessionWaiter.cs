@@ -134,6 +134,8 @@ internal static class ControlSessionWaiter
             SocketException or
             TimeoutException or
             ConnectionLostException or
+            InvalidDataException or
+            RemoteRpcException or
             ObjectDisposedException)
         {
             return null;

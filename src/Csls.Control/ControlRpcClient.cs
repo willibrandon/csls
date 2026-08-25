@@ -19,6 +19,8 @@ public sealed class ControlRpcClient : IAsyncDisposable
     private BoundedMessageStream? _boundedStream;
     private LengthHeaderMessageHandler? _messageHandler;
     private JsonRpc? _rpc;
+    private CancellationTokenSource? _keepAliveSource;
+    private Task? _keepAliveTask;
     private int _disposeState;
 
     /// <summary>
@@ -453,24 +455,18 @@ public sealed class ControlRpcClient : IAsyncDisposable
             return;
         }
 
-        _rpc?.Dispose();
-        if (_messageHandler is not null)
+        await _connectionGate.WaitAsync(CancellationToken.None).ConfigureAwait(false);
+        try
         {
-            await _messageHandler.DisposeAsync().ConfigureAwait(false);
+            _rpc?.Dispose();
+            _rpc = null;
+            await DisposeConnectionAsync().ConfigureAwait(false);
+        }
+        finally
+        {
+            _connectionGate.Release();
         }
 
-        if (_boundedStream is not null)
-        {
-            await _boundedStream.DisposeAsync().ConfigureAwait(false);
-        }
-
-        _formatter?.Dispose();
-        if (_stream is not null)
-        {
-            await _stream.DisposeAsync().ConfigureAwait(false);
-        }
-
-        _socket?.Dispose();
         _connectionGate.Dispose();
         GC.SuppressFinalize(this);
     }
@@ -479,51 +475,193 @@ public sealed class ControlRpcClient : IAsyncDisposable
     {
         ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposeState) != 0, this);
         JsonRpc? rpc = Volatile.Read(ref _rpc);
-        if (rpc is not null)
+        Task? keepAliveTask = Volatile.Read(ref _keepAliveTask);
+        if (IsConnectionUsable(rpc, keepAliveTask))
         {
-            return rpc;
+            return rpc!;
         }
 
         await _connectionGate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
+            ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposeState) != 0, this);
             rpc = Volatile.Read(ref _rpc);
-            if (rpc is not null)
+            keepAliveTask = Volatile.Read(ref _keepAliveTask);
+            if (IsConnectionUsable(rpc, keepAliveTask))
             {
-                return rpc;
+                return rpc!;
             }
 
-            _socket = new Socket(
-                AddressFamily.Unix,
-                SocketType.Stream,
-                ProtocolType.Unspecified);
-            await _socket.ConnectAsync(
-                new UnixDomainSocketEndPoint(_socketPath),
-                cancellationToken).ConfigureAwait(false);
-            _stream = new NetworkStream(_socket, ownsSocket: true);
-            _formatter = new SystemTextJsonFormatter
+            await DisposeConnectionAsync().ConfigureAwait(false);
+            try
             {
-                JsonSerializerOptions = ControlRpcJson.CreateSerializerOptions()
-            };
-            _boundedStream = new BoundedMessageStream(
-                _stream,
-                MaximumMessageBytes,
-                leaveOpen: true);
-            _messageHandler = new LengthHeaderMessageHandler(
-                _boundedStream,
-                _boundedStream,
-                _formatter);
-            _rpc = new JsonRpc(_messageHandler)
+                _socket = new Socket(
+                    AddressFamily.Unix,
+                    SocketType.Stream,
+                    ProtocolType.Unspecified);
+                await _socket.ConnectAsync(
+                    new UnixDomainSocketEndPoint(_socketPath),
+                    cancellationToken).ConfigureAwait(false);
+                _stream = new NetworkStream(_socket, ownsSocket: true);
+                _formatter = new SystemTextJsonFormatter
+                {
+                    JsonSerializerOptions = ControlRpcJson.CreateSerializerOptions()
+                };
+                _boundedStream = new BoundedMessageStream(
+                    _stream,
+                    MaximumMessageBytes,
+                    leaveOpen: true);
+                _messageHandler = new LengthHeaderMessageHandler(
+                    _boundedStream,
+                    _boundedStream,
+                    _formatter);
+                JsonRpc newRpc = new(_messageHandler)
+                {
+                    CancelLocallyInvokedMethodsWhenConnectionIsClosed = true,
+                    DisplayName = "csls-control-client"
+                };
+                newRpc.CancellationStrategy = new ControlCancellationStrategy(newRpc);
+                _rpc = newRpc;
+                newRpc.StartListening();
+                ControlConnectionInfo connectionInfo = await newRpc
+                    .InvokeWithCancellationAsync<ControlConnectionInfo>(
+                        ControlMethods.GetConnectionInfo,
+                        cancellationToken: cancellationToken)
+                    .ConfigureAwait(false);
+                TimeSpan keepAliveInterval = ValidateConnectionInfo(connectionInfo);
+                _keepAliveSource = new CancellationTokenSource();
+                _keepAliveTask = RunKeepAliveAsync(
+                    newRpc,
+                    keepAliveInterval,
+                    _keepAliveSource.Token);
+                return newRpc;
+            }
+            catch
             {
-                CancelLocallyInvokedMethodsWhenConnectionIsClosed = true,
-                DisplayName = "csls-control-client"
-            };
-            _rpc.StartListening();
-            return _rpc;
+                await DisposeConnectionAsync().ConfigureAwait(false);
+                throw;
+            }
         }
         finally
         {
             _connectionGate.Release();
+        }
+    }
+
+    private async Task DisposeConnectionAsync()
+    {
+        CancellationTokenSource? keepAliveSource = _keepAliveSource;
+        Task? keepAliveTask = _keepAliveTask;
+        _keepAliveSource = null;
+        _keepAliveTask = null;
+        using (keepAliveSource)
+        {
+            try
+            {
+                if (keepAliveSource is not null)
+                {
+                    await keepAliveSource.CancelAsync().ConfigureAwait(false);
+                }
+
+                _rpc?.Dispose();
+                _rpc = null;
+                if (keepAliveTask is not null)
+                {
+                    await keepAliveTask.ConfigureAwait(false);
+                }
+            }
+            finally
+            {
+                await DisposeTransportAsync().ConfigureAwait(false);
+            }
+        }
+    }
+
+    private async Task DisposeTransportAsync()
+    {
+        if (_messageHandler is not null)
+        {
+            await _messageHandler.DisposeAsync().ConfigureAwait(false);
+            _messageHandler = null;
+        }
+
+        if (_boundedStream is not null)
+        {
+            await _boundedStream.DisposeAsync().ConfigureAwait(false);
+            _boundedStream = null;
+        }
+
+        _formatter?.Dispose();
+        _formatter = null;
+        if (_stream is not null)
+        {
+            await _stream.DisposeAsync().ConfigureAwait(false);
+            _stream = null;
+        }
+
+        _socket?.Dispose();
+        _socket = null;
+    }
+
+    private static bool IsConnectionUsable(JsonRpc? rpc, Task? keepAliveTask) =>
+        rpc is not null &&
+        !rpc.Completion.IsCompleted &&
+        keepAliveTask is { IsCompleted: false };
+
+    private static TimeSpan ValidateConnectionInfo(ControlConnectionInfo connectionInfo)
+    {
+        ArgumentNullException.ThrowIfNull(connectionInfo);
+        if (connectionInfo.ProtocolVersion != ControlProtocol.CurrentVersion)
+        {
+            throw new InvalidDataException(
+                $"Unsupported control protocol version {connectionInfo.ProtocolVersion}.");
+        }
+
+        if (connectionInfo.IdleTimeoutMilliseconds <= 0 ||
+            connectionInfo.KeepAliveIntervalMilliseconds <= 0 ||
+            connectionInfo.KeepAliveIntervalMilliseconds >=
+                connectionInfo.IdleTimeoutMilliseconds)
+        {
+            throw new InvalidDataException(
+                "The control server returned invalid connection lifetime settings.");
+        }
+
+        return TimeSpan.FromMilliseconds(connectionInfo.KeepAliveIntervalMilliseconds);
+    }
+
+    private static async Task RunKeepAliveAsync(
+        JsonRpc rpc,
+        TimeSpan interval,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            while (true)
+            {
+                await Task.Delay(interval, cancellationToken).ConfigureAwait(false);
+                bool acknowledged = await rpc.InvokeWithCancellationAsync<bool>(
+                    ControlMethods.KeepAlive,
+                    cancellationToken: cancellationToken).ConfigureAwait(false);
+                if (!acknowledged)
+                {
+                    throw new InvalidDataException(
+                        "The control server rejected a connection keepalive.");
+                }
+            }
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            return;
+        }
+        catch (Exception exception) when (
+            exception is ConnectionLostException or
+                InvalidDataException or
+                IOException or
+                ObjectDisposedException or
+                RemoteInvocationException or
+                SocketException)
+        {
+            return;
         }
     }
 
