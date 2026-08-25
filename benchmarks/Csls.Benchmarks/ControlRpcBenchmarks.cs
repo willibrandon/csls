@@ -218,6 +218,9 @@ public class ControlRpcBenchmarks : IAsyncDisposable
             }
             catch (Exception exception) when (exception is IOException or SocketException)
             {
+                await Console.Error.WriteLineAsync(
+                    $"Waiting for the control session: {exception.Message}")
+                    .ConfigureAwait(false);
             }
 
             await Task.Delay(50, timeout.Token).ConfigureAwait(false);
