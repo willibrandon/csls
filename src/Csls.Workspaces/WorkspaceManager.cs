@@ -203,7 +203,8 @@ public sealed partial class WorkspaceManager : IAsyncDisposable
         var workspace = MSBuildWorkspace.Create(
             new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
             {
-                ["Configuration"] = buildConfiguration
+                ["Configuration"] = buildConfiguration,
+                ["EnableWindowsTargeting"] = "true"
             });
         try
         {

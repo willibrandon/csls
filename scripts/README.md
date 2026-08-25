@@ -16,6 +16,7 @@ supports `--help`.
 | `Provision-Emacs.cs` | Installs the pinned Emacs Eglot editor oracle. |
 | `Provision-Fresh.cs` | Installs the pinned Fresh editor oracle. |
 | `Provision-Helix.cs` | Installs the pinned Helix editor oracle. |
+| `Provision-LegacyBuildHost.cs` | Installs Mono MSBuild or verifies Visual Studio MSBuild for legacy workspaces. |
 | `Provision-Neovim.cs` | Installs the pinned Neovim editor oracle. |
 | `Run-Benchmarks.cs` | Builds and runs the BenchmarkDotNet suite. |
 | `Run-EndToEndPerformance.cs` | Publishes both Native AOT tools and measures real LSP, MCP, CLI, dashboard, and process-resource workloads. |

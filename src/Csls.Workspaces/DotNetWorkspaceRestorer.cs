@@ -69,6 +69,8 @@ internal static class DotNetWorkspaceRestorer
         startInfo.ArgumentList.Add(entryPoint);
         startInfo.ArgumentList.Add("--nologo");
         startInfo.ArgumentList.Add("--disable-build-servers");
+        startInfo.ArgumentList.Add("--property");
+        startInfo.ArgumentList.Add("EnableWindowsTargeting=true");
         startInfo.ArgumentList.Add("--verbosity");
         startInfo.ArgumentList.Add("minimal");
         startInfo.Environment["DOTNET_CLI_TELEMETRY_OPTOUT"] = "1";

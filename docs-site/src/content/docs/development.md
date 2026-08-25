@@ -25,9 +25,10 @@ dotnet run --file scripts/Verify-ToolPackages.cs
 ```
 
 The development container restores every file app and provisions its external
-test tools at pinned current releases. CI builds the supported runtime packages,
-runs CodeQL, scans the repository and container image with Picket, and checks the
-Native AOT package sizes.
+test tools at pinned current releases, including Mono MSBuild for old project files.
+CI builds the supported runtime packages, verifies Visual Studio and Mono build
+hosts, runs CodeQL, scans the repository and container image with Picket, and checks
+the Native AOT package sizes.
 
 Read [testing](../testing/) for the real process and editor fixtures,
 [performance](../performance/) for both measurement programs, and

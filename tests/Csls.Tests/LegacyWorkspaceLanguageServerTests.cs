@@ -106,6 +106,90 @@ public sealed class LegacyWorkspaceLanguageServerTests
         }
     }
 
+    /// <summary>
+    /// Loads framework references from the platform legacy build host without a NuGet fallback.
+    /// </summary>
+    [TestMethod]
+    [TestCategory("LegacyBuildHost")]
+    public async Task PlatformLegacyBuildHostProvidesFrameworkReferences()
+    {
+        if (!string.Equals(
+                Environment.GetEnvironmentVariable("CSLS_REQUIRE_LEGACY_BUILD_HOST"),
+                "true",
+                StringComparison.OrdinalIgnoreCase))
+        {
+            Assert.Inconclusive(
+                "Set CSLS_REQUIRE_LEGACY_BUILD_HOST=true after provisioning the platform host.");
+        }
+
+        string fixturePath = Path.Join(
+            Path.GetTempPath(),
+            $"csls-platform-legacy-workspace-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(fixturePath);
+        try
+        {
+            string documentPath = Path.Join(fixturePath, "LegacyWindow.cs");
+            await File.WriteAllTextAsync(
+                Path.Join(fixturePath, "PlatformLegacyFixture.csproj"),
+                PlatformProjectText,
+                TestContext.CancellationToken).ConfigureAwait(false);
+            await File.WriteAllTextAsync(
+                documentPath,
+                PlatformDocumentText,
+                TestContext.CancellationToken).ConfigureAwait(false);
+
+            string repositoryRoot = EditorToolResolver.FindRepositoryRoot();
+            string workerPath = Path.Join(
+                EditorToolResolver.ResolveArtifactsRoot(repositoryRoot),
+                "bin",
+                "Csls.Worker",
+                "debug",
+                "csls-worker.dll");
+            Assert.IsTrue(File.Exists(workerPath), $"Worker not found at {workerPath}.");
+            var lsp = LspProcessSession.Start(
+                "csls-platform-legacy-workspace-worker",
+                EditorToolResolver.ResolveDotNetHost(),
+                [workerPath],
+                fixturePath);
+            await using ConfiguredAsyncDisposable lspCleanup = lsp.ConfigureAwait(false);
+            await lsp.InitializeAsync(
+                fixturePath,
+                TestContext.CancellationToken).ConfigureAwait(false);
+            await lsp.OpenDocumentAsync(documentPath, PlatformDocumentText)
+                .ConfigureAwait(false);
+
+            JsonElement hoverElement = await lsp.RequestHoverAsync(
+                documentPath,
+                new Position(6, 37),
+                TestContext.CancellationToken).ConfigureAwait(false)
+                ?? throw new InvalidDataException(
+                    "The platform framework reference returned no hover.");
+            Hover hover = hoverElement.Deserialize(LspJsonSerializerContext.Default.Hover)
+                ?? throw new InvalidDataException(
+                    "The platform framework reference returned invalid hover.");
+            Assert.Contains("string Form.Text { get; set; }", hover.Contents.Value);
+
+            DocumentDiagnosticReport diagnostics = await lsp.RequestDiagnosticsAsync(
+                documentPath,
+                previousResultId: null,
+                TestContext.CancellationToken).ConfigureAwait(false);
+            Assert.AreEqual("full", diagnostics.Kind);
+            Assert.IsNotNull(diagnostics.Items);
+            Assert.IsEmpty(diagnostics.Items);
+
+            string shutdownDiagnostics = await lsp.ShutdownAsync(
+                TestContext.CancellationToken).ConfigureAwait(false);
+            Assert.DoesNotContain(
+                "Unhandled exception",
+                shutdownDiagnostics,
+                StringComparison.Ordinal);
+        }
+        finally
+        {
+            Directory.Delete(fixturePath, recursive: true);
+        }
+    }
+
     private static async Task RestoreAsync(
         string fixturePath,
         CancellationToken cancellationToken)
@@ -187,6 +271,41 @@ public sealed class LegacyWorkspaceLanguageServerTests
             "version": "99.0.100",
             "rollForward": "disable"
           }
+        }
+        """;
+
+    private const string PlatformProjectText = """
+        <Project ToolsVersion="Current" DefaultTargets="Build"
+                 xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+          <PropertyGroup>
+            <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
+            <Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform>
+            <ProjectGuid>{9CE946A0-9926-43A9-A0AB-D00A31EC11EC}</ProjectGuid>
+            <OutputType>Library</OutputType>
+            <RootNamespace>PlatformLegacyFixture</RootNamespace>
+            <AssemblyName>PlatformLegacyFixture</AssemblyName>
+            <TargetFrameworkVersion>v4.8</TargetFrameworkVersion>
+            <LangVersion>latest</LangVersion>
+          </PropertyGroup>
+          <ItemGroup>
+            <Compile Include="LegacyWindow.cs" />
+            <Reference Include="System" />
+            <Reference Include="System.Core" />
+            <Reference Include="System.Windows.Forms" />
+          </ItemGroup>
+          <Import Project="$(MSBuildToolsPath)/Microsoft.CSharp.targets" />
+        </Project>
+        """;
+
+    private const string PlatformDocumentText = """
+        using System.Windows.Forms;
+
+        namespace PlatformLegacyFixture
+        {
+            public sealed class LegacyWindow : Form
+            {
+                public string ReadTitle() => Text;
+            }
         }
         """;
 }

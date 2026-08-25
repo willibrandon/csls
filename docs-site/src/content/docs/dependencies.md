@@ -12,9 +12,9 @@ and tests the resulting tools on every supported runtime.
 
 | Package family | Used for |
 | --- | --- |
-| Microsoft.CodeAnalysis | C# syntax, compiler services, workspaces, features, and MSBuild loading |
+| Microsoft.CodeAnalysis | C# syntax, compiler services, workspaces, features, and SDK, Build Tools, or Mono build-host selection |
 | Microsoft.CodeAnalysis.Razor.Compiler and Microsoft.AspNetCore.Razor.Utilities.Shared | Razor project compilation and generated C# mappings |
-| Microsoft.Build and Microsoft.Build.Locator | SDK, Visual Studio, Build Tools, and project evaluation discovery |
+| Microsoft.Build and Microsoft.Build.Locator | Project evaluation and workspace-selected .NET SDK registration |
 | Microsoft.Extensions | Worker hosting, dependency injection, and structured logging |
 | StreamJsonRpc | LSP and local control JSON-RPC transports |
 | System.CommandLine | `csls` and `csls-mcp` command parsing |
@@ -44,6 +44,10 @@ only by the microbenchmark project. Documentation, provisioning, and repository
 verification may use packages that are not shipped with either tool. The product
 dependency restriction does not apply to those development programs, but every
 version is still pinned and reviewed.
+
+Visual Studio Build Tools on Windows and Mono MSBuild on Unix are optional runtime
+requirements for old-style .NET Framework projects. They are CI and development
+dependencies, not files redistributed by either csls tool package.
 
 Dependabot checks NuGet, npm, and GitHub Actions weekly. A dependency update must pass
 the full runtime matrix, Native AOT publishing, real editor tests, CodeQL, Picket,
