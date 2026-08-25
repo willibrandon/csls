@@ -9,7 +9,8 @@
 using System.Diagnostics;
 
 string? job = null;
-string filter = "*";
+var filters = new List<string>();
+bool disassembly = false;
 for (int index = 0; index < args.Length; index++)
 {
     switch (args[index])
@@ -18,13 +19,16 @@ for (int index = 0; index < args.Length; index++)
             job = args[++index];
             break;
         case "--filter" when index + 1 < args.Length:
-            filter = args[++index];
+            filters.Add(args[++index]);
+            break;
+        case "--disassembly":
+            disassembly = true;
             break;
         case "--help" or "-h" or "-?":
             await Console.Out.WriteLineAsync(
                 "Builds and runs the permanent BenchmarkDotNet suite.").ConfigureAwait(false);
             await Console.Out.WriteLineAsync(
-                "Usage: dotnet run --file scripts/Run-Benchmarks.cs -- [--job Dry|Short] [--filter pattern]")
+                "Usage: dotnet run --file scripts/Run-Benchmarks.cs -- [--job Dry|Short] [--filter pattern] [--disassembly]")
                 .ConfigureAwait(false);
             return 0;
         default:
@@ -40,10 +44,15 @@ if (job is not null && job is not ("Dry" or "Short"))
     return 2;
 }
 
-if (string.IsNullOrWhiteSpace(filter))
+if (filters.Any(string.IsNullOrWhiteSpace))
 {
     await Console.Error.WriteLineAsync("--filter must not be empty.").ConfigureAwait(false);
     return 2;
+}
+
+if (filters.Count == 0)
+{
+    filters.Add("*");
 }
 
 try
@@ -73,17 +82,27 @@ try
         "--no-build",
         "--",
         "--filter",
-        filter,
+    };
+    benchmarkArguments.AddRange(filters);
+    benchmarkArguments.AddRange(
+    [
         "--artifacts",
         artifactDirectory,
         "--noOverwrite",
         "--exporters",
         "fulljson"
-    };
+    ]);
     if (job is not null)
     {
         benchmarkArguments.Add("--job");
         benchmarkArguments.Add(job);
+    }
+
+    if (disassembly)
+    {
+        benchmarkArguments.Add("--disasm");
+        benchmarkArguments.Add("--disasmDepth");
+        benchmarkArguments.Add("3");
     }
 
     var existingResultDirectories = Directory
