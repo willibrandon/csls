@@ -3,6 +3,7 @@
     <AssemblyName>Csls.Control</AssemblyName>
     <RootNamespace>Csls.Control</RootNamespace>
     <Description>Unix-domain-socket control services shared by csls clients and workers.</Description>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
 
   <ItemGroup>
