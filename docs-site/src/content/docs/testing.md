@@ -10,7 +10,7 @@ an older test binary.
 
 ```console
 dotnet test --solution Csls.slnx
-dotnet test tests/Csls.Tests/Csls.Tests.csproj --filter FullyQualifiedName~Completion
+dotnet test --project tests/Csls.Tests/Csls.Tests.csproj --filter "Name~Completion"
 ```
 
 ## Real behavior
@@ -48,6 +48,15 @@ dotnet run --file scripts/Provision-Helix.cs
 dotnet run --file scripts/Provision-Neovim.cs
 ```
 
+Legacy workspace jobs run old project files without reference-assembly packages.
+Windows uses the Visual Studio or Build Tools MSBuild host, while Linux and macOS
+use Mono MSBuild. The test fails unless framework references and semantic results
+come from the platform host. Run its prerequisite with:
+
+```console
+dotnet run --file scripts/Provision-LegacyBuildHost.cs
+```
+
 ## Debugging a failing protocol test
 
 `$/csharp/debugInfo` is the first diagnostic source. A phase of `Uninitialized`
@@ -61,11 +70,12 @@ follow cancellation and scheduling.
 
 ## Repository gates
 
-The test matrix covers Windows, Linux, macOS, x64, and Arm64. Additional package jobs
-cover Windows x86 and Linux musl. The dev-container job builds and scans the same
-container developers use. Repository policy rejects warning suppressions, skipped
-tests, missing XML documentation, multiple types in one file, unpinned workflow
-actions, and dependencies outside the approved product boundary.
+The test matrix covers Windows, Linux, macOS, x64, and Arm64. Dedicated jobs verify
+Visual Studio Build Tools and Mono project loading. Additional package jobs cover
+Windows x86 and Linux musl. The dev-container job builds and scans the same container
+developers use. Repository policy rejects warning suppressions, ignored tests,
+missing XML documentation, multiple types in one file, unpinned workflow actions,
+and dependencies outside the approved product boundary.
 
 Test results are written as TRX artifacts. MSBuild failures should be rerun with a
 binary logger so evaluation, SDK selection, and project imports can be inspected.

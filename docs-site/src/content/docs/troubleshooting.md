@@ -34,6 +34,9 @@ MSBuild on Windows. On Unix, install a Mono distribution that includes MSBuild w
 the project requires the .NET Framework build host. Roslyn logs a clear fallback
 when only the current .NET SDK host is available.
 
+Repository contributors can install or verify the expected host with
+`dotnet run --file scripts/Provision-LegacyBuildHost.cs`.
+
 File-based apps must use a selected SDK that understands their directives. Run the
 file directly with `dotnet run --file` if package, project, include, property, or SDK
 evaluation fails before csls opens it.
