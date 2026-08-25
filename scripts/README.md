@@ -8,6 +8,7 @@ supports `--help`.
 | --- | --- |
 | `Capture-Docs.cs` | Captures verified terminal screenshots and rebuilds the documentation site. |
 | `Export-ContainerImage.cs` | Exports a container image as a Picket-scannable archive. |
+| `Generate-Docs.cs` | Generates CLI, MCP, configuration, and contract reference pages from the built product. |
 | `Initialize-DevContainer.cs` | Installs the development container dependencies and restores the repository. |
 | `InstallDotNet.cs` | Installs the pinned .NET SDK from verified Microsoft release metadata. |
 | `Install-GraphicalEditorTestPrerequisites.cs` | Installs Linux display and input packages for graphical editor tests. |

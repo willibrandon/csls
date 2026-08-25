@@ -39,6 +39,15 @@ export default defineConfig({
         { slug: "releases" },
         { slug: "troubleshooting" },
         { slug: "development" },
+        {
+          label: "Reference",
+          items: [
+            { slug: "cli-reference" },
+            { slug: "mcp-reference" },
+            { slug: "configuration-reference" },
+            { slug: "contract-reference" },
+          ],
+        },
       ],
     }),
     sitemap(),
