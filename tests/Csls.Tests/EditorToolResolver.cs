@@ -139,7 +139,7 @@ internal static class EditorToolResolver
             repositoryRoot,
             "CSLS_EMACS_PATH",
             "emacs",
-            "30.2",
+            "31.1",
             GetPlatform(allowWindowsArm64: true, detectMusl: true),
             OperatingSystem.IsWindows() ? "emacs.exe" : "emacs");
     }
