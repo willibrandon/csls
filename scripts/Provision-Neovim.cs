@@ -8,7 +8,7 @@
 
 using System.Runtime.InteropServices;
 
-const string Version = "0.12.4";
+const string Version = "0.12.5";
 
 if (args.Length == 1 && args[0] is "--help" or "-h" or "-?")
 {
@@ -76,7 +76,7 @@ static (string Platform, string AssetName, string Sha256, string ExecutableName)
         return (
             "linux-x64",
             "nvim-linux-x86_64.tar.gz",
-            "012bf3fcac5ade43914df3f174668bf64d05e049a4f032a388c027b1ebd78628",
+            "bce0f56eda1f1b1db6eee8f4133d7a38813ea07933837dd1777411ca384c6875",
             "nvim");
     }
 
@@ -85,7 +85,7 @@ static (string Platform, string AssetName, string Sha256, string ExecutableName)
         return (
             "linux-arm64",
             "nvim-linux-arm64.tar.gz",
-            "ceb7e88c6b681f0515d135dcdfad54f5eb4373b25ce6172197cd9a69c758063f",
+            "1aa5ca085249580ae0f91eb14f27ec0919773ff2d99a163d03f3d6c21ac29725",
             "nvim");
     }
 
@@ -94,7 +94,7 @@ static (string Platform, string AssetName, string Sha256, string ExecutableName)
         return (
             "osx-x64",
             "nvim-macos-x86_64.tar.gz",
-            "03fe16f8dd9f1e9eaf52d5e294913a39917b9e2faea30d7fb0fb385fbd36fe59",
+            "81f4518622cb059b450ee2e498c6a1082a222f6bd89589de5bbcf0c6a68aa3fd",
             "nvim");
     }
 
@@ -103,7 +103,7 @@ static (string Platform, string AssetName, string Sha256, string ExecutableName)
         return (
             "osx-arm64",
             "nvim-macos-arm64.tar.gz",
-            "51ab83afa66d663627c2ab1be43209b0f4e81360d4598b53efaa4d8195f24c89",
+            "65fb000099e47ca1b762584c484cc833f40e30851a0ec450d4174e16317c1f9b",
             "nvim");
     }
 
@@ -112,7 +112,7 @@ static (string Platform, string AssetName, string Sha256, string ExecutableName)
         return (
             "win-x64",
             "nvim-win64.zip",
-            "9fc3572829ffd13debb6e32555da2c8cc02555568260a9fc4cf1f65bbcca319c",
+            "de8625ba8cf65ebf40eb80a388ba1ec8e9c15b30218821e2c639119b05920de1",
             "nvim.exe");
     }
 
@@ -121,7 +121,7 @@ static (string Platform, string AssetName, string Sha256, string ExecutableName)
         return (
             "win-arm64",
             "nvim-win-arm64.zip",
-            "49906085a3c473ee87a28319942c62216fb365a1a1a4f83dbc4ac41365f5e609",
+            "f5a2f7ee4603e0185ed5c3e6dc9db762499426baf1c6613a487da5b5e126ae55",
             "nvim.exe");
     }
 
