@@ -141,7 +141,7 @@ jobs:
         run: dotnet run --file scripts/Provision-Neovim.cs
 
       - name: Test
-        run: dotnet test --solution Csls.slnx --report-trx --results-directory TestResults/${{ matrix.rid }}
+        run: dotnet test --solution Csls.slnx --report-trx --results-directory artifacts/test-results/${{ matrix.rid }}
 
       - name: Verify .NET tool packages
         run: dotnet run --file scripts/Verify-ToolPackages.cs
@@ -173,7 +173,7 @@ jobs:
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: test-results-${{ matrix.rid }}
-          path: TestResults/${{ matrix.rid }}
+          path: artifacts/test-results/${{ matrix.rid }}
           if-no-files-found: warn
 
   legacy-build-host:
@@ -212,14 +212,14 @@ jobs:
           dotnet test --project tests/Csls.Tests/Csls.Tests.csproj
           --filter "TestCategory=LegacyBuildHost"
           --report-trx
-          --results-directory TestResults/${{ matrix.host }}
+          --results-directory artifacts/test-results/${{ matrix.host }}
 
       - name: Upload test results
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: test-results-${{ matrix.host }}
-          path: TestResults/${{ matrix.host }}
+          path: artifacts/test-results/${{ matrix.host }}
           if-no-files-found: warn
 
   additional-rid-packages:
