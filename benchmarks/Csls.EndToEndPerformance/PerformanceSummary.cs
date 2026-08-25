@@ -91,15 +91,14 @@ internal sealed class PerformanceSummary
         [
             .. measurements[0].Operations.Select(static operation => operation.Name)
         ];
-        foreach (PerformanceMeasurement measurement in measurements)
-        {
-            if (!operationNames.SequenceEqual(
+        bool operationOrderChanged = measurements.Any(measurement =>
+            !operationNames.SequenceEqual(
                 measurement.Operations.Select(static operation => operation.Name),
-                StringComparer.Ordinal))
-            {
-                throw new InvalidDataException(
-                    "Every performance iteration must execute the same ordered operations.");
-            }
+                StringComparer.Ordinal));
+        if (operationOrderChanged)
+        {
+            throw new InvalidDataException(
+                "Every performance iteration must execute the same ordered operations.");
         }
 
         return
