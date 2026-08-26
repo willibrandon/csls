@@ -282,6 +282,71 @@ public sealed class WorkspaceManagerTests
         }
     }
 
+    /// <summary>
+    /// Inspects diagnostics from every nested project in stable project order.
+    /// </summary>
+    [TestMethod]
+    public async Task MultipleNestedProjectDiagnosticsRetainStableOrder()
+    {
+        string workspacePath = Path.Join(
+            Path.GetTempPath(),
+            $"csls-inspection-diagnostics-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(workspacePath);
+        try
+        {
+            string alphaDirectory = Path.Join(workspacePath, "alpha");
+            string betaDirectory = Path.Join(workspacePath, "beta");
+            Directory.CreateDirectory(alphaDirectory);
+            Directory.CreateDirectory(betaDirectory);
+            string alphaDocument = await WriteSolutionAsync(
+                alphaDirectory,
+                "Alpha",
+                TestContext.CancellationToken).ConfigureAwait(false);
+            string betaDocument = await WriteSolutionAsync(
+                betaDirectory,
+                "Beta",
+                TestContext.CancellationToken).ConfigureAwait(false);
+            await File.WriteAllTextAsync(
+                alphaDocument,
+                DocumentText.Replace("\"hello\"", "MissingAlpha", StringComparison.Ordinal),
+                TestContext.CancellationToken).ConfigureAwait(false);
+            await File.WriteAllTextAsync(
+                betaDocument,
+                DocumentText.Replace("\"hello\"", "MissingBeta", StringComparison.Ordinal),
+                TestContext.CancellationToken).ConfigureAwait(false);
+
+            var manager = new WorkspaceManager(NullLogger<WorkspaceManager>.Instance);
+            await using ConfiguredAsyncDisposable managerDisposal =
+                manager.ConfigureAwait(false);
+            await manager.LoadAsync(
+                [workspacePath],
+                TestContext.CancellationToken).ConfigureAwait(false);
+
+            WorkspaceInspectionSnapshot snapshot = await manager.InspectAsync(
+                includeDiagnostics: true,
+                TestContext.CancellationToken).ConfigureAwait(false);
+
+            Assert.IsTrue(snapshot.DiagnosticsLoaded);
+            Assert.AreEqual(
+                2,
+                snapshot.TotalDiagnostics,
+                string.Join(
+                    Environment.NewLine,
+                    snapshot.Diagnostics.Select(static diagnostic =>
+                        $"{diagnostic.ProjectName}: {diagnostic.Id}: {diagnostic.Message}")));
+            Assert.AreEqual(
+                "Alpha,Beta",
+                string.Join(',', snapshot.Diagnostics.Select(
+                    static diagnostic => diagnostic.ProjectName)));
+            Assert.IsTrue(snapshot.Diagnostics.All(
+                static diagnostic => diagnostic.Id == "CS0103"));
+        }
+        finally
+        {
+            Directory.Delete(workspacePath, recursive: true);
+        }
+    }
+
     private static async Task<string> WriteSolutionAsync(
         string directoryPath,
         string projectName,

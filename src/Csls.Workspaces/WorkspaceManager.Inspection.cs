@@ -8,6 +8,7 @@ namespace Csls.Workspaces;
 public sealed partial class WorkspaceManager
 {
     private const int MaximumInspectionDiagnostics = 500;
+    private const int MaximumConcurrentDiagnosticInspections = 4;
 
     /// <summary>
     /// Inspects only the current workspace generation and loaded folder summaries.
@@ -63,6 +64,7 @@ public sealed partial class WorkspaceManager
         var documents = new List<WorkspaceDocumentInspection>();
         var diagnostics = new List<WorkspaceDiagnosticInspection>();
         var buildHosts = new List<WorkspaceBuildHostInspection>(folders.Length);
+        var diagnosticProjects = new List<Project>();
         int totalDiagnostics = 0;
 
         foreach ((string rootPath, Workspace workspace, Solution solution) in folders)
@@ -125,40 +127,65 @@ public sealed partial class WorkspaceManager
 
                 if (includeDiagnostics)
                 {
-                    ImmutableArray<RoslynDiagnostic> projectDiagnostics =
-                        await _diagnosticCache.GetOrAddAsync(
-                            generation,
-                            project,
-                            ComputeProjectDiagnosticsAsync,
-                            cancellationToken).ConfigureAwait(false);
-                    foreach (RoslynDiagnostic diagnostic in projectDiagnostics.OrderBy(
-                        static diagnostic => diagnostic.Location.SourceSpan.Start))
+                    diagnosticProjects.Add(project);
+                }
+            }
+        }
+
+        if (includeDiagnostics)
+        {
+            var projectDiagnostics = new ImmutableArray<RoslynDiagnostic>[
+                diagnosticProjects.Count];
+            await Parallel.ForAsync(
+                0,
+                diagnosticProjects.Count,
+                new ParallelOptions
+                {
+                    CancellationToken = cancellationToken,
+                    MaxDegreeOfParallelism = Math.Min(
+                        Environment.ProcessorCount,
+                        MaximumConcurrentDiagnosticInspections)
+                },
+                async (index, operationCancellationToken) =>
+                {
+                    projectDiagnostics[index] = await _diagnosticCache.GetOrAddAsync(
+                        generation,
+                        diagnosticProjects[index],
+                        ComputeProjectDiagnosticsAsync,
+                        operationCancellationToken).ConfigureAwait(false);
+                }).ConfigureAwait(false);
+            for (int projectIndex = 0;
+                projectIndex < diagnosticProjects.Count;
+                projectIndex++)
+            {
+                Project project = diagnosticProjects[projectIndex];
+                foreach (RoslynDiagnostic diagnostic in projectDiagnostics[projectIndex].OrderBy(
+                    static diagnostic => diagnostic.Location.SourceSpan.Start))
+                {
+                    if (diagnostic.Severity == DiagnosticSeverity.Hidden)
                     {
-                        if (diagnostic.Severity == DiagnosticSeverity.Hidden)
-                        {
-                            continue;
-                        }
-
-                        totalDiagnostics++;
-                        if (diagnostics.Count == MaximumInspectionDiagnostics)
-                        {
-                            continue;
-                        }
-
-                        FileLinePositionSpan? lineSpan = diagnostic.Location.IsInSource
-                            ? diagnostic.Location.GetLineSpan()
-                            : null;
-                        diagnostics.Add(new WorkspaceDiagnosticInspection
-                        {
-                            Id = diagnostic.Id,
-                            Severity = diagnostic.Severity.ToString(),
-                            Message = diagnostic.GetMessage(CultureInfo.InvariantCulture),
-                            ProjectName = project.Name,
-                            FilePath = lineSpan?.Path,
-                            Line = lineSpan?.StartLinePosition.Line,
-                            Character = lineSpan?.StartLinePosition.Character
-                        });
+                        continue;
                     }
+
+                    totalDiagnostics++;
+                    if (diagnostics.Count == MaximumInspectionDiagnostics)
+                    {
+                        continue;
+                    }
+
+                    FileLinePositionSpan? lineSpan = diagnostic.Location.IsInSource
+                        ? diagnostic.Location.GetLineSpan()
+                        : null;
+                    diagnostics.Add(new WorkspaceDiagnosticInspection
+                    {
+                        Id = diagnostic.Id,
+                        Severity = diagnostic.Severity.ToString(),
+                        Message = diagnostic.GetMessage(CultureInfo.InvariantCulture),
+                        ProjectName = project.Name,
+                        FilePath = lineSpan?.Path,
+                        Line = lineSpan?.StartLinePosition.Line,
+                        Character = lineSpan?.StartLinePosition.Character
+                    });
                 }
             }
         }
