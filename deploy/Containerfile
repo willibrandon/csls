@@ -6,7 +6,7 @@ LABEL org.opencontainers.image.source="https://github.com/willibrandon/csls" \
       org.opencontainers.image.version="${VERSION}" \
       org.opencontainers.image.revision="${REVISION}" \
       org.opencontainers.image.licenses="MIT"
-COPY --chown=app:app ${TARGETARCH}/csls /opt/csls
+COPY --chmod=0755 --chown=app:app ${TARGETARCH}/csls /opt/csls
 ENV PATH="/opt/csls:${PATH}"
 WORKDIR /workspace
 USER app
@@ -20,7 +20,7 @@ LABEL org.opencontainers.image.source="https://github.com/willibrandon/csls" \
       org.opencontainers.image.version="${VERSION}" \
       org.opencontainers.image.revision="${REVISION}" \
       org.opencontainers.image.licenses="MIT"
-COPY --chown=app:app ${TARGETARCH}/csls-mcp /opt/csls-mcp
+COPY --chmod=0755 --chown=app:app ${TARGETARCH}/csls-mcp /opt/csls-mcp
 ENV PATH="/opt/csls-mcp:${PATH}"
 WORKDIR /workspace
 USER app
