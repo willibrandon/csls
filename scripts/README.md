@@ -37,7 +37,7 @@ supports `--help`.
 | `Verify-GitHubActions.cs` | Validates every workflow with actionlint. |
 | `Verify-PackageHealth.cs` | Rejects outdated, deprecated, and vulnerable package references before release. |
 | `Verify-CodeQl.cs` | Fails when CodeQL reports an unresolved finding. |
-| `Verify-Docs.cs` | Checks every generated documentation link and asset target. |
+| `Verify-Docs.cs` | Checks generated documentation links, assets, and accessibility conditions. |
 | `Verify-BenchmarkRegression.cs` | Compares stable benchmarks affected by a change and confirms signals with longer targeted measurements before rejecting regressions above 10 percent. |
 | `Verify-FileApps.cs` | Compiles every file app and verifies its help boundary. |
 | `Verify-ToolPackages.cs` | Packs and exercises the `csls` and `csls-mcp` tools. |
