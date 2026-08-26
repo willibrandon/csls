@@ -430,7 +430,7 @@ jobs:
         with:
           name: picket-release-containers-${{ matrix.architecture }}
           path: artifacts/picket-*-${{ matrix.architecture }}
-          if-no-files-found: error
+          if-no-files-found: ignore
           retention-days: 14
 
   publish:
