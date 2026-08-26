@@ -59,18 +59,15 @@ static void VerifyRepositoryRoot(
         "BenchmarkDotNet.Artifacts",
         "TestResults"
     ];
-    foreach (string path in Directory.EnumerateDirectories(
-        repositoryRoot,
-        "*",
-        SearchOption.TopDirectoryOnly))
+    foreach (string directoryName in Directory
+        .EnumerateDirectories(repositoryRoot, "*", SearchOption.TopDirectoryOnly)
+        .Select(Path.GetFileName)
+        .OfType<string>()
+        .Where(name => forbiddenDirectories.Contains(
+            name,
+            StringComparer.OrdinalIgnoreCase)))
     {
-        if (forbiddenDirectories.Contains(
-            Path.GetFileName(path),
-            StringComparer.OrdinalIgnoreCase))
-        {
-            failures.Add(
-                $"Build and test artifacts belong under artifacts/: {Path.GetFileName(path)}");
-        }
+        failures.Add($"Build and test artifacts belong under artifacts/: {directoryName}");
     }
 
     string[] forbiddenExtensions =
@@ -79,18 +76,15 @@ static void VerifyRepositoryRoot(
         ".coverage",
         ".trx"
     ];
-    foreach (string path in Directory.EnumerateFiles(
-        repositoryRoot,
-        "*",
-        SearchOption.TopDirectoryOnly))
-    {
-        if (forbiddenExtensions.Contains(
+    foreach (string fileName in Directory
+        .EnumerateFiles(repositoryRoot, "*", SearchOption.TopDirectoryOnly)
+        .Where(path => forbiddenExtensions.Contains(
             Path.GetExtension(path),
             StringComparer.OrdinalIgnoreCase))
-        {
-            failures.Add(
-                $"Build and test artifacts belong under artifacts/: {Path.GetFileName(path)}");
-        }
+        .Select(Path.GetFileName)
+        .OfType<string>())
+    {
+        failures.Add($"Build and test artifacts belong under artifacts/: {fileName}");
     }
 }
 
@@ -358,12 +352,10 @@ static void VerifyPackageSources(string repositoryRoot, ICollection<string> fail
         "Microsoft.AspNetCore.Razor.Utilities.Shared",
         "Microsoft.CodeAnalysis.Razor.Compiler"
     ];
-    foreach (string package in requiredPackages)
+    foreach (string package in requiredPackages.Where(
+        package => !mappedPackages.Contains(package)))
     {
-        if (!mappedPackages.Contains(package))
-        {
-            failures.Add($"NuGet.Config must map {package} to dotnet-tools.");
-        }
+        failures.Add($"NuGet.Config must map {package} to dotnet-tools.");
     }
 }
 

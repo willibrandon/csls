@@ -639,9 +639,9 @@ static async Task VerifyChecksumsAsync(string publicOutput)
 {
     string checksumPath = Path.Join(publicOutput, "SHA256SUMS");
     string[] lines = await File.ReadAllLinesAsync(checksumPath).ConfigureAwait(false);
-    foreach (string line in lines)
+    foreach (string[] fields in lines.Select(
+        static line => line.Split("  ", 2, StringSplitOptions.None)))
     {
-        string[] fields = line.Split("  ", 2, StringSplitOptions.None);
         if (fields.Length != 2)
         {
             throw new InvalidDataException("SHA256SUMS contains a malformed entry.");

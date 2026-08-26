@@ -325,7 +325,9 @@ static bool IsSymbol(string relativePath) =>
 
 static async Task CreateArchiveAsync(string sourcePath, string archivePath)
 {
-    Directory.CreateDirectory(Path.GetDirectoryName(archivePath)!);
+    string archiveDirectory = Path.GetDirectoryName(archivePath) ??
+        throw new InvalidOperationException($"Archive path has no directory: {archivePath}");
+    Directory.CreateDirectory(archiveDirectory);
     if (archivePath.EndsWith(".zip", StringComparison.Ordinal))
     {
         await ZipFile.CreateFromDirectoryAsync(
@@ -337,24 +339,23 @@ static async Task CreateArchiveAsync(string sourcePath, string archivePath)
         return;
     }
 
-    FileStream output = new(
+    using (FileStream output = new(
         archivePath,
         FileMode.CreateNew,
         FileAccess.Write,
         FileShare.None,
         bufferSize: 131_072,
-        FileOptions.Asynchronous | FileOptions.SequentialScan);
-    await using (output.ConfigureAwait(false))
+        FileOptions.Asynchronous | FileOptions.SequentialScan))
+    using (var compressed = new GZipStream(
+        output,
+        CompressionLevel.Optimal,
+        leaveOpen: true))
     {
-        var compressed = new GZipStream(output, CompressionLevel.Optimal);
-        await using (compressed.ConfigureAwait(false))
-        {
-            await TarFile.CreateFromDirectoryAsync(
-                sourcePath,
-                compressed,
-                includeBaseDirectory: false,
-                CancellationToken.None).ConfigureAwait(false);
-        }
+        await TarFile.CreateFromDirectoryAsync(
+            sourcePath,
+            compressed,
+            includeBaseDirectory: false,
+            CancellationToken.None).ConfigureAwait(false);
     }
 }
 

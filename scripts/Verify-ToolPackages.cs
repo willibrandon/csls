@@ -369,11 +369,10 @@ static void ValidateImplementationPackage(
         ? commandName + executableExtension
         : commandName + ".dll";
     RequireEntry(archive, $"{root}/{launcherName}");
-    foreach (string workerPath in workerPaths)
+    foreach (string workerName in workerPaths.Select(workerPath => native
+        ? workerPath + executableExtension
+        : workerPath + ".dll"))
     {
-        string workerName = native
-            ? workerPath + executableExtension
-            : workerPath + ".dll";
         RequireEntry(archive, $"{root}/{workerName}");
     }
 
@@ -751,7 +750,14 @@ static async Task VerifyLanguageServerWorkerAsync(
                 $"The installed language server exited with {process.ExitCode}: {standardError}");
         }
     }
-    catch (Exception exception)
+    catch (Exception exception) when (exception is
+        FormatException or
+        IOException or
+        InvalidDataException or
+        InvalidOperationException or
+        JsonException or
+        KeyNotFoundException or
+        OperationCanceledException)
     {
         if (!process.HasExited)
         {
