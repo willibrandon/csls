@@ -19,7 +19,7 @@
     <ArtifactsPath Condition="'$(CslsBundledWorkerArtifactsPath)' != ''">$(CslsBundledWorkerArtifactsPath)</ArtifactsPath>
     <PublishDir Condition="'$(CslsBundledWorkerPublishDir)' != ''">$(CslsBundledWorkerPublishDir)</PublishDir>
     <IsPackable>false</IsPackable>
-    <VersionPrefix>0.1.0</VersionPrefix>
+    <VersionPrefix>1.0.0</VersionPrefix>
     <MicrosoftTestingExtensionsCodeCoverageVersion Condition="'$(UsingMSTestSdk)' == 'true'">18.10.0</MicrosoftTestingExtensionsCodeCoverageVersion>
     <Authors>willibrandon</Authors>
     <Copyright>Copyright (c) 2026 Brandon Williams</Copyright>

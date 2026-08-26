@@ -23,6 +23,7 @@ Repository automation is implemented as .NET file apps under `scripts/`:
 dotnet run --file scripts/Verify-Repository.cs
 dotnet run --file scripts/Verify-GitHubActions.cs
 dotnet run --file scripts/Verify-ToolPackages.cs
+dotnet run --file scripts/Build-ReleaseAssets.cs -- --help
 ```
 
 The development container restores every file app and provisions its external

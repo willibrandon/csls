@@ -48,19 +48,17 @@ string installedDotNet = Path.Join(
     installDirectory,
     GetDotNetExecutableName(runtimeIdentifier));
 
-if (IsSdkLayoutInstalled(installDirectory, installedDotNet))
-{
-    if (!CanExecuteTargetRuntime(runtimeIdentifier) ||
+if (IsSdkLayoutInstalled(installDirectory, installedDotNet) &&
+    (!CanExecuteTargetRuntime(runtimeIdentifier) ||
         string.Equals(
             await ReadSdkVersionAsync(installedDotNet).ConfigureAwait(false),
             SdkVersion,
-            StringComparison.Ordinal))
-    {
-        await Console.Out.WriteLineAsync(
-            $".NET SDK {SdkVersion} is already installed at {installDirectory}.")
-            .ConfigureAwait(false);
-        return;
-    }
+            StringComparison.Ordinal)))
+{
+    await Console.Out.WriteLineAsync(
+        $".NET SDK {SdkVersion} is already installed at {installDirectory}.")
+        .ConfigureAwait(false);
+    return;
 }
 
 using HttpClient http = new() { Timeout = TimeSpan.FromMinutes(10) };

@@ -247,15 +247,15 @@ static string FindMonoMSBuildCommand()
     string? path = Environment.GetEnvironmentVariable("PATH");
     if (path is not null)
     {
-        foreach (string directory in path.Split(
-            Path.PathSeparator,
-            StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        string? msBuildPath = path
+            .Split(
+                Path.PathSeparator,
+                StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Select(static directory => Path.Join(directory, "msbuild"))
+            .FirstOrDefault(File.Exists);
+        if (msBuildPath is not null)
         {
-            string msBuildPath = Path.Join(directory, "msbuild");
-            if (File.Exists(msBuildPath))
-            {
-                return msBuildPath;
-            }
+            return msBuildPath;
         }
     }
 

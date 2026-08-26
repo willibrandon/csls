@@ -83,14 +83,13 @@ internal static class ScriptSupport
                     .ConfigureAwait(false);
                 response.EnsureSuccessStatusCode();
 
-                FileStream destination = new(
+                using (FileStream destination = new(
                     destinationPath,
                     FileMode.CreateNew,
                     FileAccess.Write,
                     FileShare.None,
                     bufferSize: 131_072,
-                    FileOptions.Asynchronous | FileOptions.SequentialScan);
-                await using (destination.ConfigureAwait(false))
+                    FileOptions.Asynchronous | FileOptions.SequentialScan))
                 {
                     await response.Content
                         .CopyToAsync(destination, cancellationToken)
@@ -136,14 +135,13 @@ internal static class ScriptSupport
         string path,
         CancellationToken cancellationToken)
     {
-        FileStream input = new(
+        using (FileStream input = new(
             path,
             FileMode.Open,
             FileAccess.Read,
             FileShare.Read,
             bufferSize: 131_072,
-            FileOptions.Asynchronous | FileOptions.SequentialScan);
-        await using (input.ConfigureAwait(false))
+            FileOptions.Asynchronous | FileOptions.SequentialScan))
         {
             byte[] digest = await SHA256.HashDataAsync(input, cancellationToken)
                 .ConfigureAwait(false);

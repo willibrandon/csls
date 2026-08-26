@@ -1,0 +1,27 @@
+FROM mcr.microsoft.com/dotnet/sdk:10.0.400-noble AS csls
+ARG TARGETARCH
+ARG VERSION
+ARG REVISION
+LABEL org.opencontainers.image.source="https://github.com/willibrandon/csls" \
+      org.opencontainers.image.version="${VERSION}" \
+      org.opencontainers.image.revision="${REVISION}" \
+      org.opencontainers.image.licenses="MIT"
+COPY --chown=app:app ${TARGETARCH}/csls /opt/csls
+ENV PATH="/opt/csls:${PATH}"
+WORKDIR /workspace
+USER app
+ENTRYPOINT ["/opt/csls/csls"]
+
+FROM mcr.microsoft.com/dotnet/sdk:10.0.400-noble AS csls-mcp
+ARG TARGETARCH
+ARG VERSION
+ARG REVISION
+LABEL org.opencontainers.image.source="https://github.com/willibrandon/csls" \
+      org.opencontainers.image.version="${VERSION}" \
+      org.opencontainers.image.revision="${REVISION}" \
+      org.opencontainers.image.licenses="MIT"
+COPY --chown=app:app ${TARGETARCH}/csls-mcp /opt/csls-mcp
+ENV PATH="/opt/csls-mcp:${PATH}"
+WORKDIR /workspace
+USER app
+ENTRYPOINT ["/opt/csls-mcp/csls-mcp"]
