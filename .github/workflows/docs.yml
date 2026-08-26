@@ -41,7 +41,7 @@ jobs:
           node-version: 24.19.0
           package-manager: npm@12.0.2
 
-      - name: Verify generated links
+      - name: Verify links and accessibility
         run: dotnet run --file scripts/Verify-Docs.cs
 
   deploy:
