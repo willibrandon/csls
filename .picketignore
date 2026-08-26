@@ -7,3 +7,7 @@ picket:v1:f3284bb4c35dd9bc29c810a24e245dd436cba9c9b0684f4eb1855754bbd3cc9e
 # Public Mono package-signing key fingerprint and downloaded-key checksum.
 picket:v1:7fccf167c021b2820782c6b26aa8e49c1c161f9d8841ee267f66d16051d3e046
 picket:v1:8df82595a1576269fc485d1343ece96c6c37cb97d5f41ecbe0d15c58e3c775f7
+
+# Microsoft PowerShell 7.6.4 native build-manifest signatures in the release images.
+picket:v1:b330c95fd5831441c587eba0ca6c3fa9cedab8497f28f308c97d868ea0ab58f6
+picket:v1:105a953c1032b911fe6cee7ba38ee3f775f984f3e9a7269fc9288e782206eebd
