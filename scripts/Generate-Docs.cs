@@ -585,13 +585,13 @@ static string GetToolBehavior(McpClientTool tool)
 {
     bool? readOnly = tool.ProtocolTool.Annotations?.ReadOnlyHint;
     bool? destructive = tool.ProtocolTool.Annotations?.DestructiveHint;
-    return readOnly is true
-        ? "Read only"
-        : destructive is true
-            ? "Destructive"
-            : readOnly is false
-                ? "Mutating"
-                : "Unspecified";
+    return (readOnly, destructive) switch
+    {
+        (true, _) => "Read only",
+        (_, true) => "Destructive",
+        (false, _) => "Mutating",
+        _ => "Unspecified"
+    };
 }
 
 static string GetToolInputs(JsonElement schema)
@@ -606,14 +606,10 @@ static string GetToolInputs(JsonElement schema)
     if (schema.TryGetProperty("required", out JsonElement requiredProperties) &&
         requiredProperties.ValueKind == JsonValueKind.Array)
     {
-        foreach (JsonElement property in requiredProperties.EnumerateArray())
-        {
-            string? name = property.GetString();
-            if (name is not null)
-            {
-                required.Add(name);
-            }
-        }
+        required.UnionWith(requiredProperties
+            .EnumerateArray()
+            .Select(static property => property.GetString())
+            .OfType<string>());
     }
 
     var inputs = new List<string>();
@@ -770,8 +766,9 @@ static void TryKill(Process process)
             process.Kill(entireProcessTree: true);
         }
     }
-    catch (InvalidOperationException)
+    catch (InvalidOperationException) when (process.HasExited)
     {
+        return;
     }
 }
 

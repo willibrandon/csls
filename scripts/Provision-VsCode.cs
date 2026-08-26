@@ -88,22 +88,27 @@ static (string Executable, IReadOnlyList<string> Prefix) ResolveNpxInvocation()
     }
 
     string path = Environment.GetEnvironmentVariable("PATH") ?? string.Empty;
-    foreach (string directory in path.Split(
-        Path.PathSeparator,
-        StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
-    {
-        string normalizedDirectory = directory.Trim('"');
-        string nodePath = Path.Join(normalizedDirectory, "node.exe");
-        string npxCliPath = Path.Join(
-            normalizedDirectory,
-            "node_modules",
-            "npm",
-            "bin",
-            "npx-cli.js");
-        if (File.Exists(nodePath) && File.Exists(npxCliPath))
+    (string NodePath, string NpxCliPath) invocation = path
+        .Split(
+            Path.PathSeparator,
+            StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+        .Select(static directory =>
         {
-            return (nodePath, [npxCliPath]);
-        }
+            string normalizedDirectory = directory.Trim('"');
+            return (
+                NodePath: Path.Join(normalizedDirectory, "node.exe"),
+                NpxCliPath: Path.Join(
+                    normalizedDirectory,
+                    "node_modules",
+                    "npm",
+                    "bin",
+                    "npx-cli.js"));
+        })
+        .FirstOrDefault(static candidate =>
+            File.Exists(candidate.NodePath) && File.Exists(candidate.NpxCliPath));
+    if (invocation.NodePath is not null && invocation.NpxCliPath is not null)
+    {
+        return (invocation.NodePath, [invocation.NpxCliPath]);
     }
 
     throw new FileNotFoundException(

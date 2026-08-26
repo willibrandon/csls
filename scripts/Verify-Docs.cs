@@ -46,14 +46,15 @@ foreach (string pagePath in Directory.EnumerateFiles(
         .Replace(Path.DirectorySeparatorChar, '/');
     var pageUri = new Uri(SiteOrigin + GetPagePath(relativePagePath));
     string html = await File.ReadAllTextAsync(pagePath).ConfigureAwait(false);
-    foreach (string encodedTarget in EnumerateTargets(html))
+    foreach ((string target, Uri targetUri) in EnumerateTargets(html)
+        .Select(static encodedTarget => WebUtility.HtmlDecode(encodedTarget))
+        .Select(target => (Target: target, TargetUri: ResolveLocalTarget(pageUri, target)))
+        .Where(static candidate => candidate.TargetUri is not null)
+        .Select(static candidate => (
+            candidate.Target,
+            candidate.TargetUri ?? throw new InvalidDataException(
+                "A filtered documentation target had no URI."))))
     {
-        string target = WebUtility.HtmlDecode(encodedTarget);
-        if (!TryResolveLocalTarget(pageUri, target, out Uri targetUri))
-        {
-            continue;
-        }
-
         checkedTargetCount++;
         if (string.Equals(relativePagePath, "404.html", StringComparison.Ordinal) &&
             string.Equals(targetUri.AbsolutePath, SiteBasePath + "404/", StringComparison.Ordinal))
@@ -166,29 +167,21 @@ static IEnumerable<string> EnumerateTargets(string html)
     }
 }
 
-static bool TryResolveLocalTarget(Uri pageUri, string target, out Uri targetUri)
+static Uri? ResolveLocalTarget(Uri pageUri, string target)
 {
-    targetUri = null!;
     if (string.IsNullOrWhiteSpace(target) || target.StartsWith('#'))
     {
-        if (!target.StartsWith('#'))
-        {
-            return false;
-        }
-
-        targetUri = new Uri(pageUri, target);
-        return true;
+        return target.StartsWith('#') ? new Uri(pageUri, target) : null;
     }
 
     if (!Uri.TryCreate(pageUri, target, out Uri? resolved) ||
         !string.Equals(resolved.Scheme, Uri.UriSchemeHttps, StringComparison.Ordinal) ||
         !string.Equals(resolved.Host, pageUri.Host, StringComparison.OrdinalIgnoreCase))
     {
-        return false;
+        return null;
     }
 
-    targetUri = resolved;
-    return true;
+    return resolved;
 }
 
 static string? ResolveOutputPath(string outputRoot, string targetPath)
