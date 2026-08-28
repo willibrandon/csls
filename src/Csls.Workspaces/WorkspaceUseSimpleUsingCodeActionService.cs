@@ -6,6 +6,7 @@ using Microsoft.CodeAnalysis.Formatting;
 using Microsoft.CodeAnalysis.Text;
 using LspCodeAction = Csls.Protocol.CodeAction;
 using LspDiagnostic = Csls.Protocol.Diagnostic;
+using LspRange = Csls.Protocol.Range;
 
 namespace Csls.Workspaces;
 
@@ -213,7 +214,7 @@ internal static class WorkspaceUseSimpleUsingCodeActionService
         trivia.IsKind(SyntaxKind.SingleLineDocumentationCommentTrivia) ||
         trivia.IsKind(SyntaxKind.MultiLineDocumentationCommentTrivia);
 
-    private static TextSpan ToTextSpan(SourceText text, Csls.Protocol.Range range)
+    private static TextSpan ToTextSpan(SourceText text, LspRange range)
     {
         int start = LspPositionConverter.GetOffset(text, range.Start);
         int end = LspPositionConverter.GetOffset(text, range.End);

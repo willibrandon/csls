@@ -92,16 +92,15 @@ public sealed partial class WorkspaceManager
                     static change => change.Uri.GetFileSystemPath(),
                     PathComparer)
         ];
-        foreach (FileEvent change in changes)
-        {
-            if (change.Type is not (
+        FileEvent? unsupportedChange = changes.FirstOrDefault(static change =>
+            change.Type is not (
                 FileChangeType.Created or
                 FileChangeType.Changed or
-                FileChangeType.Deleted))
-            {
-                throw new InvalidDataException(
-                    $"Unsupported watched file change type {(int)change.Type}.");
-            }
+                FileChangeType.Deleted));
+        if (unsupportedChange is not null)
+        {
+            throw new InvalidDataException(
+                $"Unsupported watched file change type {(int)unsupportedChange.Type}.");
         }
 
         string[] paths =
