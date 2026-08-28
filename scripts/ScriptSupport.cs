@@ -72,6 +72,7 @@ internal static class ScriptSupport
             CheckCertificateRevocationList = !OperatingSystem.IsMacOS()
         };
         using var client = new HttpClient(handler);
+        client.Timeout = TimeSpan.FromMinutes(5);
         client.DefaultRequestHeaders.UserAgent.ParseAdd("csls-tool-provisioner/0.1");
         const int maximumAttempts = 3;
         for (int attempt = 1; ; attempt++)
@@ -113,7 +114,9 @@ internal static class ScriptSupport
             }
             catch (Exception exception) when (
                 attempt < maximumAttempts &&
-                exception is HttpRequestException or IOException)
+                (exception is HttpRequestException or IOException ||
+                 exception is OperationCanceledException &&
+                 !cancellationToken.IsCancellationRequested))
             {
                 File.Delete(destinationPath);
                 await Console.Error.WriteLineAsync(
