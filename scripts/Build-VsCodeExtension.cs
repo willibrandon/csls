@@ -93,29 +93,24 @@ try
     string outputDirectory = Path.GetDirectoryName(outputPath)
         ?? throw new InvalidOperationException($"The output path has no parent: {outputPath}");
     Directory.CreateDirectory(outputDirectory);
-    await RunCheckedAsync(
-        ResolveNpmExecutable(),
+    await RunNpmAsync(
         ["ci", "--ignore-scripts"],
         extensionSource).ConfigureAwait(false);
-    await RunCheckedAsync(
-        ResolveNpmExecutable(),
+    await RunNpmAsync(
         ["run", "check"],
         extensionSource).ConfigureAwait(false);
     if (isWebTarget)
     {
-        await RunCheckedAsync(
-            ResolveNpmExecutable(),
+        await RunNpmAsync(
             ["run", "compile:browser"],
             extensionSource).ConfigureAwait(false);
-        await RunCheckedAsync(
-            ResolveNpmExecutable(),
+        await RunNpmAsync(
             ["run", "compile:worker"],
             extensionSource).ConfigureAwait(false);
     }
     else
     {
-        await RunCheckedAsync(
-            ResolveNpmExecutable(),
+        await RunNpmAsync(
             ["run", "compile:node"],
             extensionSource).ConfigureAwait(false);
     }
@@ -339,7 +334,51 @@ static async Task PreparePackageManifestAsync(
         .ConfigureAwait(false);
 }
 
-static string ResolveNpmExecutable() => OperatingSystem.IsWindows() ? "npm.cmd" : "npm";
+static Task RunNpmAsync(
+    IReadOnlyList<string> arguments,
+    string workingDirectory)
+{
+    (string executablePath, IReadOnlyList<string> prefix) = ResolveNpmInvocation();
+    return RunCheckedAsync(
+        executablePath,
+        [.. prefix, .. arguments],
+        workingDirectory);
+}
+
+static (string Executable, IReadOnlyList<string> Prefix) ResolveNpmInvocation()
+{
+    if (!OperatingSystem.IsWindows())
+    {
+        return ("npm", []);
+    }
+
+    string path = Environment.GetEnvironmentVariable("PATH") ?? string.Empty;
+    (string NodePath, string NpmCliPath) invocation = path
+        .Split(
+            Path.PathSeparator,
+            StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+        .Select(static directory =>
+        {
+            string normalizedDirectory = directory.Trim('"');
+            return (
+                NodePath: Path.Join(normalizedDirectory, "node.exe"),
+                NpmCliPath: Path.Join(
+                    normalizedDirectory,
+                    "node_modules",
+                    "npm",
+                    "bin",
+                    "npm-cli.js"));
+        })
+        .FirstOrDefault(static candidate =>
+            File.Exists(candidate.NodePath) && File.Exists(candidate.NpmCliPath));
+    if (invocation.NodePath is not null && invocation.NpmCliPath is not null)
+    {
+        return (invocation.NodePath, [invocation.NpmCliPath]);
+    }
+
+    throw new FileNotFoundException(
+        "Node.js is installed without the npm CLI required to build the VS Code extension.");
+}
 
 static async Task VerifyPackageAsync(
     string packagePath,
