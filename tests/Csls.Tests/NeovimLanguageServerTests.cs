@@ -371,15 +371,30 @@ public sealed class NeovimLanguageServerTests
         string dotnetPath = EditorToolResolver.ResolveDotNetHost();
         return $$"""
             vim.lsp.log.set_level('trace')
+            local function when_workspace_ready(client, buffer, callback)
+              local function poll()
+                client:request('$/csharp/debugInfo', nil, function(error, result)
+                  if not error and result and result.workspace and
+                      result.workspace.phase == 'Ready' then
+                    callback()
+                    return
+                  end
+                  vim.defer_fn(poll, 50)
+                end, buffer)
+              end
+              poll()
+            end
             vim.api.nvim_create_autocmd('LspAttach', {
               callback = function(args)
                 local client = vim.lsp.get_client_by_id(args.data.client_id)
                 if client and client.name == 'csls' then
-                  vim.keymap.set('n', 'K', function()
-                    vim.fn.writefile({ 'requested' }, {{ToLuaString(hoverRequestedPath)}})
-                    vim.lsp.buf.hover()
-                  end, { buffer = args.buf })
-                  vim.fn.writefile({ 'ready' }, {{ToLuaString(readyPath)}})
+                  when_workspace_ready(client, args.buf, function()
+                    vim.keymap.set('n', 'K', function()
+                      vim.fn.writefile({ 'requested' }, {{ToLuaString(hoverRequestedPath)}})
+                      vim.lsp.buf.hover()
+                    end, { buffer = args.buf })
+                    vim.fn.writefile({ 'ready' }, {{ToLuaString(readyPath)}})
+                  end)
                 end
               end,
             })
@@ -404,6 +419,21 @@ public sealed class NeovimLanguageServerTests
         string dotnetPath = EditorToolResolver.ResolveDotNetHost();
         return $$"""
             vim.lsp.log.set_level('trace')
+            local capabilities = vim.lsp.protocol.make_client_capabilities()
+            capabilities.workspace.didChangeWatchedFiles.dynamicRegistration = true
+            local function when_workspace_ready(client, buffer, callback)
+              local function poll()
+                client:request('$/csharp/debugInfo', nil, function(error, result)
+                  if not error and result and result.workspace and
+                      result.workspace.phase == 'Ready' then
+                    callback()
+                    return
+                  end
+                  vim.defer_fn(poll, 50)
+                end, buffer)
+              end
+              poll()
+            end
             local move_applied = false
             local function persist_move()
               if move_applied then
@@ -439,18 +469,21 @@ public sealed class NeovimLanguageServerTests
               callback = function(args)
                 local client = vim.lsp.get_client_by_id(args.data.client_id)
                 if client and client.name == 'csls' then
-                  vim.keymap.set('n', 'M', function()
-                    vim.lsp.buf.code_action({
-                      apply = true,
-                      context = { only = { 'refactor' } },
-                    })
-                  end, { buffer = args.buf })
-                  vim.fn.writefile({ 'ready' }, {{ToLuaString(readyPath)}})
+                  when_workspace_ready(client, args.buf, function()
+                    vim.keymap.set('n', 'M', function()
+                      vim.lsp.buf.code_action({
+                        apply = true,
+                        context = { only = { 'refactor' } },
+                      })
+                    end, { buffer = args.buf })
+                    vim.fn.writefile({ 'ready' }, {{ToLuaString(readyPath)}})
+                  end)
                 end
               end,
             })
             vim.lsp.config('csls', {
               cmd = { {{ToLuaString(dotnetPath)}}, {{ToLuaString(launcherPath)}}, 'lsp' },
+              capabilities = capabilities,
               filetypes = { 'cs' },
               root_dir = function(_, on_dir)
                 on_dir(vim.fn.getcwd())
