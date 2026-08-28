@@ -461,32 +461,23 @@ public sealed class NeovimLanguageServerTests
               if move_applied then
                 return
               end
-              local source_buffer = vim.fn.bufnr({{ToLuaString(documentPath)}})
-              local target_buffer = vim.fn.bufnr({{ToLuaString(targetPath)}})
-              if source_buffer < 0 or target_buffer < 0 then
+              vim.cmd('silent wall')
+              if vim.fn.filereadable({{ToLuaString(targetPath)}}) ~= 1 then
+                vim.defer_fn(persist_move, 50)
                 return
               end
-              if not vim.api.nvim_buf_is_loaded(source_buffer) or
-                  not vim.api.nvim_buf_is_loaded(target_buffer) then
-                return
-              end
-              local source_text = table.concat(vim.api.nvim_buf_get_lines(
-                source_buffer, 0, -1, false), '\n')
-              local target_text = table.concat(vim.api.nvim_buf_get_lines(
-                target_buffer, 0, -1, false), '\n')
+              local source_text = table.concat(
+                vim.fn.readfile({{ToLuaString(documentPath)}}), '\n')
+              local target_text = table.concat(
+                vim.fn.readfile({{ToLuaString(targetPath)}}), '\n')
               if string.find(source_text, 'class Helper', 1, true) or
                   not string.find(target_text, 'class Helper', 1, true) then
+                vim.defer_fn(persist_move, 50)
                 return
               end
               move_applied = true
-              vim.cmd('silent wall')
               vim.fn.writefile({ 'applied' }, {{ToLuaString(appliedPath)}})
             end
-            vim.api.nvim_create_autocmd({ 'BufAdd', 'TextChanged', 'TextChangedI' }, {
-              callback = function()
-                vim.schedule(persist_move)
-              end,
-            })
             vim.api.nvim_create_autocmd('LspAttach', {
               callback = function(args)
                 local client = vim.lsp.get_client_by_id(args.data.client_id)
@@ -495,7 +486,7 @@ public sealed class NeovimLanguageServerTests
                     when_move_action_ready(client, args.buf, function(action)
                       vim.keymap.set('n', 'M', function()
                         vim.lsp.util.apply_workspace_edit(action.edit, client.offset_encoding)
-                        vim.schedule(persist_move)
+                        persist_move()
                       end, { buffer = args.buf })
                       vim.fn.writefile({ 'ready' }, {{ToLuaString(readyPath)}})
                     end)
