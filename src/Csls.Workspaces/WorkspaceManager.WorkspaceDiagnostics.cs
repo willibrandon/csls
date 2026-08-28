@@ -12,10 +12,12 @@ public sealed partial class WorkspaceManager
     /// Gets complete or unchanged diagnostics for every document in one immutable workspace snapshot.
     /// </summary>
     /// <param name="parameters">The provider identifier and client-retained result identifiers.</param>
+    /// <param name="reportInformationAsHint">Whether information is presented as a hint.</param>
     /// <param name="cancellationToken">The operation cancellation token.</param>
     /// <returns>The ordered workspace diagnostic report.</returns>
     public async Task<WorkspaceDiagnosticReport> GetWorkspaceDiagnosticsAsync(
         WorkspaceDiagnosticParams parameters,
+        bool reportInformationAsHint,
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(parameters);
@@ -55,6 +57,7 @@ public sealed partial class WorkspaceManager
                     Identifier = parameters.Identifier,
                     PreviousResultId = previousResultId
                 },
+                reportInformationAsHint,
                 cancellationToken).ConfigureAwait(false);
             items.Add(new WorkspaceDocumentDiagnosticReport
             {

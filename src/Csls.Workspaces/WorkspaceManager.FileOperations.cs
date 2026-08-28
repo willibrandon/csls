@@ -1,6 +1,8 @@
 using Csls.Protocol;
 using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.Text;
 using System.Collections.Immutable;
+using System.Text;
 
 namespace Csls.Workspaces;
 
@@ -72,6 +74,54 @@ public sealed partial class WorkspaceManager
     }
 
     /// <summary>
+    /// Reloads workspace state after files changed outside client-owned document overlays.
+    /// </summary>
+    /// <param name="parameters">The changed workspace files.</param>
+    /// <param name="cancellationToken">The operation cancellation token.</param>
+    /// <returns>The maintenance result, or null when no loaded root is affected.</returns>
+    public async Task<WorkspaceMaintenanceResult?> ApplyChangedFilesAsync(
+        DidChangeWatchedFilesParams parameters,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(parameters);
+        ArgumentNullException.ThrowIfNull(parameters.Changes);
+        FileEvent[] changes =
+        [
+            .. parameters.Changes
+                .DistinctBy(
+                    static change => change.Uri.GetFileSystemPath(),
+                    PathComparer)
+        ];
+        FileEvent? unsupportedChange = changes.FirstOrDefault(static change =>
+            change.Type is not (
+                FileChangeType.Created or
+                FileChangeType.Changed or
+                FileChangeType.Deleted));
+        if (unsupportedChange is not null)
+        {
+            throw new InvalidDataException(
+                $"Unsupported watched file change type {(int)unsupportedChange.Type}.");
+        }
+
+        string[] paths =
+        [.. changes.Select(static change => change.Uri.GetFileSystemPath())];
+        bool requiresReload = changes.Any(static change =>
+            change.Type is not FileChangeType.Changed ||
+            RequiresWorkspaceReload(change.Uri.GetFileSystemPath()));
+        if (requiresReload)
+        {
+            return await ReloadAfterFileOperationsAsync(
+                paths,
+                renamedFiles: [],
+                deletedFiles: [],
+                cancellationToken).ConfigureAwait(false);
+        }
+
+        return await ApplyChangedDocumentTextsAsync(paths, cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    /// <summary>
     /// Gets a stable ordered copy of document URIs currently owned by the client.
     /// </summary>
     /// <returns>The open document URIs.</returns>
@@ -114,6 +164,120 @@ public sealed partial class WorkspaceManager
             renamedFiles,
             deletedFiles,
             cancellationToken).ConfigureAwait(false);
+    }
+
+    private async Task<WorkspaceMaintenanceResult?> ApplyChangedDocumentTextsAsync(
+        string[] paths,
+        CancellationToken cancellationToken)
+    {
+        bool requiresReload = false;
+        WorkspaceMaintenanceResult? result = null;
+        await _mutationGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            ImmutableArray<(string RootPath, Workspace Workspace, Solution Solution)> folders =
+                _folders;
+            var changedFolderIndexes = new HashSet<int>();
+            int clearedCacheEntryCount = _diagnosticCache.Count;
+            for (int pathIndex = 0; pathIndex < paths.Length; pathIndex++)
+            {
+                string path = paths[pathIndex];
+                int folderIndex = FindFolderIndex(path, folders);
+                if (folderIndex < 0 ||
+                    WorkspaceDiscovery.IsExcludedPath(folders[folderIndex].RootPath, path) ||
+                    _documentVersions.ContainsKey(path))
+                {
+                    continue;
+                }
+
+                if (!File.Exists(path))
+                {
+                    requiresReload = true;
+                    break;
+                }
+
+                (string rootPath, Workspace workspace, Solution solution) = folders[folderIndex];
+                ImmutableArray<DocumentId> documentIds = solution.GetDocumentIdsWithFilePath(path);
+                if (documentIds.IsDefaultOrEmpty)
+                {
+                    requiresReload = true;
+                    break;
+                }
+
+                string persistedText = await File.ReadAllTextAsync(path, cancellationToken)
+                    .ConfigureAwait(false);
+                var text = SourceText.From(persistedText, Encoding.UTF8);
+                bool changed = false;
+                for (int documentIndex = 0; documentIndex < documentIds.Length; documentIndex++)
+                {
+                    DocumentId documentId = documentIds[documentIndex];
+                    if (solution.GetDocument(documentId) is not null)
+                    {
+                        solution = solution.WithDocumentText(
+                            documentId,
+                            text,
+                            PreservationMode.PreserveIdentity);
+                        changed = true;
+                    }
+                    else if (solution.GetAdditionalDocument(documentId) is not null)
+                    {
+                        solution = solution.WithAdditionalDocumentText(
+                            documentId,
+                            text,
+                            PreservationMode.PreserveIdentity);
+                        changed = true;
+                    }
+                }
+
+                if (!changed)
+                {
+                    requiresReload = true;
+                    break;
+                }
+
+                folders = folders.SetItem(folderIndex, (rootPath, workspace, solution));
+                changedFolderIndexes.Add(folderIndex);
+            }
+
+            if (!requiresReload && changedFolderIndexes.Count > 0)
+            {
+                long previousGeneration = Generation;
+                _folders = folders;
+                _diagnosticCache.Clear();
+                long currentGeneration = Interlocked.Increment(ref _generation);
+                result = new WorkspaceMaintenanceResult
+                {
+                    PreviousGeneration = previousGeneration,
+                    CurrentGeneration = currentGeneration,
+                    AffectedWorkspaceCount = changedFolderIndexes.Count,
+                    ClearedCacheEntryCount = clearedCacheEntryCount
+                };
+            }
+        }
+        finally
+        {
+            _mutationGate.Release();
+        }
+
+        if (requiresReload)
+        {
+            return await ReloadAfterFileOperationsAsync(
+                paths,
+                renamedFiles: [],
+                deletedFiles: [],
+                cancellationToken).ConfigureAwait(false);
+        }
+
+        return result;
+    }
+
+    private static bool RequiresWorkspaceReload(string path)
+    {
+        string extension = Path.GetExtension(path);
+        return !extension.Equals(".cs", StringComparison.OrdinalIgnoreCase) &&
+            !extension.Equals(".csx", StringComparison.OrdinalIgnoreCase) &&
+            !extension.Equals(".cshtml", StringComparison.OrdinalIgnoreCase) &&
+            !extension.Equals(".razor", StringComparison.OrdinalIgnoreCase);
     }
 
     private static IReadOnlyList<TextDocumentItem> TransformFileOperationOverlays(

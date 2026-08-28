@@ -469,7 +469,7 @@ public sealed class ControlSocketTests
         ControlRequestInfo request = dashboard.Requests.ActiveRequests.Single(
             static item => item.Name == "textDocument/diagnostic");
         Assert.AreEqual("Running", request.Status);
-        Assert.AreEqual("ReadOnly", request.Mode);
+        Assert.AreEqual("ReadOnlyBackground", request.Mode);
         Assert.IsNotNull(request.WorkspaceGeneration);
         Assert.IsNotNull(request.StartedAt);
         Assert.IsFalse(request.IsCancellationRequested);

@@ -15,7 +15,6 @@ using System.Globalization;
 using System.Text;
 using LspCodeAction = Csls.Protocol.CodeAction;
 using LspDiagnostic = Csls.Protocol.Diagnostic;
-using LspDiagnosticSeverity = Csls.Protocol.DiagnosticSeverity;
 using LspDocumentHighlight = Csls.Protocol.DocumentHighlight;
 using LspLocation = Csls.Protocol.Location;
 using LspRange = Csls.Protocol.Range;
@@ -24,7 +23,6 @@ using LspSignatureHelp = Csls.Protocol.SignatureHelp;
 using LspSymbolKind = Csls.Protocol.SymbolKind;
 using LspTextEdit = Csls.Protocol.TextEdit;
 using RoslynDiagnostic = Microsoft.CodeAnalysis.Diagnostic;
-using RoslynDiagnosticSeverity = Microsoft.CodeAnalysis.DiagnosticSeverity;
 using RoslynLocation = Microsoft.CodeAnalysis.Location;
 using RoslynSymbolKind = Microsoft.CodeAnalysis.SymbolKind;
 
@@ -639,15 +637,19 @@ public sealed partial class WorkspaceManager : IAsyncDisposable
     /// Gets compiler and analyzer diagnostics for one immutable document snapshot.
     /// </summary>
     /// <param name="parameters">The document and optional prior result identifier.</param>
+    /// <param name="reportInformationAsHint">Whether information is presented as a hint.</param>
     /// <param name="cancellationToken">The operation cancellation token.</param>
     /// <returns>A complete or unchanged LSP diagnostic report.</returns>
     public async Task<DocumentDiagnosticReport> GetDiagnosticsAsync(
         DocumentDiagnosticParams parameters,
+        bool reportInformationAsHint,
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(parameters);
         long generation = Generation;
-        string resultId = generation.ToString(CultureInfo.InvariantCulture);
+        string resultId = string.Create(
+            CultureInfo.InvariantCulture,
+            $"{generation}/{(reportInformationAsHint ? "hint" : "information")}");
         if (string.Equals(parameters.PreviousResultId, resultId, StringComparison.Ordinal))
         {
             return new DocumentDiagnosticReport
@@ -701,6 +703,7 @@ public sealed partial class WorkspaceManager : IAsyncDisposable
                         path,
                         razorText,
                         razorProjectDiagnostics,
+                        reportInformationAsHint,
                         cancellationToken)
             };
         }
@@ -730,7 +733,7 @@ public sealed partial class WorkspaceManager : IAsyncDisposable
                 .Where(diagnostic => IsDocumentDiagnostic(diagnostic, path))
                 .OrderBy(static diagnostic => diagnostic.Location.SourceSpan.Start)
                 .ThenBy(static diagnostic => diagnostic.Id, StringComparer.Ordinal)
-                .Select(ToLspDiagnostic)
+                .Select(diagnostic => ToLspDiagnostic(diagnostic, reportInformationAsHint))
         ];
         return new DocumentDiagnosticReport
         {
@@ -1466,6 +1469,11 @@ public sealed partial class WorkspaceManager : IAsyncDisposable
         if (IsCodeActionRequested(parameters.Context.Only, QuickFixCodeActionKind))
         {
             actions.AddRange(await WorkspaceCodeActionService.GetMissingUsingActionsAsync(
+                document,
+                parameters,
+                CreateWorkspaceEditAsync,
+                cancellationToken).ConfigureAwait(false));
+            actions.AddRange(await WorkspaceUseSimpleUsingCodeActionService.GetActionsAsync(
                 document,
                 parameters,
                 CreateWorkspaceEditAsync,
@@ -2824,6 +2832,7 @@ public sealed partial class WorkspaceManager : IAsyncDisposable
     {
         return !diagnostic.IsSuppressed &&
             diagnostic.Location.IsInSource &&
+            WorkspaceDiagnosticPolicy.ShouldInclude(diagnostic) &&
             string.Equals(
                 diagnostic.Location.SourceTree?.FilePath,
                 path,
@@ -2862,7 +2871,8 @@ public sealed partial class WorkspaceManager : IAsyncDisposable
     }
 
     private static LspDiagnostic ToLspDiagnostic(
-        RoslynDiagnostic diagnostic)
+        RoslynDiagnostic diagnostic,
+        bool reportInformationAsHint)
     {
         FileLinePositionSpan lineSpan = diagnostic.Location.GetLineSpan();
         return new LspDiagnostic
@@ -2870,18 +2880,14 @@ public sealed partial class WorkspaceManager : IAsyncDisposable
             Range = new LspRange(
                 new Position(lineSpan.StartLinePosition.Line, lineSpan.StartLinePosition.Character),
                 new Position(lineSpan.EndLinePosition.Line, lineSpan.EndLinePosition.Character)),
-            Severity = diagnostic.Severity switch
-            {
-                RoslynDiagnosticSeverity.Error => LspDiagnosticSeverity.Error,
-                RoslynDiagnosticSeverity.Warning => LspDiagnosticSeverity.Warning,
-                RoslynDiagnosticSeverity.Info => LspDiagnosticSeverity.Information,
-                RoslynDiagnosticSeverity.Hidden => LspDiagnosticSeverity.Hint,
-                _ => null
-            },
+            Severity = WorkspaceDiagnosticPolicy.GetSeverity(
+                diagnostic,
+                reportInformationAsHint),
             Code = diagnostic.Id,
             Source = diagnostic.Id.StartsWith("CS", StringComparison.Ordinal)
                 ? "C#"
                 : diagnostic.Descriptor.Category,
+            Tags = WorkspaceDiagnosticPolicy.GetTags(diagnostic),
             Message = diagnostic.GetMessage(CultureInfo.InvariantCulture)
         };
     }

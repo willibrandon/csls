@@ -35,7 +35,10 @@ public class FileBasedAppWorkspaceBenchmarks : IAsyncDisposable
         await _workspaceManager.LoadAsync([_entryPointPath], CancellationToken.None)
             .ConfigureAwait(false);
         WorkspaceInspectionSnapshot inspection = await _workspaceManager
-            .InspectAsync(includeDiagnostics: true, CancellationToken.None)
+            .InspectAsync(
+                includeDiagnostics: true,
+                diagnosticsProjectId: null,
+                CancellationToken.None)
             .ConfigureAwait(false);
         if (inspection.Projects.Count != 1 ||
             !inspection.Documents.Any(document => string.Equals(

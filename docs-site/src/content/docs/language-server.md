@@ -12,7 +12,7 @@ language features include:
 - document and workspace symbols
 - semantic tokens with full and delta responses
 - call hierarchy, type hierarchy, selection ranges, folding ranges, and inlay hints
-- rename, move-to-file refactoring, missing-using and interface implementation quick fixes, import organization, and document, range, on-type, or opt-in save formatting
+- rename, move-to-file refactoring, missing-using, simple-using, and interface implementation quick fixes, import organization, and document, range, on-type, or opt-in save formatting
 - project-aware file creation, rename, folder move, and deletion tracking
 
 Document and workspace diagnostic pulls use the same immutable Roslyn snapshot.
@@ -23,6 +23,11 @@ result token receive bounded batches through standard LSP progress notifications
 Clients without pull-diagnostic support receive complete versioned push diagnostics
 after documents open, change, or save. Rapid edits are coalesced, and closing a
 document clears its published diagnostics.
+
+Roslyn diagnostics with hidden severity are omitted unless they fade unnecessary
+code. Diagnostics explicitly raised to information remain visible and use the same
+hint presentation as the C# extension by default. The presentation can be changed
+without recomputing analyzer results.
 
 The server tracks open-document versions and applies incremental text changes.
 Workspace loading supports solutions, projects, file-based apps, loose C# files,
@@ -45,6 +50,10 @@ Unsaved documents survive reloads when their workspace folder remains active.
 Standard workspace file-operation
 notifications refresh project topology from disk. Open unsaved documents follow
 file and folder renames, while deleted documents and stale diagnostics are removed.
+Clients that support dynamic file watching receive registrations for C#, Razor,
+project, solution, SDK, NuGet, and analyzer configuration files. Closed source
+changes update the current Roslyn solution directly. Project and configuration
+changes reload the affected workspace while retaining open document overlays.
 
 Completion edits are computed by Roslyn. Clients that advertise snippet support
 receive snippet insertion text with Roslyn's final caret position. Method completion
@@ -70,6 +79,10 @@ Missing-using quick fixes use Roslyn's project and metadata indexes. Each propos
 import is applied to a temporary document, simplified, formatted, and kept only
 when the unresolved name binds to the selected accessible type. The returned edit
 includes the current document version when the file is open.
+
+The IDE0063 quick fix converts an applicable using statement to a using declaration
+and preserves nested statements, comments, directives, async disposal, formatting,
+and the current open-document version.
 
 Interface implementation quick fixes generate required inherited methods,
 properties, indexers, events, and static abstract members. Existing and default

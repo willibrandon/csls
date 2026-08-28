@@ -59,7 +59,10 @@ public class UnityWorkspaceBenchmarks : IAsyncDisposable
         await _workspaceManager.LoadAsync([_fixturePath], CancellationToken.None)
             .ConfigureAwait(false);
         WorkspaceInspectionSnapshot inspection = await _workspaceManager
-            .InspectAsync(includeDiagnostics: false, CancellationToken.None)
+            .InspectAsync(
+                includeDiagnostics: false,
+                diagnosticsProjectId: null,
+                CancellationToken.None)
             .ConfigureAwait(false);
         StringComparison pathComparison = OperatingSystem.IsWindows()
             ? StringComparison.OrdinalIgnoreCase

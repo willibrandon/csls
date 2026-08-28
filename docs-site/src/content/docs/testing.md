@@ -29,6 +29,9 @@ The language suite covers advertised capabilities, initialization, cancellation,
 workspace generations, file operations, diagnostics, semantic edits, CLI commands,
 MCP tools, control resources, package workers, and shutdown. Parity cases keep
 ported behavior executable without publishing private backlog references.
+Watched-file coverage changes a closed source file on disk through the real LSP
+worker, observes the diagnostic refresh request, and verifies that an open dependent
+document updates without restarting the editor.
 
 ## Editor sessions
 

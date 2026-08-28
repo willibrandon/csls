@@ -87,7 +87,11 @@ public sealed partial class LanguageServer
     {
         ArgumentNullException.ThrowIfNull(parameters);
         return ScheduleWorkspaceReadAsync(
-            token => _workspaceManager.GetInlayHintsAsync(parameters, token),
+            token => _workspaceManager.GetInlayHintsAsync(
+                parameters,
+                _configuration.EnableInlayHintsForParameters,
+                _configuration.EnableInlayHintsForTypes,
+                token),
             "inlay hints",
             cancellationToken);
     }

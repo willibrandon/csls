@@ -90,6 +90,40 @@ public sealed class LspClientConnection
     }
 
     /// <summary>
+    /// Registers server-requested capabilities with the connected LSP client.
+    /// </summary>
+    /// <param name="parameters">The ordered capability registrations.</param>
+    /// <param name="cancellationToken">The request cancellation token.</param>
+    /// <returns>A task that completes after the client accepts the registrations.</returns>
+    public async Task RegisterCapabilityAsync(
+        RegistrationParams parameters,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(parameters);
+        JsonRpc rpc = Volatile.Read(ref _rpc)
+            ?? throw new InvalidOperationException("The LSP client is not connected.");
+        await rpc.InvokeWithParameterObjectAsync<object?>(
+            "client/registerCapability",
+            parameters,
+            cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Requests that the connected LSP client refresh pull diagnostics.
+    /// </summary>
+    /// <param name="cancellationToken">The request cancellation token.</param>
+    /// <returns>A task that completes after the client accepts the refresh.</returns>
+    public async Task RefreshDiagnosticsAsync(CancellationToken cancellationToken)
+    {
+        JsonRpc rpc = Volatile.Read(ref _rpc)
+            ?? throw new InvalidOperationException("The LSP client is not connected.");
+        await rpc.InvokeWithParameterObjectAsync<object?>(
+            "workspace/diagnostic/refresh",
+            argument: (object?)null,
+            cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
     /// Binds one live StreamJsonRpc session before message dispatch begins.
     /// </summary>
     /// <param name="rpc">The live LSP connection.</param>

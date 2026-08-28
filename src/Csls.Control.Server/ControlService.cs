@@ -61,7 +61,10 @@ public sealed class ControlService : IControlRpcTarget
     {
         ArgumentNullException.ThrowIfNull(request);
         WorkspaceInspectionSnapshot workspace = await _languageServer
-            .InspectWorkspaceAsync(request.IncludeDiagnostics, cancellationToken)
+            .InspectWorkspaceAsync(
+                request.IncludeDiagnostics,
+                request.DiagnosticsProjectId,
+                cancellationToken)
             .ConfigureAwait(false);
         RequestSchedulerSnapshot requests = _languageServer.GetRequestSchedulerSnapshot();
         RequestTraceSnapshot trace = _languageServer.GetRequestTraceSnapshot();

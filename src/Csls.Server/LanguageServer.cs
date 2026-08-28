@@ -3,6 +3,7 @@ using Csls.Protocol;
 using Csls.Rpc;
 using Csls.Workspaces;
 using Microsoft.Extensions.Logging;
+using StreamJsonRpc;
 using System.Text.Json;
 
 namespace Csls.Server;
@@ -32,6 +33,8 @@ public sealed partial class LanguageServer : ILspRpcTarget, IAsyncDisposable
     private bool _supportsRegionFoldingKind = true;
     private bool _supportsConfigurationPull;
     private bool _supportsCreateFileWorkspaceEdits;
+    private bool _supportsDiagnosticRefresh;
+    private bool _supportsDynamicFileWatching;
     private bool _supportsPullDiagnostics;
     private bool _supportsWorkDoneProgress;
     private bool _hoverMarkdownSupport;
@@ -121,10 +124,12 @@ public sealed partial class LanguageServer : ILspRpcTarget, IAsyncDisposable
     /// Inspects the current immutable workspace generation through scheduler ordering.
     /// </summary>
     /// <param name="includeDiagnostics">Whether to evaluate compiler and analyzer diagnostics.</param>
+    /// <param name="diagnosticsProjectId">The optional project identifier used to bound diagnostic evaluation.</param>
     /// <param name="cancellationToken">The inspection cancellation token.</param>
     /// <returns>The current workspace, project, document, diagnostic, host, and cache state.</returns>
     public Task<WorkspaceInspectionSnapshot> InspectWorkspaceAsync(
         bool includeDiagnostics,
+        string? diagnosticsProjectId,
         CancellationToken cancellationToken) =>
         _scheduler.ScheduleAsync(
             "workspace/inspect",
@@ -133,6 +138,7 @@ public sealed partial class LanguageServer : ILspRpcTarget, IAsyncDisposable
             context => new ValueTask<WorkspaceInspectionSnapshot>(
                 _workspaceManager.InspectAsync(
                     includeDiagnostics,
+                    diagnosticsProjectId,
                     context.CancellationToken)),
             cancellationToken);
 
@@ -176,6 +182,16 @@ public sealed partial class LanguageServer : ILspRpcTarget, IAsyncDisposable
         _supportsCreateFileWorkspaceEdits = SupportsWorkspaceResourceOperation(
             parameters.Capabilities,
             "create");
+        _supportsDiagnosticRefresh = SupportsNestedBooleanCapability(
+            parameters.Capabilities,
+            "workspace",
+            "diagnostics",
+            "refreshSupport");
+        _supportsDynamicFileWatching = SupportsNestedBooleanCapability(
+            parameters.Capabilities,
+            "workspace",
+            "didChangeWatchedFiles",
+            "dynamicRegistration");
         _supportsPullDiagnostics = SupportsObjectCapability(
             parameters.Capabilities,
             "textDocument",
@@ -359,6 +375,24 @@ public sealed partial class LanguageServer : ILspRpcTarget, IAsyncDisposable
             (int)ServerWorkspacePhase.Loading)
         {
             LogInitialized(_rootPaths.Length);
+        }
+
+        if (_supportsDynamicFileWatching)
+        {
+            using var registrationSource = CancellationTokenSource.CreateLinkedTokenSource(
+                cancellationToken);
+            registrationSource.CancelAfter(TimeSpan.FromSeconds(5));
+            try
+            {
+                await RegisterFileWatchersAsync(registrationSource.Token).ConfigureAwait(false);
+            }
+            catch (Exception exception) when (
+                IsExpectedFileWatcherRegistrationFailure(
+                    exception,
+                    cancellationToken))
+            {
+                LogFileWatcherRegistrationFailure(exception);
+            }
         }
     }
 
@@ -550,12 +584,15 @@ public sealed partial class LanguageServer : ILspRpcTarget, IAsyncDisposable
         EnsureRunning();
         return _scheduler.ScheduleAsync(
             "textDocument/diagnostic",
-            RequestMode.ReadOnly,
+            RequestMode.ReadOnlyBackground,
             () => _workspaceManager.Generation,
             async context =>
             {
                 DocumentDiagnosticReport report = await _workspaceManager
-                    .GetDiagnosticsAsync(parameters, context.CancellationToken)
+                    .GetDiagnosticsAsync(
+                        parameters,
+                        _configuration.ReportInformationAsHint,
+                        context.CancellationToken)
                     .ConfigureAwait(false);
                 if (_workspaceManager.Generation != context.WorkspaceGeneration)
                 {
@@ -612,12 +649,15 @@ public sealed partial class LanguageServer : ILspRpcTarget, IAsyncDisposable
 
         return _scheduler.ScheduleAsync(
             "workspace/diagnostic",
-            RequestMode.ReadOnly,
+            RequestMode.ReadOnlyBackground,
             () => _workspaceManager.Generation,
             async context =>
             {
                 WorkspaceDiagnosticReport report = await _workspaceManager
-                    .GetWorkspaceDiagnosticsAsync(parameters, context.CancellationToken)
+                    .GetWorkspaceDiagnosticsAsync(
+                        parameters,
+                        _configuration.ReportInformationAsHint,
+                        context.CancellationToken)
                     .ConfigureAwait(false);
                 if (_workspaceManager.Generation != context.WorkspaceGeneration)
                 {
@@ -1641,6 +1681,21 @@ public sealed partial class LanguageServer : ILspRpcTarget, IAsyncDisposable
             capability.ValueKind == JsonValueKind.Object;
     }
 
+    private static bool SupportsNestedBooleanCapability(
+        JsonElement capabilities,
+        string groupName,
+        string capabilityName,
+        string nestedCapabilityName)
+    {
+        return capabilities.ValueKind == JsonValueKind.Object &&
+            capabilities.TryGetProperty(groupName, out JsonElement group) &&
+            group.ValueKind == JsonValueKind.Object &&
+            group.TryGetProperty(capabilityName, out JsonElement capability) &&
+            capability.ValueKind == JsonValueKind.Object &&
+            capability.TryGetProperty(nestedCapabilityName, out JsonElement nestedCapability) &&
+            nestedCapability.ValueKind is JsonValueKind.True;
+    }
+
     private static bool SupportsWorkspaceResourceOperation(
         JsonElement capabilities,
         string operation)
@@ -1708,9 +1763,21 @@ public sealed partial class LanguageServer : ILspRpcTarget, IAsyncDisposable
         }
     }
 
+    private static bool IsExpectedFileWatcherRegistrationFailure(
+        Exception exception,
+        CancellationToken connectionCancellationToken) =>
+        exception is RemoteRpcException or InvalidOperationException ||
+        exception is OperationCanceledException && !connectionCancellationToken.IsCancellationRequested;
+
     [LoggerMessage(
         EventId = 1,
         Level = LogLevel.Information,
         Message = "Initialized {WorkspaceFolderCount} workspace folders")]
     private partial void LogInitialized(int workspaceFolderCount);
+
+    [LoggerMessage(
+        EventId = 16,
+        Level = LogLevel.Warning,
+        Message = "Dynamic workspace file watcher registration failed")]
+    private partial void LogFileWatcherRegistrationFailure(Exception exception);
 }
