@@ -405,7 +405,8 @@ async function assertRename(document: vscode.TextDocument): Promise<void> {
     "VS Code could not apply the C# rename edits.",
   );
   assert(
-    document.getText() === "class Gadget { Gadget? Value { get; set; } }\n",
+    document.getText().replaceAll("\r\n", "\n") ===
+      "class Gadget { Gadget? Value { get; set; } }\n",
     "csls must rename the declaration and reference in VS Code.",
   );
 }

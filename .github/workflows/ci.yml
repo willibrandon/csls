@@ -168,7 +168,11 @@ jobs:
         run: dotnet run --file scripts/Provision-VsCode.cs
 
       - name: Test
-        run: dotnet test --solution Csls.slnx --report-trx --results-directory artifacts/test-results/${{ matrix.rid }}
+        run: >-
+          dotnet test --solution Csls.slnx
+          --filter "TestCategory!=VsCodeHost&TestCategory!=VsCodeOracle"
+          --report-trx
+          --results-directory artifacts/test-results/${{ matrix.rid }}
 
       - name: Verify release assets
         run: >-
@@ -249,7 +253,7 @@ jobs:
       - name: Test Visual Studio Code hosts
         run: >-
           dotnet test --project tests/Csls.Tests/Csls.Tests.csproj
-          --filter "TestCategory=VsCodeHost"
+          --filter "TestCategory=VsCodeHost|TestCategory=VsCodeOracle"
           --report-trx
           --results-directory artifacts/test-results/vscode-hosts
 

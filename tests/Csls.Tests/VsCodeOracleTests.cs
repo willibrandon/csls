@@ -19,6 +19,7 @@ public sealed class VsCodeOracleTests
     /// Verifies diagnostics, hover, completion, code actions, and inlay-hint defaults.
     /// </summary>
     [TestMethod]
+    [TestCategory("VsCodeOracle")]
     public async Task DefaultsMatchMicrosoftCSharpProfiles()
     {
         using ExternalWorkloadLease workloadLease = await ExternalWorkloadLease.AcquireAsync(

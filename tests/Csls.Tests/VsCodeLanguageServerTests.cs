@@ -82,9 +82,8 @@ public sealed class VsCodeLanguageServerTests
             ? EditorToolResolver.ResolveVsCodeRemoteServerRoot(repositoryRoot)
             : null;
 
-        string fixturePath = Path.Join(
-            Path.GetTempPath(),
-            $"csls-vscode-{Guid.NewGuid():N}");
+        string runId = Guid.NewGuid().ToString("N")[..16];
+        string fixturePath = Path.Join(Path.GetTempPath(), $"cv-{runId}");
         Directory.CreateDirectory(fixturePath);
         try
         {

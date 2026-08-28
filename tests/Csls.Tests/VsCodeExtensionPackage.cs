@@ -1,4 +1,6 @@
 using System.Diagnostics;
+using System.Text.Json;
+using System.Text.Json.Nodes;
 
 namespace Csls.Tests;
 
@@ -51,36 +53,58 @@ internal static class VsCodeExtensionPackage
             EditorToolResolver.ResolveArtifactsRoot(repositoryRoot),
             "vscode-test-extension");
         string outputPath = Path.Join(outputDirectory, "willibrandon.csls.vsix");
+        string stagingPath = Path.Join(outputDirectory, $"staging-{Guid.NewGuid():N}");
         Directory.CreateDirectory(outputDirectory);
-        using Process process = StartPackageProcess(extensionRoot, vscePath, outputPath);
-        Task<string> outputTask = process.StandardOutput.ReadToEndAsync();
-        Task<string> errorTask = process.StandardError.ReadToEndAsync();
         try
         {
-            await process.WaitForExitAsync()
-                .WaitAsync(TimeSpan.FromMinutes(2))
+            CopyRequiredFile(extensionRoot, stagingPath, "package.json");
+            CopyRequiredFile(extensionRoot, stagingPath, "README.md");
+            CopyRequiredFile(extensionRoot, stagingPath, "CHANGELOG.md");
+            CopyRequiredFile(extensionRoot, stagingPath, "LICENSE");
+            CopyRequiredFile(extensionRoot, stagingPath, "language-configuration.json");
+            CopyRequiredFile(extensionRoot, stagingPath, ".vscodeignore");
+            CopyRequiredFile(extensionRoot, stagingPath, "dist", "extension.cjs");
+            CopyRequiredFile(extensionRoot, stagingPath, "media", "icon.png");
+            await PrepareManifestAsync(Path.Join(stagingPath, "package.json"))
                 .ConfigureAwait(false);
+
+            using Process process = StartPackageProcess(stagingPath, vscePath, outputPath);
+            Task<string> outputTask = process.StandardOutput.ReadToEndAsync();
+            Task<string> errorTask = process.StandardError.ReadToEndAsync();
+            try
+            {
+                await process.WaitForExitAsync()
+                    .WaitAsync(TimeSpan.FromMinutes(2))
+                    .ConfigureAwait(false);
+            }
+            finally
+            {
+                if (!process.HasExited)
+                {
+                    process.Kill(entireProcessTree: true);
+                    await process.WaitForExitAsync().ConfigureAwait(false);
+                }
+            }
+
+            string output = await outputTask.ConfigureAwait(false);
+            string error = await errorTask.ConfigureAwait(false);
+            if (process.ExitCode != 0)
+            {
+                throw new InvalidOperationException($"""
+                    The VS Code extension packager failed with exit code {process.ExitCode}.
+                    Standard output:
+                    {output}
+                    Standard error:
+                    {error}
+                    """);
+            }
         }
         finally
         {
-            if (!process.HasExited)
+            if (Directory.Exists(stagingPath))
             {
-                process.Kill(entireProcessTree: true);
-                await process.WaitForExitAsync().ConfigureAwait(false);
+                Directory.Delete(stagingPath, recursive: true);
             }
-        }
-
-        string output = await outputTask.ConfigureAwait(false);
-        string error = await errorTask.ConfigureAwait(false);
-        if (process.ExitCode != 0)
-        {
-            throw new InvalidOperationException($"""
-                The VS Code extension packager failed with exit code {process.ExitCode}.
-                Standard output:
-                {output}
-                Standard error:
-                {error}
-                """);
         }
 
         if (!File.Exists(outputPath))
@@ -91,6 +115,39 @@ internal static class VsCodeExtensionPackage
         }
 
         return outputPath;
+    }
+
+    private static void CopyRequiredFile(
+        string sourceRoot,
+        string destinationRoot,
+        params string[] relativeSegments)
+    {
+        string sourcePath = Path.Join([sourceRoot, .. relativeSegments]);
+        if (!File.Exists(sourcePath))
+        {
+            throw new FileNotFoundException(
+                "A VS Code test extension input is missing.",
+                sourcePath);
+        }
+
+        string destinationPath = Path.Join([destinationRoot, .. relativeSegments]);
+        Directory.CreateDirectory(Path.GetDirectoryName(destinationPath)!);
+        File.Copy(sourcePath, destinationPath);
+    }
+
+    private static async Task PrepareManifestAsync(string packagePath)
+    {
+        JsonNode package = JsonNode.Parse(
+            await File.ReadAllTextAsync(packagePath).ConfigureAwait(false))
+            ?? throw new InvalidDataException("The VS Code package manifest is empty.");
+        package.AsObject().Remove("scripts");
+        package.AsObject().Remove("devDependencies");
+        package.AsObject().Remove("browser");
+        package["capabilities"]?.AsObject().Remove("virtualWorkspaces");
+        await File.WriteAllTextAsync(
+            packagePath,
+            package.ToJsonString(new JsonSerializerOptions { WriteIndented = true }) + "\n")
+            .ConfigureAwait(false);
     }
 
     private static Process StartPackageProcess(

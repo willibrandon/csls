@@ -59,7 +59,11 @@ if (!NuGetVersion.TryParse(version, out NuGetVersion? parsedVersion) ||
 try
 {
     string repositoryRoot = ScriptSupport.FindRepositoryRoot();
-    string artifactsRoot = Path.GetFullPath(Path.Join(repositoryRoot, "artifacts"));
+    string? configuredArtifactsRoot = Environment.GetEnvironmentVariable(
+        "CSLS_ARTIFACTS_ROOT");
+    string artifactsRoot = string.IsNullOrWhiteSpace(configuredArtifactsRoot)
+        ? Path.GetFullPath(Path.Join(repositoryRoot, "artifacts"))
+        : Path.GetFullPath(configuredArtifactsRoot);
     string extensionRoot = Path.Join(repositoryRoot, "editors", "zed");
     string packagePath = RequirePathInsideArtifacts(
         artifactsRoot,
