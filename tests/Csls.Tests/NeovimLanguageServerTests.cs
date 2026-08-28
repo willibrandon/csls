@@ -434,6 +434,28 @@ public sealed class NeovimLanguageServerTests
               end
               poll()
             end
+            local function when_move_action_ready(client, buffer, callback)
+              local function request_action()
+                local params = vim.lsp.util.make_range_params(0, client.offset_encoding)
+                params.context = {
+                  diagnostics = {},
+                  only = { 'refactor' },
+                  triggerKind = vim.lsp.protocol.CodeActionTriggerKind.Invoked,
+                }
+                client:request('textDocument/codeAction', params, function(error, actions)
+                  if not error then
+                    for _, action in ipairs(actions or {}) do
+                      if action.title == 'Move Helper to Helper.cs' and action.edit then
+                        callback(action)
+                        return
+                      end
+                    end
+                  end
+                  vim.defer_fn(request_action, 50)
+                end, buffer)
+              end
+              request_action()
+            end
             local move_applied = false
             local function persist_move()
               if move_applied then
@@ -470,13 +492,13 @@ public sealed class NeovimLanguageServerTests
                 local client = vim.lsp.get_client_by_id(args.data.client_id)
                 if client and client.name == 'csls' then
                   when_workspace_ready(client, args.buf, function()
-                    vim.keymap.set('n', 'M', function()
-                      vim.lsp.buf.code_action({
-                        apply = true,
-                        context = { only = { 'refactor' } },
-                      })
-                    end, { buffer = args.buf })
-                    vim.fn.writefile({ 'ready' }, {{ToLuaString(readyPath)}})
+                    when_move_action_ready(client, args.buf, function(action)
+                      vim.keymap.set('n', 'M', function()
+                        vim.lsp.util.apply_workspace_edit(action.edit, client.offset_encoding)
+                        vim.schedule(persist_move)
+                      end, { buffer = args.buf })
+                      vim.fn.writefile({ 'ready' }, {{ToLuaString(readyPath)}})
+                    end)
                   end)
                 end
               end,
