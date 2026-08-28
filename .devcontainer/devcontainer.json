@@ -22,8 +22,7 @@
     "vscode": {
       "extensions": [
         "astro-build.astro-vscode",
-        "github.vscode-github-actions",
-        "ms-dotnettools.csdevkit"
+        "github.vscode-github-actions"
       ],
       "settings": {
         "dotnet.defaultSolution": "Csls.slnx",
