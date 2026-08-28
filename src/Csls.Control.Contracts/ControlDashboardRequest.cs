@@ -9,4 +9,9 @@ public sealed class ControlDashboardRequest
     /// Gets whether current compiler and analyzer diagnostics should be evaluated.
     /// </summary>
     public bool IncludeDiagnostics { get; init; }
+
+    /// <summary>
+    /// Gets the optional project identifier used to bound diagnostic evaluation.
+    /// </summary>
+    public string? DiagnosticsProjectId { get; init; }
 }

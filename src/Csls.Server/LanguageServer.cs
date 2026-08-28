@@ -124,10 +124,12 @@ public sealed partial class LanguageServer : ILspRpcTarget, IAsyncDisposable
     /// Inspects the current immutable workspace generation through scheduler ordering.
     /// </summary>
     /// <param name="includeDiagnostics">Whether to evaluate compiler and analyzer diagnostics.</param>
+    /// <param name="diagnosticsProjectId">The optional project identifier used to bound diagnostic evaluation.</param>
     /// <param name="cancellationToken">The inspection cancellation token.</param>
     /// <returns>The current workspace, project, document, diagnostic, host, and cache state.</returns>
     public Task<WorkspaceInspectionSnapshot> InspectWorkspaceAsync(
         bool includeDiagnostics,
+        string? diagnosticsProjectId,
         CancellationToken cancellationToken) =>
         _scheduler.ScheduleAsync(
             "workspace/inspect",
@@ -136,6 +138,7 @@ public sealed partial class LanguageServer : ILspRpcTarget, IAsyncDisposable
             context => new ValueTask<WorkspaceInspectionSnapshot>(
                 _workspaceManager.InspectAsync(
                     includeDiagnostics,
+                    diagnosticsProjectId,
                     context.CancellationToken)),
             cancellationToken);
 

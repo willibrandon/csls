@@ -228,7 +228,11 @@ internal sealed class LanguageServerMeasurementSession : IAsyncDisposable
         ControlDashboardSnapshot analyzedSnapshot = await operations.MeasureAsync(
             "control/analyzers-generators",
             () => control.GetDashboardSnapshotAsync(
-                new ControlDashboardRequest { IncludeDiagnostics = true },
+                new ControlDashboardRequest
+                {
+                    IncludeDiagnostics = true,
+                    DiagnosticsProjectId = project.Id
+                },
                 cancellationToken)).ConfigureAwait(false);
         if (!analyzedSnapshot.DiagnosticsLoaded || project.AnalyzerReferenceCount == 0)
         {

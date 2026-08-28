@@ -9,7 +9,7 @@ namespace Csls.Protocol;
 [JsonSourceGenerationOptions(
     PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase,
     DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
-    GenerationMode = JsonSourceGenerationMode.Metadata)]
+    GenerationMode = JsonSourceGenerationMode.Default)]
 [JsonSerializable(typeof(ClientInfo))]
 [JsonSerializable(typeof(CallHierarchyIncomingCall))]
 [JsonSerializable(typeof(CallHierarchyIncomingCallsParams))]
