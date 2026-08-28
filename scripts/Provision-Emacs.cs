@@ -94,14 +94,21 @@ static Task<string> ProvisionWindowsAsync(string toolsRoot, string platform) =>
         "emacs",
         Version,
         platform,
-        new Uri("https://mirrors.kernel.org/gnu/windows/emacs/emacs-31/emacs-31.1.zip"),
+        new Uri("https://mirrors.ocf.berkeley.edu/gnu/windows/emacs/emacs-31/emacs-31.1.zip"),
         "emacs-31.1.zip",
         "96a1018e9de877e77768ca884007f1a9df44889e9ae81ae3ca3d904b5681b8b6",
         "emacs.exe",
         installationRootLevels: 1,
         versionArguments: ["--version"],
         expectedVersionText: $"GNU Emacs {Version}",
-        CancellationToken.None);
+        CancellationToken.None,
+        fallbackSources:
+        [
+            new Uri(
+                "https://mirrorservice.org/sites/ftp.gnu.org/gnu/windows/" +
+                "emacs/emacs-31/emacs-31.1.zip"),
+            new Uri("https://mirrors.kernel.org/gnu/windows/emacs/emacs-31/emacs-31.1.zip")
+        ]);
 
 static async Task<string> ProvisionUnixAsync(string toolsRoot, string platform)
 {
@@ -130,7 +137,14 @@ static async Task<string> ProvisionUnixAsync(string toolsRoot, string platform)
             new Uri($"https://mirrors.kernel.org/gnu/emacs/{assetName}"),
             archivePath,
             "1da5790d9580c81932b5bf700633114468da7b3412d69faa767daebf974f4586",
-            CancellationToken.None).ConfigureAwait(false);
+            CancellationToken.None,
+            fallbackSources:
+            [
+                new Uri("https://mirrors.ocf.berkeley.edu/gnu/emacs/emacs-31.1.tar.xz"),
+                new Uri(
+                    "https://mirrorservice.org/sites/ftp.gnu.org/gnu/" +
+                    "emacs/emacs-31.1.tar.xz")
+            ]).ConfigureAwait(false);
         await ScriptSupport.ExtractArchiveAsync(
             archivePath,
             extractionPath,
