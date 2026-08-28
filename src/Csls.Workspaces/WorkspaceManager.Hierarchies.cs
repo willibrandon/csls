@@ -132,10 +132,14 @@ public sealed partial class WorkspaceManager
     /// Gets semantic inlay hints for one visible source range.
     /// </summary>
     /// <param name="parameters">The target document and visible range.</param>
+    /// <param name="includeParameterHints">Whether parameter-name hints are enabled.</param>
+    /// <param name="includeTypeHints">Whether inferred-type hints are enabled.</param>
     /// <param name="cancellationToken">The operation cancellation token.</param>
     /// <returns>The bounded ordered inlay hints.</returns>
     public Task<IReadOnlyList<InlayHint>> GetInlayHintsAsync(
         InlayHintParams parameters,
+        bool includeParameterHints,
+        bool includeTypeHints,
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(parameters);
@@ -143,6 +147,8 @@ public sealed partial class WorkspaceManager
             FindCurrentDocument(parameters.TextDocument.Uri),
             parameters.Range,
             Generation,
+            includeParameterHints,
+            includeTypeHints,
             cancellationToken);
     }
 

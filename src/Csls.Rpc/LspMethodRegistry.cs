@@ -41,6 +41,11 @@ public static class LspMethodRegistry
                 target.DidChangeConfigurationAsync));
         AddParameterObjectMethod(
             rpc,
+            "workspace/didChangeWatchedFiles",
+            new Func<DidChangeWatchedFilesParams, CancellationToken, Task>(
+                target.DidChangeWatchedFilesAsync));
+        AddParameterObjectMethod(
+            rpc,
             "workspace/didChangeWorkspaceFolders",
             new Func<DidChangeWorkspaceFoldersParams, CancellationToken, Task>(
                 target.DidChangeWorkspaceFoldersAsync));

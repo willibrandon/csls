@@ -26,6 +26,11 @@ public sealed record Diagnostic
     public string? Source { get; init; }
 
     /// <summary>
+    /// Gets additional editor behavior associated with the finding.
+    /// </summary>
+    public IReadOnlyList<DiagnosticTag>? Tags { get; init; }
+
+    /// <summary>
     /// Gets the localized diagnostic message.
     /// </summary>
     public required string Message { get; init; }

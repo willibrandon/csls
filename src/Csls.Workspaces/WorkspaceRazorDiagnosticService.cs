@@ -8,7 +8,6 @@ using LspDiagnosticSeverity = Csls.Protocol.DiagnosticSeverity;
 using LspRange = Csls.Protocol.Range;
 using RazorSeverity = Microsoft.AspNetCore.Razor.Language.RazorDiagnosticSeverity;
 using RoslynDiagnostic = Microsoft.CodeAnalysis.Diagnostic;
-using RoslynDiagnosticSeverity = Microsoft.CodeAnalysis.DiagnosticSeverity;
 
 namespace Csls.Workspaces;
 
@@ -31,12 +30,14 @@ internal static class WorkspaceRazorDiagnosticService
     /// <param name="path">The absolute Razor document path.</param>
     /// <param name="text">The immutable document text.</param>
     /// <param name="projectDiagnostics">Compiler and analyzer findings from owning projects.</param>
+    /// <param name="reportInformationAsHint">Whether information is presented as a hint.</param>
     /// <param name="cancellationToken">The operation cancellation token.</param>
     /// <returns>The exact ordered diagnostics for the current project snapshot.</returns>
     internal static IReadOnlyList<LspDiagnostic> GetDiagnostics(
         string path,
         SourceText text,
         IEnumerable<RoslynDiagnostic> projectDiagnostics,
+        bool reportInformationAsHint,
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(projectDiagnostics);
@@ -65,7 +66,12 @@ internal static class WorkspaceRazorDiagnosticService
         foreach (RoslynDiagnostic diagnostic in projectDiagnostics)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            if (TryToLspDiagnostic(diagnostic, path, text, out LspDiagnostic? mappedDiagnostic) &&
+            if (TryToLspDiagnostic(
+                    diagnostic,
+                    path,
+                    text,
+                    reportInformationAsHint,
+                    out LspDiagnostic? mappedDiagnostic) &&
                 mappedDiagnostic is not null)
             {
                 AddIfUnique(mappedDiagnostic, diagnostics, identities);
@@ -161,10 +167,12 @@ internal static class WorkspaceRazorDiagnosticService
         RoslynDiagnostic diagnostic,
         string path,
         SourceText text,
+        bool reportInformationAsHint,
         out LspDiagnostic? lspDiagnostic)
     {
         FileLinePositionSpan lineSpan = diagnostic.Location.GetMappedLineSpan();
         if (diagnostic.IsSuppressed ||
+            !WorkspaceDiagnosticPolicy.ShouldInclude(diagnostic) ||
             !lineSpan.IsValid ||
             !string.Equals(lineSpan.Path, path, PathComparison))
         {
@@ -183,20 +191,16 @@ internal static class WorkspaceRazorDiagnosticService
         lspDiagnostic = new LspDiagnostic
         {
             Range = new LspRange(start, end),
-            Severity = diagnostic.Severity switch
-            {
-                RoslynDiagnosticSeverity.Error => LspDiagnosticSeverity.Error,
-                RoslynDiagnosticSeverity.Warning => LspDiagnosticSeverity.Warning,
-                RoslynDiagnosticSeverity.Info => LspDiagnosticSeverity.Information,
-                RoslynDiagnosticSeverity.Hidden => LspDiagnosticSeverity.Hint,
-                _ => null
-            },
+            Severity = WorkspaceDiagnosticPolicy.GetSeverity(
+                diagnostic,
+                reportInformationAsHint),
             Code = diagnostic.Id,
             Source = diagnostic.Id.StartsWith("RZ", StringComparison.Ordinal)
                 ? "Razor"
                 : diagnostic.Id.StartsWith("CS", StringComparison.Ordinal)
                     ? "C#"
                     : diagnostic.Descriptor.Category,
+            Tags = WorkspaceDiagnosticPolicy.GetTags(diagnostic),
             Message = diagnostic.GetMessage(CultureInfo.InvariantCulture)
         };
         return true;

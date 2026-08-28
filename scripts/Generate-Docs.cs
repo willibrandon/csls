@@ -345,6 +345,9 @@ static string GenerateConfigurationReference(string repositoryRoot)
     [
         ("enableAnalyzers", "EnableAnalyzers"),
         ("formatOnSave", "FormatOnSave"),
+        ("inlayHints.enableInlayHintsForParameters", "EnableInlayHintsForParameters"),
+        ("inlayHints.enableInlayHintsForTypes", "EnableInlayHintsForTypes"),
+        ("diagnostics.reportInformationAsHint", "ReportInformationAsHint"),
         ("configuration", "BuildConfiguration"),
         ("logLevel", "LogLevel")
     ];

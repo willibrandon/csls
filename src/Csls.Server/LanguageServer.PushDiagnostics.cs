@@ -40,7 +40,7 @@ public sealed partial class LanguageServer
 
             await _scheduler.ScheduleAsync(
                 "textDocument/publishDiagnostics",
-                RequestMode.ReadOnly,
+                RequestMode.ReadOnlyBackground,
                 () => _workspaceManager.Generation,
                 async context =>
                 {
@@ -66,6 +66,7 @@ public sealed partial class LanguageServer
                                     TextDocument = new TextDocumentIdentifier { Uri = uri },
                                     Identifier = "csls"
                                 },
+                                _configuration.ReportInformationAsHint,
                                 context.CancellationToken)
                             .ConfigureAwait(false);
                         diagnostics = report.Items ?? [];

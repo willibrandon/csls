@@ -158,6 +158,67 @@ public sealed class HierarchyAndInlayHintLanguageServerTests
             Assert.AreEqual("Worker", inferredVariableType.Name);
             Assert.AreEqual(workerItem.SelectionRange, inferredVariableType.SelectionRange);
 
+            IReadOnlyList<InlayHint> defaultHints = await lsp.RequestInlayHintsAsync(
+                documentPath,
+                new LspRange(new Position(0, 0), new Position(44, 0)),
+                TestContext.CancellationToken).ConfigureAwait(false);
+            Assert.IsEmpty(defaultHints);
+
+            using var typeHintConfiguration = JsonDocument.Parse(
+                """
+                {
+                  "csharp": {
+                    "inlayHints": {
+                      "enableInlayHintsForTypes": true
+                    }
+                  }
+                }
+                """);
+            await lsp.ChangeConfigurationAsync(typeHintConfiguration.RootElement)
+                .ConfigureAwait(false);
+            IReadOnlyList<InlayHint> typeOnlyHints = await lsp.RequestInlayHintsAsync(
+                documentPath,
+                new LspRange(new Position(0, 0), new Position(44, 0)),
+                TestContext.CancellationToken).ConfigureAwait(false);
+            Assert.HasCount(1, typeOnlyHints);
+            Assert.AreEqual(InlayHintKind.Type, typeOnlyHints[0].Kind);
+
+            using var parameterHintConfiguration = JsonDocument.Parse(
+                """
+                {
+                  "dotnet": {
+                    "inlayHints": {
+                      "enableInlayHintsForParameters": true
+                    }
+                  }
+                }
+                """);
+            await lsp.ChangeConfigurationAsync(parameterHintConfiguration.RootElement)
+                .ConfigureAwait(false);
+            IReadOnlyList<InlayHint> parameterOnlyHints = await lsp.RequestInlayHintsAsync(
+                documentPath,
+                new LspRange(new Position(0, 0), new Position(44, 0)),
+                TestContext.CancellationToken).ConfigureAwait(false);
+            Assert.HasCount(1, parameterOnlyHints);
+            Assert.AreEqual(InlayHintKind.Parameter, parameterOnlyHints[0].Kind);
+
+            using var allHintConfiguration = JsonDocument.Parse(
+                """
+                {
+                  "csharp": {
+                    "inlayHints": {
+                      "enableInlayHintsForTypes": true
+                    }
+                  },
+                  "dotnet": {
+                    "inlayHints": {
+                      "enableInlayHintsForParameters": true
+                    }
+                  }
+                }
+                """);
+            await lsp.ChangeConfigurationAsync(allHintConfiguration.RootElement)
+                .ConfigureAwait(false);
             IReadOnlyList<InlayHint> hints = await lsp.RequestInlayHintsAsync(
                 documentPath,
                 new LspRange(new Position(0, 0), new Position(44, 0)),

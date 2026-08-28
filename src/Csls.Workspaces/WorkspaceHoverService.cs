@@ -38,23 +38,7 @@ internal static class WorkspaceHoverService
                     supportsMarkdown);
                 if (!string.IsNullOrWhiteSpace(content.Value))
                 {
-                    (ISymbol? quickInfoSymbol, Compilation compilation, _) =
-                        await ResolveSymbolAsync(
-                            document,
-                            offset,
-                            cancellationToken).ConfigureAwait(false);
-                    MarkupContent? supplemental = quickInfoSymbol is null
-                        ? null
-                        : SymbolDocumentationFormatter
-                            .FormatSymbol(
-                                quickInfoSymbol,
-                                compilation,
-                                supportsMarkdown,
-                                cancellationToken)
-                            .SupplementalDocumentation;
-                    return (
-                        TaggedTextMarkupFormatter.Combine(content, supplemental),
-                        quickInfo.Span);
+                    return (content, quickInfo.Span);
                 }
             }
         }

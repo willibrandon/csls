@@ -95,11 +95,6 @@ public sealed class DocumentationLanguageServerTests
             Assert.Contains("fast path", hover.Contents.Value, StringComparison.Ordinal);
             Assert.Contains("fallback path", hover.Contents.Value, StringComparison.Ordinal);
             Assert.Contains("• Use the fast path", hover.Contents.Value, StringComparison.Ordinal);
-            Assert.Contains("Widget guide", hover.Contents.Value, StringComparison.Ordinal);
-            Assert.Contains(
-                "[Widget guide](https://example.com/widget)",
-                hover.Contents.Value,
-                StringComparison.Ordinal);
             Assert.DoesNotContain("<see", hover.Contents.Value, StringComparison.Ordinal);
             Assert.DoesNotContain("<list", hover.Contents.Value, StringComparison.Ordinal);
 

@@ -278,6 +278,131 @@ public sealed class WorkspaceFileOperationLanguageServerTests
         }
     }
 
+    /// <summary>
+    /// Refreshes dependent diagnostics after a closed source file changes on disk.
+    /// </summary>
+    [TestMethod]
+    public async Task WatchedFileChangesInvalidateDependentDiagnostics()
+    {
+        string repositoryRoot = EditorToolResolver.FindRepositoryRoot();
+        string workerPath = ResolveWorkerPath(repositoryRoot);
+        string fixturePath = Path.Join(
+            Path.GetTempPath(),
+            $"csls-watched-file-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(fixturePath);
+        try
+        {
+            string definitionPath = Path.Join(fixturePath, "Definition.cs");
+            string consumerPath = Path.Join(fixturePath, "Consumer.cs");
+            await File.WriteAllTextAsync(
+                Path.Join(fixturePath, "Fixture.csproj"),
+                ProjectText,
+                TestContext.CancellationToken).ConfigureAwait(false);
+            await File.WriteAllTextAsync(
+                definitionPath,
+                DefinitionWithoutValueText,
+                TestContext.CancellationToken).ConfigureAwait(false);
+            await File.WriteAllTextAsync(
+                consumerPath,
+                DefinitionConsumerText,
+                TestContext.CancellationToken).ConfigureAwait(false);
+
+            var client = new LspTestClient(
+                legacyConfiguration: null,
+                preferredConfiguration: null);
+            var lsp = LspProcessSession.Start(
+                "csls-watched-file-worker",
+                EditorToolResolver.ResolveDotNetHost(),
+                [workerPath],
+                fixturePath,
+                client);
+            await using ConfiguredAsyncDisposable lspCleanup = lsp.ConfigureAwait(false);
+            using var clientCapabilities = JsonDocument.Parse(
+                """
+                {
+                  "workspace": {
+                    "didChangeWatchedFiles": {
+                      "dynamicRegistration": true
+                    },
+                    "diagnostics": {
+                      "refreshSupport": true
+                    }
+                  },
+                  "textDocument": {
+                    "diagnostic": {}
+                  }
+                }
+                """);
+            await lsp.InitializeAsync(
+                    fixturePath,
+                    clientCapabilities.RootElement,
+                    TestContext.CancellationToken)
+                .WaitAsync(TimeSpan.FromSeconds(30), TestContext.CancellationToken)
+                .ConfigureAwait(false);
+            await lsp.CompleteInitializationAsync().ConfigureAwait(false);
+
+            RegistrationParams registration = await client.ReadCapabilityRegistrationAsync(
+                    TestContext.CancellationToken)
+                .AsTask()
+                .WaitAsync(TimeSpan.FromSeconds(30), TestContext.CancellationToken)
+                .ConfigureAwait(false);
+            Registration watchedFiles = Assert.ContainsSingle(registration.Registrations);
+            Assert.AreEqual("workspace/didChangeWatchedFiles", watchedFiles.Method);
+            JsonElement registerOptions = watchedFiles.RegisterOptions
+                ?? throw new AssertFailedException("The watched file registration has no options.");
+            JsonElement[] watchers =
+            [.. registerOptions.GetProperty("watchers").EnumerateArray()];
+            Assert.HasCount(2, watchers);
+            Assert.AreEqual(
+                (int)(WatchKind.Create | WatchKind.Change | WatchKind.Delete),
+                watchers[0].GetProperty("kind").GetInt32());
+
+            await lsp.OpenDocumentAsync(consumerPath, DefinitionConsumerText)
+                .ConfigureAwait(false);
+            DocumentDiagnosticReport missing = await lsp.RequestDiagnosticsAsync(
+                    consumerPath,
+                    previousResultId: null,
+                    TestContext.CancellationToken)
+                .WaitAsync(TimeSpan.FromSeconds(30), TestContext.CancellationToken)
+                .ConfigureAwait(false);
+            Assert.Contains(
+                "CS0117",
+                missing.Items?.Select(static diagnostic => diagnostic.Code) ?? []);
+
+            await File.WriteAllTextAsync(
+                definitionPath,
+                DefinitionWithValueText,
+                TestContext.CancellationToken).ConfigureAwait(false);
+            await lsp.ChangeWatchedFilesAsync(
+                [(definitionPath, FileChangeType.Changed)]).ConfigureAwait(false);
+            await client.WaitForDiagnosticRefreshAsync(TestContext.CancellationToken)
+                .WaitAsync(TimeSpan.FromSeconds(30), TestContext.CancellationToken)
+                .ConfigureAwait(false);
+            DocumentDiagnosticReport updated = await lsp.RequestDiagnosticsAsync(
+                    consumerPath,
+                    missing.ResultId,
+                    TestContext.CancellationToken)
+                .WaitAsync(TimeSpan.FromSeconds(30), TestContext.CancellationToken)
+                .ConfigureAwait(false);
+            Assert.AreEqual("full", updated.Kind);
+            Assert.AreNotEqual(missing.ResultId, updated.ResultId);
+            Assert.DoesNotContain(
+                "CS0117",
+                updated.Items?.Select(static diagnostic => diagnostic.Code) ?? []);
+
+            string serverDiagnostics = await lsp.ShutdownAsync(
+                TestContext.CancellationToken).ConfigureAwait(false);
+            Assert.DoesNotContain(
+                "Unhandled exception",
+                serverDiagnostics,
+                StringComparison.Ordinal);
+        }
+        finally
+        {
+            Directory.Delete(fixturePath, recursive: true);
+        }
+    }
+
     private static void AssertFileOperationCapabilities(JsonElement initialization)
     {
         JsonElement fileOperations = initialization
@@ -422,6 +547,32 @@ public sealed class WorkspaceFileOperationLanguageServerTests
         public static class Consumer
         {
             public static int Read() => CreatedType.Value;
+        }
+        """;
+
+    private const string DefinitionWithoutValueText = """
+        namespace Fixture;
+
+        public static class Definition
+        {
+        }
+        """;
+
+    private const string DefinitionWithValueText = """
+        namespace Fixture;
+
+        public static class Definition
+        {
+            public static int Value => 42;
+        }
+        """;
+
+    private const string DefinitionConsumerText = """
+        namespace Fixture;
+
+        public static class DefinitionConsumer
+        {
+            public static int Read() => Definition.Value;
         }
         """;
 }
