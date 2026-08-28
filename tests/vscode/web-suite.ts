@@ -56,6 +56,7 @@ export async function runFeatureContract(options: FeatureContractOptions): Promi
   await assertConsoleHover(documentUri);
   await assertConsoleCompletion(documentUri);
   await assertDefinition(document);
+  await assertFrameworkDefinitionOpens(document);
   await assertSemanticTokens(document);
   await assertConfigurableInlayHints(document);
   await assertDiagnosticsTrackEdits(document);
@@ -103,7 +104,10 @@ async function assertSolutionExperience(
     projectPath: project.path,
     workspaceRoot: workspaceFolder.uri.fsPath,
   });
-  await vscode.commands.executeCommand("csls.test");
+  await Promise.all([
+    vscode.commands.executeCommand("csls.test"),
+    vscode.commands.executeCommand("csls.test"),
+  ]);
   assert(typeof api.tests === "function", "The desktop extension must expose discovered tests.");
   assert(
     api.tests().includes("RunsFromVsCode"),
@@ -225,6 +229,42 @@ async function assertDefinition(document: vscode.TextDocument): Promise<void> {
   assert(
     definitionUris.includes(document.uri.toString()),
     `csls must navigate from a type reference to its source definition in VS Code. Received definitions: ${JSON.stringify(definitionUris)}. Diagnostics: ${JSON.stringify(vscode.languages.getDiagnostics(document.uri).map((diagnostic) => diagnostic.message))}.`,
+  );
+}
+
+async function assertFrameworkDefinitionOpens(document: vscode.TextDocument): Promise<void> {
+  await replaceDocumentText(document, 'Console.WriteLine("hello");\n');
+  const definitions = await withTimeout(
+    vscode.commands.executeCommand<readonly (vscode.Location | vscode.LocationLink)[]>(
+      "vscode.executeDefinitionProvider",
+      document.uri,
+      new vscode.Position(0, 2),
+    ),
+    languageFeatureTimeoutMilliseconds,
+    "The VS Code framework definition provider did not complete.",
+  );
+  const definition = definitions.find((candidate) =>
+    ("uri" in candidate ? candidate.uri : candidate.targetUri).scheme === "csharp");
+  assert(
+    definition !== undefined,
+    `csls must return a virtual C# document for framework definitions. Received ${JSON.stringify(
+      definitions.map((candidate) =>
+        ("uri" in candidate ? candidate.uri : candidate.targetUri).toString()),
+    )}.`,
+  );
+  const definitionUri = "uri" in definition ? definition.uri : definition.targetUri;
+  const metadataDocument = await withTimeout(
+    vscode.workspace.openTextDocument(definitionUri),
+    languageFeatureTimeoutMilliseconds,
+    "VS Code could not open the csls framework definition.",
+  );
+  assert(
+    metadataDocument.languageId === "csharp",
+    `The framework definition must use the C# language mode, not ${metadataDocument.languageId}.`,
+  );
+  assert(
+    metadataDocument.getText().includes("class Console"),
+    "The framework definition must contain the System.Console declaration.",
   );
 }
 

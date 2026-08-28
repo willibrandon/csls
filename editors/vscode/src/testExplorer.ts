@@ -15,6 +15,7 @@ export class TestExplorer implements vscode.Disposable {
   private readonly inspector: DotnetProjectInspector;
   private readonly metadata = new Map<string, TestItemMetadata>();
   private readonly parser = new TrxTestResultParser();
+  private operationPromise: Promise<void> = Promise.resolve();
   private refreshPromise: Promise<void> | undefined;
   private refreshTimer: ReturnType<typeof setTimeout> | undefined;
 
@@ -43,7 +44,7 @@ export class TestExplorer implements vscode.Disposable {
       ),
     ];
     const watcher = vscode.workspace.createFileSystemWatcher(
-      "**/*.{cs,csproj,props,targets,json}",
+      "**/{*.cs,*.csproj,*.props,*.targets,global.json}",
     );
     this.disposables.push(
       watcher,
@@ -58,7 +59,9 @@ export class TestExplorer implements vscode.Disposable {
       return this.refreshPromise;
     }
 
-    this.refreshPromise = this.refreshCore(cancellationToken).finally(() => {
+    this.refreshPromise = this.enqueueOperation(
+      () => this.refreshCore(cancellationToken),
+    ).finally(() => {
       this.refreshPromise = undefined;
     });
     return this.refreshPromise;
@@ -266,7 +269,14 @@ export class TestExplorer implements vscode.Disposable {
     );
   }
 
-  private async execute(
+  private execute(
+    request: vscode.TestRunRequest,
+    cancellationToken: vscode.CancellationToken,
+  ): Promise<number> {
+    return this.enqueueOperation(() => this.executeCore(request, cancellationToken));
+  }
+
+  private async executeCore(
     request: vscode.TestRunRequest,
     cancellationToken: vscode.CancellationToken,
   ): Promise<number> {
@@ -405,6 +415,15 @@ export class TestExplorer implements vscode.Disposable {
     }
 
     return selected;
+  }
+
+  private enqueueOperation<TResult>(operation: () => Promise<TResult>): Promise<TResult> {
+    const result = this.operationPromise.then(operation, operation);
+    this.operationPromise = result.then(
+      () => undefined,
+      () => undefined,
+    );
+    return result;
   }
 
   private scheduleRefresh(): void {

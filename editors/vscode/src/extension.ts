@@ -8,6 +8,7 @@ import {
   type ServerOptions,
   State,
 } from "vscode-languageclient/node";
+import { registerCSharpVirtualDocumentProvider } from "./csharpVirtualDocumentProvider.js";
 import { DebuggerProvider } from "./debuggerProvider.js";
 import { WorkspaceExperience } from "./workspaceExperience.js";
 
@@ -77,6 +78,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<CslsEx
     outputChannel,
   );
   workspaceExperience = new WorkspaceExperience(sdkPath, outputChannel);
+  registerCSharpVirtualDocumentProvider(context, () => client);
   context.subscriptions.push(
     vscode.commands.registerCommand("csls.restartServer", restartServer),
     vscode.commands.registerCommand("csls.showOutput", () => outputChannel?.show()),
@@ -221,6 +223,7 @@ function createLanguageClient(
     },
     documentSelector: [
       { language: "csharp", scheme: "file" },
+      { language: "csharp", scheme: "csharp" },
       { language: "razor", scheme: "file" },
     ],
     outputChannel,
