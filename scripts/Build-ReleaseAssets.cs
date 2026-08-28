@@ -116,7 +116,8 @@ try
                 publishPath,
                 version,
                 runtimeIdentifier).ConfigureAwait(false);
-            if (string.Equals(packageId, "csls", StringComparison.Ordinal))
+            if (string.Equals(packageId, "csls", StringComparison.Ordinal) &&
+                !string.Equals(runtimeIdentifier, "win-x86", StringComparison.Ordinal))
             {
                 await BuildVsCodeExtensionAsync(
                     repositoryRoot,
@@ -168,7 +169,6 @@ static async Task BuildVsCodeExtensionAsync(
     {
         "win-x64" => "win32-x64",
         "win-arm64" => "win32-arm64",
-        "win-x86" => "win32-ia32",
         "linux-x64" => "linux-x64",
         "linux-arm64" => "linux-arm64",
         "linux-musl-x64" => "alpine-x64",

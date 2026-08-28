@@ -57,6 +57,8 @@ from the hashes of those archives. The same release also publishes multi-platfor
 
 The VS Code release includes native extension packages for every supported editor
 platform and a separate web package containing the WebAssembly language server.
+Stable releases publish the same verified packages to Visual Studio Marketplace
+and Open VSX.
 
 ## Verify a download
 

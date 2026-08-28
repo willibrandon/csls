@@ -10,6 +10,7 @@
 using NuGet.Versioning;
 using System.ComponentModel;
 using System.Diagnostics;
+using System.IO.Compression;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 
@@ -59,7 +60,6 @@ string[] supportedTargets =
 [
     "win32-x64",
     "win32-arm64",
-    "win32-ia32",
     "linux-x64",
     "linux-arm64",
     "alpine-x64",
@@ -79,6 +79,8 @@ if (version is null ||
 {
     return await WriteUsageErrorAsync().ConfigureAwait(false);
 }
+
+string extensionVersion = parsedVersion.Version.ToString(3);
 
 try
 {
@@ -148,7 +150,7 @@ try
         CopyRequiredFile(extensionSource, stagingPath, "media", "icon.png");
         await PreparePackageManifestAsync(
             Path.Join(stagingPath, "package.json"),
-            version,
+            extensionVersion,
             isWebTarget).ConfigureAwait(false);
 
         string vscePath = Path.Join(
@@ -157,18 +159,22 @@ try
             "@vscode",
             "vsce",
             "vsce");
-        await RunCheckedAsync(
-            "node",
-            [
-                vscePath,
-                "package",
-                "--no-dependencies",
-                "--target",
-                target,
-                "--out",
-                outputPath
-            ],
-            stagingPath).ConfigureAwait(false);
+        List<string> packageArguments =
+        [
+            vscePath,
+            "package",
+            "--no-dependencies",
+            "--target",
+            target,
+            "--out",
+            outputPath
+        ];
+        if (parsedVersion.IsPrerelease)
+        {
+            packageArguments.Add("--pre-release");
+        }
+
+        await RunCheckedAsync("node", packageArguments, stagingPath).ConfigureAwait(false);
     }
     finally
     {
@@ -179,6 +185,8 @@ try
     {
         throw new InvalidDataException($"The VS Code extension was not produced: {outputPath}");
     }
+
+    await VerifyPackageAsync(outputPath, extensionVersion, isWebTarget).ConfigureAwait(false);
 
     await Console.Out.WriteLineAsync(outputPath).ConfigureAwait(false);
     return 0;
@@ -312,9 +320,10 @@ static async Task PreparePackageManifestAsync(
     if (isWebTarget)
     {
         package.AsObject().Remove("main");
-        package.AsObject().Remove("extensionPack");
+        package.AsObject().Remove("extensionDependencies");
         package.AsObject().Remove("x-dotnet-acquire");
         package["engines"]?.AsObject().Remove("node");
+        package["contributes"]?.AsObject().Remove("debuggers");
         package["contributes"]?["configuration"]?["properties"]
             ?.AsObject()
             .Remove("csls.server.path");
@@ -331,6 +340,146 @@ static async Task PreparePackageManifestAsync(
 }
 
 static string ResolveNpmExecutable() => OperatingSystem.IsWindows() ? "npm.cmd" : "npm";
+
+static async Task VerifyPackageAsync(
+    string packagePath,
+    string version,
+    bool isWebTarget)
+{
+    using ZipArchive archive = await ZipFile.OpenReadAsync(
+        packagePath,
+        CancellationToken.None).ConfigureAwait(false);
+    ZipArchiveEntry manifestEntry = archive.GetEntry("extension/package.json")
+        ?? throw new InvalidDataException("The VS Code package does not contain its manifest.");
+    using Stream manifestStream = await manifestEntry.OpenAsync(
+        CancellationToken.None).ConfigureAwait(false);
+    using JsonDocument manifest = await JsonDocument.ParseAsync(manifestStream).ConfigureAwait(false);
+    JsonElement root = manifest.RootElement;
+    RequireJsonString(root, "version", version);
+    RequireJsonString(
+        root,
+        isWebTarget ? "browser" : "main",
+        isWebTarget ? "./dist/browserExtension.cjs" : "./dist/extension.cjs");
+    RejectJsonProperty(root, isWebTarget ? "main" : "browser");
+    RejectJsonProperty(root, "scripts");
+    RejectJsonProperty(root, "devDependencies");
+
+    JsonElement contributes = RequireJsonObject(root, "contributes");
+    if (isWebTarget)
+    {
+        RejectJsonProperty(root, "extensionDependencies");
+        RejectJsonProperty(root, "x-dotnet-acquire");
+        RejectJsonProperty(RequireJsonObject(root, "engines"), "node");
+        RejectJsonProperty(contributes, "debuggers");
+        JsonElement properties = RequireJsonObject(
+            RequireJsonObject(contributes, "configuration"),
+            "properties");
+        RejectJsonProperty(properties, "csls.server.path");
+        RequireArchiveEntry(archive, "extension/dist/browserExtension.cjs");
+        RequireArchiveEntry(archive, "extension/dist/browserServer/cslsBrowserWorker.js");
+        RequireArchiveMatch(archive, "extension/dist/browserServer/_framework/", ".wasm");
+        RejectArchiveEntry(archive, "extension/dist/extension.cjs");
+        RejectArchivePrefix(archive, "extension/server/");
+    }
+    else
+    {
+        RequireJsonProperty(root, "extensionDependencies");
+        RequireJsonProperty(root, "x-dotnet-acquire");
+        RequireJsonProperty(contributes, "debuggers");
+        RejectJsonProperty(RequireJsonObject(root, "capabilities"), "virtualWorkspaces");
+        RequireArchiveEntry(archive, "extension/dist/extension.cjs");
+        RequireArchiveMatch(archive, "extension/server/", "csls");
+        RequireArchiveEntry(archive, "extension/server/workers/server/csls-worker.dll");
+        RejectArchiveEntry(archive, "extension/dist/browserExtension.cjs");
+        RejectArchivePrefix(archive, "extension/dist/browserServer/");
+    }
+}
+
+static JsonElement RequireJsonObject(JsonElement parent, string propertyName)
+{
+    if (!parent.TryGetProperty(propertyName, out JsonElement value) ||
+        value.ValueKind is not JsonValueKind.Object)
+    {
+        throw new InvalidDataException(
+            $"The VS Code package manifest is missing object property '{propertyName}'.");
+    }
+
+    return value;
+}
+
+static void RequireJsonProperty(JsonElement parent, string propertyName)
+{
+    if (!parent.TryGetProperty(propertyName, out _))
+    {
+        throw new InvalidDataException(
+            $"The VS Code package manifest is missing property '{propertyName}'.");
+    }
+}
+
+static void RequireJsonString(
+    JsonElement parent,
+    string propertyName,
+    string expectedValue)
+{
+    if (!parent.TryGetProperty(propertyName, out JsonElement value) ||
+        value.ValueKind is not JsonValueKind.String ||
+        !string.Equals(value.GetString(), expectedValue, StringComparison.Ordinal))
+    {
+        throw new InvalidDataException(
+            $"The VS Code package manifest property '{propertyName}' is invalid.");
+    }
+}
+
+static void RejectJsonProperty(JsonElement parent, string propertyName)
+{
+    if (parent.TryGetProperty(propertyName, out _))
+    {
+        throw new InvalidDataException(
+            $"The VS Code package manifest contains unsupported property '{propertyName}'.");
+    }
+}
+
+static void RequireArchiveEntry(ZipArchive archive, string entryName)
+{
+    if (archive.GetEntry(entryName) is null)
+    {
+        throw new InvalidDataException(
+            $"The VS Code package is missing required entry '{entryName}'.");
+    }
+}
+
+static void RequireArchiveMatch(
+    ZipArchive archive,
+    string prefix,
+    string value)
+{
+    if (!archive.Entries.Any(entry =>
+        entry.FullName.StartsWith(prefix, StringComparison.Ordinal) &&
+        entry.FullName.Contains(value, StringComparison.Ordinal)))
+    {
+        throw new InvalidDataException(
+            $"The VS Code package has no entry matching '{prefix}*{value}*'.");
+    }
+}
+
+static void RejectArchiveEntry(ZipArchive archive, string entryName)
+{
+    if (archive.GetEntry(entryName) is not null)
+    {
+        throw new InvalidDataException(
+            $"The VS Code package contains unsupported entry '{entryName}'.");
+    }
+}
+
+static void RejectArchivePrefix(ZipArchive archive, string prefix)
+{
+    if (archive.Entries.Any(entry =>
+        entry.FullName.StartsWith(prefix, StringComparison.Ordinal)))
+    {
+        throw new InvalidDataException(
+            $"The VS Code package contains unsupported entries under '{prefix}'.");
+    }
+}
 
 static async Task RunCheckedAsync(
     string executablePath,

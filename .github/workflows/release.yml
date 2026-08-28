@@ -467,11 +467,40 @@ jobs:
         with:
           dotnet-version: 10.0.400
 
+      - name: Set up Node.js
+        if: needs.prepare.outputs.prerelease == 'false'
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24.19.0
+
+      - name: Authenticate to Visual Studio Marketplace
+        if: needs.prepare.outputs.prerelease == 'false'
+        uses: azure/login@0949e32778441b2c442592b7a0e6313466dc8f29 # v3.0.2
+        with:
+          client-id: ${{ secrets.VS_MARKETPLACE_CLIENT_ID }}
+          tenant-id: ${{ secrets.VS_MARKETPLACE_TENANT_ID }}
+          allow-no-subscriptions: true
+
       - name: Download complete release
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: release-final
           path: artifacts/release-final
+
+      - name: Install editor publishers
+        if: needs.prepare.outputs.prerelease == 'false'
+        run: npm ci --ignore-scripts --prefix editors/vscode
+
+      - name: Verify editor publication access
+        if: needs.prepare.outputs.prerelease == 'false'
+        env:
+          CSLS_VSCE_AZURE_CREDENTIAL: true
+          OVSX_PAT: ${{ secrets.OVSX_PAT }}
+        run: >-
+          dotnet run --file scripts/Publish-VsCodeExtension.cs --
+          --version "${{ needs.prepare.outputs.version }}"
+          --packages artifacts/release-final/public
+          --verify-only true
 
       - name: Authenticate to NuGet
         id: nuget
@@ -484,6 +513,16 @@ jobs:
           NUGET_API_KEY: ${{ steps.nuget.outputs.NUGET_API_KEY }}
         run: >-
           dotnet run --file scripts/Publish-NuGet.cs --
+          --packages artifacts/release-final/public
+
+      - name: Publish Visual Studio Code extension
+        if: needs.prepare.outputs.prerelease == 'false'
+        env:
+          CSLS_VSCE_AZURE_CREDENTIAL: true
+          OVSX_PAT: ${{ secrets.OVSX_PAT }}
+        run: >-
+          dotnet run --file scripts/Publish-VsCodeExtension.cs --
+          --version "${{ needs.prepare.outputs.version }}"
           --packages artifacts/release-final/public
 
       - name: Publish GitHub release

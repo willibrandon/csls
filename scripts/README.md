@@ -34,6 +34,7 @@ supports `--help`.
 | `Publish-ContainerTags.cs` | Advances stable container tags to verified image digests. |
 | `Publish-GitHubRelease.cs` | Creates or updates a tagged GitHub release with verified assets. |
 | `Publish-NuGet.cs` | Publishes the complete NuGet package set with a short-lived credential. |
+| `Publish-VsCodeExtension.cs` | Publishes the verified platform and web VSIX set to Visual Studio Marketplace and Open VSX. |
 | `Run-Benchmarks.cs` | Builds and runs the BenchmarkDotNet suite. |
 | `Run-EndToEndPerformance.cs` | Publishes both Native AOT tools and measures real LSP, MCP, CLI, dashboard, and process-resource workloads. |
 | `Select-DevContainerValidation.cs` | Selects full container validation when a pull request changes its inputs. |

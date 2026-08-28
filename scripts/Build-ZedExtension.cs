@@ -373,6 +373,11 @@ static void VerifyPackage(string packagePath, string version)
             packagePath,
             "languages",
             "csproj",
+            "tasks.json")) ||
+        !File.Exists(Path.Join(
+            packagePath,
+            "languages",
+            "slnf",
             "tasks.json")))
     {
         throw new InvalidDataException("The Zed extension package is incomplete.");
