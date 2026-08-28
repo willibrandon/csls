@@ -96,11 +96,16 @@ try
 
     await RunCheckedAsync(
         "git",
-        ["clone", "--shared", "--no-checkout", repositoryRoot, baselineSourcePath],
-        repositoryParent).ConfigureAwait(false);
-    await RunCheckedAsync(
-        "git",
-        ["-C", baselineSourcePath, "remote", "set-url", "origin", originUrl],
+        [
+            "clone",
+            "--no-checkout",
+            "--depth",
+            "1",
+            "--branch",
+            baseBranch,
+            originUrl,
+            baselineSourcePath
+        ],
         repositoryParent).ConfigureAwait(false);
     await RunCheckedAsync(
         "git",
@@ -231,7 +236,6 @@ finally
     {
         Directory.Delete(baselineSourcePath, recursive: true);
     }
-
 }
 
 static HashSet<string> FindRegressions(
