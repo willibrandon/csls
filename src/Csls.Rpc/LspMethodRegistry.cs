@@ -86,12 +86,14 @@ public static class LspMethodRegistry
             rpc,
             "textDocument/diagnostic",
             new Func<DocumentDiagnosticParams, CancellationToken, Task<DocumentDiagnosticReport>>(
-                target.DocumentDiagnosticAsync));
+                (parameters, cancellationToken) => InvokeWithLspErrorsAsync(
+                    () => target.DocumentDiagnosticAsync(parameters, cancellationToken))));
         AddParameterObjectMethod(
             rpc,
             "workspace/diagnostic",
             new Func<WorkspaceDiagnosticParams, CancellationToken, Task<WorkspaceDiagnosticReport>>(
-                target.WorkspaceDiagnosticAsync));
+                (parameters, cancellationToken) => InvokeWithLspErrorsAsync(
+                    () => target.WorkspaceDiagnosticAsync(parameters, cancellationToken))));
         AddParameterObjectMethod(
             rpc,
             "textDocument/completion",
@@ -281,5 +283,22 @@ public static class LspMethodRegistry
             handler.Target ?? throw new InvalidOperationException(
                 $"LSP method {methodName} requires an instance target."),
             attribute);
+    }
+
+    private static async Task<TResult> InvokeWithLspErrorsAsync<TResult>(
+        Func<Task<TResult>> operation)
+    {
+        try
+        {
+            return await operation().ConfigureAwait(false);
+        }
+        catch (LspServerCancelledException exception)
+        {
+            throw new LocalRpcException(exception.Message, exception)
+            {
+                ErrorCode = LspServerCancelledException.ErrorCode,
+                ErrorData = exception.CancellationData
+            };
+        }
     }
 }

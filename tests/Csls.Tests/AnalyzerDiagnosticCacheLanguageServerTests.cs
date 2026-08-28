@@ -1,6 +1,7 @@
 using Csls.Control;
 using Csls.Control.Contracts;
 using Csls.Protocol;
+using StreamJsonRpc;
 using System.Runtime.CompilerServices;
 
 namespace Csls.Tests;
@@ -170,6 +171,101 @@ public sealed class AnalyzerDiagnosticCacheLanguageServerTests
         }
     }
 
+    /// <summary>
+    /// Returns the LSP server-cancelled error when a diagnostic snapshot becomes stale.
+    /// </summary>
+    [TestMethod]
+    public async Task StalePullDiagnosticReturnsServerCancelledError()
+    {
+        string repositoryRoot = EditorToolResolver.FindRepositoryRoot();
+        string workerPath = Path.Join(
+            EditorToolResolver.ResolveArtifactsRoot(repositoryRoot),
+            "bin",
+            "Csls.Worker",
+            "debug",
+            "csls-worker.dll");
+        Assert.IsTrue(File.Exists(workerPath), $"Worker not found at {workerPath}.");
+        AnalyzerExecutionProbeFixture fixture = await AnalyzerExecutionProbeFixture.CreateAsync(
+            repositoryRoot,
+            TestContext.CancellationToken).ConfigureAwait(false);
+        await using ConfiguredAsyncDisposable fixtureCleanup = fixture.ConfigureAwait(false);
+        var lsp = LspProcessSession.Start(
+            "csls-stale-diagnostic-worker",
+            EditorToolResolver.ResolveDotNetHost(),
+            [workerPath],
+            fixture.RootPath);
+        await using ConfiguredAsyncDisposable lspCleanup = lsp.ConfigureAwait(false);
+        await lsp.InitializeAsync(
+            fixture.RootPath,
+            TestContext.CancellationToken).ConfigureAwait(false);
+        await lsp.OpenDocumentAsync(
+            fixture.DocumentPaths[0],
+            fixture.DocumentTexts[0]).ConfigureAwait(false);
+
+        var controlClient = new ControlRpcClient(ControlEndpoint.GetSocketPath(lsp.ProcessId));
+        await using ConfiguredAsyncDisposable controlCleanup =
+            controlClient.ConfigureAwait(false);
+        ControlSessionInfo initialSession = await controlClient.GetSessionAsync(
+            TestContext.CancellationToken).ConfigureAwait(false);
+        bool analyzerReleased = false;
+        try
+        {
+            Task<DocumentDiagnosticReport> diagnosticRequest = lsp.RequestDiagnosticsAsync(
+                fixture.DocumentPaths[0],
+                previousResultId: null,
+                TestContext.CancellationToken);
+            await FileTextWaiter.WaitAsync(
+                fixture.MarkerPath,
+                "started",
+                TimeSpan.FromSeconds(60),
+                TestContext.CancellationToken).ConfigureAwait(false);
+            await lsp.ChangeDocumentAsync(
+                fixture.DocumentPaths[0],
+                version: 2,
+                [
+                    new TextDocumentContentChangeEvent
+                    {
+                        Text = AnalyzerExecutionProbeFixture.UpdatedFirstDocumentText
+                    }
+                ]).ConfigureAwait(false);
+            await WaitForGenerationAsync(
+                controlClient,
+                initialSession.WorkspaceGeneration + 1,
+                TestContext.CancellationToken).ConfigureAwait(false);
+            await fixture.ReleaseAsync(TestContext.CancellationToken).ConfigureAwait(false);
+            analyzerReleased = true;
+
+            RemoteInvocationException? cancellation = null;
+            try
+            {
+                await diagnosticRequest.ConfigureAwait(false);
+            }
+            catch (RemoteInvocationException exception)
+            {
+                cancellation = exception;
+            }
+
+            Assert.IsNotNull(cancellation);
+            Assert.AreEqual(typeof(RemoteInvocationException), cancellation.GetType());
+            Assert.AreEqual(LspServerCancelledException.ErrorCode, cancellation.ErrorCode);
+            Assert.Contains(
+                "workspace changed",
+                cancellation.Message,
+                StringComparison.OrdinalIgnoreCase);
+
+            string diagnostics = await lsp.ShutdownAsync(
+                TestContext.CancellationToken).ConfigureAwait(false);
+            Assert.DoesNotContain("Unhandled exception", diagnostics, StringComparison.Ordinal);
+        }
+        finally
+        {
+            if (!analyzerReleased)
+            {
+                await fixture.ReleaseAsync(CancellationToken.None).ConfigureAwait(false);
+            }
+        }
+    }
+
     private static void AssertDiagnosticReport(DocumentDiagnosticReport report)
     {
         Assert.AreEqual("full", report.Kind);
@@ -179,5 +275,27 @@ public sealed class AnalyzerDiagnosticCacheLanguageServerTests
         Assert.Contains(
             "CSLSTEST002",
             diagnostics.Select(static diagnostic => diagnostic.Code));
+    }
+
+    private static async Task WaitForGenerationAsync(
+        ControlRpcClient client,
+        long expectedGeneration,
+        CancellationToken cancellationToken)
+    {
+        using var timeoutSource = CancellationTokenSource.CreateLinkedTokenSource(
+            cancellationToken);
+        timeoutSource.CancelAfter(TimeSpan.FromSeconds(60));
+        while (true)
+        {
+            ControlSessionInfo session = await client.GetSessionAsync(timeoutSource.Token)
+                .ConfigureAwait(false);
+            if (session.WorkspaceGeneration >= expectedGeneration)
+            {
+                return;
+            }
+
+            await Task.Delay(TimeSpan.FromMilliseconds(25), timeoutSource.Token)
+                .ConfigureAwait(false);
+        }
     }
 }
