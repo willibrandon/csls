@@ -286,13 +286,11 @@ public sealed class NeovimLanguageServerTests
                             TimeSpan.FromSeconds(60),
                             TestContext.CancellationToken).ConfigureAwait(false)).ProcessId;
 
-                        await automator.TypeAsync("M", TestContext.CancellationToken)
-                            .ConfigureAwait(false);
-                        await FileTextWaiter.WaitAsync(
+                        string moveStatus = await FileTextWaiter.WaitForContentsAsync(
                             appliedPath,
-                            "applied",
                             TimeSpan.FromSeconds(60),
                             TestContext.CancellationToken).ConfigureAwait(false);
+                        Assert.AreEqual("applied", moveStatus.Trim());
 
                         await automator.TypeAsync(":qa!", TestContext.CancellationToken)
                             .ConfigureAwait(false);
@@ -456,26 +454,25 @@ public sealed class NeovimLanguageServerTests
               end
               request_action()
             end
-            local move_applied = false
             local function persist_move()
-              if move_applied then
-                return
-              end
               vim.cmd('silent wall')
-              if vim.fn.filereadable({{ToLuaString(targetPath)}}) ~= 1 then
-                vim.defer_fn(persist_move, 50)
-                return
-              end
+              local target_readable = vim.fn.filereadable({{ToLuaString(targetPath)}})
               local source_text = table.concat(
                 vim.fn.readfile({{ToLuaString(documentPath)}}), '\n')
-              local target_text = table.concat(
-                vim.fn.readfile({{ToLuaString(targetPath)}}), '\n')
-              if string.find(source_text, 'class Helper', 1, true) or
-                  not string.find(target_text, 'class Helper', 1, true) then
-                vim.defer_fn(persist_move, 50)
+              local target_text = target_readable == 1 and table.concat(
+                vim.fn.readfile({{ToLuaString(targetPath)}}), '\n') or ''
+              local source_has_helper = string.find(
+                source_text, 'class Helper', 1, true) ~= nil
+              local target_has_helper = string.find(
+                target_text, 'class Helper', 1, true) ~= nil
+              if target_readable ~= 1 or source_has_helper or not target_has_helper then
+                vim.fn.writefile({ string.format(
+                  'failed: target_readable=%d source_has_helper=%s target_has_helper=%s',
+                  target_readable,
+                  tostring(source_has_helper),
+                  tostring(target_has_helper)) }, {{ToLuaString(appliedPath)}})
                 return
               end
-              move_applied = true
               vim.fn.writefile({ 'applied' }, {{ToLuaString(appliedPath)}})
             end
             vim.api.nvim_create_autocmd('LspAttach', {
@@ -484,11 +481,18 @@ public sealed class NeovimLanguageServerTests
                 if client and client.name == 'csls' then
                   when_workspace_ready(client, args.buf, function()
                     when_move_action_ready(client, args.buf, function(action)
-                      vim.keymap.set('n', 'M', function()
-                        vim.lsp.util.apply_workspace_edit(action.edit, client.offset_encoding)
-                        persist_move()
-                      end, { buffer = args.buf })
                       vim.fn.writefile({ 'ready' }, {{ToLuaString(readyPath)}})
+                      local ok, error_message = pcall(function()
+                        vim.lsp.util.apply_workspace_edit(
+                          action.edit,
+                          client.offset_encoding)
+                        persist_move()
+                      end)
+                      if not ok then
+                        vim.fn.writefile(
+                          { 'failed: ' .. tostring(error_message) },
+                          {{ToLuaString(appliedPath)}})
+                      end
                     end)
                   end)
                 end

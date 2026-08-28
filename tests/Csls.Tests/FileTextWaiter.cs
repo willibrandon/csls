@@ -56,6 +56,56 @@ internal static class FileTextWaiter
         }
     }
 
+    /// <summary>
+    /// Waits until a shared file contains nonempty text and returns it.
+    /// </summary>
+    internal static async Task<string> WaitForContentsAsync(
+        string path,
+        TimeSpan timeout,
+        CancellationToken cancellationToken)
+    {
+        string directoryPath = Path.GetDirectoryName(path)
+            ?? throw new InvalidOperationException("The observed file has no parent directory.");
+        using var timeoutSource = CancellationTokenSource.CreateLinkedTokenSource(
+            cancellationToken);
+        timeoutSource.CancelAfter(timeout);
+        var completion = new TaskCompletionSource<string>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        using var watcher = new FileSystemWatcher(directoryPath, Path.GetFileName(path))
+        {
+            NotifyFilter = NotifyFilters.CreationTime |
+                NotifyFilters.LastWrite |
+                NotifyFilters.Size
+        };
+        FileSystemEventHandler changedHandler = (_, _) =>
+        {
+            string? contents = ReadNonEmpty(path);
+            if (contents is not null)
+            {
+                completion.TrySetResult(contents);
+            }
+        };
+        watcher.Changed += changedHandler;
+        watcher.Created += changedHandler;
+        watcher.EnableRaisingEvents = true;
+        string? initialContents = ReadNonEmpty(path);
+        if (initialContents is not null)
+        {
+            completion.TrySetResult(initialContents);
+        }
+
+        try
+        {
+            return await completion.Task.WaitAsync(timeoutSource.Token).ConfigureAwait(false);
+        }
+        finally
+        {
+            watcher.EnableRaisingEvents = false;
+            watcher.Changed -= changedHandler;
+            watcher.Created -= changedHandler;
+        }
+    }
+
     private static bool Contains(string path, string expectedText)
     {
         try
@@ -75,6 +125,28 @@ internal static class FileTextWaiter
         catch (IOException)
         {
             return false;
+        }
+    }
+
+    private static string? ReadNonEmpty(string path)
+    {
+        try
+        {
+            using FileStream stream = new(
+                path,
+                FileMode.Open,
+                FileAccess.Read,
+                FileShare.ReadWrite | FileShare.Delete);
+            using var reader = new StreamReader(
+                stream,
+                Encoding.UTF8,
+                detectEncodingFromByteOrderMarks: true);
+            string contents = reader.ReadToEnd();
+            return string.IsNullOrWhiteSpace(contents) ? null : contents;
+        }
+        catch (IOException)
+        {
+            return null;
         }
     }
 }
