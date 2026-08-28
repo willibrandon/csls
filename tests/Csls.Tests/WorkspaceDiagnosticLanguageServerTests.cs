@@ -135,11 +135,26 @@ public sealed class WorkspaceDiagnosticLanguageServerTests
             Assert.DoesNotContain("CS0103", GetCodes(updatedCoreReport));
             Assert.Contains("CS0103", GetCodes(updatedByPath[razorDocumentPath]));
             Assert.AreNotEqual(coreReport.ResultId, updatedCoreReport.ResultId);
+            WorkspaceDocumentDiagnosticReport updatedWebReport =
+                updatedByPath[webDocumentPath];
+            Assert.AreEqual("full", updatedWebReport.Kind);
+            Assert.AreNotEqual(webReport.ResultId, updatedWebReport.ResultId);
             WorkspaceDocumentDiagnosticReport updatedToolsReport =
                 updatedByPath[toolsDocumentPath];
             Assert.AreEqual("unchanged", updatedToolsReport.Kind);
             Assert.AreEqual(toolsReport.ResultId, updatedToolsReport.ResultId);
             Assert.IsNull(updatedToolsReport.Items);
+
+            WorkspaceDiagnosticReport settled = await lsp.RequestWorkspaceDiagnosticsAsync(
+                CreatePreviousResults(updated),
+                partialResultToken: null,
+                TestContext.CancellationToken).ConfigureAwait(false);
+            Assert.HasCount(4, settled.Items);
+            foreach (WorkspaceDocumentDiagnosticReport report in settled.Items)
+            {
+                Assert.AreEqual("unchanged", report.Kind);
+                Assert.IsNull(report.Items);
+            }
 
             using var invalidTokenDocument = JsonDocument.Parse("true");
             RemoteInvocationException invalidToken =
