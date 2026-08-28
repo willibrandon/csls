@@ -596,8 +596,9 @@ public sealed partial class LanguageServer : ILspRpcTarget, IAsyncDisposable
                     .ConfigureAwait(false);
                 if (_workspaceManager.Generation != context.WorkspaceGeneration)
                 {
-                    throw new InvalidOperationException(
-                        "The workspace changed while diagnostics were being computed.");
+                    throw new LspServerCancelledException(
+                        "The workspace changed while diagnostics were being computed.",
+                        retriggerRequest: true);
                 }
 
                 return report;
@@ -661,8 +662,9 @@ public sealed partial class LanguageServer : ILspRpcTarget, IAsyncDisposable
                     .ConfigureAwait(false);
                 if (_workspaceManager.Generation != context.WorkspaceGeneration)
                 {
-                    throw new InvalidOperationException(
-                        "The workspace changed while diagnostics were being computed.");
+                    throw new LspServerCancelledException(
+                        "The workspace changed while diagnostics were being computed.",
+                        retriggerRequest: true);
                 }
 
                 if (parameters.PartialResultToken is JsonElement partialResultToken)

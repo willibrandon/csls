@@ -45,6 +45,7 @@ namespace Csls.Protocol;
 [JsonSerializable(typeof(CodeActionParams))]
 [JsonSerializable(typeof(Diagnostic))]
 [JsonSerializable(typeof(DiagnosticOptions))]
+[JsonSerializable(typeof(DiagnosticServerCancellationData))]
 [JsonSerializable(typeof(DiagnosticSeverity))]
 [JsonSerializable(typeof(DiagnosticTag))]
 [JsonSerializable(typeof(DeleteFilesParams))]
