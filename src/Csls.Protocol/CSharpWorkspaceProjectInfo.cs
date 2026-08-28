@@ -1,9 +1,9 @@
-namespace Csls.Control.Contracts;
+namespace Csls.Protocol;
 
 /// <summary>
-/// Describes one loaded Roslyn project exposed by the control protocol.
+/// Describes one loaded Roslyn project for an editor client.
 /// </summary>
-public sealed class ControlProjectInfo
+public sealed class CSharpWorkspaceProjectInfo
 {
     /// <summary>
     /// Gets the stable Roslyn project identifier.
@@ -36,17 +36,12 @@ public sealed class ControlProjectInfo
     public int DocumentCount { get; init; }
 
     /// <summary>
-    /// Gets the number of configured analyzer references.
-    /// </summary>
-    public int AnalyzerReferenceCount { get; init; }
-
-    /// <summary>
-    /// Gets the configured analyzer assembly paths in stable order.
+    /// Gets configured analyzer assembly paths in stable order.
     /// </summary>
     public required IReadOnlyList<string> AnalyzerPaths { get; init; }
 
     /// <summary>
-    /// Gets the stable identifiers of referenced projects in deterministic order.
+    /// Gets stable identifiers of referenced projects in deterministic order.
     /// </summary>
     public required IReadOnlyList<string> ProjectReferenceIds { get; init; }
 }

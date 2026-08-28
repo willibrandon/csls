@@ -46,6 +46,21 @@ public interface ILspRpcTarget
     Task<CSharpDebugInfo> GetDebugInfoAsync(CancellationToken cancellationToken);
 
     /// <summary>
+    /// Gets the current loaded workspace hierarchy for an editor client.
+    /// </summary>
+    /// <param name="cancellationToken">The peer cancellation token.</param>
+    /// <returns>The current workspace, project, and document hierarchy.</returns>
+    Task<CSharpWorkspaceInfo> GetWorkspaceInfoAsync(CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Restores and reloads every workspace entry point for an editor client.
+    /// </summary>
+    /// <param name="cancellationToken">The peer cancellation token.</param>
+    /// <returns>The completed workspace operation.</returns>
+    Task<CSharpWorkspaceOperationInfo> RestoreWorkspaceForClientAsync(
+        CancellationToken cancellationToken);
+
+    /// <summary>
     /// Applies pushed settings or refreshes settings through client configuration pull.
     /// </summary>
     /// <param name="parameters">The client configuration change payload.</param>

@@ -79,6 +79,9 @@ public sealed class VsCodeWebLanguageServerTests
         Assert.IsTrue(
             File.Exists(suitePath),
             "Build the VS Code web test suite before running its host tests.");
+        await VsCodeExtensionPackage.GetAsync(
+            repositoryRoot,
+            TestContext.CancellationToken).ConfigureAwait(false);
 
         string fixturePath = Path.Join(
             EditorToolResolver.ResolveArtifactsRoot(repositoryRoot),
@@ -169,6 +172,13 @@ public sealed class VsCodeWebLanguageServerTests
         };
         startInfo.ArgumentList.Add(runnerPath);
         startInfo.Environment["CSLS_VSCODE_WEB_BROWSER"] = browser;
+        startInfo.Environment["CSLS_VSCODE_WEB_PORT"] = browser switch
+        {
+            "chromium" => "3000",
+            "firefox" => "3001",
+            "webkit" => "3002",
+            _ => throw new ArgumentOutOfRangeException(nameof(browser), browser, null)
+        };
         startInfo.Environment["CSLS_VSCODE_WEB_CACHE_PATH"] = Path.Join(
             toolsRoot,
             "vscode-web",

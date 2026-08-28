@@ -297,6 +297,21 @@ internal sealed class BrowserLspDispatcher : IDisposable
                     typeof(CSharpDebugInfo),
                     cancellationToken).ConfigureAwait(false);
                 return;
+            case "$/csharp/workspaceInfo":
+                await SendResultAsync(
+                    requestId,
+                    await _target.GetWorkspaceInfoAsync(cancellationToken).ConfigureAwait(false),
+                    typeof(CSharpWorkspaceInfo),
+                    cancellationToken).ConfigureAwait(false);
+                return;
+            case "$/csharp/workspace/restore":
+                await SendResultAsync(
+                    requestId,
+                    await _target.RestoreWorkspaceForClientAsync(cancellationToken)
+                        .ConfigureAwait(false),
+                    typeof(CSharpWorkspaceOperationInfo),
+                    cancellationToken).ConfigureAwait(false);
+                return;
             case "textDocument/willSaveWaitUntil":
                 await InvokeRequestAsync<WillSaveTextDocumentParams, IReadOnlyList<TextEdit>>(
                     parameters, requestId, _target.WillSaveWaitUntilAsync, cancellationToken)

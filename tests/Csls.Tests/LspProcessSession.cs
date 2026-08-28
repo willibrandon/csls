@@ -848,6 +848,30 @@ internal sealed class LspProcessSession : IAsyncDisposable
             cancellationToken);
 
     /// <summary>
+    /// Requests the current Roslyn workspace structure from the real server process.
+    /// </summary>
+    /// <param name="cancellationToken">The test cancellation token.</param>
+    /// <returns>The current workspace structure.</returns>
+    internal Task<CSharpWorkspaceInfo> RequestWorkspaceInfoAsync(
+        CancellationToken cancellationToken) =>
+        _rpc.InvokeWithParameterObjectAsync<CSharpWorkspaceInfo>(
+            "$/csharp/workspaceInfo",
+            new InitializedParams(),
+            cancellationToken);
+
+    /// <summary>
+    /// Restores and reloads the current Roslyn workspace through the editor protocol.
+    /// </summary>
+    /// <param name="cancellationToken">The test cancellation token.</param>
+    /// <returns>The completed workspace operation.</returns>
+    internal Task<CSharpWorkspaceOperationInfo> RestoreWorkspaceForClientAsync(
+        CancellationToken cancellationToken) =>
+        _rpc.InvokeWithParameterObjectAsync<CSharpWorkspaceOperationInfo>(
+            "$/csharp/workspace/restore",
+            new InitializedParams(),
+            cancellationToken);
+
+    /// <summary>
     /// Requests complete semantic tokens for one test document.
     /// </summary>
     /// <param name="documentPath">The absolute target document path.</param>

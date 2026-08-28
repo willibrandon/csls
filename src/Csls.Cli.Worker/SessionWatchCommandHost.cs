@@ -117,6 +117,7 @@ internal static class SessionWatchCommandHost
         left.ProcessId == right.ProcessId &&
         left.WorkspaceGeneration == right.WorkspaceGeneration &&
         string.Equals(left.LifecycleState, right.LifecycleState, StringComparison.Ordinal) &&
+        string.Equals(left.WorkspacePhase, right.WorkspacePhase, StringComparison.Ordinal) &&
         string.Equals(left.SocketPath, right.SocketPath, StringComparison.Ordinal) &&
         left.WorkspaceRoots.SequenceEqual(right.WorkspaceRoots, StringComparer.Ordinal);
 }

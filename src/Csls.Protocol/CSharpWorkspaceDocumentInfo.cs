@@ -1,9 +1,9 @@
-namespace Csls.Control.Contracts;
+namespace Csls.Protocol;
 
 /// <summary>
-/// Describes one loaded source document exposed by the control protocol.
+/// Describes one loaded source document for an editor client.
 /// </summary>
-public sealed class ControlDocumentInfo
+public sealed class CSharpWorkspaceDocumentInfo
 {
     /// <summary>
     /// Gets the stable Roslyn document identifier.
@@ -21,17 +21,12 @@ public sealed class ControlDocumentInfo
     public string? FilePath { get; init; }
 
     /// <summary>
-    /// Gets the owning project name.
-    /// </summary>
-    public required string ProjectName { get; init; }
-
-    /// <summary>
-    /// Gets the stable identifier of the owning project.
+    /// Gets the stable Roslyn identifier of the owning project.
     /// </summary>
     public required string ProjectId { get; init; }
 
     /// <summary>
-    /// Gets whether the editor currently owns an open overlay for the document.
+    /// Gets whether the editor owns an open overlay for the document.
     /// </summary>
     public bool IsOpen { get; init; }
 }

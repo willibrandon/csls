@@ -73,14 +73,18 @@ public sealed class VsCodeLanguageServerTests
             "vscode-dotnet-runtime",
             "3.1.0",
             platformSpecific: false);
+        string csharpExtensionPath = EditorToolResolver.ResolveVsCodeExtension(
+            repositoryRoot,
+            "vscode-csharp",
+            "2.140.9",
+            platformSpecific: true);
         string? remoteServerRoot = remote
             ? EditorToolResolver.ResolveVsCodeRemoteServerRoot(repositoryRoot)
             : null;
 
         string fixturePath = Path.Join(
-            EditorToolResolver.ResolveArtifactsRoot(repositoryRoot),
-            "v",
-            Guid.NewGuid().ToString("N"));
+            Path.GetTempPath(),
+            $"csls-vscode-{Guid.NewGuid():N}");
         Directory.CreateDirectory(fixturePath);
         try
         {
@@ -89,22 +93,44 @@ public sealed class VsCodeLanguageServerTests
             string extensionsPath = Path.Join(fixturePath, "extensions");
             string remoteDataPath = Path.Join(fixturePath, "remote");
             Directory.CreateDirectory(workspacePath);
+            string testProjectPath = Path.Join(workspacePath, "Tests");
+            Directory.CreateDirectory(testProjectPath);
             Directory.CreateDirectory(userDataPath);
             Directory.CreateDirectory(extensionsPath);
             Directory.CreateDirectory(remoteDataPath);
             string settingsPath = Path.Join(userDataPath, "User", "settings.json");
             Directory.CreateDirectory(Path.GetDirectoryName(settingsPath)!);
+            string debuggerPath = await VsCodeDebuggerFixture.ExtractAsync(
+                csharpExtensionPath,
+                Path.Join(fixturePath, "debugger"),
+                TestContext.CancellationToken).ConfigureAwait(false);
             await File.WriteAllTextAsync(
                 settingsPath,
-                CreateSettingsText(launcherPath),
+                CreateSettingsText(launcherPath, debuggerPath),
                 TestContext.CancellationToken).ConfigureAwait(false);
             await File.WriteAllTextAsync(
                 Path.Join(workspacePath, "Fixture.csproj"),
                 ProjectText,
                 TestContext.CancellationToken).ConfigureAwait(false);
             await File.WriteAllTextAsync(
+                Path.Join(testProjectPath, "Fixture.Tests.csproj"),
+                TestProjectText,
+                TestContext.CancellationToken).ConfigureAwait(false);
+            await File.WriteAllTextAsync(
+                Path.Join(workspacePath, "Fixture.slnx"),
+                SolutionText,
+                TestContext.CancellationToken).ConfigureAwait(false);
+            await File.WriteAllTextAsync(
                 Path.Join(workspacePath, "Program.cs"),
                 DocumentText,
+                TestContext.CancellationToken).ConfigureAwait(false);
+            await File.WriteAllTextAsync(
+                Path.Join(workspacePath, "Calculator.cs"),
+                CalculatorDocumentText,
+                TestContext.CancellationToken).ConfigureAwait(false);
+            await File.WriteAllTextAsync(
+                Path.Join(testProjectPath, "ExampleTests.cs"),
+                TestDocumentText,
                 TestContext.CancellationToken).ConfigureAwait(false);
             string extensionPath = await VsCodeExtensionPackage.GetAsync(
                 repositoryRoot,
@@ -162,11 +188,55 @@ public sealed class VsCodeLanguageServerTests
             <OutputType>Exe</OutputType>
             <TargetFramework>net10.0</TargetFramework>
           </PropertyGroup>
+          <ItemGroup>
+            <Compile Remove="Tests/**/*.cs" />
+          </ItemGroup>
         </Project>
         """;
 
     private const string DocumentText = """
         Console.WriteLine("hello");
+        """;
+
+    private const string CalculatorDocumentText = """
+        public static class Calculator
+        {
+            public static int Add(int left, int right) => left + right;
+        }
+        """;
+
+    private const string SolutionText = """
+        <Solution>
+          <Project Path="Fixture.csproj" />
+          <Project Path="Tests/Fixture.Tests.csproj" />
+        </Solution>
+        """;
+
+    private const string TestDocumentText = """
+        using Microsoft.VisualStudio.TestTools.UnitTesting;
+
+        namespace Fixture.Tests;
+
+        [TestClass]
+        public sealed class ExampleTests
+        {
+            [TestMethod]
+            public void RunsFromVsCode()
+            {
+                Assert.AreEqual(4, global::Calculator.Add(2, 2));
+            }
+        }
+        """;
+
+    private const string TestProjectText = """
+        <Project Sdk="MSTest.Sdk/4.3.3">
+          <PropertyGroup>
+            <TargetFramework>net10.0</TargetFramework>
+          </PropertyGroup>
+          <ItemGroup>
+            <ProjectReference Include="../Fixture.csproj" />
+          </ItemGroup>
+        </Project>
         """;
 
     private async Task RunVsCodeAsync(
@@ -310,9 +380,12 @@ public sealed class VsCodeLanguageServerTests
             ?? throw new InvalidOperationException("The VS Code integration runner did not start.");
     }
 
-    private static string CreateSettingsText(string launcherPath) => $$"""
+    private static string CreateSettingsText(
+        string launcherPath,
+        string debuggerPath) => $$"""
         {
           "chat.disableAIFeatures": true,
+          "csls.debugger.path": {{JsonSerializer.Serialize(debuggerPath)}},
           "csls.server.path": {{JsonSerializer.Serialize(launcherPath)}},
           "telemetry.telemetryLevel": "off",
           "workbench.enableExperiments": false,

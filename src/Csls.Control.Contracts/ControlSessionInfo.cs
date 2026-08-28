@@ -16,6 +16,11 @@ public sealed class ControlSessionInfo
     public required string LifecycleState { get; init; }
 
     /// <summary>
+    /// Gets the current workspace initialization phase.
+    /// </summary>
+    public string? WorkspacePhase { get; init; }
+
+    /// <summary>
     /// Gets the immutable Roslyn workspace generation observed by the control request.
     /// </summary>
     public long WorkspaceGeneration { get; init; }

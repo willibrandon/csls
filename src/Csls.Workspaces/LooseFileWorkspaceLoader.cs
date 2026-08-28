@@ -128,9 +128,12 @@ public sealed class LooseFileWorkspaceLoader : WorkspaceLoader
         CancellationToken cancellationToken)
     {
         bool isSourceFile = File.Exists(rootPath);
+        string? projectFilePath = isSourceFile ? rootPath : FindProjectFile(rootPath);
         string projectName = isSourceFile
             ? Path.GetFileNameWithoutExtension(rootPath)
-            : new DirectoryInfo(rootPath).Name;
+            : projectFilePath is null
+                ? new DirectoryInfo(rootPath).Name
+                : Path.GetFileNameWithoutExtension(projectFilePath);
         var workspace = new AdhocWorkspace();
         try
         {
@@ -141,7 +144,7 @@ public sealed class LooseFileWorkspaceLoader : WorkspaceLoader
                 projectName,
                 projectName,
                 LanguageNames.CSharp,
-                filePath: rootPath,
+                filePath: projectFilePath,
                 parseOptions: new CSharpParseOptions(LanguageVersion.CSharp14),
                 compilationOptions: new CSharpCompilationOptions(
                     OutputKind.DynamicallyLinkedLibrary),
@@ -192,6 +195,18 @@ public sealed class LooseFileWorkspaceLoader : WorkspaceLoader
         return referencePaths
             .Distinct(PathComparer)
             .Select(static path => MetadataReference.CreateFromFile(path));
+    }
+
+    private static string? FindProjectFile(string rootPath)
+    {
+        string[] projectFiles =
+        [
+            .. Directory
+                .EnumerateFiles(rootPath, "*.csproj", SearchOption.TopDirectoryOnly)
+                .Order(PathComparer)
+                .Take(2)
+        ];
+        return projectFiles.Length == 1 ? projectFiles[0] : null;
     }
 
     private static void Dispose(IEnumerable<WorkspaceFolderSnapshot> snapshots)

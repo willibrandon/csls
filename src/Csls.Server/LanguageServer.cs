@@ -79,6 +79,12 @@ public sealed partial class LanguageServer : ILspRpcTarget, IAsyncDisposable
         (ServerLifecycleState)Volatile.Read(ref _lifecycleState);
 
     /// <summary>
+    /// Gets the current workspace initialization phase.
+    /// </summary>
+    public ServerWorkspacePhase WorkspacePhase =>
+        (ServerWorkspacePhase)Volatile.Read(ref _workspacePhase);
+
+    /// <summary>
     /// Gets the token canceled when the client sends the LSP exit notification.
     /// </summary>
     public CancellationToken ExitToken => _exitSource.Token;

@@ -16,6 +16,59 @@ public sealed class WorkspaceManagerTests
     public TestContext TestContext { get; set; } = null!;
 
     /// <summary>
+    /// Uses the synchronized SDK project identity when a loose workspace has one project file.
+    /// </summary>
+    [TestMethod]
+    public async Task LooseWorkspaceUsesSingleProjectIdentity()
+    {
+        string workspacePath = Path.Join(
+            Path.GetTempPath(),
+            $"csls-loose-project-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(workspacePath);
+        try
+        {
+            string projectPath = Path.Join(workspacePath, "Fixture.csproj");
+            string documentPath = Path.Join(workspacePath, "Program.cs");
+            await File.WriteAllTextAsync(
+                projectPath,
+                "<Project Sdk=\"Microsoft.NET.Sdk\" />",
+                TestContext.CancellationToken).ConfigureAwait(false);
+            await File.WriteAllTextAsync(
+                documentPath,
+                "public sealed class Program;",
+                TestContext.CancellationToken).ConfigureAwait(false);
+
+            string trustedPlatformAssemblies = AppContext.GetData(
+                "TRUSTED_PLATFORM_ASSEMBLIES") as string
+                ?? throw new InvalidOperationException(
+                    "The test host did not provide trusted platform assemblies.");
+            var loader = new LooseFileWorkspaceLoader(trustedPlatformAssemblies.Split(
+                Path.PathSeparator,
+                StringSplitOptions.RemoveEmptyEntries));
+            WorkspaceFolderSnapshot snapshot = Assert.ContainsSingle(await loader.LoadAsync(
+                [workspacePath],
+                "Debug",
+                progress: null,
+                TestContext.CancellationToken).ConfigureAwait(false));
+            using (snapshot.Workspace)
+            {
+                Microsoft.CodeAnalysis.Project project = Assert.ContainsSingle(
+                    snapshot.Solution.Projects);
+                Assert.AreEqual("Fixture", project.Name);
+                Assert.AreEqual(projectPath, project.FilePath);
+                Assert.AreEqual(
+                    documentPath,
+                    Assert.ContainsSingle(project.Documents.Where(
+                        static document => document.FilePath is not null)).FilePath);
+            }
+        }
+        finally
+        {
+            Directory.Delete(workspacePath, recursive: true);
+        }
+    }
+
+    /// <summary>
     /// Resolves framework symbols from a real SDK-backed file-based app.
     /// </summary>
     [TestMethod]

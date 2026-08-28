@@ -19,6 +19,11 @@ These public wire-contract types are generated from the compiled assemblies and 
 | `Csls.Protocol.CSharpMetadataParams` | Identifies one virtual C# document whose source text is requested. |
 | `Csls.Protocol.CSharpMetadataResponse` | Describes source text for one generated or metadata-backed C# document. |
 | `Csls.Protocol.CSharpSemanticTokensLegend` | Defines the portable LSP semantic-token vocabulary emitted for C# documents. |
+| `Csls.Protocol.CSharpWorkspaceDocumentInfo` | Describes one loaded source document for an editor client. |
+| `Csls.Protocol.CSharpWorkspaceFolderInfo` | Describes one loaded workspace folder for an editor client. |
+| `Csls.Protocol.CSharpWorkspaceInfo` | Describes the current Roslyn workspace generation for an editor client. |
+| `Csls.Protocol.CSharpWorkspaceOperationInfo` | Describes one completed workspace maintenance operation requested by an editor. |
+| `Csls.Protocol.CSharpWorkspaceProjectInfo` | Describes one loaded Roslyn project for an editor client. |
 | `Csls.Protocol.CallHierarchyIncomingCall` | Describes one caller and its call sites within that caller. |
 | `Csls.Protocol.CallHierarchyIncomingCallsParams` | Identifies the call-hierarchy item whose callers should be returned. |
 | `Csls.Protocol.CallHierarchyItem` | Describes one callable source declaration in a call hierarchy. |
@@ -93,6 +98,8 @@ These public wire-contract types are generated from the compiled assemblies and 
 | `Csls.Protocol.FormattingOptions` | Carries editor indentation and final-line preferences for document formatting. |
 | `Csls.Protocol.HierarchyItemData` | Preserves immutable source coordinates required to expand a hierarchy item. |
 | `Csls.Protocol.Hover` | Contains hover information and the optional source range it describes. |
+| `Csls.Protocol.ILspClientConnection` | Sends the supported server-to-client LSP requests and notifications. |
+| `Csls.Protocol.ILspRpcTarget` | Defines every explicitly registered LSP entry point implemented by the server engine. |
 | `Csls.Protocol.InitializeParams` | Contains the client's initialization request and negotiated capabilities. |
 | `Csls.Protocol.InitializeResult` | Returns negotiated server capabilities and implementation information. |
 | `Csls.Protocol.InitializedParams` | Represents the parameter object for the initialized notification. |
@@ -113,6 +120,7 @@ These public wire-contract types are generated from the compiled assemblies and 
 | `Csls.Protocol.Moniker` | Identifies one C# symbol across documents, projects, and indexed repositories. |
 | `Csls.Protocol.MonikerKind` | Identifies how a moniker-bearing symbol participates in the current project. |
 | `Csls.Protocol.MonikerParams` | Selects the symbol for a text document moniker request. |
+| `Csls.Protocol.NegotiatedClientCapabilities` | Contains the client capability values consumed by the language server. |
 | `Csls.Protocol.OptionalVersionedTextDocumentIdentifier` | Identifies a text document with an optional open-document version precondition. |
 | `Csls.Protocol.ParameterInformation` | Describes one parameter within a callable signature label. |
 | `Csls.Protocol.Position` | Identifies a zero-based UTF-16 line and character position in a text document. |

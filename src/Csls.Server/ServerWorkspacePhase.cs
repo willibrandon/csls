@@ -3,7 +3,7 @@ namespace Csls.Server;
 /// <summary>
 /// Identifies the current workspace lifecycle phase exposed through diagnostics.
 /// </summary>
-internal enum ServerWorkspacePhase
+public enum ServerWorkspacePhase
 {
     /// <summary>
     /// The server has not completed initialization.
