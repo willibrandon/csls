@@ -2,6 +2,7 @@ using Csls.Protocol;
 using StreamJsonRpc;
 using System.Runtime.CompilerServices;
 using System.Text.Json;
+using LspRange = Csls.Protocol.Range;
 
 namespace Csls.Tests;
 
@@ -113,9 +114,10 @@ public sealed class SymbolLanguageServerTests
                 combineSymbols[0],
                 TestContext.CancellationToken).ConfigureAwait(false);
             Assert.AreEqual(DocumentUri.FromFileSystemPath(documentPath), resolved.Location.Uri);
-            Assert.IsNotNull(resolved.Location.Range);
+            LspRange resolvedRange = resolved.Location.Range ?? throw new InvalidDataException(
+                "The resolved workspace symbol had no source range.");
             Assert.Contains(
-                resolved.Location.Range.Value.Start,
+                resolvedRange.Start,
                 new[] { new Position(6, 22), new Position(11, 25) });
 
             SignatureHelp? signatureHelp = await lsp.RequestSignatureHelpAsync(
@@ -125,9 +127,10 @@ public sealed class SymbolLanguageServerTests
             Assert.IsNotNull(signatureHelp);
             Assert.HasCount(2, signatureHelp.Signatures);
             Assert.AreEqual(1, signatureHelp.ActiveParameter);
-            Assert.IsNotNull(signatureHelp.ActiveSignature);
+            int activeSignatureIndex = signatureHelp.ActiveSignature ??
+                throw new InvalidDataException("Signature help had no active signature.");
             SignatureInformation activeSignature =
-                signatureHelp.Signatures[signatureHelp.ActiveSignature.Value];
+                signatureHelp.Signatures[activeSignatureIndex];
             Assert.Contains("int", activeSignature.Label, StringComparison.Ordinal);
             Assert.IsNotNull(activeSignature.Parameters);
             Assert.HasCount(2, activeSignature.Parameters);

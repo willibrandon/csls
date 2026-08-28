@@ -5,6 +5,7 @@ using ModelContextProtocol.Protocol;
 using System.Globalization;
 using System.Runtime.CompilerServices;
 using System.Text.Json;
+using LspRange = Csls.Protocol.Range;
 
 namespace Csls.Tests;
 
@@ -538,8 +539,9 @@ public sealed class McpLanguageServerTests
                         "MCP returned no structured workspace symbols.");
                 WorkspaceSymbol helper = workspaceSymbols.Single(static symbol =>
                     symbol.Name == "Helper");
-                Assert.IsNotNull(helper.Location.Range);
-                Assert.AreEqual(new Position(10, 24), helper.Location.Range.Value.Start);
+                LspRange helperRange = helper.Location.Range ?? throw new InvalidDataException(
+                    "MCP returned an unresolved Helper workspace symbol.");
+                Assert.AreEqual(new Position(10, 24), helperRange.Start);
 
                 CallToolResult signatureHelpResult = await client.CallToolAsync(
                     "get_signature_help",
