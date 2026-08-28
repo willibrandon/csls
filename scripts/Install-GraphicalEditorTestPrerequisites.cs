@@ -106,8 +106,8 @@ try
             "xvfb"
         ]).ConfigureAwait(false);
     await RunPrivilegedAsync(
-        "install",
-        ["--directory", "--mode", "1777", "/tmp/.X11-unix"]).ConfigureAwait(false);
+        "mkdir",
+        ["--parents", "--mode", "1777", "/tmp/.X11-unix"]).ConfigureAwait(false);
     if (installWebBrowserDependencies)
     {
         string repositoryRoot = FindRepositoryRoot();
