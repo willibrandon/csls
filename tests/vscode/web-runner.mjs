@@ -5,6 +5,10 @@ import { runTests } from "@vscode/test-web";
 
 const fixturePath = dirname(fileURLToPath(import.meta.url));
 const repositoryRoot = resolve(fixturePath, "..", "..");
+const port = Number.parseInt(requireEnvironment("CSLS_VSCODE_WEB_PORT"), 10);
+if (!Number.isSafeInteger(port) || port < 1 || port > 65_535) {
+  throw new Error("CSLS_VSCODE_WEB_PORT must be a TCP port number.");
+}
 
 await runTests({
   browserType: requireEnvironment("CSLS_VSCODE_WEB_BROWSER"),
@@ -20,6 +24,7 @@ await runTests({
   ),
   folderPath: requireEnvironment("CSLS_VSCODE_WORKSPACE_PATH"),
   headless: true,
+  port,
   quality: "stable",
   commit: "08d4889f9ec4a1685d257b9b95de036c8e1ce1e5",
   testRunnerDataDir: requireEnvironment("CSLS_VSCODE_WEB_CACHE_PATH"),

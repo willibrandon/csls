@@ -8,6 +8,8 @@ import {
   type ServerOptions,
   State,
 } from "vscode-languageclient/node";
+import { DebuggerProvider } from "./debuggerProvider.js";
+import { WorkspaceExperience } from "./workspaceExperience.js";
 
 const extensionId = "willibrandon.csls";
 const runtimeVersion = "10.0";
@@ -15,12 +17,20 @@ const conflictingExtensionIds = ["ms-dotnettools.csharp", "ms-dotnettools.csdevk
 
 let client: LanguageClient | undefined;
 let outputChannel: vscode.LogOutputChannel | undefined;
+let workspaceExperience: WorkspaceExperience | undefined;
 
 export interface CslsExtensionApi {
   readonly host: "desktop" | "remote";
+  readonly projects: () => readonly {
+    readonly name: string;
+    readonly path: string;
+  }[];
   readonly runtimePath: string;
+  readonly sdkPath: string;
   readonly serverPath: string;
   readonly state: State;
+  readonly testErrors: () => readonly string[];
+  readonly tests: () => readonly string[];
 }
 
 interface DotnetAcquireResult {
@@ -29,9 +39,14 @@ interface DotnetAcquireResult {
 
 interface DotnetAcquireContext {
   readonly architecture: string;
-  readonly mode: "runtime";
+  readonly mode: "runtime" | "sdk";
   readonly requestingExtensionId: string;
   readonly version: string;
+}
+
+interface DotnetFindPathContext {
+  readonly acquireContext: DotnetAcquireContext;
+  readonly versionSpecRequirement: "greater_than_or_equal";
 }
 
 export async function activate(context: vscode.ExtensionContext): Promise<CslsExtensionApi> {
@@ -48,26 +63,45 @@ export async function activate(context: vscode.ExtensionContext): Promise<CslsEx
 
   outputChannel = vscode.window.createOutputChannel("csls", { log: true });
   context.subscriptions.push(outputChannel);
+  await vscode.commands.executeCommand("setContext", "csls.workspaceExperience", true);
+  await vscode.commands.executeCommand("setContext", "csls.desktopWorkspaceExperience", true);
   const runtimePath = await acquireRuntime();
+  const sdkPath = await resolveSdk();
   const serverPath = await resolveServerPath(context);
   const watchers = createFileWatchers(context);
   client = createLanguageClient(serverPath, runtimePath, watchers);
+  const debuggerProvider = new DebuggerProvider(
+    context,
+    serverPath,
+    runtimePath,
+    outputChannel,
+  );
+  workspaceExperience = new WorkspaceExperience(sdkPath, outputChannel);
   context.subscriptions.push(
     vscode.commands.registerCommand("csls.restartServer", restartServer),
     vscode.commands.registerCommand("csls.showOutput", () => outputChannel?.show()),
     client,
+    debuggerProvider,
+    workspaceExperience,
   );
   await client.start();
+  await workspaceExperience.attach(client);
   outputChannel.info(`Started ${serverPath} with .NET ${runtimeVersion} from ${runtimePath}.`);
   return {
     host: vscode.env.remoteName === undefined ? "desktop" : "remote",
+    projects: () => workspaceExperience?.getProjects() ?? [],
     runtimePath,
+    sdkPath,
     serverPath,
     state: client.state,
+    testErrors: () => workspaceExperience?.getTestErrors() ?? [],
+    tests: () => workspaceExperience?.getTestNames() ?? [],
   };
 }
 
 export async function deactivate(): Promise<void> {
+  workspaceExperience?.dispose();
+  workspaceExperience = undefined;
   if (client !== undefined) {
     await client.stop();
     client = undefined;
@@ -78,7 +112,7 @@ export async function deactivate(): Promise<void> {
 
 async function acquireRuntime(): Promise<string> {
   const acquireContext: DotnetAcquireContext = {
-    architecture: process.arch,
+    architecture: getDotnetArchitecture(),
     mode: "runtime",
     requestingExtensionId: extensionId,
     version: runtimeVersion,
@@ -93,6 +127,37 @@ async function acquireRuntime(): Promise<string> {
 
   await access(result.dotnetPath);
   return result.dotnetPath;
+}
+
+async function resolveSdk(): Promise<string> {
+  const acquireContext: DotnetAcquireContext = {
+    architecture: getDotnetArchitecture(),
+    mode: "sdk",
+    requestingExtensionId: extensionId,
+    version: runtimeVersion,
+  };
+  const findContext: DotnetFindPathContext = {
+    acquireContext,
+    versionSpecRequirement: "greater_than_or_equal",
+  };
+  const installed = await vscode.commands.executeCommand<DotnetAcquireResult | undefined>(
+    "dotnet.findPath",
+    findContext,
+  );
+  const result = installed ?? await vscode.commands.executeCommand<DotnetAcquireResult | undefined>(
+    "dotnet.acquire",
+    acquireContext,
+  );
+  if (result?.dotnetPath === undefined || result.dotnetPath.length === 0) {
+    throw new Error("The .NET Install Tool did not provide a .NET 10 SDK.");
+  }
+
+  await access(result.dotnetPath);
+  return result.dotnetPath;
+}
+
+function getDotnetArchitecture(): string {
+  return process.arch === "ia32" ? "x86" : process.arch;
 }
 
 async function resolveServerPath(context: vscode.ExtensionContext): Promise<string> {
@@ -176,4 +241,5 @@ async function restartServer(): Promise<void> {
 
   outputChannel?.info("Restarting the language server.");
   await client.restart();
+  await workspaceExperience?.attach(client);
 }

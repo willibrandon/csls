@@ -3,10 +3,10 @@
   "displayName": "csls",
   "description": "Fast C# language support powered by Roslyn and csls",
   "version": "1.0.0",
-  "license": "MIT",
+  "license": "SEE LICENSE IN LICENSE",
   "publisher": "willibrandon",
   "author": {
-    "name": "Brandon Williams"
+    "name": "willibrandon"
   },
   "repository": {
     "type": "git",
@@ -46,11 +46,12 @@
   },
   "activationEvents": [
     "onLanguage:csharp",
-    "onLanguage:razor"
+    "onLanguage:razor",
+    "onView:csls.solution"
   ],
   "main": "./dist/extension.cjs",
   "browser": "./dist/browserExtension.cjs",
-  "extensionPack": [
+  "extensionDependencies": [
     "ms-dotnettools.vscode-dotnet-runtime"
   ],
   "x-dotnet-acquire": {
@@ -102,8 +103,116 @@
         "command": "csls.showOutput",
         "title": "Show Language Server Output",
         "category": "csls"
+      },
+      {
+        "command": "csls.refreshSolution",
+        "title": "Refresh Solution",
+        "category": "csls",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "csls.restoreSolution",
+        "title": "Restore Solution",
+        "category": "csls"
+      },
+      {
+        "command": "csls.build",
+        "title": "Build",
+        "category": "csls"
+      },
+      {
+        "command": "csls.restore",
+        "title": "Restore",
+        "category": "csls"
+      },
+      {
+        "command": "csls.run",
+        "title": "Run",
+        "category": "csls"
+      },
+      {
+        "command": "csls.debug",
+        "title": "Debug",
+        "category": "csls"
+      },
+      {
+        "command": "csls.test",
+        "title": "Test",
+        "category": "csls"
       }
     ],
+    "views": {
+      "explorer": [
+        {
+          "id": "csls.solution",
+          "name": "Solution",
+          "when": "workspaceFolderCount != 0 && csls.workspaceExperience"
+        }
+      ]
+    },
+    "menus": {
+      "view/title": [
+        {
+          "command": "csls.refreshSolution",
+          "when": "view == csls.solution",
+          "group": "navigation"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "csls.build",
+          "when": "view == csls.solution && csls.desktopWorkspaceExperience && (viewItem == cslsSolution || viewItem == cslsProject)",
+          "group": "inline@1"
+        },
+        {
+          "command": "csls.run",
+          "when": "view == csls.solution && csls.desktopWorkspaceExperience && viewItem == cslsProject",
+          "group": "inline@2"
+        },
+        {
+          "command": "csls.debug",
+          "when": "view == csls.solution && csls.desktopWorkspaceExperience && viewItem == cslsProject",
+          "group": "inline@3"
+        },
+        {
+          "command": "csls.restoreSolution",
+          "when": "view == csls.solution && viewItem == cslsSolution",
+          "group": "csls@1"
+        },
+        {
+          "command": "csls.restore",
+          "when": "view == csls.solution && csls.desktopWorkspaceExperience && viewItem == cslsProject",
+          "group": "csls@1"
+        },
+        {
+          "command": "csls.test",
+          "when": "view == csls.solution && csls.desktopWorkspaceExperience && viewItem == cslsProject",
+          "group": "csls@2"
+        }
+      ],
+      "commandPalette": [
+        {
+          "command": "csls.build",
+          "when": "csls.desktopWorkspaceExperience"
+        },
+        {
+          "command": "csls.restore",
+          "when": "csls.desktopWorkspaceExperience"
+        },
+        {
+          "command": "csls.run",
+          "when": "csls.desktopWorkspaceExperience"
+        },
+        {
+          "command": "csls.debug",
+          "when": "csls.desktopWorkspaceExperience"
+        },
+        {
+          "command": "csls.test",
+          "when": "csls.desktopWorkspaceExperience"
+        }
+      ]
+    },
     "configuration": {
       "title": "csls",
       "properties": {
@@ -112,6 +221,12 @@
           "default": "",
           "scope": "machine-overridable",
           "description": "Absolute path to a csls executable. Leave empty to use the server included with the extension."
+        },
+        "csls.debugger.path": {
+          "type": "string",
+          "default": "",
+          "scope": "machine-overridable",
+          "description": "Absolute path to vsdbg. Leave empty to download the verified Microsoft debugger when it is first used."
         },
         "csls.enableAnalyzers": {
           "type": "boolean",
@@ -176,9 +291,62 @@
           "description": "Traces messages exchanged between VS Code and csls."
         }
       }
-    }
+    },
+    "debuggers": [
+      {
+        "type": "coreclr",
+        "label": ".NET",
+        "languages": [
+          "csharp",
+          "razor"
+        ],
+        "configurationAttributes": {
+          "launch": {
+            "type": "object",
+            "required": [
+              "program"
+            ],
+            "properties": {
+              "program": {
+                "type": "string",
+                "description": "Absolute path to the managed application assembly."
+              },
+              "cwd": {
+                "type": "string",
+                "description": "Working directory for the application."
+              },
+              "args": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "default": []
+              },
+              "justMyCode": {
+                "type": "boolean",
+                "default": true
+              },
+              "stopAtEntry": {
+                "type": "boolean",
+                "default": false
+              }
+            }
+          }
+        },
+        "initialConfigurations": [
+          {
+            "name": ".NET Launch",
+            "type": "coreclr",
+            "request": "launch",
+            "program": "${workspaceFolder}/bin/Debug/<target-framework>/<application>.dll",
+            "cwd": "${workspaceFolder}"
+          }
+        ]
+      }
+    ]
   },
   "dependencies": {
+    "fast-xml-parser": "5.11.1",
     "vscode-languageclient": "10.1.0"
   },
   "devDependencies": {
@@ -186,6 +354,7 @@
     "@types/vscode": "1.134.0",
     "@vscode/vsce": "3.9.2",
     "esbuild": "0.28.2",
+    "ovsx": "1.1.1",
     "typescript": "7.0.2"
   }
 }

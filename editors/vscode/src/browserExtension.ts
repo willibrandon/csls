@@ -7,6 +7,7 @@ import {
 } from "vscode-languageclient/browser";
 import { BrowserLanguageClient } from "./browserLanguageClient.js";
 import { BrowserWorkspaceMapping } from "./browserWorkspaceMapping.js";
+import { BrowserWorkspaceExperience } from "./browserWorkspaceExperience.js";
 
 const conflictingExtensionIds = ["ms-dotnettools.csharp", "ms-dotnettools.csdevkit"];
 const synchronizationInclude = "**/*.{cs,csx,razor,cshtml,sln,slnx,csproj,props,targets,editorconfig,globalconfig,json,config}";
@@ -45,10 +46,16 @@ let languageServerPort: MessagePort | undefined;
 let workerEvents: vscode.Disposable | undefined;
 let outputChannel: vscode.LogOutputChannel | undefined;
 let extensionContext: vscode.ExtensionContext | undefined;
+let workspaceExperience: BrowserWorkspaceExperience | undefined;
+let workspaceMapping: BrowserWorkspaceMapping | undefined;
 let nextControlRequestId = 1;
 
 export interface CslsBrowserExtensionApi {
   readonly host: "browser";
+  readonly projects: () => readonly {
+    readonly name: string;
+    readonly path: string;
+  }[];
   readonly state: State;
 }
 
@@ -67,25 +74,38 @@ export async function activate(
   }
 
   extensionContext = context;
+  await vscode.commands.executeCommand("setContext", "csls.workspaceExperience", true);
+  await vscode.commands.executeCommand("setContext", "csls.desktopWorkspaceExperience", false);
   outputChannel = vscode.window.createOutputChannel("csls", { log: true });
   context.subscriptions.push(
     outputChannel,
     vscode.commands.registerCommand("csls.restartServer", restartServer),
     vscode.commands.registerCommand("csls.showOutput", () => outputChannel?.show()),
   );
+  workspaceMapping = new BrowserWorkspaceMapping(vscode.workspace.workspaceFolders ?? []);
+  workspaceExperience = new BrowserWorkspaceExperience(outputChannel, workspaceMapping);
+  context.subscriptions.push(workspaceExperience);
   await startServer(context);
-  return { host: "browser", state: client?.state ?? State.Stopped };
+  return {
+    host: "browser",
+    projects: () => workspaceExperience?.getProjects() ?? [],
+    state: client?.state ?? State.Stopped,
+  };
 }
 
 export async function deactivate(): Promise<void> {
+  workspaceExperience?.dispose();
+  workspaceExperience = undefined;
+  workspaceMapping = undefined;
   await stopServer();
   extensionContext = undefined;
   outputChannel = undefined;
 }
 
 async function startServer(context: vscode.ExtensionContext): Promise<void> {
-  const folders = vscode.workspace.workspaceFolders ?? [];
-  const mapping = new BrowserWorkspaceMapping(folders);
+  const mapping = workspaceMapping ?? new BrowserWorkspaceMapping(
+    vscode.workspace.workspaceFolders ?? [],
+  );
   const serverUri = vscode.Uri.joinPath(
     context.extensionUri,
     "dist",
@@ -115,6 +135,7 @@ async function startServer(context: vscode.ExtensionContext): Promise<void> {
     client = nextClient;
     context.subscriptions.push(nextClient);
     await nextClient.start();
+    await workspaceExperience?.attach(nextClient);
     nextClient.getFeature(DocumentDiagnosticRequest.method).refresh();
     outputChannel?.info("Started csls in the browser WebAssembly worker.");
   } catch (error) {

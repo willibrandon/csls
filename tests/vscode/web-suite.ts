@@ -37,6 +37,7 @@ export async function runFeatureContract(options: FeatureContractOptions): Promi
   assert(isExtensionApi(api), "The csls extension must return its host API.");
   assert(api.host === options.expectedHost, `Expected the ${options.expectedHost} host.`);
   assert(api.state === 2, "The csls language client must be running.");
+  await assertProjectDiscovery(api);
   if (options.expectedServerPath !== undefined) {
     assert(
       api.serverPath === options.expectedServerPath,
@@ -46,6 +47,11 @@ export async function runFeatureContract(options: FeatureContractOptions): Promi
       typeof api.runtimePath === "string" && api.runtimePath.length > 0,
       "The .NET Install Tool must resolve a runtime.",
     );
+    assert(
+      typeof api.sdkPath === "string" && api.sdkPath.length > 0,
+      "The .NET Install Tool must resolve an SDK.",
+    );
+    await assertSolutionExperience(api, workspaceFolder, documentUri);
   }
   await assertConsoleHover(documentUri);
   await assertConsoleCompletion(documentUri);
@@ -61,6 +67,143 @@ export async function runFeatureContract(options: FeatureContractOptions): Promi
   await replaceDocumentText(document, 'Console.WriteLine("hello");\n');
   await vscode.commands.executeCommand("csls.restartServer");
   await assertConsoleHover(documentUri);
+}
+
+async function assertProjectDiscovery(api: {
+  readonly projects?: () => readonly {
+    readonly name: string;
+    readonly path: string;
+  }[];
+}): Promise<void> {
+  assert(typeof api.projects === "function", "The Solution view must expose loaded projects.");
+  await vscode.commands.executeCommand("csls.refreshSolution");
+  const projects = api.projects();
+  assert(
+    projects.some((project) => project.name === "Fixture"),
+    `The Solution view must contain the Roslyn-loaded Fixture project. Received ${JSON.stringify(projects)}.`,
+  );
+}
+
+async function assertSolutionExperience(
+  api: {
+    readonly projects?: () => readonly {
+      readonly name: string;
+      readonly path: string;
+    }[];
+    readonly tests?: () => readonly string[];
+    readonly testErrors?: () => readonly string[];
+  },
+  workspaceFolder: vscode.WorkspaceFolder,
+  documentUri: vscode.Uri,
+): Promise<void> {
+  assert(typeof api.projects === "function", "The desktop extension must expose loaded projects.");
+  const project = api.projects().find((candidate) => candidate.name === "Fixture");
+  assert(project !== undefined, "The Solution view must contain the Roslyn-loaded Fixture project.");
+  await vscode.commands.executeCommand("csls.build", {
+    projectPath: project.path,
+    workspaceRoot: workspaceFolder.uri.fsPath,
+  });
+  await vscode.commands.executeCommand("csls.test");
+  assert(typeof api.tests === "function", "The desktop extension must expose discovered tests.");
+  assert(
+    api.tests().includes("RunsFromVsCode"),
+    "The Testing view must discover the real Microsoft Testing Platform test.",
+  );
+  await assertDebugging(project.path, workspaceFolder, documentUri);
+  await assertTestDiscoveryFailure(api, workspaceFolder);
+}
+
+async function assertTestDiscoveryFailure(
+  api: {
+    readonly testErrors?: () => readonly string[];
+  },
+  workspaceFolder: vscode.WorkspaceFolder,
+): Promise<void> {
+  assert(typeof api.testErrors === "function", "The desktop extension must expose test errors.");
+  const testDocument = await vscode.workspace.openTextDocument(
+    vscode.Uri.joinPath(workspaceFolder.uri, "Tests", "ExampleTests.cs"),
+  );
+  const originalText = testDocument.getText();
+  try {
+    await replaceDocumentText(testDocument, "this is not valid C#\n");
+    await testDocument.save();
+    let rejected = false;
+    try {
+      await vscode.commands.executeCommand("csls.test");
+    } catch {
+      rejected = true;
+    }
+
+    assert(rejected, "The test command must fail when its real project does not build.");
+    assert(
+      api.testErrors().some((error) => error.includes("Test discovery build failed.")),
+      "The Testing view must retain the project build failure.",
+    );
+  } finally {
+    await replaceDocumentText(testDocument, originalText);
+    await testDocument.save();
+  }
+
+  await vscode.commands.executeCommand("csls.test");
+  assert(api.testErrors().length === 0, "The Testing view must clear a resolved build failure.");
+}
+
+async function assertDebugging(
+  projectPath: string,
+  workspaceFolder: vscode.WorkspaceFolder,
+  documentUri: vscode.Uri,
+): Promise<void> {
+  const breakpoint = new vscode.SourceBreakpoint(
+    new vscode.Location(documentUri, new vscode.Position(0, 0)),
+  );
+  vscode.debug.addBreakpoints([breakpoint]);
+  let session: vscode.DebugSession | undefined;
+  let startListener: vscode.Disposable | undefined;
+  const started = new Promise<vscode.DebugSession>((resolve) => {
+    startListener = vscode.debug.onDidStartDebugSession((candidate) => {
+      session = candidate;
+      startListener?.dispose();
+      startListener = undefined;
+      resolve(candidate);
+    });
+  });
+  let terminationListener: vscode.Disposable | undefined;
+  const terminated = new Promise<void>((resolve) => {
+    terminationListener = vscode.debug.onDidTerminateDebugSession((candidate) => {
+      if (candidate === session) {
+        terminationListener?.dispose();
+        terminationListener = undefined;
+        resolve();
+      }
+    });
+  });
+  try {
+    await vscode.commands.executeCommand("csls.debug", {
+      projectPath,
+      workspaceRoot: workspaceFolder.uri.fsPath,
+    });
+    session = await withTimeout(
+      started,
+      languageFeatureTimeoutMilliseconds,
+      "The .NET debug session did not start.",
+    );
+    await waitUntil(() => {
+      return vscode.debug.activeStackItem instanceof vscode.DebugStackFrame;
+    }, "The .NET debugger did not stop at the C# source breakpoint.");
+    await vscode.commands.executeCommand("workbench.action.debug.continue");
+    await withTimeout(
+      terminated,
+      languageFeatureTimeoutMilliseconds,
+      "The .NET debug session did not terminate.",
+    );
+  } finally {
+    startListener?.dispose();
+    terminationListener?.dispose();
+    vscode.debug.removeBreakpoints([breakpoint]);
+    if (vscode.debug.activeDebugSession !== undefined) {
+      await vscode.debug.stopDebugging(vscode.debug.activeDebugSession);
+    }
+  }
 }
 
 async function assertDefinition(document: vscode.TextDocument): Promise<void> {
@@ -392,9 +535,16 @@ function getInlayHintLabel(hint: vscode.InlayHint): string {
 
 function isExtensionApi(value: unknown): value is {
   readonly host: string;
+  readonly projects?: () => readonly {
+    readonly name: string;
+    readonly path: string;
+  }[];
   readonly runtimePath?: string;
+  readonly sdkPath?: string;
   readonly serverPath?: string;
   readonly state: number;
+  readonly testErrors?: () => readonly string[];
+  readonly tests?: () => readonly string[];
 } {
   return typeof value === "object" &&
     value !== null &&

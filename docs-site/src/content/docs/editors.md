@@ -74,18 +74,21 @@ Run `M-x eglot` if the current C# mode does not start Eglot automatically.
 
 ## Zed
 
-Select the official C# extension's `csharp-ls` adapter and replace its binary in
-Zed settings:
+Install the `csls` extension from Zed's extension gallery. It downloads the
+matching csls release for the current operating system and architecture, verifies
+the published checksum, and starts the `csls` language server for C# and Razor.
+
+Use a local build while developing the server:
 
 ```json
 {
   "languages": {
     "CSharp": {
-      "language_servers": ["csharp-ls", "!roslyn", "!omnisharp"]
+      "language_servers": ["csls", "!roslyn", "!omnisharp", "!csharp-ls"]
     }
   },
   "lsp": {
-    "csharp-ls": {
+    "csls": {
       "binary": {
         "path": "csls",
         "arguments": ["lsp"]
@@ -99,9 +102,14 @@ Zed settings:
 
 Install the `willibrandon.csls` extension and disable the Microsoft C# and C# Dev
 Kit extensions so one language client owns each C# document. Desktop and remote
-extension hosts run the packaged Native AOT launcher and Roslyn worker. VS Code for
-the Web runs csls in a WebAssembly worker and synchronizes the virtual workspace
-without requiring a local .NET installation.
+extension hosts run the packaged Native AOT launcher and Roslyn worker. The .NET
+Install Tool supplies the supported runtime and SDK. The Solution view supports
+restore, build, run, debug, and Microsoft Testing Platform tests.
+
+VS Code for the Web runs csls in a WebAssembly worker and synchronizes the virtual
+workspace without requiring a local .NET installation. Language features and the
+Solution view work in the browser. Commands that start local processes remain on
+desktop and remote workspace hosts.
 
 The repository runs one feature contract against desktop, remote, Chromium,
 Firefox, and WebKit extension hosts. The contract covers hover, completion,
