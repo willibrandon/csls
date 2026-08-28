@@ -1,23 +1,20 @@
 import process from "node:process";
-import { dirname, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { resolve } from "node:path";
 import { runTests } from "@vscode/test-web";
 
-const fixturePath = dirname(fileURLToPath(import.meta.url));
-const repositoryRoot = resolve(fixturePath, "..", "..");
 const port = Number.parseInt(requireEnvironment("CSLS_VSCODE_WEB_PORT"), 10);
 if (!Number.isSafeInteger(port) || port < 1 || port > 65_535) {
   throw new Error("CSLS_VSCODE_WEB_PORT must be a TCP port number.");
 }
 
+const extensionDevelopmentPath = requireEnvironment("CSLS_VSCODE_WEB_EXTENSION_PATH");
+
 await runTests({
   browserType: requireEnvironment("CSLS_VSCODE_WEB_BROWSER"),
   coi: true,
-  extensionDevelopmentPath: resolve(repositoryRoot, "editors", "vscode"),
+  extensionDevelopmentPath,
   extensionTestsPath: resolve(
-    repositoryRoot,
-    "editors",
-    "vscode",
+    extensionDevelopmentPath,
     "dist",
     "test",
     "web-suite.cjs",

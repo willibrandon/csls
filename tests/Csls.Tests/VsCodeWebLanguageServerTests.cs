@@ -79,7 +79,7 @@ public sealed class VsCodeWebLanguageServerTests
         Assert.IsTrue(
             File.Exists(suitePath),
             "Build the VS Code web test suite before running its host tests.");
-        await VsCodeExtensionPackage.GetAsync(
+        string extensionPath = await VsCodeWebExtensionPackage.GetAsync(
             repositoryRoot,
             TestContext.CancellationToken).ConfigureAwait(false);
 
@@ -103,6 +103,7 @@ public sealed class VsCodeWebLanguageServerTests
             using Process runner = StartRunner(
                 repositoryRoot,
                 runnerPath,
+                extensionPath,
                 workspacePath,
                 browser);
             Task<string> outputTask = runner.StandardOutput.ReadToEndAsync(
@@ -155,6 +156,7 @@ public sealed class VsCodeWebLanguageServerTests
     private static Process StartRunner(
         string repositoryRoot,
         string runnerPath,
+        string extensionPath,
         string workspacePath,
         string browser)
     {
@@ -183,6 +185,7 @@ public sealed class VsCodeWebLanguageServerTests
             toolsRoot,
             "vscode-web",
             "1.135.0");
+        startInfo.Environment["CSLS_VSCODE_WEB_EXTENSION_PATH"] = extensionPath;
         startInfo.Environment["CSLS_VSCODE_WORKSPACE_PATH"] = workspacePath;
         startInfo.Environment["PLAYWRIGHT_BROWSERS_PATH"] = Path.Join(
             toolsRoot,
