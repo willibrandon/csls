@@ -134,7 +134,7 @@ try
 
     string cachePath = Path.Join(toolsRoot, "vscode", Version);
     Directory.CreateDirectory(cachePath);
-    string executablePath = (await RunCheckedAsync(
+    string executablePath = (await RunVsCodeProvisionerAsync(
         "node",
         [Path.Join(fixturePath, "provision.mjs"), cachePath],
         repositoryRoot).ConfigureAwait(false)).Trim();
@@ -350,6 +350,31 @@ static (string Executable, IReadOnlyList<string> Prefix) ResolveNpxInvocation()
 
     throw new FileNotFoundException(
         "Node.js is installed without the npm npx CLI required to provision VS Code.");
+}
+
+static async Task<string> RunVsCodeProvisionerAsync(
+    string executablePath,
+    IReadOnlyList<string> arguments,
+    string workingDirectory)
+{
+    const int maximumAttempts = 3;
+    for (int attempt = 1; ; attempt++)
+    {
+        try
+        {
+            return await RunCheckedAsync(
+                executablePath,
+                arguments,
+                workingDirectory).ConfigureAwait(false);
+        }
+        catch (InvalidOperationException exception) when (attempt < maximumAttempts)
+        {
+            await Console.Error.WriteLineAsync(
+                $"VS Code download attempt {attempt} failed: " +
+                exception.GetBaseException().Message).ConfigureAwait(false);
+            await Task.Delay(TimeSpan.FromSeconds(attempt * 2)).ConfigureAwait(false);
+        }
+    }
 }
 
 static async Task<string> RunCheckedAsync(
