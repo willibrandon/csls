@@ -59,12 +59,14 @@ internal static class ScriptSupport
     /// <param name="destinationPath">The destination file path.</param>
     /// <param name="expectedSha256">The expected hexadecimal SHA-256 digest.</param>
     /// <param name="cancellationToken">The operation cancellation token.</param>
+    /// <param name="fallbackSources">Optional verified fallback source URIs.</param>
     /// <returns>A task that completes after verification succeeds.</returns>
     internal static async Task DownloadVerifiedFileAsync(
         Uri source,
         string destinationPath,
         string expectedSha256,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        IReadOnlyList<Uri>? fallbackSources = null)
     {
         using var handler = new HttpClientHandler
         {
@@ -74,58 +76,86 @@ internal static class ScriptSupport
         using var client = new HttpClient(handler);
         client.Timeout = TimeSpan.FromMinutes(5);
         client.DefaultRequestHeaders.UserAgent.ParseAdd("csls-tool-provisioner/0.1");
+        IReadOnlyList<Uri> sources = fallbackSources is null
+            ? [source]
+            : [source, .. fallbackSources];
         const int maximumAttempts = 3;
-        for (int attempt = 1; ; attempt++)
+        for (int sourceIndex = 0; sourceIndex < sources.Count; sourceIndex++)
         {
-            try
+            Uri currentSource = sources[sourceIndex];
+            for (int attempt = 1; ; attempt++)
             {
-                using HttpResponseMessage response = await client
-                    .GetAsync(source, HttpCompletionOption.ResponseHeadersRead, cancellationToken)
-                    .ConfigureAwait(false);
-                response.EnsureSuccessStatusCode();
-
-                using (FileStream destination = new(
-                    destinationPath,
-                    FileMode.CreateNew,
-                    FileAccess.Write,
-                    FileShare.None,
-                    bufferSize: 131_072,
-                    FileOptions.Asynchronous | FileOptions.SequentialScan))
+                try
                 {
-                    await response.Content
-                        .CopyToAsync(destination, cancellationToken)
+                    using HttpResponseMessage response = await client
+                        .GetAsync(
+                            currentSource,
+                            HttpCompletionOption.ResponseHeadersRead,
+                            cancellationToken)
+                        .ConfigureAwait(false);
+                    response.EnsureSuccessStatusCode();
+
+                    using (FileStream destination = new(
+                        destinationPath,
+                        FileMode.CreateNew,
+                        FileAccess.Write,
+                        FileShare.None,
+                        bufferSize: 131_072,
+                        FileOptions.Asynchronous | FileOptions.SequentialScan))
+                    {
+                        await response.Content
+                            .CopyToAsync(destination, cancellationToken)
+                            .ConfigureAwait(false);
+                    }
+
+                    string actualSha256 = await ComputeSha256Async(
+                        destinationPath,
+                        cancellationToken).ConfigureAwait(false);
+                    if (!string.Equals(
+                        actualSha256,
+                        expectedSha256,
+                        StringComparison.OrdinalIgnoreCase))
+                    {
+                        throw new InvalidDataException(
+                            $"SHA-256 mismatch for {currentSource}: expected {expectedSha256}, " +
+                            $"got {actualSha256}.");
+                    }
+
+                    return;
+                }
+                catch (Exception exception) when (
+                    attempt < maximumAttempts &&
+                    IsTransientDownloadFailure(exception, cancellationToken))
+                {
+                    File.Delete(destinationPath);
+                    await Console.Error.WriteLineAsync(
+                        $"Download attempt {attempt} failed for {currentSource}: " +
+                        exception.GetBaseException().Message).ConfigureAwait(false);
+                    await Task.Delay(TimeSpan.FromSeconds(attempt * 2), cancellationToken)
                         .ConfigureAwait(false);
                 }
-
-                string actualSha256 = await ComputeSha256Async(
-                    destinationPath,
-                    cancellationToken).ConfigureAwait(false);
-                if (!string.Equals(
-                    actualSha256,
-                    expectedSha256,
-                    StringComparison.OrdinalIgnoreCase))
+                catch (Exception exception) when (
+                    sourceIndex < sources.Count - 1 &&
+                    IsTransientDownloadFailure(exception, cancellationToken))
                 {
-                    throw new InvalidDataException(
-                        $"SHA-256 mismatch for {source}: expected {expectedSha256}, " +
-                        $"got {actualSha256}.");
+                    File.Delete(destinationPath);
+                    await Console.Error.WriteLineAsync(
+                        $"Download source failed for {currentSource}: " +
+                        $"{exception.GetBaseException().Message} Trying " +
+                        $"{sources[sourceIndex + 1]}.").ConfigureAwait(false);
+                    break;
                 }
-
-                return;
-            }
-            catch (Exception exception) when (
-                attempt < maximumAttempts &&
-                (exception is HttpRequestException or IOException ||
-                 exception is OperationCanceledException &&
-                 !cancellationToken.IsCancellationRequested))
-            {
-                File.Delete(destinationPath);
-                await Console.Error.WriteLineAsync(
-                    $"Download attempt {attempt} failed for {source}: " +
-                    exception.GetBaseException().Message).ConfigureAwait(false);
-                await Task.Delay(TimeSpan.FromSeconds(attempt * 2), cancellationToken)
-                    .ConfigureAwait(false);
             }
         }
+
+        throw new UnreachableException();
+
+        static bool IsTransientDownloadFailure(
+            Exception exception,
+            CancellationToken cancellationToken) =>
+            exception is HttpRequestException or IOException ||
+            exception is OperationCanceledException &&
+            !cancellationToken.IsCancellationRequested;
     }
 
     /// <summary>
@@ -278,6 +308,7 @@ internal static class ScriptSupport
     /// <param name="versionArguments">Arguments used to query the tool version.</param>
     /// <param name="expectedVersionText">Text required in version output.</param>
     /// <param name="cancellationToken">The operation cancellation token.</param>
+    /// <param name="fallbackSources">Optional verified fallback source URIs.</param>
     /// <returns>The absolute provisioned executable path.</returns>
     internal static async Task<string> ProvisionArchiveToolAsync(
         string toolsRoot,
@@ -291,7 +322,8 @@ internal static class ScriptSupport
         int installationRootLevels,
         IReadOnlyList<string> versionArguments,
         string expectedVersionText,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        IReadOnlyList<Uri>? fallbackSources = null)
     {
         string installationPath = Path.Join(toolsRoot, toolName, version, platform);
         string executablePath = FindInstalledExecutable(
@@ -323,7 +355,8 @@ internal static class ScriptSupport
                 source,
                 archivePath,
                 expectedSha256,
-                cancellationToken).ConfigureAwait(false);
+                cancellationToken,
+                fallbackSources).ConfigureAwait(false);
             await ExtractArchiveAsync(
                 archivePath,
                 extractionPath,
