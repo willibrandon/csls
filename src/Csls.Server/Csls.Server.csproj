@@ -12,7 +12,6 @@
   <ItemGroup>
     <ProjectReference Include="../Csls.Core/Csls.Core.csproj" />
     <ProjectReference Include="../Csls.Protocol/Csls.Protocol.csproj" />
-    <ProjectReference Include="../Csls.Rpc/Csls.Rpc.csproj" />
     <ProjectReference Include="../Csls.Workspaces/Csls.Workspaces.csproj" />
   </ItemGroup>
 </Project>

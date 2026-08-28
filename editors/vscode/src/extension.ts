@@ -1,0 +1,179 @@
+import { access } from "node:fs/promises";
+import { isAbsolute, join } from "node:path";
+import * as vscode from "vscode";
+import {
+  LanguageClient,
+  type LanguageClientOptions,
+  RevealOutputChannelOn,
+  type ServerOptions,
+  State,
+} from "vscode-languageclient/node";
+
+const extensionId = "willibrandon.csls";
+const runtimeVersion = "10.0";
+const conflictingExtensionIds = ["ms-dotnettools.csharp", "ms-dotnettools.csdevkit"];
+
+let client: LanguageClient | undefined;
+let outputChannel: vscode.LogOutputChannel | undefined;
+
+export interface CslsExtensionApi {
+  readonly host: "desktop" | "remote";
+  readonly runtimePath: string;
+  readonly serverPath: string;
+  readonly state: State;
+}
+
+interface DotnetAcquireResult {
+  readonly dotnetPath: string;
+}
+
+interface DotnetAcquireContext {
+  readonly architecture: string;
+  readonly mode: "runtime";
+  readonly requestingExtensionId: string;
+  readonly version: string;
+}
+
+export async function activate(context: vscode.ExtensionContext): Promise<CslsExtensionApi> {
+  const conflicts = conflictingExtensionIds.filter(
+    (identifier) => vscode.extensions.getExtension(identifier) !== undefined,
+  );
+  if (conflicts.length > 0) {
+    const names = conflicts.join(", ");
+    void vscode.window.showErrorMessage(
+      `Disable ${names} before starting csls. Running more than one C# language server produces duplicate and conflicting results.`,
+    );
+    throw new Error(`Conflicting C# extensions are enabled: ${names}`);
+  }
+
+  outputChannel = vscode.window.createOutputChannel("csls", { log: true });
+  context.subscriptions.push(outputChannel);
+  const runtimePath = await acquireRuntime();
+  const serverPath = await resolveServerPath(context);
+  const watchers = createFileWatchers(context);
+  client = createLanguageClient(serverPath, runtimePath, watchers);
+  context.subscriptions.push(
+    vscode.commands.registerCommand("csls.restartServer", restartServer),
+    vscode.commands.registerCommand("csls.showOutput", () => outputChannel?.show()),
+    client,
+  );
+  await client.start();
+  outputChannel.info(`Started ${serverPath} with .NET ${runtimeVersion} from ${runtimePath}.`);
+  return {
+    host: vscode.env.remoteName === undefined ? "desktop" : "remote",
+    runtimePath,
+    serverPath,
+    state: client.state,
+  };
+}
+
+export async function deactivate(): Promise<void> {
+  if (client !== undefined) {
+    await client.stop();
+    client = undefined;
+  }
+
+  outputChannel = undefined;
+}
+
+async function acquireRuntime(): Promise<string> {
+  const acquireContext: DotnetAcquireContext = {
+    architecture: process.arch,
+    mode: "runtime",
+    requestingExtensionId: extensionId,
+    version: runtimeVersion,
+  };
+  const result = await vscode.commands.executeCommand<DotnetAcquireResult>(
+    "dotnet.acquire",
+    acquireContext,
+  );
+  if (result?.dotnetPath === undefined || result.dotnetPath.length === 0) {
+    throw new Error("The .NET Install Tool did not provide a .NET 10 runtime.");
+  }
+
+  await access(result.dotnetPath);
+  return result.dotnetPath;
+}
+
+async function resolveServerPath(context: vscode.ExtensionContext): Promise<string> {
+  const configuredPath = vscode.workspace
+    .getConfiguration("csls.server")
+    .get<string>("path", "")
+    .trim();
+  const serverPath = configuredPath.length > 0
+    ? configuredPath
+    : join(context.extensionPath, "server", process.platform === "win32" ? "csls.exe" : "csls");
+  if (!isAbsolute(serverPath)) {
+    throw new Error("csls.server.path must be absolute when it is configured.");
+  }
+
+  await access(serverPath);
+  return serverPath;
+}
+
+function createFileWatchers(context: vscode.ExtensionContext): vscode.FileSystemWatcher[] {
+  const patterns = [
+    "**/*.{cs,csx,razor,cshtml}",
+    "**/*.{sln,slnx,csproj,props,targets}",
+    "**/{global.json,NuGet.Config,nuget.config,Directory.Build.props,Directory.Build.targets,Directory.Packages.props}",
+  ];
+  return patterns.map((pattern) => {
+    const watcher = vscode.workspace.createFileSystemWatcher(pattern);
+    context.subscriptions.push(watcher);
+    return watcher;
+  });
+}
+
+function createLanguageClient(
+  serverPath: string,
+  runtimePath: string,
+  watchers: readonly vscode.FileSystemWatcher[],
+): LanguageClient {
+  const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
+  if (outputChannel === undefined) {
+    throw new Error("The csls output channel was not initialized.");
+  }
+
+  const environment = {
+    ...process.env,
+    CSLS_RUNTIME_HOST_PATH: runtimePath,
+  };
+  const managedLauncher = serverPath.endsWith(".dll");
+  const serverOptions: ServerOptions = {
+    command: managedLauncher ? runtimePath : serverPath,
+    args: managedLauncher ? [serverPath, "lsp"] : ["lsp"],
+    options: {
+      env: environment,
+      ...(workspaceFolder === undefined ? {} : { cwd: workspaceFolder.uri.fsPath }),
+    },
+  };
+  const clientOptions: LanguageClientOptions = {
+    diagnosticPullOptions: {
+      onChange: true,
+      onFocus: true,
+      onSave: true,
+      onTabs: true,
+    },
+    documentSelector: [
+      { language: "csharp", scheme: "file" },
+      { language: "razor", scheme: "file" },
+    ],
+    outputChannel,
+    revealOutputChannelOn: RevealOutputChannelOn.Error,
+    synchronize: {
+      configurationSection: ["csls", "csharp", "dotnet"],
+      fileEvents: [...watchers],
+    },
+    ...(workspaceFolder === undefined ? {} : { workspaceFolder }),
+  };
+  return new LanguageClient("csls", "csls", serverOptions, clientOptions);
+}
+
+async function restartServer(): Promise<void> {
+  if (client === undefined) {
+    return;
+  }
+
+  outputChannel?.info("Restarting the language server.");
+  await client.restart();
+}

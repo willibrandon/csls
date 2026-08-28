@@ -156,6 +156,14 @@ jobs:
         if: runner.os == 'Linux'
         run: dotnet run --file scripts/Provision-Zed.cs
 
+      - name: Provision WASI SDK
+        if: runner.os == 'Linux'
+        run: dotnet run --file scripts/Provision-WasiSdk.cs
+
+      - name: Build csls Zed extension
+        if: runner.os == 'Linux'
+        run: dotnet run --file scripts/Build-ZedExtension.cs
+
       - name: Provision Visual Studio Code
         run: dotnet run --file scripts/Provision-VsCode.cs
 
@@ -198,6 +206,59 @@ jobs:
         with:
           name: test-results-${{ matrix.rid }}
           path: artifacts/test-results/${{ matrix.rid }}
+          if-no-files-found: warn
+
+  vscode-hosts:
+    name: VS Code desktop, remote, and web hosts
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      CSLS_RUN_VSCODE_REMOTE_TESTS: true
+      CSLS_RUN_VSCODE_WEB_TESTS: true
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          dotnet-version: 10.0.400
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24.19.0
+
+      - name: Restore
+        run: dotnet restore Csls.slnx
+
+      - name: Provision Visual Studio Code and web browsers
+        run: dotnet run --file scripts/Provision-VsCode.cs -- --with-web-browsers
+
+      - name: Provision Visual Studio Code remote server
+        run: dotnet run --file scripts/Provision-VsCodeRemoteServer.cs
+
+      - name: Install graphical editor test prerequisites
+        run: >-
+          dotnet run --file scripts/Install-GraphicalEditorTestPrerequisites.cs --
+          --with-web-browsers
+
+      - name: Test Visual Studio Code hosts
+        run: >-
+          dotnet test --project tests/Csls.Tests/Csls.Tests.csproj
+          --filter "TestCategory=VsCodeHost"
+          --report-trx
+          --results-directory artifacts/test-results/vscode-hosts
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: test-results-vscode-hosts
+          path: artifacts/test-results/vscode-hosts
           if-no-files-found: warn
 
   legacy-build-host:
@@ -276,6 +337,11 @@ jobs:
         uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
           dotnet-version: 10.0.400
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24.19.0
 
       - name: Install Native AOT prerequisites
         run: dotnet run --file scripts/Install-NativeAotPrerequisites.cs -- --runtime ${{ matrix.rid }}

@@ -1,12 +1,10 @@
 using Csls.Protocol;
-using Microsoft.Build.Locator;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Diagnostics;
 using Microsoft.CodeAnalysis.FindSymbols;
 using Microsoft.CodeAnalysis.Formatting;
-using Microsoft.CodeAnalysis.MSBuild;
 using Microsoft.CodeAnalysis.Rename;
 using Microsoft.CodeAnalysis.Text;
 using Microsoft.Extensions.Logging;
@@ -42,13 +40,12 @@ public sealed partial class WorkspaceManager : IAsyncDisposable
     private const string QuickFixCodeActionKind = "quickfix";
     private const string RefactorCodeActionKind = "refactor";
     private readonly ILogger<WorkspaceManager> _logger;
-    private readonly AnalyzerDiagnosticCache _diagnosticCache = new();
-    private readonly SemaphoreSlim _mutationGate = new(1, 1);
-    private readonly Dictionary<string, int> _documentVersions = new(
-        OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal);
-    private ImmutableArray<(string RootPath, Workspace Workspace, Solution Solution)> _folders = [];
-    private ImmutableDictionary<string, SourceText> _razorDocuments =
-        ImmutableDictionary.Create<string, SourceText>(PathComparer);
+    private readonly WorkspaceLoader _workspaceLoader;
+    private readonly AnalyzerDiagnosticCache _diagnosticCache;
+    private readonly SemaphoreSlim _mutationGate;
+    private readonly Dictionary<string, int> _documentVersions;
+    private ImmutableArray<(string RootPath, Workspace Workspace, Solution Solution)> _folders;
+    private ImmutableDictionary<string, SourceText> _razorDocuments;
     private string _buildConfiguration = "Debug";
     private int _enableAnalyzers = 1;
     private long _generation;
@@ -58,10 +55,20 @@ public sealed partial class WorkspaceManager : IAsyncDisposable
     /// Initializes workspace management with structured diagnostics.
     /// </summary>
     /// <param name="logger">The workspace logger.</param>
-    public WorkspaceManager(ILogger<WorkspaceManager> logger)
+    /// <param name="workspaceLoader">The host-specific project-system loader.</param>
+    public WorkspaceManager(
+        ILogger<WorkspaceManager> logger,
+        WorkspaceLoader workspaceLoader)
     {
         ArgumentNullException.ThrowIfNull(logger);
+        ArgumentNullException.ThrowIfNull(workspaceLoader);
+        _diagnosticCache = new AnalyzerDiagnosticCache();
+        _mutationGate = new SemaphoreSlim(1, 1);
+        _documentVersions = new Dictionary<string, int>(PathComparer);
+        _folders = [];
+        _razorDocuments = ImmutableDictionary.Create<string, SourceText>(PathComparer);
         _logger = logger;
+        _workspaceLoader = workspaceLoader;
     }
 
     /// <summary>
@@ -157,205 +164,14 @@ public sealed partial class WorkspaceManager : IAsyncDisposable
         CancellationToken cancellationToken,
         IProgress<WorkspaceLoadProgress>? progress = null)
     {
-        ImmutableArray<(string RootPath, Workspace Workspace, Solution Solution)>.Builder loadedFolders =
-            ImmutableArray.CreateBuilder<(
-            string RootPath,
-            Workspace Workspace,
-            Solution Solution)>(rootPaths.Count);
-        try
-        {
-            var loadPlans = new List<(
-                string RootPath,
-                IReadOnlyList<string> WorkspaceFiles)>();
-            foreach (string requestedRoot in rootPaths.Distinct(PathComparer))
-            {
-                cancellationToken.ThrowIfCancellationRequested();
-                string rootPath = Path.GetFullPath(requestedRoot);
-                IReadOnlyList<string> workspaceFiles = WorkspaceDiscovery.Discover(
-                    rootPath,
-                    cancellationToken);
-                loadPlans.Add((rootPath, workspaceFiles));
-            }
-
-            string? firstWorkspaceFile = loadPlans
-                .SelectMany(static plan => plan.WorkspaceFiles)
-                .FirstOrDefault();
-            if (firstWorkspaceFile is not null)
-            {
-                VisualStudioInstance? msBuildInstance = MSBuildRegistration.EnsureRegistered(
-                    firstWorkspaceFile);
-                if (msBuildInstance is not null)
-                {
-                    LogMSBuildRegistered(
-                        msBuildInstance.Name,
-                        msBuildInstance.Version,
-                        msBuildInstance.MSBuildPath,
-                        firstWorkspaceFile);
-                }
-            }
-
-            WorkspaceLoadProgressReporter? progressReporter = progress is null
-                ? null
-                : new WorkspaceLoadProgressReporter(
-                    CountExpectedProjects(loadPlans),
-                    progress);
-            foreach ((string rootPath, IReadOnlyList<string> workspaceFiles) in loadPlans)
-            {
-                if (workspaceFiles.Count == 0)
-                {
-                    (Workspace looseWorkspace, Solution looseSolution) = LoadLooseFiles(rootPath);
-                    Project looseProject = looseSolution.Projects.Single();
-                    progressReporter?.ReportProject(
-                        rootPath,
-                        rootPath,
-                        looseProject.Name);
-                    loadedFolders.Add((rootPath, looseWorkspace, looseSolution));
-                    continue;
-                }
-
-                var loadedWorkspaces = new (Workspace Workspace, Solution Solution)?[
-                    workspaceFiles.Count];
-                try
-                {
-                    await Parallel.ForAsync(
-                        0,
-                        workspaceFiles.Count,
-                        cancellationToken,
-                        async (index, parallelCancellationToken) =>
-                        {
-                            loadedWorkspaces[index] = await LoadWorkspaceFileAsync(
-                                workspaceFiles[index],
-                                buildConfiguration,
-                                string.Concat(rootPath, "\0", index.ToString(CultureInfo.InvariantCulture)),
-                                progressReporter,
-                                parallelCancellationToken).ConfigureAwait(false);
-                        }).ConfigureAwait(false);
-
-                    for (int index = 0; index < workspaceFiles.Count; index++)
-                    {
-                        string workspaceFile = workspaceFiles[index];
-                        (Workspace Workspace, Solution Solution) loaded =
-                            loadedWorkspaces[index] ?? throw new InvalidOperationException(
-                                $"Workspace loading did not produce a result for {workspaceFile}.");
-                        loadedFolders.Add((rootPath, loaded.Workspace, loaded.Solution));
-                        LogWorkspaceLoaded(
-                            loaded.Solution.ProjectIds.Count,
-                            workspaceFile);
-                        loadedWorkspaces[index] = null;
-                    }
-                }
-                finally
-                {
-                    foreach ((Workspace Workspace, Solution Solution)? loaded in loadedWorkspaces)
-                    {
-                        loaded?.Workspace.Dispose();
-                    }
-                }
-            }
-
-            return loadedFolders.ToImmutable();
-        }
-        catch
-        {
-            DisposeFolders(loadedFolders.ToImmutable());
-            throw;
-        }
-    }
-
-    private async Task<(Workspace Workspace, Solution Solution)> LoadWorkspaceFileAsync(
-        string workspaceFile,
-        string buildConfiguration,
-        string loadIdentity,
-        WorkspaceLoadProgressReporter? progressReporter,
-        CancellationToken cancellationToken)
-    {
-        var globalProperties = new Dictionary<string, string>(
-            StringComparer.OrdinalIgnoreCase)
-        {
-            ["Configuration"] = buildConfiguration,
-            ["EnableWindowsTargeting"] = "true"
-        };
-        LegacyFrameworkReferenceResolver.AddGlobalProperties(globalProperties);
-        var workspace = MSBuildWorkspace.Create(globalProperties);
-        try
-        {
-            workspace.RegisterWorkspaceFailedHandler(eventArgs =>
-                LogWorkspaceDiagnostic(
-                    eventArgs.Diagnostic.Kind,
-                    eventArgs.Diagnostic.Message));
-            IProgress<ProjectLoadProgress>? projectProgress = progressReporter?
-                .CreateObserver(loadIdentity);
-            Solution solution;
-            if (WorkspaceDiscovery.IsFileBasedApp(workspaceFile))
-            {
-                Project project = await FileBasedAppProjectLoader.OpenProjectAsync(
-                    workspace,
-                    workspaceFile,
-                    LogWorkspaceDiagnostic,
-                    cancellationToken).ConfigureAwait(false);
-                solution = project.Solution;
-            }
-            else if (workspaceFile.EndsWith(
-                ".csproj",
-                StringComparison.OrdinalIgnoreCase))
-            {
-                Project project = await workspace
-                    .OpenProjectAsync(
-                        workspaceFile,
-                        projectProgress,
-                        cancellationToken)
-                    .ConfigureAwait(false);
-                solution = project.Solution;
-            }
-            else
-            {
-                solution = await workspace
-                    .OpenSolutionAsync(
-                        workspaceFile,
-                        projectProgress,
-                        cancellationToken)
-                    .ConfigureAwait(false);
-            }
-
-            if (progressReporter is not null)
-            {
-                foreach (string projectPath in solution.Projects
-                    .Select(static project => project.FilePath)
-                    .OfType<string>())
-                {
-                    progressReporter.ReportProject(loadIdentity, projectPath);
-                }
-            }
-
-            return (workspace, solution);
-        }
-        catch
-        {
-            workspace.Dispose();
-            throw;
-        }
-    }
-
-    private static int CountExpectedProjects(
-        IReadOnlyList<(string RootPath, IReadOnlyList<string> WorkspaceFiles)> loadPlans)
-    {
-        int expectedProjectCount = 0;
-        foreach ((string _, IReadOnlyList<string> workspaceFiles) in loadPlans)
-        {
-            if (workspaceFiles.Count == 0)
-            {
-                expectedProjectCount = checked(expectedProjectCount + 1);
-                continue;
-            }
-
-            expectedProjectCount = checked(expectedProjectCount + workspaceFiles.Sum(
-                static workspaceFile => WorkspaceDiscovery.IsFileBasedApp(workspaceFile) ||
-                    workspaceFile.EndsWith(".csproj", StringComparison.OrdinalIgnoreCase)
-                    ? 1
-                    : SolutionProjectCounter.CountCSharpProjects(workspaceFile)));
-        }
-
-        return expectedProjectCount;
+        IReadOnlyList<WorkspaceFolderSnapshot> snapshots = await _workspaceLoader
+            .LoadAsync(rootPaths, buildConfiguration, progress, cancellationToken)
+            .ConfigureAwait(false);
+        return
+        [
+            .. snapshots.Select(static snapshot =>
+                (snapshot.RootPath, snapshot.Workspace, snapshot.Solution))
+        ];
     }
 
     private async Task PublishFoldersAsync(
@@ -1423,16 +1239,22 @@ public sealed partial class WorkspaceManager : IAsyncDisposable
         }
 
         Solution originalSolution = document.Project.Solution;
-        Solution renamedSolution = await Renamer.RenameSymbolAsync(
-            originalSolution,
-            symbol,
-            new SymbolRenameOptions(
-                RenameOverloads: false,
-                RenameInStrings: false,
-                RenameInComments: false,
-                RenameFile: false),
-            parameters.NewName,
-            cancellationToken).ConfigureAwait(false);
+        Solution renamedSolution = OperatingSystem.IsBrowser()
+            ? await BrowserCompatibleRenameService.RenameSymbolAsync(
+                originalSolution,
+                symbol,
+                parameters.NewName,
+                cancellationToken).ConfigureAwait(false)
+            : await Renamer.RenameSymbolAsync(
+                originalSolution,
+                symbol,
+                new SymbolRenameOptions(
+                    RenameOverloads: false,
+                    RenameInStrings: false,
+                    RenameInComments: false,
+                    RenameFile: false),
+                parameters.NewName,
+                cancellationToken).ConfigureAwait(false);
         IReadOnlyDictionary<string, IReadOnlyList<LspTextEdit>> razorEdits =
             await WorkspaceRazorRenameService.GetMappedEditsAsync(
                 originalSolution,
@@ -1469,6 +1291,11 @@ public sealed partial class WorkspaceManager : IAsyncDisposable
         if (IsCodeActionRequested(parameters.Context.Only, QuickFixCodeActionKind))
         {
             actions.AddRange(await WorkspaceCodeActionService.GetMissingUsingActionsAsync(
+                document,
+                parameters,
+                CreateWorkspaceEditAsync,
+                cancellationToken).ConfigureAwait(false));
+            actions.AddRange(await WorkspaceSimplifyNameCodeActionService.GetActionsAsync(
                 document,
                 parameters,
                 CreateWorkspaceEditAsync,
@@ -2550,83 +2377,6 @@ public sealed partial class WorkspaceManager : IAsyncDisposable
     private static StringComparer PathComparer =>
         OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal;
 
-    private static (Workspace Workspace, Solution Solution) LoadLooseFiles(string rootPath)
-    {
-        bool isSourceFile = File.Exists(rootPath);
-        string projectName = isSourceFile
-            ? Path.GetFileNameWithoutExtension(rootPath)
-            : new DirectoryInfo(rootPath).Name;
-        var workspace = new AdhocWorkspace();
-        try
-        {
-            var projectId = ProjectId.CreateNewId(debugName: rootPath);
-            var projectInfo = ProjectInfo.Create(
-                projectId,
-                VersionStamp.Create(),
-                projectName,
-                projectName,
-                LanguageNames.CSharp,
-                filePath: rootPath,
-                parseOptions: new CSharpParseOptions(LanguageVersion.CSharp14),
-                compilationOptions: new CSharpCompilationOptions(
-                    OutputKind.DynamicallyLinkedLibrary),
-                metadataReferences: GetTrustedPlatformReferences());
-            Solution solution = workspace.CurrentSolution.AddProject(projectInfo);
-            solution = solution.AddDocument(
-                DocumentId.CreateNewId(projectId, debugName: "Csls.ImplicitUsings.g.cs"),
-                "Csls.ImplicitUsings.g.cs",
-                SourceText.From(DefaultGlobalUsings, Encoding.UTF8));
-            IEnumerable<string> sourceFiles = isSourceFile
-                ? [rootPath]
-                : Directory
-                    .EnumerateFiles(rootPath, "*.cs", SearchOption.TopDirectoryOnly)
-                    .Order(StringComparer.Ordinal);
-            foreach (string path in sourceFiles)
-            {
-                solution = solution.AddDocument(
-                    DocumentId.CreateNewId(projectId, debugName: path),
-                    Path.GetFileName(path),
-                    SourceText.From(File.ReadAllText(path), Encoding.UTF8),
-                    filePath: path);
-            }
-
-            if (!workspace.TryApplyChanges(solution))
-            {
-                throw new InvalidOperationException(
-                    $"Roslyn rejected loose files under {rootPath}.");
-            }
-
-            return (workspace, workspace.CurrentSolution);
-        }
-        catch
-        {
-            workspace.Dispose();
-            throw;
-        }
-    }
-
-    private const string DefaultGlobalUsings = """
-        global using System;
-        global using System.Collections.Generic;
-        global using System.IO;
-        global using System.Linq;
-        global using System.Net.Http;
-        global using System.Threading;
-        global using System.Threading.Tasks;
-        """;
-
-    private static IEnumerable<MetadataReference> GetTrustedPlatformReferences()
-    {
-        string trustedPlatformAssemblies = AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES")
-            as string
-            ?? throw new InvalidOperationException(
-                "The .NET host did not provide its trusted platform assembly set.");
-        return trustedPlatformAssemblies
-            .Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries)
-            .Distinct(PathComparer)
-            .Select(static path => MetadataReference.CreateFromFile(path));
-    }
-
     private static int FindFolderIndex(
         string documentPath,
         ImmutableArray<(string RootPath, Workspace Workspace, Solution Solution)> folders)
@@ -2974,31 +2724,4 @@ public sealed partial class WorkspaceManager : IAsyncDisposable
         }
     }
 
-    [LoggerMessage(
-        EventId = 1,
-        Level = LogLevel.Warning,
-        Message = "MSBuild workspace diagnostic {Kind}: {Message}")]
-    private partial void LogWorkspaceDiagnostic(WorkspaceDiagnosticKind kind, string message);
-
-    [LoggerMessage(
-        EventId = 2,
-        Level = LogLevel.Information,
-        Message = "Loaded {ProjectCount} projects from {WorkspaceFile}")]
-    private partial void LogWorkspaceLoaded(int projectCount, string workspaceFile);
-
-    [LoggerMessage(
-        EventId = 3,
-        Level = LogLevel.Warning,
-        Message = "Could not remove edit transaction artifact {Path}")]
-    private partial void LogEditArtifactCleanupFailure(string path, Exception exception);
-
-    [LoggerMessage(
-        EventId = 4,
-        Level = LogLevel.Information,
-        Message = "Registered MSBuild {Name} {Version} from {Path} for {WorkspaceFile}")]
-    private partial void LogMSBuildRegistered(
-        string name,
-        Version version,
-        string path,
-        string workspaceFile);
 }

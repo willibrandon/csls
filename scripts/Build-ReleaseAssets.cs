@@ -116,6 +116,16 @@ try
                 publishPath,
                 version,
                 runtimeIdentifier).ConfigureAwait(false);
+            if (string.Equals(packageId, "csls", StringComparison.Ordinal))
+            {
+                await BuildVsCodeExtensionAsync(
+                    repositoryRoot,
+                    publishPath,
+                    releaseOutput,
+                    version,
+                    runtimeIdentifier).ConfigureAwait(false);
+            }
+
             await BuildProductArchivesAsync(
                 publishPath,
                 releaseOutput,
@@ -136,6 +146,7 @@ try
         .ConfigureAwait(false);
     return 0;
 }
+
 catch (Exception exception) when (exception is
     IOException or
     InvalidDataException or
@@ -144,6 +155,72 @@ catch (Exception exception) when (exception is
 {
     await Console.Error.WriteLineAsync(exception.Message).ConfigureAwait(false);
     return 1;
+}
+
+static async Task BuildVsCodeExtensionAsync(
+    string repositoryRoot,
+    string publishPath,
+    string releaseOutput,
+    string version,
+    string runtimeIdentifier)
+{
+    string target = runtimeIdentifier switch
+    {
+        "win-x64" => "win32-x64",
+        "win-arm64" => "win32-arm64",
+        "win-x86" => "win32-ia32",
+        "linux-x64" => "linux-x64",
+        "linux-arm64" => "linux-arm64",
+        "linux-musl-x64" => "alpine-x64",
+        "linux-musl-arm64" => "alpine-arm64",
+        "osx-x64" => "darwin-x64",
+        "osx-arm64" => "darwin-arm64",
+        _ => throw new InvalidDataException(
+            $"The runtime has no VS Code extension target: {runtimeIdentifier}")
+    };
+    string extensionPath = Path.Join(
+        releaseOutput,
+        "editors",
+        $"csls-{version}-{target}.vsix");
+    await RunCheckedAsync(
+        "dotnet",
+        [
+            "run",
+            "--file",
+            "scripts/Build-VsCodeExtension.cs",
+            "--",
+            "--version",
+            version,
+            "--target",
+            target,
+            "--server",
+            publishPath,
+            "--output",
+            extensionPath
+        ],
+        repositoryRoot).ConfigureAwait(false);
+    if (string.Equals(runtimeIdentifier, "linux-x64", StringComparison.Ordinal))
+    {
+        string webExtensionPath = Path.Join(
+            releaseOutput,
+            "editors",
+            $"csls-{version}-web.vsix");
+        await RunCheckedAsync(
+            "dotnet",
+            [
+                "run",
+                "--file",
+                "scripts/Build-VsCodeExtension.cs",
+                "--",
+                "--version",
+                version,
+                "--target",
+                "web",
+                "--output",
+                webExtensionPath
+            ],
+            repositoryRoot).ConfigureAwait(false);
+    }
 }
 
 static async Task<int> WriteUsageErrorAsync()

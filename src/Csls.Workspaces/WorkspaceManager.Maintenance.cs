@@ -108,7 +108,7 @@ public sealed partial class WorkspaceManager
     public async Task<WorkspaceMaintenanceResult> RestoreAsync(CancellationToken cancellationToken)
     {
         IReadOnlyList<string> roots = GetRequiredWorkspaceRoots();
-        int restoredEntryPointCount = await DotNetWorkspaceRestorer
+        int restoredEntryPointCount = await _workspaceLoader
             .RestoreAsync(roots, cancellationToken)
             .ConfigureAwait(false);
         return await ReloadAsync(restoredEntryPointCount, cancellationToken).ConfigureAwait(false);

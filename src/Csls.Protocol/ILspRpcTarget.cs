@@ -1,6 +1,4 @@
-using Csls.Protocol;
-
-namespace Csls.Rpc;
+namespace Csls.Protocol;
 
 /// <summary>
 /// Defines every explicitly registered LSP entry point implemented by the server engine.

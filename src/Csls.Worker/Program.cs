@@ -1,6 +1,7 @@
 using Csls.Control;
 using Csls.Control.Contracts;
 using Csls.Core;
+using Csls.Protocol;
 using Csls.Rpc;
 using Csls.Server;
 using Csls.Workspaces;
@@ -23,8 +24,11 @@ builder.Logging.AddProvider(controlLogBuffer);
 builder.Services.AddSingleton(logFilter);
 builder.Services.AddSingleton(controlLogBuffer);
 builder.Services.AddSingleton<RequestScheduler>();
+builder.Services.AddSingleton<WorkspaceLoader, MSBuildWorkspaceLoader>();
 builder.Services.AddSingleton<WorkspaceManager>();
 builder.Services.AddSingleton<LspClientConnection>();
+builder.Services.AddSingleton<ILspClientConnection>(
+    static services => services.GetRequiredService<LspClientConnection>());
 builder.Services.AddSingleton<LanguageServer>();
 builder.Services.AddSingleton<ControlService>();
 builder.Services.AddSingleton<IControlRpcTarget>(

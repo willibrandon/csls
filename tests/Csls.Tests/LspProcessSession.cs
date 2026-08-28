@@ -144,6 +144,12 @@ internal sealed class LspProcessSession : IAsyncDisposable
                     "workspace/diagnostic/refresh",
                     diagnosticRefreshHandler);
 
+                Func<CancellationToken, Task> inlayHintRefreshHandler =
+                    client.RefreshInlayHintsAsync;
+                rpc.AddLocalRpcMethod(
+                    "workspace/inlayHint/refresh",
+                    inlayHintRefreshHandler);
+
                 Func<WorkDoneProgressCreateParams, CancellationToken, Task>
                     workDoneProgressCreateHandler = client.CreateWorkDoneProgressAsync;
                 var workDoneProgressCreateAttribute = new JsonRpcMethodAttribute(

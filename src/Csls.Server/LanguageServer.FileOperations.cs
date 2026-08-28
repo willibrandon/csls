@@ -1,6 +1,7 @@
 using Csls.Core;
 using Csls.Protocol;
 using Csls.Workspaces;
+using System.Collections.ObjectModel;
 using System.Text.Json;
 using LspFileSystemWatcher = Csls.Protocol.FileSystemWatcher;
 
@@ -8,33 +9,6 @@ namespace Csls.Server;
 
 public sealed partial class LanguageServer
 {
-    private static readonly IReadOnlyList<FileOperationFilter> s_fileOperationFilters =
-        Array.AsReadOnly(
-        [
-            CreateFileOperationFilter(
-                "**/*.{cs,csx,cshtml,razor,csproj,sln,slnx,props,targets,ruleset,globalconfig}",
-                FileOperationPatternKind.File),
-            CreateFileOperationFilter(
-                "**/{global.json,packages.config,NuGet.config,.editorconfig}",
-                FileOperationPatternKind.File),
-            CreateFileOperationFilter("**", FileOperationPatternKind.Folder)
-        ]);
-    private static readonly IReadOnlyList<LspFileSystemWatcher> s_fileSystemWatchers =
-        Array.AsReadOnly(
-        [
-            new LspFileSystemWatcher
-            {
-                GlobPattern =
-                    "**/*.{cs,csx,cshtml,razor,csproj,sln,slnx,props,targets,ruleset,globalconfig}",
-                Kind = WatchKind.Create | WatchKind.Change | WatchKind.Delete
-            },
-            new LspFileSystemWatcher
-            {
-                GlobPattern = "**/{global.json,packages.config,NuGet.config,.editorconfig}",
-                Kind = WatchKind.Create | WatchKind.Change | WatchKind.Delete
-            }
-        ]);
-
     /// <inheritdoc />
     public Task DidCreateFilesAsync(
         CreateFilesParams parameters,
@@ -95,7 +69,7 @@ public sealed partial class LanguageServer
     {
         var registration = new FileOperationRegistrationOptions
         {
-            Filters = s_fileOperationFilters
+            Filters = CreateFileOperationFilters()
         };
         return new FileOperationOptions
         {
@@ -122,11 +96,39 @@ public sealed partial class LanguageServer
             }
         };
 
+    private static ReadOnlyCollection<FileOperationFilter> CreateFileOperationFilters() =>
+        Array.AsReadOnly(
+        [
+            CreateFileOperationFilter(
+                "**/*.{cs,csx,cshtml,razor,csproj,sln,slnx,props,targets,ruleset,globalconfig}",
+                FileOperationPatternKind.File),
+            CreateFileOperationFilter(
+                "**/{global.json,packages.config,NuGet.config,.editorconfig}",
+                FileOperationPatternKind.File),
+            CreateFileOperationFilter("**", FileOperationPatternKind.Folder)
+        ]);
+
+    private static ReadOnlyCollection<LspFileSystemWatcher> CreateFileSystemWatchers() =>
+        Array.AsReadOnly(
+        [
+            new LspFileSystemWatcher
+            {
+                GlobPattern =
+                    "**/*.{cs,csx,cshtml,razor,csproj,sln,slnx,props,targets,ruleset,globalconfig}",
+                Kind = WatchKind.Create | WatchKind.Change | WatchKind.Delete
+            },
+            new LspFileSystemWatcher
+            {
+                GlobPattern = "**/{global.json,packages.config,NuGet.config,.editorconfig}",
+                Kind = WatchKind.Create | WatchKind.Change | WatchKind.Delete
+            }
+        ]);
+
     private async Task RegisterFileWatchersAsync(CancellationToken cancellationToken)
     {
         var options = new DidChangeWatchedFilesRegistrationOptions
         {
-            Watchers = s_fileSystemWatchers
+            Watchers = CreateFileSystemWatchers()
         };
         JsonElement registerOptions = JsonSerializer.SerializeToElement(
             options,

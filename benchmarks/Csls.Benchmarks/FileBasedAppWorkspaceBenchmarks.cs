@@ -1,6 +1,5 @@
 using BenchmarkDotNet.Attributes;
 using Csls.Workspaces;
-using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Csls.Benchmarks;
 
@@ -31,7 +30,7 @@ public class FileBasedAppWorkspaceBenchmarks : IAsyncDisposable
             Path.Join(_fixturePath, "global.json"));
         _entryPointPath = Path.Join(_fixturePath, "Benchmark.cs");
         await File.WriteAllTextAsync(_entryPointPath, FileBasedAppText).ConfigureAwait(false);
-        _workspaceManager = new WorkspaceManager(NullLogger<WorkspaceManager>.Instance);
+        _workspaceManager = BenchmarkWorkspaceManagerFactory.Create();
         await _workspaceManager.LoadAsync([_entryPointPath], CancellationToken.None)
             .ConfigureAwait(false);
         WorkspaceInspectionSnapshot inspection = await _workspaceManager

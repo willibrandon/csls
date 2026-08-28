@@ -169,7 +169,10 @@ public sealed partial class WorkspaceManager
             catch (Exception exception) when (
                 exception is IOException or UnauthorizedAccessException)
             {
-                LogEditArtifactCleanupFailure(backupPath, exception);
+                WorkspaceManagerLogger.LogEditArtifactCleanupFailure(
+                    _logger,
+                    backupPath,
+                    exception);
             }
         }
     }
@@ -222,7 +225,10 @@ public sealed partial class WorkspaceManager
             catch (Exception exception) when (
                 exception is IOException or UnauthorizedAccessException)
             {
-                LogEditArtifactCleanupFailure(stagedFile.TempPath, exception);
+                WorkspaceManagerLogger.LogEditArtifactCleanupFailure(
+                    _logger,
+                    stagedFile.TempPath,
+                    exception);
             }
         }
     }

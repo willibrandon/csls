@@ -1,0 +1,21 @@
+{
+  "name": "csls-test-resolver",
+  "displayName": "csls remote test resolver",
+  "description": "Connects the csls integration suite to a local VS Code server.",
+  "version": "0.0.0",
+  "private": true,
+  "publisher": "csls-tests",
+  "engines": {
+    "vscode": "^1.135.0"
+  },
+  "enabledApiProposals": [
+    "resolvers"
+  ],
+  "extensionKind": [
+    "ui"
+  ],
+  "activationEvents": [
+    "onResolveRemoteAuthority:test"
+  ],
+  "main": "./extension.cjs"
+}

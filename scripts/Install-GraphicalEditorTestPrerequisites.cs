@@ -12,15 +12,19 @@ if (args.Length == 1 && args[0] is "--help" or "-h" or "-?")
         "Installs the Linux display and input packages used by graphical editor tests.")
         .ConfigureAwait(false);
     await Console.Out.WriteLineAsync(
-        "Usage: dotnet run --file scripts/Install-GraphicalEditorTestPrerequisites.cs")
+        "Usage: dotnet run --file scripts/Install-GraphicalEditorTestPrerequisites.cs " +
+        "[--with-web-browsers]")
         .ConfigureAwait(false);
     return 0;
 }
 
-if (args.Length != 0)
+bool installWebBrowserDependencies = args.Length == 1 &&
+    string.Equals(args[0], "--with-web-browsers", StringComparison.Ordinal);
+if (args.Length != 0 && !installWebBrowserDependencies)
 {
     await Console.Error.WriteLineAsync(
-        "Usage: dotnet run --file scripts/Install-GraphicalEditorTestPrerequisites.cs")
+        "Usage: dotnet run --file scripts/Install-GraphicalEditorTestPrerequisites.cs " +
+        "[--with-web-browsers]")
         .ConfigureAwait(false);
     return 2;
 }
@@ -104,15 +108,55 @@ try
     await RunPrivilegedAsync(
         "install",
         ["--directory", "--mode", "1777", "/tmp/.X11-unix"]).ConfigureAwait(false);
+    if (installWebBrowserDependencies)
+    {
+        string repositoryRoot = FindRepositoryRoot();
+        string playwrightPath = Path.Join(
+            repositoryRoot,
+            "tests",
+            "vscode",
+            "node_modules",
+            "playwright-core",
+            "cli.js");
+        if (!File.Exists(playwrightPath))
+        {
+            throw new FileNotFoundException(
+                "The VS Code fixture is not provisioned. Run Provision-VsCode.cs first.",
+                playwrightPath);
+        }
+
+        await RunCheckedAsync(
+            "node",
+            [playwrightPath, "install-deps", "chromium", "firefox", "webkit"])
+            .ConfigureAwait(false);
+    }
+
     return 0;
 }
 catch (Exception exception) when (exception is
+    IOException or
     InvalidOperationException or
     PlatformNotSupportedException or
     UnauthorizedAccessException)
 {
     await Console.Error.WriteLineAsync(exception.Message).ConfigureAwait(false);
     return 1;
+}
+
+static string FindRepositoryRoot()
+{
+    DirectoryInfo? directory = new(Directory.GetCurrentDirectory());
+    while (directory is not null)
+    {
+        if (File.Exists(Path.Join(directory.FullName, "Csls.slnx")))
+        {
+            return directory.FullName;
+        }
+
+        directory = directory.Parent;
+    }
+
+    throw new DirectoryNotFoundException("The csls repository root was not found.");
 }
 
 static Task RunPrivilegedAsync(string executablePath, IReadOnlyList<string> arguments) =>

@@ -55,6 +55,7 @@
   </ItemGroup>
 
   <ItemGroup Condition="'$(MSBuildProjectName)' == 'Csls.Workspaces' or
+                        '$(MSBuildProjectName)' == 'Csls.Workspaces.MSBuild' or
                         '$(MSBuildProjectName)' == 'Csls.Server' or
                         '$(MSBuildProjectName)' == 'Csls.Control.Server' or
                         '$(MSBuildProjectName)' == 'Csls.Worker' or

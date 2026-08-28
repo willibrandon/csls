@@ -32,6 +32,13 @@ internal sealed class LspTestClient
             SingleReader = true,
             SingleWriter = false
         });
+    private readonly Channel<bool> _inlayHintRefreshRequests = Channel.CreateUnbounded<bool>(
+        new UnboundedChannelOptions
+        {
+            AllowSynchronousContinuations = false,
+            SingleReader = true,
+            SingleWriter = false
+        });
     private readonly Channel<WorkspaceDiagnosticProgressParams> _workspaceDiagnosticProgress =
         Channel.CreateUnbounded<WorkspaceDiagnosticProgressParams>(
             new UnboundedChannelOptions
@@ -213,6 +220,35 @@ internal sealed class LspTestClient
     internal async Task WaitForDiagnosticRefreshAsync(CancellationToken cancellationToken)
     {
         await _diagnosticRefreshRequests.Reader
+            .ReadAsync(cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Accepts one server request to refresh inlay hints.
+    /// </summary>
+    /// <param name="cancellationToken">The request cancellation token.</param>
+    /// <returns>A completed task after the refresh is retained.</returns>
+    internal Task RefreshInlayHintsAsync(CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        if (!_inlayHintRefreshRequests.Writer.TryWrite(true))
+        {
+            throw new InvalidOperationException(
+                "The inlay-hint refresh request could not be observed.");
+        }
+
+        return Task.CompletedTask;
+    }
+
+    /// <summary>
+    /// Waits for the next server request to refresh inlay hints.
+    /// </summary>
+    /// <param name="cancellationToken">The test cancellation token.</param>
+    /// <returns>A task that completes after the refresh request arrives.</returns>
+    internal async Task WaitForInlayHintRefreshAsync(CancellationToken cancellationToken)
+    {
+        await _inlayHintRefreshRequests.Reader
             .ReadAsync(cancellationToken)
             .ConfigureAwait(false);
     }

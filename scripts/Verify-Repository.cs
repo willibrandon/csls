@@ -5,6 +5,7 @@
 #:property TreatWarningsAsErrors=true
 
 using System.Diagnostics;
+using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.Xml.Linq;
 
@@ -35,6 +36,7 @@ VerifyTrackedText(repositoryRoot, trackedPaths, failures);
 VerifyDependencies(repositoryRoot, failures);
 VerifyPackageSources(repositoryRoot, failures);
 VerifyGitHubActionReferences(repositoryRoot, failures);
+VerifyVsCodeActivationEvents(repositoryRoot, failures);
 if (failures.Count != 0)
 {
     foreach (string failure in failures.Order(StringComparer.Ordinal))
@@ -85,6 +87,33 @@ static void VerifyRepositoryRoot(
         .OfType<string>())
     {
         failures.Add($"Build and test artifacts belong under artifacts/: {fileName}");
+    }
+}
+
+static void VerifyVsCodeActivationEvents(
+    string repositoryRoot,
+    ICollection<string> failures)
+{
+    string[] manifestPaths =
+    [
+        Path.Join("editors", "vscode", "package.json"),
+        Path.Join("tests", "vscode", "package.json"),
+        Path.Join("tests", "vscode", "remote-resolver", "package.json")
+    ];
+    foreach (string manifestPath in manifestPaths)
+    {
+        using var manifest = JsonDocument.Parse(
+            File.ReadAllText(Path.Join(repositoryRoot, manifestPath)));
+        if (!manifest.RootElement.TryGetProperty("activationEvents", out JsonElement events))
+        {
+            continue;
+        }
+
+        if (events.EnumerateArray().Any(
+            static item => string.Equals(item.GetString(), "*", StringComparison.Ordinal)))
+        {
+            failures.Add($"VS Code wildcard activation is forbidden: {manifestPath}");
+        }
     }
 }
 
@@ -233,6 +262,7 @@ static void VerifyDependencies(string repositoryRoot, ICollection<string> failur
     [
         "Hex1b",
         "Microsoft.AspNetCore.Razor",
+        "Microsoft.Bcl",
         "Microsoft.Build",
         "Microsoft.CodeAnalysis",
         "Microsoft.Extensions",

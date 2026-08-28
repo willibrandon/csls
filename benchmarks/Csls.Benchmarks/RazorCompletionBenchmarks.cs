@@ -1,7 +1,6 @@
 using BenchmarkDotNet.Attributes;
 using Csls.Protocol;
 using Csls.Workspaces;
-using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Csls.Benchmarks;
 
@@ -36,7 +35,7 @@ public class RazorCompletionBenchmarks : IAsyncDisposable
             string.Empty).ConfigureAwait(false);
         await File.WriteAllTextAsync(documentPath, RazorText).ConfigureAwait(false);
 
-        _workspaceManager = new WorkspaceManager(NullLogger<WorkspaceManager>.Instance);
+        _workspaceManager = BenchmarkWorkspaceManagerFactory.Create();
         await _workspaceManager.LoadAsync([_fixturePath], CancellationToken.None)
             .ConfigureAwait(false);
         await _workspaceManager.OpenDocumentAsync(

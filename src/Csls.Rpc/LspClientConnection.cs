@@ -7,7 +7,7 @@ namespace Csls.Rpc;
 /// <summary>
 /// Sends explicitly supported LSP requests from the server to its connected client.
 /// </summary>
-public sealed class LspClientConnection
+public sealed class LspClientConnection : ILspClientConnection
 {
     private JsonRpc? _rpc;
 
@@ -102,10 +102,19 @@ public sealed class LspClientConnection
         ArgumentNullException.ThrowIfNull(parameters);
         JsonRpc rpc = Volatile.Read(ref _rpc)
             ?? throw new InvalidOperationException("The LSP client is not connected.");
-        await rpc.InvokeWithParameterObjectAsync<object?>(
-            "client/registerCapability",
-            parameters,
-            cancellationToken).ConfigureAwait(false);
+        try
+        {
+            await rpc.InvokeWithParameterObjectAsync<object?>(
+                "client/registerCapability",
+                parameters,
+                cancellationToken).ConfigureAwait(false);
+        }
+        catch (RemoteRpcException exception)
+        {
+            throw new InvalidOperationException(
+                "The LSP client rejected dynamic capability registration.",
+                exception);
+        }
     }
 
     /// <summary>
@@ -119,6 +128,21 @@ public sealed class LspClientConnection
             ?? throw new InvalidOperationException("The LSP client is not connected.");
         await rpc.InvokeWithParameterObjectAsync<object?>(
             "workspace/diagnostic/refresh",
+            argument: (object?)null,
+            cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Requests that the connected LSP client refresh inlay hints.
+    /// </summary>
+    /// <param name="cancellationToken">The request cancellation token.</param>
+    /// <returns>A task that completes after the client accepts the refresh.</returns>
+    public async Task RefreshInlayHintsAsync(CancellationToken cancellationToken)
+    {
+        JsonRpc rpc = Volatile.Read(ref _rpc)
+            ?? throw new InvalidOperationException("The LSP client is not connected.");
+        await rpc.InvokeWithParameterObjectAsync<object?>(
+            "workspace/inlayHint/refresh",
             argument: (object?)null,
             cancellationToken).ConfigureAwait(false);
     }

@@ -16,22 +16,15 @@ internal static class DotNetWorkspaceRestorer
     /// <summary>
     /// Restores every distinct entry point selected by bounded workspace discovery.
     /// </summary>
-    /// <param name="workspaceRoots">The absolute roots of the live workspace.</param>
+    /// <param name="entryPoints">The discovered solution, project, or file-based app paths.</param>
     /// <param name="cancellationToken">The operation cancellation token.</param>
     /// <returns>The number of restored solution or project entry points.</returns>
     internal static async Task<int> RestoreAsync(
-        IReadOnlyList<string> workspaceRoots,
+        IReadOnlyList<string> entryPoints,
         CancellationToken cancellationToken)
     {
-        ArgumentNullException.ThrowIfNull(workspaceRoots);
-        string[] entryPoints =
-        [
-            .. workspaceRoots
-                .SelectMany(root => WorkspaceDiscovery.Discover(root, cancellationToken))
-                .Distinct(PathComparer)
-                .Order(StringComparer.Ordinal)
-        ];
-        if (entryPoints.Length == 0)
+        ArgumentNullException.ThrowIfNull(entryPoints);
+        if (entryPoints.Count == 0)
         {
             throw new InvalidOperationException(
                 "The current workspace contains no solution or project entry point to restore.");
@@ -42,12 +35,8 @@ internal static class DotNetWorkspaceRestorer
             await RestoreEntryPointAsync(entryPoint, cancellationToken).ConfigureAwait(false);
         }
 
-        return entryPoints.Length;
+        return entryPoints.Count;
     }
-
-    private static StringComparer PathComparer => OperatingSystem.IsWindows()
-        ? StringComparer.OrdinalIgnoreCase
-        : StringComparer.Ordinal;
 
     private static async Task RestoreEntryPointAsync(
         string entryPoint,

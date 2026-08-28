@@ -1,6 +1,5 @@
 using Csls.Protocol;
 using Csls.Workspaces;
-using Microsoft.Extensions.Logging.Abstractions;
 using System.Runtime.CompilerServices;
 
 namespace Csls.Tests;
@@ -34,8 +33,7 @@ public sealed class WorkspaceManagerTests
                 DocumentText,
                 TestContext.CancellationToken).ConfigureAwait(false);
 
-            var manager = new WorkspaceManager(
-                NullLogger<WorkspaceManager>.Instance);
+            WorkspaceManager manager = WorkspaceManagerTestFactory.Create();
             await using ConfiguredAsyncDisposable managerDisposal =
                 manager.ConfigureAwait(false);
             await manager.LoadAsync(
@@ -87,9 +85,9 @@ public sealed class WorkspaceManagerTests
                 DocumentText,
                 TestContext.CancellationToken).ConfigureAwait(false);
 
-            var first = new WorkspaceManager(NullLogger<WorkspaceManager>.Instance);
+            WorkspaceManager first = WorkspaceManagerTestFactory.Create();
             await using ConfiguredAsyncDisposable firstDisposal = first.ConfigureAwait(false);
-            var second = new WorkspaceManager(NullLogger<WorkspaceManager>.Instance);
+            WorkspaceManager second = WorkspaceManagerTestFactory.Create();
             await using ConfiguredAsyncDisposable secondDisposal = second.ConfigureAwait(false);
             await Task.WhenAll(
                 first.LoadAsync([documentPath], TestContext.CancellationToken),
@@ -121,7 +119,7 @@ public sealed class WorkspaceManagerTests
                 workspacePath,
                 "DuplicateWorkspace",
                 TestContext.CancellationToken).ConfigureAwait(false);
-            var manager = new WorkspaceManager(NullLogger<WorkspaceManager>.Instance);
+            WorkspaceManager manager = WorkspaceManagerTestFactory.Create();
             await using ConfiguredAsyncDisposable managerDisposal =
                 manager.ConfigureAwait(false);
 
@@ -177,7 +175,7 @@ public sealed class WorkspaceManagerTests
                 ExtensionlessDocumentText,
                 TestContext.CancellationToken).ConfigureAwait(false);
 
-            var manager = new WorkspaceManager(NullLogger<WorkspaceManager>.Instance);
+            WorkspaceManager manager = WorkspaceManagerTestFactory.Create();
             await using ConfiguredAsyncDisposable managerDisposal =
                 manager.ConfigureAwait(false);
             await manager.LoadAsync(
@@ -242,7 +240,7 @@ public sealed class WorkspaceManagerTests
                 "<invalid>",
                 TestContext.CancellationToken).ConfigureAwait(false);
 
-            var manager = new WorkspaceManager(NullLogger<WorkspaceManager>.Instance);
+            WorkspaceManager manager = WorkspaceManagerTestFactory.Create();
             await using ConfiguredAsyncDisposable managerDisposal =
                 manager.ConfigureAwait(false);
             await manager.LoadAsync(
@@ -315,7 +313,7 @@ public sealed class WorkspaceManagerTests
                 DocumentText.Replace("\"hello\"", "MissingBeta", StringComparison.Ordinal),
                 TestContext.CancellationToken).ConfigureAwait(false);
 
-            var manager = new WorkspaceManager(NullLogger<WorkspaceManager>.Instance);
+            WorkspaceManager manager = WorkspaceManagerTestFactory.Create();
             await using ConfiguredAsyncDisposable managerDisposal =
                 manager.ConfigureAwait(false);
             await manager.LoadAsync(

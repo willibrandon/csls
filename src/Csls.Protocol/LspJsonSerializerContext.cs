@@ -26,6 +26,7 @@ namespace Csls.Protocol;
 [JsonSerializable(typeof(CSharpDebugRequestQueueInfo))]
 [JsonSerializable(typeof(CSharpDebugRequestInfo))]
 [JsonSerializable(typeof(CSharpDebugRequestStatisticsInfo))]
+[JsonSerializable(typeof(NegotiatedClientCapabilities))]
 [JsonSerializable(typeof(CompletionContext))]
 [JsonSerializable(typeof(CompletionItem))]
 [JsonSerializable(typeof(CompletionItemData))]

@@ -8,7 +8,7 @@
 
 using System.Runtime.InteropServices;
 
-const string Version = "1.16.2";
+const string Version = "1.17.2";
 const string CSharpExtensionVersion = "1.2.2";
 const string CSharpExtensionSha256 =
     "899714536549b3ce4d43b758f74e5376ac68d4814a08376b6bd5be0fbbb23195";
@@ -16,7 +16,7 @@ const string CSharpExtensionSha256 =
 if (args.Length == 1 && args[0] is "--help" or "-h" or "-?")
 {
     await Console.Out.WriteLineAsync(
-        "Downloads and verifies the pinned Zed editor and official C# extension.")
+        "Downloads and verifies the pinned Zed editor and C# extension oracle.")
         .ConfigureAwait(false);
     await Console.Out.WriteLineAsync(
         "Usage: dotnet run --file scripts/Provision-Zed.cs [--output <directory>]")
@@ -83,7 +83,7 @@ static (string Platform, string AssetName, string Sha256) SelectAsset()
         return (
             "linux-x64",
             "zed-linux-x86_64.tar.gz",
-            "c761acb9e52977924c6a36a10224cfb72985e6bef5c1e9e2c6f24e9748b106a7");
+            "3682dd058a305d2b246a14d64419fcf42e86a06e27755d23b5a28622ed9aef85");
     }
 
     if (OperatingSystem.IsLinux() && architecture == Architecture.Arm64)
@@ -91,7 +91,7 @@ static (string Platform, string AssetName, string Sha256) SelectAsset()
         return (
             "linux-arm64",
             "zed-linux-aarch64.tar.gz",
-            "0a5fe2284eb92f1c590f200db2f3c4e4baa744d94e3782f156e3a1d6757deb5b");
+            "4f75332ab8155a5a62b0cdc473473cf8938959cf3cd2b0145e2975969d7e8929");
     }
 
     throw new PlatformNotSupportedException(

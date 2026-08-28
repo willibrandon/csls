@@ -24,6 +24,7 @@ public sealed partial class LanguageServer
         RequestSchedulerSnapshot requests = _scheduler.GetSnapshot();
         return new CSharpDebugInfo
         {
+            ClientCapabilities = _negotiatedClientCapabilities,
             Workspace = new CSharpDebugWorkspaceInfo
             {
                 Phase = phase.ToString(),

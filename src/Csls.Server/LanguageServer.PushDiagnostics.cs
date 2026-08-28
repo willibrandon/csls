@@ -1,12 +1,11 @@
 using Csls.Core;
 using Csls.Protocol;
-using Microsoft.Extensions.Logging;
 
 namespace Csls.Server;
 
 public sealed partial class LanguageServer
 {
-    private static readonly TimeSpan s_pushDiagnosticChangeDelay = TimeSpan.FromMilliseconds(200);
+    private const int PushDiagnosticChangeDelayMilliseconds = 200;
     private readonly Lock _pushDiagnosticGate = new();
     private readonly Dictionary<DocumentUri, long> _pushDiagnosticRequests = [];
 
@@ -25,7 +24,7 @@ public sealed partial class LanguageServer
         {
             if (delay)
             {
-                await Task.Delay(s_pushDiagnosticChangeDelay, cancellationToken)
+                await Task.Delay(PushDiagnosticChangeDelayMilliseconds, cancellationToken)
                     .ConfigureAwait(false);
             }
 
@@ -91,7 +90,7 @@ public sealed partial class LanguageServer
         }
         catch (ObjectDisposedException) when (Volatile.Read(ref _disposeState) != 0)
         {
-            LogPushDiagnosticSkippedDuringShutdown(uri);
+            LanguageServerLogger.LogPushDiagnosticSkippedDuringShutdown(_logger, uri);
         }
         finally
         {
@@ -127,9 +126,4 @@ public sealed partial class LanguageServer
         }
     }
 
-    [LoggerMessage(
-        EventId = 4,
-        Level = LogLevel.Debug,
-        Message = "Skipped push diagnostics for {Uri} during shutdown")]
-    private partial void LogPushDiagnosticSkippedDuringShutdown(DocumentUri uri);
 }

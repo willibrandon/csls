@@ -8,7 +8,7 @@ using System.Text.Json;
 namespace Csls.Tests;
 
 /// <summary>
-/// Verifies csls through a real Zed process and its official C# extension.
+/// Verifies csls through a real Zed process and the csls Zed extension.
 /// </summary>
 [TestClass]
 public sealed class ZedLanguageServerTests
@@ -29,7 +29,7 @@ public sealed class ZedLanguageServerTests
             TestContext.CancellationToken).ConfigureAwait(false);
         string repositoryRoot = EditorToolResolver.FindRepositoryRoot();
         string zedPath = EditorToolResolver.ResolveZed(repositoryRoot);
-        string extensionPath = EditorToolResolver.ResolveZedCSharpExtension(repositoryRoot);
+        string extensionPath = EditorToolResolver.ResolveCslsZedExtension(repositoryRoot);
         string launcherPath = EditorToolResolver.ResolveLauncher(repositoryRoot);
         string workerPath = EditorToolResolver.ResolveServerWorker(repositoryRoot);
         Assert.IsTrue(File.Exists(launcherPath), $"Launcher not found at {launcherPath}.");
@@ -47,7 +47,7 @@ public sealed class ZedLanguageServerTests
                 userDataPath,
                 "extensions",
                 "installed",
-                "csharp");
+                "csls");
             string homePath = Path.Join(fixturePath, "home");
             string cachePath = Path.Join(fixturePath, "cache");
             Directory.CreateDirectory(workspacePath);
@@ -88,6 +88,7 @@ public sealed class ZedLanguageServerTests
             Task<string> zedErrorTask = zed.StandardError.ReadToEndAsync(
                 TestContext.CancellationToken);
             int? serverProcessId = null;
+            bool completed = false;
             try
             {
                 ControlSessionInfo session = await ControlSessionWaiter.WaitForRunningAsync(
@@ -147,6 +148,7 @@ public sealed class ZedLanguageServerTests
                     .WaitAsync(TimeSpan.FromSeconds(30), TestContext.CancellationToken)
                     .ConfigureAwait(false);
                 Assert.AreEqual(0, zed.ExitCode);
+                completed = true;
             }
             finally
             {
@@ -161,6 +163,14 @@ public sealed class ZedLanguageServerTests
                 string zedError = await zedErrorTask.ConfigureAwait(false);
                 TestContext.WriteLine(zedOutput);
                 TestContext.WriteLine(zedError);
+                string zedLogPath = Path.Join(userDataPath, "logs", "Zed.log");
+                if (!completed && File.Exists(zedLogPath))
+                {
+                    TestContext.WriteLine(await File.ReadAllTextAsync(
+                        zedLogPath,
+                        TestContext.CancellationToken).ConfigureAwait(false));
+                }
+
                 if (serverProcessId is int processId)
                 {
                     await ProcessExitWaiter.WaitAsync(
@@ -328,20 +338,25 @@ public sealed class ZedLanguageServerTests
         return $$"""
             {
               "auto_install_extensions": {
+                "csls": false,
                 "csharp": false,
                 "html": false
               },
               "auto_update": false,
               "languages": {
                 "CSharp": {
-                  "language_servers": ["csharp-ls", "!roslyn", "!omnisharp"]
+                  "language_servers": ["csls"]
                 }
               },
               "lsp": {
-                "csharp-ls": {
+                "csls": {
                   "binary": {
                     "path": {{ToJsonString(dotnetPath)}},
                     "arguments": [{{ToJsonString(launcherPath)}}, "lsp"]
+                  },
+                  "settings": {
+                    "enableAnalyzers": true,
+                    "configuration": "Debug"
                   }
                 }
               },

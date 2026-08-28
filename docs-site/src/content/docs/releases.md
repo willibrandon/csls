@@ -55,6 +55,9 @@ Homebrew formulas, Scoop manifests, WinGet manifests, and Nix expressions are bu
 from the hashes of those archives. The same release also publishes multi-platform
 `ghcr.io/willibrandon/csls` and `ghcr.io/willibrandon/csls-mcp` container images.
 
+The VS Code release includes native extension packages for every supported editor
+platform and a separate web package containing the WebAssembly language server.
+
 ## Verify a download
 
 Download `SHA256SUMS` with the selected archive and compare its SHA-256 digest before

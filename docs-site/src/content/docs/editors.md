@@ -97,9 +97,16 @@ Zed settings:
 
 ## VS Code
 
-VS Code language clients launch `csls` with `lsp` as the argument and register a
-`csharp` document selector. The repository verifies that contract in the real VS
-Code Electron extension host with `vscode-languageclient`.
+Install the `willibrandon.csls` extension and disable the Microsoft C# and C# Dev
+Kit extensions so one language client owns each C# document. Desktop and remote
+extension hosts run the packaged Native AOT launcher and Roslyn worker. VS Code for
+the Web runs csls in a WebAssembly worker and synchronizes the virtual workspace
+without requiring a local .NET installation.
+
+The repository runs one feature contract against desktop, remote, Chromium,
+Firefox, and WebKit extension hosts. The contract covers hover, completion,
+definition, semantic tokens, configurable inlay hints, diagnostics after edits,
+formatting, rename, code actions, created files, and server restart.
 
 ## Other clients
 
