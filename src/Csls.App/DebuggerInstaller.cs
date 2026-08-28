@@ -1,5 +1,4 @@
 using System.IO.Compression;
-using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 
@@ -110,18 +109,15 @@ internal static class DebuggerInstaller
             HttpCompletionOption.ResponseHeadersRead,
             cancellationToken).ConfigureAwait(false);
         response.EnsureSuccessStatusCode();
-        Stream sourceStream = await response.Content.ReadAsStreamAsync(
+        using Stream sourceStream = await response.Content.ReadAsStreamAsync(
             cancellationToken).ConfigureAwait(false);
-        await using ConfiguredAsyncDisposable sourceCleanup = sourceStream.ConfigureAwait(false);
-        var destinationStream = new FileStream(
+        using var destinationStream = new FileStream(
             destinationPath,
             FileMode.CreateNew,
             FileAccess.Write,
             FileShare.None,
             bufferSize: 131_072,
             FileOptions.Asynchronous | FileOptions.SequentialScan);
-        await using ConfiguredAsyncDisposable destinationCleanup =
-            destinationStream.ConfigureAwait(false);
         await sourceStream.CopyToAsync(destinationStream, cancellationToken).ConfigureAwait(false);
     }
 
@@ -133,15 +129,13 @@ internal static class DebuggerInstaller
         Directory.CreateDirectory(destinationPath);
         string normalizedDestination = Path.GetFullPath(destinationPath) +
             Path.DirectorySeparatorChar;
-        var packageStream = new FileStream(
+        using var packageStream = new FileStream(
             packagePath,
             FileMode.Open,
             FileAccess.Read,
             FileShare.Read,
             bufferSize: 131_072,
             FileOptions.Asynchronous | FileOptions.SequentialScan);
-        await using ConfiguredAsyncDisposable packageCleanup =
-            packageStream.ConfigureAwait(false);
         using var archive = new ZipArchive(packageStream, ZipArchiveMode.Read);
         foreach (ZipArchiveEntry entry in archive.Entries)
         {
@@ -162,18 +156,15 @@ internal static class DebuggerInstaller
             }
 
             Directory.CreateDirectory(Path.GetDirectoryName(entryPath)!);
-            Stream entryStream = await entry.OpenAsync(cancellationToken).ConfigureAwait(false);
-            await using ConfiguredAsyncDisposable entryCleanup =
-                entryStream.ConfigureAwait(false);
-            var destinationStream = new FileStream(
+            using Stream entryStream = await entry.OpenAsync(cancellationToken)
+                .ConfigureAwait(false);
+            using var destinationStream = new FileStream(
                 entryPath,
                 FileMode.CreateNew,
                 FileAccess.Write,
                 FileShare.None,
                 bufferSize: 131_072,
                 FileOptions.Asynchronous | FileOptions.SequentialScan);
-            await using ConfiguredAsyncDisposable destinationCleanup =
-                destinationStream.ConfigureAwait(false);
             await entryStream.CopyToAsync(destinationStream, cancellationToken)
                 .ConfigureAwait(false);
         }
@@ -335,14 +326,13 @@ internal static class DebuggerInstaller
         string expectedSha256,
         CancellationToken cancellationToken)
     {
-        var stream = new FileStream(
+        using var stream = new FileStream(
             packagePath,
             FileMode.Open,
             FileAccess.Read,
             FileShare.Read,
             bufferSize: 131_072,
             FileOptions.Asynchronous | FileOptions.SequentialScan);
-        await using ConfiguredAsyncDisposable streamCleanup = stream.ConfigureAwait(false);
         byte[] digest = await SHA256.HashDataAsync(stream, cancellationToken)
             .ConfigureAwait(false);
         string actualSha256 = Convert.ToHexString(digest);

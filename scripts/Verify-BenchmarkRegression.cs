@@ -50,10 +50,11 @@ string baselineAfterPath = Path.Join(artifactRoot, "baseline-after");
 string candidateConfirmationPath = Path.Join(artifactRoot, "candidate-confirmation");
 string baselineConfirmationPath = Path.Join(artifactRoot, "baseline-confirmation");
 string comparisonPath = Path.Join(artifactRoot, "comparison.md");
-string worktreePath = Path.Join(
-    Path.GetTempPath(),
-    $"csls-benchmark-base-{Guid.NewGuid():N}");
-bool worktreeCreated = false;
+string repositoryParent = Directory.GetParent(repositoryRoot)?.FullName ??
+    throw new DirectoryNotFoundException("The repository parent directory was not found.");
+string baselineSourcePath = Path.Join(
+    repositoryParent,
+    $".csls-benchmark-base-{Guid.NewGuid():N}");
 
 try
 {
@@ -71,6 +72,10 @@ try
     string baseCommit = (await RunCapturedAsync(
         "git",
         ["rev-parse", "--verify", $"origin/{baseBranch}^{{commit}}"],
+        repositoryRoot).ConfigureAwait(false)).Trim();
+    string originUrl = (await RunCapturedAsync(
+        "git",
+        ["remote", "get-url", "origin"],
         repositoryRoot).ConfigureAwait(false)).Trim();
     string changedPathOutput = await RunCapturedAsync(
         "git",
@@ -91,13 +96,20 @@ try
 
     await RunCheckedAsync(
         "git",
-        ["worktree", "add", "--detach", worktreePath, baseCommit],
-        repositoryRoot).ConfigureAwait(false);
-    worktreeCreated = true;
+        ["clone", "--shared", "--no-checkout", repositoryRoot, baselineSourcePath],
+        repositoryParent).ConfigureAwait(false);
+    await RunCheckedAsync(
+        "git",
+        ["-C", baselineSourcePath, "remote", "set-url", "origin", originUrl],
+        repositoryParent).ConfigureAwait(false);
+    await RunCheckedAsync(
+        "git",
+        ["-C", baselineSourcePath, "switch", "--detach", baseCommit],
+        repositoryParent).ConfigureAwait(false);
 
     await RunBenchmarksAsync(
         dotnetPath,
-        worktreePath,
+        baselineSourcePath,
         baselineBeforePath,
         benchmarkFilters,
         "Short").ConfigureAwait(false);
@@ -109,7 +121,7 @@ try
         "Short").ConfigureAwait(false);
     await RunBenchmarksAsync(
         dotnetPath,
-        worktreePath,
+        baselineSourcePath,
         baselineAfterPath,
         benchmarkFilters,
         "Short").ConfigureAwait(false);
@@ -142,7 +154,7 @@ try
             "Medium").ConfigureAwait(false);
         await RunBenchmarksAsync(
             dotnetPath,
-            worktreePath,
+            baselineSourcePath,
             baselineConfirmationPath,
             confirmationFilters,
             "Medium").ConfigureAwait(false);
@@ -215,18 +227,11 @@ catch (Exception exception) when (exception is
 }
 finally
 {
-    if (worktreeCreated)
+    if (Directory.Exists(baselineSourcePath))
     {
-        await RunIgnoringFailureAsync(
-            "git",
-            ["worktree", "remove", "--force", worktreePath],
-            repositoryRoot).ConfigureAwait(false);
+        Directory.Delete(baselineSourcePath, recursive: true);
     }
 
-    if (Directory.Exists(worktreePath))
-    {
-        Directory.Delete(worktreePath, recursive: true);
-    }
 }
 
 static HashSet<string> FindRegressions(
@@ -363,6 +368,7 @@ static async Task RunBenchmarksAsync(
         "--noOverwrite",
         "--exporters",
         "fulljson",
+        "--inProcess",
         "--job",
         job
     ]);
@@ -485,16 +491,6 @@ static async Task<string> RunCapturedAsync(
 
     return output;
 }
-
-static async Task RunIgnoringFailureAsync(
-    string executablePath,
-    IReadOnlyList<string> arguments,
-    string workingDirectory) =>
-    _ = await RunProcessAsync(
-        executablePath,
-        arguments,
-        workingDirectory,
-        redirectOutput: false).ConfigureAwait(false);
 
 static async Task<int> RunProcessAsync(
     string executablePath,

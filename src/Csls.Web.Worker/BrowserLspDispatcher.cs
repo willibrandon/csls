@@ -93,6 +93,7 @@ internal sealed class BrowserLspDispatcher : IDisposable
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
+                return;
             }
             catch (Exception exception) when (IsRecoverableFailure(exception))
             {

@@ -58,26 +58,28 @@ internal sealed class AnalyzerDiagnosticCache
                     state.Project,
                     state.Factory),
                 (Project: project, Factory: factory));
-            if (!IsSelectedVersion(key))
+            try
             {
-                if (_entries.TryRemove(new KeyValuePair<
-                    (ProjectId ProjectId, VersionStamp Version),
-                    AnalyzerDiagnosticCacheEntry>(key, entry)))
+                if (!IsSelectedVersion(key))
                 {
-                    entry.Dispose();
+                    TryRemoveAndDispose(key, entry);
+                    return await factory(project, cancellationToken).ConfigureAwait(false);
                 }
 
-                return await factory(project, cancellationToken).ConfigureAwait(false);
-            }
+                if (entry.TryAcquire(out computation))
+                {
+                    break;
+                }
 
-            if (entry.TryAcquire(out computation))
+                _entries.TryRemove(new KeyValuePair<
+                    (ProjectId ProjectId, VersionStamp Version),
+                    AnalyzerDiagnosticCacheEntry>(key, entry));
+            }
+            catch
             {
-                break;
+                TryRemoveAndDispose(key, entry);
+                throw;
             }
-
-            _entries.TryRemove(new KeyValuePair<
-                (ProjectId ProjectId, VersionStamp Version),
-                AnalyzerDiagnosticCacheEntry>(key, entry));
         }
 
         try
@@ -175,6 +177,18 @@ internal sealed class AnalyzerDiagnosticCache
                     key.ProjectId,
                     out (long Generation, VersionStamp Version) currentVersion) &&
                 currentVersion.Version == key.Version;
+        }
+    }
+
+    private void TryRemoveAndDispose(
+        (ProjectId ProjectId, VersionStamp Version) key,
+        AnalyzerDiagnosticCacheEntry entry)
+    {
+        if (_entries.TryRemove(new KeyValuePair<
+            (ProjectId ProjectId, VersionStamp Version),
+            AnalyzerDiagnosticCacheEntry>(key, entry)))
+        {
+            entry.Dispose();
         }
     }
 }
