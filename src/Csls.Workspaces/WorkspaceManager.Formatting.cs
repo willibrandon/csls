@@ -55,7 +55,10 @@ public sealed partial class WorkspaceManager
             return [];
         }
 
-        OptionSet options = CreateFormattingOptions(document, parameters.Options);
+        OptionSet options = await CreateFormattingOptionsAsync(
+            document,
+            parameters.Options,
+            cancellationToken).ConfigureAwait(false);
         Document formattedDocument = await Formatter.FormatAsync(
             document,
             options,
@@ -165,10 +168,14 @@ public sealed partial class WorkspaceManager
         int start = LspPositionConverter.GetOffset(originalText, parameters.Range.Start);
         int end = LspPositionConverter.GetOffset(originalText, parameters.Range.End);
         var span = TextSpan.FromBounds(start, end);
+        OptionSet options = await CreateFormattingOptionsAsync(
+            document,
+            parameters.Options,
+            cancellationToken).ConfigureAwait(false);
         Document formattedDocument = await Formatter.FormatAsync(
             document,
             span,
-            CreateFormattingOptions(document, parameters.Options),
+            options,
             cancellationToken).ConfigureAwait(false);
         SourceText formattedText = await formattedDocument.GetTextAsync(cancellationToken)
             .ConfigureAwait(false);
@@ -230,10 +237,14 @@ public sealed partial class WorkspaceManager
             originalText,
             parameters.Position,
             parameters.Character);
+        OptionSet options = await CreateFormattingOptionsAsync(
+            document,
+            parameters.Options,
+            cancellationToken).ConfigureAwait(false);
         Document formattedDocument = await Formatter.FormatAsync(
             document,
             span,
-            CreateFormattingOptions(document, parameters.Options),
+            options,
             cancellationToken).ConfigureAwait(false);
         SourceText formattedText = await formattedDocument.GetTextAsync(cancellationToken)
             .ConfigureAwait(false);
@@ -288,10 +299,14 @@ public sealed partial class WorkspaceManager
         return null;
     }
 
-    private static OptionSet CreateFormattingOptions(
+    private static async Task<OptionSet> CreateFormattingOptionsAsync(
         Document document,
-        LspFormattingOptions options) =>
-        document.Project.Solution.Options
+        LspFormattingOptions options,
+        CancellationToken cancellationToken)
+    {
+        OptionSet documentOptions = await document.GetOptionsAsync(cancellationToken)
+            .ConfigureAwait(false);
+        return documentOptions
             .WithChangedOption(
                 RoslynFormattingOptions.UseTabs,
                 LanguageNames.CSharp,
@@ -304,6 +319,7 @@ public sealed partial class WorkspaceManager
                 RoslynFormattingOptions.IndentationSize,
                 LanguageNames.CSharp,
                 options.TabSize);
+    }
 
     private static IReadOnlyList<LspTextEdit> CreateRazorRangeFormattingEdits(
         SourceText originalText,
