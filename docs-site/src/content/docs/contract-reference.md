@@ -48,6 +48,7 @@ These public wire-contract types are generated from the compiled assemblies and 
 | `Csls.Protocol.DeleteFilesParams` | Carries files and folders deleted through the client. |
 | `Csls.Protocol.Diagnostic` | Describes one compiler or analyzer finding associated with a source range. |
 | `Csls.Protocol.DiagnosticOptions` | Advertises the server's pull-diagnostic behavior to an LSP client. |
+| `Csls.Protocol.DiagnosticServerCancellationData` | Tells a pull-diagnostic client whether it should repeat a server-cancelled request. |
 | `Csls.Protocol.DiagnosticSeverity` | Identifies the editor-facing severity assigned to one language diagnostic. |
 | `Csls.Protocol.DiagnosticTag` | Identifies additional editor behavior associated with one diagnostic. |
 | `Csls.Protocol.DidChangeConfigurationParams` | Contains configuration settings pushed by an LSP client. |
@@ -107,6 +108,7 @@ These public wire-contract types are generated from the compiled assemblies and 
 | `Csls.Protocol.Location` | Identifies one source URI and exact UTF-16 range. |
 | `Csls.Protocol.LspJson` | Creates the shared source-generated JSON configuration used by LSP transports. |
 | `Csls.Protocol.LspJsonSerializerContext` | Provides generated System.Text.Json metadata for every registered LSP contract. |
+| `Csls.Protocol.LspServerCancelledException` | Represents an LSP request that the server cancels because its input snapshot became stale. |
 | `Csls.Protocol.MarkupContent` | Contains markdown or plain-text content returned to an LSP client. |
 | `Csls.Protocol.Moniker` | Identifies one C# symbol across documents, projects, and indexed repositories. |
 | `Csls.Protocol.MonikerKind` | Identifies how a moniker-bearing symbol participates in the current project. |
