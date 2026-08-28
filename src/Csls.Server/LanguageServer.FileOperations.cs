@@ -1,6 +1,8 @@
 using Csls.Core;
 using Csls.Protocol;
 using Csls.Workspaces;
+using System.Text.Json;
+using LspFileSystemWatcher = Csls.Protocol.FileSystemWatcher;
 
 namespace Csls.Server;
 
@@ -16,6 +18,21 @@ public sealed partial class LanguageServer
                 "**/{global.json,packages.config,NuGet.config,.editorconfig}",
                 FileOperationPatternKind.File),
             CreateFileOperationFilter("**", FileOperationPatternKind.Folder)
+        ]);
+    private static readonly IReadOnlyList<LspFileSystemWatcher> s_fileSystemWatchers =
+        Array.AsReadOnly(
+        [
+            new LspFileSystemWatcher
+            {
+                GlobPattern =
+                    "**/*.{cs,csx,cshtml,razor,csproj,sln,slnx,props,targets,ruleset,globalconfig}",
+                Kind = WatchKind.Create | WatchKind.Change | WatchKind.Delete
+            },
+            new LspFileSystemWatcher
+            {
+                GlobPattern = "**/{global.json,packages.config,NuGet.config,.editorconfig}",
+                Kind = WatchKind.Create | WatchKind.Change | WatchKind.Delete
+            }
         ]);
 
     /// <inheritdoc />
@@ -60,6 +77,20 @@ public sealed partial class LanguageServer
             cancellationToken);
     }
 
+    /// <inheritdoc />
+    public Task DidChangeWatchedFilesAsync(
+        DidChangeWatchedFilesParams parameters,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(parameters);
+        ArgumentNullException.ThrowIfNull(parameters.Changes);
+        return ApplyWorkspaceFileOperationsAsync(
+            "workspace/didChangeWatchedFiles",
+            token => _workspaceManager.ApplyChangedFilesAsync(parameters, token),
+            clearUris: [],
+            cancellationToken);
+    }
+
     private static FileOperationOptions CreateFileOperationOptions()
     {
         var registration = new FileOperationRegistrationOptions
@@ -91,6 +122,31 @@ public sealed partial class LanguageServer
             }
         };
 
+    private async Task RegisterFileWatchersAsync(CancellationToken cancellationToken)
+    {
+        var options = new DidChangeWatchedFilesRegistrationOptions
+        {
+            Watchers = s_fileSystemWatchers
+        };
+        JsonElement registerOptions = JsonSerializer.SerializeToElement(
+            options,
+            LspJsonSerializerContext.Default.DidChangeWatchedFilesRegistrationOptions);
+        await _client.RegisterCapabilityAsync(
+            new RegistrationParams
+            {
+                Registrations =
+                [
+                    new Registration
+                    {
+                        Id = "csls-workspace-watchers",
+                        Method = "workspace/didChangeWatchedFiles",
+                        RegisterOptions = registerOptions
+                    }
+                ]
+            },
+            cancellationToken).ConfigureAwait(false);
+    }
+
     private async Task ApplyWorkspaceFileOperationsAsync(
         string requestName,
         Func<CancellationToken, Task<WorkspaceMaintenanceResult?>> applyAsync,
@@ -98,7 +154,7 @@ public sealed partial class LanguageServer
         CancellationToken cancellationToken)
     {
         EnsureRunning();
-        (long RequestId, IReadOnlyList<DocumentUri> PublishUris) result =
+        (long RequestId, IReadOnlyList<DocumentUri> PublishUris, bool WorkspaceChanged) result =
             await _scheduler.ScheduleAsync(
                 requestName,
                 RequestMode.ReadWrite,
@@ -109,7 +165,7 @@ public sealed partial class LanguageServer
                         context.CancellationToken).ConfigureAwait(false);
                     if (refresh is null)
                     {
-                        return (context.Ordinal, Array.Empty<DocumentUri>());
+                        return (context.Ordinal, Array.Empty<DocumentUri>(), false);
                     }
 
                     ClearPushDiagnosticRequests();
@@ -125,7 +181,7 @@ public sealed partial class LanguageServer
                         RegisterPushDiagnosticRequest(uri, context.Ordinal);
                     }
 
-                    return (context.Ordinal, publishUris);
+                    return (context.Ordinal, publishUris, true);
                 },
                 cancellationToken).ConfigureAwait(false);
 
@@ -136,6 +192,13 @@ public sealed partial class LanguageServer
                 result.RequestId,
                 delay: false,
                 cancellationToken).ConfigureAwait(false);
+        }
+
+        if (_supportsPullDiagnostics &&
+            _supportsDiagnosticRefresh &&
+            result.WorkspaceChanged)
+        {
+            await _client.RefreshDiagnosticsAsync(cancellationToken).ConfigureAwait(false);
         }
     }
 }

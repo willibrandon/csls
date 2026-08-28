@@ -47,6 +47,7 @@ if (sarifPaths.Length == 0)
 }
 
 var findings = new List<string>();
+int ignoredGeneratedFindingCount = 0;
 foreach (string sarifPath in sarifPaths)
 {
     using FileStream stream = File.OpenRead(sarifPath);
@@ -68,6 +69,12 @@ foreach (string sarifPath in sarifPaths)
         foreach (JsonElement result in results.EnumerateArray())
         {
             string ruleId = ReadString(result, "ruleId", "unknown-rule");
+            if (IsSystemTextJsonGeneratedFinding(result, ruleId))
+            {
+                ignoredGeneratedFindingCount++;
+                continue;
+            }
+
             string level = ReadString(result, "level", "warning");
             string message = result.TryGetProperty("message", out JsonElement messageElement)
                 ? ReadString(messageElement, "text", "CodeQL finding")
@@ -90,9 +97,11 @@ if (findings.Count != 0)
     return 1;
 }
 
-await Console.Out.WriteLineAsync(
-    $"Verified {sarifPaths.Length} CodeQL SARIF file(s) with no findings.")
-    .ConfigureAwait(false);
+await Console.Out.WriteLineAsync(ignoredGeneratedFindingCount == 0
+    ? $"Verified {sarifPaths.Length} CodeQL SARIF file(s) with no findings."
+    : $"Verified {sarifPaths.Length} CodeQL SARIF file(s) with no product-source " +
+        $"findings and ignored {ignoredGeneratedFindingCount} known System.Text.Json " +
+        "source-generator finding(s).").ConfigureAwait(false);
 return 0;
 
 static string ReadString(JsonElement element, string name, string fallback) =>
@@ -128,4 +137,36 @@ static string ReadLocation(JsonElement result)
     }
 
     return $"{path}:{line}";
+}
+
+static bool IsSystemTextJsonGeneratedFinding(JsonElement result, string ruleId)
+{
+    if (!string.Equals(ruleId, "cs/useless-cast-to-self", StringComparison.Ordinal) ||
+        !result.TryGetProperty("locations", out JsonElement locations) ||
+        locations.ValueKind != JsonValueKind.Array ||
+        locations.GetArrayLength() == 0)
+    {
+        return false;
+    }
+
+    foreach (JsonElement location in locations.EnumerateArray())
+    {
+        if (!location.TryGetProperty("physicalLocation", out JsonElement physicalLocation) ||
+            !physicalLocation.TryGetProperty("artifactLocation", out JsonElement artifactLocation))
+        {
+            return false;
+        }
+
+        string path = ReadString(artifactLocation, "uri", string.Empty).Replace('\\', '/');
+        if (!path.StartsWith("artifacts/obj/", StringComparison.OrdinalIgnoreCase) ||
+            !path.Contains(
+                "/generated/System.Text.Json.SourceGeneration/" +
+                "System.Text.Json.SourceGeneration.JsonSourceGenerator/",
+                StringComparison.Ordinal))
+        {
+            return false;
+        }
+    }
+
+    return true;
 }

@@ -58,6 +58,16 @@ public interface ILspRpcTarget
         CancellationToken cancellationToken);
 
     /// <summary>
+    /// Applies file-system changes observed outside client-owned document overlays.
+    /// </summary>
+    /// <param name="parameters">The ordered watched file changes.</param>
+    /// <param name="cancellationToken">The connection cancellation token.</param>
+    /// <returns>A task that completes after workspace mutation retires.</returns>
+    Task DidChangeWatchedFilesAsync(
+        DidChangeWatchedFilesParams parameters,
+        CancellationToken cancellationToken);
+
+    /// <summary>
     /// Adds and removes workspace folders while preserving retained document overlays.
     /// </summary>
     /// <param name="parameters">The ordered workspace-folder change.</param>

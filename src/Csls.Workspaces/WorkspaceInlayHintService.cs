@@ -21,15 +21,19 @@ internal static class WorkspaceInlayHintService
     /// <param name="document">The current immutable source document.</param>
     /// <param name="range">The visible UTF-16 document range.</param>
     /// <param name="generation">The captured workspace generation.</param>
+    /// <param name="includeParameterHints">Whether parameter-name hints are enabled.</param>
+    /// <param name="includeTypeHints">Whether inferred-type hints are enabled.</param>
     /// <param name="cancellationToken">The operation cancellation token.</param>
     /// <returns>The bounded ordered inlay hints.</returns>
     internal static async Task<IReadOnlyList<InlayHint>> GetInlayHintsAsync(
         Document? document,
         LspRange range,
         long generation,
+        bool includeParameterHints,
+        bool includeTypeHints,
         CancellationToken cancellationToken)
     {
-        if (document is null)
+        if (document is null || (!includeParameterHints && !includeTypeHints))
         {
             return [];
         }
@@ -46,24 +50,31 @@ internal static class WorkspaceInlayHintService
             document.FilePath
                 ?? throw new InvalidOperationException("An inlay-hint document has no path."));
         var hints = new List<InlayHint>();
-        AddLocalTypeHints(
-            root,
-            semanticModel,
-            text,
-            requestedSpan,
-            uri,
-            generation,
-            hints,
-            cancellationToken);
-        AddParameterNameHints(
-            root,
-            semanticModel,
-            text,
-            requestedSpan,
-            uri,
-            generation,
-            hints,
-            cancellationToken);
+        if (includeTypeHints)
+        {
+            AddLocalTypeHints(
+                root,
+                semanticModel,
+                text,
+                requestedSpan,
+                uri,
+                generation,
+                hints,
+                cancellationToken);
+        }
+
+        if (includeParameterHints)
+        {
+            AddParameterNameHints(
+                root,
+                semanticModel,
+                text,
+                requestedSpan,
+                uri,
+                generation,
+                hints,
+                cancellationToken);
+        }
         return
         [
             .. hints

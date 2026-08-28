@@ -124,6 +124,26 @@ internal sealed class LspProcessSession : IAsyncDisposable
                         "The configuration handler has no client target."),
                     attribute);
 
+                Func<RegistrationParams, CancellationToken, Task>
+                    capabilityRegistrationHandler = client.RegisterCapabilityAsync;
+                var capabilityRegistrationAttribute = new JsonRpcMethodAttribute(
+                    "client/registerCapability")
+                {
+                    UseSingleObjectParameterDeserialization = true
+                };
+                rpc.AddLocalRpcMethod(
+                    capabilityRegistrationHandler.Method,
+                    capabilityRegistrationHandler.Target ??
+                        throw new InvalidOperationException(
+                            "The capability registration handler has no client target."),
+                    capabilityRegistrationAttribute);
+
+                Func<CancellationToken, Task> diagnosticRefreshHandler =
+                    client.RefreshDiagnosticsAsync;
+                rpc.AddLocalRpcMethod(
+                    "workspace/diagnostic/refresh",
+                    diagnosticRefreshHandler);
+
                 Func<WorkDoneProgressCreateParams, CancellationToken, Task>
                     workDoneProgressCreateHandler = client.CreateWorkDoneProgressAsync;
                 var workDoneProgressCreateAttribute = new JsonRpcMethodAttribute(
@@ -389,6 +409,27 @@ internal sealed class LspProcessSession : IAsyncDisposable
                     .. paths.Select(path => new FileDelete
                     {
                         Uri = DocumentUri.FromFileSystemPath(path)
+                    })
+                ]
+            });
+
+    /// <summary>
+    /// Notifies the real server about observed workspace file-system changes.
+    /// </summary>
+    /// <param name="changes">The ordered absolute paths and change kinds.</param>
+    /// <returns>A task that completes after the notification is written.</returns>
+    internal Task ChangeWatchedFilesAsync(
+        IReadOnlyList<(string Path, FileChangeType Type)> changes) =>
+        _rpc.NotifyWithParameterObjectAsync(
+            "workspace/didChangeWatchedFiles",
+            new DidChangeWatchedFilesParams
+            {
+                Changes =
+                [
+                    .. changes.Select(static change => new FileEvent
+                    {
+                        Uri = DocumentUri.FromFileSystemPath(change.Path),
+                        Type = change.Type
                     })
                 ]
             });

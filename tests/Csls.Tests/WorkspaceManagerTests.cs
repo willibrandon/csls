@@ -283,10 +283,10 @@ public sealed class WorkspaceManagerTests
     }
 
     /// <summary>
-    /// Inspects diagnostics from every nested project in stable project order.
+    /// Inspects all or one nested project while retaining stable diagnostic order.
     /// </summary>
     [TestMethod]
-    public async Task MultipleNestedProjectDiagnosticsRetainStableOrder()
+    public async Task MultipleNestedProjectDiagnosticsSupportBoundedInspection()
     {
         string workspacePath = Path.Join(
             Path.GetTempPath(),
@@ -324,6 +324,7 @@ public sealed class WorkspaceManagerTests
 
             WorkspaceInspectionSnapshot snapshot = await manager.InspectAsync(
                 includeDiagnostics: true,
+                diagnosticsProjectId: null,
                 TestContext.CancellationToken).ConfigureAwait(false);
 
             Assert.IsTrue(snapshot.DiagnosticsLoaded);
@@ -340,6 +341,25 @@ public sealed class WorkspaceManagerTests
                     static diagnostic => diagnostic.ProjectName)));
             Assert.IsTrue(snapshot.Diagnostics.All(
                 static diagnostic => diagnostic.Id == "CS0103"));
+
+            string alphaProjectId = Assert.ContainsSingle(snapshot.Projects
+                .Where(static project => project.Name == "Alpha")).Id;
+            WorkspaceInspectionSnapshot alphaSnapshot = await manager.InspectAsync(
+                includeDiagnostics: true,
+                alphaProjectId,
+                TestContext.CancellationToken).ConfigureAwait(false);
+            Assert.HasCount(2, alphaSnapshot.Projects);
+            Assert.AreEqual(1, alphaSnapshot.TotalDiagnostics);
+            Assert.AreEqual(
+                "Alpha",
+                Assert.ContainsSingle(alphaSnapshot.Diagnostics).ProjectName);
+
+            KeyNotFoundException missingProject =
+                await Assert.ThrowsExactlyAsync<KeyNotFoundException>(() => manager.InspectAsync(
+                    includeDiagnostics: true,
+                    Guid.NewGuid().ToString("D"),
+                    TestContext.CancellationToken)).ConfigureAwait(false);
+            Assert.Contains("was not found", missingProject.Message, StringComparison.Ordinal);
         }
         finally
         {

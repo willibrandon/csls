@@ -36,7 +36,7 @@ supports `--help`.
 | `Verify-ReleaseContainers.cs` | Builds, executes, and exports both release container images. |
 | `Verify-GitHubActions.cs` | Validates every workflow with actionlint. |
 | `Verify-PackageHealth.cs` | Rejects outdated, deprecated, and vulnerable package references before release. |
-| `Verify-CodeQl.cs` | Fails when CodeQL reports an unresolved finding. |
+| `Verify-CodeQl.cs` | Fails on product-source CodeQL findings while identifying known findings in Microsoft-generated serializer code. |
 | `Verify-Docs.cs` | Checks generated documentation links, assets, and accessibility conditions. |
 | `Verify-BenchmarkRegression.cs` | Compares stable benchmarks affected by a change and confirms signals with longer targeted measurements before rejecting regressions above 10 percent. |
 | `Verify-FileApps.cs` | Compiles every file app and verifies its help boundary. |

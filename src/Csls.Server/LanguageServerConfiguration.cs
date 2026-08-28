@@ -18,6 +18,21 @@ public sealed record LanguageServerConfiguration
     public bool FormatOnSave { get; init; }
 
     /// <summary>
+    /// Gets whether parameter-name inlay hints are enabled.
+    /// </summary>
+    public bool EnableInlayHintsForParameters { get; init; }
+
+    /// <summary>
+    /// Gets whether inferred-type inlay hints are enabled.
+    /// </summary>
+    public bool EnableInlayHintsForTypes { get; init; }
+
+    /// <summary>
+    /// Gets whether informational diagnostics are presented as editor hints.
+    /// </summary>
+    public bool ReportInformationAsHint { get; init; } = true;
+
+    /// <summary>
     /// Gets the MSBuild configuration used to evaluate loaded projects.
     /// </summary>
     public string BuildConfiguration { get; init; } = "Debug";

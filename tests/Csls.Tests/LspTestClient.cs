@@ -17,6 +17,21 @@ internal sealed class LspTestClient
             SingleReader = true,
             SingleWriter = false
         });
+    private readonly Channel<RegistrationParams> _capabilityRegistrations =
+        Channel.CreateUnbounded<RegistrationParams>(
+            new UnboundedChannelOptions
+            {
+                AllowSynchronousContinuations = false,
+                SingleReader = true,
+                SingleWriter = false
+            });
+    private readonly Channel<bool> _diagnosticRefreshRequests = Channel.CreateUnbounded<bool>(
+        new UnboundedChannelOptions
+        {
+            AllowSynchronousContinuations = false,
+            SingleReader = true,
+            SingleWriter = false
+        });
     private readonly Channel<WorkspaceDiagnosticProgressParams> _workspaceDiagnosticProgress =
         Channel.CreateUnbounded<WorkspaceDiagnosticProgressParams>(
             new UnboundedChannelOptions
@@ -50,6 +65,7 @@ internal sealed class LspTestClient
                 SingleWriter = false
             });
     private JsonElement? _legacyConfiguration;
+    private JsonElement? _dotNetConfiguration;
     private JsonElement? _preferredConfiguration;
     private int _configurationRequestCount;
 
@@ -58,9 +74,13 @@ internal sealed class LspTestClient
     /// </summary>
     /// <param name="legacyConfiguration">The legacy csharp section JSON.</param>
     /// <param name="preferredConfiguration">The preferred csls section JSON.</param>
-    internal LspTestClient(string? legacyConfiguration, string? preferredConfiguration)
+    /// <param name="dotNetConfiguration">The shared dotnet section JSON.</param>
+    internal LspTestClient(
+        string? legacyConfiguration,
+        string? preferredConfiguration,
+        string? dotNetConfiguration = null)
     {
-        SetConfiguration(legacyConfiguration, preferredConfiguration);
+        SetConfiguration(legacyConfiguration, preferredConfiguration, dotNetConfiguration);
     }
 
     /// <summary>
@@ -68,15 +88,19 @@ internal sealed class LspTestClient
     /// </summary>
     /// <param name="legacyConfiguration">The legacy csharp section JSON.</param>
     /// <param name="preferredConfiguration">The preferred csls section JSON.</param>
+    /// <param name="dotNetConfiguration">The shared dotnet section JSON.</param>
     internal void SetConfiguration(
         string? legacyConfiguration,
-        string? preferredConfiguration)
+        string? preferredConfiguration,
+        string? dotNetConfiguration = null)
     {
         JsonElement? legacy = Parse(legacyConfiguration);
+        JsonElement? dotNet = Parse(dotNetConfiguration);
         JsonElement? preferred = Parse(preferredConfiguration);
         lock (_gate)
         {
             _legacyConfiguration = legacy;
+            _dotNetConfiguration = dotNet;
             _preferredConfiguration = preferred;
         }
     }
@@ -125,12 +149,72 @@ internal sealed class LspTestClient
                 .. parameters.Items.Select(item => item.Section switch
                 {
                     "csharp" => _legacyConfiguration,
+                    "dotnet" => _dotNetConfiguration,
                     "csls" => _preferredConfiguration,
                     _ => null
                 })
             ];
             return Task.FromResult(values);
         }
+    }
+
+    /// <summary>
+    /// Accepts dynamically registered capabilities over the real LSP connection.
+    /// </summary>
+    /// <param name="parameters">The ordered capability registrations.</param>
+    /// <param name="cancellationToken">The request cancellation token.</param>
+    /// <returns>A completed task after the registrations are retained.</returns>
+    internal Task RegisterCapabilityAsync(
+        RegistrationParams parameters,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(parameters);
+        cancellationToken.ThrowIfCancellationRequested();
+        if (!_capabilityRegistrations.Writer.TryWrite(parameters))
+        {
+            throw new InvalidOperationException(
+                "The capability registration could not be observed.");
+        }
+
+        return Task.CompletedTask;
+    }
+
+    /// <summary>
+    /// Accepts one server request to refresh pull diagnostics.
+    /// </summary>
+    /// <param name="cancellationToken">The request cancellation token.</param>
+    /// <returns>A completed task after the refresh is retained.</returns>
+    internal Task RefreshDiagnosticsAsync(CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        if (!_diagnosticRefreshRequests.Writer.TryWrite(true))
+        {
+            throw new InvalidOperationException(
+                "The diagnostic refresh request could not be observed.");
+        }
+
+        return Task.CompletedTask;
+    }
+
+    /// <summary>
+    /// Reads the next dynamic capability registration from the real LSP connection.
+    /// </summary>
+    /// <param name="cancellationToken">The test cancellation token.</param>
+    /// <returns>The next capability registration request.</returns>
+    internal ValueTask<RegistrationParams> ReadCapabilityRegistrationAsync(
+        CancellationToken cancellationToken) =>
+        _capabilityRegistrations.Reader.ReadAsync(cancellationToken);
+
+    /// <summary>
+    /// Waits for the next server request to refresh pull diagnostics.
+    /// </summary>
+    /// <param name="cancellationToken">The test cancellation token.</param>
+    /// <returns>A task that completes after the refresh request arrives.</returns>
+    internal async Task WaitForDiagnosticRefreshAsync(CancellationToken cancellationToken)
+    {
+        await _diagnosticRefreshRequests.Reader
+            .ReadAsync(cancellationToken)
+            .ConfigureAwait(false);
     }
 
     /// <summary>

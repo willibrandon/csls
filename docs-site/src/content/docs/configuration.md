@@ -13,6 +13,13 @@ server contract and records the current defaults.
   "csls": {
     "enableAnalyzers": true,
     "formatOnSave": false,
+    "inlayHints": {
+      "enableInlayHintsForParameters": false,
+      "enableInlayHintsForTypes": false
+    },
+    "diagnostics": {
+      "reportInformationAsHint": true
+    },
     "configuration": "Debug",
     "logLevel": "Information"
   }
@@ -24,6 +31,14 @@ without running analyzers referenced by the loaded project.
 
 `formatOnSave` defaults to `false`. Set it to `true` when the client should request
 server formatting edits before saving C#, Razor, or cshtml files.
+
+Parameter-name and inferred-type hints default to off. The same settings can be
+supplied as `dotnet.inlayHints.enableInlayHintsForParameters` and
+`csharp.inlayHints.enableInlayHintsForTypes`, matching the C# extension settings.
+
+Informational diagnostics default to editor hints. Set
+`dotnet.diagnostics.reportInformationAsHint` or the matching `csls` setting to
+`false` when informational squiggles should remain visible.
 
 `configuration` defaults to `Debug`. Changing it reloads each MSBuild workspace
 with the selected configuration while preserving open document text and versions.

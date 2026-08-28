@@ -50,10 +50,12 @@ public sealed partial class WorkspaceManager
     /// Inspects the current immutable workspace generation using real Roslyn state.
     /// </summary>
     /// <param name="includeDiagnostics">Whether to evaluate compiler and analyzer diagnostics.</param>
+    /// <param name="diagnosticsProjectId">The optional project identifier used to bound diagnostic evaluation.</param>
     /// <param name="cancellationToken">The inspection cancellation token.</param>
     /// <returns>The bounded workspace, project, document, diagnostic, host, and cache state.</returns>
     public async Task<WorkspaceInspectionSnapshot> InspectAsync(
         bool includeDiagnostics,
+        string? diagnosticsProjectId,
         CancellationToken cancellationToken)
     {
         ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposeState) != 0, this);
@@ -125,7 +127,11 @@ public sealed partial class WorkspaceManager
                     });
                 }
 
-                if (includeDiagnostics)
+                if (includeDiagnostics &&
+                    (diagnosticsProjectId is null || string.Equals(
+                        project.Id.Id.ToString("D", CultureInfo.InvariantCulture),
+                        diagnosticsProjectId,
+                        StringComparison.OrdinalIgnoreCase)))
                 {
                     diagnosticProjects.Add(project);
                 }
@@ -134,6 +140,12 @@ public sealed partial class WorkspaceManager
 
         if (includeDiagnostics)
         {
+            if (diagnosticsProjectId is not null && diagnosticProjects.Count == 0)
+            {
+                throw new KeyNotFoundException(
+                    $"The diagnostics project was not found: {diagnosticsProjectId}");
+            }
+
             var projectDiagnostics = new ImmutableArray<RoslynDiagnostic>[
                 diagnosticProjects.Count];
             await Parallel.ForAsync(

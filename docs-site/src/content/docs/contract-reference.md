@@ -49,8 +49,11 @@ These public wire-contract types are generated from the compiled assemblies and 
 | `Csls.Protocol.Diagnostic` | Describes one compiler or analyzer finding associated with a source range. |
 | `Csls.Protocol.DiagnosticOptions` | Advertises the server's pull-diagnostic behavior to an LSP client. |
 | `Csls.Protocol.DiagnosticSeverity` | Identifies the editor-facing severity assigned to one language diagnostic. |
+| `Csls.Protocol.DiagnosticTag` | Identifies additional editor behavior associated with one diagnostic. |
 | `Csls.Protocol.DidChangeConfigurationParams` | Contains configuration settings pushed by an LSP client. |
 | `Csls.Protocol.DidChangeTextDocumentParams` | Contains ordered content changes for one opened versioned text document. |
+| `Csls.Protocol.DidChangeWatchedFilesParams` | Describes file-system changes observed by the LSP client. |
+| `Csls.Protocol.DidChangeWatchedFilesRegistrationOptions` | Configures dynamically registered workspace file-system watchers. |
 | `Csls.Protocol.DidChangeWorkspaceFoldersParams` | Contains one ordered workspace-folder change notification. |
 | `Csls.Protocol.DidCloseTextDocumentParams` | Reports that a client no longer owns an open text document overlay. |
 | `Csls.Protocol.DidOpenTextDocumentParams` | Contains the document opened by the client. |
@@ -71,8 +74,10 @@ These public wire-contract types are generated from the compiled assemblies and 
 | `Csls.Protocol.DocumentUri` | Represents an absolute URI used by the Language Server Protocol. |
 | `Csls.Protocol.DocumentUriJsonConverter` | Converts document URI values to and from their LSP string representation. |
 | `Csls.Protocol.ExperimentalServerCapabilities` | Groups negotiated server extensions outside the stable LSP capability set. |
+| `Csls.Protocol.FileChangeType` | Identifies how one watched workspace file changed. |
 | `Csls.Protocol.FileCreate` | Identifies one file or folder created by the client. |
 | `Csls.Protocol.FileDelete` | Identifies one file or folder deleted by the client. |
+| `Csls.Protocol.FileEvent` | Describes one file-system change reported by an LSP client. |
 | `Csls.Protocol.FileOperationFilter` | Selects workspace file operations by URI scheme and path pattern. |
 | `Csls.Protocol.FileOperationOptions` | Advertises the workspace file-operation notifications consumed by the server. |
 | `Csls.Protocol.FileOperationPattern` | Describes paths that trigger one workspace file operation. |
@@ -80,6 +85,7 @@ These public wire-contract types are generated from the compiled assemblies and 
 | `Csls.Protocol.FileOperationPatternOptions` | Configures matching for one file-operation glob. |
 | `Csls.Protocol.FileOperationRegistrationOptions` | Registers the workspace paths relevant to one file-operation method. |
 | `Csls.Protocol.FileRename` | Identifies one file or folder renamed by the client. |
+| `Csls.Protocol.FileSystemWatcher` | Describes one workspace file-system glob requested from an LSP client. |
 | `Csls.Protocol.FoldingRange` | Describes one foldable source range using zero-based UTF-16 positions. |
 | `Csls.Protocol.FoldingRangeKind` | Defines the standard LSP semantic categories for folding ranges. |
 | `Csls.Protocol.FoldingRangeParams` | Identifies one document whose foldable source ranges are requested. |
@@ -114,6 +120,8 @@ These public wire-contract types are generated from the compiled assemblies and 
 | `Csls.Protocol.Range` | Represents a half-open range between two UTF-16 document positions. |
 | `Csls.Protocol.ReferenceContext` | Configures declaration inclusion for one reference search. |
 | `Csls.Protocol.ReferenceParams` | Requests symbol references at one UTF-16 document position. |
+| `Csls.Protocol.Registration` | Describes one dynamically registered LSP capability. |
+| `Csls.Protocol.RegistrationParams` | Describes capabilities dynamically registered with an LSP client. |
 | `Csls.Protocol.RenameFile` | Renames one file or directory before later workspace-edit operations are applied. |
 | `Csls.Protocol.RenameFileOptions` | Controls how a workspace rename operation handles an existing destination resource. |
 | `Csls.Protocol.RenameFilesParams` | Carries files and folders renamed through the client. |
@@ -153,6 +161,7 @@ These public wire-contract types are generated from the compiled assemblies and 
 | `Csls.Protocol.TypeHierarchySupertypesParams` | Identifies the type-hierarchy item whose direct supertypes should be returned. |
 | `Csls.Protocol.UniquenessLevel` | Identifies the scope in which a moniker identifier is unique. |
 | `Csls.Protocol.VersionedTextDocumentIdentifier` | Identifies a text document and the client version after a content mutation. |
+| `Csls.Protocol.WatchKind` | Selects the file-system changes requested from an LSP client. |
 | `Csls.Protocol.WillSaveTextDocumentParams` | Identifies a document that the editor is about to save. |
 | `Csls.Protocol.WorkDoneProgressBegin` | Starts one client-visible work-done progress sequence. |
 | `Csls.Protocol.WorkDoneProgressCreateParams` | Requests client registration of one server-generated work-done progress token. |

@@ -374,7 +374,6 @@ public sealed class RequestScheduler : IAsyncDisposable
             switch (mode)
             {
                 case RequestMode.ReadOnly:
-                    await _foregroundConcurrency.WaitAsync().ConfigureAwait(false);
                     foregroundTasks.Add(RunWithSemaphoreAsync(execute, _foregroundConcurrency));
                     break;
                 case RequestMode.ReadWrite:
@@ -383,7 +382,6 @@ public sealed class RequestScheduler : IAsyncDisposable
                     await execute().ConfigureAwait(false);
                     break;
                 case RequestMode.ReadOnlyBackground:
-                    await _backgroundConcurrency.WaitAsync().ConfigureAwait(false);
                     backgroundTasks.Add(RunWithSemaphoreAsync(execute, _backgroundConcurrency));
                     break;
                 default:
@@ -397,6 +395,7 @@ public sealed class RequestScheduler : IAsyncDisposable
 
     private static async Task RunWithSemaphoreAsync(Func<Task> operation, SemaphoreSlim semaphore)
     {
+        await semaphore.WaitAsync().ConfigureAwait(false);
         try
         {
             await operation().ConfigureAwait(false);

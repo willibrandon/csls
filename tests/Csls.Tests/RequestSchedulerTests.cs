@@ -204,6 +204,76 @@ public sealed class RequestSchedulerTests
     }
 
     /// <summary>
+    /// Admits interactive foreground work while the background lane is saturated.
+    /// </summary>
+    [TestMethod]
+    public async Task BackgroundSaturationDoesNotDelayForegroundAdmission()
+    {
+        CancellationToken cancellationToken = TestContext.CancellationToken;
+        var scheduler = new RequestScheduler(
+            capacity: 8,
+            foregroundConcurrency: 1,
+            backgroundConcurrency: 1);
+        await using ConfiguredAsyncDisposable schedulerDisposal =
+            scheduler.ConfigureAwait(false);
+        var firstBackgroundStarted = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var secondBackgroundStarted = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var foregroundStarted = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseBackground = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+
+        Task<int> firstBackground = scheduler.ScheduleAsync(
+            "first-background",
+            RequestMode.ReadOnlyBackground,
+            static () => 1,
+            context => WaitInBackgroundAsync(context, firstBackgroundStarted, 1),
+            cancellationToken);
+        await firstBackgroundStarted.Task.WaitAsync(cancellationToken).ConfigureAwait(false);
+        Task<int> secondBackground = scheduler.ScheduleAsync(
+            "second-background",
+            RequestMode.ReadOnlyBackground,
+            static () => 1,
+            context => WaitInBackgroundAsync(context, secondBackgroundStarted, 2),
+            cancellationToken);
+        Task<int> foreground = scheduler.ScheduleAsync(
+            "foreground",
+            RequestMode.ReadOnly,
+            static () => 1,
+            ForegroundAsync,
+            cancellationToken);
+
+        await foregroundStarted.Task.WaitAsync(cancellationToken).ConfigureAwait(false);
+        Assert.IsFalse(secondBackgroundStarted.Task.IsCompleted);
+        Assert.AreEqual(3, await foreground.ConfigureAwait(false));
+        releaseBackground.SetResult();
+        int[] backgroundResults = await Task.WhenAll(firstBackground, secondBackground)
+            .ConfigureAwait(false);
+        Assert.AreSequenceEqual([1, 2], backgroundResults);
+        return;
+
+        async ValueTask<int> WaitInBackgroundAsync(
+            RequestContext context,
+            TaskCompletionSource started,
+            int result)
+        {
+            started.SetResult();
+            await releaseBackground.Task.WaitAsync(context.CancellationToken)
+                .ConfigureAwait(false);
+            return result;
+        }
+
+        ValueTask<int> ForegroundAsync(RequestContext context)
+        {
+            context.CancellationToken.ThrowIfCancellationRequested();
+            foregroundStarted.SetResult();
+            return ValueTask.FromResult(3);
+        }
+    }
+
+    /// <summary>
     /// Verifies request identity, server cancellation, and bounded lifecycle tracing.
     /// </summary>
     [TestMethod]
