@@ -102,13 +102,7 @@ try
             $"The release contains unexpected VSIX files: {string.Join(", ", unexpectedPackages.Select(Path.GetFileName))}");
     }
 
-    bool useAzureCredential = string.Equals(
-        Environment.GetEnvironmentVariable("CSLS_VSCE_AZURE_CREDENTIAL"),
-        "true",
-        StringComparison.OrdinalIgnoreCase);
-    string? marketplaceToken = useAzureCredential
-        ? null
-        : RequireEnvironmentVariable("VSCE_PAT");
+    string marketplaceToken = RequireEnvironmentVariable("VSCE_PAT");
     string openVsxToken = RequireEnvironmentVariable("OVSX_PAT");
     if (verifyOnly)
     {
@@ -117,8 +111,7 @@ try
             ovsxPath,
             extensionRoot,
             marketplaceToken,
-            openVsxToken,
-            useAzureCredential).ConfigureAwait(false);
+            openVsxToken).ConfigureAwait(false);
         await Console.Out.WriteLineAsync(
             "Verified publication access to both extension registries.")
             .ConfigureAwait(false);
@@ -129,16 +122,14 @@ try
         vscePath,
         packages,
         extensionRoot,
-        useAzureCredential ? null : "VSCE_PAT",
-        marketplaceToken,
-        useAzureCredential).ConfigureAwait(false);
+        "VSCE_PAT",
+        marketplaceToken).ConfigureAwait(false);
     await PublishAsync(
         ovsxPath,
         packages,
         extensionRoot,
         "OVSX_PAT",
-        openVsxToken,
-        useAzureCredential: false).ConfigureAwait(false);
+        openVsxToken).ConfigureAwait(false);
 
     await Console.Out.WriteLineAsync(
         $"Published {packages.Length} verified VSIX files to both extension registries.")
@@ -186,9 +177,8 @@ static async Task PublishAsync(
     string publisherPath,
     IReadOnlyList<string> packages,
     string workingDirectory,
-    string? tokenName,
-    string? token,
-    bool useAzureCredential)
+    string tokenName,
+    string token)
 {
     var arguments = new List<string>
     {
@@ -196,10 +186,6 @@ static async Task PublishAsync(
         "--packagePath"
     };
     arguments.AddRange(packages);
-    if (useAzureCredential)
-    {
-        arguments.Add("--azure-credential");
-    }
 
     await RunPublisherAsync(
         publisherPath,
@@ -213,25 +199,14 @@ static async Task VerifyAsync(
     string vscePath,
     string ovsxPath,
     string workingDirectory,
-    string? marketplaceToken,
-    string openVsxToken,
-    bool useAzureCredential)
+    string marketplaceToken,
+    string openVsxToken)
 {
-    var marketplaceArguments = new List<string>
-    {
-        "verify-pat",
-        "willibrandon"
-    };
-    if (useAzureCredential)
-    {
-        marketplaceArguments.Add("--azure-credential");
-    }
-
     await RunPublisherAsync(
         vscePath,
-        marketplaceArguments,
+        ["verify-pat", "willibrandon"],
         workingDirectory,
-        useAzureCredential ? null : "VSCE_PAT",
+        "VSCE_PAT",
         marketplaceToken).ConfigureAwait(false);
     await RunPublisherAsync(
         ovsxPath,
@@ -245,8 +220,8 @@ static async Task RunPublisherAsync(
     string publisherPath,
     IReadOnlyList<string> arguments,
     string workingDirectory,
-    string? tokenName,
-    string? token)
+    string tokenName,
+    string token)
 {
     var startInfo = new ProcessStartInfo
     {
@@ -262,10 +237,7 @@ static async Task RunPublisherAsync(
         startInfo.ArgumentList.Add(argument);
     }
 
-    if (tokenName is not null && token is not null)
-    {
-        startInfo.Environment[tokenName] = token;
-    }
+    startInfo.Environment[tokenName] = token;
     using Process process = Process.Start(startInfo)
         ?? throw new InvalidOperationException($"The editor publisher did not start: {publisherPath}");
     Task<string> outputTask = process.StandardOutput.ReadToEndAsync();
