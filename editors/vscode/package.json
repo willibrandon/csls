@@ -1,0 +1,360 @@
+{
+  "name": "csls",
+  "displayName": "csls",
+  "description": "Fast C# language support powered by Roslyn and csls",
+  "version": "1.0.0",
+  "license": "SEE LICENSE IN LICENSE",
+  "publisher": "willibrandon",
+  "author": {
+    "name": "willibrandon"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/willibrandon/csls.git"
+  },
+  "bugs": {
+    "url": "https://github.com/willibrandon/csls/issues"
+  },
+  "homepage": "https://willibrandon.github.io/csls/",
+  "icon": "media/icon.png",
+  "categories": [
+    "Programming Languages",
+    "Linters",
+    "Formatters"
+  ],
+  "keywords": [
+    "csharp",
+    "c#",
+    "dotnet",
+    "roslyn",
+    "language server",
+    "lsp"
+  ],
+  "engines": {
+    "node": ">=24 <25",
+    "vscode": "^1.135.0"
+  },
+  "extensionKind": [
+    "workspace"
+  ],
+  "capabilities": {
+    "virtualWorkspaces": true,
+    "untrustedWorkspaces": {
+      "supported": false,
+      "description": "csls loads and evaluates .NET projects from the workspace."
+    }
+  },
+  "activationEvents": [
+    "onLanguage:csharp",
+    "onLanguage:razor",
+    "onView:csls.solution"
+  ],
+  "main": "./dist/extension.cjs",
+  "browser": "./dist/browserExtension.cjs",
+  "extensionDependencies": [
+    "ms-dotnettools.vscode-dotnet-runtime"
+  ],
+  "x-dotnet-acquire": {
+    "version": "10.0",
+    "mode": "runtime"
+  },
+  "scripts": {
+    "check": "tsc --noEmit",
+    "compile:node": "esbuild src/extension.ts --bundle --external:vscode --format=cjs --outfile=dist/extension.cjs --platform=node --sourcemap --sources-content=false --target=node24",
+    "compile:browser": "esbuild src/browserExtension.ts --bundle --external:vscode --format=cjs --outfile=dist/browserExtension.cjs --platform=browser --sourcemap --sources-content=false --target=es2025",
+    "compile:worker": "dotnet run --file ../../scripts/Build-VsCodeWebWorker.cs",
+    "compile": "npm run check && npm run compile:node && npm run compile:browser && npm run compile:worker",
+    "package": "npm run compile && vsce package --no-dependencies",
+    "vscode:prepublish": "npm run compile"
+  },
+  "contributes": {
+    "languages": [
+      {
+        "id": "csharp",
+        "aliases": [
+          "C#",
+          "csharp"
+        ],
+        "extensions": [
+          ".cs",
+          ".csx"
+        ],
+        "configuration": "./language-configuration.json"
+      },
+      {
+        "id": "razor",
+        "aliases": [
+          "Razor"
+        ],
+        "extensions": [
+          ".razor",
+          ".cshtml"
+        ],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "commands": [
+      {
+        "command": "csls.restartServer",
+        "title": "Restart Language Server",
+        "category": "csls"
+      },
+      {
+        "command": "csls.showOutput",
+        "title": "Show Language Server Output",
+        "category": "csls"
+      },
+      {
+        "command": "csls.refreshSolution",
+        "title": "Refresh Solution",
+        "category": "csls",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "csls.restoreSolution",
+        "title": "Restore Solution",
+        "category": "csls"
+      },
+      {
+        "command": "csls.build",
+        "title": "Build",
+        "category": "csls"
+      },
+      {
+        "command": "csls.restore",
+        "title": "Restore",
+        "category": "csls"
+      },
+      {
+        "command": "csls.run",
+        "title": "Run",
+        "category": "csls"
+      },
+      {
+        "command": "csls.debug",
+        "title": "Debug",
+        "category": "csls"
+      },
+      {
+        "command": "csls.test",
+        "title": "Test",
+        "category": "csls"
+      }
+    ],
+    "views": {
+      "explorer": [
+        {
+          "id": "csls.solution",
+          "name": "Solution",
+          "when": "workspaceFolderCount != 0 && csls.workspaceExperience"
+        }
+      ]
+    },
+    "menus": {
+      "view/title": [
+        {
+          "command": "csls.refreshSolution",
+          "when": "view == csls.solution",
+          "group": "navigation"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "csls.build",
+          "when": "view == csls.solution && csls.desktopWorkspaceExperience && (viewItem == cslsSolution || viewItem == cslsProject)",
+          "group": "inline@1"
+        },
+        {
+          "command": "csls.run",
+          "when": "view == csls.solution && csls.desktopWorkspaceExperience && viewItem == cslsProject",
+          "group": "inline@2"
+        },
+        {
+          "command": "csls.debug",
+          "when": "view == csls.solution && csls.desktopWorkspaceExperience && viewItem == cslsProject",
+          "group": "inline@3"
+        },
+        {
+          "command": "csls.restoreSolution",
+          "when": "view == csls.solution && viewItem == cslsSolution",
+          "group": "csls@1"
+        },
+        {
+          "command": "csls.restore",
+          "when": "view == csls.solution && csls.desktopWorkspaceExperience && viewItem == cslsProject",
+          "group": "csls@1"
+        },
+        {
+          "command": "csls.test",
+          "when": "view == csls.solution && csls.desktopWorkspaceExperience && viewItem == cslsProject",
+          "group": "csls@2"
+        }
+      ],
+      "commandPalette": [
+        {
+          "command": "csls.build",
+          "when": "csls.desktopWorkspaceExperience"
+        },
+        {
+          "command": "csls.restore",
+          "when": "csls.desktopWorkspaceExperience"
+        },
+        {
+          "command": "csls.run",
+          "when": "csls.desktopWorkspaceExperience"
+        },
+        {
+          "command": "csls.debug",
+          "when": "csls.desktopWorkspaceExperience"
+        },
+        {
+          "command": "csls.test",
+          "when": "csls.desktopWorkspaceExperience"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "csls",
+      "properties": {
+        "csls.server.path": {
+          "type": "string",
+          "default": "",
+          "scope": "machine-overridable",
+          "description": "Absolute path to a csls executable. Leave empty to use the server included with the extension."
+        },
+        "csls.debugger.path": {
+          "type": "string",
+          "default": "",
+          "scope": "machine-overridable",
+          "description": "Absolute path to vsdbg. Leave empty to download the verified Microsoft debugger when it is first used."
+        },
+        "csls.enableAnalyzers": {
+          "type": "boolean",
+          "default": true,
+          "scope": "resource",
+          "description": "Include project analyzers in document diagnostics."
+        },
+        "csls.formatOnSave": {
+          "type": "boolean",
+          "default": false,
+          "scope": "resource",
+          "description": "Format C#, Razor, and cshtml documents before saving."
+        },
+        "csls.inlayHints.enableInlayHintsForParameters": {
+          "type": "boolean",
+          "default": false,
+          "scope": "resource",
+          "description": "Show parameter names at call sites."
+        },
+        "csls.inlayHints.enableInlayHintsForTypes": {
+          "type": "boolean",
+          "default": false,
+          "scope": "resource",
+          "description": "Show inferred types for local variables declared with var."
+        },
+        "csls.diagnostics.reportInformationAsHint": {
+          "type": "boolean",
+          "default": true,
+          "scope": "resource",
+          "description": "Present informational diagnostics as editor hints."
+        },
+        "csls.configuration": {
+          "type": "string",
+          "default": "Debug",
+          "scope": "resource",
+          "description": "MSBuild configuration used to evaluate projects."
+        },
+        "csls.logLevel": {
+          "type": "string",
+          "enum": [
+            "Trace",
+            "Debug",
+            "Information",
+            "Warning",
+            "Error",
+            "Critical",
+            "None"
+          ],
+          "default": "Information",
+          "scope": "window",
+          "description": "Minimum language-server log level."
+        },
+        "csls.trace.server": {
+          "type": "string",
+          "enum": [
+            "off",
+            "messages",
+            "verbose"
+          ],
+          "default": "off",
+          "scope": "window",
+          "description": "Traces messages exchanged between VS Code and csls."
+        }
+      }
+    },
+    "debuggers": [
+      {
+        "type": "coreclr",
+        "label": ".NET",
+        "languages": [
+          "csharp",
+          "razor"
+        ],
+        "configurationAttributes": {
+          "launch": {
+            "type": "object",
+            "required": [
+              "program"
+            ],
+            "properties": {
+              "program": {
+                "type": "string",
+                "description": "Absolute path to the managed application assembly."
+              },
+              "cwd": {
+                "type": "string",
+                "description": "Working directory for the application."
+              },
+              "args": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "default": []
+              },
+              "justMyCode": {
+                "type": "boolean",
+                "default": true
+              },
+              "stopAtEntry": {
+                "type": "boolean",
+                "default": false
+              }
+            }
+          }
+        },
+        "initialConfigurations": [
+          {
+            "name": ".NET Launch",
+            "type": "coreclr",
+            "request": "launch",
+            "program": "${workspaceFolder}/bin/Debug/<target-framework>/<application>.dll",
+            "cwd": "${workspaceFolder}"
+          }
+        ]
+      }
+    ]
+  },
+  "dependencies": {
+    "fast-xml-parser": "5.11.1",
+    "vscode-languageclient": "10.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "24.13.3",
+    "@types/vscode": "1.134.0",
+    "@vscode/vsce": "3.9.2",
+    "esbuild": "0.28.2",
+    "ovsx": "1.1.1",
+    "typescript": "7.0.2"
+  }
+}

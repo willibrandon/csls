@@ -32,7 +32,31 @@ internal static class DirectoryReleaseWaiter
                 when (exception is IOException or UnauthorizedAccessException &&
                     Stopwatch.GetElapsedTime(startedTimestamp) < timeout)
             {
+                if (OperatingSystem.IsWindows() &&
+                    exception is UnauthorizedAccessException)
+                {
+                    ClearReadOnlyAttributes(path);
+                }
+
                 await Task.Delay(s_retryDelay).ConfigureAwait(false);
+            }
+        }
+    }
+
+    private static void ClearReadOnlyAttributes(string path)
+    {
+        var options = new EnumerationOptions
+        {
+            AttributesToSkip = 0,
+            IgnoreInaccessible = true,
+            RecurseSubdirectories = true
+        };
+        foreach (string filePath in Directory.EnumerateFiles(path, "*", options))
+        {
+            FileAttributes attributes = File.GetAttributes(filePath);
+            if ((attributes & FileAttributes.ReadOnly) != 0)
+            {
+                File.SetAttributes(filePath, attributes & ~FileAttributes.ReadOnly);
             }
         }
     }

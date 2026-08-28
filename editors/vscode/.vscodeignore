@@ -1,0 +1,14 @@
+.github/**
+.vscode/**
+node_modules/**
+src/**
+tsconfig.json
+*.vsix
+dist/*.map
+server/**/*.dbg
+server/**/*.dwarf
+server/**/*.pdb
+server/**/*.xml
+server/**/*.mstat
+server/**/*.mibc
+server/**/*.map

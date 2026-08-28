@@ -1,6 +1,5 @@
 using Csls.Protocol;
 using Csls.Workspaces;
-using Microsoft.Extensions.Logging.Abstractions;
 using System.Runtime.CompilerServices;
 using System.Text.Json;
 
@@ -70,7 +69,7 @@ public sealed class UnityWorkspaceLanguageServerTests
             Directory.CreateDirectory(Path.Join(unityPath, "Logs", "Packages"));
             Directory.CreateDirectory(Path.Join(unityPath, "UserSettings", "Layouts"));
 
-            var manager = new WorkspaceManager(NullLogger<WorkspaceManager>.Instance);
+            WorkspaceManager manager = WorkspaceManagerTestFactory.Create();
             await using (manager.ConfigureAwait(false))
             {
                 await manager.LoadAsync(
@@ -153,7 +152,7 @@ public sealed class UnityWorkspaceLanguageServerTests
                 TestContext.CancellationToken).ConfigureAwait(false);
 
             string createdPath = Path.Join(projectPath, "CreatedLibraryType.cs");
-            var manager = new WorkspaceManager(NullLogger<WorkspaceManager>.Instance);
+            WorkspaceManager manager = WorkspaceManagerTestFactory.Create();
             await using (manager.ConfigureAwait(false))
             {
                 await manager.LoadAsync(

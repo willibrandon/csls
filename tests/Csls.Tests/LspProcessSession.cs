@@ -144,6 +144,12 @@ internal sealed class LspProcessSession : IAsyncDisposable
                     "workspace/diagnostic/refresh",
                     diagnosticRefreshHandler);
 
+                Func<CancellationToken, Task> inlayHintRefreshHandler =
+                    client.RefreshInlayHintsAsync;
+                rpc.AddLocalRpcMethod(
+                    "workspace/inlayHint/refresh",
+                    inlayHintRefreshHandler);
+
                 Func<WorkDoneProgressCreateParams, CancellationToken, Task>
                     workDoneProgressCreateHandler = client.CreateWorkDoneProgressAsync;
                 var workDoneProgressCreateAttribute = new JsonRpcMethodAttribute(
@@ -838,6 +844,30 @@ internal sealed class LspProcessSession : IAsyncDisposable
         CancellationToken cancellationToken) =>
         _rpc.InvokeWithParameterObjectAsync<CSharpDebugInfo>(
             "$/csharp/debugInfo",
+            new InitializedParams(),
+            cancellationToken);
+
+    /// <summary>
+    /// Requests the current Roslyn workspace structure from the real server process.
+    /// </summary>
+    /// <param name="cancellationToken">The test cancellation token.</param>
+    /// <returns>The current workspace structure.</returns>
+    internal Task<CSharpWorkspaceInfo> RequestWorkspaceInfoAsync(
+        CancellationToken cancellationToken) =>
+        _rpc.InvokeWithParameterObjectAsync<CSharpWorkspaceInfo>(
+            "$/csharp/workspaceInfo",
+            new InitializedParams(),
+            cancellationToken);
+
+    /// <summary>
+    /// Restores and reloads the current Roslyn workspace through the editor protocol.
+    /// </summary>
+    /// <param name="cancellationToken">The test cancellation token.</param>
+    /// <returns>The completed workspace operation.</returns>
+    internal Task<CSharpWorkspaceOperationInfo> RestoreWorkspaceForClientAsync(
+        CancellationToken cancellationToken) =>
+        _rpc.InvokeWithParameterObjectAsync<CSharpWorkspaceOperationInfo>(
+            "$/csharp/workspace/restore",
             new InitializedParams(),
             cancellationToken);
 

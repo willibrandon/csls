@@ -1,0 +1,73 @@
+<Project Sdk="Microsoft.NET.Sdk.WebAssembly">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>Csls.Web.Worker</AssemblyName>
+    <RootNamespace>Csls.Web.Worker</RootNamespace>
+    <Description>The browser WebAssembly host for the csls language server.</Description>
+    <RuntimeIdentifier>browser-wasm</RuntimeIdentifier>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <PublishTrimmed>false</PublishTrimmed>
+    <WasmEnableWebcil>false</WasmEnableWebcil>
+    <CslsUsesRazorCompiler>true</CslsUsesRazorCompiler>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Bcl.AsyncInterfaces" />
+    <PackageReference Include="Microsoft.CodeAnalysis.Common"
+                      GeneratePathProperty="true"
+                      PrivateAssets="All" />
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp"
+                      GeneratePathProperty="true"
+                      PrivateAssets="All" />
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp.Features"
+                      GeneratePathProperty="true"
+                      PrivateAssets="All" />
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp.Workspaces"
+                      GeneratePathProperty="true"
+                      PrivateAssets="All" />
+    <PackageReference Include="Microsoft.CodeAnalysis.Features"
+                      GeneratePathProperty="true"
+                      PrivateAssets="All" />
+    <PackageReference Include="Microsoft.CodeAnalysis.Scripting.Common"
+                      GeneratePathProperty="true"
+                      PrivateAssets="All" />
+    <PackageReference Include="Microsoft.CodeAnalysis.Workspaces.Common"
+                      GeneratePathProperty="true"
+                      PrivateAssets="All" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
+    <PackageReference Include="Microsoft.NET.StringTools"
+                      ExcludeAssets="runtime"
+                      PrivateAssets="All" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../Csls.Server/Csls.Server.csproj" />
+  </ItemGroup>
+
+  <Target Name="UseBrowserCompatibleRoslynAssemblies"
+          AfterTargets="ResolveAssemblyReferences">
+    <ItemGroup>
+      <ReferenceCopyLocalPaths Remove="@(ReferenceCopyLocalPaths)"
+                               Condition="'%(ReferenceCopyLocalPaths.NuGetPackageId)' == 'Microsoft.CodeAnalysis.Common' or
+                                          '%(ReferenceCopyLocalPaths.NuGetPackageId)' == 'Microsoft.CodeAnalysis.CSharp' or
+                                          '%(ReferenceCopyLocalPaths.NuGetPackageId)' == 'Microsoft.CodeAnalysis.CSharp.Features' or
+                                          '%(ReferenceCopyLocalPaths.NuGetPackageId)' == 'Microsoft.CodeAnalysis.CSharp.Workspaces' or
+                                          '%(ReferenceCopyLocalPaths.NuGetPackageId)' == 'Microsoft.CodeAnalysis.Features' or
+                                          '%(ReferenceCopyLocalPaths.NuGetPackageId)' == 'Microsoft.CodeAnalysis.Scripting.Common' or
+                                          '%(ReferenceCopyLocalPaths.NuGetPackageId)' == 'Microsoft.CodeAnalysis.Workspaces.Common'" />
+      <ReferenceCopyLocalPaths Include="$(PkgMicrosoft_CodeAnalysis_Common)/lib/netstandard2.0/Microsoft.CodeAnalysis.dll" />
+      <ReferenceCopyLocalPaths Include="$(PkgMicrosoft_CodeAnalysis_CSharp)/lib/netstandard2.0/Microsoft.CodeAnalysis.CSharp.dll" />
+      <ReferenceCopyLocalPaths Include="$(PkgMicrosoft_CodeAnalysis_CSharp_Features)/lib/netstandard2.0/Microsoft.CodeAnalysis.CSharp.Features.dll" />
+      <ReferenceCopyLocalPaths Include="$(PkgMicrosoft_CodeAnalysis_CSharp_Workspaces)/lib/netstandard2.0/Microsoft.CodeAnalysis.CSharp.Workspaces.dll" />
+      <ReferenceCopyLocalPaths Include="$(PkgMicrosoft_CodeAnalysis_Features)/lib/netstandard2.0/Microsoft.CodeAnalysis.Features.dll" />
+      <ReferenceCopyLocalPaths Include="$(PkgMicrosoft_CodeAnalysis_Scripting_Common)/lib/netstandard2.0/Microsoft.CodeAnalysis.Scripting.dll" />
+      <ReferenceCopyLocalPaths Include="$(PkgMicrosoft_CodeAnalysis_Workspaces_Common)/lib/netstandard2.0/Microsoft.CodeAnalysis.Workspaces.dll" />
+      <ReferenceCopyLocalPaths Update="@(ReferenceCopyLocalPaths)"
+                               Condition="$([System.String]::Copy('%(ReferenceCopyLocalPaths.Identity)').Contains('/lib/netstandard2.0/Microsoft.CodeAnalysis'))">
+        <CopyLocal>true</CopyLocal>
+        <NuGetPackageVersion>$(RoslynVersion)</NuGetPackageVersion>
+      </ReferenceCopyLocalPaths>
+    </ItemGroup>
+  </Target>
+
+</Project>

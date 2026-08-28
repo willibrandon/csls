@@ -24,6 +24,10 @@ Clients without pull-diagnostic support receive complete versioned push diagnost
 after documents open, change, or save. Rapid edits are coalesced, and closing a
 document clears its published diagnostics.
 
+Compiler and analyzer results are cached by the dependent Roslyn project version.
+An edit recomputes affected projects on demand while unrelated projects keep their
+current result identifiers and cached analysis.
+
 Roslyn diagnostics with hidden severity are omitted unless they fade unnecessary
 code. Diagnostics explicitly raised to information remain visible and use the same
 hint presentation as the C# extension by default. The presentation can be changed
@@ -39,6 +43,9 @@ Folder discovery loads shebang apps and directive apps with top-level statements
 while an explicit C# file workspace always uses file-based app semantics.
 Clients that support work-done progress receive one update for each resolved
 project, including projects discovered through references outside the solution.
+Files loaded once for each target framework use the best available project flavor
+for hover and other position-based requests, with a stable fallback when a flavor
+name has no target framework.
 
 Unity projects are detected by their `Assets` directory and
 `ProjectSettings/ProjectVersion.txt` file. csls loads the generated solution at

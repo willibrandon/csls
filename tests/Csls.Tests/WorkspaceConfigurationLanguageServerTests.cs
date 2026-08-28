@@ -46,7 +46,15 @@ public sealed class WorkspaceConfigurationLanguageServerTests
                 client);
             await using ConfiguredAsyncDisposable lspCleanup = lsp.ConfigureAwait(false);
             using var capabilitiesDocument = JsonDocument.Parse(
-                """{"workspace":{"configuration":true,"workspaceFolders":true}}""");
+                """
+                {
+                  "workspace": {
+                    "configuration": true,
+                    "inlayHint": {"refreshSupport": true},
+                    "workspaceFolders": true
+                  }
+                }
+                """);
             JsonElement initialization = await lsp.InitializeAsync(
                 fixturePath,
                 capabilitiesDocument.RootElement,
@@ -89,13 +97,21 @@ public sealed class WorkspaceConfigurationLanguageServerTests
             Assert.Contains("CA1822", enabledItems.Select(static diagnostic => diagnostic.Code));
 
             client.SetConfiguration(
-                """{"enableAnalyzers":false,"formatOnSave":true}""",
+                """
+                {
+                  "enableAnalyzers": false,
+                  "formatOnSave": true,
+                  "inlayHints": {"enableInlayHintsForParameters": true}
+                }
+                """,
                 preferredConfiguration: null);
             using var emptySettings = JsonDocument.Parse("{}");
             await lsp.ChangeConfigurationAsync(emptySettings.RootElement).ConfigureAwait(false);
             await client.WaitForConfigurationRequestAsync(
                 expectedCount: 2,
                 TestContext.CancellationToken).ConfigureAwait(false);
+            await client.WaitForInlayHintRefreshAsync(TestContext.CancellationToken)
+                .ConfigureAwait(false);
             DocumentDiagnosticReport disabled = await lsp.RequestDiagnosticsAsync(
                 documentPath,
                 enabled.ResultId,

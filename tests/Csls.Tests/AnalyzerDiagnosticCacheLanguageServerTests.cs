@@ -235,17 +235,18 @@ public sealed class AnalyzerDiagnosticCacheLanguageServerTests
             await fixture.ReleaseAsync(TestContext.CancellationToken).ConfigureAwait(false);
             analyzerReleased = true;
 
-            RemoteInvocationException? cancellation = null;
+            RemoteInvocationException cancellation;
             try
             {
                 await diagnosticRequest.ConfigureAwait(false);
+                throw new AssertFailedException(
+                    "The diagnostic request completed instead of being canceled.");
             }
             catch (RemoteInvocationException exception)
             {
                 cancellation = exception;
             }
 
-            Assert.IsNotNull(cancellation);
             Assert.AreEqual(typeof(RemoteInvocationException), cancellation.GetType());
             Assert.AreEqual(LspServerCancelledException.ErrorCode, cancellation.ErrorCode);
             Assert.Contains(

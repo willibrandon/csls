@@ -1,6 +1,5 @@
 using Csls.Protocol;
 using Csls.Workspaces;
-using Microsoft.Extensions.Logging.Abstractions;
 using System.Runtime.CompilerServices;
 
 namespace Csls.Tests;
@@ -15,6 +14,59 @@ public sealed class WorkspaceManagerTests
     /// Gets the active MSTest context and its framework-managed cancellation token.
     /// </summary>
     public TestContext TestContext { get; set; } = null!;
+
+    /// <summary>
+    /// Uses the synchronized SDK project identity when a loose workspace has one project file.
+    /// </summary>
+    [TestMethod]
+    public async Task LooseWorkspaceUsesSingleProjectIdentity()
+    {
+        string workspacePath = Path.Join(
+            Path.GetTempPath(),
+            $"csls-loose-project-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(workspacePath);
+        try
+        {
+            string projectPath = Path.Join(workspacePath, "Fixture.csproj");
+            string documentPath = Path.Join(workspacePath, "Program.cs");
+            await File.WriteAllTextAsync(
+                projectPath,
+                "<Project Sdk=\"Microsoft.NET.Sdk\" />",
+                TestContext.CancellationToken).ConfigureAwait(false);
+            await File.WriteAllTextAsync(
+                documentPath,
+                "public sealed class Program;",
+                TestContext.CancellationToken).ConfigureAwait(false);
+
+            string trustedPlatformAssemblies = AppContext.GetData(
+                "TRUSTED_PLATFORM_ASSEMBLIES") as string
+                ?? throw new InvalidOperationException(
+                    "The test host did not provide trusted platform assemblies.");
+            var loader = new LooseFileWorkspaceLoader(trustedPlatformAssemblies.Split(
+                Path.PathSeparator,
+                StringSplitOptions.RemoveEmptyEntries));
+            WorkspaceFolderSnapshot snapshot = Assert.ContainsSingle(await loader.LoadAsync(
+                [workspacePath],
+                "Debug",
+                progress: null,
+                TestContext.CancellationToken).ConfigureAwait(false));
+            using (snapshot.Workspace)
+            {
+                Microsoft.CodeAnalysis.Project project = Assert.ContainsSingle(
+                    snapshot.Solution.Projects);
+                Assert.AreEqual("Fixture", project.Name);
+                Assert.AreEqual(projectPath, project.FilePath);
+                Assert.AreEqual(
+                    documentPath,
+                    Assert.ContainsSingle(project.Documents.Where(
+                        static document => document.FilePath is not null)).FilePath);
+            }
+        }
+        finally
+        {
+            Directory.Delete(workspacePath, recursive: true);
+        }
+    }
 
     /// <summary>
     /// Resolves framework symbols from a real SDK-backed file-based app.
@@ -34,8 +86,7 @@ public sealed class WorkspaceManagerTests
                 DocumentText,
                 TestContext.CancellationToken).ConfigureAwait(false);
 
-            var manager = new WorkspaceManager(
-                NullLogger<WorkspaceManager>.Instance);
+            WorkspaceManager manager = WorkspaceManagerTestFactory.Create();
             await using ConfiguredAsyncDisposable managerDisposal =
                 manager.ConfigureAwait(false);
             await manager.LoadAsync(
@@ -87,9 +138,9 @@ public sealed class WorkspaceManagerTests
                 DocumentText,
                 TestContext.CancellationToken).ConfigureAwait(false);
 
-            var first = new WorkspaceManager(NullLogger<WorkspaceManager>.Instance);
+            WorkspaceManager first = WorkspaceManagerTestFactory.Create();
             await using ConfiguredAsyncDisposable firstDisposal = first.ConfigureAwait(false);
-            var second = new WorkspaceManager(NullLogger<WorkspaceManager>.Instance);
+            WorkspaceManager second = WorkspaceManagerTestFactory.Create();
             await using ConfiguredAsyncDisposable secondDisposal = second.ConfigureAwait(false);
             await Task.WhenAll(
                 first.LoadAsync([documentPath], TestContext.CancellationToken),
@@ -121,7 +172,7 @@ public sealed class WorkspaceManagerTests
                 workspacePath,
                 "DuplicateWorkspace",
                 TestContext.CancellationToken).ConfigureAwait(false);
-            var manager = new WorkspaceManager(NullLogger<WorkspaceManager>.Instance);
+            WorkspaceManager manager = WorkspaceManagerTestFactory.Create();
             await using ConfiguredAsyncDisposable managerDisposal =
                 manager.ConfigureAwait(false);
 
@@ -177,7 +228,7 @@ public sealed class WorkspaceManagerTests
                 ExtensionlessDocumentText,
                 TestContext.CancellationToken).ConfigureAwait(false);
 
-            var manager = new WorkspaceManager(NullLogger<WorkspaceManager>.Instance);
+            WorkspaceManager manager = WorkspaceManagerTestFactory.Create();
             await using ConfiguredAsyncDisposable managerDisposal =
                 manager.ConfigureAwait(false);
             await manager.LoadAsync(
@@ -242,7 +293,7 @@ public sealed class WorkspaceManagerTests
                 "<invalid>",
                 TestContext.CancellationToken).ConfigureAwait(false);
 
-            var manager = new WorkspaceManager(NullLogger<WorkspaceManager>.Instance);
+            WorkspaceManager manager = WorkspaceManagerTestFactory.Create();
             await using ConfiguredAsyncDisposable managerDisposal =
                 manager.ConfigureAwait(false);
             await manager.LoadAsync(
@@ -315,7 +366,7 @@ public sealed class WorkspaceManagerTests
                 DocumentText.Replace("\"hello\"", "MissingBeta", StringComparison.Ordinal),
                 TestContext.CancellationToken).ConfigureAwait(false);
 
-            var manager = new WorkspaceManager(NullLogger<WorkspaceManager>.Instance);
+            WorkspaceManager manager = WorkspaceManagerTestFactory.Create();
             await using ConfiguredAsyncDisposable managerDisposal =
                 manager.ConfigureAwait(false);
             await manager.LoadAsync(

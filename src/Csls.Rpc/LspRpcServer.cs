@@ -1,3 +1,4 @@
+using Csls.Protocol;
 using StreamJsonRpc;
 
 namespace Csls.Rpc;
@@ -41,6 +42,27 @@ public static class LspRpcServer
             output,
             boundedInput,
             formatter);
+        await RunAsync(messageHandler, target, client, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Runs an LSP connection over a complete-message transport until it disconnects.
+    /// </summary>
+    /// <param name="messageHandler">The bidirectional complete-message transport.</param>
+    /// <param name="target">The language server method target.</param>
+    /// <param name="client">The bidirectional connection used for server-to-client requests.</param>
+    /// <param name="cancellationToken">The server cancellation token.</param>
+    /// <returns>A task that completes after dispatched methods have retired.</returns>
+    public static async Task RunAsync(
+        IJsonRpcMessageHandler messageHandler,
+        ILspRpcTarget target,
+        LspClientConnection client,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(messageHandler);
+        ArgumentNullException.ThrowIfNull(target);
+        ArgumentNullException.ThrowIfNull(client);
+
         using var rpc = new JsonRpc(messageHandler)
         {
             CancelLocallyInvokedMethodsWhenConnectionIsClosed = true,

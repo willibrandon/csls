@@ -1,0 +1,26 @@
+id = "csls"
+name = "csls"
+description = "C# and Razor language support powered by csls"
+version = "1.0.0"
+schema_version = 1
+authors = ["willibrandon"]
+repository = "https://github.com/willibrandon/csls"
+
+[language_servers.csls]
+name = "csls"
+languages = ["CSharp", "Razor"]
+language_ids = { CSharp = "csharp", Razor = "razor" }
+
+[grammars.c_sharp]
+repository = "https://github.com/tree-sitter/tree-sitter-c-sharp"
+commit = "485f0bae0274ac9114797fc10db6f7034e4086e3"
+
+[grammars.xml]
+repository = "https://github.com/tree-sitter-grammars/tree-sitter-xml"
+commit = "863dbc381f44f6c136a399e684383b977bb2beaa"
+path = "xml"
+
+[[capabilities]]
+kind = "download_file"
+host = "github.com"
+path = ["willibrandon", "csls", "releases", "download", "**"]

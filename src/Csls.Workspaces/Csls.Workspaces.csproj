@@ -6,11 +6,18 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Microsoft.Build.Locator" />
     <PackageReference Include="Microsoft.CodeAnalysis.CSharp.Features" />
     <PackageReference Include="Microsoft.CodeAnalysis.CSharp.Workspaces" />
-    <PackageReference Include="Microsoft.CodeAnalysis.Workspaces.MSBuild" />
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Remove="DotNetWorkspaceRestorer.cs" />
+    <Compile Remove="FileBasedAppProjectLoader.cs" />
+    <Compile Remove="LegacyFrameworkReferenceResolver.cs" />
+    <Compile Remove="MSBuildRegistration.cs" />
+    <Compile Remove="WorkspaceLoadProgressReporter.cs" />
+    <Compile Remove="WorkspaceProjectLoadObserver.cs" />
   </ItemGroup>
 
   <ItemGroup>

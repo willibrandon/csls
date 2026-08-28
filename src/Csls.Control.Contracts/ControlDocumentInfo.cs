@@ -26,6 +26,11 @@ public sealed class ControlDocumentInfo
     public required string ProjectName { get; init; }
 
     /// <summary>
+    /// Gets the stable identifier of the owning project.
+    /// </summary>
+    public required string ProjectId { get; init; }
+
+    /// <summary>
     /// Gets whether the editor currently owns an open overlay for the document.
     /// </summary>
     public bool IsOpen { get; init; }

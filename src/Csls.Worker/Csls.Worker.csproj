@@ -21,5 +21,6 @@
     <ProjectReference Include="../Csls.Control.Server/Csls.Control.Server.csproj" />
     <ProjectReference Include="../Csls.Rpc/Csls.Rpc.csproj" />
     <ProjectReference Include="../Csls.Server/Csls.Server.csproj" />
+    <ProjectReference Include="../Csls.Workspaces.MSBuild/Csls.Workspaces.MSBuild.csproj" />
   </ItemGroup>
 </Project>

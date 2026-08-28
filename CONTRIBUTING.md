@@ -45,3 +45,16 @@ development container uses a container-local tool root so prefix-dependent
 editor installations never reuse artifacts from the host checkout. Its build
 artifacts use an isolated volume so container restores cannot overwrite host
 MSBuild and NuGet state.
+
+The container also installs Node.js 24.19.0 and Rust 1.98.0 with rust-analyzer,
+rustfmt, Clippy, Rust sources, and the `wasm32-wasip2` target. Its post-create app
+restores the VS Code packages and the locked Zed crate graph.
+
+Build the editor extensions with:
+
+```console
+npm --prefix editors/vscode run compile
+cargo clippy --locked --manifest-path editors/zed/Cargo.toml --all-targets --all-features -- -D warnings
+cargo build --locked --release --target wasm32-wasip2 --manifest-path editors/zed/Cargo.toml
+dotnet run --file scripts/Build-ZedExtension.cs
+```

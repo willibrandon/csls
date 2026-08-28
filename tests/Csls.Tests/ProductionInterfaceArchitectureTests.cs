@@ -1,5 +1,5 @@
 using Csls.Control.Contracts;
-using Csls.Rpc;
+using Csls.Protocol;
 using System.Reflection;
 
 namespace Csls.Tests;

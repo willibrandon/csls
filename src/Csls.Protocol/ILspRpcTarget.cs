@@ -1,6 +1,4 @@
-using Csls.Protocol;
-
-namespace Csls.Rpc;
+namespace Csls.Protocol;
 
 /// <summary>
 /// Defines every explicitly registered LSP entry point implemented by the server engine.
@@ -46,6 +44,21 @@ public interface ILspRpcTarget
     /// <param name="cancellationToken">The peer cancellation token.</param>
     /// <returns>The current live debug observation.</returns>
     Task<CSharpDebugInfo> GetDebugInfoAsync(CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Gets the current loaded workspace hierarchy for an editor client.
+    /// </summary>
+    /// <param name="cancellationToken">The peer cancellation token.</param>
+    /// <returns>The current workspace, project, and document hierarchy.</returns>
+    Task<CSharpWorkspaceInfo> GetWorkspaceInfoAsync(CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Restores and reloads every workspace entry point for an editor client.
+    /// </summary>
+    /// <param name="cancellationToken">The peer cancellation token.</param>
+    /// <returns>The completed workspace operation.</returns>
+    Task<CSharpWorkspaceOperationInfo> RestoreWorkspaceForClientAsync(
+        CancellationToken cancellationToken);
 
     /// <summary>
     /// Applies pushed settings or refreshes settings through client configuration pull.

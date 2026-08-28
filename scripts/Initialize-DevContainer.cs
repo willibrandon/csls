@@ -109,6 +109,15 @@ try
 
     await RunCheckedAsync(dotnetPath, ["restore", "Csls.slnx"], repositoryRoot)
         .ConfigureAwait(false);
+    await RunCheckedAsync(
+        "cargo",
+        [
+            "fetch",
+            "--locked",
+            "--manifest-path",
+            Path.Join("editors", "zed", "Cargo.toml")
+        ],
+        repositoryRoot).ConfigureAwait(false);
     string scriptsDirectory = Path.Join(repositoryRoot, "scripts");
     foreach (string fileAppPath in Directory
         .EnumerateFiles(scriptsDirectory, "*.cs", SearchOption.TopDirectoryOnly)
@@ -131,7 +140,6 @@ try
 
     foreach (string provisioner in new[]
     {
-        "Install-GraphicalEditorTestPrerequisites.cs",
         "Provision-Actionlint.cs",
         "Provision-CsharpLsOracle.cs",
         "Provision-LegacyBuildHost.cs",
@@ -139,7 +147,7 @@ try
         "Provision-Emacs.cs",
         "Provision-Helix.cs",
         "Provision-Neovim.cs",
-        "Provision-VsCode.cs",
+        "Provision-WasiSdk.cs",
         "Provision-Zed.cs"
     })
     {
@@ -151,11 +159,44 @@ try
 
     await RunCheckedAsync(
         dotnetPath,
+        [
+            "run",
+            "--file",
+            Path.Join("scripts", "Provision-VsCode.cs"),
+            "--",
+            "--with-web-browsers"
+        ],
+        repositoryRoot).ConfigureAwait(false);
+    await RunCheckedAsync(
+        dotnetPath,
+        ["run", "--file", Path.Join("scripts", "Provision-VsCodeRemoteServer.cs")],
+        repositoryRoot).ConfigureAwait(false);
+    await RunCheckedAsync(
+        dotnetPath,
+        [
+            "run",
+            "--file",
+            Path.Join("scripts", "Install-GraphicalEditorTestPrerequisites.cs"),
+            "--",
+            "--with-web-browsers"
+        ],
+        repositoryRoot).ConfigureAwait(false);
+
+    await RunCheckedAsync(
+        dotnetPath,
         ["run", "--file", Path.Join("scripts", "Verify-Repository.cs")],
         repositoryRoot).ConfigureAwait(false);
     await RunCheckedAsync(
         dotnetPath,
         ["run", "--file", Path.Join("scripts", "Verify-GitHubActions.cs")],
+        repositoryRoot).ConfigureAwait(false);
+    await RunCheckedAsync(
+        "npx",
+        ["--yes", "npm@12.0.2", "ci", "--prefix", "editors/vscode"],
+        repositoryRoot).ConfigureAwait(false);
+    await RunCheckedAsync(
+        dotnetPath,
+        ["run", "--file", Path.Join("scripts", "Build-ZedExtension.cs")],
         repositoryRoot).ConfigureAwait(false);
     await RunCheckedAsync(
         "npx",

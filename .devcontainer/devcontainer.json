@@ -6,7 +6,13 @@
       "version": "10.0.400"
     },
     "ghcr.io/devcontainers/features/node:2": {
-      "version": "24"
+      "version": "24.19.0"
+    },
+    "ghcr.io/devcontainers/features/rust:1": {
+      "version": "1.98.0",
+      "profile": "minimal",
+      "targets": "wasm32-wasip2",
+      "components": "rust-analyzer,rust-src,rustfmt,clippy"
     },
     "ghcr.io/devcontainers/features/github-cli:1": {},
     "ghcr.io/devcontainers/features/docker-in-docker:4": {
@@ -22,7 +28,10 @@
     "vscode": {
       "extensions": [
         "astro-build.astro-vscode",
-        "github.vscode-github-actions"
+        "github.vscode-github-actions",
+        "rust-lang.rust-analyzer",
+        "tamasfe.even-better-toml",
+        "vadimcn.vscode-lldb"
       ],
       "settings": {
         "dotnet.defaultSolution": "Csls.slnx",

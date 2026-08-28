@@ -71,7 +71,7 @@ public sealed partial class LanguageServer
         }
         catch (Exception exception)
         {
-            LogConfigurationPullFailed(exception);
+            LanguageServerLogger.LogConfigurationPullFailed(_logger, exception);
             throw;
         }
 
@@ -93,13 +93,18 @@ public sealed partial class LanguageServer
         LanguageServerConfiguration configuration,
         CancellationToken cancellationToken)
     {
+        bool inlayHintConfigurationChanged =
+            _configuration.EnableInlayHintsForParameters !=
+                configuration.EnableInlayHintsForParameters ||
+            _configuration.EnableInlayHintsForTypes != configuration.EnableInlayHintsForTypes;
         bool changed = await _workspaceManager.ConfigureAsync(
             configuration.EnableAnalyzers,
             configuration.BuildConfiguration,
             cancellationToken).ConfigureAwait(false);
         _configuration = configuration;
         _logFilter.SetMinimumLevel(configuration.LogLevel);
-        LogConfigurationApplied(
+        LanguageServerLogger.LogConfigurationApplied(
+            _logger,
             configuration.EnableAnalyzers,
             configuration.FormatOnSave,
             configuration.EnableInlayHintsForParameters,
@@ -108,6 +113,11 @@ public sealed partial class LanguageServer
             configuration.BuildConfiguration,
             configuration.LogLevel,
             changed);
+        if (inlayHintConfigurationChanged && _supportsInlayHintRefresh)
+        {
+            await _client.RefreshInlayHintsAsync(cancellationToken).ConfigureAwait(false);
+        }
+
         return changed;
     }
 
@@ -302,23 +312,4 @@ public sealed partial class LanguageServer
         };
     }
 
-    [LoggerMessage(
-        EventId = 2,
-        Level = LogLevel.Information,
-        Message = "Applied configuration: analyzer diagnostics enabled={EnableAnalyzers}, format on save={FormatOnSave}, parameter hints enabled={EnableParameterHints}, type hints enabled={EnableTypeHints}, information diagnostics reported as hints={ReportInformationAsHint}, build configuration={BuildConfiguration}, log level={LogLevel}, workspace changed={Changed}")]
-    private partial void LogConfigurationApplied(
-        bool enableAnalyzers,
-        bool formatOnSave,
-        bool enableParameterHints,
-        bool enableTypeHints,
-        bool reportInformationAsHint,
-        string buildConfiguration,
-        LogLevel logLevel,
-        bool changed);
-
-    [LoggerMessage(
-        EventId = 3,
-        Level = LogLevel.Error,
-        Message = "Client configuration pull failed")]
-    private partial void LogConfigurationPullFailed(Exception exception);
 }

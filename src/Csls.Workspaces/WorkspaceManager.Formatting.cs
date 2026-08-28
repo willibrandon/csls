@@ -14,12 +14,6 @@ namespace Csls.Workspaces;
 
 public sealed partial class WorkspaceManager
 {
-    private static readonly LspFormattingOptions s_saveFormattingOptions = new()
-    {
-        TabSize = 4,
-        InsertSpaces = true
-    };
-
     /// <summary>
     /// Formats a complete document using Roslyn and the editor's indentation preferences.
     /// </summary>
@@ -98,7 +92,7 @@ public sealed partial class WorkspaceManager
             SourceText formattedRazorText = WorkspaceRazorFormattingService.Format(
                 originalRazorText,
                 path,
-                s_saveFormattingOptions,
+                CreateSaveFormattingOptions(),
                 cancellationToken);
             return CreateTextEdits(
                 originalRazorText,
@@ -120,6 +114,12 @@ public sealed partial class WorkspaceManager
             .ConfigureAwait(false);
         return CreateTextEdits(originalText, formattedText.GetTextChanges(originalText));
     }
+
+    private static LspFormattingOptions CreateSaveFormattingOptions() => new()
+    {
+        TabSize = 4,
+        InsertSpaces = true
+    };
 
     /// <summary>
     /// Formats whitespace within one document range using Roslyn or the Razor formatter.

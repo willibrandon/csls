@@ -1,5 +1,8 @@
 name: csls CodeQL configuration
 
+paths-ignore:
+  - artifacts/**
+
 query-filters:
   - exclude:
       id:

@@ -66,11 +66,17 @@ internal static class ControlSessionWaiter
                     observations.Append("process ")
                         .Append(session.ProcessId)
                         .Append(" state ")
-                        .Append(session.LifecycleState);
+                        .Append(session.LifecycleState)
+                        .Append(" workspace ")
+                        .Append(session.WorkspacePhase);
                     if (string.Equals(
                         session.LifecycleState,
                         "Running",
-                        StringComparison.Ordinal))
+                        StringComparison.Ordinal) &&
+                        string.Equals(
+                            session.WorkspacePhase,
+                            "Ready",
+                            StringComparison.Ordinal))
                     {
                         return session;
                     }

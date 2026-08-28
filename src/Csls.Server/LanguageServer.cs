@@ -1,9 +1,7 @@
 using Csls.Core;
 using Csls.Protocol;
-using Csls.Rpc;
 using Csls.Workspaces;
 using Microsoft.Extensions.Logging;
-using StreamJsonRpc;
 using System.Text.Json;
 
 namespace Csls.Server;
@@ -17,7 +15,7 @@ public sealed partial class LanguageServer : ILspRpcTarget, IAsyncDisposable
     private const int WorkspaceDiagnosticPartialResultSize = 128;
     private readonly RequestScheduler _scheduler;
     private readonly WorkspaceManager _workspaceManager;
-    private readonly LspClientConnection _client;
+    private readonly ILspClientConnection _client;
     private readonly ILogger<LanguageServer> _logger;
     private readonly LanguageServerLogFilter _logFilter;
     private readonly TaskCompletionSource _exitRequested = new(
@@ -34,11 +32,13 @@ public sealed partial class LanguageServer : ILspRpcTarget, IAsyncDisposable
     private bool _supportsConfigurationPull;
     private bool _supportsCreateFileWorkspaceEdits;
     private bool _supportsDiagnosticRefresh;
+    private bool _supportsInlayHintRefresh;
     private bool _supportsDynamicFileWatching;
     private bool _supportsPullDiagnostics;
     private bool _supportsWorkDoneProgress;
     private bool _hoverMarkdownSupport;
     private bool _signatureMarkdownSupport;
+    private NegotiatedClientCapabilities _negotiatedClientCapabilities = new();
     private LanguageServerConfiguration _configuration = new();
     private string[] _rootPaths = [];
     private int _lifecycleState;
@@ -56,7 +56,7 @@ public sealed partial class LanguageServer : ILspRpcTarget, IAsyncDisposable
     public LanguageServer(
         RequestScheduler scheduler,
         WorkspaceManager workspaceManager,
-        LspClientConnection client,
+        ILspClientConnection client,
         ILogger<LanguageServer> logger,
         LanguageServerLogFilter logFilter)
     {
@@ -77,6 +77,12 @@ public sealed partial class LanguageServer : ILspRpcTarget, IAsyncDisposable
     /// </summary>
     public ServerLifecycleState LifecycleState =>
         (ServerLifecycleState)Volatile.Read(ref _lifecycleState);
+
+    /// <summary>
+    /// Gets the current workspace initialization phase.
+    /// </summary>
+    public ServerWorkspacePhase WorkspacePhase =>
+        (ServerWorkspacePhase)Volatile.Read(ref _workspacePhase);
 
     /// <summary>
     /// Gets the token canceled when the client sends the LSP exit notification.
@@ -148,58 +154,46 @@ public sealed partial class LanguageServer : ILspRpcTarget, IAsyncDisposable
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(parameters);
+        return InitializeAsync(
+            parameters,
+            CreateNegotiatedClientCapabilities(parameters.Capabilities),
+            cancellationToken);
+    }
+
+    /// <summary>
+    /// Initializes the server with capabilities mapped by a host-specific transport.
+    /// </summary>
+    /// <param name="parameters">The client initialization parameters.</param>
+    /// <param name="capabilities">The capabilities consumed by server behavior.</param>
+    /// <param name="cancellationToken">The request cancellation token.</param>
+    /// <returns>The initialized server capabilities and implementation information.</returns>
+    public Task<InitializeResult> InitializeAsync(
+        InitializeParams parameters,
+        NegotiatedClientCapabilities capabilities,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(parameters);
+        ArgumentNullException.ThrowIfNull(capabilities);
         cancellationToken.ThrowIfCancellationRequested();
         Transition(ServerLifecycleState.Created, ServerLifecycleState.InitializeResponded);
-        _completionMarkdownSupport = SupportsDocumentationMarkdown(
-            parameters.Capabilities,
-            "completion");
-        _completionSnippetSupport = SupportsCompletionSnippets(parameters.Capabilities);
-        _hoverMarkdownSupport = SupportsDocumentationMarkdown(
-            parameters.Capabilities,
-            "hover");
-        _signatureMarkdownSupport = SupportsDocumentationMarkdown(
-            parameters.Capabilities,
-            "signatureHelp");
-        _foldingRangeLimit = GetFoldingRangeLimit(parameters.Capabilities);
-        _lineFoldingOnly = SupportsFoldingRangeBoolean(
-            parameters.Capabilities,
-            "lineFoldingOnly");
-        _supportsCollapsedFoldingText = SupportsCollapsedFoldingText(
-            parameters.Capabilities);
-        _supportsCommentFoldingKind = SupportsFoldingRangeKind(
-            parameters.Capabilities,
-            FoldingRangeKind.Comment);
-        _supportsImportsFoldingKind = SupportsFoldingRangeKind(
-            parameters.Capabilities,
-            FoldingRangeKind.Imports);
-        _supportsRegionFoldingKind = SupportsFoldingRangeKind(
-            parameters.Capabilities,
-            FoldingRangeKind.Region);
-        _supportsConfigurationPull = SupportsBooleanCapability(
-            parameters.Capabilities,
-            "workspace",
-            "configuration");
-        _supportsCreateFileWorkspaceEdits = SupportsWorkspaceResourceOperation(
-            parameters.Capabilities,
-            "create");
-        _supportsDiagnosticRefresh = SupportsNestedBooleanCapability(
-            parameters.Capabilities,
-            "workspace",
-            "diagnostics",
-            "refreshSupport");
-        _supportsDynamicFileWatching = SupportsNestedBooleanCapability(
-            parameters.Capabilities,
-            "workspace",
-            "didChangeWatchedFiles",
-            "dynamicRegistration");
-        _supportsPullDiagnostics = SupportsObjectCapability(
-            parameters.Capabilities,
-            "textDocument",
-            "diagnostic");
-        _supportsWorkDoneProgress = SupportsBooleanCapability(
-            parameters.Capabilities,
-            "window",
-            "workDoneProgress");
+        _negotiatedClientCapabilities = capabilities;
+        _completionMarkdownSupport = capabilities.CompletionMarkdown;
+        _completionSnippetSupport = capabilities.CompletionSnippets;
+        _hoverMarkdownSupport = capabilities.HoverMarkdown;
+        _signatureMarkdownSupport = capabilities.SignatureMarkdown;
+        _foldingRangeLimit = capabilities.FoldingRangeLimit;
+        _lineFoldingOnly = capabilities.LineFoldingOnly;
+        _supportsCollapsedFoldingText = capabilities.CollapsedFoldingText;
+        _supportsCommentFoldingKind = capabilities.CommentFoldingKind;
+        _supportsImportsFoldingKind = capabilities.ImportsFoldingKind;
+        _supportsRegionFoldingKind = capabilities.RegionFoldingKind;
+        _supportsConfigurationPull = capabilities.ConfigurationPull;
+        _supportsCreateFileWorkspaceEdits = capabilities.CreateFileWorkspaceEdits;
+        _supportsDiagnosticRefresh = capabilities.DiagnosticRefresh;
+        _supportsInlayHintRefresh = capabilities.InlayHintRefresh;
+        _supportsDynamicFileWatching = capabilities.DynamicFileWatching;
+        _supportsPullDiagnostics = capabilities.PullDiagnostics;
+        _supportsWorkDoneProgress = capabilities.WorkDoneProgress;
         LanguageServerConfiguration configuration = ParseConfiguration(
             parameters.InitializationOptions);
         _configuration = configuration;
@@ -374,7 +368,7 @@ public sealed partial class LanguageServer : ILspRpcTarget, IAsyncDisposable
                 (int)ServerWorkspacePhase.Loading) ==
             (int)ServerWorkspacePhase.Loading)
         {
-            LogInitialized(_rootPaths.Length);
+            LanguageServerLogger.LogInitialized(_logger, _rootPaths.Length);
         }
 
         if (_supportsDynamicFileWatching)
@@ -391,7 +385,7 @@ public sealed partial class LanguageServer : ILspRpcTarget, IAsyncDisposable
                     exception,
                     cancellationToken))
             {
-                LogFileWatcherRegistrationFailure(exception);
+                LanguageServerLogger.LogFileWatcherRegistrationFailure(_logger, exception);
             }
         }
     }
@@ -1534,6 +1528,54 @@ public sealed partial class LanguageServer : ILspRpcTarget, IAsyncDisposable
         GC.SuppressFinalize(this);
     }
 
+    private static NegotiatedClientCapabilities CreateNegotiatedClientCapabilities(
+        JsonElement capabilities)
+    {
+        return new NegotiatedClientCapabilities
+        {
+            CompletionMarkdown = SupportsDocumentationMarkdown(capabilities, "completion"),
+            CompletionSnippets = SupportsCompletionSnippets(capabilities),
+            HoverMarkdown = SupportsDocumentationMarkdown(capabilities, "hover"),
+            SignatureMarkdown = SupportsDocumentationMarkdown(capabilities, "signatureHelp"),
+            FoldingRangeLimit = GetFoldingRangeLimit(capabilities),
+            LineFoldingOnly = SupportsFoldingRangeBoolean(capabilities, "lineFoldingOnly"),
+            CollapsedFoldingText = SupportsCollapsedFoldingText(capabilities),
+            CommentFoldingKind = SupportsFoldingRangeKind(capabilities, "comment"),
+            ImportsFoldingKind = SupportsFoldingRangeKind(capabilities, "imports"),
+            RegionFoldingKind = SupportsFoldingRangeKind(capabilities, "region"),
+            ConfigurationPull = SupportsBooleanCapability(
+                capabilities,
+                "workspace",
+                "configuration"),
+            CreateFileWorkspaceEdits = SupportsWorkspaceResourceOperation(
+                capabilities,
+                "create"),
+            DiagnosticRefresh = SupportsNestedBooleanCapability(
+                capabilities,
+                "workspace",
+                "diagnostics",
+                "refreshSupport"),
+            InlayHintRefresh = SupportsNestedBooleanCapability(
+                capabilities,
+                "workspace",
+                "inlayHint",
+                "refreshSupport"),
+            DynamicFileWatching = SupportsNestedBooleanCapability(
+                capabilities,
+                "workspace",
+                "didChangeWatchedFiles",
+                "dynamicRegistration"),
+            PullDiagnostics = SupportsObjectCapability(
+                capabilities,
+                "textDocument",
+                "diagnostic"),
+            WorkDoneProgress = SupportsBooleanCapability(
+                capabilities,
+                "window",
+                "workDoneProgress")
+        };
+    }
+
     private static bool SupportsCompletionSnippets(JsonElement capabilities)
     {
         return capabilities.ValueKind == JsonValueKind.Object &&
@@ -1768,18 +1810,7 @@ public sealed partial class LanguageServer : ILspRpcTarget, IAsyncDisposable
     private static bool IsExpectedFileWatcherRegistrationFailure(
         Exception exception,
         CancellationToken connectionCancellationToken) =>
-        exception is RemoteRpcException or InvalidOperationException ||
+        exception is InvalidOperationException ||
         exception is OperationCanceledException && !connectionCancellationToken.IsCancellationRequested;
 
-    [LoggerMessage(
-        EventId = 1,
-        Level = LogLevel.Information,
-        Message = "Initialized {WorkspaceFolderCount} workspace folders")]
-    private partial void LogInitialized(int workspaceFolderCount);
-
-    [LoggerMessage(
-        EventId = 16,
-        Level = LogLevel.Warning,
-        Message = "Dynamic workspace file watcher registration failed")]
-    private partial void LogFileWatcherRegistrationFailure(Exception exception);
 }

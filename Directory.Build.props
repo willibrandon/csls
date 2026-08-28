@@ -17,6 +17,7 @@
     <ArtifactsPath Condition="'$(CslsBundledWorkerArtifactsPath)' == '' and '$(CSLS_ARTIFACTS_ROOT)' == ''">$(MSBuildThisFileDirectory)artifacts</ArtifactsPath>
     <ArtifactsPath Condition="'$(CslsBundledWorkerArtifactsPath)' == '' and '$(CSLS_ARTIFACTS_ROOT)' != ''">$(CSLS_ARTIFACTS_ROOT)</ArtifactsPath>
     <ArtifactsPath Condition="'$(CslsBundledWorkerArtifactsPath)' != ''">$(CslsBundledWorkerArtifactsPath)</ArtifactsPath>
+    <VSTestResultsDirectory>$([MSBuild]::NormalizePath('$(ArtifactsPath)', 'test-results'))</VSTestResultsDirectory>
     <PublishDir Condition="'$(CslsBundledWorkerPublishDir)' != ''">$(CslsBundledWorkerPublishDir)</PublishDir>
     <IsPackable>false</IsPackable>
     <VersionPrefix>1.0.0</VersionPrefix>
@@ -55,6 +56,7 @@
   </ItemGroup>
 
   <ItemGroup Condition="'$(MSBuildProjectName)' == 'Csls.Workspaces' or
+                        '$(MSBuildProjectName)' == 'Csls.Workspaces.MSBuild' or
                         '$(MSBuildProjectName)' == 'Csls.Server' or
                         '$(MSBuildProjectName)' == 'Csls.Control.Server' or
                         '$(MSBuildProjectName)' == 'Csls.Worker' or

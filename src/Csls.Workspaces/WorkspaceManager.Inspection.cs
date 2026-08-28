@@ -110,6 +110,14 @@ public sealed partial class WorkspaceManager
                             .Cast<string>()
                             .Distinct(PathComparer)
                             .OrderBy(static path => path, PathComparer)
+                    ],
+                    ProjectReferenceIds =
+                    [
+                        .. project.ProjectReferences
+                            .Select(static reference => reference.ProjectId.Id.ToString(
+                                "D",
+                                CultureInfo.InvariantCulture))
+                            .OrderBy(static id => id, StringComparer.Ordinal)
                     ]
                 });
                 foreach (Document document in project.Documents.OrderBy(
@@ -122,6 +130,7 @@ public sealed partial class WorkspaceManager
                         Name = document.Name,
                         FilePath = document.FilePath,
                         ProjectName = project.Name,
+                        ProjectId = project.Id.Id.ToString("D", CultureInfo.InvariantCulture),
                         IsOpen = document.FilePath is not null &&
                             _documentVersions.ContainsKey(document.FilePath)
                     });
@@ -160,8 +169,12 @@ public sealed partial class WorkspaceManager
                 },
                 async (index, operationCancellationToken) =>
                 {
+                    VersionStamp projectVersion = await diagnosticProjects[index]
+                        .GetDependentVersionAsync(operationCancellationToken)
+                        .ConfigureAwait(false);
                     projectDiagnostics[index] = await _diagnosticCache.GetOrAddAsync(
                         generation,
+                        projectVersion,
                         diagnosticProjects[index],
                         ComputeProjectDiagnosticsAsync,
                         operationCancellationToken).ConfigureAwait(false);

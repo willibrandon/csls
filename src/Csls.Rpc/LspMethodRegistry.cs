@@ -34,6 +34,13 @@ public static class LspMethodRegistry
         rpc.AddLocalRpcMethod(
             "$/csharp/debugInfo",
             new Func<CancellationToken, Task<CSharpDebugInfo>>(target.GetDebugInfoAsync));
+        rpc.AddLocalRpcMethod(
+            "$/csharp/workspaceInfo",
+            new Func<CancellationToken, Task<CSharpWorkspaceInfo>>(target.GetWorkspaceInfoAsync));
+        rpc.AddLocalRpcMethod(
+            "$/csharp/workspace/restore",
+            new Func<CancellationToken, Task<CSharpWorkspaceOperationInfo>>(
+                target.RestoreWorkspaceForClientAsync));
         AddParameterObjectMethod(
             rpc,
             "workspace/didChangeConfiguration",

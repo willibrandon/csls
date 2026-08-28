@@ -1,35 +1,38 @@
 {
-  "name": "csls-vscode-integration",
-  "displayName": "csls VS Code integration",
-  "description": "Runs csls through a real VS Code extension host.",
+  "name": "csls-vscode-tests",
+  "displayName": "csls VS Code tests",
+  "description": "Drives the packaged csls extension through a real VS Code extension host.",
   "version": "0.0.0",
   "private": true,
-  "publisher": "willibrandon",
+  "publisher": "csls-tests",
   "engines": {
-    "vscode": "^1.134.0"
+    "vscode": "^1.135.0"
   },
+  "extensionKind": [
+    "workspace"
+  ],
   "activationEvents": [
-    "onLanguage:csharp"
+    "onStartupFinished"
   ],
   "main": "./extension.cjs",
-  "contributes": {
-    "languages": [
-      {
-        "id": "csharp",
-        "aliases": [
-          "C#",
-          "csharp"
-        ],
-        "extensions": [
-          ".cs"
-        ]
-      }
-    ]
-  },
-  "dependencies": {
-    "vscode-languageclient": "10.1.0"
+  "browser": "./extension.cjs",
+  "scripts": {
+    "check": "npm run check:typescript && npm run check:javascript",
+    "check:javascript": "tsc --ignoreConfig --allowJs --checkJs false --noEmit --target ES2025 --module NodeNext --moduleResolution NodeNext --types node,vscode extension.cjs oracle-suite.cjs provision.mjs remote-controller.cjs remote-resolver/extension.cjs runner.mjs web-runner.mjs",
+    "check:typescript": "tsc --noEmit",
+    "compile:desktop": "esbuild suite.ts --bundle --external:vscode --format=cjs --outfile=dist/suite.cjs --platform=node --target=node24",
+    "compile:web": "esbuild web-suite.ts --bundle --external:vscode --format=cjs --outfile=../../editors/vscode/dist/test/web-suite.cjs --platform=browser --target=es2025",
+    "compile": "npm run check && npm run compile:desktop && npm run compile:web"
   },
   "devDependencies": {
-    "@vscode/test-electron": "3.1.0"
+    "@playwright/browser-chromium": "1.62.1",
+    "@playwright/browser-firefox": "1.62.1",
+    "@playwright/browser-webkit": "1.62.1",
+    "@types/node": "24.13.3",
+    "@types/vscode": "1.134.0",
+    "@vscode/test-electron": "3.1.0",
+    "@vscode/test-web": "0.0.81",
+    "esbuild": "0.28.2",
+    "typescript": "7.0.2"
   }
 }

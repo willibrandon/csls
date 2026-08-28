@@ -1,0 +1,18 @@
+[package]
+name = "csls-zed"
+version = "1.0.0"
+edition = "2024"
+publish = false
+license = "MIT"
+
+[lib]
+path = "src/lib.rs"
+crate-type = ["cdylib"]
+
+[dependencies]
+flate2 = "1.1.10"
+rc-zip = { version = "5.4.1", features = ["deflate"] }
+rc-zip-sync = { version = "4.4.2", default-features = false }
+sha2 = "0.11.0"
+tar = "0.4.46"
+zed_extension_api = "0.7.0"

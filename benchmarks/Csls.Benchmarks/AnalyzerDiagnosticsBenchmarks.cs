@@ -29,6 +29,7 @@ public class AnalyzerDiagnosticsBenchmarks : IAsyncDisposable
                 SingleWriter = false
             });
     private DocumentDiagnosticParams _parameters = null!;
+    private DocumentDiagnosticParams _unchangedParameters = null!;
     private WorkspaceDiagnosticParams _workspaceParameters = null!;
     private string _pushDocumentPath = null!;
     private string _fixturePath = null!;
@@ -134,6 +135,15 @@ public class AnalyzerDiagnosticsBenchmarks : IAsyncDisposable
         }
 
         _parameters = CreateParameters(secondDocumentPath);
+        DocumentDiagnosticReport currentReport = await _rpc
+            .InvokeWithParameterObjectAsync<DocumentDiagnosticReport>(
+                "textDocument/diagnostic",
+                _parameters,
+                CancellationToken.None)
+            .ConfigureAwait(false);
+        _unchangedParameters = CreateParameters(
+            secondDocumentPath,
+            currentReport.ResultId);
         _pushDocumentPath = secondDocumentPath;
         _workspaceParameters = new WorkspaceDiagnosticParams
         {
@@ -156,6 +166,16 @@ public class AnalyzerDiagnosticsBenchmarks : IAsyncDisposable
         _rpc.InvokeWithParameterObjectAsync<DocumentDiagnosticReport>(
             "textDocument/diagnostic",
             _parameters,
+            CancellationToken.None);
+
+    /// <summary>
+    /// Measures a document pull whose project version matches the retained result.
+    /// </summary>
+    [Benchmark]
+    public Task<DocumentDiagnosticReport> PullUnchangedDocumentDiagnosticsAsync() =>
+        _rpc.InvokeWithParameterObjectAsync<DocumentDiagnosticReport>(
+            "textDocument/diagnostic",
+            _unchangedParameters,
             CancellationToken.None);
 
     /// <summary>
@@ -262,14 +282,17 @@ public class AnalyzerDiagnosticsBenchmarks : IAsyncDisposable
         return Task.CompletedTask;
     }
 
-    private static DocumentDiagnosticParams CreateParameters(string documentPath) => new()
-    {
-        TextDocument = new TextDocumentIdentifier
+    private static DocumentDiagnosticParams CreateParameters(
+        string documentPath,
+        string? previousResultId = null) => new()
         {
-            Uri = DocumentUri.FromFileSystemPath(documentPath)
-        },
-        Identifier = "csls"
-    };
+            TextDocument = new TextDocumentIdentifier
+            {
+                Uri = DocumentUri.FromFileSystemPath(documentPath)
+            },
+            Identifier = "csls",
+            PreviousResultId = previousResultId
+        };
 
     private static string FindRepositoryRoot()
     {

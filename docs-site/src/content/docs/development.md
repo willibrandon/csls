@@ -14,8 +14,9 @@ dotnet format Csls.slnx --verify-no-changes
 Tests run methods in parallel. They use real Roslyn workspaces, real LSP and MCP
 transports, and installed editor processes. Fresh, GNU Emacs with Eglot, Helix,
 and Neovim run inside Hex1b terminals so synchronization follows visible terminal
-state instead of fixed delays. VS Code runs in its Electron extension host, and Zed
-runs with the official C# extension under a real display server.
+state instead of fixed delays. VS Code runs the same feature contract in desktop,
+remote, Chromium, Firefox, and WebKit extension hosts. Zed runs with the csls
+extension under a real display server.
 
 Repository automation is implemented as .NET file apps under `scripts/`:
 

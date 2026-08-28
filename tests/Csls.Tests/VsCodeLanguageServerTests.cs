@@ -1,6 +1,7 @@
 using Csls.Control.Contracts;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
+using System.Text.Json;
 
 namespace Csls.Tests;
 
@@ -18,10 +19,34 @@ public sealed class VsCodeLanguageServerTests
     public TestContext TestContext { get; set; } = null!;
 
     /// <summary>
-    /// Opens a real C# document and resolves a framework-symbol hover through csls.
+    /// Runs the complete C# feature contract in a real desktop extension host.
     /// </summary>
     [TestMethod]
-    public async Task VsCodeRequestsHoverFromCsls()
+    [TestCategory("VsCodeHost")]
+    public Task VsCodeDesktopHostProvidesCSharpLanguageFeatures() =>
+        RunVsCodeHostAsync(remote: false);
+
+    /// <summary>
+    /// Runs the complete C# feature contract in a real remote extension host.
+    /// </summary>
+    [TestMethod]
+    [TestCategory("VsCodeHost")]
+    [OSCondition(ConditionMode.Include, OperatingSystems.Linux)]
+    public Task VsCodeRemoteHostProvidesCSharpLanguageFeatures()
+    {
+        if (!string.Equals(
+            Environment.GetEnvironmentVariable("CSLS_RUN_VSCODE_REMOTE_TESTS"),
+            "true",
+            StringComparison.OrdinalIgnoreCase))
+        {
+            Assert.Inconclusive(
+                "Set CSLS_RUN_VSCODE_REMOTE_TESTS=true to run the remote VS Code host.");
+        }
+
+        return RunVsCodeHostAsync(remote: true);
+    }
+
+    private async Task RunVsCodeHostAsync(bool remote)
     {
         using ExternalWorkloadLease workloadLease = await ExternalWorkloadLease.AcquireAsync(
             TestContext.CancellationToken).ConfigureAwait(false);
@@ -43,33 +68,71 @@ public sealed class VsCodeLanguageServerTests
         Assert.IsTrue(
             File.Exists(testElectronPath),
             "The VS Code fixture is not provisioned. Run scripts/Provision-VsCode.cs.");
+        string runtimeExtensionPath = EditorToolResolver.ResolveVsCodeExtension(
+            repositoryRoot,
+            "vscode-dotnet-runtime",
+            "3.1.0",
+            platformSpecific: false);
+        string csharpExtensionPath = EditorToolResolver.ResolveVsCodeExtension(
+            repositoryRoot,
+            "vscode-csharp",
+            "2.140.9",
+            platformSpecific: true);
+        string? remoteServerRoot = remote
+            ? EditorToolResolver.ResolveVsCodeRemoteServerRoot(repositoryRoot)
+            : null;
 
-        string fixturePath = Path.Join(
-            EditorToolResolver.ResolveArtifactsRoot(repositoryRoot),
-            "v",
-            Guid.NewGuid().ToString("N"));
+        string runId = Guid.NewGuid().ToString("N")[..16];
+        string fixturePath = Path.Join(Path.GetTempPath(), $"cv-{runId}");
         Directory.CreateDirectory(fixturePath);
         try
         {
             string workspacePath = Path.Join(fixturePath, "workspace");
             string userDataPath = Path.Join(fixturePath, "u");
             string extensionsPath = Path.Join(fixturePath, "extensions");
+            string remoteDataPath = Path.Join(fixturePath, "remote");
             Directory.CreateDirectory(workspacePath);
+            string testProjectPath = Path.Join(workspacePath, "Tests");
+            Directory.CreateDirectory(testProjectPath);
             Directory.CreateDirectory(userDataPath);
             Directory.CreateDirectory(extensionsPath);
+            Directory.CreateDirectory(remoteDataPath);
             string settingsPath = Path.Join(userDataPath, "User", "settings.json");
             Directory.CreateDirectory(Path.GetDirectoryName(settingsPath)!);
+            string debuggerPath = await VsCodeDebuggerFixture.ExtractAsync(
+                csharpExtensionPath,
+                Path.Join(fixturePath, "debugger"),
+                TestContext.CancellationToken).ConfigureAwait(false);
             await File.WriteAllTextAsync(
                 settingsPath,
-                SettingsText,
+                CreateSettingsText(launcherPath, debuggerPath),
                 TestContext.CancellationToken).ConfigureAwait(false);
             await File.WriteAllTextAsync(
                 Path.Join(workspacePath, "Fixture.csproj"),
                 ProjectText,
                 TestContext.CancellationToken).ConfigureAwait(false);
             await File.WriteAllTextAsync(
+                Path.Join(testProjectPath, "Fixture.Tests.csproj"),
+                TestProjectText,
+                TestContext.CancellationToken).ConfigureAwait(false);
+            await File.WriteAllTextAsync(
+                Path.Join(workspacePath, "Fixture.slnx"),
+                SolutionText,
+                TestContext.CancellationToken).ConfigureAwait(false);
+            await File.WriteAllTextAsync(
                 Path.Join(workspacePath, "Program.cs"),
                 DocumentText,
+                TestContext.CancellationToken).ConfigureAwait(false);
+            await File.WriteAllTextAsync(
+                Path.Join(workspacePath, "Calculator.cs"),
+                CalculatorDocumentText,
+                TestContext.CancellationToken).ConfigureAwait(false);
+            await File.WriteAllTextAsync(
+                Path.Join(testProjectPath, "ExampleTests.cs"),
+                TestDocumentText,
+                TestContext.CancellationToken).ConfigureAwait(false);
+            string extensionPath = await VsCodeExtensionPackage.GetAsync(
+                repositoryRoot,
                 TestContext.CancellationToken).ConfigureAwait(false);
             if (OperatingSystem.IsLinux())
             {
@@ -83,9 +146,13 @@ public sealed class VsCodeLanguageServerTests
                     runnerPath,
                     launcherPath,
                     workerPath,
+                    extensionPath,
+                    runtimeExtensionPath,
                     workspacePath,
                     userDataPath,
                     extensionsPath,
+                    remoteServerRoot,
+                    remoteDataPath,
                     display.DisplayName).ConfigureAwait(false);
             }
             else
@@ -95,9 +162,13 @@ public sealed class VsCodeLanguageServerTests
                     runnerPath,
                     launcherPath,
                     workerPath,
+                    extensionPath,
+                    runtimeExtensionPath,
                     workspacePath,
                     userDataPath,
                     extensionsPath,
+                    remoteServerRoot,
+                    remoteDataPath,
                     displayName: null).ConfigureAwait(false);
             }
         }
@@ -116,6 +187,9 @@ public sealed class VsCodeLanguageServerTests
             <OutputType>Exe</OutputType>
             <TargetFramework>net10.0</TargetFramework>
           </PropertyGroup>
+          <ItemGroup>
+            <Compile Remove="Tests/**/*.cs" />
+          </ItemGroup>
         </Project>
         """;
 
@@ -123,13 +197,45 @@ public sealed class VsCodeLanguageServerTests
         Console.WriteLine("hello");
         """;
 
-    private const string SettingsText = """
+    private const string CalculatorDocumentText = """
+        public static class Calculator
         {
-          "chat.disableAIFeatures": true,
-          "telemetry.telemetryLevel": "off",
-          "workbench.enableExperiments": false,
-          "workbench.startupEditor": "none"
+            public static int Add(int left, int right) => left + right;
         }
+        """;
+
+    private const string SolutionText = """
+        <Solution>
+          <Project Path="Fixture.csproj" />
+          <Project Path="Tests/Fixture.Tests.csproj" />
+        </Solution>
+        """;
+
+    private const string TestDocumentText = """
+        using Microsoft.VisualStudio.TestTools.UnitTesting;
+
+        namespace Fixture.Tests;
+
+        [TestClass]
+        public sealed class ExampleTests
+        {
+            [TestMethod]
+            public void RunsFromVsCode()
+            {
+                Assert.AreEqual(4, global::Calculator.Add(2, 2));
+            }
+        }
+        """;
+
+    private const string TestProjectText = """
+        <Project Sdk="MSTest.Sdk/4.3.3">
+          <PropertyGroup>
+            <TargetFramework>net10.0</TargetFramework>
+          </PropertyGroup>
+          <ItemGroup>
+            <ProjectReference Include="../Fixture.csproj" />
+          </ItemGroup>
+        </Project>
         """;
 
     private async Task RunVsCodeAsync(
@@ -137,9 +243,13 @@ public sealed class VsCodeLanguageServerTests
         string runnerPath,
         string launcherPath,
         string workerPath,
+        string extensionPath,
+        string runtimeExtensionPath,
         string workspacePath,
         string userDataPath,
         string extensionsPath,
+        string? remoteServerRoot,
+        string remoteDataPath,
         string? displayName)
     {
         using Process runner = StartRunner(
@@ -147,28 +257,43 @@ public sealed class VsCodeLanguageServerTests
             runnerPath,
             launcherPath,
             workerPath,
+            extensionPath,
+            runtimeExtensionPath,
             workspacePath,
             userDataPath,
             extensionsPath,
+            remoteServerRoot,
+            remoteDataPath,
             displayName);
         Task<string> outputTask = runner.StandardOutput.ReadToEndAsync(
             TestContext.CancellationToken);
         Task<string> errorTask = runner.StandardError.ReadToEndAsync(
             TestContext.CancellationToken);
         int? serverProcessId = null;
+        using var startupCancellation = CancellationTokenSource.CreateLinkedTokenSource(
+            TestContext.CancellationToken);
         try
         {
-            ControlSessionInfo session = await ControlSessionWaiter.WaitForRunningAsync(
+            Task<ControlSessionInfo> sessionTask = ControlSessionWaiter.WaitForRunningAsync(
                 workspacePath,
                 s_editorStartupTimeout,
-                TestContext.CancellationToken).ConfigureAwait(false);
-            serverProcessId = session.ProcessId;
-            await runner.WaitForExitAsync(TestContext.CancellationToken)
+                startupCancellation.Token);
+            Task runnerExitTask = runner.WaitForExitAsync(TestContext.CancellationToken);
+            Task firstCompleted = await Task.WhenAny(sessionTask, runnerExitTask)
+                .ConfigureAwait(false);
+            if (firstCompleted == sessionTask)
+            {
+                ControlSessionInfo session = await sessionTask.ConfigureAwait(false);
+                serverProcessId = session.ProcessId;
+            }
+
+            await runnerExitTask
                 .WaitAsync(TimeSpan.FromMinutes(2), TestContext.CancellationToken)
                 .ConfigureAwait(false);
         }
         finally
         {
+            await startupCancellation.CancelAsync().ConfigureAwait(false);
             if (!runner.HasExited)
             {
                 runner.Kill(entireProcessTree: true);
@@ -197,9 +322,13 @@ public sealed class VsCodeLanguageServerTests
         string runnerPath,
         string launcherPath,
         string workerPath,
+        string extensionPath,
+        string runtimeExtensionPath,
         string workspacePath,
         string userDataPath,
         string extensionsPath,
+        string? remoteServerRoot,
+        string remoteDataPath,
         string? displayName)
     {
         string? configuredToolsRoot = Environment.GetEnvironmentVariable("CSLS_TOOLS_ROOT");
@@ -209,7 +338,7 @@ public sealed class VsCodeLanguageServerTests
         string vscodeCachePath = Path.Join(
             toolsRoot,
             "vscode",
-            "1.134.0");
+            "1.135.0");
         Directory.CreateDirectory(vscodeCachePath);
         var startInfo = new ProcessStartInfo
         {
@@ -221,13 +350,24 @@ public sealed class VsCodeLanguageServerTests
         };
         startInfo.ArgumentList.Add(runnerPath);
         startInfo.Environment["CSLS_VSCODE_CACHE_PATH"] = vscodeCachePath;
-        startInfo.Environment["CSLS_VSCODE_DOTNET_PATH"] =
-            EditorToolResolver.ResolveDotNetHost();
+        startInfo.Environment["CSLS_VSCODE_EXPECTED_SERVER_PATH"] = launcherPath;
+        startInfo.Environment["CSLS_VSCODE_EXTENSION_PATH"] = extensionPath;
         startInfo.Environment["CSLS_VSCODE_EXTENSIONS_PATH"] = extensionsPath;
-        startInfo.Environment["CSLS_VSCODE_LAUNCHER_PATH"] = launcherPath;
+        startInfo.Environment["CSLS_VSCODE_EXPECTED_HOST"] = remoteServerRoot is null
+            ? "desktop"
+            : "remote";
+        startInfo.Environment["CSLS_VSCODE_RUNTIME_EXTENSION_PATH"] = runtimeExtensionPath;
         startInfo.Environment["CSLS_VSCODE_USER_DATA_PATH"] = userDataPath;
-        startInfo.Environment["CSLS_VSCODE_WORKER_PATH"] = workerPath;
         startInfo.Environment["CSLS_VSCODE_WORKSPACE_PATH"] = workspacePath;
+        startInfo.Environment["CSLS_WORKER_PATH"] = workerPath;
+        if (remoteServerRoot is not null)
+        {
+            startInfo.Environment["CSLS_VSCODE_REMOTE_DATA_PATH"] = remoteDataPath;
+            startInfo.Environment["CSLS_VSCODE_REMOTE_RESULT_PATH"] = Path.Join(
+                remoteDataPath,
+                "test-result.json");
+            startInfo.Environment["CSLS_VSCODE_REMOTE_SERVER_ROOT"] = remoteServerRoot;
+        }
         if (displayName is not null)
         {
             startInfo.Environment["DISPLAY"] = displayName;
@@ -238,4 +378,17 @@ public sealed class VsCodeLanguageServerTests
         return Process.Start(startInfo)
             ?? throw new InvalidOperationException("The VS Code integration runner did not start.");
     }
+
+    private static string CreateSettingsText(
+        string launcherPath,
+        string debuggerPath) => $$"""
+        {
+          "chat.disableAIFeatures": true,
+          "csls.debugger.path": {{JsonSerializer.Serialize(debuggerPath)}},
+          "csls.server.path": {{JsonSerializer.Serialize(launcherPath)}},
+          "telemetry.telemetryLevel": "off",
+          "workbench.enableExperiments": false,
+          "workbench.startupEditor": "none"
+        }
+        """;
 }

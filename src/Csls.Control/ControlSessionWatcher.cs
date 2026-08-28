@@ -86,6 +86,10 @@ public static class ControlSessionWatcher
                     rightSession.LifecycleState,
                     StringComparison.Ordinal) ||
                 !string.Equals(
+                    leftSession.WorkspacePhase,
+                    rightSession.WorkspacePhase,
+                    StringComparison.Ordinal) ||
+                !string.Equals(
                     leftSession.SocketPath,
                     rightSession.SocketPath,
                     StringComparison.Ordinal) ||

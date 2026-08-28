@@ -96,6 +96,115 @@ internal static class EditorToolResolver
     }
 
     /// <summary>
+    /// Resolves the active .NET host to an absolute path for editor configuration.
+    /// </summary>
+    /// <returns>The absolute .NET host path.</returns>
+    internal static string ResolveAbsoluteDotNetHost()
+    {
+        string configuredPath = ResolveDotNetHost();
+        if (Path.IsPathFullyQualified(configuredPath))
+        {
+            return configuredPath;
+        }
+
+        string executableName = OperatingSystem.IsWindows()
+            ? $"{configuredPath}.exe"
+            : configuredPath;
+        string? resolvedPath = (Environment.GetEnvironmentVariable("PATH") ?? string.Empty)
+            .Split(
+                Path.PathSeparator,
+                StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Select(directory => Path.Join(directory.Trim('"'), executableName))
+            .FirstOrDefault(File.Exists);
+        return resolvedPath ?? throw new FileNotFoundException(
+            $"The .NET host was not found on PATH: {configuredPath}");
+    }
+
+    /// <summary>
+    /// Resolves a verified VS Code extension package provisioned for editor testing.
+    /// </summary>
+    /// <param name="repositoryRoot">The absolute repository root.</param>
+    /// <param name="toolName">The provisioned extension tool name.</param>
+    /// <param name="version">The pinned extension version.</param>
+    /// <param name="platformSpecific">Whether the package targets the active platform.</param>
+    /// <returns>The absolute VSIX package path.</returns>
+    internal static string ResolveVsCodeExtension(
+        string repositoryRoot,
+        string toolName,
+        string version,
+        bool platformSpecific)
+    {
+        string? configuredToolsRoot = Environment.GetEnvironmentVariable("CSLS_TOOLS_ROOT");
+        string toolsRoot = string.IsNullOrWhiteSpace(configuredToolsRoot)
+            ? Path.Join(repositoryRoot, "artifacts", "tools")
+            : Path.GetFullPath(configuredToolsRoot);
+        string extensionRoot = Path.Join(
+            toolsRoot,
+            toolName,
+            version,
+            platformSpecific ? GetVsCodeTargetPlatform() : "all");
+        string[] packages = Directory.Exists(extensionRoot)
+            ? [.. Directory.EnumerateFiles(extensionRoot, "*.vsix")]
+            : [];
+        return packages.Length == 1
+            ? packages[0]
+            : throw new FileNotFoundException(
+                $"The pinned {toolName} {version} extension is not provisioned. " +
+                "Run scripts/Provision-VsCode.cs.");
+    }
+
+    /// <summary>
+    /// Resolves the pinned VS Code server root used by remote extension-host tests.
+    /// </summary>
+    /// <param name="repositoryRoot">The absolute repository root.</param>
+    /// <returns>The absolute VS Code server root.</returns>
+    internal static string ResolveVsCodeRemoteServerRoot(string repositoryRoot)
+    {
+        string? configuredPath = Environment.GetEnvironmentVariable(
+            "CSLS_VSCODE_REMOTE_SERVER_ROOT");
+        string serverRoot;
+        if (!string.IsNullOrWhiteSpace(configuredPath))
+        {
+            serverRoot = Path.GetFullPath(configuredPath);
+        }
+        else
+        {
+            string? configuredToolsRoot = Environment.GetEnvironmentVariable(
+                "CSLS_TOOLS_ROOT");
+            string toolsRoot = string.IsNullOrWhiteSpace(configuredToolsRoot)
+                ? Path.Join(repositoryRoot, "artifacts", "tools")
+                : Path.GetFullPath(configuredToolsRoot);
+            serverRoot = Path.Join(
+                toolsRoot,
+                "vscode-server",
+                "1.135.0",
+                "linux-x64");
+        }
+
+        return File.Exists(Path.Join(serverRoot, "node")) &&
+            File.Exists(Path.Join(serverRoot, "out", "server-main.js"))
+            ? serverRoot
+            : throw new DirectoryNotFoundException(
+                "The pinned VS Code remote server is not provisioned. " +
+                "Run scripts/Provision-VsCodeRemoteServer.cs.");
+    }
+
+    private static string GetVsCodeTargetPlatform()
+    {
+        string platform = GetPlatform(allowWindowsArm64: true, detectMusl: true);
+        return platform switch
+        {
+            "linux-musl-arm64" => "alpine-arm64",
+            "linux-musl-x64" => "alpine-x64",
+            "osx-arm64" => "darwin-arm64",
+            "osx-x64" => "darwin-x64",
+            "win-arm64" => "win32-arm64",
+            "win-x64" => "win32-x64",
+            _ => platform
+        };
+    }
+
+    /// <summary>
     /// Resolves the built C# process host used to provide deterministic child environments.
     /// </summary>
     /// <param name="repositoryRoot">The absolute repository root.</param>
@@ -177,9 +286,29 @@ internal static class EditorToolResolver
         repositoryRoot,
         "CSLS_ZED_PATH",
         "zed",
-        "1.16.2",
+        "1.17.2",
         GetPlatform(allowWindowsArm64: false, detectMusl: false),
         "zed");
+
+    /// <summary>
+    /// Resolves the built csls extension package used by the Zed integration test.
+    /// </summary>
+    /// <param name="repositoryRoot">The absolute repository root.</param>
+    /// <returns>The absolute built extension directory.</returns>
+    internal static string ResolveCslsZedExtension(string repositoryRoot)
+    {
+        string? configuredPath = Environment.GetEnvironmentVariable(
+            "CSLS_ZED_EXTENSION_PATH");
+        string extensionPath = string.IsNullOrWhiteSpace(configuredPath)
+            ? Path.Join(ResolveArtifactsRoot(repositoryRoot), "editors", "zed", "csls")
+            : Path.GetFullPath(configuredPath);
+        return File.Exists(Path.Join(extensionPath, "extension.toml")) &&
+            File.Exists(Path.Join(extensionPath, "extension.wasm"))
+            ? extensionPath
+            : throw new DirectoryNotFoundException(
+                "The csls Zed extension is not built. " +
+                "Run scripts/Build-ZedExtension.cs.");
+    }
 
     /// <summary>
     /// Resolves the pinned official C# extension used by the Zed integration test.

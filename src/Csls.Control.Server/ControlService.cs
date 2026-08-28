@@ -48,6 +48,7 @@ public sealed class ControlService : IControlRpcTarget
         {
             ProcessId = Environment.ProcessId,
             LifecycleState = _languageServer.LifecycleState.ToString(),
+            WorkspacePhase = _languageServer.WorkspacePhase.ToString(),
             WorkspaceGeneration = _workspaceManager.Generation,
             WorkspaceRoots = _workspaceManager.WorkspaceRoots,
             SocketPath = _socketPath
@@ -93,7 +94,8 @@ public sealed class ControlService : IControlRpcTarget
                     Language = item.Language,
                     DocumentCount = item.DocumentCount,
                     AnalyzerReferenceCount = item.AnalyzerReferenceCount,
-                    AnalyzerPaths = item.AnalyzerPaths
+                    AnalyzerPaths = item.AnalyzerPaths,
+                    ProjectReferenceIds = item.ProjectReferenceIds
                 })
             ],
             Documents =
@@ -104,6 +106,7 @@ public sealed class ControlService : IControlRpcTarget
                     Name = item.Name,
                     FilePath = item.FilePath,
                     ProjectName = item.ProjectName,
+                    ProjectId = item.ProjectId,
                     IsOpen = item.IsOpen
                 })
             ],

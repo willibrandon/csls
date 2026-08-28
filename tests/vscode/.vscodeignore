@@ -1,0 +1,7 @@
+node_modules/**
+remote-resolver/**
+*.mjs
+*.ts
+oracle-suite.cjs
+package-lock.json
+remote-controller.cjs

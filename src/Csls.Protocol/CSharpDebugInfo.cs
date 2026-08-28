@@ -6,6 +6,11 @@ namespace Csls.Protocol;
 public sealed class CSharpDebugInfo
 {
     /// <summary>
+    /// Gets the client capabilities that control server behavior for this session.
+    /// </summary>
+    public required NegotiatedClientCapabilities ClientCapabilities { get; init; }
+
+    /// <summary>
     /// Gets the current workspace lifecycle and loaded folders.
     /// </summary>
     public required CSharpDebugWorkspaceInfo Workspace { get; init; }

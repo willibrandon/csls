@@ -1,6 +1,5 @@
 using Csls.Protocol;
 using Csls.Workspaces;
-using Microsoft.Extensions.Logging;
 using System.Runtime.ExceptionServices;
 using System.Threading.Channels;
 using System.Xml;
@@ -60,7 +59,7 @@ public sealed partial class LanguageServer
         catch (Exception exception) when (IsExpectedWorkspaceProgressFailure(exception))
         {
             failure = exception;
-            LogWorkspaceLoadFailure(exception);
+            LanguageServerLogger.LogWorkspaceLoadFailure(_logger, exception);
         }
         finally
         {
@@ -74,7 +73,7 @@ public sealed partial class LanguageServer
         }
         catch (Exception exception) when (IsExpectedWorkspaceProgressFailure(exception))
         {
-            LogWorkspaceProgressFailure(exception);
+            LanguageServerLogger.LogWorkspaceProgressFailure(_logger, exception);
             if (failure is null)
             {
                 failure = exception;
@@ -101,7 +100,7 @@ public sealed partial class LanguageServer
         }
         catch (Exception exception) when (IsExpectedWorkspaceProgressFailure(exception))
         {
-            LogWorkspaceProgressFailure(exception);
+            LanguageServerLogger.LogWorkspaceProgressFailure(_logger, exception);
             if (failure is null)
             {
                 failure = exception;
@@ -150,15 +149,4 @@ public sealed partial class LanguageServer
             UnauthorizedAccessException or
             XmlException;
 
-    [LoggerMessage(
-        EventId = 13,
-        Level = LogLevel.Warning,
-        Message = "Workspace progress transport failed")]
-    private partial void LogWorkspaceProgressFailure(Exception exception);
-
-    [LoggerMessage(
-        EventId = 14,
-        Level = LogLevel.Error,
-        Message = "Workspace loading failed while reporting progress")]
-    private partial void LogWorkspaceLoadFailure(Exception exception);
 }

@@ -299,6 +299,12 @@ node_modules/
 # Visual Studio 6 workspace options file
 *.opt
 
+# Editor extension build outputs
+/editors/vscode/dist/
+/tests/vscode/dist/
+/editors/zed/flycheck*/
+/editors/zed/target/
+
 # Visual Studio 6 auto-generated workspace file (contains which files were open etc.)
 *.vbw
 

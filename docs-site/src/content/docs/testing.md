@@ -21,6 +21,10 @@ projects, file-based apps, Unity layouts, and legacy project shapes, then assert
 Roslyn results and protocol payloads. MCP tests use the official client and server
 transport. Control tests use real Unix domain sockets.
 
+Multi-target coverage loads an SDK project with several target frameworks and
+verifies the selected Roslyn flavor through a real hover request. Diagnostic cache
+coverage changes one project and confirms that an unrelated project stays unchanged.
+
 Tests do not replace Roslyn, MSBuild, the file system, processes, clocks, sockets, or
 edit application with mocking libraries. Malformed wire data is constructed only
 when the behavior under test is input rejection.
@@ -35,11 +39,13 @@ document updates without restarting the editor.
 
 ## Editor sessions
 
-Fresh, GNU Emacs with Eglot, Helix, and Neovim run in real Hex1b terminals. VS Code
-runs in its Electron extension host, and Zed runs with the official C# extension.
-Tests wait for visible editor or protocol state rather than fixed delays. Hover,
-navigation, diagnostics, multi-solution loading, and shutdown are asserted through
-the editor process.
+Fresh, GNU Emacs with Eglot, Helix, and Neovim run in real Hex1b terminals. The
+packaged VS Code extension runs in desktop and remote extension hosts. Its browser
+extension and WebAssembly server run in Chromium, Firefox, and WebKit. Every VS Code
+host executes the same hover, completion, definition, semantic token, configurable
+inlay hint, diagnostics, formatting, rename, code action, file synchronization, and
+restart contract. Zed runs with the csls extension.
+Tests wait for visible editor or protocol state instead of fixed delays.
 
 Provisioners are .NET file-based apps. Each one selects the current pinned release
 for the host operating system and architecture, verifies its digest, extracts it
@@ -51,8 +57,13 @@ dotnet run --file scripts/Provision-Emacs.cs
 dotnet run --file scripts/Provision-Helix.cs
 dotnet run --file scripts/Provision-Neovim.cs
 dotnet run --file scripts/Provision-VsCode.cs
+dotnet run --file scripts/Provision-VsCodeRemoteServer.cs
 dotnet run --file scripts/Provision-Zed.cs
 ```
+
+Pass `--with-web-browsers` to the VS Code provisioner to install the pinned
+Chromium, Firefox, and WebKit builds. Linux also needs the browser and display
+packages installed by `Install-GraphicalEditorTestPrerequisites.cs`.
 
 Legacy workspace jobs run old project files without reference-assembly packages.
 Windows uses the Visual Studio or Build Tools MSBuild host, while Linux and macOS

@@ -1,0 +1,32 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <AssemblyName>Csls.Workspaces.MSBuild</AssemblyName>
+    <RootNamespace>Csls.Workspaces</RootNamespace>
+    <Description>The desktop MSBuild project-system loader for csls.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Build.Locator" />
+    <PackageReference Include="Microsoft.CodeAnalysis.Workspaces.MSBuild" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../Csls.Workspaces/Csls.Workspaces.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Include="../Csls.Workspaces/DotNetWorkspaceRestorer.cs"
+             Link="DotNetWorkspaceRestorer.cs" />
+    <Compile Include="../Csls.Workspaces/FileBasedAppProjectLoader.cs"
+             Link="FileBasedAppProjectLoader.cs" />
+    <Compile Include="../Csls.Workspaces/LegacyFrameworkReferenceResolver.cs"
+             Link="LegacyFrameworkReferenceResolver.cs" />
+    <Compile Include="../Csls.Workspaces/MSBuildRegistration.cs"
+             Link="MSBuildRegistration.cs" />
+    <Compile Include="../Csls.Workspaces/WorkspaceLoadProgressReporter.cs"
+             Link="WorkspaceLoadProgressReporter.cs" />
+    <Compile Include="../Csls.Workspaces/WorkspaceProjectLoadObserver.cs"
+             Link="WorkspaceProjectLoadObserver.cs" />
+  </ItemGroup>
+</Project>

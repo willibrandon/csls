@@ -1,0 +1,3 @@
+name = "C# Solution"
+path_suffixes = ["sln"]
+line_comments = ["# "]

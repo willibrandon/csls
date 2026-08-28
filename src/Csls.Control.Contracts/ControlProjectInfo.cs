@@ -44,4 +44,9 @@ public sealed class ControlProjectInfo
     /// Gets the configured analyzer assembly paths in stable order.
     /// </summary>
     public required IReadOnlyList<string> AnalyzerPaths { get; init; }
+
+    /// <summary>
+    /// Gets the stable identifiers of referenced projects in deterministic order.
+    /// </summary>
+    public required IReadOnlyList<string> ProjectReferenceIds { get; init; }
 }

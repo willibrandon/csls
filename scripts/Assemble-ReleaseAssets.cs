@@ -114,6 +114,7 @@ try
     var expectedPackages = new HashSet<string>(StringComparer.Ordinal);
     var expectedArchives = new HashSet<string>(StringComparer.Ordinal);
     var expectedSymbols = new HashSet<string>(StringComparer.Ordinal);
+    var expectedExtensions = new HashSet<string>(StringComparer.Ordinal);
     foreach ((string packageId, _, _) in products)
     {
         expectedPackages.Add($"{packageId}.{version}.nupkg");
@@ -131,9 +132,26 @@ try
         }
     }
 
+    foreach (string target in new[]
+    {
+        "win32-x64",
+        "win32-arm64",
+        "linux-x64",
+        "linux-arm64",
+        "alpine-x64",
+        "alpine-arm64",
+        "darwin-x64",
+        "darwin-arm64",
+        "web"
+    })
+    {
+        expectedExtensions.Add($"csls-{version}-{target}.vsix");
+    }
+
     CopyExactInventory(releaseInput, publicOutput, expectedPackages, "*.nupkg");
     CopyExactInventory(releaseInput, publicOutput, expectedArchives, "*.zip", "*.tar.gz");
     CopyExactInventory(releaseInput, publicOutput, expectedSymbols, "*.zip", "*.tar.gz");
+    CopyExactInventory(releaseInput, publicOutput, expectedExtensions, "*.vsix");
     CopyContainerContexts(releaseInput, Path.Join(releaseOutput, "container"), products);
 
     foreach ((string packageId, string commandName, string description) in products)
@@ -216,10 +234,10 @@ try
         publicOutput,
         "*",
         SearchOption.TopDirectoryOnly).Count();
-    if (assetCount != 72)
+    if (assetCount != 81)
     {
         throw new InvalidDataException(
-            $"Expected 72 public release assets, found {assetCount}.");
+            $"Expected 81 public release assets, found {assetCount}.");
     }
 
     await Console.Out.WriteLineAsync(

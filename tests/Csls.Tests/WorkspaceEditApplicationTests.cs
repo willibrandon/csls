@@ -1,6 +1,5 @@
 using Csls.Protocol;
 using Csls.Workspaces;
-using Microsoft.Extensions.Logging.Abstractions;
 using System.Runtime.CompilerServices;
 using LspRange = Csls.Protocol.Range;
 
@@ -46,7 +45,7 @@ public sealed class WorkspaceEditApplicationTests
                 SolutionText,
                 TestContext.CancellationToken).ConfigureAwait(false);
 
-            var manager = new WorkspaceManager(NullLogger<WorkspaceManager>.Instance);
+            WorkspaceManager manager = WorkspaceManagerTestFactory.Create();
             await using ConfiguredAsyncDisposable managerDisposal =
                 manager.ConfigureAwait(false);
             await manager.LoadAsync(

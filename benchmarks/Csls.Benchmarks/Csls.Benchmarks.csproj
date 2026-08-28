@@ -25,6 +25,7 @@
     <ProjectReference Include="../../src/Csls.Protocol/Csls.Protocol.csproj" />
     <ProjectReference Include="../../src/Csls.Rpc/Csls.Rpc.csproj" />
     <ProjectReference Include="../../src/Csls.Workspaces/Csls.Workspaces.csproj" />
+    <ProjectReference Include="../../src/Csls.Workspaces.MSBuild/Csls.Workspaces.MSBuild.csproj" />
     <ProjectReference Include="../../src/Csls.Worker/Csls.Worker.csproj"
                       ReferenceOutputAssembly="false" />
   </ItemGroup>

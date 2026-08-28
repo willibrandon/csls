@@ -7,6 +7,8 @@ namespace Csls.App;
 /// </summary>
 internal static class WorkerSupervisor
 {
+    private const string RuntimeHostPathEnvironmentVariable = "CSLS_RUNTIME_HOST_PATH";
+
     /// <summary>
     /// Runs the managed worker until it exits or the command is canceled.
     /// </summary>
@@ -56,7 +58,14 @@ internal static class WorkerSupervisor
 
     private static string ResolveDotNetHost()
     {
-        string? hostPath = Environment.GetEnvironmentVariable("DOTNET_HOST_PATH");
+        string? hostPath = Environment.GetEnvironmentVariable(
+            RuntimeHostPathEnvironmentVariable);
+        if (!string.IsNullOrWhiteSpace(hostPath))
+        {
+            return hostPath;
+        }
+
+        hostPath = Environment.GetEnvironmentVariable("DOTNET_HOST_PATH");
         return string.IsNullOrWhiteSpace(hostPath) ? "dotnet" : hostPath;
     }
 }
