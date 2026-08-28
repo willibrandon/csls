@@ -243,7 +243,6 @@ public sealed partial class WorkspaceManager
             {
                 long previousGeneration = Generation;
                 _folders = folders;
-                _diagnosticCache.Clear();
                 long currentGeneration = Interlocked.Increment(ref _generation);
                 result = new WorkspaceMaintenanceResult
                 {

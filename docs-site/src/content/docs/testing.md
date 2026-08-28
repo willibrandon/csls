@@ -21,6 +21,10 @@ projects, file-based apps, Unity layouts, and legacy project shapes, then assert
 Roslyn results and protocol payloads. MCP tests use the official client and server
 transport. Control tests use real Unix domain sockets.
 
+Multi-target coverage loads an SDK project with several target frameworks and
+verifies the selected Roslyn flavor through a real hover request. Diagnostic cache
+coverage changes one project and confirms that an unrelated project stays unchanged.
+
 Tests do not replace Roslyn, MSBuild, the file system, processes, clocks, sockets, or
 edit application with mocking libraries. Malformed wire data is constructed only
 when the behavior under test is input rejection.

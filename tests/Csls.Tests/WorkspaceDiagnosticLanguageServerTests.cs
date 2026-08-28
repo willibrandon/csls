@@ -39,16 +39,20 @@ public sealed class WorkspaceDiagnosticLanguageServerTests
         {
             string corePath = Path.Join(fixturePath, "Core");
             string webPath = Path.Join(fixturePath, "Web");
+            string toolsPath = Path.Join(fixturePath, "Tools");
             Directory.CreateDirectory(corePath);
             Directory.CreateDirectory(webPath);
+            Directory.CreateDirectory(toolsPath);
             string coreDocumentPath = Path.Join(corePath, "Broken.cs");
             string webDocumentPath = Path.Join(webPath, "Program.cs");
             string razorDocumentPath = Path.Join(webPath, "Component.razor");
+            string toolsDocumentPath = Path.Join(toolsPath, "Tool.cs");
             await WriteFixtureAsync(
                 fixturePath,
                 coreDocumentPath,
                 webDocumentPath,
                 razorDocumentPath,
+                toolsDocumentPath,
                 TestContext.CancellationToken).ConfigureAwait(false);
 
             var client = new LspTestClient(
@@ -79,7 +83,7 @@ public sealed class WorkspaceDiagnosticLanguageServerTests
                 TestContext.CancellationToken).ConfigureAwait(false);
             Dictionary<string, WorkspaceDocumentDiagnosticReport> initialByPath =
                 IndexByPath(initial);
-            Assert.HasCount(3, initialByPath);
+            Assert.HasCount(4, initialByPath);
             WorkspaceDocumentDiagnosticReport coreReport = initialByPath[coreDocumentPath];
             Assert.AreEqual("full", coreReport.Kind);
             Assert.AreEqual(1, coreReport.Version);
@@ -92,6 +96,9 @@ public sealed class WorkspaceDiagnosticLanguageServerTests
             Assert.AreEqual("full", razorReport.Kind);
             Assert.AreEqual(1, razorReport.Version);
             Assert.Contains("CS0103", GetCodes(razorReport));
+            WorkspaceDocumentDiagnosticReport toolsReport = initialByPath[toolsDocumentPath];
+            Assert.AreEqual("full", toolsReport.Kind);
+            Assert.IsEmpty(GetCodes(toolsReport));
 
             using var tokenDocument = JsonDocument.Parse("42");
             WorkspaceDiagnosticReport partialResponse = await lsp
@@ -104,7 +111,7 @@ public sealed class WorkspaceDiagnosticLanguageServerTests
                 .ReadWorkspaceDiagnosticProgressAsync(TestContext.CancellationToken)
                 .ConfigureAwait(false);
             Assert.AreEqual(42, progress.Token.GetInt32());
-            Assert.HasCount(3, progress.Value.Items);
+            Assert.HasCount(4, progress.Value.Items);
             foreach (WorkspaceDocumentDiagnosticReport report in progress.Value.Items)
             {
                 Assert.AreEqual("unchanged", report.Kind);
@@ -128,6 +135,11 @@ public sealed class WorkspaceDiagnosticLanguageServerTests
             Assert.DoesNotContain("CS0103", GetCodes(updatedCoreReport));
             Assert.Contains("CS0103", GetCodes(updatedByPath[razorDocumentPath]));
             Assert.AreNotEqual(coreReport.ResultId, updatedCoreReport.ResultId);
+            WorkspaceDocumentDiagnosticReport updatedToolsReport =
+                updatedByPath[toolsDocumentPath];
+            Assert.AreEqual("unchanged", updatedToolsReport.Kind);
+            Assert.AreEqual(toolsReport.ResultId, updatedToolsReport.ResultId);
+            Assert.IsNull(updatedToolsReport.Items);
 
             using var invalidTokenDocument = JsonDocument.Parse("true");
             RemoteInvocationException invalidToken =
@@ -254,6 +266,7 @@ public sealed class WorkspaceDiagnosticLanguageServerTests
         string coreDocumentPath,
         string webDocumentPath,
         string razorDocumentPath,
+        string toolsDocumentPath,
         CancellationToken cancellationToken)
     {
         await File.WriteAllTextAsync(
@@ -269,6 +282,10 @@ public sealed class WorkspaceDiagnosticLanguageServerTests
             WebProjectText,
             cancellationToken).ConfigureAwait(false);
         await File.WriteAllTextAsync(
+            Path.Join(fixturePath, "Tools", "Tools.csproj"),
+            CoreProjectText,
+            cancellationToken).ConfigureAwait(false);
+        await File.WriteAllTextAsync(
             coreDocumentPath,
             InvalidCoreText,
             cancellationToken).ConfigureAwait(false);
@@ -280,11 +297,16 @@ public sealed class WorkspaceDiagnosticLanguageServerTests
             razorDocumentPath,
             RazorText,
             cancellationToken).ConfigureAwait(false);
+        await File.WriteAllTextAsync(
+            toolsDocumentPath,
+            ToolsDocumentText,
+            cancellationToken).ConfigureAwait(false);
     }
 
     private const string SolutionText = """
         <Solution>
           <Project Path="Core/Core.csproj" />
+          <Project Path="Tools/Tools.csproj" />
           <Project Path="Web/Web.csproj" />
         </Solution>
         """;
@@ -338,4 +360,13 @@ public sealed class WorkspaceDiagnosticLanguageServerTests
         """;
 
     private const string RazorText = "<p>@MissingRazor</p>";
+
+    private const string ToolsDocumentText = """
+        namespace Tools;
+
+        public static class Tool
+        {
+            public static int Value => 1;
+        }
+        """;
 }

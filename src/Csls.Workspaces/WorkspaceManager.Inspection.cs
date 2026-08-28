@@ -169,8 +169,12 @@ public sealed partial class WorkspaceManager
                 },
                 async (index, operationCancellationToken) =>
                 {
+                    VersionStamp projectVersion = await diagnosticProjects[index]
+                        .GetDependentVersionAsync(operationCancellationToken)
+                        .ConfigureAwait(false);
                     projectDiagnostics[index] = await _diagnosticCache.GetOrAddAsync(
                         generation,
+                        projectVersion,
                         diagnosticProjects[index],
                         ComputeProjectDiagnosticsAsync,
                         operationCancellationToken).ConfigureAwait(false);

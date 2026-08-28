@@ -262,7 +262,6 @@ public sealed partial class WorkspaceManager : IAsyncDisposable
                     path,
                     razorText);
                 _documentVersions[path] = document.Version;
-                _diagnosticCache.Clear();
                 Interlocked.Increment(ref _generation);
                 return;
             }
@@ -290,7 +289,6 @@ public sealed partial class WorkspaceManager : IAsyncDisposable
 
             _folders = _folders.SetItem(folderIndex, (rootPath, workspace, solution));
             _documentVersions[path] = document.Version;
-            _diagnosticCache.Clear();
             Interlocked.Increment(ref _generation);
         }
         finally
@@ -348,7 +346,6 @@ public sealed partial class WorkspaceManager : IAsyncDisposable
                     path,
                     razorText);
                 _documentVersions[path] = parameters.TextDocument.Version;
-                _diagnosticCache.Clear();
                 Interlocked.Increment(ref _generation);
                 return;
             }
@@ -365,7 +362,6 @@ public sealed partial class WorkspaceManager : IAsyncDisposable
                 PreservationMode.PreserveIdentity);
             _folders = _folders.SetItem(folderIndex, (rootPath, workspace, changedSolution));
             _documentVersions[path] = parameters.TextDocument.Version;
-            _diagnosticCache.Clear();
             Interlocked.Increment(ref _generation);
         }
         finally
@@ -412,7 +408,6 @@ public sealed partial class WorkspaceManager : IAsyncDisposable
                 _folders = _folders.SetItem(
                     folderIndex,
                     (razorRootPath, razorWorkspace, razorSolution));
-                _diagnosticCache.Clear();
                 Interlocked.Increment(ref _generation);
                 return;
             }
@@ -440,7 +435,6 @@ public sealed partial class WorkspaceManager : IAsyncDisposable
             }
 
             _folders = _folders.SetItem(folderIndex, (rootPath, workspace, changedSolution));
-            _diagnosticCache.Clear();
             Interlocked.Increment(ref _generation);
         }
         finally
@@ -463,23 +457,22 @@ public sealed partial class WorkspaceManager : IAsyncDisposable
     {
         ArgumentNullException.ThrowIfNull(parameters);
         long generation = Generation;
-        string resultId = string.Create(
-            CultureInfo.InvariantCulture,
-            $"{generation}/{(reportInformationAsHint ? "hint" : "information")}");
-        if (string.Equals(parameters.PreviousResultId, resultId, StringComparison.Ordinal))
-        {
-            return new DocumentDiagnosticReport
-            {
-                Kind = "unchanged",
-                ResultId = resultId
-            };
-        }
-
         string path = parameters.TextDocument.Uri.GetFileSystemPath();
         ImmutableArray<(string RootPath, Workspace Workspace, Solution Solution)> folders = _folders;
         int folderIndex = FindFolderIndex(path, folders);
         if (folderIndex >= 0 && WorkspaceRazorDiagnosticService.IsRazorDocument(path))
         {
+            string razorResultId = CreateDiagnosticResultId(
+                generation.ToString(CultureInfo.InvariantCulture),
+                reportInformationAsHint);
+            if (string.Equals(
+                parameters.PreviousResultId,
+                razorResultId,
+                StringComparison.Ordinal))
+            {
+                return CreateUnchangedDiagnosticReport(razorResultId);
+            }
+
             SourceText? razorText = _razorDocuments.GetValueOrDefault(path);
             if (razorText is null && File.Exists(path))
             {
@@ -499,9 +492,12 @@ public sealed partial class WorkspaceManager : IAsyncDisposable
                         continue;
                     }
 
+                    VersionStamp projectVersion = await project.GetDependentVersionAsync(
+                        cancellationToken).ConfigureAwait(false);
                     ImmutableArray<RoslynDiagnostic> projectResult =
                         await _diagnosticCache.GetOrAddAsync(
                             generation,
+                            projectVersion,
                             project,
                             ComputeProjectDiagnosticsAsync,
                             cancellationToken).ConfigureAwait(false);
@@ -512,7 +508,7 @@ public sealed partial class WorkspaceManager : IAsyncDisposable
             return new DocumentDiagnosticReport
             {
                 Kind = "full",
-                ResultId = resultId,
+                ResultId = razorResultId,
                 Items = razorText is null
                     ? []
                     : WorkspaceRazorDiagnosticService.GetDiagnostics(
@@ -529,17 +525,39 @@ public sealed partial class WorkspaceManager : IAsyncDisposable
             : null;
         if (document is null)
         {
+            string missingResultId = CreateDiagnosticResultId(
+                generation.ToString(CultureInfo.InvariantCulture),
+                reportInformationAsHint);
+            if (string.Equals(
+                parameters.PreviousResultId,
+                missingResultId,
+                StringComparison.Ordinal))
+            {
+                return CreateUnchangedDiagnosticReport(missingResultId);
+            }
+
             return new DocumentDiagnosticReport
             {
                 Kind = "full",
-                ResultId = resultId,
+                ResultId = missingResultId,
                 Items = []
             };
+        }
+
+        VersionStamp version = await document.Project.GetDependentVersionAsync(
+            cancellationToken).ConfigureAwait(false);
+        string resultId = CreateDiagnosticResultId(
+            version.ToString(),
+            reportInformationAsHint);
+        if (string.Equals(parameters.PreviousResultId, resultId, StringComparison.Ordinal))
+        {
+            return CreateUnchangedDiagnosticReport(resultId);
         }
 
         ImmutableArray<RoslynDiagnostic> projectDiagnostics =
             await _diagnosticCache.GetOrAddAsync(
                 generation,
+                version,
                 document.Project,
                 ComputeProjectDiagnosticsAsync,
                 cancellationToken).ConfigureAwait(false);
@@ -558,6 +576,24 @@ public sealed partial class WorkspaceManager : IAsyncDisposable
             Items = diagnostics
         };
     }
+
+    private string CreateDiagnosticResultId(
+        string version,
+        bool reportInformationAsHint)
+    {
+        bool analyzersEnabled = Volatile.Read(ref _enableAnalyzers) != 0;
+        string informationSeverity = reportInformationAsHint ? "hint" : "information";
+        return string.Create(
+            CultureInfo.InvariantCulture,
+            $"{version}/{analyzersEnabled}/{informationSeverity}");
+    }
+
+    private static DocumentDiagnosticReport CreateUnchangedDiagnosticReport(string resultId) =>
+        new()
+        {
+            Kind = "unchanged",
+            ResultId = resultId
+        };
 
     /// <summary>
     /// Gets the client version for a document with a live open overlay.
@@ -1643,7 +1679,6 @@ public sealed partial class WorkspaceManager : IAsyncDisposable
                 CommitStagedFiles(stagedFiles);
                 try
                 {
-                    _diagnosticCache.Clear();
                     if (stagedFiles.Values.Any(static file => file.IsNew))
                     {
                         await ReloadFoldersAfterResourceEditAsync(cancellationToken)
@@ -2428,9 +2463,7 @@ public sealed partial class WorkspaceManager : IAsyncDisposable
 
     private static Document? FindDocument(Solution solution, string path)
     {
-        return solution.Projects
-            .SelectMany(static project => project.Documents)
-            .FirstOrDefault(document => string.Equals(document.FilePath, path, PathComparison));
+        return WorkspaceDocumentSelector.SelectSourceDocument(solution, path);
     }
 
     private static TextDocument? FindTextDocument(Solution solution, string path)
