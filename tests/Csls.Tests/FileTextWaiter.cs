@@ -7,6 +7,8 @@ namespace Csls.Tests;
 /// </summary>
 internal static class FileTextWaiter
 {
+    private static readonly TimeSpan s_pollInterval = TimeSpan.FromMilliseconds(25);
+
     /// <summary>
     /// Waits until a shared file contains the expected text.
     /// </summary>
@@ -16,46 +18,12 @@ internal static class FileTextWaiter
         TimeSpan timeout,
         CancellationToken cancellationToken)
     {
-        string directoryPath = Path.GetDirectoryName(path)
-            ?? throw new InvalidOperationException("The observed file has no parent directory.");
         using var timeoutSource = CancellationTokenSource.CreateLinkedTokenSource(
             cancellationToken);
         timeoutSource.CancelAfter(timeout);
-        var completion = new TaskCompletionSource(
-            TaskCreationOptions.RunContinuationsAsynchronously);
-        using var watcher = new FileSystemWatcher(directoryPath, Path.GetFileName(path))
+        while (!Contains(path, expectedText))
         {
-            NotifyFilter = NotifyFilters.CreationTime |
-                NotifyFilters.FileName |
-                NotifyFilters.LastWrite |
-                NotifyFilters.Size
-        };
-        FileSystemEventHandler changedHandler = (_, _) => CompleteWhenExpectedTextAppears();
-        RenamedEventHandler renamedHandler = (_, _) => CompleteWhenExpectedTextAppears();
-        watcher.Changed += changedHandler;
-        watcher.Created += changedHandler;
-        watcher.Renamed += renamedHandler;
-        watcher.EnableRaisingEvents = true;
-        CompleteWhenExpectedTextAppears();
-
-        try
-        {
-            await completion.Task.WaitAsync(timeoutSource.Token).ConfigureAwait(false);
-        }
-        finally
-        {
-            watcher.EnableRaisingEvents = false;
-            watcher.Changed -= changedHandler;
-            watcher.Created -= changedHandler;
-            watcher.Renamed -= renamedHandler;
-        }
-
-        void CompleteWhenExpectedTextAppears()
-        {
-            if (Contains(path, expectedText))
-            {
-                completion.TrySetResult();
-            }
+            await Task.Delay(s_pollInterval, timeoutSource.Token).ConfigureAwait(false);
         }
     }
 
@@ -67,47 +35,18 @@ internal static class FileTextWaiter
         TimeSpan timeout,
         CancellationToken cancellationToken)
     {
-        string directoryPath = Path.GetDirectoryName(path)
-            ?? throw new InvalidOperationException("The observed file has no parent directory.");
         using var timeoutSource = CancellationTokenSource.CreateLinkedTokenSource(
             cancellationToken);
         timeoutSource.CancelAfter(timeout);
-        var completion = new TaskCompletionSource<string>(
-            TaskCreationOptions.RunContinuationsAsynchronously);
-        using var watcher = new FileSystemWatcher(directoryPath, Path.GetFileName(path))
-        {
-            NotifyFilter = NotifyFilters.CreationTime |
-                NotifyFilters.FileName |
-                NotifyFilters.LastWrite |
-                NotifyFilters.Size
-        };
-        FileSystemEventHandler changedHandler = (_, _) => CompleteWhenContentsAppear();
-        RenamedEventHandler renamedHandler = (_, _) => CompleteWhenContentsAppear();
-        watcher.Changed += changedHandler;
-        watcher.Created += changedHandler;
-        watcher.Renamed += renamedHandler;
-        watcher.EnableRaisingEvents = true;
-        CompleteWhenContentsAppear();
-
-        try
-        {
-            return await completion.Task.WaitAsync(timeoutSource.Token).ConfigureAwait(false);
-        }
-        finally
-        {
-            watcher.EnableRaisingEvents = false;
-            watcher.Changed -= changedHandler;
-            watcher.Created -= changedHandler;
-            watcher.Renamed -= renamedHandler;
-        }
-
-        void CompleteWhenContentsAppear()
+        while (true)
         {
             string? contents = ReadNonEmpty(path);
             if (contents is not null)
             {
-                completion.TrySetResult(contents);
+                return contents;
             }
+
+            await Task.Delay(s_pollInterval, timeoutSource.Token).ConfigureAwait(false);
         }
     }
 

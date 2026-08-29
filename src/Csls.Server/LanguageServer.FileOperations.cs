@@ -2,6 +2,7 @@ using Csls.Core;
 using Csls.Protocol;
 using Csls.Workspaces;
 using System.Collections.ObjectModel;
+using System.Diagnostics;
 using System.Text.Json;
 using LspFileSystemWatcher = Csls.Protocol.FileSystemWatcher;
 
@@ -10,59 +11,76 @@ namespace Csls.Server;
 public sealed partial class LanguageServer
 {
     /// <inheritdoc />
-    public Task DidCreateFilesAsync(
+    public async Task DidCreateFilesAsync(
         CreateFilesParams parameters,
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(parameters);
         ArgumentNullException.ThrowIfNull(parameters.Files);
-        return ApplyWorkspaceFileOperationsAsync(
+        _ = await ApplyWorkspaceFileOperationsAsync(
             "workspace/didCreateFiles",
             token => _workspaceManager.ApplyCreatedFilesAsync(parameters, token),
             clearUris: [],
-            cancellationToken);
+            cancellationToken).ConfigureAwait(false);
     }
 
     /// <inheritdoc />
-    public Task DidRenameFilesAsync(
+    public async Task DidRenameFilesAsync(
         RenameFilesParams parameters,
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(parameters);
         ArgumentNullException.ThrowIfNull(parameters.Files);
-        return ApplyWorkspaceFileOperationsAsync(
+        _ = await ApplyWorkspaceFileOperationsAsync(
             "workspace/didRenameFiles",
             token => _workspaceManager.ApplyRenamedFilesAsync(parameters, token),
             [.. parameters.Files.Select(static file => file.OldUri)],
-            cancellationToken);
+            cancellationToken).ConfigureAwait(false);
     }
 
     /// <inheritdoc />
-    public Task DidDeleteFilesAsync(
+    public async Task DidDeleteFilesAsync(
         DeleteFilesParams parameters,
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(parameters);
         ArgumentNullException.ThrowIfNull(parameters.Files);
-        return ApplyWorkspaceFileOperationsAsync(
+        _ = await ApplyWorkspaceFileOperationsAsync(
             "workspace/didDeleteFiles",
             token => _workspaceManager.ApplyDeletedFilesAsync(parameters, token),
             [.. parameters.Files.Select(static file => file.Uri)],
-            cancellationToken);
+            cancellationToken).ConfigureAwait(false);
     }
 
     /// <inheritdoc />
-    public Task DidChangeWatchedFilesAsync(
+    public async Task DidChangeWatchedFilesAsync(
         DidChangeWatchedFilesParams parameters,
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(parameters);
         ArgumentNullException.ThrowIfNull(parameters.Changes);
-        return ApplyWorkspaceFileOperationsAsync(
+        long startedTimestamp = Stopwatch.GetTimestamp();
+        WorkspaceMaintenanceResult? result = await ApplyWorkspaceFileOperationsAsync(
             "workspace/didChangeWatchedFiles",
             token => _workspaceManager.ApplyChangedFilesAsync(parameters, token),
             clearUris: [],
-            cancellationToken);
+            cancellationToken).ConfigureAwait(false);
+        if (_logger.IsEnabled(Microsoft.Extensions.Logging.LogLevel.Information))
+        {
+            long elapsedMilliseconds =
+                (long)Stopwatch.GetElapsedTime(startedTimestamp).TotalMilliseconds;
+            string updateMode = result is null
+                ? "ignored"
+                : result.RestartedBuildHostCount > 0
+                    ? "full reload"
+                    : "incremental update";
+            string paths = FormatWatchedFilePaths(parameters.Changes);
+            LanguageServerLogger.LogWatchedFileChangesCompleted(
+                _logger,
+                elapsedMilliseconds,
+                updateMode,
+                paths);
+        }
     }
 
     private static FileOperationOptions CreateFileOperationOptions()
@@ -149,14 +167,19 @@ public sealed partial class LanguageServer
             cancellationToken).ConfigureAwait(false);
     }
 
-    private async Task ApplyWorkspaceFileOperationsAsync(
+    private async Task<WorkspaceMaintenanceResult?> ApplyWorkspaceFileOperationsAsync(
         string requestName,
         Func<CancellationToken, Task<WorkspaceMaintenanceResult?>> applyAsync,
         IReadOnlyList<DocumentUri> clearUris,
         CancellationToken cancellationToken)
     {
         EnsureRunning();
-        (long RequestId, IReadOnlyList<DocumentUri> PublishUris, bool WorkspaceChanged) result =
+        (
+            long RequestId,
+            IReadOnlyList<DocumentUri> PublishUris,
+            bool WorkspaceChanged,
+            WorkspaceMaintenanceResult? Maintenance
+        ) =
             await _scheduler.ScheduleAsync(
                 requestName,
                 RequestMode.ReadWrite,
@@ -167,7 +190,11 @@ public sealed partial class LanguageServer
                         context.CancellationToken).ConfigureAwait(false);
                     if (refresh is null)
                     {
-                        return (context.Ordinal, Array.Empty<DocumentUri>(), false);
+                        return (
+                            context.Ordinal,
+                            Array.Empty<DocumentUri>(),
+                            false,
+                            (WorkspaceMaintenanceResult?)null);
                     }
 
                     ClearPushDiagnosticRequests();
@@ -183,24 +210,39 @@ public sealed partial class LanguageServer
                         RegisterPushDiagnosticRequest(uri, context.Ordinal);
                     }
 
-                    return (context.Ordinal, publishUris, true);
+                    return (context.Ordinal, publishUris, true, refresh);
                 },
                 cancellationToken).ConfigureAwait(false);
 
-        foreach (DocumentUri uri in result.PublishUris)
+        foreach (DocumentUri uri in PublishUris)
         {
             await PublishDiagnosticsAsync(
                 uri,
-                result.RequestId,
+                RequestId,
                 delay: false,
                 cancellationToken).ConfigureAwait(false);
         }
 
         if (_supportsPullDiagnostics &&
             _supportsDiagnosticRefresh &&
-            result.WorkspaceChanged)
+            WorkspaceChanged)
         {
             await _client.RefreshDiagnosticsAsync(cancellationToken).ConfigureAwait(false);
         }
+
+        return Maintenance;
+    }
+
+    private static string FormatWatchedFilePaths(IReadOnlyList<FileEvent> changes)
+    {
+        const int maximumDisplayedPaths = 8;
+        string paths = string.Join(
+            ", ",
+            changes
+                .Take(maximumDisplayedPaths)
+                .Select(static change => change.Uri.GetFileSystemPath()));
+        return changes.Count <= maximumDisplayedPaths
+            ? paths
+            : $"{paths}, ... (+{changes.Count - maximumDisplayedPaths} more)";
     }
 }

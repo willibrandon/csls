@@ -271,7 +271,22 @@ public sealed class EditLanguageServerTests
                 new LspRange(new Position(0, 0), new Position(0, 0)),
                 ["quickfix"],
                 TestContext.CancellationToken).ConfigureAwait(false);
-            Assert.IsEmpty(quickFixOnly);
+            CodeAction removeUnnecessaryUsings = Assert.ContainsSingle(quickFixOnly);
+            Assert.AreEqual("Remove unnecessary usings", removeUnnecessaryUsings.Title);
+            Assert.AreEqual("quickfix", removeUnnecessaryUsings.Kind);
+            WorkspaceEdit removeUnnecessaryUsingsEdit = removeUnnecessaryUsings.Edit
+                ?? throw new InvalidDataException(
+                    "The remove-unnecessary-usings action had no edit.");
+            TextDocumentEdit removeUnnecessaryUsingsDocument = Assert.ContainsSingle(
+                removeUnnecessaryUsingsEdit.DocumentChanges.OfType<TextDocumentEdit>());
+            Assert.AreEqual(1, removeUnnecessaryUsingsDocument.TextDocument.Version);
+            string cleanedProgramText = ApplyTextEdits(
+                ProgramText,
+                removeUnnecessaryUsingsDocument.Edits);
+            Assert.DoesNotContain(
+                "using System.Text;",
+                cleanedProgramText,
+                StringComparison.Ordinal);
 
             string overlayText = ProgramText.Replace(
                 "Calculator",

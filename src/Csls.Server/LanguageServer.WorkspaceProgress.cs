@@ -74,10 +74,7 @@ public sealed partial class LanguageServer
         catch (Exception exception) when (IsExpectedWorkspaceProgressFailure(exception))
         {
             LanguageServerLogger.LogWorkspaceProgressFailure(_logger, exception);
-            if (failure is null)
-            {
-                failure = exception;
-            }
+            failure ??= exception;
         }
 
         string finalMessage = failure switch
@@ -101,10 +98,7 @@ public sealed partial class LanguageServer
         catch (Exception exception) when (IsExpectedWorkspaceProgressFailure(exception))
         {
             LanguageServerLogger.LogWorkspaceProgressFailure(_logger, exception);
-            if (failure is null)
-            {
-                failure = exception;
-            }
+            failure ??= exception;
         }
 
         if (failure is not null)

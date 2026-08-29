@@ -405,15 +405,15 @@ public sealed class SemanticTokensLanguageServerTests
             int Start,
             int Length,
             string TokenType,
-            IReadOnlyList<string> Modifiers) token = Assert.ContainsSingle(
+            IReadOnlyList<string> Modifiers) = Assert.ContainsSingle(
                 tokens.Where(candidate =>
                     candidate.Line == line &&
                     candidate.Start == start &&
                     candidate.Length == length));
-        Assert.AreEqual(tokenType, token.TokenType);
+        Assert.AreEqual(tokenType, TokenType);
         if (modifier is not null)
         {
-            Assert.Contains(modifier, token.Modifiers);
+            Assert.Contains(modifier, Modifiers);
         }
     }
 

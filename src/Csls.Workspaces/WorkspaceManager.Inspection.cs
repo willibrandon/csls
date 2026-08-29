@@ -228,8 +228,19 @@ public sealed partial class WorkspaceManager
                             .Distinct(StringComparer.Ordinal)
                             .Order(StringComparer.Ordinal)),
                     ProjectCount = group.Sum(static folder => folder.Solution.ProjectIds.Count),
-                    DocumentCount = group.Sum(static folder => folder.Solution.Projects.Sum(
-                        static project => project.DocumentIds.Count))
+                    DocumentCount = group.Sum(GetDocumentCount)
                 })
         ];
+
+    private static int GetDocumentCount(
+        (string RootPath, Workspace Workspace, Solution Solution) folder)
+    {
+        int documentCount = 0;
+        foreach (Project project in folder.Solution.Projects)
+        {
+            documentCount += project.DocumentIds.Count;
+        }
+
+        return documentCount;
+    }
 }

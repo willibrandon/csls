@@ -118,14 +118,9 @@ internal static class VsCodeDebuggerFixture
         };
         string expectedPath = $"{DebuggerPrefix}{architectureDirectory}/{executableName}";
         ZipArchiveEntry? selected = candidates.SingleOrDefault(entry =>
-            string.Equals(entry.FullName, expectedPath, StringComparison.Ordinal));
-        if (selected is null)
-        {
-            throw new InvalidDataException(
+            string.Equals(entry.FullName, expectedPath, StringComparison.Ordinal)) ?? throw new InvalidDataException(
                 $"The VSIX contains {candidates.Length} {executableName} files but none " +
                 $"for {RuntimeInformation.OSArchitecture}.");
-        }
-
         return selected.FullName[..^executableName.Length];
     }
 }

@@ -688,6 +688,11 @@ var codeActionKindOption = new Option<string>("--kind")
     HelpName = "category",
     DefaultValueFactory = static _ => "source.organizeImports"
 };
+var codeActionTitleOption = new Option<string?>("--title")
+{
+    Description = "Exact Roslyn code-action title to preview or apply.",
+    HelpName = "title"
+};
 Option<int> codeActionLineOption = CreatePositionOption(
     "--line",
     "Zero-based line containing the code-action target.",
@@ -712,6 +717,7 @@ var codeActionCommand = new Command("code-action", "Preview concrete Roslyn code
 {
     codeActionDocumentArgument,
     codeActionKindOption,
+    codeActionTitleOption,
     codeActionLineOption,
     codeActionCharacterOption,
     codeActionSessionOption,
@@ -736,6 +742,7 @@ codeActionCommand.SetAction((parseResult, cancellationToken) =>
             parseResult.GetValue(codeActionLineOption).ToString(CultureInfo.InvariantCulture),
             parseResult.GetValue(codeActionCharacterOption).ToString(CultureInfo.InvariantCulture),
             parseResult.GetRequiredValue(codeActionKindOption),
+            parseResult.GetValue(codeActionTitleOption) ?? string.Empty,
             parseResult.GetValue(codeActionCursorOption) ?? string.Empty,
             parseResult.GetValue(codeActionLimitOption).ToString(CultureInfo.InvariantCulture),
             parseResult.GetValue(codeActionApplyOption).ToString(CultureInfo.InvariantCulture),

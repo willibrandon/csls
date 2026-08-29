@@ -755,7 +755,7 @@ internal static class CliWorkerHost
         bool writeJson,
         CancellationToken cancellationToken)
     {
-        if (arguments.Count != 11 ||
+        if (arguments.Count != 12 ||
             !int.TryParse(arguments[1], NumberStyles.None, CultureInfo.InvariantCulture,
                 out int processId) ||
             !int.TryParse(arguments[4], NumberStyles.None, CultureInfo.InvariantCulture,
@@ -764,9 +764,9 @@ internal static class CliWorkerHost
                 out int character) ||
             line < 0 ||
             character < 0 ||
-            !int.TryParse(arguments[8], NumberStyles.None, CultureInfo.InvariantCulture,
+            !int.TryParse(arguments[9], NumberStyles.None, CultureInfo.InvariantCulture,
                 out int limit) ||
-            !bool.TryParse(arguments[9], out bool apply))
+            !bool.TryParse(arguments[10], out bool apply))
         {
             return Fail(
                 "invalid-request",
@@ -789,17 +789,27 @@ internal static class CliWorkerHost
                 Only = [arguments[6]]
             },
             cancellationToken).ConfigureAwait(false);
+        IReadOnlyList<ControlCodeActionPlan> matchingActions = string.IsNullOrEmpty(arguments[7])
+            ? actions
+            :
+            [
+                .. actions.Where(action => string.Equals(
+                    action.Action.Title,
+                    arguments[7],
+                    StringComparison.Ordinal))
+            ];
         CliPage<ControlCodeActionPlan> page = CliPagination.Create(
-            actions,
+            matchingActions,
             "edit-code-action",
-            arguments[7],
+            arguments[8],
             limit);
         if (apply)
         {
             ControlCodeActionPlan action = page.Items.Count == 1
                 ? page.Items[0]
                 : throw new InvalidOperationException(
-                    "Applying a code action requires exactly one matching action.");
+                    "Applying a code action requires exactly one matching action; " +
+                    "use --title to select its exact Roslyn title.");
             ControlEditPlan editPlan = action.EditPlan
                 ?? throw new InvalidOperationException(
                     "The selected code action does not contain a source edit plan.");

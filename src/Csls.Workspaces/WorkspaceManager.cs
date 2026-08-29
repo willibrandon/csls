@@ -1411,24 +1411,10 @@ public sealed partial class WorkspaceManager : IAsyncDisposable
         var actions = new List<LspCodeAction>();
         if (IsCodeActionRequested(parameters.Context.Only, QuickFixCodeActionKind))
         {
-            actions.AddRange(await WorkspaceCodeActionService.GetMissingUsingActionsAsync(
+            actions.AddRange(await WorkspaceRoslynCodeFixService.GetActionsAsync(
                 document,
                 parameters,
-                CreateWorkspaceEditAsync,
-                cancellationToken).ConfigureAwait(false));
-            actions.AddRange(await WorkspaceSimplifyNameCodeActionService.GetActionsAsync(
-                document,
-                parameters,
-                CreateWorkspaceEditAsync,
-                cancellationToken).ConfigureAwait(false));
-            actions.AddRange(await WorkspaceUseSimpleUsingCodeActionService.GetActionsAsync(
-                document,
-                parameters,
-                CreateWorkspaceEditAsync,
-                cancellationToken).ConfigureAwait(false));
-            actions.AddRange(await WorkspaceImplementInterfaceCodeActionService.GetActionsAsync(
-                document,
-                parameters,
+                supportsCreateFile,
                 CreateWorkspaceEditAsync,
                 cancellationToken).ConfigureAwait(false));
         }
@@ -2166,8 +2152,8 @@ public sealed partial class WorkspaceManager : IAsyncDisposable
         CancellationToken cancellationToken)
     {
         (MarkupContent? Documentation,
-            MarkupContent? SupplementalDocumentation,
-            IReadOnlyDictionary<string, MarkupContent> Parameters) documentation =
+            _,
+            IReadOnlyDictionary<string, MarkupContent> Parameters) =
             SymbolDocumentationFormatter.FormatSymbol(
                 method,
                 compilation,
@@ -2180,14 +2166,14 @@ public sealed partial class WorkspaceManager : IAsyncDisposable
             parameters[index] = new ParameterInformation
             {
                 Label = parameter.ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat),
-                Documentation = documentation.Parameters.GetValueOrDefault(parameter.Name)
+                Documentation = Parameters.GetValueOrDefault(parameter.Name)
             };
         }
 
         return new SignatureInformation
         {
             Label = method.ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat),
-            Documentation = documentation.Documentation,
+            Documentation = Documentation,
             Parameters = parameters,
             ActiveParameter = parameters.Length == 0
                 ? null

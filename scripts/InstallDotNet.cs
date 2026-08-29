@@ -68,13 +68,13 @@ using HttpResponseMessage releasesResponse = await http
 releasesResponse.EnsureSuccessStatusCode();
 using Stream releasesStream = await releasesResponse.Content.ReadAsStreamAsync().ConfigureAwait(false);
 using JsonDocument releases = await JsonDocument.ParseAsync(releasesStream).ConfigureAwait(false);
-(Uri Url, string Hash, string Extension) archive = FindSdkArchive(
+(Uri archiveUrl, string archiveHash, string archiveExtension) = FindSdkArchive(
     releases.RootElement,
     runtimeIdentifier);
 
 string temporaryArchive = Path.Join(
     Path.GetTempPath(),
-    $"csls-dotnet-sdk-{SdkVersion}-{Guid.NewGuid():N}{archive.Extension}");
+    $"csls-dotnet-sdk-{SdkVersion}-{Guid.NewGuid():N}{archiveExtension}");
 
 try
 {
@@ -82,7 +82,7 @@ try
         $"Downloading .NET SDK {SdkVersion} for {runtimeIdentifier}...")
         .ConfigureAwait(false);
     using HttpResponseMessage archiveResponse = await http
-        .GetAsync(archive.Url, HttpCompletionOption.ResponseHeadersRead)
+        .GetAsync(archiveUrl, HttpCompletionOption.ResponseHeadersRead)
         .ConfigureAwait(false);
     archiveResponse.EnsureSuccessStatusCode();
     using (Stream source = await archiveResponse.Content.ReadAsStreamAsync().ConfigureAwait(false))
@@ -93,13 +93,13 @@ try
 
     string actualHash = Convert.ToHexString(
         SHA512.HashData(await File.ReadAllBytesAsync(temporaryArchive).ConfigureAwait(false)));
-    if (!string.Equals(actualHash, archive.Hash, StringComparison.OrdinalIgnoreCase))
+    if (!string.Equals(actualHash, archiveHash, StringComparison.OrdinalIgnoreCase))
     {
         throw new InvalidDataException("The downloaded SDK archive failed SHA-512 verification.");
     }
 
     Directory.CreateDirectory(installDirectory);
-    if (archive.Extension == ".zip")
+    if (archiveExtension == ".zip")
     {
         await ZipFile.ExtractToDirectoryAsync(
             temporaryArchive,

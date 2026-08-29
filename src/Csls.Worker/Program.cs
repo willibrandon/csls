@@ -38,11 +38,11 @@ builder.Services.AddSingleton<IHostedService>(
     static services => services.GetRequiredService<ControlRpcServer>());
 
 using var shutdownSource = new CancellationTokenSource();
-ConsoleCancelEventHandler cancelHandler = (_, eventArgs) =>
+void cancelHandler(object? _, ConsoleCancelEventArgs eventArgs)
 {
     eventArgs.Cancel = true;
     shutdownSource.Cancel();
-};
+}
 Console.CancelKeyPress += cancelHandler;
 
 try

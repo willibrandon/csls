@@ -112,4 +112,22 @@ internal static partial class LanguageServerLogger
     internal static partial void LogFileWatcherRegistrationFailure(
         ILogger logger,
         Exception exception);
+
+    /// <summary>
+    /// Reports the total processing time and outcome for one watched-file batch.
+    /// </summary>
+    /// <param name="logger">The language-server logger.</param>
+    /// <param name="elapsedMilliseconds">The elapsed wall-clock milliseconds.</param>
+    /// <param name="updateMode">The applied workspace update mode.</param>
+    /// <param name="paths">The bounded changed-path list.</param>
+    [LoggerMessage(
+        EventId = 17,
+        Level = LogLevel.Information,
+        SkipEnabledCheck = true,
+        Message = "Watched file changes completed in {ElapsedMilliseconds} ms using {UpdateMode}: {Paths}")]
+    internal static partial void LogWatchedFileChangesCompleted(
+        ILogger logger,
+        long elapsedMilliseconds,
+        string updateMode,
+        string paths);
 }

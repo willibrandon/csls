@@ -477,8 +477,8 @@ public sealed class RequestScheduler : IAsyncDisposable
         _traceRecords.Enqueue((request, record));
         if (_traceRecords.Count > _traceCapacity)
         {
-            (RequestActivityState State, RequestTraceRecord Record) dropped = _traceRecords.Dequeue();
-            dropped.State.DetachTrace(dropped.Record.TraceId);
+            (RequestActivityState State, RequestTraceRecord Record) = _traceRecords.Dequeue();
+            State.DetachTrace(Record.TraceId);
             _traceDroppedEntries++;
         }
     }

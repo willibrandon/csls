@@ -168,18 +168,16 @@ internal static class ScriptSupport
         string path,
         CancellationToken cancellationToken)
     {
-        using (FileStream input = new(
+        using FileStream input = new(
             path,
             FileMode.Open,
             FileAccess.Read,
             FileShare.Read,
             bufferSize: 131_072,
-            FileOptions.Asynchronous | FileOptions.SequentialScan))
-        {
-            byte[] digest = await SHA256.HashDataAsync(input, cancellationToken)
-                .ConfigureAwait(false);
-            return Convert.ToHexStringLower(digest);
-        }
+            FileOptions.Asynchronous | FileOptions.SequentialScan);
+        byte[] digest = await SHA256.HashDataAsync(input, cancellationToken)
+            .ConfigureAwait(false);
+        return Convert.ToHexStringLower(digest);
     }
 
     /// <summary>

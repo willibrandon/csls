@@ -12,6 +12,7 @@ namespace Csls.Dashboard;
 internal sealed class DashboardState
 {
     private readonly CancellationToken _cancellationToken;
+    private string? _focusedDiagnosticKey;
 
     private DashboardState(CancellationToken cancellationToken)
     {
@@ -42,6 +43,18 @@ internal sealed class DashboardState
     /// Gets the most recent workspace operation status shown to the user.
     /// </summary>
     internal string OperationStatus { get; private set; } = "No workspace operation has run.";
+
+    /// <summary>
+    /// Gets the stable key for the focused diagnostic row.
+    /// </summary>
+    internal string? FocusedDiagnosticKey => _focusedDiagnosticKey;
+
+    /// <summary>
+    /// Gets the focused diagnostic or the first available diagnostic.
+    /// </summary>
+    internal ControlDiagnosticInfo? FocusedDiagnostic => Snapshot.Diagnostics.FirstOrDefault(
+        diagnostic => GetDiagnosticKey(diagnostic) == _focusedDiagnosticKey)
+        ?? (Snapshot.Diagnostics.Count == 0 ? null : Snapshot.Diagnostics[0]);
 
     /// <summary>
     /// Creates state by discovering sessions and loading the requested live process.
@@ -97,6 +110,43 @@ internal sealed class DashboardState
     internal Task SelectSessionAsync(int processId) => LoadSnapshotAsync(
         processId,
         includeDiagnostics: Section == DashboardSection.Diagnostics);
+
+    /// <summary>
+    /// Selects the diagnostic identified by one Hex1b table row key.
+    /// </summary>
+    /// <param name="key">The stable diagnostic row key.</param>
+    internal void SelectDiagnostic(object? key)
+    {
+        if (key is not string diagnosticKey ||
+            !Snapshot.Diagnostics.Any(diagnostic =>
+                GetDiagnosticKey(diagnostic) == diagnosticKey))
+        {
+            throw new InvalidOperationException(
+                $"Unknown diagnostic row key: {key}.");
+        }
+
+        _focusedDiagnosticKey = diagnosticKey;
+    }
+
+    /// <summary>
+    /// Gets a stable table row key for one diagnostic.
+    /// </summary>
+    /// <param name="diagnostic">The diagnostic to identify.</param>
+    /// <returns>The stable diagnostic row key.</returns>
+    internal static string GetDiagnosticKey(ControlDiagnosticInfo diagnostic)
+    {
+        ArgumentNullException.ThrowIfNull(diagnostic);
+        return string.Concat(
+            diagnostic.ProjectName,
+            "|",
+            diagnostic.FilePath,
+            "|",
+            diagnostic.Line,
+            "|",
+            diagnostic.Character,
+            "|",
+            diagnostic.Id);
+    }
 
     /// <summary>
     /// Executes one user-confirmed workspace mutation through the shared control service.
@@ -235,6 +285,14 @@ internal sealed class DashboardState
                 new ControlDashboardRequest { IncludeDiagnostics = includeDiagnostics },
                 _cancellationToken)
             .ConfigureAwait(false);
+        if (!Snapshot.Diagnostics.Any(diagnostic =>
+            GetDiagnosticKey(diagnostic) == _focusedDiagnosticKey))
+        {
+            _focusedDiagnosticKey = Snapshot.Diagnostics.Count != 0
+                ? GetDiagnosticKey(Snapshot.Diagnostics[0])
+                : null;
+        }
+
         RefreshedAt = DateTimeOffset.UtcNow;
     }
 

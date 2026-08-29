@@ -95,7 +95,7 @@ public sealed class DiagnosticLanguageServerTests
                 TestContext.CancellationToken).ConfigureAwait(false);
             CodeAction simpleUsingAction = Assert.ContainsSingle(simpleUsingActions);
             Assert.AreEqual("Use simple 'using' statement", simpleUsingAction.Title);
-            Assert.IsTrue(simpleUsingAction.IsPreferred);
+            Assert.IsNull(simpleUsingAction.IsPreferred);
             TextDocumentEdit simpleUsingEdit = Assert.ContainsSingle(
                 simpleUsingAction.Edit?.DocumentChanges.OfType<TextDocumentEdit>() ?? []);
             string fixedVisibleText = ApplyTextEdits(

@@ -723,8 +723,12 @@ public sealed class McpLanguageServerTests
                     .Deserialize(
                         ControlJsonSerializerContext.Default.IReadOnlyListControlCodeActionPlan)
                     ?? throw new InvalidDataException("MCP returned no quick-fix previews.");
-                ControlCodeActionPlan quickFix = Assert.ContainsSingle(quickFixes);
-                Assert.AreEqual("Add using System.Text", quickFix.Action.Title);
+                Assert.Contains(
+                    "System.Text.StringBuilder",
+                    quickFixes.Select(static candidate => candidate.Action.Title));
+                ControlCodeActionPlan quickFix = Assert.ContainsSingle(quickFixes.Where(
+                    static candidate => candidate.Action.Title == "using System.Text;"));
+                Assert.AreEqual("using System.Text;", quickFix.Action.Title);
                 Assert.AreEqual("quickfix", quickFix.Action.Kind);
                 ControlEditPlan quickFixPlan = quickFix.EditPlan
                     ?? throw new InvalidDataException("MCP returned no quick-fix edit plan.");
@@ -768,7 +772,9 @@ public sealed class McpLanguageServerTests
                                 .IReadOnlyListControlCodeActionPlan)
                     ?? throw new InvalidDataException(
                         "MCP returned no interface implementation previews.");
-                ControlCodeActionPlan implementAction = Assert.ContainsSingle(implementations);
+                ControlCodeActionPlan implementAction = Assert.ContainsSingle(
+                    implementations.Where(static candidate =>
+                        candidate.Action.Title == "Implement interface"));
                 Assert.AreEqual("Implement interface", implementAction.Action.Title);
                 ControlEditPlan implementationPlan = implementAction.EditPlan
                     ?? throw new InvalidDataException(

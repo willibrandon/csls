@@ -77,15 +77,11 @@ public class DocumentationBenchmarks : IAsyncDisposable
                 "The documentation benchmark did not resolve its fixture.");
         }
 
-        Hover? hover = await _workspaceManager.GetHoverAsync(
+        _ = await _workspaceManager.GetHoverAsync(
             _hoverParameters,
             CancellationToken.None,
-            supportsMarkdown: true).ConfigureAwait(false);
-        if (hover is null)
-        {
-            throw new InvalidOperationException(
+            supportsMarkdown: true).ConfigureAwait(false) ?? throw new InvalidOperationException(
                 "The documentation benchmark did not resolve hover content.");
-        }
     }
 
     /// <summary>

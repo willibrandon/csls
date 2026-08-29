@@ -374,7 +374,11 @@ public sealed class WorkspaceFileOperationLanguageServerTests
                 DefinitionWithValueText,
                 TestContext.CancellationToken).ConfigureAwait(false);
             await lsp.ChangeWatchedFilesAsync(
-                [(definitionPath, FileChangeType.Changed)]).ConfigureAwait(false);
+                [
+                    (definitionPath, FileChangeType.Deleted),
+                    (definitionPath, FileChangeType.Created),
+                    (definitionPath, FileChangeType.Changed)
+                ]).ConfigureAwait(false);
             await client.WaitForDiagnosticRefreshAsync(TestContext.CancellationToken)
                 .WaitAsync(TimeSpan.FromSeconds(30), TestContext.CancellationToken)
                 .ConfigureAwait(false);
@@ -399,6 +403,26 @@ public sealed class WorkspaceFileOperationLanguageServerTests
             Assert.DoesNotContain(
                 "Workspace reload started",
                 serverDiagnostics,
+                StringComparison.Ordinal);
+            const string durationPrefix = "Watched file changes completed in ";
+            int durationStart = serverDiagnostics.IndexOf(
+                durationPrefix,
+                StringComparison.Ordinal);
+            Assert.IsGreaterThanOrEqualTo(0, durationStart);
+            durationStart += durationPrefix.Length;
+            int durationEnd = serverDiagnostics.IndexOf(
+                " ms using incremental update: ",
+                durationStart,
+                StringComparison.Ordinal);
+            Assert.IsGreaterThan(durationStart, durationEnd);
+            Assert.IsTrue(long.TryParse(
+                serverDiagnostics.AsSpan(durationStart, durationEnd - durationStart),
+                out long durationMilliseconds));
+            Assert.IsGreaterThanOrEqualTo(0, durationMilliseconds);
+            Assert.IsLessThan(5_000, durationMilliseconds);
+            Assert.Contains(
+                definitionPath,
+                serverDiagnostics[(durationEnd + " ms using incremental update: ".Length)..],
                 StringComparison.Ordinal);
         }
         finally

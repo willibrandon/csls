@@ -75,10 +75,10 @@ public sealed class SimplifyNameCodeActionLanguageServerTests
                 only: null,
                 TestContext.CancellationToken).ConfigureAwait(false);
             CodeAction action = Assert.ContainsSingle(actions.Where(static candidate =>
-                candidate.Title.Contains("Simplify name", StringComparison.Ordinal)));
-            Assert.AreEqual("Simplify name 'System.Console'", action.Title);
+                candidate.Title.Contains("Simplify member access", StringComparison.Ordinal)));
+            Assert.AreEqual("Simplify member access 'System.Console'", action.Title);
             Assert.AreEqual("quickfix", action.Kind);
-            Assert.IsTrue(action.IsPreferred);
+            Assert.IsNull(action.IsPreferred);
             WorkspaceEdit edit = action.Edit
                 ?? throw new InvalidDataException("The simplify-name action had no edit.");
             TextDocumentEdit documentEdit = Assert.ContainsSingle(

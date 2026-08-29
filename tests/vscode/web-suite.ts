@@ -547,8 +547,11 @@ async function assertCodeAction(document: vscode.TextDocument): Promise<void> {
     "The VS Code code-action provider did not complete.",
   );
   assert(
-    actions.some((action) => action.title.includes("Simplify name")),
-    "csls must return the semantic simplify-name action in VS Code.",
+    actions.some(
+      (action) => action.title === "Simplify member access 'System.Console'",
+    ),
+    "csls must return the semantic simplify-name action in VS Code. " +
+      `Received ${JSON.stringify(actions.map((action) => action.title))}.`,
   );
 }
 

@@ -104,7 +104,7 @@ internal static class DashboardView
             DashboardSection.Workspaces => BuildWorkspaces(context, state.Snapshot),
             DashboardSection.Projects => BuildProjects(context, state.Snapshot),
             DashboardSection.Documents => BuildDocuments(context, state.Snapshot),
-            DashboardSection.Diagnostics => BuildDiagnostics(context, state.Snapshot),
+            DashboardSection.Diagnostics => BuildDiagnostics(context, state),
             DashboardSection.Requests => BuildRequests(context, state.Snapshot),
             DashboardSection.Queues => BuildQueues(context, state.Snapshot),
             DashboardSection.BuildHosts => BuildBuildHosts(context, state.Snapshot),
@@ -339,8 +339,29 @@ internal static class DashboardView
 
     private static VStackWidget BuildDiagnostics(
         RootContext context,
-        ControlDashboardSnapshot snapshot) =>
-        context.VStack(vertical =>
+        DashboardState state)
+    {
+        ControlDashboardSnapshot snapshot = state.Snapshot;
+        ControlDiagnosticInfo? focusedDiagnostic = state.FocusedDiagnostic;
+        TableWidget<ControlDiagnosticInfo> table = context
+            .Table(snapshot.Diagnostics)
+            .RowKey(DashboardState.GetDiagnosticKey)
+            .Header(header =>
+            [
+                header.Cell("Severity").Width(SizeHint.Fixed(10)),
+                header.Cell("Code").Width(SizeHint.Fixed(10)),
+                header.Cell("Location").Width(SizeHint.Fill)
+            ])
+            .Row((row, diagnostic, _) =>
+            [
+                row.Cell(diagnostic.Severity),
+                row.Cell(diagnostic.Id),
+                row.Cell(FormatDiagnosticLocation(snapshot, diagnostic))
+            ])
+            .Focus(state.FocusedDiagnosticKey ?? string.Empty)
+            .OnFocusChanged(state.SelectDiagnostic)
+            .Fill();
+        return context.VStack(vertical =>
         [
             vertical.Text(!snapshot.DiagnosticsLoaded
                 ? "Diagnostics load when this view is selected"
@@ -351,32 +372,97 @@ internal static class DashboardView
                     : string.Create(
                         CultureInfo.InvariantCulture,
                         $"{snapshot.TotalDiagnostics} diagnostics")),
-            vertical.Table(snapshot.Diagnostics)
-                .RowKey(static diagnostic => string.Concat(
-                    diagnostic.ProjectName,
-                    "|",
-                    diagnostic.FilePath,
-                    "|",
-                    diagnostic.Line,
-                    "|",
-                    diagnostic.Character,
-                    "|",
-                    diagnostic.Id))
-                .Header(header =>
-                [
-                    header.Cell("Severity").Width(SizeHint.Fixed(10)),
-                    header.Cell("Code").Width(SizeHint.Fixed(10)),
-                    header.Cell("Project").Width(SizeHint.Fixed(24)),
-                    header.Cell("Message").Width(SizeHint.Fill)
-                ])
-                .Row((row, diagnostic, _) =>
-                [
-                    row.Cell(diagnostic.Severity),
-                    row.Cell(diagnostic.Id),
-                    row.Cell(diagnostic.ProjectName),
-                    row.Cell(diagnostic.Message)
-                ]).Fill()
+            table,
+            vertical.Border(nested =>
+            [
+                focusedDiagnostic is null
+                    ? nested.Text("No diagnostic is selected.")
+                    : nested.VStack(details =>
+                    [
+                        details.Text($"Project: {focusedDiagnostic.ProjectName}"),
+                        details.Text(
+                            $"Path: {FormatDiagnosticDirectory(snapshot, focusedDiagnostic)}")
+                            .Wrap(),
+                        details.Text(
+                            $"File: {FormatDiagnosticFileLocation(snapshot, focusedDiagnostic)}")
+                            .Wrap(),
+                        details.Text("Message:"),
+                        details.Text(focusedDiagnostic.Message).Wrap()
+                    ])
+            ])
+            .Title("Selected diagnostic  click a row, then use ↑↓")
+            .FixedHeight(10)
         ]).Fill();
+    }
+
+    private static string FormatDiagnosticLocation(
+        ControlDashboardSnapshot snapshot,
+        ControlDiagnosticInfo diagnostic)
+    {
+        string displayPath = GetDiagnosticDisplayPath(snapshot, diagnostic);
+        if (displayPath == "-")
+        {
+            return "-";
+        }
+
+        return string.Create(
+            CultureInfo.InvariantCulture,
+            $"{displayPath}:{diagnostic.Line + 1}:{diagnostic.Character + 1}");
+    }
+
+    private static string FormatDiagnosticDirectory(
+        ControlDashboardSnapshot snapshot,
+        ControlDiagnosticInfo diagnostic)
+    {
+        string displayPath = GetDiagnosticDisplayPath(snapshot, diagnostic);
+        return displayPath == "-"
+            ? "-"
+            : Path.GetDirectoryName(displayPath) ?? ".";
+    }
+
+    private static string FormatDiagnosticFileLocation(
+        ControlDashboardSnapshot snapshot,
+        ControlDiagnosticInfo diagnostic)
+    {
+        string displayPath = GetDiagnosticDisplayPath(snapshot, diagnostic);
+        return displayPath == "-"
+            ? "-"
+            : string.Create(
+                CultureInfo.InvariantCulture,
+                $"{Path.GetFileName(displayPath)}:{diagnostic.Line + 1}:" +
+                $"{diagnostic.Character + 1}");
+    }
+
+    private static string GetDiagnosticDisplayPath(
+        ControlDashboardSnapshot snapshot,
+        ControlDiagnosticInfo diagnostic)
+    {
+        if (string.IsNullOrWhiteSpace(diagnostic.FilePath))
+        {
+            return "-";
+        }
+
+        string displayPath = diagnostic.FilePath;
+        foreach (ControlWorkspaceInfo workspace in snapshot.Workspaces.OrderByDescending(
+            static workspace => workspace.RootPath.Length))
+        {
+            string relativePath = Path.GetRelativePath(workspace.RootPath, diagnostic.FilePath);
+            if (!Path.IsPathRooted(relativePath) &&
+                !relativePath.Equals("..", StringComparison.Ordinal) &&
+                !relativePath.StartsWith(
+                    $"..{Path.DirectorySeparatorChar}",
+                    StringComparison.Ordinal) &&
+                !relativePath.StartsWith(
+                    $"..{Path.AltDirectorySeparatorChar}",
+                    StringComparison.Ordinal))
+            {
+                displayPath = relativePath;
+                break;
+            }
+        }
+
+        return displayPath;
+    }
 
     private static VStackWidget BuildRequests(
         RootContext context,

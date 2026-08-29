@@ -151,10 +151,9 @@ internal static class WorkspaceInlayHintService
 
             foreach (VariableDeclaratorSyntax variable in declaration.Variables)
             {
-                var local = semanticModel.GetDeclaredSymbol(
+                ITypeSymbol? inferredType = semanticModel.GetDeclaredSymbol(
                     variable,
-                    cancellationToken) as ILocalSymbol;
-                ITypeSymbol? inferredType = local is null
+                    cancellationToken) is not ILocalSymbol local
                     ? null
                     : GetInferredLocalType(
                         variable,
@@ -270,14 +269,9 @@ internal static class WorkspaceInlayHintService
         VariableDeclaratorSyntax? variable = root
             .FindNode(sourceSpan, getInnermostNodeForTie: true)
             .FirstAncestorOrSelf<VariableDeclaratorSyntax>();
-        ILocalSymbol? local = variable is null
+        ILocalSymbol? local = (variable is null
             ? null
-            : semanticModel.GetDeclaredSymbol(variable, cancellationToken) as ILocalSymbol;
-        if (local is null)
-        {
-            throw new InvalidOperationException("The local variable for this inlay hint is unavailable.");
-        }
-
+            : semanticModel.GetDeclaredSymbol(variable, cancellationToken) as ILocalSymbol) ?? throw new InvalidOperationException("The local variable for this inlay hint is unavailable.");
         ITypeSymbol inferredType = GetInferredLocalType(
             variable!,
             local,
@@ -304,15 +298,10 @@ internal static class WorkspaceInlayHintService
         ArgumentSyntax? argument = root
             .FindNode(sourceSpan, getInnermostNodeForTie: true)
             .FirstAncestorOrSelf<ArgumentSyntax>();
-        IParameterSymbol? parameter = argument is null
+        IParameterSymbol? parameter = (argument is null
             ? null
             : (semanticModel.GetOperation(argument, cancellationToken) as IArgumentOperation)
-                ?.Parameter;
-        if (parameter is null)
-        {
-            throw new InvalidOperationException("The parameter for this inlay hint is unavailable.");
-        }
-
+                ?.Parameter) ?? throw new InvalidOperationException("The parameter for this inlay hint is unavailable.");
         string parameterDisplay = parameter.ToDisplayString(
             SymbolDisplayFormat.MinimallyQualifiedFormat);
         string memberDisplay = parameter.ContainingSymbol.ToDisplayString(

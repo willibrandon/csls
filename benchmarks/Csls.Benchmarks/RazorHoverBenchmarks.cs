@@ -58,13 +58,9 @@ public class RazorHoverBenchmarks : IAsyncDisposable
             },
             Position = new Position(0, 17)
         };
-        Hover? hover = await _workspaceManager
+        _ = await _workspaceManager
             .GetHoverAsync(_parameters, CancellationToken.None)
-            .ConfigureAwait(false);
-        if (hover is null)
-        {
-            throw new InvalidOperationException("The Razor hover benchmark did not resolve its fixture.");
-        }
+            .ConfigureAwait(false) ?? throw new InvalidOperationException("The Razor hover benchmark did not resolve its fixture.");
     }
 
     /// <summary>

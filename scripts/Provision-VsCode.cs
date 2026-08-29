@@ -325,7 +325,7 @@ static (string Executable, IReadOnlyList<string> Prefix) ResolveNpxInvocation()
     }
 
     string path = Environment.GetEnvironmentVariable("PATH") ?? string.Empty;
-    (string NodePath, string NpxCliPath) invocation = path
+    (string nodePath, string npxCliPath) = path
         .Split(
             Path.PathSeparator,
             StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
@@ -343,9 +343,9 @@ static (string Executable, IReadOnlyList<string> Prefix) ResolveNpxInvocation()
         })
         .FirstOrDefault(static candidate =>
             File.Exists(candidate.NodePath) && File.Exists(candidate.NpxCliPath));
-    if (invocation.NodePath is not null && invocation.NpxCliPath is not null)
+    if (nodePath is not null && npxCliPath is not null)
     {
-        return (invocation.NodePath, [invocation.NpxCliPath]);
+        return (nodePath, [npxCliPath]);
     }
 
     throw new FileNotFoundException(

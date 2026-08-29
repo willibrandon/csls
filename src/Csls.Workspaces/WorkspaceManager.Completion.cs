@@ -189,12 +189,7 @@ public sealed partial class WorkspaceManager
                 offset,
                 trigger: CreateCompletionTrigger(data.Context),
                 cancellationToken: cancellationToken)
-            .ConfigureAwait(false);
-        if (completion is null)
-        {
-            throw new InvalidOperationException("Roslyn no longer returns this completion list.");
-        }
-
+            .ConfigureAwait(false) ?? throw new InvalidOperationException("Roslyn no longer returns this completion list.");
         IReadOnlyList<RoslynCompletionItem> sourceItems = OrderCompletionItems(
             completion,
             text);
