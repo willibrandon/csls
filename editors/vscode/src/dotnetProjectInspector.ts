@@ -9,14 +9,18 @@ export class DotnetProjectInspector {
   async inspect(
     projectPath: string,
     cancellationToken?: vscode.CancellationToken,
+    globalProperties: Readonly<Record<string, string>> = {},
   ): Promise<MsbuildProjectPropertiesDocument["Properties"]> {
     const evaluation = await this.executor.execute(
       [
         "msbuild",
         projectPath,
         "-getProperty:TargetPath,IsTestingPlatformApplication,TargetFramework,OutputType",
+        "-maxcpucount:1",
         "-nologo",
+        "-nodeReuse:false",
         "-verbosity:quiet",
+        ...Object.entries(globalProperties).map(([name, value]) => `-property:${name}=${value}`),
       ],
       dirname(projectPath),
       cancellationToken,

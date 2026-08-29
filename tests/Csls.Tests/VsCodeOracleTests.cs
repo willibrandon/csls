@@ -25,8 +25,6 @@ public sealed class VsCodeOracleTests
         using ExternalWorkloadLease workloadLease = await ExternalWorkloadLease.AcquireAsync(
             TestContext.CancellationToken).ConfigureAwait(false);
         string repositoryRoot = EditorToolResolver.FindRepositoryRoot();
-        string launcherPath = EditorToolResolver.ResolveLauncher(repositoryRoot);
-        string workerPath = EditorToolResolver.ResolveServerWorker(repositoryRoot);
         string dotNetHostPath = EditorToolResolver.ResolveAbsoluteDotNetHost();
         string runtimeExtensionPath = EditorToolResolver.ResolveVsCodeExtension(
             repositoryRoot,
@@ -76,8 +74,6 @@ public sealed class VsCodeOracleTests
                     repositoryRoot,
                     fixturePath,
                     workspacePath,
-                    launcherPath,
-                    workerPath,
                     runtimeExtensionPath,
                     csharpExtensionPath,
                     devKitExtensionPath,
@@ -91,8 +87,6 @@ public sealed class VsCodeOracleTests
                     repositoryRoot,
                     fixturePath,
                     workspacePath,
-                    launcherPath,
-                    workerPath,
                     runtimeExtensionPath,
                     csharpExtensionPath,
                     devKitExtensionPath,
@@ -143,8 +137,6 @@ public sealed class VsCodeOracleTests
         string repositoryRoot,
         string fixturePath,
         string workspacePath,
-        string launcherPath,
-        string workerPath,
         string runtimeExtensionPath,
         string csharpExtensionPath,
         string devKitExtensionPath,
@@ -156,8 +148,6 @@ public sealed class VsCodeOracleTests
             repositoryRoot,
             fixturePath,
             workspacePath,
-            launcherPath,
-            workerPath,
             "csls",
             [runtimeExtensionPath, cslsExtensionPath],
             dotNetHostPath,
@@ -166,8 +156,6 @@ public sealed class VsCodeOracleTests
             repositoryRoot,
             fixturePath,
             workspacePath,
-            launcherPath,
-            workerPath,
             "csharp",
             [runtimeExtensionPath, csharpExtensionPath],
             dotNetHostPath,
@@ -176,8 +164,6 @@ public sealed class VsCodeOracleTests
             repositoryRoot,
             fixturePath,
             workspacePath,
-            launcherPath,
-            workerPath,
             "csdevkit",
             [runtimeExtensionPath, csharpExtensionPath, devKitExtensionPath],
             dotNetHostPath,
@@ -198,8 +184,6 @@ public sealed class VsCodeOracleTests
         string repositoryRoot,
         string fixturePath,
         string workspacePath,
-        string launcherPath,
-        string workerPath,
         string profile,
         IReadOnlyList<string> extensionPaths,
         string dotNetHostPath,
@@ -213,7 +197,7 @@ public sealed class VsCodeOracleTests
         Directory.CreateDirectory(extensionsPath);
         await File.WriteAllTextAsync(
             Path.Join(userDataPath, "User", "settings.json"),
-            CreateSettingsText(launcherPath, dotNetHostPath, profile),
+            CreateSettingsText(dotNetHostPath, profile),
             TestContext.CancellationToken).ConfigureAwait(false);
         using Process process = StartRunner(
             repositoryRoot,
@@ -221,7 +205,6 @@ public sealed class VsCodeOracleTests
             userDataPath,
             extensionsPath,
             outputPath,
-            workerPath,
             profile,
             extensionPaths,
             displayName);
@@ -303,7 +286,6 @@ public sealed class VsCodeOracleTests
         string userDataPath,
         string extensionsPath,
         string outputPath,
-        string workerPath,
         string profile,
         IReadOnlyList<string> extensionPaths,
         string? displayName)
@@ -334,7 +316,6 @@ public sealed class VsCodeOracleTests
         startInfo.Environment["CSLS_VSCODE_SUITE"] = "oracle-suite.cjs";
         startInfo.Environment["CSLS_VSCODE_USER_DATA_PATH"] = userDataPath;
         startInfo.Environment["CSLS_VSCODE_WORKSPACE_PATH"] = workspacePath;
-        startInfo.Environment["CSLS_WORKER_PATH"] = workerPath;
         if (displayName is not null)
         {
             startInfo.Environment["DISPLAY"] = displayName;
@@ -346,13 +327,9 @@ public sealed class VsCodeOracleTests
             ?? throw new InvalidOperationException($"The {profile} VS Code profile did not start.");
     }
 
-    private static string CreateSettingsText(
-        string launcherPath,
-        string dotNetHostPath,
-        string profile) => $$"""
+    private static string CreateSettingsText(string dotNetHostPath, string profile) => $$"""
         {
           "chat.disableAIFeatures": true,
-          "csls.server.path": {{JsonSerializer.Serialize(launcherPath)}},
           "csls.trace.server": "verbose",
           "dotnetAcquisitionExtension.allowInvalidPaths": true,
           "dotnetAcquisitionExtension.sharedExistingDotnetPath": {{JsonSerializer.Serialize(dotNetHostPath)}},

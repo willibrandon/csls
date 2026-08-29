@@ -62,10 +62,20 @@ internal static class WorkspaceDiscovery
         {
             string extension = Path.GetExtension(fullPath);
             if (extension.Equals(".slnx", StringComparison.OrdinalIgnoreCase) ||
-                extension.Equals(".sln", StringComparison.OrdinalIgnoreCase) ||
-                extension.Equals(".csproj", StringComparison.OrdinalIgnoreCase))
+                extension.Equals(".sln", StringComparison.OrdinalIgnoreCase))
             {
                 return [fullPath];
+            }
+
+            if (extension.Equals(".csproj", StringComparison.OrdinalIgnoreCase))
+            {
+                string possibleEntryPointPath = fullPath[..^extension.Length];
+                return File.Exists(possibleEntryPointPath) &&
+                    FileBasedAppProjectArtifact.IsGeneratedForEntryPoint(
+                        fullPath,
+                        possibleEntryPointPath)
+                    ? [possibleEntryPointPath]
+                    : [fullPath];
             }
 
             if (IsFileBasedApp(fullPath))
@@ -119,12 +129,19 @@ internal static class WorkspaceDiscovery
                 }
                 else if (extension.Equals(".csproj", StringComparison.OrdinalIgnoreCase))
                 {
-                    containsProject = true;
-                    AddWorkspaceFile(
-                        projects,
-                        filePath,
-                        fullPath,
-                        solutions.Count + projects.Count + fileBasedApps.Count);
+                    string possibleEntryPointPath = filePath[..^extension.Length];
+                    if (!File.Exists(possibleEntryPointPath) ||
+                        !FileBasedAppProjectArtifact.IsGeneratedForEntryPoint(
+                            filePath,
+                            possibleEntryPointPath))
+                    {
+                        containsProject = true;
+                        AddWorkspaceFile(
+                            projects,
+                            filePath,
+                            fullPath,
+                            solutions.Count + projects.Count + fileBasedApps.Count);
+                    }
                 }
                 else if (!pending.IsProjectCone &&
                     extension.Equals(".cs", StringComparison.OrdinalIgnoreCase) &&

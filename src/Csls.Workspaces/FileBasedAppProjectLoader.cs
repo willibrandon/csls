@@ -36,9 +36,15 @@ internal static class FileBasedAppProjectLoader
         ArgumentNullException.ThrowIfNull(workspace);
         ArgumentException.ThrowIfNullOrWhiteSpace(entryPointPath);
         ArgumentNullException.ThrowIfNull(reportDiagnostic);
+        entryPointPath = Path.GetFullPath(entryPointPath);
 
         using FileStream projectLock = await AcquireProjectLockAsync(
             entryPointPath,
+            cancellationToken).ConfigureAwait(false);
+        string materializationMarkerPath = CreateMaterializationMarkerPath(entryPointPath);
+        await RecoverInterruptedMaterializationAsync(
+            entryPointPath,
+            materializationMarkerPath,
             cancellationToken).ConfigureAwait(false);
         await DotNetWorkspaceRestorer
             .RestoreAsync([entryPointPath], cancellationToken)
@@ -49,8 +55,29 @@ internal static class FileBasedAppProjectLoader
             cancellationToken).ConfigureAwait(false);
 
         bool materialized = false;
+        bool markerCreated = false;
         try
         {
+            if (File.Exists(projectPath))
+            {
+                if (!FileBasedAppProjectArtifact.IsGeneratedForEntryPoint(
+                    projectPath,
+                    entryPointPath))
+                {
+                    throw new InvalidOperationException(
+                        $"Cannot load file-based app {entryPointPath} because {projectPath} " +
+                        "already exists and is not its generated project.");
+                }
+
+                File.Delete(projectPath);
+            }
+
+            await File.WriteAllTextAsync(
+                materializationMarkerPath,
+                projectPath,
+                Encoding.UTF8,
+                cancellationToken).ConfigureAwait(false);
+            markerCreated = true;
             using (var stream = new FileStream(
                 projectPath,
                 FileMode.CreateNew,
@@ -66,9 +93,13 @@ internal static class FileBasedAppProjectLoader
                 await writer.FlushAsync(cancellationToken).ConfigureAwait(false);
             }
 
-            return await workspace.OpenProjectAsync(
+            Project project = await workspace.OpenProjectAsync(
                 projectPath,
                 cancellationToken: cancellationToken).ConfigureAwait(false);
+            Solution solution = project.Solution.WithProjectFilePath(project.Id, entryPointPath);
+            return solution.GetProject(project.Id)
+                ?? throw new InvalidOperationException(
+                    $"The file-based app project disappeared after loading {entryPointPath}.");
         }
         finally
         {
@@ -86,6 +117,11 @@ internal static class FileBasedAppProjectLoader
                         $"Could not remove temporary file-based app project {projectPath}: " +
                         exception.Message);
                 }
+            }
+
+            if (markerCreated)
+            {
+                File.Delete(materializationMarkerPath);
             }
         }
     }
@@ -205,20 +241,8 @@ internal static class FileBasedAppProjectLoader
         string entryPointPath,
         CancellationToken cancellationToken)
     {
-        string localDataPath = Environment.GetFolderPath(
-            Environment.SpecialFolder.LocalApplicationData);
-        if (string.IsNullOrWhiteSpace(localDataPath))
-        {
-            localDataPath = Path.GetTempPath();
-        }
-
-        string lockDirectory = Path.Join(localDataPath, "csls", "file-app-locks");
-        Directory.CreateDirectory(lockDirectory);
-        string normalizedPath = OperatingSystem.IsWindows()
-            ? Path.GetFullPath(entryPointPath).ToUpperInvariant()
-            : Path.GetFullPath(entryPointPath);
-        string lockName = Convert.ToHexString(
-            SHA256.HashData(Encoding.UTF8.GetBytes(normalizedPath)));
+        string lockDirectory = CreateStateDirectory("file-app-locks");
+        string lockName = CreateEntryPointIdentity(entryPointPath);
         string lockPath = Path.Join(lockDirectory, lockName + ".lock");
         while (true)
         {
@@ -237,6 +261,65 @@ internal static class FileBasedAppProjectLoader
                     .ConfigureAwait(false);
             }
         }
+    }
+
+    private static string CreateStateDirectory(string name)
+    {
+        string localDataPath = Environment.GetFolderPath(
+            Environment.SpecialFolder.LocalApplicationData);
+        if (string.IsNullOrWhiteSpace(localDataPath))
+        {
+            localDataPath = Path.GetTempPath();
+        }
+
+        string directory = Path.Join(localDataPath, "csls", name);
+        Directory.CreateDirectory(directory);
+        return directory;
+    }
+
+    private static string CreateMaterializationMarkerPath(string entryPointPath)
+    {
+        string markerDirectory = CreateStateDirectory("file-app-materializations");
+        return Path.Join(
+            markerDirectory,
+            CreateEntryPointIdentity(entryPointPath) + ".marker");
+    }
+
+    private static async Task RecoverInterruptedMaterializationAsync(
+        string entryPointPath,
+        string markerPath,
+        CancellationToken cancellationToken)
+    {
+        if (!File.Exists(markerPath))
+        {
+            return;
+        }
+
+        string markedProjectPath = (await File.ReadAllTextAsync(
+            markerPath,
+            cancellationToken).ConfigureAwait(false)).Trim();
+        string expectedProjectPath = entryPointPath + ".csproj";
+        if (!string.Equals(
+            Path.GetFullPath(markedProjectPath),
+            Path.GetFullPath(expectedProjectPath),
+            PathComparison))
+        {
+            throw new InvalidDataException(
+                $"File-based app materialization marker {markerPath} points to " +
+                $"unexpected project {markedProjectPath}.");
+        }
+
+        File.Delete(expectedProjectPath);
+        File.Delete(markerPath);
+    }
+
+    private static string CreateEntryPointIdentity(string entryPointPath)
+    {
+        string normalizedPath = OperatingSystem.IsWindows()
+            ? Path.GetFullPath(entryPointPath).ToUpperInvariant()
+            : Path.GetFullPath(entryPointPath);
+        return Convert.ToHexString(
+            SHA256.HashData(Encoding.UTF8.GetBytes(normalizedPath)));
     }
 
     private static void ReportDiagnostics(

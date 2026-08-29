@@ -8,7 +8,12 @@ exports.activate = async function activate() {
 
   let result;
   try {
-    await require("./dist/suite.cjs").run();
+    const suitePath = process.env.CSLS_VSCODE_REMOTE_SUITE ?? "./dist/suite.cjs";
+    if (!["./dist/suite.cjs", "./dist/startup-suite.cjs"].includes(suitePath)) {
+      throw new Error(`Unsupported remote VS Code test suite: ${suitePath}`);
+    }
+
+    await require(suitePath).run();
     result = { success: true };
   } catch (error) {
     result = {

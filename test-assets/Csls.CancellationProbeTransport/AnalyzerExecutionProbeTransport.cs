@@ -10,8 +10,6 @@ namespace Csls.Testing;
 public static class AnalyzerExecutionProbeTransport
 {
     private const string ReleaseFileName = "AnalyzerExecutionProbe.release";
-    private static readonly object s_markerGate = new();
-
     /// <summary>
     /// Records one analyzer run and blocks it until release or cancellation.
     /// </summary>
@@ -65,9 +63,6 @@ public static class AnalyzerExecutionProbeTransport
 
     private static void Signal(string markerPath, string value)
     {
-        lock (s_markerGate)
-        {
-            File.AppendAllText(markerPath, value + Environment.NewLine);
-        }
+        FileSignalPublisher.AppendAllText(markerPath, value + Environment.NewLine);
     }
 }

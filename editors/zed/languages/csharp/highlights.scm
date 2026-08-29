@@ -60,6 +60,10 @@
 (base_list
   (identifier) @type)
 
+(member_access_expression
+  expression: (identifier) @type
+  (#match? @type "^[A-Z]"))
+
 (predefined_type) @type.builtin
 
 ; Enum

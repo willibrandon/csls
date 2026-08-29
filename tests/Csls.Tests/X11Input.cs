@@ -8,6 +8,9 @@ namespace Csls.Tests;
 internal static partial class X11Input
 {
     private const ulong ControlLeftKeySym = 0xffe3;
+    private const ulong AltLeftKeySym = 0xffe9;
+    private const ulong ShiftLeftKeySym = 0xffe1;
+    private const ulong F12KeySym = 0xffc9;
     private const int RevertToParent = 2;
 
     /// <summary>
@@ -59,14 +62,6 @@ internal static partial class X11Input
     internal static void SendControlCharacter(string displayName, char character)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(displayName);
-        if (!char.IsAsciiLetterLower(character))
-        {
-            throw new ArgumentOutOfRangeException(
-                nameof(character),
-                character,
-                "The X11 test input must be a lowercase ASCII letter.");
-        }
-
         nint display = OpenDisplay(displayName);
         if (display == 0)
         {
@@ -75,18 +70,105 @@ internal static partial class X11Input
 
         try
         {
-            byte controlKey = KeySymToKeycode(display, ControlLeftKeySym);
-            byte characterKey = KeySymToKeycode(display, character);
-            if (controlKey == 0 || characterKey == 0)
+            SendControlCharacter(display, character);
+            _ = Flush(display);
+        }
+        finally
+        {
+            _ = CloseDisplay(display);
+        }
+    }
+
+    /// <summary>
+    /// Sends a two-part Control chord through one ordered X connection.
+    /// </summary>
+    /// <param name="displayName">The isolated X display name.</param>
+    /// <param name="firstCharacter">The first lowercase ASCII key to press.</param>
+    /// <param name="secondCharacter">The second lowercase ASCII key to press.</param>
+    internal static void SendControlSequence(
+        string displayName,
+        char firstCharacter,
+        char secondCharacter)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(displayName);
+        nint display = OpenDisplay(displayName);
+        if (display == 0)
+        {
+            throw new InvalidOperationException($"The X display is unavailable: {displayName}");
+        }
+
+        try
+        {
+            SendControlCharacter(display, firstCharacter);
+            SendControlCharacter(display, secondCharacter);
+            _ = Flush(display);
+        }
+        finally
+        {
+            _ = CloseDisplay(display);
+        }
+    }
+
+    /// <summary>
+    /// Sends F12 to the focused window and flushes the X event queue.
+    /// </summary>
+    /// <param name="displayName">The isolated X display name.</param>
+    internal static void SendF12(string displayName)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(displayName);
+        nint display = OpenDisplay(displayName);
+        if (display == 0)
+        {
+            throw new InvalidOperationException($"The X display is unavailable: {displayName}");
+        }
+
+        try
+        {
+            byte functionKey = KeySymToKeycode(display, F12KeySym);
+            if (functionKey == 0)
             {
-                throw new InvalidOperationException(
-                    $"The X display cannot map Control+{character}.");
+                throw new InvalidOperationException("The X display cannot map F12.");
             }
 
-            SendKey(display, controlKey, isPressed: true);
-            SendKey(display, characterKey, isPressed: true);
-            SendKey(display, characterKey, isPressed: false);
-            SendKey(display, controlKey, isPressed: false);
+            SendKey(display, functionKey, isPressed: true);
+            SendKey(display, functionKey, isPressed: false);
+            _ = Flush(display);
+        }
+        finally
+        {
+            _ = CloseDisplay(display);
+        }
+    }
+
+    /// <summary>
+    /// Sends Alt+Shift+F12 to the focused window and flushes the X event queue.
+    /// </summary>
+    /// <param name="displayName">The isolated X display name.</param>
+    internal static void SendFindAllReferences(string displayName)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(displayName);
+        nint display = OpenDisplay(displayName);
+        if (display == 0)
+        {
+            throw new InvalidOperationException($"The X display is unavailable: {displayName}");
+        }
+
+        try
+        {
+            byte altKey = KeySymToKeycode(display, AltLeftKeySym);
+            byte shiftKey = KeySymToKeycode(display, ShiftLeftKeySym);
+            byte functionKey = KeySymToKeycode(display, F12KeySym);
+            if (altKey == 0 || shiftKey == 0 || functionKey == 0)
+            {
+                throw new InvalidOperationException("The X display cannot map Alt+Shift+F12.");
+            }
+
+            SendKey(display, altKey, isPressed: true);
+            SendKey(display, shiftKey, isPressed: true);
+            SendKey(display, functionKey, isPressed: true);
+            SendKey(display, functionKey, isPressed: false);
+            SendKey(display, shiftKey, isPressed: false);
+            SendKey(display, altKey, isPressed: false);
             _ = Flush(display);
         }
         finally
@@ -103,6 +185,30 @@ internal static partial class X11Input
         }
     }
 
+    private static void SendControlCharacter(nint display, char character)
+    {
+        if (!char.IsAsciiLetterLower(character))
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(character),
+                character,
+                "The X11 test input must be a lowercase ASCII letter.");
+        }
+
+        byte controlKey = KeySymToKeycode(display, ControlLeftKeySym);
+        byte characterKey = KeySymToKeycode(display, character);
+        if (controlKey == 0 || characterKey == 0)
+        {
+            throw new InvalidOperationException(
+                $"The X display cannot map Control+{character}.");
+        }
+
+        SendKey(display, controlKey, isPressed: true);
+        SendKey(display, characterKey, isPressed: true);
+        SendKey(display, characterKey, isPressed: false);
+        SendKey(display, controlKey, isPressed: false);
+    }
+
     private static nuint FindWindow(
         nint display,
         nuint window,
@@ -115,7 +221,7 @@ internal static partial class X11Input
             observedTitles.Add(title);
         }
 
-        if (title?.Contains(titleText, StringComparison.Ordinal) == true)
+        if (title is not null && title.Contains(titleText, StringComparison.Ordinal))
         {
             return window;
         }

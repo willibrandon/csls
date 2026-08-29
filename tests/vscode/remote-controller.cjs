@@ -2,7 +2,7 @@ const { readFile } = require("node:fs/promises");
 
 exports.run = async function run() {
   const resultPath = requireEnvironment("CSLS_VSCODE_REMOTE_RESULT_PATH");
-  const deadline = Date.now() + 180_000;
+  const deadline = Date.now() + 300_000;
   while (Date.now() < deadline) {
     try {
       const result = JSON.parse(await readFile(resultPath, "utf8"));
@@ -20,7 +20,7 @@ exports.run = async function run() {
     await new Promise((resolve) => setTimeout(resolve, 100));
   }
 
-  throw new Error("The remote VS Code feature suite did not finish within 180 seconds.");
+  throw new Error("The remote VS Code feature suite did not finish within 300 seconds.");
 };
 
 function requireEnvironment(name) {

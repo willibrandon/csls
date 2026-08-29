@@ -49,19 +49,6 @@ public sealed class VsCodeWebLanguageServerTests
             TestContext.CancellationToken).ConfigureAwait(false);
         string repositoryRoot = EditorToolResolver.FindRepositoryRoot();
         string runnerPath = Path.Join(repositoryRoot, "tests", "vscode", "web-runner.mjs");
-        string browserExtensionPath = Path.Join(
-            repositoryRoot,
-            "editors",
-            "vscode",
-            "dist",
-            "browserExtension.cjs");
-        string workerPath = Path.Join(
-            repositoryRoot,
-            "editors",
-            "vscode",
-            "dist",
-            "browserServer",
-            "cslsBrowserWorker.js");
         string suitePath = Path.Join(
             repositoryRoot,
             "editors",
@@ -70,12 +57,6 @@ public sealed class VsCodeWebLanguageServerTests
             "test",
             "web-suite.cjs");
         Assert.IsTrue(File.Exists(runnerPath), $"VS Code web runner not found at {runnerPath}.");
-        Assert.IsTrue(
-            File.Exists(browserExtensionPath),
-            "Build the VS Code browser extension before running its host tests.");
-        Assert.IsTrue(
-            File.Exists(workerPath),
-            "Build the VS Code web worker before running its host tests.");
         Assert.IsTrue(
             File.Exists(suitePath),
             "Build the VS Code web test suite before running its host tests.");
@@ -91,14 +72,26 @@ public sealed class VsCodeWebLanguageServerTests
         try
         {
             string workspacePath = Path.Join(fixturePath, "workspace");
+            string sourceProjectPath = Path.Join(workspacePath, "App");
+            string toolsPath = Path.Join(workspacePath, "Tools");
             Directory.CreateDirectory(workspacePath);
+            Directory.CreateDirectory(sourceProjectPath);
+            Directory.CreateDirectory(toolsPath);
             await File.WriteAllTextAsync(
-                Path.Join(workspacePath, "Fixture.csproj"),
+                Path.Join(sourceProjectPath, "Fixture.csproj"),
                 ProjectText,
+                TestContext.CancellationToken).ConfigureAwait(false);
+            await File.WriteAllTextAsync(
+                Path.Join(workspacePath, "Fixture.slnx"),
+                SolutionText,
                 TestContext.CancellationToken).ConfigureAwait(false);
             await File.WriteAllTextAsync(
                 Path.Join(workspacePath, "Program.cs"),
                 DocumentText,
+                TestContext.CancellationToken).ConfigureAwait(false);
+            await File.WriteAllTextAsync(
+                Path.Join(toolsPath, "Tool.cs"),
+                FileBasedAppText,
                 TestContext.CancellationToken).ConfigureAwait(false);
             using Process runner = StartRunner(
                 repositoryRoot,
@@ -129,7 +122,12 @@ public sealed class VsCodeWebLanguageServerTests
                 TestContext.WriteLine(await errorTask.ConfigureAwait(false));
             }
 
+            string output = await outputTask.ConfigureAwait(false);
             Assert.AreEqual(0, runner.ExitCode);
+            Assert.DoesNotContain(
+                "Only file document URIs have filesystem paths.",
+                output,
+                StringComparison.Ordinal);
         }
         finally
         {
@@ -142,15 +140,31 @@ public sealed class VsCodeWebLanguageServerTests
     private const string ProjectText = """
         <Project Sdk="Microsoft.NET.Sdk">
           <PropertyGroup>
+            <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
             <ImplicitUsings>enable</ImplicitUsings>
             <OutputType>Exe</OutputType>
             <TargetFramework>net10.0</TargetFramework>
           </PropertyGroup>
+          <ItemGroup>
+            <Compile Include="../Program.cs" />
+          </ItemGroup>
         </Project>
+        """;
+
+    private const string SolutionText = """
+        <Solution>
+          <Project Path="App/Fixture.csproj" />
+        </Solution>
         """;
 
     private const string DocumentText = """
         Console.WriteLine("hello");
+        """;
+
+    private const string FileBasedAppText = """
+        #:property TargetFramework=net10.0
+
+        Console.WriteLine("tool");
         """;
 
     private static Process StartRunner(

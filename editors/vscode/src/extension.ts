@@ -2,20 +2,22 @@ import { access } from "node:fs/promises";
 import { isAbsolute, join } from "node:path";
 import * as vscode from "vscode";
 import {
-  LanguageClient,
   type LanguageClientOptions,
   RevealOutputChannelOn,
   type ServerOptions,
   State,
 } from "vscode-languageclient/node";
+import { registerCSharpVirtualDocumentProvider } from "./csharpVirtualDocumentProvider.js";
+import { DesktopLanguageClient } from "./desktopLanguageClient.js";
 import { DebuggerProvider } from "./debuggerProvider.js";
+import { LanguageServerLogOutputChannel } from "./languageServerLogOutputChannel.js";
 import { WorkspaceExperience } from "./workspaceExperience.js";
 
 const extensionId = "willibrandon.csls";
 const runtimeVersion = "10.0";
 const conflictingExtensionIds = ["ms-dotnettools.csharp", "ms-dotnettools.csdevkit"];
 
-let client: LanguageClient | undefined;
+let client: DesktopLanguageClient | undefined;
 let outputChannel: vscode.LogOutputChannel | undefined;
 let workspaceExperience: WorkspaceExperience | undefined;
 
@@ -77,6 +79,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<CslsEx
     outputChannel,
   );
   workspaceExperience = new WorkspaceExperience(sdkPath, outputChannel);
+  registerCSharpVirtualDocumentProvider(context, () => client);
   context.subscriptions.push(
     vscode.commands.registerCommand("csls.restartServer", restartServer),
     vscode.commands.registerCommand("csls.showOutput", () => outputChannel?.show()),
@@ -193,7 +196,7 @@ function createLanguageClient(
   serverPath: string,
   runtimePath: string,
   watchers: readonly vscode.FileSystemWatcher[],
-): LanguageClient {
+): DesktopLanguageClient {
   const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
   if (outputChannel === undefined) {
     throw new Error("The csls output channel was not initialized.");
@@ -223,7 +226,7 @@ function createLanguageClient(
       { language: "csharp", scheme: "file" },
       { language: "razor", scheme: "file" },
     ],
-    outputChannel,
+    outputChannel: new LanguageServerLogOutputChannel(outputChannel),
     revealOutputChannelOn: RevealOutputChannelOn.Error,
     synchronize: {
       configurationSection: ["csls", "csharp", "dotnet"],
@@ -231,7 +234,7 @@ function createLanguageClient(
     },
     ...(workspaceFolder === undefined ? {} : { workspaceFolder }),
   };
-  return new LanguageClient("csls", "csls", serverOptions, clientOptions);
+  return new DesktopLanguageClient(serverOptions, clientOptions);
 }
 
 async function restartServer(): Promise<void> {

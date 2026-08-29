@@ -181,11 +181,84 @@ public sealed class FileBasedAppLanguageServerTests
                 directiveHover.Value.ToString(),
                 StringComparison.Ordinal);
 
+            CSharpWorkspaceInfo workspace = await lsp.RequestWorkspaceInfoAsync(
+                TestContext.CancellationToken).ConfigureAwait(false);
+            CSharpWorkspaceFolderInfo folder = Assert.ContainsSingle(workspace.Workspaces);
+            Assert.AreEqual(fixturePath, folder.RootPath);
+            Assert.AreEqual(2, folder.ProjectCount);
+            CSharpWorkspaceProjectInfo scriptProject = Assert.ContainsSingle(
+                workspace.Projects.Where(project => string.Equals(
+                    project.FilePath,
+                    scriptPath,
+                    StringComparison.Ordinal)));
+            CSharpWorkspaceProjectInfo directiveProject = Assert.ContainsSingle(
+                workspace.Projects.Where(project => string.Equals(
+                    project.FilePath,
+                    directiveAppPath,
+                    StringComparison.Ordinal)));
+            Assert.AreEqual("hello.cs", scriptProject.Name);
+            Assert.AreEqual("directives.cs", directiveProject.Name);
+
             string standardError = await lsp.ShutdownAsync(
                 TestContext.CancellationToken).ConfigureAwait(false);
             Assert.DoesNotContain("Unhandled exception", standardError, StringComparison.Ordinal);
             Assert.IsFalse(File.Exists(scriptPath + ".csproj"));
             Assert.IsFalse(File.Exists(directiveAppPath + ".csproj"));
+        }
+        finally
+        {
+            Directory.Delete(fixturePath, recursive: true);
+        }
+    }
+
+    /// <summary>
+    /// Recovers a generated file-app project left behind when a previous host was terminated.
+    /// </summary>
+    [TestMethod]
+    public async Task StaleGeneratedProjectDoesNotBlockFileBasedApp()
+    {
+        string fixturePath = CreateFixturePath("stale-project");
+        Directory.CreateDirectory(fixturePath);
+        try
+        {
+            string entryPointPath = Path.Join(fixturePath, "App.cs");
+            string generatedProjectPath = entryPointPath + ".csproj";
+            await File.WriteAllTextAsync(
+                entryPointPath,
+                DiscoveredDirectiveAppText,
+                TestContext.CancellationToken).ConfigureAwait(false);
+            var staleProject = new XDocument(
+                new XElement(
+                    "Project",
+                    new XElement(
+                        "PropertyGroup",
+                        new XElement("FileBasedProgram", "true"),
+                        new XElement("EntryPointFilePath", entryPointPath))));
+            await File.WriteAllTextAsync(
+                generatedProjectPath,
+                staleProject.ToString(),
+                TestContext.CancellationToken).ConfigureAwait(false);
+
+            LspProcessSession lsp = StartWorker(fixturePath);
+            await using ConfiguredAsyncDisposable lspDisposal = lsp.ConfigureAwait(false);
+            await lsp.InitializeAsync(
+                fixturePath,
+                TestContext.CancellationToken).ConfigureAwait(false);
+            await lsp.OpenDocumentAsync(
+                entryPointPath,
+                DiscoveredDirectiveAppText).ConfigureAwait(false);
+
+            JsonElement? hover = await lsp.RequestHoverAsync(
+                entryPointPath,
+                new Position(1, 1),
+                TestContext.CancellationToken).ConfigureAwait(false);
+            Assert.IsTrue(hover.HasValue);
+            Assert.Contains("System.Console", hover.Value.ToString(), StringComparison.Ordinal);
+            Assert.IsFalse(File.Exists(generatedProjectPath));
+
+            string standardError = await lsp.ShutdownAsync(
+                TestContext.CancellationToken).ConfigureAwait(false);
+            Assert.DoesNotContain("Unhandled exception", standardError, StringComparison.Ordinal);
         }
         finally
         {

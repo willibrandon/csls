@@ -1,5 +1,7 @@
 using Csls.Protocol;
 using Microsoft.CodeAnalysis;
+using System.Buffers.Text;
+using System.Text;
 
 namespace Csls.Workspaces;
 
@@ -12,6 +14,9 @@ internal static class VirtualDocumentUri
     private const string GeneratedPrefix = "csharp:/generated/";
     private const string MetadataPrefix = "csharp:/metadata/";
     private const string SourceSuffix = ".cs";
+    private static readonly UTF8Encoding s_utf8 = new(
+        encoderShouldEmitUTF8Identifier: false,
+        throwOnInvalidBytes: true);
 
     /// <summary>
     /// Creates a stable URI for one source-generated document.
@@ -76,9 +81,9 @@ internal static class VirtualDocumentUri
         return DocumentUri.Parse(
             string.Concat(
                 prefix,
-                Uri.EscapeDataString(projectUri),
+                EncodeComponent(projectUri),
                 '/',
-                Uri.EscapeDataString(value),
+                EncodeComponent(value),
                 suffix));
     }
 
@@ -111,8 +116,8 @@ internal static class VirtualDocumentUri
 
         try
         {
-            string projectUriText = Uri.UnescapeDataString(components[..separator].ToString());
-            string decodedValue = Uri.UnescapeDataString(components[(separator + 1)..].ToString());
+            string projectUriText = DecodeComponent(components[..separator]);
+            string decodedValue = DecodeComponent(components[(separator + 1)..]);
             if (string.IsNullOrWhiteSpace(decodedValue))
             {
                 return false;
@@ -123,11 +128,17 @@ internal static class VirtualDocumentUri
             return true;
         }
         catch (Exception exception) when (
-            exception is ArgumentException or InvalidOperationException or UriFormatException)
+            exception is ArgumentException or FormatException or InvalidOperationException)
         {
             projectFilePath = string.Empty;
             value = string.Empty;
             return false;
         }
     }
+
+    private static string EncodeComponent(string value) =>
+        Base64Url.EncodeToString(Encoding.UTF8.GetBytes(value));
+
+    private static string DecodeComponent(ReadOnlySpan<char> value) =>
+        s_utf8.GetString(Base64Url.DecodeFromChars(value));
 }

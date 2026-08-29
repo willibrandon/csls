@@ -231,6 +231,34 @@ internal sealed class LspProcessSession : IAsyncDisposable
     }
 
     /// <summary>
+    /// Initializes the server with an explicit LSP client process identifier.
+    /// </summary>
+    /// <param name="workspacePath">The absolute workspace directory.</param>
+    /// <param name="clientProcessId">The real client process identifier.</param>
+    /// <param name="cancellationToken">The test cancellation token.</param>
+    /// <returns>The server initialization result.</returns>
+    internal async Task<JsonElement> InitializeWithProcessIdAsync(
+        string workspacePath,
+        int clientProcessId,
+        CancellationToken cancellationToken)
+    {
+        using var capabilities = JsonDocument.Parse(
+            """
+            {
+              "textDocument": {
+                "diagnostic": {}
+              }
+            }
+            """);
+        return await InitializeAsync(
+            [workspacePath],
+            capabilities.RootElement,
+            initializationOptions: null,
+            clientProcessId,
+            cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
     /// Initializes the server with explicit client capabilities and returns its raw result.
     /// </summary>
     /// <param name="workspacePath">The absolute workspace directory.</param>
@@ -263,6 +291,21 @@ internal sealed class LspProcessSession : IAsyncDisposable
         JsonElement? initializationOptions,
         CancellationToken cancellationToken)
     {
+        return await InitializeAsync(
+            workspacePaths,
+            capabilities,
+            initializationOptions,
+            Environment.ProcessId,
+            cancellationToken).ConfigureAwait(false);
+    }
+
+    private async Task<JsonElement> InitializeAsync(
+        IReadOnlyList<string> workspacePaths,
+        JsonElement capabilities,
+        JsonElement? initializationOptions,
+        int? clientProcessId,
+        CancellationToken cancellationToken)
+    {
         ArgumentNullException.ThrowIfNull(workspacePaths);
         if (workspacePaths.Count == 0)
         {
@@ -273,7 +316,7 @@ internal sealed class LspProcessSession : IAsyncDisposable
             "initialize",
             new InitializeParams
             {
-                ProcessId = Environment.ProcessId,
+                ProcessId = clientProcessId,
                 ClientInfo = new ClientInfo { Name = "Csls.ParityTests" },
                 RootUri = DocumentUri.FromFileSystemPath(workspacePaths[0]),
                 WorkspaceFolders =
@@ -672,13 +715,26 @@ internal sealed class LspProcessSession : IAsyncDisposable
     internal Task<IReadOnlyList<FoldingRange>> RequestFoldingRangesAsync(
         string documentPath,
         CancellationToken cancellationToken) =>
+        RequestFoldingRangesAsync(
+            DocumentUri.FromFileSystemPath(documentPath),
+            cancellationToken);
+
+    /// <summary>
+    /// Requests negotiated folding ranges for one document URI.
+    /// </summary>
+    /// <param name="documentUri">The absolute target document URI.</param>
+    /// <param name="cancellationToken">The test cancellation token.</param>
+    /// <returns>The bounded ordered folding ranges.</returns>
+    internal Task<IReadOnlyList<FoldingRange>> RequestFoldingRangesAsync(
+        DocumentUri documentUri,
+        CancellationToken cancellationToken) =>
         _rpc.InvokeWithParameterObjectAsync<IReadOnlyList<FoldingRange>>(
             "textDocument/foldingRange",
             new FoldingRangeParams
             {
                 TextDocument = new TextDocumentIdentifier
                 {
-                    Uri = DocumentUri.FromFileSystemPath(documentPath)
+                    Uri = documentUri
                 }
             },
             cancellationToken);
@@ -761,13 +817,26 @@ internal sealed class LspProcessSession : IAsyncDisposable
     internal Task<IReadOnlyList<DocumentLink>> RequestDocumentLinksAsync(
         string documentPath,
         CancellationToken cancellationToken) =>
+        RequestDocumentLinksAsync(
+            DocumentUri.FromFileSystemPath(documentPath),
+            cancellationToken);
+
+    /// <summary>
+    /// Requests navigable resource links for one document URI.
+    /// </summary>
+    /// <param name="documentUri">The absolute target document URI.</param>
+    /// <param name="cancellationToken">The test cancellation token.</param>
+    /// <returns>The bounded ordered document links.</returns>
+    internal Task<IReadOnlyList<DocumentLink>> RequestDocumentLinksAsync(
+        DocumentUri documentUri,
+        CancellationToken cancellationToken) =>
         _rpc.InvokeWithParameterObjectAsync<IReadOnlyList<DocumentLink>>(
             "textDocument/documentLink",
             new DocumentLinkParams
             {
                 TextDocument = new TextDocumentIdentifier
                 {
-                    Uri = DocumentUri.FromFileSystemPath(documentPath)
+                    Uri = documentUri
                 }
             },
             cancellationToken);
@@ -1127,13 +1196,26 @@ internal sealed class LspProcessSession : IAsyncDisposable
     internal Task<IReadOnlyList<DocumentSymbol>> RequestDocumentSymbolsAsync(
         string documentPath,
         CancellationToken cancellationToken) =>
+        RequestDocumentSymbolsAsync(
+            DocumentUri.FromFileSystemPath(documentPath),
+            cancellationToken);
+
+    /// <summary>
+    /// Requests the hierarchical declarations for one document URI.
+    /// </summary>
+    /// <param name="documentUri">The absolute target document URI.</param>
+    /// <param name="cancellationToken">The test cancellation token.</param>
+    /// <returns>The bounded declaration hierarchy.</returns>
+    internal Task<IReadOnlyList<DocumentSymbol>> RequestDocumentSymbolsAsync(
+        DocumentUri documentUri,
+        CancellationToken cancellationToken) =>
         _rpc.InvokeWithParameterObjectAsync<IReadOnlyList<DocumentSymbol>>(
             "textDocument/documentSymbol",
             new DocumentSymbolParams
             {
                 TextDocument = new TextDocumentIdentifier
                 {
-                    Uri = DocumentUri.FromFileSystemPath(documentPath)
+                    Uri = documentUri
                 }
             },
             cancellationToken);
@@ -1354,13 +1436,35 @@ internal sealed class LspProcessSession : IAsyncDisposable
         IReadOnlyList<string>? only,
         IReadOnlyList<Diagnostic> diagnostics,
         CancellationToken cancellationToken) =>
+        RequestCodeActionsAsync(
+            DocumentUri.FromFileSystemPath(documentPath),
+            range,
+            only,
+            diagnostics,
+            cancellationToken);
+
+    /// <summary>
+    /// Requests concrete code actions for one document URI.
+    /// </summary>
+    /// <param name="documentUri">The absolute target document URI.</param>
+    /// <param name="range">The target UTF-16 source range.</param>
+    /// <param name="only">The optional requested code-action categories.</param>
+    /// <param name="diagnostics">The client diagnostics intersecting the action context.</param>
+    /// <param name="cancellationToken">The test cancellation token.</param>
+    /// <returns>The supported code actions with concrete edits.</returns>
+    internal Task<IReadOnlyList<CodeAction>> RequestCodeActionsAsync(
+        DocumentUri documentUri,
+        LspRange range,
+        IReadOnlyList<string>? only,
+        IReadOnlyList<Diagnostic> diagnostics,
+        CancellationToken cancellationToken) =>
         _rpc.InvokeWithParameterObjectAsync<IReadOnlyList<CodeAction>>(
             "textDocument/codeAction",
             new CodeActionParams
             {
                 TextDocument = new TextDocumentIdentifier
                 {
-                    Uri = DocumentUri.FromFileSystemPath(documentPath)
+                    Uri = documentUri
                 },
                 Range = range,
                 Context = new CodeActionContext
@@ -1465,6 +1569,30 @@ internal sealed class LspProcessSession : IAsyncDisposable
             "exit",
             new InitializedParams()).ConfigureAwait(false);
         await _process.WaitForExitAsync(cancellationToken).ConfigureAwait(false);
+        ValueTask<string> standardError = new(_standardErrorTask);
+        string diagnostics = await standardError.ConfigureAwait(false);
+        if (_process.ExitCode != 0)
+        {
+            throw new InvalidDataException(
+                $"The language server exited with code {_process.ExitCode}: {diagnostics}");
+        }
+
+        return diagnostics;
+    }
+
+    /// <summary>
+    /// Waits for the real server process to exit without closing its protocol streams.
+    /// </summary>
+    /// <param name="timeout">The maximum interval allowed for process cleanup.</param>
+    /// <param name="cancellationToken">The test cancellation token.</param>
+    /// <returns>The captured server diagnostics.</returns>
+    internal async Task<string> WaitForExitAsync(
+        TimeSpan timeout,
+        CancellationToken cancellationToken)
+    {
+        await _process.WaitForExitAsync(cancellationToken)
+            .WaitAsync(timeout, cancellationToken)
+            .ConfigureAwait(false);
         ValueTask<string> standardError = new(_standardErrorTask);
         string diagnostics = await standardError.ConfigureAwait(false);
         if (_process.ExitCode != 0)

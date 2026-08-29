@@ -8,6 +8,7 @@ import {
 import { BrowserLanguageClient } from "./browserLanguageClient.js";
 import { BrowserWorkspaceMapping } from "./browserWorkspaceMapping.js";
 import { BrowserWorkspaceExperience } from "./browserWorkspaceExperience.js";
+import { registerCSharpVirtualDocumentProvider } from "./csharpVirtualDocumentProvider.js";
 
 const conflictingExtensionIds = ["ms-dotnettools.csharp", "ms-dotnettools.csdevkit"];
 const synchronizationInclude = "**/*.{cs,csx,razor,cshtml,sln,slnx,csproj,props,targets,editorconfig,globalconfig,json,config}";
@@ -85,6 +86,7 @@ export async function activate(
   workspaceMapping = new BrowserWorkspaceMapping(vscode.workspace.workspaceFolders ?? []);
   workspaceExperience = new BrowserWorkspaceExperience(outputChannel, workspaceMapping);
   context.subscriptions.push(workspaceExperience);
+  registerCSharpVirtualDocumentProvider(context, () => client);
   await startServer(context);
   return {
     host: "browser",

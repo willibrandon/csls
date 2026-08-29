@@ -16,14 +16,37 @@ internal static class SolutionProjectCounter
     internal static int CountCSharpProjects(string solutionPath)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(solutionPath);
-        return Path.GetExtension(solutionPath).Equals(
-            ".slnx",
-            StringComparison.OrdinalIgnoreCase)
-            ? CountXmlSolutionProjects(solutionPath)
-            : CountClassicSolutionProjects(solutionPath);
+        return ReadCSharpProjectPaths(solutionPath).Count;
     }
 
-    private static int CountXmlSolutionProjects(string solutionPath)
+    /// <summary>
+    /// Reads absolute C# project paths from an XML or classic solution without evaluating MSBuild.
+    /// </summary>
+    /// <param name="solutionPath">The absolute solution path.</param>
+    /// <returns>The distinct project paths in solution order.</returns>
+    internal static IReadOnlyList<string> ReadCSharpProjectPaths(string solutionPath)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(solutionPath);
+        string fullSolutionPath = Path.GetFullPath(solutionPath);
+        IEnumerable<string> relativePaths = Path.GetExtension(fullSolutionPath).Equals(
+            ".slnx",
+            StringComparison.OrdinalIgnoreCase)
+            ? ReadXmlSolutionProjectPaths(fullSolutionPath)
+            : ReadClassicSolutionProjectPaths(fullSolutionPath);
+        string solutionDirectory = Path.GetDirectoryName(fullSolutionPath)
+            ?? throw new InvalidDataException(
+                $"Solution path has no parent directory: {fullSolutionPath}");
+        return
+        [
+            .. relativePaths
+                .Select(path => Path.GetFullPath(
+                    NormalizeSolutionPath(path),
+                    solutionDirectory))
+                .Distinct(PathComparer)
+        ];
+    }
+
+    private static IEnumerable<string> ReadXmlSolutionProjectPaths(string solutionPath)
     {
         var settings = new XmlReaderSettings
         {
@@ -34,18 +57,29 @@ internal static class SolutionProjectCounter
         var solution = XDocument.Load(reader, LoadOptions.None);
         return solution
             .Descendants()
-            .Count(static element =>
-                element.Name.LocalName.Equals("Project", StringComparison.Ordinal) &&
-                element.Attribute("Path")?.Value.EndsWith(
-                    ".csproj",
-                    StringComparison.OrdinalIgnoreCase) == true);
+            .Where(static element =>
+                element.Name.LocalName.Equals("Project", StringComparison.Ordinal))
+            .Select(static element => element.Attribute("Path"))
+            .Where(static attribute =>
+                attribute is not null &&
+                attribute.Value.EndsWith(".csproj", StringComparison.OrdinalIgnoreCase))
+            .Select(static attribute => attribute!.Value);
     }
 
-    private static int CountClassicSolutionProjects(string solutionPath)
-        => File.ReadLines(solutionPath).Count(static line => IsClassicCSharpProject(line));
+    private static IEnumerable<string> ReadClassicSolutionProjectPaths(string solutionPath) =>
+        File.ReadLines(solutionPath)
+            .Select(static line =>
+                TryReadClassicCSharpProjectPath(line, out string? projectPath)
+                    ? projectPath
+                    : null)
+            .Where(static projectPath => projectPath is not null)
+            .Select(static projectPath => projectPath!);
 
-    private static bool IsClassicCSharpProject(ReadOnlySpan<char> line)
+    private static bool TryReadClassicCSharpProjectPath(
+        ReadOnlySpan<char> line,
+        out string? projectPath)
     {
+        projectPath = null;
         ReadOnlySpan<char> remainder = line.TrimStart();
         if (!remainder.StartsWith("Project(", StringComparison.OrdinalIgnoreCase))
         {
@@ -71,9 +105,16 @@ internal static class SolutionProjectCounter
             return false;
         }
 
-        return remainder
-            .Slice(projectPathStart, projectPathLength)
-            .EndsWith(".csproj", StringComparison.OrdinalIgnoreCase);
+        ReadOnlySpan<char> projectPathSpan = remainder.Slice(
+            projectPathStart,
+            projectPathLength);
+        if (!projectPathSpan.EndsWith(".csproj", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        projectPath = projectPathSpan.ToString().Replace("\"\"", "\"", StringComparison.Ordinal);
+        return true;
     }
 
     private static bool TryReadQuotedField(
@@ -132,4 +173,11 @@ internal static class SolutionProjectCounter
             position++;
         }
     }
+
+    private static string NormalizeSolutionPath(string path) =>
+        path.Replace(Path.AltDirectorySeparatorChar, Path.DirectorySeparatorChar)
+            .Replace('\\', Path.DirectorySeparatorChar);
+
+    private static StringComparer PathComparer =>
+        OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal;
 }

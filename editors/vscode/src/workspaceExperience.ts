@@ -1,6 +1,7 @@
 import type { LanguageClient } from "vscode-languageclient/node";
 import * as vscode from "vscode";
 import { DotnetCommandRunner } from "./dotnetCommandRunner.js";
+import { ProcessExecutor } from "./processExecutor.js";
 import { SolutionTreeItem } from "./solutionTreeItem.js";
 import { SolutionTreeProvider } from "./solutionTreeProvider.js";
 import { TestExplorer } from "./testExplorer.js";
@@ -16,10 +17,12 @@ export class WorkspaceExperience implements vscode.Disposable {
     sdkPath: string,
     outputChannel: vscode.LogOutputChannel,
   ) {
+    const executor = new ProcessExecutor(sdkPath, outputChannel);
     this.provider = new SolutionTreeProvider(outputChannel);
-    this.runner = new DotnetCommandRunner(sdkPath, outputChannel);
-    this.tests = new TestExplorer(sdkPath, outputChannel, () => this.getProjects());
+    this.runner = new DotnetCommandRunner(sdkPath, executor);
+    this.tests = new TestExplorer(executor, outputChannel, () => this.getProjects());
     this.disposables = [
+      executor,
       this.provider,
       this.tests,
       vscode.window.createTreeView("csls.solution", {

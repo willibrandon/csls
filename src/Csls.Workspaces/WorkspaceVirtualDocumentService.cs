@@ -7,6 +7,8 @@ using Microsoft.CodeAnalysis.Simplification;
 using Microsoft.CodeAnalysis.Text;
 using System.Collections.Concurrent;
 using System.Runtime.CompilerServices;
+using System.Security.Cryptography;
+using System.Text;
 using LspLocation = Csls.Protocol.Location;
 using LspRange = Csls.Protocol.Range;
 
@@ -77,6 +79,62 @@ internal static class WorkspaceVirtualDocumentService
     }
 
     /// <summary>
+    /// Replaces virtual navigation locations with readable cached source files.
+    /// </summary>
+    /// <param name="projects">The immutable loaded project snapshots.</param>
+    /// <param name="locations">The ordered navigation locations to adapt.</param>
+    /// <param name="cancellationToken">The operation cancellation token.</param>
+    /// <returns>Locations that use file URIs whenever virtual source was resolved.</returns>
+    internal static async Task<IReadOnlyList<LspLocation>> MaterializeLocationsAsync(
+        IEnumerable<Project> projects,
+        IReadOnlyList<LspLocation> locations,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(projects);
+        ArgumentNullException.ThrowIfNull(locations);
+        Project[] projectSnapshots = [.. projects];
+        var materializedLocations = new List<LspLocation>(locations.Count);
+        foreach (LspLocation location in locations)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (!VirtualDocumentUri.TryParseGenerated(
+                    location.Uri,
+                    out _,
+                    out _) &&
+                !VirtualDocumentUri.TryParseMetadata(
+                    location.Uri,
+                    out _,
+                    out _))
+            {
+                materializedLocations.Add(location);
+                continue;
+            }
+
+            CSharpMetadataResponse? document = await GetAsync(
+                projectSnapshots,
+                location.Uri,
+                cancellationToken).ConfigureAwait(false);
+            if (document is null)
+            {
+                materializedLocations.Add(location);
+                continue;
+            }
+
+            string path = await WriteMaterializedDocumentAsync(
+                location.Uri,
+                document.Source,
+                cancellationToken).ConfigureAwait(false);
+            materializedLocations.Add(new LspLocation
+            {
+                Uri = DocumentUri.FromFileSystemPath(path),
+                Range = location.Range
+            });
+        }
+
+        return materializedLocations;
+    }
+
+    /// <summary>
     /// Creates an exact navigation target for one metadata symbol.
     /// </summary>
     /// <param name="project">The requesting project snapshot.</param>
@@ -118,6 +176,63 @@ internal static class WorkspaceVirtualDocumentService
     private static Project? FindProject(IEnumerable<Project> projects, string projectFilePath) =>
         projects.FirstOrDefault(project =>
             string.Equals(project.FilePath, projectFilePath, PathComparison));
+
+    private static async Task<string> WriteMaterializedDocumentAsync(
+        DocumentUri uri,
+        string source,
+        CancellationToken cancellationToken)
+    {
+        string localDataPath = Environment.GetFolderPath(
+            Environment.SpecialFolder.LocalApplicationData);
+        if (string.IsNullOrWhiteSpace(localDataPath))
+        {
+            localDataPath = Path.GetTempPath();
+        }
+
+        string directory = Path.Join(localDataPath, "csls", "virtual-documents");
+        Directory.CreateDirectory(directory);
+        if (!OperatingSystem.IsWindows())
+        {
+            File.SetUnixFileMode(
+                directory,
+                UnixFileMode.UserRead |
+                UnixFileMode.UserWrite |
+                UnixFileMode.UserExecute);
+        }
+
+        string identity = Convert.ToHexString(
+            SHA256.HashData(Encoding.UTF8.GetBytes(uri.ToString())));
+        string path = Path.Join(directory, $"{identity}.cs");
+        if (File.Exists(path) && string.Equals(
+            await File.ReadAllTextAsync(path, cancellationToken).ConfigureAwait(false),
+            source,
+            StringComparison.Ordinal))
+        {
+            return path;
+        }
+
+        string temporaryPath = string.Concat(path, ".", Guid.NewGuid().ToString("N"), ".tmp");
+        try
+        {
+            await File.WriteAllTextAsync(
+                temporaryPath,
+                source,
+                cancellationToken).ConfigureAwait(false);
+            File.Move(temporaryPath, path, overwrite: true);
+            if (!OperatingSystem.IsWindows())
+            {
+                File.SetUnixFileMode(
+                    path,
+                    UnixFileMode.UserRead | UnixFileMode.UserWrite);
+            }
+
+            return path;
+        }
+        finally
+        {
+            File.Delete(temporaryPath);
+        }
+    }
 
     private static async Task<CSharpMetadataResponse?> GetGeneratedAsync(
         Project project,

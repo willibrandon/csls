@@ -69,6 +69,141 @@ public sealed class WorkspaceManagerTests
     }
 
     /// <summary>
+    /// Loads synchronized solution projects and file-based apps without an MSBuild process.
+    /// </summary>
+    [TestMethod]
+    public async Task SynchronizedWorkspaceLoadsSolutionAndFileBasedApp()
+    {
+        string workspacePath = Path.Join(
+            Path.GetTempPath(),
+            $"csls-synchronized-project-{Guid.NewGuid():N}");
+        string projectDirectory = Path.Join(workspacePath, "App");
+        string libraryDirectory = Path.Join(workspacePath, "Library");
+        string toolsDirectory = Path.Join(workspacePath, "Tools");
+        Directory.CreateDirectory(projectDirectory);
+        Directory.CreateDirectory(libraryDirectory);
+        Directory.CreateDirectory(toolsDirectory);
+        IReadOnlyList<WorkspaceFolderSnapshot> snapshots = [];
+        try
+        {
+            string projectPath = Path.Join(projectDirectory, "Fixture.csproj");
+            string documentPath = Path.Join(workspacePath, "Program.cs");
+            string fileBasedAppPath = Path.Join(toolsDirectory, "Tool.cs");
+            await File.WriteAllTextAsync(
+                projectPath,
+                """
+                <Project Sdk="Microsoft.NET.Sdk">
+                  <PropertyGroup>
+                    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+                    <ImplicitUsings>enable</ImplicitUsings>
+                    <OutputType>Exe</OutputType>
+                    <TargetFramework>net10.0</TargetFramework>
+                  </PropertyGroup>
+                  <ItemGroup>
+                    <Compile Include="../Program.cs" />
+                    <ProjectReference Include="../Library/Library.csproj" />
+                  </ItemGroup>
+                </Project>
+                """,
+                TestContext.CancellationToken).ConfigureAwait(false);
+            await File.WriteAllTextAsync(
+                Path.Join(workspacePath, "Fixture.slnx"),
+                """
+                <Solution>
+                  <Project Path="App/Fixture.csproj" />
+                </Solution>
+                """,
+                TestContext.CancellationToken).ConfigureAwait(false);
+            await File.WriteAllTextAsync(
+                Path.Join(libraryDirectory, "Library.csproj"),
+                """
+                <Project Sdk="Microsoft.NET.Sdk">
+                  <PropertyGroup>
+                    <TargetFramework>net10.0</TargetFramework>
+                  </PropertyGroup>
+                </Project>
+                """,
+                TestContext.CancellationToken).ConfigureAwait(false);
+            await File.WriteAllTextAsync(
+                documentPath,
+                "Console.WriteLine(Shared.Value);",
+                TestContext.CancellationToken).ConfigureAwait(false);
+            await File.WriteAllTextAsync(
+                Path.Join(libraryDirectory, "Shared.cs"),
+                "public static class Shared { public const int Value = 1; }",
+                TestContext.CancellationToken).ConfigureAwait(false);
+            await File.WriteAllTextAsync(
+                fileBasedAppPath,
+                """
+                #:property TargetFramework=net10.0
+
+                Console.WriteLine("tool");
+                """,
+                TestContext.CancellationToken).ConfigureAwait(false);
+
+            string trustedPlatformAssemblies = AppContext.GetData(
+                "TRUSTED_PLATFORM_ASSEMBLIES") as string
+                ?? throw new InvalidOperationException(
+                    "The test host did not provide trusted platform assemblies.");
+            var loader = new SynchronizedWorkspaceLoader(trustedPlatformAssemblies.Split(
+                Path.PathSeparator,
+                StringSplitOptions.RemoveEmptyEntries));
+            snapshots = await loader.LoadAsync(
+                [workspacePath],
+                "Debug",
+                progress: null,
+                TestContext.CancellationToken).ConfigureAwait(false);
+            Microsoft.CodeAnalysis.Project[] projects =
+            [
+                .. snapshots
+                    .SelectMany(static snapshot => snapshot.Solution.Projects)
+                    .OrderBy(static project => project.Name, StringComparer.Ordinal)
+            ];
+
+            Assert.HasCount(3, projects);
+            Microsoft.CodeAnalysis.Project fixture = projects.Single(static project =>
+                project.Name == "Fixture");
+            Assert.AreEqual(projectPath, fixture.FilePath);
+            Assert.AreEqual(
+                documentPath,
+                Assert.ContainsSingle(fixture.Documents.Where(
+                    static document => document.FilePath is not null)).FilePath);
+            Microsoft.CodeAnalysis.Project library = projects.Single(static project =>
+                project.Name == "Library");
+            Assert.AreEqual(
+                library.Id,
+                Assert.ContainsSingle(fixture.ProjectReferences).ProjectId);
+            Microsoft.CodeAnalysis.Project fileBasedApp = projects.Single(static project =>
+                project.Name == "Tool.cs");
+            Assert.AreEqual(fileBasedAppPath, fileBasedApp.FilePath);
+            Assert.AreEqual(
+                fileBasedAppPath,
+                Assert.ContainsSingle(fileBasedApp.Documents.Where(
+                    static document => document.FilePath is not null)).FilePath);
+            foreach (Microsoft.CodeAnalysis.Project project in projects)
+            {
+                Microsoft.CodeAnalysis.Compilation compilation = await project
+                    .GetCompilationAsync(TestContext.CancellationToken)
+                    .ConfigureAwait(false)
+                    ?? throw new InvalidOperationException(
+                        $"Roslyn returned no compilation for {project.Name}.");
+                Assert.IsEmpty(compilation.GetDiagnostics(TestContext.CancellationToken).Where(
+                    static diagnostic =>
+                        diagnostic.Severity >= Microsoft.CodeAnalysis.DiagnosticSeverity.Warning));
+            }
+        }
+        finally
+        {
+            foreach (WorkspaceFolderSnapshot snapshot in snapshots)
+            {
+                snapshot.Workspace.Dispose();
+            }
+
+            Directory.Delete(workspacePath, recursive: true);
+        }
+    }
+
+    /// <summary>
     /// Resolves framework symbols from a real SDK-backed file-based app.
     /// </summary>
     [TestMethod]
@@ -149,6 +284,152 @@ public sealed class WorkspaceManagerTests
             Assert.AreEqual(1, first.Generation);
             Assert.AreEqual(1, second.Generation);
             Assert.IsFalse(File.Exists(documentPath + ".csproj"));
+        }
+        finally
+        {
+            Directory.Delete(workspacePath, recursive: true);
+        }
+    }
+
+    /// <summary>
+    /// Registers an unchanged opened document without invalidating the semantic workspace.
+    /// </summary>
+    [TestMethod]
+    public async Task OpeningUnchangedDocumentPreservesWorkspaceGeneration()
+    {
+        string workspacePath = Path.Join(
+            Path.GetTempPath(),
+            $"csls-unchanged-open-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(workspacePath);
+        try
+        {
+            string documentPath = await WriteSolutionAsync(
+                workspacePath,
+                "UnchangedOpen",
+                TestContext.CancellationToken).ConfigureAwait(false);
+            string documentText = await File.ReadAllTextAsync(
+                documentPath,
+                TestContext.CancellationToken).ConfigureAwait(false);
+            WorkspaceManager manager = WorkspaceManagerTestFactory.Create();
+            await using ConfiguredAsyncDisposable managerDisposal =
+                manager.ConfigureAwait(false);
+            await manager.LoadAsync(
+                [workspacePath],
+                TestContext.CancellationToken).ConfigureAwait(false);
+            long loadedGeneration = manager.Generation;
+            var documentUri = DocumentUri.FromFileSystemPath(documentPath);
+
+            await manager.OpenDocumentAsync(
+                new TextDocumentItem
+                {
+                    Uri = documentUri,
+                    LanguageId = "csharp",
+                    Version = 1,
+                    Text = documentText
+                },
+                TestContext.CancellationToken).ConfigureAwait(false);
+
+            Assert.AreEqual(loadedGeneration, manager.Generation);
+            await manager.ChangeDocumentAsync(
+                new DidChangeTextDocumentParams
+                {
+                    TextDocument = new VersionedTextDocumentIdentifier
+                    {
+                        Uri = documentUri,
+                        Version = 2
+                    },
+                    ContentChanges =
+                    [
+                        new TextDocumentContentChangeEvent
+                        {
+                            Text = documentText + Environment.NewLine
+                        }
+                    ]
+                },
+                TestContext.CancellationToken).ConfigureAwait(false);
+            Assert.IsGreaterThan(loadedGeneration, manager.Generation);
+        }
+        finally
+        {
+            Directory.Delete(workspacePath, recursive: true);
+        }
+    }
+
+    /// <summary>
+    /// Ignores delayed watcher events for the deleted SDK shadow project without hiding real projects.
+    /// </summary>
+    [TestMethod]
+    public async Task FileBasedAppShadowProjectEventsDoNotReloadWorkspace()
+    {
+        string workspacePath = Path.Join(
+            Path.GetTempPath(),
+            $"csls-file-app-watcher-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(workspacePath);
+        try
+        {
+            string documentPath = Path.Join(workspacePath, "Program.cs");
+            string shadowProjectPath = documentPath + ".csproj";
+            const string fileBasedAppText = """
+                #:property TargetFramework=net10.0
+                Console.WriteLine("hello");
+                """;
+            await File.WriteAllTextAsync(
+                documentPath,
+                fileBasedAppText,
+                TestContext.CancellationToken).ConfigureAwait(false);
+
+            WorkspaceManager manager = WorkspaceManagerTestFactory.Create();
+            await using ConfiguredAsyncDisposable managerDisposal =
+                manager.ConfigureAwait(false);
+            await manager.LoadAsync(
+                [workspacePath],
+                TestContext.CancellationToken).ConfigureAwait(false);
+            long loadedGeneration = manager.Generation;
+            Assert.IsFalse(File.Exists(shadowProjectPath));
+
+            foreach (FileChangeType changeType in new[]
+            {
+                FileChangeType.Created,
+                FileChangeType.Deleted
+            })
+            {
+                WorkspaceMaintenanceResult? maintenance = await manager.ApplyChangedFilesAsync(
+                    new DidChangeWatchedFilesParams
+                    {
+                        Changes =
+                        [
+                            new FileEvent
+                            {
+                                Uri = DocumentUri.FromFileSystemPath(shadowProjectPath),
+                                Type = changeType
+                            }
+                        ]
+                    },
+                    TestContext.CancellationToken).ConfigureAwait(false);
+                Assert.IsNull(maintenance);
+                Assert.AreEqual(loadedGeneration, manager.Generation);
+            }
+
+            await File.WriteAllTextAsync(
+                shadowProjectPath,
+                "<Project Sdk=\"Microsoft.NET.Sdk\" />",
+                TestContext.CancellationToken).ConfigureAwait(false);
+            WorkspaceMaintenanceResult? realProjectMaintenance =
+                await manager.ApplyChangedFilesAsync(
+                    new DidChangeWatchedFilesParams
+                    {
+                        Changes =
+                        [
+                            new FileEvent
+                            {
+                                Uri = DocumentUri.FromFileSystemPath(shadowProjectPath),
+                                Type = FileChangeType.Created
+                            }
+                        ]
+                    },
+                    TestContext.CancellationToken).ConfigureAwait(false);
+            Assert.IsNotNull(realProjectMaintenance);
+            Assert.IsGreaterThan(loadedGeneration, manager.Generation);
         }
         finally
         {

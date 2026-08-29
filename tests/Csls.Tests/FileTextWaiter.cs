@@ -26,23 +26,17 @@ internal static class FileTextWaiter
         using var watcher = new FileSystemWatcher(directoryPath, Path.GetFileName(path))
         {
             NotifyFilter = NotifyFilters.CreationTime |
+                NotifyFilters.FileName |
                 NotifyFilters.LastWrite |
                 NotifyFilters.Size
         };
-        FileSystemEventHandler changedHandler = (_, _) =>
-        {
-            if (Contains(path, expectedText))
-            {
-                completion.TrySetResult();
-            }
-        };
+        FileSystemEventHandler changedHandler = (_, _) => CompleteWhenExpectedTextAppears();
+        RenamedEventHandler renamedHandler = (_, _) => CompleteWhenExpectedTextAppears();
         watcher.Changed += changedHandler;
         watcher.Created += changedHandler;
+        watcher.Renamed += renamedHandler;
         watcher.EnableRaisingEvents = true;
-        if (Contains(path, expectedText))
-        {
-            completion.TrySetResult();
-        }
+        CompleteWhenExpectedTextAppears();
 
         try
         {
@@ -53,6 +47,15 @@ internal static class FileTextWaiter
             watcher.EnableRaisingEvents = false;
             watcher.Changed -= changedHandler;
             watcher.Created -= changedHandler;
+            watcher.Renamed -= renamedHandler;
+        }
+
+        void CompleteWhenExpectedTextAppears()
+        {
+            if (Contains(path, expectedText))
+            {
+                completion.TrySetResult();
+            }
         }
     }
 
@@ -74,25 +77,17 @@ internal static class FileTextWaiter
         using var watcher = new FileSystemWatcher(directoryPath, Path.GetFileName(path))
         {
             NotifyFilter = NotifyFilters.CreationTime |
+                NotifyFilters.FileName |
                 NotifyFilters.LastWrite |
                 NotifyFilters.Size
         };
-        FileSystemEventHandler changedHandler = (_, _) =>
-        {
-            string? contents = ReadNonEmpty(path);
-            if (contents is not null)
-            {
-                completion.TrySetResult(contents);
-            }
-        };
+        FileSystemEventHandler changedHandler = (_, _) => CompleteWhenContentsAppear();
+        RenamedEventHandler renamedHandler = (_, _) => CompleteWhenContentsAppear();
         watcher.Changed += changedHandler;
         watcher.Created += changedHandler;
+        watcher.Renamed += renamedHandler;
         watcher.EnableRaisingEvents = true;
-        string? initialContents = ReadNonEmpty(path);
-        if (initialContents is not null)
-        {
-            completion.TrySetResult(initialContents);
-        }
+        CompleteWhenContentsAppear();
 
         try
         {
@@ -103,6 +98,16 @@ internal static class FileTextWaiter
             watcher.EnableRaisingEvents = false;
             watcher.Changed -= changedHandler;
             watcher.Created -= changedHandler;
+            watcher.Renamed -= renamedHandler;
+        }
+
+        void CompleteWhenContentsAppear()
+        {
+            string? contents = ReadNonEmpty(path);
+            if (contents is not null)
+            {
+                completion.TrySetResult(contents);
+            }
         }
     }
 

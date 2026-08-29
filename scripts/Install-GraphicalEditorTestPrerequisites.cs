@@ -6,6 +6,8 @@
 
 using System.Diagnostics;
 
+const string TreeSitterCliVersion = "0.26.12";
+
 if (args.Length == 1 && args[0] is "--help" or "-h" or "-?")
 {
     await Console.Out.WriteLineAsync(
@@ -103,8 +105,22 @@ try
             "libvulkan1",
             "mesa-vulkan-drivers",
             "xauth",
+            "xclip",
             "xvfb"
         ]).ConfigureAwait(false);
+    await RunCheckedAsync(
+        "cargo",
+        [
+            "install",
+            "tree-sitter-cli",
+            "--version",
+            TreeSitterCliVersion,
+            "--locked",
+            "--no-default-features",
+            "--force"
+        ]).ConfigureAwait(false);
+    await RunCheckedAsync("tree-sitter", ["--version"]).ConfigureAwait(false);
+    await RunCheckedAsync("xclip", ["-version"]).ConfigureAwait(false);
     await RunPrivilegedAsync(
         "mkdir",
         ["--parents", "--mode", "1777", "/tmp/.X11-unix"]).ConfigureAwait(false);

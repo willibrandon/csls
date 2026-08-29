@@ -232,6 +232,11 @@ public sealed partial class WorkspaceManager : IAsyncDisposable
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(document);
+        if (!document.Uri.IsFile)
+        {
+            return;
+        }
+
         string path = document.Uri.GetFileSystemPath();
         await _mutationGate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
@@ -254,20 +259,30 @@ public sealed partial class WorkspaceManager : IAsyncDisposable
                 var razorText = SourceText.From(document.Text, Encoding.UTF8);
                 (string razorRootPath, Workspace razorWorkspace, Solution razorSolution) =
                     _folders[folderIndex];
-                razorSolution = WithAdditionalDocumentText(razorSolution, path, razorText);
-                _folders = _folders.SetItem(
-                    folderIndex,
-                    (razorRootPath, razorWorkspace, razorSolution));
+                TextDocument? existingRazorDocument = FindTextDocument(razorSolution, path);
+                SourceText? existingRazorText = existingRazorDocument is null
+                    ? null
+                    : await existingRazorDocument.GetTextAsync(cancellationToken)
+                        .ConfigureAwait(false);
+                if (existingRazorText is null || !existingRazorText.ContentEquals(razorText))
+                {
+                    razorSolution = WithAdditionalDocumentText(razorSolution, path, razorText);
+                    _folders = _folders.SetItem(
+                        folderIndex,
+                        (razorRootPath, razorWorkspace, razorSolution));
+                    Interlocked.Increment(ref _generation);
+                }
+
                 _razorDocuments = _razorDocuments.SetItem(
                     path,
                     razorText);
                 _documentVersions[path] = document.Version;
-                Interlocked.Increment(ref _generation);
                 return;
             }
 
             (string rootPath, Workspace workspace, Solution solution) = _folders[folderIndex];
             Document? roslynDocument = FindDocument(solution, path);
+            var openedText = SourceText.From(document.Text, Encoding.UTF8);
             if (roslynDocument is null)
             {
                 Project project = solution.Projects.FirstOrDefault()
@@ -276,14 +291,22 @@ public sealed partial class WorkspaceManager : IAsyncDisposable
                 solution = solution.AddDocument(
                     documentId,
                     Path.GetFileName(path),
-                    SourceText.From(document.Text, Encoding.UTF8),
+                    openedText,
                     filePath: path);
             }
             else
             {
+                SourceText existingText = await roslynDocument.GetTextAsync(cancellationToken)
+                    .ConfigureAwait(false);
+                if (existingText.ContentEquals(openedText))
+                {
+                    _documentVersions[path] = document.Version;
+                    return;
+                }
+
                 solution = solution.WithDocumentText(
                     roslynDocument.Id,
-                    SourceText.From(document.Text, Encoding.UTF8),
+                    openedText,
                     PreservationMode.PreserveIdentity);
             }
 
@@ -308,6 +331,11 @@ public sealed partial class WorkspaceManager : IAsyncDisposable
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(parameters);
+        if (!parameters.TextDocument.Uri.IsFile)
+        {
+            return;
+        }
+
         string path = parameters.TextDocument.Uri.GetFileSystemPath();
         await _mutationGate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
@@ -381,6 +409,11 @@ public sealed partial class WorkspaceManager : IAsyncDisposable
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(parameters);
+        if (!parameters.TextDocument.Uri.IsFile)
+        {
+            return;
+        }
+
         string path = parameters.TextDocument.Uri.GetFileSystemPath();
         await _mutationGate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
@@ -456,6 +489,15 @@ public sealed partial class WorkspaceManager : IAsyncDisposable
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(parameters);
+        if (!parameters.TextDocument.Uri.IsFile)
+        {
+            return new DocumentDiagnosticReport
+            {
+                Kind = "full",
+                Items = []
+            };
+        }
+
         long generation = Generation;
         string path = parameters.TextDocument.Uri.GetFileSystemPath();
         ImmutableArray<(string RootPath, Workspace Workspace, Solution Solution)> folders = _folders;
@@ -602,6 +644,11 @@ public sealed partial class WorkspaceManager : IAsyncDisposable
     /// <returns>The open version, or null when the document is closed.</returns>
     public int? GetOpenDocumentVersion(DocumentUri uri)
     {
+        if (!uri.IsFile)
+        {
+            return null;
+        }
+
         string path = uri.GetFileSystemPath();
         return _documentVersions.TryGetValue(path, out int version) ? version : null;
     }
@@ -675,6 +722,24 @@ public sealed partial class WorkspaceManager : IAsyncDisposable
             parameters,
             WorkspaceNavigationService.GetImplementationsAsync,
             WorkspaceRazorNavigationService.GetImplementationsAsync,
+            cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Replaces virtual navigation locations with readable cached source files.
+    /// </summary>
+    /// <param name="locations">The ordered navigation locations to adapt.</param>
+    /// <param name="cancellationToken">The operation cancellation token.</param>
+    /// <returns>Locations that use file URIs whenever virtual source was resolved.</returns>
+    public async Task<IReadOnlyList<LspLocation>> MaterializeVirtualDocumentLocationsAsync(
+        IReadOnlyList<LspLocation> locations,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(locations);
+        ImmutableArray<(string RootPath, Workspace Workspace, Solution Solution)> folders = _folders;
+        return await WorkspaceVirtualDocumentService.MaterializeLocationsAsync(
+            folders.SelectMany(static folder => folder.Solution.Projects),
+            locations,
             cancellationToken).ConfigureAwait(false);
     }
 
@@ -965,6 +1030,11 @@ public sealed partial class WorkspaceManager : IAsyncDisposable
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(parameters);
+        if (!parameters.TextDocument.Uri.IsFile)
+        {
+            return [];
+        }
+
         string path = parameters.TextDocument.Uri.GetFileSystemPath();
         ImmutableArray<(string RootPath, Workspace Workspace, Solution Solution)> folders = _folders;
         int folderIndex = FindFolderIndex(path, folders);
@@ -2112,6 +2182,11 @@ public sealed partial class WorkspaceManager : IAsyncDisposable
 
     private Document? FindDocument(DocumentUri uri)
     {
+        if (!uri.IsFile)
+        {
+            return null;
+        }
+
         string path = uri.GetFileSystemPath();
         ImmutableArray<(string RootPath, Workspace Workspace, Solution Solution)> folders = _folders;
         int folderIndex = FindFolderIndex(path, folders);
@@ -2120,6 +2195,11 @@ public sealed partial class WorkspaceManager : IAsyncDisposable
 
     private TextDocument? FindTextDocument(DocumentUri uri)
     {
+        if (!uri.IsFile)
+        {
+            return null;
+        }
+
         string path = uri.GetFileSystemPath();
         ImmutableArray<(string RootPath, Workspace Workspace, Solution Solution)> folders = _folders;
         int folderIndex = FindFolderIndex(path, folders);
@@ -2722,6 +2802,11 @@ public sealed partial class WorkspaceManager : IAsyncDisposable
 
     private Document? FindCurrentDocument(DocumentUri uri)
     {
+        if (!uri.IsFile)
+        {
+            return null;
+        }
+
         string path = uri.GetFileSystemPath();
         ImmutableArray<(string RootPath, Workspace Workspace, Solution Solution)> folders = _folders;
         int folderIndex = FindFolderIndex(path, folders);

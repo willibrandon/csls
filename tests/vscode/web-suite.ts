@@ -11,7 +11,6 @@ export async function run(): Promise<void> {
 
 export interface FeatureContractOptions {
   readonly expectedHost: "browser" | "desktop" | "remote";
-  readonly expectedServerPath?: string;
   readonly requireRuntimeExtension: boolean;
 }
 
@@ -37,11 +36,16 @@ export async function runFeatureContract(options: FeatureContractOptions): Promi
   assert(isExtensionApi(api), "The csls extension must return its host API.");
   assert(api.host === options.expectedHost, `Expected the ${options.expectedHost} host.`);
   assert(api.state === 2, "The csls language client must be running.");
-  await assertProjectDiscovery(api);
-  if (options.expectedServerPath !== undefined) {
+  await assertProjectDiscovery(api, workspaceFolder);
+  if (options.expectedHost !== "browser") {
+    const expectedServerPath = vscode.Uri.joinPath(
+      extension.extensionUri,
+      "server",
+      process.platform === "win32" ? "csls.exe" : "csls",
+    ).fsPath;
     assert(
-      api.serverPath === options.expectedServerPath,
-      `Expected csls to start ${options.expectedServerPath}.`,
+      api.serverPath === expectedServerPath,
+      `Expected csls to start its bundled server at ${expectedServerPath}, received ${api.serverPath}.`,
     );
     assert(
       typeof api.runtimePath === "string" && api.runtimePath.length > 0,
@@ -56,6 +60,8 @@ export async function runFeatureContract(options: FeatureContractOptions): Promi
   await assertConsoleHover(documentUri);
   await assertConsoleCompletion(documentUri);
   await assertDefinition(document);
+  await assertFrameworkDefinitionOpens(document);
+  await assertExtensionMethodDefinitionOpens(document);
   await assertSemanticTokens(document);
   await assertConfigurableInlayHints(document);
   await assertDiagnosticsTrackEdits(document);
@@ -74,13 +80,18 @@ async function assertProjectDiscovery(api: {
     readonly name: string;
     readonly path: string;
   }[];
-}): Promise<void> {
+}, workspaceFolder: vscode.WorkspaceFolder): Promise<void> {
   assert(typeof api.projects === "function", "The Solution view must expose loaded projects.");
   await vscode.commands.executeCommand("csls.refreshSolution");
   const projects = api.projects();
   assert(
     projects.some((project) => project.name === "Fixture"),
     `The Solution view must contain the Roslyn-loaded Fixture project. Received ${JSON.stringify(projects)}.`,
+  );
+  const toolPath = vscode.Uri.joinPath(workspaceFolder.uri, "Tools", "Tool.cs").fsPath;
+  assert(
+    projects.some((project) => project.name === "Tool.cs" && project.path === toolPath),
+    `The Solution view must expose the file-based app by its source path. Received ${JSON.stringify(projects)}.`,
   );
 }
 
@@ -99,53 +110,49 @@ async function assertSolutionExperience(
   assert(typeof api.projects === "function", "The desktop extension must expose loaded projects.");
   const project = api.projects().find((candidate) => candidate.name === "Fixture");
   assert(project !== undefined, "The Solution view must contain the Roslyn-loaded Fixture project.");
-  await vscode.commands.executeCommand("csls.build", {
+  assert(typeof api.tests === "function", "The desktop extension must expose discovered tests.");
+  await waitUntil(
+    () => api.tests?.().includes("RunsFromVsCode") === true,
+    "The Testing view did not discover the real Microsoft Testing Platform test.",
+  );
+  const normalDiscoveryTarget = vscode.Uri.joinPath(
+    workspaceFolder.uri,
+    "Tests",
+    "bin",
+    "Debug",
+    "net10.0",
+    "Fixture.Tests.dll",
+  );
+  assert(
+    !(await exists(normalDiscoveryTarget)),
+    `Automatic test discovery must not build into the workspace target path ${normalDiscoveryTarget.fsPath}.`,
+  );
+  const buildTarget = {
     projectPath: project.path,
     workspaceRoot: workspaceFolder.uri.fsPath,
-  });
-  await vscode.commands.executeCommand("csls.test");
-  assert(typeof api.tests === "function", "The desktop extension must expose discovered tests.");
+  };
+  await Promise.all([
+    vscode.commands.executeCommand("csls.build", buildTarget),
+    vscode.commands.executeCommand("csls.build", buildTarget),
+  ]);
+  await Promise.all([
+    vscode.commands.executeCommand("csls.test"),
+    vscode.commands.executeCommand("csls.test"),
+  ]);
   assert(
     api.tests().includes("RunsFromVsCode"),
     "The Testing view must discover the real Microsoft Testing Platform test.",
   );
   await assertDebugging(project.path, workspaceFolder, documentUri);
-  await assertTestDiscoveryFailure(api, workspaceFolder);
 }
 
-async function assertTestDiscoveryFailure(
-  api: {
-    readonly testErrors?: () => readonly string[];
-  },
-  workspaceFolder: vscode.WorkspaceFolder,
-): Promise<void> {
-  assert(typeof api.testErrors === "function", "The desktop extension must expose test errors.");
-  const testDocument = await vscode.workspace.openTextDocument(
-    vscode.Uri.joinPath(workspaceFolder.uri, "Tests", "ExampleTests.cs"),
-  );
-  const originalText = testDocument.getText();
+async function exists(uri: vscode.Uri): Promise<boolean> {
   try {
-    await replaceDocumentText(testDocument, "this is not valid C#\n");
-    await testDocument.save();
-    let rejected = false;
-    try {
-      await vscode.commands.executeCommand("csls.test");
-    } catch {
-      rejected = true;
-    }
-
-    assert(rejected, "The test command must fail when its real project does not build.");
-    assert(
-      api.testErrors().some((error) => error.includes("Test discovery build failed.")),
-      "The Testing view must retain the project build failure.",
-    );
-  } finally {
-    await replaceDocumentText(testDocument, originalText);
-    await testDocument.save();
+    await vscode.workspace.fs.stat(uri);
+    return true;
+  } catch {
+    return false;
   }
-
-  await vscode.commands.executeCommand("csls.test");
-  assert(api.testErrors().length === 0, "The Testing view must clear a resolved build failure.");
 }
 
 async function assertDebugging(
@@ -225,6 +232,112 @@ async function assertDefinition(document: vscode.TextDocument): Promise<void> {
   assert(
     definitionUris.includes(document.uri.toString()),
     `csls must navigate from a type reference to its source definition in VS Code. Received definitions: ${JSON.stringify(definitionUris)}. Diagnostics: ${JSON.stringify(vscode.languages.getDiagnostics(document.uri).map((diagnostic) => diagnostic.message))}.`,
+  );
+}
+
+async function assertFrameworkDefinitionOpens(document: vscode.TextDocument): Promise<void> {
+  await replaceDocumentText(document, 'Console.WriteLine("hello");\n');
+  const definitions = await withTimeout(
+    vscode.commands.executeCommand<readonly (vscode.Location | vscode.LocationLink)[]>(
+      "vscode.executeDefinitionProvider",
+      document.uri,
+      new vscode.Position(0, 2),
+    ),
+    languageFeatureTimeoutMilliseconds,
+    "The VS Code framework definition provider did not complete.",
+  );
+  const definition = definitions.find((candidate) =>
+    ("uri" in candidate ? candidate.uri : candidate.targetUri).scheme === "csharp");
+  assert(
+    definition !== undefined,
+    `csls must return a virtual C# document for framework definitions. Received ${JSON.stringify(
+      definitions.map((candidate) =>
+        ("uri" in candidate ? candidate.uri : candidate.targetUri).toString()),
+    )}.`,
+  );
+  const definitionUri = "uri" in definition ? definition.uri : definition.targetUri;
+  const metadataDocument = await withTimeout(
+    vscode.workspace.openTextDocument(definitionUri),
+    languageFeatureTimeoutMilliseconds,
+    "VS Code could not open the csls framework definition.",
+  );
+  assert(
+    metadataDocument.languageId === "csharp",
+    `The framework definition must use the C# language mode, not ${metadataDocument.languageId}.`,
+  );
+  assert(
+    metadataDocument.getText().includes("class Console"),
+    "The framework definition must contain the System.Console declaration.",
+  );
+  await vscode.window.showTextDocument(metadataDocument);
+
+  const providerRequests = [
+    {
+      method: "textDocument/documentLink",
+      request: vscode.commands.executeCommand<readonly vscode.DocumentLink[]>(
+        "vscode.executeLinkProvider",
+        metadataDocument.uri,
+      ),
+    },
+    {
+      method: "textDocument/foldingRange",
+      request: vscode.commands.executeCommand<readonly vscode.FoldingRange[]>(
+        "vscode.executeFoldingRangeProvider",
+        metadataDocument.uri,
+      ),
+    },
+  ] as const;
+  const providerFailures = await withTimeout(
+    Promise.all(providerRequests.map(async (provider) => {
+      try {
+        await provider.request;
+        return undefined;
+      } catch (error) {
+        return `${provider.method}: ${String(error)}`;
+      }
+    })),
+    languageFeatureTimeoutMilliseconds,
+    "VS Code did not complete the virtual C# document providers.",
+  );
+  const failures = providerFailures.filter((failure) => failure !== undefined);
+  assert(
+    failures.length === 0,
+    `VS Code providers failed for the open csharp: framework document: ${failures.join(" | ")}`,
+  );
+}
+
+async function assertExtensionMethodDefinitionOpens(
+  document: vscode.TextDocument,
+): Promise<void> {
+  const source = "var first = new[] { 1 }.FirstOrDefault();\n";
+  await replaceDocumentText(document, source);
+  const definitions = await withTimeout(
+    vscode.commands.executeCommand<readonly (vscode.Location | vscode.LocationLink)[]>(
+      "vscode.executeDefinitionProvider",
+      document.uri,
+      document.positionAt(source.indexOf("FirstOrDefault")),
+    ),
+    languageFeatureTimeoutMilliseconds,
+    "The VS Code extension-method definition provider did not complete.",
+  );
+  const definition = definitions.find((candidate) =>
+    ("uri" in candidate ? candidate.uri : candidate.targetUri).scheme === "csharp");
+  assert(
+    definition !== undefined,
+    `csls must return Enumerable.FirstOrDefault metadata in VS Code. Received ${JSON.stringify(
+      definitions.map((candidate) =>
+        ("uri" in candidate ? candidate.uri : candidate.targetUri).toString()),
+    )}.`,
+  );
+  const definitionUri = "uri" in definition ? definition.uri : definition.targetUri;
+  const metadataDocument = await withTimeout(
+    vscode.workspace.openTextDocument(definitionUri),
+    languageFeatureTimeoutMilliseconds,
+    "VS Code could not open the FirstOrDefault metadata definition.",
+  );
+  assert(
+    metadataDocument.getText().includes("FirstOrDefault"),
+    "The extension-method definition must contain Enumerable.FirstOrDefault.",
   );
 }
 

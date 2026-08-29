@@ -155,7 +155,7 @@ internal sealed class BrowserLspDispatcher : IDisposable
             await SendErrorAsync(
                 requestId,
                 InternalErrorCode,
-                exception.Message,
+                $"{method}: {exception.Message}",
                 cancellationToken).ConfigureAwait(false);
         }
         catch (Exception exception) when (IsRecoverableFailure(exception))

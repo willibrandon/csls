@@ -5,8 +5,8 @@ namespace Csls.Tests;
 /// </summary>
 internal sealed class ExternalWorkloadLease : IDisposable
 {
-    private const int LogicalProcessorsPerWorkload = 4;
-    private const long BytesPerWorkload = 2L * 1024 * 1024 * 1024;
+    private const int LogicalProcessorsPerWorkload = 16;
+    private const long BytesPerWorkload = 8L * 1024 * 1024 * 1024;
     private static readonly AsyncLocal<ExternalWorkloadLease?> s_current = new();
     private static readonly SemaphoreSlim s_capacity = new(CalculateCapacity());
     private int _referenceCount = 1;
@@ -68,14 +68,22 @@ internal sealed class ExternalWorkloadLease : IDisposable
     /// </summary>
     internal void Release() => Dispose();
 
-    private static int CalculateCapacity()
+    private static int CalculateCapacity() => CalculateCapacity(
+        Environment.ProcessorCount,
+        GC.GetGCMemoryInfo().TotalAvailableMemoryBytes);
+
+    /// <summary>
+    /// Calculates the number of concurrent real external workloads supported by fixed resources.
+    /// </summary>
+    internal static int CalculateCapacity(
+        int logicalProcessorCount,
+        long availableMemoryBytes)
     {
         int processorCapacity = Math.Max(
             1,
-            Environment.ProcessorCount / LogicalProcessorsPerWorkload);
-        long availableMemory = GC.GetGCMemoryInfo().TotalAvailableMemoryBytes;
-        int memoryCapacity = availableMemory > 0
-            ? Math.Max(1, (int)Math.Min(int.MaxValue, availableMemory / BytesPerWorkload))
+            logicalProcessorCount / LogicalProcessorsPerWorkload);
+        int memoryCapacity = availableMemoryBytes > 0
+            ? Math.Max(1, (int)Math.Min(int.MaxValue, availableMemoryBytes / BytesPerWorkload))
             : processorCapacity;
         return Math.Min(processorCapacity, memoryCapacity);
     }

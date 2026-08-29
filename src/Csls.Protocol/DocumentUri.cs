@@ -16,6 +16,11 @@ public readonly record struct DocumentUri
     }
 
     /// <summary>
+    /// Gets whether this document URI identifies a local filesystem path.
+    /// </summary>
+    public bool IsFile => _value.IsFile;
+
+    /// <summary>
     /// Parses and validates an absolute document URI.
     /// </summary>
     /// <param name="value">The URI text received from an LSP peer.</param>
