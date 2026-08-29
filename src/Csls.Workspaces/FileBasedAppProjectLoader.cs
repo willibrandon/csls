@@ -362,15 +362,15 @@ internal static class FileBasedAppProjectLoader
             ?? throw new InvalidDataException(
                 $"The generated file-based app project has no parent: {evaluatedProjectPath}");
 
-        foreach (XElement projectReference in root
+        foreach (XAttribute include in root
             .Descendants()
             .Where(static element => element.Name.LocalName.Equals(
                 "ProjectReference",
-                StringComparison.Ordinal)))
+                StringComparison.Ordinal))
+            .Select(static element => element.Attribute("Include"))
+            .OfType<XAttribute>())
         {
-            XAttribute? include = projectReference.Attribute("Include");
-            if (include is null ||
-                string.IsNullOrWhiteSpace(include.Value) ||
+            if (string.IsNullOrWhiteSpace(include.Value) ||
                 Path.IsPathFullyQualified(include.Value) ||
                 include.Value.Contains("$(", StringComparison.Ordinal))
             {
