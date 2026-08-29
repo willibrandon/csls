@@ -17,14 +17,10 @@ public static class CancellationProbeTransport
         CancellationToken cancellationToken)
     {
         FileSignalPublisher.WriteAllText(markerPath, "started");
+        using CancellationTokenRegistration registration = cancellationToken.Register(
+            static state => FileSignalPublisher.WriteAllText((string)state, "canceled"),
+            markerPath);
         cancellationToken.WaitHandle.WaitOne();
-        try
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-        }
-        finally
-        {
-            FileSignalPublisher.WriteAllText(markerPath, "canceled");
-        }
+        cancellationToken.ThrowIfCancellationRequested();
     }
 }

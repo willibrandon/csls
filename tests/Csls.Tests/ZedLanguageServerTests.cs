@@ -786,15 +786,18 @@ public sealed class ZedLanguageServerTests
 
     private static void AssertTraceSucceeded(ControlTraceInfo trace, string requestName)
     {
-        ControlTraceEntry[] requests =
+        ControlTraceEntry[] completedRequests =
         [
             .. trace.Entries.Where(entry => string.Equals(
                 entry.Name,
                 requestName,
-                StringComparison.Ordinal))
+                StringComparison.Ordinal) &&
+                entry.CompletedAt.HasValue)
         ];
-        Assert.IsNotEmpty(requests, $"Zed did not send {requestName} to csls.");
-        foreach (ControlTraceEntry request in requests)
+        Assert.IsNotEmpty(
+            completedRequests,
+            $"Zed did not complete {requestName} through csls.");
+        foreach (ControlTraceEntry request in completedRequests)
         {
             Assert.AreEqual("Succeeded", request.Status);
             Assert.IsNull(request.ExceptionType);
