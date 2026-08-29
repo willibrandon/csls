@@ -11,7 +11,6 @@ export async function run(): Promise<void> {
 
 export interface FeatureContractOptions {
   readonly expectedHost: "browser" | "desktop" | "remote";
-  readonly expectedServerPath?: string;
   readonly requireRuntimeExtension: boolean;
 }
 
@@ -38,10 +37,15 @@ export async function runFeatureContract(options: FeatureContractOptions): Promi
   assert(api.host === options.expectedHost, `Expected the ${options.expectedHost} host.`);
   assert(api.state === 2, "The csls language client must be running.");
   await assertProjectDiscovery(api);
-  if (options.expectedServerPath !== undefined) {
+  if (options.expectedHost !== "browser") {
+    const expectedServerPath = vscode.Uri.joinPath(
+      extension.extensionUri,
+      "server",
+      process.platform === "win32" ? "csls.exe" : "csls",
+    ).fsPath;
     assert(
-      api.serverPath === options.expectedServerPath,
-      `Expected csls to start ${options.expectedServerPath}.`,
+      api.serverPath === expectedServerPath,
+      `Expected csls to start its bundled server at ${expectedServerPath}, received ${api.serverPath}.`,
     );
     assert(
       typeof api.runtimePath === "string" && api.runtimePath.length > 0,

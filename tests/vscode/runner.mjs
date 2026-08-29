@@ -52,7 +52,6 @@ await runTests({
     : resolve(extensionPath, "remote-resolver"),
   extensionTestsEnv: {
     ...copyEnvironment(
-      "CSLS_VSCODE_EXPECTED_SERVER_PATH",
       "CSLS_VSCODE_EXPECTED_HOST",
       "CSLS_VSCODE_ORACLE_DIAGNOSTICS_TIMEOUT_MILLISECONDS",
       "CSLS_VSCODE_ORACLE_OUTPUT_PATH",

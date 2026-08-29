@@ -65,6 +65,7 @@ internal static class VsCodeExtensionPackage
             CopyRequiredFile(extensionRoot, stagingPath, ".vscodeignore");
             CopyRequiredFile(extensionRoot, stagingPath, "dist", "extension.cjs");
             CopyRequiredFile(extensionRoot, stagingPath, "media", "icon.png");
+            CopyServer(repositoryRoot, stagingPath);
             await PrepareManifestAsync(Path.Join(stagingPath, "package.json"))
                 .ConfigureAwait(false);
 
@@ -115,6 +116,38 @@ internal static class VsCodeExtensionPackage
         }
 
         return outputPath;
+    }
+
+    private static void CopyServer(string repositoryRoot, string stagingPath)
+    {
+        string launcherPath = EditorToolResolver.ResolveLauncher(repositoryRoot);
+        string workerPath = EditorToolResolver.ResolveServerWorker(repositoryRoot);
+        CopyDirectory(
+            Path.GetDirectoryName(launcherPath)!,
+            Path.Join(stagingPath, "server"));
+        CopyDirectory(
+            Path.GetDirectoryName(workerPath)!,
+            Path.Join(stagingPath, "server", "workers", "server"));
+    }
+
+    private static void CopyDirectory(string sourcePath, string destinationPath)
+    {
+        if (!Directory.Exists(sourcePath))
+        {
+            throw new DirectoryNotFoundException(
+                $"A VS Code test server input is missing: {sourcePath}");
+        }
+
+        foreach (string sourceFile in Directory.EnumerateFiles(
+            sourcePath,
+            "*",
+            SearchOption.AllDirectories))
+        {
+            string relativePath = Path.GetRelativePath(sourcePath, sourceFile);
+            string destinationFile = Path.Join(destinationPath, relativePath);
+            Directory.CreateDirectory(Path.GetDirectoryName(destinationFile)!);
+            File.Copy(sourceFile, destinationFile);
+        }
     }
 
     private static void CopyRequiredFile(

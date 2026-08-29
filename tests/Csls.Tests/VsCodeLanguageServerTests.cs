@@ -51,10 +51,6 @@ public sealed class VsCodeLanguageServerTests
         using ExternalWorkloadLease workloadLease = await ExternalWorkloadLease.AcquireAsync(
             TestContext.CancellationToken).ConfigureAwait(false);
         string repositoryRoot = EditorToolResolver.FindRepositoryRoot();
-        string launcherPath = EditorToolResolver.ResolveLauncher(repositoryRoot);
-        string workerPath = EditorToolResolver.ResolveServerWorker(repositoryRoot);
-        Assert.IsTrue(File.Exists(launcherPath), $"Launcher not found at {launcherPath}.");
-        Assert.IsTrue(File.Exists(workerPath), $"Worker not found at {workerPath}.");
         string runnerPath = Path.Join(repositoryRoot, "tests", "vscode", "runner.mjs");
         Assert.IsTrue(File.Exists(runnerPath), $"VS Code runner not found at {runnerPath}.");
         string testElectronPath = Path.Join(
@@ -105,7 +101,7 @@ public sealed class VsCodeLanguageServerTests
                 TestContext.CancellationToken).ConfigureAwait(false);
             await File.WriteAllTextAsync(
                 settingsPath,
-                CreateSettingsText(launcherPath, debuggerPath),
+                CreateSettingsText(debuggerPath),
                 TestContext.CancellationToken).ConfigureAwait(false);
             await File.WriteAllTextAsync(
                 Path.Join(workspacePath, "Fixture.csproj"),
@@ -144,8 +140,6 @@ public sealed class VsCodeLanguageServerTests
                 await RunVsCodeAsync(
                     repositoryRoot,
                     runnerPath,
-                    launcherPath,
-                    workerPath,
                     extensionPath,
                     runtimeExtensionPath,
                     workspacePath,
@@ -160,8 +154,6 @@ public sealed class VsCodeLanguageServerTests
                 await RunVsCodeAsync(
                     repositoryRoot,
                     runnerPath,
-                    launcherPath,
-                    workerPath,
                     extensionPath,
                     runtimeExtensionPath,
                     workspacePath,
@@ -243,8 +235,6 @@ public sealed class VsCodeLanguageServerTests
     private async Task RunVsCodeAsync(
         string repositoryRoot,
         string runnerPath,
-        string launcherPath,
-        string workerPath,
         string extensionPath,
         string runtimeExtensionPath,
         string workspacePath,
@@ -257,8 +247,6 @@ public sealed class VsCodeLanguageServerTests
         using Process runner = StartRunner(
             repositoryRoot,
             runnerPath,
-            launcherPath,
-            workerPath,
             extensionPath,
             runtimeExtensionPath,
             workspacePath,
@@ -322,8 +310,6 @@ public sealed class VsCodeLanguageServerTests
     private static Process StartRunner(
         string repositoryRoot,
         string runnerPath,
-        string launcherPath,
-        string workerPath,
         string extensionPath,
         string runtimeExtensionPath,
         string workspacePath,
@@ -352,7 +338,6 @@ public sealed class VsCodeLanguageServerTests
         };
         startInfo.ArgumentList.Add(runnerPath);
         startInfo.Environment["CSLS_VSCODE_CACHE_PATH"] = vscodeCachePath;
-        startInfo.Environment["CSLS_VSCODE_EXPECTED_SERVER_PATH"] = launcherPath;
         startInfo.Environment["CSLS_VSCODE_EXTENSION_PATH"] = extensionPath;
         startInfo.Environment["CSLS_VSCODE_EXTENSIONS_PATH"] = extensionsPath;
         startInfo.Environment["CSLS_VSCODE_EXPECTED_HOST"] = remoteServerRoot is null
@@ -361,7 +346,6 @@ public sealed class VsCodeLanguageServerTests
         startInfo.Environment["CSLS_VSCODE_RUNTIME_EXTENSION_PATH"] = runtimeExtensionPath;
         startInfo.Environment["CSLS_VSCODE_USER_DATA_PATH"] = userDataPath;
         startInfo.Environment["CSLS_VSCODE_WORKSPACE_PATH"] = workspacePath;
-        startInfo.Environment["CSLS_WORKER_PATH"] = workerPath;
         if (remoteServerRoot is not null)
         {
             startInfo.Environment["CSLS_VSCODE_REMOTE_DATA_PATH"] = remoteDataPath;
@@ -381,13 +365,10 @@ public sealed class VsCodeLanguageServerTests
             ?? throw new InvalidOperationException("The VS Code integration runner did not start.");
     }
 
-    private static string CreateSettingsText(
-        string launcherPath,
-        string debuggerPath) => $$"""
+    private static string CreateSettingsText(string debuggerPath) => $$"""
         {
           "chat.disableAIFeatures": true,
           "csls.debugger.path": {{JsonSerializer.Serialize(debuggerPath)}},
-          "csls.server.path": {{JsonSerializer.Serialize(launcherPath)}},
           "telemetry.telemetryLevel": "off",
           "workbench.enableExperiments": false,
           "workbench.startupEditor": "none"
