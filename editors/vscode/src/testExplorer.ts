@@ -205,11 +205,26 @@ export class TestExplorer implements vscode.Disposable {
       return projectItem;
     }
 
-    const discovery = await this.executor.execute(
-      [properties.TargetPath, "--list-tests", "json", "--no-ansi", "--progress", "off"],
-      projectDirectory,
-      cancellationToken,
-    );
+    const discoveryResultsDirectory = await mkdtemp(join(tmpdir(), "csls-test-discovery-"));
+    let discovery;
+    try {
+      discovery = await this.executor.execute(
+        [
+          properties.TargetPath,
+          "--list-tests",
+          "json",
+          "--results-directory",
+          discoveryResultsDirectory,
+          "--no-ansi",
+          "--progress",
+          "off",
+        ],
+        projectDirectory,
+        cancellationToken,
+      );
+    } finally {
+      await rm(discoveryResultsDirectory, { force: true, recursive: true });
+    }
     if (discovery.exitCode !== 0 || cancellationToken?.isCancellationRequested === true) {
       if (cancellationToken?.isCancellationRequested !== true) {
         projectItem.error = describeFailure("Microsoft Testing Platform discovery failed.", discovery);

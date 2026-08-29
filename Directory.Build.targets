@@ -9,8 +9,8 @@
     </PropertyGroup>
     <ItemGroup>
       <_CslsTestingPlatformConfigurationLine Include="{" />
-      <_CslsTestingPlatformConfigurationLine Include="  &quot;commandLineOptions&quot;: {" />
-      <_CslsTestingPlatformConfigurationLine Include="    &quot;results-directory&quot;: &quot;$(CslsTestResultsDirectory)&quot;" />
+      <_CslsTestingPlatformConfigurationLine Include="  &quot;platformOptions&quot;: {" />
+      <_CslsTestingPlatformConfigurationLine Include="    &quot;resultDirectory&quot;: &quot;$(CslsTestResultsDirectory)&quot;" />
       <_CslsTestingPlatformConfigurationLine Include="  }" />
       <_CslsTestingPlatformConfigurationLine Include="}" />
     </ItemGroup>

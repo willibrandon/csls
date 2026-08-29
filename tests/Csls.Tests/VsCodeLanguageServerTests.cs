@@ -171,6 +171,8 @@ public sealed class VsCodeLanguageServerTests
                     remoteDataPath,
                     displayName: null).ConfigureAwait(false);
             }
+
+            Assert.IsFalse(Directory.Exists(Path.Join(repositoryRoot, "TestResults")));
         }
         finally
         {
