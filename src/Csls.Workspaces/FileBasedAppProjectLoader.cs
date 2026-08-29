@@ -6,6 +6,8 @@ using System.Diagnostics;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Nodes;
+using System.Xml.Linq;
 
 namespace Csls.Workspaces;
 
@@ -41,45 +43,41 @@ internal static class FileBasedAppProjectLoader
         using FileStream projectLock = await AcquireProjectLockAsync(
             entryPointPath,
             cancellationToken).ConfigureAwait(false);
+        string materializedProjectPath = CreateMaterializedProjectPath(entryPointPath);
         string materializationMarkerPath = CreateMaterializationMarkerPath(entryPointPath);
         await RecoverInterruptedMaterializationAsync(
             entryPointPath,
+            materializedProjectPath,
             materializationMarkerPath,
             cancellationToken).ConfigureAwait(false);
         await DotNetWorkspaceRestorer
             .RestoreAsync([entryPointPath], cancellationToken)
             .ConfigureAwait(false);
-        (string projectPath, string content) = await EvaluateAsync(
+        (string evaluatedProjectPath, string content) = await EvaluateAsync(
             entryPointPath,
             reportDiagnostic,
+            cancellationToken).ConfigureAwait(false);
+        content = await PrepareMaterializedProjectAsync(
+            content,
+            evaluatedProjectPath,
+            materializedProjectPath,
             cancellationToken).ConfigureAwait(false);
 
         bool materialized = false;
         bool markerCreated = false;
         try
         {
-            if (File.Exists(projectPath))
-            {
-                if (!FileBasedAppProjectArtifact.IsGeneratedForEntryPoint(
-                    projectPath,
-                    entryPointPath))
-                {
-                    throw new InvalidOperationException(
-                        $"Cannot load file-based app {entryPointPath} because {projectPath} " +
-                        "already exists and is not its generated project.");
-                }
-
-                File.Delete(projectPath);
-            }
+            RemoveGeneratedProjectIfPresent(evaluatedProjectPath, entryPointPath);
+            RemoveGeneratedProjectIfPresent(materializedProjectPath, entryPointPath);
 
             await File.WriteAllTextAsync(
                 materializationMarkerPath,
-                projectPath,
+                materializedProjectPath,
                 Encoding.UTF8,
                 cancellationToken).ConfigureAwait(false);
             markerCreated = true;
             using (var stream = new FileStream(
-                projectPath,
+                materializedProjectPath,
                 FileMode.CreateNew,
                 FileAccess.Write,
                 FileShare.Read,
@@ -94,7 +92,7 @@ internal static class FileBasedAppProjectLoader
             }
 
             Project project = await workspace.OpenProjectAsync(
-                projectPath,
+                materializedProjectPath,
                 cancellationToken: cancellationToken).ConfigureAwait(false);
             Solution solution = project.Solution.WithProjectFilePath(project.Id, entryPointPath);
             return solution.GetProject(project.Id)
@@ -107,14 +105,15 @@ internal static class FileBasedAppProjectLoader
             {
                 try
                 {
-                    File.Delete(projectPath);
+                    File.Delete(materializedProjectPath);
                 }
                 catch (Exception exception) when (
                     exception is IOException or UnauthorizedAccessException)
                 {
                     reportDiagnostic(
                         WorkspaceDiagnosticKind.Warning,
-                        $"Could not remove temporary file-based app project {projectPath}: " +
+                        $"Could not remove temporary file-based app project " +
+                        $"{materializedProjectPath}: " +
                         exception.Message);
                 }
             }
@@ -285,8 +284,18 @@ internal static class FileBasedAppProjectLoader
             CreateEntryPointIdentity(entryPointPath) + ".marker");
     }
 
+    private static string CreateMaterializedProjectPath(string entryPointPath)
+    {
+        string projectDirectory = Path.Join(
+            CreateStateDirectory("file-app-projects"),
+            CreateEntryPointIdentity(entryPointPath));
+        Directory.CreateDirectory(projectDirectory);
+        return Path.Join(projectDirectory, Path.GetFileName(entryPointPath) + ".csproj");
+    }
+
     private static async Task RecoverInterruptedMaterializationAsync(
         string entryPointPath,
+        string materializedProjectPath,
         string markerPath,
         CancellationToken cancellationToken)
     {
@@ -298,19 +307,218 @@ internal static class FileBasedAppProjectLoader
         string markedProjectPath = (await File.ReadAllTextAsync(
             markerPath,
             cancellationToken).ConfigureAwait(false)).Trim();
-        string expectedProjectPath = entryPointPath + ".csproj";
-        if (!string.Equals(
+        string legacyProjectPath = entryPointPath + ".csproj";
+        bool isLegacyProject = string.Equals(
             Path.GetFullPath(markedProjectPath),
-            Path.GetFullPath(expectedProjectPath),
-            PathComparison))
+            Path.GetFullPath(legacyProjectPath),
+            PathComparison);
+        bool isPrivateProject = string.Equals(
+            Path.GetFullPath(markedProjectPath),
+            Path.GetFullPath(materializedProjectPath),
+            PathComparison);
+        if (!isLegacyProject && !isPrivateProject)
         {
             throw new InvalidDataException(
                 $"File-based app materialization marker {markerPath} points to " +
                 $"unexpected project {markedProjectPath}.");
         }
 
-        File.Delete(expectedProjectPath);
+        RemoveGeneratedProjectIfPresent(markedProjectPath, entryPointPath);
         File.Delete(markerPath);
+    }
+
+    private static void RemoveGeneratedProjectIfPresent(
+        string projectPath,
+        string entryPointPath)
+    {
+        if (!File.Exists(projectPath))
+        {
+            return;
+        }
+
+        if (!FileBasedAppProjectArtifact.IsGeneratedForEntryPoint(
+            projectPath,
+            entryPointPath))
+        {
+            throw new InvalidOperationException(
+                $"Cannot load file-based app {entryPointPath} because {projectPath} " +
+                "already exists and is not its generated project.");
+        }
+
+        File.Delete(projectPath);
+    }
+
+    private static async Task<string> PrepareMaterializedProjectAsync(
+        string content,
+        string evaluatedProjectPath,
+        string materializedProjectPath,
+        CancellationToken cancellationToken)
+    {
+        var document = XDocument.Parse(content, LoadOptions.PreserveWhitespace);
+        XElement root = document.Root
+            ?? throw new InvalidDataException(
+                "The .NET file-based app evaluator returned an empty project.");
+        string sourceDirectory = Path.GetDirectoryName(evaluatedProjectPath)
+            ?? throw new InvalidDataException(
+                $"The generated file-based app project has no parent: {evaluatedProjectPath}");
+
+        foreach (XElement projectReference in root
+            .Descendants()
+            .Where(static element => element.Name.LocalName.Equals(
+                "ProjectReference",
+                StringComparison.Ordinal)))
+        {
+            XAttribute? include = projectReference.Attribute("Include");
+            if (include is null ||
+                string.IsNullOrWhiteSpace(include.Value) ||
+                Path.IsPathFullyQualified(include.Value) ||
+                include.Value.Contains("$(", StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            include.Value = Path.GetFullPath(include.Value, sourceDirectory);
+        }
+
+        XNamespace projectNamespace = root.Name.Namespace;
+        var directoryPaths = new XElement(projectNamespace + "PropertyGroup");
+        AddPathPropertyIfPresent(
+            directoryPaths,
+            projectNamespace,
+            "DirectoryBuildPropsPath",
+            FindNearestFile(sourceDirectory, "Directory.Build.props"));
+        AddPathPropertyIfPresent(
+            directoryPaths,
+            projectNamespace,
+            "DirectoryBuildTargetsPath",
+            FindNearestFile(sourceDirectory, "Directory.Build.targets"));
+        AddPathPropertyIfPresent(
+            directoryPaths,
+            projectNamespace,
+            "DirectoryPackagesPropsPath",
+            FindNearestFile(sourceDirectory, "Directory.Packages.props"));
+        string? projectAssetsPath = await MaterializeProjectAssetsAsync(
+            root,
+            sourceDirectory,
+            materializedProjectPath,
+            cancellationToken).ConfigureAwait(false);
+        AddPathPropertyIfPresent(
+            directoryPaths,
+            projectNamespace,
+            "ProjectAssetsFile",
+            projectAssetsPath);
+        if (directoryPaths.HasElements)
+        {
+            root.AddFirst(directoryPaths);
+        }
+
+        return document.ToString(SaveOptions.DisableFormatting);
+    }
+
+    private static async Task<string?> MaterializeProjectAssetsAsync(
+        XElement project,
+        string sourceDirectory,
+        string materializedProjectPath,
+        CancellationToken cancellationToken)
+    {
+        string? artifactsPath = project
+            .Descendants()
+            .FirstOrDefault(static element => element.Name.LocalName.Equals(
+                "ArtifactsPath",
+                StringComparison.Ordinal))
+            ?.Value;
+        if (string.IsNullOrWhiteSpace(artifactsPath))
+        {
+            return null;
+        }
+
+        string evaluatedAssetsPath = Path.Join(
+            Path.GetFullPath(artifactsPath, sourceDirectory),
+            "obj",
+            "project.assets.json");
+        if (!File.Exists(evaluatedAssetsPath))
+        {
+            return null;
+        }
+
+        JsonObject assets = JsonNode.Parse(
+            await File.ReadAllTextAsync(evaluatedAssetsPath, cancellationToken)
+                .ConfigureAwait(false))?.AsObject()
+            ?? throw new InvalidDataException(
+                $"The file-based app assets file is empty: {evaluatedAssetsPath}");
+        if (assets["libraries"] is JsonObject libraries)
+        {
+            foreach ((string _, JsonNode? value) in libraries)
+            {
+                if (value is not JsonObject library ||
+                    !string.Equals(
+                        library["type"]?.GetValue<string>(),
+                        "project",
+                        StringComparison.Ordinal))
+                {
+                    continue;
+                }
+
+                RebaseProjectAssetPath(library, "path", sourceDirectory);
+                RebaseProjectAssetPath(library, "msbuildProject", sourceDirectory);
+            }
+        }
+
+        string materializedDirectory = Path.GetDirectoryName(materializedProjectPath)
+            ?? throw new InvalidDataException(
+                $"The materialized file-based app project has no parent: " +
+                materializedProjectPath);
+        string materializedAssetsPath = Path.Join(
+            materializedDirectory,
+            "obj",
+            "project.assets.json");
+        Directory.CreateDirectory(Path.GetDirectoryName(materializedAssetsPath)!);
+        await File.WriteAllTextAsync(
+            materializedAssetsPath,
+            assets.ToJsonString(new JsonSerializerOptions { WriteIndented = true }) + "\n",
+            new UTF8Encoding(false),
+            cancellationToken).ConfigureAwait(false);
+        return materializedAssetsPath;
+    }
+
+    private static void RebaseProjectAssetPath(
+        JsonObject library,
+        string propertyName,
+        string sourceDirectory)
+    {
+        string? value = library[propertyName]?.GetValue<string>();
+        if (!string.IsNullOrWhiteSpace(value) && !Path.IsPathFullyQualified(value))
+        {
+            library[propertyName] = Path.GetFullPath(value, sourceDirectory);
+        }
+    }
+
+    private static void AddPathPropertyIfPresent(
+        XElement propertyGroup,
+        XNamespace projectNamespace,
+        string propertyName,
+        string? path)
+    {
+        if (path is not null)
+        {
+            propertyGroup.Add(new XElement(projectNamespace + propertyName, path));
+        }
+    }
+
+    private static string? FindNearestFile(string startDirectory, string fileName)
+    {
+        for (var directory = new DirectoryInfo(startDirectory);
+            directory is not null;
+            directory = directory.Parent)
+        {
+            string candidate = Path.Join(directory.FullName, fileName);
+            if (File.Exists(candidate))
+            {
+                return candidate;
+            }
+        }
+
+        return null;
     }
 
     private static string CreateEntryPointIdentity(string entryPointPath)

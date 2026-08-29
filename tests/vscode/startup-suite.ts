@@ -6,34 +6,105 @@ export async function run(): Promise<void> {
   const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
   assert(workspaceFolder !== undefined, "The csls repository workspace must be open.");
   await vscode.workspace.fs.stat(vscode.Uri.joinPath(workspaceFolder.uri, "Csls.slnx"));
+  const unexpectedDiagnostics = new Set<string>();
+  const recordDiagnostics = (uris: readonly vscode.Uri[]): void => {
+    for (const uri of uris) {
+      if (!isCSharpWorkspaceDocument(uri, workspaceFolder)) {
+        continue;
+      }
 
-  const extension = vscode.extensions.getExtension("willibrandon.csls");
-  assert(extension !== undefined, "The packaged csls extension must be installed.");
-  const api: unknown = await extension.activate();
-  assert(extension.isActive, "The packaged csls extension must be active.");
-  assert(isExtensionApi(api), "The packaged csls extension must return its host API.");
-  assert(api.host === "remote", `Expected the remote extension host, received ${api.host}.`);
-  assert(api.state === 2, "The csls language client must be running.");
+      for (const diagnostic of vscode.languages.getDiagnostics(uri)) {
+        unexpectedDiagnostics.add(
+          `${uri.fsPath}:${diagnostic.range.start.line + 1}: ` +
+            `${diagnosticSeverityName(diagnostic.severity)} ${diagnostic.message}`,
+        );
+      }
+    }
+  };
+  recordDiagnostics(vscode.languages.getDiagnostics().map(([uri]) => uri));
+  const diagnosticSubscription = vscode.languages.onDidChangeDiagnostics((event) => {
+    recordDiagnostics(event.uris);
+  });
 
-  let observedProjects = api.projects();
-  await waitUntil(() => {
-    observedProjects = api.projects();
-    return observedProjects.some((project) => project.name === "Csls.App") &&
-      observedProjects.some((project) => project.name === "Generate-Docs.cs");
-  }, () =>
-    "The real csls workspace did not load its solution and file-based apps. " +
-    `Received ${JSON.stringify(observedProjects)}.`);
+  try {
+    const extension = vscode.extensions.getExtension("willibrandon.csls");
+    assert(extension !== undefined, "The packaged csls extension must be installed.");
+    const api: unknown = await extension.activate();
+    assert(extension.isActive, "The packaged csls extension must be active.");
+    assert(isExtensionApi(api), "The packaged csls extension must return its host API.");
+    assert(api.host === "remote", `Expected the remote extension host, received ${api.host}.`);
+    assert(api.state === 2, "The csls language client must be running.");
 
-  await vscode.commands.executeCommand("csls.refreshSolution");
-  const projects = api.projects();
+    let observedProjects = api.projects();
+    await waitUntil(() => {
+      observedProjects = api.projects();
+      return observedProjects.some((project) => project.name === "Csls.App") &&
+        observedProjects.some((project) => project.name === "Generate-Docs.cs");
+    }, () =>
+      "The real csls workspace did not load its solution and file-based apps. " +
+      `Received ${JSON.stringify(observedProjects)}.`);
+
+    await vscode.commands.executeCommand("csls.refreshSolution");
+    const projects = api.projects();
+    assert(
+      projects.some((project) => project.name === "Csls.App"),
+      `The real solution must contain Csls.App. Received ${JSON.stringify(projects)}.`,
+    );
+    assert(
+      projects.some((project) => project.name === "Generate-Docs.cs"),
+      `The real workspace must contain Generate-Docs.cs. Received ${JSON.stringify(projects)}.`,
+    );
+
+    const scriptUris = await vscode.workspace.findFiles(
+      new vscode.RelativePattern(workspaceFolder, "scripts/*.cs"),
+    );
+    for (const uri of scriptUris) {
+      await vscode.workspace.openTextDocument(uri);
+      await vscode.commands.executeCommand("vscode.executeDocumentSymbolProvider", uri);
+    }
+    await waitForDiagnosticQuietPeriod();
+    recordDiagnostics(scriptUris);
+  } finally {
+    diagnosticSubscription.dispose();
+  }
+
   assert(
-    projects.some((project) => project.name === "Csls.App"),
-    `The real solution must contain Csls.App. Received ${JSON.stringify(projects)}.`,
+    unexpectedDiagnostics.size === 0,
+    "The csls repository emitted unexpected C# diagnostics during startup:\n" +
+      [...unexpectedDiagnostics].sort().join("\n"),
   );
-  assert(
-    projects.some((project) => project.name === "Generate-Docs.cs"),
-    `The real workspace must contain Generate-Docs.cs. Received ${JSON.stringify(projects)}.`,
-  );
+}
+
+function isCSharpWorkspaceDocument(
+  uri: vscode.Uri,
+  workspaceFolder: vscode.WorkspaceFolder,
+): boolean {
+  if (uri.scheme !== "file" || vscode.workspace.getWorkspaceFolder(uri) !== workspaceFolder) {
+    return false;
+  }
+
+  const path = uri.path.toLowerCase();
+  return path.endsWith(".cs") ||
+    path.endsWith(".csx") ||
+    path.endsWith(".cshtml") ||
+    path.endsWith(".razor");
+}
+
+function diagnosticSeverityName(severity: vscode.DiagnosticSeverity): string {
+  switch (severity) {
+    case vscode.DiagnosticSeverity.Error:
+      return "error";
+    case vscode.DiagnosticSeverity.Warning:
+      return "warning";
+    case vscode.DiagnosticSeverity.Information:
+      return "information";
+    case vscode.DiagnosticSeverity.Hint:
+      return "hint";
+  }
+}
+
+async function waitForDiagnosticQuietPeriod(): Promise<void> {
+  await new Promise((resolve) => setTimeout(resolve, 2_000));
 }
 
 function isExtensionApi(value: unknown): value is {

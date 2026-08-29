@@ -735,6 +735,7 @@ public sealed class VsCodeLanguageServerTests
         {
           "chat.disableAIFeatures": true,
           "csls.debugger.path": {{JsonSerializer.Serialize(debuggerPath)}},
+          "csls.diagnostics.reportInformationAsHint": false,
           "telemetry.telemetryLevel": "off",
           "workbench.enableExperiments": false,
           "workbench.startupEditor": "none"

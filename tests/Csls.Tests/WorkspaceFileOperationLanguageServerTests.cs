@@ -396,6 +396,82 @@ public sealed class WorkspaceFileOperationLanguageServerTests
                 "Unhandled exception",
                 serverDiagnostics,
                 StringComparison.Ordinal);
+            Assert.DoesNotContain(
+                "Workspace reload started",
+                serverDiagnostics,
+                StringComparison.Ordinal);
+        }
+        finally
+        {
+            Directory.Delete(fixturePath, recursive: true);
+        }
+    }
+
+    /// <summary>
+    /// Reports the elapsed time for a real project-file workspace reload.
+    /// </summary>
+    [TestMethod]
+    public async Task WorkspaceReloadDurationIsLogged()
+    {
+        string repositoryRoot = EditorToolResolver.FindRepositoryRoot();
+        string workerPath = ResolveWorkerPath(repositoryRoot);
+        string fixturePath = Path.Join(
+            Path.GetTempPath(),
+            $"csls-reload-duration-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(fixturePath);
+        try
+        {
+            string projectPath = Path.Join(fixturePath, "Fixture.csproj");
+            string documentPath = Path.Join(fixturePath, "Program.cs");
+            await File.WriteAllTextAsync(
+                projectPath,
+                ProjectText,
+                TestContext.CancellationToken).ConfigureAwait(false);
+            await File.WriteAllTextAsync(
+                documentPath,
+                "internal sealed class Program;\n",
+                TestContext.CancellationToken).ConfigureAwait(false);
+
+            var lsp = LspProcessSession.Start(
+                "csls-reload-duration-worker",
+                EditorToolResolver.ResolveDotNetHost(),
+                [workerPath],
+                fixturePath);
+            await using ConfiguredAsyncDisposable lspCleanup = lsp.ConfigureAwait(false);
+            await lsp.InitializeAsync(
+                fixturePath,
+                TestContext.CancellationToken).ConfigureAwait(false);
+            await lsp.CompleteInitializationAsync().ConfigureAwait(false);
+            await File.AppendAllTextAsync(
+                projectPath,
+                Environment.NewLine,
+                TestContext.CancellationToken).ConfigureAwait(false);
+            await lsp.ChangeWatchedFilesAsync(
+                [(projectPath, FileChangeType.Changed)]).ConfigureAwait(false);
+            _ = await lsp.RequestWorkspaceInfoAsync(TestContext.CancellationToken)
+                .ConfigureAwait(false);
+
+            string serverDiagnostics = await lsp.ShutdownAsync(
+                TestContext.CancellationToken).ConfigureAwait(false);
+            Assert.Contains(
+                "Workspace reload started for 1 workspace folders",
+                serverDiagnostics,
+                StringComparison.Ordinal);
+            const string durationPrefix = "Workspace reload completed in ";
+            int durationStart = serverDiagnostics.IndexOf(
+                durationPrefix,
+                StringComparison.Ordinal);
+            Assert.IsGreaterThanOrEqualTo(0, durationStart);
+            durationStart += durationPrefix.Length;
+            int durationEnd = serverDiagnostics.IndexOf(
+                " ms",
+                durationStart,
+                StringComparison.Ordinal);
+            Assert.IsGreaterThan(durationStart, durationEnd);
+            Assert.IsTrue(long.TryParse(
+                serverDiagnostics.AsSpan(durationStart, durationEnd - durationStart),
+                out long durationMilliseconds));
+            Assert.IsGreaterThanOrEqualTo(0, durationMilliseconds);
         }
         finally
         {

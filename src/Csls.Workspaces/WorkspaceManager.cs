@@ -9,6 +9,7 @@ using Microsoft.CodeAnalysis.Rename;
 using Microsoft.CodeAnalysis.Text;
 using Microsoft.Extensions.Logging;
 using System.Collections.Immutable;
+using System.Diagnostics;
 using System.Globalization;
 using System.Text;
 using LspCodeAction = Csls.Protocol.CodeAction;
@@ -109,6 +110,8 @@ public sealed partial class WorkspaceManager : IAsyncDisposable
     {
         ArgumentNullException.ThrowIfNull(rootPaths);
         ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposeState) != 0, this);
+        long startedTimestamp = Stopwatch.GetTimestamp();
+        WorkspaceManagerLogger.LogWorkspaceLoadStarted(_logger, rootPaths.Count);
 
         ImmutableArray<(string RootPath, Workspace Workspace, Solution Solution)> loadedFolders =
             await LoadFoldersAsync(rootPaths, progress, cancellationToken).ConfigureAwait(false);
@@ -128,6 +131,18 @@ public sealed partial class WorkspaceManager : IAsyncDisposable
             {
                 DisposeFolders(loadedFolders);
             }
+        }
+
+        if (_logger.IsEnabled(LogLevel.Information))
+        {
+            long elapsedMilliseconds =
+                (long)Stopwatch.GetElapsedTime(startedTimestamp).TotalMilliseconds;
+            int projectCount = loadedFolders.Sum(
+                static folder => folder.Solution.ProjectIds.Count);
+            WorkspaceManagerLogger.LogWorkspaceLoadCompleted(
+                _logger,
+                elapsedMilliseconds,
+                projectCount);
         }
     }
 
