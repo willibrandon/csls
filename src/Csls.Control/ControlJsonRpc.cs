@@ -22,6 +22,9 @@ internal sealed class ControlJsonRpc : JsonRpc
     {
         ArgumentNullException.ThrowIfNull(activity);
         _activity = activity;
+
+        // Cancellation notifications must run while a long-running request is active.
+        SynchronizationContext = null;
     }
 
     /// <inheritdoc />
