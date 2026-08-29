@@ -29,10 +29,9 @@ public sealed class ZedHighlightQueryTests
             "csharp",
             "highlights.scm");
         string grammarPath = Path.Join(
-            repositoryRoot,
-            "editors",
-            "zed",
-            "grammars",
+            EditorToolResolver.ResolveArtifactsRoot(repositoryRoot),
+            "zed-extension",
+            "grammar-source",
             "c_sharp");
         string sourcePath = Path.Join(
             repositoryRoot,
@@ -45,13 +44,11 @@ public sealed class ZedHighlightQueryTests
             RedirectStandardError = true,
             RedirectStandardOutput = true,
             UseShellExecute = false,
-            WorkingDirectory = repositoryRoot
+            WorkingDirectory = grammarPath
         };
         startInfo.ArgumentList.Add("query");
         startInfo.ArgumentList.Add(queryPath);
         startInfo.ArgumentList.Add(sourcePath);
-        startInfo.ArgumentList.Add("--grammar-path");
-        startInfo.ArgumentList.Add(grammarPath);
         startInfo.ArgumentList.Add("--captures");
 
         using Process process = Process.Start(startInfo)
