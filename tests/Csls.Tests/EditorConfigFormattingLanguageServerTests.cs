@@ -141,6 +141,7 @@ public sealed class EditorConfigFormattingLanguageServerTests
         indent_style = tab
         indent_size = 8
         tab_width = 8
+        end_of_line = lf
         csharp_new_line_before_open_brace = none
         """;
 
