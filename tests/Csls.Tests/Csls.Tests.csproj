@@ -18,6 +18,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="../../benchmarks/Csls.Benchmarks/Csls.Benchmarks.csproj" />
     <ProjectReference Include="../../src/Csls.Protocol/Csls.Protocol.csproj" />
     <ProjectReference Include="../../src/Csls.Rpc/Csls.Rpc.csproj" />
     <ProjectReference Include="../../src/Csls.App/Csls.App.csproj"

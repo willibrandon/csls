@@ -1,5 +1,7 @@
+using BenchmarkDotNet.Configs;
 using BenchmarkDotNet.Reports;
 using BenchmarkDotNet.Running;
+using Csls.Benchmarks;
 
 if (!args.Any(static argument =>
         string.Equals(argument, "--artifacts", StringComparison.Ordinal) ||
@@ -13,7 +15,13 @@ if (!args.Any(static argument =>
     ];
 }
 
-Summary[] summaries = [.. BenchmarkSwitcher.FromAssembly(typeof(Program).Assembly).Run(args)];
+IConfig benchmarkConfiguration = BenchmarkConfiguration.Create();
+Summary[] summaries =
+[
+    .. BenchmarkSwitcher
+        .FromAssembly(typeof(Program).Assembly)
+        .Run(args, benchmarkConfiguration)
+];
 return summaries.Length != 0 && summaries.All(summary =>
     !summary.HasCriticalValidationErrors &&
     summary.Reports.Any() &&
