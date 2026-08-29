@@ -1,8 +1,8 @@
-using System.Composition;
-using System.Reflection;
 using Microsoft.CodeAnalysis.CodeFixes;
 using Microsoft.CodeAnalysis.Host;
 using Microsoft.CodeAnalysis.Host.Mef;
+using System.Composition;
+using System.Reflection;
 
 namespace Csls.Workspaces;
 

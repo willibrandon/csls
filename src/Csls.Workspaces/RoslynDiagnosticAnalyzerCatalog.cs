@@ -1,7 +1,7 @@
-using System.Collections.Concurrent;
-using System.Runtime.Loader;
 using Microsoft.CodeAnalysis.Diagnostics;
 using Microsoft.CodeAnalysis.Host.Mef;
+using System.Collections.Concurrent;
+using System.Runtime.Loader;
 
 namespace Csls.Workspaces;
 

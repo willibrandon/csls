@@ -1,10 +1,10 @@
-using System.Collections.Immutable;
 using Csls.Protocol;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CodeActions;
 using Microsoft.CodeAnalysis.CodeFixes;
 using Microsoft.CodeAnalysis.Diagnostics;
 using Microsoft.CodeAnalysis.Text;
+using System.Collections.Immutable;
 using LspCodeAction = Csls.Protocol.CodeAction;
 using LspDiagnostic = Csls.Protocol.Diagnostic;
 using RoslynCodeAction = Microsoft.CodeAnalysis.CodeActions.CodeAction;

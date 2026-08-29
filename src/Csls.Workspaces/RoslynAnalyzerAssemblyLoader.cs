@@ -1,7 +1,7 @@
+using Microsoft.CodeAnalysis;
 using System.Collections.Concurrent;
 using System.Reflection;
 using System.Runtime.Loader;
-using Microsoft.CodeAnalysis;
 
 namespace Csls.Workspaces;
 
