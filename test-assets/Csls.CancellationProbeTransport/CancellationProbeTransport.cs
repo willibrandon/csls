@@ -1,4 +1,3 @@
-using System.IO;
 using System.Threading;
 
 namespace Csls.Testing;
@@ -17,7 +16,7 @@ public static class CancellationProbeTransport
         string markerPath,
         CancellationToken cancellationToken)
     {
-        File.WriteAllText(markerPath, "started");
+        FileSignalPublisher.WriteAllText(markerPath, "started");
         cancellationToken.WaitHandle.WaitOne();
         try
         {
@@ -25,7 +24,7 @@ public static class CancellationProbeTransport
         }
         finally
         {
-            File.WriteAllText(markerPath, "canceled");
+            FileSignalPublisher.WriteAllText(markerPath, "canceled");
         }
     }
 }

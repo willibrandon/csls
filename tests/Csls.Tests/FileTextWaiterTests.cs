@@ -1,6 +1,3 @@
-using System.Runtime.CompilerServices;
-using System.Text;
-
 namespace Csls.Tests;
 
 /// <summary>
@@ -15,10 +12,10 @@ public sealed class FileTextWaiterTests
     public TestContext TestContext { get; set; } = null!;
 
     /// <summary>
-    /// Observes text written while another process-equivalent handle excludes readers.
+    /// Observes complete text published through atomic file replacement.
     /// </summary>
     [TestMethod]
-    public async Task WaitAsyncObservesTextAfterExclusiveWriterReleasesFile()
+    public async Task WaitAsyncObservesAtomicFileReplacement()
     {
         string fixturePath = Path.Join(
             Path.GetTempPath(),
@@ -36,33 +33,18 @@ public sealed class FileTextWaiterTests
                 "canceled",
                 TimeSpan.FromSeconds(5),
                 TestContext.CancellationToken);
-            await Task.Delay(
-                TimeSpan.FromMilliseconds(100),
+            string pendingPath = markerPath + ".pending";
+            await File.WriteAllTextAsync(
+                pendingPath,
+                "canceled",
                 TestContext.CancellationToken).ConfigureAwait(false);
-            {
-                var writer = new FileStream(
-                    markerPath,
-                    FileMode.Create,
-                    FileAccess.Write,
-                    FileShare.None);
-                await using ConfiguredAsyncDisposable writerCleanup =
-                    writer.ConfigureAwait(false);
-                await writer.WriteAsync(
-                    "canceled"u8.ToArray(),
-                    TestContext.CancellationToken).ConfigureAwait(false);
-                await writer.FlushAsync(TestContext.CancellationToken).ConfigureAwait(false);
-                await Task.Delay(
-                    TimeSpan.FromMilliseconds(100),
-                    TestContext.CancellationToken).ConfigureAwait(false);
-                Assert.IsFalse(waitTask.IsCompleted);
-            }
+            File.Replace(pendingPath, markerPath, destinationBackupFileName: null);
 
             await waitTask.ConfigureAwait(false);
             Assert.AreEqual(
                 "canceled",
                 await File.ReadAllTextAsync(
                     markerPath,
-                    Encoding.UTF8,
                     TestContext.CancellationToken).ConfigureAwait(false));
         }
         finally
