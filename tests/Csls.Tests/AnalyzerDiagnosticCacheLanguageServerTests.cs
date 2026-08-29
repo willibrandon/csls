@@ -205,8 +205,6 @@ public sealed class AnalyzerDiagnosticCacheLanguageServerTests
         var controlClient = new ControlRpcClient(ControlEndpoint.GetSocketPath(lsp.ProcessId));
         await using ConfiguredAsyncDisposable controlCleanup =
             controlClient.ConfigureAwait(false);
-        ControlSessionInfo initialSession = await controlClient.GetSessionAsync(
-            TestContext.CancellationToken).ConfigureAwait(false);
         bool analyzerReleased = false;
         try
         {
@@ -219,6 +217,16 @@ public sealed class AnalyzerDiagnosticCacheLanguageServerTests
                 "started",
                 TimeSpan.FromSeconds(60),
                 TestContext.CancellationToken).ConfigureAwait(false);
+            IReadOnlyList<ControlRequestInfo> activeRequests =
+                await ControlRequestWaiter.WaitForActiveCountAsync(
+                    controlClient,
+                    "textDocument/diagnostic",
+                    expectedCount: 1,
+                    TimeSpan.FromSeconds(60),
+                    TestContext.CancellationToken).ConfigureAwait(false);
+            long requestGeneration = activeRequests.Single().WorkspaceGeneration
+                ?? throw new InvalidDataException(
+                    "The active diagnostic request had no workspace generation.");
             await lsp.ChangeDocumentAsync(
                 fixture.DocumentPaths[0],
                 version: 2,
@@ -230,7 +238,7 @@ public sealed class AnalyzerDiagnosticCacheLanguageServerTests
                 ]).ConfigureAwait(false);
             await WaitForGenerationAsync(
                 controlClient,
-                initialSession.WorkspaceGeneration + 1,
+                requestGeneration + 1,
                 TestContext.CancellationToken).ConfigureAwait(false);
             await fixture.ReleaseAsync(TestContext.CancellationToken).ConfigureAwait(false);
             analyzerReleased = true;
