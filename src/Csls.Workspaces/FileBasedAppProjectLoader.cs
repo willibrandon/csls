@@ -6,6 +6,7 @@ using System.Diagnostics;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using System.Xml.Linq;
 
 namespace Csls.Workspaces;
 
@@ -48,6 +49,7 @@ internal static class FileBasedAppProjectLoader
             entryPointPath,
             reportDiagnostic,
             cancellationToken).ConfigureAwait(false);
+        content = RebaseProjectReferences(entryPointPath, content);
         projectPath = CreateMaterializedProjectPath(entryPointPath, projectPath);
 
         bool materialized = false;
@@ -242,6 +244,30 @@ internal static class FileBasedAppProjectLoader
             CreateEntryPointIdentity(entryPointPath));
         Directory.CreateDirectory(projectDirectory);
         return Path.Join(projectDirectory, Path.GetFileName(evaluatedProjectPath));
+    }
+
+    private static string RebaseProjectReferences(string entryPointPath, string content)
+    {
+        var project = XDocument.Parse(content, LoadOptions.PreserveWhitespace);
+        string entryPointDirectory = Path.GetDirectoryName(entryPointPath)
+            ?? throw new InvalidDataException(
+                $"File-based app entry point has no parent: {entryPointPath}");
+        foreach (XElement projectReference in project
+            .Descendants()
+            .Where(static element => element.Name.LocalName == "ProjectReference"))
+        {
+            XAttribute? include = projectReference.Attribute("Include");
+            if (include is null ||
+                Path.IsPathFullyQualified(include.Value) ||
+                include.Value.Contains("$(", StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            include.Value = Path.GetFullPath(include.Value, entryPointDirectory);
+        }
+
+        return project.ToString(SaveOptions.DisableFormatting);
     }
 
     private static string CreateStateDirectory(string name)
