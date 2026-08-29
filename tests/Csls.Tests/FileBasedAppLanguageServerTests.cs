@@ -181,6 +181,24 @@ public sealed class FileBasedAppLanguageServerTests
                 directiveHover.Value.ToString(),
                 StringComparison.Ordinal);
 
+            CSharpWorkspaceInfo workspace = await lsp.RequestWorkspaceInfoAsync(
+                TestContext.CancellationToken).ConfigureAwait(false);
+            CSharpWorkspaceFolderInfo folder = Assert.ContainsSingle(workspace.Workspaces);
+            Assert.AreEqual(fixturePath, folder.RootPath);
+            Assert.AreEqual(2, folder.ProjectCount);
+            CSharpWorkspaceProjectInfo scriptProject = Assert.ContainsSingle(
+                workspace.Projects.Where(project => string.Equals(
+                    project.FilePath,
+                    scriptPath,
+                    StringComparison.Ordinal)));
+            CSharpWorkspaceProjectInfo directiveProject = Assert.ContainsSingle(
+                workspace.Projects.Where(project => string.Equals(
+                    project.FilePath,
+                    directiveAppPath,
+                    StringComparison.Ordinal)));
+            Assert.AreEqual("hello.cs", scriptProject.Name);
+            Assert.AreEqual("directives.cs", directiveProject.Name);
+
             string standardError = await lsp.ShutdownAsync(
                 TestContext.CancellationToken).ConfigureAwait(false);
             Assert.DoesNotContain("Unhandled exception", standardError, StringComparison.Ordinal);

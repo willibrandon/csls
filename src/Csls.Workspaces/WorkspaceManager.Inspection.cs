@@ -27,17 +27,7 @@ public sealed partial class WorkspaceManager
             return new WorkspaceSummarySnapshot
             {
                 Generation = Generation,
-                Workspaces =
-                [
-                    .. folders.Select(static folder => new WorkspaceFolderInspection
-                    {
-                        RootPath = folder.RootPath,
-                        WorkspaceKind = folder.Workspace.GetType().Name,
-                        ProjectCount = folder.Solution.ProjectIds.Count,
-                        DocumentCount = folder.Solution.Projects.Sum(
-                            static project => project.DocumentIds.Count)
-                    })
-                ]
+                Workspaces = CreateWorkspaceInspections(folders)
             };
         }
         finally
@@ -61,7 +51,7 @@ public sealed partial class WorkspaceManager
         ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposeState) != 0, this);
         long generation = Generation;
         ImmutableArray<(string RootPath, Workspace Workspace, Solution Solution)> folders = _folders;
-        var workspaces = new List<WorkspaceFolderInspection>(folders.Length);
+        IReadOnlyList<WorkspaceFolderInspection> workspaces = CreateWorkspaceInspections(folders);
         var projects = new List<WorkspaceProjectInspection>();
         var documents = new List<WorkspaceDocumentInspection>();
         var diagnostics = new List<WorkspaceDiagnosticInspection>();
@@ -72,14 +62,6 @@ public sealed partial class WorkspaceManager
         foreach ((string rootPath, Workspace workspace, Solution solution) in folders)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            int documentCount = solution.Projects.Sum(static project => project.DocumentIds.Count);
-            workspaces.Add(new WorkspaceFolderInspection
-            {
-                RootPath = rootPath,
-                WorkspaceKind = workspace.GetType().Name,
-                ProjectCount = solution.ProjectIds.Count,
-                DocumentCount = documentCount
-            });
             buildHosts.Add(new WorkspaceBuildHostInspection
             {
                 ProcessId = Environment.ProcessId,
@@ -229,4 +211,25 @@ public sealed partial class WorkspaceManager
             DiagnosticCacheEntries = _diagnosticCache.Count
         };
     }
+
+    private static IReadOnlyList<WorkspaceFolderInspection> CreateWorkspaceInspections(
+        ImmutableArray<(string RootPath, Workspace Workspace, Solution Solution)> folders) =>
+        [
+            .. folders
+                .GroupBy(static folder => folder.RootPath, PathComparer)
+                .OrderBy(static group => group.Key, PathComparer)
+                .Select(static group => new WorkspaceFolderInspection
+                {
+                    RootPath = group.Key,
+                    WorkspaceKind = string.Join(
+                        "+",
+                        group
+                            .Select(static folder => folder.Workspace.GetType().Name)
+                            .Distinct(StringComparer.Ordinal)
+                            .Order(StringComparer.Ordinal)),
+                    ProjectCount = group.Sum(static folder => folder.Solution.ProjectIds.Count),
+                    DocumentCount = group.Sum(static folder => folder.Solution.Projects.Sum(
+                        static project => project.DocumentIds.Count))
+                })
+        ];
 }

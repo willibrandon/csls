@@ -36,7 +36,7 @@ export async function runFeatureContract(options: FeatureContractOptions): Promi
   assert(isExtensionApi(api), "The csls extension must return its host API.");
   assert(api.host === options.expectedHost, `Expected the ${options.expectedHost} host.`);
   assert(api.state === 2, "The csls language client must be running.");
-  await assertProjectDiscovery(api);
+  await assertProjectDiscovery(api, workspaceFolder);
   if (options.expectedHost !== "browser") {
     const expectedServerPath = vscode.Uri.joinPath(
       extension.extensionUri,
@@ -79,13 +79,18 @@ async function assertProjectDiscovery(api: {
     readonly name: string;
     readonly path: string;
   }[];
-}): Promise<void> {
+}, workspaceFolder: vscode.WorkspaceFolder): Promise<void> {
   assert(typeof api.projects === "function", "The Solution view must expose loaded projects.");
   await vscode.commands.executeCommand("csls.refreshSolution");
   const projects = api.projects();
   assert(
     projects.some((project) => project.name === "Fixture"),
     `The Solution view must contain the Roslyn-loaded Fixture project. Received ${JSON.stringify(projects)}.`,
+  );
+  const toolPath = vscode.Uri.joinPath(workspaceFolder.uri, "Tools", "Tool.cs").fsPath;
+  assert(
+    projects.some((project) => project.name === "Tool.cs" && project.path === toolPath),
+    `The Solution view must expose the file-based app by its source path. Received ${JSON.stringify(projects)}.`,
   );
 }
 

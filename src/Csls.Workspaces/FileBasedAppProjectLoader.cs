@@ -36,6 +36,7 @@ internal static class FileBasedAppProjectLoader
         ArgumentNullException.ThrowIfNull(workspace);
         ArgumentException.ThrowIfNullOrWhiteSpace(entryPointPath);
         ArgumentNullException.ThrowIfNull(reportDiagnostic);
+        entryPointPath = Path.GetFullPath(entryPointPath);
 
         using FileStream projectLock = await AcquireProjectLockAsync(
             entryPointPath,
@@ -47,13 +48,14 @@ internal static class FileBasedAppProjectLoader
             entryPointPath,
             reportDiagnostic,
             cancellationToken).ConfigureAwait(false);
+        projectPath = CreateMaterializedProjectPath(entryPointPath, projectPath);
 
         bool materialized = false;
         try
         {
             using (var stream = new FileStream(
                 projectPath,
-                FileMode.CreateNew,
+                FileMode.Create,
                 FileAccess.Write,
                 FileShare.Read,
                 bufferSize: 16 * 1024,
@@ -66,9 +68,13 @@ internal static class FileBasedAppProjectLoader
                 await writer.FlushAsync(cancellationToken).ConfigureAwait(false);
             }
 
-            return await workspace.OpenProjectAsync(
+            Project project = await workspace.OpenProjectAsync(
                 projectPath,
                 cancellationToken: cancellationToken).ConfigureAwait(false);
+            Solution solution = project.Solution.WithProjectFilePath(project.Id, entryPointPath);
+            return solution.GetProject(project.Id)
+                ?? throw new InvalidOperationException(
+                    $"The file-based app project disappeared after loading {entryPointPath}.");
         }
         finally
         {
@@ -205,20 +211,8 @@ internal static class FileBasedAppProjectLoader
         string entryPointPath,
         CancellationToken cancellationToken)
     {
-        string localDataPath = Environment.GetFolderPath(
-            Environment.SpecialFolder.LocalApplicationData);
-        if (string.IsNullOrWhiteSpace(localDataPath))
-        {
-            localDataPath = Path.GetTempPath();
-        }
-
-        string lockDirectory = Path.Join(localDataPath, "csls", "file-app-locks");
-        Directory.CreateDirectory(lockDirectory);
-        string normalizedPath = OperatingSystem.IsWindows()
-            ? Path.GetFullPath(entryPointPath).ToUpperInvariant()
-            : Path.GetFullPath(entryPointPath);
-        string lockName = Convert.ToHexString(
-            SHA256.HashData(Encoding.UTF8.GetBytes(normalizedPath)));
+        string lockDirectory = CreateStateDirectory("file-app-locks");
+        string lockName = CreateEntryPointIdentity(entryPointPath);
         string lockPath = Path.Join(lockDirectory, lockName + ".lock");
         while (true)
         {
@@ -237,6 +231,40 @@ internal static class FileBasedAppProjectLoader
                     .ConfigureAwait(false);
             }
         }
+    }
+
+    private static string CreateMaterializedProjectPath(
+        string entryPointPath,
+        string evaluatedProjectPath)
+    {
+        string projectDirectory = Path.Join(
+            CreateStateDirectory("file-app-projects"),
+            CreateEntryPointIdentity(entryPointPath));
+        Directory.CreateDirectory(projectDirectory);
+        return Path.Join(projectDirectory, Path.GetFileName(evaluatedProjectPath));
+    }
+
+    private static string CreateStateDirectory(string name)
+    {
+        string localDataPath = Environment.GetFolderPath(
+            Environment.SpecialFolder.LocalApplicationData);
+        if (string.IsNullOrWhiteSpace(localDataPath))
+        {
+            localDataPath = Path.GetTempPath();
+        }
+
+        string directory = Path.Join(localDataPath, "csls", name);
+        Directory.CreateDirectory(directory);
+        return directory;
+    }
+
+    private static string CreateEntryPointIdentity(string entryPointPath)
+    {
+        string normalizedPath = OperatingSystem.IsWindows()
+            ? Path.GetFullPath(entryPointPath).ToUpperInvariant()
+            : Path.GetFullPath(entryPointPath);
+        return Convert.ToHexString(
+            SHA256.HashData(Encoding.UTF8.GetBytes(normalizedPath)));
     }
 
     private static void ReportDiagnostics(

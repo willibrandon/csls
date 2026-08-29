@@ -88,8 +88,12 @@ public sealed class VsCodeLanguageServerTests
             string extensionsPath = Path.Join(fixturePath, "extensions");
             string remoteDataPath = Path.Join(fixturePath, "remote");
             Directory.CreateDirectory(workspacePath);
+            string sourceProjectPath = Path.Join(workspacePath, "App");
             string testProjectPath = Path.Join(workspacePath, "Tests");
+            string toolsPath = Path.Join(workspacePath, "Tools");
+            Directory.CreateDirectory(sourceProjectPath);
             Directory.CreateDirectory(testProjectPath);
+            Directory.CreateDirectory(toolsPath);
             Directory.CreateDirectory(userDataPath);
             Directory.CreateDirectory(extensionsPath);
             Directory.CreateDirectory(remoteDataPath);
@@ -104,7 +108,7 @@ public sealed class VsCodeLanguageServerTests
                 CreateSettingsText(debuggerPath),
                 TestContext.CancellationToken).ConfigureAwait(false);
             await File.WriteAllTextAsync(
-                Path.Join(workspacePath, "Fixture.csproj"),
+                Path.Join(sourceProjectPath, "Fixture.csproj"),
                 ProjectText,
                 TestContext.CancellationToken).ConfigureAwait(false);
             await File.WriteAllTextAsync(
@@ -126,6 +130,10 @@ public sealed class VsCodeLanguageServerTests
             await File.WriteAllTextAsync(
                 Path.Join(testProjectPath, "ExampleTests.cs"),
                 TestDocumentText,
+                TestContext.CancellationToken).ConfigureAwait(false);
+            await File.WriteAllTextAsync(
+                Path.Join(toolsPath, "Tool.cs"),
+                FileBasedAppText,
                 TestContext.CancellationToken).ConfigureAwait(false);
             string extensionPath = await VsCodeExtensionPackage.GetAsync(
                 repositoryRoot,
@@ -177,12 +185,14 @@ public sealed class VsCodeLanguageServerTests
     private const string ProjectText = """
         <Project Sdk="Microsoft.NET.Sdk">
           <PropertyGroup>
+            <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
             <ImplicitUsings>enable</ImplicitUsings>
             <OutputType>Exe</OutputType>
             <TargetFramework>net10.0</TargetFramework>
           </PropertyGroup>
           <ItemGroup>
-            <Compile Remove="Tests/**/*.cs" />
+            <Compile Include="../Calculator.cs" />
+            <Compile Include="../Program.cs" />
           </ItemGroup>
         </Project>
         """;
@@ -200,9 +210,15 @@ public sealed class VsCodeLanguageServerTests
 
     private const string SolutionText = """
         <Solution>
-          <Project Path="Fixture.csproj" />
+          <Project Path="App/Fixture.csproj" />
           <Project Path="Tests/Fixture.Tests.csproj" />
         </Solution>
+        """;
+
+    private const string FileBasedAppText = """
+        #:property TargetFramework=net10.0
+
+        Console.WriteLine("tool");
         """;
 
     private const string TestDocumentText = """
@@ -227,7 +243,7 @@ public sealed class VsCodeLanguageServerTests
             <TargetFramework>net10.0</TargetFramework>
           </PropertyGroup>
           <ItemGroup>
-            <ProjectReference Include="../Fixture.csproj" />
+            <ProjectReference Include="../App/Fixture.csproj" />
           </ItemGroup>
         </Project>
         """;

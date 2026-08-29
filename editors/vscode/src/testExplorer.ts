@@ -1,6 +1,6 @@
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { dirname, extname, join } from "node:path";
 import * as vscode from "vscode";
 import { DotnetProjectInspector } from "./dotnetProjectInspector.js";
 import type { MtpTestListDocument } from "./mtpTestListDocument.js";
@@ -147,6 +147,10 @@ export class TestExplorer implements vscode.Disposable {
     const items: vscode.TestItem[] = [];
     const metadata = new Map<string, TestItemMetadata>();
     for (const project of this.getProjects()) {
+      if (extname(project.path).toLowerCase() !== ".csproj") {
+        continue;
+      }
+
       if (cancellationToken?.isCancellationRequested === true) {
         break;
       }
