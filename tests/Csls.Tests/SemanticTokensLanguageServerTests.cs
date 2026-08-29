@@ -401,19 +401,16 @@ public sealed class SemanticTokensLanguageServerTests
         string tokenType,
         string? modifier = null)
     {
-        (int Line,
-            int Start,
-            int Length,
-            string TokenType,
-            IReadOnlyList<string> Modifiers) = Assert.ContainsSingle(
+        (int _, int _, int _, string actualTokenType, IReadOnlyList<string> modifiers) =
+            Assert.ContainsSingle(
                 tokens.Where(candidate =>
                     candidate.Line == line &&
                     candidate.Start == start &&
                     candidate.Length == length));
-        Assert.AreEqual(tokenType, TokenType);
+        Assert.AreEqual(tokenType, actualTokenType);
         if (modifier is not null)
         {
-            Assert.Contains(modifier, Modifiers);
+            Assert.Contains(modifier, modifiers);
         }
     }
 

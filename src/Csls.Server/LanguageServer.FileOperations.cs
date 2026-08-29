@@ -194,7 +194,7 @@ public sealed partial class LanguageServer
                             context.Ordinal,
                             Array.Empty<DocumentUri>(),
                             false,
-                            (WorkspaceMaintenanceResult?)null);
+                            refresh);
                     }
 
                     ClearPushDiagnosticRequests();
