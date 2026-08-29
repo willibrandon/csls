@@ -75,8 +75,22 @@ public sealed class VirtualDocumentLanguageServerTests
                 [workerPath],
                 fixturePath);
             await using ConfiguredAsyncDisposable lspCleanup = lsp.ConfigureAwait(false);
+            using var capabilities = JsonDocument.Parse(
+                """
+                {
+                  "textDocument": {
+                    "diagnostic": {}
+                  },
+                  "experimental": {
+                    "csharp": {
+                      "metadataUris": true
+                    }
+                  }
+                }
+                """);
             JsonElement initialization = await lsp.InitializeAsync(
                 fixturePath,
+                capabilities.RootElement,
                 TestContext.CancellationToken).ConfigureAwait(false);
             Assert.IsTrue(
                 initialization.GetProperty("capabilities")
@@ -168,10 +182,135 @@ public sealed class VirtualDocumentLanguageServerTests
                 "Length",
                 GetRangeText(memberDocument.Source, memberDefinition.Range));
 
+            IReadOnlyList<Location> extensionMethodDefinitions =
+                await lsp.RequestDefinitionsAsync(
+                    documentPath,
+                    GetPosition(DocumentText, "FirstOrDefault"),
+                    TestContext.CancellationToken).ConfigureAwait(false);
+            Location extensionMethodDefinition = Assert.ContainsSingle(
+                extensionMethodDefinitions);
+            Assert.StartsWith(
+                "csharp:/metadata/",
+                extensionMethodDefinition.Uri.ToString(),
+                StringComparison.Ordinal);
+
+            CSharpMetadataResponse? extensionMethodDocument =
+                await lsp.RequestCSharpMetadataAsync(
+                    extensionMethodDefinition.Uri,
+                    TestContext.CancellationToken).ConfigureAwait(false);
+            Assert.IsNotNull(extensionMethodDocument);
+            Assert.AreEqual("System.Linq", extensionMethodDocument.AssemblyName);
+            Assert.Contains(
+                "Enumerable.FirstOrDefault",
+                extensionMethodDocument.SymbolName,
+                StringComparison.Ordinal);
+            Assert.AreEqual(
+                "FirstOrDefault",
+                GetRangeText(
+                    extensionMethodDocument.Source,
+                    extensionMethodDefinition.Range));
+
+            Assert.IsEmpty(await lsp.RequestDocumentLinksAsync(
+                frameworkDefinition.Uri,
+                TestContext.CancellationToken).ConfigureAwait(false));
+            Assert.IsEmpty(await lsp.RequestFoldingRangesAsync(
+                frameworkDefinition.Uri,
+                TestContext.CancellationToken).ConfigureAwait(false));
+            Assert.IsEmpty(await lsp.RequestDocumentSymbolsAsync(
+                frameworkDefinition.Uri,
+                TestContext.CancellationToken).ConfigureAwait(false));
+            Assert.IsEmpty(await lsp.RequestCodeActionsAsync(
+                frameworkDefinition.Uri,
+                frameworkDefinition.Range,
+                only: null,
+                diagnostics: [],
+                TestContext.CancellationToken).ConfigureAwait(false));
+
             CSharpMetadataResponse? malformedDocument = await lsp.RequestCSharpMetadataAsync(
                 DocumentUri.Parse("csharp:/metadata/not-a-valid-document.cs"),
                 TestContext.CancellationToken).ConfigureAwait(false);
             Assert.IsNull(malformedDocument);
+
+            string diagnostics = await lsp.ShutdownAsync(
+                TestContext.CancellationToken).ConfigureAwait(false);
+            Assert.DoesNotContain("Unhandled exception", diagnostics, StringComparison.Ordinal);
+        }
+        finally
+        {
+            Directory.Delete(fixturePath, recursive: true);
+        }
+    }
+
+    /// <summary>
+    /// Materializes framework definitions for clients that cannot open virtual documents.
+    /// </summary>
+    [TestMethod]
+    public async Task DefinitionsUseReadableFilesWithoutVirtualDocumentCapability()
+    {
+        string repositoryRoot = EditorToolResolver.FindRepositoryRoot();
+        string workerPath = Path.Join(
+            EditorToolResolver.ResolveArtifactsRoot(repositoryRoot),
+            "bin",
+            "Csls.Worker",
+            "debug",
+            "csls-worker.dll");
+        Assert.IsTrue(File.Exists(workerPath), $"Worker not found at {workerPath}.");
+
+        string fixturePath = Path.Join(
+            Path.GetTempPath(),
+            $"csls-materialized-metadata-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(fixturePath);
+        try
+        {
+            string documentPath = Path.Join(fixturePath, "Program.cs");
+            await File.WriteAllTextAsync(
+                Path.Join(fixturePath, "Fixture.csproj"),
+                """
+                <Project Sdk="Microsoft.NET.Sdk">
+                  <PropertyGroup>
+                    <TargetFramework>net10.0</TargetFramework>
+                    <ImplicitUsings>enable</ImplicitUsings>
+                  </PropertyGroup>
+                </Project>
+                """,
+                TestContext.CancellationToken).ConfigureAwait(false);
+            const string source =
+                "bool blank = string.IsNullOrWhiteSpace(null);";
+            await File.WriteAllTextAsync(
+                documentPath,
+                source,
+                TestContext.CancellationToken).ConfigureAwait(false);
+
+            var lsp = LspProcessSession.Start(
+                "csls-materialized-metadata-worker",
+                EditorToolResolver.ResolveDotNetHost(),
+                [workerPath],
+                fixturePath);
+            await using ConfiguredAsyncDisposable lspCleanup = lsp.ConfigureAwait(false);
+            await lsp.InitializeAsync(
+                fixturePath,
+                TestContext.CancellationToken).ConfigureAwait(false);
+            await lsp.OpenDocumentAsync(documentPath, source).ConfigureAwait(false);
+
+            IReadOnlyList<Location> definitions = await lsp.RequestDefinitionsAsync(
+                documentPath,
+                GetPosition(source, "IsNullOrWhiteSpace"),
+                TestContext.CancellationToken).ConfigureAwait(false);
+            Location definition = Assert.ContainsSingle(definitions);
+            Assert.StartsWith(
+                "file:",
+                definition.Uri.ToString(),
+                StringComparison.Ordinal);
+            string metadataPath = definition.Uri.GetFileSystemPath();
+            Assert.IsTrue(File.Exists(metadataPath), $"Metadata file not found at {metadataPath}.");
+            string metadataSource = await File.ReadAllTextAsync(
+                metadataPath,
+                TestContext.CancellationToken).ConfigureAwait(false);
+            Assert.Contains("class String", metadataSource, StringComparison.Ordinal);
+            Assert.Contains("IsNullOrWhiteSpace", metadataSource, StringComparison.Ordinal);
+            Assert.AreEqual(
+                "IsNullOrWhiteSpace",
+                GetRangeText(metadataSource, definition.Range));
 
             string diagnostics = await lsp.ShutdownAsync(
                 TestContext.CancellationToken).ConfigureAwait(false);
@@ -226,6 +365,8 @@ public sealed class VirtualDocumentLanguageServerTests
             public static string Generated() => GeneratedApi.Message;
 
             public static int Framework() => string.Empty.Length;
+
+            public static int Linq() => new[] { 1 }.FirstOrDefault();
         }
         """;
 }

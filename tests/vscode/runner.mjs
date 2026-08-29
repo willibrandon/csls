@@ -59,6 +59,7 @@ await runTests({
       "CSLS_VSCODE_REMOTE_DATA_PATH",
       "CSLS_VSCODE_REMOTE_RESULT_PATH",
       "CSLS_VSCODE_REMOTE_SERVER_ROOT",
+      "CSLS_VSCODE_REMOTE_SUITE",
     ),
   },
   extensionTestsPath: resolve(

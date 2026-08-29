@@ -211,6 +211,61 @@ public sealed class FileBasedAppLanguageServerTests
         }
     }
 
+    /// <summary>
+    /// Recovers a generated file-app project left behind when a previous host was terminated.
+    /// </summary>
+    [TestMethod]
+    public async Task StaleGeneratedProjectDoesNotBlockFileBasedApp()
+    {
+        string fixturePath = CreateFixturePath("stale-project");
+        Directory.CreateDirectory(fixturePath);
+        try
+        {
+            string entryPointPath = Path.Join(fixturePath, "App.cs");
+            string generatedProjectPath = entryPointPath + ".csproj";
+            await File.WriteAllTextAsync(
+                entryPointPath,
+                DiscoveredDirectiveAppText,
+                TestContext.CancellationToken).ConfigureAwait(false);
+            var staleProject = new XDocument(
+                new XElement(
+                    "Project",
+                    new XElement(
+                        "PropertyGroup",
+                        new XElement("FileBasedProgram", "true"),
+                        new XElement("EntryPointFilePath", entryPointPath))));
+            await File.WriteAllTextAsync(
+                generatedProjectPath,
+                staleProject.ToString(),
+                TestContext.CancellationToken).ConfigureAwait(false);
+
+            LspProcessSession lsp = StartWorker(fixturePath);
+            await using ConfiguredAsyncDisposable lspDisposal = lsp.ConfigureAwait(false);
+            await lsp.InitializeAsync(
+                fixturePath,
+                TestContext.CancellationToken).ConfigureAwait(false);
+            await lsp.OpenDocumentAsync(
+                entryPointPath,
+                DiscoveredDirectiveAppText).ConfigureAwait(false);
+
+            JsonElement? hover = await lsp.RequestHoverAsync(
+                entryPointPath,
+                new Position(1, 1),
+                TestContext.CancellationToken).ConfigureAwait(false);
+            Assert.IsTrue(hover.HasValue);
+            Assert.Contains("System.Console", hover.Value.ToString(), StringComparison.Ordinal);
+            Assert.IsFalse(File.Exists(generatedProjectPath));
+
+            string standardError = await lsp.ShutdownAsync(
+                TestContext.CancellationToken).ConfigureAwait(false);
+            Assert.DoesNotContain("Unhandled exception", standardError, StringComparison.Ordinal);
+        }
+        finally
+        {
+            Directory.Delete(fixturePath, recursive: true);
+        }
+    }
+
     private static LspProcessSession StartWorker(string workingDirectory)
     {
         string repositoryRoot = EditorToolResolver.FindRepositoryRoot();

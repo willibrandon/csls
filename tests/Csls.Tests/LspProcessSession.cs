@@ -715,13 +715,26 @@ internal sealed class LspProcessSession : IAsyncDisposable
     internal Task<IReadOnlyList<FoldingRange>> RequestFoldingRangesAsync(
         string documentPath,
         CancellationToken cancellationToken) =>
+        RequestFoldingRangesAsync(
+            DocumentUri.FromFileSystemPath(documentPath),
+            cancellationToken);
+
+    /// <summary>
+    /// Requests negotiated folding ranges for one document URI.
+    /// </summary>
+    /// <param name="documentUri">The absolute target document URI.</param>
+    /// <param name="cancellationToken">The test cancellation token.</param>
+    /// <returns>The bounded ordered folding ranges.</returns>
+    internal Task<IReadOnlyList<FoldingRange>> RequestFoldingRangesAsync(
+        DocumentUri documentUri,
+        CancellationToken cancellationToken) =>
         _rpc.InvokeWithParameterObjectAsync<IReadOnlyList<FoldingRange>>(
             "textDocument/foldingRange",
             new FoldingRangeParams
             {
                 TextDocument = new TextDocumentIdentifier
                 {
-                    Uri = DocumentUri.FromFileSystemPath(documentPath)
+                    Uri = documentUri
                 }
             },
             cancellationToken);
@@ -804,13 +817,26 @@ internal sealed class LspProcessSession : IAsyncDisposable
     internal Task<IReadOnlyList<DocumentLink>> RequestDocumentLinksAsync(
         string documentPath,
         CancellationToken cancellationToken) =>
+        RequestDocumentLinksAsync(
+            DocumentUri.FromFileSystemPath(documentPath),
+            cancellationToken);
+
+    /// <summary>
+    /// Requests navigable resource links for one document URI.
+    /// </summary>
+    /// <param name="documentUri">The absolute target document URI.</param>
+    /// <param name="cancellationToken">The test cancellation token.</param>
+    /// <returns>The bounded ordered document links.</returns>
+    internal Task<IReadOnlyList<DocumentLink>> RequestDocumentLinksAsync(
+        DocumentUri documentUri,
+        CancellationToken cancellationToken) =>
         _rpc.InvokeWithParameterObjectAsync<IReadOnlyList<DocumentLink>>(
             "textDocument/documentLink",
             new DocumentLinkParams
             {
                 TextDocument = new TextDocumentIdentifier
                 {
-                    Uri = DocumentUri.FromFileSystemPath(documentPath)
+                    Uri = documentUri
                 }
             },
             cancellationToken);
@@ -1170,13 +1196,26 @@ internal sealed class LspProcessSession : IAsyncDisposable
     internal Task<IReadOnlyList<DocumentSymbol>> RequestDocumentSymbolsAsync(
         string documentPath,
         CancellationToken cancellationToken) =>
+        RequestDocumentSymbolsAsync(
+            DocumentUri.FromFileSystemPath(documentPath),
+            cancellationToken);
+
+    /// <summary>
+    /// Requests the hierarchical declarations for one document URI.
+    /// </summary>
+    /// <param name="documentUri">The absolute target document URI.</param>
+    /// <param name="cancellationToken">The test cancellation token.</param>
+    /// <returns>The bounded declaration hierarchy.</returns>
+    internal Task<IReadOnlyList<DocumentSymbol>> RequestDocumentSymbolsAsync(
+        DocumentUri documentUri,
+        CancellationToken cancellationToken) =>
         _rpc.InvokeWithParameterObjectAsync<IReadOnlyList<DocumentSymbol>>(
             "textDocument/documentSymbol",
             new DocumentSymbolParams
             {
                 TextDocument = new TextDocumentIdentifier
                 {
-                    Uri = DocumentUri.FromFileSystemPath(documentPath)
+                    Uri = documentUri
                 }
             },
             cancellationToken);
@@ -1397,13 +1436,35 @@ internal sealed class LspProcessSession : IAsyncDisposable
         IReadOnlyList<string>? only,
         IReadOnlyList<Diagnostic> diagnostics,
         CancellationToken cancellationToken) =>
+        RequestCodeActionsAsync(
+            DocumentUri.FromFileSystemPath(documentPath),
+            range,
+            only,
+            diagnostics,
+            cancellationToken);
+
+    /// <summary>
+    /// Requests concrete code actions for one document URI.
+    /// </summary>
+    /// <param name="documentUri">The absolute target document URI.</param>
+    /// <param name="range">The target UTF-16 source range.</param>
+    /// <param name="only">The optional requested code-action categories.</param>
+    /// <param name="diagnostics">The client diagnostics intersecting the action context.</param>
+    /// <param name="cancellationToken">The test cancellation token.</param>
+    /// <returns>The supported code actions with concrete edits.</returns>
+    internal Task<IReadOnlyList<CodeAction>> RequestCodeActionsAsync(
+        DocumentUri documentUri,
+        LspRange range,
+        IReadOnlyList<string>? only,
+        IReadOnlyList<Diagnostic> diagnostics,
+        CancellationToken cancellationToken) =>
         _rpc.InvokeWithParameterObjectAsync<IReadOnlyList<CodeAction>>(
             "textDocument/codeAction",
             new CodeActionParams
             {
                 TextDocument = new TextDocumentIdentifier
                 {
-                    Uri = DocumentUri.FromFileSystemPath(documentPath)
+                    Uri = documentUri
                 },
                 Range = range,
                 Context = new CodeActionContext

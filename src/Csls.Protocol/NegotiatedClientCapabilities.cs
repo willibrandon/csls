@@ -89,4 +89,9 @@ public sealed record NegotiatedClientCapabilities
     /// Gets whether the client supports work-done progress.
     /// </summary>
     public bool WorkDoneProgress { get; init; }
+
+    /// <summary>
+    /// Gets whether the client can resolve CSLS generated and metadata document URIs.
+    /// </summary>
+    public bool MetadataUris { get; init; }
 }

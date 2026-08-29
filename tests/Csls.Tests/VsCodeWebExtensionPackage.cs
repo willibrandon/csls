@@ -94,6 +94,13 @@ internal static class VsCodeWebExtensionPackage
                 "The VS Code web extension package has no extension manifest.");
         }
 
+        RequirePackagedFile(extensionPath, "dist", "browserExtension.cjs");
+        RequirePackagedFile(
+            extensionPath,
+            "dist",
+            "browserServer",
+            "cslsBrowserWorker.js");
+
         string testSuiteSource = Path.Join(
             repositoryRoot,
             "editors",
@@ -113,6 +120,16 @@ internal static class VsCodeWebExtensionPackage
         File.Copy(testSuiteSource, testSuitePath);
 
         return extensionPath;
+    }
+
+    private static void RequirePackagedFile(string extensionPath, params string[] segments)
+    {
+        string filePath = Path.Join([extensionPath, .. segments]);
+        if (!File.Exists(filePath))
+        {
+            throw new InvalidDataException(
+                $"The VS Code web extension package is missing {Path.GetRelativePath(extensionPath, filePath)}.");
+        }
     }
 
     private static Process StartPackageProcess(string repositoryRoot, string outputPath)

@@ -37,6 +37,12 @@ public sealed partial class LanguageServer
             ArgumentException or
             InvalidOperationException)
         {
+            if (!cancellationToken.IsCancellationRequested)
+            {
+                await ExitAsync().ConfigureAwait(false);
+            }
+
+            return;
         }
 
         if (!cancellationToken.IsCancellationRequested)

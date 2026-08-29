@@ -6,7 +6,6 @@ using System.Diagnostics;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
-using System.Xml.Linq;
 
 namespace Csls.Workspaces;
 
@@ -42,6 +41,11 @@ internal static class FileBasedAppProjectLoader
         using FileStream projectLock = await AcquireProjectLockAsync(
             entryPointPath,
             cancellationToken).ConfigureAwait(false);
+        string materializationMarkerPath = CreateMaterializationMarkerPath(entryPointPath);
+        await RecoverInterruptedMaterializationAsync(
+            entryPointPath,
+            materializationMarkerPath,
+            cancellationToken).ConfigureAwait(false);
         await DotNetWorkspaceRestorer
             .RestoreAsync([entryPointPath], cancellationToken)
             .ConfigureAwait(false);
@@ -49,15 +53,34 @@ internal static class FileBasedAppProjectLoader
             entryPointPath,
             reportDiagnostic,
             cancellationToken).ConfigureAwait(false);
-        content = RebaseProjectReferences(entryPointPath, content);
-        projectPath = CreateMaterializedProjectPath(entryPointPath, projectPath);
 
         bool materialized = false;
+        bool markerCreated = false;
         try
         {
+            if (File.Exists(projectPath))
+            {
+                if (!FileBasedAppProjectArtifact.IsGeneratedForEntryPoint(
+                    projectPath,
+                    entryPointPath))
+                {
+                    throw new InvalidOperationException(
+                        $"Cannot load file-based app {entryPointPath} because {projectPath} " +
+                        "already exists and is not its generated project.");
+                }
+
+                File.Delete(projectPath);
+            }
+
+            await File.WriteAllTextAsync(
+                materializationMarkerPath,
+                projectPath,
+                Encoding.UTF8,
+                cancellationToken).ConfigureAwait(false);
+            markerCreated = true;
             using (var stream = new FileStream(
                 projectPath,
-                FileMode.Create,
+                FileMode.CreateNew,
                 FileAccess.Write,
                 FileShare.Read,
                 bufferSize: 16 * 1024,
@@ -94,6 +117,11 @@ internal static class FileBasedAppProjectLoader
                         $"Could not remove temporary file-based app project {projectPath}: " +
                         exception.Message);
                 }
+            }
+
+            if (markerCreated)
+            {
+                File.Delete(materializationMarkerPath);
             }
         }
     }
@@ -235,41 +263,6 @@ internal static class FileBasedAppProjectLoader
         }
     }
 
-    private static string CreateMaterializedProjectPath(
-        string entryPointPath,
-        string evaluatedProjectPath)
-    {
-        string projectDirectory = Path.Join(
-            CreateStateDirectory("file-app-projects"),
-            CreateEntryPointIdentity(entryPointPath));
-        Directory.CreateDirectory(projectDirectory);
-        return Path.Join(projectDirectory, Path.GetFileName(evaluatedProjectPath));
-    }
-
-    private static string RebaseProjectReferences(string entryPointPath, string content)
-    {
-        var project = XDocument.Parse(content, LoadOptions.PreserveWhitespace);
-        string entryPointDirectory = Path.GetDirectoryName(entryPointPath)
-            ?? throw new InvalidDataException(
-                $"File-based app entry point has no parent: {entryPointPath}");
-        foreach (XElement projectReference in project
-            .Descendants()
-            .Where(static element => element.Name.LocalName == "ProjectReference"))
-        {
-            XAttribute? include = projectReference.Attribute("Include");
-            if (include is null ||
-                Path.IsPathFullyQualified(include.Value) ||
-                include.Value.Contains("$(", StringComparison.Ordinal))
-            {
-                continue;
-            }
-
-            include.Value = Path.GetFullPath(include.Value, entryPointDirectory);
-        }
-
-        return project.ToString(SaveOptions.DisableFormatting);
-    }
-
     private static string CreateStateDirectory(string name)
     {
         string localDataPath = Environment.GetFolderPath(
@@ -282,6 +275,42 @@ internal static class FileBasedAppProjectLoader
         string directory = Path.Join(localDataPath, "csls", name);
         Directory.CreateDirectory(directory);
         return directory;
+    }
+
+    private static string CreateMaterializationMarkerPath(string entryPointPath)
+    {
+        string markerDirectory = CreateStateDirectory("file-app-materializations");
+        return Path.Join(
+            markerDirectory,
+            CreateEntryPointIdentity(entryPointPath) + ".marker");
+    }
+
+    private static async Task RecoverInterruptedMaterializationAsync(
+        string entryPointPath,
+        string markerPath,
+        CancellationToken cancellationToken)
+    {
+        if (!File.Exists(markerPath))
+        {
+            return;
+        }
+
+        string markedProjectPath = (await File.ReadAllTextAsync(
+            markerPath,
+            cancellationToken).ConfigureAwait(false)).Trim();
+        string expectedProjectPath = entryPointPath + ".csproj";
+        if (!string.Equals(
+            Path.GetFullPath(markedProjectPath),
+            Path.GetFullPath(expectedProjectPath),
+            PathComparison))
+        {
+            throw new InvalidDataException(
+                $"File-based app materialization marker {markerPath} points to " +
+                $"unexpected project {markedProjectPath}.");
+        }
+
+        File.Delete(expectedProjectPath);
+        File.Delete(markerPath);
     }
 
     private static string CreateEntryPointIdentity(string entryPointPath)

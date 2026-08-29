@@ -66,10 +66,13 @@ internal static class WorkspaceNavigationService
             return [];
         }
 
+        ISymbol navigationSymbol = symbol is IMethodSymbol { ReducedFrom: { } reducedFrom }
+            ? reducedFrom
+            : symbol;
         ISymbol definition = await SymbolFinder.FindSourceDefinitionAsync(
-            symbol,
+            navigationSymbol,
             sourceDocument.Project.Solution,
-            cancellationToken).ConfigureAwait(false) ?? symbol;
+            cancellationToken).ConfigureAwait(false) ?? navigationSymbol;
         return await CreateNavigationLocationsAsync(
             sourceDocument.Project,
             definition,

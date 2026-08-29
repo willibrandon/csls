@@ -1,3 +1,5 @@
+using System.Reflection;
+
 namespace Csls.Tests;
 
 /// <summary>
@@ -6,6 +8,21 @@ namespace Csls.Tests;
 [TestClass]
 public sealed class ExternalWorkloadLeaseTests
 {
+    /// <summary>
+    /// Bounds concurrent Roslyn workspace tests independently of host processor count.
+    /// </summary>
+    [TestMethod]
+    public void TestAssemblyBoundsParallelWorkspaceWorkloads()
+    {
+        ParallelizeAttribute? parallelize = typeof(ExternalWorkloadLeaseTests)
+            .Assembly
+            .GetCustomAttribute<ParallelizeAttribute>();
+
+        Assert.IsNotNull(parallelize);
+        Assert.AreEqual(4, parallelize.Workers);
+        Assert.AreEqual(ExecutionScope.MethodLevel, parallelize.Scope);
+    }
+
     /// <summary>
     /// Keeps one compiler and language-server workload active on a sixteen-core hosted runner.
     /// </summary>

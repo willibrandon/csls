@@ -1,6 +1,6 @@
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { dirname, extname, join } from "node:path";
+import { dirname, extname, join, relative } from "node:path";
 import * as vscode from "vscode";
 import { DotnetProjectInspector } from "./dotnetProjectInspector.js";
 import type { MtpTestListDocument } from "./mtpTestListDocument.js";
@@ -16,18 +16,21 @@ export class TestExplorer implements vscode.Disposable {
   private readonly metadata = new Map<string, TestItemMetadata>();
   private readonly parser = new TrxTestResultParser();
   private operationPromise: Promise<void> = Promise.resolve();
+  private refreshCancellation: vscode.CancellationTokenSource | undefined;
+  private refreshRequested = false;
   private refreshPromise: Promise<void> | undefined;
   private refreshTimer: ReturnType<typeof setTimeout> | undefined;
+  private disposed = false;
 
   constructor(
-    dotnetPath: string,
+    executor: ProcessExecutor,
     private readonly outputChannel: vscode.LogOutputChannel,
     private readonly getProjects: () => readonly {
       readonly name: string;
       readonly path: string;
     }[],
   ) {
-    this.executor = new ProcessExecutor(dotnetPath, outputChannel);
+    this.executor = executor;
     this.inspector = new DotnetProjectInspector(this.executor);
     this.controller = vscode.tests.createTestController("csls", "csls");
     this.controller.refreshHandler = (token) => this.refresh(token);
@@ -46,11 +49,16 @@ export class TestExplorer implements vscode.Disposable {
     const watcher = vscode.workspace.createFileSystemWatcher(
       "**/{*.cs,*.csproj,*.props,*.targets,global.json}",
     );
+    const scheduleRefresh = (uri: vscode.Uri): void => {
+      if (isAutomaticDiscoveryInput(uri)) {
+        this.scheduleRefresh();
+      }
+    };
     this.disposables.push(
       watcher,
-      watcher.onDidChange(() => this.scheduleRefresh()),
-      watcher.onDidCreate(() => this.scheduleRefresh()),
-      watcher.onDidDelete(() => this.scheduleRefresh()),
+      watcher.onDidChange(scheduleRefresh),
+      watcher.onDidCreate(scheduleRefresh),
+      watcher.onDidDelete(scheduleRefresh),
     );
   }
 
@@ -59,16 +67,35 @@ export class TestExplorer implements vscode.Disposable {
       return this.refreshPromise;
     }
 
+    const refreshCancellation = new vscode.CancellationTokenSource();
+    const cancellation = cancellationToken?.onCancellationRequested(() => {
+      refreshCancellation.cancel();
+    });
+    this.refreshCancellation = refreshCancellation;
     this.refreshPromise = this.enqueueOperation(
-      () => this.refreshCore(cancellationToken),
+      () => this.refreshCore(refreshCancellation.token),
     ).finally(() => {
+      cancellation?.dispose();
+      refreshCancellation.dispose();
+      if (this.refreshCancellation === refreshCancellation) {
+        this.refreshCancellation = undefined;
+      }
+
       this.refreshPromise = undefined;
+      if (this.refreshRequested && !this.disposed) {
+        this.refreshRequested = false;
+        this.refreshInBackground();
+      }
     });
     return this.refreshPromise;
   }
 
   refreshInBackground(): void {
     void this.refresh().catch((error: unknown) => {
+      if (error instanceof vscode.CancellationError) {
+        return;
+      }
+
       const message = error instanceof Error ? error.message : String(error);
       this.outputChannel.error(`Test discovery failed: ${message}`);
     });
@@ -133,6 +160,8 @@ export class TestExplorer implements vscode.Disposable {
   }
 
   dispose(): void {
+    this.disposed = true;
+    this.refreshCancellation?.cancel();
     if (this.refreshTimer !== undefined) {
       clearTimeout(this.refreshTimer);
       this.refreshTimer = undefined;
@@ -161,6 +190,10 @@ export class TestExplorer implements vscode.Disposable {
           items.push(item);
         }
       } catch (error) {
+        if (error instanceof vscode.CancellationError) {
+          break;
+        }
+
         const message = error instanceof Error ? error.message : String(error);
         this.outputChannel.error(`Test discovery failed for ${project.path}: ${message}`);
         const item = this.createProjectItem(project);
@@ -169,7 +202,7 @@ export class TestExplorer implements vscode.Disposable {
       }
     }
 
-    if (cancellationToken?.isCancellationRequested !== true) {
+    if (!this.disposed && cancellationToken?.isCancellationRequested !== true) {
       this.metadata.clear();
       for (const [itemId, value] of metadata) {
         this.metadata.set(itemId, value);
@@ -186,35 +219,57 @@ export class TestExplorer implements vscode.Disposable {
     cancellationToken?: vscode.CancellationToken,
   ): Promise<vscode.TestItem | undefined> {
     const projectDirectory = dirname(project.path);
-    const properties = await this.inspector.inspect(project.path, cancellationToken);
-    if (properties.IsTestingPlatformApplication !== "true" ||
-      properties.OutputType !== "Exe" ||
-      properties.TargetPath === undefined ||
-      properties.TargetPath.length === 0) {
+    const normalProperties = await this.inspector.inspect(project.path, cancellationToken);
+    if (normalProperties.IsTestingPlatformApplication !== "true" ||
+      normalProperties.OutputType !== "Exe" ||
+      normalProperties.TargetPath === undefined ||
+      normalProperties.TargetPath.length === 0) {
       return undefined;
     }
 
     const projectItem = this.createProjectItem(project);
+    const discoveryDirectory = await mkdtemp(join(tmpdir(), "csls-test-discovery-"));
+    try {
+      const artifactsDirectory = join(discoveryDirectory, "artifacts");
+      const build = await this.executor.execute(
+        [
+          "build",
+          project.path,
+          "--disable-build-servers",
+          "--maxcpucount:1",
+          "--nologo",
+          "--artifacts-path",
+          artifactsDirectory,
+          "-property:UseSharedCompilation=false",
+        ],
+        projectDirectory,
+        cancellationToken,
+      );
+      if (build.exitCode !== 0 || cancellationToken?.isCancellationRequested) {
+        if (cancellationToken?.isCancellationRequested !== true) {
+          projectItem.error = describeFailure("Test discovery build failed.", build);
+        }
 
-    const build = await this.executor.execute(
-      ["build", project.path, "--nologo"],
-      projectDirectory,
-      cancellationToken,
-    );
-    if (build.exitCode !== 0 || cancellationToken?.isCancellationRequested) {
-      if (cancellationToken?.isCancellationRequested !== true) {
-        projectItem.error = describeFailure("Test discovery build failed.", build);
+        return projectItem;
       }
 
-      return projectItem;
-    }
+      const isolatedProperties = await this.inspector.inspect(
+        project.path,
+        cancellationToken,
+        { ArtifactsPath: artifactsDirectory },
+      );
+      if (
+        isolatedProperties.TargetPath === undefined ||
+        isolatedProperties.TargetPath.length === 0
+      ) {
+        throw new Error("The isolated test discovery build did not produce a target path.");
+      }
 
-    const discoveryResultsDirectory = await mkdtemp(join(tmpdir(), "csls-test-discovery-"));
-    let discovery;
-    try {
-      discovery = await this.executor.execute(
+      const discoveryResultsDirectory = join(discoveryDirectory, "results");
+      await mkdir(discoveryResultsDirectory);
+      const discovery = await this.executor.execute(
         [
-          properties.TargetPath,
+          isolatedProperties.TargetPath,
           "--list-tests",
           "json",
           "--results-directory",
@@ -226,56 +281,56 @@ export class TestExplorer implements vscode.Disposable {
         projectDirectory,
         cancellationToken,
       );
-    } finally {
-      await rm(discoveryResultsDirectory, { force: true, recursive: true });
-    }
-    if (discovery.exitCode !== 0 || cancellationToken?.isCancellationRequested === true) {
-      if (cancellationToken?.isCancellationRequested !== true) {
-        projectItem.error = describeFailure("Microsoft Testing Platform discovery failed.", discovery);
+      if (discovery.exitCode !== 0 || cancellationToken?.isCancellationRequested === true) {
+        if (cancellationToken?.isCancellationRequested !== true) {
+          projectItem.error = describeFailure("Microsoft Testing Platform discovery failed.", discovery);
+        }
+
+        return projectItem;
+      }
+
+      const document = parseJson<MtpTestListDocument>(discovery.stdout);
+      if (document.schemaVersion !== 1) {
+        throw new Error(`Unsupported Microsoft Testing Platform test-list schema ${document.schemaVersion}.`);
+      }
+
+      const classes = new Map<string, vscode.TestItem>();
+      for (const test of document.tests) {
+        const className = getClassName(test.type);
+        let classItem = classes.get(className);
+        if (classItem === undefined) {
+          classItem = this.controller.createTestItem(
+            `class:${project.path}:${className}`,
+            className,
+            test.location?.file === undefined ? undefined : vscode.Uri.file(test.location.file),
+          );
+          classes.set(className, classItem);
+          projectItem.children.add(classItem);
+        }
+
+        const itemId = `test:${project.path}:${test.uid}`;
+        const uri = test.location?.file === undefined
+          ? undefined
+          : vscode.Uri.file(test.location.file);
+        const item = this.controller.createTestItem(itemId, test.displayName, uri);
+        if (test.location?.lineStart !== undefined) {
+          const start = Math.max(0, test.location.lineStart - 1);
+          const end = Math.max(start, (test.location.lineEnd ?? test.location.lineStart) - 1);
+          item.range = new vscode.Range(start, 0, end, Number.MAX_SAFE_INTEGER);
+        }
+
+        classItem.children.add(item);
+        metadata.set(itemId, {
+          projectPath: project.path,
+          targetPath: normalProperties.TargetPath,
+          uid: test.uid,
+        });
       }
 
       return projectItem;
+    } finally {
+      await rm(discoveryDirectory, { force: true, recursive: true });
     }
-
-    const document = parseJson<MtpTestListDocument>(discovery.stdout);
-    if (document.schemaVersion !== 1) {
-      throw new Error(`Unsupported Microsoft Testing Platform test-list schema ${document.schemaVersion}.`);
-    }
-
-    const classes = new Map<string, vscode.TestItem>();
-    for (const test of document.tests) {
-      const className = getClassName(test.type);
-      let classItem = classes.get(className);
-      if (classItem === undefined) {
-        classItem = this.controller.createTestItem(
-          `class:${project.path}:${className}`,
-          className,
-          test.location?.file === undefined ? undefined : vscode.Uri.file(test.location.file),
-        );
-        classes.set(className, classItem);
-        projectItem.children.add(classItem);
-      }
-
-      const itemId = `test:${project.path}:${test.uid}`;
-      const uri = test.location?.file === undefined
-        ? undefined
-        : vscode.Uri.file(test.location.file);
-      const item = this.controller.createTestItem(itemId, test.displayName, uri);
-      if (test.location?.lineStart !== undefined) {
-        const start = Math.max(0, test.location.lineStart - 1);
-        const end = Math.max(start, (test.location.lineEnd ?? test.location.lineStart) - 1);
-        item.range = new vscode.Range(start, 0, end, Number.MAX_SAFE_INTEGER);
-      }
-
-      classItem.children.add(item);
-      metadata.set(itemId, {
-        projectPath: project.path,
-        targetPath: properties.TargetPath,
-        uid: test.uid,
-      });
-    }
-
-    return projectItem;
   }
 
   private createProjectItem(
@@ -447,13 +502,18 @@ export class TestExplorer implements vscode.Disposable {
 
   private scheduleRefresh(): void {
     this.controller.invalidateTestResults();
+    this.refreshCancellation?.cancel();
+    this.refreshRequested = true;
     if (this.refreshTimer !== undefined) {
       clearTimeout(this.refreshTimer);
     }
 
     this.refreshTimer = setTimeout(() => {
       this.refreshTimer = undefined;
-      this.refreshInBackground();
+      if (this.refreshPromise === undefined) {
+        this.refreshRequested = false;
+        this.refreshInBackground();
+      }
     }, 250);
   }
 }
@@ -463,6 +523,23 @@ function appendOutput(run: vscode.TestRun, stdout: string, stderr: string): void
   if (output.length > 0) {
     run.appendOutput(output);
   }
+}
+
+function isAutomaticDiscoveryInput(uri: vscode.Uri): boolean {
+  const workspaceFolder = vscode.workspace.getWorkspaceFolder(uri);
+  if (workspaceFolder === undefined) {
+    return false;
+  }
+
+  const segments = relative(workspaceFolder.uri.fsPath, uri.fsPath).split(/[\\/]/u);
+  return !segments.some((segment) =>
+    segment === ".git" ||
+    segment === ".vs" ||
+    segment === "artifacts" ||
+    segment === "bin" ||
+    segment === "node_modules" ||
+    segment === "obj"
+  );
 }
 
 function findTestItem(

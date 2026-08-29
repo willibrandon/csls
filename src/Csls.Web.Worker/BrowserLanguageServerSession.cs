@@ -37,7 +37,7 @@ internal sealed class BrowserLanguageServerSession : IAsyncDisposable
                 .EnumerateFiles("/references", "*.dll", SearchOption.TopDirectoryOnly)
                 .Order(StringComparer.Ordinal)
         ];
-        var workspaceLoader = new LooseFileWorkspaceLoader(referencePaths);
+        var workspaceLoader = new SynchronizedWorkspaceLoader(referencePaths);
         BrowserLanguageServerHost.ReportStatus("creatingWorkspaceLogger");
         NullLogger<WorkspaceManager> workspaceLogger = NullLogger<WorkspaceManager>.Instance;
         BrowserLanguageServerHost.ReportStatus("creatingWorkspaceManager");

@@ -41,10 +41,10 @@ export class BrowserWorkspaceExperience implements vscode.Disposable {
   }[] {
     return this.provider
       .getProjectItems()
-      .filter((project) => project.projectPath !== undefined)
+      .filter((project) => project.resourceUri !== undefined)
       .map((project) => ({
         name: String(project.label),
-        path: project.projectPath ?? "",
+        path: project.resourceUri?.fsPath ?? "",
       }));
   }
 

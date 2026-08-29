@@ -7,11 +7,8 @@ export class DotnetCommandRunner {
   private readonly executor: ProcessExecutor;
   private readonly inspector: DotnetProjectInspector;
 
-  constructor(
-    private readonly dotnetPath: string,
-    outputChannel: vscode.LogOutputChannel,
-  ) {
-    this.executor = new ProcessExecutor(dotnetPath, outputChannel);
+  constructor(private readonly dotnetPath: string, executor: ProcessExecutor) {
+    this.executor = executor;
     this.inspector = new DotnetProjectInspector(this.executor);
   }
 

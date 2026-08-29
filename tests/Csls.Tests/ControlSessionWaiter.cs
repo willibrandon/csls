@@ -20,11 +20,13 @@ internal static class ControlSessionWaiter
     /// <param name="workspacePath">The absolute workspace path served by the session.</param>
     /// <param name="timeout">The maximum readiness interval.</param>
     /// <param name="cancellationToken">The test cancellation token.</param>
+    /// <param name="excludedProcessIds">Existing sessions that cannot satisfy this wait.</param>
     /// <returns>The matching running session snapshot.</returns>
     internal static async Task<ControlSessionInfo> WaitForRunningAsync(
         string workspacePath,
         TimeSpan timeout,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        IReadOnlyCollection<int>? excludedProcessIds = null)
     {
         string expectedWorkspacePath = NormalizePath(workspacePath);
         using var timeoutSource = CancellationTokenSource.CreateLinkedTokenSource(
@@ -51,6 +53,12 @@ internal static class ControlSessionWaiter
                         socketPath,
                         timeoutSource.Token).ConfigureAwait(false);
                     if (session is null)
+                    {
+                        continue;
+                    }
+
+                    if (excludedProcessIds is not null &&
+                        excludedProcessIds.Contains(session.ProcessId))
                     {
                         continue;
                     }

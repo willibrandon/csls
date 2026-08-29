@@ -346,6 +346,15 @@ public sealed partial class LanguageServer : ILspRpcTarget, IAsyncDisposable
 
                     await LoadWorkspaceWithProgressAsync(context.CancellationToken)
                         .ConfigureAwait(false);
+                    if (Interlocked.CompareExchange(
+                            ref _workspacePhase,
+                            (int)ServerWorkspacePhase.Ready,
+                            (int)ServerWorkspacePhase.Loading) ==
+                        (int)ServerWorkspacePhase.Loading)
+                    {
+                        LanguageServerLogger.LogInitialized(_logger, _rootPaths.Length);
+                    }
+
                     return true;
                 },
                 cancellationToken).ConfigureAwait(false);
@@ -361,15 +370,6 @@ public sealed partial class LanguageServer : ILspRpcTarget, IAsyncDisposable
                 (int)ServerWorkspacePhase.Uninitialized,
                 (int)ServerWorkspacePhase.Configured);
             throw;
-        }
-
-        if (Interlocked.CompareExchange(
-                ref _workspacePhase,
-                (int)ServerWorkspacePhase.Ready,
-                (int)ServerWorkspacePhase.Loading) ==
-            (int)ServerWorkspacePhase.Loading)
-        {
-            LanguageServerLogger.LogInitialized(_logger, _rootPaths.Length);
         }
 
         if (_supportsDynamicFileWatching)
@@ -752,6 +752,9 @@ public sealed partial class LanguageServer : ILspRpcTarget, IAsyncDisposable
                 IReadOnlyList<Location> locations = await _workspaceManager
                     .GetDefinitionsAsync(parameters, context.CancellationToken)
                     .ConfigureAwait(false);
+                locations = await AdaptNavigationLocationsAsync(
+                    locations,
+                    context.CancellationToken).ConfigureAwait(false);
                 if (_workspaceManager.Generation != context.WorkspaceGeneration)
                 {
                     throw new InvalidOperationException(
@@ -779,6 +782,9 @@ public sealed partial class LanguageServer : ILspRpcTarget, IAsyncDisposable
                 IReadOnlyList<Location> locations = await _workspaceManager
                     .GetDeclarationsAsync(parameters, context.CancellationToken)
                     .ConfigureAwait(false);
+                locations = await AdaptNavigationLocationsAsync(
+                    locations,
+                    context.CancellationToken).ConfigureAwait(false);
                 if (_workspaceManager.Generation != context.WorkspaceGeneration)
                 {
                     throw new InvalidOperationException(
@@ -806,6 +812,9 @@ public sealed partial class LanguageServer : ILspRpcTarget, IAsyncDisposable
                 IReadOnlyList<Location> locations = await _workspaceManager
                     .GetTypeDefinitionsAsync(parameters, context.CancellationToken)
                     .ConfigureAwait(false);
+                locations = await AdaptNavigationLocationsAsync(
+                    locations,
+                    context.CancellationToken).ConfigureAwait(false);
                 if (_workspaceManager.Generation != context.WorkspaceGeneration)
                 {
                     throw new InvalidOperationException(
@@ -833,6 +842,9 @@ public sealed partial class LanguageServer : ILspRpcTarget, IAsyncDisposable
                 IReadOnlyList<Location> locations = await _workspaceManager
                     .GetImplementationsAsync(parameters, context.CancellationToken)
                     .ConfigureAwait(false);
+                locations = await AdaptNavigationLocationsAsync(
+                    locations,
+                    context.CancellationToken).ConfigureAwait(false);
                 if (_workspaceManager.Generation != context.WorkspaceGeneration)
                 {
                     throw new InvalidOperationException(
@@ -843,6 +855,15 @@ public sealed partial class LanguageServer : ILspRpcTarget, IAsyncDisposable
             },
             cancellationToken);
     }
+
+    private Task<IReadOnlyList<Location>> AdaptNavigationLocationsAsync(
+        IReadOnlyList<Location> locations,
+        CancellationToken cancellationToken) =>
+        _negotiatedClientCapabilities.MetadataUris
+            ? Task.FromResult(locations)
+            : _workspaceManager.MaterializeVirtualDocumentLocationsAsync(
+                locations,
+                cancellationToken);
 
     /// <inheritdoc />
     public Task<IReadOnlyList<SelectionRange>> SelectionRangeAsync(
@@ -1574,7 +1595,12 @@ public sealed partial class LanguageServer : ILspRpcTarget, IAsyncDisposable
             WorkDoneProgress = SupportsBooleanCapability(
                 capabilities,
                 "window",
-                "workDoneProgress")
+                "workDoneProgress"),
+            MetadataUris = SupportsNestedBooleanCapability(
+                capabilities,
+                "experimental",
+                "csharp",
+                "metadataUris")
         };
     }
 

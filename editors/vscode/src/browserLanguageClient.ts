@@ -31,6 +31,14 @@ export class BrowserLanguageClient extends LanguageClient {
 
   protected override fillInitializeParams(parameters: InitializeParams): void {
     super.fillInitializeParams(parameters);
+    const experimental = asRecord(parameters.capabilities.experimental);
+    parameters.capabilities.experimental = {
+      ...experimental,
+      csharp: {
+        ...asRecord(experimental.csharp),
+        metadataUris: true,
+      },
+    };
     const firstFolder = this.mapping.virtualFolders[0];
     parameters.rootPath = firstFolder?.uri.fsPath ?? null;
     parameters.rootUri = firstFolder?.uri.toString() ?? null;
@@ -39,4 +47,10 @@ export class BrowserLanguageClient extends LanguageClient {
       uri: folder.uri.toString(),
     }));
   }
+}
+
+function asRecord(value: unknown): Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {};
 }

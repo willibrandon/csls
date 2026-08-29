@@ -20,6 +20,8 @@
              Link="DotNetWorkspaceRestorer.cs" />
     <Compile Include="../Csls.Workspaces/FileBasedAppProjectLoader.cs"
              Link="FileBasedAppProjectLoader.cs" />
+    <Compile Include="../Csls.Workspaces/FileBasedAppProjectArtifact.cs"
+             Link="FileBasedAppProjectArtifact.cs" />
     <Compile Include="../Csls.Workspaces/LegacyFrameworkReferenceResolver.cs"
              Link="LegacyFrameworkReferenceResolver.cs" />
     <Compile Include="../Csls.Workspaces/MSBuildRegistration.cs"

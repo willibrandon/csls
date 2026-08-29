@@ -14,17 +14,29 @@ public sealed partial class WorkspaceManager
     /// <param name="parameters">The created workspace resources.</param>
     /// <param name="cancellationToken">The operation cancellation token.</param>
     /// <returns>The maintenance result, or null when no loaded root is affected.</returns>
-    public Task<WorkspaceMaintenanceResult?> ApplyCreatedFilesAsync(
+    public async Task<WorkspaceMaintenanceResult?> ApplyCreatedFilesAsync(
         CreateFilesParams parameters,
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(parameters);
         ArgumentNullException.ThrowIfNull(parameters.Files);
-        return ReloadAfterFileOperationsAsync(
-            [.. parameters.Files.Select(static file => file.Uri.GetFileSystemPath())],
+        string[] paths =
+        [
+            .. parameters.Files.Select(static file => file.Uri.GetFileSystemPath())
+        ];
+        (bool handled, WorkspaceMaintenanceResult? result) =
+            await TryApplyCreatedSourceDocumentsAsync(paths, cancellationToken)
+                .ConfigureAwait(false);
+        if (handled)
+        {
+            return result;
+        }
+
+        return await ReloadAfterFileOperationsAsync(
+            paths,
             renamedFiles: [],
             deletedFiles: [],
-            cancellationToken);
+            cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -103,8 +115,28 @@ public sealed partial class WorkspaceManager
                 $"Unsupported watched file change type {(int)unsupportedChange.Type}.");
         }
 
+        changes =
+        [
+            .. changes.Where(change => !IsStaleFileBasedAppProjectEvent(change))
+        ];
+        if (changes.Length == 0)
+        {
+            return null;
+        }
+
         string[] paths =
         [.. changes.Select(static change => change.Uri.GetFileSystemPath())];
+        if (changes.All(static change => change.Type is FileChangeType.Created))
+        {
+            (bool handled, WorkspaceMaintenanceResult? result) =
+                await TryApplyCreatedSourceDocumentsAsync(paths, cancellationToken)
+                    .ConfigureAwait(false);
+            if (handled)
+            {
+                return result;
+            }
+        }
+
         bool requiresReload = changes.Any(static change =>
             change.Type is not FileChangeType.Changed ||
             RequiresWorkspaceReload(change.Uri.GetFileSystemPath()));
@@ -270,6 +302,120 @@ public sealed partial class WorkspaceManager
         return result;
     }
 
+    private async Task<(bool Handled, WorkspaceMaintenanceResult? Result)>
+        TryApplyCreatedSourceDocumentsAsync(
+            string[] paths,
+            CancellationToken cancellationToken)
+    {
+        if (paths.Any(static path =>
+                !File.Exists(path) ||
+                !Path.GetExtension(path).Equals(".cs", StringComparison.OrdinalIgnoreCase)))
+        {
+            return (false, null);
+        }
+
+        await _mutationGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            ImmutableArray<(string RootPath, Workspace Workspace, Solution Solution)> folders =
+                _folders;
+            var changedFolderIndexes = new HashSet<int>();
+            int clearedCacheEntryCount = _diagnosticCache.Count;
+            for (int pathIndex = 0; pathIndex < paths.Length; pathIndex++)
+            {
+                string path = paths[pathIndex];
+                int folderIndex = FindFolderIndex(path, folders);
+                if (folderIndex < 0 ||
+                    WorkspaceDiscovery.IsExcludedPath(folders[folderIndex].RootPath, path))
+                {
+                    continue;
+                }
+
+                (string rootPath, Workspace workspace, Solution solution) = folders[folderIndex];
+                if (!solution.GetDocumentIdsWithFilePath(path).IsDefaultOrEmpty)
+                {
+                    continue;
+                }
+
+                Project[] projects = FindProjectsForCreatedSourceDocument(solution, path);
+                if (projects.Length == 0)
+                {
+                    return (false, null);
+                }
+
+                string persistedText = await File.ReadAllTextAsync(path, cancellationToken)
+                    .ConfigureAwait(false);
+                var text = SourceText.From(persistedText, Encoding.UTF8);
+                for (int projectIndex = 0; projectIndex < projects.Length; projectIndex++)
+                {
+                    Project project = projects[projectIndex];
+                    var documentId = DocumentId.CreateNewId(project.Id, debugName: path);
+                    solution = solution.AddDocument(
+                        documentId,
+                        Path.GetFileName(path),
+                        text,
+                        filePath: path);
+                }
+
+                folders = folders.SetItem(folderIndex, (rootPath, workspace, solution));
+                changedFolderIndexes.Add(folderIndex);
+            }
+
+            if (changedFolderIndexes.Count == 0)
+            {
+                return (true, null);
+            }
+
+            long previousGeneration = Generation;
+            _folders = folders;
+            _diagnosticCache.Clear();
+            long currentGeneration = Interlocked.Increment(ref _generation);
+            return (
+                true,
+                new WorkspaceMaintenanceResult
+                {
+                    PreviousGeneration = previousGeneration,
+                    CurrentGeneration = currentGeneration,
+                    AffectedWorkspaceCount = changedFolderIndexes.Count,
+                    ClearedCacheEntryCount = clearedCacheEntryCount
+                });
+        }
+        finally
+        {
+            _mutationGate.Release();
+        }
+    }
+
+    private static Project[] FindProjectsForCreatedSourceDocument(
+        Solution solution,
+        string path)
+    {
+        (Project Project, string DirectoryPath)[] candidates =
+        [
+            .. solution.Projects
+                .Where(static project =>
+                    string.Equals(project.Language, LanguageNames.CSharp, StringComparison.Ordinal) &&
+                    !string.IsNullOrWhiteSpace(project.FilePath))
+                .Select(static project => (
+                    Project: project,
+                    DirectoryPath: Path.GetDirectoryName(project.FilePath!)!))
+                .Where(candidate => IsPathAtOrBelow(path, candidate.DirectoryPath))
+        ];
+        if (candidates.Length == 0)
+        {
+            return [];
+        }
+
+        int nearestDirectoryLength = candidates.Max(static candidate =>
+            candidate.DirectoryPath.Length);
+        return
+        [
+            .. candidates
+                .Where(candidate => candidate.DirectoryPath.Length == nearestDirectoryLength)
+                .Select(static candidate => candidate.Project)
+        ];
+    }
+
     private static bool RequiresWorkspaceReload(string path)
     {
         string extension = Path.GetExtension(path);
@@ -277,6 +423,23 @@ public sealed partial class WorkspaceManager
             !extension.Equals(".csx", StringComparison.OrdinalIgnoreCase) &&
             !extension.Equals(".cshtml", StringComparison.OrdinalIgnoreCase) &&
             !extension.Equals(".razor", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private bool IsStaleFileBasedAppProjectEvent(FileEvent change)
+    {
+        string projectPath = change.Uri.GetFileSystemPath();
+        const string projectSuffix = ".csproj";
+        if (File.Exists(projectPath) ||
+            !projectPath.EndsWith(projectSuffix, StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        string entryPointPath = projectPath[..^projectSuffix.Length];
+        return _folders.Any(folder => folder.Solution.Projects.Any(project =>
+            project.FilePath is not null &&
+            PathComparer.Equals(project.FilePath, entryPointPath) &&
+            WorkspaceDiscovery.IsFileBasedApp(entryPointPath)));
     }
 
     private static IReadOnlyList<TextDocumentItem> TransformFileOperationOverlays(
