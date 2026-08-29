@@ -199,6 +199,7 @@ public sealed partial class LanguageServer : ILspRpcTarget, IAsyncDisposable
         _configuration = configuration;
         _logFilter.SetMinimumLevel(configuration.LogLevel);
         _rootPaths = ResolveRootPaths(parameters);
+        StartClientProcessMonitor(parameters.ProcessId);
         Volatile.Write(ref _workspacePhase, (int)ServerWorkspacePhase.Configured);
         return Task.FromResult(new InitializeResult
         {
@@ -1521,6 +1522,7 @@ public sealed partial class LanguageServer : ILspRpcTarget, IAsyncDisposable
         }
 
         ClearPushDiagnosticRequests();
+        await StopClientProcessMonitorAsync().ConfigureAwait(false);
         await _scheduler.DisposeAsync().ConfigureAwait(false);
         _semanticTokensCache.Clear();
         await _workspaceManager.DisposeAsync().ConfigureAwait(false);

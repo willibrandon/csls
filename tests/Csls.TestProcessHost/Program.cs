@@ -7,6 +7,12 @@ if (args is ["--print-environment", string environmentVariable])
     return 0;
 }
 
+if (args is ["--wait-for-standard-input"])
+{
+    _ = await Console.In.ReadToEndAsync().ConfigureAwait(false);
+    return 0;
+}
+
 Dictionary<string, string> environment = new(StringComparer.Ordinal);
 int argumentIndex = 0;
 while (argumentIndex < args.Length &&

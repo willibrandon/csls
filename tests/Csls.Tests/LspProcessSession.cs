@@ -231,6 +231,34 @@ internal sealed class LspProcessSession : IAsyncDisposable
     }
 
     /// <summary>
+    /// Initializes the server with an explicit LSP client process identifier.
+    /// </summary>
+    /// <param name="workspacePath">The absolute workspace directory.</param>
+    /// <param name="clientProcessId">The real client process identifier.</param>
+    /// <param name="cancellationToken">The test cancellation token.</param>
+    /// <returns>The server initialization result.</returns>
+    internal async Task<JsonElement> InitializeWithProcessIdAsync(
+        string workspacePath,
+        int clientProcessId,
+        CancellationToken cancellationToken)
+    {
+        using var capabilities = JsonDocument.Parse(
+            """
+            {
+              "textDocument": {
+                "diagnostic": {}
+              }
+            }
+            """);
+        return await InitializeAsync(
+            [workspacePath],
+            capabilities.RootElement,
+            initializationOptions: null,
+            clientProcessId,
+            cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
     /// Initializes the server with explicit client capabilities and returns its raw result.
     /// </summary>
     /// <param name="workspacePath">The absolute workspace directory.</param>
@@ -263,6 +291,21 @@ internal sealed class LspProcessSession : IAsyncDisposable
         JsonElement? initializationOptions,
         CancellationToken cancellationToken)
     {
+        return await InitializeAsync(
+            workspacePaths,
+            capabilities,
+            initializationOptions,
+            Environment.ProcessId,
+            cancellationToken).ConfigureAwait(false);
+    }
+
+    private async Task<JsonElement> InitializeAsync(
+        IReadOnlyList<string> workspacePaths,
+        JsonElement capabilities,
+        JsonElement? initializationOptions,
+        int? clientProcessId,
+        CancellationToken cancellationToken)
+    {
         ArgumentNullException.ThrowIfNull(workspacePaths);
         if (workspacePaths.Count == 0)
         {
@@ -273,7 +316,7 @@ internal sealed class LspProcessSession : IAsyncDisposable
             "initialize",
             new InitializeParams
             {
-                ProcessId = Environment.ProcessId,
+                ProcessId = clientProcessId,
                 ClientInfo = new ClientInfo { Name = "Csls.ParityTests" },
                 RootUri = DocumentUri.FromFileSystemPath(workspacePaths[0]),
                 WorkspaceFolders =
@@ -1465,6 +1508,30 @@ internal sealed class LspProcessSession : IAsyncDisposable
             "exit",
             new InitializedParams()).ConfigureAwait(false);
         await _process.WaitForExitAsync(cancellationToken).ConfigureAwait(false);
+        ValueTask<string> standardError = new(_standardErrorTask);
+        string diagnostics = await standardError.ConfigureAwait(false);
+        if (_process.ExitCode != 0)
+        {
+            throw new InvalidDataException(
+                $"The language server exited with code {_process.ExitCode}: {diagnostics}");
+        }
+
+        return diagnostics;
+    }
+
+    /// <summary>
+    /// Waits for the real server process to exit without closing its protocol streams.
+    /// </summary>
+    /// <param name="timeout">The maximum interval allowed for process cleanup.</param>
+    /// <param name="cancellationToken">The test cancellation token.</param>
+    /// <returns>The captured server diagnostics.</returns>
+    internal async Task<string> WaitForExitAsync(
+        TimeSpan timeout,
+        CancellationToken cancellationToken)
+    {
+        await _process.WaitForExitAsync(cancellationToken)
+            .WaitAsync(timeout, cancellationToken)
+            .ConfigureAwait(false);
         ValueTask<string> standardError = new(_standardErrorTask);
         string diagnostics = await standardError.ConfigureAwait(false);
         if (_process.ExitCode != 0)
