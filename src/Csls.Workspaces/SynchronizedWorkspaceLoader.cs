@@ -298,15 +298,16 @@ public sealed class SynchronizedWorkspaceLoader : WorkspaceLoader
         var paths = new HashSet<string>(PathComparer);
         if (defaultCompileItems)
         {
-            foreach (string path in Directory.EnumerateFiles(
-                projectDirectory,
-                "*.cs",
-                SearchOption.AllDirectories))
+            foreach (string path in Directory
+                .EnumerateFiles(
+                    projectDirectory,
+                    "*.cs",
+                    SearchOption.AllDirectories)
+                .Where(path => !WorkspaceDiscovery.IsExcludedPath(
+                    projectDirectory,
+                    path)))
             {
-                if (!WorkspaceDiscovery.IsExcludedPath(projectDirectory, path))
-                {
-                    paths.Add(Path.GetFullPath(path));
-                }
+                paths.Add(Path.GetFullPath(path));
             }
         }
 

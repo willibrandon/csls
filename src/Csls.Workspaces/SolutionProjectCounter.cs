@@ -66,16 +66,14 @@ internal static class SolutionProjectCounter
             .Select(static attribute => attribute!.Value);
     }
 
-    private static IEnumerable<string> ReadClassicSolutionProjectPaths(string solutionPath)
-    {
-        foreach (string line in File.ReadLines(solutionPath))
-        {
-            if (TryReadClassicCSharpProjectPath(line, out string? projectPath))
-            {
-                yield return projectPath!;
-            }
-        }
-    }
+    private static IEnumerable<string> ReadClassicSolutionProjectPaths(string solutionPath) =>
+        File.ReadLines(solutionPath)
+            .Select(static line =>
+                TryReadClassicCSharpProjectPath(line, out string? projectPath)
+                    ? projectPath
+                    : null)
+            .Where(static projectPath => projectPath is not null)
+            .Select(static projectPath => projectPath!);
 
     private static bool TryReadClassicCSharpProjectPath(
         ReadOnlySpan<char> line,
