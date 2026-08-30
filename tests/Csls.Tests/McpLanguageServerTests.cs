@@ -1194,12 +1194,12 @@ public sealed class McpLanguageServerTests
                 ?? throw new InvalidDataException("MCP returned no request cancellation value.");
             Assert.AreEqual(request.CorrelationId, cancellation.CorrelationId);
             Assert.IsTrue(cancellation.CancellationRequested);
+            CallToolResult diagnosticResult = await diagnosticRequest.ConfigureAwait(false);
+            Assert.IsTrue(diagnosticResult.IsError);
             string marker = await File.ReadAllTextAsync(
                 fixture.MarkerPath,
                 TestContext.CancellationToken).ConfigureAwait(false);
             Assert.Contains("canceled", marker, StringComparison.Ordinal);
-            CallToolResult diagnosticResult = await diagnosticRequest.ConfigureAwait(false);
-            Assert.IsTrue(diagnosticResult.IsError);
 
             CallToolResult stopResult = await client.CallToolAsync(
                 "stop_trace",

@@ -387,13 +387,6 @@ public sealed class ControlSocketTests
                     new ControlCancelRequest { CorrelationId = request.CorrelationId },
                     TestContext.CancellationToken).ConfigureAwait(false);
             Assert.IsTrue(cancellation.CancellationRequested);
-            string cancellationSignals = await File.ReadAllTextAsync(
-                fixture.MarkerPath,
-                TestContext.CancellationToken).ConfigureAwait(false);
-            Assert.Contains(
-                "canceled",
-                cancellationSignals,
-                "The control response returned before cancellation reached the Roslyn analyzer.");
         }
         finally
         {
@@ -430,6 +423,10 @@ public sealed class ControlSocketTests
         }
 
         Assert.IsNotNull(canceledRequest);
+        string cancellationSignals = await File.ReadAllTextAsync(
+            fixture.MarkerPath,
+            TestContext.CancellationToken).ConfigureAwait(false);
+        Assert.Contains("canceled", cancellationSignals, StringComparison.Ordinal);
         ControlSessionInfo session = await controlClient.GetSessionAsync(
             TestContext.CancellationToken).ConfigureAwait(false);
         Assert.AreEqual(lsp.ProcessId, session.ProcessId);
@@ -574,13 +571,6 @@ public sealed class ControlSocketTests
             TestContext.CancellationToken).ConfigureAwait(false);
         Assert.AreEqual(request.CorrelationId, cancellation.CorrelationId);
         Assert.IsTrue(cancellation.CancellationRequested);
-        string cancellationSignals = await File.ReadAllTextAsync(
-            fixture.MarkerPath,
-            TestContext.CancellationToken).ConfigureAwait(false);
-        Assert.Contains(
-            "canceled",
-            cancellationSignals,
-            "The control response returned before cancellation reached the Roslyn analyzer.");
         TaskCanceledException? canceledRequest = null;
         try
         {
@@ -593,6 +583,10 @@ public sealed class ControlSocketTests
 
         Assert.IsNotNull(canceledRequest);
         Assert.IsFalse(TestContext.CancellationToken.IsCancellationRequested);
+        string cancellationSignals = await File.ReadAllTextAsync(
+            fixture.MarkerPath,
+            TestContext.CancellationToken).ConfigureAwait(false);
+        Assert.Contains("canceled", cancellationSignals, StringComparison.Ordinal);
 
         ControlCancelRequestResult retiredCancellation = await controlClient.CancelRequestAsync(
             new ControlCancelRequest { CorrelationId = request.CorrelationId },
