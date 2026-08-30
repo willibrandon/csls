@@ -45,11 +45,11 @@ public sealed class QuerySyntaxHoverLanguageServerTests
                 documentPath,
                 DocumentText,
                 TestContext.CancellationToken).ConfigureAwait(false);
-            var lsp = LspProcessSession.Start(
+            LspProcessSession lsp = await LspProcessSession.StartAsync(
                 "csls-query-hover-worker",
                 EditorToolResolver.ResolveDotNetHost(),
                 [workerPath],
-                fixturePath);
+                fixturePath).ConfigureAwait(false);
             await using ConfiguredAsyncDisposable lspCleanup = lsp.ConfigureAwait(false);
             await lsp.InitializeAsync(
                 fixturePath,

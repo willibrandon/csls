@@ -35,7 +35,7 @@ public sealed class AnalyzerDiagnosticCacheLanguageServerTests
             repositoryRoot,
             TestContext.CancellationToken).ConfigureAwait(false);
         await using ConfiguredAsyncDisposable fixtureCleanup = fixture.ConfigureAwait(false);
-        var lsp = LspProcessSession.Start(
+        LspProcessSession lsp = await LspProcessSession.StartAsync(
             "csls-analyzer-cache-worker",
             EditorToolResolver.ResolveDotNetHost(),
             [workerPath],
@@ -43,7 +43,7 @@ public sealed class AnalyzerDiagnosticCacheLanguageServerTests
             environmentVariables: new Dictionary<string, string>(StringComparer.Ordinal)
             {
                 ["DOTNET_PROCESSOR_COUNT"] = "4"
-            });
+            }).ConfigureAwait(false);
         await using ConfiguredAsyncDisposable lspCleanup = lsp.ConfigureAwait(false);
         await lsp.InitializeAsync(
             fixture.RootPath,
@@ -189,11 +189,11 @@ public sealed class AnalyzerDiagnosticCacheLanguageServerTests
             repositoryRoot,
             TestContext.CancellationToken).ConfigureAwait(false);
         await using ConfiguredAsyncDisposable fixtureCleanup = fixture.ConfigureAwait(false);
-        var lsp = LspProcessSession.Start(
+        LspProcessSession lsp = await LspProcessSession.StartAsync(
             "csls-stale-diagnostic-worker",
             EditorToolResolver.ResolveDotNetHost(),
             [workerPath],
-            fixture.RootPath);
+            fixture.RootPath).ConfigureAwait(false);
         await using ConfiguredAsyncDisposable lspCleanup = lsp.ConfigureAwait(false);
         await lsp.InitializeAsync(
             fixture.RootPath,

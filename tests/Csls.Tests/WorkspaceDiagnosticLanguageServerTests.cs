@@ -53,12 +53,12 @@ public sealed class WorkspaceDiagnosticLanguageServerTests
             var client = new LspTestClient(
                 legacyConfiguration: null,
                 preferredConfiguration: null);
-            var lsp = LspProcessSession.Start(
+            LspProcessSession lsp = await LspProcessSession.StartAsync(
                 "csls-workspace-diagnostic-loading-worker",
                 EditorToolResolver.ResolveDotNetHost(),
                 [workerPath],
                 fixturePath,
-                client);
+                client).ConfigureAwait(false);
             await using ConfiguredAsyncDisposable lspCleanup = lsp.ConfigureAwait(false);
             using var capabilities = JsonDocument.Parse(
                 """
@@ -210,12 +210,12 @@ public sealed class WorkspaceDiagnosticLanguageServerTests
             var client = new LspTestClient(
                 legacyConfiguration: null,
                 preferredConfiguration: null);
-            var lsp = LspProcessSession.Start(
+            LspProcessSession lsp = await LspProcessSession.StartAsync(
                 "csls-workspace-diagnostic-worker",
                 EditorToolResolver.ResolveDotNetHost(),
                 [workerPath],
                 fixturePath,
-                client);
+                client).ConfigureAwait(false);
             await using ConfiguredAsyncDisposable lspCleanup = lsp.ConfigureAwait(false);
             JsonElement initialization = await lsp.InitializeAsync(
                 fixturePath,
@@ -365,12 +365,12 @@ public sealed class WorkspaceDiagnosticLanguageServerTests
             var client = new LspTestClient(
                 legacyConfiguration: null,
                 preferredConfiguration: null);
-            var lsp = LspProcessSession.Start(
+            LspProcessSession lsp = await LspProcessSession.StartAsync(
                 "csls-workspace-diagnostic-progress-worker",
                 EditorToolResolver.ResolveDotNetHost(),
                 [workerPath],
                 fixturePath,
-                client);
+                client).ConfigureAwait(false);
             await using ConfiguredAsyncDisposable lspCleanup = lsp.ConfigureAwait(false);
             await lsp.InitializeAsync(fixturePath, TestContext.CancellationToken)
                 .ConfigureAwait(false);

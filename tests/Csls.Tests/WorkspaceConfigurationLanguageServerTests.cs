@@ -38,12 +38,12 @@ public sealed class WorkspaceConfigurationLanguageServerTests
             var client = new LspTestClient(
                 """{"enableAnalyzers":false,"formatOnSave":true}""",
                 """{"enableAnalyzers":true,"formatOnSave":false}""");
-            var lsp = LspProcessSession.Start(
+            LspProcessSession lsp = await LspProcessSession.StartAsync(
                 "csls-configuration-worker",
                 EditorToolResolver.ResolveDotNetHost(),
                 [workerPath],
                 fixturePath,
-                client);
+                client).ConfigureAwait(false);
             await using ConfiguredAsyncDisposable lspCleanup = lsp.ConfigureAwait(false);
             using var capabilitiesDocument = JsonDocument.Parse(
                 """
@@ -165,11 +165,11 @@ public sealed class WorkspaceConfigurationLanguageServerTests
                 fixturePath,
                 documentPath,
                 DiagnosticDocumentText).ConfigureAwait(false);
-            var lsp = LspProcessSession.Start(
+            LspProcessSession lsp = await LspProcessSession.StartAsync(
                 "csls-pushed-configuration-worker",
                 EditorToolResolver.ResolveDotNetHost(),
                 [workerPath],
-                fixturePath);
+                fixturePath).ConfigureAwait(false);
             await using ConfiguredAsyncDisposable lspCleanup = lsp.ConfigureAwait(false);
             using var capabilitiesDocument = JsonDocument.Parse("{}");
             using var initializationOptions = JsonDocument.Parse(
@@ -244,11 +244,11 @@ public sealed class WorkspaceConfigurationLanguageServerTests
                 documentPath,
                 ConditionalDocumentText,
                 TestContext.CancellationToken).ConfigureAwait(false);
-            var lsp = LspProcessSession.Start(
+            LspProcessSession lsp = await LspProcessSession.StartAsync(
                 "csls-build-configuration-worker",
                 EditorToolResolver.ResolveDotNetHost(),
                 [workerPath],
-                fixturePath);
+                fixturePath).ConfigureAwait(false);
             await using ConfiguredAsyncDisposable lspCleanup = lsp.ConfigureAwait(false);
             using var capabilities = JsonDocument.Parse("{}");
             using var initializationOptions = JsonDocument.Parse(
@@ -313,11 +313,11 @@ public sealed class WorkspaceConfigurationLanguageServerTests
             string documentPath = Path.Join(fixturePath, "Program.cs");
             await WriteProjectAsync(fixturePath, documentPath, DiagnosticDocumentText)
                 .ConfigureAwait(false);
-            var lsp = LspProcessSession.Start(
+            LspProcessSession lsp = await LspProcessSession.StartAsync(
                 "csls-log-level-worker",
                 EditorToolResolver.ResolveDotNetHost(),
                 [workerPath],
-                fixturePath);
+                fixturePath).ConfigureAwait(false);
             await using ConfiguredAsyncDisposable lspCleanup = lsp.ConfigureAwait(false);
             using var capabilities = JsonDocument.Parse("{}");
             using var initializationOptions = JsonDocument.Parse(
@@ -381,11 +381,11 @@ public sealed class WorkspaceConfigurationLanguageServerTests
             await WriteProjectAsync(secondRoot, secondDocumentPath, SecondDocumentText)
                 .ConfigureAwait(false);
 
-            var lsp = LspProcessSession.Start(
+            LspProcessSession lsp = await LspProcessSession.StartAsync(
                 "csls-workspace-folders-worker",
                 EditorToolResolver.ResolveDotNetHost(),
                 [workerPath],
-                firstRoot);
+                firstRoot).ConfigureAwait(false);
             await using ConfiguredAsyncDisposable lspCleanup = lsp.ConfigureAwait(false);
             using var capabilitiesDocument = JsonDocument.Parse(
                 """{"workspace":{"workspaceFolders":true}}""");

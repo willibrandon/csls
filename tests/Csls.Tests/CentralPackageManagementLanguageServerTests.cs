@@ -82,11 +82,11 @@ public sealed class CentralPackageManagementLanguageServerTests
                 "debug",
                 "csls-worker.dll");
             Assert.IsTrue(File.Exists(workerPath), $"Worker not found at {workerPath}.");
-            var lsp = LspProcessSession.Start(
+            LspProcessSession lsp = await LspProcessSession.StartAsync(
                 "csls-central-package-management-worker",
                 EditorToolResolver.ResolveDotNetHost(),
                 [workerPath],
-                workspacePath);
+                workspacePath).ConfigureAwait(false);
             await using ConfiguredAsyncDisposable lspCleanup = lsp.ConfigureAwait(false);
             await lsp.InitializeAsync(
                 workspacePath,

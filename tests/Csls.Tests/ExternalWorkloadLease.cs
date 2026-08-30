@@ -8,33 +8,29 @@ internal sealed class ExternalWorkloadLease : IDisposable
     private const int LogicalProcessorsPerWorkload = 16;
     private const long BytesPerWorkload = 8L * 1024 * 1024 * 1024;
     private static readonly AsyncLocal<ExternalWorkloadLease?> s_current = new();
-    private static readonly SemaphoreSlim s_capacity = new(CalculateCapacity());
+    private static readonly int s_capacityCount = CalculateCapacity();
+    private static readonly SemaphoreSlim s_capacity = new(s_capacityCount);
+    private readonly CancellationTokenSource _admissionSource;
+    private readonly Task _admissionTask;
+    private int _admitted;
+    private int _admissionCompleted;
+    private int _admissionSourceDisposed;
+    private int _capacityReleased;
     private int _referenceCount = 1;
 
-    private ExternalWorkloadLease()
-    {
-    }
-
     /// <summary>
-    /// Acquires a lease for a real external workload, reusing the current test's lease when present.
+    /// Gets the number of independent external workloads admitted by this test host.
     /// </summary>
-    /// <returns>The acquired workload lease.</returns>
-    internal static ExternalWorkloadLease Acquire()
-    {
-        ExternalWorkloadLease? current = TryAddReference();
-        if (current is not null)
-        {
-            return current;
-        }
+    internal static int Capacity => s_capacityCount;
 
-        s_capacity.Wait();
-        var lease = new ExternalWorkloadLease();
-        s_current.Value = lease;
-        return lease;
+    private ExternalWorkloadLease(CancellationToken cancellationToken)
+    {
+        _admissionSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        _admissionTask = WaitForAdmissionAsync(_admissionSource.Token);
     }
 
     /// <summary>
-    /// Asynchronously acquires a lease for a real external workload.
+    /// Asynchronously acquires a lease without blocking a test-host ThreadPool thread.
     /// </summary>
     /// <param name="cancellationToken">The test cancellation token.</param>
     /// <returns>The acquired workload lease.</returns>
@@ -42,9 +38,14 @@ internal sealed class ExternalWorkloadLease : IDisposable
         CancellationToken cancellationToken)
     {
         ExternalWorkloadLease? current = TryAddReference();
-        return current is not null
-            ? ValueTask.FromResult(current)
-            : WaitForCapacityAsync(cancellationToken);
+        if (current is not null)
+        {
+            return current.WaitForAdmissionAsync();
+        }
+
+        var lease = new ExternalWorkloadLease(cancellationToken);
+        s_current.Value = lease;
+        return lease.WaitForAdmissionAsync();
     }
 
     /// <inheritdoc />
@@ -60,7 +61,9 @@ internal sealed class ExternalWorkloadLease : IDisposable
             s_current.Value = null;
         }
 
-        s_capacity.Release();
+        _admissionSource.Cancel();
+        TryReleaseCapacity();
+        TryDisposeAdmissionSource();
     }
 
     /// <summary>
@@ -114,12 +117,54 @@ internal sealed class ExternalWorkloadLease : IDisposable
         return null;
     }
 
-    private static async ValueTask<ExternalWorkloadLease> WaitForCapacityAsync(
-        CancellationToken cancellationToken)
+    private async Task WaitForAdmissionAsync(CancellationToken cancellationToken)
     {
-        await s_capacity.WaitAsync(cancellationToken).ConfigureAwait(false);
-        var lease = new ExternalWorkloadLease();
-        s_current.Value = lease;
-        return lease;
+        try
+        {
+            await s_capacity.WaitAsync(cancellationToken).ConfigureAwait(false);
+            Volatile.Write(ref _admitted, 1);
+            TryReleaseCapacity();
+        }
+        finally
+        {
+            Volatile.Write(ref _admissionCompleted, 1);
+            TryDisposeAdmissionSource();
+        }
+    }
+
+    private async ValueTask<ExternalWorkloadLease> WaitForAdmissionAsync()
+    {
+        try
+        {
+            await _admissionTask
+                .WaitAsync(CancellationToken.None)
+                .ConfigureAwait(false);
+            return this;
+        }
+        catch
+        {
+            Release();
+            throw;
+        }
+    }
+
+    private void TryReleaseCapacity()
+    {
+        if (Volatile.Read(ref _admitted) != 0 &&
+            Volatile.Read(ref _referenceCount) == 0 &&
+            Interlocked.Exchange(ref _capacityReleased, 1) == 0)
+        {
+            s_capacity.Release();
+        }
+    }
+
+    private void TryDisposeAdmissionSource()
+    {
+        if (Volatile.Read(ref _admissionCompleted) != 0 &&
+            Volatile.Read(ref _referenceCount) == 0 &&
+            Interlocked.Exchange(ref _admissionSourceDisposed, 1) == 0)
+        {
+            _admissionSource.Dispose();
+        }
     }
 }

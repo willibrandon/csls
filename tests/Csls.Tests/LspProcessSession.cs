@@ -51,13 +51,34 @@ internal sealed class LspProcessSession : IAsyncDisposable
     /// <param name="client">The optional bidirectional LSP client target.</param>
     /// <param name="environmentVariables">The optional child-process environment overrides.</param>
     /// <returns>A connected process session.</returns>
-    internal static LspProcessSession Start(
+    internal static Task<LspProcessSession> StartAsync(
         string displayName,
         string fileName,
         IReadOnlyList<string> arguments,
         string workingDirectory,
         LspTestClient? client = null,
         IReadOnlyDictionary<string, string>? environmentVariables = null)
+    {
+        ValueTask<ExternalWorkloadLease> workloadLease =
+            ExternalWorkloadLease.AcquireAsync(CancellationToken.None);
+        return StartCoreAsync(
+            displayName,
+            fileName,
+            arguments,
+            workingDirectory,
+            client,
+            environmentVariables,
+            workloadLease);
+    }
+
+    private static async Task<LspProcessSession> StartCoreAsync(
+        string displayName,
+        string fileName,
+        IReadOnlyList<string> arguments,
+        string workingDirectory,
+        LspTestClient? client,
+        IReadOnlyDictionary<string, string>? environmentVariables,
+        ValueTask<ExternalWorkloadLease> workloadLeaseTask)
     {
         var startInfo = new ProcessStartInfo
         {
@@ -81,7 +102,7 @@ internal sealed class LspProcessSession : IAsyncDisposable
             }
         }
 
-        var workloadLease = ExternalWorkloadLease.Acquire();
+        ExternalWorkloadLease workloadLease = await workloadLeaseTask.ConfigureAwait(false);
         Process process;
         try
         {

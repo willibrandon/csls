@@ -49,17 +49,17 @@ public sealed class UpstreamParityTests
                 oracleWorkspacePath,
                 TestContext.CancellationToken).ConfigureAwait(false);
 
-            var csls = LspProcessSession.Start(
+            LspProcessSession csls = await LspProcessSession.StartAsync(
                 "csls-parity",
                 EditorToolResolver.ResolveDotNetHost(),
                 [workerPath],
-                cslsWorkspacePath);
+                cslsWorkspacePath).ConfigureAwait(false);
             await using ConfiguredAsyncDisposable cslsCleanup = csls.ConfigureAwait(false);
-            var oracle = LspProcessSession.Start(
+            LspProcessSession oracle = await LspProcessSession.StartAsync(
                 "csharp-ls-parity-oracle",
                 oraclePath,
                 [],
-                oracleWorkspacePath);
+                oracleWorkspacePath).ConfigureAwait(false);
             await using ConfiguredAsyncDisposable oracleCleanup = oracle.ConfigureAwait(false);
 
             Task<JsonElement> cslsInitializeTask = csls.InitializeAsync(

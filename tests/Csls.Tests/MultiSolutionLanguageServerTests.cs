@@ -55,11 +55,11 @@ public sealed class MultiSolutionLanguageServerTests
                 "<invalid>",
                 TestContext.CancellationToken).ConfigureAwait(false);
 
-            var lsp = LspProcessSession.Start(
+            LspProcessSession lsp = await LspProcessSession.StartAsync(
                 "csls-multiple-solutions",
                 EditorToolResolver.ResolveDotNetHost(),
                 [workerPath],
-                workspacePath);
+                workspacePath).ConfigureAwait(false);
             await using ConfiguredAsyncDisposable lspCleanup = lsp.ConfigureAwait(false);
             await lsp.InitializeAsync(
                 workspacePath,

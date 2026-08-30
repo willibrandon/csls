@@ -84,11 +84,11 @@ public sealed class MoveTypeCodeActionLanguageServerTests
                   }
                 }
                 """);
-            var lsp = LspProcessSession.Start(
+            LspProcessSession lsp = await LspProcessSession.StartAsync(
                 "csls-move-type-worker",
                 EditorToolResolver.ResolveDotNetHost(),
                 [workerPath],
-                fixturePath);
+                fixturePath).ConfigureAwait(false);
             await using ConfiguredAsyncDisposable lspCleanup = lsp.ConfigureAwait(false);
             JsonElement initialization = await lsp.InitializeAsync(
                 fixturePath,
@@ -199,11 +199,11 @@ public sealed class MoveTypeCodeActionLanguageServerTests
         string fixturePath,
         string documentPath)
     {
-        var lsp = LspProcessSession.Start(
+        LspProcessSession lsp = await LspProcessSession.StartAsync(
             "csls-move-type-unsupported-worker",
             EditorToolResolver.ResolveDotNetHost(),
             [workerPath],
-            fixturePath);
+            fixturePath).ConfigureAwait(false);
         await using ConfiguredAsyncDisposable lspCleanup = lsp.ConfigureAwait(false);
         JsonElement initialization = await lsp.InitializeAsync(
             fixturePath,

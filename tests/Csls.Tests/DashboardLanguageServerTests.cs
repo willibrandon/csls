@@ -83,11 +83,11 @@ public sealed class DashboardLanguageServerTests
                 DocumentText,
                 TestContext.CancellationToken).ConfigureAwait(false);
 
-            var lsp = LspProcessSession.Start(
+            LspProcessSession lsp = await LspProcessSession.StartAsync(
                 "csls-dashboard-worker",
                 EditorToolResolver.ResolveDotNetHost(),
                 [workerPath],
-                fixturePath);
+                fixturePath).ConfigureAwait(false);
             await using ConfiguredAsyncDisposable lspCleanup = lsp.ConfigureAwait(false);
             await lsp.InitializeAsync(
                 fixturePath,
@@ -302,11 +302,11 @@ public sealed class DashboardLanguageServerTests
                 documentText,
                 TestContext.CancellationToken).ConfigureAwait(false);
 
-            var lsp = LspProcessSession.Start(
+            LspProcessSession lsp = await LspProcessSession.StartAsync(
                 "csls-dashboard-narrow-worker",
                 EditorToolResolver.ResolveDotNetHost(),
                 [workerPath],
-                fixturePath);
+                fixturePath).ConfigureAwait(false);
             await using ConfiguredAsyncDisposable lspCleanup = lsp.ConfigureAwait(false);
             await lsp.InitializeAsync(
                 fixturePath,
@@ -549,11 +549,11 @@ public sealed class DashboardLanguageServerTests
                 ProjectText,
                 TestContext.CancellationToken).ConfigureAwait(false);
 
-            var firstLsp = LspProcessSession.Start(
+            LspProcessSession firstLsp = await LspProcessSession.StartAsync(
                 "csls-dashboard-first-session-worker",
                 EditorToolResolver.ResolveDotNetHost(),
                 [workerPath],
-                firstFixturePath);
+                firstFixturePath).ConfigureAwait(false);
             await using ConfiguredAsyncDisposable firstLspCleanup =
                 firstLsp.ConfigureAwait(false);
             await firstLsp.InitializeAsync(
@@ -566,11 +566,11 @@ public sealed class DashboardLanguageServerTests
                 TestContext.CancellationToken,
                 expectedProcessId: firstLsp.ProcessId).ConfigureAwait(false);
 
-            var secondLsp = LspProcessSession.Start(
+            LspProcessSession secondLsp = await LspProcessSession.StartAsync(
                 "csls-dashboard-second-session-worker",
                 EditorToolResolver.ResolveDotNetHost(),
                 [workerPath],
-                secondFixturePath);
+                secondFixturePath).ConfigureAwait(false);
             await using ConfiguredAsyncDisposable secondLspCleanup =
                 secondLsp.ConfigureAwait(false);
             await secondLsp.InitializeAsync(
@@ -712,11 +712,11 @@ public sealed class DashboardLanguageServerTests
             repositoryRoot,
             TestContext.CancellationToken).ConfigureAwait(false);
         await using ConfiguredAsyncDisposable fixtureCleanup = fixture.ConfigureAwait(false);
-        var lsp = LspProcessSession.Start(
+        LspProcessSession lsp = await LspProcessSession.StartAsync(
             "csls-dashboard-diagnostics-latency-worker",
             EditorToolResolver.ResolveDotNetHost(),
             [workerPath],
-            fixture.RootPath);
+            fixture.RootPath).ConfigureAwait(false);
         await using ConfiguredAsyncDisposable lspCleanup = lsp.ConfigureAwait(false);
         await lsp.InitializeAsync(
             fixture.RootPath,
@@ -836,11 +836,11 @@ public sealed class DashboardLanguageServerTests
             repositoryRoot,
             TestContext.CancellationToken).ConfigureAwait(false);
         await using ConfiguredAsyncDisposable fixtureCleanup = fixture.ConfigureAwait(false);
-        var lsp = LspProcessSession.Start(
+        LspProcessSession lsp = await LspProcessSession.StartAsync(
             "csls-dashboard-cancellation-worker",
             EditorToolResolver.ResolveDotNetHost(),
             [workerPath],
-            fixture.RootPath);
+            fixture.RootPath).ConfigureAwait(false);
         await using ConfiguredAsyncDisposable lspCleanup = lsp.ConfigureAwait(false);
         await lsp.InitializeAsync(
             fixture.RootPath,

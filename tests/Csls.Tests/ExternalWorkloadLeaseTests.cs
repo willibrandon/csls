@@ -1,4 +1,5 @@
 using System.Reflection;
+using System.Runtime.CompilerServices;
 
 namespace Csls.Tests;
 
@@ -6,8 +7,14 @@ namespace Csls.Tests;
 /// Verifies real-process workload admission against fixed hosted-runner resources.
 /// </summary>
 [TestClass]
+[DoNotParallelize]
 public sealed class ExternalWorkloadLeaseTests
 {
+    /// <summary>
+    /// Gets the active MSTest context and its framework-managed cancellation token.
+    /// </summary>
+    public TestContext TestContext { get; set; } = null!;
+
     /// <summary>
     /// Bounds concurrent Roslyn workspace tests independently of host processor count.
     /// </summary>
@@ -51,5 +58,73 @@ public sealed class ExternalWorkloadLeaseTests
 
         Assert.AreEqual(2, processorConstrained);
         Assert.AreEqual(2, memoryConstrained);
+    }
+
+    /// <summary>
+    /// Keeps queued real-process admission asynchronous when every workload slot is occupied.
+    /// </summary>
+    [TestMethod]
+    public async Task QueuedLanguageServerStartDoesNotBlockTheTestHost()
+    {
+        var heldLeases = new List<ExternalWorkloadLease>();
+        try
+        {
+            for (int index = 0; index < ExternalWorkloadLease.Capacity; index++)
+            {
+                heldLeases.Add(await AcquireIsolatedAsync(TestContext.CancellationToken)
+                    .ConfigureAwait(false));
+            }
+
+            string repositoryRoot = EditorToolResolver.FindRepositoryRoot();
+            string workerPath = Path.Join(
+                EditorToolResolver.ResolveArtifactsRoot(repositoryRoot),
+                "bin",
+                "Csls.Worker",
+                "debug",
+                "csls-worker.dll");
+            Assert.IsTrue(File.Exists(workerPath), $"Worker not found at {workerPath}.");
+            Task startTask = StartAndDisposeLanguageServerAsync(
+                workerPath,
+                repositoryRoot);
+
+            Assert.IsFalse(startTask.IsCompleted);
+            heldLeases[0].Dispose();
+            heldLeases.RemoveAt(0);
+            await startTask
+                .WaitAsync(TimeSpan.FromSeconds(30), TestContext.CancellationToken)
+                .ConfigureAwait(false);
+        }
+        finally
+        {
+            foreach (ExternalWorkloadLease lease in heldLeases)
+            {
+                lease.Dispose();
+            }
+        }
+    }
+
+    private static async Task StartAndDisposeLanguageServerAsync(
+        string workerPath,
+        string repositoryRoot)
+    {
+        LspProcessSession lsp = await LspProcessSession.StartAsync(
+            "csls-queued-admission-worker",
+            EditorToolResolver.ResolveDotNetHost(),
+            [workerPath],
+            repositoryRoot).ConfigureAwait(false);
+        await using ConfiguredAsyncDisposable lspCleanup = lsp.ConfigureAwait(false);
+    }
+
+    private static Task<ExternalWorkloadLease> AcquireIsolatedAsync(
+        CancellationToken cancellationToken)
+    {
+        using (ExecutionContext.SuppressFlow())
+        {
+            return Task.Run(
+                async () => await ExternalWorkloadLease
+                    .AcquireAsync(cancellationToken)
+                    .ConfigureAwait(false),
+                cancellationToken);
+        }
     }
 }

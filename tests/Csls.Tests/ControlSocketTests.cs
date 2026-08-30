@@ -81,11 +81,11 @@ public sealed class ControlSocketTests
                 new UnixDomainSocketEndPoint(unresponsiveSocketPath));
             unresponsiveSocket.Listen(1);
 
-            var lsp = LspProcessSession.Start(
+            LspProcessSession lsp = await LspProcessSession.StartAsync(
                 "csls-control-discovery-worker",
                 EditorToolResolver.ResolveDotNetHost(),
                 [workerPath],
-                fixturePath);
+                fixturePath).ConfigureAwait(false);
             await using ConfiguredAsyncDisposable lspCleanup = lsp.ConfigureAwait(false);
             await lsp.InitializeAsync(
                 fixturePath,
@@ -147,11 +147,11 @@ public sealed class ControlSocketTests
                 documentPath,
                 DocumentText,
                 TestContext.CancellationToken).ConfigureAwait(false);
-            var lsp = LspProcessSession.Start(
+            LspProcessSession lsp = await LspProcessSession.StartAsync(
                 "csls-control-worker",
                 EditorToolResolver.ResolveDotNetHost(),
                 [workerPath],
-                fixturePath);
+                fixturePath).ConfigureAwait(false);
             await using ConfiguredAsyncDisposable lspCleanup = lsp.ConfigureAwait(false);
             await lsp.InitializeAsync(
                 fixturePath,
@@ -222,7 +222,7 @@ public sealed class ControlSocketTests
                 Path.Join(fixturePath, "Fixture.csproj"),
                 ProjectText,
                 TestContext.CancellationToken).ConfigureAwait(false);
-            var lsp = LspProcessSession.Start(
+            LspProcessSession lsp = await LspProcessSession.StartAsync(
                 "csls-control-idle-worker",
                 EditorToolResolver.ResolveDotNetHost(),
                 [workerPath],
@@ -230,7 +230,7 @@ public sealed class ControlSocketTests
                 environmentVariables: new Dictionary<string, string>(StringComparer.Ordinal)
                 {
                     ["CSLS_CONTROL_IDLE_TIMEOUT_SECONDS"] = "1"
-                });
+                }).ConfigureAwait(false);
             await using ConfiguredAsyncDisposable lspCleanup = lsp.ConfigureAwait(false);
             await lsp.InitializeAsync(
                 fixturePath,
@@ -314,7 +314,7 @@ public sealed class ControlSocketTests
             repositoryRoot,
             TestContext.CancellationToken).ConfigureAwait(false);
         await using ConfiguredAsyncDisposable fixtureCleanup = fixture.ConfigureAwait(false);
-        var lsp = LspProcessSession.Start(
+        LspProcessSession lsp = await LspProcessSession.StartAsync(
             "csls-control-active-worker",
             EditorToolResolver.ResolveDotNetHost(),
             [workerPath],
@@ -322,7 +322,7 @@ public sealed class ControlSocketTests
             environmentVariables: new Dictionary<string, string>(StringComparer.Ordinal)
             {
                 ["CSLS_CONTROL_IDLE_TIMEOUT_SECONDS"] = "1"
-            });
+            }).ConfigureAwait(false);
         await using ConfiguredAsyncDisposable lspCleanup = lsp.ConfigureAwait(false);
         await lsp.InitializeAsync(
             fixture.RootPath,
@@ -453,11 +453,11 @@ public sealed class ControlSocketTests
                 Path.Join(fixturePath, "Fixture.csproj"),
                 ProjectText,
                 TestContext.CancellationToken).ConfigureAwait(false);
-            var lsp = LspProcessSession.Start(
+            LspProcessSession lsp = await LspProcessSession.StartAsync(
                 "csls-control-shutdown-worker",
                 EditorToolResolver.ResolveDotNetHost(),
                 [workerPath],
-                fixturePath);
+                fixturePath).ConfigureAwait(false);
             await using ConfiguredAsyncDisposable lspCleanup = lsp.ConfigureAwait(false);
             await lsp.InitializeAsync(
                 fixturePath,
@@ -506,11 +506,11 @@ public sealed class ControlSocketTests
             repositoryRoot,
             TestContext.CancellationToken).ConfigureAwait(false);
         await using ConfiguredAsyncDisposable fixtureCleanup = fixture.ConfigureAwait(false);
-        var lsp = LspProcessSession.Start(
+        LspProcessSession lsp = await LspProcessSession.StartAsync(
             "csls-cancellation-worker",
             EditorToolResolver.ResolveDotNetHost(),
             [workerPath],
-            fixture.RootPath);
+            fixture.RootPath).ConfigureAwait(false);
         await using ConfiguredAsyncDisposable lspCleanup = lsp.ConfigureAwait(false);
         await lsp.InitializeAsync(
             fixture.RootPath,

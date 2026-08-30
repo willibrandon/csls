@@ -61,7 +61,7 @@ public sealed class LauncherLifecycleTests
             using Process clientProcess = Process.Start(clientStartInfo)
                 ?? throw new InvalidOperationException("The lifecycle client process did not start.");
 
-            var lsp = LspProcessSession.Start(
+            LspProcessSession lsp = await LspProcessSession.StartAsync(
                 "csls-launcher-lifecycle",
                 EditorToolResolver.ResolveDotNetHost(),
                 [launcherPath, "lsp"],
@@ -69,7 +69,7 @@ public sealed class LauncherLifecycleTests
                 environmentVariables: new Dictionary<string, string>
                 {
                     ["CSLS_WORKER_PATH"] = workerPath
-                });
+                }).ConfigureAwait(false);
             await using ConfiguredAsyncDisposable lspDisposal = lsp.ConfigureAwait(false);
             await lsp.InitializeWithProcessIdAsync(
                 fixturePath,

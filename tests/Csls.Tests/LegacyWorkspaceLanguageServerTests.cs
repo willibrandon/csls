@@ -58,11 +58,11 @@ public sealed class LegacyWorkspaceLanguageServerTests
                 "debug",
                 "csls-worker.dll");
             Assert.IsTrue(File.Exists(workerPath), $"Worker not found at {workerPath}.");
-            var lsp = LspProcessSession.Start(
+            LspProcessSession lsp = await LspProcessSession.StartAsync(
                 "csls-legacy-workspace-worker",
                 EditorToolResolver.ResolveDotNetHost(),
                 [workerPath],
-                launchPath);
+                launchPath).ConfigureAwait(false);
             await using ConfiguredAsyncDisposable lspCleanup = lsp.ConfigureAwait(false);
             await lsp.InitializeAsync(
                 fixturePath,
@@ -146,11 +146,11 @@ public sealed class LegacyWorkspaceLanguageServerTests
                 "debug",
                 "csls-worker.dll");
             Assert.IsTrue(File.Exists(workerPath), $"Worker not found at {workerPath}.");
-            var lsp = LspProcessSession.Start(
+            LspProcessSession lsp = await LspProcessSession.StartAsync(
                 "csls-platform-legacy-workspace-worker",
                 EditorToolResolver.ResolveDotNetHost(),
                 [workerPath],
-                fixturePath);
+                fixturePath).ConfigureAwait(false);
             await using ConfiguredAsyncDisposable lspCleanup = lsp.ConfigureAwait(false);
             await lsp.InitializeAsync(
                 fixturePath,
