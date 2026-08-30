@@ -24,6 +24,7 @@ public static class DashboardHost
             .ConfigureAwait(false);
         Hex1bTerminal terminal = Hex1bTerminal.CreateBuilder()
             .WithHex1bApp(context => DashboardView.Build(context, state))
+            .WithMouse()
             .Build();
         await using (terminal.ConfigureAwait(false))
         {

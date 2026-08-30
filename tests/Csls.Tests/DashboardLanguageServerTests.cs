@@ -355,6 +355,12 @@ public sealed class DashboardLanguageServerTests
                         terminal,
                         defaultTimeout: TimeSpan.FromSeconds(60));
                     await automator.WaitUntilTextAsync("csls dashboard").ConfigureAwait(false);
+                    await automator.WaitUntilAsync(
+                        _ => workload.ContainsRawOutput("\u001b[?1003h"u8) &&
+                            workload.ContainsRawOutput("\u001b[?1006h"u8),
+                        timeout: TimeSpan.FromSeconds(5),
+                        description: "real dashboard process to enable terminal mouse reporting")
+                        .ConfigureAwait(false);
                     await automator.ClickAtAsync(
                         4,
                         8,
