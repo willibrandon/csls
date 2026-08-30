@@ -42,6 +42,10 @@ internal static class WorkspaceRoslynCodeRefactoringService
         ArgumentNullException.ThrowIfNull(parameters);
         ArgumentNullException.ThrowIfNull(createWorkspaceEditAsync);
 
+        await BrowserSyntaxIndexCache.WarmAsync(
+            document.Project.Solution,
+            cancellationToken).ConfigureAwait(false);
+
         SourceText text = await document.GetTextAsync(cancellationToken)
             .ConfigureAwait(false);
         int start = LspPositionConverter.GetOffset(text, parameters.Range.Start);
