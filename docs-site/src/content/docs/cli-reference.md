@@ -771,6 +771,7 @@ Arguments:
 
 Options:
   --kind <category>     Hierarchical code-action category. [default: source.organizeImports]
+  --title <title>       Exact Roslyn code-action title to preview or apply.
   --line <number>       Zero-based line containing the code-action target.
   --character <number>  Zero-based UTF-16 character containing the code-action target.
   --session <pid>       Language-server process identifier; inferred when exactly one session is live.

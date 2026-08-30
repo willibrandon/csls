@@ -481,14 +481,17 @@ public sealed class ControlRpcClient : IAsyncDisposable
             await DisposeConnectionAsync().ConfigureAwait(false);
             try
             {
-                _socket = new Socket(
+                var socket = new Socket(
                     AddressFamily.Unix,
                     SocketType.Stream,
                     ProtocolType.Unspecified);
-                await _socket.ConnectAsync(
+                _socket = socket;
+                JsonRpc newRpc;
+                ControlConnectionInfo connectionInfo;
+                await socket.ConnectAsync(
                     new UnixDomainSocketEndPoint(_socketPath),
                     cancellationToken).ConfigureAwait(false);
-                _stream = new NetworkStream(_socket, ownsSocket: true);
+                _stream = new NetworkStream(socket, ownsSocket: true);
                 _formatter = new SystemTextJsonFormatter
                 {
                     JsonSerializerOptions = ControlRpcJson.CreateSerializerOptions()
@@ -501,7 +504,7 @@ public sealed class ControlRpcClient : IAsyncDisposable
                     _boundedStream,
                     _boundedStream,
                     _formatter);
-                JsonRpc newRpc = new(_messageHandler)
+                newRpc = new JsonRpc(_messageHandler)
                 {
                     CancelLocallyInvokedMethodsWhenConnectionIsClosed = true,
                     DisplayName = "csls-control-client"
@@ -509,11 +512,14 @@ public sealed class ControlRpcClient : IAsyncDisposable
                 newRpc.CancellationStrategy = new ControlCancellationStrategy(newRpc);
                 _rpc = newRpc;
                 newRpc.StartListening();
-                ControlConnectionInfo connectionInfo = await newRpc
+                Task<ControlConnectionInfo> connectionInfoTask = newRpc
                     .InvokeWithCancellationAsync<ControlConnectionInfo>(
                         ControlMethods.GetConnectionInfo,
-                        cancellationToken: cancellationToken)
+                        cancellationToken: CancellationToken.None);
+                connectionInfo = await connectionInfoTask
+                    .WaitAsync(cancellationToken)
                     .ConfigureAwait(false);
+
                 TimeSpan keepAliveInterval = ValidateConnectionInfo(connectionInfo);
                 _keepAliveSource = new CancellationTokenSource();
                 _keepAliveTask = RunKeepAliveAsync(
@@ -606,6 +612,8 @@ public sealed class ControlRpcClient : IAsyncDisposable
 
     private async Task DisposeConnectionAsync()
     {
+        _socket?.Dispose();
+        _socket = null;
         CancellationTokenSource? keepAliveSource = _keepAliveSource;
         Task? keepAliveTask = _keepAliveTask;
         _keepAliveSource = null;
@@ -635,6 +643,14 @@ public sealed class ControlRpcClient : IAsyncDisposable
 
     private async Task DisposeTransportAsync()
     {
+        _socket?.Dispose();
+        _socket = null;
+        if (_stream is not null)
+        {
+            await _stream.DisposeAsync().ConfigureAwait(false);
+            _stream = null;
+        }
+
         if (_messageHandler is not null)
         {
             await _messageHandler.DisposeAsync().ConfigureAwait(false);
@@ -649,14 +665,6 @@ public sealed class ControlRpcClient : IAsyncDisposable
 
         _formatter?.Dispose();
         _formatter = null;
-        if (_stream is not null)
-        {
-            await _stream.DisposeAsync().ConfigureAwait(false);
-            _stream = null;
-        }
-
-        _socket?.Dispose();
-        _socket = null;
     }
 
     private static bool IsConnectionUsable(JsonRpc? rpc, Task? keepAliveTask) =>

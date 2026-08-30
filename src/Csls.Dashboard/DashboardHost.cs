@@ -1,4 +1,5 @@
 using Hex1b;
+using System.Runtime.CompilerServices;
 
 namespace Csls.Dashboard;
 
@@ -22,8 +23,16 @@ public static class DashboardHost
         DashboardState state = await DashboardState
             .CreateAsync(processId, workspacePath, cancellationToken)
             .ConfigureAwait(false);
+        await using ConfiguredAsyncDisposable stateCleanup = state.ConfigureAwait(false);
         Hex1bTerminal terminal = Hex1bTerminal.CreateBuilder()
-            .WithHex1bApp(context => DashboardView.Build(context, state))
+            .WithHex1bApp(
+                static _ => { },
+                app =>
+                {
+                    state.AttachApp(app);
+                    return context => DashboardView.Build(context, state);
+                })
+            .WithMouse()
             .Build();
         await using (terminal.ConfigureAwait(false))
         {

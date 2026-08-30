@@ -416,24 +416,22 @@ static async Task CreateArchiveAsync(string sourcePath, string archivePath)
         return;
     }
 
-    using (FileStream output = new(
+    using FileStream output = new(
         archivePath,
         FileMode.CreateNew,
         FileAccess.Write,
         FileShare.None,
         bufferSize: 131_072,
-        FileOptions.Asynchronous | FileOptions.SequentialScan))
-    using (var compressed = new GZipStream(
+        FileOptions.Asynchronous | FileOptions.SequentialScan);
+    using var compressed = new GZipStream(
         output,
         CompressionLevel.Optimal,
-        leaveOpen: true))
-    {
-        await TarFile.CreateFromDirectoryAsync(
-            sourcePath,
-            compressed,
-            includeBaseDirectory: false,
-            CancellationToken.None).ConfigureAwait(false);
-    }
+        leaveOpen: true);
+    await TarFile.CreateFromDirectoryAsync(
+        sourcePath,
+        compressed,
+        includeBaseDirectory: false,
+        CancellationToken.None).ConfigureAwait(false);
 }
 
 static async Task VerifyArchiveAsync(

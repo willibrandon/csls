@@ -10,19 +10,6 @@ internal static class FileSignalPublisher
     private static readonly object s_gate = new();
 
     /// <summary>
-    /// Replaces the marker with one complete signal value.
-    /// </summary>
-    /// <param name="markerPath">The marker file to replace.</param>
-    /// <param name="value">The complete signal value.</param>
-    internal static void WriteAllText(string markerPath, string value)
-    {
-        lock (s_gate)
-        {
-            Publish(markerPath, value);
-        }
-    }
-
-    /// <summary>
     /// Appends one value and atomically replaces the marker with the complete result.
     /// </summary>
     /// <param name="markerPath">The marker file to replace.</param>

@@ -15,7 +15,7 @@ supports `--help`.
 | `Export-ContainerImage.cs` | Exports a container image as a Picket-scannable archive. |
 | `Generate-Docs.cs` | Generates CLI, MCP, configuration, and contract reference pages from the built product. |
 | `Initialize-DevContainer.cs` | Installs the development container dependencies and restores the repository. |
-| `InstallDotNet.cs` | Installs the pinned .NET SDK from verified Microsoft release metadata. |
+| `InstallDotNet.cs` | Installs the pinned SDK locally from verified Microsoft release metadata; when that SDK is missing, invoke it by absolute path from outside the repository using another .NET 10 SDK. |
 | `Install-GraphicalEditorTestPrerequisites.cs` | Installs Linux display and input packages for graphical editor tests. |
 | `Install-NativeAotPrerequisites.cs` | Installs the native compiler prerequisites for a runtime identifier. |
 | `Provision-Actionlint.cs` | Installs the pinned GitHub Actions validator. |

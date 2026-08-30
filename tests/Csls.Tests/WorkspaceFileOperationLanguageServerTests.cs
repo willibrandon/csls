@@ -374,7 +374,11 @@ public sealed class WorkspaceFileOperationLanguageServerTests
                 DefinitionWithValueText,
                 TestContext.CancellationToken).ConfigureAwait(false);
             await lsp.ChangeWatchedFilesAsync(
-                [(definitionPath, FileChangeType.Changed)]).ConfigureAwait(false);
+                [
+                    (definitionPath, FileChangeType.Deleted),
+                    (definitionPath, FileChangeType.Created),
+                    (definitionPath, FileChangeType.Changed)
+                ]).ConfigureAwait(false);
             await client.WaitForDiagnosticRefreshAsync(TestContext.CancellationToken)
                 .WaitAsync(TimeSpan.FromSeconds(30), TestContext.CancellationToken)
                 .ConfigureAwait(false);
@@ -396,6 +400,159 @@ public sealed class WorkspaceFileOperationLanguageServerTests
                 "Unhandled exception",
                 serverDiagnostics,
                 StringComparison.Ordinal);
+            Assert.DoesNotContain(
+                "Reloading C# workspace",
+                serverDiagnostics,
+                StringComparison.Ordinal);
+            Assert.DoesNotContain(
+                "Watched file changes completed",
+                serverDiagnostics,
+                StringComparison.Ordinal);
+        }
+        finally
+        {
+            Directory.Delete(fixturePath, recursive: true);
+        }
+    }
+
+    /// <summary>
+    /// Keeps ignored generated workspace changes out of information-level logs.
+    /// </summary>
+    [TestMethod]
+    public async Task IgnoredWatchedFileChangesDoNotEmitInformationLogs()
+    {
+        string repositoryRoot = EditorToolResolver.FindRepositoryRoot();
+        string workerPath = ResolveWorkerPath(repositoryRoot);
+        string fixturePath = Path.Join(
+            Path.GetTempPath(),
+            $"csls-ignored-watched-file-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(fixturePath);
+        try
+        {
+            string documentPath = Path.Join(fixturePath, "Program.cs");
+            string generatedTargetsPath = Path.Join(
+                fixturePath,
+                "artifacts",
+                "vo",
+                Guid.NewGuid().ToString("N"),
+                "extensions",
+                ".razorExtension",
+                "Targets",
+                "Microsoft.CSharpExtension.DesignTime.targets");
+            Directory.CreateDirectory(Path.GetDirectoryName(generatedTargetsPath)!);
+            await File.WriteAllTextAsync(
+                Path.Join(fixturePath, "Fixture.csproj"),
+                ProjectText,
+                TestContext.CancellationToken).ConfigureAwait(false);
+            await File.WriteAllTextAsync(
+                documentPath,
+                "internal sealed class Program;\n",
+                TestContext.CancellationToken).ConfigureAwait(false);
+            await File.WriteAllTextAsync(
+                generatedTargetsPath,
+                "<Project />\n",
+                TestContext.CancellationToken).ConfigureAwait(false);
+
+            var lsp = LspProcessSession.Start(
+                "csls-ignored-watched-file-worker",
+                EditorToolResolver.ResolveDotNetHost(),
+                [workerPath],
+                fixturePath);
+            await using ConfiguredAsyncDisposable lspCleanup = lsp.ConfigureAwait(false);
+            await lsp.InitializeAsync(
+                fixturePath,
+                TestContext.CancellationToken).ConfigureAwait(false);
+            await lsp.CompleteInitializationAsync().ConfigureAwait(false);
+            await lsp.ChangeWatchedFilesAsync(
+                [
+                    (generatedTargetsPath, FileChangeType.Created),
+                    (generatedTargetsPath, FileChangeType.Changed)
+                ]).ConfigureAwait(false);
+            _ = await lsp.RequestWorkspaceInfoAsync(TestContext.CancellationToken)
+                .ConfigureAwait(false);
+
+            string serverDiagnostics = await lsp.ShutdownAsync(
+                TestContext.CancellationToken).ConfigureAwait(false);
+            Assert.DoesNotContain(
+                generatedTargetsPath,
+                serverDiagnostics,
+                StringComparison.Ordinal);
+            Assert.DoesNotContain(
+                "using ignored",
+                serverDiagnostics,
+                StringComparison.Ordinal);
+        }
+        finally
+        {
+            Directory.Delete(fixturePath, recursive: true);
+        }
+    }
+
+    /// <summary>
+    /// Reports the elapsed time for a real project-file workspace reload.
+    /// </summary>
+    [TestMethod]
+    public async Task WorkspaceReloadDurationIsLogged()
+    {
+        string repositoryRoot = EditorToolResolver.FindRepositoryRoot();
+        string workerPath = ResolveWorkerPath(repositoryRoot);
+        string fixturePath = Path.Join(
+            Path.GetTempPath(),
+            $"csls-reload-duration-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(fixturePath);
+        try
+        {
+            string projectPath = Path.Join(fixturePath, "Fixture.csproj");
+            string documentPath = Path.Join(fixturePath, "Program.cs");
+            await File.WriteAllTextAsync(
+                projectPath,
+                ProjectText,
+                TestContext.CancellationToken).ConfigureAwait(false);
+            await File.WriteAllTextAsync(
+                documentPath,
+                "internal sealed class Program;\n",
+                TestContext.CancellationToken).ConfigureAwait(false);
+
+            var lsp = LspProcessSession.Start(
+                "csls-reload-duration-worker",
+                EditorToolResolver.ResolveDotNetHost(),
+                [workerPath],
+                fixturePath);
+            await using ConfiguredAsyncDisposable lspCleanup = lsp.ConfigureAwait(false);
+            await lsp.InitializeAsync(
+                fixturePath,
+                TestContext.CancellationToken).ConfigureAwait(false);
+            await lsp.CompleteInitializationAsync().ConfigureAwait(false);
+            await File.AppendAllTextAsync(
+                projectPath,
+                Environment.NewLine,
+                TestContext.CancellationToken).ConfigureAwait(false);
+            await lsp.ChangeWatchedFilesAsync(
+                [(projectPath, FileChangeType.Changed)]).ConfigureAwait(false);
+            _ = await lsp.RequestWorkspaceInfoAsync(TestContext.CancellationToken)
+                .ConfigureAwait(false);
+
+            string serverDiagnostics = await lsp.ShutdownAsync(
+                TestContext.CancellationToken).ConfigureAwait(false);
+            Assert.Contains(
+                "Reloading C# workspace",
+                serverDiagnostics,
+                StringComparison.Ordinal);
+            const string durationPrefix = "Completed C# workspace reload in ";
+            int durationStart = serverDiagnostics.IndexOf(
+                durationPrefix,
+                StringComparison.Ordinal);
+            Assert.IsGreaterThanOrEqualTo(0, durationStart);
+            durationStart += durationPrefix.Length;
+            int durationEnd = serverDiagnostics.IndexOf(
+                " ms",
+                durationStart,
+                StringComparison.Ordinal);
+            Assert.IsGreaterThan(durationStart, durationEnd);
+            Assert.IsTrue(long.TryParse(
+                serverDiagnostics.AsSpan(durationStart, durationEnd - durationStart),
+                out long durationMilliseconds));
+            Assert.IsGreaterThanOrEqualTo(0, durationMilliseconds);
         }
         finally
         {

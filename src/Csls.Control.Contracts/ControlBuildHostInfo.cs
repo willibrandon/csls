@@ -16,9 +16,9 @@ public sealed class ControlBuildHostInfo
     public required string Kind { get; init; }
 
     /// <summary>
-    /// Gets the absolute workspace root served by the host.
+    /// Gets the number of Roslyn workspaces served by the host process.
     /// </summary>
-    public required string WorkspaceRoot { get; init; }
+    public int WorkspaceCount { get; init; }
 
     /// <summary>
     /// Gets the number of projects served by the host.

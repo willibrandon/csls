@@ -55,21 +55,12 @@ public sealed partial class WorkspaceManager
         var projects = new List<WorkspaceProjectInspection>();
         var documents = new List<WorkspaceDocumentInspection>();
         var diagnostics = new List<WorkspaceDiagnosticInspection>();
-        var buildHosts = new List<WorkspaceBuildHostInspection>(folders.Length);
         var diagnosticProjects = new List<Project>();
         int totalDiagnostics = 0;
 
         foreach ((string rootPath, Workspace workspace, Solution solution) in folders)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            buildHosts.Add(new WorkspaceBuildHostInspection
-            {
-                ProcessId = Environment.ProcessId,
-                Kind = workspace.GetType().Name,
-                WorkspaceRoot = rootPath,
-                ProjectCount = solution.ProjectIds.Count
-            });
-
             foreach (Project project in solution.Projects.OrderBy(
                 static project => project.Name,
                 StringComparer.Ordinal))
@@ -207,7 +198,24 @@ public sealed partial class WorkspaceManager
             DiagnosticsLoaded = includeDiagnostics,
             TotalDiagnostics = totalDiagnostics,
             DiagnosticsTruncated = totalDiagnostics > diagnostics.Count,
-            BuildHosts = buildHosts,
+            BuildHosts = folders.IsEmpty
+                ? []
+                :
+                [
+                    new WorkspaceBuildHostInspection
+                    {
+                        ProcessId = Environment.ProcessId,
+                        Kind = string.Join(
+                            "+",
+                            folders
+                                .Select(static folder => folder.Workspace.GetType().Name)
+                                .Distinct(StringComparer.Ordinal)
+                                .Order(StringComparer.Ordinal)),
+                        WorkspaceCount = folders.Length,
+                        ProjectCount = folders.Sum(
+                            static folder => folder.Solution.ProjectIds.Count)
+                    }
+                ],
             DiagnosticCacheEntries = _diagnosticCache.Count
         };
     }
@@ -228,8 +236,19 @@ public sealed partial class WorkspaceManager
                             .Distinct(StringComparer.Ordinal)
                             .Order(StringComparer.Ordinal)),
                     ProjectCount = group.Sum(static folder => folder.Solution.ProjectIds.Count),
-                    DocumentCount = group.Sum(static folder => folder.Solution.Projects.Sum(
-                        static project => project.DocumentIds.Count))
+                    DocumentCount = group.Sum(GetDocumentCount)
                 })
         ];
+
+    private static int GetDocumentCount(
+        (string RootPath, Workspace Workspace, Solution Solution) folder)
+    {
+        int documentCount = 0;
+        foreach (Project project in folder.Solution.Projects)
+        {
+            documentCount += project.DocumentIds.Count;
+        }
+
+        return documentCount;
+    }
 }

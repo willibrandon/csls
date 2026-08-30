@@ -9,6 +9,8 @@ namespace Csls.Tests;
 internal sealed class Hex1bPtyWorkload : IHex1bTerminalWorkloadAdapter
 {
     private readonly Hex1bTerminalChildProcess _process;
+    private readonly Lock _rawOutputGate = new();
+    private readonly ArrayBufferWriter<byte> _rawOutput = new();
     private byte[] _pendingOutput = [];
 
     /// <summary>
@@ -98,6 +100,19 @@ internal sealed class Hex1bPtyWorkload : IHex1bTerminalWorkloadAdapter
         return await processTask.ConfigureAwait(false);
     }
 
+    /// <summary>
+    /// Reports whether the real PTY child emitted an exact byte sequence.
+    /// </summary>
+    /// <param name="expected">The byte sequence required in the raw terminal output.</param>
+    /// <returns><see langword="true"/> when the sequence has been observed.</returns>
+    internal bool ContainsRawOutput(ReadOnlySpan<byte> expected)
+    {
+        lock (_rawOutputGate)
+        {
+            return _rawOutput.WrittenSpan.IndexOf(expected) >= 0;
+        }
+    }
+
     /// <inheritdoc />
     public async ValueTask<ReadOnlyMemory<byte>> ReadOutputAsync(
         CancellationToken cancellationToken = default)
@@ -105,6 +120,11 @@ internal sealed class Hex1bPtyWorkload : IHex1bTerminalWorkloadAdapter
         ReadOnlyMemory<byte> output = await _process
             .ReadOutputAsync(cancellationToken)
             .ConfigureAwait(false);
+        lock (_rawOutputGate)
+        {
+            _rawOutput.Write(output.Span);
+        }
+
         return NormalizeOutput(output);
     }
 

@@ -12,6 +12,15 @@ namespace Csls.Tests;
 public sealed class VsCodeLanguageServerTests
 {
     private static readonly TimeSpan s_editorStartupTimeout = TimeSpan.FromMinutes(2);
+    private static readonly string[] s_nestedLogLevelMarkers =
+    [
+        " [trace] trce:",
+        " [debug] dbug:",
+        " [info] info:",
+        " [warning] warn:",
+        " [error] fail:",
+        " [error] crit:"
+    ];
 
     /// <summary>
     /// Gets the active MSTest context and its framework-managed cancellation token.
@@ -25,6 +34,16 @@ public sealed class VsCodeLanguageServerTests
     [TestCategory("VsCodeHost")]
     public Task VsCodeDesktopHostProvidesCSharpLanguageFeatures() =>
         RunVsCodeHostAsync(remote: false);
+
+    /// <summary>
+    /// Enables visible C# semantic highlighting when the active theme does not opt in.
+    /// </summary>
+    [TestMethod]
+    [TestCategory("VsCodeHost")]
+    public Task VsCodeHostEnablesSemanticHighlightingWithoutThemeOptIn() =>
+        RunVsCodeHostAsync(
+            remote: false,
+            localSuite: "dist/semantic-highlighting-suite.cjs");
 
     /// <summary>
     /// Stops automatic test discovery and every process it started when VS Code shuts down.
@@ -287,7 +306,7 @@ public sealed class VsCodeLanguageServerTests
         }
     }
 
-    private async Task RunVsCodeHostAsync(bool remote)
+    private async Task RunVsCodeHostAsync(bool remote, string? localSuite = null)
     {
         using ExternalWorkloadLease workloadLease = await ExternalWorkloadLease.AcquireAsync(
             TestContext.CancellationToken).ConfigureAwait(false);
@@ -395,7 +414,8 @@ public sealed class VsCodeLanguageServerTests
                     extensionsPath,
                     remoteServerRoot,
                     remoteDataPath,
-                    display.DisplayName).ConfigureAwait(false);
+                    display.DisplayName,
+                    localSuite: localSuite).ConfigureAwait(false);
             }
             else
             {
@@ -409,7 +429,8 @@ public sealed class VsCodeLanguageServerTests
                     extensionsPath,
                     remoteServerRoot,
                     remoteDataPath,
-                    displayName: null).ConfigureAwait(false);
+                    displayName: null,
+                    localSuite: localSuite).ConfigureAwait(false);
             }
 
             await AssertNoUnexpectedCslsOutputAsync(
@@ -605,6 +626,8 @@ public sealed class VsCodeLanguageServerTests
 
         var cslsFailures = new List<string>();
         var cslsBlankLines = new List<string>();
+        var cslsNestedLogLevels = new List<string>();
+        var cslsOutputLines = new List<string>();
         var editorFailures = new List<string>();
         foreach (string logPath in logPaths)
         {
@@ -612,6 +635,11 @@ public sealed class VsCodeLanguageServerTests
                 .ConfigureAwait(false);
             for (int lineIndex = 0; lineIndex < lines.Length; lineIndex++)
             {
+                if (cslsLogPaths.Contains(logPath, StringComparer.Ordinal))
+                {
+                    cslsOutputLines.Add(lines[lineIndex]);
+                }
+
                 if (
                     cslsLogPaths.Contains(logPath, StringComparer.Ordinal) &&
                     lines[lineIndex].Length == 0)
@@ -627,6 +655,16 @@ public sealed class VsCodeLanguageServerTests
                     (cslsLogPaths.Contains(logPath, StringComparer.Ordinal)
                         ? cslsFailures
                         : editorFailures).Add(failure);
+                }
+
+                if (
+                    cslsLogPaths.Contains(logPath, StringComparer.Ordinal) &&
+                    s_nestedLogLevelMarkers.Any(marker => lines[lineIndex].Contains(
+                        marker,
+                        StringComparison.OrdinalIgnoreCase)))
+                {
+                    cslsNestedLogLevels.Add(
+                        $"{logPath}:{lineIndex + 1}: {lines[lineIndex]}");
                 }
             }
         }
@@ -646,6 +684,49 @@ public sealed class VsCodeLanguageServerTests
             cslsBlankLines,
             $"The VS Code CSLS output contained blank physical lines:" +
             $"{Environment.NewLine}{string.Join(Environment.NewLine, cslsBlankLines)}");
+        Assert.IsEmpty(
+            cslsNestedLogLevels,
+            $"The VS Code CSLS output repeated structured log levels:" +
+            $"{Environment.NewLine}{string.Join(Environment.NewLine, cslsNestedLogLevels)}");
+        Assert.DoesNotContain(
+            static line => line.Contains(
+                "Watched file changes completed",
+                StringComparison.Ordinal),
+            cslsOutputLines,
+            "Ordinary watched-file edits must remain quiet at Information level.");
+        Assert.Contains(
+            static line =>
+                line.Contains("Discovered ", StringComparison.Ordinal) &&
+                line.Contains(" workspace entry points in ", StringComparison.Ordinal) &&
+                line.Contains(" ms", StringComparison.Ordinal),
+            cslsOutputLines,
+            "The VS Code CSLS output omitted timed workspace discovery progress.");
+        Assert.Contains(
+            static line => line.Contains("Restoring ", StringComparison.Ordinal),
+            cslsOutputLines,
+            "The VS Code CSLS output omitted workspace restore progress.");
+        Assert.Contains(
+            static line =>
+                line.Contains("Restored ", StringComparison.Ordinal) &&
+                line.Contains(" in ", StringComparison.Ordinal) &&
+                line.Contains(" ms", StringComparison.Ordinal),
+            cslsOutputLines,
+            "The VS Code CSLS output omitted timed workspace restore completion.");
+        Assert.Contains(
+            static line =>
+                line.Contains(
+                    "Completed initial C# workspace load in ",
+                    StringComparison.Ordinal) &&
+                line.Contains(" ms with ", StringComparison.Ordinal) &&
+                line.Contains(" projects", StringComparison.Ordinal),
+            cslsOutputLines,
+            "The VS Code CSLS output omitted timed initial workspace load completion.");
+        Assert.Contains(
+            static line =>
+                line.Contains("C# workspace ready in ", StringComparison.Ordinal) &&
+                line.Contains(" ms", StringComparison.Ordinal),
+            cslsOutputLines,
+            "The VS Code CSLS output omitted the total workspace-ready timing.");
     }
 
     private static Process StartRunner(
@@ -735,8 +816,10 @@ public sealed class VsCodeLanguageServerTests
         {
           "chat.disableAIFeatures": true,
           "csls.debugger.path": {{JsonSerializer.Serialize(debuggerPath)}},
+          "csls.diagnostics.reportInformationAsHint": false,
           "telemetry.telemetryLevel": "off",
           "workbench.enableExperiments": false,
+          "workbench.colorTheme": "csls Theme Without Semantic Highlighting",
           "workbench.startupEditor": "none"
         }
         """;

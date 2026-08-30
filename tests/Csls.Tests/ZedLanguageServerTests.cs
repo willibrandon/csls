@@ -14,6 +14,8 @@ namespace Csls.Tests;
 [TestClass]
 public sealed class ZedLanguageServerTests
 {
+    private static readonly TimeSpan s_workspaceStartupTimeout = TimeSpan.FromMinutes(5);
+
     /// <summary>
     /// Gets the active MSTest context and its framework-managed cancellation token.
     /// </summary>
@@ -334,7 +336,7 @@ public sealed class ZedLanguageServerTests
             {
                 ControlSessionInfo session = await ControlSessionWaiter.WaitForRunningAsync(
                     repositoryRoot,
-                    TimeSpan.FromMinutes(2),
+                    s_workspaceStartupTimeout,
                     TestContext.CancellationToken,
                     existingSessionProcessIds).ConfigureAwait(false);
                 serverProcessId = session.ProcessId;

@@ -68,6 +68,11 @@
     "vscode:prepublish": "npm run compile"
   },
   "contributes": {
+    "configurationDefaults": {
+      "[csharp]": {
+        "editor.semanticHighlighting.enabled": true
+      }
+    },
     "languages": [
       {
         "id": "csharp",

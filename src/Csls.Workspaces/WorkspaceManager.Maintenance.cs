@@ -1,7 +1,9 @@
 using Csls.Protocol;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.Text;
+using Microsoft.Extensions.Logging;
 using System.Collections.Immutable;
+using System.Diagnostics;
 using System.Text;
 
 namespace Csls.Workspaces;
@@ -189,6 +191,8 @@ public sealed partial class WorkspaceManager
         bool enableAnalyzers,
         CancellationToken cancellationToken)
     {
+        long startedTimestamp = Stopwatch.GetTimestamp();
+        WorkspaceManagerLogger.LogWorkspaceReloadStarted(_logger);
         long previousGeneration = Generation;
         int previousBuildHostCount = _folders.Length;
         int clearedCacheEntryCount = _diagnosticCache.Count;
@@ -240,7 +244,7 @@ public sealed partial class WorkspaceManager
             }
         }
 
-        return new WorkspaceMaintenanceResult
+        var result = new WorkspaceMaintenanceResult
         {
             PreviousGeneration = previousGeneration,
             CurrentGeneration = Generation,
@@ -249,6 +253,18 @@ public sealed partial class WorkspaceManager
             RestartedBuildHostCount = previousBuildHostCount,
             ClearedCacheEntryCount = clearedCacheEntryCount
         };
+        if (_logger.IsEnabled(LogLevel.Information))
+        {
+            long elapsedMilliseconds =
+                (long)Stopwatch.GetElapsedTime(startedTimestamp).TotalMilliseconds;
+            int projectCount = loadedFolders.Sum(
+                static folder => folder.Solution.ProjectIds.Count);
+            WorkspaceManagerLogger.LogWorkspaceReloadCompleted(
+                _logger,
+                elapsedMilliseconds,
+                projectCount);
+        }
+        return result;
     }
 
     private async Task<IReadOnlyList<TextDocumentItem>> CaptureOpenDocumentsAsync(

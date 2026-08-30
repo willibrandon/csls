@@ -353,7 +353,7 @@ static (string Executable, IReadOnlyList<string> Prefix) ResolveNpmInvocation()
     }
 
     string path = Environment.GetEnvironmentVariable("PATH") ?? string.Empty;
-    (string NodePath, string NpmCliPath) invocation = path
+    (string nodePath, string npmCliPath) = path
         .Split(
             Path.PathSeparator,
             StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
@@ -371,9 +371,9 @@ static (string Executable, IReadOnlyList<string> Prefix) ResolveNpmInvocation()
         })
         .FirstOrDefault(static candidate =>
             File.Exists(candidate.NodePath) && File.Exists(candidate.NpmCliPath));
-    if (invocation.NodePath is not null && invocation.NpmCliPath is not null)
+    if (nodePath is not null && npmCliPath is not null)
     {
-        return (invocation.NodePath, [invocation.NpmCliPath]);
+        return (nodePath, [npmCliPath]);
     }
 
     throw new FileNotFoundException(

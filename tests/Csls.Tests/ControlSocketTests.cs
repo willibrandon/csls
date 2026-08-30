@@ -40,6 +40,84 @@ public sealed class ControlSocketTests
     }
 
     /// <summary>
+    /// Skips an unresponsive control socket while discovering a healthy running session.
+    /// </summary>
+    [TestMethod]
+    public async Task SessionDiscoverySkipsUnresponsiveControlSocket()
+    {
+        string repositoryRoot = EditorToolResolver.FindRepositoryRoot();
+        string workerPath = Path.Join(
+            EditorToolResolver.ResolveArtifactsRoot(repositoryRoot),
+            "bin",
+            "Csls.Worker",
+            "debug",
+            "csls-worker.dll");
+        Assert.IsTrue(File.Exists(workerPath), $"Worker not found at {workerPath}.");
+
+        string fixturePath = Path.Join(
+            Path.GetTempPath(),
+            $"csls-control-discovery-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(fixturePath);
+        string socketDirectory = ControlEndpoint.GetSocketDirectory();
+        Directory.CreateDirectory(socketDirectory);
+        string unresponsiveSocketPath = Path.Join(
+            socketDirectory,
+            $"000-{Guid.NewGuid():N}.csls.socket");
+        try
+        {
+            await File.WriteAllTextAsync(
+                Path.Join(fixturePath, "Fixture.csproj"),
+                ProjectText,
+                TestContext.CancellationToken).ConfigureAwait(false);
+            await File.WriteAllTextAsync(
+                Path.Join(fixturePath, "Program.cs"),
+                DocumentText,
+                TestContext.CancellationToken).ConfigureAwait(false);
+            using var unresponsiveSocket = new Socket(
+                AddressFamily.Unix,
+                SocketType.Stream,
+                ProtocolType.Unspecified);
+            unresponsiveSocket.Bind(
+                new UnixDomainSocketEndPoint(unresponsiveSocketPath));
+            unresponsiveSocket.Listen(1);
+
+            var lsp = LspProcessSession.Start(
+                "csls-control-discovery-worker",
+                EditorToolResolver.ResolveDotNetHost(),
+                [workerPath],
+                fixturePath);
+            await using ConfiguredAsyncDisposable lspCleanup = lsp.ConfigureAwait(false);
+            await lsp.InitializeAsync(
+                fixturePath,
+                TestContext.CancellationToken).ConfigureAwait(false);
+            await lsp.CompleteInitializationAsync().ConfigureAwait(false);
+            ControlSessionInfo directSession = await WaitForDirectRunningSessionAsync(
+                ControlEndpoint.GetSocketPath(lsp.ProcessId),
+                TimeSpan.FromSeconds(60),
+                TestContext.CancellationToken).ConfigureAwait(false);
+            Assert.AreEqual(lsp.ProcessId, directSession.ProcessId);
+            Assert.Contains(fixturePath, directSession.WorkspaceRoots);
+
+            IReadOnlyList<ControlSessionInfo> sessions = await ControlSessionDiscovery
+                .DiscoverAsync(TestContext.CancellationToken)
+                .WaitAsync(TimeSpan.FromSeconds(10), TestContext.CancellationToken)
+                .ConfigureAwait(false);
+            ControlSessionInfo discoveredSession = sessions.Single(
+                session => session.ProcessId == lsp.ProcessId);
+            Assert.AreEqual(lsp.ProcessId, discoveredSession.ProcessId);
+            Assert.Contains(fixturePath, discoveredSession.WorkspaceRoots);
+            Assert.IsFalse(
+                File.Exists(unresponsiveSocketPath),
+                "Discovery did not remove the stale unresponsive socket.");
+        }
+        finally
+        {
+            File.Delete(unresponsiveSocketPath);
+            Directory.Delete(fixturePath, recursive: true);
+        }
+    }
+
+    /// <summary>
     /// Rejects an oversized frame before its payload while preserving subsequent control requests.
     /// </summary>
     [TestMethod]
@@ -540,6 +618,30 @@ public sealed class ControlSocketTests
         catch (SocketException)
         {
             return true;
+        }
+    }
+
+    private static async Task<ControlSessionInfo> WaitForDirectRunningSessionAsync(
+        string socketPath,
+        TimeSpan timeout,
+        CancellationToken cancellationToken)
+    {
+        using var timeoutSource = CancellationTokenSource.CreateLinkedTokenSource(
+            cancellationToken);
+        timeoutSource.CancelAfter(timeout);
+        var client = new ControlRpcClient(socketPath);
+        await using ConfiguredAsyncDisposable clientCleanup = client.ConfigureAwait(false);
+        while (true)
+        {
+            ControlSessionInfo session = await client.GetSessionAsync(timeoutSource.Token)
+                .ConfigureAwait(false);
+            if (string.Equals(session.LifecycleState, "Running", StringComparison.Ordinal) &&
+                string.Equals(session.WorkspacePhase, "Ready", StringComparison.Ordinal))
+            {
+                return session;
+            }
+
+            await Task.Delay(50, timeoutSource.Token).ConfigureAwait(false);
         }
     }
 

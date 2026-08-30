@@ -96,7 +96,7 @@ internal static class WorkspaceFoldingRangeService
         foreach (SyntaxNode node in root.DescendantNodesAndSelf())
         {
             cancellationToken.ThrowIfCancellationRequested();
-            (SyntaxToken Open, SyntaxToken Close) delimiters = node switch
+            (SyntaxToken Open, SyntaxToken Close) = node switch
             {
                 ArgumentListSyntax argumentList =>
                     (argumentList.OpenParenToken, argumentList.CloseParenToken),
@@ -106,16 +106,16 @@ internal static class WorkspaceFoldingRangeService
                     (collection.OpenBracketToken, collection.CloseBracketToken),
                 _ => default
             };
-            if (delimiters.Open.RawKind != 0 && delimiters.Close.RawKind != 0 &&
-                !delimiters.Open.IsMissing && !delimiters.Close.IsMissing &&
+            if (Open.RawKind != 0 && Close.RawKind != 0 &&
+                !Open.IsMissing && !Close.IsMissing &&
                 (!RequiresSeparatedBody(node) ||
-                    text.Lines.GetLinePosition(delimiters.Close.SpanStart).Line -
-                    text.Lines.GetLinePosition(delimiters.Open.SpanStart).Line >= 2))
+                    text.Lines.GetLinePosition(Close.SpanStart).Line -
+                    text.Lines.GetLinePosition(Open.SpanStart).Line >= 2))
             {
                 AddRange(
                     ranges,
                     text,
-                    TextSpan.FromBounds(delimiters.Open.Span.End, delimiters.Close.SpanStart),
+                    TextSpan.FromBounds(Open.Span.End, Close.SpanStart),
                     kind: null,
                     collapsedText: includeCollapsedText ? "..." : null,
                     lineFoldingOnly,

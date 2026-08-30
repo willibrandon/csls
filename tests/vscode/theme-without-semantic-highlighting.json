@@ -1,0 +1,9 @@
+{
+  "name": "csls Theme Without Semantic Highlighting",
+  "type": "dark",
+  "colors": {
+    "editor.background": "#0b0e14",
+    "editor.foreground": "#bfbdb6"
+  },
+  "tokenColors": []
+}

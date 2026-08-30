@@ -97,13 +97,7 @@ public sealed partial class WorkspaceManager
     {
         ArgumentNullException.ThrowIfNull(parameters);
         ArgumentNullException.ThrowIfNull(parameters.Changes);
-        FileEvent[] changes =
-        [
-            .. parameters.Changes
-                .DistinctBy(
-                    static change => change.Uri.GetFileSystemPath(),
-                    PathComparer)
-        ];
+        FileEvent[] changes = [.. parameters.Changes];
         FileEvent? unsupportedChange = changes.FirstOrDefault(static change =>
             change.Type is not (
                 FileChangeType.Created or
@@ -118,6 +112,14 @@ public sealed partial class WorkspaceManager
         changes =
         [
             .. changes.Where(change => !IsStaleFileBasedAppProjectEvent(change))
+                .GroupBy(
+                    static change => change.Uri.GetFileSystemPath(),
+                    PathComparer)
+                .Select(group => new FileEvent
+                {
+                    Uri = group.First().Uri,
+                    Type = GetEffectiveFileChangeType(group.Key)
+                })
         ];
         if (changes.Length == 0)
         {
@@ -151,6 +153,19 @@ public sealed partial class WorkspaceManager
 
         return await ApplyChangedDocumentTextsAsync(paths, cancellationToken)
             .ConfigureAwait(false);
+    }
+
+    private FileChangeType GetEffectiveFileChangeType(string path)
+    {
+        if (!File.Exists(path))
+        {
+            return FileChangeType.Deleted;
+        }
+
+        return _folders.Any(folder =>
+            !folder.Solution.GetDocumentIdsWithFilePath(path).IsDefaultOrEmpty)
+            ? FileChangeType.Changed
+            : FileChangeType.Created;
     }
 
     /// <summary>

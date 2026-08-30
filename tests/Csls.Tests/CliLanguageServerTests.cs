@@ -1033,10 +1033,23 @@ public sealed class CliLanguageServerTests
             {
                 JsonElement quickFixRoot = quickFixDocument.RootElement;
                 AssertSuccessfulEnvelope(quickFixRoot);
-                JsonElement quickFix = Assert.ContainsSingle(
-                    quickFixRoot.GetProperty("data").EnumerateArray());
+                JsonElement[] quickFixes =
+                [
+                    .. quickFixRoot.GetProperty("data").EnumerateArray()
+                ];
+                Assert.Contains(
+                    "System.Text.StringBuilder",
+                    quickFixes.Select(static candidate => candidate
+                        .GetProperty("action")
+                        .GetProperty("title")
+                        .GetString()));
+                JsonElement quickFix = Assert.ContainsSingle(quickFixes.Where(
+                    static candidate => candidate
+                        .GetProperty("action")
+                        .GetProperty("title")
+                        .GetString() == "using System.Text;"));
                 Assert.AreEqual(
-                    "Add using System.Text",
+                    "using System.Text;",
                     quickFix.GetProperty("action").GetProperty("title").GetString());
                 Assert.AreEqual(
                     "quickfix",
@@ -1063,6 +1076,8 @@ public sealed class CliLanguageServerTests
                         "6",
                         "--character",
                         "26",
+                        "--title",
+                        "using System.Text;",
                         "--apply",
                         "--session",
                         processId,
@@ -1099,6 +1114,8 @@ public sealed class CliLanguageServerTests
                         "7",
                         "--character",
                         "29",
+                        "--title",
+                        "Implement interface",
                         "--session",
                         processId,
                         "--json"
@@ -1139,6 +1156,8 @@ public sealed class CliLanguageServerTests
                         "7",
                         "--character",
                         "29",
+                        "--title",
+                        "Implement interface",
                         "--apply",
                         "--session",
                         processId,
@@ -1621,13 +1640,8 @@ public sealed class CliLanguageServerTests
         {
             string? line = await standardOutput
                 .ReadLineAsync(timeoutSource.Token)
-                .ConfigureAwait(false);
-            if (line is null)
-            {
-                throw new EndOfStreamException(
+                .ConfigureAwait(false) ?? throw new EndOfStreamException(
                     "The csls session watch stream closed before the expected event.");
-            }
-
             using var document = JsonDocument.Parse(line);
             AssertSuccessfulEnvelope(document.RootElement);
             JsonElement data = document.RootElement.GetProperty("data");

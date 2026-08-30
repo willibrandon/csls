@@ -1,4 +1,5 @@
 using Csls.Protocol;
+using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Text.Json;
@@ -212,6 +213,103 @@ public sealed class FileBasedAppLanguageServerTests
     }
 
     /// <summary>
+    /// Keeps generated file-app projects invisible to editor workspace watchers.
+    /// </summary>
+    [TestMethod]
+    public async Task FileBasedAppProjectIsNeverExposedToWorkspaceWatchers()
+    {
+        string fixturePath = CreateFixturePath("workspace-watcher");
+        Directory.CreateDirectory(fixturePath);
+        try
+        {
+            string entryPointPath = Path.Join(fixturePath, "App.cs");
+            string markerPath = Path.Join(fixturePath, "workspace-ready.marker");
+            await File.WriteAllTextAsync(
+                entryPointPath,
+                DiscoveredDirectiveAppText,
+                TestContext.CancellationToken).ConfigureAwait(false);
+
+            var observedPaths = new ConcurrentQueue<string>();
+            var markerObserved = new TaskCompletionSource(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+            using var watcher = new System.IO.FileSystemWatcher(fixturePath)
+            {
+                EnableRaisingEvents = true,
+                NotifyFilter = NotifyFilters.FileName
+            };
+            watcher.Created += (_, eventArgs) =>
+            {
+                observedPaths.Enqueue(eventArgs.FullPath);
+                if (string.Equals(eventArgs.FullPath, markerPath, PathComparison))
+                {
+                    markerObserved.TrySetResult();
+                }
+            };
+
+            LspProcessSession lsp = StartWorker(fixturePath);
+            await using ConfiguredAsyncDisposable lspDisposal = lsp.ConfigureAwait(false);
+            await lsp.InitializeAsync(
+                fixturePath,
+                TestContext.CancellationToken).ConfigureAwait(false);
+            await lsp.CompleteInitializationAsync().ConfigureAwait(false);
+            CSharpWorkspaceInfo workspace = await lsp.RequestWorkspaceInfoAsync(
+                TestContext.CancellationToken).ConfigureAwait(false);
+            CSharpWorkspaceFolderInfo folder = Assert.ContainsSingle(workspace.Workspaces);
+            Assert.AreEqual(1, folder.ProjectCount);
+            await File.WriteAllTextAsync(
+                markerPath,
+                string.Empty,
+                TestContext.CancellationToken).ConfigureAwait(false);
+            await markerObserved.Task.WaitAsync(TestContext.CancellationToken)
+                .ConfigureAwait(false);
+
+            string[] generatedProjects =
+            [
+                .. observedPaths.Where(static path => path.EndsWith(
+                    ".cs.csproj",
+                    StringComparison.OrdinalIgnoreCase))
+            ];
+            Assert.IsEmpty(
+                generatedProjects,
+                "File-app loading exposed generated projects to workspace watchers: " +
+                string.Join(", ", generatedProjects));
+
+            string standardError = await lsp.ShutdownAsync(
+                TestContext.CancellationToken).ConfigureAwait(false);
+            Assert.DoesNotContain("Unhandled exception", standardError, StringComparison.Ordinal);
+        }
+        finally
+        {
+            Directory.Delete(fixturePath, recursive: true);
+        }
+    }
+
+    /// <summary>
+    /// Loads the repository file app and its real project-reference graph without diagnostics.
+    /// </summary>
+    [TestMethod]
+    public async Task RepositoryFileBasedAppLoadsWithoutWorkspaceWarningsOrErrors()
+    {
+        string repositoryRoot = EditorToolResolver.FindRepositoryRoot();
+        string entryPointPath = Path.Join(repositoryRoot, "scripts", "Generate-Docs.cs");
+        LspProcessSession lsp = StartWorker(repositoryRoot);
+        await using ConfiguredAsyncDisposable lspDisposal = lsp.ConfigureAwait(false);
+        await lsp.InitializeAsync(
+            entryPointPath,
+            TestContext.CancellationToken).ConfigureAwait(false);
+        await lsp.CompleteInitializationAsync().ConfigureAwait(false);
+        CSharpWorkspaceInfo workspace = await lsp.RequestWorkspaceInfoAsync(
+            TestContext.CancellationToken).ConfigureAwait(false);
+        CSharpWorkspaceFolderInfo folder = Assert.ContainsSingle(workspace.Workspaces);
+        Assert.IsGreaterThan(1, folder.ProjectCount);
+
+        string standardError = await lsp.ShutdownAsync(
+            TestContext.CancellationToken).ConfigureAwait(false);
+        Assert.DoesNotContain("warn:", standardError, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("fail:", standardError, StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
     /// Recovers a generated file-app project left behind when a previous host was terminated.
     /// </summary>
     [TestMethod]
@@ -286,6 +384,11 @@ public sealed class FileBasedAppLanguageServerTests
     private static string CreateFixturePath(string name) => Path.Join(
         Path.GetTempPath(),
         $"csls-file-app-{name}-{Guid.NewGuid():N}");
+
+    private static StringComparison PathComparison =>
+        OperatingSystem.IsWindows()
+            ? StringComparison.OrdinalIgnoreCase
+            : StringComparison.Ordinal;
 
     private static async Task WriteNuGetConfigurationAsync(
         string fixturePath,

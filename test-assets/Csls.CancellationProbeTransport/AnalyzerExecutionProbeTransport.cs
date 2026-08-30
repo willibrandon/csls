@@ -36,8 +36,8 @@ public static class AnalyzerExecutionProbeTransport
             {
                 NotifyFilter = NotifyFilters.CreationTime | NotifyFilters.FileName
             };
-            FileSystemEventHandler releaseHandler = (_, _) => released.Set();
-            RenamedEventHandler renamedHandler = (_, _) => released.Set();
+            void releaseHandler(object _1, FileSystemEventArgs _2) => released.Set();
+            void renamedHandler(object _1, RenamedEventArgs _2) => released.Set();
             watcher.Created += releaseHandler;
             watcher.Renamed += renamedHandler;
             watcher.EnableRaisingEvents = true;

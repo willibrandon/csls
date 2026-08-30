@@ -35,14 +35,30 @@ public sealed class MultiTargetWorkspaceLanguageServerTests
         Directory.CreateDirectory(fixturePath);
         try
         {
-            string documentPath = Path.Join(fixturePath, "Target.cs");
+            string primaryPath = Path.Join(fixturePath, "Primary");
+            string secondaryPath = Path.Join(fixturePath, "Secondary");
+            Directory.CreateDirectory(primaryPath);
+            Directory.CreateDirectory(secondaryPath);
+            string documentPath = Path.Join(primaryPath, "Target.cs");
             await File.WriteAllTextAsync(
-                Path.Join(fixturePath, "Fixture.csproj"),
-                ProjectText,
+                Path.Join(fixturePath, "Fixture.slnx"),
+                SolutionText,
+                TestContext.CancellationToken).ConfigureAwait(false);
+            await File.WriteAllTextAsync(
+                Path.Join(primaryPath, "Primary.csproj"),
+                PrimaryProjectText,
                 TestContext.CancellationToken).ConfigureAwait(false);
             await File.WriteAllTextAsync(
                 documentPath,
                 DocumentText,
+                TestContext.CancellationToken).ConfigureAwait(false);
+            await File.WriteAllTextAsync(
+                Path.Join(secondaryPath, "Secondary.csproj"),
+                SecondaryProjectText,
+                TestContext.CancellationToken).ConfigureAwait(false);
+            await File.WriteAllTextAsync(
+                Path.Join(secondaryPath, "Secondary.cs"),
+                SecondaryDocumentText,
                 TestContext.CancellationToken).ConfigureAwait(false);
             var lsp = LspProcessSession.Start(
                 "csls-multi-target-worker",
@@ -95,10 +111,26 @@ public sealed class MultiTargetWorkspaceLanguageServerTests
         return new Position(line, offset - lineStart);
     }
 
-    private const string ProjectText = """
+    private const string SolutionText = """
+        <Solution>
+          <Project Path="Primary/Primary.csproj" />
+          <Project Path="Secondary/Secondary.csproj" />
+        </Solution>
+        """;
+
+    private const string PrimaryProjectText = """
         <Project Sdk="Microsoft.NET.Sdk">
           <PropertyGroup>
             <TargetFrameworks>netstandard2.0;net10.0</TargetFrameworks>
+            <ImplicitUsings>enable</ImplicitUsings>
+          </PropertyGroup>
+        </Project>
+        """;
+
+    private const string SecondaryProjectText = """
+        <Project Sdk="Microsoft.NET.Sdk">
+          <PropertyGroup>
+            <TargetFrameworks>net8.0;net9.0</TargetFrameworks>
             <ImplicitUsings>enable</ImplicitUsings>
           </PropertyGroup>
         </Project>
@@ -114,6 +146,15 @@ public sealed class MultiTargetWorkspaceLanguageServerTests
         #else
             public static string Value => "other";
         #endif
+        }
+        """;
+
+    private const string SecondaryDocumentText = """
+        namespace Fixture;
+
+        public static class Secondary
+        {
+            public static int Value => 9;
         }
         """;
 }

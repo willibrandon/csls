@@ -88,12 +88,9 @@ public class CodeActionBenchmarks : IAsyncDisposable
             _parameters,
             supportsCreateFile: false,
             CancellationToken.None).ConfigureAwait(false);
-        LspCodeAction action = actions.Count == 1
-            ? actions[0]
-            : throw new InvalidOperationException(
-                "The missing-using benchmark fixture produced an unexpected action count.");
-        if (action.Title != "Add using System.Text" ||
-            action.Edit is not { DocumentChanges.Count: > 0 })
+        LspCodeAction? action = actions.SingleOrDefault(
+            candidate => candidate.Title == "using System.Text;");
+        if (action?.Edit is not { DocumentChanges.Count: > 0 })
         {
             throw new InvalidOperationException(
                 "The missing-using benchmark fixture produced no verified edit.");
@@ -104,12 +101,9 @@ public class CodeActionBenchmarks : IAsyncDisposable
                 _implementInterfaceParameters,
                 supportsCreateFile: false,
                 CancellationToken.None).ConfigureAwait(false);
-        LspCodeAction implementation = implementations.Count == 1
-            ? implementations[0]
-            : throw new InvalidOperationException(
-                "The implement-interface benchmark fixture produced an unexpected action count.");
-        if (implementation.Title != "Implement interface" ||
-            implementation.Edit is not { DocumentChanges.Count: > 0 })
+        LspCodeAction? implementation = implementations.SingleOrDefault(
+            candidate => candidate.Title == "Implement interface");
+        if (implementation?.Edit is not { DocumentChanges.Count: > 0 })
         {
             throw new InvalidOperationException(
                 "The implement-interface benchmark fixture produced no verified edit.");
@@ -119,12 +113,9 @@ public class CodeActionBenchmarks : IAsyncDisposable
             _moveTypeParameters,
             supportsCreateFile: true,
             CancellationToken.None).ConfigureAwait(false);
-        LspCodeAction moveType = moveTypes.Count == 1
-            ? moveTypes[0]
-            : throw new InvalidOperationException(
-                "The move-to-file benchmark fixture produced an unexpected action count.");
-        if (moveType.Title != "Move Helper to Helper.cs" ||
-            moveType.Edit is not { DocumentChanges.Count: 3 })
+        LspCodeAction? moveType = moveTypes.SingleOrDefault(
+            candidate => candidate.Title == "Move Helper to Helper.cs");
+        if (moveType?.Edit is not { DocumentChanges.Count: 3 })
         {
             throw new InvalidOperationException(
                 "The move-to-file benchmark fixture produced no ordered resource edit.");

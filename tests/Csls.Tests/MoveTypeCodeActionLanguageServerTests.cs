@@ -109,7 +109,8 @@ public sealed class MoveTypeCodeActionLanguageServerTests
                 new LspRange(new Position(7, 22), new Position(7, 28)),
                 ["refactor"],
                 TestContext.CancellationToken).ConfigureAwait(false);
-            CodeAction action = Assert.ContainsSingle(actions);
+            CodeAction action = Assert.ContainsSingle(actions.Where(static action =>
+                action.Title == "Move Helper to Helper.cs"));
             Assert.AreEqual("Move Helper to Helper.cs", action.Title);
             Assert.AreEqual("refactor", action.Kind);
             Assert.IsTrue(action.IsPreferred);
@@ -141,19 +142,24 @@ public sealed class MoveTypeCodeActionLanguageServerTests
                 new LspRange(new Position(7, 22), new Position(7, 37)),
                 ["refactor"],
                 TestContext.CancellationToken).ConfigureAwait(false);
-            Assert.IsEmpty(collisionActions);
+            Assert.DoesNotContain(
+                "Move CollisionHelper to CollisionHelper.cs",
+                collisionActions.Select(static action => action.Title));
             IReadOnlyList<CodeAction> reservedActions = await lsp.RequestCodeActionsAsync(
                 reservedPath,
                 new LspRange(new Position(7, 22), new Position(7, 25)),
                 ["refactor"],
                 TestContext.CancellationToken).ConfigureAwait(false);
-            Assert.IsEmpty(reservedActions);
+            Assert.DoesNotContain(
+                "Move Con to Con.cs",
+                reservedActions.Select(static action => action.Title));
             IReadOnlyList<CodeAction> blockActions = await lsp.RequestCodeActionsAsync(
                 blockPath,
                 new LspRange(new Position(7, 27), new Position(7, 34)),
                 ["refactor"],
                 TestContext.CancellationToken).ConfigureAwait(false);
-            CodeAction blockAction = Assert.ContainsSingle(blockActions);
+            CodeAction blockAction = Assert.ContainsSingle(blockActions.Where(static action =>
+                action.Title == "Move Payload to Payload.cs"));
             WorkspaceEdit blockEdit = blockAction.Edit
                 ?? throw new InvalidDataException("The block-namespace action had no edit.");
             TextDocumentEdit blockTargetEdit = blockEdit.DocumentChanges[1] as TextDocumentEdit
@@ -202,7 +208,7 @@ public sealed class MoveTypeCodeActionLanguageServerTests
         JsonElement initialization = await lsp.InitializeAsync(
             fixturePath,
             TestContext.CancellationToken).ConfigureAwait(false);
-        Assert.DoesNotContain(
+        Assert.Contains(
             "refactor",
             initialization
                 .GetProperty("capabilities")
@@ -216,7 +222,9 @@ public sealed class MoveTypeCodeActionLanguageServerTests
             new LspRange(new Position(7, 22), new Position(7, 28)),
             ["refactor"],
             TestContext.CancellationToken).ConfigureAwait(false);
-        Assert.IsEmpty(actions);
+        Assert.DoesNotContain(
+            "Move Helper to Helper.cs",
+            actions.Select(static action => action.Title));
         await lsp.ShutdownAsync(TestContext.CancellationToken).ConfigureAwait(false);
     }
 

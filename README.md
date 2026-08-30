@@ -46,15 +46,15 @@ for an agent-owned workspace or attach it to a live editor session with
 `--session <pid>`. Run `csls agent init` to create reusable instructions for a
 coding agent.
 
+## SDK prerequisite
+
+Install the .NET SDK pinned by `global.json` before running any repository
+`dotnet` command. Follow the cross-platform instructions at
+<https://willibrandon.github.io/csls/development/#install-the-sdk>.
+
 ## Build
 
 ```console
 dotnet build Csls.slnx
 dotnet test --solution Csls.slnx
-```
-
-The exact SDK is pinned in `global.json`. Install it locally with the file-based app:
-
-```console
-dotnet run --file scripts/InstallDotNet.cs
 ```

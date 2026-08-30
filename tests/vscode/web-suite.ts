@@ -1,12 +1,99 @@
 import * as vscode from "vscode";
 
 const languageFeatureTimeoutMilliseconds = 30_000;
+const frameworkTypeDocumentText = `using System;
+using System.Reflection;
+
+class BrowserCreated
+{
+    private static readonly Lazy<(
+        ConstructorInfo MemberAnalysisConstructor,
+        ConstructorInfo OptionsConstructor,
+        ConstructorInfo ActionConstructor,
+        MethodInfo FormattingOptionsMethod,
+        MethodInfo ImmutableArrayCreateMethod)> s_contract = new();
+
+    static void Apply(Func<string, string> transform)
+    {
+        (
+            ConstructorInfo memberAnalysisConstructor,
+            ConstructorInfo optionsConstructor,
+            ConstructorInfo actionConstructor,
+            MethodInfo formattingOptionsMethod,
+            MethodInfo immutableArrayCreateMethod) = s_contract.Value;
+    }
+}
+`;
 
 export async function run(): Promise<void> {
   await runFeatureContract({
     expectedHost: "browser",
     requireRuntimeExtension: false,
   });
+}
+
+export async function runSemanticHighlightingContract(): Promise<void> {
+  const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
+  assert(workspaceFolder !== undefined, "The VS Code integration workspace must be open.");
+  assert(
+    vscode.workspace
+      .getConfiguration("workbench")
+      .get<string>("colorTheme") === "csls Theme Without Semantic Highlighting",
+    "The semantic-highlighting regression must run with a theme that does not opt in.",
+  );
+  const extension = vscode.extensions.getExtension("willibrandon.csls");
+  assert(extension !== undefined, "The csls extension must be installed.");
+  const documentUri = vscode.Uri.joinPath(workspaceFolder.uri, "Program.cs");
+  const document = await vscode.workspace.openTextDocument(documentUri);
+  await vscode.window.showTextDocument(document);
+  assert(document.languageId === "csharp", "The document must use the C# language mode.");
+  assert(
+    vscode.workspace
+      .getConfiguration("editor", document)
+      .get<boolean | string>("semanticHighlighting.enabled") === true,
+    "The csls extension must enable semantic highlighting for C# without user configuration.",
+  );
+
+  await extension.activate();
+  await replaceDocumentText(document, frameworkTypeDocumentText);
+  const legend = await withTimeout(
+    vscode.commands.executeCommand<vscode.SemanticTokensLegend | undefined>(
+      "vscode.provideDocumentSemanticTokensLegend",
+      document.uri,
+    ),
+    languageFeatureTimeoutMilliseconds,
+    "The VS Code semantic-token legend provider did not complete.",
+  );
+  const tokens = await withTimeout(
+    vscode.commands.executeCommand<vscode.SemanticTokens | undefined>(
+      "vscode.provideDocumentSemanticTokens",
+      document.uri,
+    ),
+    languageFeatureTimeoutMilliseconds,
+    "The VS Code semantic-token provider did not complete.",
+  );
+  assert(
+    legend !== undefined && tokens !== undefined,
+    "csls must return semantic tokens for the visible C# document.",
+  );
+  assertAllSemanticTokenTypes(document, frameworkTypeDocumentText, tokens, legend, "Lazy", "class");
+  assertAllSemanticTokenTypes(document, frameworkTypeDocumentText, tokens, legend, "Func", "type");
+  assertAllSemanticTokenTypes(
+    document,
+    frameworkTypeDocumentText,
+    tokens,
+    legend,
+    "ConstructorInfo",
+    "class",
+  );
+  assertAllSemanticTokenTypes(
+    document,
+    frameworkTypeDocumentText,
+    tokens,
+    legend,
+    "MethodInfo",
+    "class",
+  );
 }
 
 export interface FeatureContractOptions {
@@ -30,6 +117,12 @@ export async function runFeatureContract(options: FeatureContractOptions): Promi
   const document = await vscode.workspace.openTextDocument(documentUri);
   await vscode.window.showTextDocument(document);
   assert(document.languageId === "csharp", "The document must use the C# language mode.");
+  assert(
+    vscode.workspace
+      .getConfiguration("editor", document)
+      .get<boolean | string>("semanticHighlighting.enabled") === true,
+    "The csls extension must enable semantic highlighting for C# without user configuration.",
+  );
 
   const api: unknown = await extension.activate();
   assert(extension.isActive, "The csls extension must be active.");
@@ -547,8 +640,52 @@ async function assertCodeAction(document: vscode.TextDocument): Promise<void> {
     "The VS Code code-action provider did not complete.",
   );
   assert(
-    actions.some((action) => action.title.includes("Simplify name")),
-    "csls must return the semantic simplify-name action in VS Code.",
+    actions.some(
+      (action) => action.title === "Simplify member access 'System.Console'",
+    ),
+    "csls must return the semantic simplify-name action in VS Code. " +
+      `Received ${JSON.stringify(actions.map((action) => action.title))}.`,
+  );
+
+  const refactoringText = `internal sealed class DebuggerPackage
+{
+    internal DebuggerPackage(string identifier, Uri source)
+    {
+        Identifier = identifier;
+        Source = source;
+    }
+
+    internal string Identifier { get; }
+
+    internal Uri Source { get; }
+}
+`;
+  await replaceDocumentText(document, refactoringText);
+  const refactorings = await withTimeout(
+    vscode.commands.executeCommand<readonly vscode.CodeAction[]>(
+      "vscode.executeCodeActionProvider",
+      document.uri,
+      new vscode.Range(1, 0, 1, 0),
+      "refactor",
+    ),
+    languageFeatureTimeoutMilliseconds,
+    "The VS Code refactoring provider did not complete.",
+  );
+  const refactoringTitles = refactorings.map((action) => action.title);
+  assert(
+    refactoringTitles.includes("Extract base class..."),
+    "csls must return Roslyn's extract-base-class refactoring in VS Code. " +
+      `Received ${JSON.stringify(refactoringTitles)}.`,
+  );
+  assert(
+    refactoringTitles.includes("Convert to positional record"),
+    "csls must return Roslyn's convert-to-record refactoring in VS Code. " +
+      `Received ${JSON.stringify(refactoringTitles)}.`,
+  );
+  assert(
+    refactoringTitles.includes("Add 'DebuggerDisplay' attribute"),
+    "csls must return Roslyn's DebuggerDisplay refactoring in VS Code. " +
+      `Received ${JSON.stringify(refactoringTitles)}.`,
   );
 }
 
@@ -556,11 +693,10 @@ async function assertCreatedFileIsLoaded(
   workspaceFolder: vscode.WorkspaceFolder,
 ): Promise<void> {
   const uri = vscode.Uri.joinPath(workspaceFolder.uri, "BrowserCreated.cs");
+  const source = frameworkTypeDocumentText;
   await vscode.workspace.fs.writeFile(
     uri,
-    new TextEncoder().encode(
-      "class BrowserCreated { BrowserCreated? Value { get; } }\n",
-    ),
+    new TextEncoder().encode(source),
   );
   const document = await vscode.workspace.openTextDocument(uri);
   await vscode.window.showTextDocument(document);
@@ -568,11 +704,86 @@ async function assertCreatedFileIsLoaded(
     const hovers = await vscode.commands.executeCommand<readonly vscode.Hover[]>(
       "vscode.executeHoverProvider",
       uri,
-      new vscode.Position(0, 7),
+      document.positionAt(source.indexOf("BrowserCreated")),
     );
     return getHoverText(hovers).includes("BrowserCreated");
   }, "csls did not load a file created in VS Code.");
+  const legend = await withTimeout(
+    vscode.commands.executeCommand<vscode.SemanticTokensLegend | undefined>(
+      "vscode.provideDocumentSemanticTokensLegend",
+      uri,
+    ),
+    languageFeatureTimeoutMilliseconds,
+    "The VS Code semantic-token legend for a created file did not complete.",
+  );
+  const tokens = await withTimeout(
+    vscode.commands.executeCommand<vscode.SemanticTokens | undefined>(
+      "vscode.provideDocumentSemanticTokens",
+      uri,
+    ),
+    languageFeatureTimeoutMilliseconds,
+    "The VS Code semantic-token provider for a created file did not complete.",
+  );
+  assert(
+    legend !== undefined && tokens !== undefined,
+    "csls must return semantic tokens for a file created in VS Code.",
+  );
+  assertAllSemanticTokenTypes(document, source, tokens, legend, "Lazy", "class");
+  assertAllSemanticTokenTypes(document, source, tokens, legend, "Func", "type");
+  assertAllSemanticTokenTypes(
+    document,
+    source,
+    tokens,
+    legend,
+    "ConstructorInfo",
+    "class",
+  );
+  assertAllSemanticTokenTypes(
+    document,
+    source,
+    tokens,
+    legend,
+    "MethodInfo",
+    "class",
+  );
   await vscode.workspace.fs.delete(uri);
+}
+
+function assertAllSemanticTokenTypes(
+  document: vscode.TextDocument,
+  source: string,
+  tokens: vscode.SemanticTokens,
+  legend: vscode.SemanticTokensLegend,
+  text: string,
+  expectedType: string,
+): void {
+  const tokenTypes = new Map<string, string>();
+  let line = 0;
+  let start = 0;
+  for (let index = 0; index < tokens.data.length; index += 5) {
+    const deltaLine = tokens.data[index]!;
+    line += deltaLine;
+    const deltaStart = tokens.data[index + 1]!;
+    start = deltaLine === 0 ? start + deltaStart : deltaStart;
+    tokenTypes.set(
+      `${line}:${start}:${tokens.data[index + 2]!}`,
+      legend.tokenTypes[tokens.data[index + 3]!]!,
+    );
+  }
+
+  let offset = 0;
+  let occurrenceCount = 0;
+  while ((offset = source.indexOf(text, offset)) >= 0) {
+    const position = document.positionAt(offset);
+    assert(
+      tokenTypes.get(`${position.line}:${position.character}:${text.length}`) === expectedType,
+      `${text} at ${position.line + 1}:${position.character + 1} must have semantic token ${expectedType}.`,
+    );
+    occurrenceCount++;
+    offset += text.length;
+  }
+
+  assert(occurrenceCount > 0, `${text} was not found in the created VS Code document.`);
 }
 
 async function assertConsoleHover(documentUri: vscode.Uri): Promise<void> {

@@ -1,7 +1,10 @@
+using Csls.Control;
+using Csls.Control.Contracts;
 using Csls.Protocol;
 using StreamJsonRpc;
 using System.Runtime.CompilerServices;
 using System.Text.Json;
+using LspRange = Csls.Protocol.Range;
 
 namespace Csls.Tests;
 
@@ -15,6 +18,155 @@ public sealed class WorkspaceDiagnosticLanguageServerTests
     /// Gets the active MSTest context and its framework-managed cancellation token.
     /// </summary>
     public TestContext TestContext { get; set; } = null!;
+
+    /// <summary>
+    /// Completes startup requests promptly and refreshes diagnostics after loading.
+    /// </summary>
+    [TestMethod]
+    public async Task WorkspaceRequestsCompleteDuringInitializationAndRefreshWhenReady()
+    {
+        string repositoryRoot = EditorToolResolver.FindRepositoryRoot();
+        string workerPath = Path.Join(
+            EditorToolResolver.ResolveArtifactsRoot(repositoryRoot),
+            "bin",
+            "Csls.Worker",
+            "debug",
+            "csls-worker.dll");
+        Assert.IsTrue(File.Exists(workerPath), $"Worker not found at {workerPath}.");
+
+        string fixturePath = Path.Join(
+            Path.GetTempPath(),
+            $"csls-workspace-diagnostic-loading-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(fixturePath);
+        try
+        {
+            string documentPath = Path.Join(fixturePath, "Broken.cs");
+            await File.WriteAllTextAsync(
+                Path.Join(fixturePath, "Fixture.csproj"),
+                CoreProjectText,
+                TestContext.CancellationToken).ConfigureAwait(false);
+            await File.WriteAllTextAsync(
+                documentPath,
+                InvalidCoreText,
+                TestContext.CancellationToken).ConfigureAwait(false);
+
+            var client = new LspTestClient(
+                legacyConfiguration: null,
+                preferredConfiguration: null);
+            var lsp = LspProcessSession.Start(
+                "csls-workspace-diagnostic-loading-worker",
+                EditorToolResolver.ResolveDotNetHost(),
+                [workerPath],
+                fixturePath,
+                client);
+            await using ConfiguredAsyncDisposable lspCleanup = lsp.ConfigureAwait(false);
+            using var capabilities = JsonDocument.Parse(
+                """
+                {
+                  "workspace": {
+                    "diagnostics": {
+                      "refreshSupport": true
+                    }
+                  },
+                  "textDocument": {
+                    "diagnostic": {}
+                  }
+                }
+                """);
+            await lsp.InitializeAsync(
+                fixturePath,
+                capabilities.RootElement,
+                TestContext.CancellationToken).ConfigureAwait(false);
+            string socketPath = ControlEndpoint.GetSocketPath(lsp.ProcessId);
+            await WaitForFileAsync(
+                socketPath,
+                TimeSpan.FromSeconds(30),
+                TestContext.CancellationToken).ConfigureAwait(false);
+            var control = new ControlRpcClient(socketPath);
+            await using ConfiguredAsyncDisposable controlCleanup =
+                control.ConfigureAwait(false);
+
+            await lsp.CompleteInitializationAsync().ConfigureAwait(false);
+            await WaitForWorkspacePhaseAsync(
+                control,
+                "Loading",
+                TimeSpan.FromSeconds(30),
+                TestContext.CancellationToken).ConfigureAwait(false);
+            var loadingPosition = new Position(0, 0);
+            var loadingRange = new LspRange(
+                loadingPosition,
+                loadingPosition);
+            Task<LinkedEditingRanges?> loadingLinkedEditing =
+                lsp.RequestLinkedEditingRangesAsync(
+                    documentPath,
+                    loadingPosition,
+                    TestContext.CancellationToken);
+            Task<IReadOnlyList<DocumentHighlight>> loadingHighlights =
+                lsp.RequestDocumentHighlightsAsync(
+                    documentPath,
+                    loadingPosition,
+                    TestContext.CancellationToken);
+            Task<IReadOnlyList<DocumentLink>> loadingLinks =
+                lsp.RequestDocumentLinksAsync(
+                    documentPath,
+                    TestContext.CancellationToken);
+            Task<IReadOnlyList<CodeAction>> loadingActions =
+                lsp.RequestCodeActionsAsync(
+                    documentPath,
+                    loadingRange,
+                    only: null,
+                    TestContext.CancellationToken);
+            await Task.WhenAll(
+                    loadingLinkedEditing,
+                    loadingHighlights,
+                    loadingLinks,
+                    loadingActions)
+                .WaitAsync(TimeSpan.FromSeconds(1), TestContext.CancellationToken)
+                .ConfigureAwait(false);
+            Assert.IsNull(await loadingLinkedEditing.ConfigureAwait(false));
+            Assert.IsEmpty(await loadingHighlights.ConfigureAwait(false));
+            Assert.IsEmpty(await loadingLinks.ConfigureAwait(false));
+            Assert.IsEmpty(await loadingActions.ConfigureAwait(false));
+            DocumentDiagnosticReport loadingDocument = await lsp.RequestDiagnosticsAsync(
+                documentPath,
+                previousResultId: null,
+                TestContext.CancellationToken).ConfigureAwait(false);
+            Assert.AreEqual("full", loadingDocument.Kind);
+            Assert.IsEmpty(
+                loadingDocument.Items ?? [],
+                "The initial document pull waited for project loading and returned stale startup results.");
+            WorkspaceDiagnosticReport loading = await lsp.RequestWorkspaceDiagnosticsAsync(
+                [],
+                partialResultToken: null,
+                TestContext.CancellationToken).ConfigureAwait(false);
+            Assert.IsEmpty(
+                loading.Items,
+                "The initial workspace pull waited for project loading and returned stale startup results.");
+
+            await client.WaitForDiagnosticRefreshAsync(TestContext.CancellationToken)
+                .WaitAsync(TimeSpan.FromSeconds(30), TestContext.CancellationToken)
+                .ConfigureAwait(false);
+            await WaitForWorkspacePhaseAsync(
+                control,
+                "Ready",
+                TimeSpan.FromSeconds(30),
+                TestContext.CancellationToken).ConfigureAwait(false);
+            WorkspaceDiagnosticReport ready = await lsp.RequestWorkspaceDiagnosticsAsync(
+                [],
+                partialResultToken: null,
+                TestContext.CancellationToken).ConfigureAwait(false);
+            WorkspaceDocumentDiagnosticReport report = Assert.ContainsSingle(ready.Items);
+            Assert.Contains("CS0103", GetCodes(report));
+
+            string diagnostics = await lsp.ShutdownAsync(
+                TestContext.CancellationToken).ConfigureAwait(false);
+            Assert.DoesNotContain("Unhandled exception", diagnostics, StringComparison.Ordinal);
+        }
+        finally
+        {
+            Directory.Delete(fixturePath, recursive: true);
+        }
+    }
 
     /// <summary>
     /// Reports C# and Razor findings with versions and incremental result identifiers.
@@ -135,11 +287,26 @@ public sealed class WorkspaceDiagnosticLanguageServerTests
             Assert.DoesNotContain("CS0103", GetCodes(updatedCoreReport));
             Assert.Contains("CS0103", GetCodes(updatedByPath[razorDocumentPath]));
             Assert.AreNotEqual(coreReport.ResultId, updatedCoreReport.ResultId);
+            WorkspaceDocumentDiagnosticReport updatedWebReport =
+                updatedByPath[webDocumentPath];
+            Assert.AreEqual("full", updatedWebReport.Kind);
+            Assert.AreNotEqual(webReport.ResultId, updatedWebReport.ResultId);
             WorkspaceDocumentDiagnosticReport updatedToolsReport =
                 updatedByPath[toolsDocumentPath];
             Assert.AreEqual("unchanged", updatedToolsReport.Kind);
             Assert.AreEqual(toolsReport.ResultId, updatedToolsReport.ResultId);
             Assert.IsNull(updatedToolsReport.Items);
+
+            WorkspaceDiagnosticReport settled = await lsp.RequestWorkspaceDiagnosticsAsync(
+                CreatePreviousResults(updated),
+                partialResultToken: null,
+                TestContext.CancellationToken).ConfigureAwait(false);
+            Assert.HasCount(4, settled.Items);
+            foreach (WorkspaceDocumentDiagnosticReport report in settled.Items)
+            {
+                Assert.AreEqual("unchanged", report.Kind);
+                Assert.IsNull(report.Items);
+            }
 
             using var invalidTokenDocument = JsonDocument.Parse("true");
             RemoteInvocationException invalidToken =
@@ -260,6 +427,52 @@ public sealed class WorkspaceDiagnosticLanguageServerTests
     private static string?[] GetCodes(WorkspaceDocumentDiagnosticReport report) =>
         report.Items?.Select(static diagnostic => diagnostic.Code).ToArray()
         ?? throw new InvalidDataException("A full workspace diagnostic report had no items.");
+
+    private static async Task WaitForFileAsync(
+        string path,
+        TimeSpan timeout,
+        CancellationToken cancellationToken)
+    {
+        using var timeoutSource = CancellationTokenSource.CreateLinkedTokenSource(
+            cancellationToken);
+        timeoutSource.CancelAfter(timeout);
+        using var timer = new PeriodicTimer(TimeSpan.FromMilliseconds(10));
+        while (await timer.WaitForNextTickAsync(timeoutSource.Token).ConfigureAwait(false))
+        {
+            if (File.Exists(path))
+            {
+                return;
+            }
+        }
+
+        throw new InvalidOperationException("The file wait loop ended unexpectedly.");
+    }
+
+    private static async Task WaitForWorkspacePhaseAsync(
+        ControlRpcClient control,
+        string expectedPhase,
+        TimeSpan timeout,
+        CancellationToken cancellationToken)
+    {
+        using var timeoutSource = CancellationTokenSource.CreateLinkedTokenSource(
+            cancellationToken);
+        timeoutSource.CancelAfter(timeout);
+        using var timer = new PeriodicTimer(TimeSpan.FromMilliseconds(10));
+        while (await timer.WaitForNextTickAsync(timeoutSource.Token).ConfigureAwait(false))
+        {
+            ControlSessionInfo session = await control.GetSessionAsync(timeoutSource.Token)
+                .ConfigureAwait(false);
+            if (string.Equals(
+                session.WorkspacePhase,
+                expectedPhase,
+                StringComparison.Ordinal))
+            {
+                return;
+            }
+        }
+
+        throw new InvalidOperationException("The workspace phase wait loop ended unexpectedly.");
+    }
 
     private static async Task WriteFixtureAsync(
         string fixturePath,

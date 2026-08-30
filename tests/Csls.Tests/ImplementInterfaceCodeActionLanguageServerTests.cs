@@ -87,10 +87,11 @@ public sealed class ImplementInterfaceCodeActionLanguageServerTests
                 ["quickfix"],
                 missingMembers,
                 TestContext.CancellationToken).ConfigureAwait(false);
-            CodeAction action = Assert.ContainsSingle(actions);
+            CodeAction action = Assert.ContainsSingle(actions.Where(static action =>
+                action.Title == "Implement interface"));
             Assert.AreEqual("Implement interface", action.Title);
             Assert.AreEqual("quickfix", action.Kind);
-            Assert.IsTrue(action.IsPreferred);
+            Assert.IsNull(action.IsPreferred);
             Assert.HasCount(4, action.Diagnostics ?? []);
             WorkspaceEdit edit = action.Edit
                 ?? throw new InvalidDataException("The implementation action had no edit.");
@@ -156,7 +157,8 @@ public sealed class ImplementInterfaceCodeActionLanguageServerTests
                 ["quickfix"],
                 operatorDiagnostics,
                 TestContext.CancellationToken).ConfigureAwait(false);
-            CodeAction operatorAction = Assert.ContainsSingle(operatorActions);
+            CodeAction operatorAction = Assert.ContainsSingle(operatorActions.Where(
+                static action => action.Title == "Implement interface"));
             TextDocumentEdit operatorEdit = Assert.ContainsSingle(
                 operatorAction.Edit?.DocumentChanges.OfType<TextDocumentEdit>() ?? []);
             string operatorText = ApplyTextEdits(OperatorDocumentText, operatorEdit.Edits);

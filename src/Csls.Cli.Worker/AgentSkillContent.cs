@@ -50,7 +50,7 @@ internal static class AgentSkillContent
         csls edit code-action Program.cs --kind quickfix --line 12 --character 8 --workspace . --json
         ```
 
-        Edit commands preview guarded plans by default. Inspect the document preconditions and changes before repeating the command with `--apply`.
+        Edit commands preview guarded plans by default. Inspect the document preconditions and changes before repeating the command with `--apply`. For code actions, pass the selected result's exact title with `--title <title>` when applying it.
 
         ## Maintain a live session
 

@@ -75,14 +75,16 @@ export class LanguageServerLogOutputChannel implements vscode.LogOutputChannel {
       return;
     }
 
-    const match = /^(trce|dbug|info|warn|fail|crit):/u.exec(error);
+    const match = /^(trce|dbug|info|warn|fail|crit):\s*/u.exec(error);
+    let message = error;
     if (match !== null) {
       this.level = toServerLogLevel(match[1] ?? "");
+      message = error.slice(match[0].length);
     } else if (!/^\s/u.test(error)) {
       this.level = "error";
     }
 
-    this.write(this.level, error, args);
+    this.write(this.level, message, args);
   }
 
   private write(

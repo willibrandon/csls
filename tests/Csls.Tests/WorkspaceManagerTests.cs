@@ -1,5 +1,6 @@
 using Csls.Protocol;
 using Csls.Workspaces;
+using Microsoft.Extensions.Logging.Abstractions;
 using System.Runtime.CompilerServices;
 
 namespace Csls.Tests;
@@ -191,6 +192,133 @@ public sealed class WorkspaceManagerTests
                     static diagnostic =>
                         diagnostic.Severity >= Microsoft.CodeAnalysis.DiagnosticSeverity.Warning));
             }
+        }
+        finally
+        {
+            foreach (WorkspaceFolderSnapshot snapshot in snapshots)
+            {
+                snapshot.Workspace.Dispose();
+            }
+
+            Directory.Delete(workspacePath, recursive: true);
+        }
+    }
+
+    /// <summary>
+    /// Retains multiple standalone projects in one real MSBuild workspace.
+    /// </summary>
+    [TestMethod]
+    public async Task StandaloneProjectsShareOneRetainedMsBuildWorkspace()
+    {
+        string workspacePath = Path.Join(
+            Path.GetTempPath(),
+            $"csls-shared-msbuild-workspace-{Guid.NewGuid():N}");
+        string alphaDirectory = Path.Join(workspacePath, "Alpha");
+        string betaDirectory = Path.Join(workspacePath, "Beta");
+        Directory.CreateDirectory(alphaDirectory);
+        Directory.CreateDirectory(betaDirectory);
+        IReadOnlyList<WorkspaceFolderSnapshot> snapshots = [];
+        try
+        {
+            await File.WriteAllTextAsync(
+                Path.Join(alphaDirectory, "Alpha.csproj"),
+                ProjectText,
+                TestContext.CancellationToken).ConfigureAwait(false);
+            await File.WriteAllTextAsync(
+                Path.Join(alphaDirectory, "Program.cs"),
+                DocumentText.Replace("Fixture", "Alpha", StringComparison.Ordinal),
+                TestContext.CancellationToken).ConfigureAwait(false);
+            await File.WriteAllTextAsync(
+                Path.Join(betaDirectory, "Beta.csproj"),
+                ProjectText,
+                TestContext.CancellationToken).ConfigureAwait(false);
+            await File.WriteAllTextAsync(
+                Path.Join(betaDirectory, "Program.cs"),
+                DocumentText.Replace("Fixture", "Beta", StringComparison.Ordinal),
+                TestContext.CancellationToken).ConfigureAwait(false);
+
+            var loader = new MSBuildWorkspaceLoader(
+                NullLogger<MSBuildWorkspaceLoader>.Instance);
+            snapshots = await loader.LoadAsync(
+                [workspacePath],
+                "Debug",
+                progress: null,
+                TestContext.CancellationToken).ConfigureAwait(false);
+
+            WorkspaceFolderSnapshot snapshot = Assert.ContainsSingle(
+                snapshots,
+                "One workspace root must not retain one MSBuild host per standalone project.");
+            Assert.AreEqual(workspacePath, snapshot.RootPath);
+            Assert.AreEqual(
+                "Alpha,Beta",
+                string.Join(
+                    ',',
+                    snapshot.Solution.Projects
+                        .Select(static project => project.Name)
+                        .Order(StringComparer.Ordinal)));
+        }
+        finally
+        {
+            foreach (WorkspaceFolderSnapshot snapshot in snapshots)
+            {
+                snapshot.Workspace.Dispose();
+            }
+
+            Directory.Delete(workspacePath, recursive: true);
+        }
+    }
+
+    /// <summary>
+    /// Retains multiple file-based apps in one real MSBuild workspace.
+    /// </summary>
+    [TestMethod]
+    public async Task FileBasedAppsShareOneRetainedMsBuildWorkspace()
+    {
+        string workspacePath = Path.Join(
+            Path.GetTempPath(),
+            $"csls-shared-file-app-workspace-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(workspacePath);
+        IReadOnlyList<WorkspaceFolderSnapshot> snapshots = [];
+        try
+        {
+            string alphaPath = Path.Join(workspacePath, "Alpha.cs");
+            string betaPath = Path.Join(workspacePath, "Beta.cs");
+            await File.WriteAllTextAsync(
+                alphaPath,
+                "#:property TargetFramework=net10.0\n\nConsole.WriteLine(\"alpha\");\n",
+                TestContext.CancellationToken).ConfigureAwait(false);
+            await File.WriteAllTextAsync(
+                betaPath,
+                "#:property TargetFramework=net10.0\n\nConsole.WriteLine(\"beta\");\n",
+                TestContext.CancellationToken).ConfigureAwait(false);
+
+            var loader = new MSBuildWorkspaceLoader(
+                NullLogger<MSBuildWorkspaceLoader>.Instance);
+            snapshots = await loader.LoadAsync(
+                [workspacePath],
+                "Debug",
+                progress: null,
+                TestContext.CancellationToken).ConfigureAwait(false);
+
+            WorkspaceFolderSnapshot snapshot = Assert.ContainsSingle(
+                snapshots,
+                "One workspace root must not retain one MSBuild host per file-based app.");
+            Assert.AreEqual(
+                "Alpha.cs,Beta.cs",
+                string.Join(
+                    ',',
+                    snapshot.Solution.Projects
+                        .Select(static project => project.Name)
+                        .Order(StringComparer.Ordinal)));
+            Assert.AreEqual(
+                "Alpha.cs,Beta.cs",
+                string.Join(
+                    ',',
+                    snapshot.Solution.Projects
+                        .Select(static project => project.FilePath)
+                        .OfType<string>()
+                        .Select(Path.GetFileName)
+                        .Order(StringComparer.Ordinal)));
         }
         finally
         {
@@ -660,6 +788,14 @@ public sealed class WorkspaceManagerTests
                 TestContext.CancellationToken).ConfigureAwait(false);
 
             Assert.IsTrue(snapshot.DiagnosticsLoaded);
+            Assert.HasCount(
+                1,
+                snapshot.BuildHosts,
+                "Two loaded workspaces in one process must not be reported as two build hosts.");
+            WorkspaceBuildHostInspection buildHost = snapshot.BuildHosts[0];
+            Assert.AreEqual(Environment.ProcessId, buildHost.ProcessId);
+            Assert.AreEqual(2, buildHost.WorkspaceCount);
+            Assert.AreEqual(2, buildHost.ProjectCount);
             Assert.AreEqual(
                 2,
                 snapshot.TotalDiagnostics,
