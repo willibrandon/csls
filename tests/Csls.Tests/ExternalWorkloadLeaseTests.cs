@@ -89,19 +89,20 @@ public sealed class ExternalWorkloadLeaseTests
     {
         if (remainingLeases > 1)
         {
-            using ExternalWorkloadLease heldLease = await AcquireIsolatedAsync(
-                cancellationToken).ConfigureAwait(false);
-            await HoldLeasesAndVerifyQueuedStartAsync(
-                remainingLeases - 1,
-                workerPath,
-                repositoryRoot,
-                cancellationToken).ConfigureAwait(false);
+            using (await AcquireIsolatedAsync(cancellationToken).ConfigureAwait(false))
+            {
+                await HoldLeasesAndVerifyQueuedStartAsync(
+                    remainingLeases - 1,
+                    workerPath,
+                    repositoryRoot,
+                    cancellationToken).ConfigureAwait(false);
+            }
+
             return;
         }
 
         Task startTask;
-        using (ExternalWorkloadLease heldLease = await AcquireIsolatedAsync(
-            cancellationToken).ConfigureAwait(false))
+        using (await AcquireIsolatedAsync(cancellationToken).ConfigureAwait(false))
         {
             startTask = StartAndDisposeLanguageServerAsync(workerPath, repositoryRoot);
             Assert.IsFalse(startTask.IsCompleted);
