@@ -26,6 +26,7 @@ public sealed partial class LanguageServer : ILspRpcTarget, IAsyncDisposable
     private bool _completionSnippetSupport;
     private int _foldingRangeLimit = MaximumFoldingRanges;
     private bool _lineFoldingOnly;
+    private int _pendingDiagnosticRefresh;
     private bool _supportsCollapsedFoldingText;
     private bool _supportsCommentFoldingKind = true;
     private bool _supportsImportsFoldingKind = true;
@@ -375,6 +376,13 @@ public sealed partial class LanguageServer : ILspRpcTarget, IAsyncDisposable
             throw;
         }
 
+        if (_supportsPullDiagnostics &&
+            _supportsDiagnosticRefresh &&
+            Interlocked.Exchange(ref _pendingDiagnosticRefresh, 0) != 0)
+        {
+            await _client.RefreshDiagnosticsAsync(cancellationToken).ConfigureAwait(false);
+        }
+
         if (_supportsDynamicFileWatching)
         {
             using var registrationSource = CancellationTokenSource.CreateLinkedTokenSource(
@@ -580,6 +588,15 @@ public sealed partial class LanguageServer : ILspRpcTarget, IAsyncDisposable
     {
         ArgumentNullException.ThrowIfNull(parameters);
         EnsureRunning();
+        if (_supportsDiagnosticRefresh && DeferPullDiagnosticsWhileLoading())
+        {
+            return Task.FromResult(new DocumentDiagnosticReport
+            {
+                Kind = "full",
+                Items = []
+            });
+        }
+
         return _scheduler.ScheduleAsync(
             "textDocument/diagnostic",
             RequestMode.ReadOnlyBackground,
@@ -646,6 +663,11 @@ public sealed partial class LanguageServer : ILspRpcTarget, IAsyncDisposable
                 "A workspace diagnostic partial result token must be an integer or string.");
         }
 
+        if (_supportsDiagnosticRefresh && DeferPullDiagnosticsWhileLoading())
+        {
+            return Task.FromResult(new WorkspaceDiagnosticReport());
+        }
+
         return _scheduler.ScheduleAsync(
             "workspace/diagnostic",
             RequestMode.ReadOnlyBackground,
@@ -678,6 +700,30 @@ public sealed partial class LanguageServer : ILspRpcTarget, IAsyncDisposable
             },
             cancellationToken);
     }
+
+    private bool DeferPullDiagnosticsWhileLoading()
+    {
+        ServerWorkspacePhase phase = WorkspacePhase;
+        while (phase is ServerWorkspacePhase.Configured or ServerWorkspacePhase.Loading)
+        {
+            Interlocked.Exchange(ref _pendingDiagnosticRefresh, 1);
+            phase = WorkspacePhase;
+            if (phase is ServerWorkspacePhase.Configured or ServerWorkspacePhase.Loading)
+            {
+                return true;
+            }
+        }
+
+        if (phase == ServerWorkspacePhase.Ready)
+        {
+            Interlocked.Exchange(ref _pendingDiagnosticRefresh, 0);
+        }
+
+        return false;
+    }
+
+    private bool WorkspaceIsLoading() =>
+        WorkspacePhase is ServerWorkspacePhase.Configured or ServerWorkspacePhase.Loading;
 
     /// <inheritdoc />
     public Task<CompletionList> CompletionAsync(
@@ -937,6 +983,11 @@ public sealed partial class LanguageServer : ILspRpcTarget, IAsyncDisposable
     {
         ArgumentNullException.ThrowIfNull(parameters);
         EnsureRunning();
+        if (_supportsDiagnosticRefresh && WorkspaceIsLoading())
+        {
+            return Task.FromResult<LinkedEditingRanges?>(null);
+        }
+
         return _scheduler.ScheduleAsync(
             "textDocument/linkedEditingRange",
             RequestMode.ReadOnly,
@@ -964,6 +1015,11 @@ public sealed partial class LanguageServer : ILspRpcTarget, IAsyncDisposable
     {
         ArgumentNullException.ThrowIfNull(parameters);
         EnsureRunning();
+        if (_supportsDiagnosticRefresh && WorkspaceIsLoading())
+        {
+            return Task.FromResult<IReadOnlyList<DocumentHighlight>>([]);
+        }
+
         return _scheduler.ScheduleAsync(
             "textDocument/documentHighlight",
             RequestMode.ReadOnly,
@@ -991,6 +1047,11 @@ public sealed partial class LanguageServer : ILspRpcTarget, IAsyncDisposable
     {
         ArgumentNullException.ThrowIfNull(parameters);
         EnsureRunning();
+        if (_supportsDiagnosticRefresh && WorkspaceIsLoading())
+        {
+            return Task.FromResult<IReadOnlyList<DocumentLink>>([]);
+        }
+
         return _scheduler.ScheduleAsync(
             "textDocument/documentLink",
             RequestMode.ReadOnly,
@@ -1355,6 +1416,11 @@ public sealed partial class LanguageServer : ILspRpcTarget, IAsyncDisposable
     {
         ArgumentNullException.ThrowIfNull(parameters);
         EnsureRunning();
+        if (_supportsDiagnosticRefresh && WorkspaceIsLoading())
+        {
+            return Task.FromResult<IReadOnlyList<CodeAction>>([]);
+        }
+
         return _scheduler.ScheduleAsync(
             "textDocument/codeAction",
             RequestMode.ReadOnly,

@@ -39,7 +39,7 @@ internal sealed class ControlCancellationStrategy : ICancellationStrategy
             return;
         }
 
-        _ = Task.Run(() => SendCancellationAsync(request));
+        _ = SendCancellationAsync(request);
     }
 
     /// <inheritdoc />
