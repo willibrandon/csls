@@ -441,13 +441,15 @@ static void VerifyGitHubActionReferences(
             string revision = separatorIndex >= 0 ? reference[(separatorIndex + 1)..] : string.Empty;
             bool immutableCommit = revision.Length == 40 && revision.All(Uri.IsHexDigit);
             string versionCore = revision.TrimStart('v').Split('-', '+')[0];
-            bool exactVersion = versionCore.Any(static character => character == '.') &&
+            int firstSeparator = versionCore.IndexOf('.', StringComparison.Ordinal);
+            bool exactVersion = firstSeparator >= 0 &&
+                versionCore.AsSpan(firstSeparator + 1).IndexOf('.') >= 0 &&
                 Version.TryParse(versionCore, out _);
             if (immutableCommit || exactVersion)
             {
                 string relativePath = Path.GetRelativePath(repositoryRoot, workflowPath);
                 failures.Add(
-                    $"GitHub Actions must follow a moving major or release channel: " +
+                    $"GitHub Actions must follow a moving major or minor release channel: " +
                     $"{relativePath}:{lineNumber} ({reference})");
             }
         }
