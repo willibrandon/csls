@@ -1,3 +1,5 @@
+using System.Threading.Channels;
+
 namespace Csls.Core;
 
 /// <summary>
@@ -7,6 +9,13 @@ internal sealed class RequestActivityState
 {
     private readonly Lock _gate = new();
     private readonly CancellationTokenSource _cancellationSource;
+    private readonly Channel<bool> _retirement = Channel.CreateUnbounded<bool>(
+        new UnboundedChannelOptions
+        {
+            AllowSynchronousContinuations = false,
+            SingleReader = false,
+            SingleWriter = true
+        });
     private readonly TimeProvider _timeProvider;
     private RequestTraceRecord? _traceRecord;
     private Guid? _enrolledTraceId;
@@ -103,6 +112,7 @@ internal sealed class RequestActivityState
         }
 
         await cancellationTask.ConfigureAwait(false);
+        await _retirement.Reader.WaitToReadAsync().ConfigureAwait(false);
         return true;
     }
 
@@ -192,6 +202,7 @@ internal sealed class RequestActivityState
             _isCancellationRequested |= status == RequestExecutionStatus.Canceled;
             _traceRecord?.Complete(status, exception, completedAt, completedTimestamp);
             _cancellationSource.Dispose();
+            _retirement.Writer.TryComplete();
             return true;
         }
     }
