@@ -38,7 +38,8 @@ public sealed partial class MSBuildWorkspaceLoader : WorkspaceLoader
         string[] entryPoints =
         [
             .. rootPaths
-                .SelectMany(root => DiscoverWorkspaceFilesWithLogging(root, cancellationToken))
+                .SelectMany(root => SelectEagerWorkspaceFiles(
+                    DiscoverWorkspaceFilesWithLogging(root, cancellationToken)))
                 .Distinct(PathComparer)
                 .Order(StringComparer.Ordinal)
         ];
@@ -68,7 +69,8 @@ public sealed partial class MSBuildWorkspaceLoader : WorkspaceLoader
             string rootPath = Path.GetFullPath(requestedRoot);
             loadPlans.Add((
                 rootPath,
-                DiscoverWorkspaceFilesWithLogging(rootPath, cancellationToken)));
+                SelectEagerWorkspaceFiles(
+                    DiscoverWorkspaceFilesWithLogging(rootPath, cancellationToken))));
         }
 
         RegisterMSBuild(loadPlans);
@@ -187,6 +189,21 @@ public sealed partial class MSBuildWorkspaceLoader : WorkspaceLoader
 
         groups.Sort(static (left, right) => StringComparer.Ordinal.Compare(left[0], right[0]));
         return groups;
+    }
+
+    private static IReadOnlyList<string> SelectEagerWorkspaceFiles(
+        IReadOnlyList<string> workspaceFiles)
+    {
+        bool containsSolution = workspaceFiles.Any(static workspaceFile =>
+            workspaceFile.EndsWith(".slnx", StringComparison.OrdinalIgnoreCase) ||
+            workspaceFile.EndsWith(".sln", StringComparison.OrdinalIgnoreCase));
+        return containsSolution
+            ?
+            [
+                .. workspaceFiles.Where(static workspaceFile =>
+                    !IsFileBasedApp(workspaceFile))
+            ]
+            : workspaceFiles;
     }
 
     private static int CountExpectedProjects(

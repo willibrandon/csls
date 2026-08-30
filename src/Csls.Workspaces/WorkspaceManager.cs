@@ -269,6 +269,15 @@ public sealed partial class WorkspaceManager : IAsyncDisposable
                 throw new InvalidOperationException($"No workspace folder owns document {path}.");
             }
 
+            if (!WorkspaceRazorDiagnosticService.IsRazorDocument(path) &&
+                FindDocument(_folders[folderIndex].Solution, path) is null)
+            {
+                folderIndex = await TryLoadFileBasedAppAsync(
+                    path,
+                    folderIndex,
+                    cancellationToken).ConfigureAwait(false);
+            }
+
             if (WorkspaceRazorDiagnosticService.IsRazorDocument(path))
             {
                 var razorText = SourceText.From(document.Text, Encoding.UTF8);
@@ -332,6 +341,58 @@ public sealed partial class WorkspaceManager : IAsyncDisposable
         finally
         {
             _mutationGate.Release();
+        }
+    }
+
+    private async Task<int> TryLoadFileBasedAppAsync(
+        string path,
+        int fallbackFolderIndex,
+        CancellationToken cancellationToken)
+    {
+        if (!File.Exists(path) ||
+            !Path.GetExtension(path).Equals(".cs", StringComparison.OrdinalIgnoreCase))
+        {
+            return fallbackFolderIndex;
+        }
+
+        IReadOnlyList<WorkspaceFolderSnapshot> snapshots = await _workspaceLoader
+            .LoadAsync(
+                [path],
+                Volatile.Read(ref _buildConfiguration),
+                progress: null,
+                cancellationToken).ConfigureAwait(false);
+        bool retained = false;
+        try
+        {
+            ImmutableArray<(string RootPath, Workspace Workspace, Solution Solution)>
+                loadedFileBasedApps =
+            [
+                .. snapshots.Select(static snapshot =>
+                    (snapshot.RootPath, snapshot.Workspace, snapshot.Solution))
+            ];
+            int loadedFolderIndex = FindFolderIndex(path, loadedFileBasedApps);
+            if (loadedFolderIndex < 0 ||
+                FindDocument(loadedFileBasedApps[loadedFolderIndex].Solution, path) is null)
+            {
+                return fallbackFolderIndex;
+            }
+
+            int resultIndex = _folders.Length + loadedFolderIndex;
+            _folders = _folders.AddRange(loadedFileBasedApps);
+            _diagnosticCache.Clear();
+            Interlocked.Increment(ref _generation);
+            retained = true;
+            return resultIndex;
+        }
+        finally
+        {
+            if (!retained)
+            {
+                foreach (WorkspaceFolderSnapshot snapshot in snapshots)
+                {
+                    snapshot.Workspace.Dispose();
+                }
+            }
         }
     }
 

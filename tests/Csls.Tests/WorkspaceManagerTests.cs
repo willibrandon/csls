@@ -332,6 +332,93 @@ public sealed class WorkspaceManagerTests
     }
 
     /// <summary>
+    /// Reloads solutions with only the file-based apps that an editor actually opened.
+    /// </summary>
+    [TestMethod]
+    public async Task SolutionReloadRetainsOnlyOpenedFileBasedApps()
+    {
+        string workspacePath = Path.Join(
+            Path.GetTempPath(),
+            $"csls-lazy-file-app-workspace-{Guid.NewGuid():N}");
+        string projectDirectory = Path.Join(workspacePath, "src", "App");
+        string scriptsDirectory = Path.Join(workspacePath, "scripts");
+        Directory.CreateDirectory(projectDirectory);
+        Directory.CreateDirectory(scriptsDirectory);
+        try
+        {
+            string projectPath = Path.Join(projectDirectory, "App.csproj");
+            string openedScriptPath = Path.Join(scriptsDirectory, "Opened.cs");
+            string unopenedScriptPath = Path.Join(scriptsDirectory, "Unopened.cs");
+            const string scriptText =
+                "#:property TargetFramework=net10.0\n\nConsole.WriteLine(\"script\");\n";
+            await File.WriteAllTextAsync(
+                projectPath,
+                ProjectText,
+                TestContext.CancellationToken).ConfigureAwait(false);
+            await File.WriteAllTextAsync(
+                Path.Join(projectDirectory, "Program.cs"),
+                DocumentText,
+                TestContext.CancellationToken).ConfigureAwait(false);
+            await File.WriteAllTextAsync(
+                Path.Join(workspacePath, "Fixture.slnx"),
+                "<Solution><Project Path=\"src/App/App.csproj\" /></Solution>",
+                TestContext.CancellationToken).ConfigureAwait(false);
+            await File.WriteAllTextAsync(
+                openedScriptPath,
+                scriptText,
+                TestContext.CancellationToken).ConfigureAwait(false);
+            await File.WriteAllTextAsync(
+                unopenedScriptPath,
+                scriptText,
+                TestContext.CancellationToken).ConfigureAwait(false);
+
+            WorkspaceManager manager = WorkspaceManagerTestFactory.Create();
+            await using ConfiguredAsyncDisposable managerDisposal =
+                manager.ConfigureAwait(false);
+            await manager.LoadAsync(
+                [workspacePath],
+                TestContext.CancellationToken).ConfigureAwait(false);
+            WorkspaceInspectionSnapshot initial = await manager.InspectAsync(
+                includeDiagnostics: false,
+                diagnosticsProjectId: null,
+                TestContext.CancellationToken).ConfigureAwait(false);
+            Assert.AreEqual(
+                "App",
+                string.Join(',', initial.Projects.Select(static project => project.Name)));
+
+            await manager.OpenDocumentAsync(
+                new TextDocumentItem
+                {
+                    Uri = DocumentUri.FromFileSystemPath(openedScriptPath),
+                    LanguageId = "csharp",
+                    Version = 1,
+                    Text = scriptText
+                },
+                TestContext.CancellationToken).ConfigureAwait(false);
+            await manager.ReloadAsync(TestContext.CancellationToken).ConfigureAwait(false);
+
+            WorkspaceInspectionSnapshot reloaded = await manager.InspectAsync(
+                includeDiagnostics: false,
+                diagnosticsProjectId: null,
+                TestContext.CancellationToken).ConfigureAwait(false);
+            Assert.AreEqual(
+                "App,Opened.cs",
+                string.Join(
+                    ',',
+                    reloaded.Projects
+                        .Select(static project => project.Name)
+                        .Order(StringComparer.Ordinal)));
+            Assert.DoesNotContain(
+                unopenedScriptPath,
+                reloaded.Projects.Select(static project => project.FilePath));
+        }
+        finally
+        {
+            Directory.Delete(workspacePath, recursive: true);
+        }
+    }
+
+    /// <summary>
     /// Resolves framework symbols from a real SDK-backed file-based app.
     /// </summary>
     [TestMethod]

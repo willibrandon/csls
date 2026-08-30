@@ -123,6 +123,7 @@ internal static class WorkspaceVirtualDocumentService
             string path = await WriteMaterializedDocumentAsync(
                 location.Uri,
                 document.Source,
+                document.DocumentName,
                 cancellationToken).ConfigureAwait(false);
             materializedLocations.Add(new LspLocation
             {
@@ -155,8 +156,7 @@ internal static class WorkspaceVirtualDocumentService
 
         string? declarationId = DocumentationCommentId.CreateDeclarationId(
             symbol.OriginalDefinition);
-        DocumentUri? uri = VirtualDocumentUri.CreateMetadata(project.FilePath, symbol);
-        if (string.IsNullOrWhiteSpace(declarationId) || uri is null)
+        if (string.IsNullOrWhiteSpace(declarationId))
         {
             return null;
         }
@@ -164,7 +164,16 @@ internal static class WorkspaceVirtualDocumentService
         (CSharpMetadataResponse Response, LspRange Range)? metadata =
             await CreateMetadataAsync(project, declarationId, cancellationToken)
                 .ConfigureAwait(false);
-        return metadata is null
+        if (metadata is null)
+        {
+            return null;
+        }
+
+        DocumentUri? uri = VirtualDocumentUri.CreateMetadata(
+            project.FilePath,
+            symbol,
+            metadata.Value.Response.DocumentName);
+        return uri is null
             ? null
             : new LspLocation
             {
@@ -180,6 +189,7 @@ internal static class WorkspaceVirtualDocumentService
     private static async Task<string> WriteMaterializedDocumentAsync(
         DocumentUri uri,
         string source,
+        string? documentName,
         CancellationToken cancellationToken)
     {
         string localDataPath = Environment.GetFolderPath(
@@ -202,7 +212,10 @@ internal static class WorkspaceVirtualDocumentService
 
         string identity = Convert.ToHexString(
             SHA256.HashData(Encoding.UTF8.GetBytes(uri.ToString())));
-        string path = Path.Join(directory, $"{identity}.cs");
+        directory = Path.Join(directory, identity);
+        Directory.CreateDirectory(directory);
+        string readableName = GetReadableFileName(documentName);
+        string path = Path.Join(directory, readableName);
         if (File.Exists(path) && string.Equals(
             await File.ReadAllTextAsync(path, cancellationToken).ConfigureAwait(false),
             source,
@@ -260,6 +273,7 @@ internal static class WorkspaceVirtualDocumentService
         {
             ProjectName = project.Name,
             AssemblyName = project.AssemblyName,
+            DocumentName = document.HintName,
             SymbolName = hintName,
             Source = text.ToString()
         };
@@ -303,6 +317,42 @@ internal static class WorkspaceVirtualDocumentService
             return null;
         }
 
+        IReadOnlyList<(string FileName, string Source)> sourceDocuments =
+            await PortablePdbSourceResolver.ResolveAsync(
+                project,
+                symbol,
+                declarationId,
+                cancellationToken).ConfigureAwait(false);
+        foreach ((string fileName, string sourceText) in sourceDocuments)
+        {
+            Document sourceDocument = project.AddDocument(fileName, sourceText);
+            LspRange? sourceRange = await TryFindDeclarationRangeAsync(
+                sourceDocument,
+                declarationId,
+                cancellationToken).ConfigureAwait(false);
+            if (sourceRange is null)
+            {
+                continue;
+            }
+
+            (CSharpMetadataResponse Response, LspRange Range) sourceResult = (
+                new CSharpMetadataResponse
+                {
+                    ProjectName = project.Name,
+                    AssemblyName = symbol.ContainingAssembly.Name,
+                    DocumentName = fileName,
+                    SymbolName = symbol.ToDisplayString(s_symbolNameFormat),
+                    Source = sourceText
+                },
+                sourceRange.Value);
+            if (cache.Count < MaximumCachedDocumentsPerProject)
+            {
+                cache.TryAdd(declarationId, sourceResult);
+            }
+
+            return sourceResult;
+        }
+
         Document document = await CreateMetadataDocumentAsync(
             project,
             topLevelType,
@@ -315,15 +365,17 @@ internal static class WorkspaceVirtualDocumentService
                 $"Metadata document {declarationId} exceeds {MaximumSourceLength} characters.");
         }
 
-        LspRange range = await FindDeclarationRangeAsync(
+        LspRange range = await TryFindDeclarationRangeAsync(
             document,
             declarationId,
-            cancellationToken).ConfigureAwait(false);
+            cancellationToken).ConfigureAwait(false)
+            ?? new LspRange(new Position(0, 0), new Position(0, 0));
         (CSharpMetadataResponse Response, LspRange Range) result = (
             new CSharpMetadataResponse
             {
                 ProjectName = project.Name,
                 AssemblyName = symbol.ContainingAssembly.Name,
+                DocumentName = string.Concat(topLevelType.Name, ".cs"),
                 SymbolName = symbol.ToDisplayString(s_symbolNameFormat),
                 Source = source
             },
@@ -376,7 +428,7 @@ internal static class WorkspaceVirtualDocumentService
         return document;
     }
 
-    private static async Task<LspRange> FindDeclarationRangeAsync(
+    private static async Task<LspRange?> TryFindDeclarationRangeAsync(
         Document document,
         string declarationId,
         CancellationToken cancellationToken)
@@ -419,11 +471,29 @@ internal static class WorkspaceVirtualDocumentService
                 new Position(lineSpan.End.Line, lineSpan.End.Character));
         }
 
-        return new LspRange(new Position(0, 0), new Position(0, 0));
+        return null;
     }
 
     private static StringComparison PathComparison =>
         OperatingSystem.IsWindows()
             ? StringComparison.OrdinalIgnoreCase
             : StringComparison.Ordinal;
+
+    private static string GetReadableFileName(string? documentName)
+    {
+        string candidate = Path.GetFileName(
+            (documentName ?? string.Empty).Replace('\\', '/'));
+        if (string.IsNullOrWhiteSpace(candidate) || candidate is "." or "..")
+        {
+            return "metadata.cs";
+        }
+
+        char[] invalidCharacters = Path.GetInvalidFileNameChars();
+        return string.Concat(candidate.Select(character =>
+            character is '<' or '>' or ':' or '"' or '/' or '\\' or '|' or '?' or '*' ||
+            char.IsControl(character) ||
+            invalidCharacters.Contains(character)
+                ? '_'
+                : character));
+    }
 }

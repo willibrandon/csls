@@ -279,6 +279,7 @@ public sealed class VsCodeLanguageServerTests
 
             await AssertNoUnexpectedCslsOutputAsync(
                 [userDataPath, remoteDataPath],
+                expectWorkspaceRestore: false,
                 TestContext.CancellationToken).ConfigureAwait(false);
         }
         finally
@@ -418,6 +419,7 @@ public sealed class VsCodeLanguageServerTests
 
             await AssertNoUnexpectedCslsOutputAsync(
                 [userDataPath, remoteDataPath],
+                expectWorkspaceRestore: localSuite is null,
                 TestContext.CancellationToken).ConfigureAwait(false);
             Assert.IsFalse(Directory.Exists(Path.Join(repositoryRoot, "TestResults")));
         }
@@ -592,6 +594,7 @@ public sealed class VsCodeLanguageServerTests
 
     private async Task AssertNoUnexpectedCslsOutputAsync(
         IReadOnlyList<string> dataPaths,
+        bool expectWorkspaceRestore,
         CancellationToken cancellationToken)
     {
         string[] logPaths = [.. dataPaths
@@ -691,17 +694,29 @@ public sealed class VsCodeLanguageServerTests
                 line.Contains(" ms", StringComparison.Ordinal),
             cslsOutputLines,
             "The VS Code CSLS output omitted timed workspace discovery progress.");
-        Assert.Contains(
-            static line => line.Contains("Restoring ", StringComparison.Ordinal),
-            cslsOutputLines,
-            "The VS Code CSLS output omitted workspace restore progress.");
-        Assert.Contains(
-            static line =>
-                line.Contains("Restored ", StringComparison.Ordinal) &&
-                line.Contains(" in ", StringComparison.Ordinal) &&
-                line.Contains(" ms", StringComparison.Ordinal),
-            cslsOutputLines,
-            "The VS Code CSLS output omitted timed workspace restore completion.");
+        if (expectWorkspaceRestore)
+        {
+            Assert.Contains(
+                static line => line.Contains("Restoring ", StringComparison.Ordinal),
+                cslsOutputLines,
+                "The VS Code CSLS output omitted workspace restore progress.");
+            Assert.Contains(
+                static line =>
+                    line.Contains("Restored ", StringComparison.Ordinal) &&
+                    line.Contains(" in ", StringComparison.Ordinal) &&
+                    line.Contains(" ms", StringComparison.Ordinal),
+                cslsOutputLines,
+                "The VS Code CSLS output omitted timed workspace restore completion.");
+        }
+        else
+        {
+            Assert.DoesNotContain(
+                static line =>
+                    line.Contains("Restoring ", StringComparison.Ordinal) ||
+                    line.Contains("Restored ", StringComparison.Ordinal),
+                cslsOutputLines,
+                "Workspace startup must not restore unopened file-based apps.");
+        }
         Assert.Contains(
             static line =>
                 line.Contains(

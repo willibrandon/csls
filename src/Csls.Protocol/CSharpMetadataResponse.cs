@@ -6,6 +6,11 @@ namespace Csls.Protocol;
 public sealed class CSharpMetadataResponse
 {
     /// <summary>
+    /// Gets the readable source document name presented by clients.
+    /// </summary>
+    public string? DocumentName { get; init; }
+
+    /// <summary>
     /// Gets the project that owns the virtual document.
     /// </summary>
     public required string ProjectName { get; init; }
