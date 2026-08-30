@@ -20,10 +20,10 @@ public sealed class CodeActionLanguageServerTests
     public TestContext TestContext { get; set; } = null!;
 
     /// <summary>
-    /// Returns refactorings for a static class without failing the LSP request.
+    /// Extracts a base class from a static class through the real language-server worker.
     /// </summary>
     [TestMethod]
-    public async Task StaticClassRefactoringRequestDoesNotFail()
+    public async Task StaticClassProvidesEnabledExtractBaseClassAction()
     {
         string repositoryRoot = EditorToolResolver.FindRepositoryRoot();
         string workerPath = Path.Join(
@@ -88,13 +88,39 @@ public sealed class CodeActionLanguageServerTests
             IReadOnlyList<CodeAction>[] actions = await Task.WhenAll(requests)
                 .ConfigureAwait(false);
             Assert.HasCount(32, actions);
-            Assert.IsEmpty(
-                actions
-                    .SelectMany(static requestActions => requestActions)
-                    .Where(static action => action.Title.StartsWith(
-                        "Extract base class",
-                        StringComparison.Ordinal)),
-                "A static class cannot inherit from an extracted base class.");
+            Position openingBracePosition = new(5, 0);
+            IReadOnlyList<CodeAction> openingBraceActions =
+                await lsp.RequestCodeActionsAsync(
+                    documentPath,
+                    new LspRange(openingBracePosition, openingBracePosition),
+                    only: null,
+                    TestContext.CancellationToken).ConfigureAwait(false);
+            CodeAction extractBaseClass = Assert.ContainsSingle(
+                openingBraceActions.Where(static action =>
+                    action.Title == "Extract base class..."),
+                string.Join(
+                    Environment.NewLine,
+                    openingBraceActions.Select(static action => action.Title)));
+            Assert.AreEqual("refactor", extractBaseClass.Kind);
+            WorkspaceEdit edit = extractBaseClass.Edit
+                ?? throw new InvalidDataException(
+                    "Extract Base Class did not provide a workspace edit.");
+            TextDocumentEdit sourceEdit = Assert.ContainsSingle(
+                edit.DocumentChanges.OfType<TextDocumentEdit>());
+            Assert.AreEqual(
+                DocumentUri.FromFileSystemPath(documentPath),
+                sourceEdit.TextDocument.Uri);
+            string sourceText = ApplyTextEdits(
+                StaticRefactoringDocumentText,
+                sourceEdit.Edits);
+            Assert.Contains("static class NewBaseType", sourceText, StringComparison.Ordinal);
+            Assert.Contains("static readonly Lazy", sourceText, StringComparison.Ordinal);
+            Assert.Contains("static (ConstructorInfo", sourceText, StringComparison.Ordinal);
+            Assert.Contains(
+                "static class RoslynExtractBaseClassCodeRefactoringAdapter : NewBaseType",
+                sourceText,
+                StringComparison.Ordinal);
+            Assert.IsNotEmpty(sourceEdit.Edits);
 
             string workerDiagnostics = await lsp.ShutdownAsync(
                 TestContext.CancellationToken).ConfigureAwait(false);

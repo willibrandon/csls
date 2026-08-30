@@ -63,9 +63,12 @@ internal static class RoslynExtractBaseClassCodeRefactoringAdapter
             ?? throw new InvalidOperationException(
                 $"Roslyn returned no semantic model for {document.Name}.");
         if (semanticModel.GetDeclaredSymbol(declaration, cancellationToken) is not
-                INamedTypeSymbol selectedType ||
-            selectedType.IsStatic ||
-            selectedType.BaseType?.SpecialType != SpecialType.System_Object)
+                INamedTypeSymbol selectedType)
+        {
+            return null;
+        }
+
+        if (selectedType.BaseType?.SpecialType != SpecialType.System_Object)
         {
             return null;
         }
