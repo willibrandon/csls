@@ -36,6 +36,7 @@ internal static class VsCodeExtensionPackage
     private static async Task<string> PackageAsync(string repositoryRoot)
     {
         string extensionRoot = Path.Join(repositoryRoot, "editors", "vscode");
+        await CompileExtensionAsync(extensionRoot).ConfigureAwait(false);
         string vscePath = Path.Join(
             extensionRoot,
             "node_modules",
@@ -116,6 +117,52 @@ internal static class VsCodeExtensionPackage
         }
 
         return outputPath;
+    }
+
+    private static async Task CompileExtensionAsync(string extensionRoot)
+    {
+        var startInfo = new ProcessStartInfo
+        {
+            FileName = OperatingSystem.IsWindows() ? "npm.cmd" : "npm",
+            RedirectStandardError = true,
+            RedirectStandardOutput = true,
+            UseShellExecute = false,
+            WorkingDirectory = extensionRoot
+        };
+        startInfo.ArgumentList.Add("run");
+        startInfo.ArgumentList.Add("compile:node");
+        using Process process = Process.Start(startInfo)
+            ?? throw new InvalidOperationException(
+                "The VS Code extension compiler did not start.");
+        Task<string> outputTask = process.StandardOutput.ReadToEndAsync();
+        Task<string> errorTask = process.StandardError.ReadToEndAsync();
+        try
+        {
+            await process.WaitForExitAsync()
+                .WaitAsync(TimeSpan.FromMinutes(2))
+                .ConfigureAwait(false);
+        }
+        finally
+        {
+            if (!process.HasExited)
+            {
+                process.Kill(entireProcessTree: true);
+                await process.WaitForExitAsync().ConfigureAwait(false);
+            }
+        }
+
+        string output = await outputTask.ConfigureAwait(false);
+        string error = await errorTask.ConfigureAwait(false);
+        if (process.ExitCode != 0)
+        {
+            throw new InvalidOperationException($"""
+                The VS Code extension compiler failed with exit code {process.ExitCode}.
+                Standard output:
+                {output}
+                Standard error:
+                {error}
+                """);
+        }
     }
 
     private static void CopyServer(string repositoryRoot, string stagingPath)

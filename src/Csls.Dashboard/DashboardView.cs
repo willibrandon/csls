@@ -40,14 +40,21 @@ internal static class DashboardView
                         $"csls dashboard  session {snapshot.Session.ProcessId}  " +
                         $"{snapshot.Session.LifecycleState}  generation {snapshot.Session.WorkspaceGeneration}")),
                     vertical.Text(state.OperationStatus),
-                    vertical.HStack(horizontal =>
-                    [
-                        horizontal.Border(nested => [navigation]).Title("Views").FixedWidth(20).FillHeight(),
-                        horizontal.Border(nested => [details]).Title(GetSectionTitle(state.Section)).Fill()
-                    ]).Fill(),
+                    vertical.HSplitter(
+                        left =>
+                        [
+                            left.Border(nested => [navigation]).Title("Views").Fill()
+                        ],
+                        right =>
+                        [
+                            right.Border(nested => [details])
+                                .Title(GetSectionTitle(state.Section))
+                                .Fill()
+                        ],
+                        leftWidth: 20).Fill(),
                     vertical.InfoBar(string.Create(
                         CultureInfo.InvariantCulture,
-                        $"↑↓ Navigate  F2 Requests  F3 Traces  F5 Refresh  F6-F9 Workspace  " +
+                        $"F2 Requests  F3 Traces  F5 Refresh  F6-F9 Workspace  " +
                         $"F10 Cancel  F11 Trace  Ctrl+C Exit  " +
                         $"updated {state.RefreshedAt:HH:mm:ss} UTC"))
                 ]).InputBindings(bindings =>
@@ -273,6 +280,11 @@ internal static class DashboardView
                     : session.WorkspaceRoots[0])
             ])
             .Focus(state.Snapshot.Session.ProcessId)
+            .OnFocusChanged(key =>
+                key is int processId &&
+                processId != state.Snapshot.Session.ProcessId
+                    ? state.SelectSessionAsync(processId)
+                    : Task.CompletedTask)
             .OnRowActivated((_, session) => state.SelectSessionAsync(session.ProcessId))
             .Fill();
 
@@ -390,7 +402,7 @@ internal static class DashboardView
                         details.Text(focusedDiagnostic.Message).Wrap()
                     ])
             ])
-            .Title("Selected diagnostic  click a row, then use ↑↓")
+            .Title("Selected diagnostic")
             .FixedHeight(10)
         ]).Fill();
     }

@@ -12,6 +12,15 @@ namespace Csls.Tests;
 public sealed class VsCodeLanguageServerTests
 {
     private static readonly TimeSpan s_editorStartupTimeout = TimeSpan.FromMinutes(2);
+    private static readonly string[] s_nestedLogLevelMarkers =
+    [
+        " [trace] trce:",
+        " [debug] dbug:",
+        " [info] info:",
+        " [warning] warn:",
+        " [error] fail:",
+        " [error] crit:"
+    ];
 
     /// <summary>
     /// Gets the active MSTest context and its framework-managed cancellation token.
@@ -605,6 +614,7 @@ public sealed class VsCodeLanguageServerTests
 
         var cslsFailures = new List<string>();
         var cslsBlankLines = new List<string>();
+        var cslsNestedLogLevels = new List<string>();
         var editorFailures = new List<string>();
         foreach (string logPath in logPaths)
         {
@@ -628,6 +638,16 @@ public sealed class VsCodeLanguageServerTests
                         ? cslsFailures
                         : editorFailures).Add(failure);
                 }
+
+                if (
+                    cslsLogPaths.Contains(logPath, StringComparer.Ordinal) &&
+                    s_nestedLogLevelMarkers.Any(marker => lines[lineIndex].Contains(
+                        marker,
+                        StringComparison.OrdinalIgnoreCase)))
+                {
+                    cslsNestedLogLevels.Add(
+                        $"{logPath}:{lineIndex + 1}: {lines[lineIndex]}");
+                }
             }
         }
 
@@ -646,6 +666,10 @@ public sealed class VsCodeLanguageServerTests
             cslsBlankLines,
             $"The VS Code CSLS output contained blank physical lines:" +
             $"{Environment.NewLine}{string.Join(Environment.NewLine, cslsBlankLines)}");
+        Assert.IsEmpty(
+            cslsNestedLogLevels,
+            $"The VS Code CSLS output repeated structured log levels:" +
+            $"{Environment.NewLine}{string.Join(Environment.NewLine, cslsNestedLogLevels)}");
     }
 
     private static Process StartRunner(

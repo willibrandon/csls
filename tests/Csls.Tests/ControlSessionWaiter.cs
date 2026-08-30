@@ -13,6 +13,7 @@ namespace Csls.Tests;
 internal static class ControlSessionWaiter
 {
     private static readonly TimeSpan s_pollInterval = TimeSpan.FromMilliseconds(50);
+    private static readonly TimeSpan s_probeTimeout = TimeSpan.FromMilliseconds(500);
 
     /// <summary>
     /// Waits for the session serving one workspace to enter its running state.
@@ -21,12 +22,14 @@ internal static class ControlSessionWaiter
     /// <param name="timeout">The maximum readiness interval.</param>
     /// <param name="cancellationToken">The test cancellation token.</param>
     /// <param name="excludedProcessIds">Existing sessions that cannot satisfy this wait.</param>
+    /// <param name="expectedProcessId">The exact child process expected to own the session.</param>
     /// <returns>The matching running session snapshot.</returns>
     internal static async Task<ControlSessionInfo> WaitForRunningAsync(
         string workspacePath,
         TimeSpan timeout,
         CancellationToken cancellationToken,
-        IReadOnlyCollection<int>? excludedProcessIds = null)
+        IReadOnlyCollection<int>? excludedProcessIds = null,
+        int? expectedProcessId = null)
     {
         string expectedWorkspacePath = NormalizePath(workspacePath);
         using var timeoutSource = CancellationTokenSource.CreateLinkedTokenSource(
@@ -44,15 +47,26 @@ internal static class ControlSessionWaiter
                     continue;
                 }
 
-                foreach (string socketPath in Directory.EnumerateFiles(
-                    socketDirectory,
-                    "*.csls.socket",
-                    SearchOption.TopDirectoryOnly))
+                IEnumerable<string> socketPaths = expectedProcessId is int processId
+                    ? [ControlEndpoint.GetSocketPath(processId)]
+                    : Directory.EnumerateFiles(
+                        socketDirectory,
+                        "*.csls.socket",
+                        SearchOption.TopDirectoryOnly);
+                foreach (string socketPath in socketPaths)
                 {
                     ControlSessionInfo? session = await TryGetSessionAsync(
                         socketPath,
                         timeoutSource.Token).ConfigureAwait(false);
                     if (session is null)
+                    {
+                        observations.Clear();
+                        observations.Append("socket ").Append(socketPath).Append(" unavailable");
+                        continue;
+                    }
+
+                    if (expectedProcessId is int requiredProcessId &&
+                        session.ProcessId != requiredProcessId)
                     {
                         continue;
                     }
@@ -136,12 +150,15 @@ internal static class ControlSessionWaiter
         string socketPath,
         CancellationToken cancellationToken)
     {
+        using var probeSource = CancellationTokenSource.CreateLinkedTokenSource(
+            cancellationToken);
+        probeSource.CancelAfter(s_probeTimeout);
         try
         {
             var client = new ControlRpcClient(socketPath);
             await using ConfiguredAsyncDisposable clientCleanup =
                 client.ConfigureAwait(false);
-            return await client.GetSessionAsync(cancellationToken).ConfigureAwait(false);
+            return await client.GetSessionAsync(probeSource.Token).ConfigureAwait(false);
         }
         catch (Exception exception) when (exception is
             IOException or
@@ -150,7 +167,9 @@ internal static class ControlSessionWaiter
             ConnectionLostException or
             InvalidDataException or
             RemoteRpcException or
-            ObjectDisposedException)
+            ObjectDisposedException ||
+            exception is OperationCanceledException &&
+            !cancellationToken.IsCancellationRequested)
         {
             return null;
         }

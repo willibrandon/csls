@@ -42,7 +42,8 @@ public sealed class RepositoryDiagnosticLanguageServerTests
         ControlSessionInfo session = await ControlSessionWaiter.WaitForRunningAsync(
             repositoryRoot,
             TimeSpan.FromSeconds(60),
-            TestContext.CancellationToken).ConfigureAwait(false);
+            TestContext.CancellationToken,
+            expectedProcessId: lsp.ProcessId).ConfigureAwait(false);
         var control = new ControlRpcClient(session.SocketPath);
         await using ConfiguredAsyncDisposable controlCleanup = control.ConfigureAwait(false);
         ControlDashboardSnapshot snapshot = await control.GetDashboardSnapshotAsync(

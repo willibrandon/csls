@@ -65,15 +65,18 @@ public sealed partial class LanguageServer
             token => _workspaceManager.ApplyChangedFilesAsync(parameters, token),
             clearUris: [],
             cancellationToken).ConfigureAwait(false);
+        if (result is null)
+        {
+            return;
+        }
+
         if (_logger.IsEnabled(Microsoft.Extensions.Logging.LogLevel.Information))
         {
             long elapsedMilliseconds =
                 (long)Stopwatch.GetElapsedTime(startedTimestamp).TotalMilliseconds;
-            string updateMode = result is null
-                ? "ignored"
-                : result.RestartedBuildHostCount > 0
-                    ? "full reload"
-                    : "incremental update";
+            string updateMode = result.RestartedBuildHostCount > 0
+                ? "full reload"
+                : "incremental update";
             string paths = FormatWatchedFilePaths(parameters.Changes);
             LanguageServerLogger.LogWatchedFileChangesCompleted(
                 _logger,
@@ -236,13 +239,19 @@ public sealed partial class LanguageServer
     private static string FormatWatchedFilePaths(IReadOnlyList<FileEvent> changes)
     {
         const int maximumDisplayedPaths = 8;
+        string[] distinctPaths =
+        [
+            .. changes
+                .Select(static change => change.Uri.GetFileSystemPath())
+                .Distinct(OperatingSystem.IsWindows()
+                    ? StringComparer.OrdinalIgnoreCase
+                    : StringComparer.Ordinal)
+        ];
         string paths = string.Join(
             ", ",
-            changes
-                .Take(maximumDisplayedPaths)
-                .Select(static change => change.Uri.GetFileSystemPath()));
-        return changes.Count <= maximumDisplayedPaths
+            distinctPaths.Take(maximumDisplayedPaths));
+        return distinctPaths.Length <= maximumDisplayedPaths
             ? paths
-            : $"{paths}, ... (+{changes.Count - maximumDisplayedPaths} more)";
+            : $"{paths}, ... (+{distinctPaths.Length - maximumDisplayedPaths} more)";
     }
 }

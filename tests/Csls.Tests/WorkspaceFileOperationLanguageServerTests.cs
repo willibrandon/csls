@@ -424,6 +424,85 @@ public sealed class WorkspaceFileOperationLanguageServerTests
                 definitionPath,
                 serverDiagnostics[(durationEnd + " ms using incremental update: ".Length)..],
                 StringComparison.Ordinal);
+            Assert.AreEqual(
+                1,
+                serverDiagnostics[(durationEnd + " ms using incremental update: ".Length)..]
+                    .Split(definitionPath, StringSplitOptions.None)
+                    .Length - 1,
+                "The watched-file timing log repeated the same path.");
+        }
+        finally
+        {
+            Directory.Delete(fixturePath, recursive: true);
+        }
+    }
+
+    /// <summary>
+    /// Keeps ignored generated workspace changes out of information-level logs.
+    /// </summary>
+    [TestMethod]
+    public async Task IgnoredWatchedFileChangesDoNotEmitInformationLogs()
+    {
+        string repositoryRoot = EditorToolResolver.FindRepositoryRoot();
+        string workerPath = ResolveWorkerPath(repositoryRoot);
+        string fixturePath = Path.Join(
+            Path.GetTempPath(),
+            $"csls-ignored-watched-file-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(fixturePath);
+        try
+        {
+            string documentPath = Path.Join(fixturePath, "Program.cs");
+            string generatedTargetsPath = Path.Join(
+                fixturePath,
+                "artifacts",
+                "vo",
+                Guid.NewGuid().ToString("N"),
+                "extensions",
+                ".razorExtension",
+                "Targets",
+                "Microsoft.CSharpExtension.DesignTime.targets");
+            Directory.CreateDirectory(Path.GetDirectoryName(generatedTargetsPath)!);
+            await File.WriteAllTextAsync(
+                Path.Join(fixturePath, "Fixture.csproj"),
+                ProjectText,
+                TestContext.CancellationToken).ConfigureAwait(false);
+            await File.WriteAllTextAsync(
+                documentPath,
+                "internal sealed class Program;\n",
+                TestContext.CancellationToken).ConfigureAwait(false);
+            await File.WriteAllTextAsync(
+                generatedTargetsPath,
+                "<Project />\n",
+                TestContext.CancellationToken).ConfigureAwait(false);
+
+            var lsp = LspProcessSession.Start(
+                "csls-ignored-watched-file-worker",
+                EditorToolResolver.ResolveDotNetHost(),
+                [workerPath],
+                fixturePath);
+            await using ConfiguredAsyncDisposable lspCleanup = lsp.ConfigureAwait(false);
+            await lsp.InitializeAsync(
+                fixturePath,
+                TestContext.CancellationToken).ConfigureAwait(false);
+            await lsp.CompleteInitializationAsync().ConfigureAwait(false);
+            await lsp.ChangeWatchedFilesAsync(
+                [
+                    (generatedTargetsPath, FileChangeType.Created),
+                    (generatedTargetsPath, FileChangeType.Changed)
+                ]).ConfigureAwait(false);
+            _ = await lsp.RequestWorkspaceInfoAsync(TestContext.CancellationToken)
+                .ConfigureAwait(false);
+
+            string serverDiagnostics = await lsp.ShutdownAsync(
+                TestContext.CancellationToken).ConfigureAwait(false);
+            Assert.DoesNotContain(
+                generatedTargetsPath,
+                serverDiagnostics,
+                StringComparison.Ordinal);
+            Assert.DoesNotContain(
+                "using ignored",
+                serverDiagnostics,
+                StringComparison.Ordinal);
         }
         finally
         {
