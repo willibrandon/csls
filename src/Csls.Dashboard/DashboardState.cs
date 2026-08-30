@@ -256,6 +256,7 @@ internal sealed class DashboardState : IAsyncDisposable
         }
         catch (OperationCanceledException) when (_cancellationToken.IsCancellationRequested)
         {
+            _diagnosticsLoadError = null;
         }
 
         _lifetimeCancellation.Dispose();
@@ -465,6 +466,7 @@ internal sealed class DashboardState : IAsyncDisposable
         }
         catch (OperationCanceledException) when (_cancellationToken.IsCancellationRequested)
         {
+            _diagnosticsLoadError = null;
         }
         catch (Exception exception) when (IsControlException(exception))
         {

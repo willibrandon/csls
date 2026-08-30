@@ -253,7 +253,7 @@ static async Task<string> CreateCompatibleMonoRoslynPackageAsync(string sourcePa
         Version: 6.12.0.200-1
         Architecture: all
         Maintainer: csls contributors <noreply@localhost>
-        Depends: mono-runtime (>= 6.12), mono-devel, msbuild (>= 1:16.10)
+        Depends: mono-runtime (>= 3.0~), mono-devel, msbuild (>= 1:16.10)
         Provides: mono-roslyn (= 6.12.0.200)
         Conflicts: mono-roslyn
         Replaces: mono-roslyn
