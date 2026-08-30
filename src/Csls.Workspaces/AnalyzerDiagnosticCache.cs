@@ -82,18 +82,31 @@ internal sealed class AnalyzerDiagnosticCache
             }
         }
 
-        try
+        int released = 0;
+        void ReleaseEntry()
         {
-            return await computation.WaitAsync(cancellationToken).ConfigureAwait(false);
-        }
-        finally
-        {
+            if (Interlocked.Exchange(ref released, 1) != 0)
+            {
+                return;
+            }
+
             if (entry.Release())
             {
                 _entries.TryRemove(new KeyValuePair<
                     (ProjectId ProjectId, VersionStamp Version),
                     AnalyzerDiagnosticCacheEntry>(key, entry));
             }
+        }
+
+        using CancellationTokenRegistration cancellationRegistration =
+            cancellationToken.Register(ReleaseEntry);
+        try
+        {
+            return await computation.WaitAsync(cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            ReleaseEntry();
         }
     }
 

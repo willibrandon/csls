@@ -1356,11 +1356,13 @@ public sealed class CliLanguageServerTests
                 root.GetProperty("data").GetProperty("cancellationRequested").GetBoolean());
         }
 
-        await FileTextWaiter.WaitAsync(
+        string cancellationSignals = await File.ReadAllTextAsync(
             fixture.MarkerPath,
-            "canceled",
-            TimeSpan.FromSeconds(60),
             TestContext.CancellationToken).ConfigureAwait(false);
+        Assert.Contains(
+            "canceled",
+            cancellationSignals,
+            "The CLI returned before cancellation reached the running Roslyn analyzer.");
         TaskCanceledException? canceledRequest = null;
         try
         {

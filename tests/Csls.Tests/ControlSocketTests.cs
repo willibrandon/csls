@@ -562,11 +562,13 @@ public sealed class ControlSocketTests
             TestContext.CancellationToken).ConfigureAwait(false);
         Assert.AreEqual(request.CorrelationId, cancellation.CorrelationId);
         Assert.IsTrue(cancellation.CancellationRequested);
-        await FileTextWaiter.WaitAsync(
+        string cancellationSignals = await File.ReadAllTextAsync(
             fixture.MarkerPath,
-            "canceled",
-            TimeSpan.FromSeconds(60),
             TestContext.CancellationToken).ConfigureAwait(false);
+        Assert.Contains(
+            "canceled",
+            cancellationSignals,
+            "The control response returned before cancellation reached the Roslyn analyzer.");
         TaskCanceledException? canceledRequest = null;
         try
         {
