@@ -129,7 +129,7 @@ export async function runFeatureContract(options: FeatureContractOptions): Promi
   assert(isExtensionApi(api), "The csls extension must return its host API.");
   assert(api.host === options.expectedHost, `Expected the ${options.expectedHost} host.`);
   assert(api.state === 2, "The csls language client must be running.");
-  await assertProjectDiscovery(api, workspaceFolder);
+  await assertProjectDiscovery(api, workspaceFolder, options.expectedHost);
   if (options.expectedHost !== "browser") {
     const expectedServerPath = vscode.Uri.joinPath(
       extension.extensionUri,
@@ -154,6 +154,9 @@ export async function runFeatureContract(options: FeatureContractOptions): Promi
   await assertConsoleCompletion(documentUri);
   await assertDefinition(document);
   await assertFrameworkDefinitionOpens(document);
+  if (options.expectedHost !== "browser") {
+    await assertLazyFrameworkDefinitionOpens(document);
+  }
   await assertExtensionMethodDefinitionOpens(document);
   await assertSemanticTokens(document);
   await assertConfigurableInlayHints(document);
@@ -173,15 +176,32 @@ async function assertProjectDiscovery(api: {
     readonly name: string;
     readonly path: string;
   }[];
-}, workspaceFolder: vscode.WorkspaceFolder): Promise<void> {
+}, workspaceFolder: vscode.WorkspaceFolder, host: FeatureContractOptions["expectedHost"]): Promise<void> {
   assert(typeof api.projects === "function", "The Solution view must expose loaded projects.");
   await vscode.commands.executeCommand("csls.refreshSolution");
-  const projects = api.projects();
+  let projects = api.projects();
   assert(
     projects.some((project) => project.name === "Fixture"),
     `The Solution view must contain the Roslyn-loaded Fixture project. Received ${JSON.stringify(projects)}.`,
   );
   const toolPath = vscode.Uri.joinPath(workspaceFolder.uri, "Tools", "Tool.cs").fsPath;
+  if (host !== "browser") {
+    assert(
+      !projects.some((project) => project.path === toolPath),
+      `The solution reload must not eagerly load unopened file-based apps. Received ${JSON.stringify(projects)}.`,
+    );
+    const toolDocument = await vscode.workspace.openTextDocument(vscode.Uri.file(toolPath));
+    await vscode.window.showTextDocument(toolDocument, { preview: true, preserveFocus: true });
+    await vscode.commands.executeCommand("csls.refreshSolution");
+    await waitUntil(
+      () => api.projects?.().some(
+        (project) => project.name === "Tool.cs" && project.path === toolPath,
+      ) === true,
+      "The Solution view did not expose the opened file-based app.",
+    );
+    projects = api.projects();
+  }
+
   assert(
     projects.some((project) => project.name === "Tool.cs" && project.path === toolPath),
     `The Solution view must expose the file-based app by its source path. Received ${JSON.stringify(projects)}.`,
@@ -431,6 +451,45 @@ async function assertExtensionMethodDefinitionOpens(
   assert(
     metadataDocument.getText().includes("FirstOrDefault"),
     "The extension-method definition must contain Enumerable.FirstOrDefault.",
+  );
+}
+
+async function assertLazyFrameworkDefinitionOpens(
+  document: vscode.TextDocument,
+): Promise<void> {
+  const source = "Lazy<int> value = new();\n";
+  await replaceDocumentText(document, source);
+  const definitions = await withTimeout(
+    vscode.commands.executeCommand<readonly (vscode.Location | vscode.LocationLink)[]>(
+      "vscode.executeDefinitionProvider",
+      document.uri,
+      document.positionAt(source.indexOf("Lazy")),
+    ),
+    languageFeatureTimeoutMilliseconds,
+    "The VS Code Lazy definition provider did not complete.",
+  );
+  const definition = definitions.find((candidate) =>
+    ("uri" in candidate ? candidate.uri : candidate.targetUri).scheme === "csharp");
+  assert(
+    definition !== undefined,
+    `csls must return Lazy.cs in VS Code. Received ${JSON.stringify(
+      definitions.map((candidate) =>
+        ("uri" in candidate ? candidate.uri : candidate.targetUri).toString()),
+    )}.`,
+  );
+  const definitionUri = "uri" in definition ? definition.uri : definition.targetUri;
+  assert(
+    definitionUri.path.endsWith("/Lazy.cs"),
+    `The Lazy definition URI must end in /Lazy.cs, received ${definitionUri.toString()}.`,
+  );
+  const metadataDocument = await withTimeout(
+    vscode.workspace.openTextDocument(definitionUri),
+    languageFeatureTimeoutMilliseconds,
+    "VS Code could not open Lazy.cs.",
+  );
+  assert(
+    metadataDocument.getText().includes("private T CreateValue()"),
+    "Lazy.cs must contain the runtime implementation rather than a metadata signature shell.",
   );
 }
 

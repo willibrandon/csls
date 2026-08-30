@@ -120,6 +120,7 @@ public sealed class VirtualDocumentLanguageServerTests
             Assert.IsNotNull(generatedDocument);
             Assert.AreEqual("Fixture", generatedDocument.ProjectName);
             Assert.AreEqual("Fixture", generatedDocument.AssemblyName);
+            Assert.AreEqual("GeneratedApi.g.cs", generatedDocument.DocumentName);
             Assert.AreEqual("GeneratedApi.g.cs", generatedDocument.SymbolName);
             Assert.Contains(
                 "public static class GeneratedApi",
@@ -151,11 +152,15 @@ public sealed class VirtualDocumentLanguageServerTests
             Assert.AreEqual("System.Runtime", frameworkDocument.AssemblyName);
             Assert.AreEqual("System.String", frameworkDocument.SymbolName);
             Assert.Contains(
-                "sealed class String",
+                "public sealed partial class String",
                 frameworkDocument.Source,
                 StringComparison.Ordinal);
             Assert.Contains(
-                "public static readonly String Empty",
+                "public static readonly string Empty",
+                frameworkDocument.Source,
+                StringComparison.Ordinal);
+            Assert.Contains(
+                "private readonly int _stringLength;",
                 frameworkDocument.Source,
                 StringComparison.Ordinal);
             Assert.AreEqual(
@@ -209,6 +214,26 @@ public sealed class VirtualDocumentLanguageServerTests
                 GetRangeText(
                     extensionMethodDocument.Source,
                     extensionMethodDefinition.Range));
+
+            IReadOnlyList<Location> lazyDefinitions = await lsp.RequestDefinitionsAsync(
+                documentPath,
+                GetPosition(DocumentText, "Lazy<int>"),
+                TestContext.CancellationToken).ConfigureAwait(false);
+            Location lazyDefinition = Assert.ContainsSingle(lazyDefinitions);
+            Assert.EndsWith(
+                "/Lazy.cs",
+                lazyDefinition.Uri.ToString(),
+                StringComparison.Ordinal);
+            CSharpMetadataResponse? lazyDocument = await lsp.RequestCSharpMetadataAsync(
+                lazyDefinition.Uri,
+                TestContext.CancellationToken).ConfigureAwait(false);
+            Assert.IsNotNull(lazyDocument);
+            Assert.AreEqual("Lazy.cs", lazyDocument.DocumentName);
+            Assert.Contains("private T CreateValue()", lazyDocument.Source, StringComparison.Ordinal);
+            Assert.Contains("return Value;", lazyDocument.Source, StringComparison.Ordinal);
+            Assert.AreEqual(
+                "Lazy",
+                GetRangeText(lazyDocument.Source, lazyDefinition.Range));
 
             Assert.IsEmpty(await lsp.RequestDocumentLinksAsync(
                 frameworkDefinition.Uri,
@@ -303,10 +328,15 @@ public sealed class VirtualDocumentLanguageServerTests
                 StringComparison.Ordinal);
             string metadataPath = definition.Uri.GetFileSystemPath();
             Assert.IsTrue(File.Exists(metadataPath), $"Metadata file not found at {metadataPath}.");
+            Assert.AreEqual("String.cs", Path.GetFileName(metadataPath));
             string metadataSource = await File.ReadAllTextAsync(
                 metadataPath,
                 TestContext.CancellationToken).ConfigureAwait(false);
             Assert.Contains("class String", metadataSource, StringComparison.Ordinal);
+            Assert.Contains(
+                "private readonly int _stringLength;",
+                metadataSource,
+                StringComparison.Ordinal);
             Assert.Contains("IsNullOrWhiteSpace", metadataSource, StringComparison.Ordinal);
             Assert.AreEqual(
                 "IsNullOrWhiteSpace",
@@ -367,6 +397,8 @@ public sealed class VirtualDocumentLanguageServerTests
             public static int Framework() => string.Empty.Length;
 
             public static int Linq() => new[] { 1 }.FirstOrDefault();
+
+            public static Lazy<int> Lazy() => new(() => 1);
         }
         """;
 }

@@ -1,10 +1,6 @@
 # Contributing
 
-Install the SDK pinned by `global.json` before running any repository command.
-Windows, Linux, macOS, and local non-admin installation instructions are at
-<https://willibrandon.github.io/csls/development/#install-the-sdk>.
-
-Then run:
+Install any .NET 10 SDK, then run:
 
 ```console
 dotnet restore Csls.slnx

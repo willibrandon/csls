@@ -20,10 +20,10 @@ public sealed class CodeActionLanguageServerTests
     public TestContext TestContext { get; set; } = null!;
 
     /// <summary>
-    /// Returns refactorings for a static class without failing the LSP request.
+    /// Returns refactorings for a static class without offering an invalid base class.
     /// </summary>
     [TestMethod]
-    public async Task StaticClassRefactoringRequestDoesNotFail()
+    public async Task StaticClassRefactoringRequestDoesNotOfferExtractBaseClass()
     {
         string repositoryRoot = EditorToolResolver.FindRepositoryRoot();
         string workerPath = Path.Join(
@@ -88,8 +88,16 @@ public sealed class CodeActionLanguageServerTests
             IReadOnlyList<CodeAction>[] actions = await Task.WhenAll(requests)
                 .ConfigureAwait(false);
             Assert.HasCount(32, actions);
+            Position openingBracePosition = new(5, 0);
+            IReadOnlyList<CodeAction> openingBraceActions =
+                await lsp.RequestCodeActionsAsync(
+                    documentPath,
+                    new LspRange(openingBracePosition, openingBracePosition),
+                    only: null,
+                    TestContext.CancellationToken).ConfigureAwait(false);
             Assert.IsEmpty(
                 actions
+                    .Append(openingBraceActions)
                     .SelectMany(static requestActions => requestActions)
                     .Where(static action => action.Title.StartsWith(
                         "Extract base class",
