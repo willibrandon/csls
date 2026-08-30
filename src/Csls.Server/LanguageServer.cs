@@ -318,7 +318,7 @@ public sealed partial class LanguageServer : ILspRpcTarget, IAsyncDisposable
         long workspaceStartedTimestamp = Stopwatch.GetTimestamp();
         try
         {
-            await _scheduler.ScheduleAsync(
+            bool workspaceLoaded = await _scheduler.ScheduleAsync(
                 "initialized",
                 RequestMode.ReadWrite,
                 () => _workspaceManager.Generation,
@@ -347,21 +347,21 @@ public sealed partial class LanguageServer : ILspRpcTarget, IAsyncDisposable
 
                     await LoadWorkspaceWithProgressAsync(context.CancellationToken)
                         .ConfigureAwait(false);
-                    if (Interlocked.CompareExchange(
-                            ref _workspacePhase,
-                            (int)ServerWorkspacePhase.Ready,
-                            (int)ServerWorkspacePhase.Loading) ==
-                        (int)ServerWorkspacePhase.Loading)
-                    {
-                        long elapsedMilliseconds = (long)Stopwatch
-                            .GetElapsedTime(workspaceStartedTimestamp)
-                            .TotalMilliseconds;
-                        LanguageServerLogger.LogWorkspaceReady(_logger, elapsedMilliseconds);
-                    }
-
                     return true;
                 },
                 cancellationToken).ConfigureAwait(false);
+            if (workspaceLoaded &&
+                Interlocked.CompareExchange(
+                    ref _workspacePhase,
+                    (int)ServerWorkspacePhase.Ready,
+                    (int)ServerWorkspacePhase.Loading) ==
+                (int)ServerWorkspacePhase.Loading)
+            {
+                long elapsedMilliseconds = (long)Stopwatch
+                    .GetElapsedTime(workspaceStartedTimestamp)
+                    .TotalMilliseconds;
+                LanguageServerLogger.LogWorkspaceReady(_logger, elapsedMilliseconds);
+            }
         }
         catch
         {
