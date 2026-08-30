@@ -332,7 +332,10 @@ public sealed partial class MSBuildWorkspaceLoader : WorkspaceLoader
             new ParallelOptions
             {
                 CancellationToken = cancellationToken,
-                MaxDegreeOfParallelism = Math.Clamp(Environment.ProcessorCount / 2, 1, 8)
+                MaxDegreeOfParallelism = Math.Clamp(
+                    Environment.ProcessorCount,
+                    1,
+                    8)
             },
             async (index, parallelCancellationToken) =>
             {

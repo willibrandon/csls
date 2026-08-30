@@ -74,7 +74,7 @@ jobs:
           (github.event_name != 'workflow_dispatch' || !inputs.full)
         run: >-
           dotnet run --file scripts/Run-EndToEndPerformance.cs --
-          --iterations 1
+          --iterations 3
           --workspace-budget-ms ${{ matrix.workspace_budget_ms }}
           --ready-budget-ms ${{ matrix.ready_budget_ms }}
 
