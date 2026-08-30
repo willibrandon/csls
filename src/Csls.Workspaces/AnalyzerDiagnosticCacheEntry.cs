@@ -102,7 +102,9 @@ internal sealed class AnalyzerDiagnosticCacheEntry : IDisposable
         {
             if (sourceToCancel is not null)
             {
-                await sourceToCancel.CancelAsync().ConfigureAwait(false);
+                // CancelAsync can return before callbacks finish when cancellation is already
+                // in progress. Run synchronous cancellation off-thread to retain a strict barrier.
+                await Task.Run(sourceToCancel.Cancel).ConfigureAwait(false);
             }
         }
 
