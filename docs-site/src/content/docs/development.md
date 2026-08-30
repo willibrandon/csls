@@ -36,7 +36,7 @@ dotnet run --file scripts/Build-ReleaseAssets.cs -- --help
 ```
 
 The development container restores every file app and provisions its external
-test tools at pinned current releases, including Mono MSBuild for old project files.
+test tools from compatible release channels, including Mono MSBuild for old project files.
 CI builds the supported runtime packages, verifies Visual Studio and Mono build
 hosts, runs CodeQL, scans the repository and container image with Picket, and checks
 the Native AOT package sizes.

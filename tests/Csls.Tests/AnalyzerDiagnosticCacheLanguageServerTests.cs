@@ -39,11 +39,7 @@ public sealed class AnalyzerDiagnosticCacheLanguageServerTests
             "csls-analyzer-cache-worker",
             EditorToolResolver.ResolveDotNetHost(),
             [workerPath],
-            fixture.RootPath,
-            environmentVariables: new Dictionary<string, string>(StringComparer.Ordinal)
-            {
-                ["DOTNET_PROCESSOR_COUNT"] = "4"
-            }).ConfigureAwait(false);
+            fixture.RootPath).ConfigureAwait(false);
         await using ConfiguredAsyncDisposable lspCleanup = lsp.ConfigureAwait(false);
         await lsp.InitializeAsync(
             fixture.RootPath,

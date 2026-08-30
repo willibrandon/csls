@@ -53,19 +53,15 @@ public sealed class VsCodeLanguageServerTests
     [OSCondition(ConditionMode.Include, OperatingSystems.Linux)]
     public async Task VsCodeHostStopsAutomaticTestDiscoveryProcessesOnShutdown()
     {
-        using ExternalWorkloadLease workloadLease = await ExternalWorkloadLease.AcquireAsync(
-            TestContext.CancellationToken).ConfigureAwait(false);
         string repositoryRoot = EditorToolResolver.FindRepositoryRoot();
         string runnerPath = Path.Join(repositoryRoot, "tests", "vscode", "runner.mjs");
         string runtimeExtensionPath = EditorToolResolver.ResolveVsCodeExtension(
             repositoryRoot,
             "vscode-dotnet-runtime",
-            "3.1.0",
             platformSpecific: false);
         string csharpExtensionPath = EditorToolResolver.ResolveVsCodeExtension(
             repositoryRoot,
             "vscode-csharp",
-            "2.140.9",
             platformSpecific: true);
         string runId = Guid.NewGuid().ToString("N")[..16];
         string fixturePath = Path.Join(Path.GetTempPath(), $"cv-shutdown-{runId}");
@@ -206,9 +202,6 @@ public sealed class VsCodeLanguageServerTests
             Assert.Inconclusive(
                 "Set CSLS_RUN_VSCODE_REMOTE_TESTS=true to run the remote VS Code host.");
         }
-
-        using ExternalWorkloadLease workloadLease = await ExternalWorkloadLease.AcquireAsync(
-            TestContext.CancellationToken).ConfigureAwait(false);
         string repositoryRoot = EditorToolResolver.FindRepositoryRoot();
         string runnerPath = Path.Join(repositoryRoot, "tests", "vscode", "runner.mjs");
         Assert.IsTrue(File.Exists(runnerPath), $"VS Code runner not found at {runnerPath}.");
@@ -226,12 +219,10 @@ public sealed class VsCodeLanguageServerTests
         string runtimeExtensionPath = EditorToolResolver.ResolveVsCodeExtension(
             repositoryRoot,
             "vscode-dotnet-runtime",
-            "3.1.0",
             platformSpecific: false);
         string csharpExtensionPath = EditorToolResolver.ResolveVsCodeExtension(
             repositoryRoot,
             "vscode-csharp",
-            "2.140.9",
             platformSpecific: true);
         string remoteServerRoot = EditorToolResolver.ResolveVsCodeRemoteServerRoot(repositoryRoot);
 
@@ -292,8 +283,6 @@ public sealed class VsCodeLanguageServerTests
 
     private async Task RunVsCodeHostAsync(bool remote, string? localSuite = null)
     {
-        using ExternalWorkloadLease workloadLease = await ExternalWorkloadLease.AcquireAsync(
-            TestContext.CancellationToken).ConfigureAwait(false);
         string repositoryRoot = EditorToolResolver.FindRepositoryRoot();
         string runnerPath = Path.Join(repositoryRoot, "tests", "vscode", "runner.mjs");
         Assert.IsTrue(File.Exists(runnerPath), $"VS Code runner not found at {runnerPath}.");
@@ -311,12 +300,10 @@ public sealed class VsCodeLanguageServerTests
         string runtimeExtensionPath = EditorToolResolver.ResolveVsCodeExtension(
             repositoryRoot,
             "vscode-dotnet-runtime",
-            "3.1.0",
             platformSpecific: false);
         string csharpExtensionPath = EditorToolResolver.ResolveVsCodeExtension(
             repositoryRoot,
             "vscode-csharp",
-            "2.140.9",
             platformSpecific: true);
         string? remoteServerRoot = remote
             ? EditorToolResolver.ResolveVsCodeRemoteServerRoot(repositoryRoot)
@@ -755,7 +742,7 @@ public sealed class VsCodeLanguageServerTests
         string vscodeCachePath = Path.Join(
             toolsRoot,
             "vscode",
-            "1.135.0");
+            "stable");
         Directory.CreateDirectory(vscodeCachePath);
         var startInfo = new ProcessStartInfo
         {

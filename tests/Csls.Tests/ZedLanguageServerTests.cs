@@ -28,8 +28,6 @@ public sealed class ZedLanguageServerTests
     [OSCondition(ConditionMode.Include, OperatingSystems.Linux)]
     public async Task ZedOpensFrameworkDefinitionFromCsls()
     {
-        using ExternalWorkloadLease workloadLease = await ExternalWorkloadLease.AcquireAsync(
-            TestContext.CancellationToken).ConfigureAwait(false);
         (
             string DocumentText,
             string SymbolName,
@@ -314,8 +312,6 @@ public sealed class ZedLanguageServerTests
     [OSCondition(ConditionMode.Include, OperatingSystems.Linux)]
     public async Task ZedProvidesInteractiveFeaturesInCslsWorkspace()
     {
-        using ExternalWorkloadLease workloadLease = await ExternalWorkloadLease.AcquireAsync(
-            TestContext.CancellationToken).ConfigureAwait(false);
         string repositoryRoot = EditorToolResolver.FindRepositoryRoot();
         string zedPath = EditorToolResolver.ResolveZed(repositoryRoot);
         string extensionPath = EditorToolResolver.ResolveCslsZedExtension(repositoryRoot);
@@ -568,8 +564,6 @@ public sealed class ZedLanguageServerTests
     [OSCondition(ConditionMode.Include, OperatingSystems.Linux)]
     public async Task ZedRefreshesNewCompileItemsWithoutRestart()
     {
-        using ExternalWorkloadLease workloadLease = await ExternalWorkloadLease.AcquireAsync(
-            TestContext.CancellationToken).ConfigureAwait(false);
         string repositoryRoot = EditorToolResolver.FindRepositoryRoot();
         string zedPath = EditorToolResolver.ResolveZed(repositoryRoot);
         string extensionPath = EditorToolResolver.ResolveCslsZedExtension(repositoryRoot);

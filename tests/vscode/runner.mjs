@@ -24,7 +24,7 @@ const executablePath = await downloadAndUnzipVSCode({
   cachePath,
   reporter: new SilentReporter(),
   timeout: 120_000,
-  version: "1.135.0",
+  version: "stable",
 });
 const extensionPackages = resolveExtensionPackages();
 if (remoteServerRoot === undefined) {

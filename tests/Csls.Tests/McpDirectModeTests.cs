@@ -100,9 +100,6 @@ public sealed class McpDirectModeTests
             arguments.Add("mcp");
             arguments.Add("--workspace");
             arguments.Add(projectPath);
-            using ExternalWorkloadLease workloadLease = await ExternalWorkloadLease
-                .AcquireAsync(TestContext.CancellationToken)
-                .ConfigureAwait(false);
             var transport = new StdioClientTransport(
                 new StdioClientTransportOptions
                 {

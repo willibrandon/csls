@@ -2,8 +2,11 @@ using System.Diagnostics;
 using System.Formats.Tar;
 using System.IO.Compression;
 using System.Net;
+using System.Net.Http.Headers;
 using System.Runtime.CompilerServices;
 using System.Security.Cryptography;
+using System.Text;
+using System.Text.Json;
 using System.Xml.Linq;
 using SharpCompress.Compressors.Xz;
 
@@ -53,20 +56,263 @@ internal static class ScriptSupport
     }
 
     /// <summary>
-    /// Downloads a file and rejects it unless its SHA-256 digest matches the pin.
+    /// Resolves one asset from the latest stable GitHub release and returns its published digest.
+    /// </summary>
+    /// <param name="owner">The GitHub repository owner.</param>
+    /// <param name="repository">The GitHub repository name.</param>
+    /// <param name="assetSelector">A predicate that selects the platform release asset.</param>
+    /// <param name="cancellationToken">The operation cancellation token.</param>
+    /// <returns>The release tag, asset name, download URI, and SHA-256 digest.</returns>
+    internal static async Task<(
+        string Tag,
+        string AssetName,
+        Uri Source,
+        string Sha256)> ResolveLatestGitHubReleaseAssetAsync(
+        string owner,
+        string repository,
+        Func<string, bool> assetSelector,
+        CancellationToken cancellationToken)
+    {
+        using var handler = new HttpClientHandler
+        {
+            AutomaticDecompression = DecompressionMethods.All,
+            CheckCertificateRevocationList = !OperatingSystem.IsMacOS()
+        };
+        using var client = new HttpClient(handler)
+        {
+            Timeout = TimeSpan.FromMinutes(2)
+        };
+        client.DefaultRequestHeaders.UserAgent.ParseAdd("csls-tool-provisioner");
+        client.DefaultRequestHeaders.Accept.ParseAdd("application/vnd.github+json");
+        client.DefaultRequestHeaders.Add("X-GitHub-Api-Version", "2022-11-28");
+        string? token = Environment.GetEnvironmentVariable("GITHUB_TOKEN");
+        if (!string.IsNullOrWhiteSpace(token))
+        {
+            client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue(
+                "Bearer",
+                token);
+        }
+
+        using HttpResponseMessage response = await client.GetAsync(
+            new Uri($"https://api.github.com/repos/{owner}/{repository}/releases/latest"),
+            HttpCompletionOption.ResponseHeadersRead,
+            cancellationToken).ConfigureAwait(false);
+        response.EnsureSuccessStatusCode();
+        using Stream content = await response.Content
+            .ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
+        using JsonDocument document = await JsonDocument.ParseAsync(
+            content,
+            cancellationToken: cancellationToken).ConfigureAwait(false);
+        JsonElement release = document.RootElement;
+        string tag = release.GetProperty("tag_name").GetString()
+            ?? throw new InvalidDataException(
+                $"The latest {owner}/{repository} release has no tag.");
+        JsonElement[] assets =
+        [
+            .. release
+                .GetProperty("assets")
+                .EnumerateArray()
+                .Where(asset => assetSelector(
+                    asset.GetProperty("name").GetString() ?? string.Empty))
+        ];
+        if (assets.Length != 1)
+        {
+            throw new InvalidDataException(
+                $"The latest {owner}/{repository} release {tag} has {assets.Length} " +
+                "matching assets; exactly one is required.");
+        }
+
+        JsonElement selectedAsset = assets[0];
+        string assetName = selectedAsset.GetProperty("name").GetString()
+            ?? throw new InvalidDataException(
+                $"The selected {owner}/{repository} release asset has no name.");
+        string sourceText = selectedAsset.GetProperty("browser_download_url").GetString()
+            ?? throw new InvalidDataException(
+                $"The {owner}/{repository} release asset {assetName} has no download URI.");
+        string digest = selectedAsset.GetProperty("digest").GetString()
+            ?? throw new InvalidDataException(
+                $"The {owner}/{repository} release asset {assetName} has no digest.");
+        const string sha256Prefix = "sha256:";
+        if (!digest.StartsWith(sha256Prefix, StringComparison.OrdinalIgnoreCase) ||
+            digest.Length != sha256Prefix.Length + 64)
+        {
+            throw new InvalidDataException(
+                $"The {owner}/{repository} release asset {assetName} has an invalid digest.");
+        }
+
+        return (
+            tag,
+            assetName,
+            new Uri(sourceText),
+            digest[sha256Prefix.Length..]);
+    }
+
+    /// <summary>
+    /// Resolves the latest stable Visual Studio Marketplace extension package.
+    /// </summary>
+    /// <param name="publisher">The Marketplace publisher identifier.</param>
+    /// <param name="extensionName">The Marketplace extension identifier.</param>
+    /// <param name="targetPlatform">The optional VS Code target platform.</param>
+    /// <param name="cancellationToken">The operation cancellation token.</param>
+    /// <returns>The current extension version and VSIX download URI.</returns>
+    internal static async Task<(string Version, Uri Source)>
+        ResolveLatestVsCodeExtensionAsync(
+            string publisher,
+            string extensionName,
+            string? targetPlatform,
+            CancellationToken cancellationToken)
+    {
+        using var handler = new HttpClientHandler
+        {
+            AutomaticDecompression = DecompressionMethods.All,
+            CheckCertificateRevocationList = !OperatingSystem.IsMacOS()
+        };
+        using var client = new HttpClient(handler)
+        {
+            Timeout = TimeSpan.FromMinutes(2)
+        };
+        client.DefaultRequestHeaders.UserAgent.ParseAdd("csls-tool-provisioner");
+        client.DefaultRequestHeaders.Accept.ParseAdd(
+            "application/json;api-version=7.2-preview.1");
+        string query = $$"""
+            {"filters":[{"criteria":[{"filterType":7,"value":"{{publisher}}.{{extensionName}}"}],"pageNumber":1,"pageSize":1,"sortBy":0,"sortOrder":0}],"assetTypes":["Microsoft.VisualStudio.Services.VSIXPackage"],"flags":950}
+            """;
+        using var request = new HttpRequestMessage(
+            HttpMethod.Post,
+            "https://marketplace.visualstudio.com/_apis/public/gallery/" +
+            "extensionquery?api-version=7.2-preview.1")
+        {
+            Content = new StringContent(query, Encoding.UTF8, "application/json")
+        };
+        using HttpResponseMessage response = await client.SendAsync(
+            request,
+            HttpCompletionOption.ResponseHeadersRead,
+            cancellationToken).ConfigureAwait(false);
+        response.EnsureSuccessStatusCode();
+        using Stream content = await response.Content
+            .ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
+        using JsonDocument document = await JsonDocument.ParseAsync(
+            content,
+            cancellationToken: cancellationToken).ConfigureAwait(false);
+        JsonElement extension = document.RootElement
+            .GetProperty("results")[0]
+            .GetProperty("extensions")[0];
+        JsonElement[] matchingVersions =
+        [
+            .. extension
+                .GetProperty("versions")
+                .EnumerateArray()
+                .Where(version =>
+                {
+                    bool hasPlatform = version.TryGetProperty(
+                        "targetPlatform",
+                        out JsonElement platform);
+                    return targetPlatform is null
+                        ? !hasPlatform || platform.ValueKind == JsonValueKind.Null
+                        : hasPlatform && string.Equals(
+                            platform.GetString(),
+                            targetPlatform,
+                            StringComparison.Ordinal);
+                })
+        ];
+        if (matchingVersions.Length == 0)
+        {
+            throw new InvalidDataException(
+                $"The Marketplace returned no {publisher}.{extensionName} package for " +
+                $"{targetPlatform ?? "all platforms"}.");
+        }
+
+        JsonElement selectedVersion = matchingVersions[0];
+        string versionText = selectedVersion.GetProperty("version").GetString()
+            ?? throw new InvalidDataException(
+                $"The Marketplace returned {publisher}.{extensionName} without a version.");
+        JsonElement package = selectedVersion
+            .GetProperty("files")
+            .EnumerateArray()
+            .Single(file => string.Equals(
+                file.GetProperty("assetType").GetString(),
+                "Microsoft.VisualStudio.Services.VSIXPackage",
+                StringComparison.Ordinal));
+        string sourceText = package.GetProperty("source").GetString()
+            ?? throw new InvalidDataException(
+                $"The Marketplace returned {publisher}.{extensionName} without a VSIX URI.");
+        return (versionText, new Uri(sourceText));
+    }
+
+    /// <summary>
+    /// Resolves a current Visual Studio Code release from an official update channel.
+    /// </summary>
+    /// <param name="target">The Visual Studio Code update target.</param>
+    /// <param name="channel">The Visual Studio Code release channel.</param>
+    /// <param name="cancellationToken">The operation cancellation token.</param>
+    /// <returns>The revision, product version, download URI, and publisher SHA-256 digest.</returns>
+    internal static async Task<(
+        string Revision,
+        string ProductVersion,
+        Uri Source,
+        string Sha256)> ResolveLatestVsCodeReleaseAsync(
+        string target,
+        string channel,
+        CancellationToken cancellationToken)
+    {
+        using var handler = new HttpClientHandler
+        {
+            AutomaticDecompression = DecompressionMethods.All,
+            CheckCertificateRevocationList = !OperatingSystem.IsMacOS()
+        };
+        using var client = new HttpClient(handler)
+        {
+            Timeout = TimeSpan.FromMinutes(2)
+        };
+        client.DefaultRequestHeaders.UserAgent.ParseAdd("csls-tool-provisioner");
+        using HttpResponseMessage response = await client.GetAsync(
+            new Uri(
+                $"https://update.code.visualstudio.com/api/update/" +
+                $"{Uri.EscapeDataString(target)}/{Uri.EscapeDataString(channel)}/latest"),
+            HttpCompletionOption.ResponseHeadersRead,
+            cancellationToken).ConfigureAwait(false);
+        response.EnsureSuccessStatusCode();
+        using Stream content = await response.Content
+            .ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
+        using JsonDocument document = await JsonDocument.ParseAsync(
+            content,
+            cancellationToken: cancellationToken).ConfigureAwait(false);
+        JsonElement release = document.RootElement;
+        string revision = release.GetProperty("version").GetString()
+            ?? throw new InvalidDataException(
+                $"The Visual Studio Code {channel} release has no revision.");
+        string productVersion = release.GetProperty("productVersion").GetString()
+            ?? throw new InvalidDataException(
+                $"The Visual Studio Code {channel} release has no product version.");
+        string sourceText = release.GetProperty("url").GetString()
+            ?? throw new InvalidDataException(
+                $"The Visual Studio Code {channel} release has no download URI.");
+        string sha256 = release.GetProperty("sha256hash").GetString()
+            ?? throw new InvalidDataException(
+                $"The Visual Studio Code {channel} release has no SHA-256 digest.");
+        if (revision.Length != 40 || !revision.All(Uri.IsHexDigit) ||
+            sha256.Length != 64 || !sha256.All(Uri.IsHexDigit))
+        {
+            throw new InvalidDataException(
+                $"The Visual Studio Code {channel} release metadata is invalid.");
+        }
+
+        return (revision, productVersion, new Uri(sourceText), sha256);
+    }
+
+    /// <summary>
+    /// Downloads a file and rejects it unless its SHA-256 digest matches the publisher's digest.
     /// </summary>
     /// <param name="source">The source URI.</param>
     /// <param name="destinationPath">The destination file path.</param>
     /// <param name="expectedSha256">The expected hexadecimal SHA-256 digest.</param>
     /// <param name="cancellationToken">The operation cancellation token.</param>
-    /// <param name="fallbackSources">Optional verified fallback source URIs.</param>
     /// <returns>A task that completes after verification succeeds.</returns>
     internal static async Task DownloadVerifiedFileAsync(
         Uri source,
         string destinationPath,
         string expectedSha256,
-        CancellationToken cancellationToken,
-        IReadOnlyList<Uri>? fallbackSources = null)
+        CancellationToken cancellationToken)
     {
         using var handler = new HttpClientHandler
         {
@@ -75,87 +321,83 @@ internal static class ScriptSupport
         };
         using var client = new HttpClient(handler);
         client.Timeout = TimeSpan.FromMinutes(5);
-        client.DefaultRequestHeaders.UserAgent.ParseAdd("csls-tool-provisioner/0.1");
-        IReadOnlyList<Uri> sources = fallbackSources is null
-            ? [source]
-            : [source, .. fallbackSources];
-        const int maximumAttempts = 3;
-        for (int sourceIndex = 0; sourceIndex < sources.Count; sourceIndex++)
+        client.DefaultRequestHeaders.UserAgent.ParseAdd("csls-tool-provisioner");
+        using HttpResponseMessage response = await client
+            .GetAsync(
+                source,
+                HttpCompletionOption.ResponseHeadersRead,
+                cancellationToken)
+            .ConfigureAwait(false);
+        response.EnsureSuccessStatusCode();
+
+        using (FileStream destination = new(
+            destinationPath,
+            FileMode.CreateNew,
+            FileAccess.Write,
+            FileShare.None,
+            bufferSize: 131_072,
+            FileOptions.Asynchronous | FileOptions.SequentialScan))
         {
-            Uri currentSource = sources[sourceIndex];
-            for (int attempt = 1; ; attempt++)
-            {
-                try
-                {
-                    using HttpResponseMessage response = await client
-                        .GetAsync(
-                            currentSource,
-                            HttpCompletionOption.ResponseHeadersRead,
-                            cancellationToken)
-                        .ConfigureAwait(false);
-                    response.EnsureSuccessStatusCode();
-
-                    using (FileStream destination = new(
-                        destinationPath,
-                        FileMode.CreateNew,
-                        FileAccess.Write,
-                        FileShare.None,
-                        bufferSize: 131_072,
-                        FileOptions.Asynchronous | FileOptions.SequentialScan))
-                    {
-                        await response.Content
-                            .CopyToAsync(destination, cancellationToken)
-                            .ConfigureAwait(false);
-                    }
-
-                    string actualSha256 = await ComputeSha256Async(
-                        destinationPath,
-                        cancellationToken).ConfigureAwait(false);
-                    if (!string.Equals(
-                        actualSha256,
-                        expectedSha256,
-                        StringComparison.OrdinalIgnoreCase))
-                    {
-                        throw new InvalidDataException(
-                            $"SHA-256 mismatch for {currentSource}: expected {expectedSha256}, " +
-                            $"got {actualSha256}.");
-                    }
-
-                    return;
-                }
-                catch (Exception exception) when (
-                    attempt < maximumAttempts &&
-                    IsTransientDownloadFailure(exception, cancellationToken))
-                {
-                    File.Delete(destinationPath);
-                    await Console.Error.WriteLineAsync(
-                        $"Download attempt {attempt} failed for {currentSource}: " +
-                        exception.GetBaseException().Message).ConfigureAwait(false);
-                    await Task.Delay(TimeSpan.FromSeconds(attempt * 2), cancellationToken)
-                        .ConfigureAwait(false);
-                }
-                catch (Exception exception) when (
-                    sourceIndex < sources.Count - 1 &&
-                    IsTransientDownloadFailure(exception, cancellationToken))
-                {
-                    File.Delete(destinationPath);
-                    await Console.Error.WriteLineAsync(
-                        $"Download source failed for {currentSource}: " +
-                        $"{exception.GetBaseException().Message} Trying " +
-                        $"{sources[sourceIndex + 1]}.").ConfigureAwait(false);
-                    break;
-                }
-            }
+            await response.Content
+                .CopyToAsync(destination, cancellationToken)
+                .ConfigureAwait(false);
         }
 
-        throw new UnreachableException();
+        string actualSha256 = await ComputeSha256Async(
+            destinationPath,
+            cancellationToken).ConfigureAwait(false);
+        if (!string.Equals(
+            actualSha256,
+            expectedSha256,
+            StringComparison.OrdinalIgnoreCase))
+        {
+            throw new InvalidDataException(
+                $"SHA-256 mismatch for {source}: expected {expectedSha256}, " +
+                $"got {actualSha256}.");
+        }
+    }
 
-        static bool IsTransientDownloadFailure(
-            Exception exception,
-            CancellationToken cancellationToken) =>
-            exception is HttpRequestException or IOException ||
-            exception is OperationCanceledException &&
-            !cancellationToken.IsCancellationRequested;
+    /// <summary>
+    /// Downloads a file from an HTTPS release channel when the publisher exposes no digest.
+    /// </summary>
+    /// <param name="source">The source URI.</param>
+    /// <param name="destinationPath">The destination file path.</param>
+    /// <param name="cancellationToken">The operation cancellation token.</param>
+    /// <returns>A task that completes after the file is downloaded.</returns>
+    internal static async Task DownloadFileAsync(
+        Uri source,
+        string destinationPath,
+        CancellationToken cancellationToken)
+    {
+        if (!string.Equals(source.Scheme, Uri.UriSchemeHttps, StringComparison.Ordinal))
+        {
+            throw new InvalidDataException($"Tool downloads require HTTPS: {source}");
+        }
+
+        using var handler = new HttpClientHandler
+        {
+            AutomaticDecompression = DecompressionMethods.All,
+            CheckCertificateRevocationList = !OperatingSystem.IsMacOS()
+        };
+        using var client = new HttpClient(handler)
+        {
+            Timeout = TimeSpan.FromMinutes(5)
+        };
+        client.DefaultRequestHeaders.UserAgent.ParseAdd("csls-tool-provisioner");
+        using HttpResponseMessage response = await client.GetAsync(
+            source,
+            HttpCompletionOption.ResponseHeadersRead,
+            cancellationToken).ConfigureAwait(false);
+        response.EnsureSuccessStatusCode();
+        using FileStream destination = new(
+            destinationPath,
+            FileMode.CreateNew,
+            FileAccess.Write,
+            FileShare.None,
+            bufferSize: 131_072,
+            FileOptions.Asynchronous | FileOptions.SequentialScan);
+        await response.Content.CopyToAsync(destination, cancellationToken)
+            .ConfigureAwait(false);
     }
 
     /// <summary>
@@ -255,13 +497,13 @@ internal static class ScriptSupport
     /// </summary>
     /// <param name="executablePath">The executable file path.</param>
     /// <param name="arguments">The version command arguments.</param>
-    /// <param name="expectedText">Text required in combined output.</param>
+    /// <param name="expectedText">Optional text required in combined output.</param>
     /// <param name="cancellationToken">The operation cancellation token.</param>
     /// <returns>A task that completes after the expected version is observed.</returns>
     internal static async Task VerifyToolAsync(
         string executablePath,
         IReadOnlyList<string> arguments,
-        string expectedText,
+        string? expectedText,
         CancellationToken cancellationToken)
     {
         var startInfo = new ProcessStartInfo
@@ -283,30 +525,30 @@ internal static class ScriptSupport
         await process.WaitForExitAsync(cancellationToken).ConfigureAwait(false);
         string output = await standardOutputTask.ConfigureAwait(false) +
             await standardErrorTask.ConfigureAwait(false);
-        if (process.ExitCode != 0 || !output.Contains(expectedText, StringComparison.Ordinal))
+        if (process.ExitCode != 0 ||
+            expectedText is not null && !output.Contains(expectedText, StringComparison.Ordinal))
         {
             throw new InvalidDataException(
-                $"Expected '{expectedText}' from '{executablePath}', but it returned " +
+                $"Expected successful version output from '{executablePath}', but it returned " +
                 $"exit code {process.ExitCode}: {output.Trim()}");
         }
     }
 
     /// <summary>
-    /// Provisions and validates a pinned archive-distributed development tool.
+    /// Provisions and validates an archive-distributed development tool release.
     /// </summary>
     /// <param name="toolsRoot">The repository tool artifact root.</param>
     /// <param name="toolName">The stable tool directory name.</param>
-    /// <param name="version">The pinned tool version.</param>
+    /// <param name="version">The resolved tool release version.</param>
     /// <param name="platform">The stable target platform name.</param>
     /// <param name="source">The official release asset URI.</param>
     /// <param name="assetName">The release asset file name.</param>
-    /// <param name="expectedSha256">The expected release asset digest.</param>
+    /// <param name="expectedSha256">The optional publisher-provided release asset digest.</param>
     /// <param name="executableName">The executable file name in the archive.</param>
     /// <param name="installationRootLevels">Parent levels from the executable to the installation root.</param>
     /// <param name="versionArguments">Arguments used to query the tool version.</param>
-    /// <param name="expectedVersionText">Text required in version output.</param>
+    /// <param name="expectedVersionText">Optional text required in version output.</param>
     /// <param name="cancellationToken">The operation cancellation token.</param>
-    /// <param name="fallbackSources">Optional verified fallback source URIs.</param>
     /// <returns>The absolute provisioned executable path.</returns>
     internal static async Task<string> ProvisionArchiveToolAsync(
         string toolsRoot,
@@ -315,13 +557,12 @@ internal static class ScriptSupport
         string platform,
         Uri source,
         string assetName,
-        string expectedSha256,
+        string? expectedSha256,
         string executableName,
         int installationRootLevels,
         IReadOnlyList<string> versionArguments,
-        string expectedVersionText,
-        CancellationToken cancellationToken,
-        IReadOnlyList<Uri>? fallbackSources = null)
+        string? expectedVersionText,
+        CancellationToken cancellationToken)
     {
         string installationPath = Path.Join(toolsRoot, toolName, version, platform);
         string executablePath = FindInstalledExecutable(
@@ -349,12 +590,21 @@ internal static class ScriptSupport
             Directory.CreateDirectory(extractionPath);
             await Console.Error.WriteLineAsync(
                 $"Downloading {toolName} {version} for {platform}...").ConfigureAwait(false);
-            await DownloadVerifiedFileAsync(
-                source,
-                archivePath,
-                expectedSha256,
-                cancellationToken,
-                fallbackSources).ConfigureAwait(false);
+            if (expectedSha256 is null)
+            {
+                await DownloadFileAsync(
+                    source,
+                    archivePath,
+                    cancellationToken).ConfigureAwait(false);
+            }
+            else
+            {
+                await DownloadVerifiedFileAsync(
+                    source,
+                    archivePath,
+                    expectedSha256,
+                    cancellationToken).ConfigureAwait(false);
+            }
             await ExtractArchiveAsync(
                 archivePath,
                 extractionPath,
@@ -407,8 +657,8 @@ internal static class ScriptSupport
     /// </summary>
     /// <param name="toolsRoot">The repository tool artifact root.</param>
     /// <param name="toolName">The stable tool directory name.</param>
-    /// <param name="packageId">The exact NuGet tool package identifier.</param>
-    /// <param name="version">The pinned tool version.</param>
+    /// <param name="packageId">The NuGet tool package identifier.</param>
+    /// <param name="version">The resolved tool package version.</param>
     /// <param name="platform">The stable target platform name.</param>
     /// <param name="packageSource">The official NuGet package URI.</param>
     /// <param name="expectedSha256">The expected NuGet package SHA-256 digest.</param>

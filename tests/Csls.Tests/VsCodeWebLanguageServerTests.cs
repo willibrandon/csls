@@ -44,9 +44,6 @@ public sealed class VsCodeWebLanguageServerTests
             Assert.Inconclusive(
                 "Set CSLS_RUN_VSCODE_WEB_TESTS=true to run the VS Code web hosts.");
         }
-
-        using ExternalWorkloadLease workloadLease = await ExternalWorkloadLease.AcquireAsync(
-            TestContext.CancellationToken).ConfigureAwait(false);
         string repositoryRoot = EditorToolResolver.FindRepositoryRoot();
         string runnerPath = Path.Join(repositoryRoot, "tests", "vscode", "web-runner.mjs");
         string suitePath = Path.Join(
@@ -198,13 +195,13 @@ public sealed class VsCodeWebLanguageServerTests
         startInfo.Environment["CSLS_VSCODE_WEB_CACHE_PATH"] = Path.Join(
             toolsRoot,
             "vscode-web",
-            "1.135.0");
+            "stable");
         startInfo.Environment["CSLS_VSCODE_WEB_EXTENSION_PATH"] = extensionPath;
         startInfo.Environment["CSLS_VSCODE_WORKSPACE_PATH"] = workspacePath;
         startInfo.Environment["PLAYWRIGHT_BROWSERS_PATH"] = Path.Join(
             toolsRoot,
             "playwright",
-            "1.62.1");
+            "current");
         return Process.Start(startInfo)
             ?? throw new InvalidOperationException(
                 $"The VS Code {browser} integration runner did not start.");

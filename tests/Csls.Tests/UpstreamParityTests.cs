@@ -6,7 +6,7 @@ using System.Text.Json;
 namespace Csls.Tests;
 
 /// <summary>
-/// Compares csls behavior with the pinned upstream language-server oracle.
+/// Compares csls behavior with the current upstream language-server oracle.
 /// </summary>
 [TestClass]
 public sealed class UpstreamParityTests

@@ -15,7 +15,7 @@ public sealed class RepositoryBootstrapTests
     public TestContext TestContext { get; set; } = null!;
 
     /// <summary>
-    /// Resolves an installed .NET 10 feature band without an exact SDK pin.
+    /// Accepts the installed .NET 10 SDK without selecting an exact feature band.
     /// </summary>
     [TestMethod]
     public async Task RepositoryAcceptsInstalledDotNet10Sdk()
@@ -25,18 +25,7 @@ public sealed class RepositoryBootstrapTests
             Path.Join(repositoryRoot, "global.json"),
             TestContext.CancellationToken).ConfigureAwait(false))
             ?? throw new InvalidDataException("global.json did not contain JSON.");
-        JsonNode sdk = globalJson["sdk"]
-            ?? throw new InvalidDataException("global.json did not select an SDK.");
-        string selectedVersion = sdk["version"]?.GetValue<string>()
-            ?? throw new InvalidDataException("global.json did not select an SDK version.");
-        string rollForward = sdk["rollForward"]?.GetValue<string>()
-            ?? throw new InvalidDataException("global.json did not select an SDK roll-forward policy.");
-        bool allowPrerelease = sdk["allowPrerelease"]?.GetValue<bool>()
-            ?? throw new InvalidDataException("global.json did not select a prerelease policy.");
-        Assert.AreEqual("10.0.100", selectedVersion);
-        Assert.AreEqual("latestFeature", rollForward);
-        Assert.IsFalse(allowPrerelease);
-        Assert.IsNull(sdk["errorMessage"]);
+        Assert.IsNull(globalJson["sdk"]);
 
         ProcessStartInfo startInfo = new(
             EditorToolResolver.ResolveDotNetHost(),

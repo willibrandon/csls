@@ -3,13 +3,13 @@
   "image": "mcr.microsoft.com/devcontainers/base:noble",
   "features": {
     "ghcr.io/devcontainers/features/dotnet:2": {
-      "version": "10.0.400"
+      "version": "10"
     },
     "ghcr.io/devcontainers/features/node:2": {
-      "version": "24.19.0"
+      "version": "24"
     },
     "ghcr.io/devcontainers/features/rust:1": {
-      "version": "1.98.0",
+      "version": "stable",
       "profile": "minimal",
       "targets": "wasm32-wasip2",
       "components": "rust-analyzer,rust-src,rustfmt,clippy"

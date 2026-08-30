@@ -6,8 +6,6 @@
 
 using System.Diagnostics;
 
-const string TreeSitterCliVersion = "0.26.12";
-
 if (args.Length == 1 && args[0] is "--help" or "-h" or "-?")
 {
     await Console.Out.WriteLineAsync(
@@ -113,8 +111,6 @@ try
         [
             "install",
             "tree-sitter-cli",
-            "--version",
-            TreeSitterCliVersion,
             "--locked",
             "--no-default-features",
             "--force"

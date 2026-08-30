@@ -26,6 +26,10 @@
              Link="LegacyFrameworkReferenceResolver.cs" />
     <Compile Include="../Csls.Workspaces/MSBuildRegistration.cs"
              Link="MSBuildRegistration.cs" />
+    <Compile Include="../Csls.Workspaces/RoslynAnalyzerAssemblyLoader.cs"
+             Link="RoslynAnalyzerAssemblyLoader.cs" />
+    <Compile Include="../Csls.Workspaces/SolutionProjectCounter.cs"
+             Link="SolutionProjectCounter.cs" />
     <Compile Include="../Csls.Workspaces/WorkspaceLoadProgressReporter.cs"
              Link="WorkspaceLoadProgressReporter.cs" />
     <Compile Include="../Csls.Workspaces/WorkspaceProjectLoadObserver.cs"

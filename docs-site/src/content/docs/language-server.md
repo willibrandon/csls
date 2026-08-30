@@ -117,7 +117,7 @@ and unrelated text do not produce linked ranges.
 from the current Roslyn document snapshot. Results honor the client range limit,
 line-only mode, supported kinds, and collapsed text capability.
 
-Razor views and components use the pinned Microsoft Razor compiler packages. Pull
+Razor views and components use the centrally managed Microsoft Razor compiler packages. Pull
 diagnostics include Razor findings and mapped C# compiler or analyzer findings from
 the owning project. They follow the current unsaved `.cshtml` or `.razor` snapshot
 and return to the persisted file after the editor closes it. Hover uses the same

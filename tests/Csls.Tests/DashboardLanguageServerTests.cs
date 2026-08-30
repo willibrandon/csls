@@ -539,6 +539,11 @@ public sealed class DashboardLanguageServerTests
         Directory.CreateDirectory(secondFixturePath);
         try
         {
+            string socketDirectory = Path.Join(firstFixturePath, "control");
+            var serverEnvironment = new Dictionary<string, string>(StringComparer.Ordinal)
+            {
+                [ControlEndpoint.SocketDirectoryEnvironmentVariable] = socketDirectory
+            };
             await File.WriteAllTextAsync(
                 Path.Join(firstFixturePath, "First.csproj"),
                 ProjectText,
@@ -552,7 +557,9 @@ public sealed class DashboardLanguageServerTests
                 "csls-dashboard-first-session-worker",
                 EditorToolResolver.ResolveDotNetHost(),
                 [workerPath],
-                firstFixturePath).ConfigureAwait(false);
+                firstFixturePath,
+                client: null,
+                environmentVariables: serverEnvironment).ConfigureAwait(false);
             await using ConfiguredAsyncDisposable firstLspCleanup =
                 firstLsp.ConfigureAwait(false);
             await firstLsp.InitializeAsync(
@@ -563,13 +570,16 @@ public sealed class DashboardLanguageServerTests
                 firstFixturePath,
                 TimeSpan.FromSeconds(60),
                 TestContext.CancellationToken,
-                expectedProcessId: firstLsp.ProcessId).ConfigureAwait(false);
+                expectedProcessId: firstLsp.ProcessId,
+                socketDirectory: socketDirectory).ConfigureAwait(false);
 
             LspProcessSession secondLsp = await LspProcessSession.StartAsync(
                 "csls-dashboard-second-session-worker",
                 EditorToolResolver.ResolveDotNetHost(),
                 [workerPath],
-                secondFixturePath).ConfigureAwait(false);
+                secondFixturePath,
+                client: null,
+                environmentVariables: serverEnvironment).ConfigureAwait(false);
             await using ConfiguredAsyncDisposable secondLspCleanup =
                 secondLsp.ConfigureAwait(false);
             await secondLsp.InitializeAsync(
@@ -580,12 +590,14 @@ public sealed class DashboardLanguageServerTests
                 secondFixturePath,
                 TimeSpan.FromSeconds(60),
                 TestContext.CancellationToken,
-                expectedProcessId: secondLsp.ProcessId).ConfigureAwait(false);
+                expectedProcessId: secondLsp.ProcessId,
+                socketDirectory: socketDirectory).ConfigureAwait(false);
 
             var environment = new Dictionary<string, string>(StringComparer.Ordinal)
             {
                 ["CSLS_CLI_WORKER_PATH"] = cliWorkerPath,
-                ["DOTNET_HOST_PATH"] = EditorToolResolver.ResolveDotNetHost()
+                ["DOTNET_HOST_PATH"] = EditorToolResolver.ResolveDotNetHost(),
+                [ControlEndpoint.SocketDirectoryEnvironmentVariable] = socketDirectory
             };
             const int width = 120;
             const int height = 24;

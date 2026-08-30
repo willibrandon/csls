@@ -251,7 +251,9 @@ static void VerifyTrackedText(
 
         if (text.Contains(privateRazorSdkPath, StringComparison.Ordinal))
         {
-            failures.Add($"Razor assemblies must come from pinned Microsoft packages: {trackedPath}");
+            failures.Add(
+                $"Razor assemblies must come from centrally managed Microsoft packages: " +
+                trackedPath);
         }
     }
 }
@@ -437,11 +439,15 @@ static void VerifyGitHubActionReferences(
 
             int separatorIndex = reference.LastIndexOf('@');
             string revision = separatorIndex >= 0 ? reference[(separatorIndex + 1)..] : string.Empty;
-            if (revision.Length != 40 || !revision.All(Uri.IsHexDigit))
+            bool immutableCommit = revision.Length == 40 && revision.All(Uri.IsHexDigit);
+            string versionCore = revision.TrimStart('v').Split('-', '+')[0];
+            bool exactVersion = versionCore.Any(static character => character == '.') &&
+                Version.TryParse(versionCore, out _);
+            if (immutableCommit || exactVersion)
             {
                 string relativePath = Path.GetRelativePath(repositoryRoot, workflowPath);
                 failures.Add(
-                    $"GitHub Actions must use immutable commit SHAs: " +
+                    $"GitHub Actions must follow a moving major or release channel: " +
                     $"{relativePath}:{lineNumber} ({reference})");
             }
         }

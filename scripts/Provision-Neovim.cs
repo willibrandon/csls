@@ -8,12 +8,10 @@
 
 using System.Runtime.InteropServices;
 
-const string Version = "0.12.5";
-
 if (args.Length == 1 && args[0] is "--help" or "-h" or "-?")
 {
     await Console.Out.WriteLineAsync(
-        "Downloads and verifies the pinned Neovim editor release.").ConfigureAwait(false);
+        "Downloads and verifies the latest Neovim editor release.").ConfigureAwait(false);
     await Console.Out.WriteLineAsync(
         "Usage: dotnet run --file scripts/Provision-Neovim.cs [--output <directory>]")
         .ConfigureAwait(false);
@@ -35,14 +33,19 @@ try
     string toolsRoot = ScriptSupport.ResolveToolsRoot(
         repositoryRoot,
         args.Length == 2 ? args[1] : null);
-    (string platform, string assetName, string expectedSha256, string executableName) =
+    (string platform, string selectedAssetName, string executableName) =
         SelectAsset();
-    var source = new Uri(
-        $"https://github.com/neovim/neovim/releases/download/v{Version}/{assetName}");
+    (string tag, string assetName, Uri source, string expectedSha256) =
+        await ScriptSupport.ResolveLatestGitHubReleaseAssetAsync(
+            "neovim",
+            "neovim",
+            name => string.Equals(name, selectedAssetName, StringComparison.Ordinal),
+            CancellationToken.None).ConfigureAwait(false);
+    string version = tag.TrimStart('v');
     string executablePath = await ScriptSupport.ProvisionArchiveToolAsync(
         toolsRoot,
         "neovim",
-        Version,
+        version,
         platform,
         source,
         assetName,
@@ -50,7 +53,7 @@ try
         executableName,
         installationRootLevels: 1,
         versionArguments: ["--version"],
-        expectedVersionText: $"NVIM v{Version}",
+        expectedVersionText: $"NVIM v{version}",
         CancellationToken.None).ConfigureAwait(false);
 
     await Console.Out.WriteLineAsync(executablePath).ConfigureAwait(false);
@@ -68,7 +71,7 @@ catch (Exception exception) when (exception is
     return 1;
 }
 
-static (string Platform, string AssetName, string Sha256, string ExecutableName) SelectAsset()
+static (string Platform, string AssetName, string ExecutableName) SelectAsset()
 {
     Architecture architecture = RuntimeInformation.OSArchitecture;
     if (OperatingSystem.IsLinux() && architecture == Architecture.X64)
@@ -76,7 +79,6 @@ static (string Platform, string AssetName, string Sha256, string ExecutableName)
         return (
             "linux-x64",
             "nvim-linux-x86_64.tar.gz",
-            "bce0f56eda1f1b1db6eee8f4133d7a38813ea07933837dd1777411ca384c6875",
             "nvim");
     }
 
@@ -85,7 +87,6 @@ static (string Platform, string AssetName, string Sha256, string ExecutableName)
         return (
             "linux-arm64",
             "nvim-linux-arm64.tar.gz",
-            "1aa5ca085249580ae0f91eb14f27ec0919773ff2d99a163d03f3d6c21ac29725",
             "nvim");
     }
 
@@ -94,7 +95,6 @@ static (string Platform, string AssetName, string Sha256, string ExecutableName)
         return (
             "osx-x64",
             "nvim-macos-x86_64.tar.gz",
-            "81f4518622cb059b450ee2e498c6a1082a222f6bd89589de5bbcf0c6a68aa3fd",
             "nvim");
     }
 
@@ -103,7 +103,6 @@ static (string Platform, string AssetName, string Sha256, string ExecutableName)
         return (
             "osx-arm64",
             "nvim-macos-arm64.tar.gz",
-            "65fb000099e47ca1b762584c484cc833f40e30851a0ec450d4174e16317c1f9b",
             "nvim");
     }
 
@@ -112,7 +111,6 @@ static (string Platform, string AssetName, string Sha256, string ExecutableName)
         return (
             "win-x64",
             "nvim-win64.zip",
-            "de8625ba8cf65ebf40eb80a388ba1ec8e9c15b30218821e2c639119b05920de1",
             "nvim.exe");
     }
 
@@ -121,10 +119,9 @@ static (string Platform, string AssetName, string Sha256, string ExecutableName)
         return (
             "win-arm64",
             "nvim-win-arm64.zip",
-            "f5a2f7ee4603e0185ed5c3e6dc9db762499426baf1c6613a487da5b5e126ae55",
             "nvim.exe");
     }
 
     throw new PlatformNotSupportedException(
-        $"Neovim {Version} has no release asset for {RuntimeInformation.OSDescription} {architecture}.");
+        $"Neovim has no release asset for {RuntimeInformation.OSDescription} {architecture}.");
 }

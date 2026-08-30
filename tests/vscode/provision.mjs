@@ -9,6 +9,6 @@ const executablePath = await downloadAndUnzipVSCode({
   cachePath: process.argv[2],
   reporter: new SilentReporter(),
   timeout: 120_000,
-  version: "1.135.0",
+  version: "stable",
 });
 process.stdout.write(executablePath + "\n");

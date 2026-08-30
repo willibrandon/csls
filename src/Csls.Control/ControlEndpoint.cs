@@ -10,11 +10,31 @@ namespace Csls.Control;
 public static class ControlEndpoint
 {
     /// <summary>
+    /// Names the optional absolute control-socket directory environment variable.
+    /// </summary>
+    public const string SocketDirectoryEnvironmentVariable =
+        "CSLS_CONTROL_SOCKET_DIRECTORY";
+
+    /// <summary>
     /// Gets the absolute directory containing live csls control sockets.
     /// </summary>
     /// <returns>The per-user socket directory.</returns>
     public static string GetSocketDirectory()
     {
+        string? configuredDirectory = Environment.GetEnvironmentVariable(
+            SocketDirectoryEnvironmentVariable);
+        if (!string.IsNullOrWhiteSpace(configuredDirectory))
+        {
+            if (!Path.IsPathFullyQualified(configuredDirectory))
+            {
+                throw new InvalidDataException(
+                    $"{SocketDirectoryEnvironmentVariable} must be an absolute path: " +
+                    configuredDirectory);
+            }
+
+            return Path.TrimEndingDirectorySeparator(Path.GetFullPath(configuredDirectory));
+        }
+
         string userProfile = OperatingSystem.IsWindows()
             ? Environment.GetFolderPath(
                 Environment.SpecialFolder.UserProfile,

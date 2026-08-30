@@ -16,7 +16,7 @@ public class FileBasedAppWorkspaceBenchmarks : IAsyncDisposable
     private int _disposeState;
 
     /// <summary>
-    /// Creates and validates one real file-based app through the pinned SDK.
+    /// Creates and validates one real file-based app through the active .NET 10 SDK.
     /// </summary>
     [GlobalSetup]
     public async Task SetupAsync()

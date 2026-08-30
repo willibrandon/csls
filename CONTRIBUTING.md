@@ -1,6 +1,8 @@
 # Contributing
 
-Install any .NET 10 SDK, then run:
+Install any .NET 10 SDK supported by your platform.
+
+Then run:
 
 ```console
 dotnet restore Csls.slnx
@@ -46,7 +48,7 @@ editor installations never reuse artifacts from the host checkout. Its build
 artifacts use an isolated volume so container restores cannot overwrite host
 MSBuild and NuGet state.
 
-The container also installs Node.js 24.19.0 and Rust 1.98.0 with rust-analyzer,
+The container also installs the current Node.js 24 and stable Rust channels with rust-analyzer,
 rustfmt, Clippy, Rust sources, and the `wasm32-wasip2` target. Its post-create app
 restores the VS Code packages and the locked Zed crate graph.
 

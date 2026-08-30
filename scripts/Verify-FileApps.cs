@@ -42,20 +42,34 @@ try
                     StringComparison.Ordinal))
             .Order(StringComparer.Ordinal)
     ];
-    foreach (string fileApp in fileApps)
-    {
-        (int exitCode, string output, string error) = await RunAsync(
-            "dotnet",
-            ["run", "--file", fileApp, "--", "--help"],
-            repositoryRoot).ConfigureAwait(false);
-        if (exitCode != 0 ||
-            !output.Contains("Usage:", StringComparison.Ordinal) ||
-            !string.IsNullOrWhiteSpace(error))
+    Task<(string FileApp, int ExitCode, string Output, string Error)>[] verifications =
+    [
+        .. fileApps.Select(async fileApp =>
         {
-            throw new InvalidDataException(
-                $"{Path.GetFileName(fileApp)} help verification failed with exit code " +
-                $"{exitCode}:{Environment.NewLine}{output}{error}");
-        }
+            (int exitCode, string output, string error) = await RunAsync(
+                "dotnet",
+                ["run", "--file", fileApp, "--", "--help"],
+                repositoryRoot).ConfigureAwait(false);
+            return (fileApp, exitCode, output, error);
+        })
+    ];
+    (string FileApp, int ExitCode, string Output, string Error)[] results =
+        await Task.WhenAll(verifications).ConfigureAwait(false);
+    string[] failures =
+    [
+        .. results
+            .Where(static result =>
+                result.ExitCode != 0 ||
+                !result.Output.Contains("Usage:", StringComparison.Ordinal) ||
+                !string.IsNullOrWhiteSpace(result.Error))
+            .Select(static result =>
+                $"{Path.GetFileName(result.FileApp)} help verification failed with exit " +
+                $"code {result.ExitCode}:{Environment.NewLine}" +
+                $"{result.Output}{result.Error}")
+    ];
+    if (failures.Length > 0)
+    {
+        throw new InvalidDataException(string.Join(Environment.NewLine, failures));
     }
 
     await Console.Out.WriteLineAsync(

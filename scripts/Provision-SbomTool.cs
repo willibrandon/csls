@@ -6,7 +6,6 @@
 #:package SharpCompress
 #:include ScriptSupport.cs
 
-using System.Diagnostics;
 using System.Runtime.InteropServices;
 
 if (args.Length == 1 && args[0] is "--help" or "-h" or "-?")
@@ -35,10 +34,25 @@ else if (args.Length != 0)
 
 try
 {
-    const string version = "4.1.5";
     string repositoryRoot = ScriptSupport.FindRepositoryRoot();
     string platform = GetPlatform();
     string executableName = OperatingSystem.IsWindows() ? "sbom-tool.exe" : "sbom-tool";
+    string assetName = platform switch
+    {
+        "linux-x64" => "sbom-tool-linux-x64",
+        "osx-arm64" => "sbom-tool-osx-arm64",
+        "osx-x64" => "sbom-tool-osx-x64",
+        "win-x64" => "sbom-tool-win-x64.exe",
+        _ => throw new PlatformNotSupportedException(
+            $"Microsoft SBOM Tool does not publish {platform}.")
+    };
+    (string Tag, string AssetName, Uri Source, string Sha256) release =
+        await ScriptSupport.ResolveLatestGitHubReleaseAssetAsync(
+            "microsoft",
+            "sbom-tool",
+            name => string.Equals(name, assetName, StringComparison.Ordinal),
+            CancellationToken.None).ConfigureAwait(false);
+    string version = release.Tag.TrimStart('v');
     string installationRoot = explicitOutput is null
         ? Path.Join(
             ScriptSupport.ResolveToolsRoot(repositoryRoot),
@@ -50,34 +64,15 @@ try
     if (!File.Exists(executablePath))
     {
         Directory.CreateDirectory(installationRoot);
-        string assetName = platform switch
-        {
-            "linux-x64" => "sbom-tool-linux-x64",
-            "osx-arm64" => "sbom-tool-osx-arm64",
-            "osx-x64" => "sbom-tool-osx-x64",
-            "win-x64" => "sbom-tool-win-x64.exe",
-            _ => throw new PlatformNotSupportedException(
-                $"Microsoft SBOM Tool {version} does not publish {platform}.")
-        };
-        string expectedSha256 = platform switch
-        {
-            "linux-x64" => "bf5d4f99bc98c119d549d08fc02ae92598a7a42772f17317c01031a92632e05b",
-            "osx-arm64" => "bb25842fd707fbe78d3ac9de0d2b27ee2f4a97764f3b8a5c2068c826e75f3535",
-            "osx-x64" => "e9a45e3ffdcab920c7bbd2987ce0a133f275241e080bb48c1a3dbe6b558e8ee6",
-            "win-x64" => "625767b371b7fdd58f40f618b8a86da0247a33c89e419039c86b4edba1dad4b5",
-            _ => throw new UnreachableException()
-        };
         string temporaryPath = Path.Join(
             installationRoot,
             $".{executableName}.{Guid.NewGuid():N}.download");
         try
         {
             await ScriptSupport.DownloadVerifiedFileAsync(
-                new Uri(
-                    $"https://github.com/microsoft/sbom-tool/releases/download/" +
-                    $"v{version}/{assetName}"),
+                release.Source,
                 temporaryPath,
-                expectedSha256,
+                release.Sha256,
                 CancellationToken.None).ConfigureAwait(false);
             File.Move(temporaryPath, executablePath);
             ScriptSupport.EnsureExecutable(executablePath);

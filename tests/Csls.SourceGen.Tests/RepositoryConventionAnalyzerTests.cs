@@ -82,6 +82,51 @@ public sealed class RepositoryConventionAnalyzerTests
     }
 
     /// <summary>
+    /// Verifies incorrectly named private static fields fail the real analyzer compilation.
+    /// </summary>
+    [TestMethod]
+    public async Task ReportsStaticFieldWithoutPrefix()
+    {
+        const string Source = """
+            /// <summary>
+            /// Represents a documented type.
+            /// </summary>
+            internal sealed class DocumentedType
+            {
+                private static readonly string[] RequiredTargets = ["Compile"];
+            }
+            """;
+
+        ImmutableArray<Diagnostic> diagnostics = await AnalyzeAsync(Source).ConfigureAwait(false);
+
+        Diagnostic diagnostic = Assert.ContainsSingle(diagnostics);
+        Assert.AreEqual(RepositoryConventionAnalyzer.StaticFieldPrefixDiagnosticId, diagnostic.Id);
+        Assert.Contains("RequiredTargets", diagnostic.GetMessage(CultureInfo.InvariantCulture));
+    }
+
+    /// <summary>
+    /// Verifies correctly prefixed static fields and Pascal-cased constants remain valid.
+    /// </summary>
+    [TestMethod]
+    public async Task AcceptsStaticFieldPrefixAndConstantName()
+    {
+        const string Source = """
+            /// <summary>
+            /// Represents a documented type.
+            /// </summary>
+            internal sealed class DocumentedType
+            {
+                private const string OptionalTarget = "Markup";
+                private static readonly string[] s_requiredTargets = ["Compile"];
+            }
+            """;
+
+        ImmutableArray<Diagnostic> diagnostics = await AnalyzeAsync(Source).ConfigureAwait(false);
+
+        Assert.IsEmpty(diagnostics);
+    }
+
+    /// <summary>
     /// Verifies a documented single-type file satisfies every repository diagnostic.
     /// </summary>
     [TestMethod]
