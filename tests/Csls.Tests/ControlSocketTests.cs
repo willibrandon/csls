@@ -60,11 +60,9 @@ public sealed class ControlSocketTests
         Directory.CreateDirectory(fixturePath);
         string socketDirectory = ControlEndpoint.GetSocketDirectory();
         Directory.CreateDirectory(socketDirectory);
-        var unresponsiveSockets = new List<Socket>();
-        var unresponsiveSocketPaths = new List<string>();
-        using var socketReleaseSource = CancellationTokenSource.CreateLinkedTokenSource(
-            TestContext.CancellationToken);
-        Task? socketReleaseDelayTask = null;
+        string unresponsiveSocketPath = Path.Join(
+            socketDirectory,
+            $"000-{Guid.NewGuid():N}.csls.socket");
         try
         {
             await File.WriteAllTextAsync(
@@ -75,21 +73,13 @@ public sealed class ControlSocketTests
                 Path.Join(fixturePath, "Program.cs"),
                 DocumentText,
                 TestContext.CancellationToken).ConfigureAwait(false);
-            for (int index = 0; index < 64; index++)
-            {
-                string unresponsiveSocketPath = Path.Join(
-                    socketDirectory,
-                    $"000-{Guid.NewGuid():N}.csls.socket");
-                var unresponsiveSocket = new Socket(
-                    AddressFamily.Unix,
-                    SocketType.Stream,
-                    ProtocolType.Unspecified);
-                unresponsiveSocket.Bind(
-                    new UnixDomainSocketEndPoint(unresponsiveSocketPath));
-                unresponsiveSocket.Listen(1);
-                unresponsiveSockets.Add(unresponsiveSocket);
-                unresponsiveSocketPaths.Add(unresponsiveSocketPath);
-            }
+            using var unresponsiveSocket = new Socket(
+                AddressFamily.Unix,
+                SocketType.Stream,
+                ProtocolType.Unspecified);
+            unresponsiveSocket.Bind(
+                new UnixDomainSocketEndPoint(unresponsiveSocketPath));
+            unresponsiveSocket.Listen(1);
 
             var lsp = LspProcessSession.Start(
                 "csls-control-discovery-worker",
@@ -114,96 +104,28 @@ public sealed class ControlSocketTests
                 "*.csls.socket",
                 SearchOption.TopDirectoryOnly)];
             int workerIndex = Array.IndexOf(socketPaths, workerSocketPath);
-            string? blockingSocketPath = null;
-            foreach (string unresponsiveSocketPath in unresponsiveSocketPaths)
-            {
-                int unresponsiveIndex = Array.IndexOf(socketPaths, unresponsiveSocketPath);
-                if (unresponsiveIndex >= 0 &&
-                    workerIndex >= 0 &&
-                    unresponsiveIndex < workerIndex)
-                {
-                    blockingSocketPath = unresponsiveSocketPath;
-                    break;
-                }
-            }
-
-            Assert.IsNotNull(
-                blockingSocketPath,
+            int unresponsiveIndex = Array.IndexOf(socketPaths, unresponsiveSocketPath);
+            Assert.IsGreaterThanOrEqualTo(
+                0,
+                unresponsiveIndex,
+                "The real unresponsive socket was not enumerated.");
+            Assert.IsLessThan(
+                workerIndex,
+                unresponsiveIndex,
                 "Could not place a real unresponsive socket before the worker socket.");
-            string selectedSocketPath = blockingSocketPath;
-            Socket selectedSocket = unresponsiveSockets[
-                unresponsiveSocketPaths.IndexOf(selectedSocketPath)];
-            for (int index = unresponsiveSockets.Count - 1; index >= 0; index--)
-            {
-                if (string.Equals(
-                    unresponsiveSocketPaths[index],
-                    selectedSocketPath,
-                    StringComparison.Ordinal))
-                {
-                    continue;
-                }
-
-                unresponsiveSockets[index].Dispose();
-                File.Delete(unresponsiveSocketPaths[index]);
-                unresponsiveSockets.RemoveAt(index);
-                unresponsiveSocketPaths.RemoveAt(index);
-            }
-
-            string[] selectedSocketPaths = [.. Directory.EnumerateFiles(
-                socketDirectory,
-                "*.csls.socket",
-                SearchOption.TopDirectoryOnly)];
-            int selectedSocketIndex = Array.IndexOf(
-                selectedSocketPaths,
-                selectedSocketPath);
-            int selectedWorkerIndex = Array.IndexOf(
-                selectedSocketPaths,
-                workerSocketPath);
-            Assert.IsLessThan(selectedWorkerIndex, selectedSocketIndex);
             Task<ControlSessionInfo> discoveryTask =
                 ControlSessionWaiter.WaitForRunningAsync(
                     fixturePath,
                     TimeSpan.FromSeconds(10),
                     TestContext.CancellationToken);
-            socketReleaseDelayTask = Task.Delay(
-                TimeSpan.FromSeconds(11),
-                socketReleaseSource.Token);
-            Task completedTask = await Task.WhenAny(
-                discoveryTask,
-                socketReleaseDelayTask).ConfigureAwait(false);
-            if (ReferenceEquals(completedTask, socketReleaseDelayTask))
-            {
-                selectedSocket.Dispose();
-            }
-
-            ControlSessionInfo discoveredSession = await discoveryTask.ConfigureAwait(false);
+            ControlSessionInfo discoveredSession = await discoveryTask
+                .WaitAsync(TimeSpan.FromSeconds(11), TestContext.CancellationToken)
+                .ConfigureAwait(false);
             Assert.AreEqual(lsp.ProcessId, discoveredSession.ProcessId);
         }
         finally
         {
-            if (socketReleaseDelayTask is not null)
-            {
-                await socketReleaseSource.CancelAsync().ConfigureAwait(false);
-                try
-                {
-                    await socketReleaseDelayTask.ConfigureAwait(false);
-                }
-                catch (OperationCanceledException)
-                    when (socketReleaseSource.IsCancellationRequested)
-                {
-                }
-            }
-
-            foreach (Socket unresponsiveSocket in unresponsiveSockets)
-            {
-                unresponsiveSocket.Dispose();
-            }
-
-            foreach (string unresponsiveSocketPath in unresponsiveSocketPaths)
-            {
-                File.Delete(unresponsiveSocketPath);
-            }
-
+            File.Delete(unresponsiveSocketPath);
             Directory.Delete(fixturePath, recursive: true);
         }
     }
