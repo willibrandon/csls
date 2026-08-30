@@ -19,12 +19,14 @@ export class ProcessExecutor implements vscode.Disposable {
     cwd: string,
     cancellationToken?: vscode.CancellationToken,
     revealOutput = false,
+    logOutput = true,
   ): Promise<ProcessExecutionResult> {
     const operation = this.operationPromise.then(() => this.executeCore(
       arguments_,
       cwd,
       cancellationToken,
       revealOutput,
+      logOutput,
     ));
     this.operationPromise = operation.then(
       () => undefined,
@@ -49,6 +51,7 @@ export class ProcessExecutor implements vscode.Disposable {
     cwd: string,
     cancellationToken?: vscode.CancellationToken,
     revealOutput = false,
+    logOutput = true,
   ): Promise<ProcessExecutionResult> {
     if (this.disposed) {
       throw new vscode.CancellationError();
@@ -58,9 +61,11 @@ export class ProcessExecutor implements vscode.Disposable {
       this.outputChannel.show(true);
     }
 
-    this.outputChannel.appendLine(
-      `> ${this.displayName} ${arguments_.map(quoteArgument).join(" ")}`,
-    );
+    if (logOutput) {
+      this.outputChannel.appendLine(
+        `> ${this.displayName} ${arguments_.map(quoteArgument).join(" ")}`,
+      );
+    }
     const childProcess = spawn(this.executablePath, arguments_, {
       cwd,
       detached: process.platform !== "win32",
@@ -79,19 +84,23 @@ export class ProcessExecutor implements vscode.Disposable {
     let pendingStandardError = "";
     childProcess.stdout.on("data", (value: string) => {
       stdout += value;
-      pendingStandardOutput = appendCompleteProcessLines(
-        pendingStandardOutput,
-        value,
-        this.outputChannel,
-      );
+      if (logOutput) {
+        pendingStandardOutput = appendCompleteProcessLines(
+          pendingStandardOutput,
+          value,
+          this.outputChannel,
+        );
+      }
     });
     childProcess.stderr.on("data", (value: string) => {
       stderr += value;
-      pendingStandardError = appendCompleteProcessLines(
-        pendingStandardError,
-        value,
-        this.outputChannel,
-      );
+      if (logOutput) {
+        pendingStandardError = appendCompleteProcessLines(
+          pendingStandardError,
+          value,
+          this.outputChannel,
+        );
+      }
     });
     const cancellation = cancellationToken?.onCancellationRequested(() => {
       terminateProcessTree(childProcess);
@@ -102,8 +111,10 @@ export class ProcessExecutor implements vscode.Disposable {
         throw new vscode.CancellationError();
       }
 
-      appendPendingProcessLine(pendingStandardOutput, this.outputChannel);
-      appendPendingProcessLine(pendingStandardError, this.outputChannel);
+      if (logOutput) {
+        appendPendingProcessLine(pendingStandardOutput, this.outputChannel);
+        appendPendingProcessLine(pendingStandardError, this.outputChannel);
+      }
       return { exitCode, stderr, stdout };
     } finally {
       cancellation?.dispose();

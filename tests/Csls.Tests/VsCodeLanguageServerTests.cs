@@ -132,23 +132,6 @@ public sealed class VsCodeLanguageServerTests
                 display.DisplayName,
                 localSuite: "dist/shutdown-suite.cjs").ConfigureAwait(false);
 
-            string[] extensionLogPaths = Directory.GetFiles(
-                userDataPath,
-                "csls.log",
-                SearchOption.AllDirectories);
-            Assert.HasCount(1, extensionLogPaths);
-            string extensionLog = await File.ReadAllTextAsync(
-                extensionLogPaths[0],
-                TestContext.CancellationToken).ConfigureAwait(false);
-            string? inspectionCommand = extensionLog
-                .Split(Environment.NewLine, StringSplitOptions.RemoveEmptyEntries)
-                .FirstOrDefault(line => line.Contains(
-                    $"> dotnet msbuild {Path.Join(testProjectPath, "Fixture.Tests.csproj")}",
-                    StringComparison.Ordinal));
-            Assert.IsNotNull(inspectionCommand, "The project inspection command was not logged.");
-            Assert.Contains("-maxcpucount:1", inspectionCommand);
-            Assert.Contains("-nodeReuse:false", inspectionCommand);
-
             string processIdPath = Path.Join(testProjectPath, "discovery.pid");
             Assert.IsTrue(File.Exists(processIdPath), "The blocking discovery process did not start.");
             string processTreePath = Path.Join(testProjectPath, "discovery-process-tree.txt");
@@ -694,6 +677,13 @@ public sealed class VsCodeLanguageServerTests
                 StringComparison.Ordinal),
             cslsOutputLines,
             "Ordinary watched-file edits must remain quiet at Information level.");
+        Assert.DoesNotContain(
+            static line =>
+                line.Contains("-getProperty:TargetPath", StringComparison.Ordinal) ||
+                line.Contains("--list-tests", StringComparison.Ordinal) ||
+                line.Contains("\"displayName\":", StringComparison.Ordinal),
+            cslsOutputLines,
+            "Automatic test discovery must not write internal commands or JSON to csls output.");
         Assert.Contains(
             static line =>
                 line.Contains("Discovered ", StringComparison.Ordinal) &&
