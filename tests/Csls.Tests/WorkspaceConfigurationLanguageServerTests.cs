@@ -328,13 +328,14 @@ public sealed class WorkspaceConfigurationLanguageServerTests
                 initializationOptions.RootElement,
                 TestContext.CancellationToken).ConfigureAwait(false);
             await lsp.CompleteInitializationAsync().ConfigureAwait(false);
+            IReadOnlyList<WorkspaceSymbol> symbols = await lsp.RequestWorkspaceSymbolsAsync(
+                "Program",
+                TestContext.CancellationToken).ConfigureAwait(false);
+            Assert.ContainsSingle(symbols);
             using var traceConfiguration = JsonDocument.Parse(
                 """{"csls":{"logLevel":"Trace"}}""");
             await lsp.ChangeConfigurationAsync(traceConfiguration.RootElement)
                 .ConfigureAwait(false);
-            await lsp.RequestWorkspaceSymbolsAsync(
-                "Program",
-                TestContext.CancellationToken).ConfigureAwait(false);
 
             string diagnostics = await lsp.ShutdownAsync(
                 TestContext.CancellationToken).ConfigureAwait(false);
