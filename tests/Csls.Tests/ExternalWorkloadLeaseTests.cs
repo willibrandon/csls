@@ -31,16 +31,16 @@ public sealed class ExternalWorkloadLeaseTests
     }
 
     /// <summary>
-    /// Keeps one compiler and language-server workload active on a sixteen-core hosted runner.
+    /// Uses all four test workers on a sixteen-core hosted runner.
     /// </summary>
     [TestMethod]
-    public void HostedRunnerResourcesAllowOneExternalWorkload()
+    public void HostedRunnerResourcesAllowFourExternalWorkloads()
     {
         int capacity = ExternalWorkloadLease.CalculateCapacity(
             logicalProcessorCount: 16,
             availableMemoryBytes: 16L * 1024 * 1024 * 1024);
 
-        Assert.AreEqual(1, capacity);
+        Assert.AreEqual(4, capacity);
     }
 
     /// <summary>
@@ -56,8 +56,8 @@ public sealed class ExternalWorkloadLeaseTests
             logicalProcessorCount: 64,
             availableMemoryBytes: 16L * 1024 * 1024 * 1024);
 
-        Assert.AreEqual(2, processorConstrained);
-        Assert.AreEqual(2, memoryConstrained);
+        Assert.AreEqual(4, processorConstrained);
+        Assert.AreEqual(4, memoryConstrained);
     }
 
     /// <summary>

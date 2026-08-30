@@ -2,6 +2,7 @@ using Csls.Protocol;
 using Csls.Rpc;
 using StreamJsonRpc;
 using System.Diagnostics;
+using System.Globalization;
 using System.Text.Json;
 using LspRange = Csls.Protocol.Range;
 
@@ -89,6 +90,9 @@ internal sealed class LspProcessSession : IAsyncDisposable
             UseShellExecute = false,
             WorkingDirectory = workingDirectory
         };
+        startInfo.Environment["DOTNET_PROCESSOR_COUNT"] = ExternalWorkloadLease
+            .ProcessorCountPerWorkload
+            .ToString(CultureInfo.InvariantCulture);
         foreach (string argument in arguments)
         {
             startInfo.ArgumentList.Add(argument);

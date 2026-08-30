@@ -5,8 +5,9 @@ namespace Csls.Tests;
 /// </summary>
 internal sealed class ExternalWorkloadLease : IDisposable
 {
-    private const int LogicalProcessorsPerWorkload = 16;
-    private const long BytesPerWorkload = 8L * 1024 * 1024 * 1024;
+    private const int MaxConcurrentWorkloads = 4;
+    private const int LogicalProcessorsPerWorkload = 4;
+    private const long BytesPerWorkload = 4L * 1024 * 1024 * 1024;
     private static readonly AsyncLocal<ExternalWorkloadLease?> s_current = new();
     private static readonly int s_capacityCount = CalculateCapacity();
     private static readonly SemaphoreSlim s_capacity = new(s_capacityCount);
@@ -22,6 +23,13 @@ internal sealed class ExternalWorkloadLease : IDisposable
     /// Gets the number of independent external workloads admitted by this test host.
     /// </summary>
     internal static int Capacity => s_capacityCount;
+
+    /// <summary>
+    /// Gets the processor budget assigned to each admitted external workload.
+    /// </summary>
+    internal static int ProcessorCountPerWorkload => Math.Max(
+        1,
+        Environment.ProcessorCount / s_capacityCount);
 
     private ExternalWorkloadLease(CancellationToken cancellationToken)
     {
@@ -88,7 +96,9 @@ internal sealed class ExternalWorkloadLease : IDisposable
         int memoryCapacity = availableMemoryBytes > 0
             ? Math.Max(1, (int)Math.Min(int.MaxValue, availableMemoryBytes / BytesPerWorkload))
             : processorCapacity;
-        return Math.Min(processorCapacity, memoryCapacity);
+        return Math.Min(
+            MaxConcurrentWorkloads,
+            Math.Min(processorCapacity, memoryCapacity));
     }
 
     private static ExternalWorkloadLease? TryAddReference()
