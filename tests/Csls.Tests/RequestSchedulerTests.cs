@@ -327,7 +327,9 @@ public sealed class RequestSchedulerTests
         Assert.AreNotEqual(running.CorrelationId, queued.CorrelationId);
 
         Assert.IsFalse(await scheduler.TryCancelAsync(Guid.NewGuid()).ConfigureAwait(false));
-        Assert.IsTrue(await scheduler.TryCancelAsync(queued.CorrelationId).ConfigureAwait(false));
+        Assert.IsTrue(await scheduler.TryCancelAsync(queued.CorrelationId)
+            .WaitAsync(TimeSpan.FromSeconds(10), cancellationToken)
+            .ConfigureAwait(false));
         TaskCanceledException? cancellationException = null;
         try
         {
@@ -339,8 +341,11 @@ public sealed class RequestSchedulerTests
         }
 
         Assert.IsNotNull(cancellationException);
-        RequestActivitySnapshot canceledQueued = scheduler.GetSnapshot().ActiveRequests[1];
-        Assert.IsTrue(canceledQueued.IsCancellationRequested);
+        RequestSchedulerSnapshot afterCancellation = scheduler.GetSnapshot();
+        Assert.AreEqual(1, afterCancellation.TotalActiveRequests);
+        Assert.DoesNotContain(
+            queued.CorrelationId,
+            afterCancellation.ActiveRequests.Select(static request => request.CorrelationId));
 
         releaseFirst.SetResult();
         Assert.AreEqual(1, await first.ConfigureAwait(false));

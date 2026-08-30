@@ -243,11 +243,20 @@ public sealed class RequestScheduler : IAsyncDisposable
         using CancellationTokenRegistration cancellationRegistration = requestCancellationToken.Register(
             static state =>
             {
-                (TaskCompletionSource<RequestContext> source, CancellationToken token) =
-                    ((TaskCompletionSource<RequestContext>, CancellationToken))state!;
+                (
+                    TaskCompletionSource<RequestContext> source,
+                    CancellationToken token,
+                    RequestScheduler scheduler,
+                    RequestActivityState request) =
+                    ((
+                        TaskCompletionSource<RequestContext>,
+                        CancellationToken,
+                        RequestScheduler,
+                        RequestActivityState))state!;
                 source.TrySetCanceled(token);
+                scheduler.CompleteQueuedCancellation(request);
             },
-            (admission, requestCancellationToken));
+            (admission, requestCancellationToken, this, request));
 
         async Task ExecuteAsync()
         {
@@ -448,6 +457,14 @@ public sealed class RequestScheduler : IAsyncDisposable
         Exception? exception)
     {
         if (request.Complete(status, exception))
+        {
+            _requests.TryRemove(request.CorrelationId, out _);
+        }
+    }
+
+    private void CompleteQueuedCancellation(RequestActivityState request)
+    {
+        if (request.CompleteQueuedCancellation())
         {
             _requests.TryRemove(request.CorrelationId, out _);
         }
