@@ -14,7 +14,9 @@
       "targets": "wasm32-wasip2",
       "components": "rust-analyzer,rust-src,rustfmt,clippy"
     },
-    "ghcr.io/devcontainers/features/github-cli:1": {},
+    "ghcr.io/devcontainers/features/github-cli:1": {
+      "version": "2.97.0"
+    },
     "ghcr.io/devcontainers/features/docker-in-docker:4": {
       "dockerDashComposeVersion": "none"
     }
