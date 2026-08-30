@@ -20,6 +20,96 @@ public sealed class CodeActionLanguageServerTests
     public TestContext TestContext { get; set; } = null!;
 
     /// <summary>
+    /// Returns refactorings for a static class without failing the LSP request.
+    /// </summary>
+    [TestMethod]
+    public async Task StaticClassRefactoringRequestDoesNotFail()
+    {
+        string repositoryRoot = EditorToolResolver.FindRepositoryRoot();
+        string workerPath = Path.Join(
+            EditorToolResolver.ResolveArtifactsRoot(repositoryRoot),
+            "bin",
+            "Csls.Worker",
+            "debug",
+            "csls-worker.dll");
+        Assert.IsTrue(File.Exists(workerPath), $"Worker not found at {workerPath}.");
+
+        string fixturePath = Path.Join(
+            Path.GetTempPath(),
+            $"csls-static-refactoring-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(fixturePath);
+        try
+        {
+            string documentPath = Path.Join(fixturePath, "Adapter.cs");
+            await File.WriteAllTextAsync(
+                Path.Join(fixturePath, "Fixture.csproj"),
+                ProjectText,
+                TestContext.CancellationToken).ConfigureAwait(false);
+            await File.WriteAllTextAsync(
+                documentPath,
+                StaticRefactoringDocumentText,
+                TestContext.CancellationToken).ConfigureAwait(false);
+
+            var lsp = LspProcessSession.Start(
+                "csls-static-refactoring-worker",
+                EditorToolResolver.ResolveDotNetHost(),
+                [workerPath],
+                fixturePath);
+            await using ConfiguredAsyncDisposable lspCleanup = lsp.ConfigureAwait(false);
+            await lsp.InitializeAsync(
+                fixturePath,
+                TestContext.CancellationToken).ConfigureAwait(false);
+            await lsp.CompleteInitializationAsync().ConfigureAwait(false);
+            await lsp.OpenDocumentAsync(
+                documentPath,
+                StaticRefactoringDocumentText).ConfigureAwait(false);
+
+            Position[] positions =
+            [
+                new Position(0, 24),
+                new Position(4, 21),
+                new Position(6, 32),
+                new Position(7, 12),
+                new Position(9, 30),
+                new Position(10, 10)
+            ];
+            Task<IReadOnlyList<CodeAction>>[] requests =
+            [
+                .. Enumerable.Range(0, 32).Select(index =>
+                {
+                    Position position = positions[index % positions.Length];
+                    return lsp.RequestCodeActionsAsync(
+                        documentPath,
+                        new LspRange(position, position),
+                        only: null,
+                        TestContext.CancellationToken);
+                })
+            ];
+            IReadOnlyList<CodeAction>[] actions = await Task.WhenAll(requests)
+                .ConfigureAwait(false);
+            Assert.HasCount(32, actions);
+            Assert.IsEmpty(
+                actions
+                    .SelectMany(static requestActions => requestActions)
+                    .Where(static action => action.Title.StartsWith(
+                        "Extract base class",
+                        StringComparison.Ordinal)),
+                "A static class cannot inherit from an extracted base class.");
+
+            string workerDiagnostics = await lsp.ShutdownAsync(
+                TestContext.CancellationToken).ConfigureAwait(false);
+            Assert.DoesNotContain(
+                "Unhandled exception",
+                workerDiagnostics,
+                StringComparison.Ordinal);
+        }
+        finally
+        {
+            Directory.Delete(fixturePath, recursive: true);
+        }
+    }
+
+    /// <summary>
     /// Renames a symbol that violates an editorconfig naming rule and clears IDE1006.
     /// </summary>
     [TestMethod]
@@ -354,6 +444,21 @@ public sealed class CodeActionLanguageServerTests
         public static class Ambiguous
         {
             public static Timer? Value { get; }
+        }
+        """;
+
+    private const string StaticRefactoringDocumentText = """
+        using System.Reflection;
+
+        namespace Fixture;
+
+        internal static class RoslynExtractBaseClassCodeRefactoringAdapter
+        {
+            private static readonly Lazy<(ConstructorInfo Constructor, MethodInfo Method)> Contract =
+                new(CreateContract, LazyThreadSafetyMode.ExecutionAndPublication);
+
+            private static (ConstructorInfo Constructor, MethodInfo Method) CreateContract() =>
+                (typeof(string).GetConstructors()[0], typeof(string).GetMethods()[0]);
         }
         """;
 

@@ -401,35 +401,13 @@ public sealed class WorkspaceFileOperationLanguageServerTests
                 serverDiagnostics,
                 StringComparison.Ordinal);
             Assert.DoesNotContain(
-                "Workspace reload started",
+                "Reloading C# workspace",
                 serverDiagnostics,
                 StringComparison.Ordinal);
-            const string durationPrefix = "Watched file changes completed in ";
-            int durationStart = serverDiagnostics.IndexOf(
-                durationPrefix,
+            Assert.DoesNotContain(
+                "Watched file changes completed",
+                serverDiagnostics,
                 StringComparison.Ordinal);
-            Assert.IsGreaterThanOrEqualTo(0, durationStart);
-            durationStart += durationPrefix.Length;
-            int durationEnd = serverDiagnostics.IndexOf(
-                " ms using incremental update: ",
-                durationStart,
-                StringComparison.Ordinal);
-            Assert.IsGreaterThan(durationStart, durationEnd);
-            Assert.IsTrue(long.TryParse(
-                serverDiagnostics.AsSpan(durationStart, durationEnd - durationStart),
-                out long durationMilliseconds));
-            Assert.IsGreaterThanOrEqualTo(0, durationMilliseconds);
-            Assert.IsLessThan(5_000, durationMilliseconds);
-            Assert.Contains(
-                definitionPath,
-                serverDiagnostics[(durationEnd + " ms using incremental update: ".Length)..],
-                StringComparison.Ordinal);
-            Assert.AreEqual(
-                1,
-                serverDiagnostics[(durationEnd + " ms using incremental update: ".Length)..]
-                    .Split(definitionPath, StringSplitOptions.None)
-                    .Length - 1,
-                "The watched-file timing log repeated the same path.");
         }
         finally
         {
@@ -557,10 +535,10 @@ public sealed class WorkspaceFileOperationLanguageServerTests
             string serverDiagnostics = await lsp.ShutdownAsync(
                 TestContext.CancellationToken).ConfigureAwait(false);
             Assert.Contains(
-                "Workspace reload started for 1 workspace folders",
+                "Reloading C# workspace",
                 serverDiagnostics,
                 StringComparison.Ordinal);
-            const string durationPrefix = "Workspace reload completed in ";
+            const string durationPrefix = "Completed C# workspace reload in ";
             int durationStart = serverDiagnostics.IndexOf(
                 durationPrefix,
                 StringComparison.Ordinal);

@@ -192,7 +192,7 @@ public sealed partial class WorkspaceManager
         CancellationToken cancellationToken)
     {
         long startedTimestamp = Stopwatch.GetTimestamp();
-        WorkspaceManagerLogger.LogWorkspaceReloadStarted(_logger, roots.Count);
+        WorkspaceManagerLogger.LogWorkspaceReloadStarted(_logger);
         long previousGeneration = Generation;
         int previousBuildHostCount = _folders.Length;
         int clearedCacheEntryCount = _diagnosticCache.Count;

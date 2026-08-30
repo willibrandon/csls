@@ -11,6 +11,8 @@ using System.Text.Json;
 
 const string SdkVersion = "10.0.400";
 var releasesUri = new Uri("https://dotnetcli.blob.core.windows.net/dotnet/release-metadata/10.0/releases.json");
+string scriptPath = Path.GetFullPath(Path.Join(GetScriptDirectory(), "InstallDotNet.cs"));
+string usage = $"Usage: dotnet run --file \"{scriptPath}\" [--runtime <rid>]";
 
 if (args.Length == 1 && args[0] is "--help" or "-h" or "-?")
 {
@@ -18,7 +20,10 @@ if (args.Length == 1 && args[0] is "--help" or "-h" or "-?")
         "Installs the pinned .NET SDK from verified Microsoft release metadata.")
         .ConfigureAwait(false);
     await Console.Out.WriteLineAsync(
-        "Usage: dotnet run --file scripts/InstallDotNet.cs [--runtime <rid>]")
+        "When the pinned SDK is missing, invoke this file by absolute path from outside the repository using another .NET 10 SDK.")
+        .ConfigureAwait(false);
+    await Console.Out.WriteLineAsync(
+        usage)
         .ConfigureAwait(false);
     return;
 }
@@ -30,7 +35,7 @@ for (int argumentIndex = 0; argumentIndex < args.Length; argumentIndex += 2)
         !string.Equals(args[argumentIndex], "--runtime", StringComparison.Ordinal))
     {
         await Console.Error.WriteLineAsync(
-            "Usage: dotnet run --file scripts/InstallDotNet.cs [--runtime <rid>]")
+            usage)
             .ConfigureAwait(false);
         Environment.ExitCode = 2;
         return;

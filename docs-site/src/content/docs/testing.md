@@ -71,6 +71,10 @@ use Mono MSBuild. The test fails unless framework references and semantic result
 come from the platform host. Run its prerequisite with:
 
 ```console
+# Linux
+sudo dotnet run --file scripts/Provision-LegacyBuildHost.cs
+
+# macOS and Windows
 dotnet run --file scripts/Provision-LegacyBuildHost.cs
 ```
 

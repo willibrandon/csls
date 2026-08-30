@@ -98,30 +98,17 @@ public sealed class ControlSocketTests
             Assert.AreEqual(lsp.ProcessId, directSession.ProcessId);
             Assert.Contains(fixturePath, directSession.WorkspaceRoots);
 
-            string workerSocketPath = ControlEndpoint.GetSocketPath(lsp.ProcessId);
-            string[] socketPaths = [.. Directory.EnumerateFiles(
-                socketDirectory,
-                "*.csls.socket",
-                SearchOption.TopDirectoryOnly)];
-            int workerIndex = Array.IndexOf(socketPaths, workerSocketPath);
-            int unresponsiveIndex = Array.IndexOf(socketPaths, unresponsiveSocketPath);
-            Assert.IsGreaterThanOrEqualTo(
-                0,
-                unresponsiveIndex,
-                "The real unresponsive socket was not enumerated.");
-            Assert.IsLessThan(
-                workerIndex,
-                unresponsiveIndex,
-                "Could not place a real unresponsive socket before the worker socket.");
-            Task<ControlSessionInfo> discoveryTask =
-                ControlSessionWaiter.WaitForRunningAsync(
-                    fixturePath,
-                    TimeSpan.FromSeconds(10),
-                    TestContext.CancellationToken);
-            ControlSessionInfo discoveredSession = await discoveryTask
-                .WaitAsync(TimeSpan.FromSeconds(11), TestContext.CancellationToken)
+            IReadOnlyList<ControlSessionInfo> sessions = await ControlSessionDiscovery
+                .DiscoverAsync(TestContext.CancellationToken)
+                .WaitAsync(TimeSpan.FromSeconds(10), TestContext.CancellationToken)
                 .ConfigureAwait(false);
+            ControlSessionInfo discoveredSession = sessions.Single(
+                session => session.ProcessId == lsp.ProcessId);
             Assert.AreEqual(lsp.ProcessId, discoveredSession.ProcessId);
+            Assert.Contains(fixturePath, discoveredSession.WorkspaceRoots);
+            Assert.IsFalse(
+                File.Exists(unresponsiveSocketPath),
+                "Discovery did not remove the stale unresponsive socket.");
         }
         finally
         {

@@ -153,7 +153,7 @@ public sealed class ControlService : IControlRpcTarget
                 {
                     ProcessId = item.ProcessId,
                     Kind = item.Kind,
-                    WorkspaceRoot = item.WorkspaceRoot,
+                    WorkspaceCount = item.WorkspaceCount,
                     ProjectCount = item.ProjectCount
                 })
             ],

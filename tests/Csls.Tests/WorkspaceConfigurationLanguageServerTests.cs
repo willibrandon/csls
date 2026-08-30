@@ -339,7 +339,7 @@ public sealed class WorkspaceConfigurationLanguageServerTests
             string diagnostics = await lsp.ShutdownAsync(
                 TestContext.CancellationToken).ConfigureAwait(false);
             Assert.DoesNotContain(
-                "Initialized 1 workspace folders",
+                "C# workspace ready in ",
                 diagnostics,
                 StringComparison.Ordinal);
             Assert.Contains(

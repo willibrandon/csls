@@ -6,6 +6,7 @@ using Hex1b.Automation;
 using Hex1b.Input;
 using System.Globalization;
 using System.Runtime.CompilerServices;
+using System.Text;
 
 namespace Csls.Tests;
 
@@ -218,7 +219,7 @@ public sealed class DashboardLanguageServerTests
                     await automator.DownAsync(TestContext.CancellationToken).ConfigureAwait(false);
                     await automator.WaitUntilTextAsync("semantic tokens").ConfigureAwait(false);
                     await automator.DownAsync(TestContext.CancellationToken).ConfigureAwait(false);
-                    await automator.WaitUntilTextAsync("Initialized 1 workspace folders")
+                    await automator.WaitUntilTextAsync("C# workspace ready in ")
                         .ConfigureAwait(false);
 
                     await automator.Ctrl().KeyAsync(
@@ -395,6 +396,64 @@ public sealed class DashboardLanguageServerTests
                             !screen.ContainsText(secondMissingIdentifier),
                         description: "keyboard navigation to focus the first diagnostic row")
                         .ConfigureAwait(false);
+                    using (Hex1bTerminalSnapshot beforeColumnResizeSnapshot =
+                        automator.CreateSnapshot())
+                    {
+                        string[] lines = beforeColumnResizeSnapshot.GetScreenText().Split('\n');
+                        int headerRow = Array.FindIndex(
+                            lines,
+                            static line => line.Contains("Severity", StringComparison.Ordinal) &&
+                                line.Contains("Code", StringComparison.Ordinal) &&
+                                line.Contains("Location", StringComparison.Ordinal));
+                        Assert.IsGreaterThanOrEqualTo(0, headerRow);
+                        int initialCodeColumn = lines[headerRow].IndexOf(
+                            "Code",
+                            StringComparison.Ordinal);
+                        Assert.IsGreaterThanOrEqualTo(0, initialCodeColumn);
+                        int severityDividerColumn = lines[headerRow].LastIndexOf(
+                            '│',
+                            initialCodeColumn);
+                        Assert.IsGreaterThanOrEqualTo(1, severityDividerColumn);
+                        await automator.DragAsync(
+                            severityDividerColumn - 1,
+                            headerRow,
+                            severityDividerColumn + 5,
+                            headerRow,
+                            MouseButton.Left,
+                            TestContext.CancellationToken).ConfigureAwait(false);
+                        await automator.WaitUntilAsync(
+                            screen => screen
+                                .GetScreenText()
+                                .Split('\n')
+                                .Any(line =>
+                                    line.Contains("Severity", StringComparison.Ordinal) &&
+                                    line.IndexOf("Code", StringComparison.Ordinal) >=
+                                        initialCodeColumn + 5),
+                            timeout: TimeSpan.FromSeconds(2),
+                            description: "mouse drag to widen a real diagnostics table column")
+                            .ConfigureAwait(false);
+                    }
+
+                    string yankText = string.Create(
+                        CultureInfo.InvariantCulture,
+                        $"Error\tCS0103\tsrc/Features/Diagnostics/{longFileName}:1:19");
+                    byte[] yankBytes = Encoding.UTF8.GetBytes(yankText);
+                    byte[] clipboardSequence = Encoding.UTF8.GetBytes(
+                        $"\u001b]52;c;{Convert.ToBase64String(yankBytes)}\a");
+                    await automator.KeyAsync(
+                        Hex1bKey.Y,
+                        TestContext.CancellationToken).ConfigureAwait(false);
+                    await automator.WaitUntilAsync(
+                        _ => workload.ContainsRawOutput(clipboardSequence),
+                        timeout: TimeSpan.FromSeconds(2),
+                        description: "keyboard yank of the complete focused diagnostic row")
+                        .ConfigureAwait(false);
+                    await automator.WaitUntilAsync(
+                        _ => workload.ContainsRawOutput("48;2;126;201;216m"u8),
+                        timeout: TimeSpan.FromSeconds(2),
+                        description: "visual yank flash on the focused diagnostic row")
+                        .ConfigureAwait(false);
+
                     using Hex1bTerminalSnapshot beforeResizeSnapshot =
                         automator.CreateSnapshot();
                     string titleLine = beforeResizeSnapshot
@@ -620,6 +679,131 @@ public sealed class DashboardLanguageServerTests
     }
 
     /// <summary>
+    /// Renders the diagnostics view without waiting for real analyzer execution to finish.
+    /// </summary>
+    [TestMethod]
+    public async Task DashboardDiagnosticsClickDoesNotWaitForAnalyzerExecution()
+    {
+        string repositoryRoot = EditorToolResolver.FindRepositoryRoot();
+        string artifactsRoot = EditorToolResolver.ResolveArtifactsRoot(repositoryRoot);
+        string workerPath = Path.Join(
+            artifactsRoot,
+            "bin",
+            "Csls.Worker",
+            "debug",
+            "csls-worker.dll");
+        string cliPath = Path.Join(
+            artifactsRoot,
+            "bin",
+            "Csls.App",
+            "debug",
+            "csls.dll");
+        string cliWorkerPath = Path.Join(
+            artifactsRoot,
+            "bin",
+            "Csls.Cli.Worker",
+            "debug",
+            "csls-cli-worker.dll");
+        Assert.IsTrue(File.Exists(workerPath), $"Worker not found at {workerPath}.");
+        Assert.IsTrue(File.Exists(cliPath), $"CLI launcher not found at {cliPath}.");
+        Assert.IsTrue(File.Exists(cliWorkerPath), $"CLI worker not found at {cliWorkerPath}.");
+
+        AnalyzerExecutionProbeFixture fixture = await AnalyzerExecutionProbeFixture.CreateAsync(
+            repositoryRoot,
+            TestContext.CancellationToken).ConfigureAwait(false);
+        await using ConfiguredAsyncDisposable fixtureCleanup = fixture.ConfigureAwait(false);
+        var lsp = LspProcessSession.Start(
+            "csls-dashboard-diagnostics-latency-worker",
+            EditorToolResolver.ResolveDotNetHost(),
+            [workerPath],
+            fixture.RootPath);
+        await using ConfiguredAsyncDisposable lspCleanup = lsp.ConfigureAwait(false);
+        await lsp.InitializeAsync(
+            fixture.RootPath,
+            TestContext.CancellationToken).ConfigureAwait(false);
+        await lsp.OpenDocumentAsync(
+            fixture.DocumentPaths[0],
+            fixture.DocumentTexts[0]).ConfigureAwait(false);
+        await ControlSessionWaiter.WaitForRunningAsync(
+            fixture.RootPath,
+            TimeSpan.FromSeconds(60),
+            TestContext.CancellationToken).ConfigureAwait(false);
+
+        var environment = new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            ["CSLS_CLI_WORKER_PATH"] = cliWorkerPath,
+            ["DOTNET_HOST_PATH"] = EditorToolResolver.ResolveDotNetHost()
+        };
+        const int width = 110;
+        const int height = 28;
+        var workload = new Hex1bPtyWorkload(
+            EditorToolResolver.ResolveDotNetHost(),
+            [
+                cliPath,
+                "dashboard",
+                "--session",
+                lsp.ProcessId.ToString(CultureInfo.InvariantCulture)
+            ],
+            fixture.RootPath,
+            width,
+            height,
+            environment);
+        await using ConfiguredAsyncDisposable workloadCleanup = workload.ConfigureAwait(false);
+        using Hex1bTerminal terminal = Hex1bTerminal.CreateBuilder()
+            .WithWorkload(workload)
+            .WithHeadless()
+            .WithDimensions(width, height)
+            .Build();
+
+        int exitCode = await workload.RunAsync(
+            terminal,
+            async () =>
+            {
+                var automator = new Hex1bTerminalAutomator(
+                    terminal,
+                    defaultTimeout: TimeSpan.FromSeconds(60));
+                try
+                {
+                    await automator.WaitUntilTextAsync("csls dashboard").ConfigureAwait(false);
+                    await automator.ClickAtAsync(
+                        4,
+                        8,
+                        MouseButton.Left,
+                        TestContext.CancellationToken).ConfigureAwait(false);
+                    await FileTextWaiter.WaitAsync(
+                        fixture.MarkerPath,
+                        "started",
+                        TimeSpan.FromSeconds(60),
+                        TestContext.CancellationToken).ConfigureAwait(false);
+                    await automator.WaitUntilAsync(
+                        screen => screen.ContainsText("Loading diagnostics..."),
+                        timeout: TimeSpan.FromSeconds(2),
+                        description: "diagnostics view to render while real analyzer execution is blocked")
+                        .ConfigureAwait(false);
+                    await fixture.ReleaseAsync(TestContext.CancellationToken).ConfigureAwait(false);
+                    await automator.WaitUntilAsync(
+                        screen => screen.ContainsText("3 diagnostics") &&
+                            screen.ContainsText("Analyzer execution probe"),
+                        description: "completed real analyzer diagnostics")
+                        .ConfigureAwait(false);
+                    await automator.Ctrl().KeyAsync(
+                        Hex1bKey.C,
+                        TestContext.CancellationToken).ConfigureAwait(false);
+                }
+                finally
+                {
+                    await fixture.ReleaseAsync(CancellationToken.None).ConfigureAwait(false);
+                }
+            },
+            TestContext.CancellationToken).ConfigureAwait(false);
+
+        Assert.AreEqual(0, exitCode);
+        string diagnostics = await lsp.ShutdownAsync(
+            TestContext.CancellationToken).ConfigureAwait(false);
+        Assert.DoesNotContain("Unhandled exception", diagnostics, StringComparison.Ordinal);
+    }
+
+    /// <summary>
     /// Cancels and traces a live Roslyn analyzer request through the Hex1b dashboard.
     /// </summary>
     [TestMethod]
@@ -664,10 +848,12 @@ public sealed class DashboardLanguageServerTests
         await lsp.OpenDocumentAsync(
             fixture.DocumentPath,
             CancellationProbeFixture.DocumentText).ConfigureAwait(false);
-        await ControlSessionWaiter.WaitForRunningAsync(
+        ControlSessionInfo session = await ControlSessionWaiter.WaitForRunningAsync(
             fixture.RootPath,
             TimeSpan.FromSeconds(60),
             TestContext.CancellationToken).ConfigureAwait(false);
+        var control = new ControlRpcClient(session.SocketPath);
+        await using ConfiguredAsyncDisposable controlCleanup = control.ConfigureAwait(false);
 
         var environment = new Dictionary<string, string>(StringComparer.Ordinal)
         {
@@ -741,6 +927,22 @@ public sealed class DashboardLanguageServerTests
                     TestContext.CancellationToken).ConfigureAwait(false);
                 await automator.WaitUntilTextAsync("textDocument/diagnostic")
                     .ConfigureAwait(false);
+                ControlDashboardSnapshot activeSnapshot =
+                    await control.GetDashboardSnapshotAsync(
+                        new ControlDashboardRequest { IncludeDiagnostics = false },
+                        TestContext.CancellationToken).ConfigureAwait(false);
+                ControlRequestInfo activeRequest = Assert.ContainsSingle(
+                    activeSnapshot.Requests.ActiveRequests);
+                await AssertFocusedRowYankAsync(
+                    automator,
+                    workload,
+                    string.Join(
+                        '\t',
+                        activeRequest.Name,
+                        activeRequest.Mode,
+                        activeRequest.Status,
+                        activeRequest.CorrelationId.ToString("D")),
+                    TestContext.CancellationToken).ConfigureAwait(false);
                 await automator.KeyAsync(
                     Hex1bKey.F10,
                     TestContext.CancellationToken).ConfigureAwait(false);
@@ -780,6 +982,46 @@ public sealed class DashboardLanguageServerTests
                 await automator.WaitUntilTextAsync("textDocument/diagnostic")
                     .ConfigureAwait(false);
                 await automator.WaitUntilTextAsync("Canceled").ConfigureAwait(false);
+                ControlDashboardSnapshot traceSnapshot =
+                    await control.GetDashboardSnapshotAsync(
+                        new ControlDashboardRequest { IncludeDiagnostics = false },
+                        TestContext.CancellationToken).ConfigureAwait(false);
+                ControlTraceEntry traceEntry = Assert.ContainsSingle(
+                    traceSnapshot.Requests.Trace.Entries.Where(static entry =>
+                        entry.Name == "textDocument/diagnostic"));
+                using (Hex1bTerminalSnapshot traceTerminalSnapshot =
+                    automator.CreateSnapshot())
+                {
+                    string[] traceLines = traceTerminalSnapshot.GetScreenText().Split('\n');
+                    int traceRow = Array.FindIndex(
+                        traceLines,
+                        static line => line.Contains(
+                            "textDocument/diagnostic",
+                            StringComparison.Ordinal));
+                    Assert.IsGreaterThanOrEqualTo(0, traceRow);
+                    int traceColumn = traceLines[traceRow].IndexOf(
+                        "textDocument/diagnostic",
+                        StringComparison.Ordinal);
+                    Assert.IsGreaterThanOrEqualTo(0, traceColumn);
+                    await automator.ClickAtAsync(
+                        traceColumn,
+                        traceRow,
+                        MouseButton.Left,
+                        TestContext.CancellationToken).ConfigureAwait(false);
+                }
+
+                await AssertFocusedRowYankAsync(
+                    automator,
+                    workload,
+                    string.Join(
+                        '\t',
+                        traceEntry.Name,
+                        traceEntry.Status,
+                        traceEntry.DurationMilliseconds.ToString(
+                            "0.###",
+                            CultureInfo.InvariantCulture),
+                        traceEntry.CorrelationId.ToString("D")),
+                    TestContext.CancellationToken).ConfigureAwait(false);
                 await automator.Ctrl().KeyAsync(
                     Hex1bKey.C,
                     TestContext.CancellationToken).ConfigureAwait(false);
@@ -790,6 +1032,22 @@ public sealed class DashboardLanguageServerTests
         string diagnostics = await lsp.ShutdownAsync(
             TestContext.CancellationToken).ConfigureAwait(false);
         Assert.DoesNotContain("Unhandled exception", diagnostics, StringComparison.Ordinal);
+    }
+
+    private static async Task AssertFocusedRowYankAsync(
+        Hex1bTerminalAutomator automator,
+        Hex1bPtyWorkload workload,
+        string expectedText,
+        CancellationToken cancellationToken)
+    {
+        byte[] textBytes = Encoding.UTF8.GetBytes(expectedText);
+        byte[] clipboardSequence = Encoding.UTF8.GetBytes(
+            $"\u001b]52;c;{Convert.ToBase64String(textBytes)}\a");
+        await automator.KeyAsync(Hex1bKey.Y, cancellationToken).ConfigureAwait(false);
+        await automator.WaitUntilAsync(
+            _ => workload.ContainsRawOutput(clipboardSequence),
+            timeout: TimeSpan.FromSeconds(2),
+            description: $"complete focused row yank for {expectedText}").ConfigureAwait(false);
     }
 
     private static int GetAcceptedRequestCount(string screenText)

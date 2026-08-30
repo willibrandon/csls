@@ -2,13 +2,14 @@ using System.Buffers;
 using System.ComponentModel;
 using System.Diagnostics;
 using System.Text;
+using Microsoft.Extensions.Logging;
 
 namespace Csls.Workspaces;
 
 /// <summary>
 /// Restores discovered workspace entry points through a cancellable real .NET CLI process.
 /// </summary>
-internal static class DotNetWorkspaceRestorer
+internal static partial class DotNetWorkspaceRestorer
 {
     private const int MaximumRetainedOutputCharacters = 32 * 1024;
     private const int ReadBufferCharacters = 4 * 1024;
@@ -17,13 +18,16 @@ internal static class DotNetWorkspaceRestorer
     /// Restores every distinct entry point selected by bounded workspace discovery.
     /// </summary>
     /// <param name="entryPoints">The discovered solution, project, or file-based app paths.</param>
+    /// <param name="logger">The workspace restore logger.</param>
     /// <param name="cancellationToken">The operation cancellation token.</param>
     /// <returns>The number of restored solution or project entry points.</returns>
     internal static async Task<int> RestoreAsync(
         IReadOnlyList<string> entryPoints,
+        ILogger logger,
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(entryPoints);
+        ArgumentNullException.ThrowIfNull(logger);
         if (entryPoints.Count == 0)
         {
             throw new InvalidOperationException(
@@ -32,7 +36,8 @@ internal static class DotNetWorkspaceRestorer
 
         foreach (string entryPoint in entryPoints)
         {
-            await RestoreEntryPointAsync(entryPoint, cancellationToken).ConfigureAwait(false);
+            await RestoreEntryPointAsync(entryPoint, logger, cancellationToken)
+                .ConfigureAwait(false);
         }
 
         return entryPoints.Count;
@@ -40,8 +45,11 @@ internal static class DotNetWorkspaceRestorer
 
     private static async Task RestoreEntryPointAsync(
         string entryPoint,
+        ILogger logger,
         CancellationToken cancellationToken)
     {
+        long startedTimestamp = Stopwatch.GetTimestamp();
+        LogRestoreStarted(logger, entryPoint);
         string? configuredDotNetHost = Environment.GetEnvironmentVariable("DOTNET_HOST_PATH");
         var startInfo = new ProcessStartInfo
         {
@@ -97,7 +105,26 @@ internal static class DotNetWorkspaceRestorer
                 $"dotnet restore failed for {entryPoint} with exit code {process.ExitCode}: " +
                 details.Trim());
         }
+
+        long elapsedMilliseconds =
+            (long)Stopwatch.GetElapsedTime(startedTimestamp).TotalMilliseconds;
+        LogRestoreCompleted(logger, entryPoint, elapsedMilliseconds);
     }
+
+    [LoggerMessage(
+        EventId = 1,
+        Level = LogLevel.Information,
+        Message = "Restoring {EntryPoint}")]
+    private static partial void LogRestoreStarted(ILogger logger, string entryPoint);
+
+    [LoggerMessage(
+        EventId = 2,
+        Level = LogLevel.Information,
+        Message = "Restored {EntryPoint} in {ElapsedMilliseconds} ms")]
+    private static partial void LogRestoreCompleted(
+        ILogger logger,
+        string entryPoint,
+        long elapsedMilliseconds);
 
     private static async Task<string> ReadBoundedAsync(StreamReader reader)
     {

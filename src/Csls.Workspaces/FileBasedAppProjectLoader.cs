@@ -1,5 +1,6 @@
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.MSBuild;
+using Microsoft.Extensions.Logging;
 using System.Buffers;
 using System.ComponentModel;
 using System.Diagnostics;
@@ -26,17 +27,53 @@ internal static class FileBasedAppProjectLoader
     /// </summary>
     /// <param name="workspace">The Roslyn workspace that will own the evaluated project.</param>
     /// <param name="entryPointPath">The absolute file-based app entry point.</param>
+    /// <param name="logger">The workspace restore logger.</param>
     /// <param name="reportDiagnostic">The workspace diagnostic reporter.</param>
     /// <param name="cancellationToken">The operation cancellation token.</param>
     /// <returns>The opened Roslyn project.</returns>
     internal static async Task<Project> OpenProjectAsync(
         MSBuildWorkspace workspace,
         string entryPointPath,
+        ILogger logger,
         Action<WorkspaceDiagnosticKind, string> reportDiagnostic,
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(workspace);
         ArgumentException.ThrowIfNullOrWhiteSpace(entryPointPath);
+        ArgumentNullException.ThrowIfNull(logger);
+        ArgumentNullException.ThrowIfNull(reportDiagnostic);
+        entryPointPath = Path.GetFullPath(entryPointPath);
+
+        (string evaluatedProjectPath, string content) = await PrepareProjectAsync(
+            entryPointPath,
+            logger,
+            reportDiagnostic,
+            cancellationToken).ConfigureAwait(false);
+        return await OpenPreparedProjectAsync(
+            workspace,
+            entryPointPath,
+            evaluatedProjectPath,
+            content,
+            reportDiagnostic,
+            cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Restores and evaluates one file-based app before its serialized workspace load.
+    /// </summary>
+    /// <param name="entryPointPath">The absolute file-based app entry point.</param>
+    /// <param name="logger">The workspace restore logger.</param>
+    /// <param name="reportDiagnostic">The workspace diagnostic reporter.</param>
+    /// <param name="cancellationToken">The operation cancellation token.</param>
+    /// <returns>The evaluated project path and prepared project content.</returns>
+    internal static async Task<(string EvaluatedProjectPath, string Content)> PrepareProjectAsync(
+        string entryPointPath,
+        ILogger logger,
+        Action<WorkspaceDiagnosticKind, string> reportDiagnostic,
+        CancellationToken cancellationToken)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(entryPointPath);
+        ArgumentNullException.ThrowIfNull(logger);
         ArgumentNullException.ThrowIfNull(reportDiagnostic);
         entryPointPath = Path.GetFullPath(entryPointPath);
 
@@ -51,7 +88,7 @@ internal static class FileBasedAppProjectLoader
             materializationMarkerPath,
             cancellationToken).ConfigureAwait(false);
         await DotNetWorkspaceRestorer
-            .RestoreAsync([entryPointPath], cancellationToken)
+            .RestoreAsync([entryPointPath], logger, cancellationToken)
             .ConfigureAwait(false);
         (string evaluatedProjectPath, string content) = await EvaluateAsync(
             entryPointPath,
@@ -61,6 +98,44 @@ internal static class FileBasedAppProjectLoader
             content,
             evaluatedProjectPath,
             materializedProjectPath,
+            cancellationToken).ConfigureAwait(false);
+        return (evaluatedProjectPath, content);
+    }
+
+    /// <summary>
+    /// Opens one prepared file-based app in its retained Roslyn workspace.
+    /// </summary>
+    /// <param name="workspace">The Roslyn workspace that will own the evaluated project.</param>
+    /// <param name="entryPointPath">The absolute file-based app entry point.</param>
+    /// <param name="evaluatedProjectPath">The SDK-evaluated project path.</param>
+    /// <param name="content">The prepared project content.</param>
+    /// <param name="reportDiagnostic">The workspace diagnostic reporter.</param>
+    /// <param name="cancellationToken">The operation cancellation token.</param>
+    /// <returns>The opened Roslyn project.</returns>
+    internal static async Task<Project> OpenPreparedProjectAsync(
+        MSBuildWorkspace workspace,
+        string entryPointPath,
+        string evaluatedProjectPath,
+        string content,
+        Action<WorkspaceDiagnosticKind, string> reportDiagnostic,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(workspace);
+        ArgumentException.ThrowIfNullOrWhiteSpace(entryPointPath);
+        ArgumentException.ThrowIfNullOrWhiteSpace(evaluatedProjectPath);
+        ArgumentNullException.ThrowIfNull(content);
+        ArgumentNullException.ThrowIfNull(reportDiagnostic);
+        entryPointPath = Path.GetFullPath(entryPointPath);
+
+        using FileStream projectLock = await AcquireProjectLockAsync(
+            entryPointPath,
+            cancellationToken).ConfigureAwait(false);
+        string materializedProjectPath = CreateMaterializedProjectPath(entryPointPath);
+        string materializationMarkerPath = CreateMaterializationMarkerPath(entryPointPath);
+        await RecoverInterruptedMaterializationAsync(
+            entryPointPath,
+            materializedProjectPath,
+            materializationMarkerPath,
             cancellationToken).ConfigureAwait(false);
 
         bool materialized = false;

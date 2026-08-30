@@ -111,7 +111,7 @@ public sealed partial class WorkspaceManager : IAsyncDisposable
         ArgumentNullException.ThrowIfNull(rootPaths);
         ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposeState) != 0, this);
         long startedTimestamp = Stopwatch.GetTimestamp();
-        WorkspaceManagerLogger.LogWorkspaceLoadStarted(_logger, rootPaths.Count);
+        WorkspaceManagerLogger.LogWorkspaceLoadStarted(_logger);
 
         ImmutableArray<(string RootPath, Workspace Workspace, Solution Solution)> loadedFolders =
             await LoadFoldersAsync(rootPaths, progress, cancellationToken).ConfigureAwait(false);
@@ -1440,19 +1440,31 @@ public sealed partial class WorkspaceManager : IAsyncDisposable
             }
         }
 
-        if (supportsCreateFile &&
-            IsCodeActionRequested(parameters.Context.Only, RefactorCodeActionKind))
+        if (IsCodeActionRequested(parameters.Context.Only, RefactorCodeActionKind))
         {
-            LspCodeAction? moveTypeAction = await WorkspaceMoveTypeCodeActionService
-                .GetActionAsync(
-                    document,
-                    parameters,
-                    CreateWorkspaceEditAsync,
-                    cancellationToken)
-                .ConfigureAwait(false);
-            if (moveTypeAction is not null)
+            actions.AddRange(await WorkspaceRoslynCodeRefactoringService.GetActionsAsync(
+                document,
+                parameters,
+                supportsCreateFile,
+                CreateWorkspaceEditAsync,
+                cancellationToken).ConfigureAwait(false));
+            if (supportsCreateFile)
             {
-                actions.Add(moveTypeAction);
+                LspCodeAction? moveTypeAction = await WorkspaceMoveTypeCodeActionService
+                    .GetActionAsync(
+                        document,
+                        parameters,
+                        CreateWorkspaceEditAsync,
+                        cancellationToken)
+                    .ConfigureAwait(false);
+                if (moveTypeAction is not null &&
+                    !actions.Any(action => string.Equals(
+                        action.Title,
+                        moveTypeAction.Title,
+                        StringComparison.Ordinal)))
+                {
+                    actions.Add(moveTypeAction);
+                }
             }
         }
 

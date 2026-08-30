@@ -9,17 +9,17 @@ namespace Csls.Server;
 internal static partial class LanguageServerLogger
 {
     /// <summary>
-    /// Reports successful language-server initialization.
+    /// Reports successful language-server workspace initialization.
     /// </summary>
     /// <param name="logger">The language-server logger.</param>
-    /// <param name="workspaceFolderCount">The initialized workspace folder count.</param>
+    /// <param name="elapsedMilliseconds">The elapsed wall-clock milliseconds.</param>
     [LoggerMessage(
         EventId = 1,
         Level = LogLevel.Information,
-        Message = "Initialized {WorkspaceFolderCount} workspace folders")]
-    internal static partial void LogInitialized(
+        Message = "C# workspace ready in {ElapsedMilliseconds} ms")]
+    internal static partial void LogWorkspaceReady(
         ILogger logger,
-        int workspaceFolderCount);
+        long elapsedMilliseconds);
 
     /// <summary>
     /// Reports the configuration applied to the running language server.
@@ -122,7 +122,7 @@ internal static partial class LanguageServerLogger
     /// <param name="paths">The bounded changed-path list.</param>
     [LoggerMessage(
         EventId = 17,
-        Level = LogLevel.Information,
+        Level = LogLevel.Debug,
         SkipEnabledCheck = true,
         Message = "Watched file changes completed in {ElapsedMilliseconds} ms using {UpdateMode}: {Paths}")]
     internal static partial void LogWatchedFileChangesCompleted(

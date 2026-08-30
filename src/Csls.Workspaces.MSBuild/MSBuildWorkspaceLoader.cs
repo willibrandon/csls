@@ -2,6 +2,7 @@ using Microsoft.Build.Locator;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.MSBuild;
 using Microsoft.Extensions.Logging;
+using System.Diagnostics;
 using System.Globalization;
 
 namespace Csls.Workspaces;
@@ -37,11 +38,11 @@ public sealed partial class MSBuildWorkspaceLoader : WorkspaceLoader
         string[] entryPoints =
         [
             .. rootPaths
-                .SelectMany(root => DiscoverWorkspaceFiles(root, cancellationToken))
+                .SelectMany(root => DiscoverWorkspaceFilesWithLogging(root, cancellationToken))
                 .Distinct(PathComparer)
                 .Order(StringComparer.Ordinal)
         ];
-        return DotNetWorkspaceRestorer.RestoreAsync(entryPoints, cancellationToken);
+        return DotNetWorkspaceRestorer.RestoreAsync(entryPoints, _logger, cancellationToken);
     }
 
     /// <summary>
@@ -65,7 +66,9 @@ public sealed partial class MSBuildWorkspaceLoader : WorkspaceLoader
         {
             cancellationToken.ThrowIfCancellationRequested();
             string rootPath = Path.GetFullPath(requestedRoot);
-            loadPlans.Add((rootPath, DiscoverWorkspaceFiles(rootPath, cancellationToken)));
+            loadPlans.Add((
+                rootPath,
+                DiscoverWorkspaceFilesWithLogging(rootPath, cancellationToken)));
         }
 
         RegisterMSBuild(loadPlans);
@@ -88,18 +91,20 @@ public sealed partial class MSBuildWorkspaceLoader : WorkspaceLoader
                     continue;
                 }
 
+                List<IReadOnlyList<string>> loadGroups = CreateLoadGroups(
+                    workspaceFiles);
                 var loadedWorkspaces = new (Workspace Workspace, Solution Solution)?[
-                    workspaceFiles.Count];
+                    loadGroups.Count];
                 try
                 {
                     await Parallel.ForAsync(
                         0,
-                        workspaceFiles.Count,
+                        loadGroups.Count,
                         cancellationToken,
                         async (index, parallelCancellationToken) =>
                         {
-                            loadedWorkspaces[index] = await LoadWorkspaceFileAsync(
-                                workspaceFiles[index],
+                            loadedWorkspaces[index] = await LoadWorkspaceFilesAsync(
+                                loadGroups[index],
                                 buildConfiguration,
                                 string.Concat(
                                     rootPath,
@@ -109,19 +114,18 @@ public sealed partial class MSBuildWorkspaceLoader : WorkspaceLoader
                                 parallelCancellationToken).ConfigureAwait(false);
                         }).ConfigureAwait(false);
 
-                    for (int index = 0; index < workspaceFiles.Count; index++)
+                    for (int index = 0; index < loadGroups.Count; index++)
                     {
-                        string workspaceFile = workspaceFiles[index];
                         (Workspace Workspace, Solution Solution) loaded = loadedWorkspaces[index]
                             ?? throw new InvalidOperationException(
-                                $"Workspace loading did not produce a result for {workspaceFile}.");
+                                "Workspace loading did not produce a result for " +
+                                string.Join(", ", loadGroups[index]) + '.');
                         snapshots.Add(new WorkspaceFolderSnapshot
                         {
                             RootPath = rootPath,
                             Workspace = loaded.Workspace,
                             Solution = loaded.Solution
                         });
-                        LogWorkspaceLoaded(loaded.Solution.ProjectIds.Count, workspaceFile);
                         loadedWorkspaces[index] = null;
                     }
                 }
@@ -141,6 +145,48 @@ public sealed partial class MSBuildWorkspaceLoader : WorkspaceLoader
             Dispose(snapshots);
             throw;
         }
+    }
+
+    private IReadOnlyList<string> DiscoverWorkspaceFilesWithLogging(
+        string rootPath,
+        CancellationToken cancellationToken)
+    {
+        long startedTimestamp = Stopwatch.GetTimestamp();
+        LogWorkspaceDiscoveryStarted(rootPath);
+        IReadOnlyList<string> workspaceFiles = DiscoverWorkspaceFiles(
+            rootPath,
+            cancellationToken);
+        long elapsedMilliseconds =
+            (long)Stopwatch.GetElapsedTime(startedTimestamp).TotalMilliseconds;
+        LogWorkspaceDiscoveryCompleted(workspaceFiles.Count, elapsedMilliseconds);
+        return workspaceFiles;
+    }
+
+    private static List<IReadOnlyList<string>> CreateLoadGroups(
+        IReadOnlyList<string> workspaceFiles)
+    {
+        var standaloneFiles = new List<string>();
+        var groups = new List<IReadOnlyList<string>>();
+        foreach (string workspaceFile in workspaceFiles)
+        {
+            if (workspaceFile.EndsWith(".slnx", StringComparison.OrdinalIgnoreCase) ||
+                workspaceFile.EndsWith(".sln", StringComparison.OrdinalIgnoreCase))
+            {
+                groups.Add([workspaceFile]);
+            }
+            else
+            {
+                standaloneFiles.Add(workspaceFile);
+            }
+        }
+
+        if (standaloneFiles.Count > 0)
+        {
+            groups.Add(standaloneFiles);
+        }
+
+        groups.Sort(static (left, right) => StringComparer.Ordinal.Compare(left[0], right[0]));
+        return groups;
     }
 
     private static int CountExpectedProjects(
@@ -169,8 +215,8 @@ public sealed partial class MSBuildWorkspaceLoader : WorkspaceLoader
         }
     }
 
-    private async Task<(Workspace Workspace, Solution Solution)> LoadWorkspaceFileAsync(
-        string workspaceFile,
+    private async Task<(Workspace Workspace, Solution Solution)> LoadWorkspaceFilesAsync(
+        IReadOnlyList<string> workspaceFiles,
         string buildConfiguration,
         string loadIdentity,
         WorkspaceLoadProgressReporter? progressReporter,
@@ -185,42 +231,79 @@ public sealed partial class MSBuildWorkspaceLoader : WorkspaceLoader
         var workspace = MSBuildWorkspace.Create(globalProperties);
         try
         {
+            var fileBasedAppPaths = new Dictionary<ProjectId, string>();
             workspace.RegisterWorkspaceFailedHandler(eventArgs =>
                 LogWorkspaceDiagnostic(eventArgs.Diagnostic.Kind, eventArgs.Diagnostic.Message));
-            IProgress<ProjectLoadProgress>? projectProgress = progressReporter?
-                .CreateObserver(loadIdentity);
-            Solution solution;
-            if (IsFileBasedApp(workspaceFile))
-            {
-                Project project = await FileBasedAppProjectLoader.OpenProjectAsync(
-                    workspace,
-                    workspaceFile,
-                    LogWorkspaceDiagnostic,
+            Dictionary<string, (string EvaluatedProjectPath, string Content)>
+                preparedFileBasedApps = await PrepareFileBasedAppsAsync(
+                    workspaceFiles,
                     cancellationToken).ConfigureAwait(false);
-                solution = project.Solution;
-            }
-            else if (workspaceFile.EndsWith(".csproj", StringComparison.OrdinalIgnoreCase))
+            Solution solution = workspace.CurrentSolution;
+            foreach (string workspaceFile in workspaceFiles)
             {
-                Project project = await workspace
-                    .OpenProjectAsync(workspaceFile, projectProgress, cancellationToken)
-                    .ConfigureAwait(false);
-                solution = project.Solution;
-            }
-            else
-            {
-                solution = await workspace
-                    .OpenSolutionAsync(workspaceFile, projectProgress, cancellationToken)
-                    .ConfigureAwait(false);
+                long workspaceFileStartedTimestamp = Stopwatch.GetTimestamp();
+                LogWorkspaceLoading(workspaceFile);
+                IProgress<ProjectLoadProgress>? projectProgress = progressReporter?
+                    .CreateObserver(loadIdentity);
+                int previousProjectCount = solution.ProjectIds.Count;
+                Project? existingProject = solution.Projects.FirstOrDefault(project =>
+                    string.Equals(project.FilePath, workspaceFile, PathComparison));
+                if (existingProject is not null)
+                {
+                    progressReporter?.ReportProject(loadIdentity, workspaceFile);
+                }
+                else if (IsFileBasedApp(workspaceFile))
+                {
+                    (string evaluatedProjectPath, string content) =
+                        preparedFileBasedApps[workspaceFile];
+                    Project project = await FileBasedAppProjectLoader.OpenPreparedProjectAsync(
+                        workspace,
+                        workspaceFile,
+                        evaluatedProjectPath,
+                        content,
+                        LogWorkspaceDiagnostic,
+                        cancellationToken).ConfigureAwait(false);
+                    solution = project.Solution;
+                    fileBasedAppPaths[project.Id] = workspaceFile;
+                }
+                else if (workspaceFile.EndsWith(
+                    ".csproj",
+                    StringComparison.OrdinalIgnoreCase))
+                {
+                    Project project = await workspace
+                        .OpenProjectAsync(workspaceFile, projectProgress, cancellationToken)
+                        .ConfigureAwait(false);
+                    solution = project.Solution;
+                }
+                else
+                {
+                    solution = await workspace
+                        .OpenSolutionAsync(workspaceFile, projectProgress, cancellationToken)
+                        .ConfigureAwait(false);
+                }
+
+                if (progressReporter is not null)
+                {
+                    foreach (string projectPath in solution.Projects
+                        .Select(static project => project.FilePath)
+                        .OfType<string>())
+                    {
+                        progressReporter.ReportProject(loadIdentity, projectPath);
+                    }
+                }
+
+                long elapsedMilliseconds = (long)Stopwatch
+                    .GetElapsedTime(workspaceFileStartedTimestamp)
+                    .TotalMilliseconds;
+                LogWorkspaceLoaded(
+                    workspaceFile,
+                    elapsedMilliseconds,
+                    solution.ProjectIds.Count - previousProjectCount);
             }
 
-            if (progressReporter is not null)
+            foreach ((ProjectId projectId, string entryPointPath) in fileBasedAppPaths)
             {
-                foreach (string projectPath in solution.Projects
-                    .Select(static project => project.FilePath)
-                    .OfType<string>())
-                {
-                    progressReporter.ReportProject(loadIdentity, projectPath);
-                }
+                solution = solution.WithProjectFilePath(projectId, entryPointPath);
             }
 
             return (workspace, solution);
@@ -230,6 +313,50 @@ public sealed partial class MSBuildWorkspaceLoader : WorkspaceLoader
             workspace.Dispose();
             throw;
         }
+    }
+
+    private async Task<Dictionary<string, (string EvaluatedProjectPath, string Content)>>
+        PrepareFileBasedAppsAsync(
+            IReadOnlyList<string> workspaceFiles,
+            CancellationToken cancellationToken)
+    {
+        string[] entryPointPaths =
+        [
+            .. workspaceFiles.Where(IsFileBasedApp)
+        ];
+        var preparedProjects = new (string EvaluatedProjectPath, string Content)?[
+            entryPointPaths.Length];
+        await Parallel.ForAsync(
+            0,
+            entryPointPaths.Length,
+            new ParallelOptions
+            {
+                CancellationToken = cancellationToken,
+                MaxDegreeOfParallelism = Math.Clamp(Environment.ProcessorCount / 2, 1, 8)
+            },
+            async (index, parallelCancellationToken) =>
+            {
+                preparedProjects[index] = await FileBasedAppProjectLoader.PrepareProjectAsync(
+                    entryPointPaths[index],
+                    _logger,
+                    LogWorkspaceDiagnostic,
+                    parallelCancellationToken).ConfigureAwait(false);
+            }).ConfigureAwait(false);
+
+        var result = new Dictionary<string, (string EvaluatedProjectPath, string Content)>(
+            entryPointPaths.Length,
+            PathComparer);
+        for (int index = 0; index < entryPointPaths.Length; index++)
+        {
+            result.Add(
+                entryPointPaths[index],
+                preparedProjects[index]
+                    ?? throw new InvalidOperationException(
+                        $"File-based app preparation did not produce a result for " +
+                        $"{entryPointPaths[index]}."));
+        }
+
+        return result;
     }
 
     private void RegisterMSBuild(
@@ -257,6 +384,9 @@ public sealed partial class MSBuildWorkspaceLoader : WorkspaceLoader
     private static StringComparer PathComparer =>
         OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal;
 
+    private static StringComparison PathComparison =>
+        OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
+
     [LoggerMessage(
         EventId = 1,
         Level = LogLevel.Warning,
@@ -266,8 +396,17 @@ public sealed partial class MSBuildWorkspaceLoader : WorkspaceLoader
     [LoggerMessage(
         EventId = 2,
         Level = LogLevel.Information,
-        Message = "Loaded {ProjectCount} projects from {WorkspaceFile}")]
-    private partial void LogWorkspaceLoaded(int projectCount, string workspaceFile);
+        Message = "Loaded {WorkspaceFile} in {ElapsedMilliseconds} ms with {ProjectCount} projects")]
+    private partial void LogWorkspaceLoaded(
+        string workspaceFile,
+        long elapsedMilliseconds,
+        int projectCount);
+
+    [LoggerMessage(
+        EventId = 3,
+        Level = LogLevel.Information,
+        Message = "Discovering C# workspace in {RootPath}")]
+    private partial void LogWorkspaceDiscoveryStarted(string rootPath);
 
     [LoggerMessage(
         EventId = 4,
@@ -278,4 +417,18 @@ public sealed partial class MSBuildWorkspaceLoader : WorkspaceLoader
         Version version,
         string path,
         string workspaceFile);
+
+    [LoggerMessage(
+        EventId = 5,
+        Level = LogLevel.Information,
+        Message = "Discovered {EntryPointCount} workspace entry points in {ElapsedMilliseconds} ms")]
+    private partial void LogWorkspaceDiscoveryCompleted(
+        int entryPointCount,
+        long elapsedMilliseconds);
+
+    [LoggerMessage(
+        EventId = 6,
+        Level = LogLevel.Information,
+        Message = "Loading {WorkspaceFile}")]
+    private partial void LogWorkspaceLoading(string workspaceFile);
 }

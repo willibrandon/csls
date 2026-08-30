@@ -11,14 +11,11 @@ internal static partial class WorkspaceManagerLogger
     /// Reports the start of initial workspace loading.
     /// </summary>
     /// <param name="logger">The workspace logger.</param>
-    /// <param name="workspaceFolderCount">The workspace folder count.</param>
     [LoggerMessage(
         EventId = 4,
         Level = LogLevel.Information,
-        Message = "Workspace load started for {WorkspaceFolderCount} workspace folders")]
-    internal static partial void LogWorkspaceLoadStarted(
-        ILogger logger,
-        int workspaceFolderCount);
+        Message = "Loading C# workspace")]
+    internal static partial void LogWorkspaceLoadStarted(ILogger logger);
 
     /// <summary>
     /// Reports completion of initial workspace loading.
@@ -29,7 +26,7 @@ internal static partial class WorkspaceManagerLogger
     [LoggerMessage(
         EventId = 5,
         Level = LogLevel.Information,
-        Message = "Workspace load completed in {ElapsedMilliseconds} ms with {ProjectCount} projects")]
+        Message = "Completed initial C# workspace load in {ElapsedMilliseconds} ms with {ProjectCount} projects")]
     internal static partial void LogWorkspaceLoadCompleted(
         ILogger logger,
         long elapsedMilliseconds,
@@ -39,14 +36,11 @@ internal static partial class WorkspaceManagerLogger
     /// Reports the start of a full workspace reload.
     /// </summary>
     /// <param name="logger">The workspace logger.</param>
-    /// <param name="workspaceFolderCount">The workspace folder count.</param>
     [LoggerMessage(
         EventId = 6,
         Level = LogLevel.Information,
-        Message = "Workspace reload started for {WorkspaceFolderCount} workspace folders")]
-    internal static partial void LogWorkspaceReloadStarted(
-        ILogger logger,
-        int workspaceFolderCount);
+        Message = "Reloading C# workspace")]
+    internal static partial void LogWorkspaceReloadStarted(ILogger logger);
 
     /// <summary>
     /// Reports completion of a full workspace reload.
@@ -57,7 +51,7 @@ internal static partial class WorkspaceManagerLogger
     [LoggerMessage(
         EventId = 7,
         Level = LogLevel.Information,
-        Message = "Workspace reload completed in {ElapsedMilliseconds} ms with {ProjectCount} projects")]
+        Message = "Completed C# workspace reload in {ElapsedMilliseconds} ms with {ProjectCount} projects")]
     internal static partial void LogWorkspaceReloadCompleted(
         ILogger logger,
         long elapsedMilliseconds,

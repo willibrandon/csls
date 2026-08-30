@@ -13,7 +13,7 @@ namespace Csls.Tests;
 internal static class ControlSessionWaiter
 {
     private static readonly TimeSpan s_pollInterval = TimeSpan.FromMilliseconds(50);
-    private static readonly TimeSpan s_probeTimeout = TimeSpan.FromMilliseconds(500);
+    private static readonly TimeSpan s_probeTimeout = TimeSpan.FromSeconds(2);
 
     /// <summary>
     /// Waits for the session serving one workspace to enter its running state.

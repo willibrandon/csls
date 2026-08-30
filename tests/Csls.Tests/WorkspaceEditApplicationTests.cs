@@ -69,7 +69,9 @@ public sealed class WorkspaceEditApplicationTests
                 },
                 supportsCreateFile: true,
                 TestContext.CancellationToken).ConfigureAwait(false);
-            WorkspaceEdit edit = Assert.ContainsSingle(actions).Edit
+            CodeAction moveAction = Assert.ContainsSingle(actions.Where(static action =>
+                action.Title == "Move Helper to Helper.cs"));
+            WorkspaceEdit edit = moveAction.Edit
                 ?? throw new InvalidDataException("The move action had no workspace edit.");
             WorkspaceEditSnapshot snapshot = await manager.CreateEditSnapshotAsync(
                 edit,

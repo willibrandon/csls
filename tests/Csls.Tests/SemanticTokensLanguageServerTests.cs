@@ -20,6 +20,141 @@ public sealed class SemanticTokensLanguageServerTests
     public TestContext TestContext { get; set; } = null!;
 
     /// <summary>
+    /// Classifies framework types after a new SDK-globbed source joins a running project.
+    /// </summary>
+    [TestMethod]
+    public async Task SemanticTokensClassifyFrameworkTypesInNewSourceFiles()
+    {
+        string repositoryRoot = EditorToolResolver.FindRepositoryRoot();
+        string workerPath = Path.Join(
+            EditorToolResolver.ResolveArtifactsRoot(repositoryRoot),
+            "bin",
+            "Csls.Worker",
+            "debug",
+            "csls-worker.dll");
+        string? configuredWorkerPath = Environment.GetEnvironmentVariable(
+            "CSLS_TEST_SERVER_WORKER_PATH");
+        if (!string.IsNullOrWhiteSpace(configuredWorkerPath))
+        {
+            workerPath = Path.GetFullPath(configuredWorkerPath);
+        }
+
+        Assert.IsTrue(File.Exists(workerPath), $"Worker not found at {workerPath}.");
+
+        string fixturePath = Path.Join(
+            Path.GetTempPath(),
+            $"csls-created-semantic-tokens-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(fixturePath);
+        try
+        {
+            await File.WriteAllTextAsync(
+                Path.Join(fixturePath, "Fixture.csproj"),
+                ProjectText,
+                TestContext.CancellationToken).ConfigureAwait(false);
+            await File.WriteAllTextAsync(
+                Path.Join(fixturePath, "Existing.cs"),
+                "internal sealed class Existing;\n",
+                TestContext.CancellationToken).ConfigureAwait(false);
+
+            var lsp = LspProcessSession.Start(
+                "csls-created-semantic-tokens-worker",
+                string.Equals(Path.GetExtension(workerPath), ".dll", StringComparison.Ordinal)
+                    ? EditorToolResolver.ResolveDotNetHost()
+                    : workerPath,
+                string.Equals(Path.GetExtension(workerPath), ".dll", StringComparison.Ordinal)
+                    ? [workerPath]
+                    : [],
+                fixturePath);
+            await using ConfiguredAsyncDisposable lspCleanup = lsp.ConfigureAwait(false);
+            using var capabilities = JsonDocument.Parse(
+                """
+                {
+                  "workspace": {
+                    "fileOperations": {
+                      "didCreate": true
+                    }
+                  }
+                }
+                """);
+            JsonElement initialization = await lsp.InitializeAsync(
+                fixturePath,
+                capabilities.RootElement,
+                TestContext.CancellationToken).ConfigureAwait(false);
+            IReadOnlyList<string> tokenTypes =
+            [
+                .. initialization
+                    .GetProperty("capabilities")
+                    .GetProperty("semanticTokensProvider")
+                    .GetProperty("legend")
+                    .GetProperty("tokenTypes")
+                    .EnumerateArray()
+                    .Select(static item => item.GetString()!)
+            ];
+            IReadOnlyList<string> tokenModifiers =
+            [
+                .. initialization
+                    .GetProperty("capabilities")
+                    .GetProperty("semanticTokensProvider")
+                    .GetProperty("legend")
+                    .GetProperty("tokenModifiers")
+                    .EnumerateArray()
+                    .Select(static item => item.GetString()!)
+            ];
+
+            string createdPath = Path.Join(fixturePath, "Adapter.cs");
+            await File.WriteAllTextAsync(
+                createdPath,
+                CreatedFrameworkTypeDocumentText,
+                TestContext.CancellationToken).ConfigureAwait(false);
+            await lsp.CreateFilesAsync([createdPath]).ConfigureAwait(false);
+            await lsp.OpenDocumentAsync(createdPath, CreatedFrameworkTypeDocumentText)
+                .ConfigureAwait(false);
+            SemanticTokens result = await lsp.RequestSemanticTokensAsync(
+                createdPath,
+                TestContext.CancellationToken).ConfigureAwait(false);
+            IReadOnlyList<(
+                int Line,
+                int Start,
+                int Length,
+                string TokenType,
+                IReadOnlyList<string> Modifiers)> tokens = DecodeTokens(
+                    result.Data,
+                    tokenTypes,
+                    tokenModifiers);
+            AssertTokenAtText(tokens, CreatedFrameworkTypeDocumentText, "Lazy", "class");
+            AssertTokenAtText(tokens, CreatedFrameworkTypeDocumentText, "Func", "type");
+            AssertTokenAtText(
+                tokens,
+                CreatedFrameworkTypeDocumentText,
+                "ConstructorInfo",
+                "class");
+            AssertTokenAtText(
+                tokens,
+                CreatedFrameworkTypeDocumentText,
+                "MethodInfo",
+                "class");
+            AssertAllTokensAtText(
+                tokens,
+                CreatedFrameworkTypeDocumentText,
+                "ConstructorInfo",
+                "class");
+            AssertAllTokensAtText(
+                tokens,
+                CreatedFrameworkTypeDocumentText,
+                "MethodInfo",
+                "class");
+
+            string diagnostics = await lsp.ShutdownAsync(
+                TestContext.CancellationToken).ConfigureAwait(false);
+            Assert.DoesNotContain("Unhandled exception", diagnostics, StringComparison.Ordinal);
+        }
+        finally
+        {
+            Directory.Delete(fixturePath, recursive: true);
+        }
+    }
+
+    /// <summary>
     /// Tracks exact Roslyn token classifications across complete, delta, and fallback requests.
     /// </summary>
     [TestMethod]
@@ -414,6 +549,51 @@ public sealed class SemanticTokensLanguageServerTests
         }
     }
 
+    private static void AssertTokenAtText(
+        IReadOnlyList<(
+            int Line,
+            int Start,
+            int Length,
+            string TokenType,
+            IReadOnlyList<string> Modifiers)> tokens,
+        string text,
+        string value,
+        string tokenType)
+    {
+        int offset = text.IndexOf(value, StringComparison.Ordinal);
+        Assert.IsGreaterThanOrEqualTo(0, offset, $"{value} was not found in the source.");
+        int line = text.AsSpan(0, offset).Count('\n');
+        int lineStart = text.LastIndexOf('\n', Math.Max(0, offset - 1));
+        int start = offset - (lineStart + 1);
+        AssertToken(tokens, line, start, value.Length, tokenType);
+    }
+
+    private static void AssertAllTokensAtText(
+        IReadOnlyList<(
+            int Line,
+            int Start,
+            int Length,
+            string TokenType,
+            IReadOnlyList<string> Modifiers)> tokens,
+        string text,
+        string value,
+        string tokenType)
+    {
+        int offset = 0;
+        int occurrenceCount = 0;
+        while ((offset = text.IndexOf(value, offset, StringComparison.Ordinal)) >= 0)
+        {
+            int line = text.AsSpan(0, offset).Count('\n');
+            int lineStart = text.LastIndexOf('\n', Math.Max(0, offset - 1));
+            int start = offset - (lineStart + 1);
+            AssertToken(tokens, line, start, value.Length, tokenType);
+            occurrenceCount++;
+            offset += value.Length;
+        }
+
+        Assert.IsGreaterThan(0, occurrenceCount, $"{value} was not found in the source.");
+    }
+
     private static void AssertIntSequence(
         IReadOnlyList<int> expected,
         IReadOnlyList<int> actual)
@@ -443,6 +623,33 @@ public sealed class SemanticTokensLanguageServerTests
             <ImplicitUsings>enable</ImplicitUsings>
           </PropertyGroup>
         </Project>
+        """;
+
+    private const string CreatedFrameworkTypeDocumentText = """
+        using System;
+        using System.Reflection;
+
+        internal sealed class Adapter
+        {
+            private static readonly Lazy<(
+                ConstructorInfo MemberAnalysisConstructor,
+                ConstructorInfo OptionsConstructor,
+                ConstructorInfo ActionConstructor,
+                MethodInfo FormattingOptionsMethod,
+                MethodInfo ImmutableArrayCreateMethod)> s_contract = new();
+
+            internal static string Apply(Func<string, string> apply) => apply(string.Empty);
+
+            internal static void Deconstruct()
+            {
+                (
+                    ConstructorInfo memberAnalysisConstructor,
+                    ConstructorInfo optionsConstructor,
+                    ConstructorInfo actionConstructor,
+                    MethodInfo formattingOptionsMethod,
+                    MethodInfo immutableArrayCreateMethod) = s_contract.Value;
+            }
+        }
         """;
 
     private const string OriginalDocumentText = """

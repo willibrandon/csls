@@ -2,6 +2,7 @@ using Csls.Core;
 using Csls.Protocol;
 using Csls.Workspaces;
 using Microsoft.Extensions.Logging;
+using System.Diagnostics;
 using System.Text.Json;
 
 namespace Csls.Server;
@@ -293,9 +294,7 @@ public sealed partial class LanguageServer : ILspRpcTarget, IAsyncDisposable
                 },
                 CodeActionProvider = new CodeActionOptions
                 {
-                    CodeActionKinds = _supportsCreateFileWorkspaceEdits
-                        ? ["quickfix", "refactor", "source.organizeImports"]
-                        : ["quickfix", "source.organizeImports"],
+                    CodeActionKinds = ["quickfix", "refactor", "source.organizeImports"],
                     ResolveProvider = false
                 }
             },
@@ -315,6 +314,7 @@ public sealed partial class LanguageServer : ILspRpcTarget, IAsyncDisposable
         ArgumentNullException.ThrowIfNull(parameters);
         cancellationToken.ThrowIfCancellationRequested();
         Transition(ServerLifecycleState.InitializeResponded, ServerLifecycleState.Running);
+        long workspaceStartedTimestamp = Stopwatch.GetTimestamp();
         try
         {
             await _scheduler.ScheduleAsync(
@@ -352,7 +352,10 @@ public sealed partial class LanguageServer : ILspRpcTarget, IAsyncDisposable
                             (int)ServerWorkspacePhase.Loading) ==
                         (int)ServerWorkspacePhase.Loading)
                     {
-                        LanguageServerLogger.LogInitialized(_logger, _rootPaths.Length);
+                        long elapsedMilliseconds = (long)Stopwatch
+                            .GetElapsedTime(workspaceStartedTimestamp)
+                            .TotalMilliseconds;
+                        LanguageServerLogger.LogWorkspaceReady(_logger, elapsedMilliseconds);
                     }
 
                     return true;

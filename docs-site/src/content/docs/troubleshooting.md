@@ -35,7 +35,8 @@ the project requires the .NET Framework build host. Roslyn logs a clear fallback
 when only the current .NET SDK host is available.
 
 Repository contributors can install or verify the expected host with
-`dotnet run --file scripts/Provision-LegacyBuildHost.cs`.
+`sudo dotnet run --file scripts/Provision-LegacyBuildHost.cs` on Linux or
+`dotnet run --file scripts/Provision-LegacyBuildHost.cs` on macOS and Windows.
 
 File-based apps must use a selected SDK that understands their directives. Run the
 file directly with `dotnet run --file` if package, project, include, property, or SDK

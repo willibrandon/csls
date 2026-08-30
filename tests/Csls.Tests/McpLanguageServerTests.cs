@@ -819,7 +819,9 @@ public sealed class McpLanguageServerTests
                                 .IReadOnlyListControlCodeActionPlan)
                     ?? throw new InvalidDataException(
                         "MCP returned no move-to-file refactoring preview.");
-                ControlCodeActionPlan moveAction = Assert.ContainsSingle(moveActions);
+                ControlCodeActionPlan moveAction = Assert.ContainsSingle(
+                    moveActions.Where(static candidate =>
+                        candidate.Action.Title == "Move McpHelper to McpHelper.cs"));
                 Assert.AreEqual("Move McpHelper to McpHelper.cs", moveAction.Action.Title);
                 ControlEditPlan movePlan = moveAction.EditPlan
                     ?? throw new InvalidDataException(

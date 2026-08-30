@@ -2,6 +2,7 @@ using Csls.Control.Contracts;
 using Hex1b;
 using Hex1b.Input;
 using Hex1b.Layout;
+using Hex1b.Theming;
 using Hex1b.Widgets;
 using System.Globalization;
 
@@ -98,6 +99,9 @@ internal static class DashboardView
                     bindings.Key(Hex1bKey.F11).Action(
                         eventArgs => OpenTraceConfirmation(eventArgs.Windows, state),
                         "Start or stop request tracing");
+                    bindings.Key(Hex1bKey.Y).Action(
+                        eventArgs => YankFocusedRowAsync(eventArgs, state),
+                        "Yank focused row");
                 }))
                 .Fill()
         ]);
@@ -108,16 +112,16 @@ internal static class DashboardView
         {
             DashboardSection.Sessions => BuildSessions(context, state),
             DashboardSection.Actions => BuildActions(context, state),
-            DashboardSection.Workspaces => BuildWorkspaces(context, state.Snapshot),
-            DashboardSection.Projects => BuildProjects(context, state.Snapshot),
-            DashboardSection.Documents => BuildDocuments(context, state.Snapshot),
+            DashboardSection.Workspaces => BuildWorkspaces(context, state),
+            DashboardSection.Projects => BuildProjects(context, state),
+            DashboardSection.Documents => BuildDocuments(context, state),
             DashboardSection.Diagnostics => BuildDiagnostics(context, state),
-            DashboardSection.Requests => BuildRequests(context, state.Snapshot),
+            DashboardSection.Requests => BuildRequests(context, state),
             DashboardSection.Queues => BuildQueues(context, state.Snapshot),
-            DashboardSection.BuildHosts => BuildBuildHosts(context, state.Snapshot),
-            DashboardSection.Caches => BuildCaches(context, state.Snapshot),
-            DashboardSection.Logs => BuildLogs(context, state.Snapshot),
-            DashboardSection.Traces => BuildTraces(context, state.Snapshot),
+            DashboardSection.BuildHosts => BuildBuildHosts(context, state),
+            DashboardSection.Caches => BuildCaches(context, state),
+            DashboardSection.Logs => BuildLogs(context, state),
+            DashboardSection.Traces => BuildTraces(context, state),
             _ => throw new InvalidOperationException($"Unknown dashboard section: {state.Section}.")
         };
 
@@ -265,88 +269,132 @@ internal static class DashboardView
             .RowKey(static session => session.ProcessId)
             .Header(header =>
             [
-                header.Cell("PID").Width(SizeHint.Fixed(10)),
-                header.Cell("State").Width(SizeHint.Fixed(20)),
-                header.Cell("Generation").Width(SizeHint.Fixed(12)),
+                ResizableHeader(header, state, DashboardSection.Sessions, 0, "PID", 10),
+                ResizableHeader(header, state, DashboardSection.Sessions, 1, "State", 20),
+                ResizableHeader(header, state, DashboardSection.Sessions, 2, "Generation", 12),
                 header.Cell("Workspace").Width(SizeHint.Fill)
             ])
             .Row((row, session, _) =>
-            [
-                row.Cell(session.ProcessId.ToString(CultureInfo.InvariantCulture)),
-                row.Cell(session.LifecycleState),
-                row.Cell(session.WorkspaceGeneration.ToString(CultureInfo.InvariantCulture)),
-                row.Cell(session.WorkspaceRoots.Count == 0
-                    ? "none"
-                    : session.WorkspaceRoots[0])
-            ])
-            .Focus(state.Snapshot.Session.ProcessId)
+            {
+                bool flash = state.IsYankFlashing(
+                    DashboardSection.Sessions,
+                    session.ProcessId);
+                return
+                [
+                    RowCell(
+                        row,
+                        session.ProcessId.ToString(CultureInfo.InvariantCulture),
+                        flash),
+                    RowCell(row, session.LifecycleState, flash),
+                    RowCell(
+                        row,
+                        session.WorkspaceGeneration.ToString(CultureInfo.InvariantCulture),
+                        flash),
+                    RowCell(
+                        row,
+                        session.WorkspaceRoots.Count == 0
+                            ? "none"
+                            : session.WorkspaceRoots[0],
+                        flash)
+                ];
+            })
+            .Focus(state.GetFocusedRow(
+                DashboardSection.Sessions,
+                state.Snapshot.Session.ProcessId))
             .OnFocusChanged(key =>
-                key is int processId &&
-                processId != state.Snapshot.Session.ProcessId
-                    ? state.SelectSessionAsync(processId)
-                    : Task.CompletedTask)
+            {
+                state.SetFocusedRow(DashboardSection.Sessions, key);
+                return key is int processId &&
+                    processId != state.Snapshot.Session.ProcessId
+                        ? state.SelectSessionAsync(processId)
+                        : Task.CompletedTask;
+            })
             .OnRowActivated((_, session) => state.SelectSessionAsync(session.ProcessId))
             .Fill();
 
     private static TableWidget<ControlWorkspaceInfo> BuildWorkspaces(
         RootContext context,
-        ControlDashboardSnapshot snapshot) =>
-        context.Table(snapshot.Workspaces)
+        DashboardState state) =>
+        context.Table(state.Snapshot.Workspaces)
             .RowKey(static workspace => workspace.RootPath)
             .Header(header =>
             [
-                header.Cell("Root").Width(SizeHint.Fill),
-                header.Cell("Kind").Width(SizeHint.Fixed(20)),
-                header.Cell("Projects").Width(SizeHint.Fixed(10)),
-                header.Cell("Documents").Width(SizeHint.Fixed(11))
+                ResizableHeader(header, state, DashboardSection.Workspaces, 0, "Root", 36),
+                ResizableHeader(header, state, DashboardSection.Workspaces, 1, "Kind", 20),
+                ResizableHeader(header, state, DashboardSection.Workspaces, 2, "Projects", 10),
+                header.Cell("Documents").Width(SizeHint.Fill)
             ])
-            .Row((row, workspace, _) =>
-            [
-                row.Cell(workspace.RootPath),
-                row.Cell(workspace.WorkspaceKind),
-                row.Cell(workspace.ProjectCount.ToString(CultureInfo.InvariantCulture)),
-                row.Cell(workspace.DocumentCount.ToString(CultureInfo.InvariantCulture))
-            ])
+            .Row((row, workspace, _) => BuildRowCells(
+                row,
+                state,
+                DashboardSection.Workspaces,
+                workspace.RootPath,
+                workspace.RootPath,
+                workspace.WorkspaceKind,
+                workspace.ProjectCount.ToString(CultureInfo.InvariantCulture),
+                workspace.DocumentCount.ToString(CultureInfo.InvariantCulture)))
+            .Focus(state.GetFocusedRow(
+                DashboardSection.Workspaces,
+                state.Snapshot.Workspaces.Count == 0
+                    ? null
+                    : state.Snapshot.Workspaces[0].RootPath))
+            .OnFocusChanged(key => state.SetFocusedRow(DashboardSection.Workspaces, key))
             .Fill();
 
     private static TableWidget<ControlProjectInfo> BuildProjects(
         RootContext context,
-        ControlDashboardSnapshot snapshot) =>
-        context.Table(snapshot.Projects)
+        DashboardState state) =>
+        context.Table(state.Snapshot.Projects)
             .RowKey(static project => project.Id)
             .Header(header =>
             [
-                header.Cell("Project").Width(SizeHint.Fill),
-                header.Cell("Language").Width(SizeHint.Fixed(12)),
-                header.Cell("Documents").Width(SizeHint.Fixed(11)),
-                header.Cell("Analyzers").Width(SizeHint.Fixed(10))
+                ResizableHeader(header, state, DashboardSection.Projects, 0, "Project", 30),
+                ResizableHeader(header, state, DashboardSection.Projects, 1, "Language", 12),
+                ResizableHeader(header, state, DashboardSection.Projects, 2, "Documents", 11),
+                header.Cell("Analyzers").Width(SizeHint.Fill)
             ])
-            .Row((row, project, _) =>
-            [
-                row.Cell(project.Name),
-                row.Cell(project.Language),
-                row.Cell(project.DocumentCount.ToString(CultureInfo.InvariantCulture)),
-                row.Cell(project.AnalyzerReferenceCount.ToString(CultureInfo.InvariantCulture))
-            ])
+            .Row((row, project, _) => BuildRowCells(
+                row,
+                state,
+                DashboardSection.Projects,
+                project.Id,
+                project.Name,
+                project.Language,
+                project.DocumentCount.ToString(CultureInfo.InvariantCulture),
+                project.AnalyzerReferenceCount.ToString(CultureInfo.InvariantCulture)))
+            .Focus(state.GetFocusedRow(
+                DashboardSection.Projects,
+                state.Snapshot.Projects.Count == 0
+                    ? null
+                    : state.Snapshot.Projects[0].Id))
+            .OnFocusChanged(key => state.SetFocusedRow(DashboardSection.Projects, key))
             .Fill();
 
     private static TableWidget<ControlDocumentInfo> BuildDocuments(
         RootContext context,
-        ControlDashboardSnapshot snapshot) =>
-        context.Table(snapshot.Documents)
+        DashboardState state) =>
+        context.Table(state.Snapshot.Documents)
             .RowKey(static document => document.Id)
             .Header(header =>
             [
-                header.Cell("Document").Width(SizeHint.Fill),
-                header.Cell("Project").Width(SizeHint.Fixed(30)),
-                header.Cell("Open").Width(SizeHint.Fixed(6))
+                ResizableHeader(header, state, DashboardSection.Documents, 0, "Document", 32),
+                ResizableHeader(header, state, DashboardSection.Documents, 1, "Project", 30),
+                header.Cell("Open").Width(SizeHint.Fill)
             ])
-            .Row((row, document, _) =>
-            [
-                row.Cell(document.Name),
-                row.Cell(document.ProjectName),
-                row.Cell(document.IsOpen ? "yes" : "no")
-            ])
+            .Row((row, document, _) => BuildRowCells(
+                row,
+                state,
+                DashboardSection.Documents,
+                document.Id,
+                document.Name,
+                document.ProjectName,
+                document.IsOpen ? "yes" : "no"))
+            .Focus(state.GetFocusedRow(
+                DashboardSection.Documents,
+                state.Snapshot.Documents.Count == 0
+                    ? null
+                    : state.Snapshot.Documents[0].Id))
+            .OnFocusChanged(key => state.SetFocusedRow(DashboardSection.Documents, key))
             .Fill();
 
     private static VStackWidget BuildDiagnostics(
@@ -360,30 +408,59 @@ internal static class DashboardView
             .RowKey(DashboardState.GetDiagnosticKey)
             .Header(header =>
             [
-                header.Cell("Severity").Width(SizeHint.Fixed(10)),
-                header.Cell("Code").Width(SizeHint.Fixed(10)),
+                ResizableHeader(
+                    header,
+                    state,
+                    DashboardSection.Diagnostics,
+                    column: 0,
+                    "Severity",
+                    defaultWidth: 10),
+                ResizableHeader(
+                    header,
+                    state,
+                    DashboardSection.Diagnostics,
+                    column: 1,
+                    "Code",
+                    defaultWidth: 10),
                 header.Cell("Location").Width(SizeHint.Fill)
             ])
             .Row((row, diagnostic, _) =>
             [
-                row.Cell(diagnostic.Severity),
-                row.Cell(diagnostic.Id),
-                row.Cell(FormatDiagnosticLocation(snapshot, diagnostic))
+                RowCell(
+                    row,
+                    diagnostic.Severity,
+                    state.IsYankFlashing(
+                        DashboardSection.Diagnostics,
+                        DashboardState.GetDiagnosticKey(diagnostic))),
+                RowCell(
+                    row,
+                    diagnostic.Id,
+                    state.IsYankFlashing(
+                        DashboardSection.Diagnostics,
+                        DashboardState.GetDiagnosticKey(diagnostic))),
+                RowCell(
+                    row,
+                    FormatDiagnosticLocation(snapshot, diagnostic),
+                    state.IsYankFlashing(
+                        DashboardSection.Diagnostics,
+                        DashboardState.GetDiagnosticKey(diagnostic)))
             ])
             .Focus(state.FocusedDiagnosticKey ?? string.Empty)
             .OnFocusChanged(state.SelectDiagnostic)
             .Fill();
-        return context.VStack(vertical =>
+        VStackWidget diagnostics = context.VStack(vertical =>
         [
-            vertical.Text(!snapshot.DiagnosticsLoaded
-                ? "Diagnostics load when this view is selected"
+            vertical.Text(state.DiagnosticsLoading
+                ? "Loading diagnostics..."
+                : state.DiagnosticsLoadError ?? (!snapshot.DiagnosticsLoaded
+                ? "Diagnostics have not loaded"
                 : snapshot.DiagnosticsTruncated
                     ? string.Create(
                         CultureInfo.InvariantCulture,
                         $"Showing {snapshot.Diagnostics.Count} of {snapshot.TotalDiagnostics} diagnostics")
                     : string.Create(
                         CultureInfo.InvariantCulture,
-                        $"{snapshot.TotalDiagnostics} diagnostics")),
+                        $"{snapshot.TotalDiagnostics} diagnostics"))),
             table,
             vertical.Border(nested =>
             [
@@ -405,6 +482,215 @@ internal static class DashboardView
             .Title("Selected diagnostic")
             .FixedHeight(10)
         ]).Fill();
+        return state.DiagnosticsLoading
+            ? diagnostics.RedrawAfter(50)
+            : diagnostics;
+    }
+
+    private static TableCell ResizableHeader(
+        TableHeaderContext header,
+        DashboardState state,
+        DashboardSection section,
+        int column,
+        string title,
+        int defaultWidth)
+    {
+        int width = state.GetColumnWidth(section, column, defaultWidth);
+        return header.Cell(cell => cell.HStack(horizontal =>
+        [
+            horizontal.Text(title).Fill(),
+            horizontal.Interactable(interactable => interactable.Text("↔"))
+                .InputBindings(bindings =>
+                    bindings.Drag(MouseButton.Left).Action(
+                        (_, _) => DragHandler.Simple(
+                            onMove: (deltaX, _) => state.ResizeColumn(
+                                section,
+                                column,
+                                width,
+                                deltaX)),
+                        "Resize column"))
+                .FixedWidth(1)
+        ])).Width(SizeHint.Fixed(width));
+    }
+
+    private static Task YankFocusedRowAsync(
+        InputBindingActionContext context,
+        DashboardState state)
+    {
+        (object Key, string Text)? yank = state.Section switch
+        {
+            DashboardSection.Sessions => GetFocusedRowYank(
+                state,
+                state.Sessions,
+                DashboardSection.Sessions,
+                static session => session.ProcessId,
+                static session =>
+                [
+                    session.ProcessId.ToString(CultureInfo.InvariantCulture),
+                    session.LifecycleState,
+                    session.WorkspaceGeneration.ToString(CultureInfo.InvariantCulture),
+                    session.WorkspaceRoots.Count == 0 ? "none" : session.WorkspaceRoots[0]
+                ]),
+            DashboardSection.Workspaces => GetFocusedRowYank(
+                state,
+                state.Snapshot.Workspaces,
+                DashboardSection.Workspaces,
+                static workspace => workspace.RootPath,
+                static workspace =>
+                [
+                    workspace.RootPath,
+                    workspace.WorkspaceKind,
+                    workspace.ProjectCount.ToString(CultureInfo.InvariantCulture),
+                    workspace.DocumentCount.ToString(CultureInfo.InvariantCulture)
+                ]),
+            DashboardSection.Projects => GetFocusedRowYank(
+                state,
+                state.Snapshot.Projects,
+                DashboardSection.Projects,
+                static project => project.Id,
+                static project =>
+                [
+                    project.Name,
+                    project.Language,
+                    project.DocumentCount.ToString(CultureInfo.InvariantCulture),
+                    project.AnalyzerReferenceCount.ToString(CultureInfo.InvariantCulture)
+                ]),
+            DashboardSection.Documents => GetFocusedRowYank(
+                state,
+                state.Snapshot.Documents,
+                DashboardSection.Documents,
+                static document => document.Id,
+                static document =>
+                [
+                    document.Name,
+                    document.ProjectName,
+                    document.IsOpen ? "yes" : "no"
+                ]),
+            DashboardSection.Diagnostics => GetFocusedRowYank(
+                state,
+                state.Snapshot.Diagnostics,
+                DashboardSection.Diagnostics,
+                DashboardState.GetDiagnosticKey,
+                diagnostic =>
+                [
+                    diagnostic.Severity,
+                    diagnostic.Id,
+                    FormatDiagnosticLocation(state.Snapshot, diagnostic)
+                ]),
+            DashboardSection.Requests => GetFocusedRowYank(
+                state,
+                state.Snapshot.Requests.ActiveRequests,
+                DashboardSection.Requests,
+                static request => request.CorrelationId,
+                static request =>
+                [
+                    request.Name,
+                    request.Mode,
+                    request.Status,
+                    request.CorrelationId.ToString("D")
+                ]),
+            DashboardSection.BuildHosts => GetFocusedRowYank(
+                state,
+                state.Snapshot.BuildHosts,
+                DashboardSection.BuildHosts,
+                static host => GetBuildHostKey(host),
+                static host =>
+                [
+                    host.ProcessId.ToString(CultureInfo.InvariantCulture),
+                    host.Kind,
+                    host.WorkspaceCount.ToString(CultureInfo.InvariantCulture),
+                    host.ProjectCount.ToString(CultureInfo.InvariantCulture)
+                ]),
+            DashboardSection.Caches => GetFocusedRowYank(
+                state,
+                state.Snapshot.Caches,
+                DashboardSection.Caches,
+                static cache => cache.Name,
+                static cache =>
+                [
+                    cache.Name,
+                    cache.EntryCount.ToString(CultureInfo.InvariantCulture),
+                    cache.Capacity?.ToString(CultureInfo.InvariantCulture) ?? "dynamic"
+                ]),
+            DashboardSection.Logs => GetFocusedRowYank(
+                state,
+                state.Snapshot.Logs,
+                DashboardSection.Logs,
+                static entry => entry.Sequence,
+                static entry =>
+                [
+                    entry.Timestamp.ToString("HH:mm:ss.fff", CultureInfo.InvariantCulture),
+                    entry.Level,
+                    entry.Category,
+                    entry.Message
+                ]),
+            DashboardSection.Traces => GetFocusedRowYank(
+                state,
+                state.Snapshot.Requests.Trace.Entries,
+                DashboardSection.Traces,
+                static entry => entry.Ordinal,
+                static entry =>
+                [
+                    entry.Name,
+                    entry.Status,
+                    entry.DurationMilliseconds.ToString("0.###", CultureInfo.InvariantCulture),
+                    entry.CorrelationId.ToString("D")
+                ]),
+            _ => null
+        };
+        if (yank is null)
+        {
+            return Task.CompletedTask;
+        }
+
+        context.CopyToClipboard(yank.Value.Text);
+        state.FlashYankedRow(state.Section, yank.Value.Key);
+        return Task.CompletedTask;
+    }
+
+    private static (object Key, string Text)? GetFocusedRowYank<TRow>(
+        DashboardState state,
+        IReadOnlyList<TRow> rows,
+        DashboardSection section,
+        Func<TRow, object> keySelector,
+        Func<TRow, IReadOnlyList<string>> valueSelector)
+    {
+        if (rows.Count == 0)
+        {
+            return null;
+        }
+
+        object? focusedKey = state.GetFocusedRow(section, keySelector(rows[0]));
+        TRow? focusedRow = rows.FirstOrDefault(row => Equals(keySelector(row), focusedKey));
+        return focusedRow is null
+            ? null
+            : (keySelector(focusedRow), string.Join('\t', valueSelector(focusedRow)));
+    }
+
+    private static TableCell RowCell(
+        TableRowContext row,
+        string text,
+        bool yankFlash) => yankFlash
+            ? row.Cell(cell => cell.ThemePanel(
+                theme => theme
+                    .Set(
+                        GlobalTheme.ForegroundColor,
+                        Hex1bColor.FromRgb(24, 24, 37))
+                    .Set(
+                        GlobalTheme.BackgroundColor,
+                        Hex1bColor.FromRgb(126, 201, 216)),
+                cell.Text(text)))
+            : row.Cell(text);
+
+    private static IReadOnlyList<TableCell> BuildRowCells(
+        TableRowContext row,
+        DashboardState state,
+        DashboardSection section,
+        object key,
+        params string[] values)
+    {
+        bool yankFlash = state.IsYankFlashing(section, key);
+        return [.. values.Select(value => RowCell(row, value, yankFlash))];
     }
 
     private static string FormatDiagnosticLocation(
@@ -478,9 +764,9 @@ internal static class DashboardView
 
     private static VStackWidget BuildRequests(
         RootContext context,
-        ControlDashboardSnapshot snapshot)
+        DashboardState state)
     {
-        ControlRequestSchedulerInfo requests = snapshot.Requests;
+        ControlRequestSchedulerInfo requests = state.Snapshot.Requests;
         return context.VStack(vertical =>
         [
             vertical.Text($"Accepted: {requests.AcceptedRequests}"),
@@ -497,27 +783,35 @@ internal static class DashboardView
                 .RowKey(static request => request.CorrelationId)
                 .Header(header =>
                 [
-                    header.Cell("Request").Width(SizeHint.Fill),
-                    header.Cell("Mode").Width(SizeHint.Fixed(14)),
-                    header.Cell("State").Width(SizeHint.Fixed(12)),
-                    header.Cell("Correlation").Width(SizeHint.Fixed(36))
+                    ResizableHeader(header, state, DashboardSection.Requests, 0, "Request", 30),
+                    ResizableHeader(header, state, DashboardSection.Requests, 1, "Mode", 14),
+                    ResizableHeader(header, state, DashboardSection.Requests, 2, "State", 12),
+                    header.Cell("Correlation").Width(SizeHint.Fill)
                 ])
-                .Row((row, request, _) =>
-                [
-                    row.Cell(request.Name),
-                    row.Cell(request.Mode),
-                    row.Cell(request.Status),
-                    row.Cell(request.CorrelationId.ToString("D"))
-                ])
+                .Row((row, request, _) => BuildRowCells(
+                    row,
+                    state,
+                    DashboardSection.Requests,
+                    request.CorrelationId,
+                    request.Name,
+                    request.Mode,
+                    request.Status,
+                    request.CorrelationId.ToString("D")))
+                .Focus(state.GetFocusedRow(
+                    DashboardSection.Requests,
+                    requests.ActiveRequests.Count == 0
+                        ? null
+                        : requests.ActiveRequests[0].CorrelationId))
+                .OnFocusChanged(key => state.SetFocusedRow(DashboardSection.Requests, key))
                 .Fill()
         ]).Fill();
     }
 
     private static VStackWidget BuildTraces(
         RootContext context,
-        ControlDashboardSnapshot snapshot)
+        DashboardState state)
     {
-        ControlTraceInfo trace = snapshot.Requests.Trace;
+        ControlTraceInfo trace = state.Snapshot.Requests.Trace;
         return context.VStack(vertical =>
         [
             vertical.Text(trace.IsActive ? "Trace: active" : "Trace: stopped"),
@@ -528,18 +822,26 @@ internal static class DashboardView
                 .RowKey(static entry => entry.Ordinal)
                 .Header(header =>
                 [
-                    header.Cell("Request").Width(SizeHint.Fill),
-                    header.Cell("State").Width(SizeHint.Fixed(12)),
-                    header.Cell("Duration ms").Width(SizeHint.Fixed(14)),
-                    header.Cell("Correlation").Width(SizeHint.Fixed(36))
+                    ResizableHeader(header, state, DashboardSection.Traces, 0, "Request", 30),
+                    ResizableHeader(header, state, DashboardSection.Traces, 1, "State", 12),
+                    ResizableHeader(header, state, DashboardSection.Traces, 2, "Duration ms", 14),
+                    header.Cell("Correlation").Width(SizeHint.Fill)
                 ])
-                .Row((row, entry, _) =>
-                [
-                    row.Cell(entry.Name),
-                    row.Cell(entry.Status),
-                    row.Cell(entry.DurationMilliseconds.ToString("0.###", CultureInfo.InvariantCulture)),
-                    row.Cell(entry.CorrelationId.ToString("D"))
-                ])
+                .Row((row, entry, _) => BuildRowCells(
+                    row,
+                    state,
+                    DashboardSection.Traces,
+                    entry.Ordinal,
+                    entry.Name,
+                    entry.Status,
+                    entry.DurationMilliseconds.ToString("0.###", CultureInfo.InvariantCulture),
+                    entry.CorrelationId.ToString("D")))
+                .Focus(state.GetFocusedRow(
+                    DashboardSection.Traces,
+                    trace.Entries.Count == 0
+                        ? null
+                        : trace.Entries[0].Ordinal))
+                .OnFocusChanged(key => state.SetFocusedRow(DashboardSection.Traces, key))
                 .Fill()
         ]).Fill();
     }
@@ -559,67 +861,94 @@ internal static class DashboardView
 
     private static TableWidget<ControlBuildHostInfo> BuildBuildHosts(
         RootContext context,
-        ControlDashboardSnapshot snapshot) =>
-        context.Table(snapshot.BuildHosts)
-            .RowKey(static host => string.Concat(
-                host.ProcessId.ToString(CultureInfo.InvariantCulture),
-                "|",
-                host.WorkspaceRoot))
+        DashboardState state) =>
+        context.Table(state.Snapshot.BuildHosts)
+            .RowKey(static host => host.ProcessId)
             .Header(header =>
             [
-                header.Cell("PID").Width(SizeHint.Fixed(10)),
-                header.Cell("Kind").Width(SizeHint.Fixed(24)),
-                header.Cell("Projects").Width(SizeHint.Fixed(10)),
-                header.Cell("Workspace").Width(SizeHint.Fill)
+                ResizableHeader(header, state, DashboardSection.BuildHosts, 0, "PID", 10),
+                ResizableHeader(header, state, DashboardSection.BuildHosts, 1, "Kind", 24),
+                ResizableHeader(header, state, DashboardSection.BuildHosts, 2, "Workspaces", 12),
+                header.Cell("Projects").Width(SizeHint.Fill)
             ])
             .Row((row, host, _) =>
-            [
-                row.Cell(host.ProcessId.ToString(CultureInfo.InvariantCulture)),
-                row.Cell(host.Kind),
-                row.Cell(host.ProjectCount.ToString(CultureInfo.InvariantCulture)),
-                row.Cell(host.WorkspaceRoot)
-            ])
+            {
+                int key = GetBuildHostKey(host);
+                return BuildRowCells(
+                    row,
+                    state,
+                    DashboardSection.BuildHosts,
+                    key,
+                    host.ProcessId.ToString(CultureInfo.InvariantCulture),
+                    host.Kind,
+                    host.WorkspaceCount.ToString(CultureInfo.InvariantCulture),
+                    host.ProjectCount.ToString(CultureInfo.InvariantCulture));
+            })
+            .Focus(state.GetFocusedRow(
+                DashboardSection.BuildHosts,
+                state.Snapshot.BuildHosts.Count == 0
+                    ? null
+                    : state.Snapshot.BuildHosts[0].ProcessId))
+            .OnFocusChanged(key => state.SetFocusedRow(DashboardSection.BuildHosts, key))
             .Fill();
 
     private static TableWidget<ControlCacheInfo> BuildCaches(
         RootContext context,
-        ControlDashboardSnapshot snapshot) =>
-        context.Table(snapshot.Caches)
+        DashboardState state) =>
+        context.Table(state.Snapshot.Caches)
             .RowKey(static cache => cache.Name)
             .Header(header =>
             [
-                header.Cell("Cache").Width(SizeHint.Fill),
-                header.Cell("Entries").Width(SizeHint.Fixed(12)),
-                header.Cell("Capacity").Width(SizeHint.Fixed(12))
+                ResizableHeader(header, state, DashboardSection.Caches, 0, "Cache", 36),
+                ResizableHeader(header, state, DashboardSection.Caches, 1, "Entries", 12),
+                header.Cell("Capacity").Width(SizeHint.Fill)
             ])
-            .Row((row, cache, _) =>
-            [
-                row.Cell(cache.Name),
-                row.Cell(cache.EntryCount.ToString(CultureInfo.InvariantCulture)),
-                row.Cell(cache.Capacity?.ToString(CultureInfo.InvariantCulture) ?? "dynamic")
-            ])
+            .Row((row, cache, _) => BuildRowCells(
+                row,
+                state,
+                DashboardSection.Caches,
+                cache.Name,
+                cache.Name,
+                cache.EntryCount.ToString(CultureInfo.InvariantCulture),
+                cache.Capacity?.ToString(CultureInfo.InvariantCulture) ?? "dynamic"))
+            .Focus(state.GetFocusedRow(
+                DashboardSection.Caches,
+                state.Snapshot.Caches.Count == 0
+                    ? null
+                    : state.Snapshot.Caches[0].Name))
+            .OnFocusChanged(key => state.SetFocusedRow(DashboardSection.Caches, key))
             .Fill();
 
     private static TableWidget<ControlLogEntry> BuildLogs(
         RootContext context,
-        ControlDashboardSnapshot snapshot) =>
-        context.Table(snapshot.Logs)
+        DashboardState state) =>
+        context.Table(state.Snapshot.Logs)
             .RowKey(static entry => entry.Sequence)
             .Header(header =>
             [
-                header.Cell("Time").Width(SizeHint.Fixed(12)),
-                header.Cell("Level").Width(SizeHint.Fixed(12)),
-                header.Cell("Category").Width(SizeHint.Fixed(30)),
+                ResizableHeader(header, state, DashboardSection.Logs, 0, "Time", 12),
+                ResizableHeader(header, state, DashboardSection.Logs, 1, "Level", 12),
+                ResizableHeader(header, state, DashboardSection.Logs, 2, "Category", 30),
                 header.Cell("Message").Width(SizeHint.Fill)
             ])
-            .Row((row, entry, _) =>
-            [
-                row.Cell(entry.Timestamp.ToString("HH:mm:ss.fff", CultureInfo.InvariantCulture)),
-                row.Cell(entry.Level),
-                row.Cell(entry.Category),
-                row.Cell(entry.Message)
-            ])
+            .Row((row, entry, _) => BuildRowCells(
+                row,
+                state,
+                DashboardSection.Logs,
+                entry.Sequence,
+                entry.Timestamp.ToString("HH:mm:ss.fff", CultureInfo.InvariantCulture),
+                entry.Level,
+                entry.Category,
+                entry.Message))
+            .Focus(state.GetFocusedRow(
+                DashboardSection.Logs,
+                state.Snapshot.Logs.Count == 0
+                    ? null
+                    : state.Snapshot.Logs[0].Sequence))
+            .OnFocusChanged(key => state.SetFocusedRow(DashboardSection.Logs, key))
             .Fill();
+
+    private static int GetBuildHostKey(ControlBuildHostInfo host) => host.ProcessId;
 
     private static string GetSectionTitle(DashboardSection section) => section switch
     {
