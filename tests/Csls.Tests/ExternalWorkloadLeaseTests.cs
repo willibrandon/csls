@@ -66,41 +66,50 @@ public sealed class ExternalWorkloadLeaseTests
     [TestMethod]
     public async Task QueuedLanguageServerStartDoesNotBlockTheTestHost()
     {
-        var heldLeases = new List<ExternalWorkloadLease>();
-        try
-        {
-            for (int index = 0; index < ExternalWorkloadLease.Capacity; index++)
-            {
-                heldLeases.Add(await AcquireIsolatedAsync(TestContext.CancellationToken)
-                    .ConfigureAwait(false));
-            }
+        string repositoryRoot = EditorToolResolver.FindRepositoryRoot();
+        string workerPath = Path.Join(
+            EditorToolResolver.ResolveArtifactsRoot(repositoryRoot),
+            "bin",
+            "Csls.Worker",
+            "debug",
+            "csls-worker.dll");
+        Assert.IsTrue(File.Exists(workerPath), $"Worker not found at {workerPath}.");
+        await HoldLeasesAndVerifyQueuedStartAsync(
+            ExternalWorkloadLease.Capacity,
+            workerPath,
+            repositoryRoot,
+            TestContext.CancellationToken).ConfigureAwait(false);
+    }
 
-            string repositoryRoot = EditorToolResolver.FindRepositoryRoot();
-            string workerPath = Path.Join(
-                EditorToolResolver.ResolveArtifactsRoot(repositoryRoot),
-                "bin",
-                "Csls.Worker",
-                "debug",
-                "csls-worker.dll");
-            Assert.IsTrue(File.Exists(workerPath), $"Worker not found at {workerPath}.");
-            Task startTask = StartAndDisposeLanguageServerAsync(
+    private static async Task HoldLeasesAndVerifyQueuedStartAsync(
+        int remainingLeases,
+        string workerPath,
+        string repositoryRoot,
+        CancellationToken cancellationToken)
+    {
+        if (remainingLeases > 1)
+        {
+            using ExternalWorkloadLease heldLease = await AcquireIsolatedAsync(
+                cancellationToken).ConfigureAwait(false);
+            await HoldLeasesAndVerifyQueuedStartAsync(
+                remainingLeases - 1,
                 workerPath,
-                repositoryRoot);
+                repositoryRoot,
+                cancellationToken).ConfigureAwait(false);
+            return;
+        }
 
-            Assert.IsFalse(startTask.IsCompleted);
-            heldLeases[0].Dispose();
-            heldLeases.RemoveAt(0);
-            await startTask
-                .WaitAsync(TimeSpan.FromSeconds(30), TestContext.CancellationToken)
-                .ConfigureAwait(false);
-        }
-        finally
+        Task startTask;
+        using (ExternalWorkloadLease heldLease = await AcquireIsolatedAsync(
+            cancellationToken).ConfigureAwait(false))
         {
-            foreach (ExternalWorkloadLease lease in heldLeases)
-            {
-                lease.Dispose();
-            }
+            startTask = StartAndDisposeLanguageServerAsync(workerPath, repositoryRoot);
+            Assert.IsFalse(startTask.IsCompleted);
         }
+
+        await startTask
+            .WaitAsync(TimeSpan.FromSeconds(30), cancellationToken)
+            .ConfigureAwait(false);
     }
 
     private static async Task StartAndDisposeLanguageServerAsync(
