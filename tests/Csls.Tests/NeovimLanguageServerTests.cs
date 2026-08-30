@@ -368,7 +368,7 @@ public sealed class NeovimLanguageServerTests
     {
         string dotnetPath = EditorToolResolver.ResolveDotNetHost();
         return $$"""
-            vim.lsp.log.set_level('trace')
+            vim.lsp.log.set_level('off')
             local function when_workspace_ready(client, buffer, callback)
               local function poll()
                 client:request('$/csharp/debugInfo', nil, function(error, result)
@@ -416,7 +416,7 @@ public sealed class NeovimLanguageServerTests
     {
         string dotnetPath = EditorToolResolver.ResolveDotNetHost();
         return $$"""
-            vim.lsp.log.set_level('trace')
+            vim.lsp.log.set_level('off')
             local capabilities = vim.lsp.protocol.make_client_capabilities()
             capabilities.workspace.didChangeWatchedFiles.dynamicRegistration = true
             local function when_workspace_ready(client, buffer, callback)

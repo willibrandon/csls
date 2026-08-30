@@ -83,14 +83,14 @@ internal sealed class AnalyzerDiagnosticCache
         }
 
         int released = 0;
-        void ReleaseEntry()
+        async Task ReleaseEntryAsync()
         {
             if (Interlocked.Exchange(ref released, 1) != 0)
             {
                 return;
             }
 
-            if (entry.Release())
+            if (await entry.ReleaseAsync().ConfigureAwait(false))
             {
                 _entries.TryRemove(new KeyValuePair<
                     (ProjectId ProjectId, VersionStamp Version),
@@ -98,15 +98,13 @@ internal sealed class AnalyzerDiagnosticCache
             }
         }
 
-        using CancellationTokenRegistration cancellationRegistration =
-            cancellationToken.Register(ReleaseEntry);
         try
         {
             return await computation.WaitAsync(cancellationToken).ConfigureAwait(false);
         }
         finally
         {
-            ReleaseEntry();
+            await ReleaseEntryAsync().ConfigureAwait(false);
         }
     }
 
