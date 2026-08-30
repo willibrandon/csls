@@ -376,12 +376,24 @@ public sealed class ControlSocketTests
                 diagnosticRequest.IsCompleted,
                 "The active diagnostic request ended at the idle deadline.");
 
-            await requestSource.CancelAsync().ConfigureAwait(false);
-            await FileTextWaiter.WaitAsync(
+            ControlDashboardSnapshot dashboard =
+                await controlClient.GetDashboardSnapshotAsync(
+                    new ControlDashboardRequest { IncludeDiagnostics = false },
+                    TestContext.CancellationToken).ConfigureAwait(false);
+            ControlRequestInfo request = dashboard.Requests.ActiveRequests.Single(
+                static item => item.Name == "textDocument/diagnostic");
+            ControlCancelRequestResult cancellation =
+                await controlClient.CancelRequestAsync(
+                    new ControlCancelRequest { CorrelationId = request.CorrelationId },
+                    TestContext.CancellationToken).ConfigureAwait(false);
+            Assert.IsTrue(cancellation.CancellationRequested);
+            string cancellationSignals = await File.ReadAllTextAsync(
                 fixture.MarkerPath,
-                "canceled",
-                TimeSpan.FromSeconds(15),
                 TestContext.CancellationToken).ConfigureAwait(false);
+            Assert.Contains(
+                "canceled",
+                cancellationSignals,
+                "The control response returned before cancellation reached the Roslyn analyzer.");
         }
         finally
         {
