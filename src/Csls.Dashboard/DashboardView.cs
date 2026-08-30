@@ -759,7 +759,9 @@ internal static class DashboardView
             }
         }
 
-        return displayPath;
+        return OperatingSystem.IsWindows()
+            ? displayPath.Replace('\\', '/')
+            : displayPath;
     }
 
     private static VStackWidget BuildRequests(
