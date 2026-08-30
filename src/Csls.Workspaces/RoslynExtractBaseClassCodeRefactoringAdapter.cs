@@ -68,7 +68,8 @@ internal static class RoslynExtractBaseClassCodeRefactoringAdapter
             return null;
         }
 
-        if (selectedType.BaseType?.SpecialType != SpecialType.System_Object)
+        if (selectedType.IsStatic ||
+            selectedType.BaseType?.SpecialType != SpecialType.System_Object)
         {
             return null;
         }

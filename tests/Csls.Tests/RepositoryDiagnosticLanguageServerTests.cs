@@ -105,30 +105,6 @@ public sealed class RepositoryDiagnosticLanguageServerTests
             extractBaseClassAdapterPath,
             extractBaseClassAdapterText).ConfigureAwait(false);
         string[] adapterLines = extractBaseClassAdapterText.Split('\n');
-        int adapterDeclarationLine = Array.FindIndex(
-            adapterLines,
-            static line => line.Contains(
-                "internal static class RoslynExtractBaseClassCodeRefactoringAdapter",
-                StringComparison.Ordinal));
-        Assert.IsGreaterThanOrEqualTo(0, adapterDeclarationLine);
-        int adapterOpeningBraceLine = Array.FindIndex(
-            adapterLines,
-            adapterDeclarationLine + 1,
-            static line => line.Trim() == "{");
-        Assert.IsGreaterThanOrEqualTo(0, adapterOpeningBraceLine);
-        Position adapterOpeningBracePosition = new(adapterOpeningBraceLine, 0);
-        IReadOnlyList<CodeAction> adapterActions = await lsp.RequestCodeActionsAsync(
-            extractBaseClassAdapterPath,
-            new LspRange(adapterOpeningBracePosition, adapterOpeningBracePosition),
-            ["refactor"],
-            TestContext.CancellationToken).ConfigureAwait(false);
-        CodeAction extractBaseClass = Assert.ContainsSingle(
-            adapterActions.Where(static action => action.Title == "Extract base class..."),
-            string.Join(Environment.NewLine, adapterActions.Select(static action => action.Title)));
-        WorkspaceEdit extractBaseClassEdit = extractBaseClass.Edit
-            ?? throw new InvalidDataException(
-                "The static adapter's Extract Base Class action had no edit.");
-        Assert.IsNotEmpty(extractBaseClassEdit.DocumentChanges);
         int conditionalAccessLine = Array.FindIndex(
             adapterLines,
             static line => line.Trim() == ".AncestorsAndSelf()");
