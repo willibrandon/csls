@@ -36,6 +36,8 @@ public sealed class NeovimLanguageServerTests
         string fixturePath = Path.Join(
             Path.GetTempPath(),
             $"csls-neovim-{Guid.NewGuid():N}");
+        string socketDirectory = EditorToolResolver.ResolveIsolatedControlSocketDirectory(
+            repositoryRoot);
         Directory.CreateDirectory(fixturePath);
         try
         {
@@ -48,7 +50,6 @@ public sealed class NeovimLanguageServerTests
             string configurationRoot = Path.Join(fixturePath, "config");
             string dataPath = Path.Join(fixturePath, "data");
             string statePath = Path.Join(fixturePath, "state");
-            string socketDirectory = Path.Join(fixturePath, "sockets");
             Directory.CreateDirectory(homePath);
             Directory.CreateDirectory(cachePath);
             Directory.CreateDirectory(configurationRoot);
@@ -171,9 +172,10 @@ public sealed class NeovimLanguageServerTests
         }
         finally
         {
-            await DirectoryReleaseWaiter.DeleteAsync(
-                fixturePath,
-                TimeSpan.FromSeconds(10)).ConfigureAwait(false);
+            await Task.WhenAll(
+                DirectoryReleaseWaiter.DeleteAsync(fixturePath, TimeSpan.FromSeconds(10)),
+                DirectoryReleaseWaiter.DeleteAsync(socketDirectory, TimeSpan.FromSeconds(10)))
+                .ConfigureAwait(false);
         }
     }
 
@@ -194,6 +196,8 @@ public sealed class NeovimLanguageServerTests
         string fixturePath = Path.Join(
             Path.GetTempPath(),
             $"csls-neovim-move-{Guid.NewGuid():N}");
+        string socketDirectory = EditorToolResolver.ResolveIsolatedControlSocketDirectory(
+            repositoryRoot);
         Directory.CreateDirectory(fixturePath);
         try
         {
@@ -207,7 +211,6 @@ public sealed class NeovimLanguageServerTests
             string configurationRoot = Path.Join(fixturePath, "config");
             string dataPath = Path.Join(fixturePath, "data");
             string statePath = Path.Join(fixturePath, "state");
-            string socketDirectory = Path.Join(fixturePath, "sockets");
             Directory.CreateDirectory(homePath);
             Directory.CreateDirectory(cachePath);
             Directory.CreateDirectory(configurationRoot);
@@ -342,9 +345,10 @@ public sealed class NeovimLanguageServerTests
         }
         finally
         {
-            await DirectoryReleaseWaiter.DeleteAsync(
-                fixturePath,
-                TimeSpan.FromSeconds(10)).ConfigureAwait(false);
+            await Task.WhenAll(
+                DirectoryReleaseWaiter.DeleteAsync(fixturePath, TimeSpan.FromSeconds(10)),
+                DirectoryReleaseWaiter.DeleteAsync(socketDirectory, TimeSpan.FromSeconds(10)))
+                .ConfigureAwait(false);
         }
     }
 

@@ -37,6 +37,8 @@ public sealed class FreshLanguageServerTests
         string fixturePath = Path.Join(
             Path.GetTempPath(),
             $"csls-fresh-{Guid.NewGuid():N}");
+        string socketDirectory = EditorToolResolver.ResolveIsolatedControlSocketDirectory(
+            repositoryRoot);
         Directory.CreateDirectory(fixturePath);
         try
         {
@@ -48,7 +50,6 @@ public sealed class FreshLanguageServerTests
             string cachePath = Path.Join(fixturePath, "cache");
             string dataPath = Path.Join(fixturePath, "data");
             string statePath = Path.Join(fixturePath, "state");
-            string socketDirectory = Path.Join(fixturePath, "sockets");
             Directory.CreateDirectory(homePath);
             Directory.CreateDirectory(cachePath);
             Directory.CreateDirectory(dataPath);
@@ -197,9 +198,10 @@ public sealed class FreshLanguageServerTests
         }
         finally
         {
-            await DirectoryReleaseWaiter.DeleteAsync(
-                fixturePath,
-                TimeSpan.FromSeconds(10)).ConfigureAwait(false);
+            await Task.WhenAll(
+                DirectoryReleaseWaiter.DeleteAsync(fixturePath, TimeSpan.FromSeconds(10)),
+                DirectoryReleaseWaiter.DeleteAsync(socketDirectory, TimeSpan.FromSeconds(10)))
+                .ConfigureAwait(false);
         }
     }
 

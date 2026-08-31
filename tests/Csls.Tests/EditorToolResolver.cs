@@ -7,6 +7,8 @@ namespace Csls.Tests;
 /// </summary>
 internal static class EditorToolResolver
 {
+    private static int s_controlSocketDirectorySequence;
+
     /// <summary>
     /// Finds the csls repository root from the compiled test assembly location.
     /// </summary>
@@ -43,6 +45,20 @@ internal static class EditorToolResolver
         return string.IsNullOrWhiteSpace(configuredPath)
             ? Path.Join(repositoryRoot, "artifacts")
             : Path.GetFullPath(configuredPath);
+    }
+
+    /// <summary>
+    /// Resolves a short unique control-socket directory for one real editor test.
+    /// </summary>
+    /// <param name="repositoryRoot">The absolute repository root.</param>
+    /// <returns>The absolute isolated control-socket directory.</returns>
+    internal static string ResolveIsolatedControlSocketDirectory(string repositoryRoot)
+    {
+        int sequence = Interlocked.Increment(ref s_controlSocketDirectorySequence);
+        return Path.Join(
+            ResolveArtifactsRoot(repositoryRoot),
+            "s",
+            $"{Environment.ProcessId:x}-{sequence:x}");
     }
 
     /// <summary>

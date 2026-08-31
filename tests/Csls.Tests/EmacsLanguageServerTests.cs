@@ -37,6 +37,8 @@ public sealed class EmacsLanguageServerTests
         string fixturePath = Path.Join(
             Path.GetTempPath(),
             $"csls-emacs-{Guid.NewGuid():N}");
+        string socketDirectory = EditorToolResolver.ResolveIsolatedControlSocketDirectory(
+            repositoryRoot);
         Directory.CreateDirectory(fixturePath);
         try
         {
@@ -65,7 +67,6 @@ public sealed class EmacsLanguageServerTests
             string readyPath = Path.Join(fixturePath, "eglot-ready");
             string navigationPath = Path.Join(fixturePath, "eglot-navigation");
             string initializationPath = Path.Join(fixturePath, "init.el");
-            string socketDirectory = Path.Join(fixturePath, "sockets");
             await File.WriteAllTextAsync(
                 initializationPath,
                 CreateInitialization(
@@ -210,9 +211,10 @@ public sealed class EmacsLanguageServerTests
         }
         finally
         {
-            await DirectoryReleaseWaiter.DeleteAsync(
-                fixturePath,
-                TimeSpan.FromSeconds(10)).ConfigureAwait(false);
+            await Task.WhenAll(
+                DirectoryReleaseWaiter.DeleteAsync(fixturePath, TimeSpan.FromSeconds(10)),
+                DirectoryReleaseWaiter.DeleteAsync(socketDirectory, TimeSpan.FromSeconds(10)))
+                .ConfigureAwait(false);
         }
     }
 

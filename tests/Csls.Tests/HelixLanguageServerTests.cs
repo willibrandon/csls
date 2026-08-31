@@ -37,6 +37,8 @@ public sealed class HelixLanguageServerTests
         string fixturePath = Path.Join(
             Path.GetTempPath(),
             $"csls-helix-{Guid.NewGuid():N}");
+        string socketDirectory = EditorToolResolver.ResolveIsolatedControlSocketDirectory(
+            repositoryRoot);
         Directory.CreateDirectory(fixturePath);
         try
         {
@@ -47,7 +49,6 @@ public sealed class HelixLanguageServerTests
             string dataPath = Path.Join(fixturePath, "data");
             string statePath = Path.Join(fixturePath, "state");
             string homePath = Path.Join(fixturePath, "home");
-            string socketDirectory = Path.Join(fixturePath, "sockets");
             Directory.CreateDirectory(helixConfigurationPath);
             Directory.CreateDirectory(workspaceConfigurationPath);
             Directory.CreateDirectory(cachePath);
@@ -216,9 +217,10 @@ public sealed class HelixLanguageServerTests
         }
         finally
         {
-            await DirectoryReleaseWaiter.DeleteAsync(
-                fixturePath,
-                TimeSpan.FromSeconds(10)).ConfigureAwait(false);
+            await Task.WhenAll(
+                DirectoryReleaseWaiter.DeleteAsync(fixturePath, TimeSpan.FromSeconds(10)),
+                DirectoryReleaseWaiter.DeleteAsync(socketDirectory, TimeSpan.FromSeconds(10)))
+                .ConfigureAwait(false);
         }
     }
 
