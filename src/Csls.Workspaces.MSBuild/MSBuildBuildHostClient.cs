@@ -45,11 +45,31 @@ internal sealed class MSBuildBuildHostClient
             return [];
         }
 
+        DirectoryInfo workingDirectory = Directory.CreateTempSubdirectory(
+            "csls-msbuild-build-host-");
+        try
+        {
+            return await LoadInBuildHostAsync(
+                projectPaths,
+                workingDirectory.FullName,
+                cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            workingDirectory.Delete(recursive: true);
+        }
+    }
+
+    private async Task<IReadOnlyList<MSBuildProjectSnapshot>> LoadInBuildHostAsync(
+        IReadOnlyList<string> projectPaths,
+        string workingDirectory,
+        CancellationToken cancellationToken)
+    {
         string buildHostPath = ResolveBuildHostPath();
         var startInfo = new ProcessStartInfo
         {
             FileName = buildHostPath,
-            WorkingDirectory = Path.GetDirectoryName(buildHostPath),
+            WorkingDirectory = workingDirectory,
             RedirectStandardError = true,
             RedirectStandardInput = true,
             RedirectStandardOutput = true,

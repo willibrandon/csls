@@ -64,6 +64,7 @@ internal sealed class MSBuildProjectBuildManager
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(projectPaths);
+        cancellationToken.ThrowIfCancellationRequested();
         using var projectCollection = new ProjectCollection(
             globalProperties: null,
             loggers: [],
@@ -76,6 +77,10 @@ internal sealed class MSBuildProjectBuildManager
             Loggers = [buildLogger],
             MaxNodeCount = Math.Min(Environment.ProcessorCount, projectPaths.Count)
         });
+        using CancellationTokenRegistration cancellationRegistration =
+            cancellationToken.Register(
+                static state => ((BuildManager)state!).CancelAllSubmissions(),
+                buildManager);
         try
         {
             return await LoadProjectsAsync(
@@ -287,25 +292,18 @@ internal sealed class MSBuildProjectBuildManager
         buildLogger.Register(submission.SubmissionId, _reportDiagnostic);
         try
         {
-            var completion = new TaskCompletionSource<BuildResult>(
-                TaskCreationOptions.RunContinuationsAsynchronously);
-            submission.ExecuteAsync(
-                completedSubmission =>
-                {
-                    try
-                    {
-                        BuildResult result = completedSubmission.BuildResult ??
-                            throw new InvalidOperationException(
-                                "MSBuild completed a submission without a build result.");
-                        completion.TrySetResult(result);
-                    }
-                    catch (InvalidOperationException exception)
-                    {
-                        completion.TrySetException(exception);
-                    }
-                },
-                context: null);
-            BuildResult result = await completion.Task.ConfigureAwait(false);
+            BuildResult result;
+            try
+            {
+                result = await Task.Run(
+                    submission.Execute,
+                    CancellationToken.None).ConfigureAwait(false);
+            }
+            catch (Exception) when (cancellationToken.IsCancellationRequested)
+            {
+                throw new OperationCanceledException(cancellationToken);
+            }
+
             cancellationToken.ThrowIfCancellationRequested();
             if (result.OverallResult == BuildResultCode.Failure && result.Exception is not null)
             {
