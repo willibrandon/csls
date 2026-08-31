@@ -82,16 +82,18 @@ internal static class McpHost
         }
         finally
         {
-            await readinessSource.CancelAsync().ConfigureAwait(false);
             try
             {
+                await readinessSource.CancelAsync().ConfigureAwait(false);
                 if (workspaceReadinessTask is not null)
                 {
-                    await workspaceReadinessTask.ConfigureAwait(false);
+                    await workspaceReadinessTask.ConfigureAwait(
+                        ConfigureAwaitOptions.SuppressThrowing);
+                    if (workspaceReadinessTask.IsFaulted)
+                    {
+                        await workspaceReadinessTask.ConfigureAwait(false);
+                    }
                 }
-            }
-            catch (OperationCanceledException) when (readinessSource.IsCancellationRequested)
-            {
             }
             finally
             {

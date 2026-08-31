@@ -35,42 +35,38 @@ internal sealed partial class WindowsProcessTreeLifetime : IAsyncDisposable
             return new WindowsProcessTreeLifetime(jobHandle: null);
         }
 
-        SafeFileHandle jobHandle = CreateJobObject(nint.Zero, nint.Zero);
+        using SafeFileHandle jobHandle = CreateJobObject(nint.Zero, nint.Zero);
         if (jobHandle.IsInvalid)
         {
             throw new Win32Exception(Marshal.GetLastPInvokeError());
         }
 
-        try
+        var limits = new WindowsJobObjectExtendedLimitInformation
         {
-            var limits = new WindowsJobObjectExtendedLimitInformation
+            _basicLimitInformation = new WindowsJobObjectBasicLimitInformation
             {
-                _basicLimitInformation = new WindowsJobObjectBasicLimitInformation
-                {
-                    _limitFlags = JobObjectLimitKillOnJobClose
-                }
-            };
-            if (SetInformationJobObject(
-                jobHandle,
-                JobObjectExtendedLimitInformation,
-                in limits,
-                checked((uint)Marshal.SizeOf<WindowsJobObjectExtendedLimitInformation>())) == 0)
-            {
-                throw new Win32Exception(Marshal.GetLastPInvokeError());
+                _limitFlags = JobObjectLimitKillOnJobClose
             }
-
-            if (AssignProcessToJobObject(jobHandle, process.SafeHandle) == 0)
-            {
-                throw new Win32Exception(Marshal.GetLastPInvokeError());
-            }
-
-            return new WindowsProcessTreeLifetime(jobHandle);
-        }
-        catch
+        };
+        if (SetInformationJobObject(
+            jobHandle,
+            JobObjectExtendedLimitInformation,
+            in limits,
+            checked((uint)Marshal.SizeOf<WindowsJobObjectExtendedLimitInformation>())) == 0)
         {
-            jobHandle.Dispose();
-            throw;
+            throw new Win32Exception(Marshal.GetLastPInvokeError());
         }
+
+        if (AssignProcessToJobObject(jobHandle, process.SafeHandle) == 0)
+        {
+            throw new Win32Exception(Marshal.GetLastPInvokeError());
+        }
+
+        var ownedJobHandle = new SafeFileHandle(
+            jobHandle.DangerousGetHandle(),
+            ownsHandle: true);
+        jobHandle.SetHandleAsInvalid();
+        return new WindowsProcessTreeLifetime(ownedJobHandle);
     }
 
     /// <summary>
@@ -118,14 +114,8 @@ internal sealed partial class WindowsProcessTreeLifetime : IAsyncDisposable
             return;
         }
 
-        try
-        {
-            await TerminateDescendantsAsync().ConfigureAwait(false);
-        }
-        finally
-        {
-            _jobHandle?.Dispose();
-        }
+        using SafeFileHandle? jobHandle = _jobHandle;
+        await TerminateDescendantsAsync().ConfigureAwait(false);
     }
 
     private static uint GetActiveProcessCount(SafeFileHandle jobHandle)
