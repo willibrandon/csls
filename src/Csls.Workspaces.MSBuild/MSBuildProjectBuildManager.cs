@@ -163,6 +163,24 @@ internal sealed class MSBuildProjectBuildManager
                 _globalProperties,
                 projectCollection);
             loadedProjects.Add(project);
+            if (RequiresLegacyFrameworkFallback(project))
+            {
+                var fallbackProperties = new Dictionary<string, string>(
+                    _globalProperties,
+                    StringComparer.OrdinalIgnoreCase);
+                if (LegacyFrameworkReferenceResolver.AddFallbackGlobalProperties(
+                    fallbackProperties,
+                    project.GetPropertyValue("TargetFrameworkIdentifier"),
+                    project.GetPropertyValue("TargetFrameworkVersion")))
+                {
+                    project = CreateProject(
+                        projectRoot,
+                        fallbackProperties,
+                        projectCollection);
+                    loadedProjects.Add(project);
+                }
+            }
+
             string targetFramework = project.GetPropertyValue("TargetFramework");
             string targetFrameworks = project.GetPropertyValue("TargetFrameworks");
             if (!string.IsNullOrWhiteSpace(targetFramework) ||
@@ -446,6 +464,27 @@ internal sealed class MSBuildProjectBuildManager
                 ProjectLoadSettings.IgnoreInvalidImports |
                 ProjectLoadSettings.DoNotEvaluateElementsWithFalseCondition |
                 ProjectLoadSettings.FailOnUnresolvedSdk);
+
+    private static bool RequiresLegacyFrameworkFallback(MSBuildProject project)
+    {
+        if (!string.Equals(
+            project.GetPropertyValue("TargetFrameworkIdentifier"),
+            ".NETFramework",
+            StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        string frameworkRoot = project.GetPropertyValue("TargetFrameworkRootPath");
+        string frameworkVersion = project.GetPropertyValue("TargetFrameworkVersion");
+        return string.IsNullOrWhiteSpace(frameworkRoot) ||
+            string.IsNullOrWhiteSpace(frameworkVersion) ||
+            !File.Exists(Path.Join(
+                frameworkRoot,
+                ".NETFramework",
+                frameworkVersion,
+                "mscorlib.dll"));
+    }
 
     private static StringComparer PathComparer =>
         OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal;

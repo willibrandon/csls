@@ -34,11 +34,9 @@ internal static partial class DotNetWorkspaceRestorer
                 "The current workspace contains no solution or project entry point to restore.");
         }
 
-        foreach (string entryPoint in entryPoints)
-        {
-            await RestoreEntryPointAsync(entryPoint, logger, cancellationToken)
-                .ConfigureAwait(false);
-        }
+        await Task.WhenAll(entryPoints.Select(entryPoint =>
+            RestoreEntryPointAsync(entryPoint, logger, cancellationToken)))
+            .ConfigureAwait(false);
 
         return entryPoints.Count;
     }

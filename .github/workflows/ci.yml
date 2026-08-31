@@ -116,6 +116,7 @@ jobs:
           persist-credentials: false
 
       - name: Set up .NET
+        if: matrix.rid != 'win-arm64'
         uses: actions/setup-dotnet@v6
         with:
           dotnet-version: 10.x
@@ -337,6 +338,7 @@ jobs:
           persist-credentials: false
 
       - name: Set up .NET
+        if: matrix.rid != 'win-arm64'
         uses: actions/setup-dotnet@v6
         with:
           dotnet-version: 10.x
@@ -422,6 +424,7 @@ jobs:
           persist-credentials: false
 
       - name: Set up .NET
+        if: matrix.rid != 'win-arm64'
         uses: actions/setup-dotnet@v6
         with:
           dotnet-version: 10.x
@@ -623,6 +626,7 @@ jobs:
           persist-credentials: false
 
       - name: Set up .NET
+        if: matrix.rid != 'win-arm64'
         uses: actions/setup-dotnet@v6
         with:
           dotnet-version: 10.x

@@ -1,6 +1,7 @@
 using Csls.Protocol;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CodeActions;
+using Microsoft.CodeAnalysis.CodeRefactorings;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Host.Mef;
 using Microsoft.CodeAnalysis.Text;
@@ -16,75 +17,48 @@ namespace Csls.Workspaces;
 internal static class RoslynExtractBaseClassCodeRefactoringAdapter
 {
     private const string RefactorCodeActionKind = "refactor";
+    private const string ProviderTypeName =
+        "Microsoft.CodeAnalysis.CSharp.CodeRefactorings.ExtractClass." +
+        "CSharpExtractClassCodeRefactoringProvider";
 
     private static readonly Lazy<(
         ConstructorInfo MemberAnalysisConstructor,
         ConstructorInfo OptionsConstructor,
         ConstructorInfo ActionConstructor,
         MethodInfo FormattingOptionsMethod,
-        MethodInfo ImmutableArrayCreateMethod)> s_contract =
+        MethodInfo ImmutableArrayCreateMethod,
+        MethodInfo SelectedNodesMethod,
+        MethodInfo SelectedClassMethod,
+        MethodInfo IsMemberValidMethod)> s_contract =
         new(CreateContract, LazyThreadSafetyMode.ExecutionAndPublication);
 
     /// <summary>
-    /// Gets Roslyn's Extract Base Class action for one applicable class declaration.
+    /// Returns whether a provider is Roslyn's C# Extract Base Class provider.
+    /// </summary>
+    internal static bool IsProvider(CodeRefactoringProvider provider)
+    {
+        ArgumentNullException.ThrowIfNull(provider);
+        return string.Equals(
+            provider.GetType().FullName,
+            ProviderTypeName,
+            StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Gets Roslyn's Extract Base Class action for one applicable type or member selection.
     /// </summary>
     internal static async Task<LspCodeAction?> GetActionAsync(
         Document document,
         TextSpan span,
+        CodeRefactoringProvider provider,
         Func<Solution, Solution, CancellationToken, Task<WorkspaceEdit>>
             createWorkspaceEditAsync,
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(document);
+        ArgumentNullException.ThrowIfNull(provider);
         ArgumentNullException.ThrowIfNull(createWorkspaceEditAsync);
-        if (document.Project.Language != LanguageNames.CSharp)
-        {
-            return null;
-        }
-
-        SyntaxNode root = await document.GetSyntaxRootAsync(cancellationToken)
-            .ConfigureAwait(false)
-            ?? throw new InvalidOperationException(
-                $"Roslyn returned no syntax root for {document.Name}.");
-        int tokenPosition = Math.Min(span.Start, Math.Max(0, root.FullSpan.End - 1));
-        ClassDeclarationSyntax? declaration = root
-            .FindToken(tokenPosition, findInsideTrivia: true)
-            .Parent?
-            .AncestorsAndSelf()
-            .OfType<ClassDeclarationSyntax>()
-            .FirstOrDefault();
-        if (declaration is null)
-        {
-            return null;
-        }
-
-        SemanticModel semanticModel = await document.GetSemanticModelAsync(cancellationToken)
-            .ConfigureAwait(false)
-            ?? throw new InvalidOperationException(
-                $"Roslyn returned no semantic model for {document.Name}.");
-        if (semanticModel.GetDeclaredSymbol(declaration, cancellationToken) is not
-                INamedTypeSymbol selectedType)
-        {
-            return null;
-        }
-
-        if (selectedType.IsStatic ||
-            selectedType.BaseType?.SpecialType != SpecialType.System_Object)
-        {
-            return null;
-        }
-
-        ISymbol[] selectedMembers =
-        [
-            .. selectedType.GetMembers().Where(static member => member switch
-            {
-                IMethodSymbol method => method.MethodKind == MethodKind.Ordinary,
-                IFieldSymbol field => !field.IsImplicitlyDeclared,
-                _ => member.Kind is Microsoft.CodeAnalysis.SymbolKind.Property or
-                    Microsoft.CodeAnalysis.SymbolKind.Event
-            })
-        ];
-        if (selectedMembers.Length == 0)
+        if (document.Project.Language != LanguageNames.CSharp || !IsProvider(provider))
         {
             return null;
         }
@@ -94,7 +68,101 @@ internal static class RoslynExtractBaseClassCodeRefactoringAdapter
             ConstructorInfo optionsConstructor,
             ConstructorInfo actionConstructor,
             MethodInfo formattingOptionsMethod,
-            MethodInfo immutableArrayCreateMethod) = s_contract.Value;
+            MethodInfo immutableArrayCreateMethod,
+            MethodInfo selectedNodesMethod,
+            MethodInfo selectedClassMethod,
+            MethodInfo isMemberValidMethod) = s_contract.Value;
+        var context = new CodeRefactoringContext(
+            document,
+            span,
+            static _ => { },
+            cancellationToken);
+        Task<ImmutableArray<SyntaxNode>> selectedNodesTask =
+            selectedNodesMethod.Invoke(provider, [context]) as
+                Task<ImmutableArray<SyntaxNode>>
+            ?? throw new InvalidOperationException(
+                "Roslyn's Extract Base Class member selection returned no task.");
+        ImmutableArray<SyntaxNode> selectedNodes = await selectedNodesTask
+            .ConfigureAwait(false);
+        SemanticModel semanticModel = await document.GetSemanticModelAsync(cancellationToken)
+            .ConfigureAwait(false)
+            ?? throw new InvalidOperationException(
+                $"Roslyn returned no semantic model for {document.Name}.");
+        (SyntaxNode Node, ISymbol Symbol)[] selectedMemberPairs =
+        [
+            .. selectedNodes
+                .Select(node => (
+                    Node: node,
+                    Symbol: semanticModel.GetDeclaredSymbol(node, cancellationToken)))
+                .Where(pair => (bool)(isMemberValidMethod.Invoke(
+                    null,
+                    [pair.Symbol]) ?? false))
+                .Select(static pair => (pair.Node, pair.Symbol!))
+        ];
+        ISymbol[] selectedMembers =
+            [.. selectedMemberPairs.Select(static pair => pair.Symbol)];
+        ClassDeclarationSyntax? declaration;
+        INamedTypeSymbol? selectedType;
+        TextSpan actionSpan;
+        if (selectedMembers.Length != 0)
+        {
+            selectedType = selectedMembers[0].ContainingType as INamedTypeSymbol;
+            declaration = selectedMemberPairs[0].Node
+                .AncestorsAndSelf()
+                .OfType<ClassDeclarationSyntax>()
+                .FirstOrDefault();
+            if (declaration is null || selectedMembers.Any(member =>
+                !SymbolEqualityComparer.Default.Equals(
+                    member.ContainingType,
+                    selectedType) ||
+                member.DeclaringSyntaxReferences.All(reference =>
+                    !declaration.FullSpan.Contains(reference.Span))))
+            {
+                return null;
+            }
+
+            actionSpan = TextSpan.FromBounds(
+                selectedMemberPairs[0].Node.FullSpan.Start,
+                selectedMemberPairs[^1].Node.FullSpan.End);
+        }
+        else
+        {
+            Task<SyntaxNode?> selectedClassTask = selectedClassMethod.Invoke(
+                provider,
+                [context]) as Task<SyntaxNode?>
+                ?? throw new InvalidOperationException(
+                    "Roslyn's Extract Base Class type selection returned no task.");
+            declaration = await selectedClassTask.ConfigureAwait(false) as
+                ClassDeclarationSyntax;
+            selectedType = declaration is null
+                ? null
+                : semanticModel.GetDeclaredSymbol(declaration, cancellationToken) as
+                    INamedTypeSymbol;
+            actionSpan = span;
+        }
+
+        if (declaration is null ||
+            selectedType is null ||
+            selectedType.IsStatic ||
+            selectedType.BaseType?.SpecialType != SpecialType.System_Object)
+        {
+            return null;
+        }
+
+        if (selectedMembers.Length == 0)
+        {
+            selectedMembers =
+            [
+                .. selectedType.GetMembers().Where(static member => member switch
+                {
+                    IMethodSymbol method => method.MethodKind == MethodKind.Ordinary,
+                    IFieldSymbol field => !field.IsImplicitlyDeclared,
+                    _ => member.Kind is Microsoft.CodeAnalysis.SymbolKind.Property or
+                        Microsoft.CodeAnalysis.SymbolKind.Event
+                })
+            ];
+        }
+
         Type memberAnalysisType = memberAnalysisConstructor.DeclaringType
             ?? throw new InvalidOperationException(
                 "Roslyn's extract-class member-analysis type is unavailable.");
@@ -137,7 +205,7 @@ internal static class RoslynExtractBaseClassCodeRefactoringAdapter
         CodeActionWithOptions action = actionConstructor.Invoke(
             [
                 document,
-                span,
+                actionSpan,
                 null,
                 selectedType,
                 declaration,
@@ -175,7 +243,10 @@ internal static class RoslynExtractBaseClassCodeRefactoringAdapter
         ConstructorInfo OptionsConstructor,
         ConstructorInfo ActionConstructor,
         MethodInfo FormattingOptionsMethod,
-        MethodInfo ImmutableArrayCreateMethod) CreateContract()
+        MethodInfo ImmutableArrayCreateMethod,
+        MethodInfo SelectedNodesMethod,
+        MethodInfo SelectedClassMethod,
+        MethodInfo IsMemberValidMethod) CreateContract()
     {
         Assembly[] assemblies =
         [
@@ -199,6 +270,9 @@ internal static class RoslynExtractBaseClassCodeRefactoringAdapter
             "Microsoft.CodeAnalysis.ExtractClass.ExtractClassWithDialogCodeAction");
         Type formattingOptionsProviderType = ResolveType(
             "Microsoft.CodeAnalysis.Formatting.SyntaxFormattingOptionsProviders");
+        Type providerType = ResolveType(ProviderTypeName);
+        Type memberValidatorType = ResolveType(
+            "Microsoft.CodeAnalysis.PullMemberUp.MemberAndDestinationValidator");
         ConstructorInfo memberAnalysisConstructor = memberAnalysisType
             .GetConstructors(constructorFlags)
             .Single(static constructor => constructor.GetParameters().Length == 2);
@@ -221,11 +295,30 @@ internal static class RoslynExtractBaseClassCodeRefactoringAdapter
                 method.IsGenericMethodDefinition &&
                 method.GetGenericArguments().Length == 1 &&
                 method.GetParameters() is [{ ParameterType.IsArray: true }]);
+        MethodInfo selectedNodesMethod = providerType.GetMethod(
+            "GetSelectedNodesAsync",
+            BindingFlags.Instance | BindingFlags.NonPublic)
+            ?? throw new InvalidOperationException(
+                "Roslyn's Extract Base Class member-selection method was not found.");
+        MethodInfo selectedClassMethod = providerType.GetMethod(
+            "GetSelectedClassDeclarationAsync",
+            BindingFlags.Instance | BindingFlags.NonPublic)
+            ?? throw new InvalidOperationException(
+                "Roslyn's Extract Base Class type-selection method was not found.");
+        MethodInfo isMemberValidMethod = memberValidatorType.GetMethod(
+            "IsMemberValid",
+            BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic,
+            [typeof(ISymbol)])
+            ?? throw new InvalidOperationException(
+                "Roslyn's Extract Base Class member validator was not found.");
         return (
             memberAnalysisConstructor,
             optionsConstructor,
             actionConstructor,
             formattingOptionsMethod,
-            immutableArrayCreateMethod);
+            immutableArrayCreateMethod,
+            selectedNodesMethod,
+            selectedClassMethod,
+            isMemberValidMethod);
     }
 }

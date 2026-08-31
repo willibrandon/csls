@@ -408,7 +408,7 @@ public sealed class VsCodeLanguageServerTests
 
             await AssertNoUnexpectedCslsOutputAsync(
                 [userDataPath, remoteDataPath],
-                expectWorkspaceRestore: localSuite is null,
+                expectWorkspaceRestore: true,
                 TestContext.CancellationToken).ConfigureAwait(false);
             Assert.IsFalse(Directory.Exists(Path.Join(repositoryRoot, "TestResults")));
         }

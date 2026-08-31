@@ -7,7 +7,6 @@
 
   <ItemGroup>
     <PackageReference Include="Microsoft.Build.Locator" />
-    <PackageReference Include="Microsoft.CodeAnalysis.Workspaces.MSBuild" />
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
     <PackageReference Include="StreamJsonRpc" />
   </ItemGroup>
@@ -33,7 +32,5 @@
              Link="SolutionProjectCounter.cs" />
     <Compile Include="../Csls.Workspaces/WorkspaceLoadProgressReporter.cs"
              Link="WorkspaceLoadProgressReporter.cs" />
-    <Compile Include="../Csls.Workspaces/WorkspaceProjectLoadObserver.cs"
-             Link="WorkspaceProjectLoadObserver.cs" />
   </ItemGroup>
 </Project>

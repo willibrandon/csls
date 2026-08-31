@@ -49,7 +49,7 @@ internal sealed class MSBuildBuildHostClient
         var startInfo = new ProcessStartInfo
         {
             FileName = buildHostPath,
-            WorkingDirectory = Path.GetDirectoryName(projectPaths[0]),
+            WorkingDirectory = Path.GetDirectoryName(buildHostPath),
             RedirectStandardError = true,
             RedirectStandardInput = true,
             RedirectStandardOutput = true,

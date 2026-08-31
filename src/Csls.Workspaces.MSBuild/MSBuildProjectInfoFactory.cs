@@ -23,22 +23,27 @@ internal static class MSBuildProjectInfoFactory
     /// </summary>
     /// <param name="solutionPath">The solution path, or the first project path.</param>
     /// <param name="snapshots">The completed project states.</param>
+    /// <param name="projectFilePaths">The editor-facing paths for materialized projects.</param>
     /// <param name="reportDiagnostic">The workspace diagnostic destination.</param>
     /// <returns>The workspace and its current solution.</returns>
     internal static (Workspace Workspace, Solution Solution) Create(
         string solutionPath,
         IReadOnlyList<MSBuildProjectSnapshot> snapshots,
+        IReadOnlyDictionary<string, string> projectFilePaths,
         Action<WorkspaceDiagnosticKind, string> reportDiagnostic)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(solutionPath);
         ArgumentNullException.ThrowIfNull(snapshots);
+        ArgumentNullException.ThrowIfNull(projectFilePaths);
         ArgumentNullException.ThrowIfNull(reportDiagnostic);
         var workspace = new AdhocWorkspace(MefHostServices.DefaultHost, WorkspaceKind.MSBuild);
         try
         {
             var projectIds = snapshots.ToDictionary(
                 static snapshot => snapshot,
-                static snapshot => ProjectId.CreateNewId(debugName: snapshot.ProjectPath));
+                snapshot => ProjectId.CreateNewId(debugName:
+                    projectFilePaths.GetValueOrDefault(snapshot.ProjectPath) ??
+                    snapshot.ProjectPath));
             var snapshotsByPath = snapshots
                 .GroupBy(static snapshot => snapshot.ProjectPath, PathComparer)
                 .ToDictionary(
@@ -59,6 +64,7 @@ internal static class MSBuildProjectInfoFactory
                     snapshotsByPath,
                     knownProjectOutputPaths,
                     analyzerLoader,
+                    projectFilePaths,
                     reportDiagnostic))
             ];
             var solutionInfo = SolutionInfo.Create(
@@ -82,10 +88,12 @@ internal static class MSBuildProjectInfoFactory
         Dictionary<string, MSBuildProjectSnapshot[]> snapshotsByPath,
         IReadOnlySet<string> knownProjectOutputPaths,
         RoslynAnalyzerAssemblyLoader analyzerLoader,
+        IReadOnlyDictionary<string, string> projectFilePaths,
         Action<WorkspaceDiagnosticKind, string> reportDiagnostic)
     {
         MSBuildProjectData project = snapshot.Project;
         string projectPath = snapshot.ProjectPath;
+        string projectFilePath = projectFilePaths.GetValueOrDefault(projectPath) ?? projectPath;
         string projectDirectory = Path.GetDirectoryName(projectPath)
             ?? throw new InvalidDataException($"Project path has no parent directory: {projectPath}");
         string[] commandLineArguments =
@@ -163,7 +171,12 @@ internal static class MSBuildProjectInfoFactory
             analyzerLoader);
         string? targetFramework = ReadProperty(project, "TargetFramework");
         bool multiTargeted = snapshotsByPath[projectPath].Length > 1;
-        string projectName = Path.GetFileNameWithoutExtension(projectPath);
+        string projectName = Path.GetFileName(projectFilePath);
+        if (projectFilePath.EndsWith(".csproj", StringComparison.OrdinalIgnoreCase))
+        {
+            projectName = Path.GetFileNameWithoutExtension(projectFilePath);
+        }
+
         if (multiTargeted && !string.IsNullOrWhiteSpace(targetFramework))
         {
             projectName = $"{projectName}({targetFramework})";
@@ -190,11 +203,11 @@ internal static class MSBuildProjectInfoFactory
             Path.GetFileNameWithoutExtension(projectPath);
         ProjectInfo info = ProjectInfo.Create(
             projectId,
-            VersionStamp.Create(File.GetLastWriteTimeUtc(projectPath)),
+            VersionStamp.Create(File.GetLastWriteTimeUtc(projectFilePath)),
             projectName,
             assemblyName,
             LanguageNames.CSharp,
-            filePath: projectPath,
+            filePath: projectFilePath,
             outputFilePath: outputPath,
             compilationOptions: compilationOptions,
             parseOptions: parseOptions,
@@ -247,21 +260,18 @@ internal static class MSBuildProjectInfoFactory
             AddReference(path, reference.Properties);
         }
 
-        if (references.Count == 0)
+        foreach (MSBuildProjectItem item in project.GetItems("ReferencePath"))
         {
-            foreach (MSBuildProjectItem item in project.GetItems("ReferencePath"))
+            string? path = ResolveReferencePath(
+                item.EvaluatedInclude,
+                projectDirectory,
+                []);
+            if (path is not null)
             {
-                string? path = ResolveReferencePath(
-                    item.EvaluatedInclude,
-                    projectDirectory,
-                    []);
-                if (path is not null)
-                {
-                    AddReference(
-                        path,
-                        new MetadataReferenceProperties(
-                            aliases: ParseAliases(item.GetMetadataValue("Aliases"))));
-                }
+                AddReference(
+                    path,
+                    new MetadataReferenceProperties(
+                        aliases: ParseAliases(item.GetMetadataValue("Aliases"))));
             }
         }
 
@@ -272,7 +282,15 @@ internal static class MSBuildProjectInfoFactory
             string key = $"{path}\0{properties.EmbedInteropTypes}\0{string.Join(',', properties.Aliases)}";
             if (keys.Add(key))
             {
-                references.Add(MetadataReference.CreateFromFile(path, properties));
+                string documentationPath = Path.ChangeExtension(path, ".xml");
+                DocumentationProvider? documentationProvider =
+                    File.Exists(documentationPath)
+                        ? XmlDocumentationProvider.CreateFromFile(documentationPath)
+                        : null;
+                references.Add(MetadataReference.CreateFromFile(
+                    path,
+                    properties,
+                    documentationProvider));
             }
         }
     }

@@ -1,5 +1,4 @@
 using Microsoft.CodeAnalysis;
-using Microsoft.CodeAnalysis.MSBuild;
 using Microsoft.Extensions.Logging;
 using System.Buffers;
 using System.ComponentModel;
@@ -13,195 +12,197 @@ using System.Xml.Linq;
 namespace Csls.Workspaces;
 
 /// <summary>
-/// Opens SDK-evaluated file-based apps through the Roslyn MSBuild workspace.
+/// Evaluates and materializes SDK-backed file-based apps for an isolated project loader.
 /// </summary>
 internal static class FileBasedAppProjectLoader
 {
-    private const int MaximumApiOutputCharacters = 4 * 1024 * 1024;
+    private const int MaximumApiResponseCharacters = 4 * 1024 * 1024;
     private const int MaximumErrorOutputCharacters = 32 * 1024;
     private const int ReadBufferCharacters = 4 * 1024;
     private const int LockRetryMilliseconds = 50;
 
     /// <summary>
-    /// Restores, evaluates, and opens one file-based app without retaining a physical project file.
+    /// Restores, evaluates, and materializes file-based apps for one bounded load operation.
     /// </summary>
-    /// <param name="workspace">The Roslyn workspace that will own the evaluated project.</param>
-    /// <param name="entryPointPath">The absolute file-based app entry point.</param>
+    /// <typeparam name="TResult">The result produced by the isolated project loader.</typeparam>
+    /// <param name="entryPointPaths">The absolute file-based app entry points.</param>
     /// <param name="logger">The workspace restore logger.</param>
     /// <param name="reportDiagnostic">The workspace diagnostic reporter.</param>
+    /// <param name="loadProjectsAsync">The loader invoked while all generated projects exist.</param>
     /// <param name="cancellationToken">The operation cancellation token.</param>
-    /// <returns>The opened Roslyn project.</returns>
-    internal static async Task<Project> OpenProjectAsync(
-        MSBuildWorkspace workspace,
-        string entryPointPath,
+    /// <returns>The isolated project-loader result.</returns>
+    internal static async Task<TResult> UseProjectsAsync<TResult>(
+        IReadOnlyList<string> entryPointPaths,
         ILogger logger,
         Action<WorkspaceDiagnosticKind, string> reportDiagnostic,
+        Func<
+            IReadOnlyList<string>,
+            IReadOnlyDictionary<string, string>,
+            CancellationToken,
+            Task<TResult>> loadProjectsAsync,
         CancellationToken cancellationToken)
     {
-        ArgumentNullException.ThrowIfNull(workspace);
-        ArgumentException.ThrowIfNullOrWhiteSpace(entryPointPath);
+        ArgumentNullException.ThrowIfNull(entryPointPaths);
         ArgumentNullException.ThrowIfNull(logger);
         ArgumentNullException.ThrowIfNull(reportDiagnostic);
-        entryPointPath = Path.GetFullPath(entryPointPath);
+        ArgumentNullException.ThrowIfNull(loadProjectsAsync);
+        string[] entryPoints =
+        [
+            .. entryPointPaths
+                .Select(Path.GetFullPath)
+                .Distinct(PathComparer)
+                .Order(PathComparer)
+        ];
+        var projectFilePaths = new Dictionary<string, string>(PathComparer);
+        if (entryPoints.Length == 0)
+        {
+            return await loadProjectsAsync(
+                [],
+                projectFilePaths,
+                cancellationToken).ConfigureAwait(false);
+        }
 
-        (string evaluatedProjectPath, string content) = await PrepareProjectAsync(
-            entryPointPath,
-            logger,
-            reportDiagnostic,
-            cancellationToken).ConfigureAwait(false);
-        return await OpenPreparedProjectAsync(
-            workspace,
-            entryPointPath,
-            evaluatedProjectPath,
-            content,
-            reportDiagnostic,
-            cancellationToken).ConfigureAwait(false);
-    }
-
-    /// <summary>
-    /// Restores and evaluates one file-based app before its serialized workspace load.
-    /// </summary>
-    /// <param name="entryPointPath">The absolute file-based app entry point.</param>
-    /// <param name="logger">The workspace restore logger.</param>
-    /// <param name="reportDiagnostic">The workspace diagnostic reporter.</param>
-    /// <param name="cancellationToken">The operation cancellation token.</param>
-    /// <returns>The evaluated project path and prepared project content.</returns>
-    internal static async Task<(string EvaluatedProjectPath, string Content)> PrepareProjectAsync(
-        string entryPointPath,
-        ILogger logger,
-        Action<WorkspaceDiagnosticKind, string> reportDiagnostic,
-        CancellationToken cancellationToken)
-    {
-        ArgumentException.ThrowIfNullOrWhiteSpace(entryPointPath);
-        ArgumentNullException.ThrowIfNull(logger);
-        ArgumentNullException.ThrowIfNull(reportDiagnostic);
-        entryPointPath = Path.GetFullPath(entryPointPath);
-
-        using FileStream projectLock = await AcquireProjectLockAsync(
-            entryPointPath,
-            cancellationToken).ConfigureAwait(false);
-        string materializedProjectPath = CreateMaterializedProjectPath(entryPointPath);
-        string materializationMarkerPath = CreateMaterializationMarkerPath(entryPointPath);
-        await RecoverInterruptedMaterializationAsync(
-            entryPointPath,
-            materializedProjectPath,
-            materializationMarkerPath,
-            cancellationToken).ConfigureAwait(false);
-        await DotNetWorkspaceRestorer
-            .RestoreAsync([entryPointPath], logger, cancellationToken)
-            .ConfigureAwait(false);
-        (string evaluatedProjectPath, string content) = await EvaluateAsync(
-            entryPointPath,
-            reportDiagnostic,
-            cancellationToken).ConfigureAwait(false);
-        content = await PrepareMaterializedProjectAsync(
-            content,
-            evaluatedProjectPath,
-            materializedProjectPath,
-            cancellationToken).ConfigureAwait(false);
-        return (evaluatedProjectPath, content);
-    }
-
-    /// <summary>
-    /// Opens one prepared file-based app in its retained Roslyn workspace.
-    /// </summary>
-    /// <param name="workspace">The Roslyn workspace that will own the evaluated project.</param>
-    /// <param name="entryPointPath">The absolute file-based app entry point.</param>
-    /// <param name="evaluatedProjectPath">The SDK-evaluated project path.</param>
-    /// <param name="content">The prepared project content.</param>
-    /// <param name="reportDiagnostic">The workspace diagnostic reporter.</param>
-    /// <param name="cancellationToken">The operation cancellation token.</param>
-    /// <returns>The opened Roslyn project.</returns>
-    internal static async Task<Project> OpenPreparedProjectAsync(
-        MSBuildWorkspace workspace,
-        string entryPointPath,
-        string evaluatedProjectPath,
-        string content,
-        Action<WorkspaceDiagnosticKind, string> reportDiagnostic,
-        CancellationToken cancellationToken)
-    {
-        ArgumentNullException.ThrowIfNull(workspace);
-        ArgumentException.ThrowIfNullOrWhiteSpace(entryPointPath);
-        ArgumentException.ThrowIfNullOrWhiteSpace(evaluatedProjectPath);
-        ArgumentNullException.ThrowIfNull(content);
-        ArgumentNullException.ThrowIfNull(reportDiagnostic);
-        entryPointPath = Path.GetFullPath(entryPointPath);
-
-        using FileStream projectLock = await AcquireProjectLockAsync(
-            entryPointPath,
-            cancellationToken).ConfigureAwait(false);
-        string materializedProjectPath = CreateMaterializedProjectPath(entryPointPath);
-        string materializationMarkerPath = CreateMaterializationMarkerPath(entryPointPath);
-        await RecoverInterruptedMaterializationAsync(
-            entryPointPath,
-            materializedProjectPath,
-            materializationMarkerPath,
-            cancellationToken).ConfigureAwait(false);
-
-        bool materialized = false;
-        bool markerCreated = false;
+        var projectLocks = new FileStream?[entryPoints.Length];
+        string[] materializedProjectPaths = new string[entryPoints.Length];
+        string[] markerPaths = new string[entryPoints.Length];
+        bool[] materialized = new bool[entryPoints.Length];
+        bool[] markerCreated = new bool[entryPoints.Length];
         try
         {
-            RemoveGeneratedProjectIfPresent(evaluatedProjectPath, entryPointPath);
-            RemoveGeneratedProjectIfPresent(materializedProjectPath, entryPointPath);
-
-            await File.WriteAllTextAsync(
-                materializationMarkerPath,
-                materializedProjectPath,
-                Encoding.UTF8,
-                cancellationToken).ConfigureAwait(false);
-            markerCreated = true;
-            using (var stream = new FileStream(
-                materializedProjectPath,
-                FileMode.CreateNew,
-                FileAccess.Write,
-                FileShare.Read,
-                bufferSize: 16 * 1024,
-                FileOptions.Asynchronous | FileOptions.SequentialScan))
+            for (int index = 0; index < entryPoints.Length; index++)
             {
-                materialized = true;
-                using var writer = new StreamWriter(stream, new UTF8Encoding(false));
-                await writer.WriteAsync(content.AsMemory(), cancellationToken)
-                    .ConfigureAwait(false);
-                await writer.FlushAsync(cancellationToken).ConfigureAwait(false);
+                string entryPointPath = entryPoints[index];
+                projectLocks[index] = await AcquireProjectLockAsync(
+                    entryPointPath,
+                    cancellationToken).ConfigureAwait(false);
+                materializedProjectPaths[index] = GetMaterializedProjectPath(entryPointPath);
+                markerPaths[index] = CreateMaterializationMarkerPath(entryPointPath);
+                await RecoverInterruptedMaterializationAsync(
+                    entryPointPath,
+                    materializedProjectPaths[index],
+                    markerPaths[index],
+                    cancellationToken).ConfigureAwait(false);
             }
 
-            Project project = await workspace.OpenProjectAsync(
-                materializedProjectPath,
-                cancellationToken: cancellationToken).ConfigureAwait(false);
-            Solution solution = project.Solution.WithProjectFilePath(project.Id, entryPointPath);
-            return solution.GetProject(project.Id)
-                ?? throw new InvalidOperationException(
-                    $"The file-based app project disappeared after loading {entryPointPath}.");
+            await DotNetWorkspaceRestorer.RestoreAsync(
+                entryPoints,
+                logger,
+                cancellationToken).ConfigureAwait(false);
+            (string EvaluatedProjectPath, string Content)[] evaluatedProjects =
+                await EvaluateProjectsAsync(
+                    entryPoints,
+                    reportDiagnostic,
+                    cancellationToken).ConfigureAwait(false);
+            string[] preparedContents = await Task.WhenAll(
+                evaluatedProjects.Select((project, index) =>
+                    PrepareMaterializedProjectAsync(
+                        project.Content,
+                        project.EvaluatedProjectPath,
+                        materializedProjectPaths[index],
+                        cancellationToken))).ConfigureAwait(false);
+
+            for (int index = 0; index < entryPoints.Length; index++)
+            {
+                string entryPointPath = entryPoints[index];
+                string materializedProjectPath = materializedProjectPaths[index];
+                RemoveGeneratedProjectIfPresent(
+                    evaluatedProjects[index].EvaluatedProjectPath,
+                    entryPointPath);
+                RemoveGeneratedProjectIfPresent(materializedProjectPath, entryPointPath);
+                await File.WriteAllTextAsync(
+                    markerPaths[index],
+                    materializedProjectPath,
+                    Encoding.UTF8,
+                    cancellationToken).ConfigureAwait(false);
+                markerCreated[index] = true;
+                using (var stream = new FileStream(
+                    materializedProjectPath,
+                    FileMode.CreateNew,
+                    FileAccess.Write,
+                    FileShare.Read,
+                    bufferSize: 16 * 1024,
+                    FileOptions.Asynchronous | FileOptions.SequentialScan))
+                {
+                    materialized[index] = true;
+                    using var writer = new StreamWriter(stream, new UTF8Encoding(false));
+                    await writer.WriteAsync(
+                        preparedContents[index].AsMemory(),
+                        cancellationToken).ConfigureAwait(false);
+                    await writer.FlushAsync(cancellationToken).ConfigureAwait(false);
+                }
+
+                projectFilePaths.Add(materializedProjectPath, entryPointPath);
+            }
+
+            return await loadProjectsAsync(
+                materializedProjectPaths,
+                projectFilePaths,
+                cancellationToken).ConfigureAwait(false);
         }
         finally
         {
-            if (materialized)
+            for (int index = entryPoints.Length - 1; index >= 0; index--)
             {
-                try
+                if (materialized[index])
                 {
-                    File.Delete(materializedProjectPath);
+                    try
+                    {
+                        File.Delete(materializedProjectPaths[index]);
+                    }
+                    catch (Exception exception) when (
+                        exception is IOException or UnauthorizedAccessException)
+                    {
+                        reportDiagnostic(
+                            WorkspaceDiagnosticKind.Warning,
+                            $"Could not remove temporary file-based app project " +
+                            $"{materializedProjectPaths[index]}: " +
+                            exception.Message);
+                    }
                 }
-                catch (Exception exception) when (
-                    exception is IOException or UnauthorizedAccessException)
-                {
-                    reportDiagnostic(
-                        WorkspaceDiagnosticKind.Warning,
-                        $"Could not remove temporary file-based app project " +
-                        $"{materializedProjectPath}: " +
-                        exception.Message);
-                }
-            }
 
-            if (markerCreated)
-            {
-                File.Delete(materializationMarkerPath);
+                if (markerCreated[index])
+                {
+                    try
+                    {
+                        File.Delete(markerPaths[index]);
+                    }
+                    catch (Exception exception) when (
+                        exception is IOException or UnauthorizedAccessException)
+                    {
+                        reportDiagnostic(
+                            WorkspaceDiagnosticKind.Warning,
+                            $"Could not remove file-based app materialization marker " +
+                            $"{markerPaths[index]}: " +
+                            exception.Message);
+                    }
+                }
+
+                if (projectLocks[index] is FileStream projectLock)
+                {
+                    await projectLock.DisposeAsync().ConfigureAwait(false);
+                }
             }
         }
     }
 
-    private static async Task<(string ProjectPath, string Content)> EvaluateAsync(
-        string entryPointPath,
+    /// <summary>
+    /// Gets the stable private project path used to evaluate one file-based app.
+    /// </summary>
+    /// <param name="entryPointPath">The absolute file-based app entry point.</param>
+    /// <returns>The stable private materialized project path.</returns>
+    internal static string GetMaterializedProjectPath(string entryPointPath)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(entryPointPath);
+        string projectDirectory = Path.Join(
+            CreateStateDirectory("file-app-projects"),
+            CreateEntryPointIdentity(entryPointPath));
+        Directory.CreateDirectory(projectDirectory);
+        return Path.Join(projectDirectory, Path.GetFileName(entryPointPath) + ".csproj");
+    }
+
+    private static async Task<(string EvaluatedProjectPath, string Content)[]>
+        EvaluateProjectsAsync(
+        string[] entryPointPaths,
         Action<WorkspaceDiagnosticKind, string> reportDiagnostic,
         CancellationToken cancellationToken)
     {
@@ -215,9 +216,9 @@ internal static class FileBasedAppProjectLoader
             RedirectStandardInput = true,
             RedirectStandardOutput = true,
             UseShellExecute = false,
-            WorkingDirectory = Path.GetDirectoryName(entryPointPath)
+            WorkingDirectory = Path.GetDirectoryName(entryPointPaths[0])
                 ?? throw new InvalidDataException(
-                    $"File-based app entry point has no parent: {entryPointPath}")
+                    $"File-based app entry point has no parent: {entryPointPaths[0]}")
         };
         startInfo.ArgumentList.Add("run-api");
         startInfo.Environment["DOTNET_CLI_TELEMETRY_OPTOUT"] = "1";
@@ -226,10 +227,9 @@ internal static class FileBasedAppProjectLoader
 
         using Process process = Process.Start(startInfo)
             ?? throw new InvalidOperationException("The .NET file-based app evaluator did not start.");
-        Task<string> standardOutput = ReadBoundedAsync(
+        Task<string[]> standardOutput = ReadApiResponsesAsync(
             process.StandardOutput,
-            MaximumApiOutputCharacters,
-            "file-based app evaluator output");
+            entryPointPaths.Length);
         Task<string> standardError = ReadBoundedAsync(
             process.StandardError,
             MaximumErrorOutputCharacters,
@@ -239,10 +239,15 @@ internal static class FileBasedAppProjectLoader
             process);
         try
         {
-            string request = CreateRequest(entryPointPath);
-            await process.StandardInput
-                .WriteLineAsync(request.AsMemory(), cancellationToken)
-                .ConfigureAwait(false);
+            foreach (string entryPointPath in entryPointPaths)
+            {
+                string request = CreateRequest(entryPointPath);
+                await process.StandardInput
+                    .WriteLineAsync(request.AsMemory(), cancellationToken)
+                    .ConfigureAwait(false);
+            }
+
+            await process.StandardInput.FlushAsync(cancellationToken).ConfigureAwait(false);
             process.StandardInput.Close();
             await process.WaitForExitAsync(cancellationToken).ConfigureAwait(false);
         }
@@ -257,15 +262,32 @@ internal static class FileBasedAppProjectLoader
             throw;
         }
 
-        string output = await standardOutput.ConfigureAwait(false);
+        string[] output = await standardOutput.ConfigureAwait(false);
         string error = await standardError.ConfigureAwait(false);
         if (process.ExitCode != 0)
         {
             throw new InvalidOperationException(
-                $"dotnet run-api failed for {entryPointPath} with exit code " +
+                $"dotnet run-api failed with exit code " +
                 $"{process.ExitCode}: {error.Trim()}");
         }
 
+        var projects = new (string EvaluatedProjectPath, string Content)[output.Length];
+        for (int index = 0; index < output.Length; index++)
+        {
+            projects[index] = ParseProjectResponse(
+                output[index],
+                entryPointPaths[index],
+                reportDiagnostic);
+        }
+
+        return projects;
+    }
+
+    private static (string EvaluatedProjectPath, string Content) ParseProjectResponse(
+        string output,
+        string entryPointPath,
+        Action<WorkspaceDiagnosticKind, string> reportDiagnostic)
+    {
         using var response = JsonDocument.Parse(output);
         JsonElement root = response.RootElement;
         string responseType = root.GetProperty("$type").GetString()
@@ -343,7 +365,15 @@ internal static class FileBasedAppProjectLoader
             Environment.SpecialFolder.LocalApplicationData);
         if (string.IsNullOrWhiteSpace(localDataPath))
         {
-            localDataPath = Path.GetTempPath();
+            string userProfilePath = Environment.GetFolderPath(
+                Environment.SpecialFolder.UserProfile);
+            if (string.IsNullOrWhiteSpace(userProfilePath))
+            {
+                throw new InvalidOperationException(
+                    "The current user has no local application-data directory.");
+            }
+
+            localDataPath = Path.Join(userProfilePath, ".local", "share");
         }
 
         string directory = Path.Join(localDataPath, "csls", name);
@@ -357,15 +387,6 @@ internal static class FileBasedAppProjectLoader
         return Path.Join(
             markerDirectory,
             CreateEntryPointIdentity(entryPointPath) + ".marker");
-    }
-
-    private static string CreateMaterializedProjectPath(string entryPointPath)
-    {
-        string projectDirectory = Path.Join(
-            CreateStateDirectory("file-app-projects"),
-            CreateEntryPointIdentity(entryPointPath));
-        Directory.CreateDirectory(projectDirectory);
-        return Path.Join(projectDirectory, Path.GetFileName(entryPointPath) + ".csproj");
     }
 
     private static async Task RecoverInterruptedMaterializationAsync(
@@ -638,6 +659,43 @@ internal static class FileBasedAppProjectLoader
         return Encoding.UTF8.GetString(buffer.WrittenSpan);
     }
 
+    private static async Task<string[]> ReadApiResponsesAsync(
+        StreamReader reader,
+        int expectedResponseCount)
+    {
+        string[] responses = new string[expectedResponseCount];
+        for (int index = 0; index < responses.Length; index++)
+        {
+            string response = await reader.ReadLineAsync(CancellationToken.None)
+                .ConfigureAwait(false) ??
+                throw new InvalidDataException(
+                    $"The .NET file-based app evaluator returned {index} of " +
+                    $"{expectedResponseCount} responses.");
+
+            if (response.Length > MaximumApiResponseCharacters)
+            {
+                throw new InvalidDataException(
+                    $"A file-based app evaluator response exceeded " +
+                    $"{MaximumApiResponseCharacters} characters.");
+            }
+
+            responses[index] = response;
+        }
+
+        string? extraResponse;
+        while ((extraResponse = await reader.ReadLineAsync(CancellationToken.None)
+            .ConfigureAwait(false)) is not null)
+        {
+            if (!string.IsNullOrWhiteSpace(extraResponse))
+            {
+                throw new InvalidDataException(
+                    "The .NET file-based app evaluator returned more responses than requested.");
+            }
+        }
+
+        return responses;
+    }
+
     private static async Task<string> ReadBoundedAsync(
         StreamReader reader,
         int maximumCharacters,
@@ -695,4 +753,8 @@ internal static class FileBasedAppProjectLoader
     private static StringComparison PathComparison => OperatingSystem.IsWindows()
         ? StringComparison.OrdinalIgnoreCase
         : StringComparison.Ordinal;
+
+    private static StringComparer PathComparer => OperatingSystem.IsWindows()
+        ? StringComparer.OrdinalIgnoreCase
+        : StringComparer.Ordinal;
 }

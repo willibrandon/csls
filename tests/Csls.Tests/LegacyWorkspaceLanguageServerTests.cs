@@ -91,10 +91,16 @@ public sealed class LegacyWorkspaceLanguageServerTests
                 TestContext.CancellationToken).ConfigureAwait(false);
             Assert.AreEqual("full", diagnostics.Kind);
             Assert.IsNotNull(diagnostics.Items);
-            Assert.IsEmpty(diagnostics.Items);
-
             string shutdownDiagnostics = await lsp.ShutdownAsync(
                 TestContext.CancellationToken).ConfigureAwait(false);
+            Assert.IsEmpty(
+                diagnostics.Items,
+                string.Join(
+                    Environment.NewLine,
+                    diagnostics.Items.Select(static diagnostic =>
+                        $"{diagnostic.Code}: {diagnostic.Message}")) +
+                Environment.NewLine +
+                shutdownDiagnostics);
             Assert.DoesNotContain(
                 "Unhandled exception",
                 shutdownDiagnostics,

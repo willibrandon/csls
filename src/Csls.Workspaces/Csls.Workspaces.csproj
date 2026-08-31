@@ -17,7 +17,6 @@
     <Compile Remove="LegacyFrameworkReferenceResolver.cs" />
     <Compile Remove="MSBuildRegistration.cs" />
     <Compile Remove="WorkspaceLoadProgressReporter.cs" />
-    <Compile Remove="WorkspaceProjectLoadObserver.cs" />
   </ItemGroup>
 
   <ItemGroup>
