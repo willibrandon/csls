@@ -137,12 +137,6 @@ public sealed class EmacsLanguageServerTests
                                 "ready",
                                 TimeSpan.FromSeconds(60),
                                 TestContext.CancellationToken).ConfigureAwait(false);
-                            int serverProcessId = (await ControlSessionWaiter.WaitForRunningAsync(
-                                fixturePath,
-                                TimeSpan.FromSeconds(60),
-                                TestContext.CancellationToken,
-                                socketDirectory: socketDirectory).ConfigureAwait(false)).ProcessId;
-                            serverExit = ProcessExitWaiter.Observe(serverProcessId);
                         }
                         catch (TaskCanceledException exception)
                             when (!TestContext.CancellationToken.IsCancellationRequested)
@@ -177,6 +171,26 @@ public sealed class EmacsLanguageServerTests
                                 navigationSnapshot.GetScreenText(),
                                 exception);
                         }
+
+                        try
+                        {
+                            int serverProcessId = (await ControlSessionWaiter.WaitForRunningAsync(
+                                fixturePath,
+                                TimeSpan.FromSeconds(60),
+                                TestContext.CancellationToken,
+                                socketDirectory: socketDirectory).ConfigureAwait(false)).ProcessId;
+                            serverExit = ProcessExitWaiter.Observe(serverProcessId);
+                        }
+                        catch (TimeoutException exception)
+                        {
+                            using Hex1bTerminalSnapshot connectionSnapshot =
+                                automator.CreateSnapshot();
+                            throw new InvalidOperationException(
+                                $"Eglot navigated, but its csls control session was unavailable." +
+                                $"{Environment.NewLine}{connectionSnapshot.GetScreenText()}",
+                                exception);
+                        }
+
                         await automator.WaitUntilTextAsync("Eglot reached the second solution")
                             .ConfigureAwait(false);
                         using Hex1bTerminalSnapshot snapshot = automator.CreateSnapshot();

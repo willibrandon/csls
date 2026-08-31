@@ -13,7 +13,6 @@ namespace Csls.Tests;
 internal static class ControlSessionWaiter
 {
     private static readonly TimeSpan s_pollInterval = TimeSpan.FromMilliseconds(50);
-    private static readonly TimeSpan s_probeTimeout = TimeSpan.FromSeconds(2);
 
     /// <summary>
     /// Waits for the session serving one workspace to enter its running state.
@@ -153,15 +152,12 @@ internal static class ControlSessionWaiter
         string socketPath,
         CancellationToken cancellationToken)
     {
-        using var probeSource = CancellationTokenSource.CreateLinkedTokenSource(
-            cancellationToken);
-        probeSource.CancelAfter(s_probeTimeout);
         try
         {
             var client = new ControlRpcClient(socketPath);
             await using ConfiguredAsyncDisposable clientCleanup =
                 client.ConfigureAwait(false);
-            return await client.GetSessionAsync(probeSource.Token).ConfigureAwait(false);
+            return await client.GetSessionAsync(cancellationToken).ConfigureAwait(false);
         }
         catch (Exception exception) when (exception is
             IOException or
@@ -170,9 +166,7 @@ internal static class ControlSessionWaiter
             ConnectionLostException or
             InvalidDataException or
             RemoteRpcException or
-            ObjectDisposedException ||
-            exception is OperationCanceledException &&
-            !cancellationToken.IsCancellationRequested)
+            ObjectDisposedException)
         {
             return null;
         }
