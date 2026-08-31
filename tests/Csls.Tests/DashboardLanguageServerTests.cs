@@ -355,11 +355,13 @@ public sealed class DashboardLanguageServerTests
                         terminal,
                         defaultTimeout: TimeSpan.FromSeconds(60));
                     await automator.WaitUntilTextAsync("csls dashboard").ConfigureAwait(false);
-                    await automator.WaitUntilAsync(
-                        _ => workload.ContainsRawOutput("\u001b[?1003h"u8) &&
-                            workload.ContainsRawOutput("\u001b[?1006h"u8),
-                        timeout: TimeSpan.FromSeconds(5),
-                        description: "real dashboard process to enable terminal mouse reporting")
+                    await workload.WaitForRawOutputAsync(
+                        "\u001b[?1003h"u8.ToArray(),
+                        TestContext.CancellationToken)
+                        .ConfigureAwait(false);
+                    await workload.WaitForRawOutputAsync(
+                        "\u001b[?1006h"u8.ToArray(),
+                        TestContext.CancellationToken)
                         .ConfigureAwait(false);
                     await automator.ClickAtAsync(
                         4,
@@ -420,7 +422,8 @@ public sealed class DashboardLanguageServerTests
                             headerRow,
                             MouseButton.Left,
                             TestContext.CancellationToken).ConfigureAwait(false);
-                        await automator.WaitUntilAsync(
+                        await WaitForScreenAsync(
+                            automator,
                             screen => screen
                                 .GetScreenText()
                                 .Split('\n')
@@ -428,8 +431,7 @@ public sealed class DashboardLanguageServerTests
                                     line.Contains("Severity", StringComparison.Ordinal) &&
                                     line.IndexOf("Code", StringComparison.Ordinal) >=
                                         initialCodeColumn + 5),
-                            timeout: TimeSpan.FromSeconds(2),
-                            description: "mouse drag to widen a real diagnostics table column")
+                            TestContext.CancellationToken)
                             .ConfigureAwait(false);
                     }
 
@@ -442,15 +444,13 @@ public sealed class DashboardLanguageServerTests
                     await automator.KeyAsync(
                         Hex1bKey.Y,
                         TestContext.CancellationToken).ConfigureAwait(false);
-                    await automator.WaitUntilAsync(
-                        _ => workload.ContainsRawOutput(clipboardSequence),
-                        timeout: TimeSpan.FromSeconds(2),
-                        description: "keyboard yank of the complete focused diagnostic row")
+                    await workload.WaitForRawOutputAsync(
+                        clipboardSequence,
+                        TestContext.CancellationToken)
                         .ConfigureAwait(false);
-                    await automator.WaitUntilAsync(
-                        _ => workload.ContainsRawOutput("48;2;126;201;216m"u8),
-                        timeout: TimeSpan.FromSeconds(2),
-                        description: "visual yank flash on the focused diagnostic row")
+                    await workload.WaitForRawOutputAsync(
+                        "48;2;126;201;216m"u8.ToArray(),
+                        TestContext.CancellationToken)
                         .ConfigureAwait(false);
 
                     using Hex1bTerminalSnapshot beforeResizeSnapshot =
@@ -469,7 +469,8 @@ public sealed class DashboardLanguageServerTests
                         12,
                         MouseButton.Left,
                         TestContext.CancellationToken).ConfigureAwait(false);
-                    await automator.WaitUntilAsync(
+                    await WaitForScreenAsync(
+                        automator,
                         screen => screen
                             .GetScreenText()
                             .Split('\n')
@@ -477,8 +478,7 @@ public sealed class DashboardLanguageServerTests
                                 line.Contains("Diagnostics", StringComparison.Ordinal) &&
                                 line.Length > 33 &&
                                 line[33] == '┌'),
-                        timeout: TimeSpan.FromSeconds(5),
-                        description: "mouse drag to resize the dashboard columns")
+                        TestContext.CancellationToken)
                         .ConfigureAwait(false);
                     await automator.Ctrl().KeyAsync(
                         Hex1bKey.C,
@@ -653,12 +653,12 @@ public sealed class DashboardLanguageServerTests
                         secondSessionRow,
                         MouseButton.Left,
                         TestContext.CancellationToken).ConfigureAwait(false);
-                    await automator.WaitUntilAsync(
+                    await WaitForScreenAsync(
+                        automator,
                         screen => screen.GetScreenText().StartsWith(
                             $"csls dashboard  session {secondLsp.ProcessId}",
                             StringComparison.Ordinal),
-                        timeout: TimeSpan.FromSeconds(5),
-                        description: "one mouse click to select the second live session")
+                        TestContext.CancellationToken)
                         .ConfigureAwait(false);
                     await automator.Ctrl().KeyAsync(
                         Hex1bKey.C,
@@ -791,10 +791,10 @@ public sealed class DashboardLanguageServerTests
                         "started",
                         TimeSpan.FromSeconds(60),
                         TestContext.CancellationToken).ConfigureAwait(false);
-                    await automator.WaitUntilAsync(
+                    await WaitForScreenAsync(
+                        automator,
                         screen => screen.ContainsText("Loading diagnostics..."),
-                        timeout: TimeSpan.FromSeconds(2),
-                        description: "diagnostics view to render while real analyzer execution is blocked")
+                        TestContext.CancellationToken)
                         .ConfigureAwait(false);
                     await fixture.ReleaseAsync(TestContext.CancellationToken).ConfigureAwait(false);
                     await automator.WaitUntilAsync(
@@ -829,10 +829,27 @@ public sealed class DashboardLanguageServerTests
         byte[] clipboardSequence = Encoding.UTF8.GetBytes(
             $"\u001b]52;c;{Convert.ToBase64String(textBytes)}\a");
         await automator.KeyAsync(Hex1bKey.Y, cancellationToken).ConfigureAwait(false);
-        await automator.WaitUntilAsync(
-            _ => workload.ContainsRawOutput(clipboardSequence),
-            timeout: TimeSpan.FromSeconds(2),
-            description: $"complete focused row yank for {expectedText}").ConfigureAwait(false);
+        await workload.WaitForRawOutputAsync(clipboardSequence, cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    private static async Task WaitForScreenAsync(
+        Hex1bTerminalAutomator automator,
+        Func<Hex1bTerminalSnapshot, bool> predicate,
+        CancellationToken cancellationToken)
+    {
+        while (true)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            using Hex1bTerminalSnapshot snapshot = automator.CreateSnapshot();
+            if (predicate(snapshot))
+            {
+                return;
+            }
+
+            await Task.Delay(TimeSpan.FromMilliseconds(50), cancellationToken)
+                .ConfigureAwait(false);
+        }
     }
 
     private static int GetAcceptedRequestCount(string screenText)

@@ -11,6 +11,7 @@ internal sealed class Hex1bPtyWorkload : IHex1bTerminalWorkloadAdapter
     private readonly Hex1bTerminalChildProcess _process;
     private readonly Lock _rawOutputGate = new();
     private readonly ArrayBufferWriter<byte> _rawOutput = new();
+    private TaskCompletionSource _rawOutputChanged = CreateOutputChangedSource();
     private byte[] _pendingOutput = [];
 
     /// <summary>
@@ -98,15 +99,34 @@ internal sealed class Hex1bPtyWorkload : IHex1bTerminalWorkloadAdapter
     }
 
     /// <summary>
-    /// Reports whether the real PTY child emitted an exact byte sequence.
+    /// Waits until the real PTY child emits an exact byte sequence.
     /// </summary>
     /// <param name="expected">The byte sequence required in the raw terminal output.</param>
-    /// <returns><see langword="true"/> when the sequence has been observed.</returns>
-    internal bool ContainsRawOutput(ReadOnlySpan<byte> expected)
+    /// <param name="cancellationToken">The test cancellation token.</param>
+    /// <returns>A task that completes after the sequence has been observed.</returns>
+    internal async Task WaitForRawOutputAsync(
+        ReadOnlyMemory<byte> expected,
+        CancellationToken cancellationToken)
     {
-        lock (_rawOutputGate)
+        if (expected.IsEmpty)
         {
-            return _rawOutput.WrittenSpan.IndexOf(expected) >= 0;
+            throw new ArgumentException("Expected output cannot be empty.", nameof(expected));
+        }
+
+        while (true)
+        {
+            Task outputChangedTask;
+            lock (_rawOutputGate)
+            {
+                if (_rawOutput.WrittenSpan.IndexOf(expected.Span) >= 0)
+                {
+                    return;
+                }
+
+                outputChangedTask = _rawOutputChanged.Task;
+            }
+
+            await outputChangedTask.WaitAsync(cancellationToken).ConfigureAwait(false);
         }
     }
 
@@ -117,10 +137,15 @@ internal sealed class Hex1bPtyWorkload : IHex1bTerminalWorkloadAdapter
         ReadOnlyMemory<byte> output = await _process
             .ReadOutputAsync(cancellationToken)
             .ConfigureAwait(false);
+        TaskCompletionSource outputChanged;
         lock (_rawOutputGate)
         {
             _rawOutput.Write(output.Span);
+            outputChanged = _rawOutputChanged;
+            _rawOutputChanged = CreateOutputChangedSource();
         }
+
+        outputChanged.TrySetResult();
 
         return NormalizeOutput(output);
     }
@@ -140,6 +165,9 @@ internal sealed class Hex1bPtyWorkload : IHex1bTerminalWorkloadAdapter
 
     /// <inheritdoc />
     public ValueTask DisposeAsync() => _process.DisposeAsync();
+
+    private static TaskCompletionSource CreateOutputChangedSource() =>
+        new(TaskCreationOptions.RunContinuationsAsynchronously);
 
     private ReadOnlyMemory<byte> NormalizeOutput(ReadOnlyMemory<byte> output)
     {
