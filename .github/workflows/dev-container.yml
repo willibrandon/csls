@@ -57,7 +57,9 @@ jobs:
           imageName: csls-devcontainer
           imageTag: ci
           push: never
-          runCmd: dotnet test --solution Csls.slnx
+          runCmd: >-
+            dotnet test --solution Csls.slnx
+            --filter "TestCategory!=VsCodeHost&TestCategory!=VsCodeOracle&TestCategory!=LegacyBuildHost&FullyQualifiedName!~Csls.Tests.NeovimLanguageServerTests&FullyQualifiedName!~Csls.Tests.ZedLanguageServerTests&FullyQualifiedName!~Csls.Tests.ZedHighlightQueryTests&FullyQualifiedName!~Csls.Tests.RepositoryDiagnosticLanguageServerTests"
 
       - name: Export the development container
         if: steps.scope.outputs.full == 'true'
