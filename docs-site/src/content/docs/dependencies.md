@@ -3,9 +3,9 @@ title: Dependencies
 description: See why each product dependency exists and how versions are maintained.
 ---
 
-NuGet versions are pinned once in `Directory.Packages.props` through Central Package
+NuGet versions are declared once in `Directory.Packages.props` through Central Package
 Management. Projects declare package names without repeating versions. The repository
-does not generate `packages.lock.json` files; CI restores against the central pins
+does not generate `packages.lock.json` files; CI restores against the central versions
 and tests the resulting tools on every supported runtime.
 
 ## Product packages
@@ -43,7 +43,7 @@ MSTest and Microsoft Testing Platform run the test projects. BenchmarkDotNet is 
 only by the microbenchmark project. Documentation, provisioning, and repository
 verification may use packages that are not shipped with either tool. The product
 dependency restriction does not apply to those development programs, but every
-version is still pinned and reviewed.
+version remains reviewed through its package-manager manifest and lockfile.
 
 Visual Studio Build Tools on Windows and Mono MSBuild on Unix are optional runtime
 requirements for old-style .NET Framework projects. They are CI and development

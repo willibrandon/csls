@@ -67,11 +67,11 @@ public sealed class RazorHoverLanguageServerTests
                 PersistedRazorText,
                 TestContext.CancellationToken).ConfigureAwait(false);
 
-            var lsp = LspProcessSession.Start(
+            LspProcessSession lsp = await LspProcessSession.StartAsync(
                 "csls-razor-hover-worker",
                 EditorToolResolver.ResolveDotNetHost(),
                 [workerPath],
-                fixturePath);
+                fixturePath).ConfigureAwait(false);
             await using ConfiguredAsyncDisposable lspCleanup = lsp.ConfigureAwait(false);
             await lsp.InitializeAsync(
                 fixturePath,

@@ -5,25 +5,13 @@
 #:property TreatWarningsAsErrors=true
 
 using System.Diagnostics;
+using System.IO.Compression;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 
 const string MonoRepositoryPath = "/etc/apt/sources.list.d/mono-official-stable.list";
 const string MonoPackageBaseUrl = "https://download.mono-project.com/repo/debian/";
-const string MsBuildPackageFileName =
-    "msbuild_16.10.1+xamarinxplat.2021.05.26.14.00-0xamarin2+debian10b1_all.deb";
-const string MsBuildPackageSha256 =
-    "a177610be806c44877169a3fef7f15ffc65e2df7bdbe11b532eb6cc8f92b4c3c";
-const string MsBuildSdkResolverPackageFileName =
-    "msbuild-sdkresolver_16.10.1+xamarinxplat.2021.05.26.14.00-0xamarin2+debian10b1_all.deb";
-const string MsBuildSdkResolverPackageSha256 =
-    "8988037618086059b43fb479335c63ffc24ceda5f0d5bdf5f0890081c6abe5ad";
-const string MsBuildLibHostFxrVersion =
-    "3.0.0.2019.04.16.02.13-0xamarin4+debian10b1";
-const string MonoRoslynPackageFileName =
-    "mono-roslyn_6.12.0.200-0xamarin2+debian10b1_all.deb";
-const string MonoRoslynPackageSha256 =
-    "3edd5398c29528ffd8ac477b6c8c577ee891d17c927fc011962224ba81d0b3eb";
+const string MonoPackageIndexPath = "dists/stable-buster/main";
 
 if (args.Length == 1 && args[0] is "--help" or "-h" or "-?")
 {
@@ -132,39 +120,29 @@ static async Task ProvisionLinuxMonoAsync()
 static async Task<(IReadOnlyList<string> MsBuildPackages, string MonoRoslynPackage)>
     DownloadMonoBuildHostPackagesAsync()
 {
-    (string Architecture, string Sha256) hostFxr = RuntimeInformation.ProcessArchitecture switch
+    string architecture = RuntimeInformation.ProcessArchitecture switch
     {
-        Architecture.X64 =>
-            ("amd64", "5922cdf2a04a4bd4bcd57d765d4182600fc449866d5b4d50784c0c5dabc08043"),
-        Architecture.Arm64 =>
-            ("arm64", "f53b770eca70d798632350bf3ebafbdf265e58a984d3ffbb29f83cc1fa6e4887"),
-        Architecture.X86 =>
-            ("i386", "415c81d47b7cad5e9b73f6ed2ec0f5d470b6db947791e02526140c5155b6feb6"),
-        Architecture.Arm =>
-            ("armhf", "003295a585830a9baaa360c8dedc29998e3d4f11d947c97b318f363d9d704166"),
+        Architecture.X64 => "amd64",
+        Architecture.Arm64 => "arm64",
+        Architecture.X86 => "i386",
+        Architecture.Arm => "armhf",
         _ => throw new PlatformNotSupportedException(
             $"Mono MSBuild is unavailable for {RuntimeInformation.ProcessArchitecture}.")
     };
-    string hostFxrPackageFileName =
-        $"msbuild-libhostfxr_{MsBuildLibHostFxrVersion}_{hostFxr.Architecture}.deb";
-    (string FileName, string RelativePath, string Sha256)[] packages =
+    string packageIndex = await DownloadMonoPackageIndexAsync(architecture)
+        .ConfigureAwait(false);
+    string[] packageNames =
     [
-        (
-            MsBuildPackageFileName,
-            $"pool/main/m/msbuild/{MsBuildPackageFileName}",
-            MsBuildPackageSha256),
-        (
-            MsBuildSdkResolverPackageFileName,
-            $"pool/main/m/msbuild/{MsBuildSdkResolverPackageFileName}",
-            MsBuildSdkResolverPackageSha256),
-        (
-            hostFxrPackageFileName,
-            $"pool/main/c/core-setup/{hostFxrPackageFileName}",
-            hostFxr.Sha256),
-        (
-            MonoRoslynPackageFileName,
-            $"pool/main/m/mono/{MonoRoslynPackageFileName}",
-            MonoRoslynPackageSha256)
+        "msbuild",
+        "msbuild-sdkresolver",
+        "msbuild-libhostfxr",
+        "mono-roslyn"
+    ];
+    (string FileName, Uri Source, string Sha256)[] packages =
+    [
+        .. packageNames.Select(packageName => ResolveMonoPackage(
+            packageIndex,
+            packageName))
     ];
 
     string cacheDirectory = Path.Join(
@@ -175,7 +153,7 @@ static async Task<(IReadOnlyList<string> MsBuildPackages, string MonoRoslynPacka
     Directory.CreateDirectory(cacheDirectory);
     using var httpClient = new HttpClient();
     var packagePaths = new List<string>(packages.Length);
-    foreach ((string fileName, string relativePath, string sha256) in packages)
+    foreach ((string fileName, Uri packageSource, string sha256) in packages)
     {
         string packagePath = Path.Join(cacheDirectory, fileName);
         if (!File.Exists(packagePath) ||
@@ -185,15 +163,15 @@ static async Task<(IReadOnlyList<string> MsBuildPackages, string MonoRoslynPacka
             File.Delete(partialPath);
             try
             {
-                using Stream source = await httpClient.GetStreamAsync(
-                    new Uri(MonoPackageBaseUrl + relativePath)).ConfigureAwait(false);
+                using Stream download = await httpClient.GetStreamAsync(
+                    packageSource).ConfigureAwait(false);
                 using (var destination = new FileStream(
                     partialPath,
                     FileMode.CreateNew,
                     FileAccess.Write,
                     FileShare.None))
                 {
-                    await source.CopyToAsync(destination).ConfigureAwait(false);
+                    await download.CopyToAsync(destination).ConfigureAwait(false);
                 }
 
                 if (!await HasSha256Async(partialPath, sha256).ConfigureAwait(false))
@@ -216,6 +194,59 @@ static async Task<(IReadOnlyList<string> MsBuildPackages, string MonoRoslynPacka
     return (packagePaths[..^1], packagePaths[^1]);
 }
 
+static async Task<string> DownloadMonoPackageIndexAsync(string architecture)
+{
+    var indexUri = new Uri(
+        $"{MonoPackageBaseUrl}{MonoPackageIndexPath}/binary-{architecture}/Packages.gz");
+    using var httpClient = new HttpClient();
+    using Stream response = await httpClient.GetStreamAsync(indexUri).ConfigureAwait(false);
+    using var decompressed = new GZipStream(response, CompressionMode.Decompress);
+    using var reader = new StreamReader(decompressed);
+    return await reader.ReadToEndAsync().ConfigureAwait(false);
+}
+
+static (string FileName, Uri Source, string Sha256) ResolveMonoPackage(
+    string packageIndex,
+    string packageName)
+{
+    string[] paragraphs = packageIndex.Split(
+        ["\r\n\r\n", "\n\n"],
+        StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+    string[] matches =
+    [
+        .. paragraphs.Where(paragraph => string.Equals(
+            ReadPackageField(paragraph, "Package"),
+            packageName,
+            StringComparison.Ordinal))
+    ];
+    if (matches.Length != 1)
+    {
+        throw new InvalidDataException(
+            $"The Mono stable package index contains {matches.Length} entries for " +
+            $"{packageName}; exactly one is required.");
+    }
+
+    string relativePath = ReadPackageField(matches[0], "Filename")
+        ?? throw new InvalidDataException(
+            $"The Mono stable package {packageName} has no filename.");
+    string sha256 = ReadPackageField(matches[0], "SHA256")
+        ?? throw new InvalidDataException(
+            $"The Mono stable package {packageName} has no SHA-256 digest.");
+    return (
+        Path.GetFileName(relativePath),
+        new Uri(MonoPackageBaseUrl + relativePath),
+        sha256);
+}
+
+static string? ReadPackageField(string paragraph, string fieldName)
+{
+    string prefix = fieldName + ":";
+    string? line = paragraph
+        .Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries)
+        .FirstOrDefault(line => line.StartsWith(prefix, StringComparison.Ordinal));
+    return line?[prefix.Length..].Trim();
+}
+
 static async Task<string> CreateCompatibleMonoRoslynPackageAsync(string sourcePackagePath)
 {
     string cacheDirectory = Path.GetDirectoryName(sourcePackagePath)
@@ -224,7 +255,7 @@ static async Task<string> CreateCompatibleMonoRoslynPackageAsync(string sourcePa
     string packageRoot = Path.Join(cacheDirectory, "csls-mono-roslyn-package");
     string outputPackagePath = Path.Join(
         cacheDirectory,
-        "csls-mono-roslyn_6.12.0.200-1_all.deb");
+        "csls-mono-roslyn_all.deb");
     if (Directory.Exists(packageRoot))
     {
         Directory.Delete(packageRoot, recursive: true);
@@ -248,20 +279,29 @@ static async Task<string> CreateCompatibleMonoRoslynPackageAsync(string sourcePa
         }
     }
 
-    const string controlText = """
+    string version = (await RunCheckedAsync(
+        "dpkg-deb",
+        ["--field", sourcePackagePath, "Version"]).ConfigureAwait(false)).Trim();
+    if (string.IsNullOrWhiteSpace(version))
+    {
+        throw new InvalidDataException(
+            $"The Mono Roslyn package has no version: {sourcePackagePath}");
+    }
+
+    string controlText = $$"""
         Package: csls-mono-roslyn
-        Version: 6.12.0.200-1
+        Version: {{version}}
         Architecture: all
         Maintainer: csls contributors <noreply@localhost>
-        Depends: mono-runtime (>= 3.0~), mono-devel, msbuild (>= 1:16.10)
-        Provides: mono-roslyn (= 6.12.0.200)
+        Depends: mono-runtime, mono-devel, msbuild
+        Provides: mono-roslyn (= {{version}})
         Conflicts: mono-roslyn
         Replaces: mono-roslyn
         Section: devel
         Priority: optional
         Homepage: https://www.mono-project.com/
         Description: Mono Roslyn compiler payload for csls legacy workspaces
-         Pinned Mono compiler targets required by Roslyn's Mono MSBuild host.
+         Mono compiler targets required by Roslyn's Mono MSBuild host.
 
         """;
     await File.WriteAllTextAsync(

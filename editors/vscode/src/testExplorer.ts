@@ -244,6 +244,8 @@ export class TestExplorer implements vscode.Disposable {
         ],
         projectDirectory,
         cancellationToken,
+        false,
+        false,
       );
       if (build.exitCode !== 0 || cancellationToken?.isCancellationRequested) {
         if (cancellationToken?.isCancellationRequested !== true) {
@@ -280,6 +282,8 @@ export class TestExplorer implements vscode.Disposable {
         ],
         projectDirectory,
         cancellationToken,
+        false,
+        false,
       );
       if (discovery.exitCode !== 0 || cancellationToken?.isCancellationRequested === true) {
         if (cancellationToken?.isCancellationRequested !== true) {
@@ -398,6 +402,8 @@ export class TestExplorer implements vscode.Disposable {
       ["build", first.projectPath, "--nologo"],
       dirname(first.projectPath),
       cancellationToken,
+      false,
+      false,
     );
     appendOutput(run, build.stdout, build.stderr);
     if (build.exitCode !== 0) {
@@ -431,7 +437,8 @@ export class TestExplorer implements vscode.Disposable {
         arguments_,
         dirname(first.projectPath),
         cancellationToken,
-        true,
+        false,
+        false,
       );
       appendOutput(run, execution.stdout, execution.stderr);
       if (cancellationToken.isCancellationRequested) {

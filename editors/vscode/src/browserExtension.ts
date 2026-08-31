@@ -226,6 +226,14 @@ function createClientOptions(
     outputChannel,
     revealOutputChannelOn: RevealOutputChannelOn.Error,
     middleware: {
+      provideWorkspaceDiagnostics: (
+        previousResultIds,
+        token,
+        resultReporter,
+        next,
+      ) => shouldRunFullSolutionDiagnostics()
+        ? next(previousResultIds, token, resultReporter)
+        : { items: [] },
       didChange: async (event, next) => {
         await next(event);
         await synchronizeTextDocument(targetWorker, mapping, event.document);
@@ -300,6 +308,13 @@ function createClientOptions(
     },
     ...(workspaceFolder === undefined ? {} : { workspaceFolder }),
   };
+}
+
+function shouldRunFullSolutionDiagnostics(): boolean {
+  const configuration = vscode.workspace.getConfiguration("dotnet.backgroundAnalysis");
+  return configuration.get<string>("analyzerDiagnosticsScope", "openFiles") ===
+      "fullSolution" ||
+    configuration.get<string>("compilerDiagnosticsScope", "openFiles") === "fullSolution";
 }
 
 async function synchronizeWorkspace(

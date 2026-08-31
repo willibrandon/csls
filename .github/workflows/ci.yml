@@ -17,6 +17,7 @@ concurrency:
 env:
   DOTNET_CLI_TELEMETRY_OPTOUT: 1
   DOTNET_NOLOGO: true
+  GITHUB_TOKEN: ${{ github.token }}
 
 jobs:
   repository-policy:
@@ -26,17 +27,23 @@ jobs:
 
     steps:
       - name: Check out repository
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        uses: actions/checkout@v7
         with:
           persist-credentials: false
 
       - name: Set up .NET
-        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        uses: actions/setup-dotnet@v6
         with:
-          dotnet-version: 10.0.400
+          dotnet-version: 10.x
 
       - name: Verify repository policy
         run: dotnet run --file scripts/Verify-Repository.cs
+
+      - name: Restore
+        run: dotnet restore Csls.slnx
+
+      - name: Verify formatting
+        run: dotnet format Csls.slnx --verify-no-changes --no-restore
 
       - name: Verify file apps
         run: dotnet run --file scripts/Verify-FileApps.cs
@@ -58,13 +65,13 @@ jobs:
 
     steps:
       - name: Check out repository
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
           persist-credentials: false
 
       - name: Scan repository with Picket
-        uses: willibrandon/picket@4c9f7d28260bfe0a7334865c84db093519f6f57f # v0.2.12
+        uses: willibrandon/picket@v0
         with:
           cache-mode: secret-hash-only
           fail-on: findings
@@ -91,47 +98,38 @@ jobs:
         include:
           - os: ubuntu-latest
             rid: linux-x64
-            size_budget: max=8mb
           - os: ubuntu-24.04-arm
             rid: linux-arm64
-            size_budget: max=8mb
           - os: windows-latest
             rid: win-x64
-            size_budget: max=8mb
           - os: windows-11-arm
             rid: win-arm64
-            size_budget: max=8mb
           - os: macos-26-intel
             rid: osx-x64
-            size_budget: max=8mb
           - os: macos-26
             rid: osx-arm64
-            size_budget: max=8mb
 
     steps:
       - name: Check out repository
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        uses: actions/checkout@v7
         with:
           persist-credentials: false
 
       - name: Set up .NET
-        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        uses: actions/setup-dotnet@v6
         with:
-          dotnet-version: 10.0.400
+          dotnet-version: 10.x
 
       - name: Set up Node.js
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        uses: actions/setup-node@v7
         with:
-          node-version: 24.19.0
+          node-version: 24.x
 
       - name: Restore
         run: dotnet restore Csls.slnx
 
       - name: Install Native AOT prerequisites
         run: dotnet run --file scripts/Install-NativeAotPrerequisites.cs -- --runtime ${{ matrix.rid }}
-
-      - name: Verify formatting
-        run: dotnet format Csls.slnx --verify-no-changes --no-restore
 
       - name: Provision parity oracle
         run: dotnet run --file scripts/Provision-CsharpLsOracle.cs
@@ -145,124 +143,387 @@ jobs:
       - name: Provision Helix
         run: dotnet run --file scripts/Provision-Helix.cs
 
-      - name: Provision Neovim
-        run: dotnet run --file scripts/Provision-Neovim.cs
-
-      - name: Install graphical editor test prerequisites
-        if: runner.os == 'Linux'
-        run: dotnet run --file scripts/Install-GraphicalEditorTestPrerequisites.cs
-
-      - name: Provision Zed
-        if: runner.os == 'Linux'
-        run: dotnet run --file scripts/Provision-Zed.cs
-
-      - name: Provision WASI SDK
-        if: runner.os == 'Linux'
-        run: dotnet run --file scripts/Provision-WasiSdk.cs
-
-      - name: Build csls Zed extension
-        if: runner.os == 'Linux'
-        run: dotnet run --file scripts/Build-ZedExtension.cs
-
-      - name: Provision Visual Studio Code
-        run: dotnet run --file scripts/Provision-VsCode.cs
-
       - name: Test
         run: >-
           dotnet test --solution Csls.slnx
-          --filter "TestCategory!=VsCodeHost&TestCategory!=VsCodeOracle"
+          --filter "TestCategory!=VsCodeHost&TestCategory!=VsCodeOracle&TestCategory!=LegacyBuildHost&FullyQualifiedName!~Csls.Tests.NeovimLanguageServerTests&FullyQualifiedName!~Csls.Tests.ZedLanguageServerTests&FullyQualifiedName!~Csls.Tests.ZedHighlightQueryTests&FullyQualifiedName!~Csls.Tests.RepositoryDiagnosticLanguageServerTests"
           --report-trx
           --results-directory artifacts/test-results/${{ matrix.rid }}
 
-      - name: Verify release assets
-        run: >-
-          dotnet run --file scripts/Build-ReleaseAssets.cs --
-          --version 1.0.0-ci
-          --runtime ${{ matrix.rid }}
-          --output artifacts/release-smoke/${{ matrix.rid }}
-          --validation execute
-
-      - name: Check csls Native AOT size
-        uses: willibrandon/dotsider@3f243c9ab2e9d6d3432c608bebba0beaa8b239ec # Retry Dotsider baseline requests
-        with:
-          target: artifacts/obj/Csls.App/release_${{ matrix.rid }}/native/csls.mstat
-          baseline-key: csls-${{ matrix.rid }}
-          budgets: ${{ matrix.size_budget }}
-          top: '20'
-          dotsider-version: v0.26.0
-          report-directory: ${{ runner.temp }}/dotsider-size-csls-${{ matrix.rid }}
-          artifact-name: dotsider-size-csls-${{ matrix.rid }}
-
-      - name: Check csls-mcp Native AOT size
-        uses: willibrandon/dotsider@3f243c9ab2e9d6d3432c608bebba0beaa8b239ec # Retry Dotsider baseline requests
-        with:
-          target: artifacts/obj/Csls.Mcp/release_${{ matrix.rid }}/native/csls-mcp.mstat
-          baseline-key: csls-mcp-${{ matrix.rid }}
-          budgets: ${{ matrix.size_budget }}
-          top: '20'
-          dotsider-version: v0.26.0
-          report-directory: ${{ runner.temp }}/dotsider-size-csls-mcp-${{ matrix.rid }}
-          artifact-name: dotsider-size-csls-mcp-${{ matrix.rid }}
-
       - name: Upload test results
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@v7
         with:
           name: test-results-${{ matrix.rid }}
           path: artifacts/test-results/${{ matrix.rid }}
           if-no-files-found: warn
 
-  vscode-hosts:
-    name: VS Code desktop, remote, and web hosts
+  vscode-tools:
+    name: VS Code tools
     runs-on: ubuntu-latest
-    timeout-minutes: 60
-    env:
-      CSLS_RUN_VSCODE_REMOTE_TESTS: true
-      CSLS_RUN_VSCODE_WEB_TESTS: true
+    timeout-minutes: 30
 
     steps:
       - name: Check out repository
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        uses: actions/checkout@v7
         with:
           persist-credentials: false
 
       - name: Set up .NET
-        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        uses: actions/setup-dotnet@v6
         with:
-          dotnet-version: 10.0.400
+          dotnet-version: 10.x
 
       - name: Set up Node.js
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        uses: actions/setup-node@v7
         with:
-          node-version: 24.19.0
+          node-version: 24.x
 
-      - name: Restore
-        run: dotnet restore Csls.slnx
+      - name: Restore previous Visual Studio Code tools
+        uses: actions/cache/restore@v6
+        with:
+          path: artifacts/tools
+          key: vscode-tools-${{ github.run_id }}
+          restore-keys: vscode-tools-
 
-      - name: Provision Visual Studio Code and web browsers
+      - name: Provision Visual Studio Code tools
         run: dotnet run --file scripts/Provision-VsCode.cs -- --with-web-browsers
 
       - name: Provision Visual Studio Code remote server
         run: dotnet run --file scripts/Provision-VsCodeRemoteServer.cs
 
+      - name: Save Visual Studio Code tools
+        uses: actions/cache/save@v6
+        with:
+          path: artifacts/tools
+          key: vscode-tools-${{ github.run_id }}
+
+  vscode-hosts:
+    name: VS Code host (${{ matrix.host }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    needs: vscode-tools
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - host: desktop-features
+            test: Csls.Tests.VsCodeLanguageServerTests.VsCodeDesktopHostProvidesCSharpLanguageFeatures
+            remote: false
+            web: false
+          - host: desktop-highlighting
+            test: Csls.Tests.VsCodeLanguageServerTests.VsCodeHostEnablesSemanticHighlightingWithoutThemeOptIn
+            remote: false
+            web: false
+          - host: desktop-shutdown
+            test: Csls.Tests.VsCodeLanguageServerTests.VsCodeHostStopsAutomaticTestDiscoveryProcessesOnShutdown
+            remote: false
+            web: false
+          - host: remote-features
+            test: Csls.Tests.VsCodeLanguageServerTests.VsCodeRemoteHostProvidesCSharpLanguageFeatures
+            remote: true
+            web: false
+          - host: remote-repository
+            test: Csls.Tests.VsCodeLanguageServerTests.VsCodeRemoteHostLoadsCslsWorkspaceWithoutWarningsOrErrors
+            remote: true
+            web: false
+          - host: web-chromium
+            test: Csls.Tests.VsCodeWebLanguageServerTests.ChromiumProvidesCSharpLanguageFeatures
+            remote: false
+            web: true
+          - host: web-firefox
+            test: Csls.Tests.VsCodeWebLanguageServerTests.FirefoxProvidesCSharpLanguageFeatures
+            remote: false
+            web: true
+          - host: web-webkit
+            test: Csls.Tests.VsCodeWebLanguageServerTests.WebKitProvidesCSharpLanguageFeatures
+            remote: false
+            web: true
+          - host: oracle
+            test: Csls.Tests.VsCodeOracleTests.DefaultsMatchMicrosoftCSharpProfiles
+            remote: false
+            web: false
+    env:
+      CSLS_RUN_VSCODE_REMOTE_TESTS: ${{ matrix.remote }}
+      CSLS_RUN_VSCODE_WEB_TESTS: ${{ matrix.web }}
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 10.x
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24.x
+
+      - name: Restore
+        run: dotnet restore Csls.slnx
+
+      - name: Restore Visual Studio Code tools
+        uses: actions/cache/restore@v6
+        with:
+          path: artifacts/tools
+          key: vscode-tools-${{ github.run_id }}
+          fail-on-cache-miss: true
+
+      - name: Prepare Visual Studio Code fixtures
+        if: matrix.web == false
+        run: dotnet run --file scripts/Provision-VsCode.cs -- --fixtures-only
+
+      - name: Prepare Visual Studio Code web fixtures
+        if: matrix.web == true
+        run: >-
+          dotnet run --file scripts/Provision-VsCode.cs --
+          --fixtures-only
+          --with-web-browsers
+
       - name: Install graphical editor test prerequisites
+        if: matrix.web == false
+        run: dotnet run --file scripts/Install-GraphicalEditorTestPrerequisites.cs
+
+      - name: Install graphical web test prerequisites
+        if: matrix.web == true
         run: >-
           dotnet run --file scripts/Install-GraphicalEditorTestPrerequisites.cs --
           --with-web-browsers
 
-      - name: Test Visual Studio Code hosts
+      - name: Test Visual Studio Code host
         run: >-
           dotnet test --project tests/Csls.Tests/Csls.Tests.csproj
-          --filter "TestCategory=VsCodeHost|TestCategory=VsCodeOracle"
+          --filter "FullyQualifiedName=${{ matrix.test }}"
           --report-trx
-          --results-directory artifacts/test-results/vscode-hosts
+          --results-directory artifacts/test-results/vscode-${{ matrix.host }}
 
       - name: Upload test results
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@v7
         with:
-          name: test-results-vscode-hosts
-          path: artifacts/test-results/vscode-hosts
+          name: test-results-vscode-${{ matrix.host }}
+          path: artifacts/test-results/vscode-${{ matrix.host }}
+          if-no-files-found: warn
+
+  repository-workspace:
+    name: Repository workspace (${{ matrix.rid }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            rid: linux-x64
+          - os: ubuntu-24.04-arm
+            rid: linux-arm64
+          - os: windows-latest
+            rid: win-x64
+          - os: windows-11-arm
+            rid: win-arm64
+          - os: macos-26-intel
+            rid: osx-x64
+          - os: macos-26
+            rid: osx-arm64
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 10.x
+
+      - name: Restore
+        run: dotnet restore Csls.slnx
+
+      - name: Test repository workspace
+        run: >-
+          dotnet test --project tests/Csls.Tests/Csls.Tests.csproj
+          --filter "FullyQualifiedName=Csls.Tests.RepositoryDiagnosticLanguageServerTests.RepositoryWorkspaceLoadsWithoutDiagnosticsOrWorkspaceFailures"
+          --report-trx
+          --results-directory artifacts/test-results/repository-${{ matrix.rid }}
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: test-results-repository-${{ matrix.rid }}
+          path: artifacts/test-results/repository-${{ matrix.rid }}
+          if-no-files-found: warn
+
+  neovim-hosts:
+    name: Neovim host (${{ matrix.rid }}, ${{ matrix.host }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            rid: linux-x64
+            host: hover
+            test: NeovimDisplaysHoverFromCsls
+          - os: ubuntu-latest
+            rid: linux-x64
+            host: move-type
+            test: NeovimMovesTypeToNewFile
+          - os: ubuntu-24.04-arm
+            rid: linux-arm64
+            host: hover
+            test: NeovimDisplaysHoverFromCsls
+          - os: ubuntu-24.04-arm
+            rid: linux-arm64
+            host: move-type
+            test: NeovimMovesTypeToNewFile
+          - os: windows-latest
+            rid: win-x64
+            host: hover
+            test: NeovimDisplaysHoverFromCsls
+          - os: windows-latest
+            rid: win-x64
+            host: move-type
+            test: NeovimMovesTypeToNewFile
+          - os: windows-11-arm
+            rid: win-arm64
+            host: hover
+            test: NeovimDisplaysHoverFromCsls
+          - os: windows-11-arm
+            rid: win-arm64
+            host: move-type
+            test: NeovimMovesTypeToNewFile
+          - os: macos-26-intel
+            rid: osx-x64
+            host: hover
+            test: NeovimDisplaysHoverFromCsls
+          - os: macos-26-intel
+            rid: osx-x64
+            host: move-type
+            test: NeovimMovesTypeToNewFile
+          - os: macos-26
+            rid: osx-arm64
+            host: hover
+            test: NeovimDisplaysHoverFromCsls
+          - os: macos-26
+            rid: osx-arm64
+            host: move-type
+            test: NeovimMovesTypeToNewFile
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 10.x
+
+      - name: Provision Neovim
+        run: dotnet run --file scripts/Provision-Neovim.cs
+
+      - name: Test Neovim host
+        run: >-
+          dotnet test --project tests/Csls.Tests/Csls.Tests.csproj
+          --filter "FullyQualifiedName=Csls.Tests.NeovimLanguageServerTests.${{ matrix.test }}"
+          --report-trx
+          --results-directory artifacts/test-results/neovim-${{ matrix.rid }}-${{ matrix.host }}
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: test-results-neovim-${{ matrix.rid }}-${{ matrix.host }}
+          path: artifacts/test-results/neovim-${{ matrix.rid }}-${{ matrix.host }}
+          if-no-files-found: warn
+
+  zed-hosts:
+    name: Zed host (${{ matrix.rid }}, ${{ matrix.host }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            rid: linux-x64
+            host: highlighting-query
+            test: Csls.Tests.ZedHighlightQueryTests.StaticServiceReceiverIsHighlightedAsType
+          - os: ubuntu-latest
+            rid: linux-x64
+            host: framework-definition
+            test: Csls.Tests.ZedLanguageServerTests.ZedOpensFrameworkDefinitionFromCsls
+          - os: ubuntu-latest
+            rid: linux-x64
+            host: repository-features
+            test: Csls.Tests.ZedLanguageServerTests.ZedProvidesInteractiveFeaturesInCslsWorkspace
+          - os: ubuntu-latest
+            rid: linux-x64
+            host: project-refresh
+            test: Csls.Tests.ZedLanguageServerTests.ZedRefreshesNewCompileItemsWithoutRestart
+          - os: ubuntu-24.04-arm
+            rid: linux-arm64
+            host: highlighting-query
+            test: Csls.Tests.ZedHighlightQueryTests.StaticServiceReceiverIsHighlightedAsType
+          - os: ubuntu-24.04-arm
+            rid: linux-arm64
+            host: framework-definition
+            test: Csls.Tests.ZedLanguageServerTests.ZedOpensFrameworkDefinitionFromCsls
+          - os: ubuntu-24.04-arm
+            rid: linux-arm64
+            host: repository-features
+            test: Csls.Tests.ZedLanguageServerTests.ZedProvidesInteractiveFeaturesInCslsWorkspace
+          - os: ubuntu-24.04-arm
+            rid: linux-arm64
+            host: project-refresh
+            test: Csls.Tests.ZedLanguageServerTests.ZedRefreshesNewCompileItemsWithoutRestart
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 10.x
+
+      - name: Restore
+        run: dotnet restore Csls.slnx
+
+      - name: Install graphical editor test prerequisites
+        run: dotnet run --file scripts/Install-GraphicalEditorTestPrerequisites.cs
+
+      - name: Provision Zed
+        run: dotnet run --file scripts/Provision-Zed.cs
+
+      - name: Provision WASI SDK
+        run: dotnet run --file scripts/Provision-WasiSdk.cs
+
+      - name: Build csls Zed extension
+        run: dotnet run --file scripts/Build-ZedExtension.cs
+
+      - name: Test Zed host
+        run: >-
+          dotnet test --project tests/Csls.Tests/Csls.Tests.csproj
+          --filter "FullyQualifiedName=${{ matrix.test }}"
+          --report-trx
+          --results-directory artifacts/test-results/zed-${{ matrix.rid }}-${{ matrix.host }}
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: test-results-zed-${{ matrix.rid }}-${{ matrix.host }}
+          path: artifacts/test-results/zed-${{ matrix.rid }}-${{ matrix.host }}
           if-no-files-found: warn
 
   legacy-build-host:
@@ -284,14 +545,14 @@ jobs:
 
     steps:
       - name: Check out repository
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        uses: actions/checkout@v7
         with:
           persist-credentials: false
 
       - name: Set up .NET
-        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        uses: actions/setup-dotnet@v6
         with:
-          dotnet-version: 10.0.400
+          dotnet-version: 10.x
 
       - name: Provision legacy build host
         run: dotnet run --file scripts/Provision-LegacyBuildHost.cs
@@ -305,13 +566,13 @@ jobs:
 
       - name: Upload test results
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@v7
         with:
           name: test-results-${{ matrix.host }}
           path: artifacts/test-results/${{ matrix.host }}
           if-no-files-found: warn
 
-  additional-rid-packages:
+  release-packages:
     name: Package (${{ matrix.rid }})
     runs-on: ${{ matrix.os }}
     timeout-minutes: 60
@@ -319,6 +580,30 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          - os: ubuntu-latest
+            rid: linux-x64
+            validation: execute
+            size_budget: max=8mb
+          - os: ubuntu-24.04-arm
+            rid: linux-arm64
+            validation: execute
+            size_budget: max=8mb
+          - os: windows-latest
+            rid: win-x64
+            validation: execute
+            size_budget: max=8mb
+          - os: windows-11-arm
+            rid: win-arm64
+            validation: execute
+            size_budget: max=8mb
+          - os: macos-26-intel
+            rid: osx-x64
+            validation: execute
+            size_budget: max=8mb
+          - os: macos-26
+            rid: osx-arm64
+            validation: execute
+            size_budget: max=8mb
           - os: windows-latest
             rid: win-x86
             validation: execute
@@ -333,26 +618,31 @@ jobs:
 
     steps:
       - name: Check out repository
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        uses: actions/checkout@v7
         with:
           persist-credentials: false
 
       - name: Set up .NET
-        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        uses: actions/setup-dotnet@v6
         with:
-          dotnet-version: 10.0.400
+          dotnet-version: 10.x
 
       - name: Set up Node.js
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        uses: actions/setup-node@v7
         with:
-          node-version: 24.19.0
+          node-version: 24.x
 
       - name: Install Native AOT prerequisites
         run: dotnet run --file scripts/Install-NativeAotPrerequisites.cs -- --runtime ${{ matrix.rid }}
 
-      - name: Provision target .NET SDK
+      - name: Set up target .NET SDK
         if: matrix.rid == 'win-x86'
-        run: dotnet run --file scripts/InstallDotNet.cs -- --runtime ${{ matrix.rid }}
+        uses: actions/setup-dotnet@v6
+        env:
+          DOTNET_INSTALL_DIR: ${{ github.workspace }}/artifacts/tools/dotnet/${{ matrix.rid }}
+        with:
+          architecture: x86
+          dotnet-version: 10.x
 
       - name: Verify additional RID release assets
         if: matrix.rid != 'win-x86'
@@ -371,28 +661,26 @@ jobs:
           --runtime ${{ matrix.rid }}
           --output artifacts/release-smoke/${{ matrix.rid }}
           --validation ${{ matrix.validation }}
-          --target-dotnet-root artifacts/tools/dotnet/${{ matrix.rid }}
+          --target-dotnet-root artifacts/tools/dotnet/${{ matrix.rid }}/x86
 
       - name: Check csls Native AOT size
-        if: matrix.validation == 'package'
-        uses: willibrandon/dotsider@3f243c9ab2e9d6d3432c608bebba0beaa8b239ec # Retry Dotsider baseline requests
+        if: matrix.size_budget != ''
+        uses: willibrandon/dotsider@v0
         with:
           target: artifacts/obj/Csls.App/release_${{ matrix.rid }}/native/csls.mstat
           baseline-key: csls-${{ matrix.rid }}
           budgets: ${{ matrix.size_budget }}
           top: '20'
-          dotsider-version: v0.26.0
           report-directory: ${{ runner.temp }}/dotsider-size-csls-${{ matrix.rid }}
           artifact-name: dotsider-size-csls-${{ matrix.rid }}
 
       - name: Check csls-mcp Native AOT size
-        if: matrix.validation == 'package'
-        uses: willibrandon/dotsider@3f243c9ab2e9d6d3432c608bebba0beaa8b239ec # Retry Dotsider baseline requests
+        if: matrix.size_budget != ''
+        uses: willibrandon/dotsider@v0
         with:
           target: artifacts/obj/Csls.Mcp/release_${{ matrix.rid }}/native/csls-mcp.mstat
           baseline-key: csls-mcp-${{ matrix.rid }}
           budgets: ${{ matrix.size_budget }}
           top: '20'
-          dotsider-version: v0.26.0
           report-directory: ${{ runner.temp }}/dotsider-size-csls-mcp-${{ matrix.rid }}
           artifact-name: dotsider-size-csls-mcp-${{ matrix.rid }}

@@ -263,6 +263,12 @@
           "scope": "resource",
           "description": "Present informational diagnostics as editor hints."
         },
+        "csls.diagnostics.workspace": {
+          "type": "boolean",
+          "default": false,
+          "scope": "resource",
+          "description": "Analyze closed files when the client requests workspace diagnostics."
+        },
         "csls.configuration": {
           "type": "string",
           "default": "Debug",

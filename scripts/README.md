@@ -15,21 +15,20 @@ supports `--help`.
 | `Export-ContainerImage.cs` | Exports a container image as a Picket-scannable archive. |
 | `Generate-Docs.cs` | Generates CLI, MCP, configuration, and contract reference pages from the built product. |
 | `Initialize-DevContainer.cs` | Installs the development container dependencies and restores the repository. |
-| `InstallDotNet.cs` | Installs the pinned SDK locally from verified Microsoft release metadata; when that SDK is missing, invoke it by absolute path from outside the repository using another .NET 10 SDK. |
 | `Install-GraphicalEditorTestPrerequisites.cs` | Installs Linux display and input packages for graphical editor tests. |
 | `Install-NativeAotPrerequisites.cs` | Installs the native compiler prerequisites for a runtime identifier. |
-| `Provision-Actionlint.cs` | Installs the pinned GitHub Actions validator. |
-| `Provision-CsharpLsOracle.cs` | Installs the pinned language server parity oracle. |
-| `Provision-Emacs.cs` | Installs the pinned Emacs Eglot editor oracle. |
-| `Provision-Fresh.cs` | Installs the pinned Fresh editor oracle. |
-| `Provision-Helix.cs` | Installs the pinned Helix editor oracle. |
+| `Provision-Actionlint.cs` | Installs the GitHub Actions validator. |
+| `Provision-CsharpLsOracle.cs` | Installs the language server parity oracle. |
+| `Provision-Emacs.cs` | Installs the Emacs Eglot editor oracle. |
+| `Provision-Fresh.cs` | Installs the Fresh editor oracle. |
+| `Provision-Helix.cs` | Installs the Helix editor oracle. |
 | `Provision-LegacyBuildHost.cs` | Installs Mono MSBuild or verifies Visual Studio MSBuild for legacy workspaces. |
-| `Provision-Neovim.cs` | Installs the pinned Neovim editor oracle. |
+| `Provision-Neovim.cs` | Installs the Neovim editor oracle. |
 | `Provision-SbomTool.cs` | Installs the verified Microsoft SBOM Tool release. |
-| `Provision-VsCode.cs` | Installs the pinned VS Code test client, builds its host fixtures, and optionally installs its web browsers. |
+| `Provision-VsCode.cs` | Installs the VS Code test client, builds its host fixtures, and optionally installs its web browsers. |
 | `Provision-VsCodeRemoteServer.cs` | Installs the matching VS Code server used by remote extension-host tests. |
 | `Provision-WasiSdk.cs` | Installs the verified WASI SDK used to compile Zed grammar modules. |
-| `Provision-Zed.cs` | Installs the pinned Zed editor and C# extension oracle. |
+| `Provision-Zed.cs` | Installs the Zed editor and C# extension oracle. |
 | `Prepare-Release.cs` | Validates a release version and Git tag and writes workflow outputs. |
 | `Publish-ContainerTags.cs` | Advances stable container tags to verified image digests. |
 | `Publish-GitHubRelease.cs` | Creates or updates a tagged GitHub release with verified assets. |

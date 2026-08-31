@@ -8,14 +8,13 @@
 
 using System.Diagnostics;
 using System.Globalization;
+using System.Net;
 using System.Runtime.InteropServices;
-
-const string Version = "31.1";
 
 if (args.Length == 1 && args[0] is "--help" or "-h" or "-?")
 {
     await Console.Out.WriteLineAsync(
-        "Downloads, builds when needed, and verifies the pinned GNU Emacs Eglot test oracle.")
+        "Downloads, builds when needed, and verifies the current GNU Emacs Eglot test oracle.")
         .ConfigureAwait(false);
     await Console.Out.WriteLineAsync(
         "Usage: dotnet run --file scripts/Provision-Emacs.cs [--output <directory>]")
@@ -39,11 +38,12 @@ try
         repositoryRoot,
         args.Length == 2 ? args[1] : null);
     string platform = SelectPlatform();
+    (string version, Uri source) = await ResolveLatestReleaseAsync().ConfigureAwait(false);
     string executablePath = OperatingSystem.IsWindows()
-        ? await ProvisionWindowsAsync(toolsRoot, platform).ConfigureAwait(false)
-        : await ProvisionUnixAsync(toolsRoot, platform).ConfigureAwait(false);
+        ? await ProvisionWindowsAsync(toolsRoot, platform, version).ConfigureAwait(false)
+        : await ProvisionUnixAsync(toolsRoot, platform, version, source).ConfigureAwait(false);
 
-    await VerifyEglotAsync(executablePath).ConfigureAwait(false);
+    await VerifyEglotAsync(executablePath, version).ConfigureAwait(false);
     await Console.Out.WriteLineAsync(executablePath).ConfigureAwait(false);
     return 0;
 }
@@ -88,74 +88,72 @@ static string SelectPlatform()
         $"GNU Emacs provisioning does not support {RuntimeInformation.OSDescription}.");
 }
 
-static Task<string> ProvisionWindowsAsync(string toolsRoot, string platform) =>
+static Task<string> ProvisionWindowsAsync(
+    string toolsRoot,
+    string platform,
+    string version) =>
     ScriptSupport.ProvisionArchiveToolAsync(
         toolsRoot,
         "emacs",
-        Version,
+        version,
         platform,
-        new Uri("https://mirrors.ocf.berkeley.edu/gnu/windows/emacs/emacs-31/emacs-31.1.zip"),
-        "emacs-31.1.zip",
-        "96a1018e9de877e77768ca884007f1a9df44889e9ae81ae3ca3d904b5681b8b6",
+        new Uri(
+            $"https://mirrors.kernel.org/gnu/windows/emacs/emacs-{Version.Parse(version).Major}/" +
+            $"emacs-{version}.zip"),
+        $"emacs-{version}.zip",
+        null,
         "emacs.exe",
         installationRootLevels: 1,
         versionArguments: ["--version"],
-        expectedVersionText: $"GNU Emacs {Version}",
-        CancellationToken.None,
-        fallbackSources:
-        [
-            new Uri(
-                "https://mirrorservice.org/sites/ftp.gnu.org/gnu/windows/" +
-                "emacs/emacs-31/emacs-31.1.zip"),
-            new Uri("https://mirrors.kernel.org/gnu/windows/emacs/emacs-31/emacs-31.1.zip")
-        ]);
+        expectedVersionText: $"GNU Emacs {version}",
+        CancellationToken.None);
 
-static async Task<string> ProvisionUnixAsync(string toolsRoot, string platform)
+static async Task<string> ProvisionUnixAsync(
+    string toolsRoot,
+    string platform,
+    string version,
+    Uri source)
 {
-    string installationPath = Path.Join(toolsRoot, "emacs", Version, platform);
+    string installationPath = Path.Join(toolsRoot, "emacs", version, platform);
     string executablePath = Path.Join(installationPath, "bin", "emacs");
     if (File.Exists(executablePath))
     {
-        await VerifyEglotAsync(executablePath).ConfigureAwait(false);
+        await VerifyEglotAsync(executablePath, version).ConfigureAwait(false);
         return executablePath;
     }
 
     string stagingRoot = Path.Join(
         toolsRoot,
         ".staging",
-        $"emacs-{Version}-{Guid.NewGuid():N}");
+        $"emacs-{version}-{Guid.NewGuid():N}");
     Directory.CreateDirectory(stagingRoot);
     try
     {
-        const string assetName = "emacs-31.1.tar.xz";
+        string assetName = Path.GetFileName(source.LocalPath);
         string archivePath = Path.Join(stagingRoot, assetName);
         string extractionPath = Path.Join(stagingRoot, "source");
         Directory.CreateDirectory(extractionPath);
         await Console.Error.WriteLineAsync(
-            $"Downloading GNU Emacs {Version} source for {platform}...").ConfigureAwait(false);
-        await ScriptSupport.DownloadVerifiedFileAsync(
-            new Uri($"https://mirrors.kernel.org/gnu/emacs/{assetName}"),
+            $"Downloading GNU Emacs {version} source for {platform}...").ConfigureAwait(false);
+        await ScriptSupport.DownloadFileAsync(
+            source,
             archivePath,
-            "1da5790d9580c81932b5bf700633114468da7b3412d69faa767daebf974f4586",
-            CancellationToken.None,
-            fallbackSources:
-            [
-                new Uri("https://mirrors.ocf.berkeley.edu/gnu/emacs/emacs-31.1.tar.xz"),
-                new Uri(
-                    "https://mirrorservice.org/sites/ftp.gnu.org/gnu/" +
-                    "emacs/emacs-31.1.tar.xz")
-            ]).ConfigureAwait(false);
+            CancellationToken.None).ConfigureAwait(false);
         await ScriptSupport.ExtractArchiveAsync(
             archivePath,
             extractionPath,
             CancellationToken.None).ConfigureAwait(false);
         string sourcePath = Directory
-            .EnumerateDirectories(extractionPath, $"emacs-{Version}", SearchOption.TopDirectoryOnly)
+            .EnumerateDirectories(
+                extractionPath,
+                $"emacs-{version}",
+                SearchOption.TopDirectoryOnly)
             .Single();
         string configurePath = Path.Join(sourcePath, "configure");
         ScriptSupport.EnsureExecutable(configurePath);
         await Console.Error.WriteLineAsync(
-            $"Building terminal-only GNU Emacs {Version} for {platform}...").ConfigureAwait(false);
+            $"Building terminal-only GNU Emacs {version} for {platform}...")
+            .ConfigureAwait(false);
         await RunCheckedAsync(
             configurePath,
             [
@@ -193,7 +191,7 @@ static async Task<string> ProvisionUnixAsync(string toolsRoot, string platform)
             sourcePath).ConfigureAwait(false);
         await RunCheckedAsync(
             "make",
-            ["-j", Math.Min(Environment.ProcessorCount, 8).ToString(CultureInfo.InvariantCulture)],
+            ["-j", Environment.ProcessorCount.ToString(CultureInfo.InvariantCulture)],
             sourcePath).ConfigureAwait(false);
 
         string destinationRoot = Path.Join(stagingRoot, "destination");
@@ -230,7 +228,7 @@ static async Task<string> ProvisionUnixAsync(string toolsRoot, string platform)
     }
 }
 
-static async Task VerifyEglotAsync(string executablePath)
+static async Task VerifyEglotAsync(string executablePath, string version)
 {
     string output = await RunCheckedAsync(
         executablePath,
@@ -242,12 +240,70 @@ static async Task VerifyEglotAsync(string executablePath)
             "(princ (format \"GNU Emacs %s; Eglot ready\" emacs-version)))"
         ],
         Directory.GetCurrentDirectory()).ConfigureAwait(false);
-    string expected = $"GNU Emacs {Version}; Eglot ready";
+    string expected = $"GNU Emacs {version}; Eglot ready";
     if (!output.Contains(expected, StringComparison.Ordinal))
     {
         throw new InvalidDataException(
             $"Expected '{expected}' from {executablePath}, but received: {output.Trim()}");
     }
+}
+
+static async Task<(string Version, Uri Source)> ResolveLatestReleaseAsync()
+{
+    var sourceDirectory = new Uri("https://mirrors.kernel.org/gnu/emacs/");
+    using var handler = new HttpClientHandler
+    {
+        AutomaticDecompression = DecompressionMethods.All,
+        CheckCertificateRevocationList = !OperatingSystem.IsMacOS()
+    };
+    using var client = new HttpClient(handler)
+    {
+        Timeout = TimeSpan.FromMinutes(2)
+    };
+    client.DefaultRequestHeaders.UserAgent.ParseAdd("csls-tool-provisioner");
+    string index = await client.GetStringAsync(sourceDirectory).ConfigureAwait(false);
+    const string prefix = "href=\"emacs-";
+    const string suffix = ".tar.xz";
+    var releases = new List<(string Text, Version Parsed)>();
+    int searchIndex = 0;
+    while (true)
+    {
+        int prefixIndex = index.IndexOf(prefix, searchIndex, StringComparison.Ordinal);
+        if (prefixIndex < 0)
+        {
+            break;
+        }
+
+        int versionIndex = prefixIndex + prefix.Length;
+        int quoteIndex = index.IndexOf('"', versionIndex);
+        if (quoteIndex < 0)
+        {
+            break;
+        }
+
+        string assetName = index[versionIndex..quoteIndex];
+        if (assetName.EndsWith(suffix, StringComparison.Ordinal))
+        {
+            string candidate = assetName[..^suffix.Length];
+            if (Version.TryParse(candidate, out Version? parsed) &&
+                candidate.IndexOf('.', StringComparison.Ordinal) ==
+                candidate.LastIndexOf('.'))
+            {
+                releases.Add((candidate, parsed));
+            }
+        }
+
+        searchIndex = quoteIndex + 1;
+    }
+
+    string version = releases
+        .DistinctBy(static release => release.Text, StringComparer.Ordinal)
+        .OrderByDescending(static release => release.Parsed)
+        .Select(static release => release.Text)
+        .FirstOrDefault()
+        ?? throw new InvalidDataException(
+            $"No stable GNU Emacs source release was found at {sourceDirectory}.");
+    return (version, new Uri(sourceDirectory, $"emacs-{version}.tar.xz"));
 }
 
 static async Task<string> RunCheckedAsync(

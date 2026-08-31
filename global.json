@@ -1,13 +1,4 @@
 {
-  "sdk": {
-    "version": "10.0.400",
-    "rollForward": "disable",
-    "paths": [
-      ".dotnet",
-      "$host$"
-    ],
-    "errorMessage": "Required .NET SDK 10.0.400 was not found. Install it before running repository commands: https://willibrandon.github.io/csls/development/#install-the-sdk"
-  },
   "test": {
     "runner": "Microsoft.Testing.Platform"
   },

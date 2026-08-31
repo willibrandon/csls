@@ -1,3 +1,4 @@
+using Csls.Control;
 using Hex1b;
 using Hex1b.Automation;
 using System.Text.Json;
@@ -35,6 +36,8 @@ public sealed class NeovimLanguageServerTests
         string fixturePath = Path.Join(
             Path.GetTempPath(),
             $"csls-neovim-{Guid.NewGuid():N}");
+        string socketDirectory = EditorToolResolver.ResolveIsolatedControlSocketDirectory(
+            repositoryRoot);
         Directory.CreateDirectory(fixturePath);
         try
         {
@@ -89,6 +92,9 @@ public sealed class NeovimLanguageServerTests
                         "--environment",
                         "CSLS_WORKER_PATH",
                         workerPath,
+                        "--environment",
+                        ControlEndpoint.SocketDirectoryEnvironmentVariable,
+                        socketDirectory,
                         "--",
                         neovimPath,
                         "-u",
@@ -107,7 +113,7 @@ public sealed class NeovimLanguageServerTests
                 .WithHeadless()
                 .WithDimensions(120, 40)
                 .Build();
-            int? serverProcessId = null;
+            ProcessExitObservation? serverExit = null;
             try
             {
                 string screenText = string.Empty;
@@ -124,10 +130,12 @@ public sealed class NeovimLanguageServerTests
                             "ready",
                             TimeSpan.FromSeconds(60),
                             TestContext.CancellationToken).ConfigureAwait(false);
-                        serverProcessId = (await ControlSessionWaiter.WaitForRunningAsync(
+                        int serverProcessId = (await ControlSessionWaiter.WaitForRunningAsync(
                             fixturePath,
                             TimeSpan.FromSeconds(60),
-                            TestContext.CancellationToken).ConfigureAwait(false)).ProcessId;
+                            TestContext.CancellationToken,
+                            socketDirectory: socketDirectory).ConfigureAwait(false)).ProcessId;
+                        serverExit = ProcessExitWaiter.Observe(serverProcessId);
 
                         await automator.TypeAsync("K", TestContext.CancellationToken)
                             .ConfigureAwait(false);
@@ -153,10 +161,10 @@ public sealed class NeovimLanguageServerTests
             {
                 await terminal.DisposeAsync().ConfigureAwait(false);
                 await workload.DisposeAsync().ConfigureAwait(false);
-                if (serverProcessId is int processId)
+                if (serverExit is ProcessExitObservation observation)
                 {
                     await ProcessExitWaiter.WaitAsync(
-                        processId,
+                        observation,
                         TimeSpan.FromSeconds(10),
                         TestContext.CancellationToken).ConfigureAwait(false);
                 }
@@ -164,9 +172,10 @@ public sealed class NeovimLanguageServerTests
         }
         finally
         {
-            await DirectoryReleaseWaiter.DeleteAsync(
-                fixturePath,
-                TimeSpan.FromSeconds(10)).ConfigureAwait(false);
+            await Task.WhenAll(
+                DirectoryReleaseWaiter.DeleteAsync(fixturePath, TimeSpan.FromSeconds(10)),
+                DirectoryReleaseWaiter.DeleteAsync(socketDirectory, TimeSpan.FromSeconds(10)))
+                .ConfigureAwait(false);
         }
     }
 
@@ -187,6 +196,8 @@ public sealed class NeovimLanguageServerTests
         string fixturePath = Path.Join(
             Path.GetTempPath(),
             $"csls-neovim-move-{Guid.NewGuid():N}");
+        string socketDirectory = EditorToolResolver.ResolveIsolatedControlSocketDirectory(
+            repositoryRoot);
         Directory.CreateDirectory(fixturePath);
         try
         {
@@ -247,6 +258,9 @@ public sealed class NeovimLanguageServerTests
                     "--environment",
                     "CSLS_WORKER_PATH",
                     workerPath,
+                    "--environment",
+                    ControlEndpoint.SocketDirectoryEnvironmentVariable,
+                    socketDirectory,
                     "--",
                     neovimPath,
                     "-u",
@@ -265,7 +279,7 @@ public sealed class NeovimLanguageServerTests
                 .WithHeadless()
                 .WithDimensions(120, 40)
                 .Build();
-            int? serverProcessId = null;
+            ProcessExitObservation? serverExit = null;
             try
             {
                 int exitCode = await workload.RunAsync(
@@ -281,10 +295,12 @@ public sealed class NeovimLanguageServerTests
                             "ready",
                             TimeSpan.FromSeconds(60),
                             TestContext.CancellationToken).ConfigureAwait(false);
-                        serverProcessId = (await ControlSessionWaiter.WaitForRunningAsync(
+                        int serverProcessId = (await ControlSessionWaiter.WaitForRunningAsync(
                             fixturePath,
                             TimeSpan.FromSeconds(60),
-                            TestContext.CancellationToken).ConfigureAwait(false)).ProcessId;
+                            TestContext.CancellationToken,
+                            socketDirectory: socketDirectory).ConfigureAwait(false)).ProcessId;
+                        serverExit = ProcessExitWaiter.Observe(serverProcessId);
 
                         string moveStatus = await FileTextWaiter.WaitForContentsAsync(
                             appliedPath,
@@ -304,10 +320,10 @@ public sealed class NeovimLanguageServerTests
             {
                 await terminal.DisposeAsync().ConfigureAwait(false);
                 await workload.DisposeAsync().ConfigureAwait(false);
-                if (serverProcessId is int processId)
+                if (serverExit is ProcessExitObservation observation)
                 {
                     await ProcessExitWaiter.WaitAsync(
-                        processId,
+                        observation,
                         TimeSpan.FromSeconds(10),
                         TestContext.CancellationToken).ConfigureAwait(false);
                 }
@@ -329,9 +345,10 @@ public sealed class NeovimLanguageServerTests
         }
         finally
         {
-            await DirectoryReleaseWaiter.DeleteAsync(
-                fixturePath,
-                TimeSpan.FromSeconds(10)).ConfigureAwait(false);
+            await Task.WhenAll(
+                DirectoryReleaseWaiter.DeleteAsync(fixturePath, TimeSpan.FromSeconds(10)),
+                DirectoryReleaseWaiter.DeleteAsync(socketDirectory, TimeSpan.FromSeconds(10)))
+                .ConfigureAwait(false);
         }
     }
 
@@ -368,7 +385,7 @@ public sealed class NeovimLanguageServerTests
     {
         string dotnetPath = EditorToolResolver.ResolveDotNetHost();
         return $$"""
-            vim.lsp.log.set_level('trace')
+            vim.lsp.log.set_level('off')
             local function when_workspace_ready(client, buffer, callback)
               local function poll()
                 client:request('$/csharp/debugInfo', nil, function(error, result)
@@ -416,7 +433,7 @@ public sealed class NeovimLanguageServerTests
     {
         string dotnetPath = EditorToolResolver.ResolveDotNetHost();
         return $$"""
-            vim.lsp.log.set_level('trace')
+            vim.lsp.log.set_level('off')
             local capabilities = vim.lsp.protocol.make_client_capabilities()
             capabilities.workspace.didChangeWatchedFiles.dynamicRegistration = true
             local function when_workspace_ready(client, buffer, callback)

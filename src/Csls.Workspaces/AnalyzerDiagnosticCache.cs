@@ -82,18 +82,29 @@ internal sealed class AnalyzerDiagnosticCache
             }
         }
 
+        int released = 0;
+        async Task ReleaseEntryAsync()
+        {
+            if (Interlocked.Exchange(ref released, 1) != 0)
+            {
+                return;
+            }
+
+            if (await entry.ReleaseAsync().ConfigureAwait(false))
+            {
+                _entries.TryRemove(new KeyValuePair<
+                    (ProjectId ProjectId, VersionStamp Version),
+                    AnalyzerDiagnosticCacheEntry>(key, entry));
+            }
+        }
+
         try
         {
             return await computation.WaitAsync(cancellationToken).ConfigureAwait(false);
         }
         finally
         {
-            if (entry.Release())
-            {
-                _entries.TryRemove(new KeyValuePair<
-                    (ProjectId ProjectId, VersionStamp Version),
-                    AnalyzerDiagnosticCacheEntry>(key, entry));
-            }
+            await ReleaseEntryAsync().ConfigureAwait(false);
         }
     }
 

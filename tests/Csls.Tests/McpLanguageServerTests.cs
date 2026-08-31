@@ -108,11 +108,11 @@ public sealed class McpLanguageServerTests
                 MoveTypeDocumentText,
                 TestContext.CancellationToken).ConfigureAwait(false);
 
-            var lsp = LspProcessSession.Start(
+            LspProcessSession lsp = await LspProcessSession.StartAsync(
                 "csls-mcp-worker",
                 EditorToolResolver.ResolveDotNetHost(),
                 [workerPath],
-                repositoryRoot);
+                repositoryRoot).ConfigureAwait(false);
             await using ConfiguredAsyncDisposable lspCleanup = lsp.ConfigureAwait(false);
             JsonElement initialization = await lsp.InitializeAsync(
                 fixturePath,
@@ -1037,11 +1037,11 @@ public sealed class McpLanguageServerTests
             repositoryRoot,
             TestContext.CancellationToken).ConfigureAwait(false);
         await using ConfiguredAsyncDisposable fixtureCleanup = fixture.ConfigureAwait(false);
-        var lsp = LspProcessSession.Start(
+        LspProcessSession lsp = await LspProcessSession.StartAsync(
             "csls-mcp-cancellation-worker",
             EditorToolResolver.ResolveDotNetHost(),
             [workerPath],
-            repositoryRoot);
+            repositoryRoot).ConfigureAwait(false);
         await using ConfiguredAsyncDisposable lspCleanup = lsp.ConfigureAwait(false);
         await lsp.InitializeAsync(
             fixture.RootPath,
@@ -1194,13 +1194,17 @@ public sealed class McpLanguageServerTests
                 ?? throw new InvalidDataException("MCP returned no request cancellation value.");
             Assert.AreEqual(request.CorrelationId, cancellation.CorrelationId);
             Assert.IsTrue(cancellation.CancellationRequested);
+            CallToolResult diagnosticResult = await diagnosticRequest.ConfigureAwait(false);
+            Assert.IsTrue(diagnosticResult.IsError);
             await FileTextWaiter.WaitAsync(
                 fixture.MarkerPath,
                 "canceled",
                 TimeSpan.FromSeconds(60),
                 TestContext.CancellationToken).ConfigureAwait(false);
-            CallToolResult diagnosticResult = await diagnosticRequest.ConfigureAwait(false);
-            Assert.IsTrue(diagnosticResult.IsError);
+            string marker = await File.ReadAllTextAsync(
+                fixture.MarkerPath,
+                TestContext.CancellationToken).ConfigureAwait(false);
+            Assert.Contains("canceled", marker, StringComparison.Ordinal);
 
             CallToolResult stopResult = await client.CallToolAsync(
                 "stop_trace",

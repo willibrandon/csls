@@ -268,9 +268,13 @@ internal sealed class DashboardState : IAsyncDisposable
     /// </summary>
     /// <param name="processId">The selected worker process identifier.</param>
     /// <returns>A task that completes after the real control snapshot arrives.</returns>
-    internal Task SelectSessionAsync(int processId) => LoadSnapshotAsync(
-        processId,
-        includeDiagnostics: Section == DashboardSection.Diagnostics);
+    internal async Task SelectSessionAsync(int processId)
+    {
+        await LoadSnapshotAsync(
+            processId,
+            includeDiagnostics: Section == DashboardSection.Diagnostics).ConfigureAwait(false);
+        _app?.Invalidate();
+    }
 
     /// <summary>
     /// Selects the diagnostic identified by one Hex1b table row key.

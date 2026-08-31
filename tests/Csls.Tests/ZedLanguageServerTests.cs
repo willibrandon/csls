@@ -28,33 +28,72 @@ public sealed class ZedLanguageServerTests
     [OSCondition(ConditionMode.Include, OperatingSystems.Linux)]
     public async Task ZedOpensFrameworkDefinitionFromCsls()
     {
-        using ExternalWorkloadLease workloadLease = await ExternalWorkloadLease.AcquireAsync(
-            TestContext.CancellationToken).ConfigureAwait(false);
-        (string DocumentText, string SymbolName, string ExpectedDeclaration)[] cases =
+        (
+            string DocumentText,
+            string SymbolName,
+            string ExpectedDeclaration,
+            string ExpectedFileName,
+            string? ExpectedImplementation)[] cases =
         [
-            ("var awaitable = Task.CompletedTask.ConfigureAwait(false);", "ConfigureAwait", "class Task"),
-            ("bool same = object.ReferenceEquals(null, null);", "ReferenceEquals", "class Object"),
-            ("bool blank = string.IsNullOrWhiteSpace(null);", "IsNullOrWhiteSpace", "class String"),
-            ("Dictionary<string, int> values = new();", "Dictionary", "class Dictionary")
+            (
+                "var awaitable = Task.CompletedTask.ConfigureAwait(false);",
+                "ConfigureAwait",
+                "class Task",
+                "Task.cs",
+                null),
+            (
+                "bool same = object.ReferenceEquals(null, null);",
+                "ReferenceEquals",
+                "class Object",
+                "Object.cs",
+                null),
+            (
+                "bool blank = string.IsNullOrWhiteSpace(null);",
+                "IsNullOrWhiteSpace",
+                "class String",
+                "String.cs",
+                null),
+            (
+                "Dictionary<string, int> values = new();",
+                "Dictionary",
+                "class Dictionary",
+                "Dictionary.cs",
+                null),
+            (
+                "Lazy<int> value = new();",
+                "Lazy",
+                "class Lazy",
+                "Lazy.cs",
+                "private T CreateValue()")
         ];
 
-        foreach ((string documentText, string symbolName, string expectedDeclaration) in cases)
+        foreach ((
+            string documentText,
+            string symbolName,
+            string expectedDeclaration,
+            string expectedFileName,
+            string? expectedImplementation) in cases)
         {
             await VerifyFrameworkDefinitionAsync(
                 documentText,
                 symbolName,
-                expectedDeclaration).ConfigureAwait(false);
+                expectedDeclaration,
+                expectedFileName,
+                expectedImplementation).ConfigureAwait(false);
         }
     }
 
     private async Task VerifyFrameworkDefinitionAsync(
         string documentText,
         string symbolName,
-        string expectedDeclaration)
+        string expectedDeclaration,
+        string expectedFileName,
+        string? expectedImplementation)
     {
         ArgumentNullException.ThrowIfNull(documentText);
         ArgumentNullException.ThrowIfNull(symbolName);
         ArgumentNullException.ThrowIfNull(expectedDeclaration);
+        ArgumentNullException.ThrowIfNull(expectedFileName);
         string repositoryRoot = EditorToolResolver.FindRepositoryRoot();
         string zedPath = EditorToolResolver.ResolveZed(repositoryRoot);
         string extensionPath = EditorToolResolver.ResolveCslsZedExtension(repositoryRoot);
@@ -78,6 +117,7 @@ public sealed class ZedLanguageServerTests
                 "csls");
             string homePath = Path.Join(fixturePath, "home");
             string cachePath = Path.Join(fixturePath, "cache");
+            string socketDirectory = Path.Join(fixturePath, "control-sockets");
             Directory.CreateDirectory(workspacePath);
             Directory.CreateDirectory(Path.GetDirectoryName(configurationPath)!);
             Directory.CreateDirectory(homePath);
@@ -111,20 +151,22 @@ public sealed class ZedLanguageServerTests
                 cachePath,
                 displayName,
                 workspacePath,
-                workerPath);
+                workerPath,
+                socketDirectory);
             Task<string> zedOutputTask = zed.StandardOutput.ReadToEndAsync(
                 TestContext.CancellationToken);
             Task<string> zedErrorTask = zed.StandardError.ReadToEndAsync(
                 TestContext.CancellationToken);
-            int? serverProcessId = null;
+            ProcessExitObservation? serverExit = null;
             bool completed = false;
             try
             {
                 ControlSessionInfo session = await ControlSessionWaiter.WaitForRunningAsync(
                     workspacePath,
                     TimeSpan.FromSeconds(60),
-                    TestContext.CancellationToken).ConfigureAwait(false);
-                serverProcessId = session.ProcessId;
+                    TestContext.CancellationToken,
+                    socketDirectory: socketDirectory).ConfigureAwait(false);
+                serverExit = ProcessExitWaiter.Observe(session.ProcessId);
                 var control = new ControlRpcClient(session.SocketPath);
                 await using ConfiguredAsyncDisposable controlCleanup =
                     control.ConfigureAwait(false);
@@ -195,11 +237,19 @@ public sealed class ZedLanguageServerTests
                 Assert.IsTrue(
                     File.Exists(definitionUri.LocalPath),
                     $"Materialized definition does not exist at {definitionUri.LocalPath}.");
+                Assert.AreEqual(expectedFileName, Path.GetFileName(definitionUri.LocalPath));
                 string materializedDefinitionText = await File.ReadAllTextAsync(
                     definitionUri.LocalPath,
                     TestContext.CancellationToken).ConfigureAwait(false);
                 Assert.Contains(expectedDeclaration, materializedDefinitionText, StringComparison.Ordinal);
                 Assert.Contains(symbolName, materializedDefinitionText, StringComparison.Ordinal);
+                if (expectedImplementation is not null)
+                {
+                    Assert.Contains(
+                        expectedImplementation,
+                        materializedDefinitionText,
+                        StringComparison.Ordinal);
+                }
 
                 string openedDefinitionText = await WaitForEditorTextAsync(
                     displayName,
@@ -240,10 +290,10 @@ public sealed class ZedLanguageServerTests
                         TestContext.CancellationToken).ConfigureAwait(false));
                 }
 
-                if (serverProcessId is int processId)
+                if (serverExit is ProcessExitObservation observation)
                 {
                     await ProcessExitWaiter.WaitAsync(
-                        processId,
+                        observation,
                         TimeSpan.FromSeconds(10),
                         TestContext.CancellationToken).ConfigureAwait(false);
                 }
@@ -265,8 +315,6 @@ public sealed class ZedLanguageServerTests
     [OSCondition(ConditionMode.Include, OperatingSystems.Linux)]
     public async Task ZedProvidesInteractiveFeaturesInCslsWorkspace()
     {
-        using ExternalWorkloadLease workloadLease = await ExternalWorkloadLease.AcquireAsync(
-            TestContext.CancellationToken).ConfigureAwait(false);
         string repositoryRoot = EditorToolResolver.FindRepositoryRoot();
         string zedPath = EditorToolResolver.ResolveZed(repositoryRoot);
         string extensionPath = EditorToolResolver.ResolveCslsZedExtension(repositoryRoot);
@@ -301,6 +349,7 @@ public sealed class ZedLanguageServerTests
                 "csls");
             string homePath = Path.Join(fixturePath, "home");
             string cachePath = Path.Join(fixturePath, "cache");
+            string socketDirectory = Path.Join(fixturePath, "control-sockets");
             Directory.CreateDirectory(Path.GetDirectoryName(configurationPath)!);
             Directory.CreateDirectory(homePath);
             Directory.CreateDirectory(cachePath);
@@ -325,12 +374,13 @@ public sealed class ZedLanguageServerTests
                 cachePath,
                 displayName,
                 repositoryRoot,
-                workerPath);
+                workerPath,
+                socketDirectory);
             Task<string> zedOutputTask = zed.StandardOutput.ReadToEndAsync(
                 TestContext.CancellationToken);
             Task<string> zedErrorTask = zed.StandardError.ReadToEndAsync(
                 TestContext.CancellationToken);
-            int? serverProcessId = null;
+            ProcessExitObservation? serverExit = null;
             bool completed = false;
             try
             {
@@ -338,8 +388,9 @@ public sealed class ZedLanguageServerTests
                     repositoryRoot,
                     s_workspaceStartupTimeout,
                     TestContext.CancellationToken,
-                    existingSessionProcessIds).ConfigureAwait(false);
-                serverProcessId = session.ProcessId;
+                    existingSessionProcessIds,
+                    socketDirectory: socketDirectory).ConfigureAwait(false);
+                serverExit = ProcessExitWaiter.Observe(session.ProcessId);
                 var control = new ControlRpcClient(session.SocketPath);
                 await using ConfiguredAsyncDisposable controlCleanup =
                     control.ConfigureAwait(false);
@@ -495,10 +546,10 @@ public sealed class ZedLanguageServerTests
                         TestContext.CancellationToken).ConfigureAwait(false));
                 }
 
-                if (serverProcessId is int processId)
+                if (serverExit is ProcessExitObservation observation)
                 {
                     await ProcessExitWaiter.WaitAsync(
-                        processId,
+                        observation,
                         TimeSpan.FromSeconds(10),
                         TestContext.CancellationToken).ConfigureAwait(false);
                 }
@@ -519,8 +570,6 @@ public sealed class ZedLanguageServerTests
     [OSCondition(ConditionMode.Include, OperatingSystems.Linux)]
     public async Task ZedRefreshesNewCompileItemsWithoutRestart()
     {
-        using ExternalWorkloadLease workloadLease = await ExternalWorkloadLease.AcquireAsync(
-            TestContext.CancellationToken).ConfigureAwait(false);
         string repositoryRoot = EditorToolResolver.FindRepositoryRoot();
         string zedPath = EditorToolResolver.ResolveZed(repositoryRoot);
         string extensionPath = EditorToolResolver.ResolveCslsZedExtension(repositoryRoot);
@@ -544,6 +593,7 @@ public sealed class ZedLanguageServerTests
                 "csls");
             string homePath = Path.Join(fixturePath, "home");
             string cachePath = Path.Join(fixturePath, "cache");
+            string socketDirectory = Path.Join(fixturePath, "control-sockets");
             Directory.CreateDirectory(workspacePath);
             Directory.CreateDirectory(Path.GetDirectoryName(configurationPath)!);
             Directory.CreateDirectory(homePath);
@@ -578,20 +628,22 @@ public sealed class ZedLanguageServerTests
                 cachePath,
                 display.DisplayName,
                 workspacePath,
-                workerPath);
+                workerPath,
+                socketDirectory);
             Task<string> zedOutputTask = zed.StandardOutput.ReadToEndAsync(
                 TestContext.CancellationToken);
             Task<string> zedErrorTask = zed.StandardError.ReadToEndAsync(
                 TestContext.CancellationToken);
-            int? serverProcessId = null;
+            ProcessExitObservation? serverExit = null;
             bool completed = false;
             try
             {
                 ControlSessionInfo session = await ControlSessionWaiter.WaitForRunningAsync(
                     workspacePath,
                     TimeSpan.FromSeconds(60),
-                    TestContext.CancellationToken).ConfigureAwait(false);
-                serverProcessId = session.ProcessId;
+                    TestContext.CancellationToken,
+                    socketDirectory: socketDirectory).ConfigureAwait(false);
+                serverExit = ProcessExitWaiter.Observe(session.ProcessId);
                 var control = new ControlRpcClient(session.SocketPath);
                 await using ConfiguredAsyncDisposable controlCleanup = control.ConfigureAwait(false);
                 await WaitForOpenDocumentAsync(
@@ -660,10 +712,10 @@ public sealed class ZedLanguageServerTests
                         TestContext.CancellationToken).ConfigureAwait(false));
                 }
 
-                if (serverProcessId is int processId)
+                if (serverExit is ProcessExitObservation observation)
                 {
                     await ProcessExitWaiter.WaitAsync(
-                        processId,
+                        observation,
                         TimeSpan.FromSeconds(10),
                         TestContext.CancellationToken).ConfigureAwait(false);
                 }
@@ -721,7 +773,8 @@ public sealed class ZedLanguageServerTests
         string cachePath,
         string displayName,
         string workspacePath,
-        string workerPath)
+        string workerPath,
+        string socketDirectory)
     {
         var startInfo = new ProcessStartInfo
         {
@@ -739,6 +792,8 @@ public sealed class ZedLanguageServerTests
             $"{documentPath}:{position.Line + 1}:{position.Character + 1}");
         startInfo.Environment["DISPLAY"] = displayName;
         startInfo.Environment["CSLS_WORKER_PATH"] = workerPath;
+        startInfo.Environment[ControlEndpoint.SocketDirectoryEnvironmentVariable] =
+            socketDirectory;
         startInfo.Environment["HOME"] = homePath;
         startInfo.Environment["NO_AT_BRIDGE"] = "1";
         startInfo.Environment.Remove("WAYLAND_DISPLAY");

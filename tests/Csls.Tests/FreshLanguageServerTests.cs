@@ -1,3 +1,4 @@
+using Csls.Control;
 using Hex1b;
 using Hex1b.Automation;
 using Hex1b.Input;
@@ -36,6 +37,8 @@ public sealed class FreshLanguageServerTests
         string fixturePath = Path.Join(
             Path.GetTempPath(),
             $"csls-fresh-{Guid.NewGuid():N}");
+        string socketDirectory = EditorToolResolver.ResolveIsolatedControlSocketDirectory(
+            repositoryRoot);
         Directory.CreateDirectory(fixturePath);
         try
         {
@@ -88,6 +91,9 @@ public sealed class FreshLanguageServerTests
                     "--environment",
                     "CSLS_WORKER_PATH",
                     workerPath,
+                    "--environment",
+                    ControlEndpoint.SocketDirectoryEnvironmentVariable,
+                    socketDirectory,
                     "--",
                     freshPath,
                     "--config",
@@ -110,7 +116,7 @@ public sealed class FreshLanguageServerTests
                 .WithHeadless()
                 .WithDimensions(120, 40)
                 .Build();
-            int? serverProcessId = null;
+            ProcessExitObservation? serverExit = null;
             try
             {
                 int exitCode = await workload.RunAsync(
@@ -124,10 +130,12 @@ public sealed class FreshLanguageServerTests
                         await automator.WaitUntilTextAsync("Console.WriteLine").ConfigureAwait(false);
                         try
                         {
-                            serverProcessId = (await ControlSessionWaiter.WaitForRunningAsync(
+                            int serverProcessId = (await ControlSessionWaiter.WaitForRunningAsync(
                                 fixturePath,
                                 TimeSpan.FromSeconds(60),
-                                TestContext.CancellationToken).ConfigureAwait(false)).ProcessId;
+                                TestContext.CancellationToken,
+                                socketDirectory: socketDirectory).ConfigureAwait(false)).ProcessId;
+                            serverExit = ProcessExitWaiter.Observe(serverProcessId);
                             await automator.WaitUntilTextAsync("LSP (csharp) ready")
                                 .ConfigureAwait(false);
                         }
@@ -179,10 +187,10 @@ public sealed class FreshLanguageServerTests
             {
                 await terminal.DisposeAsync().ConfigureAwait(false);
                 await workload.DisposeAsync().ConfigureAwait(false);
-                if (serverProcessId is int processId)
+                if (serverExit is ProcessExitObservation observation)
                 {
                     await ProcessExitWaiter.WaitAsync(
-                        processId,
+                        observation,
                         TimeSpan.FromSeconds(10),
                         TestContext.CancellationToken).ConfigureAwait(false);
                 }
@@ -190,9 +198,10 @@ public sealed class FreshLanguageServerTests
         }
         finally
         {
-            await DirectoryReleaseWaiter.DeleteAsync(
-                fixturePath,
-                TimeSpan.FromSeconds(10)).ConfigureAwait(false);
+            await Task.WhenAll(
+                DirectoryReleaseWaiter.DeleteAsync(fixturePath, TimeSpan.FromSeconds(10)),
+                DirectoryReleaseWaiter.DeleteAsync(socketDirectory, TimeSpan.FromSeconds(10)))
+                .ConfigureAwait(false);
         }
     }
 

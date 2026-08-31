@@ -92,12 +92,12 @@ try
     generatedDashboardScreenshotPath = null;
 
     await RunCheckedAsync(
-        "npx",
-        ["--yes", "npm@12.0.2", "ci", "--prefix", "docs-site"],
+        "npm",
+        ["ci", "--prefix", "docs-site"],
         repositoryRoot).ConfigureAwait(false);
     await RunCheckedAsync(
-        "npx",
-        ["--yes", "npm@12.0.2", "run", "build", "--prefix", "docs-site"],
+        "npm",
+        ["run", "build", "--prefix", "docs-site"],
         repositoryRoot).ConfigureAwait(false);
     await RunCheckedAsync(
         dotnetPath,

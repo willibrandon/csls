@@ -65,11 +65,11 @@ public sealed class RazorCompletionLanguageServerTests
                 PersistedText,
                 TestContext.CancellationToken).ConfigureAwait(false);
 
-            var lsp = LspProcessSession.Start(
+            LspProcessSession lsp = await LspProcessSession.StartAsync(
                 "csls-razor-completion-worker",
                 EditorToolResolver.ResolveDotNetHost(),
                 [workerPath],
-                fixturePath);
+                fixturePath).ConfigureAwait(false);
             await using ConfiguredAsyncDisposable lspCleanup = lsp.ConfigureAwait(false);
             await lsp.InitializeAsync(
                 fixturePath,
@@ -188,11 +188,11 @@ public sealed class RazorCompletionLanguageServerTests
                 documentText,
                 TestContext.CancellationToken).ConfigureAwait(false);
 
-            var lsp = LspProcessSession.Start(
+            LspProcessSession lsp = await LspProcessSession.StartAsync(
                 "csls-razor-import-completion-worker",
                 EditorToolResolver.ResolveDotNetHost(),
                 [workerPath],
-                fixturePath);
+                fixturePath).ConfigureAwait(false);
             await using ConfiguredAsyncDisposable lspCleanup = lsp.ConfigureAwait(false);
             await lsp.InitializeAsync(
                 fixturePath,

@@ -47,7 +47,7 @@ inlay hint, diagnostics, formatting, rename, code action, file synchronization, 
 restart contract. Zed runs with the csls extension.
 Tests wait for visible editor or protocol state instead of fixed delays.
 
-Provisioners are .NET file-based apps. Each one selects the current pinned release
+Provisioners are .NET file-based apps. Each one selects a compatible release
 for the host operating system and architecture, verifies its digest, extracts it
 under `artifacts/tools`, and reuses it on later runs.
 
@@ -61,7 +61,7 @@ dotnet run --file scripts/Provision-VsCodeRemoteServer.cs
 dotnet run --file scripts/Provision-Zed.cs
 ```
 
-Pass `--with-web-browsers` to the VS Code provisioner to install the pinned
+Pass `--with-web-browsers` to the VS Code provisioner to install the matching
 Chromium, Firefox, and WebKit builds. Linux also needs the browser and display
 packages installed by `Install-GraphicalEditorTestPrerequisites.cs`.
 
@@ -95,7 +95,7 @@ The test matrix covers Windows, Linux, macOS, x64, and Arm64. Dedicated jobs ver
 Visual Studio Build Tools and Mono project loading. Additional package jobs cover
 Windows x86 and Linux musl. The dev-container job builds and scans the same container
 developers use. Repository policy rejects warning suppressions, ignored tests,
-missing XML documentation, multiple types in one file, unpinned workflow actions,
+missing XML documentation, multiple types in one file, fixed workflow action versions,
 and dependencies outside the approved product boundary.
 
 Test results are written as TRX artifacts. MSBuild failures should be rerun with a

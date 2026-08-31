@@ -22,24 +22,19 @@ public sealed class VsCodeOracleTests
     [TestCategory("VsCodeOracle")]
     public async Task DefaultsMatchMicrosoftCSharpProfiles()
     {
-        using ExternalWorkloadLease workloadLease = await ExternalWorkloadLease.AcquireAsync(
-            TestContext.CancellationToken).ConfigureAwait(false);
         string repositoryRoot = EditorToolResolver.FindRepositoryRoot();
         string dotNetHostPath = EditorToolResolver.ResolveAbsoluteDotNetHost();
         string runtimeExtensionPath = EditorToolResolver.ResolveVsCodeExtension(
             repositoryRoot,
             "vscode-dotnet-runtime",
-            "3.1.0",
             platformSpecific: false);
         string csharpExtensionPath = EditorToolResolver.ResolveVsCodeExtension(
             repositoryRoot,
             "vscode-csharp",
-            "2.140.9",
             platformSpecific: true);
         string devKitExtensionPath = EditorToolResolver.ResolveVsCodeExtension(
             repositoryRoot,
             "vscode-csdevkit",
-            "3.20.199",
             platformSpecific: true);
         string runId = Guid.NewGuid().ToString("N");
         string fixturePath = Path.Join(
@@ -307,7 +302,7 @@ public sealed class VsCodeOracleTests
         startInfo.Environment["CSLS_VSCODE_CACHE_PATH"] = Path.Join(
             toolsRoot,
             "vscode",
-            "1.135.0");
+            "stable");
         startInfo.Environment["CSLS_VSCODE_EXTENSIONS_PATH"] = extensionsPath;
         startInfo.Environment["CSLS_VSCODE_EXTENSION_PATHS"] =
             JsonSerializer.Serialize(extensionPaths);

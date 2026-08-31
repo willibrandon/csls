@@ -25,7 +25,9 @@ public sealed class FoldingRangeLanguageServerTests
         try
         {
             string documentPath = Path.Join(fixturePath, "Program.cs");
-            LspProcessSession lsp = StartWorker(fixturePath, "csls-folding-range-worker");
+            LspProcessSession lsp = await StartWorkerAsync(
+                fixturePath,
+                "csls-folding-range-worker").ConfigureAwait(false);
             await using ConfiguredAsyncDisposable lspCleanup = lsp.ConfigureAwait(false);
             using var capabilities = JsonDocument.Parse(
                 """
@@ -119,9 +121,9 @@ public sealed class FoldingRangeLanguageServerTests
         try
         {
             string documentPath = Path.Join(fixturePath, "Program.cs");
-            LspProcessSession lsp = StartWorker(
+            LspProcessSession lsp = await StartWorkerAsync(
                 fixturePath,
-                "csls-limited-folding-range-worker");
+                "csls-limited-folding-range-worker").ConfigureAwait(false);
             await using ConfiguredAsyncDisposable lspCleanup = lsp.ConfigureAwait(false);
             using var capabilities = JsonDocument.Parse(
                 """
@@ -179,9 +181,9 @@ public sealed class FoldingRangeLanguageServerTests
         try
         {
             string documentPath = Path.Join(fixturePath, "Program.cs");
-            LspProcessSession lsp = StartWorker(
+            LspProcessSession lsp = await StartWorkerAsync(
                 fixturePath,
-                "csls-expression-folding-range-worker");
+                "csls-expression-folding-range-worker").ConfigureAwait(false);
             await using ConfiguredAsyncDisposable lspCleanup = lsp.ConfigureAwait(false);
             await lsp.InitializeAsync(
                 fixturePath,
@@ -220,7 +222,7 @@ public sealed class FoldingRangeLanguageServerTests
         }
     }
 
-    private static LspProcessSession StartWorker(string fixturePath, string displayName)
+    private static async Task<LspProcessSession> StartWorkerAsync(string fixturePath, string displayName)
     {
         string repositoryRoot = EditorToolResolver.FindRepositoryRoot();
         string workerPath = Path.Join(
@@ -230,11 +232,11 @@ public sealed class FoldingRangeLanguageServerTests
             "debug",
             "csls-worker.dll");
         Assert.IsTrue(File.Exists(workerPath), $"Worker not found at {workerPath}.");
-        return LspProcessSession.Start(
+        return await LspProcessSession.StartAsync(
             displayName,
             EditorToolResolver.ResolveDotNetHost(),
             [workerPath],
-            fixturePath);
+            fixturePath).ConfigureAwait(false);
     }
 
     private async Task<string> CreateFixtureAsync(string documentText)

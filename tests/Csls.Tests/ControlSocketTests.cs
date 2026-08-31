@@ -81,11 +81,11 @@ public sealed class ControlSocketTests
                 new UnixDomainSocketEndPoint(unresponsiveSocketPath));
             unresponsiveSocket.Listen(1);
 
-            var lsp = LspProcessSession.Start(
+            LspProcessSession lsp = await LspProcessSession.StartAsync(
                 "csls-control-discovery-worker",
                 EditorToolResolver.ResolveDotNetHost(),
                 [workerPath],
-                fixturePath);
+                fixturePath).ConfigureAwait(false);
             await using ConfiguredAsyncDisposable lspCleanup = lsp.ConfigureAwait(false);
             await lsp.InitializeAsync(
                 fixturePath,
@@ -113,7 +113,9 @@ public sealed class ControlSocketTests
         finally
         {
             File.Delete(unresponsiveSocketPath);
-            Directory.Delete(fixturePath, recursive: true);
+            await DirectoryReleaseWaiter.DeleteAsync(
+                fixturePath,
+                TimeSpan.FromSeconds(10)).ConfigureAwait(false);
         }
     }
 
@@ -147,11 +149,11 @@ public sealed class ControlSocketTests
                 documentPath,
                 DocumentText,
                 TestContext.CancellationToken).ConfigureAwait(false);
-            var lsp = LspProcessSession.Start(
+            LspProcessSession lsp = await LspProcessSession.StartAsync(
                 "csls-control-worker",
                 EditorToolResolver.ResolveDotNetHost(),
                 [workerPath],
-                fixturePath);
+                fixturePath).ConfigureAwait(false);
             await using ConfiguredAsyncDisposable lspCleanup = lsp.ConfigureAwait(false);
             await lsp.InitializeAsync(
                 fixturePath,
@@ -222,7 +224,7 @@ public sealed class ControlSocketTests
                 Path.Join(fixturePath, "Fixture.csproj"),
                 ProjectText,
                 TestContext.CancellationToken).ConfigureAwait(false);
-            var lsp = LspProcessSession.Start(
+            LspProcessSession lsp = await LspProcessSession.StartAsync(
                 "csls-control-idle-worker",
                 EditorToolResolver.ResolveDotNetHost(),
                 [workerPath],
@@ -230,7 +232,7 @@ public sealed class ControlSocketTests
                 environmentVariables: new Dictionary<string, string>(StringComparer.Ordinal)
                 {
                     ["CSLS_CONTROL_IDLE_TIMEOUT_SECONDS"] = "1"
-                });
+                }).ConfigureAwait(false);
             await using ConfiguredAsyncDisposable lspCleanup = lsp.ConfigureAwait(false);
             await lsp.InitializeAsync(
                 fixturePath,
@@ -314,7 +316,7 @@ public sealed class ControlSocketTests
             repositoryRoot,
             TestContext.CancellationToken).ConfigureAwait(false);
         await using ConfiguredAsyncDisposable fixtureCleanup = fixture.ConfigureAwait(false);
-        var lsp = LspProcessSession.Start(
+        LspProcessSession lsp = await LspProcessSession.StartAsync(
             "csls-control-active-worker",
             EditorToolResolver.ResolveDotNetHost(),
             [workerPath],
@@ -322,7 +324,7 @@ public sealed class ControlSocketTests
             environmentVariables: new Dictionary<string, string>(StringComparer.Ordinal)
             {
                 ["CSLS_CONTROL_IDLE_TIMEOUT_SECONDS"] = "1"
-            });
+            }).ConfigureAwait(false);
         await using ConfiguredAsyncDisposable lspCleanup = lsp.ConfigureAwait(false);
         await lsp.InitializeAsync(
             fixture.RootPath,
@@ -376,12 +378,17 @@ public sealed class ControlSocketTests
                 diagnosticRequest.IsCompleted,
                 "The active diagnostic request ended at the idle deadline.");
 
-            await requestSource.CancelAsync().ConfigureAwait(false);
-            await FileTextWaiter.WaitAsync(
-                fixture.MarkerPath,
-                "canceled",
-                TimeSpan.FromSeconds(15),
-                TestContext.CancellationToken).ConfigureAwait(false);
+            ControlDashboardSnapshot dashboard =
+                await controlClient.GetDashboardSnapshotAsync(
+                    new ControlDashboardRequest { IncludeDiagnostics = false },
+                    TestContext.CancellationToken).ConfigureAwait(false);
+            ControlRequestInfo request = dashboard.Requests.ActiveRequests.Single(
+                static item => item.Name == "textDocument/diagnostic");
+            ControlCancelRequestResult cancellation =
+                await controlClient.CancelRequestAsync(
+                    new ControlCancelRequest { CorrelationId = request.CorrelationId },
+                    TestContext.CancellationToken).ConfigureAwait(false);
+            Assert.IsTrue(cancellation.CancellationRequested);
         }
         finally
         {
@@ -418,6 +425,15 @@ public sealed class ControlSocketTests
         }
 
         Assert.IsNotNull(canceledRequest);
+        await FileTextWaiter.WaitAsync(
+            fixture.MarkerPath,
+            "canceled",
+            TimeSpan.FromSeconds(60),
+            TestContext.CancellationToken).ConfigureAwait(false);
+        string cancellationSignals = await File.ReadAllTextAsync(
+            fixture.MarkerPath,
+            TestContext.CancellationToken).ConfigureAwait(false);
+        Assert.Contains("canceled", cancellationSignals, StringComparison.Ordinal);
         ControlSessionInfo session = await controlClient.GetSessionAsync(
             TestContext.CancellationToken).ConfigureAwait(false);
         Assert.AreEqual(lsp.ProcessId, session.ProcessId);
@@ -453,11 +469,11 @@ public sealed class ControlSocketTests
                 Path.Join(fixturePath, "Fixture.csproj"),
                 ProjectText,
                 TestContext.CancellationToken).ConfigureAwait(false);
-            var lsp = LspProcessSession.Start(
+            LspProcessSession lsp = await LspProcessSession.StartAsync(
                 "csls-control-shutdown-worker",
                 EditorToolResolver.ResolveDotNetHost(),
                 [workerPath],
-                fixturePath);
+                fixturePath).ConfigureAwait(false);
             await using ConfiguredAsyncDisposable lspCleanup = lsp.ConfigureAwait(false);
             await lsp.InitializeAsync(
                 fixturePath,
@@ -506,11 +522,11 @@ public sealed class ControlSocketTests
             repositoryRoot,
             TestContext.CancellationToken).ConfigureAwait(false);
         await using ConfiguredAsyncDisposable fixtureCleanup = fixture.ConfigureAwait(false);
-        var lsp = LspProcessSession.Start(
+        LspProcessSession lsp = await LspProcessSession.StartAsync(
             "csls-cancellation-worker",
             EditorToolResolver.ResolveDotNetHost(),
             [workerPath],
-            fixture.RootPath);
+            fixture.RootPath).ConfigureAwait(false);
         await using ConfiguredAsyncDisposable lspCleanup = lsp.ConfigureAwait(false);
         await lsp.InitializeAsync(
             fixture.RootPath,
@@ -518,6 +534,11 @@ public sealed class ControlSocketTests
         await lsp.OpenDocumentAsync(
             fixture.DocumentPath,
             CancellationProbeFixture.DocumentText).ConfigureAwait(false);
+        await ControlSessionWaiter.WaitForRunningAsync(
+            fixture.RootPath,
+            TimeSpan.FromSeconds(60),
+            TestContext.CancellationToken,
+            expectedProcessId: lsp.ProcessId).ConfigureAwait(false);
 
         var controlClient = new ControlRpcClient(ControlEndpoint.GetSocketPath(lsp.ProcessId));
         await using ConfiguredAsyncDisposable controlCleanup =
@@ -562,11 +583,6 @@ public sealed class ControlSocketTests
             TestContext.CancellationToken).ConfigureAwait(false);
         Assert.AreEqual(request.CorrelationId, cancellation.CorrelationId);
         Assert.IsTrue(cancellation.CancellationRequested);
-        await FileTextWaiter.WaitAsync(
-            fixture.MarkerPath,
-            "canceled",
-            TimeSpan.FromSeconds(60),
-            TestContext.CancellationToken).ConfigureAwait(false);
         TaskCanceledException? canceledRequest = null;
         try
         {
@@ -579,6 +595,15 @@ public sealed class ControlSocketTests
 
         Assert.IsNotNull(canceledRequest);
         Assert.IsFalse(TestContext.CancellationToken.IsCancellationRequested);
+        await FileTextWaiter.WaitAsync(
+            fixture.MarkerPath,
+            "canceled",
+            TimeSpan.FromSeconds(60),
+            TestContext.CancellationToken).ConfigureAwait(false);
+        string cancellationSignals = await File.ReadAllTextAsync(
+            fixture.MarkerPath,
+            TestContext.CancellationToken).ConfigureAwait(false);
+        Assert.Contains("canceled", cancellationSignals, StringComparison.Ordinal);
 
         ControlCancelRequestResult retiredCancellation = await controlClient.CancelRequestAsync(
             new ControlCancelRequest { CorrelationId = request.CorrelationId },

@@ -82,7 +82,8 @@ public sealed class FileBasedAppLanguageServerTests
                 FileBasedAppText,
                 TestContext.CancellationToken).ConfigureAwait(false);
 
-            LspProcessSession lsp = StartWorker(fixturePath);
+            LspProcessSession lsp = await StartWorkerAsync(fixturePath)
+                .ConfigureAwait(false);
             await using ConfiguredAsyncDisposable lspDisposal = lsp.ConfigureAwait(false);
             JsonElement initialization = await lsp.InitializeAsync(
                 entryPointPath,
@@ -156,7 +157,8 @@ public sealed class FileBasedAppLanguageServerTests
                 DiscoveredDirectiveAppText,
                 TestContext.CancellationToken).ConfigureAwait(false);
 
-            LspProcessSession lsp = StartWorker(fixturePath);
+            LspProcessSession lsp = await StartWorkerAsync(fixturePath)
+                .ConfigureAwait(false);
             await using ConfiguredAsyncDisposable lspDisposal = lsp.ConfigureAwait(false);
             await lsp.InitializeAsync(
                 fixturePath,
@@ -246,7 +248,8 @@ public sealed class FileBasedAppLanguageServerTests
                 }
             };
 
-            LspProcessSession lsp = StartWorker(fixturePath);
+            LspProcessSession lsp = await StartWorkerAsync(fixturePath)
+                .ConfigureAwait(false);
             await using ConfiguredAsyncDisposable lspDisposal = lsp.ConfigureAwait(false);
             await lsp.InitializeAsync(
                 fixturePath,
@@ -292,7 +295,8 @@ public sealed class FileBasedAppLanguageServerTests
     {
         string repositoryRoot = EditorToolResolver.FindRepositoryRoot();
         string entryPointPath = Path.Join(repositoryRoot, "scripts", "Generate-Docs.cs");
-        LspProcessSession lsp = StartWorker(repositoryRoot);
+        LspProcessSession lsp = await StartWorkerAsync(repositoryRoot)
+            .ConfigureAwait(false);
         await using ConfiguredAsyncDisposable lspDisposal = lsp.ConfigureAwait(false);
         await lsp.InitializeAsync(
             entryPointPath,
@@ -302,6 +306,11 @@ public sealed class FileBasedAppLanguageServerTests
             TestContext.CancellationToken).ConfigureAwait(false);
         CSharpWorkspaceFolderInfo folder = Assert.ContainsSingle(workspace.Workspaces);
         Assert.IsGreaterThan(1, folder.ProjectCount);
+        DocumentDiagnosticReport diagnostics = await lsp.RequestDiagnosticsAsync(
+            entryPointPath,
+            previousResultId: null,
+            TestContext.CancellationToken).ConfigureAwait(false);
+        Assert.IsEmpty(diagnostics.Items ?? []);
 
         string standardError = await lsp.ShutdownAsync(
             TestContext.CancellationToken).ConfigureAwait(false);
@@ -337,7 +346,8 @@ public sealed class FileBasedAppLanguageServerTests
                 staleProject.ToString(),
                 TestContext.CancellationToken).ConfigureAwait(false);
 
-            LspProcessSession lsp = StartWorker(fixturePath);
+            LspProcessSession lsp = await StartWorkerAsync(fixturePath)
+                .ConfigureAwait(false);
             await using ConfiguredAsyncDisposable lspDisposal = lsp.ConfigureAwait(false);
             await lsp.InitializeAsync(
                 fixturePath,
@@ -364,7 +374,7 @@ public sealed class FileBasedAppLanguageServerTests
         }
     }
 
-    private static LspProcessSession StartWorker(string workingDirectory)
+    private static async Task<LspProcessSession> StartWorkerAsync(string workingDirectory)
     {
         string repositoryRoot = EditorToolResolver.FindRepositoryRoot();
         string workerPath = Path.Join(
@@ -374,11 +384,11 @@ public sealed class FileBasedAppLanguageServerTests
             "debug",
             "csls-worker.dll");
         Assert.IsTrue(File.Exists(workerPath), $"Worker not found at {workerPath}.");
-        return LspProcessSession.Start(
+        return await LspProcessSession.StartAsync(
             "csls-file-based-app-worker",
             EditorToolResolver.ResolveDotNetHost(),
             [workerPath],
-            workingDirectory);
+            workingDirectory).ConfigureAwait(false);
     }
 
     private static string CreateFixturePath(string name) => Path.Join(

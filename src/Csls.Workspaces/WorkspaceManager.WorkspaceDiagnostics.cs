@@ -41,37 +41,48 @@ public sealed partial class WorkspaceManager
         }
 
         string[] documentPaths = GetWorkspaceDiagnosticDocumentPaths();
-        var items = new List<WorkspaceDocumentDiagnosticReport>(documentPaths.Length);
-        foreach (string path in documentPaths)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            previousResults.TryGetValue(path, out string? previousResultId);
-            var uri = DocumentUri.FromFileSystemPath(path);
-            DocumentDiagnosticReport report = await GetDiagnosticsAsync(
-                new DocumentDiagnosticParams
-                {
-                    TextDocument = new TextDocumentIdentifier
-                    {
-                        Uri = uri
-                    },
-                    Identifier = parameters.Identifier,
-                    PreviousResultId = previousResultId
-                },
+        WorkspaceDocumentDiagnosticReport[] items = await Task.WhenAll(
+            documentPaths.Select(path => GetWorkspaceDocumentDiagnosticsAsync(
+                path,
+                parameters.Identifier,
+                previousResults.GetValueOrDefault(path),
                 reportInformationAsHint,
-                cancellationToken).ConfigureAwait(false);
-            items.Add(new WorkspaceDocumentDiagnosticReport
-            {
-                Kind = report.Kind,
-                Uri = uri,
-                Version = _documentVersions.TryGetValue(path, out int version)
-                    ? version
-                    : null,
-                ResultId = report.ResultId,
-                Items = report.Items
-            });
-        }
-
+                cancellationToken))).ConfigureAwait(false);
         return new WorkspaceDiagnosticReport { Items = items };
+    }
+
+    private async Task<WorkspaceDocumentDiagnosticReport>
+        GetWorkspaceDocumentDiagnosticsAsync(
+            string path,
+            string? identifier,
+            string? previousResultId,
+            bool reportInformationAsHint,
+            CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        var uri = DocumentUri.FromFileSystemPath(path);
+        DocumentDiagnosticReport report = await GetDiagnosticsAsync(
+            new DocumentDiagnosticParams
+            {
+                TextDocument = new TextDocumentIdentifier
+                {
+                    Uri = uri
+                },
+                Identifier = identifier,
+                PreviousResultId = previousResultId
+            },
+            reportInformationAsHint,
+            cancellationToken).ConfigureAwait(false);
+        return new WorkspaceDocumentDiagnosticReport
+        {
+            Kind = report.Kind,
+            Uri = uri,
+            Version = _documentVersions.TryGetValue(path, out int version)
+                ? version
+                : null,
+            ResultId = report.ResultId,
+            Items = report.Items
+        };
     }
 
     private string[] GetWorkspaceDiagnosticDocumentPaths()

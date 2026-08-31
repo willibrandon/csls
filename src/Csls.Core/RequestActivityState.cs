@@ -8,6 +8,7 @@ internal sealed class RequestActivityState
     private readonly Lock _gate = new();
     private readonly CancellationTokenSource _cancellationSource;
     private readonly TimeProvider _timeProvider;
+    private TaskCompletionSource? _retirement;
     private RequestTraceRecord? _traceRecord;
     private Guid? _enrolledTraceId;
     private long? _workspaceGeneration;
@@ -90,6 +91,7 @@ internal sealed class RequestActivityState
     internal async Task<bool> TryCancelAsync()
     {
         Task cancellationTask;
+        Task retirementTask;
         lock (_gate)
         {
             if (_isCompleted)
@@ -99,10 +101,14 @@ internal sealed class RequestActivityState
 
             _isCancellationRequested = true;
             _traceRecord?.MarkCancellationRequested();
+            _retirement ??= new TaskCompletionSource(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+            retirementTask = _retirement.Task;
             cancellationTask = _cancellationSource.CancelAsync();
         }
 
         await cancellationTask.ConfigureAwait(false);
+        await retirementTask.ConfigureAwait(false);
         return true;
     }
 
@@ -187,11 +193,31 @@ internal sealed class RequestActivityState
                 return false;
             }
 
-            _isCompleted = true;
-            _status = status;
-            _isCancellationRequested |= status == RequestExecutionStatus.Canceled;
-            _traceRecord?.Complete(status, exception, completedAt, completedTimestamp);
-            _cancellationSource.Dispose();
+            CompleteCore(status, exception, completedAt, completedTimestamp);
+            return true;
+        }
+    }
+
+    /// <summary>
+    /// Retires a canceled request that has not started executing.
+    /// </summary>
+    /// <returns>True when this call retired the queued request.</returns>
+    internal bool CompleteQueuedCancellation()
+    {
+        DateTimeOffset completedAt = _timeProvider.GetUtcNow();
+        long completedTimestamp = _timeProvider.GetTimestamp();
+        lock (_gate)
+        {
+            if (_isCompleted || _status != RequestExecutionStatus.Queued)
+            {
+                return false;
+            }
+
+            CompleteCore(
+                RequestExecutionStatus.Canceled,
+                exception: null,
+                completedAt,
+                completedTimestamp);
             return true;
         }
     }
@@ -223,4 +249,18 @@ internal sealed class RequestActivityState
         IsCancellationRequested = _isCancellationRequested,
         Status = _status
     };
+
+    private void CompleteCore(
+        RequestExecutionStatus status,
+        Exception? exception,
+        DateTimeOffset completedAt,
+        long completedTimestamp)
+    {
+        _isCompleted = true;
+        _status = status;
+        _isCancellationRequested |= status == RequestExecutionStatus.Canceled;
+        _traceRecord?.Complete(status, exception, completedAt, completedTimestamp);
+        _cancellationSource.Dispose();
+        _retirement?.TrySetResult();
+    }
 }

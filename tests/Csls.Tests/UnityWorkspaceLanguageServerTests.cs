@@ -92,7 +92,8 @@ public sealed class UnityWorkspaceLanguageServerTests
                 Assert.AreEqual(generation, manager.Generation);
             }
 
-            LspProcessSession lsp = StartWorker(workspacePath);
+            LspProcessSession lsp = await StartWorkerAsync(workspacePath)
+                .ConfigureAwait(false);
             await using ConfiguredAsyncDisposable lspDisposal = lsp.ConfigureAwait(false);
             await lsp.InitializeAsync(
                 workspacePath,
@@ -186,7 +187,8 @@ public sealed class UnityWorkspaceLanguageServerTests
                     createdSymbol.Location.Uri);
             }
 
-            LspProcessSession lsp = StartWorker(workspacePath);
+            LspProcessSession lsp = await StartWorkerAsync(workspacePath)
+                .ConfigureAwait(false);
             await using ConfiguredAsyncDisposable lspDisposal = lsp.ConfigureAwait(false);
             await lsp.InitializeAsync(
                 workspacePath,
@@ -211,7 +213,7 @@ public sealed class UnityWorkspaceLanguageServerTests
         }
     }
 
-    private static LspProcessSession StartWorker(string workingDirectory)
+    private static async Task<LspProcessSession> StartWorkerAsync(string workingDirectory)
     {
         string repositoryRoot = EditorToolResolver.FindRepositoryRoot();
         string workerPath = Path.Join(
@@ -221,11 +223,11 @@ public sealed class UnityWorkspaceLanguageServerTests
             "debug",
             "csls-worker.dll");
         Assert.IsTrue(File.Exists(workerPath), $"Worker not found at {workerPath}.");
-        return LspProcessSession.Start(
+        return await LspProcessSession.StartAsync(
             "csls-unity-workspace-worker",
             EditorToolResolver.ResolveDotNetHost(),
             [workerPath],
-            workingDirectory);
+            workingDirectory).ConfigureAwait(false);
     }
 
     private static string CreateFixturePath(string name) => Path.Join(

@@ -43,11 +43,11 @@ public sealed class DebugInfoLanguageServerTests
                 DocumentText,
                 TestContext.CancellationToken).ConfigureAwait(false);
 
-            var lsp = LspProcessSession.Start(
+            LspProcessSession lsp = await LspProcessSession.StartAsync(
                 "csls-debug-info-worker",
                 EditorToolResolver.ResolveDotNetHost(),
                 [workerPath],
-                fixturePath);
+                fixturePath).ConfigureAwait(false);
             await using ConfiguredAsyncDisposable lspCleanup = lsp.ConfigureAwait(false);
 
             CSharpDebugInfo uninitialized = await lsp.RequestDebugInfoAsync(
@@ -113,11 +113,11 @@ public sealed class DebugInfoLanguageServerTests
     {
         string repositoryRoot = EditorToolResolver.FindRepositoryRoot();
         string workerPath = ResolveWorkerPath(repositoryRoot);
-        var lsp = LspProcessSession.Start(
+        LspProcessSession lsp = await LspProcessSession.StartAsync(
             "csls-shutdown-during-load-worker",
             EditorToolResolver.ResolveDotNetHost(),
             [workerPath],
-            repositoryRoot);
+            repositoryRoot).ConfigureAwait(false);
         await using ConfiguredAsyncDisposable lspCleanup = lsp.ConfigureAwait(false);
 
         await lsp.InitializeAsync(
@@ -163,11 +163,11 @@ public sealed class DebugInfoLanguageServerTests
             repositoryRoot,
             TestContext.CancellationToken).ConfigureAwait(false);
         await using ConfiguredAsyncDisposable fixtureCleanup = fixture.ConfigureAwait(false);
-        var lsp = LspProcessSession.Start(
+        LspProcessSession lsp = await LspProcessSession.StartAsync(
             "csls-debug-info-blocked-worker",
             EditorToolResolver.ResolveDotNetHost(),
             [workerPath],
-            fixture.RootPath);
+            fixture.RootPath).ConfigureAwait(false);
         await using ConfiguredAsyncDisposable lspCleanup = lsp.ConfigureAwait(false);
         bool analyzerReleased = false;
         try

@@ -99,7 +99,7 @@ internal static class DashboardView
                     bindings.Key(Hex1bKey.F11).Action(
                         eventArgs => OpenTraceConfirmation(eventArgs.Windows, state),
                         "Start or stop request tracing");
-                    bindings.Key(Hex1bKey.Y).Action(
+                    bindings.Key(Hex1bKey.Y).Global().Action(
                         eventArgs => YankFocusedRowAsync(eventArgs, state),
                         "Yank focused row");
                 }))

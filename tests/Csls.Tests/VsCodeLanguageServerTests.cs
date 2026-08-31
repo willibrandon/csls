@@ -1,3 +1,4 @@
+using Csls.Control;
 using Csls.Control.Contracts;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
@@ -53,19 +54,15 @@ public sealed class VsCodeLanguageServerTests
     [OSCondition(ConditionMode.Include, OperatingSystems.Linux)]
     public async Task VsCodeHostStopsAutomaticTestDiscoveryProcessesOnShutdown()
     {
-        using ExternalWorkloadLease workloadLease = await ExternalWorkloadLease.AcquireAsync(
-            TestContext.CancellationToken).ConfigureAwait(false);
         string repositoryRoot = EditorToolResolver.FindRepositoryRoot();
         string runnerPath = Path.Join(repositoryRoot, "tests", "vscode", "runner.mjs");
         string runtimeExtensionPath = EditorToolResolver.ResolveVsCodeExtension(
             repositoryRoot,
             "vscode-dotnet-runtime",
-            "3.1.0",
             platformSpecific: false);
         string csharpExtensionPath = EditorToolResolver.ResolveVsCodeExtension(
             repositoryRoot,
             "vscode-csharp",
-            "2.140.9",
             platformSpecific: true);
         string runId = Guid.NewGuid().ToString("N")[..16];
         string fixturePath = Path.Join(Path.GetTempPath(), $"cv-shutdown-{runId}");
@@ -131,23 +128,6 @@ public sealed class VsCodeLanguageServerTests
                 remoteDataPath,
                 display.DisplayName,
                 localSuite: "dist/shutdown-suite.cjs").ConfigureAwait(false);
-
-            string[] extensionLogPaths = Directory.GetFiles(
-                userDataPath,
-                "csls.log",
-                SearchOption.AllDirectories);
-            Assert.HasCount(1, extensionLogPaths);
-            string extensionLog = await File.ReadAllTextAsync(
-                extensionLogPaths[0],
-                TestContext.CancellationToken).ConfigureAwait(false);
-            string? inspectionCommand = extensionLog
-                .Split(Environment.NewLine, StringSplitOptions.RemoveEmptyEntries)
-                .FirstOrDefault(line => line.Contains(
-                    $"> dotnet msbuild {Path.Join(testProjectPath, "Fixture.Tests.csproj")}",
-                    StringComparison.Ordinal));
-            Assert.IsNotNull(inspectionCommand, "The project inspection command was not logged.");
-            Assert.Contains("-maxcpucount:1", inspectionCommand);
-            Assert.Contains("-nodeReuse:false", inspectionCommand);
 
             string processIdPath = Path.Join(testProjectPath, "discovery.pid");
             Assert.IsTrue(File.Exists(processIdPath), "The blocking discovery process did not start.");
@@ -223,9 +203,6 @@ public sealed class VsCodeLanguageServerTests
             Assert.Inconclusive(
                 "Set CSLS_RUN_VSCODE_REMOTE_TESTS=true to run the remote VS Code host.");
         }
-
-        using ExternalWorkloadLease workloadLease = await ExternalWorkloadLease.AcquireAsync(
-            TestContext.CancellationToken).ConfigureAwait(false);
         string repositoryRoot = EditorToolResolver.FindRepositoryRoot();
         string runnerPath = Path.Join(repositoryRoot, "tests", "vscode", "runner.mjs");
         Assert.IsTrue(File.Exists(runnerPath), $"VS Code runner not found at {runnerPath}.");
@@ -243,12 +220,10 @@ public sealed class VsCodeLanguageServerTests
         string runtimeExtensionPath = EditorToolResolver.ResolveVsCodeExtension(
             repositoryRoot,
             "vscode-dotnet-runtime",
-            "3.1.0",
             platformSpecific: false);
         string csharpExtensionPath = EditorToolResolver.ResolveVsCodeExtension(
             repositoryRoot,
             "vscode-csharp",
-            "2.140.9",
             platformSpecific: true);
         string remoteServerRoot = EditorToolResolver.ResolveVsCodeRemoteServerRoot(repositoryRoot);
 
@@ -296,7 +271,9 @@ public sealed class VsCodeLanguageServerTests
 
             await AssertNoUnexpectedCslsOutputAsync(
                 [userDataPath, remoteDataPath],
-                TestContext.CancellationToken).ConfigureAwait(false);
+                expectWorkspaceRestore: false,
+                TestContext.CancellationToken,
+                expectedRestoredEntryPointFileName: "Generate-Docs.cs").ConfigureAwait(false);
         }
         finally
         {
@@ -308,8 +285,6 @@ public sealed class VsCodeLanguageServerTests
 
     private async Task RunVsCodeHostAsync(bool remote, string? localSuite = null)
     {
-        using ExternalWorkloadLease workloadLease = await ExternalWorkloadLease.AcquireAsync(
-            TestContext.CancellationToken).ConfigureAwait(false);
         string repositoryRoot = EditorToolResolver.FindRepositoryRoot();
         string runnerPath = Path.Join(repositoryRoot, "tests", "vscode", "runner.mjs");
         Assert.IsTrue(File.Exists(runnerPath), $"VS Code runner not found at {runnerPath}.");
@@ -327,12 +302,10 @@ public sealed class VsCodeLanguageServerTests
         string runtimeExtensionPath = EditorToolResolver.ResolveVsCodeExtension(
             repositoryRoot,
             "vscode-dotnet-runtime",
-            "3.1.0",
             platformSpecific: false);
         string csharpExtensionPath = EditorToolResolver.ResolveVsCodeExtension(
             repositoryRoot,
             "vscode-csharp",
-            "2.140.9",
             platformSpecific: true);
         string? remoteServerRoot = remote
             ? EditorToolResolver.ResolveVsCodeRemoteServerRoot(repositoryRoot)
@@ -435,6 +408,7 @@ public sealed class VsCodeLanguageServerTests
 
             await AssertNoUnexpectedCslsOutputAsync(
                 [userDataPath, remoteDataPath],
+                expectWorkspaceRestore: localSuite is null,
                 TestContext.CancellationToken).ConfigureAwait(false);
             Assert.IsFalse(Directory.Exists(Path.Join(repositoryRoot, "TestResults")));
         }
@@ -539,6 +513,15 @@ public sealed class VsCodeLanguageServerTests
         bool trackControlSession = true,
         string? localSuite = null)
     {
+        string socketDirectory = Path.Join(
+            Path.GetDirectoryName(userDataPath)!,
+            "control-sockets");
+        Directory.CreateDirectory(socketDirectory);
+        string? remoteTestExtensionPath = remoteServerRoot is null
+            ? null
+            : await VsCodeExtensionPackage.GetRemoteTestAsync(
+                repositoryRoot,
+                TestContext.CancellationToken).ConfigureAwait(false);
         using Process runner = StartRunner(
             repositoryRoot,
             runnerPath,
@@ -551,12 +534,14 @@ public sealed class VsCodeLanguageServerTests
             remoteDataPath,
             displayName,
             remoteSuite,
-            localSuite);
+            localSuite,
+            socketDirectory,
+            remoteTestExtensionPath);
         Task<string> outputTask = runner.StandardOutput.ReadToEndAsync(
             TestContext.CancellationToken);
         Task<string> errorTask = runner.StandardError.ReadToEndAsync(
             TestContext.CancellationToken);
-        int? serverProcessId = null;
+        ProcessExitObservation? serverExit = null;
         using var startupCancellation = CancellationTokenSource.CreateLinkedTokenSource(
             TestContext.CancellationToken);
         try
@@ -567,13 +552,14 @@ public sealed class VsCodeLanguageServerTests
                 Task<ControlSessionInfo> sessionTask = ControlSessionWaiter.WaitForRunningAsync(
                     workspacePath,
                     s_editorStartupTimeout,
-                    startupCancellation.Token);
+                    startupCancellation.Token,
+                    socketDirectory: socketDirectory);
                 Task firstCompleted = await Task.WhenAny(sessionTask, runnerExitTask)
                     .ConfigureAwait(false);
                 if (firstCompleted == sessionTask)
                 {
                     ControlSessionInfo session = await sessionTask.ConfigureAwait(false);
-                    serverProcessId = session.ProcessId;
+                    serverExit = ProcessExitWaiter.Observe(session.ProcessId);
                 }
             }
 
@@ -595,10 +581,10 @@ public sealed class VsCodeLanguageServerTests
             string error = await errorTask.ConfigureAwait(false);
             TestContext.WriteLine(output);
             TestContext.WriteLine(error);
-            if (serverProcessId is int processId)
+            if (serverExit is ProcessExitObservation observation)
             {
                 await ProcessExitWaiter.WaitAsync(
-                    processId,
+                    observation,
                     TimeSpan.FromSeconds(10),
                     TestContext.CancellationToken).ConfigureAwait(false);
             }
@@ -609,7 +595,9 @@ public sealed class VsCodeLanguageServerTests
 
     private async Task AssertNoUnexpectedCslsOutputAsync(
         IReadOnlyList<string> dataPaths,
-        CancellationToken cancellationToken)
+        bool expectWorkspaceRestore,
+        CancellationToken cancellationToken,
+        string? expectedRestoredEntryPointFileName = null)
     {
         string[] logPaths = [.. dataPaths
             .Where(Directory.Exists)
@@ -694,6 +682,13 @@ public sealed class VsCodeLanguageServerTests
                 StringComparison.Ordinal),
             cslsOutputLines,
             "Ordinary watched-file edits must remain quiet at Information level.");
+        Assert.DoesNotContain(
+            static line =>
+                line.Contains("-getProperty:TargetPath", StringComparison.Ordinal) ||
+                line.Contains("--list-tests", StringComparison.Ordinal) ||
+                line.Contains("\"displayName\":", StringComparison.Ordinal),
+            cslsOutputLines,
+            "Automatic test discovery must not write internal commands or JSON to csls output.");
         Assert.Contains(
             static line =>
                 line.Contains("Discovered ", StringComparison.Ordinal) &&
@@ -701,17 +696,57 @@ public sealed class VsCodeLanguageServerTests
                 line.Contains(" ms", StringComparison.Ordinal),
             cslsOutputLines,
             "The VS Code CSLS output omitted timed workspace discovery progress.");
-        Assert.Contains(
-            static line => line.Contains("Restoring ", StringComparison.Ordinal),
-            cslsOutputLines,
-            "The VS Code CSLS output omitted workspace restore progress.");
-        Assert.Contains(
-            static line =>
-                line.Contains("Restored ", StringComparison.Ordinal) &&
-                line.Contains(" in ", StringComparison.Ordinal) &&
-                line.Contains(" ms", StringComparison.Ordinal),
-            cslsOutputLines,
-            "The VS Code CSLS output omitted timed workspace restore completion.");
+        if (expectedRestoredEntryPointFileName is not null)
+        {
+            Assert.Contains(
+                line =>
+                    line.Contains("Restoring ", StringComparison.Ordinal) &&
+                    line.Contains(expectedRestoredEntryPointFileName, StringComparison.Ordinal),
+                cslsOutputLines,
+                $"The VS Code CSLS output omitted restore progress for " +
+                $"{expectedRestoredEntryPointFileName}.");
+            Assert.Contains(
+                line =>
+                    line.Contains("Restored ", StringComparison.Ordinal) &&
+                    line.Contains(expectedRestoredEntryPointFileName, StringComparison.Ordinal) &&
+                    line.Contains(" in ", StringComparison.Ordinal) &&
+                    line.Contains(" ms", StringComparison.Ordinal),
+                cslsOutputLines,
+                $"The VS Code CSLS output omitted timed restore completion for " +
+                $"{expectedRestoredEntryPointFileName}.");
+            Assert.DoesNotContain(
+                line =>
+                    (line.Contains("Restoring ", StringComparison.Ordinal) ||
+                        line.Contains("Restored ", StringComparison.Ordinal)) &&
+                    !line.Contains(
+                        expectedRestoredEntryPointFileName,
+                        StringComparison.Ordinal),
+                cslsOutputLines,
+                "VS Code restored an unopened workspace entry point.");
+        }
+        else if (expectWorkspaceRestore)
+        {
+            Assert.Contains(
+                static line => line.Contains("Restoring ", StringComparison.Ordinal),
+                cslsOutputLines,
+                "The VS Code CSLS output omitted workspace restore progress.");
+            Assert.Contains(
+                static line =>
+                    line.Contains("Restored ", StringComparison.Ordinal) &&
+                    line.Contains(" in ", StringComparison.Ordinal) &&
+                    line.Contains(" ms", StringComparison.Ordinal),
+                cslsOutputLines,
+                "The VS Code CSLS output omitted timed workspace restore completion.");
+        }
+        else
+        {
+            Assert.DoesNotContain(
+                static line =>
+                    line.Contains("Restoring ", StringComparison.Ordinal) ||
+                    line.Contains("Restored ", StringComparison.Ordinal),
+                cslsOutputLines,
+                "Workspace startup must not restore unopened file-based apps.");
+        }
         Assert.Contains(
             static line =>
                 line.Contains(
@@ -741,7 +776,9 @@ public sealed class VsCodeLanguageServerTests
         string remoteDataPath,
         string? displayName,
         string? remoteSuite,
-        string? localSuite)
+        string? localSuite,
+        string socketDirectory,
+        string? remoteTestExtensionPath)
     {
         string? configuredToolsRoot = Environment.GetEnvironmentVariable("CSLS_TOOLS_ROOT");
         string toolsRoot = string.IsNullOrWhiteSpace(configuredToolsRoot)
@@ -750,7 +787,7 @@ public sealed class VsCodeLanguageServerTests
         string vscodeCachePath = Path.Join(
             toolsRoot,
             "vscode",
-            "1.135.0");
+            "stable");
         Directory.CreateDirectory(vscodeCachePath);
         var startInfo = new ProcessStartInfo
         {
@@ -770,12 +807,17 @@ public sealed class VsCodeLanguageServerTests
         startInfo.Environment["CSLS_VSCODE_RUNTIME_EXTENSION_PATH"] = runtimeExtensionPath;
         startInfo.Environment["CSLS_VSCODE_USER_DATA_PATH"] = userDataPath;
         startInfo.Environment["CSLS_VSCODE_WORKSPACE_PATH"] = workspacePath;
+        startInfo.Environment[ControlEndpoint.SocketDirectoryEnvironmentVariable] =
+            socketDirectory;
         if (localSuite is not null)
         {
             startInfo.Environment["CSLS_VSCODE_SUITE"] = localSuite;
         }
         if (remoteServerRoot is not null)
         {
+            startInfo.Environment["CSLS_VSCODE_REMOTE_TEST_EXTENSION_PATH"] =
+                remoteTestExtensionPath ?? throw new InvalidOperationException(
+                    "The remote VS Code test extension is unavailable.");
             startInfo.Environment["CSLS_VSCODE_REMOTE_DATA_PATH"] = remoteDataPath;
             startInfo.Environment["CSLS_VSCODE_REMOTE_RESULT_PATH"] = Path.Join(
                 remoteDataPath,

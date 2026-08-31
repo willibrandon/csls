@@ -26,11 +26,31 @@ internal static class VsCodeExtensionPackage
         Task<string> packageTask;
         lock (s_gate)
         {
-            s_packageTask ??= PackageAsync(repositoryRoot);
+            s_packageTask ??= VsCodeExtensionBuildGate.RunAsync(
+                () => PackageAsync(repositoryRoot));
             packageTask = s_packageTask;
         }
 
         return packageTask.WaitAsync(cancellationToken);
+    }
+
+    /// <summary>
+    /// Gets the remote-host test extension packaged by the shared build.
+    /// </summary>
+    /// <param name="repositoryRoot">The repository root.</param>
+    /// <param name="cancellationToken">The caller cancellation token.</param>
+    /// <returns>The path to the immutable remote-host test VSIX.</returns>
+    internal static async Task<string> GetRemoteTestAsync(
+        string repositoryRoot,
+        CancellationToken cancellationToken)
+    {
+        _ = await GetAsync(repositoryRoot, cancellationToken).ConfigureAwait(false);
+        string packagePath = GetRemoteTestPackagePath(repositoryRoot);
+        return File.Exists(packagePath)
+            ? packagePath
+            : throw new FileNotFoundException(
+                "The VS Code remote test extension package is missing.",
+                packagePath);
     }
 
     private static async Task<string> PackageAsync(string repositoryRoot)
@@ -70,36 +90,8 @@ internal static class VsCodeExtensionPackage
             await PrepareManifestAsync(Path.Join(stagingPath, "package.json"))
                 .ConfigureAwait(false);
 
-            using Process process = StartPackageProcess(stagingPath, vscePath, outputPath);
-            Task<string> outputTask = process.StandardOutput.ReadToEndAsync();
-            Task<string> errorTask = process.StandardError.ReadToEndAsync();
-            try
-            {
-                await process.WaitForExitAsync()
-                    .WaitAsync(TimeSpan.FromMinutes(2))
-                    .ConfigureAwait(false);
-            }
-            finally
-            {
-                if (!process.HasExited)
-                {
-                    process.Kill(entireProcessTree: true);
-                    await process.WaitForExitAsync().ConfigureAwait(false);
-                }
-            }
-
-            string output = await outputTask.ConfigureAwait(false);
-            string error = await errorTask.ConfigureAwait(false);
-            if (process.ExitCode != 0)
-            {
-                throw new InvalidOperationException($"""
-                    The VS Code extension packager failed with exit code {process.ExitCode}.
-                    Standard output:
-                    {output}
-                    Standard error:
-                    {error}
-                    """);
-            }
+            await PackageWithVsceAsync(stagingPath, vscePath, outputPath)
+                .ConfigureAwait(false);
         }
         finally
         {
@@ -116,7 +108,55 @@ internal static class VsCodeExtensionPackage
                 outputPath);
         }
 
+        string remoteTestPackagePath = GetRemoteTestPackagePath(repositoryRoot);
+        await PackageWithVsceAsync(
+            Path.Join(repositoryRoot, "tests", "vscode"),
+            vscePath,
+            remoteTestPackagePath).ConfigureAwait(false);
+
         return outputPath;
+    }
+
+    private static string GetRemoteTestPackagePath(string repositoryRoot) => Path.Join(
+        EditorToolResolver.ResolveArtifactsRoot(repositoryRoot),
+        "vscode-test-extension",
+        "csls-vscode-tests.vsix");
+
+    private static async Task PackageWithVsceAsync(
+        string extensionRoot,
+        string vscePath,
+        string outputPath)
+    {
+        using Process process = StartPackageProcess(extensionRoot, vscePath, outputPath);
+        Task<string> outputTask = process.StandardOutput.ReadToEndAsync();
+        Task<string> errorTask = process.StandardError.ReadToEndAsync();
+        try
+        {
+            await process.WaitForExitAsync()
+                .WaitAsync(TimeSpan.FromMinutes(2))
+                .ConfigureAwait(false);
+        }
+        finally
+        {
+            if (!process.HasExited)
+            {
+                process.Kill(entireProcessTree: true);
+                await process.WaitForExitAsync().ConfigureAwait(false);
+            }
+        }
+
+        string output = await outputTask.ConfigureAwait(false);
+        string error = await errorTask.ConfigureAwait(false);
+        if (process.ExitCode != 0)
+        {
+            throw new InvalidOperationException($"""
+                The VS Code extension packager failed with exit code {process.ExitCode}.
+                Standard output:
+                {output}
+                Standard error:
+                {error}
+                """);
+        }
     }
 
     private static async Task CompileExtensionAsync(string extensionRoot)

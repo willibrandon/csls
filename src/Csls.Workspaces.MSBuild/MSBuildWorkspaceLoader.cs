@@ -13,6 +13,9 @@ namespace Csls.Workspaces;
 public sealed partial class MSBuildWorkspaceLoader : WorkspaceLoader
 {
     private readonly ILogger<MSBuildWorkspaceLoader> _logger;
+    private readonly Lock _solutionCacheGate = new();
+    private readonly Dictionary<string, MSBuildSolutionCacheEntry> _solutionCache = new(
+        PathComparer);
 
     /// <summary>
     /// Initializes desktop workspace loading with structured diagnostics.
@@ -38,7 +41,8 @@ public sealed partial class MSBuildWorkspaceLoader : WorkspaceLoader
         string[] entryPoints =
         [
             .. rootPaths
-                .SelectMany(root => DiscoverWorkspaceFilesWithLogging(root, cancellationToken))
+                .SelectMany(root => SelectEagerWorkspaceFiles(
+                    DiscoverWorkspaceFilesWithLogging(root, cancellationToken)))
                 .Distinct(PathComparer)
                 .Order(StringComparer.Ordinal)
         ];
@@ -68,7 +72,8 @@ public sealed partial class MSBuildWorkspaceLoader : WorkspaceLoader
             string rootPath = Path.GetFullPath(requestedRoot);
             loadPlans.Add((
                 rootPath,
-                DiscoverWorkspaceFilesWithLogging(rootPath, cancellationToken)));
+                SelectEagerWorkspaceFiles(
+                    DiscoverWorkspaceFilesWithLogging(rootPath, cancellationToken))));
         }
 
         RegisterMSBuild(loadPlans);
@@ -189,6 +194,21 @@ public sealed partial class MSBuildWorkspaceLoader : WorkspaceLoader
         return groups;
     }
 
+    private static IReadOnlyList<string> SelectEagerWorkspaceFiles(
+        IReadOnlyList<string> workspaceFiles)
+    {
+        bool containsSolution = workspaceFiles.Any(static workspaceFile =>
+            workspaceFile.EndsWith(".slnx", StringComparison.OrdinalIgnoreCase) ||
+            workspaceFile.EndsWith(".sln", StringComparison.OrdinalIgnoreCase));
+        return containsSolution
+            ?
+            [
+                .. workspaceFiles.Where(static workspaceFile =>
+                    !IsFileBasedApp(workspaceFile))
+            ]
+            : workspaceFiles;
+    }
+
     private static int CountExpectedProjects(
         IReadOnlyList<(string RootPath, IReadOnlyList<string> WorkspaceFiles)> loadPlans)
     {
@@ -222,6 +242,16 @@ public sealed partial class MSBuildWorkspaceLoader : WorkspaceLoader
         WorkspaceLoadProgressReporter? progressReporter,
         CancellationToken cancellationToken)
     {
+        if (workspaceFiles.Count == 1 && IsSolution(workspaceFiles[0]))
+        {
+            return await LoadSolutionConcurrentlyAsync(
+                workspaceFiles[0],
+                buildConfiguration,
+                loadIdentity,
+                progressReporter,
+                cancellationToken).ConfigureAwait(false);
+        }
+
         var globalProperties = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
         {
             ["Configuration"] = buildConfiguration,
@@ -315,6 +345,133 @@ public sealed partial class MSBuildWorkspaceLoader : WorkspaceLoader
         }
     }
 
+    private async Task<(Workspace Workspace, Solution Solution)> LoadSolutionConcurrentlyAsync(
+        string solutionPath,
+        string buildConfiguration,
+        string loadIdentity,
+        WorkspaceLoadProgressReporter? progressReporter,
+        CancellationToken cancellationToken)
+    {
+        long startedTimestamp = Stopwatch.GetTimestamp();
+        LogWorkspaceLoading(solutionPath);
+        IReadOnlyList<string> projectPaths = SolutionProjectCounter.ReadCSharpProjectPaths(
+            solutionPath);
+        string cacheKey = string.Concat(solutionPath, "\0", buildConfiguration);
+        MSBuildSolutionCacheEntry? cacheEntry;
+        lock (_solutionCacheGate)
+        {
+            _solutionCache.TryGetValue(cacheKey, out cacheEntry);
+        }
+
+        var snapshotsByPath = new Dictionary<string, IReadOnlyList<MSBuildProjectSnapshot>>(
+            PathComparer);
+        var projectPathsToBuild = new List<string>();
+        var loadedProjectPaths = new List<string>();
+        var knownProjectPaths = new HashSet<string>(PathComparer);
+        var projectPathsToInspect = new List<string>(projectPaths);
+        for (int index = 0; index < projectPathsToInspect.Count; index++)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            string projectPath = projectPathsToInspect[index];
+            if (!knownProjectPaths.Add(projectPath))
+            {
+                continue;
+            }
+
+            loadedProjectPaths.Add(projectPath);
+            if (cacheEntry is not null && cacheEntry.TryGetCurrentSnapshots(
+                projectPath,
+                out IReadOnlyList<MSBuildProjectSnapshot> cachedSnapshots))
+            {
+                snapshotsByPath.Add(projectPath, cachedSnapshots);
+                foreach (string referencePath in cachedSnapshots.SelectMany(
+                    static snapshot => snapshot.ProjectReferencePaths))
+                {
+                    projectPathsToInspect.Add(referencePath);
+                }
+            }
+            else
+            {
+                projectPathsToBuild.Add(projectPath);
+            }
+        }
+
+        int cachedProjectCount = snapshotsByPath.Count;
+        int builtProjectCount = 0;
+
+        var globalProperties = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["Configuration"] = buildConfiguration,
+            ["EnableWindowsTargeting"] = "true",
+            ["SolutionDir"] = Path.EndsInDirectorySeparator(
+                Path.GetDirectoryName(solutionPath)!)
+                ? Path.GetDirectoryName(solutionPath)!
+                : Path.GetDirectoryName(solutionPath)! + Path.DirectorySeparatorChar
+        };
+        LegacyFrameworkReferenceResolver.AddGlobalProperties(globalProperties);
+        if (projectPathsToBuild.Count > 0)
+        {
+            var buildManager = new MSBuildBuildHostClient(
+                globalProperties,
+                LogWorkspaceDiagnostic);
+            IReadOnlyList<MSBuildProjectSnapshot> builtSnapshots = await buildManager
+                .LoadAsync(projectPathsToBuild, cancellationToken)
+                .ConfigureAwait(false);
+            foreach (IGrouping<string, MSBuildProjectSnapshot> group in builtSnapshots.GroupBy(
+                static snapshot => snapshot.ProjectPath,
+                PathComparer))
+            {
+                snapshotsByPath[group.Key] = group.ToArray();
+                builtProjectCount++;
+                if (knownProjectPaths.Add(group.Key))
+                {
+                    loadedProjectPaths.Add(group.Key);
+                }
+            }
+        }
+
+        MSBuildProjectSnapshot[] projectSnapshots =
+        [
+            .. loadedProjectPaths.SelectMany(projectPath =>
+                snapshotsByPath.GetValueOrDefault(projectPath) ?? [])
+        ];
+        lock (_solutionCacheGate)
+        {
+            _solutionCache[cacheKey] = new MSBuildSolutionCacheEntry(projectSnapshots);
+        }
+
+        LogSolutionCacheStatus(
+            solutionPath,
+            cachedProjectCount,
+            builtProjectCount);
+        (Workspace workspace, Solution solution) = MSBuildProjectInfoFactory.Create(
+            solutionPath,
+            projectSnapshots,
+            LogWorkspaceDiagnostic);
+        workspace.RegisterWorkspaceFailedHandler(eventArgs =>
+            LogWorkspaceDiagnostic(eventArgs.Diagnostic.Kind, eventArgs.Diagnostic.Message));
+        foreach (Project project in solution.Projects)
+        {
+            progressReporter?.ObserveProject(
+                loadIdentity,
+                project.FilePath ?? solutionPath);
+        }
+
+        foreach (Project project in solution.Projects)
+        {
+            progressReporter?.ReportProject(
+                loadIdentity,
+                project.FilePath ?? solutionPath,
+                project.Name);
+        }
+
+        long elapsedMilliseconds =
+            (long)Stopwatch.GetElapsedTime(startedTimestamp).TotalMilliseconds;
+        LogWorkspaceLoaded(solutionPath, elapsedMilliseconds, solution.ProjectIds.Count);
+
+        return (workspace, solution);
+    }
+
     private async Task<Dictionary<string, (string EvaluatedProjectPath, string Content)>>
         PrepareFileBasedAppsAsync(
             IReadOnlyList<string> workspaceFiles,
@@ -324,24 +481,13 @@ public sealed partial class MSBuildWorkspaceLoader : WorkspaceLoader
         [
             .. workspaceFiles.Where(IsFileBasedApp)
         ];
-        var preparedProjects = new (string EvaluatedProjectPath, string Content)?[
-            entryPointPaths.Length];
-        await Parallel.ForAsync(
-            0,
-            entryPointPaths.Length,
-            new ParallelOptions
-            {
-                CancellationToken = cancellationToken,
-                MaxDegreeOfParallelism = Math.Clamp(Environment.ProcessorCount / 2, 1, 8)
-            },
-            async (index, parallelCancellationToken) =>
-            {
-                preparedProjects[index] = await FileBasedAppProjectLoader.PrepareProjectAsync(
-                    entryPointPaths[index],
+        (string EvaluatedProjectPath, string Content)[] preparedProjects = await Task.WhenAll(
+            entryPointPaths.Select(entryPointPath =>
+                FileBasedAppProjectLoader.PrepareProjectAsync(
+                    entryPointPath,
                     _logger,
                     LogWorkspaceDiagnostic,
-                    parallelCancellationToken).ConfigureAwait(false);
-            }).ConfigureAwait(false);
+                    cancellationToken))).ConfigureAwait(false);
 
         var result = new Dictionary<string, (string EvaluatedProjectPath, string Content)>(
             entryPointPaths.Length,
@@ -350,10 +496,7 @@ public sealed partial class MSBuildWorkspaceLoader : WorkspaceLoader
         {
             result.Add(
                 entryPointPaths[index],
-                preparedProjects[index]
-                    ?? throw new InvalidOperationException(
-                        $"File-based app preparation did not produce a result for " +
-                        $"{entryPointPaths[index]}."));
+                preparedProjects[index]);
         }
 
         return result;
@@ -386,6 +529,10 @@ public sealed partial class MSBuildWorkspaceLoader : WorkspaceLoader
 
     private static StringComparison PathComparison =>
         OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
+
+    private static bool IsSolution(string path) =>
+        path.EndsWith(".slnx", StringComparison.OrdinalIgnoreCase) ||
+        path.EndsWith(".sln", StringComparison.OrdinalIgnoreCase);
 
     [LoggerMessage(
         EventId = 1,
@@ -431,4 +578,13 @@ public sealed partial class MSBuildWorkspaceLoader : WorkspaceLoader
         Level = LogLevel.Information,
         Message = "Loading {WorkspaceFile}")]
     private partial void LogWorkspaceLoading(string workspaceFile);
+
+    [LoggerMessage(
+        EventId = 7,
+        Level = LogLevel.Information,
+        Message = "Loaded project state for {SolutionPath} from cache for {CachedProjectCount} projects and MSBuild for {BuiltProjectCount} projects")]
+    private partial void LogSolutionCacheStatus(
+        string solutionPath,
+        int cachedProjectCount,
+        int builtProjectCount);
 }

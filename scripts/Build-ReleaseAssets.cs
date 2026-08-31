@@ -102,40 +102,42 @@ try
             targetDotnetRoot).ConfigureAwait(false);
         CopyPackages(repositoryRoot, releaseOutput, version, runtimeIdentifier);
 
-        (string PackageId, string CommandName, string ProjectPath)[] products =
-        [
-            ("csls", "csls", "src/Csls.App/Csls.App.csproj"),
-            ("csls-mcp", "csls-mcp", "src/Csls.Mcp/Csls.Mcp.csproj")
-        ];
-        foreach ((string packageId, string commandName, string projectPath) in products)
-        {
-            string publishPath = Path.Join(workRoot, "publish", packageId);
-            await PublishAsync(
+        string cslsPublishPath = Path.Join(workRoot, "publish", "csls");
+        await PublishAsync(
+            repositoryRoot,
+            "src/Csls.App/Csls.App.csproj",
+            cslsPublishPath,
+            version,
+            runtimeIdentifier).ConfigureAwait(false);
+        Task editorAssets = string.Equals(
+            runtimeIdentifier,
+            "win-x86",
+            StringComparison.Ordinal)
+            ? Task.CompletedTask
+            : BuildVsCodeExtensionAsync(
                 repositoryRoot,
-                projectPath,
-                publishPath,
-                version,
-                runtimeIdentifier).ConfigureAwait(false);
-            if (string.Equals(packageId, "csls", StringComparison.Ordinal) &&
-                !string.Equals(runtimeIdentifier, "win-x86", StringComparison.Ordinal))
-            {
-                await BuildVsCodeExtensionAsync(
-                    repositoryRoot,
-                    publishPath,
-                    releaseOutput,
-                    version,
-                    runtimeIdentifier).ConfigureAwait(false);
-            }
-
-            await BuildProductArchivesAsync(
-                publishPath,
+                cslsPublishPath,
                 releaseOutput,
-                workRoot,
-                packageId,
-                commandName,
                 version,
-                runtimeIdentifier).ConfigureAwait(false);
-        }
+                runtimeIdentifier);
+        Task cslsArchives = BuildProductArchivesAsync(
+            cslsPublishPath,
+            releaseOutput,
+            workRoot,
+            "csls",
+            "csls",
+            version,
+            runtimeIdentifier);
+        Task mcpAssets = BuildProductAssetsAsync(
+            repositoryRoot,
+            releaseOutput,
+            workRoot,
+            "csls-mcp",
+            "csls-mcp",
+            "src/Csls.Mcp/Csls.Mcp.csproj",
+            version,
+            runtimeIdentifier);
+        await Task.WhenAll(editorAssets, cslsArchives, mcpAssets).ConfigureAwait(false);
     }
     finally
     {
@@ -221,6 +223,33 @@ static async Task BuildVsCodeExtensionAsync(
             ],
             repositoryRoot).ConfigureAwait(false);
     }
+}
+
+static async Task BuildProductAssetsAsync(
+    string repositoryRoot,
+    string releaseOutput,
+    string workRoot,
+    string packageId,
+    string commandName,
+    string projectPath,
+    string version,
+    string runtimeIdentifier)
+{
+    string publishPath = Path.Join(workRoot, "publish", packageId);
+    await PublishAsync(
+        repositoryRoot,
+        projectPath,
+        publishPath,
+        version,
+        runtimeIdentifier).ConfigureAwait(false);
+    await BuildProductArchivesAsync(
+        publishPath,
+        releaseOutput,
+        workRoot,
+        packageId,
+        commandName,
+        version,
+        runtimeIdentifier).ConfigureAwait(false);
 }
 
 static async Task<int> WriteUsageErrorAsync()
@@ -315,7 +344,8 @@ static async Task PublishAsync(
             publishPath,
             $"-p:Version={version}",
             $"-p:PackageVersion={version}",
-            "-p:DebugSymbols=true"
+            "-p:DebugSymbols=true",
+            "-p:IlcGenerateMstatFile=true"
         ],
         repositoryRoot).ConfigureAwait(false);
 }

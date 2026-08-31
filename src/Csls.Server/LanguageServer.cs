@@ -316,9 +316,10 @@ public sealed partial class LanguageServer : ILspRpcTarget, IAsyncDisposable
         cancellationToken.ThrowIfCancellationRequested();
         Transition(ServerLifecycleState.InitializeResponded, ServerLifecycleState.Running);
         long workspaceStartedTimestamp = Stopwatch.GetTimestamp();
+        bool workspaceLoaded;
         try
         {
-            await _scheduler.ScheduleAsync(
+            workspaceLoaded = await _scheduler.ScheduleAsync(
                 "initialized",
                 RequestMode.ReadWrite,
                 () => _workspaceManager.Generation,
@@ -347,18 +348,6 @@ public sealed partial class LanguageServer : ILspRpcTarget, IAsyncDisposable
 
                     await LoadWorkspaceWithProgressAsync(context.CancellationToken)
                         .ConfigureAwait(false);
-                    if (Interlocked.CompareExchange(
-                            ref _workspacePhase,
-                            (int)ServerWorkspacePhase.Ready,
-                            (int)ServerWorkspacePhase.Loading) ==
-                        (int)ServerWorkspacePhase.Loading)
-                    {
-                        long elapsedMilliseconds = (long)Stopwatch
-                            .GetElapsedTime(workspaceStartedTimestamp)
-                            .TotalMilliseconds;
-                        LanguageServerLogger.LogWorkspaceReady(_logger, elapsedMilliseconds);
-                    }
-
                     return true;
                 },
                 cancellationToken).ConfigureAwait(false);
@@ -374,6 +363,19 @@ public sealed partial class LanguageServer : ILspRpcTarget, IAsyncDisposable
                 (int)ServerWorkspacePhase.Uninitialized,
                 (int)ServerWorkspacePhase.Configured);
             throw;
+        }
+
+        if (workspaceLoaded &&
+            Interlocked.CompareExchange(
+                ref _workspacePhase,
+                (int)ServerWorkspacePhase.Ready,
+                (int)ServerWorkspacePhase.Loading) ==
+            (int)ServerWorkspacePhase.Loading)
+        {
+            long elapsedMilliseconds = (long)Stopwatch
+                .GetElapsedTime(workspaceStartedTimestamp)
+                .TotalMilliseconds;
+            LanguageServerLogger.LogWorkspaceReady(_logger, elapsedMilliseconds);
         }
 
         if (_supportsPullDiagnostics &&
@@ -425,6 +427,7 @@ public sealed partial class LanguageServer : ILspRpcTarget, IAsyncDisposable
         Volatile.Write(ref _workspacePhase, (int)ServerWorkspacePhase.ShuttingDown);
         _exitRequested.TrySetResult();
         await _exitSource.CancelAsync().ConfigureAwait(false);
+        await _scheduler.DisposeAsync().ConfigureAwait(false);
     }
 
     /// <inheritdoc />
@@ -664,6 +667,11 @@ public sealed partial class LanguageServer : ILspRpcTarget, IAsyncDisposable
         }
 
         if (_supportsDiagnosticRefresh && DeferPullDiagnosticsWhileLoading())
+        {
+            return Task.FromResult(new WorkspaceDiagnosticReport());
+        }
+
+        if (!_configuration.EnableWorkspaceDiagnostics)
         {
             return Task.FromResult(new WorkspaceDiagnosticReport());
         }

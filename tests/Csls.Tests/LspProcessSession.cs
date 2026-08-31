@@ -17,7 +17,6 @@ internal sealed class LspProcessSession : IAsyncDisposable
     private readonly SystemTextJsonFormatter _formatter;
     private readonly HeaderDelimitedMessageHandler _messageHandler;
     private readonly JsonRpc _rpc;
-    private readonly ExternalWorkloadLease _workloadLease;
     private int _initializationCompleted;
 
     private LspProcessSession(
@@ -25,15 +24,13 @@ internal sealed class LspProcessSession : IAsyncDisposable
         Task<string> standardErrorTask,
         SystemTextJsonFormatter formatter,
         HeaderDelimitedMessageHandler messageHandler,
-        JsonRpc rpc,
-        ExternalWorkloadLease workloadLease)
+        JsonRpc rpc)
     {
         _process = process;
         _standardErrorTask = standardErrorTask;
         _formatter = formatter;
         _messageHandler = messageHandler;
         _rpc = rpc;
-        _workloadLease = workloadLease;
     }
 
     /// <summary>
@@ -51,13 +48,30 @@ internal sealed class LspProcessSession : IAsyncDisposable
     /// <param name="client">The optional bidirectional LSP client target.</param>
     /// <param name="environmentVariables">The optional child-process environment overrides.</param>
     /// <returns>A connected process session.</returns>
-    internal static LspProcessSession Start(
+    internal static Task<LspProcessSession> StartAsync(
         string displayName,
         string fileName,
         IReadOnlyList<string> arguments,
         string workingDirectory,
         LspTestClient? client = null,
         IReadOnlyDictionary<string, string>? environmentVariables = null)
+    {
+        return StartCoreAsync(
+            displayName,
+            fileName,
+            arguments,
+            workingDirectory,
+            client,
+            environmentVariables);
+    }
+
+    private static async Task<LspProcessSession> StartCoreAsync(
+        string displayName,
+        string fileName,
+        IReadOnlyList<string> arguments,
+        string workingDirectory,
+        LspTestClient? client,
+        IReadOnlyDictionary<string, string>? environmentVariables)
     {
         var startInfo = new ProcessStartInfo
         {
@@ -81,18 +95,8 @@ internal sealed class LspProcessSession : IAsyncDisposable
             }
         }
 
-        var workloadLease = ExternalWorkloadLease.Acquire();
-        Process process;
-        try
-        {
-            process = Process.Start(startInfo)
-                ?? throw new InvalidOperationException($"The {displayName} process did not start.");
-        }
-        catch
-        {
-            workloadLease.Release();
-            throw;
-        }
+        Process process = Process.Start(startInfo)
+            ?? throw new InvalidOperationException($"The {displayName} process did not start.");
 
         try
         {
@@ -195,12 +199,11 @@ internal sealed class LspProcessSession : IAsyncDisposable
                 standardErrorTask,
                 formatter,
                 messageHandler,
-                rpc,
-                workloadLease);
+                rpc);
         }
         catch
         {
-            DisposeFailedStart(process, workloadLease);
+            DisposeFailedStart(process);
 
             throw;
         }
@@ -1610,42 +1613,26 @@ internal sealed class LspProcessSession : IAsyncDisposable
     /// <returns>A task that completes after process cleanup.</returns>
     public async ValueTask DisposeAsync()
     {
-        try
+        _rpc.Dispose();
+        await _messageHandler.DisposeAsync().ConfigureAwait(false);
+        _formatter.Dispose();
+        if (!_process.HasExited)
         {
-            _rpc.Dispose();
-            await _messageHandler.DisposeAsync().ConfigureAwait(false);
-            _formatter.Dispose();
-            if (!_process.HasExited)
-            {
-                _process.Kill(entireProcessTree: true);
-                await _process.WaitForExitAsync().ConfigureAwait(false);
-            }
+            _process.Kill(entireProcessTree: true);
+            await _process.WaitForExitAsync().ConfigureAwait(false);
+        }
 
-            _process.Dispose();
-        }
-        finally
-        {
-            _workloadLease.Release();
-        }
+        _process.Dispose();
     }
 
-    private static void DisposeFailedStart(
-        Process process,
-        ExternalWorkloadLease workloadLease)
+    private static void DisposeFailedStart(Process process)
     {
-        try
+        using (process)
         {
-            using (process)
+            if (!process.HasExited)
             {
-                if (!process.HasExited)
-                {
-                    process.Kill(entireProcessTree: true);
-                }
+                process.Kill(entireProcessTree: true);
             }
-        }
-        finally
-        {
-            workloadLease.Release();
         }
     }
 }

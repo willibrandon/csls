@@ -1,4 +1,4 @@
-FROM mcr.microsoft.com/dotnet/sdk:10.0.400-noble AS csls
+FROM mcr.microsoft.com/dotnet/sdk:10.0-noble AS csls
 ARG TARGETARCH
 ARG VERSION
 ARG REVISION
@@ -12,7 +12,7 @@ WORKDIR /workspace
 USER app
 ENTRYPOINT ["/opt/csls/csls"]
 
-FROM mcr.microsoft.com/dotnet/sdk:10.0.400-noble AS csls-mcp
+FROM mcr.microsoft.com/dotnet/sdk:10.0-noble AS csls-mcp
 ARG TARGETARCH
 ARG VERSION
 ARG REVISION

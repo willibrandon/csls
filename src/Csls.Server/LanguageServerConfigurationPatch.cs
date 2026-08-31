@@ -33,6 +33,11 @@ internal sealed record LanguageServerConfigurationPatch
     public bool? ReportInformationAsHint { get; init; }
 
     /// <summary>
+    /// Gets the optional closed-file workspace diagnostic setting.
+    /// </summary>
+    public bool? EnableWorkspaceDiagnostics { get; init; }
+
+    /// <summary>
     /// Gets the optional MSBuild configuration.
     /// </summary>
     public string? BuildConfiguration { get; init; }

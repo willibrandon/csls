@@ -8,11 +8,6 @@
 
 using System.Runtime.InteropServices;
 
-const string Version = "1.135.0";
-const string Commit = "08d4889f9ec4a1685d257b9b95de036c8e1ce1e5";
-const string LinuxX64Sha256 =
-    "1aaa94a24066c8c8458b0c043fe210ab1aebfb07e3817b532c8b9db1058e2187";
-
 if (args.Length == 1 && args[0] is "--help" or "-h" or "-?")
 {
     await Console.Out.WriteLineAsync(
@@ -46,21 +41,25 @@ try
     string toolsRoot = ScriptSupport.ResolveToolsRoot(
         repositoryRoot,
         args.Length == 2 ? args[1] : null);
-    string assetName = $"vscode-server-linux-x64-{Version}.tar.gz";
+    const string channel = "stable";
+    (string revision, string productVersion, Uri source, string sha256) =
+        await ScriptSupport.ResolveLatestVsCodeReleaseAsync(
+            "server-linux-x64",
+            channel,
+            CancellationToken.None).ConfigureAwait(false);
+    string assetName = $"vscode-server-linux-x64-{productVersion}.tar.gz";
     string serverExecutablePath = await ScriptSupport.ProvisionArchiveToolAsync(
         toolsRoot,
         "vscode-server",
-        Version,
+        revision,
         "linux-x64",
-        new Uri(
-            $"https://update.code.visualstudio.com/commit:{Commit}/" +
-            "server-linux-x64/stable"),
+        source,
         assetName,
-        LinuxX64Sha256,
+        sha256,
         "code-server",
         installationRootLevels: 1,
         versionArguments: ["--version"],
-        expectedVersionText: Version,
+        expectedVersionText: revision,
         CancellationToken.None).ConfigureAwait(false);
     string serverRoot = Path.GetDirectoryName(
         Path.GetDirectoryName(serverExecutablePath))

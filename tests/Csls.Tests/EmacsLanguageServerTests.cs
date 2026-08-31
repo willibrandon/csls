@@ -1,3 +1,4 @@
+using Csls.Control;
 using Hex1b;
 using Hex1b.Automation;
 using Hex1b.Input;
@@ -36,6 +37,8 @@ public sealed class EmacsLanguageServerTests
         string fixturePath = Path.Join(
             Path.GetTempPath(),
             $"csls-emacs-{Guid.NewGuid():N}");
+        string socketDirectory = EditorToolResolver.ResolveIsolatedControlSocketDirectory(
+            repositoryRoot);
         Directory.CreateDirectory(fixturePath);
         try
         {
@@ -89,6 +92,9 @@ public sealed class EmacsLanguageServerTests
                 "--environment",
                 "CSLS_WORKER_PATH",
                 workerPath,
+                "--environment",
+                ControlEndpoint.SocketDirectoryEnvironmentVariable,
+                socketDirectory,
                 "--",
                 emacsPath,
                 "-nw",
@@ -110,7 +116,7 @@ public sealed class EmacsLanguageServerTests
                 .WithHeadless()
                 .WithDimensions(120, 40)
                 .Build();
-            int? serverProcessId = null;
+            ProcessExitObservation? serverExit = null;
             try
             {
                 string screenText = string.Empty;
@@ -131,10 +137,6 @@ public sealed class EmacsLanguageServerTests
                                 "ready",
                                 TimeSpan.FromSeconds(60),
                                 TestContext.CancellationToken).ConfigureAwait(false);
-                            serverProcessId = (await ControlSessionWaiter.WaitForRunningAsync(
-                                fixturePath,
-                                TimeSpan.FromSeconds(60),
-                                TestContext.CancellationToken).ConfigureAwait(false)).ProcessId;
                         }
                         catch (TaskCanceledException exception)
                             when (!TestContext.CancellationToken.IsCancellationRequested)
@@ -169,6 +171,26 @@ public sealed class EmacsLanguageServerTests
                                 navigationSnapshot.GetScreenText(),
                                 exception);
                         }
+
+                        try
+                        {
+                            int serverProcessId = (await ControlSessionWaiter.WaitForRunningAsync(
+                                fixturePath,
+                                TimeSpan.FromSeconds(60),
+                                TestContext.CancellationToken,
+                                socketDirectory: socketDirectory).ConfigureAwait(false)).ProcessId;
+                            serverExit = ProcessExitWaiter.Observe(serverProcessId);
+                        }
+                        catch (TimeoutException exception)
+                        {
+                            using Hex1bTerminalSnapshot connectionSnapshot =
+                                automator.CreateSnapshot();
+                            throw new InvalidOperationException(
+                                $"Eglot navigated, but its csls control session was unavailable." +
+                                $"{Environment.NewLine}{connectionSnapshot.GetScreenText()}",
+                                exception);
+                        }
+
                         await automator.WaitUntilTextAsync("Eglot reached the second solution")
                             .ConfigureAwait(false);
                         using Hex1bTerminalSnapshot snapshot = automator.CreateSnapshot();
@@ -192,10 +214,10 @@ public sealed class EmacsLanguageServerTests
             {
                 await terminal.DisposeAsync().ConfigureAwait(false);
                 await workload.DisposeAsync().ConfigureAwait(false);
-                if (serverProcessId is int processId)
+                if (serverExit is ProcessExitObservation observation)
                 {
                     await ProcessExitWaiter.WaitAsync(
-                        processId,
+                        observation,
                         TimeSpan.FromSeconds(10),
                         TestContext.CancellationToken).ConfigureAwait(false);
                 }
@@ -203,9 +225,10 @@ public sealed class EmacsLanguageServerTests
         }
         finally
         {
-            await DirectoryReleaseWaiter.DeleteAsync(
-                fixturePath,
-                TimeSpan.FromSeconds(10)).ConfigureAwait(false);
+            await Task.WhenAll(
+                DirectoryReleaseWaiter.DeleteAsync(fixturePath, TimeSpan.FromSeconds(10)),
+                DirectoryReleaseWaiter.DeleteAsync(socketDirectory, TimeSpan.FromSeconds(10)))
+                .ConfigureAwait(false);
         }
     }
 

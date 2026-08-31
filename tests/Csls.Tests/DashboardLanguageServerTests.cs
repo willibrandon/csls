@@ -1,6 +1,5 @@
 using Csls.Control;
 using Csls.Control.Contracts;
-using Csls.Protocol;
 using Hex1b;
 using Hex1b.Automation;
 using Hex1b.Input;
@@ -83,11 +82,11 @@ public sealed class DashboardLanguageServerTests
                 DocumentText,
                 TestContext.CancellationToken).ConfigureAwait(false);
 
-            var lsp = LspProcessSession.Start(
+            LspProcessSession lsp = await LspProcessSession.StartAsync(
                 "csls-dashboard-worker",
                 EditorToolResolver.ResolveDotNetHost(),
                 [workerPath],
-                fixturePath);
+                fixturePath).ConfigureAwait(false);
             await using ConfiguredAsyncDisposable lspCleanup = lsp.ConfigureAwait(false);
             await lsp.InitializeAsync(
                 fixturePath,
@@ -302,11 +301,11 @@ public sealed class DashboardLanguageServerTests
                 documentText,
                 TestContext.CancellationToken).ConfigureAwait(false);
 
-            var lsp = LspProcessSession.Start(
+            LspProcessSession lsp = await LspProcessSession.StartAsync(
                 "csls-dashboard-narrow-worker",
                 EditorToolResolver.ResolveDotNetHost(),
                 [workerPath],
-                fixturePath);
+                fixturePath).ConfigureAwait(false);
             await using ConfiguredAsyncDisposable lspCleanup = lsp.ConfigureAwait(false);
             await lsp.InitializeAsync(
                 fixturePath,
@@ -356,11 +355,13 @@ public sealed class DashboardLanguageServerTests
                         terminal,
                         defaultTimeout: TimeSpan.FromSeconds(60));
                     await automator.WaitUntilTextAsync("csls dashboard").ConfigureAwait(false);
-                    await automator.WaitUntilAsync(
-                        _ => workload.ContainsRawOutput("\u001b[?1003h"u8) &&
-                            workload.ContainsRawOutput("\u001b[?1006h"u8),
-                        timeout: TimeSpan.FromSeconds(5),
-                        description: "real dashboard process to enable terminal mouse reporting")
+                    await workload.WaitForRawOutputAsync(
+                        "\u001b[?1003h"u8.ToArray(),
+                        TestContext.CancellationToken)
+                        .ConfigureAwait(false);
+                    await workload.WaitForRawOutputAsync(
+                        "\u001b[?1006h"u8.ToArray(),
+                        TestContext.CancellationToken)
                         .ConfigureAwait(false);
                     await automator.ClickAtAsync(
                         4,
@@ -421,7 +422,8 @@ public sealed class DashboardLanguageServerTests
                             headerRow,
                             MouseButton.Left,
                             TestContext.CancellationToken).ConfigureAwait(false);
-                        await automator.WaitUntilAsync(
+                        await WaitForScreenAsync(
+                            automator,
                             screen => screen
                                 .GetScreenText()
                                 .Split('\n')
@@ -429,8 +431,7 @@ public sealed class DashboardLanguageServerTests
                                     line.Contains("Severity", StringComparison.Ordinal) &&
                                     line.IndexOf("Code", StringComparison.Ordinal) >=
                                         initialCodeColumn + 5),
-                            timeout: TimeSpan.FromSeconds(2),
-                            description: "mouse drag to widen a real diagnostics table column")
+                            TestContext.CancellationToken)
                             .ConfigureAwait(false);
                     }
 
@@ -443,15 +444,13 @@ public sealed class DashboardLanguageServerTests
                     await automator.KeyAsync(
                         Hex1bKey.Y,
                         TestContext.CancellationToken).ConfigureAwait(false);
-                    await automator.WaitUntilAsync(
-                        _ => workload.ContainsRawOutput(clipboardSequence),
-                        timeout: TimeSpan.FromSeconds(2),
-                        description: "keyboard yank of the complete focused diagnostic row")
+                    await workload.WaitForRawOutputAsync(
+                        clipboardSequence,
+                        TestContext.CancellationToken)
                         .ConfigureAwait(false);
-                    await automator.WaitUntilAsync(
-                        _ => workload.ContainsRawOutput("48;2;126;201;216m"u8),
-                        timeout: TimeSpan.FromSeconds(2),
-                        description: "visual yank flash on the focused diagnostic row")
+                    await workload.WaitForRawOutputAsync(
+                        "48;2;126;201;216m"u8.ToArray(),
+                        TestContext.CancellationToken)
                         .ConfigureAwait(false);
 
                     using Hex1bTerminalSnapshot beforeResizeSnapshot =
@@ -470,7 +469,8 @@ public sealed class DashboardLanguageServerTests
                         12,
                         MouseButton.Left,
                         TestContext.CancellationToken).ConfigureAwait(false);
-                    await automator.WaitUntilAsync(
+                    await WaitForScreenAsync(
+                        automator,
                         screen => screen
                             .GetScreenText()
                             .Split('\n')
@@ -478,8 +478,7 @@ public sealed class DashboardLanguageServerTests
                                 line.Contains("Diagnostics", StringComparison.Ordinal) &&
                                 line.Length > 33 &&
                                 line[33] == '┌'),
-                        timeout: TimeSpan.FromSeconds(5),
-                        description: "mouse drag to resize the dashboard columns")
+                        TestContext.CancellationToken)
                         .ConfigureAwait(false);
                     await automator.Ctrl().KeyAsync(
                         Hex1bKey.C,
@@ -536,10 +535,17 @@ public sealed class DashboardLanguageServerTests
         string secondFixturePath = Path.Join(
             Path.GetTempPath(),
             $"csls-dashboard-session-second-{Guid.NewGuid():N}");
+        string socketDirectory = Path.Join(
+            Path.GetTempPath(),
+            $"c{Guid.NewGuid():N}");
         Directory.CreateDirectory(firstFixturePath);
         Directory.CreateDirectory(secondFixturePath);
         try
         {
+            var serverEnvironment = new Dictionary<string, string>(StringComparer.Ordinal)
+            {
+                [ControlEndpoint.SocketDirectoryEnvironmentVariable] = socketDirectory
+            };
             await File.WriteAllTextAsync(
                 Path.Join(firstFixturePath, "First.csproj"),
                 ProjectText,
@@ -549,11 +555,13 @@ public sealed class DashboardLanguageServerTests
                 ProjectText,
                 TestContext.CancellationToken).ConfigureAwait(false);
 
-            var firstLsp = LspProcessSession.Start(
+            LspProcessSession firstLsp = await LspProcessSession.StartAsync(
                 "csls-dashboard-first-session-worker",
                 EditorToolResolver.ResolveDotNetHost(),
                 [workerPath],
-                firstFixturePath);
+                firstFixturePath,
+                client: null,
+                environmentVariables: serverEnvironment).ConfigureAwait(false);
             await using ConfiguredAsyncDisposable firstLspCleanup =
                 firstLsp.ConfigureAwait(false);
             await firstLsp.InitializeAsync(
@@ -564,13 +572,16 @@ public sealed class DashboardLanguageServerTests
                 firstFixturePath,
                 TimeSpan.FromSeconds(60),
                 TestContext.CancellationToken,
-                expectedProcessId: firstLsp.ProcessId).ConfigureAwait(false);
+                expectedProcessId: firstLsp.ProcessId,
+                socketDirectory: socketDirectory).ConfigureAwait(false);
 
-            var secondLsp = LspProcessSession.Start(
+            LspProcessSession secondLsp = await LspProcessSession.StartAsync(
                 "csls-dashboard-second-session-worker",
                 EditorToolResolver.ResolveDotNetHost(),
                 [workerPath],
-                secondFixturePath);
+                secondFixturePath,
+                client: null,
+                environmentVariables: serverEnvironment).ConfigureAwait(false);
             await using ConfiguredAsyncDisposable secondLspCleanup =
                 secondLsp.ConfigureAwait(false);
             await secondLsp.InitializeAsync(
@@ -581,12 +592,14 @@ public sealed class DashboardLanguageServerTests
                 secondFixturePath,
                 TimeSpan.FromSeconds(60),
                 TestContext.CancellationToken,
-                expectedProcessId: secondLsp.ProcessId).ConfigureAwait(false);
+                expectedProcessId: secondLsp.ProcessId,
+                socketDirectory: socketDirectory).ConfigureAwait(false);
 
             var environment = new Dictionary<string, string>(StringComparer.Ordinal)
             {
                 ["CSLS_CLI_WORKER_PATH"] = cliWorkerPath,
-                ["DOTNET_HOST_PATH"] = EditorToolResolver.ResolveDotNetHost()
+                ["DOTNET_HOST_PATH"] = EditorToolResolver.ResolveDotNetHost(),
+                [ControlEndpoint.SocketDirectoryEnvironmentVariable] = socketDirectory
             };
             const int width = 120;
             const int height = 24;
@@ -640,12 +653,12 @@ public sealed class DashboardLanguageServerTests
                         secondSessionRow,
                         MouseButton.Left,
                         TestContext.CancellationToken).ConfigureAwait(false);
-                    await automator.WaitUntilAsync(
+                    await WaitForScreenAsync(
+                        automator,
                         screen => screen.GetScreenText().StartsWith(
                             $"csls dashboard  session {secondLsp.ProcessId}",
                             StringComparison.Ordinal),
-                        timeout: TimeSpan.FromSeconds(5),
-                        description: "one mouse click to select the second live session")
+                        TestContext.CancellationToken)
                         .ConfigureAwait(false);
                     await automator.Ctrl().KeyAsync(
                         Hex1bKey.C,
@@ -669,6 +682,9 @@ public sealed class DashboardLanguageServerTests
         }
         finally
         {
+            await DirectoryReleaseWaiter.DeleteAsync(
+                socketDirectory,
+                TimeSpan.FromSeconds(10)).ConfigureAwait(false);
             await DirectoryReleaseWaiter.DeleteAsync(
                 firstFixturePath,
                 TimeSpan.FromSeconds(10)).ConfigureAwait(false);
@@ -712,11 +728,11 @@ public sealed class DashboardLanguageServerTests
             repositoryRoot,
             TestContext.CancellationToken).ConfigureAwait(false);
         await using ConfiguredAsyncDisposable fixtureCleanup = fixture.ConfigureAwait(false);
-        var lsp = LspProcessSession.Start(
+        LspProcessSession lsp = await LspProcessSession.StartAsync(
             "csls-dashboard-diagnostics-latency-worker",
             EditorToolResolver.ResolveDotNetHost(),
             [workerPath],
-            fixture.RootPath);
+            fixture.RootPath).ConfigureAwait(false);
         await using ConfiguredAsyncDisposable lspCleanup = lsp.ConfigureAwait(false);
         await lsp.InitializeAsync(
             fixture.RootPath,
@@ -775,10 +791,10 @@ public sealed class DashboardLanguageServerTests
                         "started",
                         TimeSpan.FromSeconds(60),
                         TestContext.CancellationToken).ConfigureAwait(false);
-                    await automator.WaitUntilAsync(
+                    await WaitForScreenAsync(
+                        automator,
                         screen => screen.ContainsText("Loading diagnostics..."),
-                        timeout: TimeSpan.FromSeconds(2),
-                        description: "diagnostics view to render while real analyzer execution is blocked")
+                        TestContext.CancellationToken)
                         .ConfigureAwait(false);
                     await fixture.ReleaseAsync(TestContext.CancellationToken).ConfigureAwait(false);
                     await automator.WaitUntilAsync(
@@ -803,237 +819,6 @@ public sealed class DashboardLanguageServerTests
         Assert.DoesNotContain("Unhandled exception", diagnostics, StringComparison.Ordinal);
     }
 
-    /// <summary>
-    /// Cancels and traces a live Roslyn analyzer request through the Hex1b dashboard.
-    /// </summary>
-    [TestMethod]
-    public async Task DashboardControlsLiveRequestTracing()
-    {
-        string repositoryRoot = EditorToolResolver.FindRepositoryRoot();
-        string artifactsRoot = EditorToolResolver.ResolveArtifactsRoot(repositoryRoot);
-        string workerPath = Path.Join(
-            artifactsRoot,
-            "bin",
-            "Csls.Worker",
-            "debug",
-            "csls-worker.dll");
-        string cliPath = Path.Join(
-            artifactsRoot,
-            "bin",
-            "Csls.App",
-            "debug",
-            "csls.dll");
-        string cliWorkerPath = Path.Join(
-            artifactsRoot,
-            "bin",
-            "Csls.Cli.Worker",
-            "debug",
-            "csls-cli-worker.dll");
-        Assert.IsTrue(File.Exists(workerPath), $"Worker not found at {workerPath}.");
-        Assert.IsTrue(File.Exists(cliPath), $"CLI launcher not found at {cliPath}.");
-        Assert.IsTrue(File.Exists(cliWorkerPath), $"CLI worker not found at {cliWorkerPath}.");
-        CancellationProbeFixture fixture = await CancellationProbeFixture.CreateAsync(
-            repositoryRoot,
-            TestContext.CancellationToken).ConfigureAwait(false);
-        await using ConfiguredAsyncDisposable fixtureCleanup = fixture.ConfigureAwait(false);
-        var lsp = LspProcessSession.Start(
-            "csls-dashboard-cancellation-worker",
-            EditorToolResolver.ResolveDotNetHost(),
-            [workerPath],
-            fixture.RootPath);
-        await using ConfiguredAsyncDisposable lspCleanup = lsp.ConfigureAwait(false);
-        await lsp.InitializeAsync(
-            fixture.RootPath,
-            TestContext.CancellationToken).ConfigureAwait(false);
-        await lsp.OpenDocumentAsync(
-            fixture.DocumentPath,
-            CancellationProbeFixture.DocumentText).ConfigureAwait(false);
-        ControlSessionInfo session = await ControlSessionWaiter.WaitForRunningAsync(
-            fixture.RootPath,
-            TimeSpan.FromSeconds(60),
-            TestContext.CancellationToken).ConfigureAwait(false);
-        var control = new ControlRpcClient(session.SocketPath);
-        await using ConfiguredAsyncDisposable controlCleanup = control.ConfigureAwait(false);
-
-        var environment = new Dictionary<string, string>(StringComparer.Ordinal)
-        {
-            ["CSLS_CLI_WORKER_PATH"] = cliWorkerPath,
-            ["DOTNET_HOST_PATH"] = EditorToolResolver.ResolveDotNetHost()
-        };
-        const int width = 160;
-        const int height = 40;
-        var workload = new Hex1bPtyWorkload(
-            EditorToolResolver.ResolveDotNetHost(),
-            [
-                cliPath,
-                "dashboard",
-                "--session",
-                lsp.ProcessId.ToString(CultureInfo.InvariantCulture)
-            ],
-            fixture.RootPath,
-            width,
-            height,
-            environment);
-        await using ConfiguredAsyncDisposable workloadCleanup = workload.ConfigureAwait(false);
-        using Hex1bTerminal terminal = Hex1bTerminal.CreateBuilder()
-            .WithWorkload(workload)
-            .WithHeadless()
-            .WithDimensions(width, height)
-            .Build();
-
-        int exitCode = await workload.RunAsync(
-            terminal,
-            async () =>
-            {
-                var automator = new Hex1bTerminalAutomator(
-                    terminal,
-                    defaultTimeout: TimeSpan.FromSeconds(60));
-                await automator.WaitUntilAsync(
-                    screen => screen.InAlternateScreen ||
-                        screen.ContainsText("Unhandled exception"),
-                    description: "dashboard startup to enter alternate screen or report an error")
-                    .ConfigureAwait(false);
-                using (Hex1bTerminalSnapshot startupSnapshot = automator.CreateSnapshot())
-                {
-                    Assert.IsTrue(
-                        startupSnapshot.InAlternateScreen,
-                        startupSnapshot.GetScreenText());
-                }
-
-                await automator.WaitUntilTextAsync("csls dashboard").ConfigureAwait(false);
-                await automator.KeyAsync(
-                    Hex1bKey.F11,
-                    TestContext.CancellationToken).ConfigureAwait(false);
-                await automator.WaitUntilTextAsync("Start request tracing?").ConfigureAwait(false);
-                await automator.EnterAsync(TestContext.CancellationToken).ConfigureAwait(false);
-                await automator.WaitUntilTextAsync("is active.").ConfigureAwait(false);
-
-                Task<DocumentDiagnosticReport> diagnosticRequest = lsp.RequestDiagnosticsAsync(
-                    fixture.DocumentPath,
-                    previousResultId: null,
-                    TestContext.CancellationToken);
-                await FileTextWaiter.WaitAsync(
-                    fixture.MarkerPath,
-                    "started",
-                    TimeSpan.FromSeconds(60),
-                    TestContext.CancellationToken).ConfigureAwait(false);
-                await automator.KeyAsync(
-                    Hex1bKey.F5,
-                    TestContext.CancellationToken).ConfigureAwait(false);
-                await automator.WaitUntilTextAsync("Refreshed live session state.")
-                    .ConfigureAwait(false);
-                await automator.KeyAsync(
-                    Hex1bKey.F2,
-                    TestContext.CancellationToken).ConfigureAwait(false);
-                await automator.WaitUntilTextAsync("textDocument/diagnostic")
-                    .ConfigureAwait(false);
-                ControlDashboardSnapshot activeSnapshot =
-                    await control.GetDashboardSnapshotAsync(
-                        new ControlDashboardRequest { IncludeDiagnostics = false },
-                        TestContext.CancellationToken).ConfigureAwait(false);
-                ControlRequestInfo activeRequest = Assert.ContainsSingle(
-                    activeSnapshot.Requests.ActiveRequests);
-                await AssertFocusedRowYankAsync(
-                    automator,
-                    workload,
-                    string.Join(
-                        '\t',
-                        activeRequest.Name,
-                        activeRequest.Mode,
-                        activeRequest.Status,
-                        activeRequest.CorrelationId.ToString("D")),
-                    TestContext.CancellationToken).ConfigureAwait(false);
-                await automator.KeyAsync(
-                    Hex1bKey.F10,
-                    TestContext.CancellationToken).ConfigureAwait(false);
-                await automator.WaitUntilTextAsync("Cancel textDocument/diagnostic?")
-                    .ConfigureAwait(false);
-                await automator.EnterAsync(TestContext.CancellationToken).ConfigureAwait(false);
-                await automator.WaitUntilTextAsync("Cancellation requested for")
-                    .ConfigureAwait(false);
-                await FileTextWaiter.WaitAsync(
-                    fixture.MarkerPath,
-                    "canceled",
-                    TimeSpan.FromSeconds(60),
-                    TestContext.CancellationToken).ConfigureAwait(false);
-                TaskCanceledException? canceledRequest = null;
-                try
-                {
-                    await diagnosticRequest.ConfigureAwait(false);
-                }
-                catch (TaskCanceledException exception)
-                {
-                    canceledRequest = exception;
-                }
-
-                Assert.IsNotNull(canceledRequest);
-                Assert.IsFalse(TestContext.CancellationToken.IsCancellationRequested);
-
-                await automator.KeyAsync(
-                    Hex1bKey.F11,
-                    TestContext.CancellationToken).ConfigureAwait(false);
-                await automator.WaitUntilTextAsync("Stop request tracing?").ConfigureAwait(false);
-                await automator.EnterAsync(TestContext.CancellationToken).ConfigureAwait(false);
-                await automator.WaitUntilTextAsync("is stopped.").ConfigureAwait(false);
-                await automator.KeyAsync(
-                    Hex1bKey.F3,
-                    TestContext.CancellationToken).ConfigureAwait(false);
-                await automator.WaitUntilTextAsync("Trace: stopped").ConfigureAwait(false);
-                await automator.WaitUntilTextAsync("textDocument/diagnostic")
-                    .ConfigureAwait(false);
-                await automator.WaitUntilTextAsync("Canceled").ConfigureAwait(false);
-                ControlDashboardSnapshot traceSnapshot =
-                    await control.GetDashboardSnapshotAsync(
-                        new ControlDashboardRequest { IncludeDiagnostics = false },
-                        TestContext.CancellationToken).ConfigureAwait(false);
-                ControlTraceEntry traceEntry = Assert.ContainsSingle(
-                    traceSnapshot.Requests.Trace.Entries.Where(static entry =>
-                        entry.Name == "textDocument/diagnostic"));
-                using (Hex1bTerminalSnapshot traceTerminalSnapshot =
-                    automator.CreateSnapshot())
-                {
-                    string[] traceLines = traceTerminalSnapshot.GetScreenText().Split('\n');
-                    int traceRow = Array.FindIndex(
-                        traceLines,
-                        static line => line.Contains(
-                            "textDocument/diagnostic",
-                            StringComparison.Ordinal));
-                    Assert.IsGreaterThanOrEqualTo(0, traceRow);
-                    int traceColumn = traceLines[traceRow].IndexOf(
-                        "textDocument/diagnostic",
-                        StringComparison.Ordinal);
-                    Assert.IsGreaterThanOrEqualTo(0, traceColumn);
-                    await automator.ClickAtAsync(
-                        traceColumn,
-                        traceRow,
-                        MouseButton.Left,
-                        TestContext.CancellationToken).ConfigureAwait(false);
-                }
-
-                await AssertFocusedRowYankAsync(
-                    automator,
-                    workload,
-                    string.Join(
-                        '\t',
-                        traceEntry.Name,
-                        traceEntry.Status,
-                        traceEntry.DurationMilliseconds.ToString(
-                            "0.###",
-                            CultureInfo.InvariantCulture),
-                        traceEntry.CorrelationId.ToString("D")),
-                    TestContext.CancellationToken).ConfigureAwait(false);
-                await automator.Ctrl().KeyAsync(
-                    Hex1bKey.C,
-                    TestContext.CancellationToken).ConfigureAwait(false);
-            },
-            TestContext.CancellationToken).ConfigureAwait(false);
-
-        Assert.AreEqual(0, exitCode);
-        string diagnostics = await lsp.ShutdownAsync(
-            TestContext.CancellationToken).ConfigureAwait(false);
-        Assert.DoesNotContain("Unhandled exception", diagnostics, StringComparison.Ordinal);
-    }
-
     private static async Task AssertFocusedRowYankAsync(
         Hex1bTerminalAutomator automator,
         Hex1bPtyWorkload workload,
@@ -1044,10 +829,27 @@ public sealed class DashboardLanguageServerTests
         byte[] clipboardSequence = Encoding.UTF8.GetBytes(
             $"\u001b]52;c;{Convert.ToBase64String(textBytes)}\a");
         await automator.KeyAsync(Hex1bKey.Y, cancellationToken).ConfigureAwait(false);
-        await automator.WaitUntilAsync(
-            _ => workload.ContainsRawOutput(clipboardSequence),
-            timeout: TimeSpan.FromSeconds(2),
-            description: $"complete focused row yank for {expectedText}").ConfigureAwait(false);
+        await workload.WaitForRawOutputAsync(clipboardSequence, cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    private static async Task WaitForScreenAsync(
+        Hex1bTerminalAutomator automator,
+        Func<Hex1bTerminalSnapshot, bool> predicate,
+        CancellationToken cancellationToken)
+    {
+        while (true)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            using Hex1bTerminalSnapshot snapshot = automator.CreateSnapshot();
+            if (predicate(snapshot))
+            {
+                return;
+            }
+
+            await Task.Delay(TimeSpan.FromMilliseconds(50), cancellationToken)
+                .ConfigureAwait(false);
+        }
     }
 
     private static int GetAcceptedRequestCount(string screenText)

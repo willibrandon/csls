@@ -6,16 +6,13 @@
 #:package SharpCompress
 #:include ScriptSupport.cs
 
+using System.Diagnostics;
 using System.Runtime.InteropServices;
-
-const string Version = "0.27.0";
-const string PackageSha256 =
-    "a49a34d4664e4fba4781cb50d537efad1771393828370e32ece3fe75e2bcedaf";
 
 if (args.Length == 1 && args[0] is "--help" or "-h" or "-?")
 {
     await Console.Out.WriteLineAsync(
-        "Downloads and verifies the pinned upstream csharp-ls parity oracle.")
+        "Installs and verifies the latest stable upstream csharp-ls parity oracle.")
         .ConfigureAwait(false);
     await Console.Out.WriteLineAsync(
         "Usage: dotnet run --file scripts/Provision-CsharpLsOracle.cs [--output <directory>]")
@@ -38,27 +35,57 @@ try
     string toolsRoot = ScriptSupport.ResolveToolsRoot(
         repositoryRoot,
         args.Length == 2 ? args[1] : null);
-    string platform = GetPlatform();
-    var packageSource = new Uri(
-        $"https://api.nuget.org/v3-flatcontainer/csharp-ls/{Version}/csharp-ls.{Version}.nupkg");
-    string executablePath = await ScriptSupport.ProvisionDotNetToolAsync(
+    string installationPath = Path.Join(
         toolsRoot,
         "csharp-ls-oracle",
+        "current",
+        GetPlatform());
+    Directory.CreateDirectory(installationPath);
+    string executablePath = Path.Join(
+        installationPath,
+        OperatingSystem.IsWindows() ? "csharp-ls.exe" : "csharp-ls");
+    string command = File.Exists(executablePath) ? "update" : "install";
+    var startInfo = new ProcessStartInfo
+    {
+        FileName = Environment.GetEnvironmentVariable("DOTNET_HOST_PATH") ?? "dotnet",
+        RedirectStandardError = true,
+        RedirectStandardOutput = true,
+        UseShellExecute = false
+    };
+    foreach (string argument in new[]
+    {
+        "tool",
+        command,
         "csharp-ls",
-        Version,
-        platform,
-        packageSource,
-        PackageSha256,
-        "csharp-ls",
-        versionArguments: ["--version"],
-        expectedVersionText: Version,
-        CancellationToken.None).ConfigureAwait(false);
+        "--tool-path",
+        installationPath
+    })
+    {
+        startInfo.ArgumentList.Add(argument);
+    }
 
+    using Process process = Process.Start(startInfo)
+        ?? throw new InvalidOperationException("The .NET tool installer did not start.");
+    Task<string> standardOutput = process.StandardOutput.ReadToEndAsync();
+    Task<string> standardError = process.StandardError.ReadToEndAsync();
+    await process.WaitForExitAsync().ConfigureAwait(false);
+    string output = await standardOutput.ConfigureAwait(false) +
+        await standardError.ConfigureAwait(false);
+    if (process.ExitCode != 0)
+    {
+        throw new InvalidOperationException(
+            $"csharp-ls installation failed with exit code {process.ExitCode}: {output.Trim()}");
+    }
+
+    await ScriptSupport.VerifyToolAsync(
+        executablePath,
+        ["--version"],
+        ".",
+        CancellationToken.None).ConfigureAwait(false);
     await Console.Out.WriteLineAsync(executablePath).ConfigureAwait(false);
     return 0;
 }
 catch (Exception exception) when (exception is
-    HttpRequestException or
     IOException or
     InvalidDataException or
     InvalidOperationException or

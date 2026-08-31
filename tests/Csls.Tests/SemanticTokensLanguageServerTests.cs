@@ -56,7 +56,7 @@ public sealed class SemanticTokensLanguageServerTests
                 "internal sealed class Existing;\n",
                 TestContext.CancellationToken).ConfigureAwait(false);
 
-            var lsp = LspProcessSession.Start(
+            LspProcessSession lsp = await LspProcessSession.StartAsync(
                 "csls-created-semantic-tokens-worker",
                 string.Equals(Path.GetExtension(workerPath), ".dll", StringComparison.Ordinal)
                     ? EditorToolResolver.ResolveDotNetHost()
@@ -64,7 +64,7 @@ public sealed class SemanticTokensLanguageServerTests
                 string.Equals(Path.GetExtension(workerPath), ".dll", StringComparison.Ordinal)
                     ? [workerPath]
                     : [],
-                fixturePath);
+                fixturePath).ConfigureAwait(false);
             await using ConfiguredAsyncDisposable lspCleanup = lsp.ConfigureAwait(false);
             using var capabilities = JsonDocument.Parse(
                 """
@@ -190,11 +190,11 @@ public sealed class SemanticTokensLanguageServerTests
                 OtherDocumentText,
                 TestContext.CancellationToken).ConfigureAwait(false);
 
-            var lsp = LspProcessSession.Start(
+            LspProcessSession lsp = await LspProcessSession.StartAsync(
                 "csls-semantic-tokens-worker",
                 EditorToolResolver.ResolveDotNetHost(),
                 [workerPath],
-                fixturePath);
+                fixturePath).ConfigureAwait(false);
             await using ConfiguredAsyncDisposable lspCleanup = lsp.ConfigureAwait(false);
             JsonElement initialization = await lsp.InitializeAsync(
                 fixturePath,
@@ -355,11 +355,11 @@ public sealed class SemanticTokensLanguageServerTests
                 documentText,
                 TestContext.CancellationToken).ConfigureAwait(false);
 
-            var lsp = LspProcessSession.Start(
+            LspProcessSession lsp = await LspProcessSession.StartAsync(
                 "csls-semantic-tokens-long-line-worker",
                 EditorToolResolver.ResolveDotNetHost(),
                 [workerPath],
-                fixturePath);
+                fixturePath).ConfigureAwait(false);
             await using ConfiguredAsyncDisposable lspCleanup = lsp.ConfigureAwait(false);
             JsonElement initialization = await lsp.InitializeAsync(
                 fixturePath,

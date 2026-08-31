@@ -65,13 +65,14 @@ internal sealed class AnalyzerDiagnosticCacheEntry : IDisposable
     }
 
     /// <summary>
-    /// Releases one request waiter and cancels work that no request still needs.
+    /// Releases one request waiter and retires work that no request still needs.
     /// </summary>
     /// <returns>True when the cache must remove this entry.</returns>
-    internal bool Release()
+    internal async Task<bool> ReleaseAsync()
     {
         CancellationTokenSource? sourceToCancel = null;
         CancellationTokenSource? sourceToDispose = null;
+        Task<ImmutableArray<RoslynDiagnostic>>? computationToRetire = null;
         bool remove;
         lock (_gate)
         {
@@ -87,6 +88,7 @@ internal sealed class AnalyzerDiagnosticCacheEntry : IDisposable
             {
                 _accepting = false;
                 sourceToCancel = _computationSource;
+                computationToRetire = _computation;
             }
 
             remove = !_accepting || _retired;
@@ -98,7 +100,21 @@ internal sealed class AnalyzerDiagnosticCacheEntry : IDisposable
 
         using (sourceToDispose)
         {
-            sourceToCancel?.Cancel();
+            if (sourceToCancel is not null)
+            {
+                // CancelAsync can return before callbacks finish when cancellation is already
+                // in progress. Run synchronous cancellation off-thread to retain a strict barrier.
+                await Task.Run(sourceToCancel.Cancel).ConfigureAwait(false);
+            }
+        }
+
+        if (computationToRetire is not null)
+        {
+            await computationToRetire.ContinueWith(
+                static computation => _ = computation.Exception,
+                CancellationToken.None,
+                TaskContinuationOptions.ExecuteSynchronously,
+                TaskScheduler.Default).ConfigureAwait(false);
         }
 
         return remove;

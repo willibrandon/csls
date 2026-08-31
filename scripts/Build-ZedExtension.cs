@@ -12,10 +12,6 @@ using System.ComponentModel;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 
-const string CSharpGrammarRevision = "485f0bae0274ac9114797fc10db6f7034e4086e3";
-const string XmlGrammarRevision = "863dbc381f44f6c136a399e684383b977bb2beaa";
-const string WasiSdkVersion = "34.0";
-
 if (args.Length == 1 && args[0] is "--help" or "-h" or "-?")
 {
     await Console.Out.WriteLineAsync(
@@ -102,12 +98,10 @@ try
 
     await CheckoutGrammarAsync(
         csharpGrammarRoot,
-        "https://github.com/tree-sitter/tree-sitter-c-sharp",
-        CSharpGrammarRevision).ConfigureAwait(false);
+        "https://github.com/tree-sitter/tree-sitter-c-sharp").ConfigureAwait(false);
     await CheckoutGrammarAsync(
         xmlGrammarRoot,
-        "https://github.com/tree-sitter-grammars/tree-sitter-xml",
-        XmlGrammarRevision).ConfigureAwait(false);
+        "https://github.com/tree-sitter-grammars/tree-sitter-xml").ConfigureAwait(false);
 
     RecreateDirectory(packagePath);
     CopyRequiredFile(extensionRoot, packagePath, "extension.toml");
@@ -192,19 +186,31 @@ static string ResolveWasiClang(string repositoryRoot)
 {
     string executableName = OperatingSystem.IsWindows() ? "clang.exe" : "clang";
     string? configuredRoot = Environment.GetEnvironmentVariable("WASI_SDK_PATH");
+    string toolsRoot = ScriptSupport.ResolveToolsRoot(repositoryRoot, null);
+    string wasiRoot = Path.Join(toolsRoot, "wasi-sdk");
+    string? provisionedPath = Directory.Exists(wasiRoot)
+        ? Directory
+            .EnumerateDirectories(wasiRoot)
+            .Select(versionPath => (
+                Path: versionPath,
+                Version: Version.TryParse(Path.GetFileName(versionPath), out Version? parsed)
+                    ? parsed
+                    : new Version()))
+            .OrderByDescending(static candidate => candidate.Version)
+            .Select(versionPath => Path.Join(
+                versionPath.Path,
+                GetPlatform(),
+                "bin",
+                executableName))
+            .FirstOrDefault(File.Exists)
+        : null;
     string clangPath = string.IsNullOrWhiteSpace(configuredRoot)
-        ? Path.Join(
-            ScriptSupport.ResolveToolsRoot(repositoryRoot, null),
-            "wasi-sdk",
-            WasiSdkVersion,
-            GetPlatform(),
-            "bin",
-            executableName)
+        ? provisionedPath ?? string.Empty
         : Path.Join(Path.GetFullPath(configuredRoot), "bin", executableName);
     return File.Exists(clangPath)
         ? clangPath
         : throw new FileNotFoundException(
-            "The pinned WASI SDK is not provisioned. Run scripts/Provision-WasiSdk.cs.",
+            "The WASI SDK is not provisioned. Run scripts/Provision-WasiSdk.cs.",
             clangPath);
 }
 
@@ -227,8 +233,7 @@ static string GetPlatform()
 
 static async Task CheckoutGrammarAsync(
     string sourcePath,
-    string repository,
-    string revision)
+    string repository)
 {
     if (!Directory.Exists(Path.Join(sourcePath, ".git")))
     {
@@ -250,7 +255,7 @@ static async Task CheckoutGrammarAsync(
 
     await RunCheckedAsync(
         "git",
-        ["fetch", "--depth", "1", "origin", revision],
+        ["fetch", "--depth", "1", "origin", "HEAD"],
         sourcePath).ConfigureAwait(false);
     await RunCheckedAsync(
         "git",

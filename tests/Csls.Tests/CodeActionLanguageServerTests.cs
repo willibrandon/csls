@@ -20,10 +20,10 @@ public sealed class CodeActionLanguageServerTests
     public TestContext TestContext { get; set; } = null!;
 
     /// <summary>
-    /// Returns refactorings for a static class without failing the LSP request.
+    /// Returns refactorings for a static class without offering an invalid base class.
     /// </summary>
     [TestMethod]
-    public async Task StaticClassRefactoringRequestDoesNotFail()
+    public async Task StaticClassRefactoringRequestDoesNotOfferExtractBaseClass()
     {
         string repositoryRoot = EditorToolResolver.FindRepositoryRoot();
         string workerPath = Path.Join(
@@ -50,11 +50,11 @@ public sealed class CodeActionLanguageServerTests
                 StaticRefactoringDocumentText,
                 TestContext.CancellationToken).ConfigureAwait(false);
 
-            var lsp = LspProcessSession.Start(
+            LspProcessSession lsp = await LspProcessSession.StartAsync(
                 "csls-static-refactoring-worker",
                 EditorToolResolver.ResolveDotNetHost(),
                 [workerPath],
-                fixturePath);
+                fixturePath).ConfigureAwait(false);
             await using ConfiguredAsyncDisposable lspCleanup = lsp.ConfigureAwait(false);
             await lsp.InitializeAsync(
                 fixturePath,
@@ -88,8 +88,16 @@ public sealed class CodeActionLanguageServerTests
             IReadOnlyList<CodeAction>[] actions = await Task.WhenAll(requests)
                 .ConfigureAwait(false);
             Assert.HasCount(32, actions);
+            Position openingBracePosition = new(5, 0);
+            IReadOnlyList<CodeAction> openingBraceActions =
+                await lsp.RequestCodeActionsAsync(
+                    documentPath,
+                    new LspRange(openingBracePosition, openingBracePosition),
+                    only: null,
+                    TestContext.CancellationToken).ConfigureAwait(false);
             Assert.IsEmpty(
                 actions
+                    .Append(openingBraceActions)
                     .SelectMany(static requestActions => requestActions)
                     .Where(static action => action.Title.StartsWith(
                         "Extract base class",
@@ -145,11 +153,11 @@ public sealed class CodeActionLanguageServerTests
                 TestContext.CancellationToken).ConfigureAwait(false);
             await RestoreFixtureAsync(fixturePath).ConfigureAwait(false);
 
-            var lsp = LspProcessSession.Start(
+            LspProcessSession lsp = await LspProcessSession.StartAsync(
                 "csls-naming-code-action-worker",
                 EditorToolResolver.ResolveDotNetHost(),
                 [workerPath],
-                fixturePath);
+                fixturePath).ConfigureAwait(false);
             await using ConfiguredAsyncDisposable lspCleanup = lsp.ConfigureAwait(false);
             await lsp.InitializeAsync(
                 fixturePath,
@@ -248,11 +256,11 @@ public sealed class CodeActionLanguageServerTests
                 AmbiguousDocumentText,
                 TestContext.CancellationToken).ConfigureAwait(false);
 
-            var lsp = LspProcessSession.Start(
+            LspProcessSession lsp = await LspProcessSession.StartAsync(
                 "csls-code-action-worker",
                 EditorToolResolver.ResolveDotNetHost(),
                 [workerPath],
-                fixturePath);
+                fixturePath).ConfigureAwait(false);
             await using ConfiguredAsyncDisposable lspCleanup = lsp.ConfigureAwait(false);
             JsonElement initialization = await lsp.InitializeAsync(
                 fixturePath,

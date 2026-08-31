@@ -48,11 +48,11 @@ public sealed class WindowsTargetingLanguageServerTests
                 "debug",
                 "csls-worker.dll");
             Assert.IsTrue(File.Exists(workerPath), $"Worker not found at {workerPath}.");
-            var lsp = LspProcessSession.Start(
+            LspProcessSession lsp = await LspProcessSession.StartAsync(
                 "csls-windows-targeting-worker",
                 EditorToolResolver.ResolveDotNetHost(),
                 [workerPath],
-                fixturePath);
+                fixturePath).ConfigureAwait(false);
             await using ConfiguredAsyncDisposable lspCleanup = lsp.ConfigureAwait(false);
             await lsp.InitializeAsync(
                 fixturePath,

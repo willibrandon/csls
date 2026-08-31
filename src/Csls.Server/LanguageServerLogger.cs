@@ -30,13 +30,14 @@ internal static partial class LanguageServerLogger
     /// <param name="enableParameterHints">Whether parameter inlay hints are enabled.</param>
     /// <param name="enableTypeHints">Whether type inlay hints are enabled.</param>
     /// <param name="reportInformationAsHint">Whether information diagnostics appear as hints.</param>
+    /// <param name="enableWorkspaceDiagnostics">Whether closed files receive workspace diagnostics.</param>
     /// <param name="buildConfiguration">The active build configuration.</param>
     /// <param name="logLevel">The active log level.</param>
     /// <param name="changed">Whether the workspace configuration changed.</param>
     [LoggerMessage(
         EventId = 2,
         Level = LogLevel.Information,
-        Message = "Applied configuration: analyzer diagnostics enabled={EnableAnalyzers}, format on save={FormatOnSave}, parameter hints enabled={EnableParameterHints}, type hints enabled={EnableTypeHints}, information diagnostics reported as hints={ReportInformationAsHint}, build configuration={BuildConfiguration}, log level={LogLevel}, workspace changed={Changed}")]
+        Message = "Applied configuration: analyzer diagnostics enabled={EnableAnalyzers}, format on save={FormatOnSave}, parameter hints enabled={EnableParameterHints}, type hints enabled={EnableTypeHints}, information diagnostics reported as hints={ReportInformationAsHint}, workspace diagnostics enabled={EnableWorkspaceDiagnostics}, build configuration={BuildConfiguration}, log level={LogLevel}, workspace changed={Changed}")]
     internal static partial void LogConfigurationApplied(
         ILogger logger,
         bool enableAnalyzers,
@@ -44,6 +45,7 @@ internal static partial class LanguageServerLogger
         bool enableParameterHints,
         bool enableTypeHints,
         bool reportInformationAsHint,
+        bool enableWorkspaceDiagnostics,
         string buildConfiguration,
         LogLevel logLevel,
         bool changed);

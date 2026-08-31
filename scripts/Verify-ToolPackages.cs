@@ -132,30 +132,28 @@ try
             StringComparison.Ordinal)
             ? mcpServerManifestPath
             : null;
-        await PackAsync(
-            repositoryRoot,
-            packageRoot,
-            project,
-            version,
-            runtimeIdentifier: null,
-            manifestPath)
-            .ConfigureAwait(false);
-        await PackAsync(
-            repositoryRoot,
-            packageRoot,
-            project,
-            version,
-            runtimeIdentifier,
-            manifestPath)
-            .ConfigureAwait(false);
-        await PackAsync(
-            repositoryRoot,
-            packageRoot,
-            project,
-            version,
-            "any",
-            manifestPath)
-            .ConfigureAwait(false);
+        await Task.WhenAll(
+            PackAsync(
+                repositoryRoot,
+                packageRoot,
+                project,
+                version,
+                runtimeIdentifier: null,
+                manifestPath),
+            PackAsync(
+                repositoryRoot,
+                packageRoot,
+                project,
+                version,
+                runtimeIdentifier,
+                manifestPath),
+            PackAsync(
+                repositoryRoot,
+                packageRoot,
+                project,
+                version,
+                "any",
+                manifestPath)).ConfigureAwait(false);
         ValidateManifestPackage(
             Path.Join(packageRoot, $"{packageId}.{version}.nupkg"),
             packageId,
@@ -261,6 +259,11 @@ static async Task PackAsync(
     string? runtimeIdentifier,
     string? mcpServerManifestPath)
 {
+    string packArtifactsPath = Path.Join(
+        Path.GetDirectoryName(packageRoot)!,
+        "pack-builds",
+        Path.GetFileNameWithoutExtension(project),
+        runtimeIdentifier ?? "manifest");
     List<string> arguments =
     [
         "pack",
@@ -270,7 +273,8 @@ static async Task PackAsync(
         "--output",
         packageRoot,
         $"-p:Version={version}",
-        $"-p:PackageVersion={version}"
+        $"-p:PackageVersion={version}",
+        $"-p:ArtifactsPath={packArtifactsPath}"
     ];
     if (runtimeIdentifier is not null)
     {

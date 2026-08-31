@@ -35,29 +35,36 @@ public sealed class AnalyzerDiagnosticCacheLanguageServerTests
             repositoryRoot,
             TestContext.CancellationToken).ConfigureAwait(false);
         await using ConfiguredAsyncDisposable fixtureCleanup = fixture.ConfigureAwait(false);
-        var lsp = LspProcessSession.Start(
+        LspProcessSession lsp = await LspProcessSession.StartAsync(
             "csls-analyzer-cache-worker",
             EditorToolResolver.ResolveDotNetHost(),
             [workerPath],
-            fixture.RootPath,
-            environmentVariables: new Dictionary<string, string>(StringComparer.Ordinal)
-            {
-                ["DOTNET_PROCESSOR_COUNT"] = "4"
-            });
+            fixture.RootPath).ConfigureAwait(false);
         await using ConfiguredAsyncDisposable lspCleanup = lsp.ConfigureAwait(false);
         await lsp.InitializeAsync(
             fixture.RootPath,
             TestContext.CancellationToken).ConfigureAwait(false);
+        var controlClient = new ControlRpcClient(ControlEndpoint.GetSocketPath(lsp.ProcessId));
+        await using ConfiguredAsyncDisposable controlCleanup =
+            controlClient.ConfigureAwait(false);
+        await lsp.CompleteInitializationAsync().ConfigureAwait(false);
+        ControlSessionInfo readySession = await ControlSessionWaiter.WaitForRunningAsync(
+            fixture.RootPath,
+            TimeSpan.FromSeconds(60),
+            TestContext.CancellationToken,
+            expectedProcessId: lsp.ProcessId).ConfigureAwait(false);
         for (int index = 0; index < fixture.DocumentPaths.Count; index++)
         {
             await lsp.OpenDocumentAsync(
                 fixture.DocumentPaths[index],
-                fixture.DocumentTexts[index]).ConfigureAwait(false);
+                string.Concat(fixture.DocumentTexts[index], Environment.NewLine))
+                .ConfigureAwait(false);
         }
 
-        var controlClient = new ControlRpcClient(ControlEndpoint.GetSocketPath(lsp.ProcessId));
-        await using ConfiguredAsyncDisposable controlCleanup =
-            controlClient.ConfigureAwait(false);
+        await WaitForGenerationAsync(
+            controlClient,
+            readySession.WorkspaceGeneration + fixture.DocumentPaths.Count,
+            TestContext.CancellationToken).ConfigureAwait(false);
         bool analyzerReleased = false;
         try
         {
@@ -189,11 +196,11 @@ public sealed class AnalyzerDiagnosticCacheLanguageServerTests
             repositoryRoot,
             TestContext.CancellationToken).ConfigureAwait(false);
         await using ConfiguredAsyncDisposable fixtureCleanup = fixture.ConfigureAwait(false);
-        var lsp = LspProcessSession.Start(
+        LspProcessSession lsp = await LspProcessSession.StartAsync(
             "csls-stale-diagnostic-worker",
             EditorToolResolver.ResolveDotNetHost(),
             [workerPath],
-            fixture.RootPath);
+            fixture.RootPath).ConfigureAwait(false);
         await using ConfiguredAsyncDisposable lspCleanup = lsp.ConfigureAwait(false);
         await lsp.InitializeAsync(
             fixture.RootPath,

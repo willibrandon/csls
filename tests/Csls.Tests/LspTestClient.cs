@@ -74,6 +74,7 @@ internal sealed class LspTestClient
     private JsonElement? _legacyConfiguration;
     private JsonElement? _dotNetConfiguration;
     private JsonElement? _preferredConfiguration;
+    private TaskCompletionSource? _capabilityRegistrationRelease;
     private int _configurationRequestCount;
 
     /// <summary>
@@ -170,8 +171,8 @@ internal sealed class LspTestClient
     /// </summary>
     /// <param name="parameters">The ordered capability registrations.</param>
     /// <param name="cancellationToken">The request cancellation token.</param>
-    /// <returns>A completed task after the registrations are retained.</returns>
-    internal Task RegisterCapabilityAsync(
+    /// <returns>A task that completes after the registrations are retained and released.</returns>
+    internal async Task RegisterCapabilityAsync(
         RegistrationParams parameters,
         CancellationToken cancellationToken)
     {
@@ -183,7 +184,49 @@ internal sealed class LspTestClient
                 "The capability registration could not be observed.");
         }
 
-        return Task.CompletedTask;
+        Task? releaseTask;
+        lock (_gate)
+        {
+            releaseTask = _capabilityRegistrationRelease?.Task;
+        }
+
+        if (releaseTask is not null)
+        {
+            await releaseTask.WaitAsync(cancellationToken).ConfigureAwait(false);
+        }
+    }
+
+    /// <summary>
+    /// Holds the next capability registration response after its request is observable.
+    /// </summary>
+    internal void HoldCapabilityRegistration()
+    {
+        lock (_gate)
+        {
+            if (_capabilityRegistrationRelease is not null)
+            {
+                throw new InvalidOperationException(
+                    "A capability registration response is already held.");
+            }
+
+            _capabilityRegistrationRelease = new TaskCompletionSource(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+        }
+    }
+
+    /// <summary>
+    /// Releases a held capability registration response.
+    /// </summary>
+    internal void ReleaseCapabilityRegistration()
+    {
+        TaskCompletionSource? release;
+        lock (_gate)
+        {
+            release = _capabilityRegistrationRelease;
+            _capabilityRegistrationRelease = null;
+        }
+
+        release?.TrySetResult();
     }
 
     /// <summary>

@@ -25,7 +25,8 @@ internal static class VsCodeWebExtensionPackage
         Task<string> packageTask;
         lock (s_gate)
         {
-            s_packageTask ??= PackageAsync(repositoryRoot);
+            s_packageTask ??= VsCodeExtensionBuildGate.RunAsync(
+                () => PackageAsync(repositoryRoot));
             packageTask = s_packageTask;
         }
 

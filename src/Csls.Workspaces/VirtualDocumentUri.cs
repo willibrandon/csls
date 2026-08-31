@@ -32,15 +32,31 @@ internal static class VirtualDocumentUri
     /// </summary>
     /// <param name="projectFilePath">The requesting project file path.</param>
     /// <param name="symbol">The metadata symbol.</param>
+    /// <param name="documentName">The readable source document name when known.</param>
     /// <returns>The virtual document URI, or <see langword="null"/> when unsupported.</returns>
-    internal static DocumentUri? CreateMetadata(string projectFilePath, ISymbol symbol)
+    internal static DocumentUri? CreateMetadata(
+        string projectFilePath,
+        ISymbol symbol,
+        string? documentName = null)
     {
         ArgumentNullException.ThrowIfNull(symbol);
         string? declarationId = DocumentationCommentId.CreateDeclarationId(
             symbol.OriginalDefinition);
-        return string.IsNullOrWhiteSpace(declarationId)
-            ? null
-            : Create(MetadataPrefix, projectFilePath, declarationId, SourceSuffix);
+        if (string.IsNullOrWhiteSpace(declarationId))
+        {
+            return null;
+        }
+
+        string readableName = GetReadableSourceName(documentName, symbol);
+        string projectUri = DocumentUri.FromFileSystemPath(projectFilePath).ToString();
+        return DocumentUri.Parse(
+            string.Concat(
+                MetadataPrefix,
+                EncodeComponent(projectUri),
+                '/',
+                EncodeComponent(declarationId),
+                '/',
+                Uri.EscapeDataString(readableName)));
     }
 
     /// <summary>
@@ -66,8 +82,63 @@ internal static class VirtualDocumentUri
     internal static bool TryParseMetadata(
         DocumentUri uri,
         out string projectFilePath,
-        out string declarationId) =>
-        TryParse(uri, MetadataPrefix, SourceSuffix, out projectFilePath, out declarationId);
+        out string declarationId)
+    {
+        string uriText = uri.ToString();
+        if (!uriText.StartsWith(MetadataPrefix, StringComparison.Ordinal) ||
+            !uriText.EndsWith(SourceSuffix, StringComparison.Ordinal))
+        {
+            projectFilePath = string.Empty;
+            declarationId = string.Empty;
+            return false;
+        }
+
+        ReadOnlySpan<char> components = uriText.AsSpan(MetadataPrefix.Length);
+        int firstSeparator = components.IndexOf('/');
+        if (firstSeparator <= 0 || firstSeparator == components.Length - 1)
+        {
+            projectFilePath = string.Empty;
+            declarationId = string.Empty;
+            return false;
+        }
+
+        ReadOnlySpan<char> valueAndName = components[(firstSeparator + 1)..];
+        int secondSeparator = valueAndName.IndexOf('/');
+        ReadOnlySpan<char> encodedDeclaration = secondSeparator < 0
+            ? valueAndName[..^SourceSuffix.Length]
+            : valueAndName[..secondSeparator];
+        if (firstSeparator > MaximumComponentLength ||
+            encodedDeclaration.IsEmpty ||
+            encodedDeclaration.Length > MaximumComponentLength)
+        {
+            projectFilePath = string.Empty;
+            declarationId = string.Empty;
+            return false;
+        }
+
+        try
+        {
+            string projectUriText = DecodeComponent(components[..firstSeparator]);
+            string decodedDeclaration = DecodeComponent(encodedDeclaration);
+            if (string.IsNullOrWhiteSpace(decodedDeclaration))
+            {
+                projectFilePath = string.Empty;
+                declarationId = string.Empty;
+                return false;
+            }
+
+            projectFilePath = DocumentUri.Parse(projectUriText).GetFileSystemPath();
+            declarationId = decodedDeclaration;
+            return true;
+        }
+        catch (Exception exception) when (
+            exception is ArgumentException or FormatException or InvalidOperationException)
+        {
+            projectFilePath = string.Empty;
+            declarationId = string.Empty;
+            return false;
+        }
+    }
 
     private static DocumentUri Create(
         string prefix,
@@ -141,4 +212,19 @@ internal static class VirtualDocumentUri
 
     private static string DecodeComponent(ReadOnlySpan<char> value) =>
         s_utf8.GetString(Base64Url.DecodeFromChars(value));
+
+    private static string GetReadableSourceName(string? documentName, ISymbol symbol)
+    {
+        string? readableName = Path.GetFileName(documentName);
+        if (string.IsNullOrWhiteSpace(readableName))
+        {
+            ISymbol containingSymbol = symbol as INamedTypeSymbol ??
+                symbol.ContainingType ?? symbol;
+            readableName = string.Concat(containingSymbol.Name, SourceSuffix);
+        }
+
+        return readableName.EndsWith(SourceSuffix, StringComparison.OrdinalIgnoreCase)
+            ? readableName
+            : string.Concat(readableName, SourceSuffix);
+    }
 }

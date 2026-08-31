@@ -186,12 +186,12 @@ public sealed class WorkspaceLoadProgressLanguageServerTests
         var client = new LspTestClient(
             legacyConfiguration: null,
             preferredConfiguration: null);
-        var lsp = LspProcessSession.Start(
+        LspProcessSession lsp = await LspProcessSession.StartAsync(
             "csls-workspace-load-progress-worker",
             EditorToolResolver.ResolveDotNetHost(),
             [workerPath],
             fixturePath,
-            client);
+            client).ConfigureAwait(false);
         await using ConfiguredAsyncDisposable lspCleanup = lsp.ConfigureAwait(false);
         using var capabilities = JsonDocument.Parse(
             """

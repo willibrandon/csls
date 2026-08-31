@@ -46,11 +46,11 @@ public sealed class WorkspaceFileOperationLanguageServerTests
                 ExistingText,
                 TestContext.CancellationToken).ConfigureAwait(false);
 
-            var lsp = LspProcessSession.Start(
+            LspProcessSession lsp = await LspProcessSession.StartAsync(
                 "csls-file-operation-worker",
                 EditorToolResolver.ResolveDotNetHost(),
                 [workerPath],
-                fixturePath);
+                fixturePath).ConfigureAwait(false);
             await using ConfiguredAsyncDisposable lspCleanup = lsp.ConfigureAwait(false);
             using var clientCapabilities = JsonDocument.Parse(
                 """
@@ -213,12 +213,12 @@ public sealed class WorkspaceFileOperationLanguageServerTests
             var client = new LspTestClient(
                 legacyConfiguration: null,
                 preferredConfiguration: null);
-            var lsp = LspProcessSession.Start(
+            LspProcessSession lsp = await LspProcessSession.StartAsync(
                 "csls-file-operation-push-worker",
                 EditorToolResolver.ResolveDotNetHost(),
                 [workerPath],
                 fixturePath,
-                client);
+                client).ConfigureAwait(false);
             await using ConfiguredAsyncDisposable lspCleanup = lsp.ConfigureAwait(false);
             using var clientCapabilities = JsonDocument.Parse(
                 """
@@ -310,12 +310,13 @@ public sealed class WorkspaceFileOperationLanguageServerTests
             var client = new LspTestClient(
                 legacyConfiguration: null,
                 preferredConfiguration: null);
-            var lsp = LspProcessSession.Start(
+            client.HoldCapabilityRegistration();
+            LspProcessSession lsp = await LspProcessSession.StartAsync(
                 "csls-watched-file-worker",
                 EditorToolResolver.ResolveDotNetHost(),
                 [workerPath],
                 fixturePath,
-                client);
+                client).ConfigureAwait(false);
             await using ConfiguredAsyncDisposable lspCleanup = lsp.ConfigureAwait(false);
             using var clientCapabilities = JsonDocument.Parse(
                 """
@@ -357,17 +358,25 @@ public sealed class WorkspaceFileOperationLanguageServerTests
                 (int)(WatchKind.Create | WatchKind.Change | WatchKind.Delete),
                 watchers[0].GetProperty("kind").GetInt32());
 
-            await lsp.OpenDocumentAsync(consumerPath, DefinitionConsumerText)
-                .ConfigureAwait(false);
-            DocumentDiagnosticReport missing = await lsp.RequestDiagnosticsAsync(
-                    consumerPath,
-                    previousResultId: null,
-                    TestContext.CancellationToken)
-                .WaitAsync(TimeSpan.FromSeconds(30), TestContext.CancellationToken)
-                .ConfigureAwait(false);
-            Assert.Contains(
-                "CS0117",
-                missing.Items?.Select(static diagnostic => diagnostic.Code) ?? []);
+            DocumentDiagnosticReport missing;
+            try
+            {
+                await lsp.OpenDocumentAsync(consumerPath, DefinitionConsumerText)
+                    .ConfigureAwait(false);
+                missing = await lsp.RequestDiagnosticsAsync(
+                        consumerPath,
+                        previousResultId: null,
+                        TestContext.CancellationToken)
+                    .WaitAsync(TimeSpan.FromSeconds(30), TestContext.CancellationToken)
+                    .ConfigureAwait(false);
+                Assert.Contains(
+                    "CS0117",
+                    missing.Items?.Select(static diagnostic => diagnostic.Code) ?? []);
+            }
+            finally
+            {
+                client.ReleaseCapabilityRegistration();
+            }
 
             await File.WriteAllTextAsync(
                 definitionPath,
@@ -453,11 +462,11 @@ public sealed class WorkspaceFileOperationLanguageServerTests
                 "<Project />\n",
                 TestContext.CancellationToken).ConfigureAwait(false);
 
-            var lsp = LspProcessSession.Start(
+            LspProcessSession lsp = await LspProcessSession.StartAsync(
                 "csls-ignored-watched-file-worker",
                 EditorToolResolver.ResolveDotNetHost(),
                 [workerPath],
-                fixturePath);
+                fixturePath).ConfigureAwait(false);
             await using ConfiguredAsyncDisposable lspCleanup = lsp.ConfigureAwait(false);
             await lsp.InitializeAsync(
                 fixturePath,
@@ -513,11 +522,11 @@ public sealed class WorkspaceFileOperationLanguageServerTests
                 "internal sealed class Program;\n",
                 TestContext.CancellationToken).ConfigureAwait(false);
 
-            var lsp = LspProcessSession.Start(
+            LspProcessSession lsp = await LspProcessSession.StartAsync(
                 "csls-reload-duration-worker",
                 EditorToolResolver.ResolveDotNetHost(),
                 [workerPath],
-                fixturePath);
+                fixturePath).ConfigureAwait(false);
             await using ConfiguredAsyncDisposable lspCleanup = lsp.ConfigureAwait(false);
             await lsp.InitializeAsync(
                 fixturePath,

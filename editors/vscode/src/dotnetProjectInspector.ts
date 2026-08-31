@@ -24,6 +24,8 @@ export class DotnetProjectInspector {
       ],
       dirname(projectPath),
       cancellationToken,
+      false,
+      false,
     );
     if (evaluation.exitCode !== 0) {
       throw new Error(

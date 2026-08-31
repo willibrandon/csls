@@ -31,6 +31,11 @@ public sealed class RepositoryConventionAnalyzer : DiagnosticAnalyzer
     /// </summary>
     public const string ThreeLineSummaryDiagnosticId = "CSLS0003";
 
+    /// <summary>
+    /// Identifies the required static-field prefix diagnostic.
+    /// </summary>
+    public const string StaticFieldPrefixDiagnosticId = "CSLS0004";
+
     private static readonly DiagnosticDescriptor s_oneTypePerFileRule = new(
         OneTypePerFileDiagnosticId,
         "Put each type in its own file",
@@ -63,9 +68,23 @@ public sealed class RepositoryConventionAnalyzer : DiagnosticAnalyzer
         RegexOptions.CultureInvariant,
         TimeSpan.FromSeconds(1));
 
+    private static readonly DiagnosticDescriptor s_staticFieldPrefixRule = new(
+        StaticFieldPrefixDiagnosticId,
+        "Prefix static fields with s_",
+        "Static field '{0}' must start with 's_'",
+        "Naming",
+        DiagnosticSeverity.Error,
+        isEnabledByDefault: true,
+        description: "Private and internal static fields must use the repository s_ prefix.");
+
     /// <inheritdoc />
     public override ImmutableArray<DiagnosticDescriptor> SupportedDiagnostics =>
-        [s_oneTypePerFileRule, s_xmlDocumentationRule, s_threeLineSummaryRule];
+        [
+            s_oneTypePerFileRule,
+            s_xmlDocumentationRule,
+            s_threeLineSummaryRule,
+            s_staticFieldPrefixRule
+        ];
 
     /// <inheritdoc />
     public override void Initialize(AnalysisContext context)
@@ -116,7 +135,13 @@ public sealed class RepositoryConventionAnalyzer : DiagnosticAnalyzer
     {
         ISymbol symbol = context.Symbol;
         if (symbol.IsImplicitlyDeclared ||
-            IsTopLevelStatementsSymbol(symbol, context.CancellationToken) ||
+            IsTopLevelStatementsSymbol(symbol, context.CancellationToken))
+        {
+            return;
+        }
+
+        AnalyzeStaticFieldName(symbol, context);
+        if (
             !RequiresDocumentation(symbol) ||
             symbol is IMethodSymbol { AssociatedSymbol: not null })
         {
@@ -149,6 +174,29 @@ public sealed class RepositoryConventionAnalyzer : DiagnosticAnalyzer
                 symbol.Locations.FirstOrDefault(),
                 symbol.Name));
         }
+    }
+
+    private static void AnalyzeStaticFieldName(
+        ISymbol symbol,
+        SymbolAnalysisContext context)
+    {
+        if (symbol is not IFieldSymbol
+            {
+                IsStatic: true,
+                IsConst: false,
+                DeclaredAccessibility: Accessibility.Private or
+                    Accessibility.Internal or
+                    Accessibility.ProtectedAndInternal
+            } field ||
+            field.Name.StartsWith("s_", StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        context.ReportDiagnostic(Diagnostic.Create(
+            s_staticFieldPrefixRule,
+            field.Locations.FirstOrDefault(),
+            field.Name));
     }
 
     private static bool IsTopLevelStatementsSymbol(

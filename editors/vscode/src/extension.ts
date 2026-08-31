@@ -228,6 +228,16 @@ function createLanguageClient(
     ],
     outputChannel: new LanguageServerLogOutputChannel(outputChannel),
     revealOutputChannelOn: RevealOutputChannelOn.Error,
+    middleware: {
+      provideWorkspaceDiagnostics: (
+        previousResultIds,
+        token,
+        resultReporter,
+        next,
+      ) => shouldRunFullSolutionDiagnostics()
+        ? next(previousResultIds, token, resultReporter)
+        : { items: [] },
+    },
     synchronize: {
       configurationSection: ["csls", "csharp", "dotnet"],
       fileEvents: [...watchers],
@@ -235,6 +245,13 @@ function createLanguageClient(
     ...(workspaceFolder === undefined ? {} : { workspaceFolder }),
   };
   return new DesktopLanguageClient(serverOptions, clientOptions);
+}
+
+function shouldRunFullSolutionDiagnostics(): boolean {
+  const configuration = vscode.workspace.getConfiguration("dotnet.backgroundAnalysis");
+  return configuration.get<string>("analyzerDiagnosticsScope", "openFiles") ===
+      "fullSolution" ||
+    configuration.get<string>("compilerDiagnosticsScope", "openFiles") === "fullSolution";
 }
 
 async function restartServer(): Promise<void> {

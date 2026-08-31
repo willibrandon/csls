@@ -33,6 +33,11 @@ public sealed record LanguageServerConfiguration
     public bool ReportInformationAsHint { get; init; } = true;
 
     /// <summary>
+    /// Gets whether workspace pulls analyze documents that are not open in the editor.
+    /// </summary>
+    public bool EnableWorkspaceDiagnostics { get; init; }
+
+    /// <summary>
     /// Gets the MSBuild configuration used to evaluate loaded projects.
     /// </summary>
     public string BuildConfiguration { get; init; } = "Debug";

@@ -12,7 +12,7 @@ using System.Runtime.InteropServices;
 if (args.Length == 1 && args[0] is "--help" or "-h" or "-?")
 {
     await Console.Out.WriteLineAsync(
-        "Validates every csls GitHub Actions workflow with the pinned actionlint binary.")
+        "Validates every csls GitHub Actions workflow with the provisioned actionlint binary.")
         .ConfigureAwait(false);
     await Console.Out.WriteLineAsync(
         "Usage: dotnet run --file scripts/Verify-GitHubActions.cs").ConfigureAwait(false);
@@ -28,20 +28,22 @@ if (args.Length != 0)
 
 try
 {
-    const string version = "1.7.12";
     string repositoryRoot = ScriptSupport.FindRepositoryRoot();
     string toolsRoot = ScriptSupport.ResolveToolsRoot(repositoryRoot);
     string platform = GetPlatform();
     string executableName = OperatingSystem.IsWindows() ? "actionlint.exe" : "actionlint";
-    string installationPath = Path.Join(
-        toolsRoot,
-        "actionlint",
-        version,
-        platform);
-    string executablePath = Directory.Exists(installationPath)
+    string toolRoot = Path.Join(toolsRoot, "actionlint");
+    string executablePath = Directory.Exists(toolRoot)
         ? Directory
-            .EnumerateFiles(installationPath, executableName, SearchOption.AllDirectories)
-            .SingleOrDefault(path => string.Equals(
+            .EnumerateDirectories(toolRoot)
+            .OrderByDescending(Directory.GetLastWriteTimeUtc)
+            .Select(versionPath => Path.Join(versionPath, platform))
+            .Where(Directory.Exists)
+            .SelectMany(path => Directory.EnumerateFiles(
+                path,
+                executableName,
+                SearchOption.AllDirectories))
+            .FirstOrDefault(path => string.Equals(
                 Path.GetFileName(path),
                 executableName,
                 StringComparison.Ordinal))
@@ -50,7 +52,7 @@ try
     if (!File.Exists(executablePath))
     {
         throw new FileNotFoundException(
-            $"actionlint {version} is not provisioned. Run scripts/Provision-Actionlint.cs.");
+            "actionlint is not provisioned. Run scripts/Provision-Actionlint.cs.");
     }
 
     string workflowPath = Path.Join(repositoryRoot, ".github", "workflows");
@@ -94,7 +96,7 @@ try
     }
 
     await Console.Out.WriteLineAsync(
-        $"Validated {workflows.Length} GitHub Actions workflows with actionlint {version}.")
+        $"Validated {workflows.Length} GitHub Actions workflows with actionlint.")
         .ConfigureAwait(false);
     return 0;
 }

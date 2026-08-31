@@ -9,6 +9,15 @@
 - Document every public or internal type and member with triple-slash XML documentation.
 - Write every XML `<summary>` as exactly three lines: opening tag, text, closing tag.
 - Use Central Package Management as the single package-version source.
+- Support development with any compatible .NET 10 SDK. Do not add or retain a
+  `global.json` SDK pin or an exact `dotnet-version` value.
+- Do not hard-code versions for SDKs, runtimes, tools, GitHub Actions,
+  dev-container features, or editor dependencies. Remove existing hard-coded
+  versions when they are in scope and follow the compatible major version or
+  release channel provided upstream. Package manifests and lockfiles may retain
+  versions only where the package manager requires them.
+- Never use a version pin to work around a CI, network, registry, release, or
+  runner failure. Diagnose the failure instead.
 - Keep nullable references, analyzers, deterministic builds, and warnings-as-errors enabled.
 - Keep LSP and MCP stdout protocol-only; diagnostics and progress go to stderr.
 - Use System.CommandLine for CLI parsing, StreamJsonRpc for RPC, and Hex1b for terminal UI.

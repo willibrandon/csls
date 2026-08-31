@@ -7,6 +7,8 @@ namespace Csls.Tests;
 /// </summary>
 internal static class EditorToolResolver
 {
+    private static int s_controlSocketDirectorySequence;
+
     /// <summary>
     /// Finds the csls repository root from the compiled test assembly location.
     /// </summary>
@@ -43,6 +45,20 @@ internal static class EditorToolResolver
         return string.IsNullOrWhiteSpace(configuredPath)
             ? Path.Join(repositoryRoot, "artifacts")
             : Path.GetFullPath(configuredPath);
+    }
+
+    /// <summary>
+    /// Resolves a short unique control-socket directory for one real editor test.
+    /// </summary>
+    /// <param name="repositoryRoot">The absolute repository root.</param>
+    /// <returns>The absolute isolated control-socket directory.</returns>
+    internal static string ResolveIsolatedControlSocketDirectory(string repositoryRoot)
+    {
+        int sequence = Interlocked.Increment(ref s_controlSocketDirectorySequence);
+        return Path.Join(
+            ResolveArtifactsRoot(repositoryRoot),
+            "s",
+            $"{Environment.ProcessId:x}-{sequence:x}");
     }
 
     /// <summary>
@@ -125,36 +141,38 @@ internal static class EditorToolResolver
     /// </summary>
     /// <param name="repositoryRoot">The absolute repository root.</param>
     /// <param name="toolName">The provisioned extension tool name.</param>
-    /// <param name="version">The pinned extension version.</param>
     /// <param name="platformSpecific">Whether the package targets the active platform.</param>
     /// <returns>The absolute VSIX package path.</returns>
     internal static string ResolveVsCodeExtension(
         string repositoryRoot,
         string toolName,
-        string version,
         bool platformSpecific)
     {
         string? configuredToolsRoot = Environment.GetEnvironmentVariable("CSLS_TOOLS_ROOT");
         string toolsRoot = string.IsNullOrWhiteSpace(configuredToolsRoot)
             ? Path.Join(repositoryRoot, "artifacts", "tools")
             : Path.GetFullPath(configuredToolsRoot);
-        string extensionRoot = Path.Join(
-            toolsRoot,
-            toolName,
-            version,
-            platformSpecific ? GetVsCodeTargetPlatform() : "all");
-        string[] packages = Directory.Exists(extensionRoot)
-            ? [.. Directory.EnumerateFiles(extensionRoot, "*.vsix")]
-            : [];
-        return packages.Length == 1
-            ? packages[0]
+        string toolRoot = Path.Join(toolsRoot, toolName);
+        string? package = Directory.Exists(toolRoot)
+            ? Directory
+                .EnumerateDirectories(toolRoot)
+                .OrderByDescending(Directory.GetLastWriteTimeUtc)
+                .Select(versionPath => Path.Join(
+                    versionPath,
+                    platformSpecific ? GetVsCodeTargetPlatform() : "all"))
+                .Where(Directory.Exists)
+                .SelectMany(path => Directory.EnumerateFiles(path, "*.vsix"))
+                .FirstOrDefault()
+            : null;
+        return package is not null
+            ? package
             : throw new FileNotFoundException(
-                $"The pinned {toolName} {version} extension is not provisioned. " +
+                $"The current {toolName} extension is not provisioned. " +
                 "Run scripts/Provision-VsCode.cs.");
     }
 
     /// <summary>
-    /// Resolves the pinned VS Code server root used by remote extension-host tests.
+    /// Resolves the stable-channel VS Code server root used by remote extension-host tests.
     /// </summary>
     /// <param name="repositoryRoot">The absolute repository root.</param>
     /// <returns>The absolute VS Code server root.</returns>
@@ -174,18 +192,24 @@ internal static class EditorToolResolver
             string toolsRoot = string.IsNullOrWhiteSpace(configuredToolsRoot)
                 ? Path.Join(repositoryRoot, "artifacts", "tools")
                 : Path.GetFullPath(configuredToolsRoot);
-            serverRoot = Path.Join(
-                toolsRoot,
-                "vscode-server",
-                "1.135.0",
-                "linux-x64");
+            string toolRoot = Path.Join(toolsRoot, "vscode-server");
+            serverRoot = Directory.Exists(toolRoot)
+                ? Directory
+                    .EnumerateDirectories(toolRoot)
+                    .OrderByDescending(Directory.GetLastWriteTimeUtc)
+                    .Select(versionPath => Path.Join(versionPath, "linux-x64"))
+                    .FirstOrDefault(path =>
+                        File.Exists(Path.Join(path, "node")) &&
+                        File.Exists(Path.Join(path, "out", "server-main.js"))) ??
+                    Path.Join(toolRoot, "unavailable")
+                : Path.Join(toolRoot, "unavailable");
         }
 
         return File.Exists(Path.Join(serverRoot, "node")) &&
             File.Exists(Path.Join(serverRoot, "out", "server-main.js"))
             ? serverRoot
             : throw new DirectoryNotFoundException(
-                "The pinned VS Code remote server is not provisioned. " +
+                "The VS Code remote server is not provisioned. " +
                 "Run scripts/Provision-VsCodeRemoteServer.cs.");
     }
 
@@ -217,7 +241,7 @@ internal static class EditorToolResolver
         "csls-test-process-host.dll");
 
     /// <summary>
-    /// Resolves the pinned Helix executable with an explicit override and installed fallback.
+    /// Resolves the provisioned Helix executable with an explicit override and installed fallback.
     /// </summary>
     /// <param name="repositoryRoot">The absolute repository root.</param>
     /// <returns>The executable path or command name.</returns>
@@ -225,12 +249,11 @@ internal static class EditorToolResolver
         repositoryRoot,
         "CSLS_HELIX_PATH",
         "helix",
-        "25.07.1",
         GetPlatform(allowWindowsArm64: false, detectMusl: false),
         OperatingSystem.IsWindows() ? "hx.exe" : "hx");
 
     /// <summary>
-    /// Resolves the pinned Fresh executable with an explicit override and installed fallback.
+    /// Resolves the provisioned Fresh executable with an explicit override and installed fallback.
     /// </summary>
     /// <param name="repositoryRoot">The absolute repository root.</param>
     /// <returns>The executable path or command name.</returns>
@@ -238,12 +261,11 @@ internal static class EditorToolResolver
         repositoryRoot,
         "CSLS_FRESH_PATH",
         "fresh",
-        "0.4.10",
         GetPlatform(allowWindowsArm64: true, detectMusl: true),
         OperatingSystem.IsWindows() ? "fresh.exe" : "fresh");
 
     /// <summary>
-    /// Resolves the pinned Neovim executable with an explicit override and installed fallback.
+    /// Resolves the provisioned Neovim executable with an explicit override and installed fallback.
     /// </summary>
     /// <param name="repositoryRoot">The absolute repository root.</param>
     /// <returns>The executable path or command name.</returns>
@@ -251,12 +273,11 @@ internal static class EditorToolResolver
         repositoryRoot,
         "CSLS_NEOVIM_PATH",
         "neovim",
-        "0.12.5",
         GetPlatform(allowWindowsArm64: true, detectMusl: false),
         OperatingSystem.IsWindows() ? "nvim.exe" : "nvim");
 
     /// <summary>
-    /// Resolves the pinned GNU Emacs executable and its Eglot runtime environment.
+    /// Resolves the provisioned GNU Emacs executable and its Eglot runtime environment.
     /// </summary>
     /// <param name="repositoryRoot">The absolute repository root.</param>
     /// <returns>The GNU Emacs executable path.</returns>
@@ -272,13 +293,12 @@ internal static class EditorToolResolver
             repositoryRoot,
             "CSLS_EMACS_PATH",
             "emacs",
-            "31.1",
             GetPlatform(allowWindowsArm64: true, detectMusl: true),
             OperatingSystem.IsWindows() ? "emacs.exe" : "emacs");
     }
 
     /// <summary>
-    /// Resolves the pinned Zed executable used by the graphical editor integration test.
+    /// Resolves the provisioned Zed executable used by the graphical editor integration test.
     /// </summary>
     /// <param name="repositoryRoot">The absolute repository root.</param>
     /// <returns>The absolute Zed executable path.</returns>
@@ -286,7 +306,6 @@ internal static class EditorToolResolver
         repositoryRoot,
         "CSLS_ZED_PATH",
         "zed",
-        "1.17.2",
         GetPlatform(allowWindowsArm64: false, detectMusl: false),
         "zed");
 
@@ -311,7 +330,7 @@ internal static class EditorToolResolver
     }
 
     /// <summary>
-    /// Resolves the pinned official C# extension used by the Zed integration test.
+    /// Resolves the current official C# extension used by the Zed integration test.
     /// </summary>
     /// <param name="repositoryRoot">The absolute repository root.</param>
     /// <returns>The absolute extracted extension directory.</returns>
@@ -328,20 +347,28 @@ internal static class EditorToolResolver
         string toolsRoot = string.IsNullOrWhiteSpace(configuredToolsRoot)
             ? Path.Join(repositoryRoot, "artifacts", "tools")
             : Path.GetFullPath(configuredToolsRoot);
-        string extensionPath = Path.Join(
-            toolsRoot,
-            "zed-csharp-extension",
-            "1.2.2",
-            "all");
-        return File.Exists(Path.Join(extensionPath, "extension.toml"))
+        string toolRoot = Path.Join(toolsRoot, "zed-csharp-extension");
+        string? extensionPath = Directory.Exists(toolRoot)
+            ? Directory
+                .EnumerateDirectories(toolRoot)
+                .Select(versionPath => (
+                    Path: versionPath,
+                    Version: Version.TryParse(Path.GetFileName(versionPath), out Version? parsed)
+                        ? parsed
+                        : new Version()))
+                .OrderByDescending(static candidate => candidate.Version)
+                .Select(static candidate => Path.Join(candidate.Path, "all"))
+                .FirstOrDefault(path => File.Exists(Path.Join(path, "extension.toml")))
+            : null;
+        return extensionPath is not null
             ? extensionPath
             : throw new DirectoryNotFoundException(
-                "The pinned Zed C# extension is not provisioned. " +
+                "The Zed C# extension is not provisioned. " +
                 "Run scripts/Provision-Zed.cs.");
     }
 
     /// <summary>
-    /// Resolves the pinned upstream csharp-ls executable used as a parity oracle.
+    /// Resolves the current upstream csharp-ls executable used as a parity oracle.
     /// </summary>
     /// <param name="repositoryRoot">The absolute repository root.</param>
     /// <returns>The absolute provisioned oracle path.</returns>
@@ -349,7 +376,6 @@ internal static class EditorToolResolver
         repositoryRoot,
         "CSLS_CSHARP_LS_ORACLE_PATH",
         "csharp-ls-oracle",
-        "0.27.0",
         GetPlatform(allowWindowsArm64: true, detectMusl: false),
         OperatingSystem.IsWindows() ? "csharp-ls.exe" : "csharp-ls");
 
@@ -357,7 +383,6 @@ internal static class EditorToolResolver
         string repositoryRoot,
         string environmentVariable,
         string toolName,
-        string version,
         string platform,
         string executableName)
     {
@@ -371,18 +396,21 @@ internal static class EditorToolResolver
         string toolsRoot = string.IsNullOrWhiteSpace(configuredToolsRoot)
             ? Path.Join(repositoryRoot, "artifacts", "tools")
             : Path.GetFullPath(configuredToolsRoot);
-        string installationPath = Path.Join(
-            toolsRoot,
-            toolName,
-            version,
-            platform);
-        string? provisionedPath = Directory.Exists(installationPath)
+        string toolRoot = Path.Join(toolsRoot, toolName);
+        string? provisionedPath = Directory.Exists(toolRoot)
             ? Directory
-                .EnumerateFiles(installationPath, executableName, SearchOption.AllDirectories)
-                .SingleOrDefault()
+                .EnumerateDirectories(toolRoot)
+                .OrderByDescending(Directory.GetLastWriteTimeUtc)
+                .Select(versionPath => Path.Join(versionPath, platform))
+                .Where(Directory.Exists)
+                .SelectMany(path => Directory.EnumerateFiles(
+                    path,
+                    executableName,
+                    SearchOption.AllDirectories))
+                .FirstOrDefault()
             : null;
         return provisionedPath ?? throw new FileNotFoundException(
-            $"The pinned {toolName} {version} executable is not provisioned. " +
+            $"The {toolName} executable is not provisioned. " +
             $"Run scripts/Provision-{GetProvisionerName(toolName)}.cs.");
     }
 
