@@ -106,7 +106,7 @@ internal static class RoslynExtractBaseClassCodeRefactoringAdapter
         TextSpan actionSpan;
         if (selectedMembers.Length != 0)
         {
-            selectedType = selectedMembers[0].ContainingType as INamedTypeSymbol;
+            selectedType = selectedMembers[0].ContainingType;
             declaration = selectedMemberPairs[0].Node
                 .AncestorsAndSelf()
                 .OfType<ClassDeclarationSyntax>()

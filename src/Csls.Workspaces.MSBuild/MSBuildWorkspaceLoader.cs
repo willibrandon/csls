@@ -224,10 +224,10 @@ public sealed partial class MSBuildWorkspaceLoader : WorkspaceLoader
         var knownProjectPaths = new HashSet<string>(PathComparer);
         var fileBasedAppsToBuild = new List<string>();
         var projectPathsToInspect = new Queue<(string ProjectPath, string? EntryPointPath)>(
-            primaryProjectPaths.Select(static projectPath => (projectPath, (string?)null))
-                .Concat(projectFilePaths.Select(static pair => (
-                    pair.Key,
-                    (string?)pair.Value))));
+            primaryProjectPaths.Select(static projectPath =>
+                CreateProjectPathToInspect(projectPath, null))
+                .Concat(projectFilePaths.Select(static pair =>
+                    CreateProjectPathToInspect(pair.Key, pair.Value))));
         while (projectPathsToInspect.TryDequeue(
             out (string ProjectPath, string? EntryPointPath) projectToInspect))
         {
@@ -386,6 +386,12 @@ public sealed partial class MSBuildWorkspaceLoader : WorkspaceLoader
 
         return preparedSnapshots;
     }
+
+    private static (string ProjectPath, string? EntryPointPath)
+        CreateProjectPathToInspect(
+        string projectPath,
+        string? entryPointPath) =>
+        (projectPath, entryPointPath);
 
     private async Task<IReadOnlyList<MSBuildProjectSnapshot>> LoadProjectSnapshotsAsync(
         IReadOnlyList<string> projectPaths,

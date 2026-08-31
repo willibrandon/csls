@@ -239,9 +239,8 @@ internal static class FileBasedAppProjectLoader
             process);
         try
         {
-            foreach (string entryPointPath in entryPointPaths)
+            foreach (string request in entryPointPaths.Select(CreateRequest))
             {
-                string request = CreateRequest(entryPointPath);
                 await process.StandardInput
                     .WriteLineAsync(request.AsMemory(), cancellationToken)
                     .ConfigureAwait(false);
