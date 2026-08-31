@@ -12,6 +12,7 @@ public sealed class ControlRpcClient : IAsyncDisposable
 {
     private const int MaximumMessageBytes = 4 * 1024 * 1024;
     private readonly string _socketPath;
+    private readonly Func<CancellationToken, Task>? _workspaceReadiness;
     private readonly SemaphoreSlim _connectionGate = new(1, 1);
     private Socket? _socket;
     private NetworkStream? _stream;
@@ -28,9 +29,22 @@ public sealed class ControlRpcClient : IAsyncDisposable
     /// </summary>
     /// <param name="socketPath">The absolute live-session socket path.</param>
     public ControlRpcClient(string socketPath)
+        : this(socketPath, workspaceReadiness: null)
+    {
+    }
+
+    /// <summary>
+    /// Creates a control client that gates workspace operations on asynchronous readiness.
+    /// </summary>
+    /// <param name="socketPath">The absolute live-session socket path.</param>
+    /// <param name="workspaceReadiness">The optional workspace readiness operation.</param>
+    public ControlRpcClient(
+        string socketPath,
+        Func<CancellationToken, Task>? workspaceReadiness)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(socketPath);
         _socketPath = Path.GetFullPath(socketPath);
+        _workspaceReadiness = workspaceReadiness;
     }
 
     /// <summary>
@@ -43,7 +57,8 @@ public sealed class ControlRpcClient : IAsyncDisposable
     {
         return await InvokeReadAsync<ControlSessionInfo>(
             ControlMethods.GetSession,
-            cancellationToken).ConfigureAwait(false);
+            cancellationToken,
+            waitForWorkspace: false).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -413,6 +428,7 @@ public sealed class ControlRpcClient : IAsyncDisposable
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(request);
+        await WaitForWorkspaceAsync(cancellationToken).ConfigureAwait(false);
         JsonRpc rpc = await GetRpcAsync(cancellationToken).ConfigureAwait(false);
         return await rpc.InvokeWithParameterObjectAsync<ControlApplyEditPlanResult>(
             ControlMethods.ApplyEditPlan,
@@ -424,6 +440,7 @@ public sealed class ControlRpcClient : IAsyncDisposable
         string methodName,
         CancellationToken cancellationToken)
     {
+        await WaitForWorkspaceAsync(cancellationToken).ConfigureAwait(false);
         JsonRpc rpc = await GetRpcAsync(cancellationToken).ConfigureAwait(false);
         return await rpc.InvokeWithCancellationAsync<ControlWorkspaceOperationResult>(
             methodName,
@@ -542,8 +559,14 @@ public sealed class ControlRpcClient : IAsyncDisposable
 
     private async Task<TResult> InvokeReadAsync<TResult>(
         string methodName,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool waitForWorkspace = true)
     {
+        if (waitForWorkspace)
+        {
+            await WaitForWorkspaceAsync(cancellationToken).ConfigureAwait(false);
+        }
+
         bool canRetry = true;
         while (true)
         {
@@ -571,6 +594,7 @@ public sealed class ControlRpcClient : IAsyncDisposable
         object request,
         CancellationToken cancellationToken)
     {
+        await WaitForWorkspaceAsync(cancellationToken).ConfigureAwait(false);
         bool canRetry = true;
         while (true)
         {
@@ -609,6 +633,9 @@ public sealed class ControlRpcClient : IAsyncDisposable
             _connectionGate.Release();
         }
     }
+
+    private Task WaitForWorkspaceAsync(CancellationToken cancellationToken) =>
+        _workspaceReadiness?.Invoke(cancellationToken) ?? Task.CompletedTask;
 
     private async Task DisposeConnectionAsync()
     {

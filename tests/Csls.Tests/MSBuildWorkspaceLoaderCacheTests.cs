@@ -4,6 +4,7 @@ using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.Text;
 using Microsoft.Extensions.Logging.Abstractions;
 using System.Collections.Concurrent;
+using System.Runtime.InteropServices;
 
 namespace Csls.Tests;
 
@@ -17,6 +18,23 @@ public sealed class MSBuildWorkspaceLoaderCacheTests
     /// Gets the active MSTest context and its framework-managed cancellation token.
     /// </summary>
     public TestContext TestContext { get; set; } = null!;
+
+    /// <summary>
+    /// Keeps Windows job accounting aligned with the native active-process field.
+    /// </summary>
+    [TestMethod]
+    public void WindowsJobObjectAccountingMatchesNativeLayout()
+    {
+        Type accountingType = typeof(MSBuildWorkspaceLoader).Assembly.GetType(
+            "Csls.Workspaces.WindowsJobObjectBasicAccountingInformation",
+            throwOnError: true)!;
+        Assert.AreEqual(
+            48,
+            Marshal.SizeOf(accountingType));
+        Assert.AreEqual(
+            40L,
+            Marshal.OffsetOf(accountingType, "_activeProcesses").ToInt64());
+    }
 
     /// <summary>
     /// Keeps in-process MSBuild state from changing the language-server process directory.

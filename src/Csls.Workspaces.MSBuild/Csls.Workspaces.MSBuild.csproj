@@ -1,6 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <AssemblyName>Csls.Workspaces.MSBuild</AssemblyName>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <RootNamespace>Csls.Workspaces</RootNamespace>
     <Description>The desktop MSBuild project-system loader for csls.</Description>
   </PropertyGroup>

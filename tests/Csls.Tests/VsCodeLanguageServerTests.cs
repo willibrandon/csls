@@ -214,8 +214,8 @@ public sealed class VsCodeLanguageServerTests
             "@vscode",
             "test-electron",
             "package.json");
-        Assert.IsTrue(
-            File.Exists(testElectronPath),
+        TestPrerequisite.RequireFile(
+            testElectronPath,
             "The VS Code fixture is not provisioned. Run scripts/Provision-VsCode.cs.");
         string runtimeExtensionPath = EditorToolResolver.ResolveVsCodeExtension(
             repositoryRoot,
@@ -296,8 +296,8 @@ public sealed class VsCodeLanguageServerTests
             "@vscode",
             "test-electron",
             "package.json");
-        Assert.IsTrue(
-            File.Exists(testElectronPath),
+        TestPrerequisite.RequireFile(
+            testElectronPath,
             "The VS Code fixture is not provisioned. Run scripts/Provision-VsCode.cs.");
         string runtimeExtensionPath = EditorToolResolver.ResolveVsCodeExtension(
             repositoryRoot,

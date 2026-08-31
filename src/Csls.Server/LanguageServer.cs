@@ -87,6 +87,11 @@ public sealed partial class LanguageServer : ILspRpcTarget, IAsyncDisposable
         (ServerWorkspacePhase)Volatile.Read(ref _workspacePhase);
 
     /// <summary>
+    /// Gets the workspace roots requested by the initialized client.
+    /// </summary>
+    public IReadOnlyList<string> WorkspaceRoots => [.. Volatile.Read(ref _rootPaths)];
+
+    /// <summary>
     /// Gets the token canceled when the client sends the LSP exit notification.
     /// </summary>
     public CancellationToken ExitToken => _exitSource.Token;

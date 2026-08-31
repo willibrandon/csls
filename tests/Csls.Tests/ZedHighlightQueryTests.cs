@@ -20,6 +20,10 @@ public sealed class ZedHighlightQueryTests
     [OSCondition(ConditionMode.Include, OperatingSystems.Linux)]
     public async Task StaticServiceReceiverIsHighlightedAsType()
     {
+        TestPrerequisite.RequireCommand(
+            "tree-sitter",
+            "The tree-sitter executable is unavailable. " +
+            "Run scripts/Install-GraphicalEditorTestPrerequisites.cs.");
         string repositoryRoot = EditorToolResolver.FindRepositoryRoot();
         string queryPath = Path.Join(
             repositoryRoot,

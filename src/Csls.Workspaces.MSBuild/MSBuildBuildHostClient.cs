@@ -1,6 +1,7 @@
 using Microsoft.CodeAnalysis;
 using StreamJsonRpc;
 using System.Diagnostics;
+using System.Runtime.CompilerServices;
 
 namespace Csls.Workspaces;
 
@@ -79,6 +80,9 @@ internal sealed class MSBuildBuildHostClient
         startInfo.ArgumentList.Add("--msbuild-build-host");
         using Process process = Process.Start(startInfo)
             ?? throw new InvalidOperationException("The MSBuild build host did not start.");
+        var processTree = WindowsProcessTreeLifetime.Attach(process);
+        await using ConfiguredAsyncDisposable processTreeCleanup =
+            processTree.ConfigureAwait(false);
         Task<string> standardErrorTask = process.StandardError.ReadToEndAsync(
             CancellationToken.None);
         MSBuildBuildHostResponse response;
@@ -114,12 +118,14 @@ internal sealed class MSBuildBuildHostClient
                 }
 
                 await process.WaitForExitAsync(CancellationToken.None).ConfigureAwait(false);
+                await processTree.TerminateDescendantsAsync().ConfigureAwait(false);
                 _ = await standardErrorTask.ConfigureAwait(false);
                 throw;
             }
         }
 
         await process.WaitForExitAsync(CancellationToken.None).ConfigureAwait(false);
+        await processTree.TerminateDescendantsAsync().ConfigureAwait(false);
         string standardError = await standardErrorTask.ConfigureAwait(false);
         if (process.ExitCode != 0)
         {

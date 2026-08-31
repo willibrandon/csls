@@ -164,11 +164,14 @@ internal static class EditorToolResolver
                 .SelectMany(path => Directory.EnumerateFiles(path, "*.vsix"))
                 .FirstOrDefault()
             : null;
-        return package is not null
-            ? package
-            : throw new FileNotFoundException(
+        if (package is null)
+        {
+            TestPrerequisite.Skip(
                 $"The current {toolName} extension is not provisioned. " +
                 "Run scripts/Provision-VsCode.cs.");
+        }
+
+        return package;
     }
 
     /// <summary>
@@ -205,12 +208,15 @@ internal static class EditorToolResolver
                 : Path.Join(toolRoot, "unavailable");
         }
 
-        return File.Exists(Path.Join(serverRoot, "node")) &&
-            File.Exists(Path.Join(serverRoot, "out", "server-main.js"))
-            ? serverRoot
-            : throw new DirectoryNotFoundException(
+        if (!File.Exists(Path.Join(serverRoot, "node")) ||
+            !File.Exists(Path.Join(serverRoot, "out", "server-main.js")))
+        {
+            TestPrerequisite.Skip(
                 "The VS Code remote server is not provisioned. " +
                 "Run scripts/Provision-VsCodeRemoteServer.cs.");
+        }
+
+        return serverRoot;
     }
 
     private static string GetVsCodeTargetPlatform()
@@ -321,12 +327,15 @@ internal static class EditorToolResolver
         string extensionPath = string.IsNullOrWhiteSpace(configuredPath)
             ? Path.Join(ResolveArtifactsRoot(repositoryRoot), "editors", "zed", "csls")
             : Path.GetFullPath(configuredPath);
-        return File.Exists(Path.Join(extensionPath, "extension.toml")) &&
-            File.Exists(Path.Join(extensionPath, "extension.wasm"))
-            ? extensionPath
-            : throw new DirectoryNotFoundException(
+        if (!File.Exists(Path.Join(extensionPath, "extension.toml")) ||
+            !File.Exists(Path.Join(extensionPath, "extension.wasm")))
+        {
+            TestPrerequisite.Skip(
                 "The csls Zed extension is not built. " +
                 "Run scripts/Build-ZedExtension.cs.");
+        }
+
+        return extensionPath;
     }
 
     /// <summary>
@@ -360,11 +369,14 @@ internal static class EditorToolResolver
                 .Select(static candidate => Path.Join(candidate.Path, "all"))
                 .FirstOrDefault(path => File.Exists(Path.Join(path, "extension.toml")))
             : null;
-        return extensionPath is not null
-            ? extensionPath
-            : throw new DirectoryNotFoundException(
+        if (extensionPath is null)
+        {
+            TestPrerequisite.Skip(
                 "The Zed C# extension is not provisioned. " +
                 "Run scripts/Provision-Zed.cs.");
+        }
+
+        return extensionPath;
     }
 
     /// <summary>
@@ -409,9 +421,14 @@ internal static class EditorToolResolver
                     SearchOption.AllDirectories))
                 .FirstOrDefault()
             : null;
-        return provisionedPath ?? throw new FileNotFoundException(
-            $"The {toolName} executable is not provisioned. " +
-            $"Run scripts/Provision-{GetProvisionerName(toolName)}.cs.");
+        if (provisionedPath is null)
+        {
+            TestPrerequisite.Skip(
+                $"The {toolName} executable is not provisioned. " +
+                $"Run scripts/Provision-{GetProvisionerName(toolName)}.cs.");
+        }
+
+        return provisionedPath;
     }
 
     private static string GetProvisionerName(string toolName) => toolName switch

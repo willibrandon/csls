@@ -55,6 +55,34 @@ public sealed class TransientLanguageServerSession : IAsyncDisposable
         string clientName,
         CancellationToken cancellationToken)
     {
+        TransientLanguageServerSession session = await StartInitializingAsync(
+            workspacePath,
+            clientName,
+            cancellationToken).ConfigureAwait(false);
+        try
+        {
+            await session.WaitUntilReadyAsync(cancellationToken).ConfigureAwait(false);
+            return session;
+        }
+        catch
+        {
+            await session.DisposeAsync().ConfigureAwait(false);
+            throw;
+        }
+    }
+
+    /// <summary>
+    /// Starts a transient server through LSP initialization while its workspace continues loading.
+    /// </summary>
+    /// <param name="workspacePath">The workspace directory, solution, project, or document path.</param>
+    /// <param name="clientName">The LSP client name reported during initialization.</param>
+    /// <param name="cancellationToken">The startup cancellation token.</param>
+    /// <returns>The protocol-initialized transient session.</returns>
+    public static async Task<TransientLanguageServerSession> StartInitializingAsync(
+        string workspacePath,
+        string clientName,
+        CancellationToken cancellationToken)
+    {
         ArgumentException.ThrowIfNullOrWhiteSpace(workspacePath);
         ArgumentException.ThrowIfNullOrWhiteSpace(clientName);
         string fullWorkspacePath = Path.GetFullPath(workspacePath);
@@ -137,6 +165,33 @@ public sealed class TransientLanguageServerSession : IAsyncDisposable
     /// <returns>A task that completes when the process exits.</returns>
     public Task WaitForExitAsync(CancellationToken cancellationToken) =>
         _process.WaitForExitAsync(cancellationToken);
+
+    /// <summary>
+    /// Waits until the transient language server finishes loading its workspace.
+    /// </summary>
+    /// <param name="cancellationToken">The readiness cancellation token.</param>
+    /// <returns>A task that completes when the workspace is ready.</returns>
+    public async Task WaitUntilReadyAsync(CancellationToken cancellationToken)
+    {
+        while (true)
+        {
+            CSharpDebugInfo debugInfo = await _rpc
+                .InvokeWithParameterObjectAsync<CSharpDebugInfo>(
+                    "$/csharp/debugInfo",
+                    new InitializedParams(),
+                    cancellationToken).ConfigureAwait(false);
+            if (string.Equals(
+                    debugInfo.Workspace.Phase,
+                    "Ready",
+                    StringComparison.Ordinal))
+            {
+                return;
+            }
+
+            await Task.Delay(TimeSpan.FromMilliseconds(10), cancellationToken)
+                .ConfigureAwait(false);
+        }
+    }
 
     /// <summary>
     /// Gracefully shuts down the transient server and releases its process and RPC transport.
@@ -227,29 +282,6 @@ public sealed class TransientLanguageServerSession : IAsyncDisposable
         await _rpc.NotifyWithParameterObjectAsync(
             "initialized",
             new InitializedParams()).ConfigureAwait(false);
-        await WaitUntilReadyAsync(cancellationToken).ConfigureAwait(false);
         Volatile.Write(ref _initializationCompleted, 1);
-    }
-
-    private async Task WaitUntilReadyAsync(CancellationToken cancellationToken)
-    {
-        while (true)
-        {
-            CSharpDebugInfo debugInfo = await _rpc
-                .InvokeWithParameterObjectAsync<CSharpDebugInfo>(
-                    "$/csharp/debugInfo",
-                    new InitializedParams(),
-                    cancellationToken).ConfigureAwait(false);
-            if (string.Equals(
-                    debugInfo.Workspace.Phase,
-                    "Ready",
-                    StringComparison.Ordinal))
-            {
-                return;
-            }
-
-            await Task.Delay(TimeSpan.FromMilliseconds(10), cancellationToken)
-                .ConfigureAwait(false);
-        }
     }
 }
