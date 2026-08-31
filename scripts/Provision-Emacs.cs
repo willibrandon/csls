@@ -98,7 +98,7 @@ static Task<string> ProvisionWindowsAsync(
         version,
         platform,
         new Uri(
-            $"https://ftp.gnu.org/gnu/windows/emacs/emacs-{Version.Parse(version).Major}/" +
+            $"https://mirrors.kernel.org/gnu/windows/emacs/emacs-{Version.Parse(version).Major}/" +
             $"emacs-{version}.zip"),
         $"emacs-{version}.zip",
         null,
@@ -250,7 +250,7 @@ static async Task VerifyEglotAsync(string executablePath, string version)
 
 static async Task<(string Version, Uri Source)> ResolveLatestReleaseAsync()
 {
-    var sourceDirectory = new Uri("https://ftp.gnu.org/gnu/emacs/");
+    var sourceDirectory = new Uri("https://mirrors.kernel.org/gnu/emacs/");
     using var handler = new HttpClientHandler
     {
         AutomaticDecompression = DecompressionMethods.All,
