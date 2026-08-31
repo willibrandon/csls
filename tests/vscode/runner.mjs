@@ -40,8 +40,7 @@ if (remoteServerRoot === undefined) {
     installRemoteExtension(remoteServerRoot, remoteDataPath, packagePath);
   }
 
-  const testPackagePath = resolve(userDataPath, "csls-vscode-tests.vsix");
-  packageExtension(extensionPath, testPackagePath);
+  const testPackagePath = requireEnvironment("CSLS_VSCODE_REMOTE_TEST_EXTENSION_PATH");
   installRemoteExtension(remoteServerRoot, remoteDataPath, testPackagePath);
 }
 
@@ -127,30 +126,6 @@ function installRemoteExtension(serverRoot, serverDataPath, packagePath) {
   if (result.status !== 0) {
     throw new Error(
       `VS Code Server could not install ${packagePath}: ${result.stderr || result.stdout}`,
-    );
-  }
-}
-
-function packageExtension(sourcePath, outputPath) {
-  const vscePath = resolve(
-    extensionPath,
-    "..",
-    "..",
-    "editors",
-    "vscode",
-    "node_modules",
-    "@vscode",
-    "vsce",
-    "vsce",
-  );
-  const result = spawnSync(
-    "node",
-    [vscePath, "package", "--no-dependencies", "--out", outputPath],
-    { cwd: sourcePath, encoding: "utf8" },
-  );
-  if (result.status !== 0) {
-    throw new Error(
-      `The VS Code test extension could not be packaged: ${result.stderr || result.stdout}`,
     );
   }
 }

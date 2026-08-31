@@ -1,3 +1,4 @@
+using Csls.Control;
 using Csls.Control.Contracts;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
@@ -512,6 +513,15 @@ public sealed class VsCodeLanguageServerTests
         bool trackControlSession = true,
         string? localSuite = null)
     {
+        string socketDirectory = Path.Join(
+            Path.GetDirectoryName(userDataPath)!,
+            "control-sockets");
+        Directory.CreateDirectory(socketDirectory);
+        string? remoteTestExtensionPath = remoteServerRoot is null
+            ? null
+            : await VsCodeExtensionPackage.GetRemoteTestAsync(
+                repositoryRoot,
+                TestContext.CancellationToken).ConfigureAwait(false);
         using Process runner = StartRunner(
             repositoryRoot,
             runnerPath,
@@ -524,7 +534,9 @@ public sealed class VsCodeLanguageServerTests
             remoteDataPath,
             displayName,
             remoteSuite,
-            localSuite);
+            localSuite,
+            socketDirectory,
+            remoteTestExtensionPath);
         Task<string> outputTask = runner.StandardOutput.ReadToEndAsync(
             TestContext.CancellationToken);
         Task<string> errorTask = runner.StandardError.ReadToEndAsync(
@@ -540,7 +552,8 @@ public sealed class VsCodeLanguageServerTests
                 Task<ControlSessionInfo> sessionTask = ControlSessionWaiter.WaitForRunningAsync(
                     workspacePath,
                     s_editorStartupTimeout,
-                    startupCancellation.Token);
+                    startupCancellation.Token,
+                    socketDirectory: socketDirectory);
                 Task firstCompleted = await Task.WhenAny(sessionTask, runnerExitTask)
                     .ConfigureAwait(false);
                 if (firstCompleted == sessionTask)
@@ -763,7 +776,9 @@ public sealed class VsCodeLanguageServerTests
         string remoteDataPath,
         string? displayName,
         string? remoteSuite,
-        string? localSuite)
+        string? localSuite,
+        string socketDirectory,
+        string? remoteTestExtensionPath)
     {
         string? configuredToolsRoot = Environment.GetEnvironmentVariable("CSLS_TOOLS_ROOT");
         string toolsRoot = string.IsNullOrWhiteSpace(configuredToolsRoot)
@@ -792,12 +807,17 @@ public sealed class VsCodeLanguageServerTests
         startInfo.Environment["CSLS_VSCODE_RUNTIME_EXTENSION_PATH"] = runtimeExtensionPath;
         startInfo.Environment["CSLS_VSCODE_USER_DATA_PATH"] = userDataPath;
         startInfo.Environment["CSLS_VSCODE_WORKSPACE_PATH"] = workspacePath;
+        startInfo.Environment[ControlEndpoint.SocketDirectoryEnvironmentVariable] =
+            socketDirectory;
         if (localSuite is not null)
         {
             startInfo.Environment["CSLS_VSCODE_SUITE"] = localSuite;
         }
         if (remoteServerRoot is not null)
         {
+            startInfo.Environment["CSLS_VSCODE_REMOTE_TEST_EXTENSION_PATH"] =
+                remoteTestExtensionPath ?? throw new InvalidOperationException(
+                    "The remote VS Code test extension is unavailable.");
             startInfo.Environment["CSLS_VSCODE_REMOTE_DATA_PATH"] = remoteDataPath;
             startInfo.Environment["CSLS_VSCODE_REMOTE_RESULT_PATH"] = Path.Join(
                 remoteDataPath,

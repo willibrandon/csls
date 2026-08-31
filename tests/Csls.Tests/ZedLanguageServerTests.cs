@@ -117,6 +117,7 @@ public sealed class ZedLanguageServerTests
                 "csls");
             string homePath = Path.Join(fixturePath, "home");
             string cachePath = Path.Join(fixturePath, "cache");
+            string socketDirectory = Path.Join(fixturePath, "control-sockets");
             Directory.CreateDirectory(workspacePath);
             Directory.CreateDirectory(Path.GetDirectoryName(configurationPath)!);
             Directory.CreateDirectory(homePath);
@@ -150,7 +151,8 @@ public sealed class ZedLanguageServerTests
                 cachePath,
                 displayName,
                 workspacePath,
-                workerPath);
+                workerPath,
+                socketDirectory);
             Task<string> zedOutputTask = zed.StandardOutput.ReadToEndAsync(
                 TestContext.CancellationToken);
             Task<string> zedErrorTask = zed.StandardError.ReadToEndAsync(
@@ -162,7 +164,8 @@ public sealed class ZedLanguageServerTests
                 ControlSessionInfo session = await ControlSessionWaiter.WaitForRunningAsync(
                     workspacePath,
                     TimeSpan.FromSeconds(60),
-                    TestContext.CancellationToken).ConfigureAwait(false);
+                    TestContext.CancellationToken,
+                    socketDirectory: socketDirectory).ConfigureAwait(false);
                 serverExit = ProcessExitWaiter.Observe(session.ProcessId);
                 var control = new ControlRpcClient(session.SocketPath);
                 await using ConfiguredAsyncDisposable controlCleanup =
@@ -346,6 +349,7 @@ public sealed class ZedLanguageServerTests
                 "csls");
             string homePath = Path.Join(fixturePath, "home");
             string cachePath = Path.Join(fixturePath, "cache");
+            string socketDirectory = Path.Join(fixturePath, "control-sockets");
             Directory.CreateDirectory(Path.GetDirectoryName(configurationPath)!);
             Directory.CreateDirectory(homePath);
             Directory.CreateDirectory(cachePath);
@@ -370,7 +374,8 @@ public sealed class ZedLanguageServerTests
                 cachePath,
                 displayName,
                 repositoryRoot,
-                workerPath);
+                workerPath,
+                socketDirectory);
             Task<string> zedOutputTask = zed.StandardOutput.ReadToEndAsync(
                 TestContext.CancellationToken);
             Task<string> zedErrorTask = zed.StandardError.ReadToEndAsync(
@@ -383,7 +388,8 @@ public sealed class ZedLanguageServerTests
                     repositoryRoot,
                     s_workspaceStartupTimeout,
                     TestContext.CancellationToken,
-                    existingSessionProcessIds).ConfigureAwait(false);
+                    existingSessionProcessIds,
+                    socketDirectory: socketDirectory).ConfigureAwait(false);
                 serverExit = ProcessExitWaiter.Observe(session.ProcessId);
                 var control = new ControlRpcClient(session.SocketPath);
                 await using ConfiguredAsyncDisposable controlCleanup =
@@ -587,6 +593,7 @@ public sealed class ZedLanguageServerTests
                 "csls");
             string homePath = Path.Join(fixturePath, "home");
             string cachePath = Path.Join(fixturePath, "cache");
+            string socketDirectory = Path.Join(fixturePath, "control-sockets");
             Directory.CreateDirectory(workspacePath);
             Directory.CreateDirectory(Path.GetDirectoryName(configurationPath)!);
             Directory.CreateDirectory(homePath);
@@ -621,7 +628,8 @@ public sealed class ZedLanguageServerTests
                 cachePath,
                 display.DisplayName,
                 workspacePath,
-                workerPath);
+                workerPath,
+                socketDirectory);
             Task<string> zedOutputTask = zed.StandardOutput.ReadToEndAsync(
                 TestContext.CancellationToken);
             Task<string> zedErrorTask = zed.StandardError.ReadToEndAsync(
@@ -633,7 +641,8 @@ public sealed class ZedLanguageServerTests
                 ControlSessionInfo session = await ControlSessionWaiter.WaitForRunningAsync(
                     workspacePath,
                     TimeSpan.FromSeconds(60),
-                    TestContext.CancellationToken).ConfigureAwait(false);
+                    TestContext.CancellationToken,
+                    socketDirectory: socketDirectory).ConfigureAwait(false);
                 serverExit = ProcessExitWaiter.Observe(session.ProcessId);
                 var control = new ControlRpcClient(session.SocketPath);
                 await using ConfiguredAsyncDisposable controlCleanup = control.ConfigureAwait(false);
@@ -764,7 +773,8 @@ public sealed class ZedLanguageServerTests
         string cachePath,
         string displayName,
         string workspacePath,
-        string workerPath)
+        string workerPath,
+        string socketDirectory)
     {
         var startInfo = new ProcessStartInfo
         {
@@ -782,6 +792,8 @@ public sealed class ZedLanguageServerTests
             $"{documentPath}:{position.Line + 1}:{position.Character + 1}");
         startInfo.Environment["DISPLAY"] = displayName;
         startInfo.Environment["CSLS_WORKER_PATH"] = workerPath;
+        startInfo.Environment[ControlEndpoint.SocketDirectoryEnvironmentVariable] =
+            socketDirectory;
         startInfo.Environment["HOME"] = homePath;
         startInfo.Environment["NO_AT_BRIDGE"] = "1";
         startInfo.Environment.Remove("WAYLAND_DISPLAY");
