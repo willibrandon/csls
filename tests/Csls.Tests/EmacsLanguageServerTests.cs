@@ -1,3 +1,4 @@
+using Csls.Control;
 using Hex1b;
 using Hex1b.Automation;
 using Hex1b.Input;
@@ -64,6 +65,7 @@ public sealed class EmacsLanguageServerTests
             string readyPath = Path.Join(fixturePath, "eglot-ready");
             string navigationPath = Path.Join(fixturePath, "eglot-navigation");
             string initializationPath = Path.Join(fixturePath, "init.el");
+            string socketDirectory = Path.Join(fixturePath, "sockets");
             await File.WriteAllTextAsync(
                 initializationPath,
                 CreateInitialization(
@@ -89,6 +91,9 @@ public sealed class EmacsLanguageServerTests
                 "--environment",
                 "CSLS_WORKER_PATH",
                 workerPath,
+                "--environment",
+                ControlEndpoint.SocketDirectoryEnvironmentVariable,
+                socketDirectory,
                 "--",
                 emacsPath,
                 "-nw",
@@ -134,7 +139,8 @@ public sealed class EmacsLanguageServerTests
                             int serverProcessId = (await ControlSessionWaiter.WaitForRunningAsync(
                                 fixturePath,
                                 TimeSpan.FromSeconds(60),
-                                TestContext.CancellationToken).ConfigureAwait(false)).ProcessId;
+                                TestContext.CancellationToken,
+                                socketDirectory: socketDirectory).ConfigureAwait(false)).ProcessId;
                             serverExit = ProcessExitWaiter.Observe(serverProcessId);
                         }
                         catch (TaskCanceledException exception)

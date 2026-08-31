@@ -1,3 +1,4 @@
+using Csls.Control;
 using Hex1b;
 using Hex1b.Automation;
 using Hex1b.Input;
@@ -47,6 +48,7 @@ public sealed class FreshLanguageServerTests
             string cachePath = Path.Join(fixturePath, "cache");
             string dataPath = Path.Join(fixturePath, "data");
             string statePath = Path.Join(fixturePath, "state");
+            string socketDirectory = Path.Join(fixturePath, "sockets");
             Directory.CreateDirectory(homePath);
             Directory.CreateDirectory(cachePath);
             Directory.CreateDirectory(dataPath);
@@ -88,6 +90,9 @@ public sealed class FreshLanguageServerTests
                     "--environment",
                     "CSLS_WORKER_PATH",
                     workerPath,
+                    "--environment",
+                    ControlEndpoint.SocketDirectoryEnvironmentVariable,
+                    socketDirectory,
                     "--",
                     freshPath,
                     "--config",
@@ -127,7 +132,8 @@ public sealed class FreshLanguageServerTests
                             int serverProcessId = (await ControlSessionWaiter.WaitForRunningAsync(
                                 fixturePath,
                                 TimeSpan.FromSeconds(60),
-                                TestContext.CancellationToken).ConfigureAwait(false)).ProcessId;
+                                TestContext.CancellationToken,
+                                socketDirectory: socketDirectory).ConfigureAwait(false)).ProcessId;
                             serverExit = ProcessExitWaiter.Observe(serverProcessId);
                             await automator.WaitUntilTextAsync("LSP (csharp) ready")
                                 .ConfigureAwait(false);

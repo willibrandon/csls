@@ -1,3 +1,4 @@
+using Csls.Control;
 using Hex1b;
 using Hex1b.Automation;
 using System.Text.Json;
@@ -47,6 +48,7 @@ public sealed class NeovimLanguageServerTests
             string configurationRoot = Path.Join(fixturePath, "config");
             string dataPath = Path.Join(fixturePath, "data");
             string statePath = Path.Join(fixturePath, "state");
+            string socketDirectory = Path.Join(fixturePath, "sockets");
             Directory.CreateDirectory(homePath);
             Directory.CreateDirectory(cachePath);
             Directory.CreateDirectory(configurationRoot);
@@ -89,6 +91,9 @@ public sealed class NeovimLanguageServerTests
                         "--environment",
                         "CSLS_WORKER_PATH",
                         workerPath,
+                        "--environment",
+                        ControlEndpoint.SocketDirectoryEnvironmentVariable,
+                        socketDirectory,
                         "--",
                         neovimPath,
                         "-u",
@@ -127,7 +132,8 @@ public sealed class NeovimLanguageServerTests
                         int serverProcessId = (await ControlSessionWaiter.WaitForRunningAsync(
                             fixturePath,
                             TimeSpan.FromSeconds(60),
-                            TestContext.CancellationToken).ConfigureAwait(false)).ProcessId;
+                            TestContext.CancellationToken,
+                            socketDirectory: socketDirectory).ConfigureAwait(false)).ProcessId;
                         serverExit = ProcessExitWaiter.Observe(serverProcessId);
 
                         await automator.TypeAsync("K", TestContext.CancellationToken)
@@ -201,6 +207,7 @@ public sealed class NeovimLanguageServerTests
             string configurationRoot = Path.Join(fixturePath, "config");
             string dataPath = Path.Join(fixturePath, "data");
             string statePath = Path.Join(fixturePath, "state");
+            string socketDirectory = Path.Join(fixturePath, "sockets");
             Directory.CreateDirectory(homePath);
             Directory.CreateDirectory(cachePath);
             Directory.CreateDirectory(configurationRoot);
@@ -248,6 +255,9 @@ public sealed class NeovimLanguageServerTests
                     "--environment",
                     "CSLS_WORKER_PATH",
                     workerPath,
+                    "--environment",
+                    ControlEndpoint.SocketDirectoryEnvironmentVariable,
+                    socketDirectory,
                     "--",
                     neovimPath,
                     "-u",
@@ -285,7 +295,8 @@ public sealed class NeovimLanguageServerTests
                         int serverProcessId = (await ControlSessionWaiter.WaitForRunningAsync(
                             fixturePath,
                             TimeSpan.FromSeconds(60),
-                            TestContext.CancellationToken).ConfigureAwait(false)).ProcessId;
+                            TestContext.CancellationToken,
+                            socketDirectory: socketDirectory).ConfigureAwait(false)).ProcessId;
                         serverExit = ProcessExitWaiter.Observe(serverProcessId);
 
                         string moveStatus = await FileTextWaiter.WaitForContentsAsync(

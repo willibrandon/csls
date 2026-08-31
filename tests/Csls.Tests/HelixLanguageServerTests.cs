@@ -1,3 +1,4 @@
+using Csls.Control;
 using Hex1b;
 using Hex1b.Automation;
 using Hex1b.Input;
@@ -46,6 +47,7 @@ public sealed class HelixLanguageServerTests
             string dataPath = Path.Join(fixturePath, "data");
             string statePath = Path.Join(fixturePath, "state");
             string homePath = Path.Join(fixturePath, "home");
+            string socketDirectory = Path.Join(fixturePath, "sockets");
             Directory.CreateDirectory(helixConfigurationPath);
             Directory.CreateDirectory(workspaceConfigurationPath);
             Directory.CreateDirectory(cachePath);
@@ -120,6 +122,9 @@ public sealed class HelixLanguageServerTests
                         "--environment",
                         "CSLS_WORKER_PATH",
                         workerPath,
+                        "--environment",
+                        ControlEndpoint.SocketDirectoryEnvironmentVariable,
+                        socketDirectory,
                         "--",
                         helixPath,
                         "--config",
@@ -156,7 +161,8 @@ public sealed class HelixLanguageServerTests
                         int serverProcessId = (await ControlSessionWaiter.WaitForRunningAsync(
                             fixturePath,
                             TimeSpan.FromSeconds(60),
-                            TestContext.CancellationToken).ConfigureAwait(false)).ProcessId;
+                            TestContext.CancellationToken,
+                            socketDirectory: socketDirectory).ConfigureAwait(false)).ProcessId;
                         serverExit = ProcessExitWaiter.Observe(serverProcessId);
                         await automator.SpaceAsync(TestContext.CancellationToken).ConfigureAwait(false);
                         await automator.KeyAsync(Hex1bKey.K, TestContext.CancellationToken)
