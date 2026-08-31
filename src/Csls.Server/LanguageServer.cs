@@ -365,46 +365,41 @@ public sealed partial class LanguageServer : ILspRpcTarget, IAsyncDisposable
             throw;
         }
 
-        try
+        if (workspaceLoaded &&
+            Interlocked.CompareExchange(
+                ref _workspacePhase,
+                (int)ServerWorkspacePhase.Ready,
+                (int)ServerWorkspacePhase.Loading) ==
+            (int)ServerWorkspacePhase.Loading)
         {
-            if (_supportsPullDiagnostics &&
-                _supportsDiagnosticRefresh &&
-                Interlocked.Exchange(ref _pendingDiagnosticRefresh, 0) != 0)
-            {
-                await _client.RefreshDiagnosticsAsync(cancellationToken).ConfigureAwait(false);
-            }
-
-            if (_supportsDynamicFileWatching)
-            {
-                using var registrationSource = CancellationTokenSource.CreateLinkedTokenSource(
-                    cancellationToken);
-                registrationSource.CancelAfter(TimeSpan.FromSeconds(5));
-                try
-                {
-                    await RegisterFileWatchersAsync(registrationSource.Token).ConfigureAwait(false);
-                }
-                catch (Exception exception) when (
-                    IsExpectedFileWatcherRegistrationFailure(
-                        exception,
-                        cancellationToken))
-                {
-                    LanguageServerLogger.LogFileWatcherRegistrationFailure(_logger, exception);
-                }
-            }
+            long elapsedMilliseconds = (long)Stopwatch
+                .GetElapsedTime(workspaceStartedTimestamp)
+                .TotalMilliseconds;
+            LanguageServerLogger.LogWorkspaceReady(_logger, elapsedMilliseconds);
         }
-        finally
+
+        if (_supportsPullDiagnostics &&
+            _supportsDiagnosticRefresh &&
+            Interlocked.Exchange(ref _pendingDiagnosticRefresh, 0) != 0)
         {
-            if (workspaceLoaded &&
-                Interlocked.CompareExchange(
-                    ref _workspacePhase,
-                    (int)ServerWorkspacePhase.Ready,
-                    (int)ServerWorkspacePhase.Loading) ==
-                (int)ServerWorkspacePhase.Loading)
+            await _client.RefreshDiagnosticsAsync(cancellationToken).ConfigureAwait(false);
+        }
+
+        if (_supportsDynamicFileWatching)
+        {
+            using var registrationSource = CancellationTokenSource.CreateLinkedTokenSource(
+                cancellationToken);
+            registrationSource.CancelAfter(TimeSpan.FromSeconds(5));
+            try
             {
-                long elapsedMilliseconds = (long)Stopwatch
-                    .GetElapsedTime(workspaceStartedTimestamp)
-                    .TotalMilliseconds;
-                LanguageServerLogger.LogWorkspaceReady(_logger, elapsedMilliseconds);
+                await RegisterFileWatchersAsync(registrationSource.Token).ConfigureAwait(false);
+            }
+            catch (Exception exception) when (
+                IsExpectedFileWatcherRegistrationFailure(
+                    exception,
+                    cancellationToken))
+            {
+                LanguageServerLogger.LogFileWatcherRegistrationFailure(_logger, exception);
             }
         }
     }
