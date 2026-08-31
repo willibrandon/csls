@@ -233,6 +233,11 @@ public sealed partial class LanguageServer
             await _client.RefreshDiagnosticsAsync(cancellationToken).ConfigureAwait(false);
         }
 
+        if (WorkspaceChanged)
+        {
+            QueueCodeLensRefresh();
+        }
+
         return Maintenance;
     }
 

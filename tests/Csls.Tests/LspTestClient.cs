@@ -39,6 +39,13 @@ internal sealed class LspTestClient
             SingleReader = true,
             SingleWriter = false
         });
+    private readonly Channel<bool> _codeLensRefreshRequests = Channel.CreateUnbounded<bool>(
+        new UnboundedChannelOptions
+        {
+            AllowSynchronousContinuations = false,
+            SingleReader = true,
+            SingleWriter = false
+        });
     private readonly Channel<WorkspaceDiagnosticProgressParams> _workspaceDiagnosticProgress =
         Channel.CreateUnbounded<WorkspaceDiagnosticProgressParams>(
             new UnboundedChannelOptions
@@ -292,6 +299,35 @@ internal sealed class LspTestClient
     internal async Task WaitForInlayHintRefreshAsync(CancellationToken cancellationToken)
     {
         await _inlayHintRefreshRequests.Reader
+            .ReadAsync(cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Accepts one server request to refresh code lenses.
+    /// </summary>
+    /// <param name="cancellationToken">The request cancellation token.</param>
+    /// <returns>A completed task after the refresh is retained.</returns>
+    internal Task RefreshCodeLensesAsync(CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        if (!_codeLensRefreshRequests.Writer.TryWrite(true))
+        {
+            throw new InvalidOperationException(
+                "The code-lens refresh request could not be observed.");
+        }
+
+        return Task.CompletedTask;
+    }
+
+    /// <summary>
+    /// Waits for the next server request to refresh code lenses.
+    /// </summary>
+    /// <param name="cancellationToken">The test cancellation token.</param>
+    /// <returns>A task that completes after the refresh request arrives.</returns>
+    internal async Task WaitForCodeLensRefreshAsync(CancellationToken cancellationToken)
+    {
+        await _codeLensRefreshRequests.Reader
             .ReadAsync(cancellationToken)
             .ConfigureAwait(false);
     }

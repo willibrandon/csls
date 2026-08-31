@@ -148,6 +148,30 @@ public sealed class LspClientConnection : ILspClientConnection
     }
 
     /// <summary>
+    /// Requests that the connected LSP client refresh code lenses.
+    /// </summary>
+    /// <param name="cancellationToken">The request cancellation token.</param>
+    /// <returns>A task that completes after the client accepts the refresh.</returns>
+    public async Task RefreshCodeLensesAsync(CancellationToken cancellationToken)
+    {
+        JsonRpc rpc = Volatile.Read(ref _rpc)
+            ?? throw new InvalidOperationException("The LSP client is not connected.");
+        try
+        {
+            await rpc.InvokeWithParameterObjectAsync<object?>(
+                "workspace/codeLens/refresh",
+                argument: (object?)null,
+                cancellationToken).ConfigureAwait(false);
+        }
+        catch (RemoteRpcException exception)
+        {
+            throw new InvalidOperationException(
+                "The LSP client rejected a CodeLens refresh request.",
+                exception);
+        }
+    }
+
+    /// <summary>
     /// Binds one live StreamJsonRpc session before message dispatch begins.
     /// </summary>
     /// <param name="rpc">The live LSP connection.</param>

@@ -132,4 +132,17 @@ internal static partial class LanguageServerLogger
         long elapsedMilliseconds,
         string updateMode,
         string paths);
+
+    /// <summary>
+    /// Reports a failed background code-lens refresh request.
+    /// </summary>
+    /// <param name="logger">The language-server logger.</param>
+    /// <param name="exception">The client refresh failure.</param>
+    [LoggerMessage(
+        EventId = 18,
+        Level = LogLevel.Warning,
+        Message = "CodeLens refresh request failed")]
+    internal static partial void LogCodeLensRefreshFailure(
+        ILogger logger,
+        Exception exception);
 }

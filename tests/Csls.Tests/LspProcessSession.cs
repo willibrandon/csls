@@ -154,6 +154,12 @@ internal sealed class LspProcessSession : IAsyncDisposable
                     "workspace/inlayHint/refresh",
                     inlayHintRefreshHandler);
 
+                Func<CancellationToken, Task> codeLensRefreshHandler =
+                    client.RefreshCodeLensesAsync;
+                rpc.AddLocalRpcMethod(
+                    "workspace/codeLens/refresh",
+                    codeLensRefreshHandler);
+
                 Func<WorkDoneProgressCreateParams, CancellationToken, Task>
                     workDoneProgressCreateHandler = client.CreateWorkDoneProgressAsync;
                 var workDoneProgressCreateAttribute = new JsonRpcMethodAttribute(
@@ -281,6 +287,29 @@ internal sealed class LspProcessSession : IAsyncDisposable
     }
 
     /// <summary>
+    /// Initializes the server with explicit capabilities and editor identity.
+    /// </summary>
+    /// <param name="workspacePath">The absolute workspace directory.</param>
+    /// <param name="capabilities">The exact client capability object.</param>
+    /// <param name="clientName">The editor name reported through LSP initialization.</param>
+    /// <param name="cancellationToken">The test cancellation token.</param>
+    /// <returns>The server initialization result.</returns>
+    internal async Task<JsonElement> InitializeAsync(
+        string workspacePath,
+        JsonElement capabilities,
+        string clientName,
+        CancellationToken cancellationToken)
+    {
+        return await InitializeAsync(
+            [workspacePath],
+            capabilities,
+            initializationOptions: null,
+            Environment.ProcessId,
+            cancellationToken,
+            clientName).ConfigureAwait(false);
+    }
+
+    /// <summary>
     /// Initializes the server with explicit folders, capabilities, and initialization settings.
     /// </summary>
     /// <param name="workspacePaths">The ordered absolute workspace directories.</param>
@@ -307,7 +336,8 @@ internal sealed class LspProcessSession : IAsyncDisposable
         JsonElement capabilities,
         JsonElement? initializationOptions,
         int? clientProcessId,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        string clientName = "Csls.ParityTests")
     {
         ArgumentNullException.ThrowIfNull(workspacePaths);
         if (workspacePaths.Count == 0)
@@ -320,7 +350,7 @@ internal sealed class LspProcessSession : IAsyncDisposable
             new InitializeParams
             {
                 ProcessId = clientProcessId,
-                ClientInfo = new ClientInfo { Name = "Csls.ParityTests" },
+                ClientInfo = new ClientInfo { Name = clientName },
                 RootUri = DocumentUri.FromFileSystemPath(workspacePaths[0]),
                 WorkspaceFolders =
                 [
@@ -1135,6 +1165,40 @@ internal sealed class LspProcessSession : IAsyncDisposable
         _rpc.InvokeWithParameterObjectAsync<InlayHint>(
             "inlayHint/resolve",
             hint,
+            cancellationToken);
+
+    /// <summary>
+    /// Requests unresolved reference-count annotations for one test document.
+    /// </summary>
+    /// <param name="documentPath">The absolute target document path.</param>
+    /// <param name="cancellationToken">The test cancellation token.</param>
+    /// <returns>The ordered unresolved declaration annotations.</returns>
+    internal Task<IReadOnlyList<CodeLens>> RequestCodeLensesAsync(
+        string documentPath,
+        CancellationToken cancellationToken) =>
+        _rpc.InvokeWithParameterObjectAsync<IReadOnlyList<CodeLens>>(
+            "textDocument/codeLens",
+            new CodeLensParams
+            {
+                TextDocument = new TextDocumentIdentifier
+                {
+                    Uri = DocumentUri.FromFileSystemPath(documentPath)
+                }
+            },
+            cancellationToken);
+
+    /// <summary>
+    /// Resolves one server-produced reference-count annotation.
+    /// </summary>
+    /// <param name="codeLens">The unresolved annotation returned by the server.</param>
+    /// <param name="cancellationToken">The test cancellation token.</param>
+    /// <returns>The annotation populated with its reference count and editor command.</returns>
+    internal Task<CodeLens> ResolveCodeLensAsync(
+        CodeLens codeLens,
+        CancellationToken cancellationToken) =>
+        _rpc.InvokeWithParameterObjectAsync<CodeLens>(
+            "codeLens/resolve",
+            codeLens,
             cancellationToken);
 
     /// <summary>

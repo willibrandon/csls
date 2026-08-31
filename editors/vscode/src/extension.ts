@@ -11,6 +11,7 @@ import { registerCSharpVirtualDocumentProvider } from "./csharpVirtualDocumentPr
 import { DesktopLanguageClient } from "./desktopLanguageClient.js";
 import { DebuggerProvider } from "./debuggerProvider.js";
 import { LanguageServerLogOutputChannel } from "./languageServerLogOutputChannel.js";
+import { registerReferenceCodeLensCommands } from "./referenceCodeLensCommands.js";
 import { WorkspaceExperience } from "./workspaceExperience.js";
 
 const extensionId = "willibrandon.csls";
@@ -80,6 +81,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<CslsEx
   );
   workspaceExperience = new WorkspaceExperience(sdkPath, outputChannel);
   registerCSharpVirtualDocumentProvider(context, () => client);
+  registerReferenceCodeLensCommands(context, vscode.Uri.parse);
   context.subscriptions.push(
     vscode.commands.registerCommand("csls.restartServer", restartServer),
     vscode.commands.registerCommand("csls.showOutput", () => outputChannel?.show()),

@@ -6,13 +6,13 @@ namespace Csls.Server;
 public sealed partial class LanguageServer
 {
     /// <inheritdoc />
-    public Task DidChangeWorkspaceFoldersAsync(
+    public async Task DidChangeWorkspaceFoldersAsync(
         DidChangeWorkspaceFoldersParams parameters,
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(parameters);
         EnsureRunning();
-        return _scheduler.ScheduleAsync(
+        bool changed = await _scheduler.ScheduleAsync(
             "workspace/didChangeWorkspaceFolders",
             RequestMode.ReadWrite,
             () => _workspaceManager.Generation,
@@ -49,6 +49,10 @@ public sealed partial class LanguageServer
                     .ConfigureAwait(false);
                 return true;
             },
-            cancellationToken);
+            cancellationToken).ConfigureAwait(false);
+        if (changed)
+        {
+            QueueCodeLensRefresh();
+        }
     }
 }

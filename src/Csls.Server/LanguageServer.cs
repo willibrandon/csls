@@ -12,6 +12,8 @@ namespace Csls.Server;
 /// </summary>
 public sealed partial class LanguageServer : ILspRpcTarget, IAsyncDisposable
 {
+    private const string StandardShowReferencesCommand = "editor.action.showReferences";
+    private const string VsCodePeekReferencesCommand = "csls.client.peekReferences";
     private const int MaximumFoldingRanges = 5_000;
     private const int WorkspaceDiagnosticPartialResultSize = 128;
     private readonly RequestScheduler _scheduler;
@@ -24,6 +26,8 @@ public sealed partial class LanguageServer : ILspRpcTarget, IAsyncDisposable
     private readonly CancellationTokenSource _exitSource = new();
     private bool _completionMarkdownSupport;
     private bool _completionSnippetSupport;
+    private string _codeLensCommandIdentifier = StandardShowReferencesCommand;
+    private bool _codeLensCommandIncludesLocations = true;
     private int _foldingRangeLimit = MaximumFoldingRanges;
     private bool _lineFoldingOnly;
     private int _pendingDiagnosticRefresh;
@@ -35,6 +39,7 @@ public sealed partial class LanguageServer : ILspRpcTarget, IAsyncDisposable
     private bool _supportsCreateFileWorkspaceEdits;
     private bool _supportsDiagnosticRefresh;
     private bool _supportsInlayHintRefresh;
+    private bool _supportsCodeLensRefresh;
     private bool _supportsDynamicFileWatching;
     private bool _supportsPullDiagnostics;
     private bool _supportsWorkDoneProgress;
@@ -181,6 +186,13 @@ public sealed partial class LanguageServer : ILspRpcTarget, IAsyncDisposable
         _negotiatedClientCapabilities = capabilities;
         _completionMarkdownSupport = capabilities.CompletionMarkdown;
         _completionSnippetSupport = capabilities.CompletionSnippets;
+        if (parameters.ClientInfo?.Name.Contains(
+                "Visual Studio Code",
+                StringComparison.OrdinalIgnoreCase) == true)
+        {
+            _codeLensCommandIdentifier = VsCodePeekReferencesCommand;
+            _codeLensCommandIncludesLocations = false;
+        }
         _hoverMarkdownSupport = capabilities.HoverMarkdown;
         _signatureMarkdownSupport = capabilities.SignatureMarkdown;
         _foldingRangeLimit = capabilities.FoldingRangeLimit;
@@ -193,6 +205,7 @@ public sealed partial class LanguageServer : ILspRpcTarget, IAsyncDisposable
         _supportsCreateFileWorkspaceEdits = capabilities.CreateFileWorkspaceEdits;
         _supportsDiagnosticRefresh = capabilities.DiagnosticRefresh;
         _supportsInlayHintRefresh = capabilities.InlayHintRefresh;
+        _supportsCodeLensRefresh = capabilities.CodeLensRefresh;
         _supportsDynamicFileWatching = capabilities.DynamicFileWatching;
         _supportsPullDiagnostics = capabilities.PullDiagnostics;
         _supportsWorkDoneProgress = capabilities.WorkDoneProgress;
@@ -268,6 +281,10 @@ public sealed partial class LanguageServer : ILspRpcTarget, IAsyncDisposable
                 CallHierarchyProvider = true,
                 TypeHierarchyProvider = true,
                 InlayHintProvider = new InlayHintOptions
+                {
+                    ResolveProvider = true
+                },
+                CodeLensProvider = new CodeLensOptions
                 {
                     ResolveProvider = true
                 },
@@ -477,6 +494,8 @@ public sealed partial class LanguageServer : ILspRpcTarget, IAsyncDisposable
                 return context.Ordinal;
             },
             cancellationToken).ConfigureAwait(false);
+        QueueCodeLensRefresh();
+
         await PublishDiagnosticsAsync(
             parameters.TextDocument.Uri,
             diagnosticRequestId,
@@ -504,6 +523,8 @@ public sealed partial class LanguageServer : ILspRpcTarget, IAsyncDisposable
                 return context.Ordinal;
             },
             cancellationToken).ConfigureAwait(false);
+        QueueCodeLensRefresh();
+
         await PublishDiagnosticsAsync(
             parameters.TextDocument.Uri,
             diagnosticRequestId,
@@ -1620,6 +1641,7 @@ public sealed partial class LanguageServer : ILspRpcTarget, IAsyncDisposable
         }
 
         ClearPushDiagnosticRequests();
+        await StopCodeLensRefreshAsync().ConfigureAwait(false);
         await StopClientProcessMonitorAsync().ConfigureAwait(false);
         await _scheduler.DisposeAsync().ConfigureAwait(false);
         _semanticTokensCache.Clear();
@@ -1659,6 +1681,11 @@ public sealed partial class LanguageServer : ILspRpcTarget, IAsyncDisposable
                 capabilities,
                 "workspace",
                 "inlayHint",
+                "refreshSupport"),
+            CodeLensRefresh = SupportsNestedBooleanCapability(
+                capabilities,
+                "workspace",
+                "codeLens",
                 "refreshSupport"),
             DynamicFileWatching = SupportsNestedBooleanCapability(
                 capabilities,

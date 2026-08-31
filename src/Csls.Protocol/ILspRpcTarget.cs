@@ -421,6 +421,26 @@ public interface ILspRpcTarget
         CancellationToken cancellationToken);
 
     /// <summary>
+    /// Gets unresolved reference-count annotations for supported source declarations.
+    /// </summary>
+    /// <param name="parameters">The target source document.</param>
+    /// <param name="cancellationToken">The peer cancellation token.</param>
+    /// <returns>The ordered unresolved declaration annotations.</returns>
+    Task<IReadOnlyList<CodeLens>> CodeLensAsync(
+        CodeLensParams parameters,
+        CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Resolves the reference count and editor command for one declaration annotation.
+    /// </summary>
+    /// <param name="codeLens">A code lens previously returned by this server.</param>
+    /// <param name="cancellationToken">The peer cancellation token.</param>
+    /// <returns>The code lens populated with its current reference count and command.</returns>
+    Task<CodeLens> CodeLensResolveAsync(
+        CodeLens codeLens,
+        CancellationToken cancellationToken);
+
+    /// <summary>
     /// Finds source references for the symbol at one document position.
     /// </summary>
     /// <param name="parameters">The target position and declaration inclusion behavior.</param>

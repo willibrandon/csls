@@ -91,6 +91,14 @@ internal sealed class BrowserLspClientConnection : ILspClientConnection, IDispos
             cancellationToken).ConfigureAwait(false);
     }
 
+    /// <inheritdoc />
+    public async Task RefreshCodeLensesAsync(CancellationToken cancellationToken)
+    {
+        await SendRequestAsync<object?>(
+            "workspace/codeLens/refresh",
+            cancellationToken).ConfigureAwait(false);
+    }
+
     /// <summary>
     /// Completes one pending server-to-client request from a browser client response.
     /// </summary>

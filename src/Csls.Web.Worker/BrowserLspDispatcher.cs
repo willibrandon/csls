@@ -443,6 +443,16 @@ internal sealed class BrowserLspDispatcher : IDisposable
                     parameters, requestId, _target.InlayHintResolveAsync, cancellationToken)
                     .ConfigureAwait(false);
                 return;
+            case "textDocument/codeLens":
+                await InvokeRequestAsync<CodeLensParams, IReadOnlyList<CodeLens>>(
+                    parameters, requestId, _target.CodeLensAsync, cancellationToken)
+                    .ConfigureAwait(false);
+                return;
+            case "codeLens/resolve":
+                await InvokeRequestAsync<CodeLens, CodeLens>(
+                    parameters, requestId, _target.CodeLensResolveAsync, cancellationToken)
+                    .ConfigureAwait(false);
+                return;
             case "textDocument/references":
                 await InvokeRequestAsync<ReferenceParams, IReadOnlyList<Location>>(
                     parameters, requestId, _target.ReferencesAsync, cancellationToken)
