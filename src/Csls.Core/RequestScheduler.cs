@@ -16,6 +16,7 @@ public sealed class RequestScheduler : IAsyncDisposable
     private readonly ConcurrentDictionary<Guid, RequestActivityState> _requests = new();
     private readonly ConcurrentDictionary<string, RequestStatisticsState> _statistics = new(
         StringComparer.Ordinal);
+    private readonly Dictionary<long, Task> _requestCompletions = [];
     private readonly Lock _lifecycleGate = new();
     private readonly Lock _traceGate = new();
     private readonly Queue<(RequestActivityState State, RequestTraceRecord Record)> _traceRecords = new();
@@ -218,15 +219,14 @@ public sealed class RequestScheduler : IAsyncDisposable
         ArgumentException.ThrowIfNullOrWhiteSpace(name);
         ArgumentNullException.ThrowIfNull(workspaceGenerationProvider);
         ArgumentNullException.ThrowIfNull(operation);
-        long ordinal;
-        Guid correlationId;
-        RequestActivityState request;
+        var completion = new TaskCompletionSource<T>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
         lock (_lifecycleGate)
         {
             ObjectDisposedException.ThrowIf(IsStopping, this);
-            ordinal = Interlocked.Increment(ref _nextOrdinal);
-            correlationId = Guid.NewGuid();
-            request = new RequestActivityState(
+            long ordinal = Interlocked.Increment(ref _nextOrdinal);
+            var correlationId = Guid.NewGuid();
+            var request = new RequestActivityState(
                 ordinal,
                 correlationId,
                 name,
@@ -241,22 +241,51 @@ public sealed class RequestScheduler : IAsyncDisposable
                 throw new InvalidOperationException(
                     "A duplicate request correlation identifier was generated.");
             }
+
+            _requestCompletions.Add(ordinal, completion.Task);
+            _ = RunScheduledRequestAsync(
+                ordinal,
+                correlationId,
+                mode,
+                workspaceGenerationProvider,
+                operation,
+                request,
+                completion);
         }
 
-        var completion = new TaskCompletionSource<T>(
-            TaskCreationOptions.RunContinuationsAsynchronously);
-        _ = RunScheduledRequestAsync(
-            ordinal,
-            correlationId,
-            mode,
-            workspaceGenerationProvider,
-            operation,
-            request,
-            completion);
         return completion.Task;
     }
 
     private async Task RunScheduledRequestAsync<T>(
+        long ordinal,
+        Guid correlationId,
+        RequestMode mode,
+        Func<long> workspaceGenerationProvider,
+        Func<RequestContext, ValueTask<T>> operation,
+        RequestActivityState request,
+        TaskCompletionSource<T> completion)
+    {
+        try
+        {
+            await RunScheduledRequestCoreAsync(
+                ordinal,
+                correlationId,
+                mode,
+                workspaceGenerationProvider,
+                operation,
+                request,
+                completion).ConfigureAwait(false);
+        }
+        finally
+        {
+            lock (_lifecycleGate)
+            {
+                _requestCompletions.Remove(ordinal);
+            }
+        }
+    }
+
+    private async Task RunScheduledRequestCoreAsync<T>(
         long ordinal,
         Guid correlationId,
         RequestMode mode,
@@ -408,6 +437,7 @@ public sealed class RequestScheduler : IAsyncDisposable
     public async ValueTask DisposeAsync()
     {
         RequestActivityState[] requests;
+        Task[] requestCompletions;
         lock (_lifecycleGate)
         {
             if (Interlocked.Exchange(ref _disposeState, 1) != 0)
@@ -417,6 +447,7 @@ public sealed class RequestScheduler : IAsyncDisposable
 
             _queue.Writer.TryComplete();
             requests = [.. _requests.Values];
+            requestCompletions = [.. _requestCompletions.Values];
         }
 
         Task<bool>[] cancellationTasks =
@@ -425,6 +456,8 @@ public sealed class RequestScheduler : IAsyncDisposable
         ];
         await Task.WhenAll(cancellationTasks).ConfigureAwait(false);
         await _processingTask.ConfigureAwait(false);
+        await Task.WhenAll(requestCompletions)
+            .ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
         _foregroundConcurrency.Dispose();
         _backgroundConcurrency.Dispose();
         GC.SuppressFinalize(this);
