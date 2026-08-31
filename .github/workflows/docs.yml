@@ -43,6 +43,8 @@ jobs:
 
       - name: Verify links and accessibility
         run: dotnet run --file scripts/Verify-Docs.cs
+        env:
+          VERSION: ''
 
   deploy:
     name: Deploy docs

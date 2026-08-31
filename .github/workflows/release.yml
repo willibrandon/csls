@@ -128,9 +128,14 @@ jobs:
       - name: Install Native AOT prerequisites
         run: dotnet run --file scripts/Install-NativeAotPrerequisites.cs -- --runtime ${{ matrix.rid }}
 
-      - name: Provision target .NET SDK
+      - name: Set up target .NET SDK
         if: matrix.rid == 'win-x86'
-        run: dotnet run --file scripts/InstallDotNet.cs -- --runtime ${{ matrix.rid }}
+        uses: actions/setup-dotnet@v6
+        env:
+          DOTNET_INSTALL_DIR: ${{ github.workspace }}/artifacts/tools/dotnet/${{ matrix.rid }}
+        with:
+          architecture: x86
+          dotnet-version: 10.x
 
       - name: Build and verify release assets
         if: matrix.rid != 'win-x86'

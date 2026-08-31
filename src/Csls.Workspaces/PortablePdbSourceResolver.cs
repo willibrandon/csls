@@ -111,17 +111,13 @@ internal static class PortablePdbSourceResolver
     private static string? FindReferencePath(Compilation compilation, ISymbol symbol)
     {
         IAssemblySymbol containingAssembly = symbol.ContainingAssembly;
-        foreach (MetadataReference reference in compilation.References)
-        {
-            if (reference is PortableExecutableReference { FilePath: not null } portable &&
+        return compilation.References
+            .OfType<PortableExecutableReference>()
+            .Where(static reference => reference.FilePath is not null)
+            .FirstOrDefault(reference =>
                 compilation.GetAssemblyOrModuleSymbol(reference) is IAssemblySymbol assembly &&
                 SymbolEqualityComparer.Default.Equals(assembly, containingAssembly))
-            {
-                return portable.FilePath;
-            }
-        }
-
-        return null;
+            ?.FilePath;
     }
 
     private static INamedTypeSymbol? GetTopLevelType(ISymbol symbol)
@@ -667,13 +663,11 @@ internal static class PortablePdbSourceResolver
 
         if (!information.SequencePointsBlob.IsNil)
         {
-            foreach (SequencePoint point in information.GetSequencePoints())
+            foreach (SequencePoint point in information.GetSequencePoints()
+                .Where(static point => !point.Document.IsNil))
             {
-                if (!point.Document.IsNil)
-                {
-                    documents.Add(point.Document);
-                    includeDeclaringType = false;
-                }
+                documents.Add(point.Document);
+                includeDeclaringType = false;
             }
         }
 
@@ -694,11 +688,10 @@ internal static class PortablePdbSourceResolver
         HashSet<DocumentHandle> documents,
         bool includeContainingType = true)
     {
-        foreach (CustomDebugInformationHandle informationHandle in
-            pdbReader.GetCustomDebugInformation(handle))
+        foreach (CustomDebugInformation information in
+            pdbReader.GetCustomDebugInformation(handle).Select(
+                pdbReader.GetCustomDebugInformation))
         {
-            CustomDebugInformation information = pdbReader.GetCustomDebugInformation(
-                informationHandle);
             if (pdbReader.GetGuid(information.Kind) != s_typeDefinitionDocumentsKind)
             {
                 continue;
@@ -1079,20 +1072,20 @@ internal static class PortablePdbSourceResolver
                     : null;
             }
 
-            foreach (string endpoint in new[]
-            {
+            IEnumerable<string> symbolEndpoints =
+            [
                 "https://msdl.microsoft.com/download/symbols",
                 "https://symbols.nuget.org/download/symbols"
-            })
-            {
-                var uri = new Uri(string.Concat(
+            ];
+            foreach (Uri uri in symbolEndpoints.Select(endpoint => new Uri(string.Concat(
                     endpoint,
                     '/',
                     Uri.EscapeDataString(pdbName),
                     '/',
                     key,
                     '/',
-                    Uri.EscapeDataString(pdbName)));
+                    Uri.EscapeDataString(pdbName)))))
+            {
                 byte[]? pdb = await DownloadBytesAsync(
                     uri,
                     MaximumPdbLength,
@@ -1118,14 +1111,13 @@ internal static class PortablePdbSourceResolver
         string path,
         CancellationToken cancellationToken)
     {
-        var stream = new FileStream(
+        using var stream = new FileStream(
             path,
             FileMode.Open,
             FileAccess.Read,
             FileShare.Read | FileShare.Delete,
             bufferSize: 4,
             FileOptions.Asynchronous | FileOptions.SequentialScan);
-        await using ConfiguredAsyncDisposable streamCleanup = stream.ConfigureAwait(false);
         byte[] signature = new byte[4];
         int read = await stream.ReadAsync(signature, cancellationToken).ConfigureAwait(false);
         return read == signature.Length && IsPortablePdb(signature);
@@ -1264,4 +1256,5 @@ internal static class PortablePdbSourceResolver
 
     private static StringComparison PathComparison =>
         OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
+
 }

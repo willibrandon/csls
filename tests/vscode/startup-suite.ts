@@ -38,11 +38,14 @@ export async function run(): Promise<void> {
     let observedProjects = api.projects();
     await waitUntil(() => {
       observedProjects = api.projects();
-      return observedProjects.some((project) => project.name === "Csls.App") &&
-        observedProjects.some((project) => project.name === "Generate-Docs.cs");
+      return observedProjects.some((project) => project.name === "Csls.App");
     }, () =>
-      "The real csls workspace did not load its solution and file-based apps. " +
+      "The real csls workspace did not load its solution. " +
       `Received ${JSON.stringify(observedProjects)}.`);
+    assert(
+      !observedProjects.some((project) => project.name === "Generate-Docs.cs"),
+      "The real csls workspace eagerly loaded file-based apps during solution startup.",
+    );
 
     await vscode.commands.executeCommand("csls.refreshSolution");
     const projects = api.projects();
@@ -50,20 +53,25 @@ export async function run(): Promise<void> {
       projects.some((project) => project.name === "Csls.App"),
       `The real solution must contain Csls.App. Received ${JSON.stringify(projects)}.`,
     );
-    assert(
-      projects.some((project) => project.name === "Generate-Docs.cs"),
-      `The real workspace must contain Generate-Docs.cs. Received ${JSON.stringify(projects)}.`,
+    const generateDocsUri = vscode.Uri.joinPath(
+      workspaceFolder.uri,
+      "scripts",
+      "Generate-Docs.cs",
     );
-
-    const scriptUris = await vscode.workspace.findFiles(
-      new vscode.RelativePattern(workspaceFolder, "scripts/*.cs"),
+    await vscode.workspace.openTextDocument(generateDocsUri);
+    await vscode.commands.executeCommand(
+      "vscode.executeDocumentSymbolProvider",
+      generateDocsUri,
     );
-    for (const uri of scriptUris) {
-      await vscode.workspace.openTextDocument(uri);
-      await vscode.commands.executeCommand("vscode.executeDocumentSymbolProvider", uri);
-    }
+    await vscode.commands.executeCommand("csls.refreshSolution");
+    await waitUntil(() => {
+      observedProjects = api.projects();
+      return observedProjects.some((project) => project.name === "Generate-Docs.cs");
+    }, () =>
+      "The real csls workspace did not load opened file-based apps. " +
+      `Received ${JSON.stringify(observedProjects)}.`);
     await waitForDiagnosticQuietPeriod();
-    recordDiagnostics(scriptUris);
+    recordDiagnostics([generateDocsUri]);
   } finally {
     diagnosticSubscription.dispose();
   }

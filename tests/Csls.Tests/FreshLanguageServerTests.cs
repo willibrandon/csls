@@ -110,7 +110,7 @@ public sealed class FreshLanguageServerTests
                 .WithHeadless()
                 .WithDimensions(120, 40)
                 .Build();
-            int? serverProcessId = null;
+            ProcessExitObservation? serverExit = null;
             try
             {
                 int exitCode = await workload.RunAsync(
@@ -124,10 +124,11 @@ public sealed class FreshLanguageServerTests
                         await automator.WaitUntilTextAsync("Console.WriteLine").ConfigureAwait(false);
                         try
                         {
-                            serverProcessId = (await ControlSessionWaiter.WaitForRunningAsync(
+                            int serverProcessId = (await ControlSessionWaiter.WaitForRunningAsync(
                                 fixturePath,
                                 TimeSpan.FromSeconds(60),
                                 TestContext.CancellationToken).ConfigureAwait(false)).ProcessId;
+                            serverExit = ProcessExitWaiter.Observe(serverProcessId);
                             await automator.WaitUntilTextAsync("LSP (csharp) ready")
                                 .ConfigureAwait(false);
                         }
@@ -179,10 +180,10 @@ public sealed class FreshLanguageServerTests
             {
                 await terminal.DisposeAsync().ConfigureAwait(false);
                 await workload.DisposeAsync().ConfigureAwait(false);
-                if (serverProcessId is int processId)
+                if (serverExit is ProcessExitObservation observation)
                 {
                     await ProcessExitWaiter.WaitAsync(
-                        processId,
+                        observation,
                         TimeSpan.FromSeconds(10),
                         TestContext.CancellationToken).ConfigureAwait(false);
                 }

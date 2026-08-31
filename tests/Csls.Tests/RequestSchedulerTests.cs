@@ -274,6 +274,57 @@ public sealed class RequestSchedulerTests
     }
 
     /// <summary>
+    /// Cancels running and queued requests when the scheduler is disposed.
+    /// </summary>
+    [TestMethod]
+    public async Task DisposalCancelsOutstandingRequests()
+    {
+        CancellationToken cancellationToken = TestContext.CancellationToken;
+        var scheduler = new RequestScheduler(
+            capacity: 2,
+            foregroundConcurrency: 1,
+            backgroundConcurrency: 1);
+        var firstStarted = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var secondStarted = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+
+        Task<int> first = scheduler.ScheduleAsync(
+            "first-read",
+            RequestMode.ReadOnly,
+            static () => 1,
+            context => WaitForCancellationAsync(context, firstStarted),
+            cancellationToken);
+        await firstStarted.Task.WaitAsync(cancellationToken).ConfigureAwait(false);
+        Task<int> second = scheduler.ScheduleAsync(
+            "second-read",
+            RequestMode.ReadOnly,
+            static () => 1,
+            context => WaitForCancellationAsync(context, secondStarted),
+            cancellationToken);
+        Assert.IsFalse(secondStarted.Task.IsCompleted);
+
+        await scheduler.DisposeAsync().ConfigureAwait(false);
+
+        Assert.IsTrue(first.IsCanceled);
+        Assert.IsTrue(second.IsCanceled);
+        RequestSchedulerSnapshot snapshot = scheduler.GetSnapshot();
+        Assert.IsTrue(snapshot.IsStopping);
+        Assert.AreEqual(0, snapshot.TotalActiveRequests);
+        return;
+
+        static async ValueTask<int> WaitForCancellationAsync(
+            RequestContext context,
+            TaskCompletionSource started)
+        {
+            started.TrySetResult();
+            await Task.Delay(Timeout.InfiniteTimeSpan, context.CancellationToken)
+                .ConfigureAwait(false);
+            return 1;
+        }
+    }
+
+    /// <summary>
     /// Verifies request identity, server cancellation, and bounded lifecycle tracing.
     /// </summary>
     [TestMethod]

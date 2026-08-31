@@ -352,7 +352,7 @@ public sealed class RequestScheduler : IAsyncDisposable
     }
 
     /// <summary>
-    /// Stops accepting work and waits for all accepted operations to retire.
+    /// Stops accepting work, cancels outstanding operations, and waits for retirement.
     /// </summary>
     /// <returns>A value task that completes after scheduler shutdown.</returns>
     public async ValueTask DisposeAsync()
@@ -363,6 +363,11 @@ public sealed class RequestScheduler : IAsyncDisposable
         }
 
         _queue.Writer.TryComplete();
+        Task<bool>[] cancellationTasks =
+        [
+            .. _requests.Values.Select(static request => request.TryCancelAsync())
+        ];
+        await Task.WhenAll(cancellationTasks).ConfigureAwait(false);
         await _processingTask.ConfigureAwait(false);
         _foregroundConcurrency.Dispose();
         _backgroundConcurrency.Dispose();

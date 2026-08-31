@@ -23,7 +23,6 @@ await runTests({
   headless: true,
   port,
   quality: "stable",
-  commit: "08d4889f9ec4a1685d257b9b95de036c8e1ce1e5",
   testRunnerDataDir: requireEnvironment("CSLS_VSCODE_WEB_CACHE_PATH"),
 });
 

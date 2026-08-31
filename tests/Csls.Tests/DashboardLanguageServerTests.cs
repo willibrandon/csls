@@ -535,11 +535,13 @@ public sealed class DashboardLanguageServerTests
         string secondFixturePath = Path.Join(
             Path.GetTempPath(),
             $"csls-dashboard-session-second-{Guid.NewGuid():N}");
+        string socketDirectory = Path.Join(
+            Path.GetTempPath(),
+            $"c{Guid.NewGuid():N}");
         Directory.CreateDirectory(firstFixturePath);
         Directory.CreateDirectory(secondFixturePath);
         try
         {
-            string socketDirectory = Path.Join(firstFixturePath, "control");
             var serverEnvironment = new Dictionary<string, string>(StringComparer.Ordinal)
             {
                 [ControlEndpoint.SocketDirectoryEnvironmentVariable] = socketDirectory
@@ -680,6 +682,9 @@ public sealed class DashboardLanguageServerTests
         }
         finally
         {
+            await DirectoryReleaseWaiter.DeleteAsync(
+                socketDirectory,
+                TimeSpan.FromSeconds(10)).ConfigureAwait(false);
             await DirectoryReleaseWaiter.DeleteAsync(
                 firstFixturePath,
                 TimeSpan.FromSeconds(10)).ConfigureAwait(false);

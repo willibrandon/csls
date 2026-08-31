@@ -113,7 +113,9 @@ public sealed class ControlSocketTests
         finally
         {
             File.Delete(unresponsiveSocketPath);
-            Directory.Delete(fixturePath, recursive: true);
+            await DirectoryReleaseWaiter.DeleteAsync(
+                fixturePath,
+                TimeSpan.FromSeconds(10)).ConfigureAwait(false);
         }
     }
 

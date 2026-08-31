@@ -448,9 +448,9 @@ internal static class MSBuildProjectInfoFactory
             return projectRelativePath;
         }
 
-        foreach (string searchPath in searchPaths)
+        foreach (string candidate in searchPaths.Select(
+            searchPath => Path.GetFullPath(reference, searchPath)))
         {
-            string candidate = Path.GetFullPath(reference, searchPath);
             if (File.Exists(candidate))
             {
                 return candidate;

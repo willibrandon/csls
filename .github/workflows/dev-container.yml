@@ -44,6 +44,10 @@ jobs:
           dotnet run --file scripts/Select-DevContainerValidation.cs
           ${{ github.event_name == 'pull_request' && format('-- --base {0}', github.event.pull_request.base.sha) || '' }}
 
+      - name: Set up Docker Buildx
+        if: steps.scope.outputs.full == 'true'
+        uses: docker/setup-buildx-action@v4
+
       - name: Build and test the development container
         if: steps.scope.outputs.full == 'true'
         uses: devcontainers/ci@v0.3

@@ -155,7 +155,7 @@ public sealed class ZedLanguageServerTests
                 TestContext.CancellationToken);
             Task<string> zedErrorTask = zed.StandardError.ReadToEndAsync(
                 TestContext.CancellationToken);
-            int? serverProcessId = null;
+            ProcessExitObservation? serverExit = null;
             bool completed = false;
             try
             {
@@ -163,7 +163,7 @@ public sealed class ZedLanguageServerTests
                     workspacePath,
                     TimeSpan.FromSeconds(60),
                     TestContext.CancellationToken).ConfigureAwait(false);
-                serverProcessId = session.ProcessId;
+                serverExit = ProcessExitWaiter.Observe(session.ProcessId);
                 var control = new ControlRpcClient(session.SocketPath);
                 await using ConfiguredAsyncDisposable controlCleanup =
                     control.ConfigureAwait(false);
@@ -287,10 +287,10 @@ public sealed class ZedLanguageServerTests
                         TestContext.CancellationToken).ConfigureAwait(false));
                 }
 
-                if (serverProcessId is int processId)
+                if (serverExit is ProcessExitObservation observation)
                 {
                     await ProcessExitWaiter.WaitAsync(
-                        processId,
+                        observation,
                         TimeSpan.FromSeconds(10),
                         TestContext.CancellationToken).ConfigureAwait(false);
                 }
@@ -375,7 +375,7 @@ public sealed class ZedLanguageServerTests
                 TestContext.CancellationToken);
             Task<string> zedErrorTask = zed.StandardError.ReadToEndAsync(
                 TestContext.CancellationToken);
-            int? serverProcessId = null;
+            ProcessExitObservation? serverExit = null;
             bool completed = false;
             try
             {
@@ -384,7 +384,7 @@ public sealed class ZedLanguageServerTests
                     s_workspaceStartupTimeout,
                     TestContext.CancellationToken,
                     existingSessionProcessIds).ConfigureAwait(false);
-                serverProcessId = session.ProcessId;
+                serverExit = ProcessExitWaiter.Observe(session.ProcessId);
                 var control = new ControlRpcClient(session.SocketPath);
                 await using ConfiguredAsyncDisposable controlCleanup =
                     control.ConfigureAwait(false);
@@ -540,10 +540,10 @@ public sealed class ZedLanguageServerTests
                         TestContext.CancellationToken).ConfigureAwait(false));
                 }
 
-                if (serverProcessId is int processId)
+                if (serverExit is ProcessExitObservation observation)
                 {
                     await ProcessExitWaiter.WaitAsync(
-                        processId,
+                        observation,
                         TimeSpan.FromSeconds(10),
                         TestContext.CancellationToken).ConfigureAwait(false);
                 }
@@ -626,7 +626,7 @@ public sealed class ZedLanguageServerTests
                 TestContext.CancellationToken);
             Task<string> zedErrorTask = zed.StandardError.ReadToEndAsync(
                 TestContext.CancellationToken);
-            int? serverProcessId = null;
+            ProcessExitObservation? serverExit = null;
             bool completed = false;
             try
             {
@@ -634,7 +634,7 @@ public sealed class ZedLanguageServerTests
                     workspacePath,
                     TimeSpan.FromSeconds(60),
                     TestContext.CancellationToken).ConfigureAwait(false);
-                serverProcessId = session.ProcessId;
+                serverExit = ProcessExitWaiter.Observe(session.ProcessId);
                 var control = new ControlRpcClient(session.SocketPath);
                 await using ConfiguredAsyncDisposable controlCleanup = control.ConfigureAwait(false);
                 await WaitForOpenDocumentAsync(
@@ -703,10 +703,10 @@ public sealed class ZedLanguageServerTests
                         TestContext.CancellationToken).ConfigureAwait(false));
                 }
 
-                if (serverProcessId is int processId)
+                if (serverExit is ProcessExitObservation observation)
                 {
                     await ProcessExitWaiter.WaitAsync(
-                        processId,
+                        observation,
                         TimeSpan.FromSeconds(10),
                         TestContext.CancellationToken).ConfigureAwait(false);
                 }

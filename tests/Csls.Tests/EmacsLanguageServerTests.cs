@@ -110,7 +110,7 @@ public sealed class EmacsLanguageServerTests
                 .WithHeadless()
                 .WithDimensions(120, 40)
                 .Build();
-            int? serverProcessId = null;
+            ProcessExitObservation? serverExit = null;
             try
             {
                 string screenText = string.Empty;
@@ -131,10 +131,11 @@ public sealed class EmacsLanguageServerTests
                                 "ready",
                                 TimeSpan.FromSeconds(60),
                                 TestContext.CancellationToken).ConfigureAwait(false);
-                            serverProcessId = (await ControlSessionWaiter.WaitForRunningAsync(
+                            int serverProcessId = (await ControlSessionWaiter.WaitForRunningAsync(
                                 fixturePath,
                                 TimeSpan.FromSeconds(60),
                                 TestContext.CancellationToken).ConfigureAwait(false)).ProcessId;
+                            serverExit = ProcessExitWaiter.Observe(serverProcessId);
                         }
                         catch (TaskCanceledException exception)
                             when (!TestContext.CancellationToken.IsCancellationRequested)
@@ -192,10 +193,10 @@ public sealed class EmacsLanguageServerTests
             {
                 await terminal.DisposeAsync().ConfigureAwait(false);
                 await workload.DisposeAsync().ConfigureAwait(false);
-                if (serverProcessId is int processId)
+                if (serverExit is ProcessExitObservation observation)
                 {
                     await ProcessExitWaiter.WaitAsync(
-                        processId,
+                        observation,
                         TimeSpan.FromSeconds(10),
                         TestContext.CancellationToken).ConfigureAwait(false);
                 }

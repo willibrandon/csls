@@ -271,7 +271,8 @@ public sealed class VsCodeLanguageServerTests
             await AssertNoUnexpectedCslsOutputAsync(
                 [userDataPath, remoteDataPath],
                 expectWorkspaceRestore: false,
-                TestContext.CancellationToken).ConfigureAwait(false);
+                TestContext.CancellationToken,
+                expectedRestoredEntryPointFileName: "Generate-Docs.cs").ConfigureAwait(false);
         }
         finally
         {
@@ -528,7 +529,7 @@ public sealed class VsCodeLanguageServerTests
             TestContext.CancellationToken);
         Task<string> errorTask = runner.StandardError.ReadToEndAsync(
             TestContext.CancellationToken);
-        int? serverProcessId = null;
+        ProcessExitObservation? serverExit = null;
         using var startupCancellation = CancellationTokenSource.CreateLinkedTokenSource(
             TestContext.CancellationToken);
         try
@@ -545,7 +546,7 @@ public sealed class VsCodeLanguageServerTests
                 if (firstCompleted == sessionTask)
                 {
                     ControlSessionInfo session = await sessionTask.ConfigureAwait(false);
-                    serverProcessId = session.ProcessId;
+                    serverExit = ProcessExitWaiter.Observe(session.ProcessId);
                 }
             }
 
@@ -567,10 +568,10 @@ public sealed class VsCodeLanguageServerTests
             string error = await errorTask.ConfigureAwait(false);
             TestContext.WriteLine(output);
             TestContext.WriteLine(error);
-            if (serverProcessId is int processId)
+            if (serverExit is ProcessExitObservation observation)
             {
                 await ProcessExitWaiter.WaitAsync(
-                    processId,
+                    observation,
                     TimeSpan.FromSeconds(10),
                     TestContext.CancellationToken).ConfigureAwait(false);
             }
@@ -582,7 +583,8 @@ public sealed class VsCodeLanguageServerTests
     private async Task AssertNoUnexpectedCslsOutputAsync(
         IReadOnlyList<string> dataPaths,
         bool expectWorkspaceRestore,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        string? expectedRestoredEntryPointFileName = null)
     {
         string[] logPaths = [.. dataPaths
             .Where(Directory.Exists)
@@ -681,7 +683,35 @@ public sealed class VsCodeLanguageServerTests
                 line.Contains(" ms", StringComparison.Ordinal),
             cslsOutputLines,
             "The VS Code CSLS output omitted timed workspace discovery progress.");
-        if (expectWorkspaceRestore)
+        if (expectedRestoredEntryPointFileName is not null)
+        {
+            Assert.Contains(
+                line =>
+                    line.Contains("Restoring ", StringComparison.Ordinal) &&
+                    line.Contains(expectedRestoredEntryPointFileName, StringComparison.Ordinal),
+                cslsOutputLines,
+                $"The VS Code CSLS output omitted restore progress for " +
+                $"{expectedRestoredEntryPointFileName}.");
+            Assert.Contains(
+                line =>
+                    line.Contains("Restored ", StringComparison.Ordinal) &&
+                    line.Contains(expectedRestoredEntryPointFileName, StringComparison.Ordinal) &&
+                    line.Contains(" in ", StringComparison.Ordinal) &&
+                    line.Contains(" ms", StringComparison.Ordinal),
+                cslsOutputLines,
+                $"The VS Code CSLS output omitted timed restore completion for " +
+                $"{expectedRestoredEntryPointFileName}.");
+            Assert.DoesNotContain(
+                line =>
+                    (line.Contains("Restoring ", StringComparison.Ordinal) ||
+                        line.Contains("Restored ", StringComparison.Ordinal)) &&
+                    !line.Contains(
+                        expectedRestoredEntryPointFileName,
+                        StringComparison.Ordinal),
+                cslsOutputLines,
+                "VS Code restored an unopened workspace entry point.");
+        }
+        else if (expectWorkspaceRestore)
         {
             Assert.Contains(
                 static line => line.Contains("Restoring ", StringComparison.Ordinal),

@@ -118,10 +118,28 @@ try
 
     string cachePath = Path.Join(toolsRoot, "vscode", "stable");
     Directory.CreateDirectory(cachePath);
-    string executablePath = (await RunCheckedAsync(
+    List<string> provisionArguments =
+    [
+        Path.Join(fixturePath, "provision.mjs"),
+        cachePath
+    ];
+    if (installWebBrowsers)
+    {
+        string webCachePath = Path.Join(toolsRoot, "vscode-web", "stable");
+        Directory.CreateDirectory(webCachePath);
+        provisionArguments.Add(webCachePath);
+    }
+
+    string provisionOutput = await RunCheckedAsync(
         "node",
-        [Path.Join(fixturePath, "provision.mjs"), cachePath],
-        repositoryRoot).ConfigureAwait(false)).Trim();
+        provisionArguments,
+        repositoryRoot).ConfigureAwait(false);
+    string executablePath = provisionOutput
+        .Split(
+            ['\r', '\n'],
+            StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+        .LastOrDefault()
+        ?? string.Empty;
     if (!File.Exists(executablePath))
     {
         throw new InvalidDataException(

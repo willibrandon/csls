@@ -44,16 +44,27 @@ public sealed class AnalyzerDiagnosticCacheLanguageServerTests
         await lsp.InitializeAsync(
             fixture.RootPath,
             TestContext.CancellationToken).ConfigureAwait(false);
+        var controlClient = new ControlRpcClient(ControlEndpoint.GetSocketPath(lsp.ProcessId));
+        await using ConfiguredAsyncDisposable controlCleanup =
+            controlClient.ConfigureAwait(false);
+        await lsp.CompleteInitializationAsync().ConfigureAwait(false);
+        ControlSessionInfo readySession = await ControlSessionWaiter.WaitForRunningAsync(
+            fixture.RootPath,
+            TimeSpan.FromSeconds(60),
+            TestContext.CancellationToken,
+            expectedProcessId: lsp.ProcessId).ConfigureAwait(false);
         for (int index = 0; index < fixture.DocumentPaths.Count; index++)
         {
             await lsp.OpenDocumentAsync(
                 fixture.DocumentPaths[index],
-                fixture.DocumentTexts[index]).ConfigureAwait(false);
+                string.Concat(fixture.DocumentTexts[index], Environment.NewLine))
+                .ConfigureAwait(false);
         }
 
-        var controlClient = new ControlRpcClient(ControlEndpoint.GetSocketPath(lsp.ProcessId));
-        await using ConfiguredAsyncDisposable controlCleanup =
-            controlClient.ConfigureAwait(false);
+        await WaitForGenerationAsync(
+            controlClient,
+            readySession.WorkspaceGeneration + fixture.DocumentPaths.Count,
+            TestContext.CancellationToken).ConfigureAwait(false);
         bool analyzerReleased = false;
         try
         {

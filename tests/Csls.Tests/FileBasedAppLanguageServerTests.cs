@@ -306,6 +306,11 @@ public sealed class FileBasedAppLanguageServerTests
             TestContext.CancellationToken).ConfigureAwait(false);
         CSharpWorkspaceFolderInfo folder = Assert.ContainsSingle(workspace.Workspaces);
         Assert.IsGreaterThan(1, folder.ProjectCount);
+        DocumentDiagnosticReport diagnostics = await lsp.RequestDiagnosticsAsync(
+            entryPointPath,
+            previousResultId: null,
+            TestContext.CancellationToken).ConfigureAwait(false);
+        Assert.IsEmpty(diagnostics.Items ?? []);
 
         string standardError = await lsp.ShutdownAsync(
             TestContext.CancellationToken).ConfigureAwait(false);

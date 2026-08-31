@@ -52,7 +52,8 @@ public sealed class MSBuildWorkspaceLoaderCacheTests
                 "Debug",
                 progress: null,
                 TestContext.CancellationToken).ConfigureAwait(false);
-            using (Workspace initialWorkspace = Assert.ContainsSingle(initialSnapshots).Workspace)
+            WorkspaceFolderSnapshot initialSnapshot = Assert.ContainsSingle(initialSnapshots);
+            using (initialSnapshot.Workspace)
             {
                 Project initialProject = Assert.ContainsSingle(
                     Assert.ContainsSingle(initialSnapshots).Solution.Projects);
@@ -69,7 +70,8 @@ public sealed class MSBuildWorkspaceLoaderCacheTests
                 "Debug",
                 progress: null,
                 TestContext.CancellationToken).ConfigureAwait(false);
-            using (Workspace sourceWorkspace = Assert.ContainsSingle(sourceSnapshots).Workspace)
+            WorkspaceFolderSnapshot sourceSnapshot = Assert.ContainsSingle(sourceSnapshots);
+            using (sourceSnapshot.Workspace)
             {
                 Project sourceProject = Assert.ContainsSingle(
                     Assert.ContainsSingle(sourceSnapshots).Solution.Projects);
@@ -95,7 +97,8 @@ public sealed class MSBuildWorkspaceLoaderCacheTests
                 "Debug",
                 progress: null,
                 TestContext.CancellationToken).ConfigureAwait(false);
-            using (Workspace projectWorkspace = Assert.ContainsSingle(projectSnapshots).Workspace)
+            WorkspaceFolderSnapshot projectSnapshot = Assert.ContainsSingle(projectSnapshots);
+            using (projectSnapshot.Workspace)
             {
                 Project reloadedProject = Assert.ContainsSingle(
                     Assert.ContainsSingle(projectSnapshots).Solution.Projects);
@@ -116,7 +119,8 @@ public sealed class MSBuildWorkspaceLoaderCacheTests
                 "Debug",
                 progress: null,
                 TestContext.CancellationToken).ConfigureAwait(false);
-            using (Workspace addedWorkspace = Assert.ContainsSingle(addedSnapshots).Workspace)
+            WorkspaceFolderSnapshot addedSnapshot = Assert.ContainsSingle(addedSnapshots);
+            using (addedSnapshot.Workspace)
             {
                 Project reloadedProject = Assert.ContainsSingle(
                     Assert.ContainsSingle(addedSnapshots).Solution.Projects);
@@ -172,7 +176,8 @@ public sealed class MSBuildWorkspaceLoaderCacheTests
                 "Debug",
                 progress: null,
                 TestContext.CancellationToken).ConfigureAwait(false);
-            using (Workspace initialWorkspace = Assert.ContainsSingle(initialSnapshots).Workspace)
+            WorkspaceFolderSnapshot initialSnapshot = Assert.ContainsSingle(initialSnapshots);
+            using (initialSnapshot.Workspace)
             {
                 Project initialProject = Assert.ContainsSingle(
                     Assert.ContainsSingle(initialSnapshots).Solution.Projects);
@@ -195,7 +200,8 @@ public sealed class MSBuildWorkspaceLoaderCacheTests
                 "Debug",
                 progress: null,
                 TestContext.CancellationToken).ConfigureAwait(false);
-            using (Workspace updatedWorkspace = Assert.ContainsSingle(updatedSnapshots).Workspace)
+            WorkspaceFolderSnapshot updatedSnapshot = Assert.ContainsSingle(updatedSnapshots);
+            using (updatedSnapshot.Workspace)
             {
                 Project updatedProject = Assert.ContainsSingle(
                     Assert.ContainsSingle(updatedSnapshots).Solution.Projects);

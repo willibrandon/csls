@@ -3,7 +3,6 @@ using Microsoft.Build.Evaluation;
 using Microsoft.Build.Execution;
 using Microsoft.CodeAnalysis;
 using System.Globalization;
-using System.Runtime.CompilerServices;
 using System.Xml;
 using MSBuildProject = Microsoft.Build.Evaluation.Project;
 
@@ -57,10 +56,14 @@ internal sealed class MSBuildProjectBuildManager : IDisposable
             ["SkipCompilerExecution"] = bool.TrueString,
             ["ContinueOnError"] = "ErrorAndContinue",
             ["ShouldUnsetParentConfigurationAndPlatform"] = bool.FalseString,
-            ["CslsDesignTimeBuildId"] = Interlocked
-                .Increment(ref s_nextBuildIdentity)
-                .ToString(CultureInfo.InvariantCulture)
+            ["CslsDesignTimeBuildId"] = GetNextBuildIdentity()
         };
+        (_buildManager, _buildLogger) = AcquireSharedBuild();
+    }
+
+    private static (BuildManager BuildManager, MSBuildWorkspaceBuildLogger BuildLogger)
+        AcquireSharedBuild()
+    {
         lock (s_sharedBuildGate)
         {
             if (s_sharedBuildManager is null)
@@ -81,9 +84,8 @@ internal sealed class MSBuildProjectBuildManager : IDisposable
                 s_sharedBuildManager = buildManager;
             }
 
-            _buildManager = s_sharedBuildManager;
-            _buildLogger = s_sharedBuildLogger!;
             s_sharedBuildUserCount++;
+            return (s_sharedBuildManager, s_sharedBuildLogger!);
         }
     }
 
@@ -122,12 +124,10 @@ internal sealed class MSBuildProjectBuildManager : IDisposable
                 MSBuildProjectSnapshot[] snapshots = loadedSnapshots[index];
                 snapshotsByPath[projectPath] = snapshots;
                 orderedPaths.Add(projectPath);
-                foreach (string referencePath in GetProjectReferencePaths(snapshots))
+                foreach (string referencePath in GetProjectReferencePaths(snapshots)
+                    .Where(knownPaths.Add))
                 {
-                    if (knownPaths.Add(referencePath))
-                    {
-                        discoveredPaths.Add(referencePath);
-                    }
+                    discoveredPaths.Add(referencePath);
                 }
             }
 
@@ -150,20 +150,7 @@ internal sealed class MSBuildProjectBuildManager : IDisposable
             return;
         }
 
-        lock (s_sharedBuildGate)
-        {
-            s_sharedBuildUserCount--;
-            if (s_sharedBuildUserCount == 0)
-            {
-                _buildManager.EndBuild();
-                _buildManager.Dispose();
-                s_sharedBuildProjectCollection!.UnloadAllProjects();
-                s_sharedBuildProjectCollection.Dispose();
-                s_sharedBuildManager = null;
-                s_sharedBuildProjectCollection = null;
-                s_sharedBuildLogger = null;
-            }
-        }
+        ReleaseSharedBuild();
     }
 
     private async Task<MSBuildProjectSnapshot[]> LoadProjectAsync(
@@ -253,15 +240,14 @@ internal sealed class MSBuildProjectBuildManager : IDisposable
         CancellationToken cancellationToken)
     {
         ProjectInstance projectInstance = project.CreateProjectInstance();
-        foreach (string target in s_requiredTargets)
+        string? missingTarget = s_requiredTargets.FirstOrDefault(
+            target => !projectInstance.Targets.ContainsKey(target));
+        if (missingTarget is not null)
         {
-            if (!projectInstance.Targets.ContainsKey(target))
-            {
-                _reportDiagnostic(
-                    WorkspaceDiagnosticKind.Failure,
-                    $"Project {project.FullPath} does not contain the {target} target.");
-                return projectInstance;
-            }
+            _reportDiagnostic(
+                WorkspaceDiagnosticKind.Failure,
+                $"Project {project.FullPath} does not contain the {missingTarget} target.");
+            return projectInstance;
         }
 
         string[] targets = projectInstance.Targets.ContainsKey(OptionalMarkupTarget)
@@ -322,12 +308,10 @@ internal sealed class MSBuildProjectBuildManager : IDisposable
             projectPath,
             Path.GetDirectoryName(projectPath)!
         };
-        foreach (ResolvedImport import in project.Imports)
+        foreach (ResolvedImport import in project.Imports.Where(static import =>
+            !string.IsNullOrWhiteSpace(import.ImportedProject.FullPath)))
         {
-            if (!string.IsNullOrWhiteSpace(import.ImportedProject.FullPath))
-            {
-                paths.Add(import.ImportedProject.FullPath);
-            }
+            paths.Add(import.ImportedProject.FullPath);
         }
 
         string projectDirectory = Path.GetDirectoryName(projectPath)!;
@@ -377,12 +361,9 @@ internal sealed class MSBuildProjectBuildManager : IDisposable
         var paths = new HashSet<string>(PathComparer);
         foreach (MSBuildProjectSnapshot snapshot in snapshots)
         {
-            foreach (string path in snapshot.ProjectReferencePaths)
+            foreach (string path in snapshot.ProjectReferencePaths.Where(paths.Add))
             {
-                if (paths.Add(path))
-                {
-                    yield return path;
-                }
+                yield return path;
             }
         }
     }
@@ -414,14 +395,13 @@ internal sealed class MSBuildProjectBuildManager : IDisposable
         string projectPath,
         CancellationToken cancellationToken)
     {
-        var stream = new FileStream(
+        using var stream = new FileStream(
             projectPath,
             FileMode.Open,
             FileAccess.Read,
             FileShare.ReadWrite | FileShare.Delete,
             bufferSize: 81920,
             FileOptions.Asynchronous | FileOptions.SequentialScan);
-        await using ConfiguredAsyncDisposable streamCleanup = stream.ConfigureAwait(false);
         using var content = new MemoryStream();
         await stream.CopyToAsync(content, cancellationToken).ConfigureAwait(false);
         content.Position = 0;
@@ -431,6 +411,28 @@ internal sealed class MSBuildProjectBuildManager : IDisposable
             s_sharedBuildProjectCollection!);
         root.FullPath = projectPath;
         return root;
+    }
+
+    private static string GetNextBuildIdentity() => Interlocked
+        .Increment(ref s_nextBuildIdentity)
+        .ToString(CultureInfo.InvariantCulture);
+
+    private static void ReleaseSharedBuild()
+    {
+        lock (s_sharedBuildGate)
+        {
+            s_sharedBuildUserCount--;
+            if (s_sharedBuildUserCount == 0)
+            {
+                s_sharedBuildManager!.EndBuild();
+                s_sharedBuildManager.Dispose();
+                s_sharedBuildProjectCollection!.UnloadAllProjects();
+                s_sharedBuildProjectCollection.Dispose();
+                s_sharedBuildManager = null;
+                s_sharedBuildProjectCollection = null;
+                s_sharedBuildLogger = null;
+            }
+        }
     }
 
     private static MSBuildProject CreateProject(

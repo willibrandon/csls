@@ -8,8 +8,6 @@ namespace Csls.Workspaces;
 public sealed partial class WorkspaceManager
 {
     private const int MaximumInspectionDiagnostics = 500;
-    private const int MaximumConcurrentDiagnosticInspections = 4;
-
     /// <summary>
     /// Inspects only the current workspace generation and loaded folder summaries.
     /// </summary>
@@ -128,30 +126,19 @@ public sealed partial class WorkspaceManager
                     $"The diagnostics project was not found: {diagnosticsProjectId}");
             }
 
-            var projectDiagnostics = new ImmutableArray<RoslynDiagnostic>[
-                diagnosticProjects.Count];
-            await Parallel.ForAsync(
-                0,
-                diagnosticProjects.Count,
-                new ParallelOptions
+            ImmutableArray<RoslynDiagnostic>[] projectDiagnostics = await Task.WhenAll(
+                diagnosticProjects.Select(async project =>
                 {
-                    CancellationToken = cancellationToken,
-                    MaxDegreeOfParallelism = Math.Min(
-                        Environment.ProcessorCount,
-                        MaximumConcurrentDiagnosticInspections)
-                },
-                async (index, operationCancellationToken) =>
-                {
-                    VersionStamp projectVersion = await diagnosticProjects[index]
-                        .GetDependentVersionAsync(operationCancellationToken)
+                    VersionStamp projectVersion = await project
+                        .GetDependentVersionAsync(cancellationToken)
                         .ConfigureAwait(false);
-                    projectDiagnostics[index] = await _diagnosticCache.GetOrAddAsync(
+                    return await _diagnosticCache.GetOrAddAsync(
                         generation,
                         projectVersion,
-                        diagnosticProjects[index],
+                        project,
                         ComputeProjectDiagnosticsAsync,
-                        operationCancellationToken).ConfigureAwait(false);
-                }).ConfigureAwait(false);
+                        cancellationToken).ConfigureAwait(false);
+                })).ConfigureAwait(false);
             for (int projectIndex = 0;
                 projectIndex < diagnosticProjects.Count;
                 projectIndex++)
