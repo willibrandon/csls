@@ -13,22 +13,29 @@ using System.Runtime.InteropServices;
 if (args.Length == 1 && args[0] is "--help" or "-h" or "-?")
 {
     await Console.Out.WriteLineAsync(
-        "Installs the latest stable VS Code extension test client and editor runtime.")
+        "Prepares the VS Code test fixtures and latest stable editor toolset.")
         .ConfigureAwait(false);
     await Console.Out.WriteLineAsync(
         "Usage: dotnet run --file scripts/Provision-VsCode.cs " +
-        "[--output <directory>] [--with-web-browsers]")
+        "[--output <directory>] [--with-web-browsers] [--fixtures-only]")
         .ConfigureAwait(false);
     return 0;
 }
 
 string? outputPath = null;
 bool installWebBrowsers = false;
+bool fixturesOnly = false;
 for (int index = 0; index < args.Length; index++)
 {
     if (string.Equals(args[index], "--with-web-browsers", StringComparison.Ordinal))
     {
         installWebBrowsers = true;
+        continue;
+    }
+
+    if (string.Equals(args[index], "--fixtures-only", StringComparison.Ordinal))
+    {
+        fixturesOnly = true;
         continue;
     }
 
@@ -42,7 +49,7 @@ for (int index = 0; index < args.Length; index++)
 
     await Console.Error.WriteLineAsync(
         "Usage: dotnet run --file scripts/Provision-VsCode.cs " +
-        "[--output <directory>] [--with-web-browsers]")
+        "[--output <directory>] [--with-web-browsers] [--fixtures-only]")
         .ConfigureAwait(false);
     return 2;
 }
@@ -65,7 +72,7 @@ try
             fixturePath
         ],
         repositoryRoot).ConfigureAwait(false);
-    if (installWebBrowsers)
+    if (installWebBrowsers && !fixturesOnly)
     {
         string browserCachePath = Path.Join(toolsRoot, "playwright", "current");
         Directory.CreateDirectory(browserCachePath);
@@ -115,6 +122,13 @@ try
             fixturePath
         ],
         repositoryRoot).ConfigureAwait(false);
+
+    if (fixturesOnly)
+    {
+        await Console.Out.WriteLineAsync("Prepared the VS Code test fixtures.")
+            .ConfigureAwait(false);
+        return 0;
+    }
 
     string cachePath = Path.Join(toolsRoot, "vscode", "stable");
     Directory.CreateDirectory(cachePath);

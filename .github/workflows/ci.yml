@@ -158,10 +158,44 @@ jobs:
           path: artifacts/test-results/${{ matrix.rid }}
           if-no-files-found: warn
 
+  vscode-tools:
+    name: VS Code tools
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 10.x
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24.x
+
+      - name: Provision Visual Studio Code tools
+        run: dotnet run --file scripts/Provision-VsCode.cs -- --with-web-browsers
+
+      - name: Provision Visual Studio Code remote server
+        run: dotnet run --file scripts/Provision-VsCodeRemoteServer.cs
+
+      - name: Save Visual Studio Code tools
+        uses: actions/cache/save@v6
+        with:
+          path: artifacts/tools
+          key: vscode-tools-${{ github.run_id }}
+
   vscode-hosts:
     name: VS Code host (${{ matrix.host }})
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    needs: vscode-tools
     strategy:
       fail-fast: false
       matrix:
@@ -225,17 +259,23 @@ jobs:
       - name: Restore
         run: dotnet restore Csls.slnx
 
-      - name: Provision Visual Studio Code
+      - name: Restore Visual Studio Code tools
+        uses: actions/cache/restore@v6
+        with:
+          path: artifacts/tools
+          key: vscode-tools-${{ github.run_id }}
+          fail-on-cache-miss: true
+
+      - name: Prepare Visual Studio Code fixtures
         if: matrix.web == false
-        run: dotnet run --file scripts/Provision-VsCode.cs
+        run: dotnet run --file scripts/Provision-VsCode.cs -- --fixtures-only
 
-      - name: Provision Visual Studio Code and web browsers
+      - name: Prepare Visual Studio Code web fixtures
         if: matrix.web == true
-        run: dotnet run --file scripts/Provision-VsCode.cs -- --with-web-browsers
-
-      - name: Provision Visual Studio Code remote server
-        if: matrix.remote == true
-        run: dotnet run --file scripts/Provision-VsCodeRemoteServer.cs
+        run: >-
+          dotnet run --file scripts/Provision-VsCode.cs --
+          --fixtures-only
+          --with-web-browsers
 
       - name: Install graphical editor test prerequisites
         if: matrix.web == false
