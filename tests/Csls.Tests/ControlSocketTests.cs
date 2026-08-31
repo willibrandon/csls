@@ -425,6 +425,11 @@ public sealed class ControlSocketTests
         }
 
         Assert.IsNotNull(canceledRequest);
+        await FileTextWaiter.WaitAsync(
+            fixture.MarkerPath,
+            "canceled",
+            TimeSpan.FromSeconds(60),
+            TestContext.CancellationToken).ConfigureAwait(false);
         string cancellationSignals = await File.ReadAllTextAsync(
             fixture.MarkerPath,
             TestContext.CancellationToken).ConfigureAwait(false);
@@ -585,6 +590,11 @@ public sealed class ControlSocketTests
 
         Assert.IsNotNull(canceledRequest);
         Assert.IsFalse(TestContext.CancellationToken.IsCancellationRequested);
+        await FileTextWaiter.WaitAsync(
+            fixture.MarkerPath,
+            "canceled",
+            TimeSpan.FromSeconds(60),
+            TestContext.CancellationToken).ConfigureAwait(false);
         string cancellationSignals = await File.ReadAllTextAsync(
             fixture.MarkerPath,
             TestContext.CancellationToken).ConfigureAwait(false);

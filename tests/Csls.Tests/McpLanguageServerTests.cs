@@ -1196,6 +1196,11 @@ public sealed class McpLanguageServerTests
             Assert.IsTrue(cancellation.CancellationRequested);
             CallToolResult diagnosticResult = await diagnosticRequest.ConfigureAwait(false);
             Assert.IsTrue(diagnosticResult.IsError);
+            await FileTextWaiter.WaitAsync(
+                fixture.MarkerPath,
+                "canceled",
+                TimeSpan.FromSeconds(60),
+                TestContext.CancellationToken).ConfigureAwait(false);
             string marker = await File.ReadAllTextAsync(
                 fixture.MarkerPath,
                 TestContext.CancellationToken).ConfigureAwait(false);
