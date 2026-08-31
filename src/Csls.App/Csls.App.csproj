@@ -4,6 +4,7 @@
     <AssemblyName>csls</AssemblyName>
     <RootNamespace>Csls.App</RootNamespace>
     <Description>Native AOT command-line launcher and control client for csls.</Description>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <IsPackable>true</IsPackable>
     <PackAsTool>true</PackAsTool>
     <ToolCommandName>csls</ToolCommandName>
@@ -22,6 +23,17 @@
 
   <ItemGroup>
     <PackageReference Include="System.CommandLine" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Include="../Csls.Workspaces.MSBuild/WindowsJobObjectBasicAccountingInformation.cs"
+             Link="WindowsJobObjectBasicAccountingInformation.cs" />
+    <Compile Include="../Csls.Workspaces.MSBuild/WindowsJobObjectBasicLimitInformation.cs"
+             Link="WindowsJobObjectBasicLimitInformation.cs" />
+    <Compile Include="../Csls.Workspaces.MSBuild/WindowsJobObjectExtendedLimitInformation.cs"
+             Link="WindowsJobObjectExtendedLimitInformation.cs" />
+    <Compile Include="../Csls.Workspaces.MSBuild/WindowsProcessTreeLifetime.cs"
+             Link="WindowsProcessTreeLifetime.cs" />
   </ItemGroup>
 
   <ItemGroup>
