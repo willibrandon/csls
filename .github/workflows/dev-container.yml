@@ -51,9 +51,12 @@ jobs:
       - name: Build and test the development container
         if: steps.scope.outputs.full == 'true'
         uses: devcontainers/ci@v0.3
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         with:
           cacheFrom: type=gha,scope=csls-devcontainer
           cacheTo: type=gha,mode=max,scope=csls-devcontainer
+          env: GITHUB_TOKEN
           imageName: csls-devcontainer
           imageTag: ci
           push: never

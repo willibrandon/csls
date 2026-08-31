@@ -269,7 +269,8 @@ static async Task RunCheckedAsync(
     await Console.Error.WriteAsync(standardError).ConfigureAwait(false);
     if (process.ExitCode != 0)
     {
+        string command = string.Join(' ', arguments.Prepend(executablePath));
         throw new InvalidOperationException(
-            $"{executablePath} failed with exit code {process.ExitCode}.");
+            $"{command} failed with exit code {process.ExitCode}.");
     }
 }
