@@ -534,6 +534,11 @@ public sealed class ControlSocketTests
         await lsp.OpenDocumentAsync(
             fixture.DocumentPath,
             CancellationProbeFixture.DocumentText).ConfigureAwait(false);
+        await ControlSessionWaiter.WaitForRunningAsync(
+            fixture.RootPath,
+            TimeSpan.FromSeconds(60),
+            TestContext.CancellationToken,
+            expectedProcessId: lsp.ProcessId).ConfigureAwait(false);
 
         var controlClient = new ControlRpcClient(ControlEndpoint.GetSocketPath(lsp.ProcessId));
         await using ConfiguredAsyncDisposable controlCleanup =
