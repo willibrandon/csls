@@ -344,7 +344,8 @@ static async Task PublishAsync(
             publishPath,
             $"-p:Version={version}",
             $"-p:PackageVersion={version}",
-            "-p:DebugSymbols=true"
+            "-p:DebugSymbols=true",
+            "-p:IlcGenerateMstatFile=true"
         ],
         repositoryRoot).ConfigureAwait(false);
 }
