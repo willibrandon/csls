@@ -3,6 +3,7 @@ using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.Text;
 using Microsoft.Extensions.Logging.Abstractions;
+using System.Collections.Concurrent;
 
 namespace Csls.Tests;
 
@@ -16,6 +17,75 @@ public sealed class MSBuildWorkspaceLoaderCacheTests
     /// Gets the active MSTest context and its framework-managed cancellation token.
     /// </summary>
     public TestContext TestContext { get; set; } = null!;
+
+    /// <summary>
+    /// Keeps in-process MSBuild state from changing the language-server process directory.
+    /// </summary>
+    [TestMethod]
+    public async Task ProjectLoadingPreservesProcessCurrentDirectory()
+    {
+        string repositoryRoot = EditorToolResolver.FindRepositoryRoot();
+        string workspacePath = Path.Join(
+            EditorToolResolver.ResolveArtifactsRoot(repositoryRoot),
+            "test-fixtures",
+            $"csls-msbuild-process-isolation-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(workspacePath);
+        try
+        {
+            await File.WriteAllTextAsync(
+                Path.Join(workspacePath, "Fixture.csproj"),
+                CreateProjectWithoutSymbolText(),
+                TestContext.CancellationToken).ConfigureAwait(false);
+            await File.WriteAllTextAsync(
+                Path.Join(workspacePath, "Fixture.slnx"),
+                "<Solution><Project Path=\"Fixture.csproj\" /></Solution>",
+                TestContext.CancellationToken).ConfigureAwait(false);
+            await File.WriteAllTextAsync(
+                Path.Join(workspacePath, "Program.cs"),
+                "public sealed class Fixture;",
+                TestContext.CancellationToken).ConfigureAwait(false);
+
+            string expectedDirectory = Directory.GetCurrentDirectory();
+            var observations = new ConcurrentQueue<string>();
+            using var observationSource = new CancellationTokenSource();
+            var observer = Task.Run(
+                () => ObserveCurrentDirectory(
+                    expectedDirectory,
+                    observations,
+                    observationSource.Token),
+                CancellationToken.None);
+            try
+            {
+                var loader = new MSBuildWorkspaceLoader(
+                    NullLogger<MSBuildWorkspaceLoader>.Instance);
+                IReadOnlyList<WorkspaceFolderSnapshot> snapshots = await loader.LoadAsync(
+                    [workspacePath],
+                    "Debug",
+                    progress: null,
+                    TestContext.CancellationToken).ConfigureAwait(false);
+                using Workspace workspace = Assert.ContainsSingle(snapshots).Workspace;
+                Assert.ContainsSingle(Assert.ContainsSingle(snapshots).Solution.Projects.Where(
+                    project => string.Equals(
+                        project.FilePath,
+                        Path.Join(workspacePath, "Fixture.csproj"),
+                        StringComparison.Ordinal)));
+            }
+            finally
+            {
+                await observationSource.CancelAsync().ConfigureAwait(false);
+                await observer.ConfigureAwait(false);
+            }
+
+            Assert.IsEmpty(
+                observations,
+                $"MSBuild changed the process current directory:{Environment.NewLine}" +
+                string.Join(Environment.NewLine, observations));
+        }
+        finally
+        {
+            Directory.Delete(workspacePath, recursive: true);
+        }
+    }
 
     /// <summary>
     /// Reloads source text from disk and rebuilds project state after evaluated inputs change.
@@ -223,6 +293,35 @@ public sealed class MSBuildWorkspaceLoaderCacheTests
           </PropertyGroup>
         </Project>
         """;
+
+    private static void ObserveCurrentDirectory(
+        string expectedDirectory,
+        ConcurrentQueue<string> observations,
+        CancellationToken cancellationToken)
+    {
+        while (!cancellationToken.IsCancellationRequested)
+        {
+            try
+            {
+                string currentDirectory = Directory.GetCurrentDirectory();
+                if (!string.Equals(
+                    currentDirectory,
+                    expectedDirectory,
+                    StringComparison.Ordinal))
+                {
+                    observations.Enqueue(currentDirectory);
+                    return;
+                }
+            }
+            catch (IOException exception)
+            {
+                observations.Enqueue(exception.Message);
+                return;
+            }
+
+            _ = Thread.Yield();
+        }
+    }
 
     private static string CreateProjectWithoutSymbolText() => """
         <Project Sdk="Microsoft.NET.Sdk">

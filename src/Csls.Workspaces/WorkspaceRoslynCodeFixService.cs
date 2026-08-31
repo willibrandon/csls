@@ -170,10 +170,21 @@ internal static class WorkspaceRoslynCodeFixService
                 semanticModel.Compilation.WithAnalyzers(
                     analyzers,
                     document.Project.AnalyzerOptions);
+            Task<ImmutableArray<RoslynDiagnostic>> syntaxDiagnostics =
+                compilationWithAnalyzers.GetAnalyzerSyntaxDiagnosticsAsync(
+                    syntaxTree,
+                    requestedSpan,
+                    cancellationToken);
+            Task<ImmutableArray<RoslynDiagnostic>> semanticDiagnostics =
+                compilationWithAnalyzers.GetAnalyzerSemanticDiagnosticsAsync(
+                    semanticModel,
+                    requestedSpan,
+                    cancellationToken);
             ImmutableArray<RoslynDiagnostic> analyzerDiagnostics =
-                await compilationWithAnalyzers
-                    .GetAnalyzerDiagnosticsAsync(cancellationToken)
-                    .ConfigureAwait(false);
+                [
+                    .. await syntaxDiagnostics.ConfigureAwait(false),
+                    .. await semanticDiagnostics.ConfigureAwait(false)
+                ];
             diagnostics.AddRange(analyzerDiagnostics.Where(diagnostic =>
                 IsApplicableDiagnostic(
                     diagnostic,

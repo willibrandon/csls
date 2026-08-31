@@ -97,6 +97,9 @@ public sealed partial class LanguageServer
             _configuration.EnableInlayHintsForParameters !=
                 configuration.EnableInlayHintsForParameters ||
             _configuration.EnableInlayHintsForTypes != configuration.EnableInlayHintsForTypes;
+        bool workspaceDiagnosticConfigurationChanged =
+            _configuration.EnableWorkspaceDiagnostics !=
+                configuration.EnableWorkspaceDiagnostics;
         bool changed = await _workspaceManager.ConfigureAsync(
             configuration.EnableAnalyzers,
             configuration.BuildConfiguration,
@@ -110,9 +113,15 @@ public sealed partial class LanguageServer
             configuration.EnableInlayHintsForParameters,
             configuration.EnableInlayHintsForTypes,
             configuration.ReportInformationAsHint,
+            configuration.EnableWorkspaceDiagnostics,
             configuration.BuildConfiguration,
             configuration.LogLevel,
             changed);
+        if (workspaceDiagnosticConfigurationChanged && _supportsDiagnosticRefresh)
+        {
+            await _client.RefreshDiagnosticsAsync(cancellationToken).ConfigureAwait(false);
+        }
+
         if (inlayHintConfigurationChanged && _supportsInlayHintRefresh)
         {
             await _client.RefreshInlayHintsAsync(cancellationToken).ConfigureAwait(false);
@@ -198,8 +207,56 @@ public sealed partial class LanguageServer
                 value,
                 sectionName,
                 "diagnostics",
-                "reportInformationAsHint")
+                "reportInformationAsHint"),
+            EnableWorkspaceDiagnostics = sectionName == DotNetConfigurationSection
+                ? ParseDotNetWorkspaceDiagnosticsSetting(value, sectionName)
+                : ParseNestedBooleanSetting(
+                    value,
+                    sectionName,
+                    "diagnostics",
+                    "workspace")
         };
+    }
+
+    private static bool? ParseDotNetWorkspaceDiagnosticsSetting(
+        JsonElement section,
+        string sectionName)
+    {
+        string? analyzerScope = ParseNestedStringSetting(
+            section,
+            sectionName,
+            "backgroundAnalysis",
+            "analyzerDiagnosticsScope");
+        string? compilerScope = ParseNestedStringSetting(
+            section,
+            sectionName,
+            "backgroundAnalysis",
+            "compilerDiagnosticsScope");
+        return analyzerScope is null && compilerScope is null
+            ? null
+            : string.Equals(analyzerScope, "fullSolution", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(compilerScope, "fullSolution", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string? ParseNestedStringSetting(
+        JsonElement section,
+        string sectionName,
+        string groupName,
+        string settingName)
+    {
+        if (!section.TryGetProperty(groupName, out JsonElement group) ||
+            group.ValueKind is JsonValueKind.Null or JsonValueKind.Undefined)
+        {
+            return null;
+        }
+
+        if (group.ValueKind != JsonValueKind.Object)
+        {
+            throw new InvalidDataException(
+                $"The {sectionName}.{groupName} configuration must be an object.");
+        }
+
+        return ParseStringSetting(group, $"{sectionName}.{groupName}", settingName);
     }
 
     private static bool? ParseNestedBooleanSetting(
@@ -305,6 +362,10 @@ public sealed partial class LanguageServer
                 dotNet.ReportInformationAsHint ??
                 legacy.ReportInformationAsHint ??
                 true,
+            EnableWorkspaceDiagnostics = preferred.EnableWorkspaceDiagnostics ??
+                dotNet.EnableWorkspaceDiagnostics ??
+                legacy.EnableWorkspaceDiagnostics ??
+                false,
             BuildConfiguration = preferred.BuildConfiguration ??
                 legacy.BuildConfiguration ??
                 "Debug",

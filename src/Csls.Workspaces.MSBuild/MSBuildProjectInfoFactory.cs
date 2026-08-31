@@ -1,4 +1,3 @@
-using Microsoft.Build.Execution;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.Diagnostics;
@@ -48,7 +47,7 @@ internal static class MSBuildProjectInfoFactory
                     PathComparer);
             var knownProjectOutputPaths = snapshots
                 .SelectMany(static snapshot => GetOutputPaths(
-                    snapshot.ProjectInstance,
+                    snapshot.Project,
                     snapshot.ProjectPath))
                 .ToHashSet(PathComparer);
             RoslynAnalyzerAssemblyLoader analyzerLoader = CreateAnalyzerLoader(snapshots);
@@ -85,7 +84,7 @@ internal static class MSBuildProjectInfoFactory
         RoslynAnalyzerAssemblyLoader analyzerLoader,
         Action<WorkspaceDiagnosticKind, string> reportDiagnostic)
     {
-        ProjectInstance project = snapshot.ProjectInstance;
+        MSBuildProjectData project = snapshot.Project;
         string projectPath = snapshot.ProjectPath;
         string projectDirectory = Path.GetDirectoryName(projectPath)
             ?? throw new InvalidDataException($"Project path has no parent directory: {projectPath}");
@@ -129,7 +128,7 @@ internal static class MSBuildProjectInfoFactory
         var projectOutputPaths = projectIds
             .Where(pair => referencedProjectIds.Contains(pair.Value))
             .SelectMany(static pair => GetOutputPaths(
-                pair.Key.ProjectInstance,
+                pair.Key.Project,
                 pair.Key.ProjectPath))
             .ToHashSet(PathComparer);
         metadataReferences.RemoveAll(reference =>
@@ -176,8 +175,12 @@ internal static class MSBuildProjectInfoFactory
         string? outputRefPath = ResolveProjectPath(
             ReadProperty(project, "TargetRefPath"),
             projectDirectory);
+        IReadOnlyList<MSBuildProjectItem> intermediateAssemblies =
+            project.GetItems("IntermediateAssembly");
         string? intermediateOutputPath = ResolveProjectPath(
-            project.GetItems("IntermediateAssembly").FirstOrDefault()?.EvaluatedInclude,
+            intermediateAssemblies.Count == 0
+                ? null
+                : intermediateAssemblies[0].EvaluatedInclude,
             projectDirectory);
         string? generatedFilesPath = ResolveProjectPath(
             ReadProperty(project, "CompilerGeneratedFilesOutputPath"),
@@ -211,7 +214,7 @@ internal static class MSBuildProjectInfoFactory
 
     private static List<PortableExecutableReference> CreateMetadataReferences(
         CSharpCommandLineArguments parsedArguments,
-        ProjectInstance project,
+        MSBuildProjectData project,
         string projectDirectory,
         string projectPath,
         IReadOnlySet<string> knownProjectOutputPaths,
@@ -246,7 +249,7 @@ internal static class MSBuildProjectInfoFactory
 
         if (references.Count == 0)
         {
-            foreach (ProjectItemInstance item in project.GetItems("ReferencePath"))
+            foreach (MSBuildProjectItem item in project.GetItems("ReferencePath"))
             {
                 string? path = ResolveReferencePath(
                     item.EvaluatedInclude,
@@ -282,7 +285,7 @@ internal static class MSBuildProjectInfoFactory
     {
         var references = new List<ProjectReference>();
         string projectDirectory = Path.GetDirectoryName(source.ProjectPath)!;
-        foreach (ProjectItemInstance item in source.ProjectInstance.GetItems("ProjectReference"))
+        foreach (MSBuildProjectItem item in source.Project.GetItems("ProjectReference"))
         {
             if (string.Equals(
                 item.GetMetadataValue("ReferenceOutputAssembly"),
@@ -304,11 +307,11 @@ internal static class MSBuildProjectInfoFactory
             }
 
             MSBuildProjectSnapshot target = candidates.FirstOrDefault(candidate =>
-                GetOutputPaths(candidate.ProjectInstance, candidate.ProjectPath)
+                GetOutputPaths(candidate.Project, candidate.ProjectPath)
                     .Any(metadataPaths.Contains)) ??
                 candidates.FirstOrDefault(candidate => string.Equals(
-                    ReadProperty(candidate.ProjectInstance, "TargetFramework"),
-                    ReadProperty(source.ProjectInstance, "TargetFramework"),
+                    ReadProperty(candidate.Project, "TargetFramework"),
+                    ReadProperty(source.Project, "TargetFramework"),
                     StringComparison.OrdinalIgnoreCase)) ??
                 candidates[0];
             references.Add(new ProjectReference(
@@ -320,7 +323,7 @@ internal static class MSBuildProjectInfoFactory
     }
 
     private static DocumentInfo[] CreateDocuments(
-        ICollection<ProjectItemInstance> items,
+        IReadOnlyList<MSBuildProjectItem> items,
         ProjectId projectId,
         string projectDirectory,
         Encoding? encoding,
@@ -329,7 +332,7 @@ internal static class MSBuildProjectInfoFactory
     {
         var documents = new List<DocumentInfo>(items.Count);
         var paths = new HashSet<string>(PathComparer);
-        foreach (ProjectItemInstance item in items)
+        foreach (MSBuildProjectItem item in items)
         {
             string path = Path.GetFullPath(NormalizePath(item.EvaluatedInclude), projectDirectory);
             if (!paths.Add(path))
@@ -365,7 +368,7 @@ internal static class MSBuildProjectInfoFactory
 
     private static AnalyzerReference[] CreateAnalyzerReferences(
         CSharpCommandLineArguments parsedArguments,
-        ProjectInstance project,
+        MSBuildProjectData project,
         string projectDirectory,
         RoslynAnalyzerAssemblyLoader analyzerLoader)
     {
@@ -394,7 +397,7 @@ internal static class MSBuildProjectInfoFactory
         IReadOnlyList<MSBuildProjectSnapshot> snapshots)
     {
         IEnumerable<string> analyzerPaths = snapshots
-            .SelectMany(static snapshot => snapshot.ProjectInstance
+            .SelectMany(static snapshot => snapshot.Project
                 .GetItems("Analyzer")
                 .Select(item => (snapshot.ProjectPath, item.EvaluatedInclude)))
             .Select(static analyzer => ResolveProjectPath(
@@ -412,7 +415,7 @@ internal static class MSBuildProjectInfoFactory
     }
 
     private static IEnumerable<string> GetOutputPaths(
-        ProjectInstance project,
+        MSBuildProjectData project,
         string projectPath)
     {
         string projectDirectory = Path.GetDirectoryName(projectPath)!;
@@ -473,8 +476,8 @@ internal static class MSBuildProjectInfoFactory
                     StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
             ];
 
-    private static string? ReadProperty(ProjectInstance project, string propertyName) =>
-        project.GetProperty(propertyName)?.EvaluatedValue is { Length: > 0 } value
+    private static string? ReadProperty(MSBuildProjectData project, string propertyName) =>
+        project.GetPropertyValue(propertyName) is { Length: > 0 } value
             ? value
             : null;
 

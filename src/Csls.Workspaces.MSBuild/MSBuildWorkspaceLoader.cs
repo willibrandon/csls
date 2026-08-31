@@ -411,7 +411,7 @@ public sealed partial class MSBuildWorkspaceLoader : WorkspaceLoader
         LegacyFrameworkReferenceResolver.AddGlobalProperties(globalProperties);
         if (projectPathsToBuild.Count > 0)
         {
-            using var buildManager = new MSBuildProjectBuildManager(
+            var buildManager = new MSBuildBuildHostClient(
                 globalProperties,
                 LogWorkspaceDiagnostic);
             IReadOnlyList<MSBuildProjectSnapshot> builtSnapshots = await buildManager

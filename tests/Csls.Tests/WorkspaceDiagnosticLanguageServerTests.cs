@@ -151,12 +151,18 @@ public sealed class WorkspaceDiagnosticLanguageServerTests
                 "Ready",
                 TimeSpan.FromSeconds(30),
                 TestContext.CancellationToken).ConfigureAwait(false);
-            WorkspaceDiagnosticReport ready = await lsp.RequestWorkspaceDiagnosticsAsync(
+            DocumentDiagnosticReport ready = await lsp.RequestDiagnosticsAsync(
+                documentPath,
+                previousResultId: null,
+                TestContext.CancellationToken).ConfigureAwait(false);
+            Assert.Contains(
+                "CS0103",
+                ready.Items?.Select(static diagnostic => diagnostic.Code) ?? []);
+            WorkspaceDiagnosticReport closedFiles = await lsp.RequestWorkspaceDiagnosticsAsync(
                 [],
                 partialResultToken: null,
                 TestContext.CancellationToken).ConfigureAwait(false);
-            WorkspaceDocumentDiagnosticReport report = Assert.ContainsSingle(ready.Items);
-            Assert.Contains("CS0103", GetCodes(report));
+            Assert.IsEmpty(closedFiles.Items);
 
             string diagnostics = await lsp.ShutdownAsync(
                 TestContext.CancellationToken).ConfigureAwait(false);
@@ -209,7 +215,16 @@ public sealed class WorkspaceDiagnosticLanguageServerTests
 
             var client = new LspTestClient(
                 legacyConfiguration: null,
-                preferredConfiguration: null);
+                preferredConfiguration: null,
+                dotNetConfiguration:
+                    """
+                    {
+                      "backgroundAnalysis": {
+                        "analyzerDiagnosticsScope": "fullSolution",
+                        "compilerDiagnosticsScope": "openFiles"
+                      }
+                    }
+                    """);
             LspProcessSession lsp = await LspProcessSession.StartAsync(
                 "csls-workspace-diagnostic-worker",
                 EditorToolResolver.ResolveDotNetHost(),
@@ -217,8 +232,16 @@ public sealed class WorkspaceDiagnosticLanguageServerTests
                 fixturePath,
                 client).ConfigureAwait(false);
             await using ConfiguredAsyncDisposable lspCleanup = lsp.ConfigureAwait(false);
+            using var capabilities = JsonDocument.Parse(
+                """
+                {
+                  "workspace": {"configuration": true},
+                  "textDocument": {"diagnostic": {}}
+                }
+                """);
             JsonElement initialization = await lsp.InitializeAsync(
                 fixturePath,
+                capabilities.RootElement,
                 TestContext.CancellationToken).ConfigureAwait(false);
             Assert.IsTrue(initialization
                 .GetProperty("capabilities")
@@ -228,6 +251,11 @@ public sealed class WorkspaceDiagnosticLanguageServerTests
             await lsp.OpenDocumentAsync(coreDocumentPath, InvalidCoreText).ConfigureAwait(false);
             await lsp.OpenDocumentAsync(razorDocumentPath, RazorText, "razor")
                 .ConfigureAwait(false);
+            await ControlSessionWaiter.WaitForRunningAsync(
+                fixturePath,
+                TimeSpan.FromSeconds(30),
+                TestContext.CancellationToken,
+                expectedProcessId: lsp.ProcessId).ConfigureAwait(false);
 
             WorkspaceDiagnosticReport initial = await lsp.RequestWorkspaceDiagnosticsAsync(
                 [],
@@ -372,9 +400,21 @@ public sealed class WorkspaceDiagnosticLanguageServerTests
                 fixturePath,
                 client).ConfigureAwait(false);
             await using ConfiguredAsyncDisposable lspCleanup = lsp.ConfigureAwait(false);
-            await lsp.InitializeAsync(fixturePath, TestContext.CancellationToken)
-                .ConfigureAwait(false);
+            using var capabilities = JsonDocument.Parse(
+                """{"textDocument":{"diagnostic":{}}}""");
+            using var initializationOptions = JsonDocument.Parse(
+                """{"csls":{"diagnostics":{"workspace":true}}}""");
+            await lsp.InitializeAsync(
+                [fixturePath],
+                capabilities.RootElement,
+                initializationOptions.RootElement,
+                TestContext.CancellationToken).ConfigureAwait(false);
             await lsp.CompleteInitializationAsync().ConfigureAwait(false);
+            await ControlSessionWaiter.WaitForRunningAsync(
+                fixturePath,
+                TimeSpan.FromSeconds(30),
+                TestContext.CancellationToken,
+                expectedProcessId: lsp.ProcessId).ConfigureAwait(false);
 
             using var tokenDocument = JsonDocument.Parse("\"workspace\"");
             WorkspaceDiagnosticReport response = await lsp.RequestWorkspaceDiagnosticsAsync(

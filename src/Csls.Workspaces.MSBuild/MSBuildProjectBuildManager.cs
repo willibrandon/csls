@@ -9,9 +9,9 @@ using MSBuildProject = Microsoft.Build.Evaluation.Project;
 namespace Csls.Workspaces;
 
 /// <summary>
-/// Evaluates projects once and submits all design-time builds through one shared MSBuild manager.
+/// Evaluates projects once and submits their design-time builds through one MSBuild session.
 /// </summary>
-internal sealed class MSBuildProjectBuildManager : IDisposable
+internal sealed class MSBuildProjectBuildManager
 {
     private static readonly string[] s_requiredTargets = ["Compile", "CoreCompile"];
     private static readonly Lock s_buildManagerCreationGate = new();
@@ -24,13 +24,9 @@ internal sealed class MSBuildProjectBuildManager : IDisposable
     private const string OptionalMarkupTarget = "DesignTimeMarkupCompilation";
     private readonly Action<WorkspaceDiagnosticKind, string> _reportDiagnostic;
     private readonly Dictionary<string, string> _globalProperties;
-    private readonly BuildManager _buildManager;
-    private readonly MSBuildWorkspaceBuildLogger _buildLogger;
-    private readonly ProjectCollection _projectCollection;
-    private int _disposeState;
 
     /// <summary>
-    /// Initializes a shared design-time build session for one solution or project group.
+    /// Initializes the design-time build settings for one solution or project group.
     /// </summary>
     /// <param name="globalProperties">The complete MSBuild global property set.</param>
     /// <param name="reportDiagnostic">The workspace diagnostic destination.</param>
@@ -55,32 +51,6 @@ internal sealed class MSBuildProjectBuildManager : IDisposable
             ["ShouldUnsetParentConfigurationAndPlatform"] = bool.FalseString,
             ["CslsDesignTimeBuildId"] = GetNextBuildIdentity()
         };
-        _projectCollection = new ProjectCollection(
-            globalProperties: null,
-            loggers: [],
-            ToolsetDefinitionLocations.Default);
-        _buildLogger = new MSBuildWorkspaceBuildLogger();
-        lock (s_buildManagerCreationGate)
-        {
-            _buildManager = new BuildManager();
-        }
-
-        try
-        {
-            _buildManager.BeginBuild(new BuildParameters(_projectCollection)
-            {
-                DisableInProcNode = true,
-                EnableNodeReuse = false,
-                Loggers = [_buildLogger],
-                MaxNodeCount = Environment.ProcessorCount
-            });
-        }
-        catch
-        {
-            _buildManager.Dispose();
-            _projectCollection.Dispose();
-            throw;
-        }
     }
 
     /// <summary>
@@ -93,8 +63,42 @@ internal sealed class MSBuildProjectBuildManager : IDisposable
         IReadOnlyList<string> projectPaths,
         CancellationToken cancellationToken)
     {
-        ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposeState) != 0, this);
         ArgumentNullException.ThrowIfNull(projectPaths);
+        using var projectCollection = new ProjectCollection(
+            globalProperties: null,
+            loggers: [],
+            ToolsetDefinitionLocations.Default);
+        using BuildManager buildManager = CreateBuildManager();
+        var buildLogger = new MSBuildWorkspaceBuildLogger();
+        buildManager.BeginBuild(new BuildParameters(projectCollection)
+        {
+            EnableNodeReuse = false,
+            Loggers = [buildLogger],
+            MaxNodeCount = Environment.ProcessorCount
+        });
+        try
+        {
+            return await LoadProjectsAsync(
+                projectPaths,
+                buildManager,
+                buildLogger,
+                projectCollection,
+                cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            buildManager.EndBuild();
+            projectCollection.UnloadAllProjects();
+        }
+    }
+
+    private async Task<IReadOnlyList<MSBuildProjectSnapshot>> LoadProjectsAsync(
+        IReadOnlyList<string> projectPaths,
+        BuildManager buildManager,
+        MSBuildWorkspaceBuildLogger buildLogger,
+        ProjectCollection projectCollection,
+        CancellationToken cancellationToken)
+    {
         var snapshotsByPath = new Dictionary<string, MSBuildProjectSnapshot[]>(PathComparer);
         var orderedPaths = new List<string>();
         var knownPaths = new HashSet<string>(PathComparer);
@@ -107,7 +111,12 @@ internal sealed class MSBuildProjectBuildManager : IDisposable
             cancellationToken.ThrowIfCancellationRequested();
             Task<MSBuildProjectSnapshot[]>[] loads =
             [
-                .. pathsToLoad.Select(path => LoadProjectAsync(path, cancellationToken))
+                .. pathsToLoad.Select(path => LoadProjectAsync(
+                    path,
+                    buildManager,
+                    buildLogger,
+                    projectCollection,
+                    cancellationToken))
             ];
             MSBuildProjectSnapshot[][] loadedSnapshots = await Task.WhenAll(loads)
                 .ConfigureAwait(false);
@@ -134,30 +143,11 @@ internal sealed class MSBuildProjectBuildManager : IDisposable
         ];
     }
 
-    /// <summary>
-    /// Ends the shared build and releases every evaluated project.
-    /// </summary>
-    public void Dispose()
-    {
-        if (Interlocked.Exchange(ref _disposeState, 1) != 0)
-        {
-            return;
-        }
-
-        try
-        {
-            _buildManager.EndBuild();
-        }
-        finally
-        {
-            _buildManager.Dispose();
-            _projectCollection.UnloadAllProjects();
-            _projectCollection.Dispose();
-        }
-    }
-
     private async Task<MSBuildProjectSnapshot[]> LoadProjectAsync(
         string projectPath,
+        BuildManager buildManager,
+        MSBuildWorkspaceBuildLogger buildLogger,
+        ProjectCollection projectCollection,
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
@@ -166,8 +156,12 @@ internal sealed class MSBuildProjectBuildManager : IDisposable
         {
             ProjectRootElement projectRoot = await ReadProjectRootAsync(
                 projectPath,
+                projectCollection,
                 cancellationToken).ConfigureAwait(false);
-            MSBuildProject project = CreateProject(projectRoot, _globalProperties);
+            MSBuildProject project = CreateProject(
+                projectRoot,
+                _globalProperties,
+                projectCollection);
             loadedProjects.Add(project);
             string targetFramework = project.GetPropertyValue("TargetFramework");
             string targetFrameworks = project.GetPropertyValue("TargetFrameworks");
@@ -176,14 +170,16 @@ internal sealed class MSBuildProjectBuildManager : IDisposable
             {
                 ProjectInstance projectInstance = await BuildProjectAsync(
                     project,
+                    buildManager,
+                    buildLogger,
                     cancellationToken).ConfigureAwait(false);
                 return
                 [
                     new MSBuildProjectSnapshot(
                         projectPath,
-                        projectInstance,
-                        GetInputPaths(project, projectPath),
-                        GetProjectReferencePaths(project, projectPath))
+                        MSBuildProjectData.Create(projectInstance),
+                        [.. GetInputPaths(project, projectPath)],
+                        [.. GetProjectReferencePaths(project, projectPath)])
                 ];
             }
 
@@ -202,22 +198,27 @@ internal sealed class MSBuildProjectBuildManager : IDisposable
                 };
                 MSBuildProject frameworkProject = CreateProject(
                     projectRoot,
-                    frameworkProperties);
+                    frameworkProperties,
+                    projectCollection);
                 loadedProjects.Add(frameworkProject);
                 frameworkProjects[index] = frameworkProject;
             }
 
             ProjectInstance[] projectInstances = await Task.WhenAll(
                 frameworkProjects.Select(frameworkProject =>
-                    BuildProjectAsync(frameworkProject, cancellationToken))).ConfigureAwait(false);
+                    BuildProjectAsync(
+                        frameworkProject,
+                        buildManager,
+                        buildLogger,
+                        cancellationToken))).ConfigureAwait(false);
             var snapshots = new MSBuildProjectSnapshot[frameworks.Length];
             for (int index = 0; index < frameworks.Length; index++)
             {
                 snapshots[index] = new MSBuildProjectSnapshot(
                     projectPath,
-                    projectInstances[index],
-                    GetInputPaths(frameworkProjects[index], projectPath),
-                    GetProjectReferencePaths(frameworkProjects[index], projectPath));
+                    MSBuildProjectData.Create(projectInstances[index]),
+                    [.. GetInputPaths(frameworkProjects[index], projectPath)],
+                    [.. GetProjectReferencePaths(frameworkProjects[index], projectPath)]);
             }
 
             return snapshots;
@@ -233,13 +234,15 @@ internal sealed class MSBuildProjectBuildManager : IDisposable
         {
             foreach (MSBuildProject project in loadedProjects)
             {
-                _projectCollection.UnloadProject(project);
+                projectCollection.UnloadProject(project);
             }
         }
     }
 
     private async Task<ProjectInstance> BuildProjectAsync(
         MSBuildProject project,
+        BuildManager buildManager,
+        MSBuildWorkspaceBuildLogger buildLogger,
         CancellationToken cancellationToken)
     {
         ProjectInstance projectInstance = project.CreateProjectInstance();
@@ -260,11 +263,10 @@ internal sealed class MSBuildProjectBuildManager : IDisposable
             projectInstance,
             targets,
             hostServices: null,
-            BuildRequestDataFlags.ProvideProjectStateAfterBuild |
-                BuildRequestDataFlags.ReplaceExistingProjectInstance);
+            BuildRequestDataFlags.ProvideProjectStateAfterBuild);
         cancellationToken.ThrowIfCancellationRequested();
-        BuildSubmission submission = _buildManager.PendBuildRequest(request);
-        _buildLogger.Register(submission.SubmissionId, _reportDiagnostic);
+        BuildSubmission submission = buildManager.PendBuildRequest(request);
+        buildLogger.Register(submission.SubmissionId, _reportDiagnostic);
         try
         {
             var completion = new TaskCompletionSource<BuildResult>(
@@ -298,7 +300,7 @@ internal sealed class MSBuildProjectBuildManager : IDisposable
         }
         finally
         {
-            _buildLogger.Unregister(submission.SubmissionId);
+            buildLogger.Unregister(submission.SubmissionId);
         }
     }
 
@@ -394,8 +396,9 @@ internal sealed class MSBuildProjectBuildManager : IDisposable
         }
     }
 
-    private async Task<ProjectRootElement> ReadProjectRootAsync(
+    private static async Task<ProjectRootElement> ReadProjectRootAsync(
         string projectPath,
+        ProjectCollection projectCollection,
         CancellationToken cancellationToken)
     {
         using var stream = new FileStream(
@@ -411,7 +414,7 @@ internal sealed class MSBuildProjectBuildManager : IDisposable
         using var reader = XmlReader.Create(content, s_xmlReaderSettings);
         var root = ProjectRootElement.Create(
             reader,
-            _projectCollection);
+            projectCollection);
         root.FullPath = projectPath;
         return root;
     }
@@ -420,14 +423,23 @@ internal sealed class MSBuildProjectBuildManager : IDisposable
         .Increment(ref s_nextBuildIdentity)
         .ToString(CultureInfo.InvariantCulture);
 
-    private MSBuildProject CreateProject(
+    private static BuildManager CreateBuildManager()
+    {
+        lock (s_buildManagerCreationGate)
+        {
+            return new BuildManager();
+        }
+    }
+
+    private static MSBuildProject CreateProject(
         ProjectRootElement projectRoot,
-        IDictionary<string, string> globalProperties) =>
+        IDictionary<string, string> globalProperties,
+        ProjectCollection projectCollection) =>
         new(
             projectRoot,
             globalProperties,
             toolsVersion: null,
-            _projectCollection,
+            projectCollection,
             ProjectLoadSettings.RejectCircularImports |
                 ProjectLoadSettings.IgnoreEmptyImports |
                 ProjectLoadSettings.IgnoreMissingImports |
