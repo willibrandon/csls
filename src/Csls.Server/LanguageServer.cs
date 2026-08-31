@@ -21,6 +21,8 @@ public sealed partial class LanguageServer : ILspRpcTarget, IAsyncDisposable
     private readonly LanguageServerLogFilter _logFilter;
     private readonly TaskCompletionSource _exitRequested = new(
         TaskCreationOptions.RunContinuationsAsynchronously);
+    private readonly TaskCompletionSource _workspaceReady = new(
+        TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly CancellationTokenSource _exitSource = new();
     private bool _completionMarkdownSupport;
     private bool _completionSnippetSupport;
@@ -72,6 +74,7 @@ public sealed partial class LanguageServer : ILspRpcTarget, IAsyncDisposable
         _client = client;
         _logger = logger;
         _logFilter = logFilter;
+        _scheduler.SetAdmissionGate(WaitForWorkspaceAdmissionAsync);
     }
 
     /// <summary>
@@ -357,8 +360,9 @@ public sealed partial class LanguageServer : ILspRpcTarget, IAsyncDisposable
                 },
                 cancellationToken).ConfigureAwait(false);
         }
-        catch
+        catch (Exception exception)
         {
+            _workspaceReady.TrySetException(exception);
             Interlocked.CompareExchange(
                 ref _workspacePhase,
                 (int)ServerWorkspacePhase.Uninitialized,
@@ -381,6 +385,7 @@ public sealed partial class LanguageServer : ILspRpcTarget, IAsyncDisposable
                 .GetElapsedTime(workspaceStartedTimestamp)
                 .TotalMilliseconds;
             LanguageServerLogger.LogWorkspaceReady(_logger, elapsedMilliseconds);
+            _workspaceReady.TrySetResult();
         }
 
         if (_supportsPullDiagnostics &&
@@ -432,6 +437,7 @@ public sealed partial class LanguageServer : ILspRpcTarget, IAsyncDisposable
         Volatile.Write(ref _workspacePhase, (int)ServerWorkspacePhase.ShuttingDown);
         _exitRequested.TrySetResult();
         await _exitSource.CancelAsync().ConfigureAwait(false);
+        _workspaceReady.TrySetCanceled(_exitSource.Token);
         await _scheduler.DisposeAsync().ConfigureAwait(false);
     }
 
@@ -1626,11 +1632,22 @@ public sealed partial class LanguageServer : ILspRpcTarget, IAsyncDisposable
 
         ClearPushDiagnosticRequests();
         await StopClientProcessMonitorAsync().ConfigureAwait(false);
+        _workspaceReady.TrySetCanceled();
         await _scheduler.DisposeAsync().ConfigureAwait(false);
         _semanticTokensCache.Clear();
         await _workspaceManager.DisposeAsync().ConfigureAwait(false);
         _exitSource.Dispose();
         GC.SuppressFinalize(this);
+    }
+
+    private Task WaitForWorkspaceAdmissionAsync(
+        string _,
+        RequestMode requestMode,
+        CancellationToken cancellationToken)
+    {
+        return requestMode == RequestMode.ReadWrite
+            ? Task.CompletedTask
+            : _workspaceReady.Task.WaitAsync(cancellationToken);
     }
 
     private static NegotiatedClientCapabilities CreateNegotiatedClientCapabilities(
