@@ -74,7 +74,7 @@ internal sealed class MSBuildProjectBuildManager
         {
             EnableNodeReuse = false,
             Loggers = [buildLogger],
-            MaxNodeCount = Environment.ProcessorCount
+            MaxNodeCount = Math.Min(Environment.ProcessorCount, projectPaths.Count)
         });
         try
         {
