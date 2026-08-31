@@ -61,8 +61,9 @@ try
         repositoryRoot,
         outputPath);
     string fixturePath = Path.Join(repositoryRoot, "tests", "vscode");
+    string extensionPath = Path.Join(repositoryRoot, "editors", "vscode");
     (string npmExecutable, IReadOnlyList<string> npmPrefix) = ResolveNpmInvocation();
-    await RunCheckedAsync(
+    Task<string> fixtureInstallTask = RunCheckedAsync(
         npmExecutable,
         [
             .. npmPrefix,
@@ -71,12 +72,72 @@ try
             "--prefix",
             fixturePath
         ],
-        repositoryRoot).ConfigureAwait(false);
-    if (installWebBrowsers && !fixturesOnly)
+        repositoryRoot);
+    Task<string> extensionInstallTask = RunCheckedAsync(
+        npmExecutable,
+        [
+            .. npmPrefix,
+            "ci",
+            "--ignore-scripts",
+            "--prefix",
+            extensionPath
+        ],
+        repositoryRoot);
+    await Task.WhenAll(fixtureInstallTask, extensionInstallTask).ConfigureAwait(false);
+
+    Task<string> extensionCompileTask = RunCheckedAsync(
+        npmExecutable,
+        [
+            .. npmPrefix,
+            "run",
+            installWebBrowsers ? "compile" : "compile:node",
+            "--prefix",
+            extensionPath
+        ],
+        repositoryRoot);
+    Task<string> fixtureCompileTask = RunCheckedAsync(
+        npmExecutable,
+        [
+            .. npmPrefix,
+            "run",
+            installWebBrowsers ? "compile" : "compile:desktop",
+            "--prefix",
+            fixturePath
+        ],
+        repositoryRoot);
+    if (fixturesOnly)
+    {
+        await Task.WhenAll(extensionCompileTask, fixtureCompileTask).ConfigureAwait(false);
+        await Console.Out.WriteLineAsync("Prepared the VS Code test fixtures.")
+            .ConfigureAwait(false);
+        return 0;
+    }
+
+    string targetPlatform = ResolveVsCodeTargetPlatform();
+    Task<string> runtimeExtensionProvisionTask = ProvisionExtensionAsync(
+        toolsRoot,
+        "vscode-dotnet-runtime",
+        "ms-dotnettools",
+        "vscode-dotnet-runtime",
+        targetPlatform: null);
+    Task<string> csharpExtensionProvisionTask = ProvisionExtensionAsync(
+        toolsRoot,
+        "vscode-csharp",
+        "ms-dotnettools",
+        "csharp",
+        targetPlatform);
+    Task<string> csharpDevKitExtensionProvisionTask = ProvisionExtensionAsync(
+        toolsRoot,
+        "vscode-csdevkit",
+        "ms-dotnettools",
+        "csdevkit",
+        targetPlatform);
+    Task<string>? browserInstallTask = null;
+    if (installWebBrowsers)
     {
         string browserCachePath = Path.Join(toolsRoot, "playwright", "current");
         Directory.CreateDirectory(browserCachePath);
-        await RunCheckedAsync(
+        browserInstallTask = RunCheckedAsync(
             "node",
             [
                 Path.Join(fixturePath, "node_modules", "playwright-core", "cli.js"),
@@ -89,45 +150,7 @@ try
             new Dictionary<string, string>(StringComparer.Ordinal)
             {
                 ["PLAYWRIGHT_BROWSERS_PATH"] = browserCachePath
-            }).ConfigureAwait(false);
-    }
-    string extensionPath = Path.Join(repositoryRoot, "editors", "vscode");
-    await RunCheckedAsync(
-        npmExecutable,
-        [
-            .. npmPrefix,
-            "ci",
-            "--ignore-scripts",
-            "--prefix",
-            extensionPath
-        ],
-        repositoryRoot).ConfigureAwait(false);
-    await RunCheckedAsync(
-        npmExecutable,
-        [
-            .. npmPrefix,
-            "run",
-            installWebBrowsers ? "compile" : "compile:node",
-            "--prefix",
-            extensionPath
-        ],
-        repositoryRoot).ConfigureAwait(false);
-    await RunCheckedAsync(
-        npmExecutable,
-        [
-            .. npmPrefix,
-            "run",
-            installWebBrowsers ? "compile" : "compile:desktop",
-            "--prefix",
-            fixturePath
-        ],
-        repositoryRoot).ConfigureAwait(false);
-
-    if (fixturesOnly)
-    {
-        await Console.Out.WriteLineAsync("Prepared the VS Code test fixtures.")
-            .ConfigureAwait(false);
-        return 0;
+            });
     }
 
     string cachePath = Path.Join(toolsRoot, "vscode", "stable");
@@ -144,10 +167,26 @@ try
         provisionArguments.Add(webCachePath);
     }
 
-    string provisionOutput = await RunCheckedAsync(
+    Task<string> provisionTask = RunCheckedAsync(
         "node",
         provisionArguments,
-        repositoryRoot).ConfigureAwait(false);
+        repositoryRoot);
+    List<Task> provisioningTasks =
+    [
+        extensionCompileTask,
+        fixtureCompileTask,
+        provisionTask,
+        runtimeExtensionProvisionTask,
+        csharpExtensionProvisionTask,
+        csharpDevKitExtensionProvisionTask
+    ];
+    if (browserInstallTask is not null)
+    {
+        provisioningTasks.Add(browserInstallTask);
+    }
+
+    await Task.WhenAll(provisioningTasks).ConfigureAwait(false);
+    string provisionOutput = await provisionTask.ConfigureAwait(false);
     string executablePath = provisionOutput
         .Split(
             ['\r', '\n'],
@@ -161,25 +200,9 @@ try
             executablePath);
     }
 
-    string runtimeExtensionPath = await ProvisionExtensionAsync(
-        toolsRoot,
-        "vscode-dotnet-runtime",
-        "ms-dotnettools",
-        "vscode-dotnet-runtime",
-        targetPlatform: null).ConfigureAwait(false);
-    string targetPlatform = ResolveVsCodeTargetPlatform();
-    string csharpExtensionPath = await ProvisionExtensionAsync(
-        toolsRoot,
-        "vscode-csharp",
-        "ms-dotnettools",
-        "csharp",
-        targetPlatform).ConfigureAwait(false);
-    string csharpDevKitExtensionPath = await ProvisionExtensionAsync(
-        toolsRoot,
-        "vscode-csdevkit",
-        "ms-dotnettools",
-        "csdevkit",
-        targetPlatform).ConfigureAwait(false);
+    string runtimeExtensionPath = await runtimeExtensionProvisionTask.ConfigureAwait(false);
+    string csharpExtensionPath = await csharpExtensionProvisionTask.ConfigureAwait(false);
+    string csharpDevKitExtensionPath = await csharpDevKitExtensionProvisionTask.ConfigureAwait(false);
 
     await Console.Out.WriteLineAsync(executablePath).ConfigureAwait(false);
     await Console.Out.WriteLineAsync(runtimeExtensionPath).ConfigureAwait(false);
@@ -316,6 +339,9 @@ static async Task<string> RunCheckedAsync(
     string workingDirectory,
     IReadOnlyDictionary<string, string>? environment = null)
 {
+    string command = string.Join(' ', arguments.Prepend(executablePath));
+    await Console.Error.WriteLineAsync($"Starting {command}").ConfigureAwait(false);
+    long startedTimestamp = Stopwatch.GetTimestamp();
     var startInfo = new ProcessStartInfo
     {
         FileName = executablePath,
@@ -344,6 +370,9 @@ static async Task<string> RunCheckedAsync(
     await process.WaitForExitAsync().ConfigureAwait(false);
     string output = await standardOutputTask.ConfigureAwait(false);
     string error = await standardErrorTask.ConfigureAwait(false);
+    await Console.Error.WriteLineAsync(
+        $"Completed {command} in {Stopwatch.GetElapsedTime(startedTimestamp)}")
+        .ConfigureAwait(false);
     if (process.ExitCode != 0)
     {
         throw new InvalidOperationException(

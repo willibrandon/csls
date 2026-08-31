@@ -179,6 +179,13 @@ jobs:
         with:
           node-version: 24.x
 
+      - name: Restore previous Visual Studio Code tools
+        uses: actions/cache/restore@v6
+        with:
+          path: artifacts/tools
+          key: vscode-tools-${{ github.run_id }}
+          restore-keys: vscode-tools-
+
       - name: Provision Visual Studio Code tools
         run: dotnet run --file scripts/Provision-VsCode.cs -- --with-web-browsers
 
