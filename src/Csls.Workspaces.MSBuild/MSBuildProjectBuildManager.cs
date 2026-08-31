@@ -77,10 +77,6 @@ internal sealed class MSBuildProjectBuildManager
             Loggers = [buildLogger],
             MaxNodeCount = Math.Min(Environment.ProcessorCount, projectPaths.Count)
         });
-        using CancellationTokenRegistration cancellationRegistration =
-            cancellationToken.Register(
-                static state => ((BuildManager)state!).CancelAllSubmissions(),
-                buildManager);
         try
         {
             return await LoadProjectsAsync(
@@ -292,18 +288,25 @@ internal sealed class MSBuildProjectBuildManager
         buildLogger.Register(submission.SubmissionId, _reportDiagnostic);
         try
         {
-            BuildResult result;
-            try
-            {
-                result = await Task.Run(
-                    submission.Execute,
-                    CancellationToken.None).ConfigureAwait(false);
-            }
-            catch (Exception) when (cancellationToken.IsCancellationRequested)
-            {
-                throw new OperationCanceledException(cancellationToken);
-            }
-
+            var completion = new TaskCompletionSource<BuildResult>(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+            submission.ExecuteAsync(
+                completedSubmission =>
+                {
+                    try
+                    {
+                        BuildResult result = completedSubmission.BuildResult ??
+                            throw new InvalidOperationException(
+                                "MSBuild completed a submission without a build result.");
+                        completion.TrySetResult(result);
+                    }
+                    catch (InvalidOperationException exception)
+                    {
+                        completion.TrySetException(exception);
+                    }
+                },
+                context: null);
+            BuildResult result = await completion.Task.ConfigureAwait(false);
             cancellationToken.ThrowIfCancellationRequested();
             if (result.OverallResult == BuildResultCode.Failure && result.Exception is not null)
             {

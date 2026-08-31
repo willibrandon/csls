@@ -104,6 +104,7 @@ internal sealed class MSBuildBuildHostClient
                             _globalProperties),
                         cancellationToken)
                     .ConfigureAwait(false);
+                process.StandardInput.Close();
             }
             catch
             {
