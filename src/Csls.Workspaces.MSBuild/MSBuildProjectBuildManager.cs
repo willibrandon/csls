@@ -14,22 +14,19 @@ namespace Csls.Workspaces;
 internal sealed class MSBuildProjectBuildManager : IDisposable
 {
     private static readonly string[] s_requiredTargets = ["Compile", "CoreCompile"];
-    private static readonly Lock s_sharedBuildGate = new();
+    private static readonly Lock s_buildManagerCreationGate = new();
     private static readonly XmlReaderSettings s_xmlReaderSettings = new()
     {
         DtdProcessing = DtdProcessing.Prohibit,
         XmlResolver = null
     };
-    private static BuildManager? s_sharedBuildManager;
-    private static ProjectCollection? s_sharedBuildProjectCollection;
-    private static MSBuildWorkspaceBuildLogger? s_sharedBuildLogger;
     private static long s_nextBuildIdentity;
-    private static int s_sharedBuildUserCount;
     private const string OptionalMarkupTarget = "DesignTimeMarkupCompilation";
     private readonly Action<WorkspaceDiagnosticKind, string> _reportDiagnostic;
     private readonly Dictionary<string, string> _globalProperties;
     private readonly BuildManager _buildManager;
     private readonly MSBuildWorkspaceBuildLogger _buildLogger;
+    private readonly ProjectCollection _projectCollection;
     private int _disposeState;
 
     /// <summary>
@@ -58,34 +55,31 @@ internal sealed class MSBuildProjectBuildManager : IDisposable
             ["ShouldUnsetParentConfigurationAndPlatform"] = bool.FalseString,
             ["CslsDesignTimeBuildId"] = GetNextBuildIdentity()
         };
-        (_buildManager, _buildLogger) = AcquireSharedBuild();
-    }
-
-    private static (BuildManager BuildManager, MSBuildWorkspaceBuildLogger BuildLogger)
-        AcquireSharedBuild()
-    {
-        lock (s_sharedBuildGate)
+        _projectCollection = new ProjectCollection(
+            globalProperties: null,
+            loggers: [],
+            ToolsetDefinitionLocations.Default);
+        _buildLogger = new MSBuildWorkspaceBuildLogger();
+        lock (s_buildManagerCreationGate)
         {
-            if (s_sharedBuildManager is null)
-            {
-                s_sharedBuildProjectCollection = new ProjectCollection(
-                    globalProperties: null,
-                    loggers: [],
-                    ToolsetDefinitionLocations.Default);
-                s_sharedBuildLogger = new MSBuildWorkspaceBuildLogger();
-                var buildManager = new BuildManager();
-                buildManager.BeginBuild(new BuildParameters(s_sharedBuildProjectCollection)
-                {
-                    DisableInProcNode = true,
-                    EnableNodeReuse = false,
-                    Loggers = [s_sharedBuildLogger],
-                    MaxNodeCount = Environment.ProcessorCount
-                });
-                s_sharedBuildManager = buildManager;
-            }
+            _buildManager = new BuildManager();
+        }
 
-            s_sharedBuildUserCount++;
-            return (s_sharedBuildManager, s_sharedBuildLogger!);
+        try
+        {
+            _buildManager.BeginBuild(new BuildParameters(_projectCollection)
+            {
+                DisableInProcNode = true,
+                EnableNodeReuse = false,
+                Loggers = [_buildLogger],
+                MaxNodeCount = Environment.ProcessorCount
+            });
+        }
+        catch
+        {
+            _buildManager.Dispose();
+            _projectCollection.Dispose();
+            throw;
         }
     }
 
@@ -150,7 +144,16 @@ internal sealed class MSBuildProjectBuildManager : IDisposable
             return;
         }
 
-        ReleaseSharedBuild();
+        try
+        {
+            _buildManager.EndBuild();
+        }
+        finally
+        {
+            _buildManager.Dispose();
+            _projectCollection.UnloadAllProjects();
+            _projectCollection.Dispose();
+        }
     }
 
     private async Task<MSBuildProjectSnapshot[]> LoadProjectAsync(
@@ -230,7 +233,7 @@ internal sealed class MSBuildProjectBuildManager : IDisposable
         {
             foreach (MSBuildProject project in loadedProjects)
             {
-                s_sharedBuildProjectCollection!.UnloadProject(project);
+                _projectCollection.UnloadProject(project);
             }
         }
     }
@@ -391,7 +394,7 @@ internal sealed class MSBuildProjectBuildManager : IDisposable
         }
     }
 
-    private static async Task<ProjectRootElement> ReadProjectRootAsync(
+    private async Task<ProjectRootElement> ReadProjectRootAsync(
         string projectPath,
         CancellationToken cancellationToken)
     {
@@ -408,7 +411,7 @@ internal sealed class MSBuildProjectBuildManager : IDisposable
         using var reader = XmlReader.Create(content, s_xmlReaderSettings);
         var root = ProjectRootElement.Create(
             reader,
-            s_sharedBuildProjectCollection!);
+            _projectCollection);
         root.FullPath = projectPath;
         return root;
     }
@@ -417,32 +420,14 @@ internal sealed class MSBuildProjectBuildManager : IDisposable
         .Increment(ref s_nextBuildIdentity)
         .ToString(CultureInfo.InvariantCulture);
 
-    private static void ReleaseSharedBuild()
-    {
-        lock (s_sharedBuildGate)
-        {
-            s_sharedBuildUserCount--;
-            if (s_sharedBuildUserCount == 0)
-            {
-                s_sharedBuildManager!.EndBuild();
-                s_sharedBuildManager.Dispose();
-                s_sharedBuildProjectCollection!.UnloadAllProjects();
-                s_sharedBuildProjectCollection.Dispose();
-                s_sharedBuildManager = null;
-                s_sharedBuildProjectCollection = null;
-                s_sharedBuildLogger = null;
-            }
-        }
-    }
-
-    private static MSBuildProject CreateProject(
+    private MSBuildProject CreateProject(
         ProjectRootElement projectRoot,
         IDictionary<string, string> globalProperties) =>
         new(
             projectRoot,
             globalProperties,
             toolsVersion: null,
-            s_sharedBuildProjectCollection!,
+            _projectCollection,
             ProjectLoadSettings.RejectCircularImports |
                 ProjectLoadSettings.IgnoreEmptyImports |
                 ProjectLoadSettings.IgnoreMissingImports |

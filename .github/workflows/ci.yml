@@ -17,6 +17,7 @@ concurrency:
 env:
   DOTNET_CLI_TELEMETRY_OPTOUT: 1
   DOTNET_NOLOGO: true
+  GITHUB_TOKEN: ${{ github.token }}
 
 jobs:
   repository-policy:
@@ -292,6 +293,9 @@ jobs:
         uses: actions/setup-dotnet@v6
         with:
           dotnet-version: 10.x
+
+      - name: Restore
+        run: dotnet restore Csls.slnx
 
       - name: Test repository workspace
         run: >-
@@ -610,7 +614,7 @@ jobs:
           --runtime ${{ matrix.rid }}
           --output artifacts/release-smoke/${{ matrix.rid }}
           --validation ${{ matrix.validation }}
-          --target-dotnet-root artifacts/tools/dotnet/${{ matrix.rid }}
+          --target-dotnet-root artifacts/tools/dotnet/${{ matrix.rid }}/x86
 
       - name: Check csls Native AOT size
         if: matrix.size_budget != ''

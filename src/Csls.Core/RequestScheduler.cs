@@ -16,6 +16,7 @@ public sealed class RequestScheduler : IAsyncDisposable
     private readonly ConcurrentDictionary<Guid, RequestActivityState> _requests = new();
     private readonly ConcurrentDictionary<string, RequestStatisticsState> _statistics = new(
         StringComparer.Ordinal);
+    private readonly Lock _lifecycleGate = new();
     private readonly Lock _traceGate = new();
     private readonly Queue<(RequestActivityState State, RequestTraceRecord Record)> _traceRecords = new();
     private readonly TimeProvider _timeProvider;
@@ -54,8 +55,8 @@ public sealed class RequestScheduler : IAsyncDisposable
     {
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(capacity);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(traceCapacity);
-        int foregroundLimit = foregroundConcurrency ?? Math.Max(1, Environment.ProcessorCount);
-        int backgroundLimit = backgroundConcurrency ?? Math.Max(1, Environment.ProcessorCount / 2);
+        int foregroundLimit = foregroundConcurrency ?? capacity;
+        int backgroundLimit = backgroundConcurrency ?? capacity;
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(foregroundLimit);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(backgroundLimit);
 
@@ -207,7 +208,7 @@ public sealed class RequestScheduler : IAsyncDisposable
     /// <param name="operation">The operation to execute.</param>
     /// <param name="cancellationToken">The peer cancellation token.</param>
     /// <returns>The operation result.</returns>
-    public async Task<T> ScheduleAsync<T>(
+    public Task<T> ScheduleAsync<T>(
         string name,
         RequestMode mode,
         Func<long> workspaceGenerationProvider,
@@ -217,25 +218,53 @@ public sealed class RequestScheduler : IAsyncDisposable
         ArgumentException.ThrowIfNullOrWhiteSpace(name);
         ArgumentNullException.ThrowIfNull(workspaceGenerationProvider);
         ArgumentNullException.ThrowIfNull(operation);
-        ObjectDisposedException.ThrowIf(IsStopping, this);
-
-        long ordinal = Interlocked.Increment(ref _nextOrdinal);
-        var correlationId = Guid.NewGuid();
-        var request = new RequestActivityState(
-            ordinal,
-            correlationId,
-            name,
-            mode,
-            _timeProvider.GetUtcNow(),
-            _timeProvider.GetTimestamp(),
-            _timeProvider,
-            cancellationToken);
-        if (!_requests.TryAdd(correlationId, request))
+        long ordinal;
+        Guid correlationId;
+        RequestActivityState request;
+        lock (_lifecycleGate)
         {
-            request.Complete(RequestExecutionStatus.Failed, null);
-            throw new InvalidOperationException("A duplicate request correlation identifier was generated.");
+            ObjectDisposedException.ThrowIf(IsStopping, this);
+            ordinal = Interlocked.Increment(ref _nextOrdinal);
+            correlationId = Guid.NewGuid();
+            request = new RequestActivityState(
+                ordinal,
+                correlationId,
+                name,
+                mode,
+                _timeProvider.GetUtcNow(),
+                _timeProvider.GetTimestamp(),
+                _timeProvider,
+                cancellationToken);
+            if (!_requests.TryAdd(correlationId, request))
+            {
+                request.Complete(RequestExecutionStatus.Failed, null);
+                throw new InvalidOperationException(
+                    "A duplicate request correlation identifier was generated.");
+            }
         }
 
+        var completion = new TaskCompletionSource<T>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        _ = RunScheduledRequestAsync(
+            ordinal,
+            correlationId,
+            mode,
+            workspaceGenerationProvider,
+            operation,
+            request,
+            completion);
+        return completion.Task;
+    }
+
+    private async Task RunScheduledRequestAsync<T>(
+        long ordinal,
+        Guid correlationId,
+        RequestMode mode,
+        Func<long> workspaceGenerationProvider,
+        Func<RequestContext, ValueTask<T>> operation,
+        RequestActivityState request,
+        TaskCompletionSource<T> completion)
+    {
         CancellationToken requestCancellationToken = request.CancellationToken;
         var admission = new TaskCompletionSource<RequestContext>(
             TaskCreationOptions.RunContinuationsAsynchronously);
@@ -305,19 +334,40 @@ public sealed class RequestScheduler : IAsyncDisposable
             Interlocked.Increment(ref _acceptedRequests);
             EnrollCurrentTrace(request);
         }
-        catch (Exception exception)
+        catch (Exception exception) when (IsRecoverableFailure(exception))
         {
             Interlocked.Decrement(ref _queuedRequests);
+            bool canceled = requestCancellationToken.IsCancellationRequested;
             CompleteRequest(
                 request,
-                requestCancellationToken.IsCancellationRequested
+                canceled
                     ? RequestExecutionStatus.Canceled
                     : RequestExecutionStatus.Failed,
                 exception);
-            throw;
+            if (canceled)
+            {
+                completion.TrySetCanceled(requestCancellationToken);
+            }
+            else
+            {
+                completion.TrySetException(exception);
+            }
+
+            return;
         }
 
-        RequestContext context = await admission.Task.ConfigureAwait(false);
+        RequestContext context;
+        try
+        {
+            context = await admission.Task.ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+            when (requestCancellationToken.IsCancellationRequested)
+        {
+            completion.TrySetCanceled(requestCancellationToken);
+            return;
+        }
+
         RequestExecutionStatus status = RequestExecutionStatus.Failed;
         Exception? failure = null;
         long executionStartedTimestamp = _timeProvider.GetTimestamp();
@@ -326,20 +376,20 @@ public sealed class RequestScheduler : IAsyncDisposable
             requestCancellationToken.ThrowIfCancellationRequested();
             T result = await operation(context).ConfigureAwait(false);
             status = RequestExecutionStatus.Succeeded;
-            return result;
+            completion.TrySetResult(result);
         }
         catch (OperationCanceledException exception)
             when (requestCancellationToken.IsCancellationRequested)
         {
             status = RequestExecutionStatus.Canceled;
             failure = exception;
-            throw;
+            completion.TrySetCanceled(requestCancellationToken);
         }
-        catch (Exception exception)
+        catch (Exception exception) when (IsRecoverableFailure(exception))
         {
             status = RequestExecutionStatus.Failed;
             failure = exception;
-            throw;
+            completion.TrySetException(exception);
         }
         finally
         {
@@ -357,15 +407,21 @@ public sealed class RequestScheduler : IAsyncDisposable
     /// <returns>A value task that completes after scheduler shutdown.</returns>
     public async ValueTask DisposeAsync()
     {
-        if (Interlocked.Exchange(ref _disposeState, 1) != 0)
+        RequestActivityState[] requests;
+        lock (_lifecycleGate)
         {
-            return;
+            if (Interlocked.Exchange(ref _disposeState, 1) != 0)
+            {
+                return;
+            }
+
+            _queue.Writer.TryComplete();
+            requests = [.. _requests.Values];
         }
 
-        _queue.Writer.TryComplete();
         Task<bool>[] cancellationTasks =
         [
-            .. _requests.Values.Select(static request => request.TryCancelAsync())
+            .. requests.Select(static request => request.TryCancelAsync())
         ];
         await Task.WhenAll(cancellationTasks).ConfigureAwait(false);
         await _processingTask.ConfigureAwait(false);
@@ -437,6 +493,9 @@ public sealed class RequestScheduler : IAsyncDisposable
                 throw new InvalidOperationException($"Unknown request mode: {mode}.");
         }
     }
+
+    private static bool IsRecoverableFailure(Exception exception) =>
+        exception is not OutOfMemoryException;
 
     private void DecrementActive(RequestMode mode)
     {

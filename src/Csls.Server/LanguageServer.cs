@@ -425,6 +425,7 @@ public sealed partial class LanguageServer : ILspRpcTarget, IAsyncDisposable
         Volatile.Write(ref _workspacePhase, (int)ServerWorkspacePhase.ShuttingDown);
         _exitRequested.TrySetResult();
         await _exitSource.CancelAsync().ConfigureAwait(false);
+        await _scheduler.DisposeAsync().ConfigureAwait(false);
     }
 
     /// <inheritdoc />
