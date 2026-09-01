@@ -438,7 +438,6 @@ public sealed partial class LanguageServer : ILspRpcTarget, IAsyncDisposable
         _exitRequested.TrySetResult();
         await _exitSource.CancelAsync().ConfigureAwait(false);
         _workspaceReady.TrySetCanceled(_exitSource.Token);
-        await _scheduler.DisposeAsync().ConfigureAwait(false);
     }
 
     /// <inheritdoc />
