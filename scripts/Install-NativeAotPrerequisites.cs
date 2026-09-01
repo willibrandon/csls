@@ -9,7 +9,7 @@ using System.Diagnostics;
 if (args.Length == 1 && args[0] is "--help" or "-h" or "-?")
 {
     await Console.Out.WriteLineAsync(
-        "Installs platform build prerequisites for one csls Native AOT runtime identifier.")
+        "Installs platform build and editor prerequisites for one csls runtime identifier.")
         .ConfigureAwait(false);
     await Console.Out.WriteLineAsync(
         "Usage: dotnet run --file scripts/Install-NativeAotPrerequisites.cs -- " +
@@ -53,6 +53,7 @@ try
     [
         "build-essential",
         "clang",
+        "emacs-nox",
         "libncurses-dev",
         "zlib1g-dev"
     ];
@@ -69,7 +70,8 @@ try
         : ["install", "--yes", "--no-install-recommends", .. packages];
     await RunPackageManagerAsync(packageManager, installArguments).ConfigureAwait(false);
     await Console.Out.WriteLineAsync(
-        $"Installed Native AOT prerequisites for {runtimeIdentifier}.").ConfigureAwait(false);
+        $"Installed build and editor prerequisites for {runtimeIdentifier}.")
+        .ConfigureAwait(false);
     return 0;
 }
 catch (Exception exception) when (exception is

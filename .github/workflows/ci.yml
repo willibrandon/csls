@@ -132,7 +132,7 @@ jobs:
       - name: Restore
         run: dotnet restore Csls.slnx
 
-      - name: Install Native AOT prerequisites
+      - name: Install platform prerequisites
         run: dotnet run --file scripts/Install-NativeAotPrerequisites.cs -- --runtime ${{ matrix.rid }}
 
       - name: Provision parity oracle

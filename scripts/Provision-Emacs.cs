@@ -14,7 +14,7 @@ using System.Runtime.InteropServices;
 if (args.Length == 1 && args[0] is "--help" or "-h" or "-?")
 {
     await Console.Out.WriteLineAsync(
-        "Downloads, builds when needed, and verifies the current GNU Emacs Eglot test oracle.")
+        "Finds or provisions and verifies a GNU Emacs Eglot test oracle.")
         .ConfigureAwait(false);
     await Console.Out.WriteLineAsync(
         "Usage: dotnet run --file scripts/Provision-Emacs.cs [--output <directory>]")
@@ -38,10 +38,22 @@ try
         repositoryRoot,
         args.Length == 2 ? args[1] : null);
     string platform = SelectPlatform();
-    (string version, Uri source) = await ResolveLatestReleaseAsync().ConfigureAwait(false);
-    string executablePath = OperatingSystem.IsWindows()
-        ? await ProvisionWindowsAsync(toolsRoot, platform, version).ConfigureAwait(false)
-        : await ProvisionUnixAsync(toolsRoot, platform, version, source).ConfigureAwait(false);
+    (string ExecutablePath, string Version)? installedEmacs =
+        await TryProvisionInstalledUnixAsync(toolsRoot, platform).ConfigureAwait(false);
+    string executablePath;
+    string version;
+    if (installedEmacs is { } installed)
+    {
+        executablePath = installed.ExecutablePath;
+        version = installed.Version;
+    }
+    else
+    {
+        (version, Uri source) = await ResolveLatestReleaseAsync().ConfigureAwait(false);
+        executablePath = OperatingSystem.IsWindows()
+            ? await ProvisionWindowsAsync(toolsRoot, platform, version).ConfigureAwait(false)
+            : await ProvisionUnixAsync(toolsRoot, platform, version, source).ConfigureAwait(false);
+    }
 
     await VerifyEglotAsync(executablePath, version).ConfigureAwait(false);
     await Console.Out.WriteLineAsync(executablePath).ConfigureAwait(false);
@@ -107,6 +119,76 @@ static Task<string> ProvisionWindowsAsync(
         versionArguments: ["--version"],
         expectedVersionText: $"GNU Emacs {version}",
         CancellationToken.None);
+
+static async Task<(string ExecutablePath, string Version)?> TryProvisionInstalledUnixAsync(
+    string toolsRoot,
+    string platform)
+{
+    if (OperatingSystem.IsWindows())
+    {
+        return null;
+    }
+
+    string? installedExecutable = ResolveExecutableOnPath("emacs");
+    if (installedExecutable is null)
+    {
+        return null;
+    }
+
+    string version;
+    try
+    {
+        version = (await RunCheckedAsync(
+            installedExecutable,
+            [
+                "--batch",
+                "-Q",
+                "--eval",
+                "(progn (require 'eglot) (princ emacs-version))"
+            ],
+            Directory.GetCurrentDirectory()).ConfigureAwait(false)).Trim();
+    }
+    catch (InvalidOperationException)
+    {
+        return null;
+    }
+
+    if (!Version.TryParse(version, out _))
+    {
+        return null;
+    }
+
+    string executablePath = Path.Join(
+        toolsRoot,
+        "emacs",
+        version,
+        platform,
+        "bin",
+        "emacs");
+    Directory.CreateDirectory(Path.GetDirectoryName(executablePath)!);
+    if (!File.Exists(executablePath))
+    {
+        File.CreateSymbolicLink(executablePath, installedExecutable);
+    }
+
+    return (executablePath, version);
+}
+
+static string? ResolveExecutableOnPath(string executableName)
+{
+    string? path = Environment.GetEnvironmentVariable("PATH");
+    if (string.IsNullOrWhiteSpace(path))
+    {
+        return null;
+    }
+
+    return path
+        .Split(
+            Path.PathSeparator,
+            StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+        .Select(directory => Path.Join(directory, executableName))
+        .FirstOrDefault(File.Exists);
+}
 
 static async Task<string> ProvisionUnixAsync(
     string toolsRoot,
