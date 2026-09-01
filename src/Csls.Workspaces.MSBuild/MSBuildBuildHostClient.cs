@@ -10,6 +10,10 @@ namespace Csls.Workspaces;
 /// </summary>
 internal sealed class MSBuildBuildHostClient
 {
+    private static readonly TimeSpan s_workingDirectoryReleaseRetryDelay =
+        TimeSpan.FromMilliseconds(50);
+    private static readonly TimeSpan s_workingDirectoryReleaseTimeout =
+        TimeSpan.FromSeconds(10);
     private readonly Action<WorkspaceDiagnosticKind, string> _reportDiagnostic;
     private readonly Dictionary<string, string> _globalProperties;
 
@@ -57,7 +61,28 @@ internal sealed class MSBuildBuildHostClient
         }
         finally
         {
-            workingDirectory.Delete(recursive: true);
+            await DeleteWorkingDirectoryAsync(workingDirectory.FullName).ConfigureAwait(false);
+        }
+    }
+
+    private static async Task DeleteWorkingDirectoryAsync(string path)
+    {
+        long startedTimestamp = Stopwatch.GetTimestamp();
+        while (Directory.Exists(path))
+        {
+            try
+            {
+                Directory.Delete(path, recursive: true);
+                return;
+            }
+            catch (Exception exception)
+                when (OperatingSystem.IsWindows() &&
+                    exception is IOException or UnauthorizedAccessException &&
+                    Stopwatch.GetElapsedTime(startedTimestamp) <
+                        s_workingDirectoryReleaseTimeout)
+            {
+                await Task.Delay(s_workingDirectoryReleaseRetryDelay).ConfigureAwait(false);
+            }
         }
     }
 
