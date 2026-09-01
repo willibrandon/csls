@@ -29,17 +29,17 @@
 
   <ItemGroup>
     <CslsSuppressionScanFile Include="$(MSBuildThisFileDirectory)**/*.cs"
-                             Exclude="$(MSBuildThisFileDirectory)**/bin/**;$(MSBuildThisFileDirectory)**/obj/**;$(MSBuildThisFileDirectory)artifacts/**" />
+                             Exclude="$(MSBuildThisFileDirectory)**/bin/**;$(MSBuildThisFileDirectory)**/obj/**;$(MSBuildThisFileDirectory)**/node_modules/**;$(MSBuildThisFileDirectory)artifacts/**" />
     <CslsSuppressionScanFile Include="$(MSBuildThisFileDirectory)**/*.props"
-                             Exclude="$(MSBuildThisFileDirectory)**/bin/**;$(MSBuildThisFileDirectory)**/obj/**;$(MSBuildThisFileDirectory)artifacts/**" />
+                             Exclude="$(MSBuildThisFileDirectory)**/bin/**;$(MSBuildThisFileDirectory)**/obj/**;$(MSBuildThisFileDirectory)**/node_modules/**;$(MSBuildThisFileDirectory)artifacts/**" />
     <CslsSuppressionScanFile Include="$(MSBuildThisFileDirectory)**/*.targets"
-                             Exclude="$(MSBuildThisFileDirectory)**/bin/**;$(MSBuildThisFileDirectory)**/obj/**;$(MSBuildThisFileDirectory)artifacts/**" />
+                             Exclude="$(MSBuildThisFileDirectory)**/bin/**;$(MSBuildThisFileDirectory)**/obj/**;$(MSBuildThisFileDirectory)**/node_modules/**;$(MSBuildThisFileDirectory)artifacts/**" />
     <CslsSuppressionScanFile Include="$(MSBuildThisFileDirectory)**/.editorconfig"
-                             Exclude="$(MSBuildThisFileDirectory)**/bin/**;$(MSBuildThisFileDirectory)**/obj/**;$(MSBuildThisFileDirectory)artifacts/**" />
+                             Exclude="$(MSBuildThisFileDirectory)**/bin/**;$(MSBuildThisFileDirectory)**/obj/**;$(MSBuildThisFileDirectory)**/node_modules/**;$(MSBuildThisFileDirectory)artifacts/**" />
     <CslsSuppressionScanFile Include="$(MSBuildThisFileDirectory)**/.globalconfig"
-                             Exclude="$(MSBuildThisFileDirectory)**/bin/**;$(MSBuildThisFileDirectory)**/obj/**;$(MSBuildThisFileDirectory)artifacts/**" />
+                             Exclude="$(MSBuildThisFileDirectory)**/bin/**;$(MSBuildThisFileDirectory)**/obj/**;$(MSBuildThisFileDirectory)**/node_modules/**;$(MSBuildThisFileDirectory)artifacts/**" />
     <CslsGlobalSuppressionsFile Include="$(MSBuildThisFileDirectory)**/GlobalSuppressions.cs"
-                                Exclude="$(MSBuildThisFileDirectory)**/bin/**;$(MSBuildThisFileDirectory)**/obj/**;$(MSBuildThisFileDirectory)artifacts/**" />
+                                Exclude="$(MSBuildThisFileDirectory)**/bin/**;$(MSBuildThisFileDirectory)**/obj/**;$(MSBuildThisFileDirectory)**/node_modules/**;$(MSBuildThisFileDirectory)artifacts/**" />
     <CslsSkippedTestScanFile Include="$(MSBuildThisFileDirectory)tests/**/*.cs"
                              Exclude="$(MSBuildThisFileDirectory)**/bin/**;$(MSBuildThisFileDirectory)**/obj/**;$(MSBuildThisFileDirectory)artifacts/**" />
   </ItemGroup>
