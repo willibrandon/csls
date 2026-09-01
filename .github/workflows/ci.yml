@@ -167,6 +167,42 @@ jobs:
           --target web
           --output artifacts/vscode-web-test-extension/willibrandon.csls-web.vsix
 
+  graphical-prerequisite-app:
+    name: Graphical prerequisite app
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 10.x
+
+      - name: Restore graphical prerequisite app
+        id: graphical-prerequisite-app-cache
+        uses: actions/cache/restore@v6
+        with:
+          path: artifacts/file-apps/install-graphical
+          key: graphical-prerequisite-app-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/Install-GraphicalEditorTestPrerequisites.cs', 'scripts/ScriptSupport.cs') }}
+
+      - name: Publish graphical prerequisite app
+        if: steps.graphical-prerequisite-app-cache.outputs.cache-hit != 'true'
+        run: >-
+          dotnet publish scripts/Install-GraphicalEditorTestPrerequisites.cs
+          --output artifacts/file-apps/install-graphical
+
+      - name: Save graphical prerequisite app
+        if: steps.graphical-prerequisite-app-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: artifacts/file-apps/install-graphical
+          key: graphical-prerequisite-app-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/Install-GraphicalEditorTestPrerequisites.cs', 'scripts/ScriptSupport.cs') }}
+
   workspace-project-tests:
     name: Workspace project tests (${{ matrix.group }})
     runs-on: ubuntu-latest
@@ -399,7 +435,9 @@ jobs:
     name: Zed tests
     runs-on: ubuntu-latest
     timeout-minutes: 5
-    needs: test-binaries
+    needs:
+      - graphical-prerequisite-app
+      - test-binaries
 
     steps:
       - name: Check out repository
@@ -430,6 +468,13 @@ jobs:
           key: test-binaries-v2-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.editorconfig', 'global.json', 'src/**', 'tests/**', 'benchmarks/**', 'build/**', 'Directory.Build.*', 'Directory.Packages.props', 'NuGet.Config') }}
           fail-on-cache-miss: true
 
+      - name: Restore graphical prerequisite app
+        uses: actions/cache/restore@v6
+        with:
+          path: artifacts/file-apps/install-graphical
+          key: graphical-prerequisite-app-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/Install-GraphicalEditorTestPrerequisites.cs', 'scripts/ScriptSupport.cs') }}
+          fail-on-cache-miss: true
+
       - name: Restore Zed tools
         id: zed-tools-cache
         uses: actions/cache/restore@v6
@@ -454,8 +499,8 @@ jobs:
       - name: Resolve graphical prerequisite cache
         id: zed-graphical-cache-key
         run: >-
-          dotnet run --file scripts/Install-GraphicalEditorTestPrerequisites.cs
-          -- --write-portable-cache-key
+          artifacts/file-apps/install-graphical/Install-GraphicalEditorTestPrerequisites
+          --write-portable-cache-key
 
       - name: Restore graphical prerequisites
         id: zed-graphical-cache
@@ -466,8 +511,8 @@ jobs:
 
       - name: Install graphical editor test prerequisites
         run: >-
-          dotnet run --file scripts/Install-GraphicalEditorTestPrerequisites.cs
-          -- --portable-packages
+          artifacts/file-apps/install-graphical/Install-GraphicalEditorTestPrerequisites
+          --portable-packages
 
       - name: Save graphical prerequisites
         if: steps.zed-graphical-cache.outputs.cache-hit != 'true'
@@ -519,6 +564,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     needs:
+      - graphical-prerequisite-app
       - test-binaries
       - vscode-web-extension
     env:
@@ -533,7 +579,7 @@ jobs:
             cache_key: desktop
             save_cache: true
             filter: FullyQualifiedName=Csls.Tests.VsCodeLanguageServerTests.VsCodeDesktopHostProvidesCSharpLanguageFeatures|FullyQualifiedName=Csls.Tests.VsCodeLanguageServerTests.VsCodeHostEnablesSemanticHighlightingWithoutThemeOptIn|FullyQualifiedName=Csls.Tests.VsCodeLanguageServerTests.VsCodeHostStopsAutomaticTestDiscoveryProcessesOnShutdown|TestCategory=VsCodeOracle
-            graphical_arguments: -- --without-clipboard --without-tree-sitter --without-vulkan
+            graphical_arguments: --without-clipboard --without-tree-sitter --without-vulkan
             remote: false
             web: false
             vscode_arguments: ''
@@ -546,7 +592,7 @@ jobs:
             cache_key: remote
             save_cache: true
             filter: FullyQualifiedName~Csls.Tests.VsCodeLanguageServerTests.VsCodeRemoteHost
-            graphical_arguments: -- --without-clipboard --without-tree-sitter --without-vulkan
+            graphical_arguments: --without-clipboard --without-tree-sitter --without-vulkan
             remote: true
             web: false
             vscode_arguments: -- --without-dev-kit
@@ -559,7 +605,7 @@ jobs:
             cache_key: web-chromium
             save_cache: true
             filter: FullyQualifiedName=Csls.Tests.VsCodeWebLanguageServerTests.ChromiumProvidesCSharpLanguageFeatures
-            graphical_arguments: -- --web-only --web-browser chromium
+            graphical_arguments: --web-only --web-browser chromium
             remote: false
             web: true
             vscode_arguments: -- --web-only --web-browser chromium
@@ -570,7 +616,7 @@ jobs:
             cache_key: web-firefox
             save_cache: true
             filter: FullyQualifiedName=Csls.Tests.VsCodeWebLanguageServerTests.FirefoxProvidesCSharpLanguageFeatures
-            graphical_arguments: -- --web-only --web-browser firefox
+            graphical_arguments: --web-only --web-browser firefox
             remote: false
             web: true
             vscode_arguments: -- --web-only --web-browser firefox
@@ -581,7 +627,7 @@ jobs:
             cache_key: web-webkit
             save_cache: true
             filter: FullyQualifiedName=Csls.Tests.VsCodeWebLanguageServerTests.WebKitProvidesCSharpLanguageFeatures
-            graphical_arguments: -- --web-only --web-browser webkit
+            graphical_arguments: --web-only --web-browser webkit
             remote: false
             web: true
             vscode_arguments: -- --web-only --web-browser webkit
@@ -627,6 +673,13 @@ jobs:
           key: test-binaries-v2-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.editorconfig', 'global.json', 'src/**', 'tests/**', 'benchmarks/**', 'build/**', 'Directory.Build.*', 'Directory.Packages.props', 'NuGet.Config') }}
           fail-on-cache-miss: true
 
+      - name: Restore graphical prerequisite app
+        uses: actions/cache/restore@v6
+        with:
+          path: artifacts/file-apps/install-graphical
+          key: graphical-prerequisite-app-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/Install-GraphicalEditorTestPrerequisites.cs', 'scripts/ScriptSupport.cs') }}
+          fail-on-cache-miss: true
+
       - name: Restore VS Code web extension
         if: matrix.web
         uses: actions/cache/restore@v6
@@ -653,7 +706,7 @@ jobs:
 
       - name: Install graphical editor test prerequisites
         run: >-
-          dotnet run --file scripts/Install-GraphicalEditorTestPrerequisites.cs
+          artifacts/file-apps/install-graphical/Install-GraphicalEditorTestPrerequisites
           ${{ matrix.graphical_arguments }}
 
       - name: Save VS Code tools
