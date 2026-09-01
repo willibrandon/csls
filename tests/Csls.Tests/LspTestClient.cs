@@ -74,6 +74,7 @@ internal sealed class LspTestClient
     private JsonElement? _legacyConfiguration;
     private JsonElement? _dotNetConfiguration;
     private JsonElement? _preferredConfiguration;
+    private TaskCompletionSource? _configurationRelease;
     private TaskCompletionSource? _capabilityRegistrationRelease;
     private int _configurationRequestCount;
 
@@ -138,7 +139,7 @@ internal sealed class LspTestClient
     /// <param name="parameters">The server's ordered configuration request.</param>
     /// <param name="cancellationToken">The request cancellation token.</param>
     /// <returns>The matching nullable configuration values.</returns>
-    internal Task<JsonElement?[]> GetConfigurationAsync(
+    internal async Task<JsonElement?[]> GetConfigurationAsync(
         ConfigurationParams parameters,
         CancellationToken cancellationToken)
     {
@@ -150,9 +151,11 @@ internal sealed class LspTestClient
             throw new InvalidOperationException("The configuration request could not be observed.");
         }
 
+        JsonElement?[] values;
+        Task? releaseTask;
         lock (_gate)
         {
-            JsonElement?[] values =
+            values =
             [
                 .. parameters.Items.Select(item => item.Section switch
                 {
@@ -162,8 +165,48 @@ internal sealed class LspTestClient
                     _ => null
                 })
             ];
-            return Task.FromResult(values);
+            releaseTask = _configurationRelease?.Task;
         }
+
+        if (releaseTask is not null)
+        {
+            await releaseTask.WaitAsync(cancellationToken).ConfigureAwait(false);
+        }
+
+        return values;
+    }
+
+    /// <summary>
+    /// Holds subsequent configuration responses after their requests become observable.
+    /// </summary>
+    internal void HoldConfigurationResponses()
+    {
+        lock (_gate)
+        {
+            if (_configurationRelease is not null)
+            {
+                throw new InvalidOperationException(
+                    "Configuration responses are already held.");
+            }
+
+            _configurationRelease = new TaskCompletionSource(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+        }
+    }
+
+    /// <summary>
+    /// Releases held configuration responses.
+    /// </summary>
+    internal void ReleaseConfigurationResponses()
+    {
+        TaskCompletionSource? release;
+        lock (_gate)
+        {
+            release = _configurationRelease;
+            _configurationRelease = null;
+        }
+
+        release?.TrySetResult();
     }
 
     /// <summary>

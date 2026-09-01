@@ -32,27 +32,18 @@ public sealed class WorkspaceDiagnosticLanguageServerTests
             "Csls.Worker",
             "debug",
             "csls-worker.dll");
-        string processHostPath = EditorToolResolver.ResolveTestProcessHost(repositoryRoot);
         Assert.IsTrue(File.Exists(workerPath), $"Worker not found at {workerPath}.");
-        Assert.IsTrue(
-            File.Exists(processHostPath),
-            $"Test process host not found at {processHostPath}.");
 
         string fixturePath = Path.Join(
             Path.GetTempPath(),
             $"csls-workspace-diagnostic-loading-{Guid.NewGuid():N}");
-        string buildStartedPath = Path.Join(fixturePath, "build-started");
-        string buildReleasePath = Path.Join(fixturePath, "build-release");
         Directory.CreateDirectory(fixturePath);
         try
         {
             string documentPath = Path.Join(fixturePath, "Broken.cs");
             await File.WriteAllTextAsync(
                 Path.Join(fixturePath, "Fixture.csproj"),
-                CreateBlockedCoreProjectText(
-                    processHostPath,
-                    buildStartedPath,
-                    buildReleasePath),
+                CoreProjectText,
                 TestContext.CancellationToken).ConfigureAwait(false);
             await File.WriteAllTextAsync(
                 documentPath,
@@ -62,6 +53,7 @@ public sealed class WorkspaceDiagnosticLanguageServerTests
             var client = new LspTestClient(
                 legacyConfiguration: null,
                 preferredConfiguration: null);
+            client.HoldConfigurationResponses();
             LspProcessSession lsp = await LspProcessSession.StartAsync(
                 "csls-workspace-diagnostic-loading-worker",
                 EditorToolResolver.ResolveDotNetHost(),
@@ -73,6 +65,7 @@ public sealed class WorkspaceDiagnosticLanguageServerTests
                 """
                 {
                   "workspace": {
+                    "configuration": true,
                     "diagnostics": {
                       "refreshSupport": true
                     }
@@ -95,70 +88,71 @@ public sealed class WorkspaceDiagnosticLanguageServerTests
             await using ConfiguredAsyncDisposable controlCleanup =
                 control.ConfigureAwait(false);
 
-            await lsp.CompleteInitializationAsync().ConfigureAwait(false);
-            await FileTextWaiter.WaitAsync(
-                buildStartedPath,
-                "started",
-                TimeSpan.FromSeconds(60),
-                TestContext.CancellationToken).ConfigureAwait(false);
-            ControlSessionInfo loadingSession = await control.GetSessionAsync(
-                TestContext.CancellationToken).ConfigureAwait(false);
-            Assert.AreEqual("Loading", loadingSession.WorkspacePhase);
-            var loadingPosition = new Position(0, 0);
-            var loadingRange = new LspRange(
-                loadingPosition,
-                loadingPosition);
-            Task<LinkedEditingRanges?> loadingLinkedEditing =
-                lsp.RequestLinkedEditingRangesAsync(
-                    documentPath,
+            try
+            {
+                await lsp.CompleteInitializationAsync().ConfigureAwait(false);
+                await client.WaitForConfigurationRequestAsync(
+                    expectedCount: 1,
+                    TestContext.CancellationToken).ConfigureAwait(false);
+                ControlSessionInfo loadingSession = await control.GetSessionAsync(
+                    TestContext.CancellationToken).ConfigureAwait(false);
+                Assert.AreEqual("Loading", loadingSession.WorkspacePhase);
+                var loadingPosition = new Position(0, 0);
+                var loadingRange = new LspRange(
                     loadingPosition,
-                    TestContext.CancellationToken);
-            Task<IReadOnlyList<DocumentHighlight>> loadingHighlights =
-                lsp.RequestDocumentHighlightsAsync(
+                    loadingPosition);
+                Task<LinkedEditingRanges?> loadingLinkedEditing =
+                    lsp.RequestLinkedEditingRangesAsync(
+                        documentPath,
+                        loadingPosition,
+                        TestContext.CancellationToken);
+                Task<IReadOnlyList<DocumentHighlight>> loadingHighlights =
+                    lsp.RequestDocumentHighlightsAsync(
+                        documentPath,
+                        loadingPosition,
+                        TestContext.CancellationToken);
+                Task<IReadOnlyList<DocumentLink>> loadingLinks =
+                    lsp.RequestDocumentLinksAsync(
+                        documentPath,
+                        TestContext.CancellationToken);
+                Task<IReadOnlyList<CodeAction>> loadingActions =
+                    lsp.RequestCodeActionsAsync(
+                        documentPath,
+                        loadingRange,
+                        only: null,
+                        TestContext.CancellationToken);
+                await Task.WhenAll(
+                        loadingLinkedEditing,
+                        loadingHighlights,
+                        loadingLinks,
+                        loadingActions)
+                    .WaitAsync(TimeSpan.FromSeconds(1), TestContext.CancellationToken)
+                    .ConfigureAwait(false);
+                Assert.IsNull(await loadingLinkedEditing.ConfigureAwait(false));
+                Assert.IsEmpty(await loadingHighlights.ConfigureAwait(false));
+                Assert.IsEmpty(await loadingLinks.ConfigureAwait(false));
+                Assert.IsEmpty(await loadingActions.ConfigureAwait(false));
+                DocumentDiagnosticReport loadingDocument = await lsp.RequestDiagnosticsAsync(
                     documentPath,
-                    loadingPosition,
-                    TestContext.CancellationToken);
-            Task<IReadOnlyList<DocumentLink>> loadingLinks =
-                lsp.RequestDocumentLinksAsync(
-                    documentPath,
-                    TestContext.CancellationToken);
-            Task<IReadOnlyList<CodeAction>> loadingActions =
-                lsp.RequestCodeActionsAsync(
-                    documentPath,
-                    loadingRange,
-                    only: null,
-                    TestContext.CancellationToken);
-            await Task.WhenAll(
-                    loadingLinkedEditing,
-                    loadingHighlights,
-                    loadingLinks,
-                    loadingActions)
-                .WaitAsync(TimeSpan.FromSeconds(1), TestContext.CancellationToken)
-                .ConfigureAwait(false);
-            Assert.IsNull(await loadingLinkedEditing.ConfigureAwait(false));
-            Assert.IsEmpty(await loadingHighlights.ConfigureAwait(false));
-            Assert.IsEmpty(await loadingLinks.ConfigureAwait(false));
-            Assert.IsEmpty(await loadingActions.ConfigureAwait(false));
-            DocumentDiagnosticReport loadingDocument = await lsp.RequestDiagnosticsAsync(
-                documentPath,
-                previousResultId: null,
-                TestContext.CancellationToken).ConfigureAwait(false);
-            Assert.AreEqual("full", loadingDocument.Kind);
-            Assert.IsEmpty(
-                loadingDocument.Items ?? [],
-                "The initial document pull waited for project loading and returned stale startup results.");
-            WorkspaceDiagnosticReport loading = await lsp.RequestWorkspaceDiagnosticsAsync(
-                [],
-                partialResultToken: null,
-                TestContext.CancellationToken).ConfigureAwait(false);
-            Assert.IsEmpty(
-                loading.Items,
-                "The initial workspace pull waited for project loading and returned stale startup results.");
+                    previousResultId: null,
+                    TestContext.CancellationToken).ConfigureAwait(false);
+                Assert.AreEqual("full", loadingDocument.Kind);
+                Assert.IsEmpty(
+                    loadingDocument.Items ?? [],
+                    "The initial document pull waited for project loading and returned stale startup results.");
+                WorkspaceDiagnosticReport loading = await lsp.RequestWorkspaceDiagnosticsAsync(
+                    [],
+                    partialResultToken: null,
+                    TestContext.CancellationToken).ConfigureAwait(false);
+                Assert.IsEmpty(
+                    loading.Items,
+                    "The initial workspace pull waited for project loading and returned stale startup results.");
+            }
+            finally
+            {
+                client.ReleaseConfigurationResponses();
+            }
 
-            await File.WriteAllTextAsync(
-                buildReleasePath,
-                "release",
-                TestContext.CancellationToken).ConfigureAwait(false);
             await client.WaitForDiagnosticRefreshAsync(TestContext.CancellationToken)
                 .WaitAsync(TimeSpan.FromSeconds(30), TestContext.CancellationToken)
                 .ConfigureAwait(false);
@@ -186,10 +180,6 @@ public sealed class WorkspaceDiagnosticLanguageServerTests
         }
         finally
         {
-            await File.WriteAllTextAsync(
-                buildReleasePath,
-                "release",
-                CancellationToken.None).ConfigureAwait(false);
             await DirectoryReleaseWaiter.DeleteAsync(fixturePath, TimeSpan.FromSeconds(10)).ConfigureAwait(false);
         }
     }
@@ -574,30 +564,6 @@ public sealed class WorkspaceDiagnosticLanguageServerTests
             toolsDocumentPath,
             ToolsDocumentText,
             cancellationToken).ConfigureAwait(false);
-    }
-
-    private static string CreateBlockedCoreProjectText(
-        string processHostPath,
-        string buildStartedPath,
-        string buildReleasePath)
-    {
-        string dotnetPath = EditorToolResolver.ResolveDotNetHost();
-        return $$"""
-            <Project Sdk="Microsoft.NET.Sdk">
-              <PropertyGroup>
-                <TargetFramework>net10.0</TargetFramework>
-                <ImplicitUsings>enable</ImplicitUsings>
-              </PropertyGroup>
-              <Target Name="BlockDesignTimeBuild"
-                      BeforeTargets="Compile"
-                      Condition="'$(DesignTimeBuild)' == 'true'">
-                <WriteLinesToFile File="{{buildStartedPath}}"
-                                  Lines="started"
-                                  Overwrite="true" />
-                <Exec Command="&quot;{{dotnetPath}}&quot; &quot;{{processHostPath}}&quot; --wait-for-file &quot;{{buildReleasePath}}&quot;" />
-              </Target>
-            </Project>
-            """;
     }
 
     private const string SolutionText = """
