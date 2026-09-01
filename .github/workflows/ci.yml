@@ -161,6 +161,18 @@ jobs:
           path: ~/.local/share/dotnet/runfile
           key: file-app-builds-${{ matrix.group }}-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/*.cs', '.editorconfig', 'Directory.Build.*', 'Directory.Packages.props', 'NuGet.Config') }}
 
+  file-apps-complete:
+    name: File apps
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    needs: file-apps
+
+    steps:
+      - name: Complete file app verification
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
   vscode-web-extension:
     name: VS Code web extension
     runs-on: ubuntu-latest
