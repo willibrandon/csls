@@ -79,10 +79,10 @@ public sealed class McpDirectModeTests
                 DocumentText,
                 TestContext.CancellationToken).ConfigureAwait(false);
 
-            string dotnetHost = EditorToolResolver.ResolveDotNetHost();
+            string dotnetHost = EditorToolResolver.ResolveAbsoluteDotNetHost();
             Dictionary<string, string?> environment =
                 StdioClientTransportOptions.GetDefaultEnvironmentVariables();
-            environment["DOTNET_ROOT"] = Path.GetDirectoryName(dotnetHost);
+            environment["DOTNET_ROOT"] = EditorToolResolver.ResolveDotNetRoot();
             environment["DOTNET_HOST_PATH"] = dotnetHost;
             environment["CSLS_MCP_LAUNCHER_PATH"] = mcpPath;
             environment["CSLS_MCP_WORKER_PATH"] = mcpWorkerPath;

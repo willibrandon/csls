@@ -138,6 +138,31 @@ internal static class EditorToolResolver
     }
 
     /// <summary>
+    /// Resolves the runtime root selected for the active test process.
+    /// </summary>
+    /// <returns>The absolute .NET runtime root.</returns>
+    internal static string ResolveDotNetRoot()
+    {
+        string architectureVariable =
+            $"DOTNET_ROOT_{RuntimeInformation.ProcessArchitecture.ToString().ToUpperInvariant()}";
+        string? configuredRoot = Environment.GetEnvironmentVariable(architectureVariable);
+        if (string.IsNullOrWhiteSpace(configuredRoot))
+        {
+            configuredRoot = Environment.GetEnvironmentVariable("DOTNET_ROOT");
+        }
+
+        if (!string.IsNullOrWhiteSpace(configuredRoot))
+        {
+            return Path.GetFullPath(configuredRoot);
+        }
+
+        string dotnetHost = ResolveAbsoluteDotNetHost();
+        FileSystemInfo? resolvedHost = File.ResolveLinkTarget(dotnetHost, returnFinalTarget: true);
+        return Path.GetDirectoryName(resolvedHost?.FullName ?? dotnetHost)
+            ?? throw new FileNotFoundException($"The .NET runtime root could not be resolved: {dotnetHost}");
+    }
+
+    /// <summary>
     /// Resolves a verified VS Code extension package provisioned for editor testing.
     /// </summary>
     /// <param name="repositoryRoot">The absolute repository root.</param>

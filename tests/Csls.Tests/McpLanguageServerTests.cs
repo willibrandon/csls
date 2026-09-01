@@ -126,10 +126,10 @@ public sealed class McpLanguageServerTests
                 TimeSpan.FromSeconds(60),
                 TestContext.CancellationToken).ConfigureAwait(false);
 
-            string dotnetHost = EditorToolResolver.ResolveDotNetHost();
+            string dotnetHost = EditorToolResolver.ResolveAbsoluteDotNetHost();
             Dictionary<string, string?> environment =
                 StdioClientTransportOptions.GetDefaultEnvironmentVariables();
-            environment["DOTNET_ROOT"] = Path.GetDirectoryName(dotnetHost);
+            environment["DOTNET_ROOT"] = EditorToolResolver.ResolveDotNetRoot();
             environment["CSLS_MCP_WORKER_PATH"] = mcpWorkerPath;
             bool isManagedLauncher = string.Equals(
                 Path.GetExtension(mcpPath),
@@ -1050,10 +1050,10 @@ public sealed class McpLanguageServerTests
             fixture.DocumentPath,
             CancellationProbeFixture.DocumentText).ConfigureAwait(false);
 
-        string dotnetHost = EditorToolResolver.ResolveDotNetHost();
+        string dotnetHost = EditorToolResolver.ResolveAbsoluteDotNetHost();
         Dictionary<string, string?> environment =
             StdioClientTransportOptions.GetDefaultEnvironmentVariables();
-        environment["DOTNET_ROOT"] = Path.GetDirectoryName(dotnetHost);
+        environment["DOTNET_ROOT"] = EditorToolResolver.ResolveDotNetRoot();
         environment["CSLS_MCP_WORKER_PATH"] = mcpWorkerPath;
         bool isManagedLauncher = string.Equals(
             Path.GetExtension(mcpPath),
