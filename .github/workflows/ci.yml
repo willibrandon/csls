@@ -89,6 +89,9 @@ jobs:
     name: Build, test, and package (${{ matrix.rid }})
     runs-on: ${{ matrix.os }}
     timeout-minutes: 75
+    env:
+      MSBUILDDISABLENODEREUSE: 1
+      UseSharedCompilation: false
     permissions:
       actions: read
       contents: read
