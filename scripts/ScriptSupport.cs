@@ -93,58 +93,66 @@ internal static class ScriptSupport
                 token);
         }
 
-        using HttpResponseMessage response = await client.GetAsync(
-            new Uri($"https://api.github.com/repos/{owner}/{repository}/releases/latest"),
-            HttpCompletionOption.ResponseHeadersRead,
+        Uri releaseUri = new(
+            $"https://api.github.com/repos/{owner}/{repository}/releases/latest");
+        return await ExecuteHttpWithRetriesAsync(
+            $"resolve the latest {owner}/{repository} release",
+            async () =>
+            {
+                using HttpResponseMessage response = await client.GetAsync(
+                    releaseUri,
+                    HttpCompletionOption.ResponseHeadersRead,
+                    cancellationToken).ConfigureAwait(false);
+                response.EnsureSuccessStatusCode();
+                using Stream content = await response.Content
+                    .ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
+                using JsonDocument document = await JsonDocument.ParseAsync(
+                    content,
+                    cancellationToken: cancellationToken).ConfigureAwait(false);
+                JsonElement release = document.RootElement;
+                string tag = release.GetProperty("tag_name").GetString()
+                    ?? throw new InvalidDataException(
+                        $"The latest {owner}/{repository} release has no tag.");
+                JsonElement[] assets =
+                [
+                    .. release
+                        .GetProperty("assets")
+                        .EnumerateArray()
+                        .Where(asset => assetSelector(
+                            asset.GetProperty("name").GetString() ?? string.Empty))
+                ];
+                if (assets.Length != 1)
+                {
+                    throw new InvalidDataException(
+                        $"The latest {owner}/{repository} release {tag} has " +
+                        $"{assets.Length} matching assets; exactly one is required.");
+                }
+
+                JsonElement selectedAsset = assets[0];
+                string assetName = selectedAsset.GetProperty("name").GetString()
+                    ?? throw new InvalidDataException(
+                        $"The selected {owner}/{repository} release asset has no name.");
+                string sourceText = selectedAsset.GetProperty("browser_download_url").GetString()
+                    ?? throw new InvalidDataException(
+                        $"The {owner}/{repository} release asset {assetName} has no download URI.");
+                string digest = selectedAsset.GetProperty("digest").GetString()
+                    ?? throw new InvalidDataException(
+                        $"The {owner}/{repository} release asset {assetName} has no digest.");
+                const string sha256Prefix = "sha256:";
+                if (!digest.StartsWith(sha256Prefix, StringComparison.OrdinalIgnoreCase) ||
+                    digest.Length != sha256Prefix.Length + 64)
+                {
+                    throw new InvalidDataException(
+                        $"The {owner}/{repository} release asset {assetName} has an invalid digest.");
+                }
+
+                return (
+                    tag,
+                    assetName,
+                    new Uri(sourceText),
+                    digest[sha256Prefix.Length..]);
+            },
             cancellationToken).ConfigureAwait(false);
-        response.EnsureSuccessStatusCode();
-        using Stream content = await response.Content
-            .ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
-        using JsonDocument document = await JsonDocument.ParseAsync(
-            content,
-            cancellationToken: cancellationToken).ConfigureAwait(false);
-        JsonElement release = document.RootElement;
-        string tag = release.GetProperty("tag_name").GetString()
-            ?? throw new InvalidDataException(
-                $"The latest {owner}/{repository} release has no tag.");
-        JsonElement[] assets =
-        [
-            .. release
-                .GetProperty("assets")
-                .EnumerateArray()
-                .Where(asset => assetSelector(
-                    asset.GetProperty("name").GetString() ?? string.Empty))
-        ];
-        if (assets.Length != 1)
-        {
-            throw new InvalidDataException(
-                $"The latest {owner}/{repository} release {tag} has {assets.Length} " +
-                "matching assets; exactly one is required.");
-        }
-
-        JsonElement selectedAsset = assets[0];
-        string assetName = selectedAsset.GetProperty("name").GetString()
-            ?? throw new InvalidDataException(
-                $"The selected {owner}/{repository} release asset has no name.");
-        string sourceText = selectedAsset.GetProperty("browser_download_url").GetString()
-            ?? throw new InvalidDataException(
-                $"The {owner}/{repository} release asset {assetName} has no download URI.");
-        string digest = selectedAsset.GetProperty("digest").GetString()
-            ?? throw new InvalidDataException(
-                $"The {owner}/{repository} release asset {assetName} has no digest.");
-        const string sha256Prefix = "sha256:";
-        if (!digest.StartsWith(sha256Prefix, StringComparison.OrdinalIgnoreCase) ||
-            digest.Length != sha256Prefix.Length + 64)
-        {
-            throw new InvalidDataException(
-                $"The {owner}/{repository} release asset {assetName} has an invalid digest.");
-        }
-
-        return (
-            tag,
-            assetName,
-            new Uri(sourceText),
-            digest[sha256Prefix.Length..]);
     }
 
     /// <summary>
@@ -174,69 +182,75 @@ internal static class ScriptSupport
         client.DefaultRequestHeaders.UserAgent.ParseAdd("csls-tool-provisioner");
         client.DefaultRequestHeaders.Accept.ParseAdd(
             "application/json;api-version=7.2-preview.1");
-        string query = $$"""
-            {"filters":[{"criteria":[{"filterType":7,"value":"{{publisher}}.{{extensionName}}"}],"pageNumber":1,"pageSize":1,"sortBy":0,"sortOrder":0}],"assetTypes":["Microsoft.VisualStudio.Services.VSIXPackage"],"flags":950}
-            """;
-        using var request = new HttpRequestMessage(
-            HttpMethod.Post,
-            "https://marketplace.visualstudio.com/_apis/public/gallery/" +
-            "extensionquery?api-version=7.2-preview.1")
-        {
-            Content = new StringContent(query, Encoding.UTF8, "application/json")
-        };
-        using HttpResponseMessage response = await client.SendAsync(
-            request,
-            HttpCompletionOption.ResponseHeadersRead,
-            cancellationToken).ConfigureAwait(false);
-        response.EnsureSuccessStatusCode();
-        using Stream content = await response.Content
-            .ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
-        using JsonDocument document = await JsonDocument.ParseAsync(
-            content,
-            cancellationToken: cancellationToken).ConfigureAwait(false);
-        JsonElement extension = document.RootElement
-            .GetProperty("results")[0]
-            .GetProperty("extensions")[0];
-        JsonElement[] matchingVersions =
-        [
-            .. extension
-                .GetProperty("versions")
-                .EnumerateArray()
-                .Where(version =>
+        return await ExecuteHttpWithRetriesAsync(
+            $"resolve {publisher}.{extensionName} from the Visual Studio Marketplace",
+            async () =>
+            {
+                string query = $$"""
+                    {"filters":[{"criteria":[{"filterType":7,"value":"{{publisher}}.{{extensionName}}"}],"pageNumber":1,"pageSize":1,"sortBy":0,"sortOrder":0}],"assetTypes":["Microsoft.VisualStudio.Services.VSIXPackage"],"flags":950}
+                    """;
+                using var request = new HttpRequestMessage(
+                    HttpMethod.Post,
+                    "https://marketplace.visualstudio.com/_apis/public/gallery/" +
+                    "extensionquery?api-version=7.2-preview.1")
                 {
-                    bool hasPlatform = version.TryGetProperty(
-                        "targetPlatform",
-                        out JsonElement platform);
-                    return targetPlatform is null
-                        ? !hasPlatform || platform.ValueKind == JsonValueKind.Null
-                        : hasPlatform && string.Equals(
-                            platform.GetString(),
-                            targetPlatform,
-                            StringComparison.Ordinal);
-                })
-        ];
-        if (matchingVersions.Length == 0)
-        {
-            throw new InvalidDataException(
-                $"The Marketplace returned no {publisher}.{extensionName} package for " +
-                $"{targetPlatform ?? "all platforms"}.");
-        }
+                    Content = new StringContent(query, Encoding.UTF8, "application/json")
+                };
+                using HttpResponseMessage response = await client.SendAsync(
+                    request,
+                    HttpCompletionOption.ResponseHeadersRead,
+                    cancellationToken).ConfigureAwait(false);
+                response.EnsureSuccessStatusCode();
+                using Stream content = await response.Content
+                    .ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
+                using JsonDocument document = await JsonDocument.ParseAsync(
+                    content,
+                    cancellationToken: cancellationToken).ConfigureAwait(false);
+                JsonElement extension = document.RootElement
+                    .GetProperty("results")[0]
+                    .GetProperty("extensions")[0];
+                JsonElement[] matchingVersions =
+                [
+                    .. extension
+                        .GetProperty("versions")
+                        .EnumerateArray()
+                        .Where(version =>
+                        {
+                            bool hasPlatform = version.TryGetProperty(
+                                "targetPlatform",
+                                out JsonElement platform);
+                            return targetPlatform is null
+                                ? !hasPlatform || platform.ValueKind == JsonValueKind.Null
+                                : hasPlatform && string.Equals(
+                                    platform.GetString(),
+                                    targetPlatform,
+                                    StringComparison.Ordinal);
+                        })
+                ];
+                if (matchingVersions.Length == 0)
+                {
+                    throw new InvalidDataException(
+                        $"The Marketplace returned no {publisher}.{extensionName} package for " +
+                        $"{targetPlatform ?? "all platforms"}.");
+                }
 
-        JsonElement selectedVersion = matchingVersions[0];
-        string versionText = selectedVersion.GetProperty("version").GetString()
-            ?? throw new InvalidDataException(
-                $"The Marketplace returned {publisher}.{extensionName} without a version.");
-        JsonElement package = selectedVersion
-            .GetProperty("files")
-            .EnumerateArray()
-            .Single(file => string.Equals(
-                file.GetProperty("assetType").GetString(),
-                "Microsoft.VisualStudio.Services.VSIXPackage",
-                StringComparison.Ordinal));
-        string sourceText = package.GetProperty("source").GetString()
-            ?? throw new InvalidDataException(
-                $"The Marketplace returned {publisher}.{extensionName} without a VSIX URI.");
-        return (versionText, new Uri(sourceText));
+                JsonElement selectedVersion = matchingVersions[0];
+                string versionText = selectedVersion.GetProperty("version").GetString()
+                    ?? throw new InvalidDataException(
+                        $"The Marketplace returned {publisher}.{extensionName} without a version.");
+                JsonElement package = selectedVersion
+                    .GetProperty("files")
+                    .EnumerateArray()
+                    .Single(file => string.Equals(
+                        file.GetProperty("assetType").GetString(),
+                        "Microsoft.VisualStudio.Services.VSIXPackage",
+                        StringComparison.Ordinal));
+                string sourceText = package.GetProperty("source").GetString()
+                    ?? throw new InvalidDataException(
+                        $"The Marketplace returned {publisher}.{extensionName} without a VSIX URI.");
+                return (versionText, new Uri(sourceText));
+            },
+            cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -265,39 +279,46 @@ internal static class ScriptSupport
             Timeout = TimeSpan.FromMinutes(2)
         };
         client.DefaultRequestHeaders.UserAgent.ParseAdd("csls-tool-provisioner");
-        using HttpResponseMessage response = await client.GetAsync(
-            new Uri(
-                $"https://update.code.visualstudio.com/api/update/" +
-                $"{Uri.EscapeDataString(target)}/{Uri.EscapeDataString(channel)}/latest"),
-            HttpCompletionOption.ResponseHeadersRead,
-            cancellationToken).ConfigureAwait(false);
-        response.EnsureSuccessStatusCode();
-        using Stream content = await response.Content
-            .ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
-        using JsonDocument document = await JsonDocument.ParseAsync(
-            content,
-            cancellationToken: cancellationToken).ConfigureAwait(false);
-        JsonElement release = document.RootElement;
-        string revision = release.GetProperty("version").GetString()
-            ?? throw new InvalidDataException(
-                $"The Visual Studio Code {channel} release has no revision.");
-        string productVersion = release.GetProperty("productVersion").GetString()
-            ?? throw new InvalidDataException(
-                $"The Visual Studio Code {channel} release has no product version.");
-        string sourceText = release.GetProperty("url").GetString()
-            ?? throw new InvalidDataException(
-                $"The Visual Studio Code {channel} release has no download URI.");
-        string sha256 = release.GetProperty("sha256hash").GetString()
-            ?? throw new InvalidDataException(
-                $"The Visual Studio Code {channel} release has no SHA-256 digest.");
-        if (revision.Length != 40 || !revision.All(Uri.IsHexDigit) ||
-            sha256.Length != 64 || !sha256.All(Uri.IsHexDigit))
-        {
-            throw new InvalidDataException(
-                $"The Visual Studio Code {channel} release metadata is invalid.");
-        }
+        Uri releaseUri = new(
+            $"https://update.code.visualstudio.com/api/update/" +
+            $"{Uri.EscapeDataString(target)}/{Uri.EscapeDataString(channel)}/latest");
+        return await ExecuteHttpWithRetriesAsync(
+            $"resolve the Visual Studio Code {channel} release for {target}",
+            async () =>
+            {
+                using HttpResponseMessage response = await client.GetAsync(
+                    releaseUri,
+                    HttpCompletionOption.ResponseHeadersRead,
+                    cancellationToken).ConfigureAwait(false);
+                response.EnsureSuccessStatusCode();
+                using Stream content = await response.Content
+                    .ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
+                using JsonDocument document = await JsonDocument.ParseAsync(
+                    content,
+                    cancellationToken: cancellationToken).ConfigureAwait(false);
+                JsonElement release = document.RootElement;
+                string revision = release.GetProperty("version").GetString()
+                    ?? throw new InvalidDataException(
+                        $"The Visual Studio Code {channel} release has no revision.");
+                string productVersion = release.GetProperty("productVersion").GetString()
+                    ?? throw new InvalidDataException(
+                        $"The Visual Studio Code {channel} release has no product version.");
+                string sourceText = release.GetProperty("url").GetString()
+                    ?? throw new InvalidDataException(
+                        $"The Visual Studio Code {channel} release has no download URI.");
+                string sha256 = release.GetProperty("sha256hash").GetString()
+                    ?? throw new InvalidDataException(
+                        $"The Visual Studio Code {channel} release has no SHA-256 digest.");
+                if (revision.Length != 40 || !revision.All(Uri.IsHexDigit) ||
+                    sha256.Length != 64 || !sha256.All(Uri.IsHexDigit))
+                {
+                    throw new InvalidDataException(
+                        $"The Visual Studio Code {channel} release metadata is invalid.");
+                }
 
-        return (revision, productVersion, new Uri(sourceText), sha256);
+                return (revision, productVersion, new Uri(sourceText), sha256);
+            },
+            cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -322,38 +343,56 @@ internal static class ScriptSupport
         using var client = new HttpClient(handler);
         client.Timeout = TimeSpan.FromMinutes(5);
         client.DefaultRequestHeaders.UserAgent.ParseAdd("csls-tool-provisioner");
-        using HttpResponseMessage response = await client
-            .GetAsync(
-                source,
-                HttpCompletionOption.ResponseHeadersRead,
-                cancellationToken)
-            .ConfigureAwait(false);
-        response.EnsureSuccessStatusCode();
-
-        using (FileStream destination = new(
-            destinationPath,
-            FileMode.CreateNew,
-            FileAccess.Write,
-            FileShare.None,
-            bufferSize: 131_072,
-            FileOptions.Asynchronous | FileOptions.SequentialScan))
+        string stagingPath = $"{destinationPath}.{Guid.NewGuid():N}.download";
+        try
         {
-            await response.Content
-                .CopyToAsync(destination, cancellationToken)
-                .ConfigureAwait(false);
+            await ExecuteHttpWithRetriesAsync(
+                $"download {source}",
+                async () =>
+                {
+                    File.Delete(stagingPath);
+                    using HttpResponseMessage response = await client
+                        .GetAsync(
+                            source,
+                            HttpCompletionOption.ResponseHeadersRead,
+                            cancellationToken)
+                        .ConfigureAwait(false);
+                    response.EnsureSuccessStatusCode();
+
+                    using (FileStream destination = new(
+                        stagingPath,
+                        FileMode.CreateNew,
+                        FileAccess.Write,
+                        FileShare.None,
+                        bufferSize: 131_072,
+                        FileOptions.Asynchronous | FileOptions.SequentialScan))
+                    {
+                        await response.Content
+                            .CopyToAsync(destination, cancellationToken)
+                            .ConfigureAwait(false);
+                    }
+
+                    return true;
+                },
+                cancellationToken).ConfigureAwait(false);
+            string actualSha256 = await ComputeSha256Async(
+                stagingPath,
+                cancellationToken).ConfigureAwait(false);
+            if (!string.Equals(
+                actualSha256,
+                expectedSha256,
+                StringComparison.OrdinalIgnoreCase))
+            {
+                throw new InvalidDataException(
+                    $"SHA-256 mismatch for {source}: expected {expectedSha256}, " +
+                    $"got {actualSha256}.");
+            }
+
+            File.Move(stagingPath, destinationPath);
         }
-
-        string actualSha256 = await ComputeSha256Async(
-            destinationPath,
-            cancellationToken).ConfigureAwait(false);
-        if (!string.Equals(
-            actualSha256,
-            expectedSha256,
-            StringComparison.OrdinalIgnoreCase))
+        finally
         {
-            throw new InvalidDataException(
-                $"SHA-256 mismatch for {source}: expected {expectedSha256}, " +
-                $"got {actualSha256}.");
+            File.Delete(stagingPath);
         }
     }
 
@@ -384,20 +423,91 @@ internal static class ScriptSupport
             Timeout = TimeSpan.FromMinutes(5)
         };
         client.DefaultRequestHeaders.UserAgent.ParseAdd("csls-tool-provisioner");
-        using HttpResponseMessage response = await client.GetAsync(
-            source,
-            HttpCompletionOption.ResponseHeadersRead,
-            cancellationToken).ConfigureAwait(false);
-        response.EnsureSuccessStatusCode();
-        using FileStream destination = new(
-            destinationPath,
-            FileMode.CreateNew,
-            FileAccess.Write,
-            FileShare.None,
-            bufferSize: 131_072,
-            FileOptions.Asynchronous | FileOptions.SequentialScan);
-        await response.Content.CopyToAsync(destination, cancellationToken)
-            .ConfigureAwait(false);
+        string stagingPath = $"{destinationPath}.{Guid.NewGuid():N}.download";
+        try
+        {
+            await ExecuteHttpWithRetriesAsync(
+                $"download {source}",
+                async () =>
+                {
+                    File.Delete(stagingPath);
+                    using HttpResponseMessage response = await client.GetAsync(
+                        source,
+                        HttpCompletionOption.ResponseHeadersRead,
+                        cancellationToken).ConfigureAwait(false);
+                    response.EnsureSuccessStatusCode();
+                    using FileStream destination = new(
+                        stagingPath,
+                        FileMode.CreateNew,
+                        FileAccess.Write,
+                        FileShare.None,
+                        bufferSize: 131_072,
+                        FileOptions.Asynchronous | FileOptions.SequentialScan);
+                    await response.Content.CopyToAsync(destination, cancellationToken)
+                        .ConfigureAwait(false);
+                    return true;
+                },
+                cancellationToken).ConfigureAwait(false);
+            File.Move(stagingPath, destinationPath);
+        }
+        finally
+        {
+            File.Delete(stagingPath);
+        }
+    }
+
+    private static async Task<T> ExecuteHttpWithRetriesAsync<T>(
+        string operation,
+        Func<Task<T>> action,
+        CancellationToken cancellationToken)
+    {
+        const int maximumAttempts = 3;
+        for (int attempt = 1; ; attempt++)
+        {
+            try
+            {
+                return await action().ConfigureAwait(false);
+            }
+            catch (Exception exception) when (
+                attempt < maximumAttempts &&
+                IsTransientHttpFailure(exception, cancellationToken))
+            {
+                var delay = TimeSpan.FromSeconds(attempt * 2);
+                await Console.Error.WriteLineAsync(
+                    $"HTTP attempt {attempt} failed while trying to {operation}: " +
+                    $"{exception.GetBaseException().Message} Retrying in " +
+                    $"{delay.TotalSeconds:F0} seconds.").ConfigureAwait(false);
+                await Task.Delay(delay, cancellationToken).ConfigureAwait(false);
+            }
+        }
+    }
+
+    private static bool IsTransientHttpFailure(
+        Exception exception,
+        CancellationToken cancellationToken)
+    {
+        if (exception is OperationCanceledException)
+        {
+            return !cancellationToken.IsCancellationRequested;
+        }
+
+        if (exception is IOException)
+        {
+            return true;
+        }
+
+        if (exception is not HttpRequestException requestException)
+        {
+            return false;
+        }
+
+        return requestException.StatusCode is null or
+            HttpStatusCode.RequestTimeout or
+            HttpStatusCode.TooManyRequests or
+            HttpStatusCode.InternalServerError or
+            HttpStatusCode.BadGateway or
+            HttpStatusCode.ServiceUnavailable or
+            HttpStatusCode.GatewayTimeout;
     }
 
     /// <summary>
