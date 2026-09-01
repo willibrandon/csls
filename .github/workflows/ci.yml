@@ -451,8 +451,30 @@ jobs:
             artifacts/zed-extension/grammar-source
           key: zed-extension-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('editors/zed/**', 'scripts/Build-ZedExtension.cs', 'scripts/Provision-WasiSdk.cs', 'scripts/ScriptSupport.cs', 'tests/Csls.Tests/ZedHighlightQueryTests.cs') }}
 
+      - name: Resolve graphical prerequisite cache
+        id: zed-graphical-cache-key
+        run: >-
+          dotnet run --file scripts/Install-GraphicalEditorTestPrerequisites.cs
+          -- --write-portable-cache-key
+
+      - name: Restore graphical prerequisites
+        id: zed-graphical-cache
+        uses: actions/cache/restore@v6
+        with:
+          path: artifacts/tools/graphical-editor-prerequisites
+          key: zed-graphical-${{ runner.os }}-${{ runner.arch }}-${{ steps.zed-graphical-cache-key.outputs.key }}-${{ hashFiles('scripts/Install-GraphicalEditorTestPrerequisites.cs', 'scripts/ScriptSupport.cs') }}
+
       - name: Install graphical editor test prerequisites
-        run: dotnet run --file scripts/Install-GraphicalEditorTestPrerequisites.cs
+        run: >-
+          dotnet run --file scripts/Install-GraphicalEditorTestPrerequisites.cs
+          -- --portable-packages
+
+      - name: Save graphical prerequisites
+        if: steps.zed-graphical-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: artifacts/tools/graphical-editor-prerequisites
+          key: zed-graphical-${{ runner.os }}-${{ runner.arch }}-${{ steps.zed-graphical-cache-key.outputs.key }}-${{ hashFiles('scripts/Install-GraphicalEditorTestPrerequisites.cs', 'scripts/ScriptSupport.cs') }}
 
       - name: Provision Zed
         run: dotnet run --file scripts/Provision-Zed.cs

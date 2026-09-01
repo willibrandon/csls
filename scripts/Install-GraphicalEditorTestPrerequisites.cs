@@ -8,6 +8,8 @@
 
 using System.Diagnostics;
 using System.Runtime.InteropServices;
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.RegularExpressions;
 
 if (args.Length == 1 && args[0] is "--help" or "-h" or "-?")
@@ -19,7 +21,8 @@ if (args.Length == 1 && args[0] is "--help" or "-h" or "-?")
         "Usage: dotnet run --file scripts/Install-GraphicalEditorTestPrerequisites.cs " +
         "[--with-web-browsers] [--web-only] " +
         "[--web-browser <chromium|firefox|webkit>] " +
-        "[--without-clipboard] [--without-tree-sitter] [--without-vulkan]")
+        "[--without-clipboard] [--without-tree-sitter] [--without-vulkan] " +
+        "[--portable-packages] [--write-portable-cache-key]")
         .ConfigureAwait(false);
     return 0;
 }
@@ -29,6 +32,8 @@ bool installTreeSitter = true;
 bool installClipboard = true;
 bool installVulkan = true;
 bool webOnly = false;
+bool portablePackages = false;
+bool writePortableCacheKey = false;
 bool hasInvalidArguments = false;
 for (int index = 0; index < args.Length; index++)
 {
@@ -70,6 +75,18 @@ for (int index = 0; index < args.Length; index++)
         continue;
     }
 
+    if (string.Equals(args[index], "--portable-packages", StringComparison.Ordinal))
+    {
+        portablePackages = true;
+        continue;
+    }
+
+    if (string.Equals(args[index], "--write-portable-cache-key", StringComparison.Ordinal))
+    {
+        writePortableCacheKey = true;
+        continue;
+    }
+
     hasInvalidArguments = true;
     break;
 }
@@ -85,7 +102,8 @@ if (hasInvalidArguments)
         "Usage: dotnet run --file scripts/Install-GraphicalEditorTestPrerequisites.cs " +
         "[--with-web-browsers] [--web-only] " +
         "[--web-browser <chromium|firefox|webkit>] " +
-        "[--without-clipboard] [--without-tree-sitter] [--without-vulkan]")
+        "[--without-clipboard] [--without-tree-sitter] [--without-vulkan] " +
+        "[--portable-packages] [--write-portable-cache-key]")
         .ConfigureAwait(false);
     return 2;
 }
@@ -106,12 +124,36 @@ try
             "Automatic graphical editor test provisioning supports Debian and Ubuntu.");
     }
 
+    if (writePortableCacheKey)
+    {
+        await WritePortableCacheKeyAsync(installClipboard, installVulkan)
+            .ConfigureAwait(false);
+        return 0;
+    }
+
+    string? portableXclipPath = null;
     if (!webOnly)
     {
-        await InstallPackagesAsync(
-            await ResolveGraphicalPackagesAsync(installClipboard, installVulkan)
-                .ConfigureAwait(false))
-            .ConfigureAwait(false);
+        IReadOnlyList<string> graphicalPackages = await ResolveGraphicalPackagesAsync(
+            installClipboard,
+            installVulkan).ConfigureAwait(false);
+        if (portablePackages)
+        {
+            await InstallPackagesAsync(graphicalPackages.Where(static packageName =>
+                packageName is not "xclip" and not "mesa-vulkan-drivers").ToArray())
+                .ConfigureAwait(false);
+            (portableXclipPath, string? vulkanLibraryPath, string? vulkanManifestPath) =
+                await ProvisionPortablePackagesAsync(installClipboard, installVulkan)
+                    .ConfigureAwait(false);
+            await ExportPortableEnvironmentAsync(
+                portableXclipPath,
+                vulkanLibraryPath,
+                vulkanManifestPath).ConfigureAwait(false);
+        }
+        else
+        {
+            await InstallPackagesAsync(graphicalPackages).ConfigureAwait(false);
+        }
     }
     if (installTreeSitter && !webOnly)
     {
@@ -169,7 +211,8 @@ try
     {
         if (installClipboard)
         {
-            await RunCheckedAsync("xclip", ["-version"]).ConfigureAwait(false);
+            await RunCheckedAsync(portableXclipPath ?? "xclip", ["-version"])
+                .ConfigureAwait(false);
         }
         if (!Directory.Exists("/tmp/.X11-unix"))
         {
@@ -440,6 +483,182 @@ static async Task<IReadOnlyList<string>> ResolveWebBrowserPackagesAsync(
     return packages.Order(StringComparer.Ordinal).ToArray();
 }
 
+static async Task WritePortableCacheKeyAsync(bool installClipboard, bool installVulkan)
+{
+    string githubOutputPath = Environment.GetEnvironmentVariable("GITHUB_OUTPUT")
+        ?? throw new InvalidOperationException(
+            "GITHUB_OUTPUT is required to write the portable package cache key.");
+    var keyParts = new List<string>
+    {
+        await ReadRequiredOutputAsync("dpkg", ["--print-architecture"])
+            .ConfigureAwait(false),
+        await File.ReadAllTextAsync("/etc/os-release").ConfigureAwait(false)
+    };
+    if (installClipboard)
+    {
+        keyParts.Add(await ResolveCandidateVersionAsync("xclip").ConfigureAwait(false));
+    }
+    if (installVulkan)
+    {
+        keyParts.Add(await ResolveCandidateVersionAsync("mesa-vulkan-drivers")
+            .ConfigureAwait(false));
+    }
+
+    byte[] digest = SHA256.HashData(Encoding.UTF8.GetBytes(string.Join('\n', keyParts)));
+    await File.AppendAllTextAsync(
+        githubOutputPath,
+        $"key={Convert.ToHexStringLower(digest)}{Environment.NewLine}").ConfigureAwait(false);
+}
+
+static async Task<string> ResolveCandidateVersionAsync(string packageName)
+{
+    string output = await ReadRequiredOutputAsync("apt-cache", ["policy", packageName])
+        .ConfigureAwait(false);
+    const string candidatePrefix = "Candidate:";
+    string? version = output
+        .Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries)
+        .Select(static line => line.Trim())
+        .Where(static line => line.StartsWith(candidatePrefix, StringComparison.Ordinal))
+        .Select(static line => line[candidatePrefix.Length..].Trim())
+        .SingleOrDefault();
+    return !string.IsNullOrEmpty(version) &&
+        !string.Equals(version, "(none)", StringComparison.Ordinal)
+        ? $"{packageName}={version}"
+        : throw new InvalidOperationException(
+            $"No installation candidate is available for {packageName}.");
+}
+
+static async Task<(string? XclipPath, string? VulkanLibraryPath, string? VulkanManifestPath)>
+    ProvisionPortablePackagesAsync(bool installClipboard, bool installVulkan)
+{
+    string repositoryRoot = FindRepositoryRoot();
+    string toolsRoot = ScriptSupport.ResolveToolsRoot(repositoryRoot);
+    string portableRoot = Path.Join(toolsRoot, "graphical-editor-prerequisites");
+    string xclipPath = Path.Join(portableRoot, "bin", "xclip");
+    string vulkanLibraryPath = Path.Join(portableRoot, "lib", "libvulkan_lvp.so");
+    string vulkanManifestPath = Path.Join(portableRoot, "share", "lvp_icd.json");
+    if ((!installClipboard || File.Exists(xclipPath)) &&
+        (!installVulkan || File.Exists(vulkanLibraryPath) && File.Exists(vulkanManifestPath)))
+    {
+        return (
+            installClipboard ? xclipPath : null,
+            installVulkan ? vulkanLibraryPath : null,
+            installVulkan ? vulkanManifestPath : null);
+    }
+
+    string stagingRoot = Path.Join(
+        toolsRoot,
+        $".graphical-editor-prerequisites-{Guid.NewGuid():N}");
+    string extractedRoot = Path.Join(stagingRoot, "extracted");
+    Directory.CreateDirectory(extractedRoot);
+    try
+    {
+        var packageNames = new List<string>();
+        if (installClipboard)
+        {
+            packageNames.Add("xclip");
+        }
+        if (installVulkan)
+        {
+            packageNames.Add("mesa-vulkan-drivers");
+        }
+
+        await RunCheckedAsync(
+            "apt-get",
+            ["download", .. packageNames],
+            stagingRoot).ConfigureAwait(false);
+        foreach (string archivePath in Directory.EnumerateFiles(stagingRoot, "*.deb"))
+        {
+            await RunCheckedAsync(
+                "dpkg-deb",
+                ["--extract", archivePath, extractedRoot]).ConfigureAwait(false);
+        }
+
+        if (Directory.Exists(portableRoot))
+        {
+            Directory.Delete(portableRoot, recursive: true);
+        }
+        if (installClipboard)
+        {
+            string extractedXclipPath = FindRequiredFile(extractedRoot, "xclip");
+            Directory.CreateDirectory(Path.GetDirectoryName(xclipPath)!);
+            File.Copy(extractedXclipPath, xclipPath);
+            await RunCheckedAsync("chmod", ["755", xclipPath]).ConfigureAwait(false);
+        }
+        if (installVulkan)
+        {
+            string extractedVulkanLibraryPath = FindRequiredFile(
+                extractedRoot,
+                "libvulkan_lvp.so");
+            string extractedVulkanManifestPath = Directory
+                .EnumerateFiles(extractedRoot, "lvp_icd*.json", SearchOption.AllDirectories)
+                .Single();
+            Directory.CreateDirectory(Path.GetDirectoryName(vulkanLibraryPath)!);
+            Directory.CreateDirectory(Path.GetDirectoryName(vulkanManifestPath)!);
+            File.Copy(extractedVulkanLibraryPath, vulkanLibraryPath);
+            File.Copy(extractedVulkanManifestPath, vulkanManifestPath);
+        }
+    }
+    finally
+    {
+        Directory.Delete(stagingRoot, recursive: true);
+    }
+
+    return (
+        installClipboard ? xclipPath : null,
+        installVulkan ? vulkanLibraryPath : null,
+        installVulkan ? vulkanManifestPath : null);
+}
+
+static string FindRequiredFile(string rootPath, string fileName) =>
+    Directory.EnumerateFiles(rootPath, fileName, SearchOption.AllDirectories).Single();
+
+static async Task ExportPortableEnvironmentAsync(
+    string? xclipPath,
+    string? vulkanLibraryPath,
+    string? vulkanManifestPath)
+{
+    string githubEnvironmentPath = Environment.GetEnvironmentVariable("GITHUB_ENV")
+        ?? throw new InvalidOperationException(
+            "GITHUB_ENV is required to export portable package paths.");
+    string githubPath = Environment.GetEnvironmentVariable("GITHUB_PATH")
+        ?? throw new InvalidOperationException(
+            "GITHUB_PATH is required to export the portable xclip path.");
+    if (xclipPath is not null)
+    {
+        await File.AppendAllTextAsync(
+            githubPath,
+            $"{Path.GetDirectoryName(xclipPath)}{Environment.NewLine}").ConfigureAwait(false);
+    }
+    if (vulkanLibraryPath is not null && vulkanManifestPath is not null)
+    {
+        string libraryDirectory = Path.GetDirectoryName(vulkanLibraryPath)!;
+        string? currentLibraryPath = Environment.GetEnvironmentVariable("LD_LIBRARY_PATH");
+        string libraryPath = string.IsNullOrEmpty(currentLibraryPath)
+            ? libraryDirectory
+            : $"{libraryDirectory}:{currentLibraryPath}";
+        await File.AppendAllTextAsync(
+            githubEnvironmentPath,
+            $"LD_LIBRARY_PATH={libraryPath}{Environment.NewLine}" +
+            $"VK_DRIVER_FILES={vulkanManifestPath}{Environment.NewLine}")
+            .ConfigureAwait(false);
+    }
+}
+
+static async Task<string> ReadRequiredOutputAsync(
+    string executablePath,
+    IReadOnlyList<string> arguments)
+{
+    (int exitCode, string output, string error) = await RunAsync(executablePath, arguments)
+        .ConfigureAwait(false);
+    if (exitCode != 0)
+    {
+        throw new InvalidOperationException(error.Trim());
+    }
+
+    return output.Trim();
+}
+
 static async Task InstallPackagesAsync(IReadOnlyList<string> packages)
 {
     if (await ArePackagesInstalledAsync(packages).ConfigureAwait(false))
@@ -484,11 +703,13 @@ static async Task<bool> TryRunPrivilegedAsync(
 
 static async Task RunCheckedAsync(
     string executablePath,
-    IReadOnlyList<string> arguments)
+    IReadOnlyList<string> arguments,
+    string? workingDirectory = null)
 {
     (int exitCode, string output, string error) = await RunAsync(
         executablePath,
-        arguments).ConfigureAwait(false);
+        arguments,
+        workingDirectory).ConfigureAwait(false);
     await Console.Out.WriteAsync(output).ConfigureAwait(false);
     await Console.Error.WriteAsync(error).ConfigureAwait(false);
     if (exitCode != 0)
@@ -556,7 +777,8 @@ static async Task<string> SelectMatchingPackageAsync(string packageNamePattern)
 
 static async Task<(int ExitCode, string Output, string Error)> RunAsync(
     string executablePath,
-    IReadOnlyList<string> arguments)
+    IReadOnlyList<string> arguments,
+    string? workingDirectory = null)
 {
     var startInfo = new ProcessStartInfo
     {
@@ -565,6 +787,7 @@ static async Task<(int ExitCode, string Output, string Error)> RunAsync(
         RedirectStandardOutput = true,
         UseShellExecute = false
     };
+    startInfo.WorkingDirectory = workingDirectory ?? Directory.GetCurrentDirectory();
     startInfo.Environment["DEBIAN_FRONTEND"] = "noninteractive";
     foreach (string argument in arguments)
     {
