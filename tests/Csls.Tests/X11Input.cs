@@ -22,16 +22,42 @@ internal static partial class X11Input
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(displayName);
         ArgumentException.ThrowIfNullOrWhiteSpace(titleText);
+        if (!TryFocusWindowCore(displayName, titleText, out List<string> observedTitles))
+        {
+            throw new InvalidOperationException(
+                $"No X window title contains '{titleText}'. Observed: " +
+                string.Join(", ", observedTitles));
+        }
+    }
+
+    /// <summary>
+    /// Raises and focuses the first matching X window when it is available.
+    /// </summary>
+    /// <param name="displayName">The isolated X display name.</param>
+    /// <param name="titleText">Text required in the target window title.</param>
+    /// <returns><see langword="true"/> when a matching window was focused.</returns>
+    internal static bool TryFocusWindow(string displayName, string titleText)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(displayName);
+        ArgumentException.ThrowIfNullOrWhiteSpace(titleText);
+        return TryFocusWindowCore(displayName, titleText, out _);
+    }
+
+    private static bool TryFocusWindowCore(
+        string displayName,
+        string titleText,
+        out List<string> observedTitles)
+    {
         nint display = OpenDisplay(displayName);
         if (display == 0)
         {
             throw new InvalidOperationException($"The X display is unavailable: {displayName}");
         }
 
+        observedTitles = [];
         try
         {
             nuint rootWindow = DefaultRootWindow(display);
-            var observedTitles = new List<string>();
             nuint targetWindow = FindWindow(
                 display,
                 rootWindow,
@@ -39,14 +65,13 @@ internal static partial class X11Input
                 observedTitles);
             if (targetWindow == 0)
             {
-                throw new InvalidOperationException(
-                    $"No X window title contains '{titleText}'. Observed: " +
-                    string.Join(", ", observedTitles));
+                return false;
             }
 
             _ = RaiseWindow(display, targetWindow);
             _ = SetInputFocus(display, targetWindow, RevertToParent, time: 0);
             _ = Flush(display);
+            return true;
         }
         finally
         {

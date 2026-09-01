@@ -53,6 +53,7 @@ jobs:
             artifacts/bin/Csls.Tests/debug
             artifacts/bin/Csls.Worker/debug
           key: test-binaries-${{ runner.os }}-${{ runner.arch }}-${{ github.sha }}
+          restore-keys: test-binaries-${{ runner.os }}-${{ runner.arch }}-
 
       - name: Restore source generator test binaries
         id: source-generator-test-binaries-cache
@@ -60,6 +61,19 @@ jobs:
         with:
           path: artifacts/bin/Csls.SourceGen.Tests/debug
           key: source-generator-test-binaries-${{ runner.os }}-${{ runner.arch }}-${{ github.sha }}
+          restore-keys: source-generator-test-binaries-${{ runner.os }}-${{ runner.arch }}-
+
+      - name: Restore test build intermediates
+        uses: actions/cache@v6
+        with:
+          path: |
+            artifacts/obj/Csls.*/debug
+            artifacts/obj/Csls.*/*.cache
+            artifacts/obj/Csls.*/*.json
+            artifacts/obj/Csls.*/*.props
+            artifacts/obj/Csls.*/*.targets
+          key: test-build-intermediates-${{ runner.os }}-${{ runner.arch }}-${{ github.sha }}
+          restore-keys: test-build-intermediates-${{ runner.os }}-${{ runner.arch }}-
 
       - name: Build test binaries
         if: steps.test-binaries-cache.outputs.cache-hit != 'true' || steps.source-generator-test-binaries-cache.outputs.cache-hit != 'true'
@@ -116,6 +130,44 @@ jobs:
 
       - name: Verify file apps
         run: dotnet run --file scripts/Verify-FileApps.cs
+
+  vscode-web-extension:
+    name: VS Code web extension
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 10.x
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24.x
+          cache: npm
+          cache-dependency-path: editors/vscode/package-lock.json
+
+      - name: Restore VS Code web extension
+        id: vscode-web-extension-cache
+        uses: actions/cache@v6
+        with:
+          path: artifacts/vscode-web-test-extension/willibrandon.csls-web.vsix
+          key: vscode-web-extension-${{ hashFiles('src/**', 'editors/vscode/**', 'scripts/Build-VsCodeExtension.cs', 'scripts/Build-VsCodeWebWorker.cs', 'scripts/ScriptSupport.cs', 'Directory.Build.*', 'Directory.Packages.props', 'NuGet.Config') }}
+
+      - name: Build VS Code web extension
+        if: steps.vscode-web-extension-cache.outputs.cache-hit != 'true'
+        run: >-
+          dotnet run --file scripts/Build-VsCodeExtension.cs --
+          --version 1.0.0
+          --target web
+          --output artifacts/vscode-web-test-extension/willibrandon.csls-web.vsix
 
   workspace-project-tests:
     name: Workspace project tests (${{ matrix.group }})
@@ -434,30 +486,25 @@ jobs:
             artifacts/zed-extension/grammar-source
           key: zed-extension-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('editors/zed/**', 'scripts/Build-ZedExtension.cs', 'scripts/Provision-WasiSdk.cs', 'scripts/ScriptSupport.cs', 'tests/Csls.Tests/ZedHighlightQueryTests.cs') }}
 
-      - name: Run Zed repository test
+      - name: Run Zed tests
         run: >-
           dotnet test --test-modules artifacts/bin/Csls.Tests/debug/Csls.Tests.dll
           --root-directory .
-          --filter "FullyQualifiedName=Csls.Tests.ZedLanguageServerTests.ZedProvidesInteractiveFeaturesInCslsWorkspace"
-          --minimum-expected-tests 1
-          --output Detailed
-
-      - name: Run Zed fixture tests
-        run: >-
-          dotnet test --test-modules artifacts/bin/Csls.Tests/debug/Csls.Tests.dll
-          --root-directory .
-          --filter "(FullyQualifiedName~Csls.Tests.ZedLanguageServerTests&FullyQualifiedName!=Csls.Tests.ZedLanguageServerTests.ZedProvidesInteractiveFeaturesInCslsWorkspace)|FullyQualifiedName=Csls.Tests.ZedHighlightQueryTests.StaticServiceReceiverIsHighlightedAsType"
-          --minimum-expected-tests 7
+          --filter "FullyQualifiedName~Csls.Tests.ZedLanguageServerTests|FullyQualifiedName=Csls.Tests.ZedHighlightQueryTests.StaticServiceReceiverIsHighlightedAsType"
+          --minimum-expected-tests 8
           --output Detailed
 
   vscode-tests:
     name: VS Code tests (${{ matrix.group }})
     runs-on: ubuntu-latest
     timeout-minutes: 5
-    needs: test-binaries
+    needs:
+      - test-binaries
+      - vscode-web-extension
     env:
       CSLS_RUN_VSCODE_REMOTE_TESTS: ${{ matrix.remote }}
       CSLS_RUN_VSCODE_WEB_TESTS: ${{ matrix.web }}
+      CSLS_VSCODE_WEB_PACKAGE_PATH: ${{ github.workspace }}/artifacts/vscode-web-test-extension/willibrandon.csls-web.vsix
     strategy:
       fail-fast: false
       matrix:
@@ -558,6 +605,14 @@ jobs:
             artifacts/bin/Csls.Tests/debug
             artifacts/bin/Csls.Worker/debug
           key: test-binaries-${{ runner.os }}-${{ runner.arch }}-${{ github.sha }}
+          fail-on-cache-miss: true
+
+      - name: Restore VS Code web extension
+        if: matrix.web
+        uses: actions/cache/restore@v6
+        with:
+          path: artifacts/vscode-web-test-extension/willibrandon.csls-web.vsix
+          key: vscode-web-extension-${{ hashFiles('src/**', 'editors/vscode/**', 'scripts/Build-VsCodeExtension.cs', 'scripts/Build-VsCodeWebWorker.cs', 'scripts/ScriptSupport.cs', 'Directory.Build.*', 'Directory.Packages.props', 'NuGet.Config') }}
           fail-on-cache-miss: true
 
       - name: Restore VS Code tools

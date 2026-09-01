@@ -230,8 +230,9 @@ public sealed class ZedLanguageServerTests
 
                 string openedDefinitionText = await WaitForEditorTextAsync(
                     displayName,
+                    expectedFileName,
                     expectedDeclaration,
-                    TimeSpan.FromSeconds(10),
+                    TimeSpan.FromSeconds(20),
                     TestContext.CancellationToken).ConfigureAwait(false);
                 Assert.Contains(
                     symbolName,
@@ -998,6 +999,7 @@ public sealed class ZedLanguageServerTests
 
     private static async Task<string> WaitForEditorTextAsync(
         string displayName,
+        string windowTitle,
         string expectedText,
         TimeSpan timeout,
         CancellationToken cancellationToken)
@@ -1011,6 +1013,11 @@ public sealed class ZedLanguageServerTests
         {
             while (await timer.WaitForNextTickAsync(timeoutSource.Token).ConfigureAwait(false))
             {
+                if (!X11Input.TryFocusWindow(displayName, windowTitle))
+                {
+                    continue;
+                }
+
                 X11Input.SendControlCharacter(displayName, 'a');
                 X11Input.SendControlCharacter(displayName, 'c');
                 clipboardText = await X11Clipboard.ReadTextAsync(
@@ -1025,7 +1032,7 @@ public sealed class ZedLanguageServerTests
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
             throw new TimeoutException(
-                $"Zed did not open editor text containing '{expectedText}'. " +
+                $"Zed did not open a '{windowTitle}' editor containing '{expectedText}'. " +
                 $"Last copied text: {clipboardText}");
         }
 
