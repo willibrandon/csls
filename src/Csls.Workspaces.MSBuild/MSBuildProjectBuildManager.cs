@@ -2,6 +2,7 @@ using Microsoft.Build.Construction;
 using Microsoft.Build.Evaluation;
 using Microsoft.Build.Execution;
 using Microsoft.CodeAnalysis;
+using System.Diagnostics;
 using System.Globalization;
 using System.Xml;
 using MSBuildProject = Microsoft.Build.Evaluation.Project;
@@ -88,8 +89,51 @@ internal sealed class MSBuildProjectBuildManager
         }
         finally
         {
-            buildManager.EndBuild();
-            projectCollection.UnloadAllProjects();
+            Process[] workerProcesses = [.. buildManager.GetWorkerProcesses()];
+            try
+            {
+                buildManager.EndBuild();
+                await WaitForWorkerProcessesAsync(workerProcesses).ConfigureAwait(false);
+            }
+            finally
+            {
+                projectCollection.UnloadAllProjects();
+            }
+        }
+    }
+
+    private static async Task WaitForWorkerProcessesAsync(Process[] workerProcesses)
+    {
+        if (workerProcesses.Length == 0)
+        {
+            return;
+        }
+
+        using var shutdownSource = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        try
+        {
+            await Task.WhenAll(workerProcesses.Select(process =>
+                process.WaitForExitAsync(shutdownSource.Token))).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (shutdownSource.IsCancellationRequested)
+        {
+            foreach (Process process in workerProcesses)
+            {
+                try
+                {
+                    if (!process.HasExited)
+                    {
+                        process.Kill(entireProcessTree: true);
+                    }
+                }
+                catch (InvalidOperationException)
+                {
+                    // The worker exited between the state check and termination request.
+                }
+            }
+
+            await Task.WhenAll(workerProcesses.Select(process =>
+                process.WaitForExitAsync(CancellationToken.None))).ConfigureAwait(false);
         }
     }
 
