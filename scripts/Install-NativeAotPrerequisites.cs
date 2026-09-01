@@ -30,6 +30,16 @@ if (args.Length != 2 ||
 try
 {
     string runtimeIdentifier = args[1];
+    if (OperatingSystem.IsMacOS())
+    {
+        await RunPackageManagerAsync("brew", ["install", "--formula", "emacs"])
+            .ConfigureAwait(false);
+        await Console.Out.WriteLineAsync(
+            $"Installed build and editor prerequisites for {runtimeIdentifier}.")
+            .ConfigureAwait(false);
+        return 0;
+    }
+
     if (!OperatingSystem.IsLinux() || !File.Exists("/etc/debian_version"))
     {
         await Console.Out.WriteLineAsync(
@@ -94,6 +104,12 @@ static async Task RunPackageManagerAsync(
         RedirectStandardOutput = true,
         UseShellExecute = false
     };
+    if (string.Equals(executablePath, "brew", StringComparison.Ordinal))
+    {
+        startInfo.Environment["HOMEBREW_NO_AUTO_UPDATE"] = "1";
+        startInfo.Environment["HOMEBREW_NO_ENV_HINTS"] = "1";
+    }
+
     foreach (string argument in arguments)
     {
         startInfo.ArgumentList.Add(argument);
