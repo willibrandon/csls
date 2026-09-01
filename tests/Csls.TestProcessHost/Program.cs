@@ -13,6 +13,12 @@ if (args is ["--wait-for-standard-input"])
     return 0;
 }
 
+if (args is ["--wait-for-file", string waitPath])
+{
+    await WaitForFileAsync(waitPath).ConfigureAwait(false);
+    return 0;
+}
+
 Dictionary<string, string> environment = new(StringComparer.Ordinal);
 int argumentIndex = 0;
 while (argumentIndex < args.Length &&
@@ -64,3 +70,32 @@ using Process process = Process.Start(startInfo)
     ?? throw new InvalidOperationException("The hosted process did not start.");
 await process.WaitForExitAsync().ConfigureAwait(false);
 return process.ExitCode;
+
+static async Task WaitForFileAsync(string path)
+{
+    string fullPath = Path.GetFullPath(path);
+    if (File.Exists(fullPath))
+    {
+        return;
+    }
+
+    string directoryPath = Path.GetDirectoryName(fullPath)
+        ?? throw new InvalidDataException($"The wait path has no parent: {fullPath}");
+    string fileName = Path.GetFileName(fullPath);
+    var completion = new TaskCompletionSource(
+        TaskCreationOptions.RunContinuationsAsynchronously);
+    using var watcher = new FileSystemWatcher(directoryPath, fileName)
+    {
+        NotifyFilter = NotifyFilters.FileName | NotifyFilters.LastWrite
+    };
+    watcher.Created += (_, _) => completion.TrySetResult();
+    watcher.Changed += (_, _) => completion.TrySetResult();
+    watcher.Renamed += (_, _) => completion.TrySetResult();
+    watcher.EnableRaisingEvents = true;
+    if (File.Exists(fullPath))
+    {
+        return;
+    }
+
+    await completion.Task.ConfigureAwait(false);
+}

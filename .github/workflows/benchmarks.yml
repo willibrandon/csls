@@ -1,0 +1,186 @@
+name: Benchmarks
+
+on:
+  release:
+    types:
+      - published
+  schedule:
+    - cron: '17 10 * * 2'
+  workflow_dispatch:
+    inputs:
+      full:
+        description: Run the full benchmark suite
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: benchmarks-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  DOTNET_CLI_TELEMETRY_OPTOUT: 1
+  DOTNET_NOLOGO: true
+
+jobs:
+  end-to-end:
+    name: End-to-end performance (${{ matrix.rid }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            rid: linux-x64
+            workspace_budget_ms: 120000
+            ready_budget_ms: 130000
+          - os: windows-latest
+            rid: win-x64
+            workspace_budget_ms: 165000
+            ready_budget_ms: 175000
+          - os: macos-26
+            rid: osx-arm64
+            workspace_budget_ms: 120000
+            ready_budget_ms: 130000
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 10.x
+
+      - name: Install Native AOT prerequisites
+        run: >-
+          dotnet run --file scripts/Install-NativeAotPrerequisites.cs --
+          --runtime ${{ matrix.rid }}
+
+      - name: Run end-to-end performance smoke
+        if: >-
+          github.event_name != 'schedule' &&
+          github.event_name != 'release' &&
+          (github.event_name != 'workflow_dispatch' || !inputs.full)
+        run: >-
+          dotnet run --file scripts/Run-EndToEndPerformance.cs --
+          --iterations 3
+          --workspace-budget-ms ${{ matrix.workspace_budget_ms }}
+          --ready-budget-ms ${{ matrix.ready_budget_ms }}
+
+      - name: Run complete end-to-end performance measurement
+        if: >-
+          github.event_name == 'schedule' ||
+          github.event_name == 'release' ||
+          (github.event_name == 'workflow_dispatch' && inputs.full)
+        run: >-
+          dotnet run --file scripts/Run-EndToEndPerformance.cs --
+          --iterations 3
+          --workspace-budget-ms ${{ matrix.workspace_budget_ms }}
+          --ready-budget-ms ${{ matrix.ready_budget_ms }}
+
+      - name: Upload end-to-end performance results
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: end-to-end-performance-results-${{ matrix.rid }}
+          path: artifacts/end-to-end-performance
+          if-no-files-found: error
+
+  smoke:
+    name: Benchmark smoke
+    if: >-
+      github.event_name != 'schedule' &&
+      github.event_name != 'release' &&
+      (github.event_name != 'workflow_dispatch' || !inputs.full)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 10.x
+
+      - name: Run smoke benchmarks
+        run: dotnet run --file scripts/Run-Benchmarks.cs -- --job Dry
+
+      - name: Upload benchmark results
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: benchmark-smoke-results
+          path: artifacts/benchmarks
+          if-no-files-found: error
+
+  regression:
+    name: Benchmark regression
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 10.x
+
+      - name: Compare stable benchmarks
+        run: >-
+          dotnet run --file scripts/Verify-BenchmarkRegression.cs --
+          --base-ref ${{ github.base_ref }}
+
+      - name: Upload benchmark comparison
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: benchmark-regression-results
+          path: artifacts/benchmark-regression
+          if-no-files-found: error
+
+  full:
+    name: Full benchmarks
+    if: >-
+      github.event_name == 'schedule' ||
+      github.event_name == 'release' ||
+      (github.event_name == 'workflow_dispatch' && inputs.full)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 10.x
+
+      - name: Run full benchmarks
+        run: dotnet run --file scripts/Run-Benchmarks.cs -- --disassembly
+
+      - name: Upload benchmark results
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: benchmark-results
+          path: artifacts/benchmarks
+          if-no-files-found: error

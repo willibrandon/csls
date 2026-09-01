@@ -380,6 +380,62 @@ public sealed class RequestSchedulerTests
     }
 
     /// <summary>
+    /// Begins cancellation before disposal so protocol shutdown can drain active requests early.
+    /// </summary>
+    [TestMethod]
+    public async Task StopCancelsOutstandingRequestsBeforeDisposal()
+    {
+        CancellationToken cancellationToken = TestContext.CancellationToken;
+        var scheduler = new RequestScheduler(
+            capacity: 2,
+            foregroundConcurrency: 1,
+            backgroundConcurrency: 1);
+        await using ConfiguredAsyncDisposable schedulerDisposal =
+            scheduler.ConfigureAwait(false);
+        var started = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var canceled = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+
+        Task<int> request = scheduler.ScheduleAsync(
+            "running-read",
+            RequestMode.ReadOnly,
+            static () => 1,
+            async context =>
+            {
+                started.SetResult();
+                try
+                {
+                    await Task.Delay(Timeout.InfiniteTimeSpan, context.CancellationToken)
+                        .ConfigureAwait(false);
+                }
+                catch (OperationCanceledException)
+                    when (context.CancellationToken.IsCancellationRequested)
+                {
+                    canceled.SetResult();
+                    throw;
+                }
+
+                return 1;
+            },
+            cancellationToken);
+        await started.Task.WaitAsync(cancellationToken).ConfigureAwait(false);
+
+        scheduler.BeginStop();
+
+        await canceled.Task.WaitAsync(cancellationToken).ConfigureAwait(false);
+        Assert.IsTrue(scheduler.IsStopping);
+        Assert.ThrowsExactly<ObjectDisposedException>(() => scheduler.ScheduleAsync(
+            "rejected-read",
+            RequestMode.ReadOnly,
+            static () => 1,
+            static _ => ValueTask.FromResult(1),
+            cancellationToken));
+        await scheduler.DisposeAsync().ConfigureAwait(false);
+        Assert.IsTrue(request.IsCanceled);
+    }
+
+    /// <summary>
     /// Verifies request identity, server cancellation, and bounded lifecycle tracing.
     /// </summary>
     [TestMethod]

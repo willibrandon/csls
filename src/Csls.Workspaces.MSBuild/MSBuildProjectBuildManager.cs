@@ -93,7 +93,7 @@ internal sealed class MSBuildProjectBuildManager
             try
             {
                 buildManager.EndBuild();
-                await WaitForWorkerProcessesAsync(workerProcesses).ConfigureAwait(false);
+                await TerminateWorkerProcessesAsync(workerProcesses).ConfigureAwait(false);
             }
             finally
             {
@@ -102,36 +102,25 @@ internal sealed class MSBuildProjectBuildManager
         }
     }
 
-    private static async Task WaitForWorkerProcessesAsync(Process[] workerProcesses)
+    private static async Task TerminateWorkerProcessesAsync(Process[] workerProcesses)
     {
-        if (workerProcesses.Length == 0)
+        foreach (Process process in workerProcesses)
         {
-            return;
-        }
-
-        using var shutdownSource = new CancellationTokenSource(TimeSpan.FromSeconds(10));
-        try
-        {
-            await Task.WhenAll(workerProcesses.Select(process =>
-                process.WaitForExitAsync(shutdownSource.Token))).ConfigureAwait(false);
-        }
-        catch (OperationCanceledException) when (shutdownSource.IsCancellationRequested)
-        {
-            foreach (Process process in workerProcesses)
+            try
             {
-                try
+                if (!process.HasExited)
                 {
-                    if (!process.HasExited)
-                    {
-                        process.Kill(entireProcessTree: true);
-                    }
-                }
-                catch (InvalidOperationException)
-                {
-                    // The worker exited between the state check and termination request.
+                    process.Kill(entireProcessTree: true);
                 }
             }
+            catch (InvalidOperationException)
+            {
+                // The worker exited between the state check and termination request.
+            }
+        }
 
+        if (workerProcesses.Length > 0)
+        {
             await Task.WhenAll(workerProcesses.Select(process =>
                 process.WaitForExitAsync(CancellationToken.None))).ConfigureAwait(false);
         }

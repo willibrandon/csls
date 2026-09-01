@@ -25,6 +25,48 @@ public sealed partial class MSBuildWorkspaceLoader : WorkspaceLoader
         _logger = logger;
     }
 
+    /// <inheritdoc />
+    public override Task<IReadOnlyList<WorkspaceFolderSnapshot>> LoadPreliminaryAsync(
+        IReadOnlyList<string> rootPaths,
+        string buildConfiguration,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(rootPaths);
+        ArgumentException.ThrowIfNullOrWhiteSpace(buildConfiguration);
+        int projectSystemEntryPointCount = 0;
+        foreach (string rootPath in rootPaths.Distinct(PathComparer))
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            projectSystemEntryPointCount = checked(
+                projectSystemEntryPointCount + DiscoverWorkspaceFiles(
+                    Path.GetFullPath(rootPath),
+                    cancellationToken).Count(static path => !IsFileBasedApp(path)));
+            if (projectSystemEntryPointCount > 1)
+            {
+                break;
+            }
+        }
+
+        if (projectSystemEntryPointCount <= 1)
+        {
+            return Task.FromResult<IReadOnlyList<WorkspaceFolderSnapshot>>([]);
+        }
+
+        string trustedPlatformAssemblies = AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES")
+            as string
+            ?? throw new InvalidOperationException(
+                "The .NET host did not provide its trusted platform assembly set.");
+        string[] referencePaths = trustedPlatformAssemblies.Split(
+            Path.PathSeparator,
+            StringSplitOptions.RemoveEmptyEntries);
+        var loader = new SynchronizedWorkspaceLoader(referencePaths);
+        return loader.LoadAsync(
+            rootPaths,
+            buildConfiguration,
+            progress: null,
+            cancellationToken);
+    }
+
     /// <summary>
     /// Restores every discovered workspace entry point through the real .NET CLI.
     /// </summary>
@@ -127,6 +169,27 @@ public sealed partial class MSBuildWorkspaceLoader : WorkspaceLoader
             Project project = snapshot.Solution.Projects.Single();
             progressReporter?.ReportProject(rootPath, rootPath, project.Name);
             return snapshot;
+        }
+
+        string[] projectSystemEntryPoints =
+        [
+            .. workspaceFiles.Where(static path => !IsFileBasedApp(path))
+        ];
+        if (projectSystemEntryPoints.Length > 0)
+        {
+            try
+            {
+                await DotNetWorkspaceRestorer.RestoreAsync(
+                    projectSystemEntryPoints,
+                    _logger,
+                    cancellationToken).ConfigureAwait(false);
+            }
+            catch (InvalidOperationException exception)
+            {
+                LogWorkspaceDiagnostic(
+                    WorkspaceDiagnosticKind.Warning,
+                    exception.Message);
+            }
         }
 
         (Workspace workspace, Solution solution) = await LoadWorkspaceConcurrentlyAsync(

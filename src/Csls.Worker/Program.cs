@@ -89,19 +89,18 @@ static async Task RunSessionAsync(
 {
     using var sessionSource = CancellationTokenSource.CreateLinkedTokenSource(
         cancellationToken);
-    using CancellationTokenRegistration exitRegistration = languageServer.ExitToken.Register(
-        static state => ((CancellationTokenSource)state!).Cancel(),
-        sessionSource);
     Task rpcTask = LspRpcServer.RunAsync(
         input,
         output,
         languageServer,
         client,
         sessionSource.Token);
+    Task exitTask = languageServer.WaitForExitAsync(sessionSource.Token);
+    await Task.WhenAny(rpcTask, exitTask).ConfigureAwait(false);
+    await sessionSource.CancelAsync().ConfigureAwait(false);
     try
     {
-        ValueTask completion = new(rpcTask);
-        await completion.ConfigureAwait(false);
+        await Task.WhenAll(rpcTask, exitTask).ConfigureAwait(false);
     }
     catch (OperationCanceledException) when (sessionSource.IsCancellationRequested)
     {

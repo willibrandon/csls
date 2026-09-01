@@ -12,6 +12,8 @@ using System.Collections.Immutable;
 using System.Diagnostics;
 using System.Globalization;
 using System.Text;
+using System.Xml;
+using System.Xml.Linq;
 using LspCodeAction = Csls.Protocol.CodeAction;
 using LspDiagnostic = Csls.Protocol.Diagnostic;
 using LspDocumentHighlight = Csls.Protocol.DocumentHighlight;
@@ -49,6 +51,7 @@ public sealed partial class WorkspaceManager : IAsyncDisposable
     private ImmutableDictionary<string, SourceText> _razorDocuments;
     private string _buildConfiguration = "Debug";
     private int _enableAnalyzers = 1;
+    private int _isPreliminaryWorkspace;
     private long _generation;
     private int _disposeState;
 
@@ -146,6 +149,166 @@ public sealed partial class WorkspaceManager : IAsyncDisposable
         }
     }
 
+    /// <summary>
+    /// Publishes a preliminary project-shaped workspace when the active loader provides one.
+    /// </summary>
+    /// <param name="rootPaths">Absolute workspace root paths.</param>
+    /// <param name="cancellationToken">The operation cancellation token.</param>
+    /// <returns>True when preliminary workspace snapshots were published.</returns>
+    public async Task<bool> LoadPreliminaryAsync(
+        IReadOnlyList<string> rootPaths,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(rootPaths);
+        ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposeState) != 0, this);
+        IReadOnlyList<WorkspaceFolderSnapshot> snapshots = await _workspaceLoader
+            .LoadPreliminaryAsync(
+                rootPaths,
+                Volatile.Read(ref _buildConfiguration),
+                cancellationToken)
+            .ConfigureAwait(false);
+        if (snapshots.Count == 0)
+        {
+            return false;
+        }
+
+        ImmutableArray<(string RootPath, Workspace Workspace, Solution Solution)> loadedFolders =
+        [
+            .. snapshots.Select(static snapshot =>
+                (snapshot.RootPath, snapshot.Workspace, snapshot.Solution))
+        ];
+        bool published = false;
+        try
+        {
+            await PublishFoldersAsync(
+                loadedFolders,
+                documentVersions: null,
+                razorDocuments: null,
+                cancellationToken,
+                isPreliminary: true).ConfigureAwait(false);
+            published = true;
+            return true;
+        }
+        finally
+        {
+            if (!published)
+            {
+                DisposeFolders(loadedFolders);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Loads the complete workspace before ordering its publication with active readers.
+    /// </summary>
+    /// <param name="rootPaths">Absolute workspace root paths.</param>
+    /// <param name="progress">The optional ordered project progress destination.</param>
+    /// <param name="publishAsync">Orders and invokes the supplied publication operation once.</param>
+    /// <param name="cancellationToken">The operation cancellation token.</param>
+    /// <returns>True when the prepared workspace still matched current roots and was published.</returns>
+    public async Task<bool> LoadProgressivelyAsync(
+        IReadOnlyList<string> rootPaths,
+        IProgress<WorkspaceLoadProgress>? progress,
+        Func<Func<CancellationToken, Task<bool>>, CancellationToken, Task<bool>> publishAsync,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(rootPaths);
+        ArgumentNullException.ThrowIfNull(publishAsync);
+        ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposeState) != 0, this);
+        long startedTimestamp = Stopwatch.GetTimestamp();
+        WorkspaceManagerLogger.LogWorkspaceLoadStarted(_logger);
+        string buildConfiguration = Volatile.Read(ref _buildConfiguration);
+        string[] expectedRoots =
+        [
+            .. rootPaths.Select(Path.GetFullPath).Distinct(PathComparer)
+        ];
+        ImmutableArray<(string RootPath, Workspace Workspace, Solution Solution)> loadedFolders =
+            await LoadFoldersAsync(
+                expectedRoots,
+                buildConfiguration,
+                cancellationToken,
+                progress).ConfigureAwait(false);
+        bool published = false;
+        try
+        {
+            published = await publishAsync(
+                publishCancellationToken => PublishLoadedFoldersPreservingOverlaysAsync(
+                    loadedFolders,
+                    expectedRoots,
+                    buildConfiguration,
+                    publishCancellationToken),
+                cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            if (!published)
+            {
+                DisposeFolders(loadedFolders);
+            }
+        }
+
+        if (_logger.IsEnabled(LogLevel.Information))
+        {
+            long elapsedMilliseconds =
+                (long)Stopwatch.GetElapsedTime(startedTimestamp).TotalMilliseconds;
+            int projectCount = loadedFolders.Sum(
+                static folder => folder.Solution.ProjectIds.Count);
+            WorkspaceManagerLogger.LogWorkspaceLoadCompleted(
+                _logger,
+                elapsedMilliseconds,
+                projectCount);
+        }
+
+        return published;
+    }
+
+    private async Task<bool> PublishLoadedFoldersPreservingOverlaysAsync(
+        ImmutableArray<(string RootPath, Workspace Workspace, Solution Solution)> loadedFolders,
+        IReadOnlyList<string> expectedRoots,
+        string expectedBuildConfiguration,
+        CancellationToken cancellationToken)
+    {
+        if (!WorkspaceRoots.SequenceEqual(expectedRoots, PathComparer) ||
+            !string.Equals(
+                Volatile.Read(ref _buildConfiguration),
+                expectedBuildConfiguration,
+                StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        IReadOnlyList<TextDocumentItem> overlays = await CaptureOpenDocumentsAsync(
+            cancellationToken).ConfigureAwait(false);
+        IReadOnlyList<TextDocumentItem> retainedOverlays =
+        [
+            .. overlays.Where(overlay =>
+                FindFolderIndex(overlay.Uri.GetFileSystemPath(), loadedFolders) >= 0)
+        ];
+        loadedFolders = ApplyOpenDocuments(loadedFolders, retainedOverlays);
+        var documentVersions = new Dictionary<string, int>(
+            retainedOverlays.Count,
+            PathComparer);
+        var razorDocuments = new Dictionary<string, SourceText>(
+            retainedOverlays.Count,
+            PathComparer);
+        foreach (TextDocumentItem overlay in retainedOverlays)
+        {
+            string path = overlay.Uri.GetFileSystemPath();
+            documentVersions.Add(path, overlay.Version);
+            if (WorkspaceRazorDiagnosticService.IsRazorDocument(path))
+            {
+                razorDocuments.Add(path, SourceText.From(overlay.Text, Encoding.UTF8));
+            }
+        }
+
+        await PublishFoldersAsync(
+            loadedFolders,
+            documentVersions,
+            razorDocuments,
+            cancellationToken).ConfigureAwait(false);
+        return true;
+    }
+
     private Task<ImmutableArray<(
         string RootPath,
         Workspace Workspace,
@@ -195,7 +358,8 @@ public sealed partial class WorkspaceManager : IAsyncDisposable
         IReadOnlyDictionary<string, SourceText>? razorDocuments,
         CancellationToken cancellationToken,
         string? buildConfiguration = null,
-        bool? enableAnalyzers = null)
+        bool? enableAnalyzers = null,
+        bool isPreliminary = false)
     {
         await _mutationGate.WaitAsync(cancellationToken).ConfigureAwait(false);
         ImmutableArray<(string RootPath, Workspace Workspace, Solution Solution)> previous;
@@ -226,7 +390,11 @@ public sealed partial class WorkspaceManager : IAsyncDisposable
             }
 
             _diagnosticCache.Clear();
-            Interlocked.Increment(ref _generation);
+            Volatile.Write(ref _isPreliminaryWorkspace, isPreliminary ? 1 : 0);
+            if (!isPreliminary)
+            {
+                Interlocked.Increment(ref _generation);
+            }
         }
         finally
         {
@@ -234,6 +402,88 @@ public sealed partial class WorkspaceManager : IAsyncDisposable
         }
 
         DisposeFolders(previous);
+    }
+
+    /// <summary>
+    /// Gets whether a source document belongs to a project that the preliminary workspace models completely enough for navigation.
+    /// </summary>
+    /// <param name="uri">The source document URI.</param>
+    /// <returns>True when source navigation can use the current preliminary workspace.</returns>
+    public bool CanNavigateFromPreliminaryWorkspace(DocumentUri uri)
+    {
+        if (Volatile.Read(ref _isPreliminaryWorkspace) == 0 || !uri.IsFile)
+        {
+            return false;
+        }
+
+        string documentPath = uri.GetFileSystemPath();
+        if (!documentPath.EndsWith(".cs", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        ImmutableArray<(string RootPath, Workspace Workspace, Solution Solution)> folders =
+            _folders;
+        int folderIndex = FindFolderIndex(documentPath, folders);
+        Document? document = folderIndex >= 0
+            ? FindDocument(folders[folderIndex].Solution, documentPath)
+            : null;
+        string? projectPath = document?.Project.FilePath;
+        if (projectPath is null ||
+            !projectPath.EndsWith(".csproj", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        try
+        {
+            var settings = new XmlReaderSettings
+            {
+                DtdProcessing = DtdProcessing.Prohibit,
+                XmlResolver = null
+            };
+            using var reader = XmlReader.Create(projectPath, settings);
+            var project = XDocument.Load(reader, LoadOptions.None);
+            XElement? root = project.Root;
+            if (root is null ||
+                !string.Equals(
+                    root.Attribute("Sdk")?.Value,
+                    "Microsoft.NET.Sdk",
+                    StringComparison.Ordinal))
+            {
+                return false;
+            }
+
+            XElement[] targetFrameworks =
+            [
+                .. project.Descendants().Where(static element =>
+                    element.Name.LocalName.Equals(
+                        "TargetFramework",
+                        StringComparison.Ordinal))
+            ];
+            if (targetFrameworks.Length != 1 ||
+                string.IsNullOrWhiteSpace(targetFrameworks[0].Value) ||
+                targetFrameworks[0].Attribute("Condition") is not null)
+            {
+                return false;
+            }
+
+            return !project.Descendants().Any(static element =>
+                element.Name.LocalName is
+                    "Analyzer" or
+                    "Compile" or
+                    "FrameworkReference" or
+                    "Import" or
+                    "PackageReference" or
+                    "ProjectReference" or
+                    "Reference" or
+                    "TargetFrameworks");
+        }
+        catch (Exception exception) when (
+            exception is IOException or UnauthorizedAccessException or XmlException)
+        {
+            return false;
+        }
     }
 
     /// <summary>

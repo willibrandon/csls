@@ -17,25 +17,49 @@ if (args.Length == 1 && args[0] is "--help" or "-h" or "-?")
         .ConfigureAwait(false);
     await Console.Out.WriteLineAsync(
         "Usage: dotnet run --file scripts/Provision-VsCode.cs " +
-        "[--output <directory>] [--with-web-browsers] [--fixtures-only]")
+        "[--output <directory>] [--with-web-browsers] [--fixtures-only] " +
+        "[--web-only] [--web-browser <chromium|firefox|webkit>] " +
+        "[--without-dev-kit]")
         .ConfigureAwait(false);
     return 0;
 }
 
 string? outputPath = null;
-bool installWebBrowsers = false;
+var webBrowsers = new HashSet<string>(StringComparer.Ordinal);
 bool fixturesOnly = false;
+bool webOnly = false;
+bool provisionDevKit = true;
 for (int index = 0; index < args.Length; index++)
 {
     if (string.Equals(args[index], "--with-web-browsers", StringComparison.Ordinal))
     {
-        installWebBrowsers = true;
+        webBrowsers.UnionWith(["chromium", "firefox", "webkit"]);
+        continue;
+    }
+
+    if (string.Equals(args[index], "--web-browser", StringComparison.Ordinal) &&
+        index + 1 < args.Length &&
+        args[index + 1] is "chromium" or "firefox" or "webkit")
+    {
+        webBrowsers.Add(args[++index]);
         continue;
     }
 
     if (string.Equals(args[index], "--fixtures-only", StringComparison.Ordinal))
     {
         fixturesOnly = true;
+        continue;
+    }
+
+    if (string.Equals(args[index], "--web-only", StringComparison.Ordinal))
+    {
+        webOnly = true;
+        continue;
+    }
+
+    if (string.Equals(args[index], "--without-dev-kit", StringComparison.Ordinal))
+    {
+        provisionDevKit = false;
         continue;
     }
 
@@ -49,10 +73,19 @@ for (int index = 0; index < args.Length; index++)
 
     await Console.Error.WriteLineAsync(
         "Usage: dotnet run --file scripts/Provision-VsCode.cs " +
-        "[--output <directory>] [--with-web-browsers] [--fixtures-only]")
+        "[--output <directory>] [--with-web-browsers] [--fixtures-only] " +
+        "[--web-only] [--web-browser <chromium|firefox|webkit>] " +
+        "[--without-dev-kit]")
         .ConfigureAwait(false);
     return 2;
 }
+
+if (webOnly && webBrowsers.Count == 0)
+{
+    webBrowsers.UnionWith(["chromium", "firefox", "webkit"]);
+}
+
+bool installWebBrowsers = webBrowsers.Count > 0;
 
 try
 {
@@ -73,65 +106,83 @@ try
             fixturePath
         ],
         repositoryRoot);
-    Task<string> extensionInstallTask = RunCheckedAsync(
-        npmExecutable,
-        [
-            .. npmPrefix,
-            "ci",
-            "--ignore-scripts",
-            "--prefix",
-            extensionPath
-        ],
-        repositoryRoot);
-    await Task.WhenAll(fixtureInstallTask, extensionInstallTask).ConfigureAwait(false);
+    Task<string>? extensionInstallTask = webOnly
+        ? null
+        : RunCheckedAsync(
+            npmExecutable,
+            [
+                .. npmPrefix,
+                "ci",
+                "--ignore-scripts",
+                "--prefix",
+                extensionPath
+            ],
+            repositoryRoot);
+    await fixtureInstallTask.ConfigureAwait(false);
+    if (extensionInstallTask is not null)
+    {
+        await extensionInstallTask.ConfigureAwait(false);
+    }
 
-    Task<string> extensionCompileTask = RunCheckedAsync(
-        npmExecutable,
-        [
-            .. npmPrefix,
-            "run",
-            installWebBrowsers ? "compile" : "compile:node",
-            "--prefix",
-            extensionPath
-        ],
-        repositoryRoot);
+    Task<string>? extensionCompileTask = webOnly
+        ? null
+        : RunCheckedAsync(
+            npmExecutable,
+            [
+                .. npmPrefix,
+                "run",
+                installWebBrowsers ? "compile" : "compile:node",
+                "--prefix",
+                extensionPath
+            ],
+            repositoryRoot);
     Task<string> fixtureCompileTask = RunCheckedAsync(
         npmExecutable,
         [
             .. npmPrefix,
             "run",
-            installWebBrowsers ? "compile" : "compile:desktop",
+            webOnly ? "compile:web" : installWebBrowsers ? "compile" : "compile:desktop",
             "--prefix",
             fixturePath
         ],
         repositoryRoot);
     if (fixturesOnly)
     {
-        await Task.WhenAll(extensionCompileTask, fixtureCompileTask).ConfigureAwait(false);
+        if (extensionCompileTask is not null)
+        {
+            await extensionCompileTask.ConfigureAwait(false);
+        }
+        await fixtureCompileTask.ConfigureAwait(false);
         await Console.Out.WriteLineAsync("Prepared the VS Code test fixtures.")
             .ConfigureAwait(false);
         return 0;
     }
 
-    string targetPlatform = ResolveVsCodeTargetPlatform();
-    Task<string> runtimeExtensionProvisionTask = ProvisionExtensionAsync(
-        toolsRoot,
-        "vscode-dotnet-runtime",
-        "ms-dotnettools",
-        "vscode-dotnet-runtime",
-        targetPlatform: null);
-    Task<string> csharpExtensionProvisionTask = ProvisionExtensionAsync(
-        toolsRoot,
-        "vscode-csharp",
-        "ms-dotnettools",
-        "csharp",
-        targetPlatform);
-    Task<string> csharpDevKitExtensionProvisionTask = ProvisionExtensionAsync(
-        toolsRoot,
-        "vscode-csdevkit",
-        "ms-dotnettools",
-        "csdevkit",
-        targetPlatform);
+    string? targetPlatform = webOnly ? null : ResolveVsCodeTargetPlatform();
+    Task<string>? runtimeExtensionProvisionTask = webOnly
+        ? null
+        : ProvisionExtensionAsync(
+            toolsRoot,
+            "vscode-dotnet-runtime",
+            "ms-dotnettools",
+            "vscode-dotnet-runtime",
+            targetPlatform: null);
+    Task<string>? csharpExtensionProvisionTask = webOnly
+        ? null
+        : ProvisionExtensionAsync(
+            toolsRoot,
+            "vscode-csharp",
+            "ms-dotnettools",
+            "csharp",
+            targetPlatform);
+    Task<string>? csharpDevKitExtensionProvisionTask = webOnly || !provisionDevKit
+        ? null
+        : ProvisionExtensionAsync(
+            toolsRoot,
+            "vscode-csdevkit",
+            "ms-dotnettools",
+            "csdevkit",
+            targetPlatform);
     Task<string>? browserInstallTask = null;
     if (installWebBrowsers)
     {
@@ -142,9 +193,7 @@ try
             [
                 Path.Join(fixturePath, "node_modules", "playwright-core", "cli.js"),
                 "install",
-                "chromium",
-                "firefox",
-                "webkit"
+                .. webBrowsers.Order(StringComparer.Ordinal)
             ],
             repositoryRoot,
             new Dictionary<string, string>(StringComparer.Ordinal)
@@ -153,18 +202,24 @@ try
             });
     }
 
-    string cachePath = Path.Join(toolsRoot, "vscode", "stable");
-    Directory.CreateDirectory(cachePath);
-    List<string> provisionArguments =
-    [
-        Path.Join(fixturePath, "provision.mjs"),
-        cachePath
-    ];
-    if (installWebBrowsers)
+    string desktopCachePath = Path.Join(toolsRoot, "vscode", "stable");
+    string webCachePath = Path.Join(toolsRoot, "vscode-web", "stable");
+    List<string> provisionArguments = [Path.Join(fixturePath, "provision.mjs")];
+    if (webOnly)
     {
-        string webCachePath = Path.Join(toolsRoot, "vscode-web", "stable");
         Directory.CreateDirectory(webCachePath);
+        provisionArguments.Add("--web-only");
         provisionArguments.Add(webCachePath);
+    }
+    else
+    {
+        Directory.CreateDirectory(desktopCachePath);
+        provisionArguments.Add(desktopCachePath);
+        if (installWebBrowsers)
+        {
+            Directory.CreateDirectory(webCachePath);
+            provisionArguments.Add(webCachePath);
+        }
     }
 
     Task<string> provisionTask = RunCheckedAsync(
@@ -173,13 +228,22 @@ try
         repositoryRoot);
     List<Task> provisioningTasks =
     [
-        extensionCompileTask,
         fixtureCompileTask,
-        provisionTask,
-        runtimeExtensionProvisionTask,
-        csharpExtensionProvisionTask,
-        csharpDevKitExtensionProvisionTask
+        provisionTask
     ];
+    if (extensionCompileTask is not null)
+    {
+        provisioningTasks.Add(extensionCompileTask);
+    }
+    if (runtimeExtensionProvisionTask is not null)
+    {
+        provisioningTasks.Add(runtimeExtensionProvisionTask);
+        provisioningTasks.Add(csharpExtensionProvisionTask!);
+        if (csharpDevKitExtensionProvisionTask is not null)
+        {
+            provisioningTasks.Add(csharpDevKitExtensionProvisionTask);
+        }
+    }
     if (browserInstallTask is not null)
     {
         provisioningTasks.Add(browserInstallTask);
@@ -193,21 +257,27 @@ try
             StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
         .LastOrDefault()
         ?? string.Empty;
-    if (!File.Exists(executablePath))
+    if (webOnly ? !Directory.Exists(executablePath) : !File.Exists(executablePath))
     {
         throw new InvalidDataException(
             "The VS Code stable-channel provisioner returned a missing executable: " +
             executablePath);
     }
 
-    string runtimeExtensionPath = await runtimeExtensionProvisionTask.ConfigureAwait(false);
-    string csharpExtensionPath = await csharpExtensionProvisionTask.ConfigureAwait(false);
-    string csharpDevKitExtensionPath = await csharpDevKitExtensionProvisionTask.ConfigureAwait(false);
-
     await Console.Out.WriteLineAsync(executablePath).ConfigureAwait(false);
-    await Console.Out.WriteLineAsync(runtimeExtensionPath).ConfigureAwait(false);
-    await Console.Out.WriteLineAsync(csharpExtensionPath).ConfigureAwait(false);
-    await Console.Out.WriteLineAsync(csharpDevKitExtensionPath).ConfigureAwait(false);
+    if (runtimeExtensionProvisionTask is not null)
+    {
+        await Console.Out.WriteLineAsync(
+            await runtimeExtensionProvisionTask.ConfigureAwait(false)).ConfigureAwait(false);
+        await Console.Out.WriteLineAsync(
+            await csharpExtensionProvisionTask!.ConfigureAwait(false)).ConfigureAwait(false);
+        if (csharpDevKitExtensionProvisionTask is not null)
+        {
+            await Console.Out.WriteLineAsync(
+                await csharpDevKitExtensionProvisionTask.ConfigureAwait(false))
+                .ConfigureAwait(false);
+        }
+    }
     return 0;
 }
 catch (Exception exception) when (exception is

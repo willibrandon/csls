@@ -13,25 +13,18 @@ public sealed partial class WorkspaceManager
     /// </summary>
     /// <param name="cancellationToken">The inspection cancellation token.</param>
     /// <returns>The allocation-bounded workspace summary.</returns>
-    public async Task<WorkspaceSummarySnapshot> InspectSummaryAsync(
+    public Task<WorkspaceSummarySnapshot> InspectSummaryAsync(
         CancellationToken cancellationToken)
     {
         ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposeState) != 0, this);
-        await _mutationGate.WaitAsync(cancellationToken).ConfigureAwait(false);
-        try
+        cancellationToken.ThrowIfCancellationRequested();
+        ImmutableArray<(string RootPath, Workspace Workspace, Solution Solution)> folders =
+            _folders;
+        return Task.FromResult(new WorkspaceSummarySnapshot
         {
-            ImmutableArray<(string RootPath, Workspace Workspace, Solution Solution)> folders =
-                _folders;
-            return new WorkspaceSummarySnapshot
-            {
-                Generation = Generation,
-                Workspaces = CreateWorkspaceInspections(folders)
-            };
-        }
-        finally
-        {
-            _mutationGate.Release();
-        }
+            Generation = Generation,
+            Workspaces = CreateWorkspaceInspections(folders)
+        });
     }
 
     /// <summary>

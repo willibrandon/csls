@@ -78,6 +78,10 @@ export class WorkspaceExperience implements vscode.Disposable {
     return this.tests.getTestNames();
   }
 
+  async refreshTests(): Promise<void> {
+    await this.tests.refresh();
+  }
+
   getTestErrors(): readonly string[] {
     return this.tests.getErrors();
   }
