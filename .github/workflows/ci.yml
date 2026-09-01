@@ -111,9 +111,19 @@ jobs:
         run: dotnet run --file scripts/Verify-GitHubActions.cs
 
   file-apps:
-    name: File apps
+    name: File apps (${{ matrix.group }}/${{ matrix.count }})
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - group: 1
+            index: 0
+            count: 2
+          - group: 2
+            index: 1
+            count: 2
 
     steps:
       - name: Check out repository
@@ -131,7 +141,7 @@ jobs:
         uses: actions/cache/restore@v6
         with:
           path: ~/.local/share/dotnet/runfile
-          key: file-app-builds-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/*.cs', '.editorconfig', 'Directory.Build.*', 'Directory.Packages.props', 'NuGet.Config') }}
+          key: file-app-builds-${{ matrix.group }}-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/*.cs', '.editorconfig', 'Directory.Build.*', 'Directory.Packages.props', 'NuGet.Config') }}
 
       - name: Restore file app packages
         run: |
@@ -139,14 +149,17 @@ jobs:
           dotnet restore scripts/Assemble-ReleaseAssets.cs
 
       - name: Verify file apps
-        run: dotnet run --file scripts/Verify-FileApps.cs
+        run: >-
+          dotnet run --file scripts/Verify-FileApps.cs --
+          --group-index ${{ matrix.index }}
+          --group-count ${{ matrix.count }}
 
       - name: Save file app builds
         if: steps.file-app-builds-cache.outputs.cache-hit != 'true'
         uses: actions/cache/save@v6
         with:
           path: ~/.local/share/dotnet/runfile
-          key: file-app-builds-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/*.cs', '.editorconfig', 'Directory.Build.*', 'Directory.Packages.props', 'NuGet.Config') }}
+          key: file-app-builds-${{ matrix.group }}-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/*.cs', '.editorconfig', 'Directory.Build.*', 'Directory.Packages.props', 'NuGet.Config') }}
 
   vscode-web-extension:
     name: VS Code web extension

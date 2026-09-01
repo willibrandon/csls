@@ -5,6 +5,11 @@
 #:property TreatWarningsAsErrors=true
 
 using System.Diagnostics;
+using System.Globalization;
+
+const string usage =
+    "Usage: dotnet run --file scripts/Verify-FileApps.cs " +
+    "[--group-index <index> --group-count <count>]";
 
 if (args.Length == 1 && args[0] is "--help" or "-h" or "-?")
 {
@@ -12,21 +17,38 @@ if (args.Length == 1 && args[0] is "--help" or "-h" or "-?")
         "Compiles every repository file app and verifies its help boundary.")
         .ConfigureAwait(false);
     await Console.Out.WriteLineAsync(
-        "Usage: dotnet run --file scripts/Verify-FileApps.cs").ConfigureAwait(false);
+        usage).ConfigureAwait(false);
     return 0;
 }
 
-if (args.Length != 0)
+int groupIndex = 0;
+int groupCount = 1;
+if (args.Length != 0 &&
+    (args.Length != 4 ||
+        !string.Equals(args[0], "--group-index", StringComparison.Ordinal) ||
+        !int.TryParse(
+            args[1],
+            NumberStyles.None,
+            CultureInfo.InvariantCulture,
+            out groupIndex) ||
+        !string.Equals(args[2], "--group-count", StringComparison.Ordinal) ||
+        !int.TryParse(
+            args[3],
+            NumberStyles.None,
+            CultureInfo.InvariantCulture,
+            out groupCount) ||
+        groupIndex < 0 ||
+        groupCount < 1 ||
+        groupIndex >= groupCount))
 {
-    await Console.Error.WriteLineAsync(
-        "Usage: dotnet run --file scripts/Verify-FileApps.cs").ConfigureAwait(false);
+    await Console.Error.WriteLineAsync(usage).ConfigureAwait(false);
     return 2;
 }
 
 try
 {
     string repositoryRoot = FindRepositoryRoot();
-    string[] fileApps =
+    string[] allFileApps =
     [
         .. Directory.EnumerateFiles(
             Path.Join(repositoryRoot, "scripts"),
@@ -41,6 +63,10 @@ try
                     "Verify-FileApps.cs",
                     StringComparison.Ordinal))
             .Order(StringComparer.Ordinal)
+    ];
+    string[] fileApps =
+    [
+        .. allFileApps.Where((_, index) => index % groupCount == groupIndex)
     ];
     Task<(string FileApp, int ExitCode, string Output, string Error)>[] verifications =
     [
@@ -72,8 +98,11 @@ try
         throw new InvalidDataException(string.Join(Environment.NewLine, failures));
     }
 
+    string groupDescription = groupCount == 1
+        ? string.Empty
+        : $" in group {groupIndex + 1} of {groupCount}";
     await Console.Out.WriteLineAsync(
-        $"Compiled and verified {fileApps.Length} repository file apps.")
+        $"Compiled and verified {fileApps.Length} repository file apps{groupDescription}.")
         .ConfigureAwait(false);
     return 0;
 }
