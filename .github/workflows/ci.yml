@@ -126,6 +126,11 @@ jobs:
         with:
           dotnet-version: 10.x
 
+      - name: Restore file app packages
+        run: |
+          dotnet restore scripts/Generate-Docs.cs
+          dotnet restore scripts/Assemble-ReleaseAssets.cs
+
       - name: Verify file apps
         run: dotnet run --file scripts/Verify-FileApps.cs
 
