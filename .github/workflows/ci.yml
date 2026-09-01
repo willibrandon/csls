@@ -79,6 +79,54 @@ jobs:
           dotnet build tests/Csls.Tests/Csls.Tests.csproj
           dotnet build tests/Csls.SourceGen.Tests/Csls.SourceGen.Tests.csproj
 
+  native-aot-size:
+    name: Native AOT size (${{ matrix.command }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      actions: read
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - command: csls
+            project: src/Csls.App/Csls.App.csproj
+            target: artifacts/obj/Csls.App/release_linux-x64/native/csls.mstat
+          - command: csls-mcp
+            project: src/Csls.Mcp/Csls.Mcp.csproj
+            target: artifacts/obj/Csls.Mcp/release_linux-x64/native/csls-mcp.mstat
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 10.x
+
+      - name: Publish Native AOT launcher
+        run: >-
+          dotnet publish ${{ matrix.project }}
+          --configuration Release
+          --runtime linux-x64
+          --self-contained true
+          --output artifacts/size-check/${{ matrix.command }}
+          -p:IlcGenerateMstatFile=true
+
+      - name: Check Native AOT size
+        uses: willibrandon/dotsider@v0
+        with:
+          target: ${{ matrix.target }}
+          baseline-key: ${{ matrix.command }}-linux-x64
+          budgets: max=8mb
+          top: '20'
+          report-directory: ${{ runner.temp }}/dotsider-size-${{ matrix.command }}-linux-x64
+          artifact-name: dotsider-size-${{ matrix.command }}-linux-x64
+
   repository-policy:
     name: Repository policy
     runs-on: ubuntu-latest
