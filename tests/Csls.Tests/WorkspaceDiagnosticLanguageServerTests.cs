@@ -32,18 +32,27 @@ public sealed class WorkspaceDiagnosticLanguageServerTests
             "Csls.Worker",
             "debug",
             "csls-worker.dll");
+        string processHostPath = EditorToolResolver.ResolveTestProcessHost(repositoryRoot);
         Assert.IsTrue(File.Exists(workerPath), $"Worker not found at {workerPath}.");
+        Assert.IsTrue(
+            File.Exists(processHostPath),
+            $"Test process host not found at {processHostPath}.");
 
         string fixturePath = Path.Join(
             Path.GetTempPath(),
             $"csls-workspace-diagnostic-loading-{Guid.NewGuid():N}");
+        string buildStartedPath = Path.Join(fixturePath, "build-started");
+        string buildReleasePath = Path.Join(fixturePath, "build-release");
         Directory.CreateDirectory(fixturePath);
         try
         {
             string documentPath = Path.Join(fixturePath, "Broken.cs");
             await File.WriteAllTextAsync(
                 Path.Join(fixturePath, "Fixture.csproj"),
-                CoreProjectText,
+                CreateBlockedCoreProjectText(
+                    processHostPath,
+                    buildStartedPath,
+                    buildReleasePath),
                 TestContext.CancellationToken).ConfigureAwait(false);
             await File.WriteAllTextAsync(
                 documentPath,
@@ -87,11 +96,14 @@ public sealed class WorkspaceDiagnosticLanguageServerTests
                 control.ConfigureAwait(false);
 
             await lsp.CompleteInitializationAsync().ConfigureAwait(false);
-            await WaitForWorkspacePhaseAsync(
-                control,
-                "Loading",
-                TimeSpan.FromSeconds(30),
+            await FileTextWaiter.WaitAsync(
+                buildStartedPath,
+                "started",
+                TimeSpan.FromSeconds(60),
                 TestContext.CancellationToken).ConfigureAwait(false);
+            ControlSessionInfo loadingSession = await control.GetSessionAsync(
+                TestContext.CancellationToken).ConfigureAwait(false);
+            Assert.AreEqual("Loading", loadingSession.WorkspacePhase);
             var loadingPosition = new Position(0, 0);
             var loadingRange = new LspRange(
                 loadingPosition,
@@ -143,6 +155,10 @@ public sealed class WorkspaceDiagnosticLanguageServerTests
                 loading.Items,
                 "The initial workspace pull waited for project loading and returned stale startup results.");
 
+            await File.WriteAllTextAsync(
+                buildReleasePath,
+                "release",
+                TestContext.CancellationToken).ConfigureAwait(false);
             await client.WaitForDiagnosticRefreshAsync(TestContext.CancellationToken)
                 .WaitAsync(TimeSpan.FromSeconds(30), TestContext.CancellationToken)
                 .ConfigureAwait(false);
@@ -170,6 +186,10 @@ public sealed class WorkspaceDiagnosticLanguageServerTests
         }
         finally
         {
+            await File.WriteAllTextAsync(
+                buildReleasePath,
+                "release",
+                CancellationToken.None).ConfigureAwait(false);
             await DirectoryReleaseWaiter.DeleteAsync(fixturePath, TimeSpan.FromSeconds(10)).ConfigureAwait(false);
         }
     }
@@ -554,6 +574,30 @@ public sealed class WorkspaceDiagnosticLanguageServerTests
             toolsDocumentPath,
             ToolsDocumentText,
             cancellationToken).ConfigureAwait(false);
+    }
+
+    private static string CreateBlockedCoreProjectText(
+        string processHostPath,
+        string buildStartedPath,
+        string buildReleasePath)
+    {
+        string dotnetPath = EditorToolResolver.ResolveDotNetHost();
+        return $$"""
+            <Project Sdk="Microsoft.NET.Sdk">
+              <PropertyGroup>
+                <TargetFramework>net10.0</TargetFramework>
+                <ImplicitUsings>enable</ImplicitUsings>
+              </PropertyGroup>
+              <Target Name="BlockDesignTimeBuild"
+                      BeforeTargets="Compile"
+                      Condition="'$(DesignTimeBuild)' == 'true'">
+                <WriteLinesToFile File="{{buildStartedPath}}"
+                                  Lines="started"
+                                  Overwrite="true" />
+                <Exec Command="&quot;{{dotnetPath}}&quot; &quot;{{processHostPath}}&quot; --wait-for-file &quot;{{buildReleasePath}}&quot;" />
+              </Target>
+            </Project>
+            """;
     }
 
     private const string SolutionText = """
