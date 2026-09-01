@@ -45,6 +45,8 @@ public sealed class EmacsLanguageServerTests
             string alphaPath = Path.Join(fixturePath, "alpha");
             string betaPath = Path.Join(fixturePath, "beta");
             string homePath = Path.Join(fixturePath, "home");
+            string buildStartedPath = Path.Join(fixturePath, "build-started");
+            string buildReleasePath = Path.Join(fixturePath, "build-release");
             Directory.CreateDirectory(alphaPath);
             Directory.CreateDirectory(betaPath);
             Directory.CreateDirectory(homePath);
@@ -52,11 +54,16 @@ public sealed class EmacsLanguageServerTests
                 alphaPath,
                 "Alpha",
                 AlphaDocumentText,
+                ProjectText,
                 TestContext.CancellationToken).ConfigureAwait(false);
             string betaDocumentPath = await WriteProjectAsync(
                 betaPath,
                 "Beta",
                 BetaDocumentText,
+                CreateBlockedProjectText(
+                    processHostPath,
+                    buildStartedPath,
+                    buildReleasePath),
                 TestContext.CancellationToken).ConfigureAwait(false);
             string targetPath = Path.Join(betaPath, "Target.cs");
             await File.WriteAllTextAsync(
@@ -149,6 +156,12 @@ public sealed class EmacsLanguageServerTests
                                 exception);
                         }
 
+                        await FileTextWaiter.WaitAsync(
+                            buildStartedPath,
+                            "started",
+                            TimeSpan.FromSeconds(60),
+                            TestContext.CancellationToken).ConfigureAwait(false);
+
                         await TerminalInput.SendAltCharacterAsync(
                             terminal,
                             '.',
@@ -171,6 +184,11 @@ public sealed class EmacsLanguageServerTests
                                 navigationSnapshot.GetScreenText(),
                                 exception);
                         }
+
+                        await File.WriteAllTextAsync(
+                            buildReleasePath,
+                            "release",
+                            TestContext.CancellationToken).ConfigureAwait(false);
 
                         try
                         {
@@ -212,6 +230,10 @@ public sealed class EmacsLanguageServerTests
             }
             finally
             {
+                await File.WriteAllTextAsync(
+                    buildReleasePath,
+                    "release",
+                    CancellationToken.None).ConfigureAwait(false);
                 await terminal.DisposeAsync().ConfigureAwait(false);
                 await workload.DisposeAsync().ConfigureAwait(false);
                 if (serverExit is ProcessExitObservation observation)
@@ -236,6 +258,7 @@ public sealed class EmacsLanguageServerTests
         string directoryPath,
         string projectName,
         string documentText,
+        string projectText,
         CancellationToken cancellationToken)
     {
         string projectPath = Path.Join(directoryPath, $"{projectName}.csproj");
@@ -243,7 +266,7 @@ public sealed class EmacsLanguageServerTests
         string documentPath = Path.Join(directoryPath, "Program.cs");
         await File.WriteAllTextAsync(
             projectPath,
-            ProjectText,
+            projectText,
             cancellationToken).ConfigureAwait(false);
         await File.WriteAllTextAsync(
             solutionPath,
@@ -311,6 +334,30 @@ public sealed class EmacsLanguageServerTests
 
     private static string ToElispString(string value) =>
         JsonSerializer.Serialize(value.Replace('\\', '/'));
+
+    private static string CreateBlockedProjectText(
+        string processHostPath,
+        string buildStartedPath,
+        string buildReleasePath)
+    {
+        string dotnetPath = EditorToolResolver.ResolveDotNetHost();
+        return $$"""
+            <Project Sdk="Microsoft.NET.Sdk">
+              <PropertyGroup>
+                <TargetFramework>net10.0</TargetFramework>
+                <ImplicitUsings>enable</ImplicitUsings>
+              </PropertyGroup>
+              <Target Name="BlockDesignTimeBuild"
+                      BeforeTargets="Compile"
+                      Condition="'$(DesignTimeBuild)' == 'true'">
+                <WriteLinesToFile File="{{buildStartedPath}}"
+                                  Lines="started"
+                                  Overwrite="true" />
+                <Exec Command="&quot;{{dotnetPath}}&quot; &quot;{{processHostPath}}&quot; --wait-for-file &quot;{{buildReleasePath}}&quot;" />
+              </Target>
+            </Project>
+            """;
+    }
 
     private const string ProjectText = """
         <Project Sdk="Microsoft.NET.Sdk">
