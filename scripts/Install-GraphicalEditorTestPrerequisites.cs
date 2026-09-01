@@ -297,15 +297,12 @@ static async Task<IReadOnlyList<string>> ResolveWebBrowserPackagesAsync(
 
     if (webBrowsers.Contains("firefox"))
     {
-        string avCodecPackage = await SelectMatchingPackageAsync("^libavcodec[0-9]+$")
-            .ConfigureAwait(false);
         string gtkPackage = await SelectPackageAsync("libgtk-3-0t64", "libgtk-3-0")
             .ConfigureAwait(false);
         packages.UnionWith(
         [
             alsaPackage,
             atkPackage,
-            avCodecPackage,
             "libcairo-gobject2",
             "libcairo2",
             "libdbus-1-3",

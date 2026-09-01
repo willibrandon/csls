@@ -1067,6 +1067,7 @@ public sealed class ZedLanguageServerTests
                 "html": false
               },
               "auto_update": false,
+              "disable_ai": true,
               "languages": {
                 "CSharp": {
                   "language_servers": ["csls"]
