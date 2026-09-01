@@ -126,6 +126,13 @@ jobs:
         with:
           dotnet-version: 10.x
 
+      - name: Restore file app builds
+        id: file-app-builds-cache
+        uses: actions/cache/restore@v6
+        with:
+          path: ~/.local/share/dotnet/runfile
+          key: file-app-builds-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/*.cs', '.editorconfig', 'Directory.Build.*', 'Directory.Packages.props', 'NuGet.Config') }}
+
       - name: Restore file app packages
         run: |
           dotnet restore scripts/Generate-Docs.cs
@@ -133,6 +140,13 @@ jobs:
 
       - name: Verify file apps
         run: dotnet run --file scripts/Verify-FileApps.cs
+
+      - name: Save file app builds
+        if: steps.file-app-builds-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: ~/.local/share/dotnet/runfile
+          key: file-app-builds-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/*.cs', '.editorconfig', 'Directory.Build.*', 'Directory.Packages.props', 'NuGet.Config') }}
 
   vscode-web-extension:
     name: VS Code web extension
