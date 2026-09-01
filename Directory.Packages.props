@@ -2,6 +2,7 @@
   <PropertyGroup>
     <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
     <RoslynVersion>5.9.0</RoslynVersion>
+    <SourceGeneratorRoslynVersion>5.0.0</SourceGeneratorRoslynVersion>
   </PropertyGroup>
 
   <ItemGroup>
@@ -15,7 +16,12 @@
     <PackageVersion Include="Microsoft.Bcl.AsyncInterfaces" Version="10.0.11" />
     <PackageVersion Include="Microsoft.CodeAnalysis.Analyzers" Version="$(RoslynVersion)" />
     <PackageVersion Include="Microsoft.CodeAnalysis.Common" Version="$(RoslynVersion)" />
-    <PackageVersion Include="Microsoft.CodeAnalysis.CSharp" Version="$(RoslynVersion)" />
+    <PackageVersion Include="Microsoft.CodeAnalysis.CSharp"
+                    Version="$(RoslynVersion)"
+                    Condition="'$(MSBuildProjectName)' != 'Csls.SourceGen'" />
+    <PackageVersion Include="Microsoft.CodeAnalysis.CSharp"
+                    Version="$(SourceGeneratorRoslynVersion)"
+                    Condition="'$(MSBuildProjectName)' == 'Csls.SourceGen'" />
     <PackageVersion Include="Microsoft.CodeAnalysis.NetAnalyzers" Version="10.0.400" />
     <PackageVersion Include="Microsoft.CodeAnalysis.CSharp.Features" Version="$(RoslynVersion)" />
     <PackageVersion Include="Microsoft.CodeAnalysis.CSharp.Workspaces" Version="$(RoslynVersion)" />
