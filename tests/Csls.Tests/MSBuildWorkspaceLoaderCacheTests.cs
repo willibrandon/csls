@@ -101,7 +101,7 @@ public sealed class MSBuildWorkspaceLoaderCacheTests
         }
         finally
         {
-            Directory.Delete(workspacePath, recursive: true);
+            await DirectoryReleaseWaiter.DeleteAsync(workspacePath, TimeSpan.FromSeconds(10)).ConfigureAwait(false);
         }
     }
 
@@ -167,7 +167,7 @@ public sealed class MSBuildWorkspaceLoaderCacheTests
         }
         finally
         {
-            Directory.Delete(fixturePath, recursive: true);
+            await DirectoryReleaseWaiter.DeleteAsync(fixturePath, TimeSpan.FromSeconds(10)).ConfigureAwait(false);
         }
     }
 
@@ -293,7 +293,7 @@ public sealed class MSBuildWorkspaceLoaderCacheTests
         }
         finally
         {
-            Directory.Delete(workspacePath, recursive: true);
+            await DirectoryReleaseWaiter.DeleteAsync(workspacePath, TimeSpan.FromSeconds(10)).ConfigureAwait(false);
         }
     }
 
@@ -365,7 +365,7 @@ public sealed class MSBuildWorkspaceLoaderCacheTests
         }
         finally
         {
-            Directory.Delete(workspacePath, recursive: true);
+            await DirectoryReleaseWaiter.DeleteAsync(workspacePath, TimeSpan.FromSeconds(10)).ConfigureAwait(false);
         }
     }
 

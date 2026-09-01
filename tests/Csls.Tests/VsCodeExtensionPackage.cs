@@ -97,7 +97,7 @@ internal static class VsCodeExtensionPackage
         {
             if (Directory.Exists(stagingPath))
             {
-                Directory.Delete(stagingPath, recursive: true);
+                await DirectoryReleaseWaiter.DeleteAsync(stagingPath, TimeSpan.FromSeconds(10)).ConfigureAwait(false);
             }
         }
 

@@ -54,10 +54,11 @@ internal static class EditorToolResolver
     /// <returns>The absolute isolated control-socket directory.</returns>
     internal static string ResolveIsolatedControlSocketDirectory(string repositoryRoot)
     {
+        ArgumentException.ThrowIfNullOrWhiteSpace(repositoryRoot);
         int sequence = Interlocked.Increment(ref s_controlSocketDirectorySequence);
         return Path.Join(
-            ResolveArtifactsRoot(repositoryRoot),
-            "s",
+            Path.GetTempPath(),
+            "csls-sockets",
             $"{Environment.ProcessId:x}-{sequence:x}");
     }
 

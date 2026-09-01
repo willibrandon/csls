@@ -81,7 +81,7 @@ internal static class VsCodeWebExtensionPackage
 
         if (Directory.Exists(extractionPath))
         {
-            Directory.Delete(extractionPath, recursive: true);
+            await DirectoryReleaseWaiter.DeleteAsync(extractionPath, TimeSpan.FromSeconds(10)).ConfigureAwait(false);
         }
 
         await ZipFile.ExtractToDirectoryAsync(

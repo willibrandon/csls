@@ -163,11 +163,10 @@ internal sealed class AnalyzerExecutionProbeFixture : IAsyncDisposable
     /// Deletes the isolated fixture after every real process releases it.
     /// </summary>
     /// <returns>A completed value task.</returns>
-    public ValueTask DisposeAsync()
+    public async ValueTask DisposeAsync()
     {
-        Directory.Delete(RootPath, recursive: true);
+        await DirectoryReleaseWaiter.DeleteAsync(RootPath, TimeSpan.FromSeconds(10)).ConfigureAwait(false);
         GC.SuppressFinalize(this);
-        return ValueTask.CompletedTask;
     }
 
     private static string CreateDocumentText(int index, int value) => $$"""

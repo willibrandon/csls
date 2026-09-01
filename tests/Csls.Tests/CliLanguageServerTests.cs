@@ -229,7 +229,7 @@ public sealed class CliLanguageServerTests
                 await watchProcess.WaitForExitAsync(CancellationToken.None).ConfigureAwait(false);
             }
 
-            Directory.Delete(fixturePath, recursive: true);
+            await DirectoryReleaseWaiter.DeleteAsync(fixturePath, TimeSpan.FromSeconds(10)).ConfigureAwait(false);
         }
 
         string watchError = await watchErrorTask.ConfigureAwait(false);
@@ -393,7 +393,7 @@ public sealed class CliLanguageServerTests
         }
         finally
         {
-            Directory.Delete(fixturePath, recursive: true);
+            await DirectoryReleaseWaiter.DeleteAsync(fixturePath, TimeSpan.FromSeconds(10)).ConfigureAwait(false);
         }
     }
 
@@ -1229,7 +1229,7 @@ public sealed class CliLanguageServerTests
         }
         finally
         {
-            Directory.Delete(fixturePath, recursive: true);
+            await DirectoryReleaseWaiter.DeleteAsync(fixturePath, TimeSpan.FromSeconds(10)).ConfigureAwait(false);
         }
     }
 
@@ -1351,7 +1351,7 @@ public sealed class CliLanguageServerTests
         }
         finally
         {
-            Directory.Delete(fixturePath, recursive: true);
+            await DirectoryReleaseWaiter.DeleteAsync(fixturePath, TimeSpan.FromSeconds(10)).ConfigureAwait(false);
         }
     }
 
