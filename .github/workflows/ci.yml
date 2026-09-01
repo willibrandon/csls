@@ -52,16 +52,14 @@ jobs:
             artifacts/bin/Csls.TestSourceGenerator/debug
             artifacts/bin/Csls.Tests/debug
             artifacts/bin/Csls.Worker/debug
-          key: test-binaries-${{ runner.os }}-${{ runner.arch }}-${{ github.sha }}
-          restore-keys: test-binaries-${{ runner.os }}-${{ runner.arch }}-
+          key: test-binaries-v2-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.editorconfig', 'global.json', 'src/**', 'tests/**', 'benchmarks/**', 'build/**', 'Directory.Build.*', 'Directory.Packages.props', 'NuGet.Config') }}
 
       - name: Restore source generator test binaries
         id: source-generator-test-binaries-cache
         uses: actions/cache@v6
         with:
           path: artifacts/bin/Csls.SourceGen.Tests/debug
-          key: source-generator-test-binaries-${{ runner.os }}-${{ runner.arch }}-${{ github.sha }}
-          restore-keys: source-generator-test-binaries-${{ runner.os }}-${{ runner.arch }}-
+          key: source-generator-test-binaries-v2-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.editorconfig', 'global.json', 'src/**', 'tests/**', 'benchmarks/**', 'build/**', 'Directory.Build.*', 'Directory.Packages.props', 'NuGet.Config') }}
 
       - name: Restore test build intermediates
         uses: actions/cache@v6
@@ -72,8 +70,8 @@ jobs:
             artifacts/obj/Csls.*/*.json
             artifacts/obj/Csls.*/*.props
             artifacts/obj/Csls.*/*.targets
-          key: test-build-intermediates-${{ runner.os }}-${{ runner.arch }}-${{ github.sha }}
-          restore-keys: test-build-intermediates-${{ runner.os }}-${{ runner.arch }}-
+          key: test-build-intermediates-v2-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.editorconfig', 'global.json', 'src/**', 'tests/**', 'benchmarks/**', 'build/**', 'Directory.Build.*', 'Directory.Packages.props', 'NuGet.Config') }}
+          restore-keys: test-build-intermediates-v2-${{ runner.os }}-${{ runner.arch }}-
 
       - name: Build test binaries
         if: steps.test-binaries-cache.outputs.cache-hit != 'true' || steps.source-generator-test-binaries-cache.outputs.cache-hit != 'true'
@@ -209,7 +207,7 @@ jobs:
             artifacts/bin/Csls.TestSourceGenerator/debug
             artifacts/bin/Csls.Tests/debug
             artifacts/bin/Csls.Worker/debug
-          key: test-binaries-${{ runner.os }}-${{ runner.arch }}-${{ github.sha }}
+          key: test-binaries-v2-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.editorconfig', 'global.json', 'src/**', 'tests/**', 'benchmarks/**', 'build/**', 'Directory.Build.*', 'Directory.Packages.props', 'NuGet.Config') }}
           fail-on-cache-miss: true
 
       - name: Run workspace project tests
@@ -265,7 +263,7 @@ jobs:
             artifacts/bin/Csls.TestSourceGenerator/debug
             artifacts/bin/Csls.Tests/debug
             artifacts/bin/Csls.Worker/debug
-          key: test-binaries-${{ runner.os }}-${{ runner.arch }}-${{ github.sha }}
+          key: test-binaries-v2-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.editorconfig', 'global.json', 'src/**', 'tests/**', 'benchmarks/**', 'build/**', 'Directory.Build.*', 'Directory.Packages.props', 'NuGet.Config') }}
           fail-on-cache-miss: true
 
       - name: Run language server tests
@@ -308,14 +306,14 @@ jobs:
             artifacts/bin/Csls.TestSourceGenerator/debug
             artifacts/bin/Csls.Tests/debug
             artifacts/bin/Csls.Worker/debug
-          key: test-binaries-${{ runner.os }}-${{ runner.arch }}-${{ github.sha }}
+          key: test-binaries-v2-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.editorconfig', 'global.json', 'src/**', 'tests/**', 'benchmarks/**', 'build/**', 'Directory.Build.*', 'Directory.Packages.props', 'NuGet.Config') }}
           fail-on-cache-miss: true
 
       - name: Restore source generator test binaries
         uses: actions/cache/restore@v6
         with:
           path: artifacts/bin/Csls.SourceGen.Tests/debug
-          key: source-generator-test-binaries-${{ runner.os }}-${{ runner.arch }}-${{ github.sha }}
+          key: source-generator-test-binaries-v2-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.editorconfig', 'global.json', 'src/**', 'tests/**', 'benchmarks/**', 'build/**', 'Directory.Build.*', 'Directory.Packages.props', 'NuGet.Config') }}
           fail-on-cache-miss: true
 
       - name: Run unit tests
@@ -361,7 +359,7 @@ jobs:
             artifacts/bin/Csls.TestSourceGenerator/debug
             artifacts/bin/Csls.Tests/debug
             artifacts/bin/Csls.Worker/debug
-          key: test-binaries-${{ runner.os }}-${{ runner.arch }}-${{ github.sha }}
+          key: test-binaries-v2-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.editorconfig', 'global.json', 'src/**', 'tests/**', 'benchmarks/**', 'build/**', 'Directory.Build.*', 'Directory.Packages.props', 'NuGet.Config') }}
           fail-on-cache-miss: true
 
       - name: Restore editor tools
@@ -429,7 +427,7 @@ jobs:
             artifacts/bin/Csls.TestSourceGenerator/debug
             artifacts/bin/Csls.Tests/debug
             artifacts/bin/Csls.Worker/debug
-          key: test-binaries-${{ runner.os }}-${{ runner.arch }}-${{ github.sha }}
+          key: test-binaries-v2-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.editorconfig', 'global.json', 'src/**', 'tests/**', 'benchmarks/**', 'build/**', 'Directory.Build.*', 'Directory.Packages.props', 'NuGet.Config') }}
           fail-on-cache-miss: true
 
       - name: Restore Zed tools
@@ -604,7 +602,7 @@ jobs:
             artifacts/bin/Csls.TestSourceGenerator/debug
             artifacts/bin/Csls.Tests/debug
             artifacts/bin/Csls.Worker/debug
-          key: test-binaries-${{ runner.os }}-${{ runner.arch }}-${{ github.sha }}
+          key: test-binaries-v2-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.editorconfig', 'global.json', 'src/**', 'tests/**', 'benchmarks/**', 'build/**', 'Directory.Build.*', 'Directory.Packages.props', 'NuGet.Config') }}
           fail-on-cache-miss: true
 
       - name: Restore VS Code web extension
@@ -685,7 +683,7 @@ jobs:
             artifacts/bin/Csls.TestSourceGenerator/debug
             artifacts/bin/Csls.Tests/debug
             artifacts/bin/Csls.Worker/debug
-          key: test-binaries-${{ runner.os }}-${{ runner.arch }}-${{ github.sha }}
+          key: test-binaries-v2-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.editorconfig', 'global.json', 'src/**', 'tests/**', 'benchmarks/**', 'build/**', 'Directory.Build.*', 'Directory.Packages.props', 'NuGet.Config') }}
           fail-on-cache-miss: true
 
       - name: Restore legacy build host
