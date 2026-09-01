@@ -359,18 +359,16 @@ internal static class ScriptSupport
                         .ConfigureAwait(false);
                     response.EnsureSuccessStatusCode();
 
-                    using (FileStream destination = new(
+                    using FileStream destination = new(
                         stagingPath,
                         FileMode.CreateNew,
                         FileAccess.Write,
                         FileShare.None,
                         bufferSize: 131_072,
-                        FileOptions.Asynchronous | FileOptions.SequentialScan))
-                    {
-                        await response.Content
-                            .CopyToAsync(destination, cancellationToken)
-                            .ConfigureAwait(false);
-                    }
+                        FileOptions.Asynchronous | FileOptions.SequentialScan);
+                    await response.Content
+                        .CopyToAsync(destination, cancellationToken)
+                        .ConfigureAwait(false);
 
                     return true;
                 },
