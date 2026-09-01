@@ -76,6 +76,7 @@ public static class LspRpcServer
 
             ValueTask completion = new(rpc.Completion.WaitAsync(cancellationToken));
             await completion.ConfigureAwait(false);
+            await target.ExitAsync().ConfigureAwait(false);
             ValueTask dispatchCompletion = new(rpc.DispatchCompletion);
             await dispatchCompletion.ConfigureAwait(false);
         }

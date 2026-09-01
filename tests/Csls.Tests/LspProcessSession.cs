@@ -1617,6 +1617,12 @@ internal sealed class LspProcessSession : IAsyncDisposable
     }
 
     /// <summary>
+    /// Closes the client-to-server stream to simulate an unexpected transport disconnect.
+    /// </summary>
+    /// <returns>A task that completes after the standard-input stream closes.</returns>
+    internal ValueTask DisconnectInputAsync() => _process.StandardInput.DisposeAsync();
+
+    /// <summary>
     /// Releases the RPC transport and terminates an unfinished child process tree.
     /// </summary>
     /// <returns>A task that completes after process cleanup.</returns>

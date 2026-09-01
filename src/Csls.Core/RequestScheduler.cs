@@ -12,6 +12,7 @@ public sealed class RequestScheduler : IAsyncDisposable
     private readonly Channel<(RequestMode Mode, Func<Task> Execute)> _queue;
     private readonly SemaphoreSlim _foregroundConcurrency;
     private readonly SemaphoreSlim _backgroundConcurrency;
+    private readonly CancellationTokenSource _stoppingSource = new();
     private readonly ValueTask _processingTask;
     private readonly ConcurrentDictionary<Guid, RequestActivityState> _requests = new();
     private readonly ConcurrentDictionary<string, RequestStatisticsState> _statistics = new(
@@ -38,6 +39,8 @@ public sealed class RequestScheduler : IAsyncDisposable
     private int _activeBackgroundRequests;
     private int _mutationActive;
     private int _disposeState;
+    private int _cleanupState;
+    private Task? _stoppingTask;
 
     /// <summary>
     /// Initializes a bounded scheduler with explicit foreground and background limits.
@@ -82,6 +85,26 @@ public sealed class RequestScheduler : IAsyncDisposable
     /// Gets whether the scheduler has started shutting down.
     /// </summary>
     public bool IsStopping => Volatile.Read(ref _disposeState) != 0;
+
+    /// <summary>
+    /// Stops accepting work and requests cancellation without waiting for request retirement.
+    /// </summary>
+    /// <returns>A task that completes after cancellation callbacks finish.</returns>
+    public Task StopAsync()
+    {
+        lock (_lifecycleGate)
+        {
+            if (_stoppingTask is not null)
+            {
+                return _stoppingTask;
+            }
+
+            Volatile.Write(ref _disposeState, 1);
+            _queue.Writer.TryComplete();
+            _stoppingTask = _stoppingSource.CancelAsync();
+            return _stoppingTask;
+        }
+    }
 
     /// <summary>
     /// Sets the one asynchronous admission gate applied before requests enter the bounded queue.
@@ -293,7 +316,8 @@ public sealed class RequestScheduler : IAsyncDisposable
                 _timeProvider.GetUtcNow(),
                 _timeProvider.GetTimestamp(),
                 _timeProvider,
-                cancellationToken);
+                cancellationToken,
+                _stoppingSource.Token);
             if (!_requests.TryAdd(correlationId, request))
             {
                 request.Complete(RequestExecutionStatus.Failed, null);
@@ -470,18 +494,13 @@ public sealed class RequestScheduler : IAsyncDisposable
     /// <returns>A value task that completes after scheduler shutdown.</returns>
     public async ValueTask DisposeAsync()
     {
-        RequestActivityState[] requests;
-        lock (_lifecycleGate)
+        await StopAsync().ConfigureAwait(false);
+        if (Interlocked.Exchange(ref _cleanupState, 1) != 0)
         {
-            if (Interlocked.Exchange(ref _disposeState, 1) != 0)
-            {
-                return;
-            }
-
-            _queue.Writer.TryComplete();
-            requests = [.. _requests.Values];
+            return;
         }
 
+        RequestActivityState[] requests = [.. _requests.Values];
         Task<bool>[] cancellationTasks =
         [
             .. requests.Select(static request => request.TryCancelAsync())
@@ -490,6 +509,7 @@ public sealed class RequestScheduler : IAsyncDisposable
         await _processingTask.ConfigureAwait(false);
         _foregroundConcurrency.Dispose();
         _backgroundConcurrency.Dispose();
+        _stoppingSource.Dispose();
         GC.SuppressFinalize(this);
     }
 

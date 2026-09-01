@@ -25,6 +25,7 @@ public sealed partial class LanguageServer : ILspRpcTarget, IAsyncDisposable
         TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly TaskCompletionSource _interactiveWorkspaceReady = new(
         TaskCreationOptions.RunContinuationsAsynchronously);
+    private readonly CancellationTokenSource _sessionCancellationSource = new();
     private bool _completionMarkdownSupport;
     private bool _completionSnippetSupport;
     private int _foldingRangeLimit = MaximumFoldingRanges;
@@ -317,7 +318,11 @@ public sealed partial class LanguageServer : ILspRpcTarget, IAsyncDisposable
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(parameters);
-        cancellationToken.ThrowIfCancellationRequested();
+        using var initializationSource = CancellationTokenSource.CreateLinkedTokenSource(
+            cancellationToken,
+            _sessionCancellationSource.Token);
+        CancellationToken initializationToken = initializationSource.Token;
+        initializationToken.ThrowIfCancellationRequested();
         Transition(ServerLifecycleState.InitializeResponded, ServerLifecycleState.Running);
         long workspaceStartedTimestamp = Stopwatch.GetTimestamp();
         bool workspaceLoaded;
@@ -363,14 +368,14 @@ public sealed partial class LanguageServer : ILspRpcTarget, IAsyncDisposable
 
                     return true;
                 },
-                cancellationToken).ConfigureAwait(false);
+                initializationToken).ConfigureAwait(false);
 
             if (workspaceLoaded && preliminaryWorkspaceLoaded)
             {
                 _interactiveWorkspaceReady.TrySetResult();
                 await LoadWorkspaceWithProgressAsync(
                     progressive: true,
-                    cancellationToken).ConfigureAwait(false);
+                    initializationToken).ConfigureAwait(false);
             }
         }
         catch (Exception exception)
@@ -406,13 +411,13 @@ public sealed partial class LanguageServer : ILspRpcTarget, IAsyncDisposable
             _supportsDiagnosticRefresh &&
             Interlocked.Exchange(ref _pendingDiagnosticRefresh, 0) != 0)
         {
-            await _client.RefreshDiagnosticsAsync(cancellationToken).ConfigureAwait(false);
+            await _client.RefreshDiagnosticsAsync(initializationToken).ConfigureAwait(false);
         }
 
         if (_supportsDynamicFileWatching)
         {
             using var registrationSource = CancellationTokenSource.CreateLinkedTokenSource(
-                cancellationToken);
+                initializationToken);
             registrationSource.CancelAfter(TimeSpan.FromSeconds(5));
             try
             {
@@ -421,7 +426,7 @@ public sealed partial class LanguageServer : ILspRpcTarget, IAsyncDisposable
             catch (Exception exception) when (
                 IsExpectedFileWatcherRegistrationFailure(
                     exception,
-                    cancellationToken))
+                    initializationToken))
             {
                 LanguageServerLogger.LogFileWatcherRegistrationFailure(_logger, exception);
             }
@@ -445,14 +450,16 @@ public sealed partial class LanguageServer : ILspRpcTarget, IAsyncDisposable
     }
 
     /// <inheritdoc />
-    public Task ExitAsync()
+    public async Task ExitAsync()
     {
+        await Task.WhenAll(
+            _scheduler.StopAsync(),
+            _sessionCancellationSource.CancelAsync()).ConfigureAwait(false);
         Volatile.Write(ref _lifecycleState, (int)ServerLifecycleState.Exited);
         Volatile.Write(ref _workspacePhase, (int)ServerWorkspacePhase.ShuttingDown);
         _workspaceReady.TrySetCanceled();
         _interactiveWorkspaceReady.TrySetCanceled();
         _exitRequested.TrySetResult();
-        return Task.CompletedTask;
     }
 
     /// <inheritdoc />
@@ -1655,11 +1662,13 @@ public sealed partial class LanguageServer : ILspRpcTarget, IAsyncDisposable
 
         ClearPushDiagnosticRequests();
         await StopClientProcessMonitorAsync().ConfigureAwait(false);
+        await _sessionCancellationSource.CancelAsync().ConfigureAwait(false);
         _workspaceReady.TrySetCanceled();
         _interactiveWorkspaceReady.TrySetCanceled();
         await _scheduler.DisposeAsync().ConfigureAwait(false);
         _semanticTokensCache.Clear();
         await _workspaceManager.DisposeAsync().ConfigureAwait(false);
+        _sessionCancellationSource.Dispose();
         GC.SuppressFinalize(this);
     }
 

@@ -29,6 +29,7 @@ internal sealed class RequestActivityState
     /// <param name="acceptedTimestamp">The monotonic receive timestamp.</param>
     /// <param name="timeProvider">The scheduler time provider.</param>
     /// <param name="cancellationToken">The peer cancellation token.</param>
+    /// <param name="stoppingToken">The scheduler shutdown token.</param>
     internal RequestActivityState(
         long ordinal,
         Guid correlationId,
@@ -37,7 +38,8 @@ internal sealed class RequestActivityState
         DateTimeOffset acceptedAt,
         long acceptedTimestamp,
         TimeProvider timeProvider,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        CancellationToken stoppingToken)
     {
         Ordinal = ordinal;
         CorrelationId = correlationId;
@@ -45,7 +47,9 @@ internal sealed class RequestActivityState
         Mode = mode;
         AcceptedAt = acceptedAt;
         AcceptedTimestamp = acceptedTimestamp;
-        _cancellationSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        _cancellationSource = CancellationTokenSource.CreateLinkedTokenSource(
+            cancellationToken,
+            stoppingToken);
         _timeProvider = timeProvider;
     }
 

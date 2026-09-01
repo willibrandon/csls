@@ -78,6 +78,9 @@ internal sealed class MSBuildProjectBuildManager
             Loggers = [buildLogger],
             MaxNodeCount = Math.Min(Environment.ProcessorCount, projectPaths.Count)
         });
+        CancellationTokenRegistration cancellationRegistration = cancellationToken.Register(
+            static state => ((BuildManager)state!).CancelAllSubmissions(),
+            buildManager);
         try
         {
             return await LoadProjectsAsync(
@@ -89,6 +92,7 @@ internal sealed class MSBuildProjectBuildManager
         }
         finally
         {
+            await cancellationRegistration.DisposeAsync().ConfigureAwait(false);
             Process[] workerProcesses = [.. buildManager.GetWorkerProcesses()];
             try
             {
