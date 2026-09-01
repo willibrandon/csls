@@ -19,13 +19,15 @@ if (args.Length == 1 && args[0] is "--help" or "-h" or "-?")
         "Usage: dotnet run --file scripts/Install-GraphicalEditorTestPrerequisites.cs " +
         "[--with-web-browsers] [--web-only] " +
         "[--web-browser <chromium|firefox|webkit>] " +
-        "[--without-tree-sitter]")
+        "[--without-clipboard] [--without-tree-sitter] [--without-vulkan]")
         .ConfigureAwait(false);
     return 0;
 }
 
 var webBrowsers = new HashSet<string>(StringComparer.Ordinal);
 bool installTreeSitter = true;
+bool installClipboard = true;
+bool installVulkan = true;
 bool webOnly = false;
 bool hasInvalidArguments = false;
 for (int index = 0; index < args.Length; index++)
@@ -56,6 +58,18 @@ for (int index = 0; index < args.Length; index++)
         continue;
     }
 
+    if (string.Equals(args[index], "--without-clipboard", StringComparison.Ordinal))
+    {
+        installClipboard = false;
+        continue;
+    }
+
+    if (string.Equals(args[index], "--without-vulkan", StringComparison.Ordinal))
+    {
+        installVulkan = false;
+        continue;
+    }
+
     hasInvalidArguments = true;
     break;
 }
@@ -71,7 +85,7 @@ if (hasInvalidArguments)
         "Usage: dotnet run --file scripts/Install-GraphicalEditorTestPrerequisites.cs " +
         "[--with-web-browsers] [--web-only] " +
         "[--web-browser <chromium|firefox|webkit>] " +
-        "[--without-tree-sitter]")
+        "[--without-clipboard] [--without-tree-sitter] [--without-vulkan]")
         .ConfigureAwait(false);
     return 2;
 }
@@ -94,7 +108,9 @@ try
 
     if (!webOnly)
     {
-        await InstallPackagesAsync(await ResolveGraphicalPackagesAsync().ConfigureAwait(false))
+        await InstallPackagesAsync(
+            await ResolveGraphicalPackagesAsync(installClipboard, installVulkan)
+                .ConfigureAwait(false))
             .ConfigureAwait(false);
     }
     if (installTreeSitter && !webOnly)
@@ -151,7 +167,10 @@ try
     }
     if (!webOnly)
     {
-        await RunCheckedAsync("xclip", ["-version"]).ConfigureAwait(false);
+        if (installClipboard)
+        {
+            await RunCheckedAsync("xclip", ["-version"]).ConfigureAwait(false);
+        }
         if (!Directory.Exists("/tmp/.X11-unix"))
         {
             await RunPrivilegedAsync(
@@ -196,7 +215,9 @@ static string FindRepositoryRoot()
     throw new DirectoryNotFoundException("The csls repository root was not found.");
 }
 
-static async Task<IReadOnlyList<string>> ResolveGraphicalPackagesAsync()
+static async Task<IReadOnlyList<string>> ResolveGraphicalPackagesAsync(
+    bool installClipboard,
+    bool installVulkan)
 {
     string alsaPackage = await SelectPackageAsync("libasound2t64", "libasound2")
         .ConfigureAwait(false);
@@ -213,7 +234,7 @@ static async Task<IReadOnlyList<string>> ResolveGraphicalPackagesAsync()
         .ConfigureAwait(false);
     string gtkPackage = await SelectPackageAsync("libgtk-3-0t64", "libgtk-3-0")
         .ConfigureAwait(false);
-    return
+    List<string> packages =
     [
         alsaPackage,
         atkBridgePackage,
@@ -242,12 +263,20 @@ static async Task<IReadOnlyList<string>> ResolveGraphicalPackagesAsync()
         "libxshmfence1",
         "libxss1",
         "libxtst6",
-        "libvulkan1",
-        "mesa-vulkan-drivers",
         "xauth",
-        "xclip",
         "xvfb"
     ];
+    if (installClipboard)
+    {
+        packages.Add("xclip");
+    }
+    if (installVulkan)
+    {
+        packages.Add("libvulkan1");
+        packages.Add("mesa-vulkan-drivers");
+    }
+
+    return packages;
 }
 
 static async Task<IReadOnlyList<string>> ResolveWebBrowserPackagesAsync(

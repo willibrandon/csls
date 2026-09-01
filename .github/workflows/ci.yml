@@ -513,7 +513,7 @@ jobs:
             cache_key: desktop
             save_cache: true
             filter: FullyQualifiedName=Csls.Tests.VsCodeLanguageServerTests.VsCodeDesktopHostProvidesCSharpLanguageFeatures|FullyQualifiedName=Csls.Tests.VsCodeLanguageServerTests.VsCodeHostEnablesSemanticHighlightingWithoutThemeOptIn|FullyQualifiedName=Csls.Tests.VsCodeLanguageServerTests.VsCodeHostStopsAutomaticTestDiscoveryProcessesOnShutdown|TestCategory=VsCodeOracle
-            graphical_arguments: -- --without-tree-sitter
+            graphical_arguments: -- --without-clipboard --without-tree-sitter --without-vulkan
             remote: false
             web: false
             vscode_arguments: ''
@@ -526,7 +526,7 @@ jobs:
             cache_key: remote
             save_cache: true
             filter: FullyQualifiedName~Csls.Tests.VsCodeLanguageServerTests.VsCodeRemoteHost
-            graphical_arguments: -- --without-tree-sitter
+            graphical_arguments: -- --without-clipboard --without-tree-sitter --without-vulkan
             remote: true
             web: false
             vscode_arguments: -- --without-dev-kit
