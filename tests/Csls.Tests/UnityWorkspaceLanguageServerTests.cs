@@ -123,7 +123,7 @@ public sealed class UnityWorkspaceLanguageServerTests
         }
         finally
         {
-            Directory.Delete(workspacePath, recursive: true);
+            await DirectoryReleaseWaiter.DeleteAsync(workspacePath, TimeSpan.FromSeconds(10)).ConfigureAwait(false);
         }
     }
 
@@ -209,7 +209,7 @@ public sealed class UnityWorkspaceLanguageServerTests
         }
         finally
         {
-            Directory.Delete(workspacePath, recursive: true);
+            await DirectoryReleaseWaiter.DeleteAsync(workspacePath, TimeSpan.FromSeconds(10)).ConfigureAwait(false);
         }
     }
 

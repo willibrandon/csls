@@ -8,6 +8,7 @@ namespace Csls.Tests;
 /// </summary>
 internal sealed class Hex1bPtyWorkload : IHex1bTerminalWorkloadAdapter
 {
+    private static readonly TimeSpan s_defaultTimeout = TimeSpan.FromSeconds(60);
     private readonly Hex1bTerminalChildProcess _process;
     private readonly Lock _rawOutputGate = new();
     private readonly ArrayBufferWriter<byte> _rawOutput = new();
@@ -87,7 +88,9 @@ internal sealed class Hex1bPtyWorkload : IHex1bTerminalWorkloadAdapter
         try
         {
             await interaction().ConfigureAwait(false);
-            await Task.WhenAll(processTask, terminalTask).ConfigureAwait(false);
+            await Task.WhenAll(processTask, terminalTask)
+                .WaitAsync(s_defaultTimeout, cancellationToken)
+                .ConfigureAwait(false);
         }
         catch
         {
@@ -113,20 +116,34 @@ internal sealed class Hex1bPtyWorkload : IHex1bTerminalWorkloadAdapter
             throw new ArgumentException("Expected output cannot be empty.", nameof(expected));
         }
 
-        while (true)
+        using var timeoutSource = CancellationTokenSource.CreateLinkedTokenSource(
+            cancellationToken);
+        timeoutSource.CancelAfter(s_defaultTimeout);
+        try
         {
-            Task outputChangedTask;
-            lock (_rawOutputGate)
+            while (true)
             {
-                if (_rawOutput.WrittenSpan.IndexOf(expected.Span) >= 0)
+                Task outputChangedTask;
+                lock (_rawOutputGate)
                 {
-                    return;
+                    if (_rawOutput.WrittenSpan.IndexOf(expected.Span) >= 0)
+                    {
+                        return;
+                    }
+
+                    outputChangedTask = _rawOutputChanged.Task;
                 }
 
-                outputChangedTask = _rawOutputChanged.Task;
+                await outputChangedTask
+                    .WaitAsync(timeoutSource.Token)
+                    .ConfigureAwait(false);
             }
-
-            await outputChangedTask.WaitAsync(cancellationToken).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            throw new TimeoutException(
+                $"The PTY did not emit {Convert.ToHexString(expected.Span)} within " +
+                $"{s_defaultTimeout.TotalSeconds} seconds.");
         }
     }
 

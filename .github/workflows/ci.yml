@@ -89,6 +89,9 @@ jobs:
     name: Build, test, and package (${{ matrix.rid }})
     runs-on: ${{ matrix.os }}
     timeout-minutes: 75
+    env:
+      MSBUILDDISABLENODEREUSE: 1
+      UseSharedCompilation: false
     permissions:
       actions: read
       contents: read
@@ -116,6 +119,7 @@ jobs:
           persist-credentials: false
 
       - name: Set up .NET
+        if: matrix.rid != 'win-arm64'
         uses: actions/setup-dotnet@v6
         with:
           dotnet-version: 10.x
@@ -128,7 +132,7 @@ jobs:
       - name: Restore
         run: dotnet restore Csls.slnx
 
-      - name: Install Native AOT prerequisites
+      - name: Install platform prerequisites
         run: dotnet run --file scripts/Install-NativeAotPrerequisites.cs -- --runtime ${{ matrix.rid }}
 
       - name: Provision parity oracle
@@ -337,6 +341,7 @@ jobs:
           persist-credentials: false
 
       - name: Set up .NET
+        if: matrix.rid != 'win-arm64'
         uses: actions/setup-dotnet@v6
         with:
           dotnet-version: 10.x
@@ -422,6 +427,7 @@ jobs:
           persist-credentials: false
 
       - name: Set up .NET
+        if: matrix.rid != 'win-arm64'
         uses: actions/setup-dotnet@v6
         with:
           dotnet-version: 10.x
@@ -623,6 +629,7 @@ jobs:
           persist-credentials: false
 
       - name: Set up .NET
+        if: matrix.rid != 'win-arm64'
         uses: actions/setup-dotnet@v6
         with:
           dotnet-version: 10.x

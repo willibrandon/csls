@@ -3,7 +3,6 @@ using Csls.Control.Contracts;
 using Csls.Protocol;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
-using System.Diagnostics;
 using System.Text.Json;
 
 namespace Csls.Tests;
@@ -23,6 +22,7 @@ public sealed class McpDirectModeTests
     /// Starts direct MCP mode through csls agent and removes its transient server on disconnect.
     /// </summary>
     [TestMethod]
+    [Timeout(120_000, CooperativeCancellation = true)]
     public async Task WorkspaceModeOwnsTransientLanguageServerLifetime()
     {
         string repositoryRoot = EditorToolResolver.FindRepositoryRoot();
@@ -65,6 +65,7 @@ public sealed class McpDirectModeTests
             $"csls-mcp-direct-{Guid.NewGuid():N}");
         Directory.CreateDirectory(fixturePath);
         int transientProcessId = 0;
+        ProcessExitObservation? transientExit = null;
         try
         {
             string projectPath = Path.Join(fixturePath, "Direct.csproj");
@@ -78,10 +79,10 @@ public sealed class McpDirectModeTests
                 DocumentText,
                 TestContext.CancellationToken).ConfigureAwait(false);
 
-            string dotnetHost = EditorToolResolver.ResolveDotNetHost();
+            string dotnetHost = EditorToolResolver.ResolveAbsoluteDotNetHost();
             Dictionary<string, string?> environment =
                 StdioClientTransportOptions.GetDefaultEnvironmentVariables();
-            environment["DOTNET_ROOT"] = Path.GetDirectoryName(dotnetHost);
+            environment["DOTNET_ROOT"] = EditorToolResolver.ResolveDotNetRoot();
             environment["DOTNET_HOST_PATH"] = dotnetHost;
             environment["CSLS_MCP_LAUNCHER_PATH"] = mcpPath;
             environment["CSLS_MCP_WORKER_PATH"] = mcpWorkerPath;
@@ -126,6 +127,7 @@ public sealed class McpDirectModeTests
                     ?? throw new InvalidDataException(
                         "MCP direct mode returned no session information.");
                 transientProcessId = session.ProcessId;
+                transientExit = ProcessExitWaiter.Observe(transientProcessId);
                 Assert.AreNotEqual(Environment.ProcessId, transientProcessId);
                 Assert.AreEqual(projectPath, Assert.ContainsSingle(session.WorkspaceRoots));
 
@@ -167,38 +169,24 @@ public sealed class McpDirectModeTests
                 await client.DisposeAsync().ConfigureAwait(false);
             }
 
-            await WaitForProcessExitAsync(
-                transientProcessId,
+            await ProcessExitWaiter.WaitAsync(
+                transientExit ?? throw new InvalidOperationException(
+                    "MCP direct mode returned no transient process."),
+                TimeSpan.FromSeconds(10),
                 TestContext.CancellationToken).ConfigureAwait(false);
             Assert.IsFalse(File.Exists(ControlEndpoint.GetSocketPath(transientProcessId)));
         }
         finally
         {
-            if (transientProcessId > 0)
+            if (transientExit is ProcessExitObservation observation)
             {
-                await WaitForProcessExitAsync(
-                    transientProcessId,
+                await ProcessExitWaiter.WaitAsync(
+                    observation,
+                    TimeSpan.FromSeconds(10),
                     TestContext.CancellationToken).ConfigureAwait(false);
             }
 
-            Directory.Delete(fixturePath, recursive: true);
-        }
-    }
-
-    private async Task WaitForProcessExitAsync(
-        int processId,
-        CancellationToken cancellationToken)
-    {
-        try
-        {
-            using var process = Process.GetProcessById(processId);
-            Task waitTask = process.WaitForExitAsync(cancellationToken);
-            ValueTask waitCompletion = new(waitTask);
-            await waitCompletion.ConfigureAwait(false);
-        }
-        catch (ArgumentException)
-        {
-            TestContext.WriteLine($"Process {processId} already exited.");
+            await DirectoryReleaseWaiter.DeleteAsync(fixturePath, TimeSpan.FromSeconds(10)).ConfigureAwait(false);
         }
     }
 

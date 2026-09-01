@@ -2,6 +2,7 @@ using Microsoft.Extensions.Logging;
 using System.Buffers;
 using System.ComponentModel;
 using System.Diagnostics;
+using System.Runtime.CompilerServices;
 using System.Text;
 
 namespace Csls.Workspaces;
@@ -34,11 +35,18 @@ internal static partial class DotNetWorkspaceRestorer
                 "The current workspace contains no solution or project entry point to restore.");
         }
 
-        foreach (string entryPoint in entryPoints)
-        {
-            await RestoreEntryPointAsync(entryPoint, logger, cancellationToken)
-                .ConfigureAwait(false);
-        }
+        await Parallel.ForEachAsync(
+            entryPoints,
+            new ParallelOptions
+            {
+                CancellationToken = cancellationToken,
+                MaxDegreeOfParallelism = Environment.ProcessorCount
+            },
+            async (entryPoint, restoreCancellationToken) =>
+                await RestoreEntryPointAsync(
+                    entryPoint,
+                    logger,
+                    restoreCancellationToken).ConfigureAwait(false)).ConfigureAwait(false);
 
         return entryPoints.Count;
     }
@@ -76,6 +84,9 @@ internal static partial class DotNetWorkspaceRestorer
 
         using Process process = Process.Start(startInfo)
             ?? throw new InvalidOperationException("The .NET restore process did not start.");
+        var processTree = WindowsProcessTreeLifetime.Attach(process);
+        await using ConfiguredAsyncDisposable processTreeCleanup =
+            processTree.ConfigureAwait(false);
         Task<string> standardOutput = ReadBoundedAsync(process.StandardOutput);
         Task<string> standardError = ReadBoundedAsync(process.StandardError);
         using CancellationTokenRegistration cancellationRegistration = cancellationToken.Register(
@@ -87,15 +98,15 @@ internal static partial class DotNetWorkspaceRestorer
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
-            if (TryKill(process))
-            {
-                await process.WaitForExitAsync(CancellationToken.None).ConfigureAwait(false);
-                await Task.WhenAll(standardOutput, standardError).ConfigureAwait(false);
-            }
+            _ = TryKill(process);
+            await process.WaitForExitAsync(CancellationToken.None).ConfigureAwait(false);
+            await processTree.TerminateDescendantsAsync().ConfigureAwait(false);
+            await Task.WhenAll(standardOutput, standardError).ConfigureAwait(false);
 
             throw;
         }
 
+        await processTree.TerminateDescendantsAsync().ConfigureAwait(false);
         string output = await standardOutput.ConfigureAwait(false);
         string error = await standardError.ConfigureAwait(false);
         if (process.ExitCode != 0)

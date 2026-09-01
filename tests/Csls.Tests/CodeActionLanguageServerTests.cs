@@ -113,7 +113,150 @@ public sealed class CodeActionLanguageServerTests
         }
         finally
         {
-            Directory.Delete(fixturePath, recursive: true);
+            await DirectoryReleaseWaiter.DeleteAsync(fixturePath, TimeSpan.FromSeconds(10)).ConfigureAwait(false);
+        }
+    }
+
+    /// <summary>
+    /// Matches Roslyn constructor fix-all and Extract Base Class selection behavior.
+    /// </summary>
+    [TestMethod]
+    public async Task ConstructorRefactoringsMatchRoslynSelectionAndFixAllBehavior()
+    {
+        string repositoryRoot = EditorToolResolver.FindRepositoryRoot();
+        string workerPath = Path.Join(
+            EditorToolResolver.ResolveArtifactsRoot(repositoryRoot),
+            "bin",
+            "Csls.Worker",
+            "debug",
+            "csls-worker.dll");
+        Assert.IsTrue(File.Exists(workerPath), $"Worker not found at {workerPath}.");
+
+        string fixturePath = Path.Join(
+            EditorToolResolver.ResolveArtifactsRoot(repositoryRoot),
+            "test-fixtures",
+            $"constructor-refactorings-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(fixturePath);
+        try
+        {
+            string documentPath = Path.Join(fixturePath, "ProviderCatalog.cs");
+            await File.WriteAllTextAsync(
+                Path.Join(fixturePath, "Fixture.csproj"),
+                ProjectText,
+                TestContext.CancellationToken).ConfigureAwait(false);
+            await File.WriteAllTextAsync(
+                documentPath,
+                ConstructorRefactoringDocumentText,
+                TestContext.CancellationToken).ConfigureAwait(false);
+
+            LspProcessSession lsp = await LspProcessSession.StartAsync(
+                "csls-constructor-refactorings-worker",
+                EditorToolResolver.ResolveDotNetHost(),
+                [workerPath],
+                fixturePath).ConfigureAwait(false);
+            await using ConfiguredAsyncDisposable lspCleanup = lsp.ConfigureAwait(false);
+            await lsp.InitializeAsync(
+                fixturePath,
+                TestContext.CancellationToken).ConfigureAwait(false);
+            await lsp.CompleteInitializationAsync().ConfigureAwait(false);
+            await lsp.OpenDocumentAsync(
+                documentPath,
+                ConstructorRefactoringDocumentText).ConfigureAwait(false);
+
+            Position constructorPosition = new(6, 20);
+            IReadOnlyList<CodeAction> constructorActions =
+                await lsp.RequestCodeActionsAsync(
+                    documentPath,
+                    new LspRange(constructorPosition, constructorPosition),
+                    ["refactor"],
+                    TestContext.CancellationToken).ConfigureAwait(false);
+            string actualConstructorActions = string.Join(
+                Environment.NewLine,
+                constructorActions.Select(static action => action.Title));
+            Assert.Contains(
+                "Use expression body for constructor",
+                constructorActions.Select(static action => action.Title),
+                actualConstructorActions);
+            Assert.Contains(
+                "Fix All: Use expression body for constructor",
+                constructorActions.Select(static action => action.Title),
+                actualConstructorActions);
+            Assert.IsEmpty(
+                constructorActions.Where(static action => action.Title.StartsWith(
+                    "Extract base class",
+                    StringComparison.Ordinal)),
+                actualConstructorActions);
+
+            CodeAction fixAllAction = Assert.ContainsSingle(
+                constructorActions.Where(static action =>
+                    action.Title == "Fix All: Use expression body for constructor"));
+            WorkspaceEdit fixAllEdit = fixAllAction.Edit
+                ?? throw new InvalidDataException("The constructor Fix All action had no edit.");
+            TextDocumentEdit fixAllDocumentEdit = Assert.ContainsSingle(
+                fixAllEdit.DocumentChanges.OfType<TextDocumentEdit>());
+            string fixedText = ApplyTextEdits(
+                ConstructorRefactoringDocumentText,
+                fixAllDocumentEdit.Edits);
+            Assert.Contains(
+                "private ProviderCatalog(string value) =>",
+                fixedText,
+                StringComparison.Ordinal);
+            Assert.Contains(
+                "private ProviderCatalog() =>",
+                fixedText,
+                StringComparison.Ordinal);
+
+            Position constructorBodyPosition = new(8, 15);
+            IReadOnlyList<CodeAction> constructorBodyActions =
+                await lsp.RequestCodeActionsAsync(
+                    documentPath,
+                    new LspRange(constructorBodyPosition, constructorBodyPosition),
+                    ["refactor"],
+                    TestContext.CancellationToken).ConfigureAwait(false);
+            Assert.IsEmpty(
+                constructorBodyActions.Where(static action => action.Title.StartsWith(
+                    "Extract base class",
+                    StringComparison.Ordinal)),
+                string.Join(
+                    Environment.NewLine,
+                    constructorBodyActions.Select(static action => action.Title)));
+
+            Position memberPosition = new(16, 24);
+            IReadOnlyList<CodeAction> memberActions = await lsp.RequestCodeActionsAsync(
+                documentPath,
+                new LspRange(memberPosition, memberPosition),
+                ["refactor"],
+                TestContext.CancellationToken).ConfigureAwait(false);
+            Assert.Contains(
+                "Extract base class...",
+                memberActions.Select(static action => action.Title),
+                string.Join(
+                    Environment.NewLine,
+                    memberActions.Select(static action => action.Title)));
+
+            Position classPosition = new(2, 24);
+            IReadOnlyList<CodeAction> classActions = await lsp.RequestCodeActionsAsync(
+                documentPath,
+                new LspRange(classPosition, classPosition),
+                ["refactor"],
+                TestContext.CancellationToken).ConfigureAwait(false);
+            Assert.Contains(
+                "Extract base class...",
+                classActions.Select(static action => action.Title),
+                string.Join(
+                    Environment.NewLine,
+                    classActions.Select(static action => action.Title)));
+
+            string workerDiagnostics = await lsp.ShutdownAsync(
+                TestContext.CancellationToken).ConfigureAwait(false);
+            Assert.DoesNotContain(
+                "Unhandled exception",
+                workerDiagnostics,
+                StringComparison.Ordinal);
+        }
+        finally
+        {
+            await DirectoryReleaseWaiter.DeleteAsync(fixturePath, TimeSpan.FromSeconds(10)).ConfigureAwait(false);
         }
     }
 
@@ -216,7 +359,7 @@ public sealed class CodeActionLanguageServerTests
         }
         finally
         {
-            Directory.Delete(fixturePath, recursive: true);
+            await DirectoryReleaseWaiter.DeleteAsync(fixturePath, TimeSpan.FromSeconds(10)).ConfigureAwait(false);
         }
     }
 
@@ -375,7 +518,7 @@ public sealed class CodeActionLanguageServerTests
         }
         finally
         {
-            Directory.Delete(fixturePath, recursive: true);
+            await DirectoryReleaseWaiter.DeleteAsync(fixturePath, TimeSpan.FromSeconds(10)).ConfigureAwait(false);
         }
     }
 
@@ -467,6 +610,30 @@ public sealed class CodeActionLanguageServerTests
 
             private static (ConstructorInfo Constructor, MethodInfo Method) CreateContract() =>
                 (typeof(string).GetConstructors()[0], typeof(string).GetMethods()[0]);
+        }
+        """;
+
+    private const string ConstructorRefactoringDocumentText = """
+        namespace Fixture;
+
+        internal sealed class ProviderCatalog
+        {
+            private readonly string _value;
+
+            private ProviderCatalog(string value)
+            {
+                _value = value;
+            }
+
+            private ProviderCatalog()
+            {
+                _value = string.Empty;
+            }
+
+            private static int GetValue()
+            {
+                return 42;
+            }
         }
         """;
 

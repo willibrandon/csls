@@ -17,6 +17,10 @@ never use `--no-build`. Product tests exercise real processes, streams, sockets,
 files, workspaces, SDKs, and editor integrations. Mocking libraries and hand-written
 substitutes for production services are prohibited.
 
+`dotnet test` succeeds on a clean checkout without separately provisioned editor
+or parity-oracle fixtures. Tests for unavailable optional integrations are reported
+as skipped and include the exact provisioning command in their result message.
+
 Each C# file contains one type. Every public or internal type and member has
 triple-slash XML documentation, and each `<summary>` uses exactly three lines:
 an opening tag, one text line, and a closing tag.

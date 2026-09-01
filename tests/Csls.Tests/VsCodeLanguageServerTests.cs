@@ -214,8 +214,8 @@ public sealed class VsCodeLanguageServerTests
             "@vscode",
             "test-electron",
             "package.json");
-        Assert.IsTrue(
-            File.Exists(testElectronPath),
+        TestPrerequisite.RequireFile(
+            testElectronPath,
             "The VS Code fixture is not provisioned. Run scripts/Provision-VsCode.cs.");
         string runtimeExtensionPath = EditorToolResolver.ResolveVsCodeExtension(
             repositoryRoot,
@@ -273,7 +273,7 @@ public sealed class VsCodeLanguageServerTests
                 [userDataPath, remoteDataPath],
                 expectWorkspaceRestore: false,
                 TestContext.CancellationToken,
-                expectedRestoredEntryPointFileName: "Generate-Docs.cs").ConfigureAwait(false);
+                requiredRestoredEntryPointFileName: "Generate-Docs.cs").ConfigureAwait(false);
         }
         finally
         {
@@ -296,8 +296,8 @@ public sealed class VsCodeLanguageServerTests
             "@vscode",
             "test-electron",
             "package.json");
-        Assert.IsTrue(
-            File.Exists(testElectronPath),
+        TestPrerequisite.RequireFile(
+            testElectronPath,
             "The VS Code fixture is not provisioned. Run scripts/Provision-VsCode.cs.");
         string runtimeExtensionPath = EditorToolResolver.ResolveVsCodeExtension(
             repositoryRoot,
@@ -408,7 +408,7 @@ public sealed class VsCodeLanguageServerTests
 
             await AssertNoUnexpectedCslsOutputAsync(
                 [userDataPath, remoteDataPath],
-                expectWorkspaceRestore: localSuite is null,
+                expectWorkspaceRestore: true,
                 TestContext.CancellationToken).ConfigureAwait(false);
             Assert.IsFalse(Directory.Exists(Path.Join(repositoryRoot, "TestResults")));
         }
@@ -597,7 +597,7 @@ public sealed class VsCodeLanguageServerTests
         IReadOnlyList<string> dataPaths,
         bool expectWorkspaceRestore,
         CancellationToken cancellationToken,
-        string? expectedRestoredEntryPointFileName = null)
+        string? requiredRestoredEntryPointFileName = null)
     {
         string[] logPaths = [.. dataPaths
             .Where(Directory.Exists)
@@ -696,33 +696,24 @@ public sealed class VsCodeLanguageServerTests
                 line.Contains(" ms", StringComparison.Ordinal),
             cslsOutputLines,
             "The VS Code CSLS output omitted timed workspace discovery progress.");
-        if (expectedRestoredEntryPointFileName is not null)
+        if (requiredRestoredEntryPointFileName is not null)
         {
             Assert.Contains(
                 line =>
                     line.Contains("Restoring ", StringComparison.Ordinal) &&
-                    line.Contains(expectedRestoredEntryPointFileName, StringComparison.Ordinal),
+                    line.Contains(requiredRestoredEntryPointFileName, StringComparison.Ordinal),
                 cslsOutputLines,
                 $"The VS Code CSLS output omitted restore progress for " +
-                $"{expectedRestoredEntryPointFileName}.");
+                $"{requiredRestoredEntryPointFileName}.");
             Assert.Contains(
                 line =>
                     line.Contains("Restored ", StringComparison.Ordinal) &&
-                    line.Contains(expectedRestoredEntryPointFileName, StringComparison.Ordinal) &&
+                    line.Contains(requiredRestoredEntryPointFileName, StringComparison.Ordinal) &&
                     line.Contains(" in ", StringComparison.Ordinal) &&
                     line.Contains(" ms", StringComparison.Ordinal),
                 cslsOutputLines,
                 $"The VS Code CSLS output omitted timed restore completion for " +
-                $"{expectedRestoredEntryPointFileName}.");
-            Assert.DoesNotContain(
-                line =>
-                    (line.Contains("Restoring ", StringComparison.Ordinal) ||
-                        line.Contains("Restored ", StringComparison.Ordinal)) &&
-                    !line.Contains(
-                        expectedRestoredEntryPointFileName,
-                        StringComparison.Ordinal),
-                cslsOutputLines,
-                "VS Code restored an unopened workspace entry point.");
+                $"{requiredRestoredEntryPointFileName}.");
         }
         else if (expectWorkspaceRestore)
         {

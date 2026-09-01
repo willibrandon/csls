@@ -1,5 +1,6 @@
 using Csls.Protocol;
 using Csls.Rpc;
+using Csls.Workspaces;
 using StreamJsonRpc;
 using System.Diagnostics;
 using System.Text.Json;
@@ -13,6 +14,7 @@ namespace Csls.Tests;
 internal sealed class LspProcessSession : IAsyncDisposable
 {
     private readonly Process _process;
+    private readonly WindowsProcessTreeLifetime _processTree;
     private readonly Task<string> _standardErrorTask;
     private readonly SystemTextJsonFormatter _formatter;
     private readonly HeaderDelimitedMessageHandler _messageHandler;
@@ -21,12 +23,14 @@ internal sealed class LspProcessSession : IAsyncDisposable
 
     private LspProcessSession(
         Process process,
+        WindowsProcessTreeLifetime processTree,
         Task<string> standardErrorTask,
         SystemTextJsonFormatter formatter,
         HeaderDelimitedMessageHandler messageHandler,
         JsonRpc rpc)
     {
         _process = process;
+        _processTree = processTree;
         _standardErrorTask = standardErrorTask;
         _formatter = formatter;
         _messageHandler = messageHandler;
@@ -97,6 +101,7 @@ internal sealed class LspProcessSession : IAsyncDisposable
 
         Process process = Process.Start(startInfo)
             ?? throw new InvalidOperationException($"The {displayName} process did not start.");
+        var processTree = WindowsProcessTreeLifetime.Attach(process);
 
         try
         {
@@ -202,6 +207,7 @@ internal sealed class LspProcessSession : IAsyncDisposable
             rpc.StartListening();
             return new LspProcessSession(
                 process,
+                processTree,
                 standardErrorTask,
                 formatter,
                 messageHandler,
@@ -209,6 +215,7 @@ internal sealed class LspProcessSession : IAsyncDisposable
         }
         catch
         {
+            await processTree.DisposeAsync().ConfigureAwait(false);
             DisposeFailedStart(process);
 
             throw;
@@ -1636,6 +1643,7 @@ internal sealed class LspProcessSession : IAsyncDisposable
             "exit",
             new InitializedParams()).ConfigureAwait(false);
         await _process.WaitForExitAsync(cancellationToken).ConfigureAwait(false);
+        await _processTree.TerminateDescendantsAsync().ConfigureAwait(false);
         ValueTask<string> standardError = new(_standardErrorTask);
         string diagnostics = await standardError.ConfigureAwait(false);
         if (_process.ExitCode != 0)
@@ -1660,6 +1668,7 @@ internal sealed class LspProcessSession : IAsyncDisposable
         await _process.WaitForExitAsync(cancellationToken)
             .WaitAsync(timeout, cancellationToken)
             .ConfigureAwait(false);
+        await _processTree.TerminateDescendantsAsync().ConfigureAwait(false);
         ValueTask<string> standardError = new(_standardErrorTask);
         string diagnostics = await standardError.ConfigureAwait(false);
         if (_process.ExitCode != 0)
@@ -1686,6 +1695,7 @@ internal sealed class LspProcessSession : IAsyncDisposable
             await _process.WaitForExitAsync().ConfigureAwait(false);
         }
 
+        await _processTree.DisposeAsync().ConfigureAwait(false);
         _process.Dispose();
     }
 

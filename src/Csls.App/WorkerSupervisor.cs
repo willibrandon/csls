@@ -1,4 +1,6 @@
+using Csls.Workspaces;
 using System.Diagnostics;
+using System.Runtime.CompilerServices;
 
 namespace Csls.App;
 
@@ -18,6 +20,9 @@ internal static class WorkerSupervisor
         ProcessStartInfo startInfo = CreateStartInfo(workerPath);
         using Process process = Process.Start(startInfo)
             ?? throw new InvalidOperationException("The csls Roslyn worker did not start.");
+        var processTree = WindowsProcessTreeLifetime.Attach(process);
+        await using ConfiguredAsyncDisposable processTreeCleanup =
+            processTree.ConfigureAwait(false);
 
         try
         {
@@ -31,9 +36,11 @@ internal static class WorkerSupervisor
                 await process.WaitForExitAsync(CancellationToken.None).ConfigureAwait(false);
             }
 
+            await processTree.TerminateDescendantsAsync().ConfigureAwait(false);
             return 130;
         }
 
+        await processTree.TerminateDescendantsAsync().ConfigureAwait(false);
         return process.ExitCode;
     }
 

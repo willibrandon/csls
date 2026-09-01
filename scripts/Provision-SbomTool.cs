@@ -46,13 +46,13 @@ try
         _ => throw new PlatformNotSupportedException(
             $"Microsoft SBOM Tool does not publish {platform}.")
     };
-    (string Tag, string AssetName, Uri Source, string Sha256) release =
+    (string tag, _, Uri source, string sha256) =
         await ScriptSupport.ResolveLatestGitHubReleaseAssetAsync(
             "microsoft",
             "sbom-tool",
             name => string.Equals(name, assetName, StringComparison.Ordinal),
             CancellationToken.None).ConfigureAwait(false);
-    string version = release.Tag.TrimStart('v');
+    string version = tag.TrimStart('v');
     string installationRoot = explicitOutput is null
         ? Path.Join(
             ScriptSupport.ResolveToolsRoot(repositoryRoot),
@@ -70,9 +70,9 @@ try
         try
         {
             await ScriptSupport.DownloadVerifiedFileAsync(
-                release.Source,
+                source,
                 temporaryPath,
-                release.Sha256,
+                sha256,
                 CancellationToken.None).ConfigureAwait(false);
             File.Move(temporaryPath, executablePath);
             ScriptSupport.EnsureExecutable(executablePath);

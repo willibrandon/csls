@@ -1,3 +1,6 @@
+using System.Xml;
+using System.Xml.Linq;
+
 namespace Csls.Workspaces;
 
 /// <summary>
@@ -6,15 +9,26 @@ namespace Csls.Workspaces;
 internal static class LegacyFrameworkReferenceResolver
 {
     /// <summary>
-    /// Adds the installed platform framework root when Mono provides one.
+    /// Adds an installed Mono framework only when project-provided references are unavailable.
     /// </summary>
     /// <param name="globalProperties">The mutable MSBuild global properties.</param>
-    internal static void AddGlobalProperties(IDictionary<string, string> globalProperties)
+    /// <param name="frameworkIdentifier">The evaluated target framework identifier.</param>
+    /// <param name="frameworkVersion">The evaluated target framework version.</param>
+    /// <returns>True when a complete installed framework was selected.</returns>
+    internal static bool AddFallbackGlobalProperties(
+        IDictionary<string, string> globalProperties,
+        string frameworkIdentifier,
+        string frameworkVersion)
     {
         ArgumentNullException.ThrowIfNull(globalProperties);
-        if (OperatingSystem.IsWindows())
+        ArgumentException.ThrowIfNullOrWhiteSpace(frameworkIdentifier);
+        ArgumentException.ThrowIfNullOrWhiteSpace(frameworkVersion);
+        if (OperatingSystem.IsWindows() || !string.Equals(
+            frameworkIdentifier,
+            ".NETFramework",
+            StringComparison.OrdinalIgnoreCase))
         {
-            return;
+            return false;
         }
 
         string[] candidates =
@@ -28,23 +42,66 @@ internal static class LegacyFrameworkReferenceResolver
         string? frameworkRoot = candidates.FirstOrDefault(Directory.Exists);
         if (frameworkRoot is null)
         {
-            return;
+            return false;
+        }
+
+        string frameworkDirectory = Path.Join(
+            frameworkRoot,
+            frameworkIdentifier,
+            frameworkVersion);
+        string? referenceDirectory = ResolveReferenceDirectory(frameworkDirectory);
+        if (referenceDirectory is null)
+        {
+            return false;
         }
 
         globalProperties["TargetFrameworkRootPath"] =
             Path.TrimEndingDirectorySeparator(frameworkRoot) + Path.DirectorySeparatorChar;
-        string? monoRoot = Path.GetDirectoryName(frameworkRoot);
-        string? extensionTargetPath = monoRoot is null
-            ? null
-            : Path.Join(
-                monoRoot,
-                "xbuild",
-                "Microsoft",
-                "Microsoft.NET.Build.Extensions",
-                "Microsoft.NET.Build.Extensions.targets");
-        if (extensionTargetPath is not null && File.Exists(extensionTargetPath))
+        globalProperties["TargetFrameworkDirectory"] = referenceDirectory;
+        globalProperties["TargetFrameworkDirectories"] = referenceDirectory;
+        globalProperties["FrameworkPathOverride"] = referenceDirectory;
+        return true;
+    }
+
+    private static string? ResolveReferenceDirectory(string frameworkDirectory)
+    {
+        if (File.Exists(Path.Join(frameworkDirectory, "mscorlib.dll")))
         {
-            globalProperties["MicrosoftNETBuildExtensionsTargets"] = extensionTargetPath;
+            return frameworkDirectory;
         }
+
+        string frameworkListPath = Path.Join(
+            frameworkDirectory,
+            "RedistList",
+            "FrameworkList.xml");
+        if (!File.Exists(frameworkListPath))
+        {
+            return null;
+        }
+
+        var settings = new XmlReaderSettings
+        {
+            DtdProcessing = DtdProcessing.Prohibit,
+            XmlResolver = null
+        };
+        using var reader = XmlReader.Create(frameworkListPath, settings);
+        var document = XDocument.Load(reader, LoadOptions.None);
+        string? targetDirectory = document.Root?
+            .Attribute("TargetFrameworkDirectory")?
+            .Value;
+        if (string.IsNullOrWhiteSpace(targetDirectory))
+        {
+            return null;
+        }
+
+        string normalizedTargetDirectory = targetDirectory
+            .Replace('\\', Path.DirectorySeparatorChar)
+            .Replace('/', Path.DirectorySeparatorChar);
+        string resolvedDirectory = Path.GetFullPath(
+            normalizedTargetDirectory,
+            Path.GetDirectoryName(frameworkListPath)!);
+        return File.Exists(Path.Join(resolvedDirectory, "mscorlib.dll"))
+            ? resolvedDirectory
+            : null;
     }
 }

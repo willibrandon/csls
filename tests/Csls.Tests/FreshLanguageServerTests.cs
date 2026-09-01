@@ -21,18 +21,15 @@ public sealed class FreshLanguageServerTests
     /// Opens a real C# file in Fresh and displays Roslyn hover information from csls.
     /// </summary>
     [TestMethod]
+    [Timeout(120_000, CooperativeCancellation = true)]
     public async Task FreshDisplaysHoverFromCsls()
     {
         string repositoryRoot = EditorToolResolver.FindRepositoryRoot();
         string freshPath = EditorToolResolver.ResolveFresh(repositoryRoot);
-        string processHostPath = EditorToolResolver.ResolveTestProcessHost(repositoryRoot);
         string launcherPath = EditorToolResolver.ResolveLauncher(repositoryRoot);
         string workerPath = EditorToolResolver.ResolveServerWorker(repositoryRoot);
         Assert.IsTrue(File.Exists(launcherPath), $"Launcher not found at {launcherPath}.");
         Assert.IsTrue(File.Exists(workerPath), $"Worker not found at {workerPath}.");
-        Assert.IsTrue(
-            File.Exists(processHostPath),
-            $"Test process host not found at {processHostPath}.");
 
         string fixturePath = Path.Join(
             Path.GetTempPath(),
@@ -63,54 +60,39 @@ public sealed class FreshLanguageServerTests
                 CreateConfiguration(launcherPath),
                 TestContext.CancellationToken).ConfigureAwait(false);
 
+            string[] processArguments =
+            [
+                "--config",
+                configurationPath,
+                "--log-file",
+                logPath,
+                "--event-log",
+                eventLogPath,
+                "--no-plugins",
+                "--no-init",
+                "--no-restore",
+                "--no-upgrade-check",
+                $"{documentPath}:7:10"
+            ];
+            var environment = new Dictionary<string, string>(StringComparer.Ordinal)
+            {
+                ["TERM"] = "xterm-256color",
+                ["COLORTERM"] = "truecolor",
+                ["HOME"] = homePath,
+                ["XDG_CACHE_HOME"] = cachePath,
+                ["XDG_CONFIG_HOME"] = fixturePath,
+                ["XDG_DATA_HOME"] = dataPath,
+                ["XDG_STATE_HOME"] = statePath,
+                ["CSLS_WORKER_PATH"] = workerPath,
+                [ControlEndpoint.SocketDirectoryEnvironmentVariable] = socketDirectory
+            };
             var workload = new Hex1bPtyWorkload(
-                EditorToolResolver.ResolveDotNetHost(),
-                [
-                    processHostPath,
-                    "--environment",
-                    "TERM",
-                    "xterm-256color",
-                    "--environment",
-                    "COLORTERM",
-                    "truecolor",
-                    "--environment",
-                    "HOME",
-                    homePath,
-                    "--environment",
-                    "XDG_CACHE_HOME",
-                    cachePath,
-                    "--environment",
-                    "XDG_CONFIG_HOME",
-                    fixturePath,
-                    "--environment",
-                    "XDG_DATA_HOME",
-                    dataPath,
-                    "--environment",
-                    "XDG_STATE_HOME",
-                    statePath,
-                    "--environment",
-                    "CSLS_WORKER_PATH",
-                    workerPath,
-                    "--environment",
-                    ControlEndpoint.SocketDirectoryEnvironmentVariable,
-                    socketDirectory,
-                    "--",
-                    freshPath,
-                    "--config",
-                    configurationPath,
-                    "--log-file",
-                    logPath,
-                    "--event-log",
-                    eventLogPath,
-                    "--no-plugins",
-                    "--no-init",
-                    "--no-restore",
-                    "--no-upgrade-check",
-                    $"{documentPath}:7:10"
-                ],
+                freshPath,
+                processArguments,
                 fixturePath,
                 width: 120,
-                height: 40);
+                height: 40,
+                environment);
             Hex1bTerminal terminal = Hex1bTerminal.CreateBuilder()
                 .WithWorkload(workload)
                 .WithHeadless()
@@ -251,10 +233,10 @@ public sealed class FreshLanguageServerTests
         CancellationToken cancellationToken)
     {
         string log = File.Exists(logPath)
-            ? await File.ReadAllTextAsync(logPath, cancellationToken).ConfigureAwait(false)
+            ? await ReadSharedTextAsync(logPath, cancellationToken).ConfigureAwait(false)
             : string.Empty;
         string events = File.Exists(eventLogPath)
-            ? await File.ReadAllTextAsync(eventLogPath, cancellationToken).ConfigureAwait(false)
+            ? await ReadSharedTextAsync(eventLogPath, cancellationToken).ConfigureAwait(false)
             : string.Empty;
         string languageServerLogDirectory = Path.Join(statePath, "fresh", "logs", "lsp");
         var languageServerLogs = new List<string>();
@@ -265,7 +247,7 @@ public sealed class FreshLanguageServerTests
                 "*",
                 SearchOption.AllDirectories).Order(StringComparer.Ordinal))
             {
-                string languageServerLog = await File.ReadAllTextAsync(
+                string languageServerLog = await ReadSharedTextAsync(
                     languageServerLogPath,
                     cancellationToken).ConfigureAwait(false);
                 languageServerLogs.Add(
@@ -278,5 +260,20 @@ public sealed class FreshLanguageServerTests
             $"Fresh events:{Environment.NewLine}{events}{Environment.NewLine}" +
             $"Language server logs:{Environment.NewLine}" +
             string.Join(Environment.NewLine, languageServerLogs);
+    }
+
+    private static async Task<string> ReadSharedTextAsync(
+        string path,
+        CancellationToken cancellationToken)
+    {
+        using FileStream stream = new(
+            path,
+            FileMode.Open,
+            FileAccess.Read,
+            FileShare.ReadWrite | FileShare.Delete,
+            bufferSize: 4096,
+            useAsync: true);
+        using var reader = new StreamReader(stream);
+        return await reader.ReadToEndAsync(cancellationToken).ConfigureAwait(false);
     }
 }

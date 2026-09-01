@@ -128,7 +128,7 @@ public sealed class UpstreamParityTests
         }
         finally
         {
-            Directory.Delete(fixtureRoot, recursive: true);
+            await DirectoryReleaseWaiter.DeleteAsync(fixtureRoot, TimeSpan.FromSeconds(10)).ConfigureAwait(false);
         }
     }
 

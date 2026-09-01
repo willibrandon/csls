@@ -129,7 +129,7 @@ export async function runFeatureContract(options: FeatureContractOptions): Promi
   assert(isExtensionApi(api), "The csls extension must return its host API.");
   assert(api.host === options.expectedHost, `Expected the ${options.expectedHost} host.`);
   assert(api.state === 2, "The csls language client must be running.");
-  await assertProjectDiscovery(api, workspaceFolder, options.expectedHost);
+  await assertProjectDiscovery(api, workspaceFolder);
   if (options.expectedHost !== "browser") {
     const expectedServerPath = vscode.Uri.joinPath(
       extension.extensionUri,
@@ -177,35 +177,18 @@ async function assertProjectDiscovery(api: {
     readonly name: string;
     readonly path: string;
   }[];
-}, workspaceFolder: vscode.WorkspaceFolder, host: FeatureContractOptions["expectedHost"]): Promise<void> {
+}, workspaceFolder: vscode.WorkspaceFolder): Promise<void> {
   assert(typeof api.projects === "function", "The Solution view must expose loaded projects.");
   await vscode.commands.executeCommand("csls.refreshSolution");
-  let projects = api.projects();
+  const projects = api.projects();
   assert(
     projects.some((project) => project.name === "Fixture"),
     `The Solution view must contain the Roslyn-loaded Fixture project. Received ${JSON.stringify(projects)}.`,
   );
   const toolPath = vscode.Uri.joinPath(workspaceFolder.uri, "Tools", "Tool.cs").fsPath;
-  if (host !== "browser") {
-    assert(
-      !projects.some((project) => project.path === toolPath),
-      `The solution reload must not eagerly load unopened file-based apps. Received ${JSON.stringify(projects)}.`,
-    );
-    const toolDocument = await vscode.workspace.openTextDocument(vscode.Uri.file(toolPath));
-    await vscode.window.showTextDocument(toolDocument, { preview: true, preserveFocus: true });
-    await vscode.commands.executeCommand("csls.refreshSolution");
-    await waitUntil(
-      () => api.projects?.().some(
-        (project) => project.name === "Tool.cs" && project.path === toolPath,
-      ) === true,
-      "The Solution view did not expose the opened file-based app.",
-    );
-    projects = api.projects();
-  }
-
   assert(
     projects.some((project) => project.name === "Tool.cs" && project.path === toolPath),
-    `The Solution view must expose the file-based app by its source path. Received ${JSON.stringify(projects)}.`,
+    `The Solution view must expose every discovered file-based app by its source path. Received ${JSON.stringify(projects)}.`,
   );
 }
 

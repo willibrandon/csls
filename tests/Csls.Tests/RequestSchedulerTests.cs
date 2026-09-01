@@ -105,6 +105,61 @@ public sealed class RequestSchedulerTests
     }
 
     /// <summary>
+    /// Keeps gated requests outside the bounded queue until admission completes.
+    /// </summary>
+    [TestMethod]
+    public async Task AdmissionGatePrecedesQueueAcceptance()
+    {
+        CancellationToken cancellationToken = TestContext.CancellationToken;
+        var scheduler = new RequestScheduler(
+            capacity: 2,
+            foregroundConcurrency: 1,
+            backgroundConcurrency: 1);
+        await using ConfiguredAsyncDisposable schedulerDisposal =
+            scheduler.ConfigureAwait(false);
+        var gateEntered = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseGate = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        scheduler.SetAdmissionGate(WaitForAdmissionAsync);
+
+        Task<int> request = scheduler.ScheduleAsync(
+            "gated-read",
+            RequestMode.ReadOnly,
+            static () => 5,
+            static context =>
+            {
+                context.CancellationToken.ThrowIfCancellationRequested();
+                return ValueTask.FromResult(7);
+            },
+            cancellationToken);
+        await gateEntered.Task.WaitAsync(cancellationToken).ConfigureAwait(false);
+        RequestSchedulerSnapshot waiting = scheduler.GetSnapshot();
+        Assert.AreEqual(0, waiting.AcceptedRequests);
+        Assert.AreEqual(0, waiting.QueuedRequests);
+        Assert.AreEqual(0, waiting.TotalActiveRequests);
+
+        releaseGate.SetResult();
+        Assert.AreEqual(7, await request.ConfigureAwait(false));
+        RequestSchedulerSnapshot completed = scheduler.GetSnapshot();
+        Assert.AreEqual(1, completed.AcceptedRequests);
+        return;
+
+        async Task WaitForAdmissionAsync(
+            string requestName,
+            RequestMode requestMode,
+            CancellationToken requestCancellationToken)
+        {
+            Assert.AreEqual("gated-read", requestName);
+            Assert.AreEqual(RequestMode.ReadOnly, requestMode);
+            gateEntered.SetResult();
+            await releaseGate.Task
+                .WaitAsync(requestCancellationToken)
+                .ConfigureAwait(false);
+        }
+    }
+
+    /// <summary>
     /// Verifies foreground reads never exceed the configured concurrency limit.
     /// </summary>
     [TestMethod]

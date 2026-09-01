@@ -122,7 +122,7 @@ public sealed class CentralPackageManagementLanguageServerTests
         }
         finally
         {
-            Directory.Delete(fixtureRoot, recursive: true);
+            await DirectoryReleaseWaiter.DeleteAsync(fixtureRoot, TimeSpan.FromSeconds(10)).ConfigureAwait(false);
         }
     }
 

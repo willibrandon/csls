@@ -794,6 +794,7 @@ public sealed class ZedLanguageServerTests
         startInfo.Environment["CSLS_WORKER_PATH"] = workerPath;
         startInfo.Environment[ControlEndpoint.SocketDirectoryEnvironmentVariable] =
             socketDirectory;
+        startInfo.Environment["NUGET_PACKAGES"] = ResolveHostNuGetPackagesPath();
         startInfo.Environment["HOME"] = homePath;
         startInfo.Environment["NO_AT_BRIDGE"] = "1";
         startInfo.Environment.Remove("WAYLAND_DISPLAY");
@@ -801,6 +802,25 @@ public sealed class ZedLanguageServerTests
         startInfo.Environment["XDG_SESSION_TYPE"] = "x11";
         return Process.Start(startInfo)
             ?? throw new InvalidOperationException("Zed did not start.");
+    }
+
+    private static string ResolveHostNuGetPackagesPath()
+    {
+        string? configuredPath = Environment.GetEnvironmentVariable("NUGET_PACKAGES");
+        if (!string.IsNullOrWhiteSpace(configuredPath))
+        {
+            return Path.GetFullPath(configuredPath);
+        }
+
+        string userProfilePath = Environment.GetFolderPath(
+            Environment.SpecialFolder.UserProfile);
+        if (string.IsNullOrWhiteSpace(userProfilePath))
+        {
+            throw new InvalidOperationException(
+                "The current user has no profile directory for the NuGet package cache.");
+        }
+
+        return Path.Join(userProfilePath, ".nuget", "packages");
     }
 
     private static Position FindPosition(string text, string value)

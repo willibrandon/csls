@@ -12,6 +12,17 @@
   </ItemGroup>
 
   <ItemGroup>
+    <Compile Include="../../src/Csls.Workspaces.MSBuild/WindowsJobObjectBasicAccountingInformation.cs"
+             Link="WindowsJobObjectBasicAccountingInformation.cs" />
+    <Compile Include="../../src/Csls.Workspaces.MSBuild/WindowsJobObjectBasicLimitInformation.cs"
+             Link="WindowsJobObjectBasicLimitInformation.cs" />
+    <Compile Include="../../src/Csls.Workspaces.MSBuild/WindowsJobObjectExtendedLimitInformation.cs"
+             Link="WindowsJobObjectExtendedLimitInformation.cs" />
+    <Compile Include="../../src/Csls.Workspaces.MSBuild/WindowsProcessTreeLifetime.cs"
+             Link="WindowsProcessTreeLifetime.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
     <PackageReference Include="Hex1b" />
     <PackageReference Include="ModelContextProtocol" />
     <PackageReference Include="StreamJsonRpc" />

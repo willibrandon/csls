@@ -43,8 +43,8 @@ export async function run(): Promise<void> {
       "The real csls workspace did not load its solution. " +
       `Received ${JSON.stringify(observedProjects)}.`);
     assert(
-      !observedProjects.some((project) => project.name === "Generate-Docs.cs"),
-      "The real csls workspace eagerly loaded file-based apps during solution startup.",
+      observedProjects.some((project) => project.name === "Generate-Docs.cs"),
+      "The real csls workspace did not eagerly load file-based apps during solution startup.",
     );
 
     await vscode.commands.executeCommand("csls.refreshSolution");
@@ -68,7 +68,7 @@ export async function run(): Promise<void> {
       observedProjects = api.projects();
       return observedProjects.some((project) => project.name === "Generate-Docs.cs");
     }, () =>
-      "The real csls workspace did not load opened file-based apps. " +
+      "The real csls workspace did not retain opened file-based apps after refresh. " +
       `Received ${JSON.stringify(observedProjects)}.`);
     await waitForDiagnosticQuietPeriod();
     recordDiagnostics([generateDocsUri]);

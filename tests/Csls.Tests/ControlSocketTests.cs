@@ -120,6 +120,78 @@ public sealed class ControlSocketTests
     }
 
     /// <summary>
+    /// Keeps session discovery responsive while workspace control operations await readiness.
+    /// </summary>
+    [TestMethod]
+    public async Task WorkspaceReadinessGateDoesNotBlockSessionDiscovery()
+    {
+        string repositoryRoot = EditorToolResolver.FindRepositoryRoot();
+        string workerPath = Path.Join(
+            EditorToolResolver.ResolveArtifactsRoot(repositoryRoot),
+            "bin",
+            "Csls.Worker",
+            "debug",
+            "csls-worker.dll");
+        Assert.IsTrue(File.Exists(workerPath), $"Worker not found at {workerPath}.");
+
+        string fixturePath = Path.Join(
+            Path.GetTempPath(),
+            $"csls-control-readiness-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(fixturePath);
+        try
+        {
+            await File.WriteAllTextAsync(
+                Path.Join(fixturePath, "Fixture.csproj"),
+                ProjectText,
+                TestContext.CancellationToken).ConfigureAwait(false);
+            LspProcessSession lsp = await LspProcessSession.StartAsync(
+                "csls-control-readiness-worker",
+                EditorToolResolver.ResolveDotNetHost(),
+                [workerPath],
+                fixturePath).ConfigureAwait(false);
+            await using ConfiguredAsyncDisposable lspCleanup = lsp.ConfigureAwait(false);
+            await lsp.InitializeAsync(
+                fixturePath,
+                TestContext.CancellationToken).ConfigureAwait(false);
+            await lsp.CompleteInitializationAsync().ConfigureAwait(false);
+            await ControlSessionWaiter.WaitForRunningAsync(
+                fixturePath,
+                TimeSpan.FromSeconds(60),
+                TestContext.CancellationToken).ConfigureAwait(false);
+
+            var readiness = new TaskCompletionSource(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+            var controlClient = new ControlRpcClient(
+                ControlEndpoint.GetSocketPath(lsp.ProcessId),
+                cancellationToken => readiness.Task.WaitAsync(cancellationToken));
+            await using ConfiguredAsyncDisposable controlCleanup =
+                controlClient.ConfigureAwait(false);
+            ControlSessionInfo session = await controlClient.GetSessionAsync(
+                TestContext.CancellationToken).ConfigureAwait(false);
+            Assert.AreEqual(lsp.ProcessId, session.ProcessId);
+
+            Task<ControlDashboardSnapshot> dashboardTask =
+                controlClient.GetDashboardSnapshotAsync(
+                    new ControlDashboardRequest(),
+                    TestContext.CancellationToken);
+            await Task.Yield();
+            Assert.IsFalse(
+                dashboardTask.IsCompleted,
+                "Workspace inspection bypassed the readiness gate.");
+
+            readiness.SetResult();
+            ControlDashboardSnapshot dashboard = await dashboardTask.ConfigureAwait(false);
+            Assert.AreEqual(lsp.ProcessId, dashboard.Session.ProcessId);
+        }
+        finally
+        {
+            await DirectoryReleaseWaiter.DeleteAsync(
+                fixturePath,
+                TimeSpan.FromSeconds(10)).ConfigureAwait(false);
+        }
+    }
+
+    /// <summary>
     /// Rejects an oversized frame before its payload while preserving subsequent control requests.
     /// </summary>
     [TestMethod]
@@ -195,7 +267,7 @@ public sealed class ControlSocketTests
         }
         finally
         {
-            Directory.Delete(fixturePath, recursive: true);
+            await DirectoryReleaseWaiter.DeleteAsync(fixturePath, TimeSpan.FromSeconds(10)).ConfigureAwait(false);
         }
     }
 
@@ -293,7 +365,7 @@ public sealed class ControlSocketTests
         }
         finally
         {
-            Directory.Delete(fixturePath, recursive: true);
+            await DirectoryReleaseWaiter.DeleteAsync(fixturePath, TimeSpan.FromSeconds(10)).ConfigureAwait(false);
         }
     }
 
@@ -500,7 +572,7 @@ public sealed class ControlSocketTests
         }
         finally
         {
-            Directory.Delete(fixturePath, recursive: true);
+            await DirectoryReleaseWaiter.DeleteAsync(fixturePath, TimeSpan.FromSeconds(10)).ConfigureAwait(false);
         }
     }
 

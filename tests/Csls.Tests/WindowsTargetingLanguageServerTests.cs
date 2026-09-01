@@ -102,7 +102,7 @@ public sealed class WindowsTargetingLanguageServerTests
         }
         finally
         {
-            Directory.Delete(fixturePath, recursive: true);
+            await DirectoryReleaseWaiter.DeleteAsync(fixturePath, TimeSpan.FromSeconds(10)).ConfigureAwait(false);
         }
     }
 
