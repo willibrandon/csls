@@ -12,6 +12,7 @@ internal static partial class X11Input
     private const ulong ShiftLeftKeySym = 0xffe1;
     private const ulong F12KeySym = 0xffc9;
     private const int RevertToParent = 2;
+    private static readonly bool s_threadsInitialized = InitializeThreads() != 0;
 
     /// <summary>
     /// Raises and focuses the first X window whose title contains the requested text.
@@ -77,6 +78,16 @@ internal static partial class X11Input
         {
             _ = CloseDisplay(display);
         }
+    }
+
+    private static nint OpenDisplay(string displayName)
+    {
+        if (!s_threadsInitialized)
+        {
+            throw new InvalidOperationException("Xlib thread support could not be initialized.");
+        }
+
+        return OpenDisplayNative(displayName);
     }
 
     /// <summary>
@@ -340,8 +351,12 @@ internal static partial class X11Input
     }
 
     [DefaultDllImportSearchPaths(DllImportSearchPath.SafeDirectories)]
+    [LibraryImport("libX11.so.6", EntryPoint = "XInitThreads")]
+    private static partial int InitializeThreads();
+
+    [DefaultDllImportSearchPaths(DllImportSearchPath.SafeDirectories)]
     [LibraryImport("libX11.so.6", EntryPoint = "XOpenDisplay", StringMarshalling = StringMarshalling.Utf8)]
-    private static partial nint OpenDisplay(string displayName);
+    private static partial nint OpenDisplayNative(string displayName);
 
     [DefaultDllImportSearchPaths(DllImportSearchPath.SafeDirectories)]
     [LibraryImport("libX11.so.6", EntryPoint = "XCloseDisplay")]
