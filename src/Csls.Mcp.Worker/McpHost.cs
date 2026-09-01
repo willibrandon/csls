@@ -18,15 +18,23 @@ internal static class McpHost
     /// </summary>
     /// <param name="socketPath">The attached csls control-socket path.</param>
     /// <param name="unlinkSocketAfterConnect">Whether to unlink an exclusively owned socket after connecting.</param>
+    /// <param name="workspaceReadiness">The optional workspace readiness operation.</param>
     /// <param name="cancellationToken">The host cancellation token.</param>
     /// <returns>The successful process exit code.</returns>
     internal static async Task<int> RunAsync(
         string socketPath,
         bool unlinkSocketAfterConnect,
+        Func<CancellationToken, Task>? workspaceReadiness,
         CancellationToken cancellationToken)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(socketPath);
-        var controlClient = new ControlRpcClient(socketPath);
+        using var readinessSource =
+            CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        Task? workspaceReadinessTask = workspaceReadiness?.Invoke(readinessSource.Token);
+        Func<CancellationToken, Task>? requestGate = workspaceReadinessTask is null
+            ? null
+            : requestToken => workspaceReadinessTask.WaitAsync(requestToken);
+        var controlClient = new ControlRpcClient(socketPath, requestGate);
         try
         {
             if (unlinkSocketAfterConnect)
@@ -74,7 +82,23 @@ internal static class McpHost
         }
         finally
         {
-            await controlClient.DisposeAsync().ConfigureAwait(false);
+            try
+            {
+                await readinessSource.CancelAsync().ConfigureAwait(false);
+                if (workspaceReadinessTask is not null)
+                {
+                    await workspaceReadinessTask.ConfigureAwait(
+                        ConfigureAwaitOptions.SuppressThrowing);
+                    if (workspaceReadinessTask.IsFaulted)
+                    {
+                        await workspaceReadinessTask.ConfigureAwait(false);
+                    }
+                }
+            }
+            finally
+            {
+                await controlClient.DisposeAsync().ConfigureAwait(false);
+            }
         }
     }
 }

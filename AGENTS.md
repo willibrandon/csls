@@ -30,6 +30,8 @@
 
 - Use MSTest 4 and Microsoft.Testing.Platform.
 - Run tests with `dotnet test`; never use `--no-build`.
+- Never change test parallelization settings to work around test or CI failures.
+  Diagnose and fix the underlying product, process-lifecycle, or test-isolation defect.
 - Use real processes, streams, Unix-domain sockets, files, repositories, projects,
   packages, SDK/MSBuild/Roslyn/Razor components, and editor clients.
 - Never use a mocking library or a hand-written substitute for a production service.

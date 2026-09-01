@@ -9,7 +9,7 @@ using System.Diagnostics;
 if (args.Length == 1 && args[0] is "--help" or "-h" or "-?")
 {
     await Console.Out.WriteLineAsync(
-        "Installs platform build prerequisites for one csls Native AOT runtime identifier.")
+        "Installs platform build and editor prerequisites for one csls runtime identifier.")
         .ConfigureAwait(false);
     await Console.Out.WriteLineAsync(
         "Usage: dotnet run --file scripts/Install-NativeAotPrerequisites.cs -- " +
@@ -30,6 +30,16 @@ if (args.Length != 2 ||
 try
 {
     string runtimeIdentifier = args[1];
+    if (OperatingSystem.IsMacOS())
+    {
+        await RunPackageManagerAsync("brew", ["install", "--formula", "emacs"])
+            .ConfigureAwait(false);
+        await Console.Out.WriteLineAsync(
+            $"Installed build and editor prerequisites for {runtimeIdentifier}.")
+            .ConfigureAwait(false);
+        return 0;
+    }
+
     if (!OperatingSystem.IsLinux() || !File.Exists("/etc/debian_version"))
     {
         await Console.Out.WriteLineAsync(
@@ -53,6 +63,7 @@ try
     [
         "build-essential",
         "clang",
+        "emacs-nox",
         "libncurses-dev",
         "zlib1g-dev"
     ];
@@ -69,7 +80,8 @@ try
         : ["install", "--yes", "--no-install-recommends", .. packages];
     await RunPackageManagerAsync(packageManager, installArguments).ConfigureAwait(false);
     await Console.Out.WriteLineAsync(
-        $"Installed Native AOT prerequisites for {runtimeIdentifier}.").ConfigureAwait(false);
+        $"Installed build and editor prerequisites for {runtimeIdentifier}.")
+        .ConfigureAwait(false);
     return 0;
 }
 catch (Exception exception) when (exception is
@@ -92,6 +104,12 @@ static async Task RunPackageManagerAsync(
         RedirectStandardOutput = true,
         UseShellExecute = false
     };
+    if (string.Equals(executablePath, "brew", StringComparison.Ordinal))
+    {
+        startInfo.Environment["HOMEBREW_NO_AUTO_UPDATE"] = "1";
+        startInfo.Environment["HOMEBREW_NO_ENV_HINTS"] = "1";
+    }
+
     foreach (string argument in arguments)
     {
         startInfo.ArgumentList.Add(argument);

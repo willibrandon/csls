@@ -1,5 +1,3 @@
-using Microsoft.CodeAnalysis.MSBuild;
-
 namespace Csls.Workspaces;
 
 /// <summary>
@@ -30,14 +28,6 @@ internal sealed class WorkspaceLoadProgressReporter
         _expectedProjectCount = expectedProjectCount;
         _progress = progress;
     }
-
-    /// <summary>
-    /// Creates an MSBuild observer scoped to one independently loaded workspace entry point.
-    /// </summary>
-    /// <param name="loadIdentity">The stable identity of the solution or project load.</param>
-    /// <returns>An observer that reports each resolved project once.</returns>
-    internal IProgress<ProjectLoadProgress> CreateObserver(string loadIdentity) =>
-        new WorkspaceProjectLoadObserver(this, loadIdentity);
 
     /// <summary>
     /// Widens the current project total when Roslyn discovers a new referenced project.

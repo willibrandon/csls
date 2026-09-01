@@ -1,17 +1,17 @@
 namespace Csls.Workspaces;
 
 /// <summary>
-/// Retains reusable design-time project states for one solution and configuration.
+/// Retains reusable design-time project states for one workspace and configuration.
 /// </summary>
-internal sealed class MSBuildSolutionCacheEntry
+internal sealed class MSBuildWorkspaceCacheEntry
 {
     private readonly Dictionary<string, MSBuildProjectSnapshot[]> _snapshotsByPath;
 
     /// <summary>
-    /// Initializes one immutable solution design-time cache entry.
+    /// Initializes one immutable workspace design-time cache entry.
     /// </summary>
     /// <param name="snapshots">The completed project states to retain.</param>
-    internal MSBuildSolutionCacheEntry(IReadOnlyList<MSBuildProjectSnapshot> snapshots)
+    internal MSBuildWorkspaceCacheEntry(IReadOnlyList<MSBuildProjectSnapshot> snapshots)
     {
         ArgumentNullException.ThrowIfNull(snapshots);
         _snapshotsByPath = snapshots

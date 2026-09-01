@@ -51,7 +51,10 @@ internal static class WorkspaceRoslynCodeRefactoringService
         int start = LspPositionConverter.GetOffset(text, parameters.Range.Start);
         int end = LspPositionConverter.GetOffset(text, parameters.Range.End);
         var span = TextSpan.FromBounds(start, Math.Max(start, end));
-        var roslynActions = new List<RoslynCodeAction>();
+        var roslynActions = new List<(
+            CodeRefactoringProvider Provider,
+            RoslynCodeAction Action)>();
+        CodeRefactoringProvider? extractBaseClassProvider = null;
         bool isConditionalAccessBindingPosition =
             await IsConditionalAccessBindingPositionAsync(
                 document,
@@ -63,6 +66,11 @@ internal static class WorkspaceRoslynCodeRefactoringService
         foreach (CodeRefactoringProvider provider in providers)
         {
             cancellationToken.ThrowIfCancellationRequested();
+            if (RoslynExtractBaseClassCodeRefactoringAdapter.IsProvider(provider))
+            {
+                extractBaseClassProvider = provider;
+            }
+
             if (isConditionalAccessBindingPosition && string.Equals(
                 provider.GetType().FullName,
                 IntroduceVariableProviderTypeName,
@@ -71,18 +79,22 @@ internal static class WorkspaceRoslynCodeRefactoringService
                 continue;
             }
 
+            var providerActions = new List<RoslynCodeAction>();
             var context = new CodeRefactoringContext(
                 document,
                 span,
-                roslynActions.Add,
+                providerActions.Add,
                 cancellationToken);
             await provider.ComputeRefactoringsAsync(context).ConfigureAwait(false);
+            roslynActions.AddRange(providerActions.Select(action => (provider, action)));
         }
 
         Solution originalSolution = document.Project.Solution;
         var actions = new List<LspCodeAction>();
         var identities = new HashSet<(string Title, string? EquivalenceKey)>();
-        foreach (RoslynCodeAction roslynAction in roslynActions.SelectMany(GetLeafActions))
+        foreach ((CodeRefactoringProvider provider, RoslynCodeAction roslynAction) in
+            roslynActions.SelectMany(static entry => GetLeafActions(entry.Action)
+                .Select(action => (entry.Provider, action))))
         {
             cancellationToken.ThrowIfCancellationRequested();
             if (roslynAction is CodeActionWithOptions actionWithOptions &&
@@ -118,9 +130,24 @@ internal static class WorkspaceRoslynCodeRefactoringService
                 Kind = RefactorCodeActionKind,
                 Edit = edit
             });
+
+            LspCodeAction? refactorAllAction =
+                await RoslynRefactorAllCodeActionAdapter.GetActionAsync(
+                    provider,
+                    roslynAction,
+                    document,
+                    span,
+                    supportsCreateFile,
+                    createWorkspaceEditAsync,
+                    cancellationToken).ConfigureAwait(false);
+            if (refactorAllAction is not null)
+            {
+                actions.Add(refactorAllAction);
+            }
         }
 
-        if (!actions.Any(static action => action.Title.StartsWith(
+        if (extractBaseClassProvider is not null &&
+            !actions.Any(static action => action.Title.StartsWith(
             "Extract base class",
             StringComparison.Ordinal)))
         {
@@ -128,6 +155,7 @@ internal static class WorkspaceRoslynCodeRefactoringService
                 await RoslynExtractBaseClassCodeRefactoringAdapter.GetActionAsync(
                     document,
                     span,
+                    extractBaseClassProvider,
                     createWorkspaceEditAsync,
                     cancellationToken).ConfigureAwait(false);
             if (extractBaseClassAction is not null)

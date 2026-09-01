@@ -44,13 +44,16 @@ public sealed class ControlService : IControlRpcTarget
     public Task<ControlSessionInfo> GetSessionAsync(CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
+        IReadOnlyList<string> workspaceRoots = _workspaceManager.WorkspaceRoots;
         return Task.FromResult(new ControlSessionInfo
         {
             ProcessId = Environment.ProcessId,
             LifecycleState = _languageServer.LifecycleState.ToString(),
             WorkspacePhase = _languageServer.WorkspacePhase.ToString(),
             WorkspaceGeneration = _workspaceManager.Generation,
-            WorkspaceRoots = _workspaceManager.WorkspaceRoots,
+            WorkspaceRoots = workspaceRoots.Count == 0
+                ? _languageServer.WorkspaceRoots
+                : workspaceRoots,
             SocketPath = _socketPath
         });
     }

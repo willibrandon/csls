@@ -4,6 +4,7 @@ using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.Text;
 using Microsoft.Extensions.Logging.Abstractions;
 using System.Collections.Concurrent;
+using System.Runtime.InteropServices;
 
 namespace Csls.Tests;
 
@@ -17,6 +18,23 @@ public sealed class MSBuildWorkspaceLoaderCacheTests
     /// Gets the active MSTest context and its framework-managed cancellation token.
     /// </summary>
     public TestContext TestContext { get; set; } = null!;
+
+    /// <summary>
+    /// Keeps Windows job accounting aligned with the native active-process field.
+    /// </summary>
+    [TestMethod]
+    public void WindowsJobObjectAccountingMatchesNativeLayout()
+    {
+        Type accountingType = typeof(MSBuildWorkspaceLoader).Assembly.GetType(
+            "Csls.Workspaces.WindowsJobObjectBasicAccountingInformation",
+            throwOnError: true)!;
+        Assert.AreEqual(
+            48,
+            Marshal.SizeOf(accountingType));
+        Assert.AreEqual(
+            40L,
+            Marshal.OffsetOf(accountingType, "_activeProcesses").ToInt64());
+    }
 
     /// <summary>
     /// Keeps in-process MSBuild state from changing the language-server process directory.
@@ -83,7 +101,73 @@ public sealed class MSBuildWorkspaceLoaderCacheTests
         }
         finally
         {
-            Directory.Delete(workspacePath, recursive: true);
+            await DirectoryReleaseWaiter.DeleteAsync(workspacePath, TimeSpan.FromSeconds(10)).ConfigureAwait(false);
+        }
+    }
+
+    /// <summary>
+    /// Gives concurrent build hosts distinct temporary working directories and removes them.
+    /// </summary>
+    [TestMethod]
+    public async Task ConcurrentBuildHostsOwnTemporaryWorkingDirectories()
+    {
+        string fixturePath = Path.Join(
+            Path.GetTempPath(),
+            $"csls-msbuild-host-directories-{Guid.NewGuid():N}");
+        string firstWorkspacePath = Path.Join(fixturePath, "First");
+        string secondWorkspacePath = Path.Join(fixturePath, "Second");
+        Directory.CreateDirectory(firstWorkspacePath);
+        Directory.CreateDirectory(secondWorkspacePath);
+        try
+        {
+            string firstObservationPath = Path.Join(firstWorkspacePath, "startup.txt");
+            string secondObservationPath = Path.Join(secondWorkspacePath, "startup.txt");
+            await File.WriteAllTextAsync(
+                Path.Join(firstWorkspacePath, "First.csproj"),
+                CreateStartupDirectoryProjectText(),
+                TestContext.CancellationToken).ConfigureAwait(false);
+            await File.WriteAllTextAsync(
+                Path.Join(secondWorkspacePath, "Second.csproj"),
+                CreateStartupDirectoryProjectText(),
+                TestContext.CancellationToken).ConfigureAwait(false);
+
+            var firstLoader = new MSBuildWorkspaceLoader(
+                NullLogger<MSBuildWorkspaceLoader>.Instance);
+            var secondLoader = new MSBuildWorkspaceLoader(
+                NullLogger<MSBuildWorkspaceLoader>.Instance);
+            Task<IReadOnlyList<WorkspaceFolderSnapshot>> firstLoad = firstLoader.LoadAsync(
+                [firstWorkspacePath],
+                "Debug",
+                progress: null,
+                TestContext.CancellationToken);
+            Task<IReadOnlyList<WorkspaceFolderSnapshot>> secondLoad = secondLoader.LoadAsync(
+                [secondWorkspacePath],
+                "Debug",
+                progress: null,
+                TestContext.CancellationToken);
+            IReadOnlyList<WorkspaceFolderSnapshot>[] loads = await Task.WhenAll(
+                firstLoad,
+                secondLoad).ConfigureAwait(false);
+            foreach (WorkspaceFolderSnapshot snapshot in loads.SelectMany(static load => load))
+            {
+                snapshot.Workspace.Dispose();
+            }
+
+            string firstWorkingDirectory = (await File.ReadAllTextAsync(
+                firstObservationPath,
+                TestContext.CancellationToken).ConfigureAwait(false)).Trim();
+            string secondWorkingDirectory = (await File.ReadAllTextAsync(
+                secondObservationPath,
+                TestContext.CancellationToken).ConfigureAwait(false)).Trim();
+            Assert.AreNotEqual(firstWorkingDirectory, secondWorkingDirectory);
+            Assert.IsFalse(Directory.Exists(firstWorkingDirectory));
+            Assert.IsFalse(Directory.Exists(secondWorkingDirectory));
+            Assert.IsFalse(IsWithinDirectory(firstWorkingDirectory, fixturePath));
+            Assert.IsFalse(IsWithinDirectory(secondWorkingDirectory, fixturePath));
+        }
+        finally
+        {
+            await DirectoryReleaseWaiter.DeleteAsync(fixturePath, TimeSpan.FromSeconds(10)).ConfigureAwait(false);
         }
     }
 
@@ -209,7 +293,7 @@ public sealed class MSBuildWorkspaceLoaderCacheTests
         }
         finally
         {
-            Directory.Delete(workspacePath, recursive: true);
+            await DirectoryReleaseWaiter.DeleteAsync(workspacePath, TimeSpan.FromSeconds(10)).ConfigureAwait(false);
         }
     }
 
@@ -281,7 +365,7 @@ public sealed class MSBuildWorkspaceLoaderCacheTests
         }
         finally
         {
-            Directory.Delete(workspacePath, recursive: true);
+            await DirectoryReleaseWaiter.DeleteAsync(workspacePath, TimeSpan.FromSeconds(10)).ConfigureAwait(false);
         }
     }
 
@@ -330,4 +414,29 @@ public sealed class MSBuildWorkspaceLoaderCacheTests
           </PropertyGroup>
         </Project>
         """;
+
+    private static string CreateStartupDirectoryProjectText() => """
+        <Project Sdk="Microsoft.NET.Sdk">
+          <PropertyGroup>
+            <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+            <TargetFramework>net10.0</TargetFramework>
+          </PropertyGroup>
+          <Target Name="CaptureStartupDirectory" BeforeTargets="Compile">
+            <WriteLinesToFile
+                File="$(MSBuildProjectDirectory)/startup.txt"
+                Lines="$(MSBuildStartupDirectory)"
+                Overwrite="true" />
+          </Target>
+        </Project>
+        """;
+
+    private static bool IsWithinDirectory(string path, string directory)
+    {
+        string relativePath = Path.GetRelativePath(directory, path);
+        return !Path.IsPathFullyQualified(relativePath) &&
+            relativePath is not ".." &&
+            !relativePath.StartsWith(
+                $"..{Path.DirectorySeparatorChar}",
+                StringComparison.Ordinal);
+    }
 }

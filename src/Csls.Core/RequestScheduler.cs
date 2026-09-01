@@ -20,6 +20,7 @@ public sealed class RequestScheduler : IAsyncDisposable
     private readonly Lock _traceGate = new();
     private readonly Queue<(RequestActivityState State, RequestTraceRecord Record)> _traceRecords = new();
     private readonly TimeProvider _timeProvider;
+    private Func<string, RequestMode, CancellationToken, Task>? _admissionGate;
     private readonly int _capacity;
     private readonly int _foregroundLimit;
     private readonly int _backgroundLimit;
@@ -81,6 +82,23 @@ public sealed class RequestScheduler : IAsyncDisposable
     /// Gets whether the scheduler has started shutting down.
     /// </summary>
     public bool IsStopping => Volatile.Read(ref _disposeState) != 0;
+
+    /// <summary>
+    /// Sets the one asynchronous admission gate applied before requests enter the bounded queue.
+    /// </summary>
+    /// <param name="admissionGate">The admission operation for a request name, mode, and cancellation token.</param>
+    public void SetAdmissionGate(
+        Func<string, RequestMode, CancellationToken, Task> admissionGate)
+    {
+        ArgumentNullException.ThrowIfNull(admissionGate);
+        if (Interlocked.CompareExchange(
+                ref _admissionGate,
+                admissionGate,
+                comparand: null) is not null)
+        {
+            throw new InvalidOperationException("The request admission gate is already configured.");
+        }
+    }
 
     /// <summary>
     /// Gets one lock-free observation of scheduler capacity and activity.
@@ -218,6 +236,48 @@ public sealed class RequestScheduler : IAsyncDisposable
         ArgumentException.ThrowIfNullOrWhiteSpace(name);
         ArgumentNullException.ThrowIfNull(workspaceGenerationProvider);
         ArgumentNullException.ThrowIfNull(operation);
+        Func<string, RequestMode, CancellationToken, Task>? admissionGate = Volatile.Read(
+            ref _admissionGate);
+        return admissionGate is null
+            ? ScheduleCoreAsync(
+                name,
+                mode,
+                workspaceGenerationProvider,
+                operation,
+                cancellationToken)
+            : ScheduleAfterAdmissionAsync(
+                admissionGate,
+                name,
+                mode,
+                workspaceGenerationProvider,
+                operation,
+                cancellationToken);
+    }
+
+    private async Task<T> ScheduleAfterAdmissionAsync<T>(
+        Func<string, RequestMode, CancellationToken, Task> admissionGate,
+        string name,
+        RequestMode mode,
+        Func<long> workspaceGenerationProvider,
+        Func<RequestContext, ValueTask<T>> operation,
+        CancellationToken cancellationToken)
+    {
+        await admissionGate(name, mode, cancellationToken).ConfigureAwait(false);
+        return await ScheduleCoreAsync(
+            name,
+            mode,
+            workspaceGenerationProvider,
+            operation,
+            cancellationToken).ConfigureAwait(false);
+    }
+
+    private Task<T> ScheduleCoreAsync<T>(
+        string name,
+        RequestMode mode,
+        Func<long> workspaceGenerationProvider,
+        Func<RequestContext, ValueTask<T>> operation,
+        CancellationToken cancellationToken)
+    {
         var completion = new TaskCompletionSource<T>(
             TaskCreationOptions.RunContinuationsAsynchronously);
         lock (_lifecycleGate)

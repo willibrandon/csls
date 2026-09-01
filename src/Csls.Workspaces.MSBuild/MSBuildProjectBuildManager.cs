@@ -2,6 +2,7 @@ using Microsoft.Build.Construction;
 using Microsoft.Build.Evaluation;
 using Microsoft.Build.Execution;
 using Microsoft.CodeAnalysis;
+using System.Diagnostics;
 using System.Globalization;
 using System.Xml;
 using MSBuildProject = Microsoft.Build.Evaluation.Project;
@@ -64,6 +65,7 @@ internal sealed class MSBuildProjectBuildManager
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(projectPaths);
+        cancellationToken.ThrowIfCancellationRequested();
         using var projectCollection = new ProjectCollection(
             globalProperties: null,
             loggers: [],
@@ -74,7 +76,7 @@ internal sealed class MSBuildProjectBuildManager
         {
             EnableNodeReuse = false,
             Loggers = [buildLogger],
-            MaxNodeCount = Environment.ProcessorCount
+            MaxNodeCount = Math.Min(Environment.ProcessorCount, projectPaths.Count)
         });
         try
         {
@@ -87,8 +89,51 @@ internal sealed class MSBuildProjectBuildManager
         }
         finally
         {
-            buildManager.EndBuild();
-            projectCollection.UnloadAllProjects();
+            Process[] workerProcesses = [.. buildManager.GetWorkerProcesses()];
+            try
+            {
+                buildManager.EndBuild();
+                await WaitForWorkerProcessesAsync(workerProcesses).ConfigureAwait(false);
+            }
+            finally
+            {
+                projectCollection.UnloadAllProjects();
+            }
+        }
+    }
+
+    private static async Task WaitForWorkerProcessesAsync(Process[] workerProcesses)
+    {
+        if (workerProcesses.Length == 0)
+        {
+            return;
+        }
+
+        using var shutdownSource = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        try
+        {
+            await Task.WhenAll(workerProcesses.Select(process =>
+                process.WaitForExitAsync(shutdownSource.Token))).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (shutdownSource.IsCancellationRequested)
+        {
+            foreach (Process process in workerProcesses)
+            {
+                try
+                {
+                    if (!process.HasExited)
+                    {
+                        process.Kill(entireProcessTree: true);
+                    }
+                }
+                catch (InvalidOperationException)
+                {
+                    // The worker exited between the state check and termination request.
+                }
+            }
+
+            await Task.WhenAll(workerProcesses.Select(process =>
+                process.WaitForExitAsync(CancellationToken.None))).ConfigureAwait(false);
         }
     }
 
@@ -163,6 +208,24 @@ internal sealed class MSBuildProjectBuildManager
                 _globalProperties,
                 projectCollection);
             loadedProjects.Add(project);
+            if (RequiresLegacyFrameworkFallback(project))
+            {
+                var fallbackProperties = new Dictionary<string, string>(
+                    _globalProperties,
+                    StringComparer.OrdinalIgnoreCase);
+                if (LegacyFrameworkReferenceResolver.AddFallbackGlobalProperties(
+                    fallbackProperties,
+                    project.GetPropertyValue("TargetFrameworkIdentifier"),
+                    project.GetPropertyValue("TargetFrameworkVersion")))
+                {
+                    project = CreateProject(
+                        projectRoot,
+                        fallbackProperties,
+                        projectCollection);
+                    loadedProjects.Add(project);
+                }
+            }
+
             string targetFramework = project.GetPropertyValue("TargetFramework");
             string targetFrameworks = project.GetPropertyValue("TargetFrameworks");
             if (!string.IsNullOrWhiteSpace(targetFramework) ||
@@ -446,6 +509,27 @@ internal sealed class MSBuildProjectBuildManager
                 ProjectLoadSettings.IgnoreInvalidImports |
                 ProjectLoadSettings.DoNotEvaluateElementsWithFalseCondition |
                 ProjectLoadSettings.FailOnUnresolvedSdk);
+
+    private static bool RequiresLegacyFrameworkFallback(MSBuildProject project)
+    {
+        if (!string.Equals(
+            project.GetPropertyValue("TargetFrameworkIdentifier"),
+            ".NETFramework",
+            StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        string frameworkRoot = project.GetPropertyValue("TargetFrameworkRootPath");
+        string frameworkVersion = project.GetPropertyValue("TargetFrameworkVersion");
+        return string.IsNullOrWhiteSpace(frameworkRoot) ||
+            string.IsNullOrWhiteSpace(frameworkVersion) ||
+            !File.Exists(Path.Join(
+                frameworkRoot,
+                ".NETFramework",
+                frameworkVersion,
+                "mscorlib.dll"));
+    }
 
     private static StringComparer PathComparer =>
         OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal;

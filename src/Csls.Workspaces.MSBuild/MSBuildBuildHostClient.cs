@@ -1,6 +1,7 @@
 using Microsoft.CodeAnalysis;
 using StreamJsonRpc;
 using System.Diagnostics;
+using System.Runtime.CompilerServices;
 
 namespace Csls.Workspaces;
 
@@ -9,6 +10,10 @@ namespace Csls.Workspaces;
 /// </summary>
 internal sealed class MSBuildBuildHostClient
 {
+    private static readonly TimeSpan s_workingDirectoryReleaseRetryDelay =
+        TimeSpan.FromMilliseconds(50);
+    private static readonly TimeSpan s_workingDirectoryReleaseTimeout =
+        TimeSpan.FromSeconds(10);
     private readonly Action<WorkspaceDiagnosticKind, string> _reportDiagnostic;
     private readonly Dictionary<string, string> _globalProperties;
 
@@ -45,11 +50,52 @@ internal sealed class MSBuildBuildHostClient
             return [];
         }
 
+        DirectoryInfo workingDirectory = Directory.CreateTempSubdirectory(
+            "csls-msbuild-build-host-");
+        try
+        {
+            return await LoadInBuildHostAsync(
+                projectPaths,
+                workingDirectory.FullName,
+                cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            await DeleteWorkingDirectoryAsync(workingDirectory.FullName).ConfigureAwait(false);
+        }
+    }
+
+    private static async Task DeleteWorkingDirectoryAsync(string path)
+    {
+        long startedTimestamp = Stopwatch.GetTimestamp();
+        while (Directory.Exists(path))
+        {
+            try
+            {
+                Directory.Delete(path, recursive: true);
+                return;
+            }
+            catch (Exception exception)
+                when (OperatingSystem.IsWindows() &&
+                    exception is IOException or UnauthorizedAccessException &&
+                    Stopwatch.GetElapsedTime(startedTimestamp) <
+                        s_workingDirectoryReleaseTimeout)
+            {
+                await Task.Delay(s_workingDirectoryReleaseRetryDelay).ConfigureAwait(false);
+            }
+        }
+    }
+
+    private async Task<IReadOnlyList<MSBuildProjectSnapshot>> LoadInBuildHostAsync(
+        IReadOnlyList<string> projectPaths,
+        string workingDirectory,
+        CancellationToken cancellationToken)
+    {
         string buildHostPath = ResolveBuildHostPath();
         var startInfo = new ProcessStartInfo
         {
             FileName = buildHostPath,
-            WorkingDirectory = Path.GetDirectoryName(projectPaths[0]),
+            WorkingDirectory = workingDirectory,
             RedirectStandardError = true,
             RedirectStandardInput = true,
             RedirectStandardOutput = true,
@@ -59,6 +105,9 @@ internal sealed class MSBuildBuildHostClient
         startInfo.ArgumentList.Add("--msbuild-build-host");
         using Process process = Process.Start(startInfo)
             ?? throw new InvalidOperationException("The MSBuild build host did not start.");
+        var processTree = WindowsProcessTreeLifetime.Attach(process);
+        await using ConfiguredAsyncDisposable processTreeCleanup =
+            processTree.ConfigureAwait(false);
         Task<string> standardErrorTask = process.StandardError.ReadToEndAsync(
             CancellationToken.None);
         MSBuildBuildHostResponse response;
@@ -84,6 +133,7 @@ internal sealed class MSBuildBuildHostClient
                             _globalProperties),
                         cancellationToken)
                     .ConfigureAwait(false);
+                process.StandardInput.Close();
             }
             catch
             {
@@ -93,12 +143,14 @@ internal sealed class MSBuildBuildHostClient
                 }
 
                 await process.WaitForExitAsync(CancellationToken.None).ConfigureAwait(false);
+                await processTree.TerminateDescendantsAsync().ConfigureAwait(false);
                 _ = await standardErrorTask.ConfigureAwait(false);
                 throw;
             }
         }
 
         await process.WaitForExitAsync(CancellationToken.None).ConfigureAwait(false);
+        await processTree.TerminateDescendantsAsync().ConfigureAwait(false);
         string standardError = await standardErrorTask.ConfigureAwait(false);
         if (process.ExitCode != 0)
         {

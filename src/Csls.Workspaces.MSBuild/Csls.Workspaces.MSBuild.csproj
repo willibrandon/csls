@@ -1,13 +1,13 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <AssemblyName>Csls.Workspaces.MSBuild</AssemblyName>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <RootNamespace>Csls.Workspaces</RootNamespace>
     <Description>The desktop MSBuild project-system loader for csls.</Description>
   </PropertyGroup>
 
   <ItemGroup>
     <PackageReference Include="Microsoft.Build.Locator" />
-    <PackageReference Include="Microsoft.CodeAnalysis.Workspaces.MSBuild" />
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
     <PackageReference Include="StreamJsonRpc" />
   </ItemGroup>
@@ -33,7 +33,5 @@
              Link="SolutionProjectCounter.cs" />
     <Compile Include="../Csls.Workspaces/WorkspaceLoadProgressReporter.cs"
              Link="WorkspaceLoadProgressReporter.cs" />
-    <Compile Include="../Csls.Workspaces/WorkspaceProjectLoadObserver.cs"
-             Link="WorkspaceProjectLoadObserver.cs" />
   </ItemGroup>
 </Project>

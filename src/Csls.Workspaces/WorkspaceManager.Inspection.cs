@@ -195,7 +195,7 @@ public sealed partial class WorkspaceManager
                         Kind = string.Join(
                             "+",
                             folders
-                                .Select(static folder => folder.Workspace.GetType().Name)
+                                .Select(static folder => folder.Workspace.Kind)
                                 .Distinct(StringComparer.Ordinal)
                                 .Order(StringComparer.Ordinal)),
                         WorkspaceCount = folders.Length,
@@ -219,7 +219,7 @@ public sealed partial class WorkspaceManager
                     WorkspaceKind = string.Join(
                         "+",
                         group
-                            .Select(static folder => folder.Workspace.GetType().Name)
+                            .Select(static folder => folder.Workspace.Kind)
                             .Distinct(StringComparer.Ordinal)
                             .Order(StringComparer.Ordinal)),
                     ProjectCount = group.Sum(static folder => folder.Solution.ProjectIds.Count),

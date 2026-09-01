@@ -49,7 +49,7 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
     if (!string.IsNullOrWhiteSpace(workspacePath))
     {
         TransientLanguageServerSession transient =
-            await TransientLanguageServerSession.StartAsync(
+            await TransientLanguageServerSession.StartInitializingAsync(
                 workspacePath,
                 "csls-mcp",
                 cancellationToken).ConfigureAwait(false);
@@ -60,6 +60,7 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
         Task<int> hostTask = McpHost.RunAsync(
             ControlEndpoint.GetSocketPath(transient.ProcessId),
             unlinkSocketAfterConnect: true,
+            transient.WaitUntilReadyAsync,
             hostSource.Token);
         Task processTask = transient.WaitForExitAsync(CancellationToken.None);
         Task completed = await Task.WhenAny(hostTask, processTask).ConfigureAwait(false);
@@ -88,6 +89,7 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
     return await McpHost.RunAsync(
         socketPath,
         unlinkSocketAfterConnect: false,
+        workspaceReadiness: null,
         cancellationToken).ConfigureAwait(false);
 });
 

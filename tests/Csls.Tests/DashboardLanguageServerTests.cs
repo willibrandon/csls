@@ -244,6 +244,7 @@ public sealed class DashboardLanguageServerTests
     /// Shows complete diagnostic locations and messages in a narrow real terminal.
     /// </summary>
     [TestMethod]
+    [Timeout(120_000, CooperativeCancellation = true)]
     public async Task DashboardShowsCompleteDiagnosticDetailsAtNarrowWidth()
     {
         string repositoryRoot = EditorToolResolver.FindRepositoryRoot();
@@ -422,8 +423,7 @@ public sealed class DashboardLanguageServerTests
                             headerRow,
                             MouseButton.Left,
                             TestContext.CancellationToken).ConfigureAwait(false);
-                        await WaitForScreenAsync(
-                            automator,
+                        await automator.WaitUntilAsync(
                             screen => screen
                                 .GetScreenText()
                                 .Split('\n')
@@ -431,7 +431,7 @@ public sealed class DashboardLanguageServerTests
                                     line.Contains("Severity", StringComparison.Ordinal) &&
                                     line.IndexOf("Code", StringComparison.Ordinal) >=
                                         initialCodeColumn + 5),
-                            TestContext.CancellationToken)
+                            description: "severity column resize")
                             .ConfigureAwait(false);
                     }
 
@@ -469,8 +469,7 @@ public sealed class DashboardLanguageServerTests
                         12,
                         MouseButton.Left,
                         TestContext.CancellationToken).ConfigureAwait(false);
-                    await WaitForScreenAsync(
-                        automator,
+                    await automator.WaitUntilAsync(
                         screen => screen
                             .GetScreenText()
                             .Split('\n')
@@ -478,7 +477,7 @@ public sealed class DashboardLanguageServerTests
                                 line.Contains("Diagnostics", StringComparison.Ordinal) &&
                                 line.Length > 33 &&
                                 line[33] == '┌'),
-                        TestContext.CancellationToken)
+                        description: "diagnostics pane resize")
                         .ConfigureAwait(false);
                     await automator.Ctrl().KeyAsync(
                         Hex1bKey.C,
@@ -653,12 +652,11 @@ public sealed class DashboardLanguageServerTests
                         secondSessionRow,
                         MouseButton.Left,
                         TestContext.CancellationToken).ConfigureAwait(false);
-                    await WaitForScreenAsync(
-                        automator,
+                    await automator.WaitUntilAsync(
                         screen => screen.GetScreenText().StartsWith(
                             $"csls dashboard  session {secondLsp.ProcessId}",
                             StringComparison.Ordinal),
-                        TestContext.CancellationToken)
+                        description: "dashboard session selection")
                         .ConfigureAwait(false);
                     await automator.Ctrl().KeyAsync(
                         Hex1bKey.C,
@@ -791,10 +789,9 @@ public sealed class DashboardLanguageServerTests
                         "started",
                         TimeSpan.FromSeconds(60),
                         TestContext.CancellationToken).ConfigureAwait(false);
-                    await WaitForScreenAsync(
-                        automator,
+                    await automator.WaitUntilAsync(
                         screen => screen.ContainsText("Loading diagnostics..."),
-                        TestContext.CancellationToken)
+                        description: "diagnostic loading indicator")
                         .ConfigureAwait(false);
                     await fixture.ReleaseAsync(TestContext.CancellationToken).ConfigureAwait(false);
                     await automator.WaitUntilAsync(
@@ -831,25 +828,6 @@ public sealed class DashboardLanguageServerTests
         await automator.KeyAsync(Hex1bKey.Y, cancellationToken).ConfigureAwait(false);
         await workload.WaitForRawOutputAsync(clipboardSequence, cancellationToken)
             .ConfigureAwait(false);
-    }
-
-    private static async Task WaitForScreenAsync(
-        Hex1bTerminalAutomator automator,
-        Func<Hex1bTerminalSnapshot, bool> predicate,
-        CancellationToken cancellationToken)
-    {
-        while (true)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            using Hex1bTerminalSnapshot snapshot = automator.CreateSnapshot();
-            if (predicate(snapshot))
-            {
-                return;
-            }
-
-            await Task.Delay(TimeSpan.FromMilliseconds(50), cancellationToken)
-                .ConfigureAwait(false);
-        }
     }
 
     private static int GetAcceptedRequestCount(string screenText)

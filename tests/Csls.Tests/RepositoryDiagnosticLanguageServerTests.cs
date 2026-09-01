@@ -97,7 +97,7 @@ public sealed class RepositoryDiagnosticLanguageServerTests
             repositoryRoot,
             "src",
             "Csls.Workspaces",
-            "RoslynExtractBaseClassCodeRefactoringAdapter.cs");
+            "WorkspaceRoslynCodeRefactoringService.cs");
         string extractBaseClassAdapterText = await File.ReadAllTextAsync(
             extractBaseClassAdapterPath,
             TestContext.CancellationToken).ConfigureAwait(false);
@@ -128,8 +128,23 @@ public sealed class RepositoryDiagnosticLanguageServerTests
         ControlDashboardSnapshot snapshot = await control.GetDashboardSnapshotAsync(
             new ControlDashboardRequest { IncludeDiagnostics = true },
             TestContext.CancellationToken).ConfigureAwait(false);
+        Assert.Contains(
+            "Generate-Docs.cs",
+            snapshot.Projects.Select(static project => project.Name));
+        ControlWorkspaceOperationResult reload = await control.ReloadWorkspaceAsync(
+            TestContext.CancellationToken).ConfigureAwait(false);
+        Assert.AreEqual(reload.PreviousGeneration + 1, reload.CurrentGeneration);
+        Assert.AreEqual(1, reload.AffectedWorkspaceCount);
+        ControlDashboardSnapshot reloadedSnapshot = await control.GetDashboardSnapshotAsync(
+            new ControlDashboardRequest { IncludeDiagnostics = false },
+            TestContext.CancellationToken).ConfigureAwait(false);
+        Assert.HasCount(snapshot.Projects.Count, reloadedSnapshot.Projects);
+        Assert.Contains(
+            "Generate-Docs.cs",
+            reloadedSnapshot.Projects.Select(static project => project.Name));
         string standardError = await lsp.ShutdownAsync(TestContext.CancellationToken)
             .ConfigureAwait(false);
+        TestContext.WriteLine(standardError);
 
         Assert.AreEqual(
             0,

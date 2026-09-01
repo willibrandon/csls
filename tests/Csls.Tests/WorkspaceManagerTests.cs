@@ -65,7 +65,7 @@ public sealed class WorkspaceManagerTests
         }
         finally
         {
-            Directory.Delete(workspacePath, recursive: true);
+            await DirectoryReleaseWaiter.DeleteAsync(workspacePath, TimeSpan.FromSeconds(10)).ConfigureAwait(false);
         }
     }
 
@@ -200,7 +200,7 @@ public sealed class WorkspaceManagerTests
                 snapshot.Workspace.Dispose();
             }
 
-            Directory.Delete(workspacePath, recursive: true);
+            await DirectoryReleaseWaiter.DeleteAsync(workspacePath, TimeSpan.FromSeconds(10)).ConfigureAwait(false);
         }
     }
 
@@ -264,7 +264,7 @@ public sealed class WorkspaceManagerTests
                 snapshot.Workspace.Dispose();
             }
 
-            Directory.Delete(workspacePath, recursive: true);
+            await DirectoryReleaseWaiter.DeleteAsync(workspacePath, TimeSpan.FromSeconds(10)).ConfigureAwait(false);
         }
     }
 
@@ -327,15 +327,15 @@ public sealed class WorkspaceManagerTests
                 snapshot.Workspace.Dispose();
             }
 
-            Directory.Delete(workspacePath, recursive: true);
+            await DirectoryReleaseWaiter.DeleteAsync(workspacePath, TimeSpan.FromSeconds(10)).ConfigureAwait(false);
         }
     }
 
     /// <summary>
-    /// Reloads solutions with only the file-based apps that an editor actually opened.
+    /// Loads solution projects and every discovered file-based app in one retained workspace.
     /// </summary>
     [TestMethod]
-    public async Task SolutionReloadRetainsOnlyOpenedFileBasedApps()
+    public async Task SolutionLoadIncludesAllDiscoveredFileBasedApps()
     {
         string workspacePath = Path.Join(
             Path.GetTempPath(),
@@ -383,8 +383,20 @@ public sealed class WorkspaceManagerTests
                 diagnosticsProjectId: null,
                 TestContext.CancellationToken).ConfigureAwait(false);
             Assert.AreEqual(
-                "App",
-                string.Join(',', initial.Projects.Select(static project => project.Name)));
+                "App,Opened.cs,Unopened.cs",
+                string.Join(
+                    ',',
+                    initial.Projects
+                        .Select(static project => project.Name)
+                        .Order(StringComparer.Ordinal)));
+            WorkspaceBuildHostInspection buildHost = Assert.ContainsSingle(initial.BuildHosts);
+            Assert.AreEqual(1, buildHost.WorkspaceCount);
+            Assert.Contains(
+                openedScriptPath,
+                initial.Projects.Select(static project => project.FilePath));
+            Assert.Contains(
+                unopenedScriptPath,
+                initial.Projects.Select(static project => project.FilePath));
 
             await manager.OpenDocumentAsync(
                 new TextDocumentItem
@@ -402,19 +414,18 @@ public sealed class WorkspaceManagerTests
                 diagnosticsProjectId: null,
                 TestContext.CancellationToken).ConfigureAwait(false);
             Assert.AreEqual(
-                "App,Opened.cs",
+                "App,Opened.cs,Unopened.cs",
                 string.Join(
                     ',',
                     reloaded.Projects
                         .Select(static project => project.Name)
                         .Order(StringComparer.Ordinal)));
-            Assert.DoesNotContain(
-                unopenedScriptPath,
-                reloaded.Projects.Select(static project => project.FilePath));
+            Assert.IsFalse(File.Exists(openedScriptPath + ".csproj"));
+            Assert.IsFalse(File.Exists(unopenedScriptPath + ".csproj"));
         }
         finally
         {
-            Directory.Delete(workspacePath, recursive: true);
+            await DirectoryReleaseWaiter.DeleteAsync(workspacePath, TimeSpan.FromSeconds(10)).ConfigureAwait(false);
         }
     }
 
@@ -466,7 +477,7 @@ public sealed class WorkspaceManagerTests
         }
         finally
         {
-            Directory.Delete(workspacePath, recursive: true);
+            await DirectoryReleaseWaiter.DeleteAsync(workspacePath, TimeSpan.FromSeconds(10)).ConfigureAwait(false);
         }
     }
 
@@ -502,7 +513,7 @@ public sealed class WorkspaceManagerTests
         }
         finally
         {
-            Directory.Delete(workspacePath, recursive: true);
+            await DirectoryReleaseWaiter.DeleteAsync(workspacePath, TimeSpan.FromSeconds(10)).ConfigureAwait(false);
         }
     }
 
@@ -566,7 +577,7 @@ public sealed class WorkspaceManagerTests
         }
         finally
         {
-            Directory.Delete(workspacePath, recursive: true);
+            await DirectoryReleaseWaiter.DeleteAsync(workspacePath, TimeSpan.FromSeconds(10)).ConfigureAwait(false);
         }
     }
 
@@ -648,7 +659,7 @@ public sealed class WorkspaceManagerTests
         }
         finally
         {
-            Directory.Delete(workspacePath, recursive: true);
+            await DirectoryReleaseWaiter.DeleteAsync(workspacePath, TimeSpan.FromSeconds(10)).ConfigureAwait(false);
         }
     }
 
@@ -702,7 +713,7 @@ public sealed class WorkspaceManagerTests
         }
         finally
         {
-            Directory.Delete(workspacePath, recursive: true);
+            await DirectoryReleaseWaiter.DeleteAsync(workspacePath, TimeSpan.FromSeconds(10)).ConfigureAwait(false);
         }
     }
 
@@ -754,7 +765,7 @@ public sealed class WorkspaceManagerTests
         }
         finally
         {
-            Directory.Delete(workspacePath, recursive: true);
+            await DirectoryReleaseWaiter.DeleteAsync(workspacePath, TimeSpan.FromSeconds(10)).ConfigureAwait(false);
         }
     }
 
@@ -825,12 +836,12 @@ public sealed class WorkspaceManagerTests
         }
         finally
         {
-            Directory.Delete(workspacePath, recursive: true);
+            await DirectoryReleaseWaiter.DeleteAsync(workspacePath, TimeSpan.FromSeconds(10)).ConfigureAwait(false);
         }
     }
 
     /// <summary>
-    /// Inspects all or one nested project while retaining stable diagnostic order.
+    /// Inspects nested solutions from one workspace while retaining stable diagnostic order.
     /// </summary>
     [TestMethod]
     public async Task MultipleNestedProjectDiagnosticsSupportBoundedInspection()
@@ -881,7 +892,10 @@ public sealed class WorkspaceManagerTests
                 "Two loaded workspaces in one process must not be reported as two build hosts.");
             WorkspaceBuildHostInspection buildHost = snapshot.BuildHosts[0];
             Assert.AreEqual(Environment.ProcessId, buildHost.ProcessId);
-            Assert.AreEqual(2, buildHost.WorkspaceCount);
+            Assert.AreEqual(
+                1,
+                buildHost.WorkspaceCount,
+                "One workspace root must publish one retained Roslyn workspace.");
             Assert.AreEqual(2, buildHost.ProjectCount);
             Assert.AreEqual(
                 2,
@@ -918,7 +932,7 @@ public sealed class WorkspaceManagerTests
         }
         finally
         {
-            Directory.Delete(workspacePath, recursive: true);
+            await DirectoryReleaseWaiter.DeleteAsync(workspacePath, TimeSpan.FromSeconds(10)).ConfigureAwait(false);
         }
     }
 
