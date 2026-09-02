@@ -237,6 +237,39 @@ public sealed class DebuggerSession : IAsyncDisposable
     }
 
     /// <summary>
+    /// Gets a page of managed modules observed in the active target.
+    /// </summary>
+    /// <param name="startModule">The zero-based first module to return.</param>
+    /// <param name="moduleCount">The maximum count, or zero for all remaining modules.</param>
+    /// <param name="cancellationToken">Cancels queueing module inspection.</param>
+    /// <returns>The selected module page and complete module count.</returns>
+    public async Task<DebugModulePage> GetModulesAsync(
+        int startModule,
+        int moduleCount,
+        CancellationToken cancellationToken)
+    {
+        ObjectDisposedException.ThrowIf(_disposed != 0, this);
+        DebugModulePage? result = null;
+        await _actor.InvokeAsync(
+            token =>
+            {
+                _ = token;
+                if (_state is not DebugSessionState.Running and not DebugSessionState.Stopped)
+                {
+                    throw new InvalidOperationException(
+                        $"Managed modules are unavailable while the debugger session is {_state}.");
+                }
+
+                result = new DebugModulePage(
+                    _sourceBreakpoints.GetModules(startModule, moduleCount),
+                    _sourceBreakpoints.ModuleCount);
+                return ValueTask.CompletedTask;
+            },
+            cancellationToken).ConfigureAwait(false);
+        return result!;
+    }
+
+    /// <summary>
     /// Gets a page of managed stack frames belonging to the current stop generation.
     /// </summary>
     /// <param name="threadId">The managed thread identifier.</param>

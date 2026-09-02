@@ -19,6 +19,7 @@ internal sealed class SourceBreakpointManager : IDisposable
     private readonly Dictionary<nint, SourceBreakpointBinding> _bindings = [];
     private readonly Dictionary<nint, CorDebugLoadedModule> _modules = [];
     private int _nextBreakpointId;
+    private int _nextModuleId;
     private int _disposed;
 
     /// <summary>
@@ -115,6 +116,8 @@ internal sealed class SourceBreakpointManager : IDisposable
         _ = ComAbi.AddRef(module);
         var loadedModule = new CorDebugLoadedModule
         {
+            Id = checked(++_nextModuleId),
+            Path = GetModulePath(module),
             Pointer = module,
             Identity = identity
         };
@@ -132,6 +135,57 @@ internal sealed class SourceBreakpointManager : IDisposable
                 definitions,
                 notifyChanges: true,
                 cancellationToken).ConfigureAwait(false);
+        }
+    }
+
+    /// <summary>
+    /// Gets a stable ordered page of modules observed through runtime callbacks.
+    /// </summary>
+    /// <param name="start">The zero-based first module to return.</param>
+    /// <param name="count">The maximum count, or zero for all remaining modules.</param>
+    /// <returns>The requested loaded-module page.</returns>
+    internal IReadOnlyList<DebugModuleInfo> GetModules(int start, int count)
+    {
+        ObjectDisposedException.ThrowIf(_disposed != 0, this);
+        ArgumentOutOfRangeException.ThrowIfNegative(start);
+        ArgumentOutOfRangeException.ThrowIfNegative(count);
+        IEnumerable<CorDebugLoadedModule> modules = _modules.Values
+            .OrderBy(static module => module.Id)
+            .Skip(start);
+        if (count > 0)
+        {
+            modules = modules.Take(count);
+        }
+
+        return modules.Select(static module =>
+        {
+            string? symbolPath = module.Path is null
+                ? null
+                : Path.ChangeExtension(module.Path, ".pdb");
+            if (symbolPath is not null && !File.Exists(symbolPath))
+            {
+                symbolPath = null;
+            }
+
+            return new DebugModuleInfo(
+                module.Id,
+                module.Path is null
+                    ? $"Dynamic module {module.Id}"
+                    : Path.GetFileName(module.Path),
+                module.Path,
+                symbolPath);
+        }).ToArray();
+    }
+
+    /// <summary>
+    /// Gets the number of modules observed through runtime callbacks.
+    /// </summary>
+    internal int ModuleCount
+    {
+        get
+        {
+            ObjectDisposedException.ThrowIf(_disposed != 0, this);
+            return _modules.Count;
         }
     }
 
@@ -254,12 +308,8 @@ internal sealed class SourceBreakpointManager : IDisposable
         bool notifyChanges,
         CancellationToken cancellationToken)
     {
-        string modulePath;
-        try
-        {
-            modulePath = CorDebugModulePath.Get(module.Pointer);
-        }
-        catch (InvalidOperationException)
+        string? modulePath = module.Path;
+        if (modulePath is null)
         {
             return;
         }
@@ -499,4 +549,17 @@ internal sealed class SourceBreakpointManager : IDisposable
         left,
         right,
         OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal);
+
+    private static string? GetModulePath(nint module)
+    {
+        try
+        {
+            string path = CorDebugModulePath.Get(module);
+            return Path.IsPathFullyQualified(path) ? Path.GetFullPath(path) : null;
+        }
+        catch (InvalidOperationException)
+        {
+            return null;
+        }
+    }
 }

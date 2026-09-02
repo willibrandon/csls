@@ -35,8 +35,9 @@ public sealed class DapSessionTests
         AssertResponse(initialize.RootElement, initializeSequence, "initialize", success: true);
         JsonElement capabilities = initialize.RootElement.GetProperty("body");
         Assert.IsTrue(capabilities.GetProperty("supportsConfigurationDoneRequest").GetBoolean());
+        Assert.IsTrue(capabilities.GetProperty("supportsModulesRequest").GetBoolean());
         Assert.IsTrue(capabilities.GetProperty("supportsVariablePaging").GetBoolean());
-        Assert.HasCount(2, capabilities.EnumerateObject().ToArray());
+        Assert.HasCount(3, capabilities.EnumerateObject().ToArray());
 
         string processHost = ResolveTestProcessHost();
         int launchSequence = await client.SendRequestAsync(
@@ -465,6 +466,36 @@ public sealed class DapSessionTests
             Assert.AreEqual("Csls.TestProcessHost.DebuggerStepFixture.Run", frameName);
             Assert.AreEqual(sourcePath, framePath);
             Assert.AreEqual(breakpointLine, frameLine);
+
+            int modulesSequence = await client.SendRequestAsync(
+                "modules",
+                WriteEmptyObject,
+                TestContext.CancellationToken).ConfigureAwait(false);
+            using JsonDocument modules = await client
+                .ReadMessageAsync(TestContext.CancellationToken)
+                .ConfigureAwait(false);
+            AssertResponse(modules.RootElement, modulesSequence, "modules", success: true);
+            JsonElement[] moduleItems = [.. modules.RootElement
+                .GetProperty("body")
+                .GetProperty("modules")
+                .EnumerateArray()];
+            Assert.AreEqual(
+                moduleItems.Length,
+                modules.RootElement.GetProperty("body").GetProperty("totalModules").GetInt32());
+            Assert.IsGreaterThan(0, moduleItems.Length);
+            string processHost = ResolveTestProcessHost();
+            JsonElement fixtureModule = moduleItems.Single(module => string.Equals(
+                module.TryGetProperty("path", out JsonElement path)
+                    ? path.GetString()
+                    : null,
+                processHost,
+                StringComparison.Ordinal));
+            Assert.IsGreaterThan(0, fixtureModule.GetProperty("id").GetInt32());
+            Assert.AreEqual(Path.GetFileName(processHost), fixtureModule.GetProperty("name").GetString());
+            Assert.AreEqual("Symbols loaded.", fixtureModule.GetProperty("symbolStatus").GetString());
+            Assert.AreEqual(
+                Path.ChangeExtension(processHost, ".pdb"),
+                fixtureModule.GetProperty("symbolFilePath").GetString());
 
             threadId = await StepAndReadStopAsync(
                 client,

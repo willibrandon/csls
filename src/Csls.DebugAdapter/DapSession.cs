@@ -340,6 +340,9 @@ internal sealed class DapSession : IDebuggerSessionObserver, IAsyncDisposable
             case "threads":
                 await WriteThreadsAsync(request, cancellationToken).ConfigureAwait(false);
                 break;
+            case "modules":
+                await WriteModulesAsync(request, cancellationToken).ConfigureAwait(false);
+                break;
             case "pause":
                 await PauseAsync(request, cancellationToken).ConfigureAwait(false);
                 break;
@@ -408,6 +411,7 @@ internal sealed class DapSession : IDebuggerSessionObserver, IAsyncDisposable
             {
                 writer.WriteStartObject();
                 writer.WriteBoolean("supportsConfigurationDoneRequest", true);
+                writer.WriteBoolean("supportsModulesRequest", true);
                 writer.WriteBoolean("supportsVariablePaging", true);
                 writer.WriteEndObject();
             },
@@ -705,6 +709,72 @@ internal sealed class DapSession : IDebuggerSessionObserver, IAsyncDisposable
             cancellationToken).ConfigureAwait(false);
     }
 
+    private async ValueTask WriteModulesAsync(
+        Request request,
+        CancellationToken cancellationToken)
+    {
+        if (_state is not DapSessionState.Running and not DapSessionState.Stopped)
+        {
+            await WriteStateFailureAsync(request, cancellationToken).ConfigureAwait(false);
+            return;
+        }
+
+        try
+        {
+            int startModule = GetOptionalNonNegativeInteger(
+                request.Arguments,
+                "startModule",
+                "modules");
+            int moduleCount = GetOptionalNonNegativeInteger(
+                request.Arguments,
+                "moduleCount",
+                "modules");
+            DebugModulePage page = await _engineSession
+                .GetModulesAsync(startModule, moduleCount, cancellationToken)
+                .ConfigureAwait(false);
+            await _writer.WriteResponseAsync(
+                request,
+                success: true,
+                message: null,
+                writer =>
+                {
+                    writer.WriteStartObject();
+                    writer.WriteStartArray("modules");
+                    foreach (DebugModuleInfo module in page.Modules)
+                    {
+                        writer.WriteStartObject();
+                        writer.WriteNumber("id", module.Id);
+                        writer.WriteString("name", module.Name);
+                        if (module.Path is not null)
+                        {
+                            writer.WriteString("path", module.Path);
+                        }
+
+                        writer.WriteString(
+                            "symbolStatus",
+                            module.SymbolPath is null ? "Symbols not found." : "Symbols loaded.");
+                        if (module.SymbolPath is not null)
+                        {
+                            writer.WriteString("symbolFilePath", module.SymbolPath);
+                        }
+
+                        writer.WriteEndObject();
+                    }
+
+                    writer.WriteEndArray();
+                    writer.WriteNumber("totalModules", page.TotalModules);
+                    writer.WriteEndObject();
+                },
+                cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception exception) when (
+            exception is ArgumentException or InvalidOperationException or OverflowException)
+        {
+            await WriteRequestFailureAsync(request, exception.Message, cancellationToken)
+                .ConfigureAwait(false);
+        }
+    }
+
     private async ValueTask PauseAsync(
         Request request,
         CancellationToken cancellationToken)
@@ -825,8 +895,8 @@ internal sealed class DapSession : IDebuggerSessionObserver, IAsyncDisposable
                     "The stackTrace request requires an integer threadId.");
             }
 
-            int startFrame = GetOptionalNonNegativeInteger(arguments, "startFrame");
-            int levels = GetOptionalNonNegativeInteger(arguments, "levels");
+            int startFrame = GetOptionalNonNegativeInteger(arguments, "startFrame", "stackTrace");
+            int levels = GetOptionalNonNegativeInteger(arguments, "levels", "stackTrace");
             DebugStackTrace stack = await _engineSession.GetStackTraceAsync(
                 threadId,
                 startFrame,
@@ -939,8 +1009,8 @@ internal sealed class DapSession : IDebuggerSessionObserver, IAsyncDisposable
                 arguments,
                 "variablesReference",
                 "variables");
-            int start = GetOptionalNonNegativeInteger(arguments, "start");
-            int count = GetOptionalNonNegativeInteger(arguments, "count");
+            int start = GetOptionalNonNegativeInteger(arguments, "start", "variables");
+            int count = GetOptionalNonNegativeInteger(arguments, "count", "variables");
             IReadOnlyList<DebugVariableInfo> variables = await _engineSession
                 .GetVariablesAsync(
                     variablesReference,
@@ -982,7 +1052,8 @@ internal sealed class DapSession : IDebuggerSessionObserver, IAsyncDisposable
 
     private static int GetOptionalNonNegativeInteger(
         JsonElement arguments,
-        string propertyName)
+        string propertyName,
+        string requestName)
     {
         if (!arguments.TryGetProperty(propertyName, out JsonElement value))
         {
@@ -992,7 +1063,7 @@ internal sealed class DapSession : IDebuggerSessionObserver, IAsyncDisposable
         if (!value.TryGetInt32(out int result) || result < 0)
         {
             throw new ArgumentException(
-                $"The stackTrace {propertyName} value must be a non-negative integer.");
+                $"The {requestName} {propertyName} value must be a non-negative integer.");
         }
 
         return result;
