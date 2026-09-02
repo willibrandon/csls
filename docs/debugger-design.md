@@ -115,6 +115,16 @@ enumerates loaded CoreCLR instances, reports ambiguity explicitly, and creates t
 interface for the selected runtime. Architecture and permission mismatches are
 reported before partial session activation where the platform exposes enough data.
 
+Dbgshim inherits the host's process-wide standard handles, so launch is serialized
+through a short process-wide gate that redirects all three handles only for the
+`CreateProcessForLaunch` call and restores them in nested `finally` blocks. The
+parent owns dedicated anonymous-pipe endpoints and closes every local child endpoint
+immediately after launch. Target output therefore reaches bounded debugger output
+handling and can never share the adapter's protocol stdout. On Unix, a dedicated
+blocking `waitpid` owner starts before runtime activation. It preserves the direct
+child's real signed exit status before CoreCLR's polling transport can reap it;
+CoreCLR then observes `ECHILD` and uses its documented process-existence path.
+
 ICorDebug projections are generated from the current public IDL and checked into
 the repository for offline builds. Source-generated COM and `LibraryImport` are
 used where supported; ABI-sensitive interfaces use generated unmanaged vtables.

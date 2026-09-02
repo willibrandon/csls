@@ -18,7 +18,7 @@ internal sealed class DapSession : IDebuggerSessionObserver, IAsyncDisposable
     private DapSessionState _state = DapSessionState.Created;
     private Request? _pendingLaunchRequest;
     private Request? _pendingConfigurationRequest;
-    private DebuggeeLaunchOptions? _pendingLaunchOptions;
+    private DapLaunchConfiguration? _pendingLaunch;
     private int _protocolClosed;
 
     /// <summary>
@@ -302,7 +302,7 @@ internal sealed class DapSession : IDebuggerSessionObserver, IAsyncDisposable
 
         try
         {
-            _pendingLaunchOptions = DapLaunchOptionsParser.Parse(request.Arguments);
+            _pendingLaunch = DapLaunchOptionsParser.Parse(request.Arguments);
         }
         catch (Exception exception) when (
             exception is ArgumentException or IOException or UnauthorizedAccessException)
@@ -330,7 +330,7 @@ internal sealed class DapSession : IDebuggerSessionObserver, IAsyncDisposable
     {
         if (_state != DapSessionState.Configuring ||
             _pendingLaunchRequest is null ||
-            _pendingLaunchOptions is null)
+            _pendingLaunch is null)
         {
             await WriteStateFailureAsync(request, cancellationToken).ConfigureAwait(false);
             return;
@@ -340,9 +340,18 @@ internal sealed class DapSession : IDebuggerSessionObserver, IAsyncDisposable
         _pendingConfigurationRequest = request;
         try
         {
-            await _engineSession
-                .LaunchWithoutDebuggingAsync(_pendingLaunchOptions, cancellationToken)
-                .ConfigureAwait(false);
+            if (_pendingLaunch.NoDebug)
+            {
+                await _engineSession
+                    .LaunchWithoutDebuggingAsync(_pendingLaunch.Options, cancellationToken)
+                    .ConfigureAwait(false);
+            }
+            else
+            {
+                await _engineSession
+                    .LaunchManagedAsync(_pendingLaunch.Options, cancellationToken)
+                    .ConfigureAwait(false);
+            }
         }
         catch (Exception exception) when (
             exception is InvalidOperationException or
@@ -414,7 +423,7 @@ internal sealed class DapSession : IDebuggerSessionObserver, IAsyncDisposable
     {
         _pendingLaunchRequest = null;
         _pendingConfigurationRequest = null;
-        _pendingLaunchOptions = null;
+        _pendingLaunch = null;
     }
 
     private bool IsProtocolClosed => Volatile.Read(ref _protocolClosed) != 0;

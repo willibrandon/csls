@@ -4,16 +4,16 @@ using System.Text.Json;
 namespace Csls.DebugAdapter;
 
 /// <summary>
-/// Validates a concrete no-debug DAP launch request without invoking a shell.
+/// Validates a concrete DAP launch request without invoking a shell.
 /// </summary>
 internal static class DapLaunchOptionsParser
 {
     /// <summary>
-    /// Parses launch arguments supported by the protocol foundation milestone.
+    /// Parses a managed or no-debug launch request.
     /// </summary>
     /// <param name="arguments">The DAP launch arguments.</param>
-    /// <returns>The validated process launch options.</returns>
-    internal static DebuggeeLaunchOptions Parse(JsonElement arguments)
+    /// <returns>The validated launch mode and process options.</returns>
+    internal static DapLaunchConfiguration Parse(JsonElement arguments)
     {
         if (arguments.ValueKind != JsonValueKind.Object)
         {
@@ -22,15 +22,9 @@ internal static class DapLaunchOptionsParser
 
         bool noDebug = arguments.TryGetProperty("noDebug", out JsonElement noDebugValue) &&
             noDebugValue.ValueKind == JsonValueKind.True;
-        if (!noDebug)
-        {
-            throw new ArgumentException(
-                "Managed debugging is not advertised until the native CoreCLR engine is active; " +
-                "this foundation supports only launch requests with noDebug set to true.");
-        }
-
         if (arguments.TryGetProperty("stopAtEntry", out JsonElement stopAtEntry) &&
-            stopAtEntry.ValueKind == JsonValueKind.True)
+            stopAtEntry.ValueKind == JsonValueKind.True &&
+            noDebug)
         {
             throw new ArgumentException("stopAtEntry cannot be used when noDebug is true.");
         }
@@ -62,13 +56,17 @@ internal static class DapLaunchOptionsParser
                 $"The launch working directory does not exist: {workingDirectory}");
         }
 
-        return new DebuggeeLaunchOptions
+        return new DapLaunchConfiguration
         {
-            Program = program,
-            WorkingDirectory = workingDirectory,
-            Arguments = ParseArguments(arguments),
-            Environment = ParseEnvironment(arguments),
-            RuntimeHostPath = ResolveRuntimeHost(arguments)
+            NoDebug = noDebug,
+            Options = new DebuggeeLaunchOptions
+            {
+                Program = program,
+                WorkingDirectory = workingDirectory,
+                Arguments = ParseArguments(arguments),
+                Environment = ParseEnvironment(arguments),
+                RuntimeHostPath = ResolveRuntimeHost(arguments)
+            }
         };
     }
 

@@ -10,7 +10,8 @@ public sealed class DebuggerSession : IAsyncDisposable
     private readonly IDebuggerSessionObserver _observer;
     private readonly CancellationTokenSource _lifetime = new();
     private readonly DebuggerSessionActor _actor = new();
-    private DebuggeeProcess? _debuggee;
+    private readonly SemaphoreSlim _lifecycleGate = new(1, 1);
+    private IDebuggeeProcess? _debuggee;
     private Task? _debuggeeLifetime;
     private volatile DebugSessionState _state = DebugSessionState.Created;
     private int _disposed;
@@ -35,15 +36,63 @@ public sealed class DebuggerSession : IAsyncDisposable
     /// <param name="options">The validated target launch options.</param>
     /// <param name="cancellationToken">Cancels launch and initial notification.</param>
     /// <returns>A task that completes after the target-start notification is accepted.</returns>
-    public Task LaunchWithoutDebuggingAsync(
+    public async Task LaunchWithoutDebuggingAsync(
         DebuggeeLaunchOptions options,
         CancellationToken cancellationToken)
     {
         ObjectDisposedException.ThrowIf(_disposed != 0, this);
         ArgumentNullException.ThrowIfNull(options);
-        return _actor.InvokeAsync(
-            token => LaunchWithoutDebuggingCoreAsync(options, token),
-            cancellationToken);
+        await _lifecycleGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            await _actor.InvokeAsync(
+                token => LaunchWithoutDebuggingCoreAsync(options, token),
+                cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            _ = _lifecycleGate.Release();
+        }
+    }
+
+    /// <summary>
+    /// Launches and owns a target under the native CoreCLR debugger.
+    /// </summary>
+    /// <param name="options">The validated target launch options.</param>
+    /// <param name="cancellationToken">Cancels launch and runtime activation.</param>
+    /// <returns>A task that completes after the target-start notification is accepted.</returns>
+    public async Task LaunchManagedAsync(
+        DebuggeeLaunchOptions options,
+        CancellationToken cancellationToken)
+    {
+        ObjectDisposedException.ThrowIf(_disposed != 0, this);
+        ArgumentNullException.ThrowIfNull(options);
+        await _lifecycleGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            await _actor.InvokeAsync(BeginLaunchCoreAsync, cancellationToken).ConfigureAwait(false);
+            _debuggee = await CorDebugDebuggee.LaunchAsync(options, _actor, cancellationToken)
+                .ConfigureAwait(false);
+            await _actor.InvokeAsync(
+                token => CompleteLaunchCoreAsync(_debuggee, token),
+                cancellationToken).ConfigureAwait(false);
+        }
+        catch
+        {
+            if (_debuggee is not null)
+            {
+                await _debuggee.DisposeAsync().ConfigureAwait(false);
+                _debuggee = null;
+            }
+
+            await _actor.InvokeAsync(ResetFailedLaunchCoreAsync, CancellationToken.None)
+                .ConfigureAwait(false);
+            throw;
+        }
+        finally
+        {
+            _ = _lifecycleGate.Release();
+        }
     }
 
     /// <summary>
@@ -54,11 +103,19 @@ public sealed class DebuggerSession : IAsyncDisposable
     public async Task TerminateAsync(CancellationToken cancellationToken)
     {
         ObjectDisposedException.ThrowIf(_disposed != 0, this);
-        await _actor.InvokeAsync(TerminateCoreAsync, cancellationToken).ConfigureAwait(false);
-        Task? debuggeeLifetime = _debuggeeLifetime;
-        if (debuggeeLifetime is not null)
+        await _lifecycleGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
         {
-            await debuggeeLifetime.WaitAsync(cancellationToken).ConfigureAwait(false);
+            await _actor.InvokeAsync(TerminateCoreAsync, cancellationToken).ConfigureAwait(false);
+            Task? debuggeeLifetime = _debuggeeLifetime;
+            if (debuggeeLifetime is not null)
+            {
+                await debuggeeLifetime.WaitAsync(cancellationToken).ConfigureAwait(false);
+            }
+        }
+        finally
+        {
+            _ = _lifecycleGate.Release();
         }
     }
 
@@ -70,22 +127,31 @@ public sealed class DebuggerSession : IAsyncDisposable
             return;
         }
 
-        await _actor.InvokeAsync(TerminateCoreAsync, CancellationToken.None).ConfigureAwait(false);
-        if (_debuggeeLifetime is not null)
+        await _lifecycleGate.WaitAsync(CancellationToken.None).ConfigureAwait(false);
+        try
         {
-            await _debuggeeLifetime.WaitAsync(CancellationToken.None).ConfigureAwait(false);
-        }
+            await _actor.InvokeAsync(TerminateCoreAsync, CancellationToken.None).ConfigureAwait(false);
+            if (_debuggeeLifetime is not null)
+            {
+                await _debuggeeLifetime.WaitAsync(CancellationToken.None).ConfigureAwait(false);
+            }
 
-        if (_debuggee is not null)
+            if (_debuggee is not null)
+            {
+                await _debuggee.DisposeAsync().ConfigureAwait(false);
+                _debuggee = null;
+                _debuggeeLifetime = null;
+            }
+        }
+        finally
         {
-            await _debuggee.DisposeAsync().ConfigureAwait(false);
-            _debuggee = null;
-            _debuggeeLifetime = null;
+            _ = _lifecycleGate.Release();
         }
 
         await _lifetime.CancelAsync().ConfigureAwait(false);
         await _actor.DisposeAsync().ConfigureAwait(false);
         _lifetime.Dispose();
+        _lifecycleGate.Dispose();
     }
 
     private async ValueTask LaunchWithoutDebuggingCoreAsync(
@@ -98,7 +164,7 @@ public sealed class DebuggerSession : IAsyncDisposable
                 $"A target cannot be launched while the debugger session is {_state}.");
         }
 
-        _state = DebugSessionState.Starting;
+        await BeginLaunchCoreAsync(cancellationToken).ConfigureAwait(false);
         try
         {
             _debuggee = DebuggeeProcess.Start(options);
@@ -112,26 +178,58 @@ public sealed class DebuggerSession : IAsyncDisposable
 
         try
         {
-            _state = DebugSessionState.Running;
-            await _observer.OnProcessStartedAsync(
-                _debuggee.Name,
-                _debuggee.Id,
-                cancellationToken).ConfigureAwait(false);
-            _debuggeeLifetime = ObserveDebuggeeAsync(_debuggee, _lifetime.Token);
+            await CompleteLaunchCoreAsync(_debuggee, cancellationToken).ConfigureAwait(false);
         }
         catch
         {
-            _state = DebugSessionState.Faulted;
             await _debuggee.DisposeAsync().ConfigureAwait(false);
             _debuggee = null;
+            _state = DebugSessionState.Created;
 
             throw;
         }
     }
 
+    private ValueTask BeginLaunchCoreAsync(CancellationToken cancellationToken)
+    {
+        _ = cancellationToken;
+        if (_state != DebugSessionState.Created)
+        {
+            throw new InvalidOperationException(
+                $"A target cannot be launched while the debugger session is {_state}.");
+        }
+
+        _state = DebugSessionState.Starting;
+        return ValueTask.CompletedTask;
+    }
+
+    private async ValueTask CompleteLaunchCoreAsync(
+        IDebuggeeProcess debuggee,
+        CancellationToken cancellationToken)
+    {
+        _debuggee = debuggee;
+        await _observer.OnProcessStartedAsync(
+            debuggee.Name,
+            debuggee.Id,
+            cancellationToken).ConfigureAwait(false);
+        _state = DebugSessionState.Running;
+        _debuggeeLifetime = ObserveDebuggeeAsync(debuggee, _lifetime.Token);
+    }
+
+    private ValueTask ResetFailedLaunchCoreAsync(CancellationToken cancellationToken)
+    {
+        _ = cancellationToken;
+        if (_debuggee is null && _state == DebugSessionState.Starting)
+        {
+            _state = DebugSessionState.Created;
+        }
+
+        return ValueTask.CompletedTask;
+    }
+
     private async ValueTask TerminateCoreAsync(CancellationToken cancellationToken)
     {
-        DebuggeeProcess? debuggee = _debuggee;
+        IDebuggeeProcess? debuggee = _debuggee;
         if (debuggee is null)
         {
             return;
@@ -146,7 +244,7 @@ public sealed class DebuggerSession : IAsyncDisposable
     }
 
     private async Task ObserveDebuggeeAsync(
-        DebuggeeProcess debuggee,
+        IDebuggeeProcess debuggee,
         CancellationToken cancellationToken)
     {
         Task standardOutput = debuggee.CopyStandardOutputAsync(

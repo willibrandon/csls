@@ -95,41 +95,83 @@ public sealed class DapSessionTests
     }
 
     /// <summary>
-    /// Rejects managed debugging without advertising or silently degrading it.
+    /// Launches a real managed assembly through dbgshim and preserves DAP protocol output.
     /// </summary>
     [TestMethod]
-    public async Task ManagedLaunchReturnsHonestFailureBeforeCoreClrEngine()
+    [Timeout(30000, CooperativeCancellation = true)]
+    public async Task ManagedLaunchActivatesCoreClrAndForwardsTargetOutput()
     {
         DapTestClient client = await DapTestClient
             .CreateAsync(TestContext.CancellationToken)
             .ConfigureAwait(false);
         await using ConfiguredAsyncDisposable clientDisposal = client.ConfigureAwait(false);
-        _ = await client.SendRequestAsync(
+        int initializeSequence = await client.SendRequestAsync(
             "initialize",
             WriteEmptyObject,
             TestContext.CancellationToken).ConfigureAwait(false);
         using JsonDocument initialize = await client
             .ReadMessageAsync(TestContext.CancellationToken)
             .ConfigureAwait(false);
+        AssertResponse(initialize.RootElement, initializeSequence, "initialize", success: true);
         int launchSequence = await client.SendRequestAsync(
             "launch",
-            writer =>
-            {
-                writer.WriteStartObject();
-                writer.WriteString("program", ResolveTestProcessHost());
-                writer.WriteEndObject();
-            },
+            writer => WriteLaunchArguments(
+                writer,
+                ResolveTestProcessHost(),
+                ["--print-environment-and-exit", "CSLS_DEBUGGER_TEST_VALUE", "23"],
+                wait: false,
+                noDebug: false),
             TestContext.CancellationToken).ConfigureAwait(false);
+        using JsonDocument initialized = await client
+            .ReadMessageAsync(TestContext.CancellationToken)
+            .ConfigureAwait(false);
+        AssertEvent(initialized.RootElement, "initialized");
 
+        int configurationSequence = await client.SendRequestAsync(
+            "configurationDone",
+            WriteEmptyObject,
+            TestContext.CancellationToken).ConfigureAwait(false);
+        using JsonDocument configuration = await client
+            .ReadMessageAsync(TestContext.CancellationToken)
+            .ConfigureAwait(false);
+        AssertResponse(
+            configuration.RootElement,
+            configurationSequence,
+            "configurationDone",
+            success: true);
         using JsonDocument launch = await client
             .ReadMessageAsync(TestContext.CancellationToken)
             .ConfigureAwait(false);
+        AssertResponse(launch.RootElement, launchSequence, "launch", success: true);
+        using JsonDocument process = await client
+            .ReadMessageAsync(TestContext.CancellationToken)
+            .ConfigureAwait(false);
+        AssertEvent(process.RootElement, "process");
+        Assert.IsGreaterThan(
+            0,
+            process.RootElement.GetProperty("body").GetProperty("systemProcessId").GetInt32());
 
-        AssertResponse(launch.RootElement, launchSequence, "launch", success: false);
-        Assert.Contains(
-            "not advertised",
-            launch.RootElement.GetProperty("message").GetString()!,
-            StringComparison.OrdinalIgnoreCase);
+        using JsonDocument output = await client
+            .ReadMessageAsync(TestContext.CancellationToken)
+            .ConfigureAwait(false);
+        AssertEvent(output.RootElement, "output");
+        Assert.AreEqual("stdout", output.RootElement.GetProperty("body").GetProperty("category").GetString());
+        Assert.AreEqual(
+            "transport-value",
+            output.RootElement.GetProperty("body").GetProperty("output").GetString());
+        using JsonDocument exited = await client
+            .ReadMessageAsync(TestContext.CancellationToken)
+            .ConfigureAwait(false);
+        AssertEvent(exited.RootElement, "exited");
+        Assert.AreEqual(23, exited.RootElement.GetProperty("body").GetProperty("exitCode").GetInt32());
+        using JsonDocument terminated = await client
+            .ReadMessageAsync(TestContext.CancellationToken)
+            .ConfigureAwait(false);
+        AssertEvent(terminated.RootElement, "terminated");
+        Assert.AreEqual(
+            0,
+            await client.WaitForExitAsync(TestContext.CancellationToken).ConfigureAwait(false));
+        Assert.AreEqual(string.Empty, client.Diagnostics.ToString());
     }
 
     /// <summary>
@@ -382,10 +424,11 @@ public sealed class DapSessionTests
         Utf8JsonWriter writer,
         string processHost,
         IReadOnlyList<string> arguments,
-        bool wait)
+        bool wait,
+        bool noDebug = true)
     {
         writer.WriteStartObject();
-        writer.WriteBoolean("noDebug", true);
+        writer.WriteBoolean("noDebug", noDebug);
         writer.WriteString("program", processHost);
         writer.WriteStartArray("args");
         foreach (string argument in arguments)

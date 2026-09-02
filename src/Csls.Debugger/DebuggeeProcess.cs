@@ -5,7 +5,7 @@ namespace Csls.Debugger;
 /// <summary>
 /// Owns one debugger-launched process and its redirected streams.
 /// </summary>
-internal sealed class DebuggeeProcess : IAsyncDisposable
+internal sealed class DebuggeeProcess : IDebuggeeProcess
 {
     private readonly Process _process;
     private int _disposed;

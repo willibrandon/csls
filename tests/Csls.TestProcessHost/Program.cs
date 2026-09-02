@@ -1,4 +1,12 @@
 using System.Diagnostics;
+using System.Globalization;
+
+if (args is ["--print-environment-and-exit", string printedVariable, string exitCode])
+{
+    await Console.Out.WriteAsync(
+        Environment.GetEnvironmentVariable(printedVariable) ?? string.Empty).ConfigureAwait(false);
+    return int.Parse(exitCode, NumberStyles.Integer, CultureInfo.InvariantCulture);
+}
 
 if (args is ["--print-environment", string environmentVariable])
 {
