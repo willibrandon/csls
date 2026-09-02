@@ -72,6 +72,14 @@ jobs:
           dotnet build tests/Csls.Tests/Csls.Tests.csproj
           dotnet build tests/Csls.SourceGen.Tests/Csls.SourceGen.Tests.csproj
 
+      - name: Share test binaries
+        uses: actions/upload-artifact@v7
+        with:
+          name: test-binaries-${{ github.run_attempt }}
+          path: artifacts/bin/
+          compression-level: 0
+          if-no-files-found: error
+
   native-aot-size:
     name: Native AOT size (${{ matrix.command }})
     runs-on: ubuntu-latest
@@ -313,12 +321,11 @@ jobs:
         with:
           dotnet-version: 10.x
 
-      - name: Restore test binaries
-        uses: actions/cache/restore@v6
+      - name: Download test binaries
+        uses: actions/download-artifact@v8
         with:
-          path: artifacts/bin/Csls.*/debug
-          key: test-binaries-v2-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.editorconfig', 'global.json', 'src/**', 'tests/**', 'benchmarks/**', 'build/**', 'Directory.Build.*', 'Directory.Packages.props', 'NuGet.Config') }}
-          fail-on-cache-miss: true
+          name: test-binaries-${{ github.run_attempt }}
+          path: artifacts/bin
 
       - name: Run workspace project tests
         run: >-
@@ -358,12 +365,11 @@ jobs:
         with:
           dotnet-version: 10.x
 
-      - name: Restore test binaries
-        uses: actions/cache/restore@v6
+      - name: Download test binaries
+        uses: actions/download-artifact@v8
         with:
-          path: artifacts/bin/Csls.*/debug
-          key: test-binaries-v2-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.editorconfig', 'global.json', 'src/**', 'tests/**', 'benchmarks/**', 'build/**', 'Directory.Build.*', 'Directory.Packages.props', 'NuGet.Config') }}
-          fail-on-cache-miss: true
+          name: test-binaries-${{ github.run_attempt }}
+          path: artifacts/bin
 
       - name: Run language server tests
         run: >-
@@ -390,19 +396,11 @@ jobs:
         with:
           dotnet-version: 10.x
 
-      - name: Restore test binaries
-        uses: actions/cache/restore@v6
+      - name: Download test binaries
+        uses: actions/download-artifact@v8
         with:
-          path: artifacts/bin/Csls.*/debug
-          key: test-binaries-v2-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.editorconfig', 'global.json', 'src/**', 'tests/**', 'benchmarks/**', 'build/**', 'Directory.Build.*', 'Directory.Packages.props', 'NuGet.Config') }}
-          fail-on-cache-miss: true
-
-      - name: Restore source generator test binaries
-        uses: actions/cache/restore@v6
-        with:
-          path: artifacts/bin/Csls.SourceGen.Tests/debug
-          key: source-generator-test-binaries-v2-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.editorconfig', 'global.json', 'src/**', 'tests/**', 'benchmarks/**', 'build/**', 'Directory.Build.*', 'Directory.Packages.props', 'NuGet.Config') }}
-          fail-on-cache-miss: true
+          name: test-binaries-${{ github.run_attempt }}
+          path: artifacts/bin
 
       - name: Run unit tests
         run: >-
@@ -432,12 +430,11 @@ jobs:
         with:
           dotnet-version: 10.x
 
-      - name: Restore test binaries
-        uses: actions/cache/restore@v6
+      - name: Download test binaries
+        uses: actions/download-artifact@v8
         with:
-          path: artifacts/bin/Csls.*/debug
-          key: test-binaries-v2-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.editorconfig', 'global.json', 'src/**', 'tests/**', 'benchmarks/**', 'build/**', 'Directory.Build.*', 'Directory.Packages.props', 'NuGet.Config') }}
-          fail-on-cache-miss: true
+          name: test-binaries-${{ github.run_attempt }}
+          path: artifacts/bin
 
       - name: Restore editor tools
         uses: actions/cache@v6
@@ -504,12 +501,11 @@ jobs:
         with:
           dotnet-version: 10.x
 
-      - name: Restore test binaries
-        uses: actions/cache/restore@v6
+      - name: Download test binaries
+        uses: actions/download-artifact@v8
         with:
-          path: artifacts/bin/Csls.*/debug
-          key: test-binaries-v2-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.editorconfig', 'global.json', 'src/**', 'tests/**', 'benchmarks/**', 'build/**', 'Directory.Build.*', 'Directory.Packages.props', 'NuGet.Config') }}
-          fail-on-cache-miss: true
+          name: test-binaries-${{ github.run_attempt }}
+          path: artifacts/bin
 
       - name: Restore graphical prerequisite app
         uses: actions/cache/restore@v6
@@ -710,12 +706,11 @@ jobs:
             editors/vscode/package-lock.json
             tests/vscode/package-lock.json
 
-      - name: Restore test binaries
-        uses: actions/cache/restore@v6
+      - name: Download test binaries
+        uses: actions/download-artifact@v8
         with:
-          path: artifacts/bin/Csls.*/debug
-          key: test-binaries-v2-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.editorconfig', 'global.json', 'src/**', 'tests/**', 'benchmarks/**', 'build/**', 'Directory.Build.*', 'Directory.Packages.props', 'NuGet.Config') }}
-          fail-on-cache-miss: true
+          name: test-binaries-${{ github.run_attempt }}
+          path: artifacts/bin
 
       - name: Restore graphical prerequisite app
         uses: actions/cache/restore@v6
@@ -787,12 +782,11 @@ jobs:
         with:
           dotnet-version: 10.x
 
-      - name: Restore test binaries
-        uses: actions/cache/restore@v6
+      - name: Download test binaries
+        uses: actions/download-artifact@v8
         with:
-          path: artifacts/bin/Csls.*/debug
-          key: test-binaries-v2-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.editorconfig', 'global.json', 'src/**', 'tests/**', 'benchmarks/**', 'build/**', 'Directory.Build.*', 'Directory.Packages.props', 'NuGet.Config') }}
-          fail-on-cache-miss: true
+          name: test-binaries-${{ github.run_attempt }}
+          path: artifacts/bin
 
       - name: Restore legacy build host
         uses: actions/cache@v6
