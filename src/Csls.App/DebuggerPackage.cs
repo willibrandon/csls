@@ -8,7 +8,7 @@ internal sealed class DebuggerPackage
     /// <summary>
     /// Initializes a debugger distribution descriptor.
     /// </summary>
-    /// <param name="identifier">The stable platform and version identifier.</param>
+    /// <param name="identifier">The stable platform and content identifier.</param>
     /// <param name="source">The official Microsoft package address.</param>
     /// <param name="sha256">The expected package SHA-256 digest.</param>
     /// <param name="executableName">The debugger executable within the archive.</param>
@@ -30,7 +30,7 @@ internal sealed class DebuggerPackage
     internal string ExecutableName { get; }
 
     /// <summary>
-    /// Gets the stable platform and version identifier.
+    /// Gets the stable platform and content identifier.
     /// </summary>
     internal string Identifier { get; }
 

@@ -9,7 +9,9 @@ namespace Csls.App;
 /// </summary>
 internal static class DebuggerInstaller
 {
-    private const string DebuggerVersion = "2-141-1";
+    private const string DebuggerDownloadRoot =
+        "https://download.visualstudio.microsoft.com/download/pr/" +
+        "6656678b-5409-42ef-990e-c4f3cd7b5f5a/";
     private static readonly HttpClient s_httpClient = new();
 
     /// <summary>
@@ -240,16 +242,16 @@ internal static class DebuggerInstaller
             return CreatePackage(
                 "win-arm64",
                 "coreclr-debug-win10-arm64.zip",
-                "BB0F3E33238521101B723B2C8DAEA66426913B8CC6B9DE39B92C611D6EBF67CC",
+                "EFD91A8EBE490C154AA237E7888DE9F6019FEAB943AD4DDBFE3CA846EE8E6544",
                 "vsdbg-ui.exe");
         }
 
-        if (OperatingSystem.IsWindows() && architecture is Architecture.X64 or Architecture.X86)
+        if (OperatingSystem.IsWindows() && architecture == Architecture.X64)
         {
             return CreatePackage(
                 "win-x64",
                 "coreclr-debug-win7-x64.zip",
-                "5043FA5790848CA925B0412ABA0BD8BF0C6DE1D66CAD203FD0CCC64C755C9D52",
+                "8C8AA11A7628875DA1E502455AB1C086803F5E02BFF4B620D921B117B7BDCED5",
                 "vsdbg-ui.exe");
         }
 
@@ -258,7 +260,7 @@ internal static class DebuggerInstaller
             return CreatePackage(
                 "osx-arm64",
                 "coreclr-debug-osx-arm64.zip",
-                "7D146354B9E86CD4EE9FE9E609BC0BC3D2F11F85B5C3F444EE6E9C07C48EAFFE",
+                "11AE64045BFB087F653DC2296DA5E436971C24DFA0583C6B7F63D037659FB832",
                 "vsdbg");
         }
 
@@ -267,7 +269,7 @@ internal static class DebuggerInstaller
             return CreatePackage(
                 "osx-x64",
                 "coreclr-debug-osx-x64.zip",
-                "FBFBDD59116845894731BCA59ED88EFDA391F495FA489F5FD8E60AD796AD250C",
+                "7E83CD507C3566F3CF0DE54EED71A5197476D2373F7BDF67488B8601A1383EF8",
                 "vsdbg");
         }
 
@@ -280,12 +282,12 @@ internal static class DebuggerInstaller
                 ? CreatePackage(
                     "linux-musl-arm64",
                     "coreclr-debug-linux-musl-arm64.zip",
-                    "259E76A41CBBCDBD705FEF4890090145A4AB26DBFCEAA0D0552F018C5DFB6ECC",
+                    "F101964618437ADE5C8A9438C8C2A59E0149399A1CD468684FB2A1349137B5A6",
                     "vsdbg")
                 : CreatePackage(
                     "linux-arm64",
                     "coreclr-debug-linux-arm64.zip",
-                    "7C3A6C702688A326A0E6AEB9D649B230A69049C583B677F9C415BDD8F972583A",
+                    "46D51AFD9629A2480560209D83D2524655ABE86E27A20FDCE230B69729440B1D",
                     "vsdbg");
         }
 
@@ -295,12 +297,12 @@ internal static class DebuggerInstaller
                 ? CreatePackage(
                     "linux-musl-x64",
                     "coreclr-debug-linux-musl-x64.zip",
-                    "1F43DEEF83C428D9ECC8FCF72F6BAF00CE7DF379944F500F4074DC0DAB1F2F78",
+                    "B4E2AE93C40FD39FB045626395BFDEDDD4885A0F122EA75D0B955092C2977BBB",
                     "vsdbg")
                 : CreatePackage(
                     "linux-x64",
                     "coreclr-debug-linux-x64.zip",
-                    "55595A399AD5D7B04815DC694E3F1F1F835B673529F72593650BEDF127E751C4",
+                    "C504D062DC09C15FC7C0329147BEAA39117A3CBC4B3D9B0724B65265D1BF25E1",
                     "vsdbg");
         }
 
@@ -314,10 +316,8 @@ internal static class DebuggerInstaller
         string fileName,
         string sha256,
         string executableName) => new(
-            $"{DebuggerVersion}-{platform}",
-            new Uri(
-                "https://vsdebugger-cyg0dxb6czfafzaz.b01.azurefd.net/" +
-                $"coreclr-debug-{DebuggerVersion}/{fileName}"),
+            $"{platform}-{sha256[..12]}",
+            new Uri(DebuggerDownloadRoot + fileName),
             sha256,
             executableName);
 
