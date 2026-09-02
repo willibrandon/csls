@@ -473,6 +473,14 @@ internal static class WorkspaceNavigationService
         foreach (ReferencedSymbol referencedSymbol in referencedSymbols)
         {
             cancellationToken.ThrowIfCancellationRequested();
+            if (includeDeclaration && referencedSymbol.Locations.Any())
+            {
+                AddNavigationLocations(
+                    locations,
+                    sourceDocument.Project,
+                    referencedSymbol.Definition.Locations);
+            }
+
             AddNavigationLocations(
                 locations,
                 sourceDocument.Project,

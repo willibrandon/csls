@@ -262,6 +262,81 @@ public sealed class CodeLensLanguageServerTests
         }
     }
 
+    /// <summary>
+    /// Includes related constructor definitions when VS Code opens references from a type lens.
+    /// </summary>
+    [TestMethod]
+    public async Task TypeReferenceCodeLensIncludesExplicitConstructorDefinition()
+    {
+        const string source = """
+            namespace Fixture;
+
+            internal sealed class Target
+            {
+                public Target()
+                {
+                }
+            }
+
+            internal static class Consumer
+            {
+                internal static object Create() => new Target();
+            }
+            """;
+        string fixturePath = CreateFixturePath("vscode-constructor");
+        Directory.CreateDirectory(fixturePath);
+        try
+        {
+            string documentPath = await WriteFixtureAsync(fixturePath, source)
+                .ConfigureAwait(false);
+            LspProcessSession lsp = await StartWorkerAsync(fixturePath).ConfigureAwait(false);
+            await using ConfiguredAsyncDisposable lspCleanup = lsp.ConfigureAwait(false);
+            using var capabilities = JsonDocument.Parse(
+                """
+                {
+                  "textDocument": {
+                    "codeLens": {},
+                    "diagnostic": {}
+                  }
+                }
+                """);
+            await lsp.InitializeAsync(
+                fixturePath,
+                capabilities.RootElement,
+                "Visual Studio Code",
+                TestContext.CancellationToken).ConfigureAwait(false);
+            await lsp.OpenDocumentAsync(documentPath, source).ConfigureAwait(false);
+
+            IReadOnlyList<CodeLens> lenses = await lsp.RequestCodeLensesAsync(
+                documentPath,
+                TestContext.CancellationToken).ConfigureAwait(false);
+            CodeLens resolved = await lsp.ResolveCodeLensAsync(
+                lenses.Single(static lens => lens.Range.Start == new Position(2, 22)),
+                TestContext.CancellationToken).ConfigureAwait(false);
+            Assert.IsNotNull(resolved.Command);
+            Assert.AreEqual("2 references", resolved.Command.Title);
+            Assert.AreEqual("csls.client.peekReferences", resolved.Command.Command);
+
+            IReadOnlyList<Location> references = await lsp.RequestReferencesAsync(
+                documentPath,
+                resolved.Range.Start,
+                includeDeclaration: true,
+                TestContext.CancellationToken).ConfigureAwait(false);
+            Assert.HasCount(3, references);
+            Assert.AreSequenceEqual(
+                [new Position(2, 22), new Position(4, 11), new Position(11, 43)],
+                references.Select(static location => location.Range.Start).ToArray());
+
+            string diagnostics = await lsp.ShutdownAsync(
+                TestContext.CancellationToken).ConfigureAwait(false);
+            Assert.DoesNotContain("Unhandled exception", diagnostics, StringComparison.Ordinal);
+        }
+        finally
+        {
+            Directory.Delete(fixturePath, recursive: true);
+        }
+    }
+
     private async Task<string> WriteFixtureAsync(string fixturePath, string source)
     {
         string documentPath = Path.Join(fixturePath, "Program.cs");
