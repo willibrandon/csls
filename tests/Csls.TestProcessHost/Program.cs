@@ -27,6 +27,18 @@ if (args is ["--wait-for-file", string waitPath])
     return 0;
 }
 
+if (args is ["--announce-and-spin-until-file", string spinPath])
+{
+    await Console.Out.WriteAsync("ready").ConfigureAwait(false);
+    await Console.Out.FlushAsync().ConfigureAwait(false);
+    while (!File.Exists(spinPath))
+    {
+        Thread.SpinWait(10_000);
+    }
+
+    return 0;
+}
+
 Dictionary<string, string> environment = new(StringComparer.Ordinal);
 int argumentIndex = 0;
 while (argumentIndex < args.Length &&

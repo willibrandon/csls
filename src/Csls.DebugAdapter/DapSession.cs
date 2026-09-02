@@ -2,6 +2,7 @@ using Csls.DebugAdapter.Protocol;
 using Csls.Debugger;
 using Csls.Debugger.Contracts;
 using System.ComponentModel;
+using System.Text.Json;
 
 namespace Csls.DebugAdapter;
 
@@ -174,6 +175,63 @@ internal sealed class DapSession : IDebuggerSessionObserver, IAsyncDisposable
     }
 
     /// <inheritdoc />
+    public async ValueTask OnStoppedAsync(
+        string reason,
+        DebugStopGeneration generation,
+        CancellationToken cancellationToken)
+    {
+        _ = generation;
+        if (IsProtocolClosed)
+        {
+            return;
+        }
+
+        _state = DapSessionState.Stopped;
+        try
+        {
+            await _writer.WriteEventAsync(
+                "stopped",
+                writer =>
+                {
+                    writer.WriteStartObject();
+                    writer.WriteString("reason", reason);
+                    writer.WriteBoolean("allThreadsStopped", true);
+                    writer.WriteEndObject();
+                },
+                cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception exception) when (IsExpectedClosedTransportException(exception))
+        {
+        }
+    }
+
+    /// <inheritdoc />
+    public async ValueTask OnContinuedAsync(CancellationToken cancellationToken)
+    {
+        if (IsProtocolClosed)
+        {
+            return;
+        }
+
+        _state = DapSessionState.Running;
+        try
+        {
+            await _writer.WriteEventAsync(
+                "continued",
+                writer =>
+                {
+                    writer.WriteStartObject();
+                    writer.WriteBoolean("allThreadsContinued", true);
+                    writer.WriteEndObject();
+                },
+                cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception exception) when (IsExpectedClosedTransportException(exception))
+        {
+        }
+    }
+
+    /// <inheritdoc />
     public async ValueTask OnExitedAsync(int exitCode, CancellationToken cancellationToken)
     {
         if (IsProtocolClosed)
@@ -243,6 +301,15 @@ internal sealed class DapSession : IDebuggerSessionObserver, IAsyncDisposable
                 break;
             case "threads":
                 await WriteThreadsAsync(request, cancellationToken).ConfigureAwait(false);
+                break;
+            case "pause":
+                await PauseAsync(request, cancellationToken).ConfigureAwait(false);
+                break;
+            case "continue":
+                await ContinueAsync(request, cancellationToken).ConfigureAwait(false);
+                break;
+            case "stackTrace":
+                await WriteStackTraceAsync(request, cancellationToken).ConfigureAwait(false);
                 break;
             case "disconnect":
                 await DisconnectAsync(request, cancellationToken).ConfigureAwait(false);
@@ -376,23 +443,210 @@ internal sealed class DapSession : IDebuggerSessionObserver, IAsyncDisposable
         }
     }
 
-    private ValueTask WriteThreadsAsync(
+    private async ValueTask WriteThreadsAsync(
         Request request,
-        CancellationToken cancellationToken) =>
-        _writer.WriteResponseAsync(
+        CancellationToken cancellationToken)
+    {
+        if (_state != DapSessionState.Stopped)
+        {
+            await WriteStateFailureAsync(request, cancellationToken).ConfigureAwait(false);
+            return;
+        }
+
+        IReadOnlyList<DebugThreadInfo> threads;
+        try
+        {
+            threads = await _engineSession.GetThreadsAsync(cancellationToken).ConfigureAwait(false);
+        }
+        catch (InvalidOperationException exception)
+        {
+            await _writer.WriteResponseAsync(
+                request,
+                success: false,
+                exception.Message,
+                writeBody: null,
+                cancellationToken).ConfigureAwait(false);
+            return;
+        }
+
+        await _writer.WriteResponseAsync(
             request,
-            success: _state == DapSessionState.Running,
-            _state == DapSessionState.Running
-                ? null
-                : $"The request '{request.Command}' is invalid while the session is {_state}.",
-            static writer =>
+            success: true,
+            message: null,
+            writer =>
             {
                 writer.WriteStartObject();
                 writer.WriteStartArray("threads");
+                foreach (DebugThreadInfo thread in threads)
+                {
+                    writer.WriteStartObject();
+                    writer.WriteNumber("id", thread.Id);
+                    writer.WriteString("name", thread.Name);
+                    writer.WriteEndObject();
+                }
+
                 writer.WriteEndArray();
                 writer.WriteEndObject();
             },
-            cancellationToken);
+            cancellationToken).ConfigureAwait(false);
+    }
+
+    private async ValueTask PauseAsync(
+        Request request,
+        CancellationToken cancellationToken)
+    {
+        if (_state != DapSessionState.Running)
+        {
+            await WriteStateFailureAsync(request, cancellationToken).ConfigureAwait(false);
+            return;
+        }
+
+        try
+        {
+            await _engineSession.PauseAsync(cancellationToken).ConfigureAwait(false);
+            await _writer.WriteResponseAsync(
+                request,
+                success: true,
+                message: null,
+                writeBody: null,
+                cancellationToken).ConfigureAwait(false);
+        }
+        catch (InvalidOperationException exception)
+        {
+            await _writer.WriteResponseAsync(
+                request,
+                success: false,
+                exception.Message,
+                writeBody: null,
+                cancellationToken).ConfigureAwait(false);
+        }
+    }
+
+    private async ValueTask ContinueAsync(
+        Request request,
+        CancellationToken cancellationToken)
+    {
+        if (_state != DapSessionState.Stopped)
+        {
+            await WriteStateFailureAsync(request, cancellationToken).ConfigureAwait(false);
+            return;
+        }
+
+        try
+        {
+            await _engineSession.ContinueAsync(cancellationToken).ConfigureAwait(false);
+            await _writer.WriteResponseAsync(
+                request,
+                success: true,
+                message: null,
+                writeBody: writer =>
+                {
+                    writer.WriteStartObject();
+                    writer.WriteBoolean("allThreadsContinued", true);
+                    writer.WriteEndObject();
+                },
+                cancellationToken).ConfigureAwait(false);
+        }
+        catch (InvalidOperationException exception)
+        {
+            await _writer.WriteResponseAsync(
+                request,
+                success: false,
+                exception.Message,
+                writeBody: null,
+                cancellationToken).ConfigureAwait(false);
+        }
+    }
+
+    private async ValueTask WriteStackTraceAsync(
+        Request request,
+        CancellationToken cancellationToken)
+    {
+        if (_state != DapSessionState.Stopped)
+        {
+            await WriteStateFailureAsync(request, cancellationToken).ConfigureAwait(false);
+            return;
+        }
+
+        try
+        {
+            JsonElement arguments = request.Arguments;
+            if (arguments.ValueKind != JsonValueKind.Object ||
+                !arguments.TryGetProperty("threadId", out JsonElement threadIdValue) ||
+                !threadIdValue.TryGetInt32(out int threadId))
+            {
+                throw new ArgumentException(
+                    "The stackTrace request requires an integer threadId.");
+            }
+
+            int startFrame = GetOptionalNonNegativeInteger(arguments, "startFrame");
+            int levels = GetOptionalNonNegativeInteger(arguments, "levels");
+            DebugStackTrace stack = await _engineSession.GetStackTraceAsync(
+                threadId,
+                startFrame,
+                levels,
+                cancellationToken).ConfigureAwait(false);
+            await _writer.WriteResponseAsync(
+                request,
+                success: true,
+                message: null,
+                writer =>
+                {
+                    writer.WriteStartObject();
+                    writer.WriteStartArray("stackFrames");
+                    foreach (DebugStackFrameInfo frame in stack.StackFrames)
+                    {
+                        writer.WriteStartObject();
+                        writer.WriteNumber("id", frame.Id);
+                        writer.WriteString("name", frame.Name);
+                        if (frame.SourcePath is not null)
+                        {
+                            writer.WriteStartObject("source");
+                            writer.WriteString("name", Path.GetFileName(frame.SourcePath));
+                            writer.WriteString("path", frame.SourcePath);
+                            writer.WriteEndObject();
+                        }
+
+                        writer.WriteNumber("line", frame.Line);
+                        writer.WriteNumber("column", frame.Column);
+                        writer.WriteEndObject();
+                    }
+
+                    writer.WriteEndArray();
+                    writer.WriteNumber("totalFrames", stack.TotalFrames);
+                    writer.WriteEndObject();
+                },
+                cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception exception) when (
+            exception is ArgumentException or InvalidOperationException or OverflowException)
+        {
+            await _writer.WriteResponseAsync(
+                request,
+                success: false,
+                exception.Message,
+                writeBody: null,
+                cancellationToken).ConfigureAwait(false);
+        }
+    }
+
+    private static int GetOptionalNonNegativeInteger(
+        JsonElement arguments,
+        string propertyName)
+    {
+        if (!arguments.TryGetProperty(propertyName, out JsonElement value))
+        {
+            return 0;
+        }
+
+        if (!value.TryGetInt32(out int result) || result < 0)
+        {
+            throw new ArgumentException(
+                $"The stackTrace {propertyName} value must be a non-negative integer.");
+        }
+
+        return result;
+    }
 
     private async ValueTask DisconnectAsync(
         Request request,

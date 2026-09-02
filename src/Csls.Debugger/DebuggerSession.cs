@@ -13,6 +13,7 @@ public sealed class DebuggerSession : IAsyncDisposable
     private readonly SemaphoreSlim _lifecycleGate = new(1, 1);
     private IDebuggeeProcess? _debuggee;
     private Task? _debuggeeLifetime;
+    private DebugStopGeneration _stopGeneration;
     private volatile DebugSessionState _state = DebugSessionState.Created;
     private int _disposed;
 
@@ -117,6 +118,94 @@ public sealed class DebuggerSession : IAsyncDisposable
         {
             _ = _lifecycleGate.Release();
         }
+    }
+
+    /// <summary>
+    /// Pauses the managed target at a runtime-consistent inspection point.
+    /// </summary>
+    /// <param name="cancellationToken">Cancels queueing the pause operation.</param>
+    /// <returns>A task that completes after the stopped notification is accepted.</returns>
+    public Task PauseAsync(CancellationToken cancellationToken)
+    {
+        ObjectDisposedException.ThrowIf(_disposed != 0, this);
+        return _actor.InvokeAsync(PauseCoreAsync, cancellationToken);
+    }
+
+    /// <summary>
+    /// Resumes every managed thread from the current debugger stop.
+    /// </summary>
+    /// <param name="cancellationToken">Cancels queueing the continue operation.</param>
+    /// <returns>A task that completes after the continued notification is accepted.</returns>
+    public Task ContinueAsync(CancellationToken cancellationToken)
+    {
+        ObjectDisposedException.ThrowIf(_disposed != 0, this);
+        return _actor.InvokeAsync(ContinueCoreAsync, cancellationToken);
+    }
+
+    /// <summary>
+    /// Gets the managed threads belonging to the current stop generation.
+    /// </summary>
+    /// <param name="cancellationToken">Cancels queueing thread enumeration.</param>
+    /// <returns>The bounded current managed-thread snapshot.</returns>
+    public async Task<IReadOnlyList<DebugThreadInfo>> GetThreadsAsync(
+        CancellationToken cancellationToken)
+    {
+        ObjectDisposedException.ThrowIf(_disposed != 0, this);
+        IReadOnlyList<DebugThreadInfo>? result = null;
+        await _actor.InvokeAsync(
+            token =>
+            {
+                _ = token;
+                if (_state != DebugSessionState.Stopped ||
+                    _debuggee is not CorDebugDebuggee managedDebuggee)
+                {
+                    throw new InvalidOperationException(
+                        $"Managed threads are unavailable while the debugger session is {_state}.");
+                }
+
+                result = managedDebuggee.GetThreads();
+                return ValueTask.CompletedTask;
+            },
+            cancellationToken).ConfigureAwait(false);
+        return result!;
+    }
+
+    /// <summary>
+    /// Gets a page of managed stack frames belonging to the current stop generation.
+    /// </summary>
+    /// <param name="threadId">The managed thread identifier.</param>
+    /// <param name="startFrame">The zero-based first frame to return.</param>
+    /// <param name="levels">The maximum count, or zero for all remaining frames.</param>
+    /// <param name="cancellationToken">Cancels queueing stack enumeration.</param>
+    /// <returns>The selected frame page and complete stack count.</returns>
+    public async Task<DebugStackTrace> GetStackTraceAsync(
+        int threadId,
+        int startFrame,
+        int levels,
+        CancellationToken cancellationToken)
+    {
+        ObjectDisposedException.ThrowIf(_disposed != 0, this);
+        DebugStackTrace? result = null;
+        await _actor.InvokeAsync(
+            token =>
+            {
+                _ = token;
+                if (_state != DebugSessionState.Stopped ||
+                    _debuggee is not CorDebugDebuggee managedDebuggee)
+                {
+                    throw new InvalidOperationException(
+                        $"Managed stack frames are unavailable while the debugger session is {_state}.");
+                }
+
+                result = managedDebuggee.GetStackTrace(
+                    threadId,
+                    _stopGeneration,
+                    startFrame,
+                    levels);
+                return ValueTask.CompletedTask;
+            },
+            cancellationToken).ConfigureAwait(false);
+        return result!;
     }
 
     /// <inheritdoc />
@@ -241,6 +330,40 @@ public sealed class DebuggerSession : IAsyncDisposable
         }
 
         await debuggee.TerminateAsync(cancellationToken).ConfigureAwait(false);
+    }
+
+    private async ValueTask PauseCoreAsync(CancellationToken cancellationToken)
+    {
+        if (_state != DebugSessionState.Running ||
+            _debuggee is not CorDebugDebuggee managedDebuggee)
+        {
+            throw new InvalidOperationException(
+                $"A managed target cannot be paused while the debugger session is {_state}.");
+        }
+
+        managedDebuggee.Pause();
+        _stopGeneration = _stopGeneration.Value == 0
+            ? DebugStopGeneration.First
+            : _stopGeneration.Next();
+        _state = DebugSessionState.Stopped;
+        await _observer.OnStoppedAsync(
+            "pause",
+            _stopGeneration,
+            cancellationToken).ConfigureAwait(false);
+    }
+
+    private async ValueTask ContinueCoreAsync(CancellationToken cancellationToken)
+    {
+        if (_state != DebugSessionState.Stopped ||
+            _debuggee is not CorDebugDebuggee managedDebuggee)
+        {
+            throw new InvalidOperationException(
+                $"A managed target cannot continue while the debugger session is {_state}.");
+        }
+
+        managedDebuggee.Continue();
+        _state = DebugSessionState.Running;
+        await _observer.OnContinuedAsync(cancellationToken).ConfigureAwait(false);
     }
 
     private async Task ObserveDebuggeeAsync(

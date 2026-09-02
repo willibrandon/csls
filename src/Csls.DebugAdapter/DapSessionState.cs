@@ -31,6 +31,11 @@ internal enum DapSessionState
     Running,
 
     /// <summary>
+    /// The target is stopped and permits inspection requests.
+    /// </summary>
+    Stopped,
+
+    /// <summary>
     /// The target is being ended because its owner disconnected.
     /// </summary>
     Terminating,

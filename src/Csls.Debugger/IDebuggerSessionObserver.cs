@@ -32,6 +32,25 @@ public interface IDebuggerSessionObserver
         CancellationToken cancellationToken);
 
     /// <summary>
+    /// Reports that the target entered a stable debugger stop.
+    /// </summary>
+    /// <param name="reason">The protocol-neutral stop reason.</param>
+    /// <param name="generation">The generation owning inspection handles at this stop.</param>
+    /// <param name="cancellationToken">Cancels notification delivery.</param>
+    /// <returns>A task that completes after the notification is accepted.</returns>
+    ValueTask OnStoppedAsync(
+        string reason,
+        DebugStopGeneration generation,
+        CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Reports that debugger execution resumed for every target thread.
+    /// </summary>
+    /// <param name="cancellationToken">Cancels notification delivery.</param>
+    /// <returns>A task that completes after the notification is accepted.</returns>
+    ValueTask OnContinuedAsync(CancellationToken cancellationToken);
+
+    /// <summary>
     /// Reports the target process exit code.
     /// </summary>
     /// <param name="exitCode">The operating-system process exit code.</param>

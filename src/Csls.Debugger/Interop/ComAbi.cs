@@ -25,6 +25,38 @@ internal static unsafe class ComAbi
     }
 
     /// <summary>
+    /// Tries to query a native COM object for an optional interface.
+    /// </summary>
+    /// <param name="instance">The source COM interface pointer.</param>
+    /// <param name="interfaceId">The requested interface identifier.</param>
+    /// <param name="result">Receives the owned interface pointer when supported.</param>
+    /// <returns>True when the object supports the requested interface.</returns>
+    internal static bool TryQueryInterface(
+        nint instance,
+        in Guid interfaceId,
+        out nint result)
+    {
+        const int noInterfaceHResult = unchecked((int)0x80004002);
+        ArgumentOutOfRangeException.ThrowIfZero(instance);
+        nint* vtable = *(nint**)instance;
+        var queryInterface =
+            (delegate* unmanaged[Stdcall]<nint, Guid*, nint*, int>)vtable[0];
+        nint queriedInterface = 0;
+        Guid localInterfaceId = interfaceId;
+        int hresult = queryInterface(instance, &localInterfaceId, &queriedInterface);
+        queriedInterface = Volatile.Read(ref queriedInterface);
+        if (hresult == noInterfaceHResult)
+        {
+            result = 0;
+            return false;
+        }
+
+        CorDebugHResult.ThrowIfFailed(hresult, "IUnknown.QueryInterface");
+        result = queriedInterface;
+        return queriedInterface != 0;
+    }
+
+    /// <summary>
     /// Adds one ownership reference to a native COM interface pointer.
     /// </summary>
     /// <param name="instance">The COM interface pointer to retain.</param>

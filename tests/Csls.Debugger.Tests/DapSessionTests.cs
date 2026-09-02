@@ -175,6 +175,179 @@ public sealed class DapSessionTests
     }
 
     /// <summary>
+    /// Pauses a live managed target, enumerates real runtime threads, and resumes execution.
+    /// </summary>
+    [TestMethod]
+    [Timeout(30000, CooperativeCancellation = true)]
+    public async Task ManagedPauseEnumeratesThreadsAndContinuesTarget()
+    {
+        string waitPath = Path.Join(
+            Path.GetTempPath(),
+            $"csls-debugger-pause-{Guid.NewGuid():N}.signal");
+        try
+        {
+            DapTestClient client = await DapTestClient
+                .CreateAsync(TestContext.CancellationToken)
+                .ConfigureAwait(false);
+            await using ConfiguredAsyncDisposable clientDisposal = client.ConfigureAwait(false);
+            _ = await client.SendRequestAsync(
+                "initialize",
+                WriteEmptyObject,
+                TestContext.CancellationToken).ConfigureAwait(false);
+            using JsonDocument initialize = await client
+                .ReadMessageAsync(TestContext.CancellationToken)
+                .ConfigureAwait(false);
+            _ = await client.SendRequestAsync(
+                "launch",
+                writer => WriteLaunchArguments(
+                    writer,
+                    ResolveTestProcessHost(),
+                    ["--announce-and-spin-until-file", waitPath],
+                    wait: true,
+                    noDebug: false),
+                TestContext.CancellationToken).ConfigureAwait(false);
+            using JsonDocument initialized = await client
+                .ReadMessageAsync(TestContext.CancellationToken)
+                .ConfigureAwait(false);
+            _ = await client.SendRequestAsync(
+                "configurationDone",
+                WriteEmptyObject,
+                TestContext.CancellationToken).ConfigureAwait(false);
+            using JsonDocument configuration = await client
+                .ReadMessageAsync(TestContext.CancellationToken)
+                .ConfigureAwait(false);
+            using JsonDocument launch = await client
+                .ReadMessageAsync(TestContext.CancellationToken)
+                .ConfigureAwait(false);
+            using JsonDocument process = await client
+                .ReadMessageAsync(TestContext.CancellationToken)
+                .ConfigureAwait(false);
+            using JsonDocument ready = await client
+                .ReadMessageAsync(TestContext.CancellationToken)
+                .ConfigureAwait(false);
+            AssertEvent(ready.RootElement, "output");
+            Assert.AreEqual(
+                "ready",
+                ready.RootElement.GetProperty("body").GetProperty("output").GetString());
+
+            int pauseSequence = await client.SendRequestAsync(
+                "pause",
+                WriteEmptyObject,
+                TestContext.CancellationToken).ConfigureAwait(false);
+            using JsonDocument stopped = await client
+                .ReadMessageAsync(TestContext.CancellationToken)
+                .ConfigureAwait(false);
+            AssertEvent(stopped.RootElement, "stopped");
+            Assert.AreEqual(
+                "pause",
+                stopped.RootElement.GetProperty("body").GetProperty("reason").GetString());
+            Assert.IsTrue(
+                stopped.RootElement.GetProperty("body").GetProperty("allThreadsStopped").GetBoolean());
+            using JsonDocument pause = await client
+                .ReadMessageAsync(TestContext.CancellationToken)
+                .ConfigureAwait(false);
+            AssertResponse(pause.RootElement, pauseSequence, "pause", success: true);
+
+            int threadsSequence = await client.SendRequestAsync(
+                "threads",
+                WriteEmptyObject,
+                TestContext.CancellationToken).ConfigureAwait(false);
+            using JsonDocument threads = await client
+                .ReadMessageAsync(TestContext.CancellationToken)
+                .ConfigureAwait(false);
+            AssertResponse(threads.RootElement, threadsSequence, "threads", success: true);
+            JsonElement[] threadItems = [.. threads.RootElement
+                .GetProperty("body")
+                .GetProperty("threads")
+                .EnumerateArray()];
+            Assert.IsNotEmpty(threadItems);
+            Assert.IsTrue(threadItems.All(thread => thread.GetProperty("id").GetInt32() > 0));
+            Assert.HasCount(
+                threadItems.Length,
+                threadItems.Select(thread => thread.GetProperty("id").GetInt32()).Distinct().ToArray());
+
+            bool foundFixtureSource = false;
+            foreach (JsonElement thread in threadItems)
+            {
+                int threadId = thread.GetProperty("id").GetInt32();
+                int stackSequence = await client.SendRequestAsync(
+                    "stackTrace",
+                    writer =>
+                    {
+                        writer.WriteStartObject();
+                        writer.WriteNumber("threadId", threadId);
+                        writer.WriteNumber("startFrame", 0);
+                        writer.WriteNumber("levels", 64);
+                        writer.WriteEndObject();
+                    },
+                    TestContext.CancellationToken).ConfigureAwait(false);
+                using JsonDocument stack = await client
+                    .ReadMessageAsync(TestContext.CancellationToken)
+                    .ConfigureAwait(false);
+                AssertResponse(stack.RootElement, stackSequence, "stackTrace", success: true);
+                JsonElement[] frames = [.. stack.RootElement
+                    .GetProperty("body")
+                    .GetProperty("stackFrames")
+                    .EnumerateArray()];
+                Assert.IsGreaterThanOrEqualTo(
+                    frames.Length,
+                    stack.RootElement.GetProperty("body").GetProperty("totalFrames").GetInt32());
+                foundFixtureSource = frames.Any(frame =>
+                    frame.TryGetProperty("source", out JsonElement source) &&
+                    source.GetProperty("path").GetString() is string path &&
+                    path.EndsWith(
+                        Path.Join("tests", "Csls.TestProcessHost", "Program.cs"),
+                        StringComparison.Ordinal) &&
+                    frame.GetProperty("line").GetInt32() > 0);
+                if (foundFixtureSource)
+                {
+                    break;
+                }
+            }
+
+            Assert.IsTrue(foundFixtureSource, "No managed stack frame resolved to the fixture source.");
+
+            int continueSequence = await client.SendRequestAsync(
+                "continue",
+                WriteEmptyObject,
+                TestContext.CancellationToken).ConfigureAwait(false);
+            using JsonDocument continued = await client
+                .ReadMessageAsync(TestContext.CancellationToken)
+                .ConfigureAwait(false);
+            AssertEvent(continued.RootElement, "continued");
+            using JsonDocument continueResponse = await client
+                .ReadMessageAsync(TestContext.CancellationToken)
+                .ConfigureAwait(false);
+            AssertResponse(
+                continueResponse.RootElement,
+                continueSequence,
+                "continue",
+                success: true);
+
+            await File.WriteAllTextAsync(
+                waitPath,
+                string.Empty,
+                TestContext.CancellationToken).ConfigureAwait(false);
+            using JsonDocument exited = await client
+                .ReadMessageAsync(TestContext.CancellationToken)
+                .ConfigureAwait(false);
+            AssertEvent(exited.RootElement, "exited");
+            using JsonDocument terminated = await client
+                .ReadMessageAsync(TestContext.CancellationToken)
+                .ConfigureAwait(false);
+            AssertEvent(terminated.RootElement, "terminated");
+            Assert.AreEqual(
+                0,
+                await client.WaitForExitAsync(TestContext.CancellationToken).ConfigureAwait(false));
+            Assert.AreEqual(string.Empty, client.Diagnostics.ToString());
+        }
+        finally
+        {
+            File.Delete(waitPath);
+        }
+    }
+
+    /// <summary>
     /// Rejects invalid request ordering without preventing later initialization.
     /// </summary>
     [TestMethod]

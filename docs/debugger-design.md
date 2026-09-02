@@ -94,6 +94,13 @@ generation. Thread, frame, scope, variable, memory, and evaluation references
 encode or carry that generation. A reference from an older generation produces a
 typed stale-reference error; it is never resolved against new target state.
 
+Manual pause uses `ICorDebugController.Stop`; managed stacks use the current
+`ICorDebugThread3`/`ICorDebugStackWalk` contract rather than the legacy active-chain
+view, which omits managed callers across native transitions. Frame COM references
+are retained only for their stop generation, assigned monotonically increasing
+session-local handles, and released before execution resumes. Stack paging bounds
+returned work without misreporting the complete managed-frame count.
+
 One bounded channel receives client commands and runtime callbacks. Separate
 bounded channels carry target output and client events. Saturation applies
 backpressure to requests and coalesces eligible progress/output notifications;
