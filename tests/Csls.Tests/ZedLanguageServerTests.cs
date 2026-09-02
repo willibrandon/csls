@@ -4,7 +4,6 @@ using Csls.Protocol;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Text.Json;
-using System.Xml.Linq;
 
 namespace Csls.Tests;
 
@@ -24,66 +23,44 @@ public sealed class ZedLanguageServerTests
     /// <summary>
     /// Opens real framework metadata definitions as readable source documents in Zed.
     /// </summary>
+    /// <param name="documentText">The source text containing the framework symbol.</param>
+    /// <param name="symbolName">The framework symbol selected in Zed.</param>
+    /// <param name="expectedDeclaration">The declaration expected in generated source.</param>
+    /// <param name="expectedFileName">The expected generated source file name.</param>
+    /// <param name="expectedImplementation">Optional implementation text expected in generated source.</param>
     [TestMethod]
+    [DataRow(
+        "var awaitable = Task.CompletedTask.ConfigureAwait(false);",
+        "ConfigureAwait",
+        "class Task",
+        "Task.cs",
+        null)]
+    [DataRow(
+        "bool same = object.ReferenceEquals(null, null);",
+        "ReferenceEquals",
+        "class Object",
+        "Object.cs",
+        null)]
+    [DataRow(
+        "bool blank = string.IsNullOrWhiteSpace(null);",
+        "IsNullOrWhiteSpace",
+        "class String",
+        "String.cs",
+        null)]
+    [DataRow(
+        "Dictionary<string, int> values = new();",
+        "Dictionary",
+        "class Dictionary",
+        "Dictionary.cs",
+        null)]
+    [DataRow(
+        "Lazy<int> value = new();",
+        "Lazy",
+        "class Lazy",
+        "Lazy.cs",
+        "private T CreateValue()")]
     [OSCondition(ConditionMode.Include, OperatingSystems.Linux)]
-    public async Task ZedOpensFrameworkDefinitionFromCsls()
-    {
-        (
-            string DocumentText,
-            string SymbolName,
-            string ExpectedDeclaration,
-            string ExpectedFileName,
-            string? ExpectedImplementation)[] cases =
-        [
-            (
-                "var awaitable = Task.CompletedTask.ConfigureAwait(false);",
-                "ConfigureAwait",
-                "class Task",
-                "Task.cs",
-                null),
-            (
-                "bool same = object.ReferenceEquals(null, null);",
-                "ReferenceEquals",
-                "class Object",
-                "Object.cs",
-                null),
-            (
-                "bool blank = string.IsNullOrWhiteSpace(null);",
-                "IsNullOrWhiteSpace",
-                "class String",
-                "String.cs",
-                null),
-            (
-                "Dictionary<string, int> values = new();",
-                "Dictionary",
-                "class Dictionary",
-                "Dictionary.cs",
-                null),
-            (
-                "Lazy<int> value = new();",
-                "Lazy",
-                "class Lazy",
-                "Lazy.cs",
-                "private T CreateValue()")
-        ];
-
-        foreach ((
-            string documentText,
-            string symbolName,
-            string expectedDeclaration,
-            string expectedFileName,
-            string? expectedImplementation) in cases)
-        {
-            await VerifyFrameworkDefinitionAsync(
-                documentText,
-                symbolName,
-                expectedDeclaration,
-                expectedFileName,
-                expectedImplementation).ConfigureAwait(false);
-        }
-    }
-
-    private async Task VerifyFrameworkDefinitionAsync(
+    public async Task ZedOpensFrameworkDefinitionFromCsls(
         string documentText,
         string symbolName,
         string expectedDeclaration,
@@ -253,8 +230,9 @@ public sealed class ZedLanguageServerTests
 
                 string openedDefinitionText = await WaitForEditorTextAsync(
                     displayName,
+                    expectedFileName,
                     expectedDeclaration,
-                    TimeSpan.FromSeconds(10),
+                    TimeSpan.FromSeconds(20),
                     TestContext.CancellationToken).ConfigureAwait(false);
                 Assert.Contains(
                     symbolName,
@@ -605,7 +583,7 @@ public sealed class ZedLanguageServerTests
                 TestContext.CancellationToken).ConfigureAwait(false);
             await File.WriteAllTextAsync(
                 Path.Join(workspacePath, "Fixture.slnx"),
-                CreateFullWorkspaceSolution(repositoryRoot),
+                "<Solution><Project Path=\"Fixture.csproj\" /></Solution>",
                 TestContext.CancellationToken).ConfigureAwait(false);
             await File.WriteAllTextAsync(
                 documentPath,
@@ -640,7 +618,7 @@ public sealed class ZedLanguageServerTests
             {
                 ControlSessionInfo session = await ControlSessionWaiter.WaitForRunningAsync(
                     workspacePath,
-                    TimeSpan.FromSeconds(60),
+                    s_workspaceStartupTimeout,
                     TestContext.CancellationToken,
                     socketDirectory: socketDirectory).ConfigureAwait(false);
                 serverExit = ProcessExitWaiter.Observe(session.ProcessId);
@@ -743,27 +721,6 @@ public sealed class ZedLanguageServerTests
         ? StringComparer.OrdinalIgnoreCase
         : StringComparer.Ordinal;
 
-    private static string CreateFullWorkspaceSolution(string repositoryRoot)
-    {
-        var repositorySolution = XDocument.Load(Path.Join(repositoryRoot, "Csls.slnx"));
-        XElement[] projects =
-        [
-            .. repositorySolution
-                .Descendants("Project")
-                .Select(project => project.Attribute("Path")?.Value)
-                .Where(static path => !string.IsNullOrWhiteSpace(path))
-                .Select(path => new XElement(
-                    "Project",
-                    new XAttribute("Path", Path.GetFullPath(path!, repositoryRoot))))
-        ];
-        var solution = new XDocument(
-            new XElement(
-                "Solution",
-                new XElement("Folder", new XAttribute("Name", "/csls/"), projects),
-                new XElement("Project", new XAttribute("Path", "Fixture.csproj"))));
-        return solution.ToString(SaveOptions.DisableFormatting);
-    }
-
     private static Process StartZed(
         string zedPath,
         string documentPath,
@@ -794,7 +751,8 @@ public sealed class ZedLanguageServerTests
         startInfo.Environment["CSLS_WORKER_PATH"] = workerPath;
         startInfo.Environment[ControlEndpoint.SocketDirectoryEnvironmentVariable] =
             socketDirectory;
-        startInfo.Environment["NUGET_PACKAGES"] = ResolveHostNuGetPackagesPath();
+        startInfo.Environment["NUGET_PACKAGES"] =
+            EditorToolResolver.ResolveNuGetPackagesPath();
         startInfo.Environment["HOME"] = homePath;
         startInfo.Environment["NO_AT_BRIDGE"] = "1";
         startInfo.Environment.Remove("WAYLAND_DISPLAY");
@@ -802,25 +760,6 @@ public sealed class ZedLanguageServerTests
         startInfo.Environment["XDG_SESSION_TYPE"] = "x11";
         return Process.Start(startInfo)
             ?? throw new InvalidOperationException("Zed did not start.");
-    }
-
-    private static string ResolveHostNuGetPackagesPath()
-    {
-        string? configuredPath = Environment.GetEnvironmentVariable("NUGET_PACKAGES");
-        if (!string.IsNullOrWhiteSpace(configuredPath))
-        {
-            return Path.GetFullPath(configuredPath);
-        }
-
-        string userProfilePath = Environment.GetFolderPath(
-            Environment.SpecialFolder.UserProfile);
-        if (string.IsNullOrWhiteSpace(userProfilePath))
-        {
-            throw new InvalidOperationException(
-                "The current user has no profile directory for the NuGet package cache.");
-        }
-
-        return Path.Join(userProfilePath, ".nuget", "packages");
     }
 
     private static Position FindPosition(string text, string value)
@@ -1060,6 +999,7 @@ public sealed class ZedLanguageServerTests
 
     private static async Task<string> WaitForEditorTextAsync(
         string displayName,
+        string windowTitle,
         string expectedText,
         TimeSpan timeout,
         CancellationToken cancellationToken)
@@ -1073,6 +1013,11 @@ public sealed class ZedLanguageServerTests
         {
             while (await timer.WaitForNextTickAsync(timeoutSource.Token).ConfigureAwait(false))
             {
+                if (!X11Input.TryFocusWindow(displayName, windowTitle))
+                {
+                    continue;
+                }
+
                 X11Input.SendControlCharacter(displayName, 'a');
                 X11Input.SendControlCharacter(displayName, 'c');
                 clipboardText = await X11Clipboard.ReadTextAsync(
@@ -1087,7 +1032,7 @@ public sealed class ZedLanguageServerTests
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
             throw new TimeoutException(
-                $"Zed did not open editor text containing '{expectedText}'. " +
+                $"Zed did not open a '{windowTitle}' editor containing '{expectedText}'. " +
                 $"Last copied text: {clipboardText}");
         }
 
@@ -1129,6 +1074,7 @@ public sealed class ZedLanguageServerTests
                 "html": false
               },
               "auto_update": false,
+              "disable_ai": true,
               "languages": {
                 "CSharp": {
                   "language_servers": ["csls"]

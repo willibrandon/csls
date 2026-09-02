@@ -336,6 +336,10 @@ public sealed class WorkspaceConfigurationLanguageServerTests
                 """{"csls":{"logLevel":"Trace"}}""");
             await lsp.ChangeConfigurationAsync(traceConfiguration.RootElement)
                 .ConfigureAwait(false);
+            await WaitForCompletedRequestAsync(
+                lsp,
+                "workspace/didChangeConfiguration",
+                TestContext.CancellationToken).ConfigureAwait(false);
 
             string diagnostics = await lsp.ShutdownAsync(
                 TestContext.CancellationToken).ConfigureAwait(false);
@@ -444,6 +448,29 @@ public sealed class WorkspaceConfigurationLanguageServerTests
         finally
         {
             await DirectoryReleaseWaiter.DeleteAsync(fixturePath, TimeSpan.FromSeconds(10)).ConfigureAwait(false);
+        }
+    }
+
+    private static async Task WaitForCompletedRequestAsync(
+        LspProcessSession lsp,
+        string requestName,
+        CancellationToken cancellationToken)
+    {
+        using var timer = new PeriodicTimer(TimeSpan.FromMilliseconds(10));
+        while (true)
+        {
+            CSharpDebugInfo info = await lsp.RequestDebugInfoAsync(cancellationToken)
+                .ConfigureAwait(false);
+            if (info.RequestQueue.Stats.Any(
+                statistic => string.Equals(
+                    statistic.Name,
+                    requestName,
+                    StringComparison.Ordinal)))
+            {
+                return;
+            }
+
+            await timer.WaitForNextTickAsync(cancellationToken).ConfigureAwait(false);
         }
     }
 

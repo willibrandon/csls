@@ -6,6 +6,24 @@ namespace Csls.Workspaces;
 public abstract class WorkspaceLoader
 {
     /// <summary>
+    /// Loads an optional preliminary workspace without waiting for the complete project system.
+    /// </summary>
+    /// <param name="rootPaths">The absolute workspace roots to load.</param>
+    /// <param name="buildConfiguration">The build configuration used for project evaluation.</param>
+    /// <param name="cancellationToken">The operation cancellation token.</param>
+    /// <returns>The preliminary snapshots, or an empty collection when none are available.</returns>
+    public virtual Task<IReadOnlyList<WorkspaceFolderSnapshot>> LoadPreliminaryAsync(
+        IReadOnlyList<string> rootPaths,
+        string buildConfiguration,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(rootPaths);
+        ArgumentException.ThrowIfNullOrWhiteSpace(buildConfiguration);
+        cancellationToken.ThrowIfCancellationRequested();
+        return Task.FromResult<IReadOnlyList<WorkspaceFolderSnapshot>>([]);
+    }
+
+    /// <summary>
     /// Restores dependency state required by the active project system.
     /// </summary>
     /// <param name="rootPaths">The current absolute workspace roots.</param>

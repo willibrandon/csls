@@ -1,0 +1,98 @@
+name: Dev container
+
+on:
+  schedule:
+    - cron: '23 9 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: dev-container-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    name: Build, test, and scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      actions: read
+      contents: read
+      security-events: write
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 10.x
+
+      - name: Select validation scope
+        id: scope
+        run: >-
+          dotnet run --file scripts/Select-DevContainerValidation.cs
+          ${{ github.event_name == 'pull_request' && format('-- --base {0}', github.event.pull_request.base.sha) || '' }}
+
+      - name: Set up Docker Buildx
+        if: steps.scope.outputs.full == 'true'
+        uses: docker/setup-buildx-action@v4
+
+      - name: Build and test the development container
+        if: steps.scope.outputs.full == 'true'
+        uses: devcontainers/ci@v0.3
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        with:
+          cacheFrom: type=gha,scope=csls-devcontainer
+          cacheTo: type=gha,mode=max,scope=csls-devcontainer
+          env: GITHUB_TOKEN
+          imageName: csls-devcontainer
+          imageTag: ci
+          push: never
+          runCmd: >-
+            dotnet test --solution Csls.slnx
+            --filter "TestCategory!=VsCodeHost&TestCategory!=VsCodeOracle&TestCategory!=LegacyBuildHost&FullyQualifiedName!~Csls.Tests.NeovimLanguageServerTests&FullyQualifiedName!~Csls.Tests.ZedLanguageServerTests&FullyQualifiedName!~Csls.Tests.ZedHighlightQueryTests&FullyQualifiedName!~Csls.Tests.RepositoryDiagnosticLanguageServerTests"
+
+      - name: Export the development container
+        if: steps.scope.outputs.full == 'true'
+        run: dotnet run --file scripts/Export-ContainerImage.cs -- --image csls-devcontainer:ci --output artifacts/devcontainer/csls-devcontainer.tar
+
+      - name: Scan the development container with Picket
+        if: steps.scope.outputs.full == 'true'
+        uses: willibrandon/picket@v0
+        with:
+          docker-archive: artifacts/devcontainer/csls-devcontainer.tar
+          cache-mode: secret-hash-only
+          fail-on: findings
+          ignore-path: .picketignore
+          max-archive-depth: 2
+          max-archive-entries: 100000
+          max-archive-megabytes: 8192
+          max-archive-ratio: 1000
+          max-target-megabytes: 64
+          redact: 100
+          timeout: 900
+          upload-sarif: true
+
+      - name: Scan the repository with Picket
+        if: steps.scope.outputs.full != 'true'
+        uses: willibrandon/picket@v0
+        with:
+          cache-mode: secret-hash-only
+          fail-on: findings
+          ignore-path: .picketignore
+          max-archive-depth: 2
+          max-archive-entries: 100000
+          max-archive-megabytes: 4096
+          max-archive-ratio: 1000
+          max-target-megabytes: 64
+          redact: 100
+          timeout: 600
+          upload-sarif: true

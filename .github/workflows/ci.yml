@@ -1,0 +1,860 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  DOTNET_CLI_TELEMETRY_OPTOUT: 1
+  DOTNET_NOLOGO: true
+  GITHUB_TOKEN: ${{ github.token }}
+
+jobs:
+  test-binaries:
+    name: Test binaries
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 10.x
+
+      - name: Restore test binaries
+        id: test-binaries-cache
+        uses: actions/cache@v6
+        with:
+          path: |
+            artifacts/bin/Csls.*/debug
+            !artifacts/bin/Csls.SourceGen.Tests/debug
+          key: test-binaries-v2-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.editorconfig', 'global.json', 'src/**', 'tests/**', 'benchmarks/**', 'build/**', 'Directory.Build.*', 'Directory.Packages.props', 'NuGet.Config') }}
+          restore-keys: test-binaries-v2-${{ runner.os }}-${{ runner.arch }}-
+
+      - name: Restore source generator test binaries
+        id: source-generator-test-binaries-cache
+        uses: actions/cache@v6
+        with:
+          path: artifacts/bin/Csls.SourceGen.Tests/debug
+          key: source-generator-test-binaries-v2-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.editorconfig', 'global.json', 'src/**', 'tests/**', 'benchmarks/**', 'build/**', 'Directory.Build.*', 'Directory.Packages.props', 'NuGet.Config') }}
+          restore-keys: source-generator-test-binaries-v2-${{ runner.os }}-${{ runner.arch }}-
+
+      - name: Restore test build intermediates
+        uses: actions/cache@v6
+        with:
+          path: |
+            artifacts/obj/Csls.*/debug
+            artifacts/obj/Csls.*/*.cache
+            artifacts/obj/Csls.*/*.json
+            artifacts/obj/Csls.*/*.props
+            artifacts/obj/Csls.*/*.targets
+          key: test-build-intermediates-v2-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.editorconfig', 'global.json', 'src/**', 'tests/**', 'benchmarks/**', 'build/**', 'Directory.Build.*', 'Directory.Packages.props', 'NuGet.Config') }}
+          restore-keys: test-build-intermediates-v2-${{ runner.os }}-${{ runner.arch }}-
+
+      - name: Build test binaries
+        if: steps.test-binaries-cache.outputs.cache-hit != 'true' || steps.source-generator-test-binaries-cache.outputs.cache-hit != 'true'
+        run: |
+          dotnet build tests/Csls.Tests/Csls.Tests.csproj
+          dotnet build tests/Csls.SourceGen.Tests/Csls.SourceGen.Tests.csproj
+
+      - name: Pack test binaries
+        run: tar --create --file artifacts/test-binaries.tar --directory artifacts bin
+
+      - name: Share test binaries
+        uses: actions/upload-artifact@v7
+        with:
+          name: test-binaries-${{ github.run_attempt }}
+          path: artifacts/test-binaries.tar
+          compression-level: 0
+          if-no-files-found: error
+
+  native-aot-size:
+    name: Native AOT size (${{ matrix.command }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      actions: read
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - command: csls
+            project: src/Csls.App/Csls.App.csproj
+            target: artifacts/obj/Csls.App/release_linux-x64/native/csls.mstat
+          - command: csls-mcp
+            project: src/Csls.Mcp/Csls.Mcp.csproj
+            target: artifacts/obj/Csls.Mcp/release_linux-x64/native/csls-mcp.mstat
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 10.x
+
+      - name: Publish Native AOT launcher
+        run: >-
+          dotnet publish ${{ matrix.project }}
+          --configuration Release
+          --runtime linux-x64
+          --self-contained true
+          --output artifacts/size-check/${{ matrix.command }}
+          -p:IlcGenerateMstatFile=true
+
+      - name: Check Native AOT size
+        uses: willibrandon/dotsider@v0
+        with:
+          target: ${{ matrix.target }}
+          baseline-key: ${{ matrix.command }}-linux-x64
+          budgets: max=8mb
+          top: '20'
+          report-directory: ${{ runner.temp }}/dotsider-size-${{ matrix.command }}-linux-x64
+          artifact-name: dotsider-size-${{ matrix.command }}-linux-x64
+
+  repository-policy:
+    name: Repository policy
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 10.x
+
+      - name: Verify repository policy
+        run: dotnet run --file scripts/Verify-Repository.cs
+
+      - name: Restore
+        run: dotnet restore Csls.slnx
+
+      - name: Verify formatting
+        run: dotnet format Csls.slnx --verify-no-changes --no-restore
+
+      - name: Provision actionlint
+        run: dotnet run --file scripts/Provision-Actionlint.cs
+
+      - name: Verify GitHub Actions workflows
+        run: dotnet run --file scripts/Verify-GitHubActions.cs
+
+  file-apps:
+    name: File apps (${{ matrix.group }}/${{ matrix.count }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - group: 1
+            index: 0
+            count: 2
+          - group: 2
+            index: 1
+            count: 2
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 10.x
+
+      - name: Restore file app builds
+        id: file-app-builds-cache
+        uses: actions/cache/restore@v6
+        with:
+          path: ~/.local/share/dotnet/runfile
+          key: file-app-builds-${{ matrix.group }}-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/*.cs', '.editorconfig', 'Directory.Build.*', 'Directory.Packages.props', 'NuGet.Config') }}
+
+      - name: Restore file app packages
+        run: |
+          dotnet restore scripts/Generate-Docs.cs
+          dotnet restore scripts/Assemble-ReleaseAssets.cs
+
+      - name: Verify file apps
+        run: >-
+          dotnet run --file scripts/Verify-FileApps.cs --
+          --group-index ${{ matrix.index }}
+          --group-count ${{ matrix.count }}
+
+      - name: Save file app builds
+        if: steps.file-app-builds-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: ~/.local/share/dotnet/runfile
+          key: file-app-builds-${{ matrix.group }}-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/*.cs', '.editorconfig', 'Directory.Build.*', 'Directory.Packages.props', 'NuGet.Config') }}
+
+  file-apps-complete:
+    name: File apps
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    needs: file-apps
+
+    steps:
+      - name: Complete file app verification
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+  vscode-web-extension:
+    name: VS Code web extension
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 10.x
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24.x
+          cache: npm
+          cache-dependency-path: editors/vscode/package-lock.json
+
+      - name: Restore VS Code web extension
+        id: vscode-web-extension-cache
+        uses: actions/cache@v6
+        with:
+          path: artifacts/vscode-web-test-extension/willibrandon.csls-web.vsix
+          key: vscode-web-extension-${{ hashFiles('src/**', 'editors/vscode/**', 'scripts/Build-VsCodeExtension.cs', 'scripts/Build-VsCodeWebWorker.cs', 'scripts/ScriptSupport.cs', 'Directory.Build.*', 'Directory.Packages.props', 'NuGet.Config') }}
+
+      - name: Build VS Code web extension
+        if: steps.vscode-web-extension-cache.outputs.cache-hit != 'true'
+        run: >-
+          dotnet run --file scripts/Build-VsCodeExtension.cs --
+          --version 1.0.0
+          --target web
+          --output artifacts/vscode-web-test-extension/willibrandon.csls-web.vsix
+
+  graphical-prerequisite-app:
+    name: Graphical prerequisite app
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 10.x
+
+      - name: Restore graphical prerequisite app
+        id: graphical-prerequisite-app-cache
+        uses: actions/cache/restore@v6
+        with:
+          path: artifacts/file-apps/install-graphical
+          key: graphical-prerequisite-app-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/Install-GraphicalEditorTestPrerequisites.cs', 'scripts/ScriptSupport.cs') }}
+
+      - name: Publish graphical prerequisite app
+        if: steps.graphical-prerequisite-app-cache.outputs.cache-hit != 'true'
+        run: >-
+          dotnet publish scripts/Install-GraphicalEditorTestPrerequisites.cs
+          --output artifacts/file-apps/install-graphical
+
+      - name: Save graphical prerequisite app
+        if: steps.graphical-prerequisite-app-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: artifacts/file-apps/install-graphical
+          key: graphical-prerequisite-app-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/Install-GraphicalEditorTestPrerequisites.cs', 'scripts/ScriptSupport.cs') }}
+
+  workspace-project-tests:
+    name: Workspace project tests (${{ matrix.group }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    needs: test-binaries
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - group: standard
+            filter: ((FullyQualifiedName~Csls.Tests.FileBasedAppLanguageServerTests|FullyQualifiedName~Csls.Tests.LegacyWorkspaceLanguageServerTests|FullyQualifiedName~Csls.Tests.MultiTargetWorkspaceLanguageServerTests|FullyQualifiedName~Csls.Tests.UnityWorkspaceLanguageServerTests|FullyQualifiedName=Csls.Tests.DebugInfoLanguageServerTests.ShutdownRespondsWhileRepositoryWorkspaceLoads)&FullyQualifiedName~Workspace&TestCategory!=LegacyBuildHost)|FullyQualifiedName~Csls.Tests.WorkspaceConfigurationLanguageServerTests|FullyQualifiedName~Csls.Tests.WorkspaceFileOperationLanguageServerTests|FullyQualifiedName~Csls.Tests.WorkspaceDiagnosticLanguageServerTests|FullyQualifiedName~Csls.Tests.WorkspaceInfoLanguageServerTests|FullyQualifiedName~Csls.Tests.WorkspaceLoadProgressLanguageServerTests|FullyQualifiedName=Csls.Tests.CliLanguageServerTests.WorkspaceCommandsUseRealToolsAndPreserveOpenDocuments
+          - group: repository
+            filter: FullyQualifiedName=Csls.Tests.RepositoryDiagnosticLanguageServerTests.RepositoryWorkspaceLoadsAndReportsProjectDiagnostics
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 10.x
+
+      - name: Download test binaries
+        uses: actions/download-artifact@v8
+        with:
+          name: test-binaries-${{ github.run_attempt }}
+          path: artifacts
+
+      - name: Extract test binaries
+        run: tar --extract --file artifacts/test-binaries.tar --directory artifacts
+
+      - name: Run workspace project tests
+        run: >-
+          dotnet test --test-modules artifacts/bin/Csls.Tests/debug/Csls.Tests.dll
+          --root-directory .
+          --filter "${{ matrix.filter }}"
+          --minimum-expected-tests ${{ matrix.group == 'standard' && 28 || 1 }}
+          --output Detailed
+
+  language-server-tests:
+    name: Language server tests (${{ matrix.group }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    needs: test-binaries
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - group: razor
+            count: 13
+            filter: (FullyQualifiedName~LanguageServerTests&FullyQualifiedName!~Workspace&TestCategory!=VsCodeHost&TestCategory!=VsCodeOracle&TestCategory!=LegacyBuildHost&FullyQualifiedName!~Csls.Tests.EmacsLanguageServerTests&FullyQualifiedName!~Csls.Tests.FreshLanguageServerTests&FullyQualifiedName!~Csls.Tests.HelixLanguageServerTests&FullyQualifiedName!~Csls.Tests.NeovimLanguageServerTests&FullyQualifiedName!~Csls.Tests.ZedLanguageServerTests)&FullyQualifiedName~Csls.Tests.Razor
+          - group: process-hosts
+            count: 22
+            filter: (FullyQualifiedName~LanguageServerTests&FullyQualifiedName!~Workspace&TestCategory!=VsCodeHost&TestCategory!=VsCodeOracle&TestCategory!=LegacyBuildHost&FullyQualifiedName!~Csls.Tests.EmacsLanguageServerTests&FullyQualifiedName!~Csls.Tests.FreshLanguageServerTests&FullyQualifiedName!~Csls.Tests.HelixLanguageServerTests&FullyQualifiedName!~Csls.Tests.NeovimLanguageServerTests&FullyQualifiedName!~Csls.Tests.ZedLanguageServerTests)&(FullyQualifiedName~Csls.Tests.McpLanguageServerTests|FullyQualifiedName~Csls.Tests.CliLanguageServerTests|FullyQualifiedName~Csls.Tests.DashboardLanguageServerTests|FullyQualifiedName~Csls.Tests.StdioLanguageServerTests|FullyQualifiedName~Csls.Tests.DebugInfoLanguageServerTests)
+          - group: language-features
+            count: 38
+            filter: (FullyQualifiedName~LanguageServerTests&FullyQualifiedName!~Workspace&TestCategory!=VsCodeHost&TestCategory!=VsCodeOracle&TestCategory!=LegacyBuildHost&FullyQualifiedName!~Csls.Tests.EmacsLanguageServerTests&FullyQualifiedName!~Csls.Tests.FreshLanguageServerTests&FullyQualifiedName!~Csls.Tests.HelixLanguageServerTests&FullyQualifiedName!~Csls.Tests.NeovimLanguageServerTests&FullyQualifiedName!~Csls.Tests.ZedLanguageServerTests)&FullyQualifiedName!~Csls.Tests.Razor&FullyQualifiedName!~Csls.Tests.McpLanguageServerTests&FullyQualifiedName!~Csls.Tests.CliLanguageServerTests&FullyQualifiedName!~Csls.Tests.DashboardLanguageServerTests&FullyQualifiedName!~Csls.Tests.StdioLanguageServerTests&FullyQualifiedName!~Csls.Tests.DebugInfoLanguageServerTests
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 10.x
+
+      - name: Download test binaries
+        uses: actions/download-artifact@v8
+        with:
+          name: test-binaries-${{ github.run_attempt }}
+          path: artifacts
+
+      - name: Extract test binaries
+        run: tar --extract --file artifacts/test-binaries.tar --directory artifacts
+
+      - name: Run language server tests
+        run: >-
+          dotnet test --test-modules artifacts/bin/Csls.Tests/debug/Csls.Tests.dll
+          --root-directory .
+          --filter "${{ matrix.filter }}"
+          --minimum-expected-tests ${{ matrix.count }}
+          --output Detailed
+
+  unit-tests:
+    name: Unit tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    needs: test-binaries
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 10.x
+
+      - name: Download test binaries
+        uses: actions/download-artifact@v8
+        with:
+          name: test-binaries-${{ github.run_attempt }}
+          path: artifacts
+
+      - name: Extract test binaries
+        run: tar --extract --file artifacts/test-binaries.tar --directory artifacts
+
+      - name: Run unit tests
+        run: >-
+          dotnet test --test-modules artifacts/bin/Csls.Tests/debug/Csls.Tests.dll
+          --root-directory .
+          --filter "FullyQualifiedName!~LanguageServerTests&TestCategory!=VsCodeHost&TestCategory!=VsCodeOracle&TestCategory!=LegacyBuildHost&FullyQualifiedName!~Csls.Tests.UpstreamParityTests&FullyQualifiedName!~Csls.Tests.ZedHighlightQueryTests"
+          --minimum-expected-tests 62
+          && dotnet test
+          --test-modules artifacts/bin/Csls.SourceGen.Tests/debug/Csls.SourceGen.Tests.dll
+          --root-directory .
+          --minimum-expected-tests 8
+
+  terminal-editor-tests:
+    name: Terminal editor tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    needs: test-binaries
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 10.x
+
+      - name: Download test binaries
+        uses: actions/download-artifact@v8
+        with:
+          name: test-binaries-${{ github.run_attempt }}
+          path: artifacts
+
+      - name: Extract test binaries
+        run: tar --extract --file artifacts/test-binaries.tar --directory artifacts
+
+      - name: Restore editor tools
+        uses: actions/cache@v6
+        with:
+          path: |
+            artifacts/tools/csharp-ls-oracle
+            artifacts/tools/emacs
+            artifacts/tools/fresh
+            artifacts/tools/helix
+            artifacts/tools/neovim
+          key: terminal-editor-tools-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/Provision-CsharpLsOracle.cs', 'scripts/Provision-Emacs.cs', 'scripts/Provision-Fresh.cs', 'scripts/Provision-Helix.cs', 'scripts/Provision-Neovim.cs', 'scripts/ScriptSupport.cs') }}
+
+      - name: Provision parity oracle
+        run: dotnet run --file scripts/Provision-CsharpLsOracle.cs
+
+      - name: Provision Fresh
+        run: dotnet run --file scripts/Provision-Fresh.cs
+
+      - name: Provision GNU Emacs
+        run: dotnet run --file scripts/Provision-Emacs.cs
+
+      - name: Provision Helix
+        run: dotnet run --file scripts/Provision-Helix.cs
+
+      - name: Provision Neovim
+        run: dotnet run --file scripts/Provision-Neovim.cs
+
+      - name: Run terminal editor tests
+        run: >-
+          dotnet test --test-modules artifacts/bin/Csls.Tests/debug/Csls.Tests.dll
+          --root-directory .
+          --filter "FullyQualifiedName~Csls.Tests.EmacsLanguageServerTests|FullyQualifiedName~Csls.Tests.FreshLanguageServerTests|FullyQualifiedName~Csls.Tests.HelixLanguageServerTests|FullyQualifiedName~Csls.Tests.NeovimLanguageServerTests|FullyQualifiedName~Csls.Tests.UpstreamParityTests"
+          --minimum-expected-tests 6
+
+  zed-tests:
+    name: Zed tests (${{ matrix.group }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    needs:
+      - graphical-prerequisite-app
+      - test-binaries
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - group: framework
+            count: 6
+            filter: FullyQualifiedName=Csls.Tests.ZedLanguageServerTests.ZedOpensFrameworkDefinitionFromCsls|FullyQualifiedName=Csls.Tests.ZedHighlightQueryTests.StaticServiceReceiverIsHighlightedAsType
+          - group: interactive
+            count: 1
+            filter: FullyQualifiedName=Csls.Tests.ZedLanguageServerTests.ZedProvidesInteractiveFeaturesInCslsWorkspace
+          - group: refresh
+            count: 1
+            filter: FullyQualifiedName=Csls.Tests.ZedLanguageServerTests.ZedRefreshesNewCompileItemsWithoutRestart
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 10.x
+
+      - name: Download test binaries
+        uses: actions/download-artifact@v8
+        with:
+          name: test-binaries-${{ github.run_attempt }}
+          path: artifacts
+
+      - name: Extract test binaries
+        run: tar --extract --file artifacts/test-binaries.tar --directory artifacts
+
+      - name: Restore graphical prerequisite app
+        uses: actions/cache/restore@v6
+        with:
+          path: artifacts/file-apps/install-graphical
+          key: graphical-prerequisite-app-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/Install-GraphicalEditorTestPrerequisites.cs', 'scripts/ScriptSupport.cs') }}
+          fail-on-cache-miss: true
+
+      - name: Restore Zed tools
+        id: zed-tools-cache
+        uses: actions/cache/restore@v6
+        with:
+          path: |
+            artifacts/tools/tree-sitter
+            artifacts/tools/wasi-sdk
+            artifacts/tools/zed
+            artifacts/tools/zed-csharp-extension
+          key: zed-tools-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/Provision-Zed.cs', 'scripts/Provision-WasiSdk.cs', 'scripts/ScriptSupport.cs') }}
+          restore-keys: zed-tools-${{ runner.os }}-${{ runner.arch }}-
+
+      - name: Restore built Zed extension
+        id: zed-extension-cache
+        uses: actions/cache/restore@v6
+        with:
+          path: |
+            artifacts/editors/zed/csls
+            artifacts/zed-extension/grammar-source
+          key: zed-extension-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('editors/zed/**', 'scripts/Build-ZedExtension.cs', 'scripts/Provision-WasiSdk.cs', 'scripts/ScriptSupport.cs', 'tests/Csls.Tests/ZedHighlightQueryTests.cs') }}
+
+      - name: Resolve graphical prerequisite cache
+        id: zed-graphical-cache-key
+        run: >-
+          artifacts/file-apps/install-graphical/Install-GraphicalEditorTestPrerequisites
+          --write-portable-cache-key
+
+      - name: Restore graphical prerequisites
+        id: zed-graphical-cache
+        uses: actions/cache/restore@v6
+        with:
+          path: artifacts/tools/graphical-editor-prerequisites
+          key: zed-graphical-${{ runner.os }}-${{ runner.arch }}-${{ steps.zed-graphical-cache-key.outputs.key }}-${{ hashFiles('scripts/Install-GraphicalEditorTestPrerequisites.cs', 'scripts/ScriptSupport.cs') }}
+
+      - name: Install graphical editor test prerequisites
+        run: >-
+          artifacts/file-apps/install-graphical/Install-GraphicalEditorTestPrerequisites
+          --portable-packages
+
+      - name: Save graphical prerequisites
+        if: steps.zed-graphical-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: artifacts/tools/graphical-editor-prerequisites
+          key: zed-graphical-${{ runner.os }}-${{ runner.arch }}-${{ steps.zed-graphical-cache-key.outputs.key }}-${{ hashFiles('scripts/Install-GraphicalEditorTestPrerequisites.cs', 'scripts/ScriptSupport.cs') }}
+
+      - name: Provision Zed
+        run: dotnet run --file scripts/Provision-Zed.cs
+
+      - name: Provision WASI SDK
+        run: dotnet run --file scripts/Provision-WasiSdk.cs
+
+      - name: Save Zed tools
+        if: steps.zed-tools-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: |
+            artifacts/tools/tree-sitter
+            artifacts/tools/wasi-sdk
+            artifacts/tools/zed
+            artifacts/tools/zed-csharp-extension
+          key: zed-tools-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/Provision-Zed.cs', 'scripts/Provision-WasiSdk.cs', 'scripts/ScriptSupport.cs') }}
+
+      - name: Build csls Zed extension
+        if: steps.zed-extension-cache.outputs.cache-hit != 'true'
+        run: dotnet run --file scripts/Build-ZedExtension.cs
+
+      - name: Save built Zed extension
+        if: steps.zed-extension-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: |
+            artifacts/editors/zed/csls
+            artifacts/zed-extension/grammar-source
+          key: zed-extension-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('editors/zed/**', 'scripts/Build-ZedExtension.cs', 'scripts/Provision-WasiSdk.cs', 'scripts/ScriptSupport.cs', 'tests/Csls.Tests/ZedHighlightQueryTests.cs') }}
+
+      - name: Run Zed tests
+        run: >-
+          dotnet test --test-modules artifacts/bin/Csls.Tests/debug/Csls.Tests.dll
+          --root-directory .
+          --filter "${{ matrix.filter }}"
+          --minimum-expected-tests ${{ matrix.count }}
+          --output Detailed
+
+  zed-tests-complete:
+    name: Zed tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    needs: zed-tests
+
+    steps:
+      - name: Complete Zed test verification
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+  vscode-tests:
+    name: VS Code tests (${{ matrix.group }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    needs:
+      - graphical-prerequisite-app
+      - test-binaries
+      - vscode-web-extension
+    env:
+      CSLS_RUN_VSCODE_REMOTE_TESTS: ${{ matrix.remote }}
+      CSLS_RUN_VSCODE_WEB_TESTS: ${{ matrix.web }}
+      CSLS_VSCODE_WEB_PACKAGE_PATH: ${{ github.workspace }}/artifacts/vscode-web-test-extension/willibrandon.csls-web.vsix
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - group: desktop
+            cache_key: desktop
+            save_cache: true
+            filter: FullyQualifiedName=Csls.Tests.VsCodeLanguageServerTests.VsCodeDesktopHostProvidesCSharpLanguageFeatures|FullyQualifiedName=Csls.Tests.VsCodeLanguageServerTests.VsCodeHostEnablesSemanticHighlightingWithoutThemeOptIn|FullyQualifiedName=Csls.Tests.VsCodeLanguageServerTests.VsCodeHostStopsAutomaticTestDiscoveryProcessesOnShutdown|TestCategory=VsCodeOracle
+            graphical_arguments: --without-clipboard --without-tree-sitter --without-vulkan
+            remote: false
+            web: false
+            vscode_arguments: ''
+            cache_paths: |
+              artifacts/tools/vscode
+              artifacts/tools/vscode-dotnet-runtime
+              artifacts/tools/vscode-csharp
+              artifacts/tools/vscode-csdevkit
+          - group: remote
+            cache_key: remote
+            save_cache: true
+            filter: FullyQualifiedName~Csls.Tests.VsCodeLanguageServerTests.VsCodeRemoteHost
+            graphical_arguments: --without-clipboard --without-tree-sitter --without-vulkan
+            remote: true
+            web: false
+            vscode_arguments: -- --without-dev-kit
+            cache_paths: |
+              artifacts/tools/vscode
+              artifacts/tools/vscode-dotnet-runtime
+              artifacts/tools/vscode-csharp
+              artifacts/tools/vscode-server
+          - group: web-chromium
+            cache_key: web-chromium
+            save_cache: true
+            filter: FullyQualifiedName=Csls.Tests.VsCodeWebLanguageServerTests.ChromiumProvidesCSharpLanguageFeatures
+            graphical_arguments: --web-only --web-browser chromium
+            remote: false
+            web: true
+            vscode_arguments: -- --web-only --web-browser chromium
+            cache_paths: |
+              artifacts/tools/vscode-web
+              artifacts/tools/playwright
+          - group: web-firefox
+            cache_key: web-firefox
+            save_cache: true
+            filter: FullyQualifiedName=Csls.Tests.VsCodeWebLanguageServerTests.FirefoxProvidesCSharpLanguageFeatures
+            graphical_arguments: --web-only --web-browser firefox
+            remote: false
+            web: true
+            vscode_arguments: -- --web-only --web-browser firefox
+            cache_paths: |
+              artifacts/tools/vscode-web
+              artifacts/tools/playwright
+          - group: web-webkit
+            cache_key: web-webkit
+            save_cache: true
+            filter: FullyQualifiedName=Csls.Tests.VsCodeWebLanguageServerTests.WebKitProvidesCSharpLanguageFeatures
+            graphical_arguments: --web-only --web-browser webkit
+            remote: false
+            web: true
+            vscode_arguments: -- --web-only --web-browser webkit
+            cache_paths: |
+              artifacts/tools/vscode-web
+              artifacts/tools/playwright
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 10.x
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24.x
+          cache: npm
+          cache-dependency-path: |
+            editors/vscode/package-lock.json
+            tests/vscode/package-lock.json
+
+      - name: Download test binaries
+        uses: actions/download-artifact@v8
+        with:
+          name: test-binaries-${{ github.run_attempt }}
+          path: artifacts
+
+      - name: Extract test binaries
+        run: tar --extract --file artifacts/test-binaries.tar --directory artifacts
+
+      - name: Restore graphical prerequisite app
+        uses: actions/cache/restore@v6
+        with:
+          path: artifacts/file-apps/install-graphical
+          key: graphical-prerequisite-app-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/Install-GraphicalEditorTestPrerequisites.cs', 'scripts/ScriptSupport.cs') }}
+          fail-on-cache-miss: true
+
+      - name: Restore VS Code web extension
+        if: matrix.web
+        uses: actions/cache/restore@v6
+        with:
+          path: artifacts/vscode-web-test-extension/willibrandon.csls-web.vsix
+          key: vscode-web-extension-${{ hashFiles('src/**', 'editors/vscode/**', 'scripts/Build-VsCodeExtension.cs', 'scripts/Build-VsCodeWebWorker.cs', 'scripts/ScriptSupport.cs', 'Directory.Build.*', 'Directory.Packages.props', 'NuGet.Config') }}
+          fail-on-cache-miss: true
+
+      - name: Restore VS Code tools
+        id: vscode-tools-cache
+        uses: actions/cache/restore@v6
+        with:
+          path: ${{ matrix.cache_paths }}
+          key: vscode-tools-${{ matrix.cache_key }}-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/Provision-VsCode.cs', 'scripts/Provision-VsCodeRemoteServer.cs', 'scripts/ScriptSupport.cs', 'tests/vscode/package-lock.json', 'editors/vscode/package-lock.json') }}
+
+      - name: Provision VS Code
+        run: >-
+          dotnet run --file scripts/Provision-VsCode.cs
+          ${{ matrix.vscode_arguments }}
+
+      - name: Provision VS Code remote server
+        if: matrix.remote
+        run: dotnet run --file scripts/Provision-VsCodeRemoteServer.cs
+
+      - name: Install graphical editor test prerequisites
+        run: >-
+          artifacts/file-apps/install-graphical/Install-GraphicalEditorTestPrerequisites
+          ${{ matrix.graphical_arguments }}
+
+      - name: Save VS Code tools
+        if: matrix.save_cache && steps.vscode-tools-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: ${{ matrix.cache_paths }}
+          key: vscode-tools-${{ matrix.cache_key }}-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/Provision-VsCode.cs', 'scripts/Provision-VsCodeRemoteServer.cs', 'scripts/ScriptSupport.cs', 'tests/vscode/package-lock.json', 'editors/vscode/package-lock.json') }}
+
+      - name: Run VS Code tests
+        run: >-
+          dotnet test --test-modules artifacts/bin/Csls.Tests/debug/Csls.Tests.dll
+          --root-directory .
+          --filter "${{ matrix.filter }}"
+          --minimum-expected-tests ${{ matrix.group == 'desktop' && 4 || matrix.group == 'remote' && 2 || 1 }}
+          --output Detailed
+
+  legacy-build-host-tests:
+    name: Legacy build host tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    needs: test-binaries
+    env:
+      CSLS_REQUIRE_LEGACY_BUILD_HOST: true
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 10.x
+
+      - name: Download test binaries
+        uses: actions/download-artifact@v8
+        with:
+          name: test-binaries-${{ github.run_attempt }}
+          path: artifacts
+
+      - name: Extract test binaries
+        run: tar --extract --file artifacts/test-binaries.tar --directory artifacts
+
+      - name: Restore legacy build host
+        uses: actions/cache@v6
+        with:
+          path: ~/.cache/csls
+          key: legacy-build-host-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/Provision-LegacyBuildHost.cs', 'scripts/ScriptSupport.cs') }}
+
+      - name: Provision legacy build host
+        run: dotnet run --file scripts/Provision-LegacyBuildHost.cs
+
+      - name: Run legacy build host tests
+        run: >-
+          dotnet test --test-modules artifacts/bin/Csls.Tests/debug/Csls.Tests.dll
+          --root-directory .
+          --filter "TestCategory=LegacyBuildHost"
+          --minimum-expected-tests 1
+
+  secret-scan:
+    name: Secret scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      actions: read
+      contents: read
+      security-events: write
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Scan repository with Picket
+        uses: willibrandon/picket@v0
+        with:
+          cache-mode: secret-hash-only
+          fail-on: findings
+          ignore-path: .picketignore
+          max-archive-depth: 2
+          max-archive-entries: 100000
+          max-archive-megabytes: 4096
+          max-archive-ratio: 1000
+          max-target-megabytes: 64
+          redact: 100
+          timeout: 240
+          upload-sarif: true

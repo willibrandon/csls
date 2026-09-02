@@ -38,38 +38,45 @@ internal static class VsCodeWebExtensionPackage
         string outputDirectory = Path.Join(
             EditorToolResolver.ResolveArtifactsRoot(repositoryRoot),
             "vscode-web-test-extension");
-        string packagePath = Path.Join(outputDirectory, "willibrandon.csls-web.vsix");
+        string? configuredPackagePath = Environment.GetEnvironmentVariable(
+            "CSLS_VSCODE_WEB_PACKAGE_PATH");
+        string packagePath = string.IsNullOrWhiteSpace(configuredPackagePath)
+            ? Path.Join(outputDirectory, "willibrandon.csls-web.vsix")
+            : Path.GetFullPath(configuredPackagePath);
         string extractionPath = Path.Join(outputDirectory, "extracted");
         Directory.CreateDirectory(outputDirectory);
-        using Process process = StartPackageProcess(repositoryRoot, packagePath);
-        Task<string> outputTask = process.StandardOutput.ReadToEndAsync();
-        Task<string> errorTask = process.StandardError.ReadToEndAsync();
-        try
+        if (string.IsNullOrWhiteSpace(configuredPackagePath))
         {
-            await process.WaitForExitAsync()
-                .WaitAsync(TimeSpan.FromMinutes(3))
-                .ConfigureAwait(false);
-        }
-        finally
-        {
-            if (!process.HasExited)
+            using Process process = StartPackageProcess(repositoryRoot, packagePath);
+            Task<string> outputTask = process.StandardOutput.ReadToEndAsync();
+            Task<string> errorTask = process.StandardError.ReadToEndAsync();
+            try
             {
-                process.Kill(entireProcessTree: true);
-                await process.WaitForExitAsync().ConfigureAwait(false);
+                await process.WaitForExitAsync()
+                    .WaitAsync(TimeSpan.FromMinutes(3))
+                    .ConfigureAwait(false);
             }
-        }
+            finally
+            {
+                if (!process.HasExited)
+                {
+                    process.Kill(entireProcessTree: true);
+                    await process.WaitForExitAsync().ConfigureAwait(false);
+                }
+            }
 
-        string output = await outputTask.ConfigureAwait(false);
-        string error = await errorTask.ConfigureAwait(false);
-        if (process.ExitCode != 0)
-        {
-            throw new InvalidOperationException($"""
-                The VS Code web extension packager failed with exit code {process.ExitCode}.
-                Standard output:
-                {output}
-                Standard error:
-                {error}
-                """);
+            string output = await outputTask.ConfigureAwait(false);
+            string error = await errorTask.ConfigureAwait(false);
+            if (process.ExitCode != 0)
+            {
+                throw new InvalidOperationException($"""
+                    The VS Code web extension packager failed with exit code {process.ExitCode}.
+                    Standard output:
+                    {output}
+                    Standard error:
+                    {error}
+                    """);
+            }
         }
 
         if (!File.Exists(packagePath))
