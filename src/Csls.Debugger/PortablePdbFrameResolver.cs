@@ -49,7 +49,7 @@ internal static class PortablePdbFrameResolver
                 return Unknown(fallbackName);
             }
 
-            string modulePath = GetModulePath(module);
+            string modulePath = CorDebugModulePath.Get(module);
             return ResolveFiles(modulePath, methodToken, ilOffset, fallbackName);
         }
         catch (Exception exception) when (
@@ -139,39 +139,6 @@ internal static class PortablePdbFrameResolver
             Line = selected.Value.StartLine,
             Column = selected.Value.StartColumn
         };
-    }
-
-    private static unsafe string GetModulePath(nint module)
-    {
-        uint characterCount = 0;
-        uint* characterCountAddress = &characterCount;
-        var api = new ICorDebugModuleAbi(module);
-        CorDebugHResult.ThrowIfFailed(
-            api.GetName(0, (nint)characterCountAddress, 0),
-            "ICorDebugModule.GetName");
-        characterCount = Volatile.Read(ref *characterCountAddress);
-        if (characterCount <= 1 || characterCount > 32 * 1024)
-        {
-            throw new InvalidOperationException(
-                $"ICorDebugModule.GetName returned invalid length {characterCount}.");
-        }
-
-        char[] buffer = GC.AllocateUninitializedArray<char>(checked((int)characterCount));
-        fixed (char* bufferAddress = buffer)
-        {
-            CorDebugHResult.ThrowIfFailed(
-                api.GetName(characterCount, (nint)characterCountAddress, (nint)bufferAddress),
-                "ICorDebugModule.GetName");
-        }
-
-        characterCount = Volatile.Read(ref *characterCountAddress);
-        int length = checked((int)characterCount);
-        if (length > 0 && buffer[length - 1] == '\0')
-        {
-            length--;
-        }
-
-        return new string(buffer, 0, length);
     }
 
     private static ManagedFrameLocation Unknown(string name, string? modulePath = null) =>

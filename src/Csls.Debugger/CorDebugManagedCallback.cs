@@ -23,7 +23,11 @@ internal sealed class CorDebugManagedCallback : IDisposable
     private static readonly nint s_callback3Vtable = CreateCallback3Vtable();
     private static readonly nint s_callback4Vtable = CreateCallback4Vtable();
     private readonly DebuggerSessionActor _actor;
+    private readonly SourceBreakpointManager _sourceBreakpoints;
+    private readonly Func<int, CancellationToken, ValueTask> _breakpointStopped;
     private readonly TaskCompletionSource<int> _createProcessCompletion =
+        new(TaskCreationOptions.RunContinuationsAsynchronously);
+    private readonly TaskCompletionSource _exitProcessCompletion =
         new(TaskCreationOptions.RunContinuationsAsynchronously);
     private nint _instance;
 
@@ -31,10 +35,19 @@ internal sealed class CorDebugManagedCallback : IDisposable
     /// Creates one callback object with an independently reference-counted native identity.
     /// </summary>
     /// <param name="actor">The engine actor that owns callback continuation.</param>
-    internal unsafe CorDebugManagedCallback(DebuggerSessionActor actor)
+    /// <param name="sourceBreakpoints">The source-breakpoint binding owner.</param>
+    /// <param name="breakpointStopped">The ordered source-breakpoint stop callback.</param>
+    internal unsafe CorDebugManagedCallback(
+        DebuggerSessionActor actor,
+        SourceBreakpointManager sourceBreakpoints,
+        Func<int, CancellationToken, ValueTask> breakpointStopped)
     {
         ArgumentNullException.ThrowIfNull(actor);
+        ArgumentNullException.ThrowIfNull(sourceBreakpoints);
+        ArgumentNullException.ThrowIfNull(breakpointStopped);
         _actor = actor;
+        _sourceBreakpoints = sourceBreakpoints;
+        _breakpointStopped = breakpointStopped;
         nuint allocationSize = checked((nuint)(s_referenceCountOffset + sizeof(int)));
         _instance = (nint)NativeMemory.AllocZeroed(allocationSize);
         if (_instance == 0)
@@ -73,6 +86,14 @@ internal sealed class CorDebugManagedCallback : IDisposable
             .ConfigureAwait(false);
         CorDebugHResult.ThrowIfFailed(result, "ICorDebugController.Continue");
     }
+
+    /// <summary>
+    /// Waits until CoreCLR delivers the terminal process callback on the engine actor.
+    /// </summary>
+    /// <param name="cancellationToken">Cancels waiting for callback delivery.</param>
+    /// <returns>A task that completes after the callback relinquishes its process pointer.</returns>
+    internal Task WaitForExitProcessAsync(CancellationToken cancellationToken) =>
+        _exitProcessCompletion.Task.WaitAsync(cancellationToken);
 
     /// <inheritdoc />
     public void Dispose()
@@ -237,7 +258,26 @@ internal sealed class CorDebugManagedCallback : IDisposable
 
     private static unsafe nint Root(nint self) => ((nint*)self)[1];
 
-    private static int QueueContinue(nint self, nint controller, bool createsProcess)
+    private static int QueueContinue(nint self, nint controller, bool createsProcess) =>
+        QueueCallback(
+            self,
+            controller,
+            thread: 0,
+            subject: 0,
+            createsProcess,
+            exitsProcess: false,
+            continueAfterCallback: true,
+            callbackOperation: null);
+
+    private static int QueueCallback(
+        nint self,
+        nint controller,
+        nint thread,
+        nint subject,
+        bool createsProcess,
+        bool exitsProcess,
+        bool continueAfterCallback,
+        Func<CorDebugManagedCallback, nint, nint, CancellationToken, ValueTask<bool>>? callbackOperation)
     {
         if (controller == 0)
         {
@@ -246,61 +286,197 @@ internal sealed class CorDebugManagedCallback : IDisposable
 
         CorDebugManagedCallback target = GetTarget(self);
         _ = ComAbi.AddRef(controller);
+        if (thread != 0)
+        {
+            _ = ComAbi.AddRef(thread);
+        }
+
+        if (subject != 0)
+        {
+            _ = ComAbi.AddRef(subject);
+        }
+
         nint ownedController = controller;
-        Task operation = target._actor.InvokeAsync(
-            actorCancellationToken =>
+        nint ownedThread = thread;
+        nint ownedSubject = subject;
+        Task queuedOperation = target._actor.InvokeAsync(
+            async actorCancellationToken =>
             {
-                _ = actorCancellationToken;
                 nint currentController = Interlocked.Exchange(ref ownedController, 0);
+                nint currentThread = Interlocked.Exchange(ref ownedThread, 0);
+                nint currentSubject = Interlocked.Exchange(ref ownedSubject, 0);
                 try
                 {
-                    int result = new ICorDebugControllerAbi(currentController)
-                        .Continue(fIsOutOfBand: 0);
-                    if (createsProcess)
+                    bool shouldContinue = continueAfterCallback;
+                    try
                     {
-                        _ = target._createProcessCompletion.TrySetResult(result);
+                        if (callbackOperation is not null)
+                        {
+                            shouldContinue = await callbackOperation(
+                                target,
+                                currentThread,
+                                currentSubject,
+                                actorCancellationToken).ConfigureAwait(false);
+                        }
+                    }
+                    catch (Exception exception) when (IsRecoverableCallbackFailure(exception))
+                    {
+                        if (createsProcess)
+                        {
+                            _ = target._createProcessCompletion.TrySetException(exception);
+                        }
+
+                        shouldContinue = continueAfterCallback;
                     }
 
-                    CorDebugHResult.ThrowIfFailed(result, "ICorDebugController.Continue");
-                    return ValueTask.CompletedTask;
+                    if (shouldContinue)
+                    {
+                        int result = new ICorDebugControllerAbi(currentController)
+                            .Continue(fIsOutOfBand: 0);
+                        if (createsProcess)
+                        {
+                            _ = target._createProcessCompletion.TrySetResult(result);
+                        }
+
+                        CorDebugHResult.ThrowIfFailed(result, "ICorDebugController.Continue");
+                    }
                 }
                 finally
+                {
+                    if (currentSubject != 0)
+                    {
+                        _ = ComAbi.Release(currentSubject);
+                    }
+
+                    if (currentThread != 0)
+                    {
+                        _ = ComAbi.Release(currentThread);
+                    }
+
+                    _ = ComAbi.Release(currentController);
+                }
+
+                if (exitsProcess)
+                {
+                    _ = target._exitProcessCompletion.TrySetResult();
+                }
+            },
+            CancellationToken.None);
+        _ = target.ObserveOperationAsync(
+            queuedOperation,
+            () =>
+            {
+                nint currentSubject = Interlocked.Exchange(ref ownedSubject, 0);
+                if (currentSubject != 0)
+                {
+                    _ = ComAbi.Release(currentSubject);
+                }
+
+                nint currentThread = Interlocked.Exchange(ref ownedThread, 0);
+                if (currentThread != 0)
+                {
+                    _ = ComAbi.Release(currentThread);
+                }
+
+                nint currentController = Interlocked.Exchange(ref ownedController, 0);
+                if (currentController != 0)
                 {
                     _ = ComAbi.Release(currentController);
                 }
             },
-            CancellationToken.None);
-        _ = target.ObserveOperationAsync(operation, () =>
-        {
-            nint currentController = Interlocked.Exchange(ref ownedController, 0);
-            if (currentController != 0)
-            {
-                _ = ComAbi.Release(currentController);
-            }
-        });
+            createsProcess,
+            exitsProcess);
         return SuccessHResult;
     }
 
-    private async Task ObserveOperationAsync(Task operation, Action releaseUnclaimed)
+    private async Task ObserveOperationAsync(
+        Task operation,
+        Action releaseUnclaimed,
+        bool createsProcess,
+        bool exitsProcess)
     {
         try
         {
             await operation.WaitAsync(CancellationToken.None).ConfigureAwait(false);
         }
-        catch (Exception exception) when (
-            exception is ArgumentException or InvalidOperationException or OperationCanceledException)
+        catch (Exception exception) when (IsRecoverableCallbackFailure(exception))
         {
             releaseUnclaimed();
-            _ = _createProcessCompletion.TrySetException(exception);
+            if (createsProcess)
+            {
+                _ = _createProcessCompletion.TrySetException(exception);
+            }
+
+            if (exitsProcess)
+            {
+                _ = _exitProcessCompletion.TrySetException(exception);
+            }
         }
     }
+
+    private async ValueTask<bool> HandleBreakpointAsync(
+        nint thread,
+        nint breakpoint,
+        CancellationToken cancellationToken)
+    {
+        if (thread == 0 || breakpoint == 0 || !_sourceBreakpoints.Contains(breakpoint))
+        {
+            return true;
+        }
+
+        uint threadId = GetThreadId(thread);
+        await _breakpointStopped(checked((int)threadId), cancellationToken).ConfigureAwait(false);
+        return false;
+    }
+
+    private async ValueTask<bool> HandleLoadModuleAsync(
+        nint module,
+        CancellationToken cancellationToken)
+    {
+        await _sourceBreakpoints.LoadModuleAsync(module, cancellationToken).ConfigureAwait(false);
+        return true;
+    }
+
+    private async ValueTask<bool> HandleUnloadModuleAsync(
+        nint module,
+        CancellationToken cancellationToken)
+    {
+        await _sourceBreakpoints.UnloadModuleAsync(module, cancellationToken)
+            .ConfigureAwait(false);
+        return true;
+    }
+
+    private static unsafe uint GetThreadId(nint thread)
+    {
+        uint threadId = 0;
+        uint* threadIdAddress = &threadId;
+        CorDebugHResult.ThrowIfFailed(
+            new ICorDebugThreadAbi(thread).GetID((nint)threadIdAddress),
+            "ICorDebugThread.GetID");
+        return Volatile.Read(ref *threadIdAddress);
+    }
+
+    private static bool IsRecoverableCallbackFailure(Exception exception) =>
+        exception is ArgumentException or InvalidOperationException or IOException or
+            UnauthorizedAccessException or BadImageFormatException or
+            OperationCanceledException or System.Threading.Channels.ChannelClosedException;
 
     [UnmanagedCallersOnly(CallConvs = [typeof(CallConvStdcall)])]
     private static int Breakpoint(nint self, nint appDomain, nint thread, nint breakpoint)
     {
-        _ = thread;
-        _ = breakpoint;
-        return QueueContinue(self, appDomain, createsProcess: false);
+        return QueueCallback(
+            self,
+            appDomain,
+            thread,
+            breakpoint,
+            createsProcess: false,
+            exitsProcess: false,
+            continueAfterCallback: true,
+            static (target, ownedThread, ownedBreakpoint, cancellationToken) =>
+                target.HandleBreakpointAsync(
+                    ownedThread,
+                    ownedBreakpoint,
+                    cancellationToken));
     }
 
     [UnmanagedCallersOnly(CallConvs = [typeof(CallConvStdcall)])]
@@ -352,7 +528,15 @@ internal sealed class CorDebugManagedCallback : IDisposable
     [UnmanagedCallersOnly(CallConvs = [typeof(CallConvStdcall)])]
     private static int ExitProcess(nint self, nint process)
     {
-        return QueueContinue(self, process, createsProcess: false);
+        return QueueCallback(
+            self,
+            process,
+            thread: 0,
+            subject: 0,
+            createsProcess: false,
+            exitsProcess: true,
+            continueAfterCallback: false,
+            callbackOperation: null);
     }
 
     [UnmanagedCallersOnly(CallConvs = [typeof(CallConvStdcall)])]
@@ -372,15 +556,31 @@ internal sealed class CorDebugManagedCallback : IDisposable
     [UnmanagedCallersOnly(CallConvs = [typeof(CallConvStdcall)])]
     private static int LoadModule(nint self, nint appDomain, nint module)
     {
-        _ = module;
-        return QueueContinue(self, appDomain, createsProcess: false);
+        return QueueCallback(
+            self,
+            appDomain,
+            thread: 0,
+            module,
+            createsProcess: false,
+            exitsProcess: false,
+            continueAfterCallback: true,
+            static (target, _, ownedModule, cancellationToken) =>
+                target.HandleLoadModuleAsync(ownedModule, cancellationToken));
     }
 
     [UnmanagedCallersOnly(CallConvs = [typeof(CallConvStdcall)])]
     private static int UnloadModule(nint self, nint appDomain, nint module)
     {
-        _ = module;
-        return QueueContinue(self, appDomain, createsProcess: false);
+        return QueueCallback(
+            self,
+            appDomain,
+            thread: 0,
+            module,
+            createsProcess: false,
+            exitsProcess: false,
+            continueAfterCallback: true,
+            static (target, _, ownedModule, cancellationToken) =>
+                target.HandleUnloadModuleAsync(ownedModule, cancellationToken));
     }
 
     [UnmanagedCallersOnly(CallConvs = [typeof(CallConvStdcall)])]

@@ -20,9 +20,13 @@ internal static class CorDebugRuntimeActivator
         var callbackActor = new DebuggerSessionActor();
         await using ConfiguredAsyncDisposable callbackActorScope =
             callbackActor.ConfigureAwait(false);
+        using var sourceBreakpoints = new SourceBreakpointManager(
+            static (_, _) => ValueTask.CompletedTask);
         CorDebugDebuggee debuggee = await CorDebugDebuggee.LaunchAsync(
             options,
             callbackActor,
+            sourceBreakpoints,
+            static (_, _) => ValueTask.CompletedTask,
             cancellationToken).ConfigureAwait(false);
         await using ConfiguredAsyncDisposable debuggeeScope = debuggee.ConfigureAwait(false);
         return checked((uint)debuggee.Id);

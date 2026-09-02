@@ -11,10 +11,12 @@ public sealed class DebuggerSession : IAsyncDisposable
     private readonly CancellationTokenSource _lifetime = new();
     private readonly DebuggerSessionActor _actor = new();
     private readonly SemaphoreSlim _lifecycleGate = new(1, 1);
+    private readonly SourceBreakpointManager _sourceBreakpoints;
     private IDebuggeeProcess? _debuggee;
     private Task? _debuggeeLifetime;
     private DebugStopGeneration _stopGeneration;
     private volatile DebugSessionState _state = DebugSessionState.Created;
+    private int? _pendingStopThreadId;
     private int _disposed;
 
     /// <summary>
@@ -24,6 +26,9 @@ public sealed class DebuggerSession : IAsyncDisposable
     internal DebuggerSession(IDebuggerSessionObserver observer)
     {
         _observer = observer;
+        _sourceBreakpoints = new SourceBreakpointManager(
+            (breakpoint, cancellationToken) =>
+                _observer.OnBreakpointChangedAsync(breakpoint, cancellationToken));
     }
 
     /// <summary>
@@ -72,7 +77,12 @@ public sealed class DebuggerSession : IAsyncDisposable
         try
         {
             await _actor.InvokeAsync(BeginLaunchCoreAsync, cancellationToken).ConfigureAwait(false);
-            _debuggee = await CorDebugDebuggee.LaunchAsync(options, _actor, cancellationToken)
+            _debuggee = await CorDebugDebuggee.LaunchAsync(
+                options,
+                _actor,
+                _sourceBreakpoints,
+                HandleRuntimeBreakpointCoreAsync,
+                cancellationToken)
                 .ConfigureAwait(false);
             await _actor.InvokeAsync(
                 token => CompleteLaunchCoreAsync(_debuggee, token),
@@ -86,7 +96,13 @@ public sealed class DebuggerSession : IAsyncDisposable
                 _debuggee = null;
             }
 
-            await _actor.InvokeAsync(ResetFailedLaunchCoreAsync, CancellationToken.None)
+            await _actor.InvokeAsync(
+                token =>
+                {
+                    _sourceBreakpoints.ResetRuntimeBindings();
+                    return ResetFailedLaunchCoreAsync(token);
+                },
+                CancellationToken.None)
                 .ConfigureAwait(false);
             throw;
         }
@@ -140,6 +156,37 @@ public sealed class DebuggerSession : IAsyncDisposable
     {
         ObjectDisposedException.ThrowIf(_disposed != 0, this);
         return _actor.InvokeAsync(ContinueCoreAsync, cancellationToken);
+    }
+
+    /// <summary>
+    /// Replaces every source breakpoint requested for one absolute document path.
+    /// </summary>
+    /// <param name="sourcePath">The absolute source document path.</param>
+    /// <param name="breakpoints">The complete replacement breakpoint list.</param>
+    /// <param name="cancellationToken">Cancels queueing or runtime binding.</param>
+    /// <returns>The ordered current breakpoint binding states.</returns>
+    public async Task<IReadOnlyList<DebugSourceBreakpointInfo>> SetSourceBreakpointsAsync(
+        string sourcePath,
+        IReadOnlyList<DebugSourceBreakpointRequest> breakpoints,
+        CancellationToken cancellationToken)
+    {
+        ObjectDisposedException.ThrowIf(_disposed != 0, this);
+        IReadOnlyList<DebugSourceBreakpointInfo>? result = null;
+        await _actor.InvokeAsync(
+            async token =>
+            {
+                if (_state is not DebugSessionState.Created and not DebugSessionState.Stopped)
+                {
+                    throw new InvalidOperationException(
+                        $"Source breakpoints cannot be changed while the debugger session is {_state}.");
+                }
+
+                result = await _sourceBreakpoints
+                    .SetAsync(sourcePath, breakpoints, token)
+                    .ConfigureAwait(false);
+            },
+            cancellationToken).ConfigureAwait(false);
+        return result!;
     }
 
     /// <summary>
@@ -295,9 +342,21 @@ public sealed class DebuggerSession : IAsyncDisposable
 
             if (_debuggee is not null)
             {
+                await _actor.InvokeAsync(
+                    token =>
+                    {
+                        _ = token;
+                        _sourceBreakpoints.Dispose();
+                        return ValueTask.CompletedTask;
+                    },
+                    CancellationToken.None).ConfigureAwait(false);
                 await _debuggee.DisposeAsync().ConfigureAwait(false);
                 _debuggee = null;
                 _debuggeeLifetime = null;
+            }
+            else
+            {
+                _sourceBreakpoints.Dispose();
             }
         }
         finally
@@ -370,6 +429,13 @@ public sealed class DebuggerSession : IAsyncDisposable
             debuggee.Id,
             cancellationToken).ConfigureAwait(false);
         _state = DebugSessionState.Running;
+        if (_pendingStopThreadId is int threadId)
+        {
+            _pendingStopThreadId = null;
+            await EnterStoppedStateAsync("breakpoint", threadId, cancellationToken)
+                .ConfigureAwait(false);
+        }
+
         _debuggeeLifetime = ObserveDebuggeeAsync(debuggee, _lifetime.Token);
     }
 
@@ -410,14 +476,8 @@ public sealed class DebuggerSession : IAsyncDisposable
         }
 
         managedDebuggee.Pause();
-        _stopGeneration = _stopGeneration.Value == 0
-            ? DebugStopGeneration.First
-            : _stopGeneration.Next();
-        _state = DebugSessionState.Stopped;
-        await _observer.OnStoppedAsync(
-            "pause",
-            _stopGeneration,
-            cancellationToken).ConfigureAwait(false);
+        await EnterStoppedStateAsync("pause", threadId: null, cancellationToken)
+            .ConfigureAwait(false);
     }
 
     private async ValueTask ContinueCoreAsync(CancellationToken cancellationToken)
@@ -459,6 +519,41 @@ public sealed class DebuggerSession : IAsyncDisposable
                 _state = DebugSessionState.Terminated;
                 await _observer.OnTerminatedAsync(token).ConfigureAwait(false);
             },
+            cancellationToken).ConfigureAwait(false);
+    }
+
+    private ValueTask HandleRuntimeBreakpointCoreAsync(
+        int threadId,
+        CancellationToken cancellationToken)
+    {
+        if (_state == DebugSessionState.Starting)
+        {
+            _pendingStopThreadId = threadId;
+            return ValueTask.CompletedTask;
+        }
+
+        if (_state != DebugSessionState.Running)
+        {
+            throw new InvalidOperationException(
+                $"A runtime breakpoint cannot stop a debugger session while it is {_state}.");
+        }
+
+        return EnterStoppedStateAsync("breakpoint", threadId, cancellationToken);
+    }
+
+    private async ValueTask EnterStoppedStateAsync(
+        string reason,
+        int? threadId,
+        CancellationToken cancellationToken)
+    {
+        _stopGeneration = _stopGeneration.Value == 0
+            ? DebugStopGeneration.First
+            : _stopGeneration.Next();
+        _state = DebugSessionState.Stopped;
+        await _observer.OnStoppedAsync(
+            reason,
+            threadId,
+            _stopGeneration,
             cancellationToken).ConfigureAwait(false);
     }
 }

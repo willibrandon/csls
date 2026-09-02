@@ -1,6 +1,7 @@
 using Csls.Debugger.Contracts;
 using Csls.Debugger.Interop;
 using System.Diagnostics;
+using System.Runtime.CompilerServices;
 using System.Text;
 
 namespace Csls.Debugger;
@@ -58,21 +59,30 @@ internal sealed class CorDebugDebuggee : IDebuggeeProcess
     /// </summary>
     /// <param name="options">The validated target invocation.</param>
     /// <param name="actor">The session actor that owns runtime calls and callbacks.</param>
+    /// <param name="sourceBreakpoints">The session source-breakpoint owner.</param>
+    /// <param name="breakpointStopped">The ordered runtime-breakpoint stop callback.</param>
     /// <param name="cancellationToken">Cancels runtime activation and cleans up the target.</param>
     /// <returns>The live debugger-owned target.</returns>
     internal static async Task<CorDebugDebuggee> LaunchAsync(
         DebuggeeLaunchOptions options,
         DebuggerSessionActor actor,
+        SourceBreakpointManager sourceBreakpoints,
+        Func<int, CancellationToken, ValueTask> breakpointStopped,
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(options);
         ArgumentNullException.ThrowIfNull(actor);
+        ArgumentNullException.ThrowIfNull(sourceBreakpoints);
+        ArgumentNullException.ThrowIfNull(breakpointStopped);
         ValidateOptions(options);
         DbgShimLibrary.VerifyPlatformSupport();
 
         string commandLine = DbgShimCommandLineBuilder.Build(options);
         using var environment = DbgShimEnvironmentBlock.Create(options.Environment);
-        var standardStreams = new DbgShimStandardStreams();
+        var standardStreamsOwner = new DbgShimStandardStreamsOwner();
+        await using ConfiguredAsyncDisposable standardStreamsOwnerScope =
+            standardStreamsOwner.ConfigureAwait(false);
+        DbgShimStandardStreams standardStreams = standardStreamsOwner.Value;
         Process? process = null;
         CorDebugManagedCallback? managedCallback = null;
         CorDebugRuntimeStartupRegistration? registration = null;
@@ -99,7 +109,10 @@ internal sealed class CorDebugDebuggee : IDebuggeeProcess
                 unixExitCode = UnixChildExitMonitor.StartAsync(processId);
             }
 
-            managedCallback = new CorDebugManagedCallback(actor);
+            managedCallback = new CorDebugManagedCallback(
+                actor,
+                sourceBreakpoints,
+                breakpointStopped);
             registration = new CorDebugRuntimeStartupRegistration(processId, managedCallback);
             int registerResult = DbgShimNativeMethods.RegisterForRuntimeStartup(
                 processId,
@@ -128,13 +141,12 @@ internal sealed class CorDebugDebuggee : IDebuggeeProcess
                 actor,
                 managedCallback,
                 registration,
-                standardStreams,
+                standardStreamsOwner.Detach(),
                 process,
                 unixExitCode,
                 activation);
             managedCallback = null;
             registration = null;
-            standardStreams = null!;
             process = null;
             unixExitCode = null;
             corDebug = 0;
@@ -154,6 +166,12 @@ internal sealed class CorDebugDebuggee : IDebuggeeProcess
                 _ = await unixExitCode.ConfigureAwait(false);
             }
 
+            if (corDebug != 0 && managedCallback is not null)
+            {
+                await managedCallback.WaitForExitProcessAsync(CancellationToken.None)
+                    .ConfigureAwait(false);
+            }
+
             if (corDebug != 0 || debugProcess != 0)
             {
                 await ReleaseRuntimeAsync(actor, corDebug, debugProcess).ConfigureAwait(false);
@@ -161,10 +179,6 @@ internal sealed class CorDebugDebuggee : IDebuggeeProcess
 
             registration?.Dispose();
             managedCallback?.Dispose();
-            if (standardStreams is not null)
-            {
-                await standardStreams.DisposeAsync().ConfigureAwait(false);
-            }
         }
     }
 
@@ -183,13 +197,19 @@ internal sealed class CorDebugDebuggee : IDebuggeeProcess
     /// <inheritdoc />
     public async Task<int> WaitForExitAsync(CancellationToken cancellationToken)
     {
+        int exitCode;
         if (_unixExitCode is not null)
         {
-            return await _unixExitCode.WaitAsync(cancellationToken).ConfigureAwait(false);
+            exitCode = await _unixExitCode.WaitAsync(cancellationToken).ConfigureAwait(false);
+        }
+        else
+        {
+            await _process.WaitForExitAsync(cancellationToken).ConfigureAwait(false);
+            exitCode = _process.ExitCode;
         }
 
-        await _process.WaitForExitAsync(cancellationToken).ConfigureAwait(false);
-        return _process.ExitCode;
+        await _managedCallback.WaitForExitProcessAsync(cancellationToken).ConfigureAwait(false);
+        return exitCode;
     }
 
     /// <inheritdoc />
@@ -480,6 +500,8 @@ internal sealed class CorDebugDebuggee : IDebuggeeProcess
         }
 
         await TerminateProcessAsync(_process, CancellationToken.None).ConfigureAwait(false);
+        await _managedCallback.WaitForExitProcessAsync(CancellationToken.None)
+            .ConfigureAwait(false);
         nint corDebug = Interlocked.Exchange(ref _corDebug, 0);
         nint debugProcess = Interlocked.Exchange(ref _debugProcess, 0);
         await _actor.InvokeAsync(
