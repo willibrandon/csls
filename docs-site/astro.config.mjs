@@ -26,6 +26,7 @@ export default defineConfig({
         { slug: "getting-started" },
         { slug: "editors" },
         { slug: "language-server" },
+        { slug: "debugger" },
         { slug: "configuration" },
         { slug: "cli" },
         { slug: "dashboard" },

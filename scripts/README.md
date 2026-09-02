@@ -14,6 +14,8 @@ supports `--help`.
 | `Build-ZedExtension.cs` | Builds the WebAssembly extension package consumed by Zed. |
 | `Export-ContainerImage.cs` | Exports a container image as a Picket-scannable archive. |
 | `Generate-Docs.cs` | Generates CLI, MCP, configuration, and contract reference pages from the built product. |
+| `Generate-DapProtocol.cs` | Generates deterministic NativeAOT C# contracts from the checked-in DAP schema. |
+| `Generate-CorDebugInterop.cs` | Generates NativeAOT-safe ICorDebug ABI projections from the checked-in public runtime IDL. |
 | `Initialize-DevContainer.cs` | Installs the development container dependencies and restores the repository. |
 | `Install-GraphicalEditorTestPrerequisites.cs` | Installs Linux display, input, and headless browser runtime packages for editor tests. |
 | `Install-NativeAotPrerequisites.cs` | Installs the native compiler prerequisites for a runtime identifier. |
@@ -37,6 +39,8 @@ supports `--help`.
 | `Publish-VsCodeExtension.cs` | Publishes the verified platform and web VSIX set to Visual Studio Marketplace and Open VSX. |
 | `Run-Benchmarks.cs` | Builds and runs the BenchmarkDotNet suite. |
 | `Run-EndToEndPerformance.cs` | Publishes both Native AOT tools and measures real LSP, MCP, CLI, dashboard, and process-resource workloads. |
+| `Update-DapSchema.cs` | Updates the official DAP schema over HTTPS or from a local file and regenerates its contracts. |
+| `Update-CorDebugIdl.cs` | Updates the public ICorDebug IDL over HTTPS or from a local file and regenerates its projections. |
 | `Select-DevContainerValidation.cs` | Selects full container validation when a pull request changes its inputs. |
 | `Verify-Repository.cs` | Checks repository, dependency, and automation policies. |
 | `Verify-ReleaseContainers.cs` | Builds, executes, and exports both release container images. |

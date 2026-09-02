@@ -1,4 +1,5 @@
 using Csls.App;
+using Csls.DebugAdapter;
 using System.CommandLine;
 using System.Globalization;
 
@@ -37,10 +38,42 @@ debuggerInstallCommand.SetAction((parseResult, cancellationToken) =>
         cancellationToken));
 var debuggerCommand = new Command(
     "debugger",
-    "Manage the Microsoft .NET debugger used by editor integrations.")
+    "Manage native .NET debugging and editor debugger integration.")
 {
     debuggerInstallCommand
 };
+var debuggerDapCommand = new Command(
+    "dap",
+    "Run the csls Debug Adapter Protocol host over standard I/O.");
+debuggerDapCommand.SetAction(
+    static (_, cancellationToken) => DebugAdapterHost.RunAsync(
+        Console.OpenStandardInput(),
+        Console.OpenStandardOutput(),
+        Console.Error,
+        cancellationToken));
+debuggerCommand.Subcommands.Add(debuggerDapCommand);
+var debuggerDoctorCommand = new Command(
+    "doctor",
+    "Verify the packaged native .NET runtime-debugging components.");
+debuggerDoctorCommand.SetAction(static _ =>
+{
+    try
+    {
+        Csls.Debugger.DebuggerEngine.VerifyPlatformSupport();
+        Console.Out.WriteLine("The native .NET runtime-debugging components are available.");
+        return 0;
+    }
+    catch (Exception exception) when (
+        exception is DllNotFoundException or
+        EntryPointNotFoundException or
+        BadImageFormatException or
+        InvalidOperationException)
+    {
+        Console.Error.WriteLine(exception.Message);
+        return 1;
+    }
+});
+debuggerCommand.Subcommands.Add(debuggerDoctorCommand);
 rootCommand.Subcommands.Add(debuggerCommand);
 
 var sessionsCommand = new Command("sessions", "Inspect live csls language-server sessions.");

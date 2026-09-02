@@ -461,6 +461,10 @@ static async Task VerifyInstalledToolAsync(
         environment).ConfigureAwait(false);
     if (string.Equals(commandName, "csls", StringComparison.Ordinal))
     {
+        await VerifyDebuggerRuntimeAsync(
+            commandPath,
+            repositoryRoot,
+            environment).ConfigureAwait(false);
         await VerifyAgentCommandsAsync(
             commandPath,
             repositoryRoot,
@@ -617,6 +621,10 @@ static async Task VerifyImplementationToolAsync(
         environment).ConfigureAwait(false);
     if (string.Equals(commandName, "csls", StringComparison.Ordinal))
     {
+        await VerifyDebuggerRuntimeAsync(
+            commandPath,
+            repositoryRoot,
+            environment).ConfigureAwait(false);
         await VerifyAgentCommandsAsync(
             commandPath,
             repositoryRoot,
@@ -632,6 +640,25 @@ static async Task VerifyImplementationToolAsync(
             commandPath,
             repositoryRoot,
             environment).ConfigureAwait(false);
+    }
+}
+
+static async Task VerifyDebuggerRuntimeAsync(
+    string commandPath,
+    string workingDirectory,
+    IReadOnlyDictionary<string, string> environment)
+{
+    string output = await RunCheckedAsync(
+        commandPath,
+        ["debugger", "doctor"],
+        workingDirectory,
+        environment).ConfigureAwait(false);
+    if (!output.Contains(
+            "native .NET runtime-debugging components are available",
+            StringComparison.Ordinal))
+    {
+        throw new InvalidDataException(
+            $"The installed debugger runtime probe returned unexpected output: {output.Trim()}");
     }
 }
 

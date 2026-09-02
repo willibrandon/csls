@@ -26,6 +26,10 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="../Csls.DebugAdapter/Csls.DebugAdapter.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
     <Compile Include="../Csls.Workspaces.MSBuild/WindowsJobObjectBasicAccountingInformation.cs"
              Link="WindowsJobObjectBasicAccountingInformation.cs" />
     <Compile Include="../Csls.Workspaces.MSBuild/WindowsJobObjectBasicLimitInformation.cs"

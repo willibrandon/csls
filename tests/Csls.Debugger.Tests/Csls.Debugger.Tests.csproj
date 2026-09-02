@@ -1,0 +1,21 @@
+<Project Sdk="MSTest.Sdk">
+  <PropertyGroup>
+    <AssemblyName>Csls.Debugger.Tests</AssemblyName>
+    <RootNamespace>Csls.Debugger.Tests</RootNamespace>
+    <Description>Real protocol and process tests for the csls debugger.</Description>
+    <MSTestAnalysisMode>All</MSTestAnalysisMode>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Using Include="Microsoft.VisualStudio.TestTools.UnitTesting" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../../src/Csls.DebugAdapter/Csls.DebugAdapter.csproj" />
+    <ProjectReference Include="../../src/Csls.Debugger/Csls.Debugger.csproj" />
+    <ProjectReference Include="../../src/Csls.App/Csls.App.csproj"
+                      ReferenceOutputAssembly="false" />
+    <ProjectReference Include="../Csls.TestProcessHost/Csls.TestProcessHost.csproj"
+                      ReferenceOutputAssembly="false" />
+  </ItemGroup>
+</Project>

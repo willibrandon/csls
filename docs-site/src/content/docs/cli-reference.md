@@ -20,7 +20,7 @@ Options:
 
 Commands:
   lsp            Run the Language Server Protocol over standard I/O.
-  debugger       Manage the Microsoft .NET debugger used by editor integrations.
+  debugger       Manage native .NET debugging and editor debugger integration.
   sessions       Inspect live csls language-server sessions.
   dashboard      Inspect language-server state in the Hex1b dashboard.
   doctor <path>  Inspect SDK selection and load the workspace through a transient csls session. [default: .]
@@ -49,7 +49,7 @@ Options:
 
 ```text
 Description:
-  Manage the Microsoft .NET debugger used by editor integrations.
+  Manage native .NET debugging and editor debugger integration.
 
 Usage:
   csls debugger [command] [options]
@@ -59,6 +59,8 @@ Options:
 
 Commands:
   install  Install the verified Microsoft .NET debugger for the active platform.
+  dap      Run the csls Debug Adapter Protocol host over standard I/O.
+  doctor   Verify the packaged native .NET runtime-debugging components.
 ```
 
 ## csls sessions
@@ -240,6 +242,32 @@ Options:
   --output <directory> (REQUIRED)  Private directory used to store the verified debugger.
   --archive <path>                 Use a previously downloaded official debugger archive.
   -?, -h, --help                   Show help and usage information
+```
+
+## csls debugger dap
+
+```text
+Description:
+  Run the csls Debug Adapter Protocol host over standard I/O.
+
+Usage:
+  csls debugger dap [options]
+
+Options:
+  -?, -h, --help  Show help and usage information
+```
+
+## csls debugger doctor
+
+```text
+Description:
+  Verify the packaged native .NET runtime-debugging components.
+
+Usage:
+  csls debugger doctor [options]
+
+Options:
+  -?, -h, --help  Show help and usage information
 ```
 
 ## csls sessions list

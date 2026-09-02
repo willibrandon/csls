@@ -17,6 +17,10 @@ graphical editor clients.
 The complete 1.0 feature set is implemented, and no unimplemented LSP capability
 is advertised by the server.
 
+A native, editor-independent .NET debugger is under development. Its current
+foundation exposes only capabilities that are implemented; managed breakpoints,
+stepping, inspection, and debugger MCP tools are not advertised prematurely.
+
 Read the [csls documentation](https://willibrandon.github.io/csls/) for editor,
 CLI, MCP, and development guidance.
 

@@ -9,6 +9,12 @@ csls is informed by the following independently maintained project:
 - Zed C# extension: https://github.com/zed-extensions/csharp
   - License: Apache-2.0
   - Language queries and task definitions adapted from version 1.2.2
+- Debug Adapter Protocol schema: https://github.com/microsoft/debug-adapter-protocol
+  - License: MIT
+  - The checked-in schema is used to validate and generate debugger protocol contracts.
+- .NET runtime ICorDebug IDL: https://github.com/dotnet/runtime
+  - License: MIT
+  - The checked-in IDL is used to generate NativeAOT debugger ABI projections.
 
 Runtime and development dependencies retain their respective licenses. The
 dependency ledger and release SBOM are generated and validated during release.
