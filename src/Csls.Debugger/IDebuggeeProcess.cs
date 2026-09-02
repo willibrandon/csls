@@ -16,6 +16,11 @@ internal interface IDebuggeeProcess : IAsyncDisposable
     string Name { get; }
 
     /// <summary>
+    /// Gets whether the debugger created and owns the target process.
+    /// </summary>
+    bool OwnsProcess { get; }
+
+    /// <summary>
     /// Copies target standard output to a debugger callback until end of stream.
     /// </summary>
     /// <param name="writeAsync">Receives each output segment.</param>
@@ -48,4 +53,11 @@ internal interface IDebuggeeProcess : IAsyncDisposable
     /// <param name="cancellationToken">Cancels waiting for process exit.</param>
     /// <returns>A task that completes after the target exits.</returns>
     Task TerminateAsync(CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Relinquishes debugger ownership without terminating the target.
+    /// </summary>
+    /// <param name="cancellationToken">Cancels waiting for detachment.</param>
+    /// <returns>A task that completes after debugger ownership is released.</returns>
+    Task DetachAsync(CancellationToken cancellationToken);
 }

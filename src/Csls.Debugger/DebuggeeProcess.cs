@@ -8,6 +8,7 @@ namespace Csls.Debugger;
 internal sealed class DebuggeeProcess : IDebuggeeProcess
 {
     private readonly Process _process;
+    private int _detached;
     private int _disposed;
 
     private DebuggeeProcess(Process process)
@@ -24,6 +25,9 @@ internal sealed class DebuggeeProcess : IDebuggeeProcess
     /// Gets the display name of the launched program.
     /// </summary>
     public string Name => _process.ProcessName;
+
+    /// <inheritdoc />
+    public bool OwnsProcess => true;
 
     /// <summary>
     /// Starts a target without invoking a command shell.
@@ -145,6 +149,14 @@ internal sealed class DebuggeeProcess : IDebuggeeProcess
     }
 
     /// <inheritdoc />
+    public Task DetachAsync(CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        Volatile.Write(ref _detached, 1);
+        return Task.CompletedTask;
+    }
+
+    /// <inheritdoc />
     public async ValueTask DisposeAsync()
     {
         if (Interlocked.Exchange(ref _disposed, 1) != 0)
@@ -152,7 +164,7 @@ internal sealed class DebuggeeProcess : IDebuggeeProcess
             return;
         }
 
-        if (!_process.HasExited)
+        if (Volatile.Read(ref _detached) == 0 && !_process.HasExited)
         {
             _process.Kill(entireProcessTree: true);
             await _process.WaitForExitAsync().ConfigureAwait(false);

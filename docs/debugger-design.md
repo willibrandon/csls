@@ -154,12 +154,11 @@ calling Continue. Shutdown disables new work, aborts eligible evaluation, detach
 or terminates, drains callbacks, releases COM, unregisters startup, closes resume
 handles, and unloads no DBI component whose contract forbids unloading.
 
-The dbgshim runtime-startup callback is the sole bootstrap exception: CoreCLR is
-blocked until that callback returns, so it initializes ICorDebug, installs callback
-interfaces 1 through 4, and attaches the selected process on the startup callback
-thread. It then transfers the acquired interfaces to the engine actor. Every
-subsequent runtime callback retains its controller, queues continuation work, and
-returns without invoking ICorDebug directly.
+The dbgshim runtime-startup callback transfers its owned callback object into the
+engine actor and returns promptly. The actor initializes ICorDebug, installs
+callback interfaces 1 through 4, and attaches the selected process. Every managed
+runtime callback retains only the interfaces that must outlive callback return,
+queues ordered work, and returns without invoking ICorDebug directly.
 
 ## Debug Adapter Protocol
 

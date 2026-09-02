@@ -9,7 +9,7 @@ namespace Csls.DebugAdapter;
 /// <summary>
 /// Translates one Debug Adapter Protocol connection to a protocol-neutral debugger session.
 /// </summary>
-internal sealed class DapSession : IDebuggerSessionObserver, IAsyncDisposable
+internal sealed partial class DapSession : IDebuggerSessionObserver, IAsyncDisposable
 {
     private readonly DapMessageReader _reader;
     private readonly DapMessageWriter _writer;
@@ -17,9 +17,12 @@ internal sealed class DapSession : IDebuggerSessionObserver, IAsyncDisposable
     private readonly CancellationTokenSource _lifetime = new();
     private readonly DebuggerSession _engineSession;
     private DapSessionState _state = DapSessionState.Created;
-    private Request? _pendingLaunchRequest;
+    private Request? _pendingTargetRequest;
     private Request? _pendingConfigurationRequest;
     private DapLaunchConfiguration? _pendingLaunch;
+    private int? _pendingAttachProcessId;
+    private string _startMethod = "launch";
+    private bool _terminateDebuggeeByDefault = true;
     private int _protocolClosed;
 
     /// <summary>
@@ -92,233 +95,6 @@ internal sealed class DapSession : IDebuggerSessionObserver, IAsyncDisposable
         await _writer.DisposeAsync().ConfigureAwait(false);
     }
 
-    /// <inheritdoc />
-    public async ValueTask OnProcessStartedAsync(
-        string name,
-        int processId,
-        CancellationToken cancellationToken)
-    {
-        if (IsProtocolClosed)
-        {
-            return;
-        }
-
-        if (_pendingConfigurationRequest is null || _pendingLaunchRequest is null)
-        {
-            throw new InvalidOperationException(
-                "The engine reported a process before DAP launch configuration completed.");
-        }
-
-        try
-        {
-            _state = DapSessionState.Running;
-            await _writer.WriteResponseAsync(
-                _pendingConfigurationRequest,
-                success: true,
-                message: null,
-                writeBody: null,
-                cancellationToken).ConfigureAwait(false);
-            await _writer.WriteResponseAsync(
-                _pendingLaunchRequest,
-                success: true,
-                message: null,
-                writeBody: null,
-                cancellationToken).ConfigureAwait(false);
-            await _writer.WriteEventAsync(
-                "process",
-                writer =>
-                {
-                    writer.WriteStartObject();
-                    writer.WriteString("name", name);
-                    writer.WriteNumber("systemProcessId", processId);
-                    writer.WriteBoolean("isLocalProcess", true);
-                    writer.WriteString("startMethod", "launch");
-                    writer.WriteEndObject();
-                },
-                cancellationToken).ConfigureAwait(false);
-            ClearPendingLaunch();
-        }
-        catch (Exception exception) when (IsExpectedClosedTransportException(exception))
-        {
-        }
-    }
-
-    /// <inheritdoc />
-    public async ValueTask OnOutputAsync(
-        DebugOutputCategory category,
-        string output,
-        CancellationToken cancellationToken)
-    {
-        if (IsProtocolClosed)
-        {
-            return;
-        }
-
-        try
-        {
-            await _writer.WriteEventAsync(
-                "output",
-                writer =>
-                {
-                    writer.WriteStartObject();
-                    writer.WriteString(
-                        "category",
-                        category == DebugOutputCategory.StandardOutput ? "stdout" : "stderr");
-                    writer.WriteString("output", output);
-                    writer.WriteEndObject();
-                },
-                cancellationToken).ConfigureAwait(false);
-        }
-        catch (Exception exception) when (IsExpectedClosedTransportException(exception))
-        {
-        }
-    }
-
-    /// <inheritdoc />
-    public async ValueTask OnStoppedAsync(
-        string reason,
-        int? threadId,
-        DebugStopGeneration generation,
-        CancellationToken cancellationToken)
-    {
-        _ = generation;
-        if (IsProtocolClosed)
-        {
-            return;
-        }
-
-        _state = DapSessionState.Stopped;
-        try
-        {
-            await _writer.WriteEventAsync(
-                "stopped",
-                writer =>
-                {
-                    writer.WriteStartObject();
-                    writer.WriteString("reason", reason);
-                    if (threadId is not null)
-                    {
-                        writer.WriteNumber("threadId", threadId.Value);
-                    }
-
-                    writer.WriteBoolean("allThreadsStopped", true);
-                    writer.WriteEndObject();
-                },
-                cancellationToken).ConfigureAwait(false);
-        }
-        catch (Exception exception) when (IsExpectedClosedTransportException(exception))
-        {
-        }
-    }
-
-    /// <inheritdoc />
-    public async ValueTask OnBreakpointChangedAsync(
-        DebugSourceBreakpointInfo breakpoint,
-        CancellationToken cancellationToken)
-    {
-        if (IsProtocolClosed)
-        {
-            return;
-        }
-
-        try
-        {
-            await _writer.WriteEventAsync(
-                "breakpoint",
-                writer =>
-                {
-                    writer.WriteStartObject();
-                    writer.WriteString("reason", "changed");
-                    writer.WritePropertyName("breakpoint");
-                    WriteBreakpoint(writer, breakpoint);
-                    writer.WriteEndObject();
-                },
-                cancellationToken).ConfigureAwait(false);
-        }
-        catch (Exception exception) when (IsExpectedClosedTransportException(exception))
-        {
-        }
-    }
-
-    /// <inheritdoc />
-    public async ValueTask OnContinuedAsync(CancellationToken cancellationToken)
-    {
-        if (IsProtocolClosed)
-        {
-            return;
-        }
-
-        _state = DapSessionState.Running;
-        try
-        {
-            await _writer.WriteEventAsync(
-                "continued",
-                writer =>
-                {
-                    writer.WriteStartObject();
-                    writer.WriteBoolean("allThreadsContinued", true);
-                    writer.WriteEndObject();
-                },
-                cancellationToken).ConfigureAwait(false);
-        }
-        catch (Exception exception) when (IsExpectedClosedTransportException(exception))
-        {
-        }
-    }
-
-    /// <inheritdoc />
-    public async ValueTask OnExitedAsync(int exitCode, CancellationToken cancellationToken)
-    {
-        if (IsProtocolClosed)
-        {
-            return;
-        }
-
-        try
-        {
-            await _writer.WriteEventAsync(
-                "exited",
-                writer =>
-                {
-                    writer.WriteStartObject();
-                    writer.WriteNumber("exitCode", exitCode);
-                    writer.WriteEndObject();
-                },
-                cancellationToken).ConfigureAwait(false);
-        }
-        catch (Exception exception) when (IsExpectedClosedTransportException(exception))
-        {
-        }
-    }
-
-    /// <inheritdoc />
-    public async ValueTask OnTerminatedAsync(CancellationToken cancellationToken)
-    {
-        bool endedWithoutClientRequest = _state == DapSessionState.Running;
-        _state = DapSessionState.Terminated;
-        if (IsProtocolClosed)
-        {
-            return;
-        }
-
-        try
-        {
-            await _writer.WriteEventAsync(
-                "terminated",
-                writeBody: null,
-                cancellationToken).ConfigureAwait(false);
-        }
-        catch (Exception exception) when (IsExpectedClosedTransportException(exception))
-        {
-            return;
-        }
-
-        if (endedWithoutClientRequest)
-        {
-            await _lifetime.CancelAsync().ConfigureAwait(false);
-        }
-    }
-
     private async ValueTask HandleRequestAsync(
         Request request,
         CancellationToken cancellationToken)
@@ -331,8 +107,11 @@ internal sealed class DapSession : IDebuggerSessionObserver, IAsyncDisposable
             case "launch":
                 await PrepareLaunchAsync(request, cancellationToken).ConfigureAwait(false);
                 break;
+            case "attach":
+                await PrepareAttachAsync(request, cancellationToken).ConfigureAwait(false);
+                break;
             case "configurationDone":
-                await CompleteLaunchAsync(request, cancellationToken).ConfigureAwait(false);
+                await CompleteTargetStartAsync(request, cancellationToken).ConfigureAwait(false);
                 break;
             case "setBreakpoints":
                 await SetBreakpointsAsync(request, cancellationToken).ConfigureAwait(false);
@@ -444,7 +223,10 @@ internal sealed class DapSession : IDebuggerSessionObserver, IAsyncDisposable
             return;
         }
 
-        _pendingLaunchRequest = request;
+        _pendingTargetRequest = request;
+        _pendingAttachProcessId = null;
+        _startMethod = "launch";
+        _terminateDebuggeeByDefault = true;
         _state = DapSessionState.Configuring;
         await _writer.WriteEventAsync(
             "initialized",
@@ -452,13 +234,13 @@ internal sealed class DapSession : IDebuggerSessionObserver, IAsyncDisposable
             cancellationToken).ConfigureAwait(false);
     }
 
-    private async ValueTask CompleteLaunchAsync(
+    private async ValueTask CompleteTargetStartAsync(
         Request request,
         CancellationToken cancellationToken)
     {
         if (_state != DapSessionState.Configuring ||
-            _pendingLaunchRequest is null ||
-            _pendingLaunch is null)
+            _pendingTargetRequest is null ||
+            (_pendingLaunch is null) == (_pendingAttachProcessId is null))
         {
             await WriteStateFailureAsync(request, cancellationToken).ConfigureAwait(false);
             return;
@@ -468,7 +250,13 @@ internal sealed class DapSession : IDebuggerSessionObserver, IAsyncDisposable
         _pendingConfigurationRequest = request;
         try
         {
-            if (_pendingLaunch.NoDebug)
+            if (_pendingAttachProcessId is int processId)
+            {
+                await _engineSession
+                    .AttachManagedAsync(processId, cancellationToken)
+                    .ConfigureAwait(false);
+            }
+            else if (_pendingLaunch!.NoDebug)
             {
                 await _engineSession
                     .LaunchWithoutDebuggingAsync(_pendingLaunch.Options, cancellationToken)
@@ -482,7 +270,7 @@ internal sealed class DapSession : IDebuggerSessionObserver, IAsyncDisposable
             }
         }
         catch (Exception exception) when (
-            exception is InvalidOperationException or
+            exception is ArgumentException or InvalidOperationException or
             IOException or
             UnauthorizedAccessException or
             Win32Exception)
@@ -495,558 +283,12 @@ internal sealed class DapSession : IDebuggerSessionObserver, IAsyncDisposable
                 writeBody: null,
                 cancellationToken).ConfigureAwait(false);
             await _writer.WriteResponseAsync(
-                _pendingLaunchRequest,
+                _pendingTargetRequest,
                 success: false,
                 exception.Message,
                 writeBody: null,
                 cancellationToken).ConfigureAwait(false);
-            ClearPendingLaunch();
-        }
-    }
-
-    private async ValueTask SetBreakpointsAsync(
-        Request request,
-        CancellationToken cancellationToken)
-    {
-        if (_state is not DapSessionState.Configuring and not DapSessionState.Stopped)
-        {
-            await WriteStateFailureAsync(request, cancellationToken).ConfigureAwait(false);
-            return;
-        }
-
-        try
-        {
-            (string sourcePath, IReadOnlyList<DebugSourceBreakpointRequest> breakpoints) =
-                ParseSourceBreakpoints(request.Arguments);
-            IReadOnlyList<DebugSourceBreakpointInfo> results = await _engineSession
-                .SetSourceBreakpointsAsync(sourcePath, breakpoints, cancellationToken)
-                .ConfigureAwait(false);
-            await _writer.WriteResponseAsync(
-                request,
-                success: true,
-                message: null,
-                writer =>
-                {
-                    writer.WriteStartObject();
-                    writer.WriteStartArray("breakpoints");
-                    foreach (DebugSourceBreakpointInfo breakpoint in results)
-                    {
-                        WriteBreakpoint(writer, breakpoint);
-                    }
-
-                    writer.WriteEndArray();
-                    writer.WriteEndObject();
-                },
-                cancellationToken).ConfigureAwait(false);
-        }
-        catch (Exception exception) when (
-            exception is ArgumentException or InvalidOperationException or
-            IOException or UnauthorizedAccessException or BadImageFormatException)
-        {
-            await WriteRequestFailureAsync(request, exception.Message, cancellationToken)
-                .ConfigureAwait(false);
-        }
-    }
-
-    private static (string SourcePath, IReadOnlyList<DebugSourceBreakpointRequest> Breakpoints)
-        ParseSourceBreakpoints(JsonElement arguments)
-    {
-        if (arguments.ValueKind != JsonValueKind.Object ||
-            !arguments.TryGetProperty("source", out JsonElement source) ||
-            source.ValueKind != JsonValueKind.Object ||
-            !source.TryGetProperty("path", out JsonElement pathValue) ||
-            pathValue.ValueKind != JsonValueKind.String ||
-            string.IsNullOrWhiteSpace(pathValue.GetString()))
-        {
-            throw new ArgumentException(
-                "The setBreakpoints request requires an absolute source.path.");
-        }
-
-        if (arguments.TryGetProperty("sourceModified", out JsonElement sourceModified) &&
-            sourceModified.ValueKind == JsonValueKind.True)
-        {
-            throw new ArgumentException(
-                "Breakpoints cannot be bound while the editor source differs from the saved file.");
-        }
-
-        var result = new List<DebugSourceBreakpointRequest>();
-        if (arguments.TryGetProperty("breakpoints", out JsonElement breakpoints))
-        {
-            if (breakpoints.ValueKind != JsonValueKind.Array)
-            {
-                throw new ArgumentException("The setBreakpoints breakpoints value must be an array.");
-            }
-
-            foreach (JsonElement breakpoint in breakpoints.EnumerateArray())
-            {
-                if (breakpoint.ValueKind != JsonValueKind.Object ||
-                    !breakpoint.TryGetProperty("line", out JsonElement lineValue) ||
-                    !lineValue.TryGetInt32(out int line))
-                {
-                    throw new ArgumentException(
-                        "Every source breakpoint requires an integer line.");
-                }
-
-                RejectUnsupportedBreakpointOption(breakpoint, "condition");
-                RejectUnsupportedBreakpointOption(breakpoint, "hitCondition");
-                RejectUnsupportedBreakpointOption(breakpoint, "logMessage");
-                int? column = null;
-                if (breakpoint.TryGetProperty("column", out JsonElement columnValue))
-                {
-                    if (!columnValue.TryGetInt32(out int parsedColumn))
-                    {
-                        throw new ArgumentException(
-                            "A source breakpoint column must be an integer.");
-                    }
-
-                    column = parsedColumn;
-                }
-
-                result.Add(new DebugSourceBreakpointRequest(line, column));
-            }
-        }
-        else if (arguments.TryGetProperty("lines", out JsonElement lines) &&
-            lines.ValueKind == JsonValueKind.Array)
-        {
-            foreach (JsonElement lineValue in lines.EnumerateArray())
-            {
-                if (!lineValue.TryGetInt32(out int line))
-                {
-                    throw new ArgumentException(
-                        "Every setBreakpoints lines entry must be an integer.");
-                }
-
-                result.Add(new DebugSourceBreakpointRequest(line, Column: null));
-            }
-        }
-
-        return (pathValue.GetString()!, result);
-    }
-
-    private static void RejectUnsupportedBreakpointOption(
-        JsonElement breakpoint,
-        string propertyName)
-    {
-        if (breakpoint.TryGetProperty(propertyName, out JsonElement value) &&
-            value.ValueKind == JsonValueKind.String &&
-            !string.IsNullOrEmpty(value.GetString()))
-        {
-            throw new ArgumentException(
-                $"Source breakpoint {propertyName} is not supported by this capability set.");
-        }
-    }
-
-    private static void WriteBreakpoint(
-        Utf8JsonWriter writer,
-        DebugSourceBreakpointInfo breakpoint)
-    {
-        writer.WriteStartObject();
-        writer.WriteNumber("id", breakpoint.Id);
-        writer.WriteBoolean("verified", breakpoint.Verified);
-        writer.WriteStartObject("source");
-        writer.WriteString("name", Path.GetFileName(breakpoint.SourcePath));
-        writer.WriteString("path", breakpoint.SourcePath);
-        writer.WriteEndObject();
-        writer.WriteNumber("line", breakpoint.Line);
-        if (breakpoint.Column is not null)
-        {
-            writer.WriteNumber("column", breakpoint.Column.Value);
-        }
-
-        if (breakpoint.Message is not null)
-        {
-            writer.WriteString("message", breakpoint.Message);
-        }
-
-        writer.WriteEndObject();
-    }
-
-    private async ValueTask WriteThreadsAsync(
-        Request request,
-        CancellationToken cancellationToken)
-    {
-        if (_state != DapSessionState.Stopped)
-        {
-            await WriteStateFailureAsync(request, cancellationToken).ConfigureAwait(false);
-            return;
-        }
-
-        IReadOnlyList<DebugThreadInfo> threads;
-        try
-        {
-            threads = await _engineSession.GetThreadsAsync(cancellationToken).ConfigureAwait(false);
-        }
-        catch (InvalidOperationException exception)
-        {
-            await _writer.WriteResponseAsync(
-                request,
-                success: false,
-                exception.Message,
-                writeBody: null,
-                cancellationToken).ConfigureAwait(false);
-            return;
-        }
-
-        await _writer.WriteResponseAsync(
-            request,
-            success: true,
-            message: null,
-            writer =>
-            {
-                writer.WriteStartObject();
-                writer.WriteStartArray("threads");
-                foreach (DebugThreadInfo thread in threads)
-                {
-                    writer.WriteStartObject();
-                    writer.WriteNumber("id", thread.Id);
-                    writer.WriteString("name", thread.Name);
-                    writer.WriteEndObject();
-                }
-
-                writer.WriteEndArray();
-                writer.WriteEndObject();
-            },
-            cancellationToken).ConfigureAwait(false);
-    }
-
-    private async ValueTask WriteModulesAsync(
-        Request request,
-        CancellationToken cancellationToken)
-    {
-        if (_state is not DapSessionState.Running and not DapSessionState.Stopped)
-        {
-            await WriteStateFailureAsync(request, cancellationToken).ConfigureAwait(false);
-            return;
-        }
-
-        try
-        {
-            int startModule = GetOptionalNonNegativeInteger(
-                request.Arguments,
-                "startModule",
-                "modules");
-            int moduleCount = GetOptionalNonNegativeInteger(
-                request.Arguments,
-                "moduleCount",
-                "modules");
-            DebugModulePage page = await _engineSession
-                .GetModulesAsync(startModule, moduleCount, cancellationToken)
-                .ConfigureAwait(false);
-            await _writer.WriteResponseAsync(
-                request,
-                success: true,
-                message: null,
-                writer =>
-                {
-                    writer.WriteStartObject();
-                    writer.WriteStartArray("modules");
-                    foreach (DebugModuleInfo module in page.Modules)
-                    {
-                        writer.WriteStartObject();
-                        writer.WriteNumber("id", module.Id);
-                        writer.WriteString("name", module.Name);
-                        if (module.Path is not null)
-                        {
-                            writer.WriteString("path", module.Path);
-                        }
-
-                        writer.WriteString(
-                            "symbolStatus",
-                            module.SymbolPath is null ? "Symbols not found." : "Symbols loaded.");
-                        if (module.SymbolPath is not null)
-                        {
-                            writer.WriteString("symbolFilePath", module.SymbolPath);
-                        }
-
-                        writer.WriteEndObject();
-                    }
-
-                    writer.WriteEndArray();
-                    writer.WriteNumber("totalModules", page.TotalModules);
-                    writer.WriteEndObject();
-                },
-                cancellationToken).ConfigureAwait(false);
-        }
-        catch (Exception exception) when (
-            exception is ArgumentException or InvalidOperationException or OverflowException)
-        {
-            await WriteRequestFailureAsync(request, exception.Message, cancellationToken)
-                .ConfigureAwait(false);
-        }
-    }
-
-    private async ValueTask PauseAsync(
-        Request request,
-        CancellationToken cancellationToken)
-    {
-        if (_state != DapSessionState.Running)
-        {
-            await WriteStateFailureAsync(request, cancellationToken).ConfigureAwait(false);
-            return;
-        }
-
-        try
-        {
-            await _engineSession.PauseAsync(cancellationToken).ConfigureAwait(false);
-            await _writer.WriteResponseAsync(
-                request,
-                success: true,
-                message: null,
-                writeBody: null,
-                cancellationToken).ConfigureAwait(false);
-        }
-        catch (InvalidOperationException exception)
-        {
-            await _writer.WriteResponseAsync(
-                request,
-                success: false,
-                exception.Message,
-                writeBody: null,
-                cancellationToken).ConfigureAwait(false);
-        }
-    }
-
-    private async ValueTask ContinueAsync(
-        Request request,
-        CancellationToken cancellationToken)
-    {
-        if (_state != DapSessionState.Stopped)
-        {
-            await WriteStateFailureAsync(request, cancellationToken).ConfigureAwait(false);
-            return;
-        }
-
-        try
-        {
-            await _engineSession.ContinueAsync(cancellationToken).ConfigureAwait(false);
-            await _writer.WriteResponseAsync(
-                request,
-                success: true,
-                message: null,
-                writeBody: writer =>
-                {
-                    writer.WriteStartObject();
-                    writer.WriteBoolean("allThreadsContinued", true);
-                    writer.WriteEndObject();
-                },
-                cancellationToken).ConfigureAwait(false);
-        }
-        catch (InvalidOperationException exception)
-        {
-            await _writer.WriteResponseAsync(
-                request,
-                success: false,
-                exception.Message,
-                writeBody: null,
-                cancellationToken).ConfigureAwait(false);
-        }
-    }
-
-    private async ValueTask StepAsync(
-        Request request,
-        DebugStepKind kind,
-        CancellationToken cancellationToken)
-    {
-        if (_state != DapSessionState.Stopped)
-        {
-            await WriteStateFailureAsync(request, cancellationToken).ConfigureAwait(false);
-            return;
-        }
-
-        try
-        {
-            int threadId = GetRequiredInteger(request.Arguments, "threadId", request.Command);
-            await _engineSession
-                .StepAsync(threadId, kind, cancellationToken)
-                .ConfigureAwait(false);
-            await _writer.WriteResponseAsync(
-                request,
-                success: true,
-                message: null,
-                writeBody: null,
-                cancellationToken).ConfigureAwait(false);
-        }
-        catch (Exception exception) when (
-            exception is ArgumentException or InvalidOperationException or OverflowException)
-        {
-            await WriteRequestFailureAsync(request, exception.Message, cancellationToken)
-                .ConfigureAwait(false);
-        }
-    }
-
-    private async ValueTask WriteStackTraceAsync(
-        Request request,
-        CancellationToken cancellationToken)
-    {
-        if (_state != DapSessionState.Stopped)
-        {
-            await WriteStateFailureAsync(request, cancellationToken).ConfigureAwait(false);
-            return;
-        }
-
-        try
-        {
-            JsonElement arguments = request.Arguments;
-            if (arguments.ValueKind != JsonValueKind.Object ||
-                !arguments.TryGetProperty("threadId", out JsonElement threadIdValue) ||
-                !threadIdValue.TryGetInt32(out int threadId))
-            {
-                throw new ArgumentException(
-                    "The stackTrace request requires an integer threadId.");
-            }
-
-            int startFrame = GetOptionalNonNegativeInteger(arguments, "startFrame", "stackTrace");
-            int levels = GetOptionalNonNegativeInteger(arguments, "levels", "stackTrace");
-            DebugStackTrace stack = await _engineSession.GetStackTraceAsync(
-                threadId,
-                startFrame,
-                levels,
-                cancellationToken).ConfigureAwait(false);
-            await _writer.WriteResponseAsync(
-                request,
-                success: true,
-                message: null,
-                writer =>
-                {
-                    writer.WriteStartObject();
-                    writer.WriteStartArray("stackFrames");
-                    foreach (DebugStackFrameInfo frame in stack.StackFrames)
-                    {
-                        writer.WriteStartObject();
-                        writer.WriteNumber("id", frame.Id);
-                        writer.WriteString("name", frame.Name);
-                        if (frame.SourcePath is not null)
-                        {
-                            writer.WriteStartObject("source");
-                            writer.WriteString("name", Path.GetFileName(frame.SourcePath));
-                            writer.WriteString("path", frame.SourcePath);
-                            writer.WriteEndObject();
-                        }
-
-                        writer.WriteNumber("line", frame.Line);
-                        writer.WriteNumber("column", frame.Column);
-                        writer.WriteEndObject();
-                    }
-
-                    writer.WriteEndArray();
-                    writer.WriteNumber("totalFrames", stack.TotalFrames);
-                    writer.WriteEndObject();
-                },
-                cancellationToken).ConfigureAwait(false);
-        }
-        catch (Exception exception) when (
-            exception is ArgumentException or InvalidOperationException or OverflowException)
-        {
-            await _writer.WriteResponseAsync(
-                request,
-                success: false,
-                exception.Message,
-                writeBody: null,
-                cancellationToken).ConfigureAwait(false);
-        }
-    }
-
-    private async ValueTask WriteScopesAsync(
-        Request request,
-        CancellationToken cancellationToken)
-    {
-        if (_state != DapSessionState.Stopped)
-        {
-            await WriteStateFailureAsync(request, cancellationToken).ConfigureAwait(false);
-            return;
-        }
-
-        try
-        {
-            int frameId = GetRequiredInteger(request.Arguments, "frameId", "scopes");
-            IReadOnlyList<DebugScopeInfo> scopes = await _engineSession
-                .GetScopesAsync(frameId, cancellationToken)
-                .ConfigureAwait(false);
-            await _writer.WriteResponseAsync(
-                request,
-                success: true,
-                message: null,
-                writer =>
-                {
-                    writer.WriteStartObject();
-                    writer.WriteStartArray("scopes");
-                    foreach (DebugScopeInfo scope in scopes)
-                    {
-                        writer.WriteStartObject();
-                        writer.WriteString("name", scope.Name);
-                        writer.WriteNumber("variablesReference", scope.VariablesReference);
-                        writer.WriteBoolean("expensive", scope.Expensive);
-                        writer.WriteEndObject();
-                    }
-
-                    writer.WriteEndArray();
-                    writer.WriteEndObject();
-                },
-                cancellationToken).ConfigureAwait(false);
-        }
-        catch (Exception exception) when (
-            exception is ArgumentException or InvalidOperationException)
-        {
-            await WriteRequestFailureAsync(request, exception.Message, cancellationToken)
-                .ConfigureAwait(false);
-        }
-    }
-
-    private async ValueTask WriteVariablesAsync(
-        Request request,
-        CancellationToken cancellationToken)
-    {
-        if (_state != DapSessionState.Stopped)
-        {
-            await WriteStateFailureAsync(request, cancellationToken).ConfigureAwait(false);
-            return;
-        }
-
-        try
-        {
-            JsonElement arguments = request.Arguments;
-            int variablesReference = GetRequiredInteger(
-                arguments,
-                "variablesReference",
-                "variables");
-            int start = GetOptionalNonNegativeInteger(arguments, "start", "variables");
-            int count = GetOptionalNonNegativeInteger(arguments, "count", "variables");
-            IReadOnlyList<DebugVariableInfo> variables = await _engineSession
-                .GetVariablesAsync(
-                    variablesReference,
-                    start,
-                    count,
-                    cancellationToken)
-                .ConfigureAwait(false);
-            await _writer.WriteResponseAsync(
-                request,
-                success: true,
-                message: null,
-                writer =>
-                {
-                    writer.WriteStartObject();
-                    writer.WriteStartArray("variables");
-                    foreach (DebugVariableInfo variable in variables)
-                    {
-                        writer.WriteStartObject();
-                        writer.WriteString("name", variable.Name);
-                        writer.WriteString("value", variable.Value);
-                        writer.WriteString("type", variable.Type);
-                        writer.WriteNumber("variablesReference", variable.VariablesReference);
-                        writer.WriteEndObject();
-                    }
-
-                    writer.WriteEndArray();
-                    writer.WriteEndObject();
-                },
-                cancellationToken).ConfigureAwait(false);
-        }
-        catch (Exception exception) when (
-            exception is ArgumentException or InvalidOperationException or
-            IOException or UnauthorizedAccessException or BadImageFormatException)
-        {
-            await WriteRequestFailureAsync(request, exception.Message, cancellationToken)
-                .ConfigureAwait(false);
+            ClearPendingTarget();
         }
     }
 
@@ -1096,21 +338,6 @@ internal sealed class DapSession : IDebuggerSessionObserver, IAsyncDisposable
             writeBody: null,
             cancellationToken);
 
-    private async ValueTask DisconnectAsync(
-        Request request,
-        CancellationToken cancellationToken)
-    {
-        _state = DapSessionState.Terminating;
-        await _engineSession.TerminateAsync(cancellationToken).ConfigureAwait(false);
-        await _writer.WriteResponseAsync(
-            request,
-            success: true,
-            message: null,
-            writeBody: null,
-            cancellationToken).ConfigureAwait(false);
-        _state = DapSessionState.Terminated;
-    }
-
     private ValueTask WriteStateFailureAsync(
         Request request,
         CancellationToken cancellationToken) =>
@@ -1121,11 +348,12 @@ internal sealed class DapSession : IDebuggerSessionObserver, IAsyncDisposable
             writeBody: null,
             cancellationToken);
 
-    private void ClearPendingLaunch()
+    private void ClearPendingTarget()
     {
-        _pendingLaunchRequest = null;
+        _pendingTargetRequest = null;
         _pendingConfigurationRequest = null;
         _pendingLaunch = null;
+        _pendingAttachProcessId = null;
     }
 
     private bool IsProtocolClosed => Volatile.Read(ref _protocolClosed) != 0;

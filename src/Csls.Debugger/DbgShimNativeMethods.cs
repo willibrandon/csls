@@ -78,4 +78,36 @@ internal static unsafe partial class DbgShimNativeMethods
     [DefaultDllImportSearchPaths(DllImportSearchPath.SafeDirectories)]
     [UnmanagedCallConv(CallConvs = [typeof(CallConvStdcall)])]
     internal static partial int UnregisterForRuntimeStartup(nint unregisterToken);
+
+    /// <summary>
+    /// Enumerates CoreCLR instances loaded in a local process.
+    /// </summary>
+    /// <param name="processId">The target operating-system process identifier.</param>
+    /// <param name="handleArray">Receives the native runtime startup-handle array.</param>
+    /// <param name="stringArray">Receives the native runtime-module path array.</param>
+    /// <param name="arrayLength">Receives the common array length.</param>
+    /// <returns>An HRESULT describing the operation result.</returns>
+    [LibraryImport("dbgshim", EntryPoint = "EnumerateCLRs")]
+    [DefaultDllImportSearchPaths(DllImportSearchPath.SafeDirectories)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvStdcall)])]
+    internal static partial int EnumerateClrs(
+        uint processId,
+        out nint handleArray,
+        out nint stringArray,
+        out uint arrayLength);
+
+    /// <summary>
+    /// Releases arrays returned by a successful CoreCLR enumeration.
+    /// </summary>
+    /// <param name="handleArray">The runtime startup-handle array.</param>
+    /// <param name="stringArray">The runtime-module path array.</param>
+    /// <param name="arrayLength">The common array length.</param>
+    /// <returns>An HRESULT describing the operation result.</returns>
+    [LibraryImport("dbgshim", EntryPoint = "CloseCLREnumeration")]
+    [DefaultDllImportSearchPaths(DllImportSearchPath.SafeDirectories)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvStdcall)])]
+    internal static partial int CloseClrEnumeration(
+        nint handleArray,
+        nint stringArray,
+        uint arrayLength);
 }
