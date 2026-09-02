@@ -25,7 +25,8 @@ public sealed partial class LanguageServer : ILspRpcTarget, IAsyncDisposable
         TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly TaskCompletionSource _workspaceReady = new(
         TaskCreationOptions.RunContinuationsAsynchronously);
-    private readonly CancellationTokenSource _exitSource = new();
+    private readonly TaskCompletionSource _interactiveWorkspaceReady = new(
+        TaskCreationOptions.RunContinuationsAsynchronously);
     private bool _completionMarkdownSupport;
     private bool _completionSnippetSupport;
     private string _codeLensCommandIdentifier = StandardShowReferencesCommand;
@@ -98,11 +99,6 @@ public sealed partial class LanguageServer : ILspRpcTarget, IAsyncDisposable
     /// Gets the workspace roots requested by the initialized client.
     /// </summary>
     public IReadOnlyList<string> WorkspaceRoots => [.. Volatile.Read(ref _rootPaths)];
-
-    /// <summary>
-    /// Gets the token canceled when the client sends the LSP exit notification.
-    /// </summary>
-    public CancellationToken ExitToken => _exitSource.Token;
 
     /// <summary>
     /// Gets one lock-free observation of the bounded request scheduler.
@@ -342,6 +338,7 @@ public sealed partial class LanguageServer : ILspRpcTarget, IAsyncDisposable
         Transition(ServerLifecycleState.InitializeResponded, ServerLifecycleState.Running);
         long workspaceStartedTimestamp = Stopwatch.GetTimestamp();
         bool workspaceLoaded;
+        bool preliminaryWorkspaceLoaded = false;
         try
         {
             workspaceLoaded = await _scheduler.ScheduleAsync(
@@ -371,11 +368,27 @@ public sealed partial class LanguageServer : ILspRpcTarget, IAsyncDisposable
                             context.CancellationToken).ConfigureAwait(false);
                     }
 
-                    await LoadWorkspaceWithProgressAsync(context.CancellationToken)
+                    preliminaryWorkspaceLoaded = await _workspaceManager
+                        .LoadPreliminaryAsync(_rootPaths, context.CancellationToken)
                         .ConfigureAwait(false);
+                    if (!preliminaryWorkspaceLoaded)
+                    {
+                        await LoadWorkspaceWithProgressAsync(
+                            progressive: false,
+                            context.CancellationToken).ConfigureAwait(false);
+                    }
+
                     return true;
                 },
                 cancellationToken).ConfigureAwait(false);
+
+            if (workspaceLoaded && preliminaryWorkspaceLoaded)
+            {
+                _interactiveWorkspaceReady.TrySetResult();
+                await LoadWorkspaceWithProgressAsync(
+                    progressive: true,
+                    cancellationToken).ConfigureAwait(false);
+            }
         }
         catch (Exception exception)
         {
@@ -402,6 +415,7 @@ public sealed partial class LanguageServer : ILspRpcTarget, IAsyncDisposable
                 .GetElapsedTime(workspaceStartedTimestamp)
                 .TotalMilliseconds;
             LanguageServerLogger.LogWorkspaceReady(_logger, elapsedMilliseconds);
+            _interactiveWorkspaceReady.TrySetResult();
             _workspaceReady.TrySetResult();
         }
 
@@ -444,18 +458,20 @@ public sealed partial class LanguageServer : ILspRpcTarget, IAsyncDisposable
 
         Volatile.Write(ref _lifecycleState, (int)ServerLifecycleState.ShuttingDown);
         Volatile.Write(ref _workspacePhase, (int)ServerWorkspacePhase.ShuttingDown);
+        _scheduler.BeginStop();
         return Task.FromResult<object?>(null);
     }
 
     /// <inheritdoc />
-    public async Task ExitAsync()
+    public Task ExitAsync()
     {
         Volatile.Write(ref _lifecycleState, (int)ServerLifecycleState.Exited);
         Volatile.Write(ref _workspacePhase, (int)ServerWorkspacePhase.ShuttingDown);
+        _workspaceReady.TrySetCanceled();
+        _interactiveWorkspaceReady.TrySetCanceled();
+        _scheduler.BeginStop();
         _exitRequested.TrySetResult();
-        await _exitSource.CancelAsync().ConfigureAwait(false);
-        _workspaceReady.TrySetCanceled(_exitSource.Token);
-        await _scheduler.DisposeAsync().ConfigureAwait(false);
+        return Task.CompletedTask;
     }
 
     /// <inheritdoc />
@@ -826,13 +842,22 @@ public sealed partial class LanguageServer : ILspRpcTarget, IAsyncDisposable
     }
 
     /// <inheritdoc />
-    public Task<IReadOnlyList<Location>> DefinitionAsync(
+    public async Task<IReadOnlyList<Location>> DefinitionAsync(
         TextDocumentPositionParams parameters,
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(parameters);
         EnsureRunning();
-        return _scheduler.ScheduleAsync(
+        await _interactiveWorkspaceReady.Task.WaitAsync(cancellationToken)
+            .ConfigureAwait(false);
+        if (!_workspaceReady.Task.IsCompletedSuccessfully &&
+            !_workspaceManager.CanNavigateFromPreliminaryWorkspace(
+                parameters.TextDocument.Uri))
+        {
+            await _workspaceReady.Task.WaitAsync(cancellationToken).ConfigureAwait(false);
+        }
+
+        return await _scheduler.ScheduleAsync(
             "textDocument/definition",
             RequestMode.ReadOnly,
             () => _workspaceManager.Generation,
@@ -852,7 +877,7 @@ public sealed partial class LanguageServer : ILspRpcTarget, IAsyncDisposable
 
                 return locations;
             },
-            cancellationToken);
+            cancellationToken).ConfigureAwait(false);
     }
 
     /// <inheritdoc />
@@ -1655,22 +1680,31 @@ public sealed partial class LanguageServer : ILspRpcTarget, IAsyncDisposable
         await StopCodeLensRefreshAsync().ConfigureAwait(false);
         await StopClientProcessMonitorAsync().ConfigureAwait(false);
         _workspaceReady.TrySetCanceled();
+        _interactiveWorkspaceReady.TrySetCanceled();
         await _scheduler.DisposeAsync().ConfigureAwait(false);
         _semanticTokensCache.Clear();
         await _workspaceManager.DisposeAsync().ConfigureAwait(false);
-        _exitSource.Dispose();
         GC.SuppressFinalize(this);
     }
 
     private Task WaitForWorkspaceAdmissionAsync(
-        string _,
+        string requestName,
         RequestMode requestMode,
         CancellationToken cancellationToken)
     {
-        return requestMode == RequestMode.ReadWrite
-            ? Task.CompletedTask
-            : _workspaceReady.Task.WaitAsync(cancellationToken);
+        if (requestMode == RequestMode.ReadWrite)
+        {
+            return Task.CompletedTask;
+        }
+
+        Task readiness = SupportsPreliminaryWorkspace(requestName)
+            ? _interactiveWorkspaceReady.Task
+            : _workspaceReady.Task;
+        return readiness.WaitAsync(cancellationToken);
     }
+
+    private static bool SupportsPreliminaryWorkspace(string requestName) =>
+        requestName is "textDocument/definition";
 
     private static NegotiatedClientCapabilities CreateNegotiatedClientCapabilities(
         JsonElement capabilities)

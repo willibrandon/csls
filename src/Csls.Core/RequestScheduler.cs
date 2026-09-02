@@ -37,7 +37,9 @@ public sealed class RequestScheduler : IAsyncDisposable
     private int _activeForegroundRequests;
     private int _activeBackgroundRequests;
     private int _mutationActive;
+    private int _stopState;
     private int _disposeState;
+    private Task? _stopTask;
 
     /// <summary>
     /// Initializes a bounded scheduler with explicit foreground and background limits.
@@ -81,7 +83,7 @@ public sealed class RequestScheduler : IAsyncDisposable
     /// <summary>
     /// Gets whether the scheduler has started shutting down.
     /// </summary>
-    public bool IsStopping => Volatile.Read(ref _disposeState) != 0;
+    public bool IsStopping => Volatile.Read(ref _stopState) != 0;
 
     /// <summary>
     /// Sets the one asynchronous admission gate applied before requests enter the bounded queue.
@@ -150,6 +152,28 @@ public sealed class RequestScheduler : IAsyncDisposable
         _requests.TryGetValue(correlationId, out RequestActivityState? request)
             ? request.TryCancelAsync()
             : Task.FromResult(false);
+
+    /// <summary>
+    /// Stops accepting work and begins canceling every outstanding request.
+    /// </summary>
+    public void BeginStop()
+    {
+        lock (_lifecycleGate)
+        {
+            if (_stopTask is not null)
+            {
+                return;
+            }
+
+            Volatile.Write(ref _stopState, 1);
+            _queue.Writer.TryComplete();
+            Task<bool>[] cancellationTasks =
+            [
+                .. _requests.Values.Select(static request => request.TryCancelAsync())
+            ];
+            _stopTask = Task.WhenAll(cancellationTasks);
+        }
+    }
 
     /// <summary>
     /// Starts one bounded request trace and enrolls requests that are already active.
@@ -470,23 +494,19 @@ public sealed class RequestScheduler : IAsyncDisposable
     /// <returns>A value task that completes after scheduler shutdown.</returns>
     public async ValueTask DisposeAsync()
     {
-        RequestActivityState[] requests;
-        lock (_lifecycleGate)
+        if (Interlocked.Exchange(ref _disposeState, 1) != 0)
         {
-            if (Interlocked.Exchange(ref _disposeState, 1) != 0)
-            {
-                return;
-            }
-
-            _queue.Writer.TryComplete();
-            requests = [.. _requests.Values];
+            return;
         }
 
-        Task<bool>[] cancellationTasks =
-        [
-            .. requests.Select(static request => request.TryCancelAsync())
-        ];
-        await Task.WhenAll(cancellationTasks).ConfigureAwait(false);
+        BeginStop();
+        Task stopTask;
+        lock (_lifecycleGate)
+        {
+            stopTask = _stopTask!;
+        }
+
+        await stopTask.ConfigureAwait(false);
         await _processingTask.ConfigureAwait(false);
         _foregroundConcurrency.Dispose();
         _backgroundConcurrency.Dispose();

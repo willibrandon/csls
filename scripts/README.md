@@ -15,7 +15,7 @@ supports `--help`.
 | `Export-ContainerImage.cs` | Exports a container image as a Picket-scannable archive. |
 | `Generate-Docs.cs` | Generates CLI, MCP, configuration, and contract reference pages from the built product. |
 | `Initialize-DevContainer.cs` | Installs the development container dependencies and restores the repository. |
-| `Install-GraphicalEditorTestPrerequisites.cs` | Installs Linux display and input packages for graphical editor tests. |
+| `Install-GraphicalEditorTestPrerequisites.cs` | Installs Linux display, input, and headless browser runtime packages for editor tests. |
 | `Install-NativeAotPrerequisites.cs` | Installs the native compiler prerequisites for a runtime identifier. |
 | `Provision-Actionlint.cs` | Installs the GitHub Actions validator. |
 | `Provision-CsharpLsOracle.cs` | Installs the language server parity oracle. |

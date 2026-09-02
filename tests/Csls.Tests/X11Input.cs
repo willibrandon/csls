@@ -12,6 +12,8 @@ internal static partial class X11Input
     private const ulong ShiftLeftKeySym = 0xffe1;
     private const ulong F12KeySym = 0xffc9;
     private const int RevertToParent = 2;
+    private static readonly Lock s_interopLock = new();
+    private static readonly bool s_threadsInitialized = InitializeThreads() != 0;
 
     /// <summary>
     /// Raises and focuses the first X window whose title contains the requested text.
@@ -22,16 +24,48 @@ internal static partial class X11Input
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(displayName);
         ArgumentException.ThrowIfNullOrWhiteSpace(titleText);
+        lock (s_interopLock)
+        {
+            if (!TryFocusWindowCore(displayName, titleText, out List<string> observedTitles))
+            {
+                throw new InvalidOperationException(
+                    $"No X window title contains '{titleText}'. Observed: " +
+                    string.Join(", ", observedTitles));
+            }
+        }
+    }
+
+    /// <summary>
+    /// Raises and focuses the first matching X window when it is available.
+    /// </summary>
+    /// <param name="displayName">The isolated X display name.</param>
+    /// <param name="titleText">Text required in the target window title.</param>
+    /// <returns><see langword="true"/> when a matching window was focused.</returns>
+    internal static bool TryFocusWindow(string displayName, string titleText)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(displayName);
+        ArgumentException.ThrowIfNullOrWhiteSpace(titleText);
+        lock (s_interopLock)
+        {
+            return TryFocusWindowCore(displayName, titleText, out _);
+        }
+    }
+
+    private static bool TryFocusWindowCore(
+        string displayName,
+        string titleText,
+        out List<string> observedTitles)
+    {
         nint display = OpenDisplay(displayName);
         if (display == 0)
         {
             throw new InvalidOperationException($"The X display is unavailable: {displayName}");
         }
 
+        observedTitles = [];
         try
         {
             nuint rootWindow = DefaultRootWindow(display);
-            var observedTitles = new List<string>();
             nuint targetWindow = FindWindow(
                 display,
                 rootWindow,
@@ -39,19 +73,28 @@ internal static partial class X11Input
                 observedTitles);
             if (targetWindow == 0)
             {
-                throw new InvalidOperationException(
-                    $"No X window title contains '{titleText}'. Observed: " +
-                    string.Join(", ", observedTitles));
+                return false;
             }
 
             _ = RaiseWindow(display, targetWindow);
             _ = SetInputFocus(display, targetWindow, RevertToParent, time: 0);
             _ = Flush(display);
+            return true;
         }
         finally
         {
             _ = CloseDisplay(display);
         }
+    }
+
+    private static nint OpenDisplay(string displayName)
+    {
+        if (!s_threadsInitialized)
+        {
+            throw new InvalidOperationException("Xlib thread support could not be initialized.");
+        }
+
+        return OpenDisplayNative(displayName);
     }
 
     /// <summary>
@@ -62,20 +105,24 @@ internal static partial class X11Input
     internal static void SendControlCharacter(string displayName, char character)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(displayName);
-        nint display = OpenDisplay(displayName);
-        if (display == 0)
+        lock (s_interopLock)
         {
-            throw new InvalidOperationException($"The X display is unavailable: {displayName}");
-        }
+            nint display = OpenDisplay(displayName);
+            if (display == 0)
+            {
+                throw new InvalidOperationException(
+                    $"The X display is unavailable: {displayName}");
+            }
 
-        try
-        {
-            SendControlCharacter(display, character);
-            _ = Flush(display);
-        }
-        finally
-        {
-            _ = CloseDisplay(display);
+            try
+            {
+                SendControlCharacter(display, character);
+                _ = Flush(display);
+            }
+            finally
+            {
+                _ = CloseDisplay(display);
+            }
         }
     }
 
@@ -91,21 +138,25 @@ internal static partial class X11Input
         char secondCharacter)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(displayName);
-        nint display = OpenDisplay(displayName);
-        if (display == 0)
+        lock (s_interopLock)
         {
-            throw new InvalidOperationException($"The X display is unavailable: {displayName}");
-        }
+            nint display = OpenDisplay(displayName);
+            if (display == 0)
+            {
+                throw new InvalidOperationException(
+                    $"The X display is unavailable: {displayName}");
+            }
 
-        try
-        {
-            SendControlCharacter(display, firstCharacter);
-            SendControlCharacter(display, secondCharacter);
-            _ = Flush(display);
-        }
-        finally
-        {
-            _ = CloseDisplay(display);
+            try
+            {
+                SendControlCharacter(display, firstCharacter);
+                SendControlCharacter(display, secondCharacter);
+                _ = Flush(display);
+            }
+            finally
+            {
+                _ = CloseDisplay(display);
+            }
         }
     }
 
@@ -116,27 +167,31 @@ internal static partial class X11Input
     internal static void SendF12(string displayName)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(displayName);
-        nint display = OpenDisplay(displayName);
-        if (display == 0)
+        lock (s_interopLock)
         {
-            throw new InvalidOperationException($"The X display is unavailable: {displayName}");
-        }
-
-        try
-        {
-            byte functionKey = KeySymToKeycode(display, F12KeySym);
-            if (functionKey == 0)
+            nint display = OpenDisplay(displayName);
+            if (display == 0)
             {
-                throw new InvalidOperationException("The X display cannot map F12.");
+                throw new InvalidOperationException(
+                    $"The X display is unavailable: {displayName}");
             }
 
-            SendKey(display, functionKey, isPressed: true);
-            SendKey(display, functionKey, isPressed: false);
-            _ = Flush(display);
-        }
-        finally
-        {
-            _ = CloseDisplay(display);
+            try
+            {
+                byte functionKey = KeySymToKeycode(display, F12KeySym);
+                if (functionKey == 0)
+                {
+                    throw new InvalidOperationException("The X display cannot map F12.");
+                }
+
+                SendKey(display, functionKey, isPressed: true);
+                SendKey(display, functionKey, isPressed: false);
+                _ = Flush(display);
+            }
+            finally
+            {
+                _ = CloseDisplay(display);
+            }
         }
     }
 
@@ -147,33 +202,38 @@ internal static partial class X11Input
     internal static void SendFindAllReferences(string displayName)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(displayName);
-        nint display = OpenDisplay(displayName);
-        if (display == 0)
+        lock (s_interopLock)
         {
-            throw new InvalidOperationException($"The X display is unavailable: {displayName}");
-        }
-
-        try
-        {
-            byte altKey = KeySymToKeycode(display, AltLeftKeySym);
-            byte shiftKey = KeySymToKeycode(display, ShiftLeftKeySym);
-            byte functionKey = KeySymToKeycode(display, F12KeySym);
-            if (altKey == 0 || shiftKey == 0 || functionKey == 0)
+            nint display = OpenDisplay(displayName);
+            if (display == 0)
             {
-                throw new InvalidOperationException("The X display cannot map Alt+Shift+F12.");
+                throw new InvalidOperationException(
+                    $"The X display is unavailable: {displayName}");
             }
 
-            SendKey(display, altKey, isPressed: true);
-            SendKey(display, shiftKey, isPressed: true);
-            SendKey(display, functionKey, isPressed: true);
-            SendKey(display, functionKey, isPressed: false);
-            SendKey(display, shiftKey, isPressed: false);
-            SendKey(display, altKey, isPressed: false);
-            _ = Flush(display);
-        }
-        finally
-        {
-            _ = CloseDisplay(display);
+            try
+            {
+                byte altKey = KeySymToKeycode(display, AltLeftKeySym);
+                byte shiftKey = KeySymToKeycode(display, ShiftLeftKeySym);
+                byte functionKey = KeySymToKeycode(display, F12KeySym);
+                if (altKey == 0 || shiftKey == 0 || functionKey == 0)
+                {
+                    throw new InvalidOperationException(
+                        "The X display cannot map Alt+Shift+F12.");
+                }
+
+                SendKey(display, altKey, isPressed: true);
+                SendKey(display, shiftKey, isPressed: true);
+                SendKey(display, functionKey, isPressed: true);
+                SendKey(display, functionKey, isPressed: false);
+                SendKey(display, shiftKey, isPressed: false);
+                SendKey(display, altKey, isPressed: false);
+                _ = Flush(display);
+            }
+            finally
+            {
+                _ = CloseDisplay(display);
+            }
         }
     }
 
@@ -315,8 +375,12 @@ internal static partial class X11Input
     }
 
     [DefaultDllImportSearchPaths(DllImportSearchPath.SafeDirectories)]
+    [LibraryImport("libX11.so.6", EntryPoint = "XInitThreads")]
+    private static partial int InitializeThreads();
+
+    [DefaultDllImportSearchPaths(DllImportSearchPath.SafeDirectories)]
     [LibraryImport("libX11.so.6", EntryPoint = "XOpenDisplay", StringMarshalling = StringMarshalling.Utf8)]
-    private static partial nint OpenDisplay(string displayName);
+    private static partial nint OpenDisplayNative(string displayName);
 
     [DefaultDllImportSearchPaths(DllImportSearchPath.SafeDirectories)]
     [LibraryImport("libX11.so.6", EntryPoint = "XCloseDisplay")]

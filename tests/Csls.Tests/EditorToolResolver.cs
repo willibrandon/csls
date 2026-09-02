@@ -163,6 +163,29 @@ internal static class EditorToolResolver
     }
 
     /// <summary>
+    /// Resolves the host NuGet package cache for nested editor processes.
+    /// </summary>
+    /// <returns>The absolute NuGet package cache path.</returns>
+    internal static string ResolveNuGetPackagesPath()
+    {
+        string? configuredPath = Environment.GetEnvironmentVariable("NUGET_PACKAGES");
+        if (!string.IsNullOrWhiteSpace(configuredPath))
+        {
+            return Path.GetFullPath(configuredPath);
+        }
+
+        string userProfilePath = Environment.GetFolderPath(
+            Environment.SpecialFolder.UserProfile);
+        if (string.IsNullOrWhiteSpace(userProfilePath))
+        {
+            throw new InvalidOperationException(
+                "The current user has no profile directory for the NuGet package cache.");
+        }
+
+        return Path.Join(userProfilePath, ".nuget", "packages");
+    }
+
+    /// <summary>
     /// Resolves a verified VS Code extension package provisioned for editor testing.
     /// </summary>
     /// <param name="repositoryRoot">The absolute repository root.</param>

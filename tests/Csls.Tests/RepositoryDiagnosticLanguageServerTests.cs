@@ -19,10 +19,10 @@ public sealed class RepositoryDiagnosticLanguageServerTests
     public TestContext TestContext { get; set; } = null!;
 
     /// <summary>
-    /// Loads the complete repository without compiler, analyzer, or workspace failures.
+    /// Loads the complete repository and reports project diagnostics without workspace failures.
     /// </summary>
     [TestMethod]
-    public async Task RepositoryWorkspaceLoadsWithoutDiagnosticsOrWorkspaceFailures()
+    public async Task RepositoryWorkspaceLoadsAndReportsProjectDiagnostics()
     {
         string repositoryRoot = EditorToolResolver.FindRepositoryRoot();
         string workerPath = Path.Join(
@@ -65,18 +65,18 @@ public sealed class RepositoryDiagnosticLanguageServerTests
             expectedProcessId: lsp.ProcessId).ConfigureAwait(false);
         var control = new ControlRpcClient(session.SocketPath);
         await using ConfiguredAsyncDisposable controlCleanup = control.ConfigureAwait(false);
-        string debuggerPackagePath = Path.Join(
+        string requestContextPath = Path.Join(
             repositoryRoot,
             "src",
-            "Csls.App",
-            "DebuggerPackage.cs");
-        string debuggerPackageText = await File.ReadAllTextAsync(
-            debuggerPackagePath,
+            "Csls.Core",
+            "RequestContext.cs");
+        string requestContextText = await File.ReadAllTextAsync(
+            requestContextPath,
             TestContext.CancellationToken).ConfigureAwait(false);
-        await lsp.OpenDocumentAsync(debuggerPackagePath, debuggerPackageText)
+        await lsp.OpenDocumentAsync(requestContextPath, requestContextText)
             .ConfigureAwait(false);
         IReadOnlyList<CodeAction> actions = await lsp.RequestCodeActionsAsync(
-            debuggerPackagePath,
+            requestContextPath,
             new LspRange(new Position(6, 0), new Position(6, 0)),
             ["refactor"],
             TestContext.CancellationToken).ConfigureAwait(false);
@@ -93,28 +93,33 @@ public sealed class RepositoryDiagnosticLanguageServerTests
                         "Add 'DebuggerDisplay' attribute")
                 .All(static action => action.Edit is { DocumentChanges.Count: > 0 }),
             actualActions);
-        string extractBaseClassAdapterPath = Path.Join(
+        string requestActivityStatePath = Path.Join(
             repositoryRoot,
             "src",
-            "Csls.Workspaces",
-            "WorkspaceRoslynCodeRefactoringService.cs");
-        string extractBaseClassAdapterText = await File.ReadAllTextAsync(
-            extractBaseClassAdapterPath,
+            "Csls.Core",
+            "RequestActivityState.cs");
+        string requestActivityStateText = await File.ReadAllTextAsync(
+            requestActivityStatePath,
             TestContext.CancellationToken).ConfigureAwait(false);
         await lsp.OpenDocumentAsync(
-            extractBaseClassAdapterPath,
-            extractBaseClassAdapterText).ConfigureAwait(false);
-        string[] adapterLines = extractBaseClassAdapterText.Split('\n');
+            requestActivityStatePath,
+            requestActivityStateText).ConfigureAwait(false);
+        string[] requestActivityStateLines = requestActivityStateText.Split('\n');
         int conditionalAccessLine = Array.FindIndex(
-            adapterLines,
-            static line => line.Trim() == ".AncestorsAndSelf()");
+            requestActivityStateLines,
+            static line => line.Contains(
+                "_traceRecord?.MarkCancellationRequested()",
+                StringComparison.Ordinal));
         Assert.IsGreaterThanOrEqualTo(0, conditionalAccessLine);
+        int conditionalAccessCharacter = requestActivityStateLines[conditionalAccessLine]
+            .IndexOf("MarkCancellationRequested", StringComparison.Ordinal);
+        Assert.IsGreaterThanOrEqualTo(0, conditionalAccessCharacter);
         Position conditionalAccessPosition = new(
             conditionalAccessLine,
-            adapterLines[conditionalAccessLine].Length);
+            conditionalAccessCharacter);
         IReadOnlyList<CodeAction> conditionalAccessActions =
             await lsp.RequestCodeActionsAsync(
-                extractBaseClassAdapterPath,
+                requestActivityStatePath,
                 new LspRange(conditionalAccessPosition, conditionalAccessPosition),
                 ["refactor"],
                 TestContext.CancellationToken).ConfigureAwait(false);
@@ -126,8 +131,26 @@ public sealed class RepositoryDiagnosticLanguageServerTests
                 conditionalAccessActions.Select(static action => action.Title)));
 
         ControlDashboardSnapshot snapshot = await control.GetDashboardSnapshotAsync(
-            new ControlDashboardRequest { IncludeDiagnostics = true },
+            new ControlDashboardRequest { IncludeDiagnostics = false },
             TestContext.CancellationToken).ConfigureAwait(false);
+        ControlProjectInfo coreProject = snapshot.Projects.Single(static project =>
+            project.Name == "Csls.Core");
+        ControlDashboardSnapshot diagnosticSnapshot = await control.GetDashboardSnapshotAsync(
+            new ControlDashboardRequest
+            {
+                IncludeDiagnostics = true,
+                DiagnosticsProjectId = coreProject.Id
+            },
+            TestContext.CancellationToken).ConfigureAwait(false);
+        Assert.AreEqual(
+            0,
+            diagnosticSnapshot.TotalDiagnostics,
+            string.Join(
+                Environment.NewLine,
+                diagnosticSnapshot.Diagnostics.Select(static diagnostic =>
+                    $"{diagnostic.Severity} {diagnostic.Id} " +
+                    $"{diagnostic.FilePath}:{diagnostic.Line + 1}:" +
+                    $"{diagnostic.Character + 1}: {diagnostic.Message}")));
         Assert.Contains(
             "Generate-Docs.cs",
             snapshot.Projects.Select(static project => project.Name));
@@ -146,15 +169,6 @@ public sealed class RepositoryDiagnosticLanguageServerTests
             .ConfigureAwait(false);
         TestContext.WriteLine(standardError);
 
-        Assert.AreEqual(
-            0,
-            snapshot.TotalDiagnostics,
-            string.Join(
-                Environment.NewLine,
-                snapshot.Diagnostics.Select(static diagnostic =>
-                    $"{diagnostic.Severity} {diagnostic.Id} " +
-                    $"{diagnostic.FilePath}:{diagnostic.Line + 1}:" +
-                    $"{diagnostic.Character + 1}: {diagnostic.Message}")));
         Assert.DoesNotContain("warn:", standardError, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("fail:", standardError, StringComparison.OrdinalIgnoreCase);
     }

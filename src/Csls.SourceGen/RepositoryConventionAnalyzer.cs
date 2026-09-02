@@ -5,7 +5,6 @@ using System;
 using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Linq;
-using System.Text.RegularExpressions;
 using System.Threading;
 
 namespace Csls.SourceGen;
@@ -62,11 +61,6 @@ public sealed class RepositoryConventionAnalyzer : DiagnosticAnalyzer
         DiagnosticSeverity.Error,
         isEnabledByDefault: true,
         description: "XML summary elements must use exactly three source lines.");
-
-    private static readonly Regex s_threeLineSummaryPattern = new(
-        @"(?m)^[ \t]*/// <summary>\r?\n[ \t]*/// [^\r\n]+\r?\n[ \t]*/// </summary>$",
-        RegexOptions.CultureInvariant,
-        TimeSpan.FromSeconds(1));
 
     private static readonly DiagnosticDescriptor s_staticFieldPrefixRule = new(
         StaticFieldPrefixDiagnosticId,
@@ -167,13 +161,51 @@ public sealed class RepositoryConventionAnalyzer : DiagnosticAnalyzer
 
         string source = syntaxReference.GetSyntax(context.CancellationToken).GetLeadingTrivia().ToFullString();
         if (source.Contains("<summary>", StringComparison.Ordinal) &&
-            !s_threeLineSummaryPattern.IsMatch(source))
+            !HasThreeLineSummary(source))
         {
             context.ReportDiagnostic(Diagnostic.Create(
                 s_threeLineSummaryRule,
                 symbol.Locations.FirstOrDefault(),
                 symbol.Name));
         }
+    }
+
+    private static bool HasThreeLineSummary(string source)
+    {
+        const string OpeningTag = "<summary>";
+        const string ClosingTag = "</summary>";
+        int openingTagIndex = source.IndexOf(OpeningTag, StringComparison.Ordinal);
+        int closingTagIndex = source.IndexOf(
+            ClosingTag,
+            openingTagIndex + OpeningTag.Length,
+            StringComparison.Ordinal);
+        if (closingTagIndex < 0)
+        {
+            return false;
+        }
+
+        int firstLineStart = source.LastIndexOf('\n', openingTagIndex) + 1;
+        int thirdLineEnd = source.IndexOf('\n', closingTagIndex + ClosingTag.Length);
+        if (thirdLineEnd < 0)
+        {
+            thirdLineEnd = source.Length;
+        }
+
+        string[] lines = source
+            .Substring(firstLineStart, thirdLineEnd - firstLineStart)
+            .Split(["\r\n", "\n"], StringSplitOptions.None);
+        if (lines.Length != 3)
+        {
+            return false;
+        }
+
+        string openingLine = lines[0].TrimStart(' ', '\t');
+        string textLine = lines[1].TrimStart(' ', '\t');
+        string closingLine = lines[2].TrimStart(' ', '\t');
+        return string.Equals(openingLine, $"/// {OpeningTag}", StringComparison.Ordinal) &&
+            textLine.StartsWith("/// ", StringComparison.Ordinal) &&
+            textLine.Length > "/// ".Length &&
+            string.Equals(closingLine, $"/// {ClosingTag}", StringComparison.Ordinal);
     }
 
     private static void AnalyzeStaticFieldName(

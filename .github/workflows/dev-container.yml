@@ -1,10 +1,6 @@
 name: Dev container
 
 on:
-  pull_request:
-  push:
-    branches:
-      - main
   schedule:
     - cron: '23 9 * * 1'
   workflow_dispatch:

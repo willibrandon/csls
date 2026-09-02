@@ -85,7 +85,7 @@ public sealed class VsCodeLanguageServerTests
                 TestContext.CancellationToken).ConfigureAwait(false);
             await File.WriteAllTextAsync(
                 settingsPath,
-                CreateSettingsText(debuggerPath),
+                CreateSettingsText(debuggerPath, EditorToolResolver.ResolveAbsoluteDotNetHost()),
                 TestContext.CancellationToken).ConfigureAwait(false);
             await File.WriteAllTextAsync(
                 Path.Join(workspacePath, "Fixture.slnx"),
@@ -245,7 +245,7 @@ public sealed class VsCodeLanguageServerTests
                 TestContext.CancellationToken).ConfigureAwait(false);
             await File.WriteAllTextAsync(
                 settingsPath,
-                CreateSettingsText(debuggerPath),
+                CreateSettingsText(debuggerPath, EditorToolResolver.ResolveAbsoluteDotNetHost()),
                 TestContext.CancellationToken).ConfigureAwait(false);
             string extensionPath = await VsCodeExtensionPackage.GetAsync(
                 repositoryRoot,
@@ -337,7 +337,7 @@ public sealed class VsCodeLanguageServerTests
                 TestContext.CancellationToken).ConfigureAwait(false);
             await File.WriteAllTextAsync(
                 settingsPath,
-                CreateSettingsText(debuggerPath),
+                CreateSettingsText(debuggerPath, EditorToolResolver.ResolveAbsoluteDotNetHost()),
                 TestContext.CancellationToken).ConfigureAwait(false);
             await File.WriteAllTextAsync(
                 Path.Join(sourceProjectPath, "Fixture.csproj"),
@@ -800,6 +800,8 @@ public sealed class VsCodeLanguageServerTests
         startInfo.Environment["CSLS_VSCODE_WORKSPACE_PATH"] = workspacePath;
         startInfo.Environment[ControlEndpoint.SocketDirectoryEnvironmentVariable] =
             socketDirectory;
+        startInfo.Environment["NUGET_PACKAGES"] =
+            EditorToolResolver.ResolveNuGetPackagesPath();
         if (localSuite is not null)
         {
             startInfo.Environment["CSLS_VSCODE_SUITE"] = localSuite;
@@ -845,11 +847,13 @@ public sealed class VsCodeLanguageServerTests
         }
     }
 
-    private static string CreateSettingsText(string debuggerPath) => $$"""
+    private static string CreateSettingsText(string debuggerPath, string dotNetHostPath) => $$"""
         {
           "chat.disableAIFeatures": true,
           "csls.debugger.path": {{JsonSerializer.Serialize(debuggerPath)}},
           "csls.diagnostics.reportInformationAsHint": false,
+          "dotnetAcquisitionExtension.allowInvalidPaths": true,
+          "dotnetAcquisitionExtension.sharedExistingDotnetPath": {{JsonSerializer.Serialize(dotNetHostPath)}},
           "telemetry.telemetryLevel": "off",
           "workbench.enableExperiments": false,
           "workbench.colorTheme": "csls Theme Without Semantic Highlighting",

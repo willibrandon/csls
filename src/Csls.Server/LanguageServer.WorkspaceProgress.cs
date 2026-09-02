@@ -1,3 +1,4 @@
+using Csls.Core;
 using Csls.Protocol;
 using Csls.Workspaces;
 using System.Runtime.ExceptionServices;
@@ -8,12 +9,16 @@ namespace Csls.Server;
 
 public sealed partial class LanguageServer
 {
-    private async Task LoadWorkspaceWithProgressAsync(CancellationToken cancellationToken)
+    private async Task LoadWorkspaceWithProgressAsync(
+        bool progressive,
+        CancellationToken cancellationToken)
     {
         if (!_supportsWorkDoneProgress)
         {
-            await _workspaceManager.LoadAsync(_rootPaths, cancellationToken)
-                .ConfigureAwait(false);
+            await LoadWorkspaceAsync(
+                progress: null,
+                progressive,
+                cancellationToken).ConfigureAwait(false);
             return;
         }
 
@@ -51,10 +56,8 @@ public sealed partial class LanguageServer
         Exception? failure = null;
         try
         {
-            await _workspaceManager.LoadAsync(
-                _rootPaths,
-                progress,
-                cancellationToken).ConfigureAwait(false);
+            await LoadWorkspaceAsync(progress, progressive, cancellationToken)
+                .ConfigureAwait(false);
         }
         catch (Exception exception) when (IsExpectedWorkspaceProgressFailure(exception))
         {
@@ -105,6 +108,37 @@ public sealed partial class LanguageServer
         {
             ExceptionDispatchInfo.Capture(failure).Throw();
         }
+    }
+
+    private async Task LoadWorkspaceAsync(
+        IProgress<WorkspaceLoadProgress>? progress,
+        bool progressive,
+        CancellationToken cancellationToken)
+    {
+        if (progressive)
+        {
+            _ = await _workspaceManager.LoadProgressivelyAsync(
+                _rootPaths,
+                progress,
+                PublishProgressiveWorkspaceAsync,
+                cancellationToken).ConfigureAwait(false);
+            return;
+        }
+
+        await _workspaceManager.LoadAsync(_rootPaths, progress, cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    private Task<bool> PublishProgressiveWorkspaceAsync(
+        Func<CancellationToken, Task<bool>> publishAsync,
+        CancellationToken cancellationToken)
+    {
+        return _scheduler.ScheduleAsync(
+            "workspace/publish",
+            RequestMode.ReadWrite,
+            () => _workspaceManager.Generation,
+            context => new ValueTask<bool>(publishAsync(context.CancellationToken)),
+            cancellationToken);
     }
 
     private async Task<int> ForwardWorkspaceLoadProgressAsync(

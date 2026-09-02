@@ -82,6 +82,26 @@ public sealed class RepositoryConventionAnalyzerTests
     }
 
     /// <summary>
+    /// Reports a large malformed summary without failing the analyzer process.
+    /// </summary>
+    [TestMethod]
+    public async Task ReportsLargeMalformedSummaryWithoutAnalyzerFailure()
+    {
+        string source = $$"""
+            /// <summary>
+            /// {{new string('x', 1_000_000)}}
+            /// Represents an extra summary line.
+            /// </summary>
+            internal sealed class DocumentedType;
+            """;
+
+        ImmutableArray<Diagnostic> diagnostics = await AnalyzeAsync(source).ConfigureAwait(false);
+
+        Diagnostic diagnostic = Assert.ContainsSingle(diagnostics);
+        Assert.AreEqual(RepositoryConventionAnalyzer.ThreeLineSummaryDiagnosticId, diagnostic.Id);
+    }
+
+    /// <summary>
     /// Verifies incorrectly named private static fields fail the real analyzer compilation.
     /// </summary>
     [TestMethod]

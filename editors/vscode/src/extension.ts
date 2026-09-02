@@ -32,6 +32,7 @@ export interface CslsExtensionApi {
   readonly sdkPath: string;
   readonly serverPath: string;
   readonly state: State;
+  readonly refreshTests: () => Promise<void>;
   readonly testErrors: () => readonly string[];
   readonly tests: () => readonly string[];
 }
@@ -99,6 +100,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<CslsEx
     sdkPath,
     serverPath,
     state: client.state,
+    refreshTests: () => workspaceExperience?.refreshTests() ?? Promise.resolve(),
     testErrors: () => workspaceExperience?.getTestErrors() ?? [],
     tests: () => workspaceExperience?.getTestNames() ?? [],
   };

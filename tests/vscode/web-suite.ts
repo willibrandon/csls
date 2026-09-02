@@ -198,6 +198,7 @@ async function assertSolutionExperience(
       readonly name: string;
       readonly path: string;
     }[];
+    readonly refreshTests?: () => Promise<void>;
     readonly tests?: () => readonly string[];
     readonly testErrors?: () => readonly string[];
   },
@@ -207,9 +208,16 @@ async function assertSolutionExperience(
   assert(typeof api.projects === "function", "The desktop extension must expose loaded projects.");
   const project = api.projects().find((candidate) => candidate.name === "Fixture");
   assert(project !== undefined, "The Solution view must contain the Roslyn-loaded Fixture project.");
+  assert(typeof api.refreshTests === "function", "The desktop extension must expose test refresh.");
   assert(typeof api.tests === "function", "The desktop extension must expose discovered tests.");
-  await waitUntil(
-    () => api.tests?.().includes("RunsFromVsCode") === true,
+  await api.refreshTests();
+  const testErrors = api.testErrors?.() ?? [];
+  assert(
+    testErrors.length === 0,
+    `Microsoft Testing Platform discovery failed: ${testErrors.join("\n")}`,
+  );
+  assert(
+    api.tests().includes("RunsFromVsCode"),
     "The Testing view did not discover the real Microsoft Testing Platform test.",
   );
   const normalDiscoveryTarget = vscode.Uri.joinPath(
@@ -957,6 +965,7 @@ function isExtensionApi(value: unknown): value is {
   readonly sdkPath?: string;
   readonly serverPath?: string;
   readonly state: number;
+  readonly refreshTests?: () => Promise<void>;
   readonly testErrors?: () => readonly string[];
   readonly tests?: () => readonly string[];
 } {
