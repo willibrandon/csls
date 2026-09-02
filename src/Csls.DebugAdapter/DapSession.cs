@@ -311,6 +311,12 @@ internal sealed class DapSession : IDebuggerSessionObserver, IAsyncDisposable
             case "stackTrace":
                 await WriteStackTraceAsync(request, cancellationToken).ConfigureAwait(false);
                 break;
+            case "scopes":
+                await WriteScopesAsync(request, cancellationToken).ConfigureAwait(false);
+                break;
+            case "variables":
+                await WriteVariablesAsync(request, cancellationToken).ConfigureAwait(false);
+                break;
             case "disconnect":
                 await DisconnectAsync(request, cancellationToken).ConfigureAwait(false);
                 break;
@@ -352,6 +358,7 @@ internal sealed class DapSession : IDebuggerSessionObserver, IAsyncDisposable
             {
                 writer.WriteStartObject();
                 writer.WriteBoolean("supportsConfigurationDoneRequest", true);
+                writer.WriteBoolean("supportsVariablePaging", true);
                 writer.WriteEndObject();
             },
             cancellationToken).ConfigureAwait(false);
@@ -630,6 +637,110 @@ internal sealed class DapSession : IDebuggerSessionObserver, IAsyncDisposable
         }
     }
 
+    private async ValueTask WriteScopesAsync(
+        Request request,
+        CancellationToken cancellationToken)
+    {
+        if (_state != DapSessionState.Stopped)
+        {
+            await WriteStateFailureAsync(request, cancellationToken).ConfigureAwait(false);
+            return;
+        }
+
+        try
+        {
+            int frameId = GetRequiredInteger(request.Arguments, "frameId", "scopes");
+            IReadOnlyList<DebugScopeInfo> scopes = await _engineSession
+                .GetScopesAsync(frameId, cancellationToken)
+                .ConfigureAwait(false);
+            await _writer.WriteResponseAsync(
+                request,
+                success: true,
+                message: null,
+                writer =>
+                {
+                    writer.WriteStartObject();
+                    writer.WriteStartArray("scopes");
+                    foreach (DebugScopeInfo scope in scopes)
+                    {
+                        writer.WriteStartObject();
+                        writer.WriteString("name", scope.Name);
+                        writer.WriteNumber("variablesReference", scope.VariablesReference);
+                        writer.WriteBoolean("expensive", scope.Expensive);
+                        writer.WriteEndObject();
+                    }
+
+                    writer.WriteEndArray();
+                    writer.WriteEndObject();
+                },
+                cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception exception) when (
+            exception is ArgumentException or InvalidOperationException)
+        {
+            await WriteRequestFailureAsync(request, exception.Message, cancellationToken)
+                .ConfigureAwait(false);
+        }
+    }
+
+    private async ValueTask WriteVariablesAsync(
+        Request request,
+        CancellationToken cancellationToken)
+    {
+        if (_state != DapSessionState.Stopped)
+        {
+            await WriteStateFailureAsync(request, cancellationToken).ConfigureAwait(false);
+            return;
+        }
+
+        try
+        {
+            JsonElement arguments = request.Arguments;
+            int variablesReference = GetRequiredInteger(
+                arguments,
+                "variablesReference",
+                "variables");
+            int start = GetOptionalNonNegativeInteger(arguments, "start");
+            int count = GetOptionalNonNegativeInteger(arguments, "count");
+            IReadOnlyList<DebugVariableInfo> variables = await _engineSession
+                .GetVariablesAsync(
+                    variablesReference,
+                    start,
+                    count,
+                    cancellationToken)
+                .ConfigureAwait(false);
+            await _writer.WriteResponseAsync(
+                request,
+                success: true,
+                message: null,
+                writer =>
+                {
+                    writer.WriteStartObject();
+                    writer.WriteStartArray("variables");
+                    foreach (DebugVariableInfo variable in variables)
+                    {
+                        writer.WriteStartObject();
+                        writer.WriteString("name", variable.Name);
+                        writer.WriteString("value", variable.Value);
+                        writer.WriteString("type", variable.Type);
+                        writer.WriteNumber("variablesReference", variable.VariablesReference);
+                        writer.WriteEndObject();
+                    }
+
+                    writer.WriteEndArray();
+                    writer.WriteEndObject();
+                },
+                cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception exception) when (
+            exception is ArgumentException or InvalidOperationException or
+            IOException or UnauthorizedAccessException or BadImageFormatException)
+        {
+            await WriteRequestFailureAsync(request, exception.Message, cancellationToken)
+                .ConfigureAwait(false);
+        }
+    }
+
     private static int GetOptionalNonNegativeInteger(
         JsonElement arguments,
         string propertyName)
@@ -647,6 +758,33 @@ internal sealed class DapSession : IDebuggerSessionObserver, IAsyncDisposable
 
         return result;
     }
+
+    private static int GetRequiredInteger(
+        JsonElement arguments,
+        string propertyName,
+        string requestName)
+    {
+        if (arguments.ValueKind != JsonValueKind.Object ||
+            !arguments.TryGetProperty(propertyName, out JsonElement value) ||
+            !value.TryGetInt32(out int result))
+        {
+            throw new ArgumentException(
+                $"The {requestName} request requires an integer {propertyName}.");
+        }
+
+        return result;
+    }
+
+    private ValueTask WriteRequestFailureAsync(
+        Request request,
+        string message,
+        CancellationToken cancellationToken) =>
+        _writer.WriteResponseAsync(
+            request,
+            success: false,
+            message,
+            writeBody: null,
+            cancellationToken);
 
     private async ValueTask DisconnectAsync(
         Request request,

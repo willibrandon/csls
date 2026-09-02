@@ -1,5 +1,11 @@
+using Csls.TestProcessHost;
 using System.Diagnostics;
 using System.Globalization;
+
+if (args is ["--debugger-fixture", string fixturePath])
+{
+    return DebuggerFixture.WaitForSignal(fixturePath, "ready", 42, "answer");
+}
 
 if (args is ["--print-environment-and-exit", string printedVariable, string exitCode])
 {

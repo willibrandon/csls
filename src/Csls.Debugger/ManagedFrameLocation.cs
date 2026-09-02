@@ -24,4 +24,9 @@ internal sealed class ManagedFrameLocation
     /// Gets or initializes the one-based source column, or zero when unavailable.
     /// </summary>
     internal int Column { get; init; }
+
+    /// <summary>
+    /// Gets or initializes the loaded module path used for metadata lookup.
+    /// </summary>
+    internal string? ModulePath { get; init; }
 }

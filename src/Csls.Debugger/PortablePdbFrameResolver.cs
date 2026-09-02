@@ -98,7 +98,7 @@ internal static class PortablePdbFrameResolver
         string pdbPath = Path.ChangeExtension(modulePath, ".pdb");
         if (!File.Exists(pdbPath))
         {
-            return Unknown(displayName);
+            return Unknown(displayName, modulePath);
         }
 
         using FileStream pdbStream = File.OpenRead(pdbPath);
@@ -127,13 +127,14 @@ internal static class PortablePdbFrameResolver
 
         if (selected is null)
         {
-            return Unknown(displayName);
+            return Unknown(displayName, modulePath);
         }
 
         Document document = pdb.GetDocument(selected.Value.Document);
         return new ManagedFrameLocation
         {
             Name = displayName,
+            ModulePath = modulePath,
             SourcePath = pdb.GetString(document.Name),
             Line = selected.Value.StartLine,
             Column = selected.Value.StartColumn
@@ -173,10 +174,11 @@ internal static class PortablePdbFrameResolver
         return new string(buffer, 0, length);
     }
 
-    private static ManagedFrameLocation Unknown(string name) =>
+    private static ManagedFrameLocation Unknown(string name, string? modulePath = null) =>
         new()
         {
             Name = name,
+            ModulePath = modulePath,
             Line = 0,
             Column = 0
         };

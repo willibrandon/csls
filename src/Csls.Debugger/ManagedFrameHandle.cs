@@ -21,4 +21,19 @@ internal sealed class ManagedFrameHandle
     /// Gets or initializes the owned ICorDebugFrame pointer.
     /// </summary>
     internal required nint Pointer { get; init; }
+
+    /// <summary>
+    /// Gets or initializes the method-definition metadata token when available.
+    /// </summary>
+    internal required uint MethodToken { get; init; }
+
+    /// <summary>
+    /// Gets or initializes the current IL instruction offset when available.
+    /// </summary>
+    internal required uint IlOffset { get; init; }
+
+    /// <summary>
+    /// Gets or initializes the loaded module path when available.
+    /// </summary>
+    internal string? ModulePath { get; init; }
 }

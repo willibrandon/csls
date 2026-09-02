@@ -208,6 +208,74 @@ public sealed class DebuggerSession : IAsyncDisposable
         return result!;
     }
 
+    /// <summary>
+    /// Gets runtime-backed scopes for a frame in the current stop generation.
+    /// </summary>
+    /// <param name="frameId">The generation-bound managed frame handle.</param>
+    /// <param name="cancellationToken">Cancels queueing scope creation.</param>
+    /// <returns>The frame's available variable scopes.</returns>
+    public async Task<IReadOnlyList<DebugScopeInfo>> GetScopesAsync(
+        int frameId,
+        CancellationToken cancellationToken)
+    {
+        ObjectDisposedException.ThrowIf(_disposed != 0, this);
+        IReadOnlyList<DebugScopeInfo>? result = null;
+        await _actor.InvokeAsync(
+            token =>
+            {
+                _ = token;
+                if (_state != DebugSessionState.Stopped ||
+                    _debuggee is not CorDebugDebuggee managedDebuggee)
+                {
+                    throw new InvalidOperationException(
+                        $"Managed scopes are unavailable while the debugger session is {_state}.");
+                }
+
+                result = managedDebuggee.GetScopes(frameId, _stopGeneration);
+                return ValueTask.CompletedTask;
+            },
+            cancellationToken).ConfigureAwait(false);
+        return result!;
+    }
+
+    /// <summary>
+    /// Gets one page of immediate variables from a current-generation scope.
+    /// </summary>
+    /// <param name="variablesReference">The generation-bound variable-container handle.</param>
+    /// <param name="start">The zero-based first variable to return.</param>
+    /// <param name="count">The maximum count, or zero for all remaining values.</param>
+    /// <param name="cancellationToken">Cancels queueing variable enumeration.</param>
+    /// <returns>The requested immediate variable page.</returns>
+    public async Task<IReadOnlyList<DebugVariableInfo>> GetVariablesAsync(
+        int variablesReference,
+        int start,
+        int count,
+        CancellationToken cancellationToken)
+    {
+        ObjectDisposedException.ThrowIf(_disposed != 0, this);
+        IReadOnlyList<DebugVariableInfo>? result = null;
+        await _actor.InvokeAsync(
+            token =>
+            {
+                _ = token;
+                if (_state != DebugSessionState.Stopped ||
+                    _debuggee is not CorDebugDebuggee managedDebuggee)
+                {
+                    throw new InvalidOperationException(
+                        $"Managed variables are unavailable while the debugger session is {_state}.");
+                }
+
+                result = managedDebuggee.GetVariables(
+                    variablesReference,
+                    _stopGeneration,
+                    start,
+                    count);
+                return ValueTask.CompletedTask;
+            },
+            cancellationToken).ConfigureAwait(false);
+        return result!;
+    }
+
     /// <inheritdoc />
     public async ValueTask DisposeAsync()
     {

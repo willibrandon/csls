@@ -35,7 +35,8 @@ public sealed class DapSessionTests
         AssertResponse(initialize.RootElement, initializeSequence, "initialize", success: true);
         JsonElement capabilities = initialize.RootElement.GetProperty("body");
         Assert.IsTrue(capabilities.GetProperty("supportsConfigurationDoneRequest").GetBoolean());
-        Assert.HasCount(1, capabilities.EnumerateObject().ToArray());
+        Assert.IsTrue(capabilities.GetProperty("supportsVariablePaging").GetBoolean());
+        Assert.HasCount(2, capabilities.EnumerateObject().ToArray());
 
         string processHost = ResolveTestProcessHost();
         int launchSequence = await client.SendRequestAsync(
@@ -202,7 +203,7 @@ public sealed class DapSessionTests
                 writer => WriteLaunchArguments(
                     writer,
                     ResolveTestProcessHost(),
-                    ["--announce-and-spin-until-file", waitPath],
+                    ["--debugger-fixture", waitPath],
                     wait: true,
                     noDebug: false),
                 TestContext.CancellationToken).ConfigureAwait(false);
@@ -266,7 +267,7 @@ public sealed class DapSessionTests
                 threadItems.Length,
                 threadItems.Select(thread => thread.GetProperty("id").GetInt32()).Distinct().ToArray());
 
-            bool foundFixtureSource = false;
+            int fixtureFrameId = 0;
             foreach (JsonElement thread in threadItems)
             {
                 int threadId = thread.GetProperty("id").GetInt32();
@@ -292,20 +293,88 @@ public sealed class DapSessionTests
                 Assert.IsGreaterThanOrEqualTo(
                     frames.Length,
                     stack.RootElement.GetProperty("body").GetProperty("totalFrames").GetInt32());
-                foundFixtureSource = frames.Any(frame =>
+                JsonElement fixtureFrame = frames.FirstOrDefault(frame =>
                     frame.TryGetProperty("source", out JsonElement source) &&
                     source.GetProperty("path").GetString() is string path &&
                     path.EndsWith(
-                        Path.Join("tests", "Csls.TestProcessHost", "Program.cs"),
+                        Path.Join("tests", "Csls.TestProcessHost", "DebuggerFixture.cs"),
                         StringComparison.Ordinal) &&
                     frame.GetProperty("line").GetInt32() > 0);
-                if (foundFixtureSource)
+                if (fixtureFrame.ValueKind != JsonValueKind.Undefined)
                 {
+                    fixtureFrameId = fixtureFrame.GetProperty("id").GetInt32();
                     break;
                 }
             }
 
-            Assert.IsTrue(foundFixtureSource, "No managed stack frame resolved to the fixture source.");
+            Assert.IsGreaterThan(0, fixtureFrameId, "No managed stack frame resolved to the fixture source.");
+
+            int scopesSequence = await client.SendRequestAsync(
+                "scopes",
+                writer =>
+                {
+                    writer.WriteStartObject();
+                    writer.WriteNumber("frameId", fixtureFrameId);
+                    writer.WriteEndObject();
+                },
+                TestContext.CancellationToken).ConfigureAwait(false);
+            using JsonDocument scopes = await client
+                .ReadMessageAsync(TestContext.CancellationToken)
+                .ConfigureAwait(false);
+            AssertResponse(scopes.RootElement, scopesSequence, "scopes", success: true);
+            JsonElement[] scopeItems = [.. scopes.RootElement
+                .GetProperty("body")
+                .GetProperty("scopes")
+                .EnumerateArray()];
+            Assert.HasCount(2, scopeItems);
+            int staleVariablesReference = scopeItems[0]
+                .GetProperty("variablesReference")
+                .GetInt32();
+
+            Dictionary<string, JsonElement[]> variablesByScope = new(StringComparer.Ordinal);
+            foreach (JsonElement scope in scopeItems)
+            {
+                int reference = scope.GetProperty("variablesReference").GetInt32();
+                int variablesSequence = await client.SendRequestAsync(
+                    "variables",
+                    writer =>
+                    {
+                        writer.WriteStartObject();
+                        writer.WriteNumber("variablesReference", reference);
+                        writer.WriteEndObject();
+                    },
+                    TestContext.CancellationToken).ConfigureAwait(false);
+                using JsonDocument variables = await client
+                    .ReadMessageAsync(TestContext.CancellationToken)
+                    .ConfigureAwait(false);
+                AssertResponse(variables.RootElement, variablesSequence, "variables", success: true);
+                variablesByScope.Add(
+                    scope.GetProperty("name").GetString()!,
+                    [.. variables.RootElement
+                        .GetProperty("body")
+                        .GetProperty("variables")
+                        .EnumerateArray()
+                        .Select(variable => variable.Clone())]);
+            }
+
+            JsonElement[] arguments = variablesByScope["Arguments"];
+            Dictionary<string, JsonElement> argumentsByName = arguments.ToDictionary(
+                variable => variable.GetProperty("name").GetString()!,
+                StringComparer.Ordinal);
+            Assert.AreEqual("42", argumentsByName["number"].GetProperty("value").GetString());
+            Assert.AreEqual("int", argumentsByName["number"].GetProperty("type").GetString());
+            Assert.AreEqual(
+                "\"answer\"",
+                argumentsByName["text"].GetProperty("value").GetString());
+            Assert.AreEqual("string", argumentsByName["text"].GetProperty("type").GetString());
+            JsonElement[] locals = variablesByScope["Locals"];
+            Dictionary<string, JsonElement> localsByName = locals.ToDictionary(
+                variable => variable.GetProperty("name").GetString()!,
+                StringComparer.Ordinal);
+            Assert.AreEqual("43", localsByName["localNumber"].GetProperty("value").GetString());
+            Assert.AreEqual(
+                "\"answer!\"",
+                localsByName["localText"].GetProperty("value").GetString());
 
             int continueSequence = await client.SendRequestAsync(
                 "continue",
@@ -321,6 +390,58 @@ public sealed class DapSessionTests
             AssertResponse(
                 continueResponse.RootElement,
                 continueSequence,
+                "continue",
+                success: true);
+
+            int secondPauseSequence = await client.SendRequestAsync(
+                "pause",
+                WriteEmptyObject,
+                TestContext.CancellationToken).ConfigureAwait(false);
+            using JsonDocument secondStopped = await client
+                .ReadMessageAsync(TestContext.CancellationToken)
+                .ConfigureAwait(false);
+            AssertEvent(secondStopped.RootElement, "stopped");
+            using JsonDocument secondPause = await client
+                .ReadMessageAsync(TestContext.CancellationToken)
+                .ConfigureAwait(false);
+            AssertResponse(secondPause.RootElement, secondPauseSequence, "pause", success: true);
+
+            int staleVariablesSequence = await client.SendRequestAsync(
+                "variables",
+                writer =>
+                {
+                    writer.WriteStartObject();
+                    writer.WriteNumber("variablesReference", staleVariablesReference);
+                    writer.WriteEndObject();
+                },
+                TestContext.CancellationToken).ConfigureAwait(false);
+            using JsonDocument staleVariables = await client
+                .ReadMessageAsync(TestContext.CancellationToken)
+                .ConfigureAwait(false);
+            AssertResponse(
+                staleVariables.RootElement,
+                staleVariablesSequence,
+                "variables",
+                success: false);
+            Assert.Contains(
+                "stale",
+                staleVariables.RootElement.GetProperty("message").GetString()!,
+                StringComparison.OrdinalIgnoreCase);
+
+            int secondContinueSequence = await client.SendRequestAsync(
+                "continue",
+                WriteEmptyObject,
+                TestContext.CancellationToken).ConfigureAwait(false);
+            using JsonDocument secondContinued = await client
+                .ReadMessageAsync(TestContext.CancellationToken)
+                .ConfigureAwait(false);
+            AssertEvent(secondContinued.RootElement, "continued");
+            using JsonDocument secondContinue = await client
+                .ReadMessageAsync(TestContext.CancellationToken)
+                .ConfigureAwait(false);
+            AssertResponse(
+                secondContinue.RootElement,
+                secondContinueSequence,
                 "continue",
                 success: true);
 
