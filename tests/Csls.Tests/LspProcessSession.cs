@@ -547,6 +547,33 @@ internal sealed class LspProcessSession : IAsyncDisposable
             cancellationToken);
 
     /// <summary>
+    /// Requests Roslyn project contexts for one opened test document.
+    /// </summary>
+    /// <param name="documentPath">The absolute document path.</param>
+    /// <param name="cancellationToken">The test cancellation token.</param>
+    /// <returns>The optional Roslyn project-context response.</returns>
+    internal async Task<JsonElement?> RequestRoslynProjectContextsAsync(
+        string documentPath,
+        CancellationToken cancellationToken)
+    {
+        string documentUri = JsonEncodedText
+            .Encode(DocumentUri.FromFileSystemPath(documentPath).ToString())
+            .ToString();
+        using var parameters = JsonDocument.Parse(
+            $$"""
+            {
+              "_vs_textDocument": {
+                "uri": "{{documentUri}}"
+              }
+            }
+            """);
+        return await _rpc.InvokeWithParameterObjectAsync<JsonElement?>(
+            "textDocument/_vs_getProjectContexts",
+            parameters.RootElement,
+            cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
     /// Applies ordered incremental or full-text changes to an opened test document.
     /// </summary>
     /// <param name="documentPath">The absolute changed document path.</param>

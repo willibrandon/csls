@@ -535,6 +535,79 @@ internal static class ScriptSupport
     }
 
     /// <summary>
+    /// Installs or updates a .NET tool from its current package release channel.
+    /// </summary>
+    /// <param name="toolsRoot">The repository tool artifact root.</param>
+    /// <param name="toolName">The stable tool directory name.</param>
+    /// <param name="packageId">The NuGet tool package identifier.</param>
+    /// <param name="platform">The stable target platform name.</param>
+    /// <param name="commandName">The installed .NET tool command name.</param>
+    /// <param name="includePrerelease">Whether prerelease packages participate in resolution.</param>
+    /// <param name="versionArguments">Arguments used to query the tool version.</param>
+    /// <param name="cancellationToken">The operation cancellation token.</param>
+    /// <returns>The absolute provisioned executable path.</returns>
+    internal static async Task<string> ProvisionCurrentDotNetToolAsync(
+        string toolsRoot,
+        string toolName,
+        string packageId,
+        string platform,
+        string commandName,
+        bool includePrerelease,
+        IReadOnlyList<string> versionArguments,
+        CancellationToken cancellationToken)
+    {
+        string installationPath = Path.Join(toolsRoot, toolName, "current", platform);
+        Directory.CreateDirectory(installationPath);
+        string executablePath = Path.Join(
+            installationPath,
+            OperatingSystem.IsWindows() ? $"{commandName}.exe" : commandName);
+        string command = File.Exists(executablePath) ? "update" : "install";
+        var startInfo = new ProcessStartInfo
+        {
+            FileName = Environment.GetEnvironmentVariable("DOTNET_HOST_PATH") ?? "dotnet",
+            RedirectStandardError = true,
+            RedirectStandardOutput = true,
+            UseShellExecute = false
+        };
+        foreach (string argument in new[]
+        {
+            "tool",
+            command,
+            packageId,
+            "--tool-path",
+            installationPath
+        })
+        {
+            startInfo.ArgumentList.Add(argument);
+        }
+
+        if (includePrerelease)
+        {
+            startInfo.ArgumentList.Add("--prerelease");
+        }
+
+        using Process process = Process.Start(startInfo)
+            ?? throw new InvalidOperationException("The .NET tool installer did not start.");
+        Task<string> standardOutputTask = process.StandardOutput.ReadToEndAsync(cancellationToken);
+        Task<string> standardErrorTask = process.StandardError.ReadToEndAsync(cancellationToken);
+        await process.WaitForExitAsync(cancellationToken).ConfigureAwait(false);
+        string output = await standardOutputTask.ConfigureAwait(false) +
+            await standardErrorTask.ConfigureAwait(false);
+        if (process.ExitCode != 0)
+        {
+            throw new InvalidDataException(
+                $"{packageId} {command} failed with exit code {process.ExitCode}: {output.Trim()}");
+        }
+
+        await VerifyToolAsync(
+            executablePath,
+            versionArguments,
+            expectedText: null,
+            cancellationToken).ConfigureAwait(false);
+        return executablePath;
+    }
+
+    /// <summary>
     /// Provisions and validates an archive-distributed development tool release.
     /// </summary>
     /// <param name="toolsRoot">The repository tool artifact root.</param>

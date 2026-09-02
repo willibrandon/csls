@@ -146,6 +146,7 @@ try
     [
         "Provision-Actionlint.cs",
         "Provision-CsharpLsOracle.cs",
+        "Provision-RoslynLanguageServerOracle.cs",
         "Provision-LegacyBuildHost.cs",
         "Provision-Fresh.cs",
         "Provision-Emacs.cs",

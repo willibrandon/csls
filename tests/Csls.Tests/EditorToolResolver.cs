@@ -440,6 +440,20 @@ internal static class EditorToolResolver
         GetPlatform(allowWindowsArm64: true, detectMusl: false),
         OperatingSystem.IsWindows() ? "csharp-ls.exe" : "csharp-ls");
 
+    /// <summary>
+    /// Resolves the current upstream Roslyn language-server executable used as a parity oracle.
+    /// </summary>
+    /// <param name="repositoryRoot">The absolute repository root.</param>
+    /// <returns>The absolute provisioned oracle path.</returns>
+    internal static string ResolveRoslynLanguageServerOracle(string repositoryRoot) => Resolve(
+        repositoryRoot,
+        "CSLS_ROSLYN_LANGUAGE_SERVER_ORACLE_PATH",
+        "roslyn-language-server-oracle",
+        GetPlatform(allowWindowsArm64: true, detectMusl: false),
+        OperatingSystem.IsWindows()
+            ? "roslyn-language-server.exe"
+            : "roslyn-language-server");
+
     private static string Resolve(
         string repositoryRoot,
         string environmentVariable,
@@ -487,6 +501,7 @@ internal static class EditorToolResolver
         "fresh" => "Fresh",
         "helix" => "Helix",
         "neovim" => "Neovim",
+        "roslyn-language-server-oracle" => "RoslynLanguageServerOracle",
         "zed" => "Zed",
         _ => throw new ArgumentOutOfRangeException(nameof(toolName), toolName, null)
     };
