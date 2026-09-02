@@ -4,22 +4,25 @@ public sealed partial class LanguageServer
 {
     private const int CodeLensRefreshDelayMilliseconds = 200;
     private readonly Lock _codeLensRefreshGate = new();
+    private readonly CancellationTokenSource _codeLensRefreshSource = new();
     private readonly Dictionary<long, Task> _codeLensRefreshTasks = [];
     private long _codeLensRefreshOrdinal;
 
     private void QueueCodeLensRefresh()
     {
-        if (!_supportsCodeLensRefresh || Volatile.Read(ref _disposeState) != 0)
-        {
-            return;
-        }
-
-        long ordinal = Interlocked.Increment(ref _codeLensRefreshOrdinal);
         lock (_codeLensRefreshGate)
         {
+            if (!_supportsCodeLensRefresh || Volatile.Read(ref _disposeState) != 0)
+            {
+                return;
+            }
+
+            long ordinal = Interlocked.Increment(ref _codeLensRefreshOrdinal);
             _codeLensRefreshTasks.Add(
                 ordinal,
-                RefreshCodeLensesAfterDelayAsync(ordinal, _exitSource.Token));
+                RefreshCodeLensesAfterDelayAsync(
+                    ordinal,
+                    _codeLensRefreshSource.Token));
         }
     }
 
@@ -60,6 +63,7 @@ public sealed partial class LanguageServer
     private async Task StopCodeLensRefreshAsync()
     {
         _ = Interlocked.Increment(ref _codeLensRefreshOrdinal);
+        await _codeLensRefreshSource.CancelAsync().ConfigureAwait(false);
         Task[] tasks;
         lock (_codeLensRefreshGate)
         {
@@ -67,5 +71,6 @@ public sealed partial class LanguageServer
         }
 
         await Task.WhenAll(tasks).ConfigureAwait(false);
+        _codeLensRefreshSource.Dispose();
     }
 }
