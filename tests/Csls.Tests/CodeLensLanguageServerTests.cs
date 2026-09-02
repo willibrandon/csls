@@ -3,6 +3,7 @@ using StreamJsonRpc;
 using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.Json;
+using LspRange = Csls.Protocol.Range;
 
 namespace Csls.Tests;
 
@@ -263,7 +264,7 @@ public sealed class CodeLensLanguageServerTests
         string identifier) =>
         lenses.Single(lens => GetRangeText(source, lens.Range) == identifier);
 
-    private static string GetRangeText(string source, Csls.Protocol.Range range)
+    private static string GetRangeText(string source, LspRange range)
     {
         string line = source.Replace("\r\n", "\n", StringComparison.Ordinal)
             .Split('\n')[range.Start.Line];

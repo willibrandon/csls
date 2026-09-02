@@ -43,9 +43,11 @@ public sealed partial class LanguageServer
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
+            return;
         }
         catch (ObjectDisposedException) when (Volatile.Read(ref _disposeState) != 0)
         {
+            return;
         }
         catch (InvalidOperationException exception)
         {

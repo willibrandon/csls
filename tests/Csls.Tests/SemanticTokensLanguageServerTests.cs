@@ -243,6 +243,11 @@ public sealed class SemanticTokensLanguageServerTests
             AssertToken(originalTokens, 7, 22, 3, "method", "static");
             AssertToken(originalTokens, 7, 30, 4, "parameter");
             AssertToken(originalTokens, 9, 12, 3, "variable");
+            AssertNoTokensInDocumentationBlock(
+                originalTokens,
+                OriginalDocumentText,
+                "/// <summary>",
+                "/// </summary>");
 
             await lsp.ChangeDocumentAsync(
                 documentPath,
@@ -568,6 +573,37 @@ public sealed class SemanticTokensLanguageServerTests
         AssertToken(tokens, line, start, value.Length, tokenType);
     }
 
+    private static void AssertNoTokensInDocumentationBlock(
+        IReadOnlyList<(
+            int Line,
+            int Start,
+            int Length,
+            string TokenType,
+            IReadOnlyList<string> Modifiers)> tokens,
+        string text,
+        string startMarker,
+        string endMarker)
+    {
+        int startOffset = text.IndexOf(startMarker, StringComparison.Ordinal);
+        int endOffset = text.IndexOf(endMarker, StringComparison.Ordinal);
+        Assert.IsGreaterThanOrEqualTo(
+            0,
+            startOffset,
+            $"{startMarker} was not found in the source.");
+        Assert.IsGreaterThanOrEqualTo(
+            startOffset,
+            endOffset,
+            $"{endMarker} was not found after {startMarker}.");
+        int startLine = text.AsSpan(0, startOffset).Count('\n');
+        int endLine = text.AsSpan(0, endOffset).Count('\n');
+        Assert.DoesNotContain(
+            candidate =>
+                candidate.Line >= startLine &&
+                candidate.Line <= endLine,
+            tokens,
+            "XML documentation must remain available to the editor's syntax highlighter.");
+    }
+
     private static void AssertAllTokensAtText(
         IReadOnlyList<(
             int Line,
@@ -656,7 +692,7 @@ public sealed class SemanticTokensLanguageServerTests
         namespace Tokens;
 
         /// <summary>
-        /// Adds values.
+        /// Adds <see cref="Calculator"/> values with <paramref name="left"/>, <remarks data="value">details &amp; more</remarks>, <!-- note --> <![CDATA[data]]>, and <?instruction value?>.
         /// </summary>
         public sealed class Calculator
         {

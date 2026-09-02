@@ -90,6 +90,7 @@ async function initialize(dotnetUri, languageServerPort) {
           result: {
             capabilities: {
               callHierarchyProvider: true,
+              codeLensProvider: { resolveProvider: true },
               codeActionProvider: {
                 codeActionKinds: supportsRefactor
                   ? ["quickfix", "refactor", "source.organizeImports"]

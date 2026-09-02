@@ -104,6 +104,7 @@ public sealed partial class WorkspaceManager
             declaration,
             searchCap,
             cancellationToken);
+        bool searchStoppedAtCap = false;
         try
         {
             await SymbolFinder.FindReferencesAsync(
@@ -116,10 +117,13 @@ public sealed partial class WorkspaceManager
         catch (OperationCanceledException) when (
             progress.SearchCapReached && !cancellationToken.IsCancellationRequested)
         {
+            searchStoppedAtCap = true;
         }
 
         int count = progress.ReferenceCount;
-        bool capped = progress.SearchCapReached || count > MaximumExactCodeLensReferences;
+        bool capped = searchStoppedAtCap ||
+            progress.SearchCapReached ||
+            count > MaximumExactCodeLensReferences;
         int displayedCount = capped ? MaximumExactCodeLensReferences : count;
         string title = displayedCount == 1
             ? "1 reference"
