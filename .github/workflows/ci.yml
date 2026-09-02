@@ -72,11 +72,14 @@ jobs:
           dotnet build tests/Csls.Tests/Csls.Tests.csproj
           dotnet build tests/Csls.SourceGen.Tests/Csls.SourceGen.Tests.csproj
 
+      - name: Pack test binaries
+        run: tar --create --file artifacts/test-binaries.tar --directory artifacts bin
+
       - name: Share test binaries
         uses: actions/upload-artifact@v7
         with:
           name: test-binaries-${{ github.run_attempt }}
-          path: artifacts/bin/
+          path: artifacts/test-binaries.tar
           compression-level: 0
           if-no-files-found: error
 
@@ -325,7 +328,10 @@ jobs:
         uses: actions/download-artifact@v8
         with:
           name: test-binaries-${{ github.run_attempt }}
-          path: artifacts/bin
+          path: artifacts
+
+      - name: Extract test binaries
+        run: tar --extract --file artifacts/test-binaries.tar --directory artifacts
 
       - name: Run workspace project tests
         run: >-
@@ -369,7 +375,10 @@ jobs:
         uses: actions/download-artifact@v8
         with:
           name: test-binaries-${{ github.run_attempt }}
-          path: artifacts/bin
+          path: artifacts
+
+      - name: Extract test binaries
+        run: tar --extract --file artifacts/test-binaries.tar --directory artifacts
 
       - name: Run language server tests
         run: >-
@@ -400,7 +409,10 @@ jobs:
         uses: actions/download-artifact@v8
         with:
           name: test-binaries-${{ github.run_attempt }}
-          path: artifacts/bin
+          path: artifacts
+
+      - name: Extract test binaries
+        run: tar --extract --file artifacts/test-binaries.tar --directory artifacts
 
       - name: Run unit tests
         run: >-
@@ -434,7 +446,10 @@ jobs:
         uses: actions/download-artifact@v8
         with:
           name: test-binaries-${{ github.run_attempt }}
-          path: artifacts/bin
+          path: artifacts
+
+      - name: Extract test binaries
+        run: tar --extract --file artifacts/test-binaries.tar --directory artifacts
 
       - name: Restore editor tools
         uses: actions/cache@v6
@@ -505,7 +520,10 @@ jobs:
         uses: actions/download-artifact@v8
         with:
           name: test-binaries-${{ github.run_attempt }}
-          path: artifacts/bin
+          path: artifacts
+
+      - name: Extract test binaries
+        run: tar --extract --file artifacts/test-binaries.tar --directory artifacts
 
       - name: Restore graphical prerequisite app
         uses: actions/cache/restore@v6
@@ -710,7 +728,10 @@ jobs:
         uses: actions/download-artifact@v8
         with:
           name: test-binaries-${{ github.run_attempt }}
-          path: artifacts/bin
+          path: artifacts
+
+      - name: Extract test binaries
+        run: tar --extract --file artifacts/test-binaries.tar --directory artifacts
 
       - name: Restore graphical prerequisite app
         uses: actions/cache/restore@v6
@@ -786,7 +807,10 @@ jobs:
         uses: actions/download-artifact@v8
         with:
           name: test-binaries-${{ github.run_attempt }}
-          path: artifacts/bin
+          path: artifacts
+
+      - name: Extract test binaries
+        run: tar --extract --file artifacts/test-binaries.tar --directory artifacts
 
       - name: Restore legacy build host
         uses: actions/cache@v6
