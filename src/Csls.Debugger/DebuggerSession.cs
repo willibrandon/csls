@@ -82,6 +82,7 @@ public sealed class DebuggerSession : IAsyncDisposable
                 _actor,
                 _sourceBreakpoints,
                 HandleRuntimeBreakpointCoreAsync,
+                HandleRuntimeStepCoreAsync,
                 cancellationToken)
                 .ConfigureAwait(false);
             await _actor.InvokeAsync(
@@ -156,6 +157,24 @@ public sealed class DebuggerSession : IAsyncDisposable
     {
         ObjectDisposedException.ThrowIf(_disposed != 0, this);
         return _actor.InvokeAsync(ContinueCoreAsync, cancellationToken);
+    }
+
+    /// <summary>
+    /// Performs one source-level step on a managed thread.
+    /// </summary>
+    /// <param name="threadId">The managed thread identifier to step.</param>
+    /// <param name="kind">The requested source-level stepping operation.</param>
+    /// <param name="cancellationToken">Cancels queueing the step operation.</param>
+    /// <returns>A task that completes after the continued notification is accepted.</returns>
+    public Task StepAsync(
+        int threadId,
+        DebugStepKind kind,
+        CancellationToken cancellationToken)
+    {
+        ObjectDisposedException.ThrowIf(_disposed != 0, this);
+        return _actor.InvokeAsync(
+            token => StepCoreAsync(threadId, kind, token),
+            cancellationToken);
     }
 
     /// <summary>
@@ -494,6 +513,23 @@ public sealed class DebuggerSession : IAsyncDisposable
         await _observer.OnContinuedAsync(cancellationToken).ConfigureAwait(false);
     }
 
+    private async ValueTask StepCoreAsync(
+        int threadId,
+        DebugStepKind kind,
+        CancellationToken cancellationToken)
+    {
+        if (_state != DebugSessionState.Stopped ||
+            _debuggee is not CorDebugDebuggee managedDebuggee)
+        {
+            throw new InvalidOperationException(
+                $"A managed target cannot step while the debugger session is {_state}.");
+        }
+
+        managedDebuggee.Step(threadId, kind);
+        _state = DebugSessionState.Running;
+        await _observer.OnContinuedAsync(cancellationToken).ConfigureAwait(false);
+    }
+
     private async Task ObserveDebuggeeAsync(
         IDebuggeeProcess debuggee,
         CancellationToken cancellationToken)
@@ -538,7 +574,31 @@ public sealed class DebuggerSession : IAsyncDisposable
                 $"A runtime breakpoint cannot stop a debugger session while it is {_state}.");
         }
 
+        if (_debuggee is CorDebugDebuggee managedDebuggee)
+        {
+            managedDebuggee.CancelStep();
+        }
+
         return EnterStoppedStateAsync("breakpoint", threadId, cancellationToken);
+    }
+
+    private async ValueTask<bool> HandleRuntimeStepCoreAsync(
+        int threadId,
+        nint stepper,
+        int reason,
+        CancellationToken cancellationToken)
+    {
+        _ = reason;
+        if (_state != DebugSessionState.Running ||
+            _debuggee is not CorDebugDebuggee managedDebuggee ||
+            !managedDebuggee.CompleteStep(stepper))
+        {
+            return false;
+        }
+
+        await EnterStoppedStateAsync("step", threadId, cancellationToken)
+            .ConfigureAwait(false);
+        return true;
     }
 
     private async ValueTask EnterStoppedStateAsync(

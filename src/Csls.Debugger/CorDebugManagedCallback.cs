@@ -25,6 +25,7 @@ internal sealed class CorDebugManagedCallback : IDisposable
     private readonly DebuggerSessionActor _actor;
     private readonly SourceBreakpointManager _sourceBreakpoints;
     private readonly Func<int, CancellationToken, ValueTask> _breakpointStopped;
+    private readonly Func<int, nint, int, CancellationToken, ValueTask<bool>> _stepCompleted;
     private readonly TaskCompletionSource<int> _createProcessCompletion =
         new(TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly TaskCompletionSource _exitProcessCompletion =
@@ -37,17 +38,21 @@ internal sealed class CorDebugManagedCallback : IDisposable
     /// <param name="actor">The engine actor that owns callback continuation.</param>
     /// <param name="sourceBreakpoints">The source-breakpoint binding owner.</param>
     /// <param name="breakpointStopped">The ordered source-breakpoint stop callback.</param>
+    /// <param name="stepCompleted">The ordered source-step completion callback.</param>
     internal unsafe CorDebugManagedCallback(
         DebuggerSessionActor actor,
         SourceBreakpointManager sourceBreakpoints,
-        Func<int, CancellationToken, ValueTask> breakpointStopped)
+        Func<int, CancellationToken, ValueTask> breakpointStopped,
+        Func<int, nint, int, CancellationToken, ValueTask<bool>> stepCompleted)
     {
         ArgumentNullException.ThrowIfNull(actor);
         ArgumentNullException.ThrowIfNull(sourceBreakpoints);
         ArgumentNullException.ThrowIfNull(breakpointStopped);
+        ArgumentNullException.ThrowIfNull(stepCompleted);
         _actor = actor;
         _sourceBreakpoints = sourceBreakpoints;
         _breakpointStopped = breakpointStopped;
+        _stepCompleted = stepCompleted;
         nuint allocationSize = checked((nuint)(s_referenceCountOffset + sizeof(int)));
         _instance = (nint)NativeMemory.AllocZeroed(allocationSize);
         if (_instance == 0)
@@ -429,6 +434,34 @@ internal sealed class CorDebugManagedCallback : IDisposable
         return false;
     }
 
+    private ValueTask<bool> HandleStepCompleteAsync(
+        nint thread,
+        nint stepper,
+        int reason,
+        CancellationToken cancellationToken)
+    {
+        if (thread == 0 || stepper == 0)
+        {
+            return ValueTask.FromResult(true);
+        }
+
+        return CompleteStepAsync(thread, stepper, reason, cancellationToken);
+    }
+
+    private async ValueTask<bool> CompleteStepAsync(
+        nint thread,
+        nint stepper,
+        int reason,
+        CancellationToken cancellationToken)
+    {
+        bool recognized = await _stepCompleted(
+            checked((int)GetThreadId(thread)),
+            stepper,
+            reason,
+            cancellationToken).ConfigureAwait(false);
+        return !recognized;
+    }
+
     private async ValueTask<bool> HandleLoadModuleAsync(
         nint module,
         CancellationToken cancellationToken)
@@ -482,10 +515,20 @@ internal sealed class CorDebugManagedCallback : IDisposable
     [UnmanagedCallersOnly(CallConvs = [typeof(CallConvStdcall)])]
     private static int StepComplete(nint self, nint appDomain, nint thread, nint stepper, int reason)
     {
-        _ = thread;
-        _ = stepper;
-        _ = reason;
-        return QueueContinue(self, appDomain, createsProcess: false);
+        return QueueCallback(
+            self,
+            appDomain,
+            thread,
+            stepper,
+            createsProcess: false,
+            exitsProcess: false,
+            continueAfterCallback: true,
+            (target, ownedThread, ownedStepper, cancellationToken) =>
+                target.HandleStepCompleteAsync(
+                    ownedThread,
+                    ownedStepper,
+                    reason,
+                    cancellationToken));
     }
 
     [UnmanagedCallersOnly(CallConvs = [typeof(CallConvStdcall)])]

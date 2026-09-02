@@ -27,6 +27,7 @@ internal static class CorDebugRuntimeActivator
             callbackActor,
             sourceBreakpoints,
             static (_, _) => ValueTask.CompletedTask,
+            static (_, _, _, _) => ValueTask.FromResult(false),
             cancellationToken).ConfigureAwait(false);
         await using ConfiguredAsyncDisposable debuggeeScope = debuggee.ConfigureAwait(false);
         return checked((uint)debuggee.Id);

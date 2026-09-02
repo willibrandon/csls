@@ -23,6 +23,8 @@ internal sealed class CorDebugDebuggee : IDebuggeeProcess
     private readonly Dictionary<(int FrameId, ManagedScopeKind Kind), ManagedScopeHandle> _scopes = [];
     private nint _corDebug;
     private nint _debugProcess;
+    private nint _activeStepper;
+    private nint _activeStepperIdentity;
     private int _nextFrameId;
     private int _nextVariablesReference;
     private int _disposed;
@@ -61,6 +63,7 @@ internal sealed class CorDebugDebuggee : IDebuggeeProcess
     /// <param name="actor">The session actor that owns runtime calls and callbacks.</param>
     /// <param name="sourceBreakpoints">The session source-breakpoint owner.</param>
     /// <param name="breakpointStopped">The ordered runtime-breakpoint stop callback.</param>
+    /// <param name="stepCompleted">The ordered runtime-step completion callback.</param>
     /// <param name="cancellationToken">Cancels runtime activation and cleans up the target.</param>
     /// <returns>The live debugger-owned target.</returns>
     internal static async Task<CorDebugDebuggee> LaunchAsync(
@@ -68,12 +71,14 @@ internal sealed class CorDebugDebuggee : IDebuggeeProcess
         DebuggerSessionActor actor,
         SourceBreakpointManager sourceBreakpoints,
         Func<int, CancellationToken, ValueTask> breakpointStopped,
+        Func<int, nint, int, CancellationToken, ValueTask<bool>> stepCompleted,
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(options);
         ArgumentNullException.ThrowIfNull(actor);
         ArgumentNullException.ThrowIfNull(sourceBreakpoints);
         ArgumentNullException.ThrowIfNull(breakpointStopped);
+        ArgumentNullException.ThrowIfNull(stepCompleted);
         ValidateOptions(options);
         DbgShimLibrary.VerifyPlatformSupport();
 
@@ -89,8 +94,12 @@ internal sealed class CorDebugDebuggee : IDebuggeeProcess
         Task<int>? unixExitCode = null;
         nint corDebug = 0;
         nint debugProcess = 0;
+        bool ownsActivationGate = false;
         try
         {
+            await CorDebugRuntimeActivationGate.WaitAsync(cancellationToken)
+                .ConfigureAwait(false);
+            ownsActivationGate = true;
             (uint processId, nint rawResumeHandle) = await standardStreams.CreateSuspendedAsync(
                 commandLine,
                 environment.Pointer,
@@ -112,7 +121,8 @@ internal sealed class CorDebugDebuggee : IDebuggeeProcess
             managedCallback = new CorDebugManagedCallback(
                 actor,
                 sourceBreakpoints,
-                breakpointStopped);
+                breakpointStopped,
+                stepCompleted);
             registration = new CorDebugRuntimeStartupRegistration(
                 processId,
                 actor,
@@ -139,6 +149,8 @@ internal sealed class CorDebugDebuggee : IDebuggeeProcess
             debugProcess = activation.Process;
             await managedCallback.WaitForCreateProcessAsync(cancellationToken)
                 .ConfigureAwait(false);
+            CorDebugRuntimeActivationGate.Release();
+            ownsActivationGate = false;
 
             var result = new CorDebugDebuggee(
                 actor,
@@ -158,6 +170,11 @@ internal sealed class CorDebugDebuggee : IDebuggeeProcess
         }
         finally
         {
+            if (ownsActivationGate)
+            {
+                CorDebugRuntimeActivationGate.Release();
+            }
+
             if (process is not null)
             {
                 await TerminateProcessAsync(process, CancellationToken.None).ConfigureAwait(false);
@@ -240,6 +257,136 @@ internal sealed class CorDebugDebuggee : IDebuggeeProcess
             new ICorDebugControllerAbi(_debugProcess).Continue(fIsOutOfBand: 0),
             "ICorDebugController.Continue");
     }
+
+    /// <summary>
+    /// Starts one source-level step on a managed thread and resumes the target.
+    /// </summary>
+    /// <param name="threadId">The managed thread identifier to step.</param>
+    /// <param name="kind">The requested source-level stepping operation.</param>
+    internal unsafe void Step(int threadId, DebugStepKind kind)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(threadId);
+        if (_activeStepper != 0)
+        {
+            throw new InvalidOperationException("A managed step is already active.");
+        }
+
+        nint thread = 0;
+        nint stepper = 0;
+        try
+        {
+            nint* threadAddress = &thread;
+            CorDebugHResult.ThrowIfFailed(
+                new ICorDebugProcessAbi(_debugProcess).GetThread(
+                    checked((uint)threadId),
+                    (nint)threadAddress),
+                "ICorDebugProcess.GetThread");
+            thread = Volatile.Read(ref *threadAddress);
+            if (thread == 0)
+            {
+                throw new InvalidOperationException(
+                    $"Managed thread {threadId} no longer exists.");
+            }
+
+            nint* stepperAddress = &stepper;
+            CorDebugHResult.ThrowIfFailed(
+                new ICorDebugThreadAbi(thread).CreateStepper((nint)stepperAddress),
+                "ICorDebugThread.CreateStepper");
+            stepper = Volatile.Read(ref *stepperAddress);
+            if (stepper == 0)
+            {
+                throw new InvalidOperationException(
+                    "ICorDebugThread.CreateStepper returned no stepper.");
+            }
+
+            var api = new ICorDebugStepperAbi(stepper);
+            CorDebugHResult.ThrowIfFailed(
+                api.SetInterceptMask(mask: 0),
+                "ICorDebugStepper.SetInterceptMask");
+            CorDebugHResult.ThrowIfFailed(
+                api.SetUnmappedStopMask(mask: 0),
+                "ICorDebugStepper.SetUnmappedStopMask");
+            CorDebugHResult.ThrowIfFailed(
+                api.SetRangeIL(bIL: 1),
+                "ICorDebugStepper.SetRangeIL");
+            int stepResult;
+            if (kind == DebugStepKind.Out)
+            {
+                stepResult = api.StepOut();
+            }
+            else if (PortablePdbStepRangeResolver.TryResolve(thread, out ManagedStepRange range))
+            {
+                uint* nativeRange = stackalloc uint[2];
+                nativeRange[0] = range.StartOffset;
+                nativeRange[1] = range.EndOffset;
+                stepResult = api.StepRange(
+                    kind == DebugStepKind.Into ? 1 : 0,
+                    (nint)nativeRange,
+                    cRangeCount: 1);
+            }
+            else
+            {
+                stepResult = api.Step(kind == DebugStepKind.Into ? 1 : 0);
+            }
+
+            CorDebugHResult.ThrowIfFailed(stepResult, $"ICorDebugStepper.Step{kind}");
+            _activeStepperIdentity = ComAbi.GetIdentity(stepper);
+            _activeStepper = stepper;
+            stepper = 0;
+            ClearFrameHandles();
+            CorDebugHResult.ThrowIfFailed(
+                new ICorDebugControllerAbi(_debugProcess).Continue(fIsOutOfBand: 0),
+                "ICorDebugController.Continue");
+        }
+        catch
+        {
+            CancelStep();
+            throw;
+        }
+        finally
+        {
+            if (stepper != 0)
+            {
+                _ = new ICorDebugStepperAbi(stepper).Deactivate();
+                _ = ComAbi.Release(stepper);
+            }
+
+            if (thread != 0)
+            {
+                _ = ComAbi.Release(thread);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Completes the active source step when its runtime callback arrives.
+    /// </summary>
+    /// <param name="stepper">The borrowed callback ICorDebugStepper pointer.</param>
+    /// <returns>True when the callback belongs to this debuggee's active step.</returns>
+    internal bool CompleteStep(nint stepper)
+    {
+        ArgumentOutOfRangeException.ThrowIfZero(stepper);
+        nint identity = ComAbi.GetIdentity(stepper);
+        try
+        {
+            if (identity != _activeStepperIdentity)
+            {
+                return false;
+            }
+
+            ReleaseActiveStepper(deactivate: false);
+            return true;
+        }
+        finally
+        {
+            _ = ComAbi.Release(identity);
+        }
+    }
+
+    /// <summary>
+    /// Deactivates and releases an interrupted source step.
+    /// </summary>
+    internal void CancelStep() => ReleaseActiveStepper(deactivate: true);
 
     /// <summary>
     /// Enumerates managed threads while the target is stopped.
@@ -512,6 +659,7 @@ internal sealed class CorDebugDebuggee : IDebuggeeProcess
             {
                 _ = cancellationToken;
                 ClearFrameHandles();
+                CancelStep();
                 ReleaseRuntimeReferences(corDebug, debugProcess);
                 return ValueTask.CompletedTask;
             },
@@ -654,6 +802,26 @@ internal sealed class CorDebugDebuggee : IDebuggeeProcess
 
         _frames.Clear();
         _scopes.Clear();
+    }
+
+    private void ReleaseActiveStepper(bool deactivate)
+    {
+        nint stepper = Interlocked.Exchange(ref _activeStepper, 0);
+        nint identity = Interlocked.Exchange(ref _activeStepperIdentity, 0);
+        if (stepper != 0)
+        {
+            if (deactivate)
+            {
+                _ = new ICorDebugStepperAbi(stepper).Deactivate();
+            }
+
+            _ = ComAbi.Release(stepper);
+        }
+
+        if (identity != 0)
+        {
+            _ = ComAbi.Release(identity);
+        }
     }
 
     private ManagedFrameHandle GetFrame(int frameId, DebugStopGeneration generation)

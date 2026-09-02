@@ -346,6 +346,18 @@ internal sealed class DapSession : IDebuggerSessionObserver, IAsyncDisposable
             case "continue":
                 await ContinueAsync(request, cancellationToken).ConfigureAwait(false);
                 break;
+            case "next":
+                await StepAsync(request, DebugStepKind.Over, cancellationToken)
+                    .ConfigureAwait(false);
+                break;
+            case "stepIn":
+                await StepAsync(request, DebugStepKind.Into, cancellationToken)
+                    .ConfigureAwait(false);
+                break;
+            case "stepOut":
+                await StepAsync(request, DebugStepKind.Out, cancellationToken)
+                    .ConfigureAwait(false);
+                break;
             case "stackTrace":
                 await WriteStackTraceAsync(request, cancellationToken).ConfigureAwait(false);
                 break;
@@ -757,6 +769,38 @@ internal sealed class DapSession : IDebuggerSessionObserver, IAsyncDisposable
                 exception.Message,
                 writeBody: null,
                 cancellationToken).ConfigureAwait(false);
+        }
+    }
+
+    private async ValueTask StepAsync(
+        Request request,
+        DebugStepKind kind,
+        CancellationToken cancellationToken)
+    {
+        if (_state != DapSessionState.Stopped)
+        {
+            await WriteStateFailureAsync(request, cancellationToken).ConfigureAwait(false);
+            return;
+        }
+
+        try
+        {
+            int threadId = GetRequiredInteger(request.Arguments, "threadId", request.Command);
+            await _engineSession
+                .StepAsync(threadId, kind, cancellationToken)
+                .ConfigureAwait(false);
+            await _writer.WriteResponseAsync(
+                request,
+                success: true,
+                message: null,
+                writeBody: null,
+                cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception exception) when (
+            exception is ArgumentException or InvalidOperationException or OverflowException)
+        {
+            await WriteRequestFailureAsync(request, exception.Message, cancellationToken)
+                .ConfigureAwait(false);
         }
     }
 

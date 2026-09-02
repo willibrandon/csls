@@ -5,6 +5,9 @@ namespace Csls.Debugger.Interop;
 /// </summary>
 internal static unsafe class ComAbi
 {
+    private static readonly Guid s_iUnknownInterfaceId =
+        new("00000000-0000-0000-C000-000000000046");
+
     /// <summary>
     /// Queries a native COM object for one explicitly selected interface.
     /// </summary>
@@ -55,6 +58,14 @@ internal static unsafe class ComAbi
         result = queriedInterface;
         return queriedInterface != 0;
     }
+
+    /// <summary>
+    /// Gets an owned canonical COM identity pointer for an interface.
+    /// </summary>
+    /// <param name="instance">The source COM interface pointer.</param>
+    /// <returns>The owned IUnknown identity pointer.</returns>
+    internal static nint GetIdentity(nint instance) =>
+        QueryInterface(instance, s_iUnknownInterfaceId);
 
     /// <summary>
     /// Adds one ownership reference to a native COM interface pointer.
