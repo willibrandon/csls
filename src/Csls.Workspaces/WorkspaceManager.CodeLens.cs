@@ -97,6 +97,9 @@ public sealed partial class WorkspaceManager
             ?? throw new InvalidOperationException("Roslyn returned no semantic model.");
         ISymbol symbol = semanticModel.GetDeclaredSymbol(declaration, cancellationToken)
             ?? throw new InvalidDataException("The code-lens declaration has no declared symbol.");
+        await BrowserSyntaxIndexCache.WarmAsync(
+            document.Project.Solution,
+            cancellationToken).ConfigureAwait(false);
 
         int searchCap = includeLocations ? 0 : MaximumExactCodeLensReferences;
         using var progress = new CodeLensReferenceProgress(
