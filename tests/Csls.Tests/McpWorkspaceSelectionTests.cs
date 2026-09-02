@@ -103,11 +103,16 @@ public sealed class McpWorkspaceSelectionTests
                 "stop_trace"
             ];
             Assert.HasCount(expectedTargetTools.Length + 1, tools);
-            foreach (McpClientTool tool in tools)
+            IEnumerable<(McpClientTool Tool, ToolAnnotations Annotations)>
+                toolsWithAnnotations = tools.Select(tool =>
+                {
+                    ToolAnnotations annotations = tool.ProtocolTool.Annotations
+                        ?? throw new InvalidDataException(
+                            $"Tool {tool.Name} published no MCP behavior annotations.");
+                    return (tool, annotations);
+                });
+            foreach ((McpClientTool tool, ToolAnnotations annotations) in toolsWithAnnotations)
             {
-                ToolAnnotations annotations = tool.ProtocolTool.Annotations
-                    ?? throw new InvalidDataException(
-                        $"Tool {tool.Name} published no MCP behavior annotations.");
                 Assert.IsNotNull(annotations.ReadOnlyHint, tool.Name);
                 Assert.IsNotNull(annotations.DestructiveHint, tool.Name);
                 Assert.IsNotNull(annotations.IdempotentHint, tool.Name);

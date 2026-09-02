@@ -96,17 +96,25 @@ internal sealed class McpProcessSession : IAsyncDisposable
         }
         catch
         {
-            await process.StandardInput.DisposeAsync().ConfigureAwait(false);
-            if (!process.HasExited)
-            {
-                process.Kill(entireProcessTree: true);
-                await process.WaitForExitAsync(CancellationToken.None).ConfigureAwait(false);
-            }
-
-            await standardErrorTask.ConfigureAwait(false);
-            process.Dispose();
+            await DisposeFailedStartAsync(process, standardErrorTask).ConfigureAwait(false);
             throw;
         }
+    }
+
+    private static async Task DisposeFailedStartAsync(
+        Process process,
+        Task<string> standardErrorTask)
+    {
+        await process.StandardInput.DisposeAsync().ConfigureAwait(false);
+        if (!process.HasExited)
+        {
+            process.Kill(entireProcessTree: true);
+            await process.WaitForExitAsync(CancellationToken.None).ConfigureAwait(false);
+        }
+
+        ValueTask<string> standardErrorCompletion = new(standardErrorTask);
+        await standardErrorCompletion.ConfigureAwait(false);
+        process.Dispose();
     }
 
     /// <summary>

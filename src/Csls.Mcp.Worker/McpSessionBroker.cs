@@ -614,6 +614,7 @@ internal sealed class McpSessionBroker : IAsyncDisposable
         catch (Exception exception) when (
             exception is InvalidOperationException or ObjectDisposedException)
         {
+            return;
         }
     }
 
