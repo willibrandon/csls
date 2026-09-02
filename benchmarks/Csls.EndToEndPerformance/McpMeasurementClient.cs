@@ -1,6 +1,5 @@
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
-using System.Globalization;
 
 namespace Csls.EndToEndPerformance;
 
@@ -32,11 +31,7 @@ internal static class McpMeasurementClient
             new StdioClientTransportOptions
             {
                 Command = mcpServerPath,
-                Arguments =
-                [
-                    "--session",
-                    languageServerProcessId.ToString(CultureInfo.InvariantCulture)
-                ],
+                Arguments = [],
                 Name = "csls-end-to-end-performance",
                 WorkingDirectory = workingDirectory,
                 InheritEnvironmentVariables = true,
@@ -50,6 +45,10 @@ internal static class McpMeasurementClient
         {
             CallToolResult result = await client.CallToolAsync(
                 "get_session",
+                new Dictionary<string, object?>
+                {
+                    ["session"] = languageServerProcessId
+                },
                 cancellationToken: cancellationToken).ConfigureAwait(false);
             if (result.IsError is true || !result.StructuredContent.HasValue)
             {

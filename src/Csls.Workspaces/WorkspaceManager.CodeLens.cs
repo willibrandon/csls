@@ -52,7 +52,8 @@ public sealed partial class WorkspaceManager
                 {
                     Generation = generation,
                     Uri = parameters.TextDocument.Uri,
-                    DeclarationRange = range
+                    DeclarationRange = range,
+                    Identifier = identifier.ValueText
                 }
             });
         }
@@ -61,7 +62,7 @@ public sealed partial class WorkspaceManager
     }
 
     /// <summary>
-    /// Resolves one reference-count annotation against its immutable workspace generation.
+    /// Resolves one reference-count annotation against current state without failing stale editor races.
     /// </summary>
     /// <param name="codeLens">The unresolved annotation returned by this workspace.</param>
     /// <param name="commandIdentifier">The reference-popup command understood by the client.</param>
@@ -78,25 +79,51 @@ public sealed partial class WorkspaceManager
         ArgumentException.ThrowIfNullOrWhiteSpace(commandIdentifier);
         CodeLensData data = codeLens.Data
             ?? throw new InvalidDataException("The code lens contains no resolve data.");
-        if (data.Generation != Generation)
+        long currentGeneration = Generation;
+        bool isRetired = data.Generation != currentGeneration;
+
+        Document? document = FindCurrentDocument(data.Uri);
+        if (document is null && isRetired)
         {
-            throw new InvalidOperationException(
-                "The code lens belongs to a retired workspace generation.");
+            return codeLens with { Data = null };
         }
 
-        Document document = FindCurrentDocument(data.Uri)
-            ?? throw new InvalidDataException("The code-lens source document is no longer loaded.");
+        if (document is null)
+        {
+            throw new InvalidDataException(
+                "The code-lens source document is no longer loaded.");
+        }
         SourceText text = await document.GetTextAsync(cancellationToken).ConfigureAwait(false);
         SyntaxNode root = await document.GetSyntaxRootAsync(cancellationToken)
             .ConfigureAwait(false)
             ?? throw new InvalidOperationException("Roslyn returned no syntax root.");
-        SyntaxNode declaration = FindCodeLensDeclaration(root, text, data.DeclarationRange)
-            ?? throw new InvalidDataException("The code-lens declaration is no longer present.");
+        SyntaxNode? declaration = FindCodeLensDeclaration(
+            root,
+            text,
+            data.DeclarationRange,
+            data.Identifier);
+        if (declaration is null && isRetired)
+        {
+            declaration = FindUniqueCodeLensDeclaration(root, data.Identifier);
+        }
+
+        if (declaration is null && isRetired)
+        {
+            return codeLens with { Data = null };
+        }
+
+        if (declaration is null)
+        {
+            throw new InvalidDataException(
+                "The code-lens declaration is no longer present.");
+        }
         SemanticModel semanticModel = await document.GetSemanticModelAsync(cancellationToken)
             .ConfigureAwait(false)
             ?? throw new InvalidOperationException("Roslyn returned no semantic model.");
         ISymbol symbol = semanticModel.GetDeclaredSymbol(declaration, cancellationToken)
             ?? throw new InvalidDataException("The code-lens declaration has no declared symbol.");
+        _ = TryGetCodeLensIdentifier(declaration, out SyntaxToken currentIdentifier);
+        LspRange currentDeclarationRange = ToLspRange(text, currentIdentifier.Span);
         await BrowserSyntaxIndexCache.WarmAsync(
             document.Project.Solution,
             cancellationToken).ConfigureAwait(false);
@@ -135,7 +162,7 @@ public sealed partial class WorkspaceManager
         [
             JsonSerializer.SerializeToElement(data.Uri.ToString()),
             JsonSerializer.SerializeToElement(
-                data.DeclarationRange.Start,
+                currentDeclarationRange.Start,
                 LspJsonSerializerContext.Default.Position)
         ];
         if (includeLocations)
@@ -154,6 +181,11 @@ public sealed partial class WorkspaceManager
 
         return codeLens with
         {
+            Data = data with
+            {
+                Generation = currentGeneration,
+                DeclarationRange = currentDeclarationRange
+            },
             Command = new LspCommand
             {
                 Title = title,
@@ -166,7 +198,8 @@ public sealed partial class WorkspaceManager
     private static SyntaxNode? FindCodeLensDeclaration(
         SyntaxNode root,
         SourceText text,
-        LspRange range)
+        LspRange range,
+        string identifierText)
     {
         int start = LspPositionConverter.GetOffset(text, range.Start);
         SyntaxToken token = root.FindToken(start);
@@ -174,8 +207,30 @@ public sealed partial class WorkspaceManager
             .AncestorsAndSelf()
             .FirstOrDefault(node =>
                 TryGetCodeLensIdentifier(node, out SyntaxToken identifier) &&
+                string.Equals(
+                    identifier.ValueText,
+                    identifierText,
+                    StringComparison.Ordinal) &&
                 identifier.SpanStart == start &&
                 ToLspRange(text, identifier.Span) == range);
+    }
+
+    private static SyntaxNode? FindUniqueCodeLensDeclaration(
+        SyntaxNode root,
+        string identifierText)
+    {
+        SyntaxNode[] matches =
+        [
+            .. root.DescendantNodesAndSelf()
+                .Where(node =>
+                    TryGetCodeLensIdentifier(node, out SyntaxToken identifier) &&
+                    string.Equals(
+                        identifier.ValueText,
+                        identifierText,
+                        StringComparison.Ordinal))
+                .Take(2)
+        ];
+        return matches.Length == 1 ? matches[0] : null;
     }
 
     private static bool TryGetCodeLensIdentifier(

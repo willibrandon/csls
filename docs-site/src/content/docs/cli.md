@@ -139,12 +139,11 @@ csls agent init --stdout
 Existing files are left unchanged unless `--force` is passed. `--json` reports
 the absolute output path in the standard versioned response envelope.
 
-After installing the separate `csls-mcp` tool, start it through the main command:
+After installing the separate `csls-mcp` tool, configure the MCP client to run:
 
 ```console
-csls agent mcp --workspace ./MySolution.slnx
-csls agent mcp --session 12345
+csls-mcp
 ```
 
-The command also accepts an absolute control socket with `--socket`. Exactly one
-connection option is required.
+The MCP server has no startup selector. Each target-dependent tool and resource
+instead requires exactly one `workspace`, `session`, or `socket` field.

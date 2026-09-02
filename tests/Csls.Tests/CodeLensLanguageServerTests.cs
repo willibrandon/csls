@@ -1,5 +1,4 @@
 using Csls.Protocol;
-using StreamJsonRpc;
 using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.Json;
@@ -19,7 +18,7 @@ public sealed class CodeLensLanguageServerTests
     public TestContext TestContext { get; set; } = null!;
 
     /// <summary>
-    /// Discovers supported declarations and resolves exact, capped, and stale results for VS Code.
+    /// Discovers declarations and resolves exact, capped, and safely refreshed results for VS Code.
     /// </summary>
     [TestMethod]
     public async Task ReferenceCodeLensResolvesThroughRealVsCodeProtocol()
@@ -100,6 +99,8 @@ public sealed class CodeLensLanguageServerTests
             CodeLens oneReference = await lsp.ResolveCodeLensAsync(
                 FindLens(lenses, source, "UsedConstant"),
                 TestContext.CancellationToken).ConfigureAwait(false);
+            CodeLensData originalOneReferenceData = oneReference.Data
+                ?? throw new InvalidDataException("The unresolved lens had no resolve data.");
             Assert.IsNotNull(oneReference.Command);
             Assert.AreEqual("1 reference", oneReference.Command.Title);
             Assert.AreEqual("csls.client.peekReferences", oneReference.Command.Command);
@@ -127,23 +128,69 @@ public sealed class CodeLensLanguageServerTests
             Assert.IsNotNull(cappedReferences.Command);
             Assert.AreEqual("99+ references", cappedReferences.Command.Title);
 
+            string shiftedSource = Environment.NewLine + source;
             await lsp.ChangeDocumentAsync(
                 documentPath,
                 version: 2,
-                [new TextDocumentContentChangeEvent { Text = source + Environment.NewLine }])
+                [new TextDocumentContentChangeEvent { Text = shiftedSource }])
                 .ConfigureAwait(false);
             await client.WaitForCodeLensRefreshAsync(TestContext.CancellationToken)
                 .ConfigureAwait(false);
-            RemoteInvocationException staleResolve =
-                await Assert.ThrowsExactlyAsync<RemoteInvocationException>(
-                    async () => await lsp.ResolveCodeLensAsync(
-                        oneReference with { Command = null },
-                        TestContext.CancellationToken).ConfigureAwait(false))
-                    .ConfigureAwait(false);
-            Assert.Contains(
-                "retired workspace generation",
-                staleResolve.Message,
-                StringComparison.OrdinalIgnoreCase);
+            IReadOnlyList<CodeLens> refreshedLenses = await lsp.RequestCodeLensesAsync(
+                documentPath,
+                TestContext.CancellationToken).ConfigureAwait(false);
+            CodeLens refreshedOneReference = FindLens(
+                refreshedLenses,
+                shiftedSource,
+                "UsedConstant");
+            CodeLensData refreshedData = refreshedOneReference.Data
+                ?? throw new InvalidDataException("The refreshed lens had no resolve data.");
+            Assert.IsGreaterThan(originalOneReferenceData.Generation, refreshedData.Generation);
+
+            CodeLens resolvedAfterRefresh = await lsp.ResolveCodeLensAsync(
+                oneReference with { Command = null },
+                TestContext.CancellationToken).ConfigureAwait(false);
+            Assert.IsNotNull(resolvedAfterRefresh.Command);
+            Assert.AreEqual("1 reference", resolvedAfterRefresh.Command.Title);
+            Assert.AreEqual("csls.client.peekReferences", resolvedAfterRefresh.Command.Command);
+            Assert.AreEqual(oneReference.Range, resolvedAfterRefresh.Range);
+            Assert.IsNotNull(resolvedAfterRefresh.Data);
+            Assert.AreEqual(refreshedData.Generation, resolvedAfterRefresh.Data.Generation);
+
+            string sourceWithoutUsedConstant = shiftedSource
+                .Replace(
+                    "    public const int UsedConstant = 1;",
+                    string.Empty,
+                    StringComparison.Ordinal)
+                .Replace(
+                    "        _ = UsedConstant;",
+                    string.Empty,
+                    StringComparison.Ordinal);
+            Assert.DoesNotContain(
+                "UsedConstant",
+                sourceWithoutUsedConstant,
+                StringComparison.Ordinal);
+            await lsp.ChangeDocumentAsync(
+                documentPath,
+                version: 3,
+                [new TextDocumentContentChangeEvent { Text = sourceWithoutUsedConstant }])
+                .ConfigureAwait(false);
+            await client.WaitForCodeLensRefreshAsync(TestContext.CancellationToken)
+                .ConfigureAwait(false);
+            IReadOnlyList<CodeLens> lensesWithoutDeclaration = await lsp.RequestCodeLensesAsync(
+                documentPath,
+                TestContext.CancellationToken).ConfigureAwait(false);
+            Assert.DoesNotContain(
+                "UsedConstant",
+                lensesWithoutDeclaration.Select(lens =>
+                    GetRangeText(sourceWithoutUsedConstant, lens.Range)));
+
+            CodeLens unresolvedAfterRemoval = await lsp.ResolveCodeLensAsync(
+                oneReference with { Command = null },
+                TestContext.CancellationToken).ConfigureAwait(false);
+            Assert.IsNull(unresolvedAfterRemoval.Command);
+            Assert.IsNull(unresolvedAfterRemoval.Data);
+            Assert.AreEqual(oneReference.Range, unresolvedAfterRemoval.Range);
 
             string diagnostics = await lsp.ShutdownAsync(
                 TestContext.CancellationToken).ConfigureAwait(false);
@@ -204,6 +251,81 @@ public sealed class CodeLensLanguageServerTests
             Assert.AreEqual(
                 DocumentUri.FromFileSystemPath(documentPath).ToString(),
                 location.GetProperty("uri").GetString());
+
+            string diagnostics = await lsp.ShutdownAsync(
+                TestContext.CancellationToken).ConfigureAwait(false);
+            Assert.DoesNotContain("Unhandled exception", diagnostics, StringComparison.Ordinal);
+        }
+        finally
+        {
+            Directory.Delete(fixturePath, recursive: true);
+        }
+    }
+
+    /// <summary>
+    /// Includes related constructor definitions when VS Code opens references from a type lens.
+    /// </summary>
+    [TestMethod]
+    public async Task TypeReferenceCodeLensIncludesExplicitConstructorDefinition()
+    {
+        const string source = """
+            namespace Fixture;
+
+            internal sealed class Target
+            {
+                public Target()
+                {
+                }
+            }
+
+            internal static class Consumer
+            {
+                internal static object Create() => new Target();
+            }
+            """;
+        string fixturePath = CreateFixturePath("vscode-constructor");
+        Directory.CreateDirectory(fixturePath);
+        try
+        {
+            string documentPath = await WriteFixtureAsync(fixturePath, source)
+                .ConfigureAwait(false);
+            LspProcessSession lsp = await StartWorkerAsync(fixturePath).ConfigureAwait(false);
+            await using ConfiguredAsyncDisposable lspCleanup = lsp.ConfigureAwait(false);
+            using var capabilities = JsonDocument.Parse(
+                """
+                {
+                  "textDocument": {
+                    "codeLens": {},
+                    "diagnostic": {}
+                  }
+                }
+                """);
+            await lsp.InitializeAsync(
+                fixturePath,
+                capabilities.RootElement,
+                "Visual Studio Code",
+                TestContext.CancellationToken).ConfigureAwait(false);
+            await lsp.OpenDocumentAsync(documentPath, source).ConfigureAwait(false);
+
+            IReadOnlyList<CodeLens> lenses = await lsp.RequestCodeLensesAsync(
+                documentPath,
+                TestContext.CancellationToken).ConfigureAwait(false);
+            CodeLens resolved = await lsp.ResolveCodeLensAsync(
+                lenses.Single(static lens => lens.Range.Start == new Position(2, 22)),
+                TestContext.CancellationToken).ConfigureAwait(false);
+            Assert.IsNotNull(resolved.Command);
+            Assert.AreEqual("2 references", resolved.Command.Title);
+            Assert.AreEqual("csls.client.peekReferences", resolved.Command.Command);
+
+            IReadOnlyList<Location> references = await lsp.RequestReferencesAsync(
+                documentPath,
+                resolved.Range.Start,
+                includeDeclaration: true,
+                TestContext.CancellationToken).ConfigureAwait(false);
+            Assert.HasCount(3, references);
+            Assert.AreSequenceEqual(
+                [new Position(2, 22), new Position(4, 11), new Position(11, 43)],
+                references.Select(static location => location.Range.Start).ToArray());
 
             string diagnostics = await lsp.ShutdownAsync(
                 TestContext.CancellationToken).ConfigureAwait(false);

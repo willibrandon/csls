@@ -106,4 +106,5 @@ namespace Csls.Control.Contracts;
 [JsonSerializable(typeof(IReadOnlyList<ControlLogEntry>))]
 [JsonSerializable(typeof(IReadOnlyList<ControlRequestInfo>))]
 [JsonSerializable(typeof(IReadOnlyList<ControlTraceEntry>))]
+[JsonSerializable(typeof(IReadOnlyList<ControlSessionInfo>))]
 public sealed partial class ControlJsonSerializerContext : JsonSerializerContext;

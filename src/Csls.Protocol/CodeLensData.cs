@@ -1,7 +1,7 @@
 namespace Csls.Protocol;
 
 /// <summary>
-/// Preserves immutable declaration coordinates required to resolve a code lens.
+/// Preserves declaration identity and coordinates required to resolve a code lens.
 /// </summary>
 public sealed record CodeLensData
 {
@@ -19,4 +19,9 @@ public sealed record CodeLensData
     /// Gets the exact identifier range of the declaration.
     /// </summary>
     public required Range DeclarationRange { get; init; }
+
+    /// <summary>
+    /// Gets the declaration identifier used to reject stale coordinates that now name another symbol.
+    /// </summary>
+    public required string Identifier { get; init; }
 }

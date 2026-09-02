@@ -188,6 +188,20 @@ public sealed class TransientLanguageServerSession : IAsyncDisposable
                 return;
             }
 
+            if (!string.Equals(
+                    debugInfo.Workspace.Phase,
+                    "Configured",
+                    StringComparison.Ordinal) &&
+                !string.Equals(
+                    debugInfo.Workspace.Phase,
+                    "Loading",
+                    StringComparison.Ordinal))
+            {
+                throw new InvalidOperationException(
+                    "The transient csls workspace stopped before becoming ready " +
+                    $"in phase {debugInfo.Workspace.Phase}.");
+            }
+
             await Task.Delay(TimeSpan.FromMilliseconds(10), cancellationToken)
                 .ConfigureAwait(false);
         }

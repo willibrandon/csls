@@ -92,9 +92,13 @@ internal sealed class MSBuildBuildHostClient
         CancellationToken cancellationToken)
     {
         string buildHostPath = ResolveBuildHostPath();
+        bool isManagedAssembly = string.Equals(
+            Path.GetExtension(buildHostPath),
+            ".dll",
+            StringComparison.OrdinalIgnoreCase);
         var startInfo = new ProcessStartInfo
         {
-            FileName = buildHostPath,
+            FileName = isManagedAssembly ? ResolveDotNetHost() : buildHostPath,
             WorkingDirectory = workingDirectory,
             RedirectStandardError = true,
             RedirectStandardInput = true,
@@ -102,6 +106,11 @@ internal sealed class MSBuildBuildHostClient
             UseShellExecute = false,
             CreateNoWindow = true
         };
+        if (isManagedAssembly)
+        {
+            startInfo.ArgumentList.Add(buildHostPath);
+        }
+
         startInfo.ArgumentList.Add("--msbuild-build-host");
         using Process process = Process.Start(startInfo)
             ?? throw new InvalidOperationException("The MSBuild build host did not start.");
@@ -172,6 +181,7 @@ internal sealed class MSBuildBuildHostClient
         string executableName = OperatingSystem.IsWindows()
             ? "csls-worker.exe"
             : "csls-worker";
+        const string AssemblyName = "csls-worker.dll";
         string? processPath = Environment.ProcessPath;
         if (processPath is not null && string.Equals(
             Path.GetFileName(processPath),
@@ -185,6 +195,12 @@ internal sealed class MSBuildBuildHostClient
         if (IsFrameworkDependentBuildHost(localCandidate))
         {
             return localCandidate;
+        }
+
+        string localAssembly = Path.Join(AppContext.BaseDirectory, AssemblyName);
+        if (File.Exists(localAssembly))
+        {
+            return localAssembly;
         }
 
         var outputDirectory = new DirectoryInfo(AppContext.BaseDirectory);
@@ -201,6 +217,16 @@ internal sealed class MSBuildBuildHostClient
             {
                 return repositoryCandidate;
             }
+
+            string repositoryAssembly = Path.Join(
+                artifactsBinDirectory.FullName,
+                "Csls.Worker",
+                configuration,
+                AssemblyName);
+            if (File.Exists(repositoryAssembly))
+            {
+                return repositoryAssembly;
+            }
         }
 
         throw new FileNotFoundException(
@@ -212,4 +238,10 @@ internal sealed class MSBuildBuildHostClient
         File.Exists(path) && File.Exists(Path.Join(
             Path.GetDirectoryName(path)!,
             "csls-worker.dll"));
+
+    private static string ResolveDotNetHost()
+    {
+        string? hostPath = Environment.GetEnvironmentVariable("DOTNET_HOST_PATH");
+        return string.IsNullOrWhiteSpace(hostPath) ? "dotnet" : hostPath;
+    }
 }

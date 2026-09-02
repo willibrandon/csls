@@ -36,7 +36,7 @@ These public wire-contract types are generated from the compiled assemblies and 
 | `Csls.Protocol.CodeActionOptions` | Advertises the concrete code-action categories implemented by the server. |
 | `Csls.Protocol.CodeActionParams` | Identifies a document range and the editor's requested code-action context. |
 | `Csls.Protocol.CodeLens` | Describes one source declaration annotation resolved on demand by the client. |
-| `Csls.Protocol.CodeLensData` | Preserves immutable declaration coordinates required to resolve a code lens. |
+| `Csls.Protocol.CodeLensData` | Preserves declaration identity and coordinates required to resolve a code lens. |
 | `Csls.Protocol.CodeLensOptions` | Describes the server's code-lens resolution behavior. |
 | `Csls.Protocol.CodeLensParams` | Identifies the source document requested for code-lens discovery. |
 | `Csls.Protocol.CompletionContext` | Describes how the client triggered one completion request. |

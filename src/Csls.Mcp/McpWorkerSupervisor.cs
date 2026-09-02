@@ -1,5 +1,4 @@
 using System.Diagnostics;
-using System.Globalization;
 
 namespace Csls.Mcp;
 
@@ -11,23 +10,12 @@ internal static class McpWorkerSupervisor
     /// <summary>
     /// Runs the managed MCP worker until it exits or the command is canceled.
     /// </summary>
-    /// <param name="processId">The optional language-server process identifier.</param>
-    /// <param name="socketPath">The optional explicit control socket path.</param>
-    /// <param name="workspacePath">The optional transient workspace path.</param>
     /// <param name="cancellationToken">The launcher cancellation token.</param>
     /// <returns>The MCP worker exit code.</returns>
-    internal static async Task<int> RunAsync(
-        int? processId,
-        string? socketPath,
-        string? workspacePath,
-        CancellationToken cancellationToken)
+    internal static async Task<int> RunAsync(CancellationToken cancellationToken)
     {
         string workerPath = McpWorkerLocator.Resolve();
-        ProcessStartInfo startInfo = CreateStartInfo(
-            workerPath,
-            processId,
-            socketPath,
-            workspacePath);
+        ProcessStartInfo startInfo = CreateStartInfo(workerPath);
         using Process process = Process.Start(startInfo)
             ?? throw new InvalidOperationException("The csls MCP worker did not start.");
 
@@ -49,11 +37,7 @@ internal static class McpWorkerSupervisor
         return process.ExitCode;
     }
 
-    private static ProcessStartInfo CreateStartInfo(
-        string workerPath,
-        int? processId,
-        string? socketPath,
-        string? workspacePath)
+    private static ProcessStartInfo CreateStartInfo(string workerPath)
     {
         bool isManagedAssembly = string.Equals(
             Path.GetExtension(workerPath),
@@ -71,22 +55,6 @@ internal static class McpWorkerSupervisor
         if (isManagedAssembly)
         {
             startInfo.ArgumentList.Add(workerPath);
-        }
-
-        if (processId.HasValue)
-        {
-            startInfo.ArgumentList.Add("--session");
-            startInfo.ArgumentList.Add(processId.Value.ToString(CultureInfo.InvariantCulture));
-        }
-        else if (!string.IsNullOrWhiteSpace(socketPath))
-        {
-            startInfo.ArgumentList.Add("--socket");
-            startInfo.ArgumentList.Add(Path.GetFullPath(socketPath));
-        }
-        else
-        {
-            startInfo.ArgumentList.Add("--workspace");
-            startInfo.ArgumentList.Add(Path.GetFullPath(workspacePath!));
         }
 
         return startInfo;

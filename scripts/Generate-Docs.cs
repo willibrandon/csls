@@ -6,21 +6,17 @@
 #:package Microsoft.CodeAnalysis.CSharp
 #:package ModelContextProtocol
 #:package SharpCompress
-#:project ../src/Csls.Client/Csls.Client.csproj
 #:project ../src/Csls.Control.Contracts/Csls.Control.Contracts.csproj
 #:project ../src/Csls.Protocol/Csls.Protocol.csproj
 #:include ScriptSupport.cs
 
-using Csls.Client;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using ModelContextProtocol.Client;
 using System.Diagnostics;
-using System.Globalization;
 using System.Reflection;
 using System.Reflection.Metadata;
 using System.Reflection.PortableExecutable;
-using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.Json;
 using System.Xml.Linq;
@@ -166,13 +162,6 @@ static async Task<string> GenerateMcpReferenceAsync(
     string repositoryRoot,
     CancellationToken cancellationToken)
 {
-    string workerPath = Path.Join(
-        repositoryRoot,
-        "artifacts",
-        "bin",
-        "Csls.Worker",
-        "debug",
-        "csls-worker.dll");
     string mcpWorkerPath = Path.Join(
         repositoryRoot,
         "artifacts",
@@ -180,84 +169,42 @@ static async Task<string> GenerateMcpReferenceAsync(
         "Csls.Mcp.Worker",
         "debug",
         "csls-mcp-worker.dll");
-    RequireFile(workerPath);
     RequireFile(mcpWorkerPath);
-
-    DirectoryInfo fixture = Directory.CreateTempSubdirectory("csls-docs-");
-    string? previousWorkerPath = Environment.GetEnvironmentVariable(
-        "CSLS_SERVER_WORKER_PATH");
+    Dictionary<string, string?> environment =
+        StdioClientTransportOptions.GetDefaultEnvironmentVariables();
+    environment["DOTNET_CLI_TELEMETRY_OPTOUT"] = "1";
+    environment["DOTNET_CLI_WORKLOAD_UPDATE_NOTIFY_DISABLE"] = "true";
+    environment["DOTNET_NOLOGO"] = "1";
+    var transport = new StdioClientTransport(
+        new StdioClientTransportOptions
+        {
+            Command = ResolveDotNetHost(),
+            Arguments = [mcpWorkerPath],
+            Name = "csls-docs",
+            WorkingDirectory = repositoryRoot,
+            InheritEnvironmentVariables = true,
+            EnvironmentVariables = environment,
+            StandardErrorLines = Console.Error.WriteLine
+        });
+    McpClient client = await McpClient.CreateAsync(
+        transport,
+        cancellationToken: cancellationToken).ConfigureAwait(false);
     try
     {
-        await File.WriteAllTextAsync(
-            Path.Join(fixture.FullName, "DocsFixture.csproj"),
-            """
-            <Project Sdk="Microsoft.NET.Sdk">
-              <PropertyGroup>
-                <TargetFramework>net10.0</TargetFramework>
-              </PropertyGroup>
-            </Project>
-            """,
-            cancellationToken).ConfigureAwait(false);
-        await File.WriteAllTextAsync(
-            Path.Join(fixture.FullName, "Program.cs"),
-            "namespace DocsFixture; public static class Program { public static void Main() { } }",
-            cancellationToken).ConfigureAwait(false);
-        Environment.SetEnvironmentVariable("CSLS_SERVER_WORKER_PATH", workerPath);
-        TransientLanguageServerSession session = await TransientLanguageServerSession
-            .StartAsync(
-                fixture.FullName,
-                "csls-docs",
-                cancellationToken).ConfigureAwait(false);
-        await using ConfiguredAsyncDisposable sessionCleanup =
-            session.ConfigureAwait(false);
-        Environment.SetEnvironmentVariable("CSLS_SERVER_WORKER_PATH", previousWorkerPath);
-
-        Dictionary<string, string?> environment =
-            StdioClientTransportOptions.GetDefaultEnvironmentVariables();
-        environment["DOTNET_CLI_TELEMETRY_OPTOUT"] = "1";
-        environment["DOTNET_CLI_WORKLOAD_UPDATE_NOTIFY_DISABLE"] = "true";
-        environment["DOTNET_NOLOGO"] = "1";
-        var transport = new StdioClientTransport(
-            new StdioClientTransportOptions
-            {
-                Command = ResolveDotNetHost(),
-                Arguments =
-                [
-                    mcpWorkerPath,
-                    "--session",
-                    session.ProcessId.ToString(CultureInfo.InvariantCulture)
-                ],
-                Name = "csls-docs",
-                WorkingDirectory = repositoryRoot,
-                InheritEnvironmentVariables = true,
-                EnvironmentVariables = environment,
-                StandardErrorLines = Console.Error.WriteLine
-            });
-        McpClient client = await McpClient.CreateAsync(
-            transport,
+        IList<McpClientTool> tools = await client.ListToolsAsync(
             cancellationToken: cancellationToken).ConfigureAwait(false);
-        try
-        {
-            IList<McpClientTool> tools = await client.ListToolsAsync(
+        IList<McpClientResource> resources = await client.ListResourcesAsync(
+            cancellationToken: cancellationToken).ConfigureAwait(false);
+        IList<McpClientResourceTemplate> templates =
+            await client.ListResourceTemplatesAsync(
                 cancellationToken: cancellationToken).ConfigureAwait(false);
-            IList<McpClientResource> resources = await client.ListResourcesAsync(
-                cancellationToken: cancellationToken).ConfigureAwait(false);
-            IList<McpClientResourceTemplate> templates =
-                await client.ListResourceTemplatesAsync(
-                    cancellationToken: cancellationToken).ConfigureAwait(false);
-            IList<McpClientPrompt> prompts = await client.ListPromptsAsync(
-                cancellationToken: cancellationToken).ConfigureAwait(false);
-            return BuildMcpReference(tools, resources, templates, prompts);
-        }
-        finally
-        {
-            await client.DisposeAsync().ConfigureAwait(false);
-        }
+        IList<McpClientPrompt> prompts = await client.ListPromptsAsync(
+            cancellationToken: cancellationToken).ConfigureAwait(false);
+        return BuildMcpReference(tools, resources, templates, prompts);
     }
     finally
     {
-        Environment.SetEnvironmentVariable("CSLS_SERVER_WORKER_PATH", previousWorkerPath);
-        fixture.Delete(recursive: true);
+        await client.DisposeAsync().ConfigureAwait(false);
     }
 }
 
@@ -268,29 +215,41 @@ static string BuildMcpReference(
     IList<McpClientPrompt> prompts)
 {
     var page = new StringBuilder(
-        "---\ntitle: MCP reference\ndescription: Generated tools, resources, and prompts from the live csls MCP server.\n---\n\n" +
-        "This page is generated through the official MCP client from a real csls session.\n\n" +
+        "---\ntitle: MCP reference\ndescription: Generated multi-workspace tools, resource templates, and prompts from csls-mcp.\n---\n\n" +
+        "This page is generated through the official MCP client from the bare csls MCP server. " +
+        "Start `csls-mcp` without arguments. Every target-dependent tool and resource requires " +
+        "exactly one of `workspace`, `session`, or `socket`. Target selectors are shown " +
+        "separately from operation-specific inputs.\n\n" +
         "## Tools\n\n" +
-        "| Tool | Behavior | Inputs | Description |\n" +
-        "| --- | --- | --- | --- |\n");
+        "| Tool | Behavior | Target | Operation inputs | Description |\n" +
+        "| --- | --- | --- | --- | --- |\n");
     foreach (McpClientTool tool in tools.OrderBy(static tool => tool.Name, StringComparer.Ordinal))
     {
         page.Append("| `").Append(tool.Name).Append("` | ")
             .Append(GetToolBehavior(tool)).Append(" | ")
-            .Append(GetToolInputs(tool.JsonSchema)).Append(" | ")
+            .Append(GetToolTarget(tool.JsonSchema)).Append(" | ")
+            .Append(GetToolInputs(tool.JsonSchema, excludeTargetSelectors: true)).Append(" | ")
             .Append(EscapeTableText(tool.Description)).AppendLine(" |");
     }
 
-    page.AppendLine().AppendLine("## Resources").AppendLine()
-        .AppendLine("| URI | Name | Description |")
-        .AppendLine("| --- | --- | --- |");
-    foreach (McpClientResource resource in resources.OrderBy(
-        static resource => resource.Uri,
-        StringComparer.Ordinal))
+    page.AppendLine().AppendLine("## Resources").AppendLine();
+    if (resources.Count == 0)
     {
-        page.Append("| `").Append(resource.Uri).Append("` | ")
-            .Append(EscapeTableText(resource.Name)).Append(" | ")
-            .Append(EscapeTableText(resource.Description)).AppendLine(" |");
+        page.AppendLine(
+            "csls exposes target-selected state only through the resource templates below.");
+    }
+    else
+    {
+        page.AppendLine("| URI | Name | Description |")
+            .AppendLine("| --- | --- | --- |");
+        foreach (McpClientResource resource in resources.OrderBy(
+            static resource => resource.Uri,
+            StringComparer.Ordinal))
+        {
+            page.Append("| `").Append(resource.Uri).Append("` | ")
+                .Append(EscapeTableText(resource.Name)).Append(" | ")
+                .Append(EscapeTableText(resource.Description)).AppendLine(" |");
+        }
     }
 
     page.AppendLine().AppendLine("## Resource templates").AppendLine()
@@ -597,7 +556,41 @@ static string GetToolBehavior(McpClientTool tool)
     };
 }
 
-static string GetToolInputs(JsonElement schema)
+static string GetToolTarget(JsonElement schema)
+{
+    if (!schema.TryGetProperty("properties", out JsonElement properties) ||
+        properties.ValueKind != JsonValueKind.Object)
+    {
+        return "None";
+    }
+
+    string[] selectors = ["workspace", "session", "socket"];
+    int selectorCount = selectors.Count(selector => properties.TryGetProperty(selector, out _));
+    if (selectorCount == 0)
+    {
+        return "None";
+    }
+
+    if (selectorCount != selectors.Length)
+    {
+        throw new InvalidDataException(
+            "A target-dependent MCP tool does not expose all three target selectors.");
+    }
+
+    if (schema.TryGetProperty("required", out JsonElement requiredProperties) &&
+        requiredProperties.ValueKind == JsonValueKind.Array &&
+        requiredProperties.EnumerateArray().Any(property =>
+            selectors.Contains(property.GetString(), StringComparer.Ordinal)))
+    {
+        throw new InvalidDataException(
+            "MCP target selectors must remain optional in the schema and be validated " +
+            "as exactly one at runtime.");
+    }
+
+    return "Exactly one of `workspace`, `session`, or `socket`";
+}
+
+static string GetToolInputs(JsonElement schema, bool excludeTargetSelectors)
 {
     if (!schema.TryGetProperty("properties", out JsonElement properties) ||
         properties.ValueKind != JsonValueKind.Object)
@@ -618,6 +611,11 @@ static string GetToolInputs(JsonElement schema)
     var inputs = new List<string>();
     foreach (JsonProperty property in properties.EnumerateObject())
     {
+        if (excludeTargetSelectors && IsTargetSelector(property.Name))
+        {
+            continue;
+        }
+
         inputs.Add(required.Contains(property.Name)
             ? $"`{property.Name}` required"
             : $"`{property.Name}`");
@@ -625,6 +623,9 @@ static string GetToolInputs(JsonElement schema)
 
     return inputs.Count == 0 ? "None" : string.Join(", ", inputs);
 }
+
+static bool IsTargetSelector(string name) =>
+    name is "workspace" or "session" or "socket";
 
 static string NormalizeHelp(string help, string repositoryRoot)
 {

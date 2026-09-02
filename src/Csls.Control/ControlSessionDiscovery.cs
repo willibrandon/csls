@@ -175,7 +175,7 @@ public static class ControlSessionDiscovery
             1 => matches[0],
             _ => throw new InvalidOperationException(
                 $"Multiple live csls sessions contain workspace {fullWorkspacePath}. " +
-                "Specify --session.")
+                "Select a session by its process identifier.")
         };
     }
 

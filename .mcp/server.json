@@ -2,7 +2,7 @@
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "io.github.willibrandon/csls-mcp",
   "title": "csls",
-  "description": "C# workspace tools for coding agents and editor integrations.",
+  "description": "C# language intelligence across selected workspaces and live editor sessions.",
   "version": "1.0.0",
   "websiteUrl": "https://willibrandon.github.io/csls/",
   "packages": [

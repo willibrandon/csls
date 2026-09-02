@@ -121,7 +121,7 @@ try
             "csls-mcp",
             "csls-mcp",
             "src/Csls.Mcp/Csls.Mcp.csproj",
-            ["workers/mcp/csls-mcp-worker"])
+            ["workers/mcp/csls-mcp-worker", "workers/server/csls-worker"])
     ];
 
     foreach ((string packageId, _, string project, _) in products)
@@ -190,6 +190,16 @@ try
                     packageId,
                     commandName,
                     version).ConfigureAwait(false);
+                if (string.Equals(packageId, "csls-mcp", StringComparison.Ordinal))
+                {
+                    await VerifyFrameworkDependentMcpWorkerAsync(
+                        repositoryRoot,
+                        verificationRoot,
+                        packageRoot,
+                        packageId,
+                        commandName,
+                        version).ConfigureAwait(false);
+                }
             }
             else
             {
@@ -215,6 +225,8 @@ catch (Exception exception) when (exception is
     IOException or
     InvalidDataException or
     InvalidOperationException or
+    JsonException or
+    OperationCanceledException or
     UnauthorizedAccessException)
 {
     await Console.Error.WriteLineAsync(exception.Message).ConfigureAwait(false);
@@ -462,7 +474,6 @@ static async Task VerifyInstalledToolAsync(
     {
         await VerifyMcpWorkerAsync(
             commandPath,
-            verificationRoot,
             repositoryRoot,
             environment).ConfigureAwait(false);
     }
@@ -619,7 +630,6 @@ static async Task VerifyImplementationToolAsync(
     {
         await VerifyMcpWorkerAsync(
             commandPath,
-            verificationRoot,
             repositoryRoot,
             environment).ConfigureAwait(false);
     }
@@ -630,25 +640,14 @@ static async Task VerifyAgentCommandsAsync(
     string workingDirectory,
     IReadOnlyDictionary<string, string> environment)
 {
-    string mcpHelp = await RunCheckedAsync(
-        commandPath,
-        ["agent", "mcp", "--help"],
-        workingDirectory,
-        environment).ConfigureAwait(false);
-    string[] requiredOptions = ["--session", "--socket", "--workspace"];
-    if (requiredOptions.Any(option => !mcpHelp.Contains(option, StringComparison.Ordinal)))
-    {
-        throw new InvalidDataException(
-            "The installed csls agent MCP command omitted a required connection option.");
-    }
-
     string skill = await RunCheckedAsync(
         commandPath,
         ["agent", "init", "--stdout"],
         workingDirectory,
         environment).ConfigureAwait(false);
     if (!skill.Contains("name: csls", StringComparison.Ordinal) ||
-        !skill.Contains("csls agent mcp --workspace .", StringComparison.Ordinal))
+        !skill.Contains("csls-mcp", StringComparison.Ordinal) ||
+        !skill.Contains("`workspace`, `session`, or `socket`", StringComparison.Ordinal))
     {
         throw new InvalidDataException(
             "The installed csls agent init command returned incomplete skill content.");
@@ -691,6 +690,8 @@ static async Task VerifyLanguageServerWorkerAsync(
         UseShellExecute = false
     };
     ApplyEnvironment(startInfo, environment);
+    startInfo.Environment.Remove("CSLS_MCP_WORKER_PATH");
+    startInfo.Environment.Remove("CSLS_SERVER_WORKER_PATH");
     using Process process = Process.Start(startInfo) ?? throw new InvalidOperationException(
         "The installed csls language server did not start.");
     Task<string> standardErrorTask = process.StandardError.ReadToEndAsync(timeout.Token);
@@ -840,10 +841,29 @@ static async Task VerifyDoctorAsync(
 
 static async Task VerifyMcpWorkerAsync(
     string commandPath,
-    string verificationRoot,
     string workingDirectory,
-    IReadOnlyDictionary<string, string> environment)
+    IReadOnlyDictionary<string, string> environment,
+    IReadOnlyList<string>? commandArguments = null)
 {
+    string fixturePath = Path.Join(
+        Path.GetTempPath(),
+        $"csls-mcp-package-{Guid.NewGuid():N}");
+    Directory.CreateDirectory(fixturePath);
+    string projectPath = Path.Join(fixturePath, "McpFixture.csproj");
+    await File.WriteAllTextAsync(
+        projectPath,
+        """
+        <Project Sdk="Microsoft.NET.Sdk">
+          <PropertyGroup>
+            <TargetFramework>net10.0</TargetFramework>
+            <ImplicitUsings>enable</ImplicitUsings>
+          </PropertyGroup>
+        </Project>
+        """).ConfigureAwait(false);
+    await File.WriteAllTextAsync(
+        Path.Join(fixturePath, "Program.cs"),
+        """Console.WriteLine("csls MCP package verification");""").ConfigureAwait(false);
+
     using var timeout = new CancellationTokenSource(TimeSpan.FromMinutes(ProcessTimeoutMinutes));
     var startInfo = new ProcessStartInfo
     {
@@ -854,12 +874,17 @@ static async Task VerifyMcpWorkerAsync(
         RedirectStandardOutput = true,
         UseShellExecute = false
     };
-    startInfo.ArgumentList.Add("--socket");
-    startInfo.ArgumentList.Add(Path.Join(verificationRoot, "missing-session.socket"));
+    foreach (string argument in commandArguments ?? [])
+    {
+        startInfo.ArgumentList.Add(argument);
+    }
+
     ApplyEnvironment(startInfo, environment);
+    startInfo.Environment.Remove("CSLS_MCP_WORKER_PATH");
+    startInfo.Environment.Remove("CSLS_SERVER_WORKER_PATH");
     using Process process = Process.Start(startInfo) ?? throw new InvalidOperationException(
         "The installed csls MCP server did not start.");
-    Task<string> standardErrorTask = process.StandardError.ReadToEndAsync(timeout.Token);
+    Task<string> standardErrorTask = process.StandardError.ReadToEndAsync();
     try
     {
         await process.StandardInput.WriteLineAsync(
@@ -892,30 +917,122 @@ static async Task VerifyMcpWorkerAsync(
         await process.StandardInput.WriteLineAsync(
             """{"jsonrpc":"2.0","method":"notifications/initialized","params":{}}""")
             .ConfigureAwait(false);
-        await process.StandardInput.WriteLineAsync(
-            """{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"get_session","arguments":{}}}""")
-            .ConfigureAwait(false);
-        await process.StandardInput.FlushAsync(timeout.Token).ConfigureAwait(false);
-        string toolText = await process.StandardOutput
-            .ReadLineAsync(timeout.Token)
-            .ConfigureAwait(false) ?? throw new EndOfStreamException(
-                "The installed MCP server returned no tool response.");
-        using var toolResponse = JsonDocument.Parse(toolText);
-        if (toolResponse.RootElement.GetProperty("id").GetInt32() != 2 ||
-            !toolResponse.RootElement.TryGetProperty("result", out _))
+        JsonElement sessionListResponse = await CallMcpToolAsync(
+            process,
+            requestId: 2,
+            "list_sessions",
+            [],
+            timeout.Token).ConfigureAwait(false);
+        if (!sessionListResponse.TryGetProperty("result", out _))
         {
             throw new InvalidDataException(
-                "The installed MCP worker did not process the session tool call.");
+                "The installed MCP worker did not process the session-list tool call.");
+        }
+
+        var targetArguments = new JsonObject { ["workspace"] = projectPath };
+        JsonElement firstSessionResponse = await CallMcpToolAsync(
+            process,
+            requestId: 3,
+            "get_session",
+            targetArguments,
+            timeout.Token).ConfigureAwait(false);
+        JsonElement firstSession = GetStructuredToolResult(
+            firstSessionResponse,
+            "the first workspace selection");
+        int transientProcessId = firstSession.GetProperty("processId").GetInt32();
+        string socketPath = firstSession.GetProperty("socketPath").GetString()
+            ?? throw new InvalidDataException(
+                "The installed MCP worker returned no transient socket path.");
+        string selectedRoot = firstSession
+            .GetProperty("workspaceRoots")
+            .EnumerateArray()
+            .Single()
+            .GetString() ?? string.Empty;
+        if (transientProcessId <= 0 ||
+            !string.Equals(
+                Path.GetFullPath(selectedRoot),
+                Path.GetFullPath(projectPath),
+                OperatingSystem.IsWindows()
+                    ? StringComparison.OrdinalIgnoreCase
+                    : StringComparison.Ordinal) ||
+            !File.Exists(socketPath))
+        {
+            throw new InvalidDataException(
+                "The installed MCP worker did not start a live targeted workspace session.");
+        }
+
+        var workspaceArguments = new JsonObject { ["workspace"] = fixturePath };
+        JsonElement workspaceResponse = await CallMcpToolAsync(
+            process,
+            requestId: 4,
+            "get_workspace_state",
+            workspaceArguments,
+            timeout.Token).ConfigureAwait(false);
+        JsonElement workspace = GetStructuredToolResult(
+            workspaceResponse,
+            "the repeated workspace selection");
+        JsonElement workspaceCallResult = workspaceResponse.GetProperty("result");
+        bool hasDetailsResourceLink = workspaceCallResult
+            .GetProperty("content")
+            .EnumerateArray()
+            .Any(content =>
+                content.TryGetProperty("type", out JsonElement type) &&
+                string.Equals(type.GetString(), "resource_link", StringComparison.Ordinal) &&
+                content.TryGetProperty("uri", out JsonElement uri) &&
+                string.Equals(
+                    uri.GetString(),
+                    $"csls://workspace/?session={transientProcessId}",
+                    StringComparison.Ordinal));
+        int reusedProcessId = workspace.GetProperty("processId").GetInt32();
+        int projectCount = workspace.GetProperty("projectCount").GetInt32();
+        string expectedDetailsUri = $"csls://workspace/?session={transientProcessId}";
+        string? detailsUri = workspace.GetProperty("detailsUri").GetString();
+        if (reusedProcessId != transientProcessId ||
+            projectCount < 1 ||
+            !string.Equals(detailsUri, expectedDetailsUri, StringComparison.Ordinal) ||
+            !hasDetailsResourceLink ||
+            workspace.GetRawText().Length > 2_048)
+        {
+            throw new InvalidDataException(
+                "The installed MCP worker did not return a bounded overview for its reused " +
+                "targeted workspace session.");
         }
 
         process.StandardInput.Close();
         await process.WaitForExitAsync(timeout.Token).ConfigureAwait(false);
+        await WaitForProcessExitAsync(transientProcessId, timeout.Token).ConfigureAwait(false);
         string standardError = await standardErrorTask.ConfigureAwait(false);
         if (process.ExitCode != 0)
         {
             throw new InvalidOperationException(
                 $"The installed MCP server exited with {process.ExitCode}: {standardError}");
         }
+
+        if (File.Exists(socketPath))
+        {
+            throw new InvalidDataException(
+                "The installed MCP worker left its transient control socket after disconnect.");
+        }
+    }
+    catch (Exception exception) when (exception is
+        IOException or
+        InvalidDataException or
+        InvalidOperationException or
+        JsonException or
+        KeyNotFoundException or
+        OperationCanceledException)
+    {
+        if (!process.HasExited)
+        {
+            process.Kill(entireProcessTree: true);
+            await process.WaitForExitAsync(CancellationToken.None).ConfigureAwait(false);
+        }
+
+        string standardError = await standardErrorTask.ConfigureAwait(false);
+        throw new InvalidOperationException(
+            $"Installed MCP protocol verification failed: {exception.Message}" +
+            $"{Environment.NewLine}{standardError}",
+            exception);
     }
     finally
     {
@@ -924,6 +1041,128 @@ static async Task VerifyMcpWorkerAsync(
             process.Kill(entireProcessTree: true);
             await process.WaitForExitAsync(CancellationToken.None).ConfigureAwait(false);
         }
+
+        if (Directory.Exists(fixturePath))
+        {
+            Directory.Delete(fixturePath, recursive: true);
+        }
+    }
+}
+
+static async Task VerifyFrameworkDependentMcpWorkerAsync(
+    string repositoryRoot,
+    string verificationRoot,
+    string packageRoot,
+    string packageId,
+    string commandName,
+    string version)
+{
+    string extractionPath = Path.Join(
+        verificationRoot,
+        "framework-dependent",
+        packageId);
+    Directory.CreateDirectory(extractionPath);
+    await ZipFile.ExtractToDirectoryAsync(
+        Path.Join(packageRoot, $"{packageId}.any.{version}.nupkg"),
+        extractionPath,
+        overwriteFiles: true,
+        CancellationToken.None).ConfigureAwait(false);
+    string commandAssembly = Path.Join(
+        extractionPath,
+        "tools",
+        "net10.0",
+        "any",
+        commandName + ".dll");
+    if (!File.Exists(commandAssembly))
+    {
+        throw new InvalidDataException(
+            $"The framework-dependent {packageId} package omitted {commandAssembly}.");
+    }
+
+    var environment = new Dictionary<string, string>(StringComparer.Ordinal)
+    {
+        ["DOTNET_CLI_HOME"] = Path.Join(
+            verificationRoot,
+            "dotnet-home",
+            packageId + "-framework-dependent"),
+        ["DOTNET_NOLOGO"] = "1"
+    };
+    await VerifyMcpWorkerAsync(
+        ResolveDotNetHost(),
+        repositoryRoot,
+        environment,
+        [commandAssembly]).ConfigureAwait(false);
+}
+
+static async Task<JsonElement> CallMcpToolAsync(
+    Process process,
+    int requestId,
+    string toolName,
+    JsonObject arguments,
+    CancellationToken cancellationToken)
+{
+    var request = new JsonObject
+    {
+        ["jsonrpc"] = "2.0",
+        ["id"] = requestId,
+        ["method"] = "tools/call",
+        ["params"] = new JsonObject
+        {
+            ["name"] = toolName,
+            ["arguments"] = arguments.DeepClone()
+        }
+    };
+    await process.StandardInput.WriteLineAsync(request.ToJsonString()).ConfigureAwait(false);
+    await process.StandardInput.FlushAsync(cancellationToken).ConfigureAwait(false);
+    while (true)
+    {
+        string responseText = await process.StandardOutput
+            .ReadLineAsync(cancellationToken)
+            .ConfigureAwait(false) ?? throw new EndOfStreamException(
+                $"The installed MCP server returned no response for request {requestId}.");
+        using var response = JsonDocument.Parse(responseText);
+        JsonElement root = response.RootElement;
+        if (root.TryGetProperty("id", out JsonElement id) && id.GetInt32() == requestId)
+        {
+            return root.Clone();
+        }
+    }
+}
+
+static JsonElement GetStructuredToolResult(JsonElement response, string operation)
+{
+    if (!response.TryGetProperty("result", out JsonElement result) ||
+        result.TryGetProperty("isError", out JsonElement isError) && isError.GetBoolean() ||
+        !result.TryGetProperty("structuredContent", out JsonElement structuredContent))
+    {
+        throw new InvalidDataException(
+            $"The installed MCP worker returned no structured content for {operation}: " +
+            response.GetRawText());
+    }
+
+    return structuredContent;
+}
+
+static async Task WaitForProcessExitAsync(
+    int processId,
+    CancellationToken cancellationToken)
+{
+    while (true)
+    {
+        try
+        {
+            using var process = Process.GetProcessById(processId);
+            if (process.HasExited)
+            {
+                return;
+            }
+        }
+        catch (ArgumentException)
+        {
+            return;
+        }
+
+        await Task.Delay(TimeSpan.FromMilliseconds(25), cancellationToken).ConfigureAwait(false);
     }
 }
 

@@ -265,6 +265,19 @@ public sealed class CliLanguageServerTests
         Directory.CreateDirectory(fixturePath);
         try
         {
+            (int helpExitCode, string helpOutput, string helpError) = await RunCliAsync(
+                cliPath,
+                cliWorkerPath,
+                fixturePath,
+                ["agent", "--help"],
+                TestContext.CancellationToken).ConfigureAwait(false);
+            Assert.AreEqual(
+                0,
+                helpExitCode,
+                $"{helpError}{Environment.NewLine}{helpOutput}");
+            Assert.Contains("init", helpOutput, StringComparison.Ordinal);
+            Assert.DoesNotContain("mcp", helpOutput, StringComparison.OrdinalIgnoreCase);
+
             (int createExitCode, string createOutput, string createError) =
                 await RunCliAsync(
                     cliPath,
@@ -299,7 +312,15 @@ public sealed class CliLanguageServerTests
                 TestContext.CancellationToken).ConfigureAwait(false);
             Assert.Contains("name: csls", skillContent, StringComparison.Ordinal);
             Assert.Contains(
-                "csls agent mcp --workspace .",
+                "csls-mcp",
+                skillContent,
+                StringComparison.Ordinal);
+            Assert.Contains(
+                "`workspace`, `session`, or `socket`",
+                skillContent,
+                StringComparison.Ordinal);
+            Assert.DoesNotContain(
+                "csls agent mcp",
                 skillContent,
                 StringComparison.Ordinal);
             Assert.Contains(

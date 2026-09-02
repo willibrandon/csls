@@ -4,73 +4,20 @@ using System.Globalization;
 namespace Csls.App;
 
 /// <summary>
-/// Creates commands that connect coding agents to csls through CLI and MCP interfaces.
+/// Creates commands that prepare coding agents to use csls CLI and MCP interfaces.
 /// </summary>
 internal static class AgentCommand
 {
     /// <summary>
-    /// Creates the agent command group and its MCP and skill-file subcommands.
+    /// Creates the agent command group and its skill-file subcommand.
     /// </summary>
     /// <returns>The configured agent command.</returns>
     internal static Command Create()
     {
         var command = new Command(
             "agent",
-            "Connect coding agents to csls through MCP and reusable instructions.");
-        command.Subcommands.Add(CreateMcpCommand());
+            "Create reusable csls instructions for coding agents.");
         command.Subcommands.Add(CreateInitCommand());
-        return command;
-    }
-
-    private static Command CreateMcpCommand()
-    {
-        var sessionOption = new Option<int?>("--session")
-        {
-            Description = "Attach to the csls language-server process with this identifier."
-        };
-        sessionOption.Validators.Add(static result =>
-        {
-            if (result.GetValueOrDefault<int?>() is <= 0)
-            {
-                result.AddError("--session must be a positive process identifier.");
-            }
-        });
-        var socketOption = new Option<string?>("--socket")
-        {
-            Description = "Attach to this absolute csls Unix-domain-socket path."
-        };
-        var workspaceOption = new Option<string?>("--workspace")
-        {
-            Description = "Start a transient csls session for this workspace path."
-        };
-        var command = new Command("mcp", "Launch the separately installed csls MCP server.")
-        {
-            sessionOption,
-            socketOption,
-            workspaceOption
-        };
-        command.SetAction(async (parseResult, cancellationToken) =>
-        {
-            int? processId = parseResult.GetValue(sessionOption);
-            string? socketPath = parseResult.GetValue(socketOption);
-            string? workspacePath = parseResult.GetValue(workspaceOption);
-            int sourceCount = (processId.HasValue ? 1 : 0) +
-                (string.IsNullOrWhiteSpace(socketPath) ? 0 : 1) +
-                (string.IsNullOrWhiteSpace(workspacePath) ? 0 : 1);
-            if (sourceCount != 1)
-            {
-                await Console.Error.WriteLineAsync(
-                    "Specify exactly one of --session, --socket, or --workspace.")
-                    .ConfigureAwait(false);
-                return 2;
-            }
-
-            return await AgentMcpSupervisor.RunAsync(
-                processId,
-                string.IsNullOrWhiteSpace(socketPath) ? null : Path.GetFullPath(socketPath),
-                string.IsNullOrWhiteSpace(workspacePath) ? null : Path.GetFullPath(workspacePath),
-                cancellationToken).ConfigureAwait(false);
-        });
         return command;
     }
 

@@ -10,12 +10,12 @@ remain in managed workers where dynamic project loading is available.
 ## Process model
 
 ```text
-editor ── LSP stdio ── csls launcher ── server worker ── Roslyn and MSBuild
-                                         │
-                                         └── private control socket
-                                              ├── CLI worker
-                                              ├── Hex1b dashboard
-                                              └── MCP worker
+editor A ── LSP stdio ── csls launcher ── server worker A ── Roslyn/MSBuild
+                                                 └── control socket A ──┬── CLI / dashboard
+                                                                      └──┐
+workspace B ── MCP-owned transient server B ────── control socket B ─────┤
+                                                                         ▼
+MCP client ── stdio ── csls-mcp launcher ── MCP worker / session broker
 ```
 
 The `csls` launcher supervises the server worker and gives it the inherited standard
@@ -26,8 +26,18 @@ shutdown sequence, the launcher waits for that worker to exit.
 CLI commands start a separate managed CLI worker. The worker attaches to the
 selected server session through its private control socket. The dashboard runs in
 that same worker and uses Hex1b for terminal rendering. `csls-mcp` uses its own
-Native AOT launcher and managed MCP worker. It can attach to an editor session or
-own a transient server session for one workspace.
+Native AOT launcher and managed MCP worker. A shared session broker resolves a
+typed selector per call, reuses live control connections, and owns bounded
+transient sessions for workspaces that have no live editor session.
+
+The broker retains target connections for the MCP connection lifetime so edit
+plans, traces, and workspace generations stay affiliated with the selected
+language server. It admits at most 32 MCP-owned transient sessions and 256 total
+cached sessions; exceeding either limit rejects the new acquisition without
+evicting active state. A disconnected target is evicted independently and is not
+retried or retargeted during the failed operation. Disconnecting the MCP client
+cancels outstanding calls, stops owned transient workers, and only closes control
+connections to editor-owned workers.
 
 ## Projects
 
