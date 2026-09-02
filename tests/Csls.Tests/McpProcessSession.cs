@@ -160,27 +160,24 @@ internal sealed class McpProcessSession : IAsyncDisposable
             return;
         }
 
-        try
-        {
-            if (Volatile.Read(ref _disconnectState) == 0)
-            {
-                await DisconnectAsync(
-                    TimeSpan.FromSeconds(30),
-                    CancellationToken.None).ConfigureAwait(false);
-            }
-        }
-        finally
-        {
-            if (!_process.HasExited)
-            {
-                _process.Kill(entireProcessTree: true);
-                await _process.WaitForExitAsync(CancellationToken.None).ConfigureAwait(false);
-            }
+        Task disconnectCompletion = Volatile.Read(ref _disconnectState) == 0
+            ? DisconnectAsync(TimeSpan.FromSeconds(30), CancellationToken.None)
+            : Task.CompletedTask;
+        await disconnectCompletion.ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
 
-            await Client.DisposeAsync().ConfigureAwait(false);
-            ValueTask<string> standardErrorCompletion = new(_standardErrorTask);
-            await standardErrorCompletion.ConfigureAwait(false);
-            _process.Dispose();
+        if (!_process.HasExited)
+        {
+            _process.Kill(entireProcessTree: true);
+            await _process.WaitForExitAsync(CancellationToken.None).ConfigureAwait(false);
+        }
+
+        await Client.DisposeAsync().ConfigureAwait(false);
+        ValueTask<string> standardErrorCompletion = new(_standardErrorTask);
+        await standardErrorCompletion.ConfigureAwait(false);
+        _process.Dispose();
+        if (disconnectCompletion.IsFaulted)
+        {
+            await disconnectCompletion.ConfigureAwait(false);
         }
     }
 }

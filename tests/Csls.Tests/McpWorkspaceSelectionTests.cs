@@ -119,10 +119,13 @@ public sealed class McpWorkspaceSelectionTests
                 Assert.IsNotNull(annotations.OpenWorldHint, tool.Name);
             }
 
-            foreach (string toolName in expectedTargetTools)
+            McpClientTool[] targetTools =
+            [
+                .. expectedTargetTools.Select(toolName => Assert.ContainsSingle(
+                    tools.Where(candidate => candidate.Name == toolName)))
+            ];
+            foreach (McpClientTool tool in targetTools)
             {
-                McpClientTool tool = Assert.ContainsSingle(
-                    tools.Where(candidate => candidate.Name == toolName));
                 Assert.IsNotNull(tool.ProtocolTool.OutputSchema);
                 JsonElement properties = tool.ProtocolTool.InputSchema.GetProperty("properties");
                 Assert.IsTrue(
