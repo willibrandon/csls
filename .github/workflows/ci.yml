@@ -456,14 +456,18 @@ jobs:
         with:
           path: |
             artifacts/tools/csharp-ls-oracle
+            artifacts/tools/roslyn-language-server-oracle
             artifacts/tools/emacs
             artifacts/tools/fresh
             artifacts/tools/helix
             artifacts/tools/neovim
-          key: terminal-editor-tools-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/Provision-CsharpLsOracle.cs', 'scripts/Provision-Emacs.cs', 'scripts/Provision-Fresh.cs', 'scripts/Provision-Helix.cs', 'scripts/Provision-Neovim.cs', 'scripts/ScriptSupport.cs') }}
+          key: terminal-editor-tools-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/Provision-CsharpLsOracle.cs', 'scripts/Provision-RoslynLanguageServerOracle.cs', 'scripts/Provision-Emacs.cs', 'scripts/Provision-Fresh.cs', 'scripts/Provision-Helix.cs', 'scripts/Provision-Neovim.cs', 'scripts/ScriptSupport.cs') }}
 
       - name: Provision parity oracle
         run: dotnet run --file scripts/Provision-CsharpLsOracle.cs
+
+      - name: Provision Roslyn parity oracle
+        run: dotnet run --file scripts/Provision-RoslynLanguageServerOracle.cs
 
       - name: Provision Fresh
         run: dotnet run --file scripts/Provision-Fresh.cs
@@ -482,7 +486,7 @@ jobs:
           dotnet test --test-modules artifacts/bin/Csls.Tests/debug/Csls.Tests.dll
           --root-directory .
           --filter "FullyQualifiedName~Csls.Tests.EmacsLanguageServerTests|FullyQualifiedName~Csls.Tests.FreshLanguageServerTests|FullyQualifiedName~Csls.Tests.HelixLanguageServerTests|FullyQualifiedName~Csls.Tests.NeovimLanguageServerTests|FullyQualifiedName~Csls.Tests.UpstreamParityTests"
-          --minimum-expected-tests 6
+          --minimum-expected-tests 7
 
   zed-tests:
     name: Zed tests (${{ matrix.group }})

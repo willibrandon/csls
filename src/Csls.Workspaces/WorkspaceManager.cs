@@ -1374,17 +1374,12 @@ public sealed partial class WorkspaceManager : IAsyncDisposable
 
         SyntaxNode root = await document.GetSyntaxRootAsync(cancellationToken).ConfigureAwait(false)
             ?? throw new InvalidOperationException("Roslyn returned no syntax root.");
-        SemanticModel semanticModel = await document
-            .GetSemanticModelAsync(cancellationToken)
-            .ConfigureAwait(false)
-            ?? throw new InvalidOperationException("Roslyn returned no semantic model.");
         SourceText text = await document.GetTextAsync(cancellationToken).ConfigureAwait(false);
         var symbols = new List<DocumentSymbol>();
         int symbolCount = 0;
         AddDocumentSymbols(
             root.ChildNodes(),
             symbols,
-            semanticModel,
             text,
             ref symbolCount,
             cancellationToken);
@@ -2124,7 +2119,6 @@ public sealed partial class WorkspaceManager : IAsyncDisposable
     private static void AddDocumentSymbols(
         IEnumerable<SyntaxNode> nodes,
         List<DocumentSymbol> target,
-        SemanticModel semanticModel,
         SourceText text,
         ref int symbolCount,
         CancellationToken cancellationToken)
@@ -2146,7 +2140,6 @@ public sealed partial class WorkspaceManager : IAsyncDisposable
                 AddDocumentSymbols(
                     node.ChildNodes(),
                     target,
-                    semanticModel,
                     text,
                     ref symbolCount,
                     cancellationToken);
@@ -2158,16 +2151,13 @@ public sealed partial class WorkspaceManager : IAsyncDisposable
             AddDocumentSymbols(
                 node.ChildNodes(),
                 children,
-                semanticModel,
                 text,
                 ref symbolCount,
                 cancellationToken);
-            ISymbol? declaredSymbol = semanticModel.GetDeclaredSymbol(node, cancellationToken);
             target.Add(new DocumentSymbol
             {
                 Name = name,
-                Detail = declaredSymbol?.ToDisplayString(
-                    SymbolDisplayFormat.MinimallyQualifiedFormat),
+                Detail = name,
                 Kind = kind,
                 Range = ToLspRange(text, node.Span),
                 SelectionRange = ToLspRange(text, selectionSpan),
@@ -2190,22 +2180,26 @@ public sealed partial class WorkspaceManager : IAsyncDisposable
                 selectionSpan = namespaceDeclaration.Name.Span;
                 return true;
             case ClassDeclarationSyntax classDeclaration:
-                name = classDeclaration.Identifier.ValueText;
+                name = classDeclaration.Identifier.ValueText +
+                    FormatTypeParameters(classDeclaration.TypeParameterList);
                 kind = LspSymbolKind.Class;
                 selectionSpan = classDeclaration.Identifier.Span;
                 return true;
             case StructDeclarationSyntax structDeclaration:
-                name = structDeclaration.Identifier.ValueText;
+                name = structDeclaration.Identifier.ValueText +
+                    FormatTypeParameters(structDeclaration.TypeParameterList);
                 kind = LspSymbolKind.Struct;
                 selectionSpan = structDeclaration.Identifier.Span;
                 return true;
             case InterfaceDeclarationSyntax interfaceDeclaration:
-                name = interfaceDeclaration.Identifier.ValueText;
+                name = interfaceDeclaration.Identifier.ValueText +
+                    FormatTypeParameters(interfaceDeclaration.TypeParameterList);
                 kind = LspSymbolKind.Interface;
                 selectionSpan = interfaceDeclaration.Identifier.Span;
                 return true;
             case RecordDeclarationSyntax recordDeclaration:
-                name = recordDeclaration.Identifier.ValueText;
+                name = recordDeclaration.Identifier.ValueText +
+                    FormatTypeParameters(recordDeclaration.TypeParameterList);
                 kind = recordDeclaration.ClassOrStructKeyword.IsKind(SyntaxKind.StructKeyword)
                     ? LspSymbolKind.Struct
                     : LspSymbolKind.Class;
@@ -2217,47 +2211,67 @@ public sealed partial class WorkspaceManager : IAsyncDisposable
                 selectionSpan = enumDeclaration.Identifier.Span;
                 return true;
             case DelegateDeclarationSyntax delegateDeclaration:
-                name = delegateDeclaration.Identifier.ValueText;
-                kind = LspSymbolKind.Function;
+                name = delegateDeclaration.Identifier.ValueText +
+                    FormatTypeParameters(delegateDeclaration.TypeParameterList) +
+                    FormatParameters(delegateDeclaration.ParameterList) +
+                    " : " + FormatType(delegateDeclaration.ReturnType);
+                kind = LspSymbolKind.Method;
                 selectionSpan = delegateDeclaration.Identifier.Span;
                 return true;
             case MethodDeclarationSyntax methodDeclaration:
-                name = methodDeclaration.Identifier.ValueText;
+                name = methodDeclaration.Identifier.ValueText +
+                    FormatTypeParameters(methodDeclaration.TypeParameterList) +
+                    FormatParameters(methodDeclaration.ParameterList) +
+                    " : " + FormatType(methodDeclaration.ReturnType);
                 kind = LspSymbolKind.Method;
                 selectionSpan = methodDeclaration.Identifier.Span;
                 return true;
             case ConstructorDeclarationSyntax constructorDeclaration:
-                name = constructorDeclaration.Identifier.ValueText;
+                name = constructorDeclaration.Identifier.ValueText +
+                    FormatParameters(constructorDeclaration.ParameterList);
                 kind = LspSymbolKind.Constructor;
                 selectionSpan = constructorDeclaration.Identifier.Span;
                 return true;
             case DestructorDeclarationSyntax destructorDeclaration:
-                name = "~" + destructorDeclaration.Identifier.ValueText;
+                name = "~" + destructorDeclaration.Identifier.ValueText +
+                    FormatParameters(destructorDeclaration.ParameterList);
                 kind = LspSymbolKind.Constructor;
                 selectionSpan = destructorDeclaration.Identifier.Span;
                 return true;
             case OperatorDeclarationSyntax operatorDeclaration:
-                name = "operator " + operatorDeclaration.OperatorToken.ValueText;
+                name = "operator " + operatorDeclaration.OperatorToken.ValueText +
+                    FormatParameters(operatorDeclaration.ParameterList) +
+                    " : " + FormatType(operatorDeclaration.ReturnType);
                 kind = LspSymbolKind.Operator;
                 selectionSpan = operatorDeclaration.OperatorToken.Span;
                 return true;
             case ConversionOperatorDeclarationSyntax conversionDeclaration:
-                name = "operator " + conversionDeclaration.Type;
+                name = conversionDeclaration.ImplicitOrExplicitKeyword.IsKind(
+                        SyntaxKind.ImplicitKeyword)
+                    ? "implicit operator "
+                    : "explicit operator ";
+                name += FormatType(conversionDeclaration.Type) +
+                    FormatParameters(conversionDeclaration.ParameterList);
                 kind = LspSymbolKind.Operator;
                 selectionSpan = conversionDeclaration.Type.Span;
                 return true;
             case PropertyDeclarationSyntax propertyDeclaration:
-                name = propertyDeclaration.Identifier.ValueText;
+                name = propertyDeclaration.Identifier.ValueText +
+                    " : " + FormatType(propertyDeclaration.Type);
                 kind = LspSymbolKind.Property;
                 selectionSpan = propertyDeclaration.Identifier.Span;
                 return true;
             case IndexerDeclarationSyntax indexerDeclaration:
-                name = "this";
+                name = "this" + FormatParameters(
+                    indexerDeclaration.ParameterList.Parameters,
+                    "[",
+                    "]") + " : " + FormatType(indexerDeclaration.Type);
                 kind = LspSymbolKind.Property;
                 selectionSpan = indexerDeclaration.ThisKeyword.Span;
                 return true;
             case EventDeclarationSyntax eventDeclaration:
-                name = eventDeclaration.Identifier.ValueText;
+                name = eventDeclaration.Identifier.ValueText +
+                    " : " + FormatType(eventDeclaration.Type);
                 kind = LspSymbolKind.Event;
                 selectionSpan = eventDeclaration.Identifier.Span;
                 return true;
@@ -2267,21 +2281,26 @@ public sealed partial class WorkspaceManager : IAsyncDisposable
                 selectionSpan = enumMember.Identifier.Span;
                 return true;
             case LocalFunctionStatementSyntax localFunction:
-                name = localFunction.Identifier.ValueText;
-                kind = LspSymbolKind.Function;
+                name = localFunction.Identifier.ValueText +
+                    FormatTypeParameters(localFunction.TypeParameterList) +
+                    FormatParameters(localFunction.ParameterList) +
+                    " : " + FormatType(localFunction.ReturnType);
+                kind = LspSymbolKind.Method;
                 selectionSpan = localFunction.Identifier.Span;
                 return true;
             case VariableDeclaratorSyntax variable when
                 variable.Parent?.Parent is FieldDeclarationSyntax field:
-                name = variable.Identifier.ValueText;
+                name = variable.Identifier.ValueText +
+                    " : " + FormatType(field.Declaration.Type);
                 kind = field.Modifiers.Any(SyntaxKind.ConstKeyword)
                     ? LspSymbolKind.Constant
                     : LspSymbolKind.Field;
                 selectionSpan = variable.Identifier.Span;
                 return true;
             case VariableDeclaratorSyntax variable when
-                variable.Parent?.Parent is EventFieldDeclarationSyntax:
-                name = variable.Identifier.ValueText;
+                variable.Parent?.Parent is EventFieldDeclarationSyntax eventField:
+                name = variable.Identifier.ValueText +
+                    " : " + FormatType(eventField.Declaration.Type);
                 kind = LspSymbolKind.Event;
                 selectionSpan = variable.Identifier.Span;
                 return true;
@@ -2292,6 +2311,58 @@ public sealed partial class WorkspaceManager : IAsyncDisposable
                 return false;
         }
     }
+
+    private static string FormatTypeParameters(TypeParameterListSyntax? parameters) =>
+        parameters is null
+            ? string.Empty
+            : $"<{string.Join(", ", parameters.Parameters.Select(
+                static parameter => parameter.Identifier.ValueText))}>";
+
+    private static string FormatParameters(ParameterListSyntax? parameters) =>
+        parameters is null
+            ? string.Empty
+            : FormatParameters(parameters.Parameters, "(", ")");
+
+    private static string FormatParameters(
+        SeparatedSyntaxList<ParameterSyntax> parameters,
+        string openingDelimiter,
+        string closingDelimiter) =>
+        openingDelimiter + string.Join(", ", parameters.Select(
+            static parameter => FormatType(parameter.Type))) + closingDelimiter;
+
+    private static string FormatType(TypeSyntax? type)
+    {
+        return type switch
+        {
+            null => string.Empty,
+            ArrayTypeSyntax array => FormatType(array.ElementType) + string.Concat(
+                array.RankSpecifiers.Select(static rank =>
+                    $"[{new string(',', Math.Max(0, rank.Rank - 1))}]")),
+            PointerTypeSyntax pointer => FormatType(pointer.ElementType) + "*",
+            NullableTypeSyntax nullable => FormatType(nullable.ElementType) + "?",
+            TupleTypeSyntax tuple => $"({string.Join(", ", tuple.Elements.Select(
+                static element => FormatTupleElement(element)))})",
+            RefTypeSyntax reference => "ref " + FormatType(reference.Type),
+            ScopedTypeSyntax scoped => "scoped " + FormatType(scoped.Type),
+            PredefinedTypeSyntax predefined => predefined.Keyword.ValueText,
+            FunctionPointerTypeSyntax functionPointer =>
+                $"delegate*<{string.Join(", ", functionPointer.ParameterList.Parameters.Select(
+                    static parameter => FormatType(parameter.Type)))}>",
+            OmittedTypeArgumentSyntax => string.Empty,
+            QualifiedNameSyntax qualified => FormatType(qualified.Right),
+            AliasQualifiedNameSyntax aliasQualified => FormatType(aliasQualified.Name),
+            IdentifierNameSyntax identifier => identifier.Identifier.ValueText,
+            GenericNameSyntax generic => generic.Identifier.ValueText +
+                $"<{string.Join(", ", generic.TypeArgumentList.Arguments.Select(
+                    static argument => FormatType(argument)))}>",
+            _ => type.ToString()
+        };
+    }
+
+    private static string FormatTupleElement(TupleElementSyntax element) =>
+        element.Identifier.RawKind == 0
+            ? FormatType(element.Type)
+            : $"{FormatType(element.Type)} {element.Identifier.ValueText}";
 
     private static LspRange ToLspRange(SourceText text, TextSpan span)
     {

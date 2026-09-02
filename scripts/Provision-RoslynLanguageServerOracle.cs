@@ -11,10 +11,10 @@ using System.Runtime.InteropServices;
 if (args.Length == 1 && args[0] is "--help" or "-h" or "-?")
 {
     await Console.Out.WriteLineAsync(
-        "Installs and verifies the latest stable upstream csharp-ls parity oracle.")
+        "Installs and verifies the current upstream Roslyn language-server parity oracle.")
         .ConfigureAwait(false);
     await Console.Out.WriteLineAsync(
-        "Usage: dotnet run --file scripts/Provision-CsharpLsOracle.cs [--output <directory>]")
+        "Usage: dotnet run --file scripts/Provision-RoslynLanguageServerOracle.cs [--output <directory>]")
         .ConfigureAwait(false);
     return 0;
 }
@@ -23,7 +23,7 @@ if (args.Length is not 0 and not 2 ||
     args.Length == 2 && !string.Equals(args[0], "--output", StringComparison.Ordinal))
 {
     await Console.Error.WriteLineAsync(
-        "Usage: dotnet run --file scripts/Provision-CsharpLsOracle.cs [--output <directory>]")
+        "Usage: dotnet run --file scripts/Provision-RoslynLanguageServerOracle.cs [--output <directory>]")
         .ConfigureAwait(false);
     return 2;
 }
@@ -36,12 +36,12 @@ try
         args.Length == 2 ? args[1] : null);
     string executablePath = await ScriptSupport.ProvisionCurrentDotNetToolAsync(
         toolsRoot,
-        "csharp-ls-oracle",
-        "csharp-ls",
+        "roslyn-language-server-oracle",
+        "roslyn-language-server",
         GetPlatform(),
-        "csharp-ls",
-        includePrerelease: false,
-        ["--version"],
+        "roslyn-language-server",
+        includePrerelease: true,
+        ["--stdio", "--version"],
         CancellationToken.None).ConfigureAwait(false);
     await Console.Out.WriteLineAsync(executablePath).ConfigureAwait(false);
     return 0;

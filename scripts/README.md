@@ -18,12 +18,13 @@ supports `--help`.
 | `Install-GraphicalEditorTestPrerequisites.cs` | Installs Linux display, input, and headless browser runtime packages for editor tests. |
 | `Install-NativeAotPrerequisites.cs` | Installs the native compiler prerequisites for a runtime identifier. |
 | `Provision-Actionlint.cs` | Installs the GitHub Actions validator. |
-| `Provision-CsharpLsOracle.cs` | Installs the language server parity oracle. |
+| `Provision-CsharpLsOracle.cs` | Installs the csharp-ls language-server parity oracle. |
 | `Provision-Emacs.cs` | Installs the Emacs Eglot editor oracle. |
 | `Provision-Fresh.cs` | Installs the Fresh editor oracle. |
 | `Provision-Helix.cs` | Installs the Helix editor oracle. |
 | `Provision-LegacyBuildHost.cs` | Installs Mono MSBuild or verifies Visual Studio MSBuild for legacy workspaces. |
 | `Provision-Neovim.cs` | Installs the Neovim editor oracle. |
+| `Provision-RoslynLanguageServerOracle.cs` | Installs the Roslyn language-server parity oracle. |
 | `Provision-SbomTool.cs` | Installs the verified Microsoft SBOM Tool release. |
 | `Provision-VsCode.cs` | Installs the VS Code test client, builds its host fixtures, and optionally installs its web browsers. |
 | `Provision-VsCodeRemoteServer.cs` | Installs the matching VS Code server used by remote extension-host tests. |

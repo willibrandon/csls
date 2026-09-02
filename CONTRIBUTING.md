@@ -40,11 +40,16 @@ Provision the real editor and parity oracles locally with:
 
 ```console
 dotnet run --file scripts/Provision-CsharpLsOracle.cs
+dotnet run --file scripts/Provision-RoslynLanguageServerOracle.cs
 dotnet run --file scripts/Provision-Fresh.cs
 dotnet run --file scripts/Provision-Emacs.cs
 dotnet run --file scripts/Provision-Helix.cs
 dotnet run --file scripts/Provision-Neovim.cs
 ```
+
+Set `CSLS_CSHARP_LS_ORACLE_PATH` or
+`CSLS_ROSLYN_LANGUAGE_SERVER_ORACLE_PATH` to use an externally managed oracle
+executable instead.
 
 Set `CSLS_TOOLS_ROOT` to keep provisioned tools outside the repository. The
 development container uses a container-local tool root so prefix-dependent

@@ -93,12 +93,14 @@ public sealed class SymbolLanguageServerTests
             Assert.AreEqual(new Position(2, 20), calculator.SelectionRange.Start);
             Assert.AreEqual(new Position(2, 30), calculator.SelectionRange.End);
             Assert.IsNotNull(calculator.Children);
+            Assert.IsTrue(calculator.Children.All(static symbol => symbol.Detail == symbol.Name));
             Assert.Contains(
-                "Name",
+                "Name : string",
                 calculator.Children.Select(static symbol => symbol.Name));
             Assert.AreEqual(
                 2,
-                calculator.Children.Count(static symbol => symbol.Name == "Combine"));
+                calculator.Children.Count(static symbol =>
+                    symbol.Name.StartsWith("Combine(", StringComparison.Ordinal)));
 
             IReadOnlyList<WorkspaceSymbol> workspaceSymbols =
                 await lsp.RequestWorkspaceSymbolsAsync(
