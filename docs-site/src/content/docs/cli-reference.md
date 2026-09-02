@@ -29,7 +29,7 @@ Commands:
   trace          Control bounded request lifecycle tracing.
   query          Query language intelligence from a csls session.
   edit           Preview semantic workspace edits through a csls session.
-  agent          Connect coding agents to csls through MCP and reusable instructions.
+  agent          Create reusable csls instructions for coding agents.
 ```
 
 ## csls lsp
@@ -215,7 +215,7 @@ Commands:
 
 ```text
 Description:
-  Connect coding agents to csls through MCP and reusable instructions.
+  Create reusable csls instructions for coding agents.
 
 Usage:
   csls agent [command] [options]
@@ -224,7 +224,6 @@ Options:
   -?, -h, --help  Show help and usage information
 
 Commands:
-  mcp   Launch the separately installed csls MCP server.
   init  Create a reusable csls agent skill file.
 ```
 
@@ -781,22 +780,6 @@ Options:
   --apply               Explicitly apply the single returned action after all preconditions pass.
   --json                Write the versioned machine-readable response envelope.
   -?, -h, --help        Show help and usage information
-```
-
-## csls agent mcp
-
-```text
-Description:
-  Launch the separately installed csls MCP server.
-
-Usage:
-  csls agent mcp [options]
-
-Options:
-  --session <session>      Attach to the csls language-server process with this identifier.
-  --socket <socket>        Attach to this absolute csls Unix-domain-socket path.
-  --workspace <workspace>  Start a transient csls session for this workspace path.
-  -?, -h, --help           Show help and usage information
 ```
 
 ## csls agent init

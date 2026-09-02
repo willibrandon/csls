@@ -40,7 +40,7 @@ internal sealed class CslsMcpPrompts
         [Description("C# symbol to explain.")]
         string symbol) =>
         $"Use csls to explain {symbol}, including its declaration, type, documentation, callers, " +
-        "dependencies, and role in the active workspace.";
+        "dependencies, and role in the explicitly selected workspace.";
 
     /// <summary>
     /// Creates a review prompt that uses semantic language-server evidence.

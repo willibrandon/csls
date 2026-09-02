@@ -45,18 +45,12 @@ builder.Services.AddSingleton<ControlRpcServer>();
 builder.Services.AddSingleton<IHostedService>(
     static services => services.GetRequiredService<ControlRpcServer>());
 
-using var shutdownSource = new CancellationTokenSource();
-void cancelHandler(object? _, ConsoleCancelEventArgs eventArgs)
-{
-    eventArgs.Cancel = true;
-    shutdownSource.Cancel();
-}
-Console.CancelKeyPress += cancelHandler;
-
+using IHost host = builder.Build();
+IHostApplicationLifetime applicationLifetime =
+    host.Services.GetRequiredService<IHostApplicationLifetime>();
+await host.StartAsync(CancellationToken.None).ConfigureAwait(false);
 try
 {
-    using IHost host = builder.Build();
-    await host.StartAsync(shutdownSource.Token).ConfigureAwait(false);
     LanguageServer languageServer = host.Services.GetRequiredService<LanguageServer>();
     LspClientConnection client = host.Services.GetRequiredService<LspClientConnection>();
     using Stream input = Console.OpenStandardInput();
@@ -66,19 +60,18 @@ try
         output,
         languageServer,
         client,
-        shutdownSource.Token).ConfigureAwait(false);
-
-    await host.StopAsync(CancellationToken.None).ConfigureAwait(false);
-    return 0;
+        applicationLifetime.ApplicationStopping).ConfigureAwait(false);
 }
-catch (OperationCanceledException) when (shutdownSource.IsCancellationRequested)
+catch (OperationCanceledException) when (
+    applicationLifetime.ApplicationStopping.IsCancellationRequested)
 {
-    return 130;
+    // The Generic Host translates SIGINT and SIGTERM into application stopping.
 }
 finally
 {
-    Console.CancelKeyPress -= cancelHandler;
+    await host.StopAsync(CancellationToken.None).ConfigureAwait(false);
 }
+return 0;
 
 static async Task RunSessionAsync(
     Stream input,

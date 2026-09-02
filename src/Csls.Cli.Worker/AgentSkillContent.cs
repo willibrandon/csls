@@ -64,13 +64,12 @@ internal static class AgentSkillContent
 
         ## Run MCP
 
-        Install the separate `csls-mcp` .NET tool, then run one of these commands from an MCP client:
+        Install the separate `csls-mcp` .NET tool and configure the MCP client to run it without arguments:
 
         ```console
-        csls agent mcp --workspace .
-        csls agent mcp --session <pid>
+        csls-mcp
         ```
 
-        Direct workspace mode owns a transient language-server process. Session mode attaches without taking ownership of the editor process.
+        Except for `list_sessions`, every csls MCP tool and resource requires exactly one flat target selector: `workspace`, `session`, or `socket`. A workspace selector reuses one unambiguous live session or starts and reuses an MCP-owned transient language server. Session and socket selectors attach without taking ownership of the editor process. One MCP connection can target several workspaces and sessions.
         """ + "\n";
 }

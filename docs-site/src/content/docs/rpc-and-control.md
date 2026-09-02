@@ -81,9 +81,10 @@ so cancellation behaves the same in managed and Native AOT tool packages.
 
 ## Ownership and shutdown
 
-An attached CLI or MCP process never owns the editor's server. Closing its control
-connection leaves the server running. Direct MCP and doctor sessions own their
-transient worker and complete the normal LSP shutdown handshake when finished.
+An attached CLI or MCP connection never owns the editor's server. Closing its
+control connection leaves the server running. MCP workspace selectors and doctor
+sessions own any transient worker they start and complete the normal LSP shutdown
+handshake when finished.
 
 Editor cancellation reaches the scheduled Roslyn operation. Control cancellation
 uses the same correlation identifier and token. Shutdown stops admission, drains

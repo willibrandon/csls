@@ -13,6 +13,7 @@ public sealed class ControlRpcClient : IAsyncDisposable
     private const int MaximumMessageBytes = 4 * 1024 * 1024;
     private readonly string _socketPath;
     private readonly Func<CancellationToken, Task>? _workspaceReadiness;
+    private readonly bool _retryRecoverableReads;
     private readonly SemaphoreSlim _connectionGate = new(1, 1);
     private Socket? _socket;
     private NetworkStream? _stream;
@@ -29,7 +30,7 @@ public sealed class ControlRpcClient : IAsyncDisposable
     /// </summary>
     /// <param name="socketPath">The absolute live-session socket path.</param>
     public ControlRpcClient(string socketPath)
-        : this(socketPath, workspaceReadiness: null)
+        : this(socketPath, workspaceReadiness: null, retryRecoverableReads: true)
     {
     }
 
@@ -41,10 +42,25 @@ public sealed class ControlRpcClient : IAsyncDisposable
     public ControlRpcClient(
         string socketPath,
         Func<CancellationToken, Task>? workspaceReadiness)
+        : this(socketPath, workspaceReadiness, retryRecoverableReads: true)
+    {
+    }
+
+    /// <summary>
+    /// Creates a control client with configurable recoverable read-operation retry behavior.
+    /// </summary>
+    /// <param name="socketPath">The absolute live-session socket path.</param>
+    /// <param name="workspaceReadiness">The optional workspace readiness operation.</param>
+    /// <param name="retryRecoverableReads">Whether one reconnect and retry is allowed after a recoverable read failure.</param>
+    public ControlRpcClient(
+        string socketPath,
+        Func<CancellationToken, Task>? workspaceReadiness,
+        bool retryRecoverableReads)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(socketPath);
         _socketPath = Path.GetFullPath(socketPath);
         _workspaceReadiness = workspaceReadiness;
+        _retryRecoverableReads = retryRecoverableReads;
     }
 
     /// <summary>
@@ -578,7 +594,7 @@ public sealed class ControlRpcClient : IAsyncDisposable
                     cancellationToken: cancellationToken).ConfigureAwait(false);
             }
             catch (Exception exception) when (
-                canRetry &&
+                _retryRecoverableReads && canRetry &&
                 !cancellationToken.IsCancellationRequested &&
                 Volatile.Read(ref _disposeState) == 0 &&
                 IsRecoverableConnectionFailure(exception))
@@ -607,7 +623,7 @@ public sealed class ControlRpcClient : IAsyncDisposable
                     cancellationToken).ConfigureAwait(false);
             }
             catch (Exception exception) when (
-                canRetry &&
+                _retryRecoverableReads && canRetry &&
                 !cancellationToken.IsCancellationRequested &&
                 Volatile.Read(ref _disposeState) == 0 &&
                 IsRecoverableConnectionFailure(exception))

@@ -33,5 +33,8 @@ Install the separate MCP tool when an MCP client will use the language server:
 
 ```console
 dotnet tool install --global csls-mcp
-csls agent mcp --workspace .
+csls-mcp
 ```
+
+Register only `csls-mcp` with the MCP client. Select a `workspace`, `session`, or
+`socket` in each target-dependent tool or resource call.

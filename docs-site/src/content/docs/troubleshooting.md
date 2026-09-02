@@ -68,6 +68,21 @@ is no longer live.
 If one editor has several workspaces, select the session with `--workspace`. If
 several sessions own the same path, select the exact process with `--session`.
 
+## MCP cannot select a target
+
+Register the MCP server as bare `csls-mcp`; startup `--workspace`, `--session`, and
+`--socket` options do not exist. Except for `list_sessions`, pass exactly one flat
+selector in each tool or resource request. Use `workspace` with an existing
+directory, solution, project, or document path, `session` with a positive process
+identifier from `list_sessions`, or `socket` with an absolute live control-socket
+path.
+
+If a workspace matches several editor sessions, select the intended process or
+socket explicitly. A disconnected target is not silently retried or replaced;
+repeat a workspace-selected request to resolve the current live session or start a
+new transient one. Selector errors affect only that request and do not require
+restarting the MCP connection.
+
 ## A request appears stuck
 
 Open `csls dashboard`, inspect Requests, then start a bounded trace. Each request has

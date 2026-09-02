@@ -1,8 +1,8 @@
+using Csls.Control;
 using Csls.Control.Contracts;
 using Csls.Protocol;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
-using System.Globalization;
 using System.Runtime.CompilerServices;
 using System.Text.Json;
 using LspRange = Csls.Protocol.Range;
@@ -141,8 +141,6 @@ public sealed class McpLanguageServerTests
                 mcpArguments.Add(mcpPath);
             }
 
-            mcpArguments.Add("--session");
-            mcpArguments.Add(lsp.ProcessId.ToString(CultureInfo.InvariantCulture));
             var transport = new StdioClientTransport(
                 new StdioClientTransportOptions
                 {
@@ -169,6 +167,8 @@ public sealed class McpLanguageServerTests
                     .ConfigureAwait(false);
                 McpClientTool sessionTool = tools.Single(static tool =>
                     tool.Name == "get_session");
+                McpClientTool sessionsTool = tools.Single(static tool =>
+                    tool.Name == "list_sessions");
                 McpClientTool workspaceStateTool = tools.Single(static tool =>
                     tool.Name == "get_workspace_state");
                 McpClientTool restoreWorkspaceTool = tools.Single(static tool =>
@@ -224,6 +224,28 @@ public sealed class McpLanguageServerTests
                 Assert.IsNotNull(annotations.IdempotentHint);
                 Assert.IsTrue(annotations.IdempotentHint.Value);
                 Assert.IsNotNull(sessionTool.ProtocolTool.OutputSchema);
+                Assert.IsNotNull(sessionsTool.ProtocolTool.OutputSchema);
+                foreach (McpClientTool targetTool in tools.Where(static tool =>
+                    tool.Name != "list_sessions"))
+                {
+                    JsonElement inputProperties = targetTool.ProtocolTool.InputSchema
+                        .GetProperty("properties");
+                    Assert.IsTrue(
+                        inputProperties.TryGetProperty("workspace", out _),
+                        $"Tool {targetTool.Name} omitted the workspace selector.");
+                    Assert.IsTrue(
+                        inputProperties.TryGetProperty("session", out _),
+                        $"Tool {targetTool.Name} omitted the session selector.");
+                    Assert.IsTrue(
+                        inputProperties.TryGetProperty("socket", out _),
+                        $"Tool {targetTool.Name} omitted the socket selector.");
+                }
+
+                JsonElement sessionsInputProperties = sessionsTool.ProtocolTool.InputSchema
+                    .GetProperty("properties");
+                Assert.IsFalse(sessionsInputProperties.TryGetProperty("workspace", out _));
+                Assert.IsFalse(sessionsInputProperties.TryGetProperty("session", out _));
+                Assert.IsFalse(sessionsInputProperties.TryGetProperty("socket", out _));
                 Assert.IsNotNull(workspaceStateTool.ProtocolTool.OutputSchema);
                 Assert.IsNotNull(restoreWorkspaceTool.ProtocolTool.OutputSchema);
                 Assert.IsNotNull(reloadWorkspaceTool.ProtocolTool.OutputSchema);
@@ -279,6 +301,10 @@ public sealed class McpLanguageServerTests
 
                 CallToolResult sessionResult = await client.CallToolAsync(
                     "get_session",
+                    new Dictionary<string, object?>
+                    {
+                        ["socket"] = ControlEndpoint.GetSocketPath(lsp.ProcessId)
+                    },
                     cancellationToken: TestContext.CancellationToken).ConfigureAwait(false);
                 Assert.IsNull(sessionResult.IsError);
                 Assert.IsTrue(sessionResult.StructuredContent.HasValue);
@@ -293,31 +319,28 @@ public sealed class McpLanguageServerTests
                     "get_workspace_state",
                     new Dictionary<string, object?>
                     {
-                        ["includeDiagnostics"] = true
+                        ["session"] = lsp.ProcessId
                     },
                     cancellationToken: TestContext.CancellationToken).ConfigureAwait(false);
                 Assert.IsNull(workspaceStateResult.IsError);
                 Assert.IsTrue(workspaceStateResult.StructuredContent.HasValue);
-                ControlDashboardSnapshot workspaceState = workspaceStateResult.StructuredContent
-                    .Value.Deserialize(
-                        ControlJsonSerializerContext.Default.ControlDashboardSnapshot)
-                    ?? throw new InvalidDataException(
-                        "MCP returned no structured workspace state.");
-                Assert.IsTrue(workspaceState.DiagnosticsLoaded);
-                Assert.Contains(
-                    projectPath,
-                    workspaceState.Projects.Select(static project => project.FilePath));
-                Assert.Contains(
-                    documentPath,
-                    workspaceState.Documents.Select(static document => document.FilePath));
-                Assert.Contains(
-                    "CS0103",
-                    workspaceState.Diagnostics.Select(static diagnostic => diagnostic.Id));
+                JsonElement workspaceState = workspaceStateResult.StructuredContent.Value;
+                Assert.AreEqual(
+                    lsp.ProcessId,
+                    workspaceState.GetProperty("processId").GetInt32());
+                Assert.AreEqual(1, workspaceState.GetProperty("projectCount").GetInt32());
+                Assert.IsGreaterThanOrEqualTo(
+                    1,
+                    workspaceState.GetProperty("documentCount").GetInt32());
+                Assert.AreEqual(
+                    $"csls://workspace/?session={lsp.ProcessId}",
+                    workspaceState.GetProperty("detailsUri").GetString());
 
                 CallToolResult hoverResult = await client.CallToolAsync(
                     "get_hover",
                     new Dictionary<string, object?>
                     {
+                        ["session"] = lsp.ProcessId,
                         ["documentPath"] = documentPath,
                         ["line"] = 6,
                         ["character"] = 10
@@ -336,6 +359,7 @@ public sealed class McpLanguageServerTests
                     "get_diagnostics",
                     new Dictionary<string, object?>
                     {
+                        ["session"] = lsp.ProcessId,
                         ["documentPath"] = documentPath
                     },
                     cancellationToken: TestContext.CancellationToken).ConfigureAwait(false);
@@ -358,6 +382,7 @@ public sealed class McpLanguageServerTests
                     "get_completion",
                     new Dictionary<string, object?>
                     {
+                        ["session"] = lsp.ProcessId,
                         ["documentPath"] = documentPath,
                         ["line"] = 6,
                         ["character"] = 19
@@ -377,6 +402,7 @@ public sealed class McpLanguageServerTests
                     "get_definition",
                     new Dictionary<string, object?>
                     {
+                        ["session"] = lsp.ProcessId,
                         ["documentPath"] = documentPath,
                         ["line"] = 7,
                         ["character"] = 9
@@ -396,6 +422,7 @@ public sealed class McpLanguageServerTests
                     "get_declaration",
                     new Dictionary<string, object?>
                     {
+                        ["session"] = lsp.ProcessId,
                         ["documentPath"] = advancedPath,
                         ["line"] = 19,
                         ["character"] = 17
@@ -413,6 +440,7 @@ public sealed class McpLanguageServerTests
                     "get_type_definition",
                     new Dictionary<string, object?>
                     {
+                        ["session"] = lsp.ProcessId,
                         ["documentPath"] = advancedPath,
                         ["line"] = 18,
                         ["character"] = 17
@@ -431,6 +459,7 @@ public sealed class McpLanguageServerTests
                     "get_implementation",
                     new Dictionary<string, object?>
                     {
+                        ["session"] = lsp.ProcessId,
                         ["documentPath"] = advancedPath,
                         ["line"] = 4,
                         ["character"] = 10
@@ -449,6 +478,7 @@ public sealed class McpLanguageServerTests
                     "get_selection_range",
                     new Dictionary<string, object?>
                     {
+                        ["session"] = lsp.ProcessId,
                         ["documentPath"] = advancedPath,
                         ["line"] = 19,
                         ["character"] = 17
@@ -466,6 +496,7 @@ public sealed class McpLanguageServerTests
                     "get_document_highlights",
                     new Dictionary<string, object?>
                     {
+                        ["session"] = lsp.ProcessId,
                         ["documentPath"] = advancedPath,
                         ["line"] = 18,
                         ["character"] = 17
@@ -486,6 +517,7 @@ public sealed class McpLanguageServerTests
                     "get_references",
                     new Dictionary<string, object?>
                     {
+                        ["session"] = lsp.ProcessId,
                         ["documentPath"] = documentPath,
                         ["line"] = 7,
                         ["character"] = 9,
@@ -506,6 +538,7 @@ public sealed class McpLanguageServerTests
                     "get_document_symbols",
                     new Dictionary<string, object?>
                     {
+                        ["session"] = lsp.ProcessId,
                         ["documentPath"] = documentPath
                     },
                     cancellationToken: TestContext.CancellationToken).ConfigureAwait(false);
@@ -527,6 +560,7 @@ public sealed class McpLanguageServerTests
                     "search_workspace_symbols",
                     new Dictionary<string, object?>
                     {
+                        ["session"] = lsp.ProcessId,
                         ["query"] = "Help"
                     },
                     cancellationToken: TestContext.CancellationToken).ConfigureAwait(false);
@@ -547,6 +581,7 @@ public sealed class McpLanguageServerTests
                     "get_signature_help",
                     new Dictionary<string, object?>
                     {
+                        ["session"] = lsp.ProcessId,
                         ["documentPath"] = documentPath,
                         ["line"] = 7,
                         ["character"] = 15
@@ -570,6 +605,7 @@ public sealed class McpLanguageServerTests
                     "preview_rename",
                     new Dictionary<string, object?>
                     {
+                        ["session"] = lsp.ProcessId,
                         ["documentPath"] = documentPath,
                         ["line"] = 7,
                         ["character"] = 10,
@@ -591,6 +627,7 @@ public sealed class McpLanguageServerTests
                     "apply_edit_plan",
                     new Dictionary<string, object?>
                     {
+                        ["session"] = lsp.ProcessId,
                         ["planId"] = rename.PlanId.ToString("D")
                     },
                     cancellationToken: TestContext.CancellationToken).ConfigureAwait(false);
@@ -606,6 +643,7 @@ public sealed class McpLanguageServerTests
                     "preview_formatting",
                     new Dictionary<string, object?>
                     {
+                        ["session"] = lsp.ProcessId,
                         ["documentPath"] = formattingPath,
                         ["tabSize"] = 4,
                         ["insertSpaces"] = true
@@ -625,6 +663,7 @@ public sealed class McpLanguageServerTests
                     "apply_edit_plan",
                     new Dictionary<string, object?>
                     {
+                        ["session"] = lsp.ProcessId,
                         ["planId"] = formatting.PlanId.ToString("D")
                     },
                     cancellationToken: TestContext.CancellationToken).ConfigureAwait(false);
@@ -645,6 +684,7 @@ public sealed class McpLanguageServerTests
                     "apply_edit_plan",
                     new Dictionary<string, object?>
                     {
+                        ["session"] = lsp.ProcessId,
                         ["planId"] = formatting.PlanId.ToString("D")
                     },
                     cancellationToken: TestContext.CancellationToken).ConfigureAwait(false);
@@ -654,6 +694,7 @@ public sealed class McpLanguageServerTests
                     "preview_formatting",
                     new Dictionary<string, object?>
                     {
+                        ["session"] = lsp.ProcessId,
                         ["documentPath"] = stalePath,
                         ["tabSize"] = 4,
                         ["insertSpaces"] = true
@@ -672,6 +713,7 @@ public sealed class McpLanguageServerTests
                     "apply_edit_plan",
                     new Dictionary<string, object?>
                     {
+                        ["session"] = lsp.ProcessId,
                         ["planId"] = stalePlan.PlanId.ToString("D")
                     },
                     cancellationToken: TestContext.CancellationToken).ConfigureAwait(false);
@@ -687,6 +729,7 @@ public sealed class McpLanguageServerTests
                     "get_code_actions",
                     new Dictionary<string, object?>
                     {
+                        ["session"] = lsp.ProcessId,
                         ["documentPath"] = importsPath,
                         ["startLine"] = 0,
                         ["startCharacter"] = 0,
@@ -709,6 +752,7 @@ public sealed class McpLanguageServerTests
                     "get_code_actions",
                     new Dictionary<string, object?>
                     {
+                        ["session"] = lsp.ProcessId,
                         ["documentPath"] = missingUsingPath,
                         ["startLine"] = 6,
                         ["startCharacter"] = 26,
@@ -736,6 +780,7 @@ public sealed class McpLanguageServerTests
                     "apply_edit_plan",
                     new Dictionary<string, object?>
                     {
+                        ["session"] = lsp.ProcessId,
                         ["planId"] = quickFixPlan.PlanId.ToString("D")
                     },
                     cancellationToken: TestContext.CancellationToken).ConfigureAwait(false);
@@ -756,6 +801,7 @@ public sealed class McpLanguageServerTests
                     "get_code_actions",
                     new Dictionary<string, object?>
                     {
+                        ["session"] = lsp.ProcessId,
                         ["documentPath"] = implementInterfacePath,
                         ["startLine"] = 7,
                         ["startCharacter"] = 29,
@@ -783,6 +829,7 @@ public sealed class McpLanguageServerTests
                     "apply_edit_plan",
                     new Dictionary<string, object?>
                     {
+                        ["session"] = lsp.ProcessId,
                         ["planId"] = implementationPlan.PlanId.ToString("D")
                     },
                     cancellationToken: TestContext.CancellationToken).ConfigureAwait(false);
@@ -803,6 +850,7 @@ public sealed class McpLanguageServerTests
                     "get_code_actions",
                     new Dictionary<string, object?>
                     {
+                        ["session"] = lsp.ProcessId,
                         ["documentPath"] = moveTypePath,
                         ["startLine"] = 7,
                         ["startCharacter"] = 22,
@@ -835,6 +883,7 @@ public sealed class McpLanguageServerTests
                     "apply_edit_plan",
                     new Dictionary<string, object?>
                     {
+                        ["session"] = lsp.ProcessId,
                         ["planId"] = movePlan.PlanId.ToString("D")
                     },
                     cancellationToken: TestContext.CancellationToken).ConfigureAwait(false);
@@ -856,14 +905,10 @@ public sealed class McpLanguageServerTests
                 IList<McpClientResource> resources = await client
                     .ListResourcesAsync(cancellationToken: TestContext.CancellationToken)
                     .ConfigureAwait(false);
-                Assert.Contains(
-                    "csls://session/current",
-                    resources.Select(static resource => resource.Uri));
-                Assert.Contains(
-                    "csls://workspace/current",
-                    resources.Select(static resource => resource.Uri));
+                Assert.IsEmpty(resources);
                 ReadResourceResult resourceResult = await client.ReadResourceAsync(
-                    new Uri("csls://session/current", UriKind.Absolute),
+                    "csls://session/{?workspace,session,socket}",
+                    new Dictionary<string, object?> { ["session"] = lsp.ProcessId },
                     cancellationToken: TestContext.CancellationToken).ConfigureAwait(false);
                 TextResourceContents sessionResource = resourceResult.Contents
                     .OfType<TextResourceContents>()
@@ -875,7 +920,8 @@ public sealed class McpLanguageServerTests
                 Assert.AreEqual(lsp.ProcessId, resourceSession.ProcessId);
 
                 ReadResourceResult workspaceResourceResult = await client.ReadResourceAsync(
-                    new Uri("csls://workspace/current", UriKind.Absolute),
+                    "csls://workspace/{?workspace,session,socket}",
+                    new Dictionary<string, object?> { ["session"] = lsp.ProcessId },
                     cancellationToken: TestContext.CancellationToken).ConfigureAwait(false);
                 TextResourceContents workspaceResource = workspaceResourceResult.Contents
                     .OfType<TextResourceContents>()
@@ -892,13 +938,29 @@ public sealed class McpLanguageServerTests
                     .ConfigureAwait(false);
                 IEnumerable<string> resourceTemplateUris = resourceTemplates.Select(
                     static resource => resource.UriTemplate);
-                Assert.Contains("csls://project{?path}", resourceTemplateUris);
-                Assert.Contains("csls://document{?path}", resourceTemplateUris);
-                Assert.Contains("csls://diagnostic{?path}", resourceTemplateUris);
+                Assert.Contains(
+                    "csls://session/{?workspace,session,socket}",
+                    resourceTemplateUris);
+                Assert.Contains(
+                    "csls://workspace/{?workspace,session,socket}",
+                    resourceTemplateUris);
+                Assert.Contains(
+                    "csls://project/{?workspace,session,socket,path}",
+                    resourceTemplateUris);
+                Assert.Contains(
+                    "csls://document/{?workspace,session,socket,path}",
+                    resourceTemplateUris);
+                Assert.Contains(
+                    "csls://diagnostic/{?workspace,session,socket,path}",
+                    resourceTemplateUris);
 
                 ReadResourceResult projectResourceResult = await client.ReadResourceAsync(
-                    "csls://project{?path}",
-                    new Dictionary<string, object?> { ["path"] = projectPath },
+                    "csls://project/{?workspace,session,socket,path}",
+                    new Dictionary<string, object?>
+                    {
+                        ["session"] = lsp.ProcessId,
+                        ["path"] = projectPath
+                    },
                     cancellationToken: TestContext.CancellationToken).ConfigureAwait(false);
                 ControlProjectInfo resourceProject = JsonSerializer.Deserialize(
                     projectResourceResult.Contents.OfType<TextResourceContents>().Single().Text,
@@ -908,8 +970,12 @@ public sealed class McpLanguageServerTests
                 Assert.AreEqual("Fixture", resourceProject.Name);
 
                 ReadResourceResult documentResourceResult = await client.ReadResourceAsync(
-                    "csls://document{?path}",
-                    new Dictionary<string, object?> { ["path"] = documentPath },
+                    "csls://document/{?workspace,session,socket,path}",
+                    new Dictionary<string, object?>
+                    {
+                        ["session"] = lsp.ProcessId,
+                        ["path"] = documentPath
+                    },
                     cancellationToken: TestContext.CancellationToken).ConfigureAwait(false);
                 ControlDocumentInfo resourceDocument = JsonSerializer.Deserialize(
                     documentResourceResult.Contents.OfType<TextResourceContents>().Single().Text,
@@ -919,8 +985,12 @@ public sealed class McpLanguageServerTests
                 Assert.IsTrue(resourceDocument.IsOpen);
 
                 ReadResourceResult diagnosticResourceResult = await client.ReadResourceAsync(
-                    "csls://diagnostic{?path}",
-                    new Dictionary<string, object?> { ["path"] = documentPath },
+                    "csls://diagnostic/{?workspace,session,socket,path}",
+                    new Dictionary<string, object?>
+                    {
+                        ["session"] = lsp.ProcessId,
+                        ["path"] = documentPath
+                    },
                     cancellationToken: TestContext.CancellationToken).ConfigureAwait(false);
                 DocumentDiagnosticReport resourceDiagnostics = JsonSerializer.Deserialize(
                     diagnosticResourceResult.Contents.OfType<TextResourceContents>().Single().Text,
@@ -949,6 +1019,7 @@ public sealed class McpLanguageServerTests
                 ControlWorkspaceOperationResult clearResult =
                     await CallWorkspaceOperationAsync(
                         client,
+                        lsp.ProcessId,
                         "clear_caches",
                         TestContext.CancellationToken).ConfigureAwait(false);
                 Assert.AreEqual("clear-cache", clearResult.Operation);
@@ -960,6 +1031,7 @@ public sealed class McpLanguageServerTests
                 ControlWorkspaceOperationResult reloadResult =
                     await CallWorkspaceOperationAsync(
                         client,
+                        lsp.ProcessId,
                         "reload_workspace",
                         TestContext.CancellationToken).ConfigureAwait(false);
                 Assert.AreEqual("reload", reloadResult.Operation);
@@ -970,6 +1042,7 @@ public sealed class McpLanguageServerTests
                 ControlWorkspaceOperationResult restartResult =
                     await CallWorkspaceOperationAsync(
                         client,
+                        lsp.ProcessId,
                         "restart_build_hosts",
                         TestContext.CancellationToken).ConfigureAwait(false);
                 Assert.AreEqual("restart-build-host", restartResult.Operation);
@@ -981,6 +1054,7 @@ public sealed class McpLanguageServerTests
                 ControlWorkspaceOperationResult restoreResult =
                     await CallWorkspaceOperationAsync(
                         client,
+                        lsp.ProcessId,
                         "restore_workspace",
                         TestContext.CancellationToken).ConfigureAwait(false);
                 Assert.AreEqual("restore", restoreResult.Operation);
@@ -1001,6 +1075,151 @@ public sealed class McpLanguageServerTests
         finally
         {
             await DirectoryReleaseWaiter.DeleteAsync(fixturePath, TimeSpan.FromSeconds(10)).ConfigureAwait(false);
+        }
+    }
+
+    /// <summary>
+    /// Rejects ambiguous workspace selection and succeeds after the ambiguity is removed.
+    /// </summary>
+    [TestMethod]
+    [Timeout(120_000, CooperativeCancellation = true)]
+    public async Task WorkspaceSelectorRequiresOneUnambiguousLiveSession()
+    {
+        string repositoryRoot = EditorToolResolver.FindRepositoryRoot();
+        string artifactsRoot = EditorToolResolver.ResolveArtifactsRoot(repositoryRoot);
+        string workerPath = Path.Join(
+            artifactsRoot,
+            "bin",
+            "Csls.Worker",
+            "debug",
+            "csls-worker.dll");
+        string mcpPath = Environment.GetEnvironmentVariable("CSLS_TEST_MCP_PATH") ??
+            Path.Join(
+                artifactsRoot,
+                "bin",
+                "Csls.Mcp",
+                "debug",
+                "csls-mcp.dll");
+        string mcpWorkerPath =
+            Environment.GetEnvironmentVariable("CSLS_TEST_MCP_WORKER_PATH") ??
+            Path.Join(
+                artifactsRoot,
+                "bin",
+                "Csls.Mcp.Worker",
+                "debug",
+                "csls-mcp-worker.dll");
+        string fixturePath = Path.Join(
+            Path.GetTempPath(),
+            $"csls-mcp-ambiguous-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(fixturePath);
+        try
+        {
+            await File.WriteAllTextAsync(
+                Path.Join(fixturePath, "Ambiguous.csproj"),
+                ProjectText,
+                TestContext.CancellationToken).ConfigureAwait(false);
+            await File.WriteAllTextAsync(
+                Path.Join(fixturePath, "Program.cs"),
+                DocumentText,
+                TestContext.CancellationToken).ConfigureAwait(false);
+
+            LspProcessSession first = await LspProcessSession.StartAsync(
+                "csls-mcp-ambiguous-first",
+                EditorToolResolver.ResolveDotNetHost(),
+                [workerPath],
+                repositoryRoot).ConfigureAwait(false);
+            await using ConfiguredAsyncDisposable firstCleanup = first.ConfigureAwait(false);
+            LspProcessSession second = await LspProcessSession.StartAsync(
+                "csls-mcp-ambiguous-second",
+                EditorToolResolver.ResolveDotNetHost(),
+                [workerPath],
+                repositoryRoot).ConfigureAwait(false);
+            await using ConfiguredAsyncDisposable secondCleanup = second.ConfigureAwait(false);
+            await first.InitializeAsync(
+                fixturePath,
+                TestContext.CancellationToken).ConfigureAwait(false);
+            await second.InitializeAsync(
+                fixturePath,
+                TestContext.CancellationToken).ConfigureAwait(false);
+
+            string dotnetHost = EditorToolResolver.ResolveAbsoluteDotNetHost();
+            Dictionary<string, string?> environment =
+                StdioClientTransportOptions.GetDefaultEnvironmentVariables();
+            environment["DOTNET_ROOT"] = EditorToolResolver.ResolveDotNetRoot();
+            environment["CSLS_MCP_WORKER_PATH"] = mcpWorkerPath;
+            bool isManagedLauncher = string.Equals(
+                Path.GetExtension(mcpPath),
+                ".dll",
+                StringComparison.OrdinalIgnoreCase);
+            List<string> arguments = [];
+            if (isManagedLauncher)
+            {
+                arguments.Add(mcpPath);
+            }
+
+            var transport = new StdioClientTransport(
+                new StdioClientTransportOptions
+                {
+                    Command = isManagedLauncher ? dotnetHost : mcpPath,
+                    Arguments = arguments,
+                    Name = "csls-mcp-ambiguous-selection",
+                    WorkingDirectory = repositoryRoot,
+                    InheritEnvironmentVariables = false,
+                    EnvironmentVariables = environment,
+                    StandardErrorLines = TestContext.WriteLine
+                });
+            McpClient client = await McpClient.CreateAsync(
+                transport,
+                cancellationToken: TestContext.CancellationToken).ConfigureAwait(false);
+            try
+            {
+                CallToolResult ambiguous = await client.CallToolAsync(
+                    "get_session",
+                    new Dictionary<string, object?> { ["workspace"] = fixturePath },
+                    cancellationToken: TestContext.CancellationToken).ConfigureAwait(false);
+                Assert.IsTrue(ambiguous.IsError);
+                Assert.IsNull(ambiguous.StructuredContent);
+                Assert.Contains(
+                    "Select a session by its process identifier",
+                    ambiguous.Content.OfType<TextContentBlock>().Single().Text,
+                    StringComparison.Ordinal);
+
+                string secondDiagnostics = await second.ShutdownAsync(
+                    TestContext.CancellationToken).ConfigureAwait(false);
+                Assert.DoesNotContain(
+                    "Unhandled exception",
+                    secondDiagnostics,
+                    StringComparison.Ordinal);
+
+                CallToolResult selected = await client.CallToolAsync(
+                    "get_session",
+                    new Dictionary<string, object?> { ["workspace"] = fixturePath },
+                    cancellationToken: TestContext.CancellationToken).ConfigureAwait(false);
+                Assert.IsNull(selected.IsError);
+                Assert.IsTrue(selected.StructuredContent.HasValue);
+                ControlSessionInfo session = selected.StructuredContent.Value.Deserialize(
+                    ControlJsonSerializerContext.Default.ControlSessionInfo)
+                    ?? throw new InvalidDataException(
+                        "MCP returned no session after workspace ambiguity was removed.");
+                Assert.AreEqual(first.ProcessId, session.ProcessId);
+            }
+            finally
+            {
+                await client.DisposeAsync().ConfigureAwait(false);
+            }
+
+            string firstDiagnostics = await first.ShutdownAsync(
+                TestContext.CancellationToken).ConfigureAwait(false);
+            Assert.DoesNotContain(
+                "Unhandled exception",
+                firstDiagnostics,
+                StringComparison.Ordinal);
+        }
+        finally
+        {
+            await DirectoryReleaseWaiter.DeleteAsync(
+                fixturePath,
+                TimeSpan.FromSeconds(10)).ConfigureAwait(false);
         }
     }
 
@@ -1033,212 +1252,278 @@ public sealed class McpLanguageServerTests
         Assert.IsTrue(File.Exists(workerPath), $"Worker not found at {workerPath}.");
         Assert.IsTrue(File.Exists(mcpPath), $"MCP launcher not found at {mcpPath}.");
         Assert.IsTrue(File.Exists(mcpWorkerPath), $"MCP worker not found at {mcpWorkerPath}.");
-        CancellationProbeFixture fixture = await CancellationProbeFixture.CreateAsync(
-            repositoryRoot,
-            TestContext.CancellationToken).ConfigureAwait(false);
-        await using ConfiguredAsyncDisposable fixtureCleanup = fixture.ConfigureAwait(false);
-        LspProcessSession lsp = await LspProcessSession.StartAsync(
-            "csls-mcp-cancellation-worker",
-            EditorToolResolver.ResolveDotNetHost(),
-            [workerPath],
-            repositoryRoot).ConfigureAwait(false);
-        await using ConfiguredAsyncDisposable lspCleanup = lsp.ConfigureAwait(false);
-        await lsp.InitializeAsync(
-            fixture.RootPath,
-            TestContext.CancellationToken).ConfigureAwait(false);
-        await lsp.OpenDocumentAsync(
-            fixture.DocumentPath,
-            CancellationProbeFixture.DocumentText).ConfigureAwait(false);
-
-        string dotnetHost = EditorToolResolver.ResolveAbsoluteDotNetHost();
-        Dictionary<string, string?> environment =
-            StdioClientTransportOptions.GetDefaultEnvironmentVariables();
-        environment["DOTNET_ROOT"] = EditorToolResolver.ResolveDotNetRoot();
-        environment["CSLS_MCP_WORKER_PATH"] = mcpWorkerPath;
-        bool isManagedLauncher = string.Equals(
-            Path.GetExtension(mcpPath),
-            ".dll",
-            StringComparison.OrdinalIgnoreCase);
-        List<string> arguments = [];
-        if (isManagedLauncher)
-        {
-            arguments.Add(mcpPath);
-        }
-
-        arguments.Add("--session");
-        arguments.Add(lsp.ProcessId.ToString(CultureInfo.InvariantCulture));
-        var transport = new StdioClientTransport(
-            new StdioClientTransportOptions
-            {
-                Command = isManagedLauncher ? dotnetHost : mcpPath,
-                Arguments = arguments,
-                Name = "csls-mcp-request-control",
-                WorkingDirectory = repositoryRoot,
-                InheritEnvironmentVariables = false,
-                EnvironmentVariables = environment,
-                StandardErrorLines = TestContext.WriteLine
-            });
-        McpClient client = await McpClient.CreateAsync(
-            transport,
-            cancellationToken: TestContext.CancellationToken).ConfigureAwait(false);
+        string secondFixturePath = Path.Join(
+            Path.GetTempPath(),
+            $"csls-mcp-cancellation-second-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(secondFixturePath);
         try
         {
-            IList<McpClientTool> tools = await client.ListToolsAsync(
-                cancellationToken: TestContext.CancellationToken).ConfigureAwait(false);
-            McpClientTool listTool = tools.Single(static tool => tool.Name == "list_requests");
-            McpClientTool cancelTool = tools.Single(static tool => tool.Name == "cancel_request");
-            McpClientTool startTool = tools.Single(static tool => tool.Name == "start_trace");
-            McpClientTool stopTool = tools.Single(static tool => tool.Name == "stop_trace");
-            Assert.IsNotNull(listTool.ProtocolTool.OutputSchema);
-            Assert.IsNotNull(cancelTool.ProtocolTool.OutputSchema);
-            Assert.IsNotNull(startTool.ProtocolTool.OutputSchema);
-            Assert.IsNotNull(stopTool.ProtocolTool.OutputSchema);
-            ToolAnnotations listAnnotations = listTool.ProtocolTool.Annotations
-                ?? throw new InvalidDataException("The request list tool has no annotations.");
-            Assert.IsNotNull(listAnnotations.ReadOnlyHint);
-            Assert.IsTrue(listAnnotations.ReadOnlyHint.Value);
-            Assert.IsNotNull(listAnnotations.DestructiveHint);
-            Assert.IsFalse(listAnnotations.DestructiveHint.Value);
-            Assert.IsNotNull(listAnnotations.IdempotentHint);
-            Assert.IsTrue(listAnnotations.IdempotentHint.Value);
-            Assert.IsNotNull(listAnnotations.OpenWorldHint);
-            Assert.IsFalse(listAnnotations.OpenWorldHint.Value);
-            ToolAnnotations cancelAnnotations = cancelTool.ProtocolTool.Annotations
-                ?? throw new InvalidDataException("The request cancellation tool has no annotations.");
-            Assert.IsNotNull(cancelAnnotations.ReadOnlyHint);
-            Assert.IsFalse(cancelAnnotations.ReadOnlyHint.Value);
-            Assert.IsNotNull(cancelAnnotations.DestructiveHint);
-            Assert.IsTrue(cancelAnnotations.DestructiveHint.Value);
-            Assert.IsNotNull(cancelAnnotations.IdempotentHint);
-            Assert.IsTrue(cancelAnnotations.IdempotentHint.Value);
-            Assert.IsNotNull(cancelAnnotations.OpenWorldHint);
-            Assert.IsFalse(cancelAnnotations.OpenWorldHint.Value);
-            ToolAnnotations startAnnotations = startTool.ProtocolTool.Annotations
-                ?? throw new InvalidDataException("The trace start tool has no annotations.");
-            Assert.IsNotNull(startAnnotations.ReadOnlyHint);
-            Assert.IsFalse(startAnnotations.ReadOnlyHint.Value);
-            Assert.IsNotNull(startAnnotations.DestructiveHint);
-            Assert.IsFalse(startAnnotations.DestructiveHint.Value);
-            Assert.IsNotNull(startAnnotations.IdempotentHint);
-            Assert.IsFalse(startAnnotations.IdempotentHint.Value);
-            Assert.IsNotNull(startAnnotations.OpenWorldHint);
-            Assert.IsFalse(startAnnotations.OpenWorldHint.Value);
-            ToolAnnotations stopAnnotations = stopTool.ProtocolTool.Annotations
-                ?? throw new InvalidDataException("The trace stop tool has no annotations.");
-            Assert.IsNotNull(stopAnnotations.ReadOnlyHint);
-            Assert.IsFalse(stopAnnotations.ReadOnlyHint.Value);
-            Assert.IsNotNull(stopAnnotations.DestructiveHint);
-            Assert.IsFalse(stopAnnotations.DestructiveHint.Value);
-            Assert.IsNotNull(stopAnnotations.IdempotentHint);
-            Assert.IsFalse(stopAnnotations.IdempotentHint.Value);
-            Assert.IsNotNull(stopAnnotations.OpenWorldHint);
-            Assert.IsFalse(stopAnnotations.OpenWorldHint.Value);
-
-            CallToolResult invalidCancellation = await client.CallToolAsync(
-                "cancel_request",
-                new Dictionary<string, object?>
-                {
-                    ["correlationId"] = "not-a-correlation-id"
-                },
-                cancellationToken: TestContext.CancellationToken).ConfigureAwait(false);
-            Assert.IsTrue(invalidCancellation.IsError);
-            Assert.IsNull(invalidCancellation.StructuredContent);
-
-            CallToolResult startResult = await client.CallToolAsync(
-                "start_trace",
-                cancellationToken: TestContext.CancellationToken).ConfigureAwait(false);
-            Assert.IsNull(startResult.IsError);
-            Assert.IsTrue(startResult.StructuredContent.HasValue);
-            ControlTraceInfo startedTrace = startResult.StructuredContent.Value.Deserialize(
-                ControlJsonSerializerContext.Default.ControlTraceInfo)
-                ?? throw new InvalidDataException("MCP returned no started trace value.");
-            Assert.IsTrue(startedTrace.IsActive);
-            Assert.IsNotNull(startedTrace.TraceId);
-
-            Task<CallToolResult> diagnosticRequest = client.CallToolAsync(
-                "get_diagnostics",
-                new Dictionary<string, object?>
-                {
-                    ["documentPath"] = fixture.DocumentPath
-                },
-                cancellationToken: TestContext.CancellationToken).AsTask();
-            await FileTextWaiter.WaitAsync(
-                fixture.MarkerPath,
-                "started",
+            string secondProjectPath = Path.Join(secondFixturePath, "Second.csproj");
+            string secondDocumentPath = Path.Join(secondFixturePath, "Second.cs");
+            await File.WriteAllTextAsync(
+                secondProjectPath,
+                ProjectText,
+                TestContext.CancellationToken).ConfigureAwait(false);
+            await File.WriteAllTextAsync(
+                secondDocumentPath,
+                "namespace Second; public static class Marker { }",
+                TestContext.CancellationToken).ConfigureAwait(false);
+            CancellationProbeFixture fixture = await CancellationProbeFixture.CreateAsync(
+                repositoryRoot,
+                TestContext.CancellationToken).ConfigureAwait(false);
+            await using ConfiguredAsyncDisposable fixtureCleanup = fixture.ConfigureAwait(false);
+            LspProcessSession lsp = await LspProcessSession.StartAsync(
+                "csls-mcp-cancellation-worker",
+                EditorToolResolver.ResolveDotNetHost(),
+                [workerPath],
+                repositoryRoot).ConfigureAwait(false);
+            await using ConfiguredAsyncDisposable lspCleanup = lsp.ConfigureAwait(false);
+            await lsp.InitializeAsync(
+                fixture.RootPath,
+                TestContext.CancellationToken).ConfigureAwait(false);
+            await lsp.OpenDocumentAsync(
+                fixture.DocumentPath,
+                CancellationProbeFixture.DocumentText).ConfigureAwait(false);
+            LspProcessSession secondLsp = await LspProcessSession.StartAsync(
+                "csls-mcp-cancellation-second-worker",
+                EditorToolResolver.ResolveDotNetHost(),
+                [workerPath],
+                repositoryRoot).ConfigureAwait(false);
+            await using ConfiguredAsyncDisposable secondLspCleanup =
+                secondLsp.ConfigureAwait(false);
+            await secondLsp.InitializeAsync(
+                secondFixturePath,
+                TestContext.CancellationToken).ConfigureAwait(false);
+            await secondLsp.CompleteInitializationAsync().ConfigureAwait(false);
+            await ControlSessionWaiter.WaitForRunningAsync(
+                secondFixturePath,
                 TimeSpan.FromSeconds(60),
-                TestContext.CancellationToken).ConfigureAwait(false);
-            CallToolResult listResult = await client.CallToolAsync(
-                "list_requests",
-                cancellationToken: TestContext.CancellationToken).ConfigureAwait(false);
-            Assert.IsNull(listResult.IsError);
-            Assert.IsTrue(listResult.StructuredContent.HasValue);
-            ControlRequestSchedulerInfo requests = listResult.StructuredContent.Value.Deserialize(
-                ControlJsonSerializerContext.Default.ControlRequestSchedulerInfo)
-                ?? throw new InvalidDataException("MCP returned no request scheduler value.");
-            ControlRequestInfo request = requests.ActiveRequests.Single(static item =>
-                item.Name == "textDocument/diagnostic");
-            Assert.AreEqual("Running", request.Status);
-            Assert.IsTrue(requests.Trace.IsActive);
+                TestContext.CancellationToken,
+                expectedProcessId: secondLsp.ProcessId).ConfigureAwait(false);
 
-            CallToolResult cancelResult = await client.CallToolAsync(
-                "cancel_request",
-                new Dictionary<string, object?>
+            string dotnetHost = EditorToolResolver.ResolveAbsoluteDotNetHost();
+            Dictionary<string, string?> environment =
+                StdioClientTransportOptions.GetDefaultEnvironmentVariables();
+            environment["DOTNET_ROOT"] = EditorToolResolver.ResolveDotNetRoot();
+            environment["CSLS_MCP_WORKER_PATH"] = mcpWorkerPath;
+            bool isManagedLauncher = string.Equals(
+                Path.GetExtension(mcpPath),
+                ".dll",
+                StringComparison.OrdinalIgnoreCase);
+            List<string> arguments = [];
+            if (isManagedLauncher)
+            {
+                arguments.Add(mcpPath);
+            }
+
+            var transport = new StdioClientTransport(
+                new StdioClientTransportOptions
                 {
-                    ["correlationId"] = request.CorrelationId.ToString("D")
-                },
+                    Command = isManagedLauncher ? dotnetHost : mcpPath,
+                    Arguments = arguments,
+                    Name = "csls-mcp-request-control",
+                    WorkingDirectory = repositoryRoot,
+                    InheritEnvironmentVariables = false,
+                    EnvironmentVariables = environment,
+                    StandardErrorLines = TestContext.WriteLine
+                });
+            McpClient client = await McpClient.CreateAsync(
+                transport,
                 cancellationToken: TestContext.CancellationToken).ConfigureAwait(false);
-            Assert.IsNull(cancelResult.IsError);
-            Assert.IsTrue(cancelResult.StructuredContent.HasValue);
-            ControlCancelRequestResult cancellation = cancelResult.StructuredContent.Value.Deserialize(
-                ControlJsonSerializerContext.Default.ControlCancelRequestResult)
-                ?? throw new InvalidDataException("MCP returned no request cancellation value.");
-            Assert.AreEqual(request.CorrelationId, cancellation.CorrelationId);
-            Assert.IsTrue(cancellation.CancellationRequested);
-            CallToolResult diagnosticResult = await diagnosticRequest.ConfigureAwait(false);
-            Assert.IsTrue(diagnosticResult.IsError);
-            await FileTextWaiter.WaitAsync(
-                fixture.MarkerPath,
-                "canceled",
-                TimeSpan.FromSeconds(60),
-                TestContext.CancellationToken).ConfigureAwait(false);
-            string marker = await File.ReadAllTextAsync(
-                fixture.MarkerPath,
-                TestContext.CancellationToken).ConfigureAwait(false);
-            Assert.Contains("canceled", marker, StringComparison.Ordinal);
+            try
+            {
+                IList<McpClientTool> tools = await client.ListToolsAsync(
+                    cancellationToken: TestContext.CancellationToken).ConfigureAwait(false);
+                McpClientTool listTool = tools.Single(static tool => tool.Name == "list_requests");
+                McpClientTool cancelTool = tools.Single(static tool => tool.Name == "cancel_request");
+                McpClientTool startTool = tools.Single(static tool => tool.Name == "start_trace");
+                McpClientTool stopTool = tools.Single(static tool => tool.Name == "stop_trace");
+                Assert.IsNotNull(listTool.ProtocolTool.OutputSchema);
+                Assert.IsNotNull(cancelTool.ProtocolTool.OutputSchema);
+                Assert.IsNotNull(startTool.ProtocolTool.OutputSchema);
+                Assert.IsNotNull(stopTool.ProtocolTool.OutputSchema);
+                ToolAnnotations listAnnotations = listTool.ProtocolTool.Annotations
+                    ?? throw new InvalidDataException("The request list tool has no annotations.");
+                Assert.IsNotNull(listAnnotations.ReadOnlyHint);
+                Assert.IsTrue(listAnnotations.ReadOnlyHint.Value);
+                Assert.IsNotNull(listAnnotations.DestructiveHint);
+                Assert.IsFalse(listAnnotations.DestructiveHint.Value);
+                Assert.IsNotNull(listAnnotations.IdempotentHint);
+                Assert.IsTrue(listAnnotations.IdempotentHint.Value);
+                Assert.IsNotNull(listAnnotations.OpenWorldHint);
+                Assert.IsFalse(listAnnotations.OpenWorldHint.Value);
+                ToolAnnotations cancelAnnotations = cancelTool.ProtocolTool.Annotations
+                    ?? throw new InvalidDataException("The request cancellation tool has no annotations.");
+                Assert.IsNotNull(cancelAnnotations.ReadOnlyHint);
+                Assert.IsFalse(cancelAnnotations.ReadOnlyHint.Value);
+                Assert.IsNotNull(cancelAnnotations.DestructiveHint);
+                Assert.IsTrue(cancelAnnotations.DestructiveHint.Value);
+                Assert.IsNotNull(cancelAnnotations.IdempotentHint);
+                Assert.IsTrue(cancelAnnotations.IdempotentHint.Value);
+                Assert.IsNotNull(cancelAnnotations.OpenWorldHint);
+                Assert.IsFalse(cancelAnnotations.OpenWorldHint.Value);
+                ToolAnnotations startAnnotations = startTool.ProtocolTool.Annotations
+                    ?? throw new InvalidDataException("The trace start tool has no annotations.");
+                Assert.IsNotNull(startAnnotations.ReadOnlyHint);
+                Assert.IsFalse(startAnnotations.ReadOnlyHint.Value);
+                Assert.IsNotNull(startAnnotations.DestructiveHint);
+                Assert.IsFalse(startAnnotations.DestructiveHint.Value);
+                Assert.IsNotNull(startAnnotations.IdempotentHint);
+                Assert.IsFalse(startAnnotations.IdempotentHint.Value);
+                Assert.IsNotNull(startAnnotations.OpenWorldHint);
+                Assert.IsFalse(startAnnotations.OpenWorldHint.Value);
+                ToolAnnotations stopAnnotations = stopTool.ProtocolTool.Annotations
+                    ?? throw new InvalidDataException("The trace stop tool has no annotations.");
+                Assert.IsNotNull(stopAnnotations.ReadOnlyHint);
+                Assert.IsFalse(stopAnnotations.ReadOnlyHint.Value);
+                Assert.IsNotNull(stopAnnotations.DestructiveHint);
+                Assert.IsFalse(stopAnnotations.DestructiveHint.Value);
+                Assert.IsNotNull(stopAnnotations.IdempotentHint);
+                Assert.IsFalse(stopAnnotations.IdempotentHint.Value);
+                Assert.IsNotNull(stopAnnotations.OpenWorldHint);
+                Assert.IsFalse(stopAnnotations.OpenWorldHint.Value);
 
-            CallToolResult stopResult = await client.CallToolAsync(
-                "stop_trace",
-                cancellationToken: TestContext.CancellationToken).ConfigureAwait(false);
-            Assert.IsNull(stopResult.IsError);
-            Assert.IsTrue(stopResult.StructuredContent.HasValue);
-            ControlTraceInfo stoppedTrace = stopResult.StructuredContent.Value.Deserialize(
-                ControlJsonSerializerContext.Default.ControlTraceInfo)
-                ?? throw new InvalidDataException("MCP returned no stopped trace value.");
-            Assert.IsFalse(stoppedTrace.IsActive);
-            Assert.AreEqual(startedTrace.TraceId, stoppedTrace.TraceId);
-            ControlTraceEntry entry = stoppedTrace.Entries.Single(item =>
-                item.CorrelationId == request.CorrelationId);
-            Assert.AreEqual("Canceled", entry.Status);
-            Assert.AreEqual(request.WorkspaceGeneration, entry.WorkspaceGeneration);
-            Assert.IsTrue(entry.IsCancellationRequested);
+                CallToolResult invalidCancellation = await client.CallToolAsync(
+                    "cancel_request",
+                    new Dictionary<string, object?>
+                    {
+                        ["session"] = lsp.ProcessId,
+                        ["correlationId"] = "not-a-correlation-id"
+                    },
+                    cancellationToken: TestContext.CancellationToken).ConfigureAwait(false);
+                Assert.IsTrue(invalidCancellation.IsError);
+                Assert.IsNull(invalidCancellation.StructuredContent);
+
+                CallToolResult startResult = await client.CallToolAsync(
+                    "start_trace",
+                    new Dictionary<string, object?> { ["session"] = lsp.ProcessId },
+                    cancellationToken: TestContext.CancellationToken).ConfigureAwait(false);
+                Assert.IsNull(startResult.IsError);
+                Assert.IsTrue(startResult.StructuredContent.HasValue);
+                ControlTraceInfo startedTrace = startResult.StructuredContent.Value.Deserialize(
+                    ControlJsonSerializerContext.Default.ControlTraceInfo)
+                    ?? throw new InvalidDataException("MCP returned no started trace value.");
+                Assert.IsTrue(startedTrace.IsActive);
+                Assert.IsNotNull(startedTrace.TraceId);
+
+                Task<CallToolResult> diagnosticRequest = client.CallToolAsync(
+                    "get_diagnostics",
+                    new Dictionary<string, object?>
+                    {
+                        ["session"] = lsp.ProcessId,
+                        ["documentPath"] = fixture.DocumentPath
+                    },
+                    cancellationToken: TestContext.CancellationToken).AsTask();
+                await FileTextWaiter.WaitAsync(
+                    fixture.MarkerPath,
+                    "started",
+                    TimeSpan.FromSeconds(60),
+                    TestContext.CancellationToken).ConfigureAwait(false);
+                CallToolResult listResult = await client.CallToolAsync(
+                    "list_requests",
+                    new Dictionary<string, object?> { ["session"] = lsp.ProcessId },
+                    cancellationToken: TestContext.CancellationToken).ConfigureAwait(false);
+                Assert.IsNull(listResult.IsError);
+                Assert.IsTrue(listResult.StructuredContent.HasValue);
+                ControlRequestSchedulerInfo requests = listResult.StructuredContent.Value.Deserialize(
+                    ControlJsonSerializerContext.Default.ControlRequestSchedulerInfo)
+                    ?? throw new InvalidDataException("MCP returned no request scheduler value.");
+                ControlRequestInfo request = requests.ActiveRequests.Single(static item =>
+                    item.Name == "textDocument/diagnostic");
+                Assert.AreEqual("Running", request.Status);
+                Assert.IsTrue(requests.Trace.IsActive);
+
+                CallToolResult cancelResult = await client.CallToolAsync(
+                    "cancel_request",
+                    new Dictionary<string, object?>
+                    {
+                        ["session"] = lsp.ProcessId,
+                        ["correlationId"] = request.CorrelationId.ToString("D")
+                    },
+                    cancellationToken: TestContext.CancellationToken).ConfigureAwait(false);
+                Assert.IsNull(cancelResult.IsError);
+                Assert.IsTrue(cancelResult.StructuredContent.HasValue);
+                ControlCancelRequestResult cancellation = cancelResult.StructuredContent.Value.Deserialize(
+                    ControlJsonSerializerContext.Default.ControlCancelRequestResult)
+                    ?? throw new InvalidDataException("MCP returned no request cancellation value.");
+                Assert.AreEqual(request.CorrelationId, cancellation.CorrelationId);
+                Assert.IsTrue(cancellation.CancellationRequested);
+                CallToolResult diagnosticResult = await diagnosticRequest.ConfigureAwait(false);
+                Assert.IsTrue(diagnosticResult.IsError);
+                await FileTextWaiter.WaitAsync(
+                    fixture.MarkerPath,
+                    "canceled",
+                    TimeSpan.FromSeconds(60),
+                    TestContext.CancellationToken).ConfigureAwait(false);
+                string marker = await File.ReadAllTextAsync(
+                    fixture.MarkerPath,
+                    TestContext.CancellationToken).ConfigureAwait(false);
+                Assert.Contains("canceled", marker, StringComparison.Ordinal);
+
+                CallToolResult secondTargetResult = await client.CallToolAsync(
+                    "get_session",
+                    new Dictionary<string, object?> { ["session"] = secondLsp.ProcessId },
+                    cancellationToken: TestContext.CancellationToken).ConfigureAwait(false);
+                Assert.IsNull(secondTargetResult.IsError);
+                Assert.IsTrue(secondTargetResult.StructuredContent.HasValue);
+                ControlSessionInfo secondTarget = secondTargetResult.StructuredContent.Value
+                    .Deserialize(ControlJsonSerializerContext.Default.ControlSessionInfo)
+                    ?? throw new InvalidDataException(
+                        "MCP returned no second session after analyzer cancellation.");
+                Assert.AreEqual(secondLsp.ProcessId, secondTarget.ProcessId);
+                Assert.AreEqual(
+                    secondFixturePath,
+                    Assert.ContainsSingle(secondTarget.WorkspaceRoots));
+
+                CallToolResult stopResult = await client.CallToolAsync(
+                    "stop_trace",
+                    new Dictionary<string, object?> { ["session"] = lsp.ProcessId },
+                    cancellationToken: TestContext.CancellationToken).ConfigureAwait(false);
+                Assert.IsNull(stopResult.IsError);
+                Assert.IsTrue(stopResult.StructuredContent.HasValue);
+                ControlTraceInfo stoppedTrace = stopResult.StructuredContent.Value.Deserialize(
+                    ControlJsonSerializerContext.Default.ControlTraceInfo)
+                    ?? throw new InvalidDataException("MCP returned no stopped trace value.");
+                Assert.IsFalse(stoppedTrace.IsActive);
+                Assert.AreEqual(startedTrace.TraceId, stoppedTrace.TraceId);
+                ControlTraceEntry entry = stoppedTrace.Entries.Single(item =>
+                    item.CorrelationId == request.CorrelationId);
+                Assert.AreEqual("Canceled", entry.Status);
+                Assert.AreEqual(request.WorkspaceGeneration, entry.WorkspaceGeneration);
+                Assert.IsTrue(entry.IsCancellationRequested);
+            }
+            finally
+            {
+                await client.DisposeAsync().ConfigureAwait(false);
+            }
+
+            string diagnostics = await lsp.ShutdownAsync(
+                TestContext.CancellationToken).ConfigureAwait(false);
+            Assert.DoesNotContain("Unhandled exception", diagnostics, StringComparison.Ordinal);
+            string secondDiagnostics = await secondLsp.ShutdownAsync(
+                TestContext.CancellationToken).ConfigureAwait(false);
+            Assert.DoesNotContain(
+                "Unhandled exception",
+                secondDiagnostics,
+                StringComparison.Ordinal);
         }
         finally
         {
-            await client.DisposeAsync().ConfigureAwait(false);
+            await DirectoryReleaseWaiter.DeleteAsync(
+                secondFixturePath,
+                TimeSpan.FromSeconds(10)).ConfigureAwait(false);
         }
-
-        string diagnostics = await lsp.ShutdownAsync(
-            TestContext.CancellationToken).ConfigureAwait(false);
-        Assert.DoesNotContain("Unhandled exception", diagnostics, StringComparison.Ordinal);
     }
 
     private static async Task<ControlWorkspaceOperationResult> CallWorkspaceOperationAsync(
         McpClient client,
+        int processId,
         string toolName,
         CancellationToken cancellationToken)
     {
         CallToolResult result = await client.CallToolAsync(
             toolName,
+            new Dictionary<string, object?> { ["session"] = processId },
             cancellationToken: cancellationToken).ConfigureAwait(false);
         Assert.IsNull(result.IsError);
         Assert.IsTrue(result.StructuredContent.HasValue);
