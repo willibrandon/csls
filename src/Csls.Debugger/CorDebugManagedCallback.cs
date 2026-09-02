@@ -22,6 +22,7 @@ internal sealed class CorDebugManagedCallback : IDisposable
     private static readonly nint s_callback2Vtable = CreateCallback2Vtable();
     private static readonly nint s_callback3Vtable = CreateCallback3Vtable();
     private static readonly nint s_callback4Vtable = CreateCallback4Vtable();
+    private readonly DebuggerSessionActor _actor;
     private readonly TaskCompletionSource<int> _createProcessCompletion =
         new(TaskCreationOptions.RunContinuationsAsynchronously);
     private nint _instance;
@@ -29,8 +30,11 @@ internal sealed class CorDebugManagedCallback : IDisposable
     /// <summary>
     /// Creates one callback object with an independently reference-counted native identity.
     /// </summary>
-    internal unsafe CorDebugManagedCallback()
+    /// <param name="actor">The engine actor that owns callback continuation.</param>
+    internal unsafe CorDebugManagedCallback(DebuggerSessionActor actor)
     {
+        ArgumentNullException.ThrowIfNull(actor);
+        _actor = actor;
         nuint allocationSize = checked((nuint)(s_referenceCountOffset + sizeof(int)));
         _instance = (nint)NativeMemory.AllocZeroed(allocationSize);
         if (_instance == 0)
@@ -233,233 +237,260 @@ internal sealed class CorDebugManagedCallback : IDisposable
 
     private static unsafe nint Root(nint self) => ((nint*)self)[1];
 
-    private static int Continue(nint controller) => controller == 0
-        ? NullPointerHResult
-        : new ICorDebugControllerAbi(controller).Continue(fIsOutOfBand: 0);
+    private static int QueueContinue(nint self, nint controller, bool createsProcess)
+    {
+        if (controller == 0)
+        {
+            return NullPointerHResult;
+        }
+
+        CorDebugManagedCallback target = GetTarget(self);
+        _ = ComAbi.AddRef(controller);
+        nint ownedController = controller;
+        Task operation = target._actor.InvokeAsync(
+            actorCancellationToken =>
+            {
+                _ = actorCancellationToken;
+                nint currentController = Interlocked.Exchange(ref ownedController, 0);
+                try
+                {
+                    int result = new ICorDebugControllerAbi(currentController)
+                        .Continue(fIsOutOfBand: 0);
+                    if (createsProcess)
+                    {
+                        _ = target._createProcessCompletion.TrySetResult(result);
+                    }
+
+                    CorDebugHResult.ThrowIfFailed(result, "ICorDebugController.Continue");
+                    return ValueTask.CompletedTask;
+                }
+                finally
+                {
+                    _ = ComAbi.Release(currentController);
+                }
+            },
+            CancellationToken.None);
+        _ = target.ObserveOperationAsync(operation, () =>
+        {
+            nint currentController = Interlocked.Exchange(ref ownedController, 0);
+            if (currentController != 0)
+            {
+                _ = ComAbi.Release(currentController);
+            }
+        });
+        return SuccessHResult;
+    }
+
+    private async Task ObserveOperationAsync(Task operation, Action releaseUnclaimed)
+    {
+        try
+        {
+            await operation.WaitAsync(CancellationToken.None).ConfigureAwait(false);
+        }
+        catch (Exception exception) when (
+            exception is ArgumentException or InvalidOperationException or OperationCanceledException)
+        {
+            releaseUnclaimed();
+            _ = _createProcessCompletion.TrySetException(exception);
+        }
+    }
 
     [UnmanagedCallersOnly(CallConvs = [typeof(CallConvStdcall)])]
     private static int Breakpoint(nint self, nint appDomain, nint thread, nint breakpoint)
     {
-        _ = self;
         _ = thread;
         _ = breakpoint;
-        return Continue(appDomain);
+        return QueueContinue(self, appDomain, createsProcess: false);
     }
 
     [UnmanagedCallersOnly(CallConvs = [typeof(CallConvStdcall)])]
     private static int StepComplete(nint self, nint appDomain, nint thread, nint stepper, int reason)
     {
-        _ = self;
         _ = thread;
         _ = stepper;
         _ = reason;
-        return Continue(appDomain);
+        return QueueContinue(self, appDomain, createsProcess: false);
     }
 
     [UnmanagedCallersOnly(CallConvs = [typeof(CallConvStdcall)])]
     private static int Break(nint self, nint appDomain, nint thread)
     {
-        _ = self;
         _ = thread;
-        return Continue(appDomain);
+        return QueueContinue(self, appDomain, createsProcess: false);
     }
 
     [UnmanagedCallersOnly(CallConvs = [typeof(CallConvStdcall)])]
     private static int Exception(nint self, nint appDomain, nint thread, int unhandled)
     {
-        _ = self;
         _ = thread;
         _ = unhandled;
-        return Continue(appDomain);
+        return QueueContinue(self, appDomain, createsProcess: false);
     }
 
     [UnmanagedCallersOnly(CallConvs = [typeof(CallConvStdcall)])]
     private static int EvalComplete(nint self, nint appDomain, nint thread, nint eval)
     {
-        _ = self;
         _ = thread;
         _ = eval;
-        return Continue(appDomain);
+        return QueueContinue(self, appDomain, createsProcess: false);
     }
 
     [UnmanagedCallersOnly(CallConvs = [typeof(CallConvStdcall)])]
     private static int EvalException(nint self, nint appDomain, nint thread, nint eval)
     {
-        _ = self;
         _ = thread;
         _ = eval;
-        return Continue(appDomain);
+        return QueueContinue(self, appDomain, createsProcess: false);
     }
 
     [UnmanagedCallersOnly(CallConvs = [typeof(CallConvStdcall)])]
     private static int CreateProcess(nint self, nint process)
     {
-        int result = Continue(process);
-        _ = GetTarget(self)._createProcessCompletion.TrySetResult(result);
-        return SuccessHResult;
+        return QueueContinue(self, process, createsProcess: true);
     }
 
     [UnmanagedCallersOnly(CallConvs = [typeof(CallConvStdcall)])]
     private static int ExitProcess(nint self, nint process)
     {
-        _ = self;
-        return Continue(process);
+        return QueueContinue(self, process, createsProcess: false);
     }
 
     [UnmanagedCallersOnly(CallConvs = [typeof(CallConvStdcall)])]
     private static int CreateThread(nint self, nint appDomain, nint thread)
     {
-        _ = self;
         _ = thread;
-        return Continue(appDomain);
+        return QueueContinue(self, appDomain, createsProcess: false);
     }
 
     [UnmanagedCallersOnly(CallConvs = [typeof(CallConvStdcall)])]
     private static int ExitThread(nint self, nint appDomain, nint thread)
     {
-        _ = self;
         _ = thread;
-        return Continue(appDomain);
+        return QueueContinue(self, appDomain, createsProcess: false);
     }
 
     [UnmanagedCallersOnly(CallConvs = [typeof(CallConvStdcall)])]
     private static int LoadModule(nint self, nint appDomain, nint module)
     {
-        _ = self;
         _ = module;
-        return Continue(appDomain);
+        return QueueContinue(self, appDomain, createsProcess: false);
     }
 
     [UnmanagedCallersOnly(CallConvs = [typeof(CallConvStdcall)])]
     private static int UnloadModule(nint self, nint appDomain, nint module)
     {
-        _ = self;
         _ = module;
-        return Continue(appDomain);
+        return QueueContinue(self, appDomain, createsProcess: false);
     }
 
     [UnmanagedCallersOnly(CallConvs = [typeof(CallConvStdcall)])]
     private static int LoadClass(nint self, nint appDomain, nint @class)
     {
-        _ = self;
         _ = @class;
-        return Continue(appDomain);
+        return QueueContinue(self, appDomain, createsProcess: false);
     }
 
     [UnmanagedCallersOnly(CallConvs = [typeof(CallConvStdcall)])]
     private static int UnloadClass(nint self, nint appDomain, nint @class)
     {
-        _ = self;
         _ = @class;
-        return Continue(appDomain);
+        return QueueContinue(self, appDomain, createsProcess: false);
     }
 
     [UnmanagedCallersOnly(CallConvs = [typeof(CallConvStdcall)])]
     private static int DebuggerError(nint self, nint process, int error, uint errorCode)
     {
-        _ = self;
         _ = error;
         _ = errorCode;
-        return Continue(process);
+        return QueueContinue(self, process, createsProcess: false);
     }
 
     [UnmanagedCallersOnly(CallConvs = [typeof(CallConvStdcall)])]
     private static int LogMessage(nint self, nint appDomain, nint thread, int level, nint category, nint message)
     {
-        _ = self;
         _ = thread;
         _ = level;
         _ = category;
         _ = message;
-        return Continue(appDomain);
+        return QueueContinue(self, appDomain, createsProcess: false);
     }
 
     [UnmanagedCallersOnly(CallConvs = [typeof(CallConvStdcall)])]
     private static int LogSwitch(nint self, nint appDomain, nint thread, int level, uint reason, nint category, nint parent)
     {
-        _ = self;
         _ = thread;
         _ = level;
         _ = reason;
         _ = category;
         _ = parent;
-        return Continue(appDomain);
+        return QueueContinue(self, appDomain, createsProcess: false);
     }
 
     [UnmanagedCallersOnly(CallConvs = [typeof(CallConvStdcall)])]
     private static int CreateAppDomain(nint self, nint process, nint appDomain)
     {
-        _ = self;
         _ = appDomain;
-        return Continue(process);
+        return QueueContinue(self, process, createsProcess: false);
     }
 
     [UnmanagedCallersOnly(CallConvs = [typeof(CallConvStdcall)])]
     private static int ExitAppDomain(nint self, nint process, nint appDomain)
     {
-        _ = self;
         _ = appDomain;
-        return Continue(process);
+        return QueueContinue(self, process, createsProcess: false);
     }
 
     [UnmanagedCallersOnly(CallConvs = [typeof(CallConvStdcall)])]
     private static int LoadAssembly(nint self, nint appDomain, nint assembly)
     {
-        _ = self;
         _ = assembly;
-        return Continue(appDomain);
+        return QueueContinue(self, appDomain, createsProcess: false);
     }
 
     [UnmanagedCallersOnly(CallConvs = [typeof(CallConvStdcall)])]
     private static int UnloadAssembly(nint self, nint appDomain, nint assembly)
     {
-        _ = self;
         _ = assembly;
-        return Continue(appDomain);
+        return QueueContinue(self, appDomain, createsProcess: false);
     }
 
     [UnmanagedCallersOnly(CallConvs = [typeof(CallConvStdcall)])]
     private static int ControlCTrap(nint self, nint process)
     {
-        _ = self;
-        return Continue(process);
+        return QueueContinue(self, process, createsProcess: false);
     }
 
     [UnmanagedCallersOnly(CallConvs = [typeof(CallConvStdcall)])]
     private static int NameChange(nint self, nint appDomain, nint thread)
     {
-        _ = self;
         _ = thread;
-        return Continue(appDomain);
+        return QueueContinue(self, appDomain, createsProcess: false);
     }
 
     [UnmanagedCallersOnly(CallConvs = [typeof(CallConvStdcall)])]
     private static int UpdateModuleSymbols(nint self, nint appDomain, nint module, nint symbolStream)
     {
-        _ = self;
         _ = module;
         _ = symbolStream;
-        return Continue(appDomain);
+        return QueueContinue(self, appDomain, createsProcess: false);
     }
 
     [UnmanagedCallersOnly(CallConvs = [typeof(CallConvStdcall)])]
     private static int EditAndContinueRemap(nint self, nint appDomain, nint thread, nint function, int accurate)
     {
-        _ = self;
         _ = thread;
         _ = function;
         _ = accurate;
-        return Continue(appDomain);
+        return QueueContinue(self, appDomain, createsProcess: false);
     }
 
     [UnmanagedCallersOnly(CallConvs = [typeof(CallConvStdcall)])]
     private static int BreakpointSetError(nint self, nint appDomain, nint thread, nint breakpoint, uint error)
     {
-        _ = self;
         _ = thread;
         _ = breakpoint;
         _ = error;
-        return Continue(appDomain);
+        return QueueContinue(self, appDomain, createsProcess: false);
     }
 
     [UnmanagedCallersOnly(CallConvs = [typeof(CallConvStdcall)])]
@@ -471,12 +502,11 @@ internal sealed class CorDebugManagedCallback : IDisposable
         nint newFunction,
         uint oldIlOffset)
     {
-        _ = self;
         _ = thread;
         _ = oldFunction;
         _ = newFunction;
         _ = oldIlOffset;
-        return Continue(appDomain);
+        return QueueContinue(self, appDomain, createsProcess: false);
     }
 
     [UnmanagedCallersOnly(CallConvs = [typeof(CallConvStdcall)])]
@@ -486,26 +516,23 @@ internal sealed class CorDebugManagedCallback : IDisposable
         uint connectionId,
         nint connectionName)
     {
-        _ = self;
         _ = connectionId;
         _ = connectionName;
-        return Continue(process);
+        return QueueContinue(self, process, createsProcess: false);
     }
 
     [UnmanagedCallersOnly(CallConvs = [typeof(CallConvStdcall)])]
     private static int ChangeConnection(nint self, nint process, uint connectionId)
     {
-        _ = self;
         _ = connectionId;
-        return Continue(process);
+        return QueueContinue(self, process, createsProcess: false);
     }
 
     [UnmanagedCallersOnly(CallConvs = [typeof(CallConvStdcall)])]
     private static int DestroyConnection(nint self, nint process, uint connectionId)
     {
-        _ = self;
         _ = connectionId;
-        return Continue(process);
+        return QueueContinue(self, process, createsProcess: false);
     }
 
     [UnmanagedCallersOnly(CallConvs = [typeof(CallConvStdcall)])]
@@ -518,13 +545,12 @@ internal sealed class CorDebugManagedCallback : IDisposable
         int eventType,
         uint flags)
     {
-        _ = self;
         _ = thread;
         _ = frame;
         _ = offset;
         _ = eventType;
         _ = flags;
-        return Continue(appDomain);
+        return QueueContinue(self, appDomain, createsProcess: false);
     }
 
     [UnmanagedCallersOnly(CallConvs = [typeof(CallConvStdcall)])]
@@ -535,11 +561,10 @@ internal sealed class CorDebugManagedCallback : IDisposable
         int eventType,
         uint flags)
     {
-        _ = self;
         _ = thread;
         _ = eventType;
         _ = flags;
-        return Continue(appDomain);
+        return QueueContinue(self, appDomain, createsProcess: false);
     }
 
     [UnmanagedCallersOnly(CallConvs = [typeof(CallConvStdcall)])]
@@ -549,10 +574,9 @@ internal sealed class CorDebugManagedCallback : IDisposable
         nint thread,
         nint function)
     {
-        _ = self;
         _ = thread;
         _ = function;
-        return Continue(appDomain);
+        return QueueContinue(self, appDomain, createsProcess: false);
     }
 
     [UnmanagedCallersOnly(CallConvs = [typeof(CallConvStdcall)])]
@@ -562,32 +586,28 @@ internal sealed class CorDebugManagedCallback : IDisposable
         nint thread,
         nint mda)
     {
-        _ = self;
         _ = thread;
         _ = mda;
-        return Continue(controller);
+        return QueueContinue(self, controller, createsProcess: false);
     }
 
     [UnmanagedCallersOnly(CallConvs = [typeof(CallConvStdcall)])]
     private static int CustomNotification(nint self, nint thread, nint appDomain)
     {
-        _ = self;
         _ = thread;
-        return Continue(appDomain);
+        return QueueContinue(self, appDomain, createsProcess: false);
     }
 
     [UnmanagedCallersOnly(CallConvs = [typeof(CallConvStdcall)])]
     private static int BeforeGarbageCollection(nint self, nint process)
     {
-        _ = self;
-        return Continue(process);
+        return QueueContinue(self, process, createsProcess: false);
     }
 
     [UnmanagedCallersOnly(CallConvs = [typeof(CallConvStdcall)])]
     private static int AfterGarbageCollection(nint self, nint process)
     {
-        _ = self;
-        return Continue(process);
+        return QueueContinue(self, process, createsProcess: false);
     }
 
     [UnmanagedCallersOnly(CallConvs = [typeof(CallConvStdcall)])]
@@ -598,10 +618,9 @@ internal sealed class CorDebugManagedCallback : IDisposable
         nint context,
         uint contextSize)
     {
-        _ = self;
         _ = thread;
         _ = context;
         _ = contextSize;
-        return Continue(process);
+        return QueueContinue(self, process, createsProcess: false);
     }
 }

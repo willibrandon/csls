@@ -1,5 +1,6 @@
 using Csls.Debugger.Interop;
 using System.Diagnostics;
+using System.Runtime.CompilerServices;
 
 namespace Csls.Debugger;
 
@@ -35,7 +36,10 @@ internal static class CorDebugRuntimeActivator
 
         using var resumeHandle = new DbgShimResumeHandle(rawResumeHandle);
         using var target = Process.GetProcessById(checked((int)processId));
-        using var managedCallback = new CorDebugManagedCallback();
+        var callbackActor = new DebuggerSessionActor();
+        await using ConfiguredAsyncDisposable callbackActorScope =
+            callbackActor.ConfigureAwait(false);
+        using var managedCallback = new CorDebugManagedCallback(callbackActor);
         using var registration =
             new CorDebugRuntimeStartupRegistration(processId, managedCallback);
         nint corDebug = 0;
