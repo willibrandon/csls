@@ -7,11 +7,12 @@ namespace Csls.Debugger;
 /// <summary>
 /// Owns one dbgshim runtime-startup callback registration and its native callback context.
 /// </summary>
-internal sealed unsafe class CorDebugRuntimeStartupRegistration : IDisposable
+internal sealed class CorDebugRuntimeStartupRegistration : IDisposable
 {
     private readonly TaskCompletionSource<CorDebugActivationResult> _completion =
         new(TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly uint _processId;
+    private readonly DebuggerSessionActor _actor;
     private readonly CorDebugManagedCallback _managedCallback;
     private GCHandle _context;
     private DbgShimRegistrationHandle? _unregisterHandle;
@@ -21,14 +22,18 @@ internal sealed unsafe class CorDebugRuntimeStartupRegistration : IDisposable
     /// Creates a rooted callback context for one runtime-startup registration.
     /// </summary>
     /// <param name="processId">The operating-system target identifier to attach.</param>
+    /// <param name="actor">The engine actor that owns runtime activation.</param>
     /// <param name="managedCallback">The callback object installed before attach.</param>
     internal CorDebugRuntimeStartupRegistration(
         uint processId,
+        DebuggerSessionActor actor,
         CorDebugManagedCallback managedCallback)
     {
         ArgumentOutOfRangeException.ThrowIfZero(processId);
+        ArgumentNullException.ThrowIfNull(actor);
         ArgumentNullException.ThrowIfNull(managedCallback);
         _processId = processId;
+        _actor = actor;
         _managedCallback = managedCallback;
         _context = GCHandle.Alloc(this, GCHandleType.Normal);
     }
@@ -36,7 +41,7 @@ internal sealed unsafe class CorDebugRuntimeStartupRegistration : IDisposable
     /// <summary>
     /// Gets the unmanaged callback function passed to dbgshim.
     /// </summary>
-    internal static nint Callback =>
+    internal static unsafe nint Callback =>
         (nint)(delegate* unmanaged[Stdcall]<nint, nint, int, void>)&OnRuntimeStartup;
 
     /// <summary>
@@ -95,19 +100,54 @@ internal sealed unsafe class CorDebugRuntimeStartupRegistration : IDisposable
         var context = GCHandle.FromIntPtr(parameter);
         if (context.Target is CorDebugRuntimeStartupRegistration registration)
         {
-            try
-            {
-                registration.CompleteRuntimeStartup(corDebug, hresult);
-            }
-            catch (Exception exception) when (
-                exception is ArgumentException or InvalidOperationException or OverflowException)
-            {
-                _ = registration._completion.TrySetException(exception);
-            }
+            registration.QueueRuntimeStartup(corDebug, hresult);
         }
     }
 
-    private void CompleteRuntimeStartup(nint callbackObject, int callbackResult)
+    private void QueueRuntimeStartup(nint callbackObject, int callbackResult)
+    {
+        nint ownedCallbackObject = callbackObject;
+        Task operation = _actor.InvokeAsync(
+            cancellationToken =>
+            {
+                _ = cancellationToken;
+                nint currentCallbackObject = Interlocked.Exchange(
+                    ref ownedCallbackObject,
+                    0);
+                CompleteRuntimeStartup(currentCallbackObject, callbackResult);
+                return ValueTask.CompletedTask;
+            },
+            CancellationToken.None);
+        _ = ObserveRuntimeStartupAsync(
+            operation,
+            () =>
+            {
+                nint currentCallbackObject = Interlocked.Exchange(
+                    ref ownedCallbackObject,
+                    0);
+                if (currentCallbackObject != 0)
+                {
+                    _ = ComAbi.Release(currentCallbackObject);
+                }
+            });
+    }
+
+    private async Task ObserveRuntimeStartupAsync(Task operation, Action releaseUnclaimed)
+    {
+        try
+        {
+            await operation.WaitAsync(CancellationToken.None).ConfigureAwait(false);
+        }
+        catch (Exception exception) when (
+            exception is ArgumentException or InvalidOperationException or OverflowException or
+                OperationCanceledException or System.Threading.Channels.ChannelClosedException)
+        {
+            releaseUnclaimed();
+            _ = _completion.TrySetException(exception);
+        }
+    }
+
+    private unsafe void CompleteRuntimeStartup(nint callbackObject, int callbackResult)
     {
         CorDebugHResult.ThrowIfFailed(callbackResult, "Runtime startup");
         if (callbackObject == 0)

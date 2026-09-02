@@ -113,7 +113,10 @@ internal sealed class CorDebugDebuggee : IDebuggeeProcess
                 actor,
                 sourceBreakpoints,
                 breakpointStopped);
-            registration = new CorDebugRuntimeStartupRegistration(processId, managedCallback);
+            registration = new CorDebugRuntimeStartupRegistration(
+                processId,
+                actor,
+                managedCallback);
             int registerResult = DbgShimNativeMethods.RegisterForRuntimeStartup(
                 processId,
                 CorDebugRuntimeStartupRegistration.Callback,
