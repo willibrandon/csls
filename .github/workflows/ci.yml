@@ -41,18 +41,10 @@ jobs:
         uses: actions/cache@v6
         with:
           path: |
-            artifacts/bin/Csls.App/debug
-            artifacts/bin/Csls.CancellationProbeAnalyzer/debug
-            artifacts/bin/Csls.CancellationProbeTransport/debug
-            artifacts/bin/Csls.Cli.Worker/debug
-            artifacts/bin/Csls.Mcp/debug
-            artifacts/bin/Csls.Mcp.Worker/debug
-            artifacts/bin/Csls.SourceGen/debug
-            artifacts/bin/Csls.TestProcessHost/debug
-            artifacts/bin/Csls.TestSourceGenerator/debug
-            artifacts/bin/Csls.Tests/debug
-            artifacts/bin/Csls.Worker/debug
+            artifacts/bin/Csls.*/debug
+            !artifacts/bin/Csls.SourceGen.Tests/debug
           key: test-binaries-v2-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.editorconfig', 'global.json', 'src/**', 'tests/**', 'benchmarks/**', 'build/**', 'Directory.Build.*', 'Directory.Packages.props', 'NuGet.Config') }}
+          restore-keys: test-binaries-v2-${{ runner.os }}-${{ runner.arch }}-
 
       - name: Restore source generator test binaries
         id: source-generator-test-binaries-cache
@@ -60,6 +52,7 @@ jobs:
         with:
           path: artifacts/bin/Csls.SourceGen.Tests/debug
           key: source-generator-test-binaries-v2-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.editorconfig', 'global.json', 'src/**', 'tests/**', 'benchmarks/**', 'build/**', 'Directory.Build.*', 'Directory.Packages.props', 'NuGet.Config') }}
+          restore-keys: source-generator-test-binaries-v2-${{ runner.os }}-${{ runner.arch }}-
 
       - name: Restore test build intermediates
         uses: actions/cache@v6
@@ -323,18 +316,7 @@ jobs:
       - name: Restore test binaries
         uses: actions/cache/restore@v6
         with:
-          path: |
-            artifacts/bin/Csls.App/debug
-            artifacts/bin/Csls.CancellationProbeAnalyzer/debug
-            artifacts/bin/Csls.CancellationProbeTransport/debug
-            artifacts/bin/Csls.Cli.Worker/debug
-            artifacts/bin/Csls.Mcp/debug
-            artifacts/bin/Csls.Mcp.Worker/debug
-            artifacts/bin/Csls.SourceGen/debug
-            artifacts/bin/Csls.TestProcessHost/debug
-            artifacts/bin/Csls.TestSourceGenerator/debug
-            artifacts/bin/Csls.Tests/debug
-            artifacts/bin/Csls.Worker/debug
+          path: artifacts/bin/Csls.*/debug
           key: test-binaries-v2-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.editorconfig', 'global.json', 'src/**', 'tests/**', 'benchmarks/**', 'build/**', 'Directory.Build.*', 'Directory.Packages.props', 'NuGet.Config') }}
           fail-on-cache-miss: true
 
@@ -379,18 +361,7 @@ jobs:
       - name: Restore test binaries
         uses: actions/cache/restore@v6
         with:
-          path: |
-            artifacts/bin/Csls.App/debug
-            artifacts/bin/Csls.CancellationProbeAnalyzer/debug
-            artifacts/bin/Csls.CancellationProbeTransport/debug
-            artifacts/bin/Csls.Cli.Worker/debug
-            artifacts/bin/Csls.Mcp/debug
-            artifacts/bin/Csls.Mcp.Worker/debug
-            artifacts/bin/Csls.SourceGen/debug
-            artifacts/bin/Csls.TestProcessHost/debug
-            artifacts/bin/Csls.TestSourceGenerator/debug
-            artifacts/bin/Csls.Tests/debug
-            artifacts/bin/Csls.Worker/debug
+          path: artifacts/bin/Csls.*/debug
           key: test-binaries-v2-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.editorconfig', 'global.json', 'src/**', 'tests/**', 'benchmarks/**', 'build/**', 'Directory.Build.*', 'Directory.Packages.props', 'NuGet.Config') }}
           fail-on-cache-miss: true
 
@@ -422,18 +393,7 @@ jobs:
       - name: Restore test binaries
         uses: actions/cache/restore@v6
         with:
-          path: |
-            artifacts/bin/Csls.App/debug
-            artifacts/bin/Csls.CancellationProbeAnalyzer/debug
-            artifacts/bin/Csls.CancellationProbeTransport/debug
-            artifacts/bin/Csls.Cli.Worker/debug
-            artifacts/bin/Csls.Mcp/debug
-            artifacts/bin/Csls.Mcp.Worker/debug
-            artifacts/bin/Csls.SourceGen/debug
-            artifacts/bin/Csls.TestProcessHost/debug
-            artifacts/bin/Csls.TestSourceGenerator/debug
-            artifacts/bin/Csls.Tests/debug
-            artifacts/bin/Csls.Worker/debug
+          path: artifacts/bin/Csls.*/debug
           key: test-binaries-v2-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.editorconfig', 'global.json', 'src/**', 'tests/**', 'benchmarks/**', 'build/**', 'Directory.Build.*', 'Directory.Packages.props', 'NuGet.Config') }}
           fail-on-cache-miss: true
 
@@ -475,18 +435,7 @@ jobs:
       - name: Restore test binaries
         uses: actions/cache/restore@v6
         with:
-          path: |
-            artifacts/bin/Csls.App/debug
-            artifacts/bin/Csls.CancellationProbeAnalyzer/debug
-            artifacts/bin/Csls.CancellationProbeTransport/debug
-            artifacts/bin/Csls.Cli.Worker/debug
-            artifacts/bin/Csls.Mcp/debug
-            artifacts/bin/Csls.Mcp.Worker/debug
-            artifacts/bin/Csls.SourceGen/debug
-            artifacts/bin/Csls.TestProcessHost/debug
-            artifacts/bin/Csls.TestSourceGenerator/debug
-            artifacts/bin/Csls.Tests/debug
-            artifacts/bin/Csls.Worker/debug
+          path: artifacts/bin/Csls.*/debug
           key: test-binaries-v2-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.editorconfig', 'global.json', 'src/**', 'tests/**', 'benchmarks/**', 'build/**', 'Directory.Build.*', 'Directory.Packages.props', 'NuGet.Config') }}
           fail-on-cache-miss: true
 
@@ -524,12 +473,25 @@ jobs:
           --minimum-expected-tests 6
 
   zed-tests:
-    name: Zed tests
+    name: Zed tests (${{ matrix.group }})
     runs-on: ubuntu-latest
     timeout-minutes: 5
     needs:
       - graphical-prerequisite-app
       - test-binaries
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - group: framework
+            count: 6
+            filter: FullyQualifiedName=Csls.Tests.ZedLanguageServerTests.ZedOpensFrameworkDefinitionFromCsls|FullyQualifiedName=Csls.Tests.ZedHighlightQueryTests.StaticServiceReceiverIsHighlightedAsType
+          - group: interactive
+            count: 1
+            filter: FullyQualifiedName=Csls.Tests.ZedLanguageServerTests.ZedProvidesInteractiveFeaturesInCslsWorkspace
+          - group: refresh
+            count: 1
+            filter: FullyQualifiedName=Csls.Tests.ZedLanguageServerTests.ZedRefreshesNewCompileItemsWithoutRestart
 
     steps:
       - name: Check out repository
@@ -545,18 +507,7 @@ jobs:
       - name: Restore test binaries
         uses: actions/cache/restore@v6
         with:
-          path: |
-            artifacts/bin/Csls.App/debug
-            artifacts/bin/Csls.CancellationProbeAnalyzer/debug
-            artifacts/bin/Csls.CancellationProbeTransport/debug
-            artifacts/bin/Csls.Cli.Worker/debug
-            artifacts/bin/Csls.Mcp/debug
-            artifacts/bin/Csls.Mcp.Worker/debug
-            artifacts/bin/Csls.SourceGen/debug
-            artifacts/bin/Csls.TestProcessHost/debug
-            artifacts/bin/Csls.TestSourceGenerator/debug
-            artifacts/bin/Csls.Tests/debug
-            artifacts/bin/Csls.Worker/debug
+          path: artifacts/bin/Csls.*/debug
           key: test-binaries-v2-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.editorconfig', 'global.json', 'src/**', 'tests/**', 'benchmarks/**', 'build/**', 'Directory.Build.*', 'Directory.Packages.props', 'NuGet.Config') }}
           fail-on-cache-miss: true
 
@@ -647,9 +598,21 @@ jobs:
         run: >-
           dotnet test --test-modules artifacts/bin/Csls.Tests/debug/Csls.Tests.dll
           --root-directory .
-          --filter "FullyQualifiedName~Csls.Tests.ZedLanguageServerTests|FullyQualifiedName=Csls.Tests.ZedHighlightQueryTests.StaticServiceReceiverIsHighlightedAsType"
-          --minimum-expected-tests 8
+          --filter "${{ matrix.filter }}"
+          --minimum-expected-tests ${{ matrix.count }}
           --output Detailed
+
+  zed-tests-complete:
+    name: Zed tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    needs: zed-tests
+
+    steps:
+      - name: Complete Zed test verification
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
 
   vscode-tests:
     name: VS Code tests (${{ matrix.group }})
@@ -750,18 +713,7 @@ jobs:
       - name: Restore test binaries
         uses: actions/cache/restore@v6
         with:
-          path: |
-            artifacts/bin/Csls.App/debug
-            artifacts/bin/Csls.CancellationProbeAnalyzer/debug
-            artifacts/bin/Csls.CancellationProbeTransport/debug
-            artifacts/bin/Csls.Cli.Worker/debug
-            artifacts/bin/Csls.Mcp/debug
-            artifacts/bin/Csls.Mcp.Worker/debug
-            artifacts/bin/Csls.SourceGen/debug
-            artifacts/bin/Csls.TestProcessHost/debug
-            artifacts/bin/Csls.TestSourceGenerator/debug
-            artifacts/bin/Csls.Tests/debug
-            artifacts/bin/Csls.Worker/debug
+          path: artifacts/bin/Csls.*/debug
           key: test-binaries-v2-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.editorconfig', 'global.json', 'src/**', 'tests/**', 'benchmarks/**', 'build/**', 'Directory.Build.*', 'Directory.Packages.props', 'NuGet.Config') }}
           fail-on-cache-miss: true
 
@@ -838,18 +790,7 @@ jobs:
       - name: Restore test binaries
         uses: actions/cache/restore@v6
         with:
-          path: |
-            artifacts/bin/Csls.App/debug
-            artifacts/bin/Csls.CancellationProbeAnalyzer/debug
-            artifacts/bin/Csls.CancellationProbeTransport/debug
-            artifacts/bin/Csls.Cli.Worker/debug
-            artifacts/bin/Csls.Mcp/debug
-            artifacts/bin/Csls.Mcp.Worker/debug
-            artifacts/bin/Csls.SourceGen/debug
-            artifacts/bin/Csls.TestProcessHost/debug
-            artifacts/bin/Csls.TestSourceGenerator/debug
-            artifacts/bin/Csls.Tests/debug
-            artifacts/bin/Csls.Worker/debug
+          path: artifacts/bin/Csls.*/debug
           key: test-binaries-v2-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.editorconfig', 'global.json', 'src/**', 'tests/**', 'benchmarks/**', 'build/**', 'Directory.Build.*', 'Directory.Packages.props', 'NuGet.Config') }}
           fail-on-cache-miss: true
 
