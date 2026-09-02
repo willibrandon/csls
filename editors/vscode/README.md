@@ -19,6 +19,9 @@ Disable the C# and C# Dev Kit extensions before enabling csls so only one C#
 language client owns each document. Open a C# project, solution, or file-based app
 and csls starts automatically.
 
+Reference counts appear above supported C# declarations. Selecting a count opens
+VS Code's native references popup with current results.
+
 Use `csls: Restart Language Server` after changing workspace inputs. The
 `csls.server.path` setting is intended for local server development; normal installs
 use the bundled server.

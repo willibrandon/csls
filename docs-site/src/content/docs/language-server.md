@@ -8,7 +8,7 @@ language features include:
 
 - C# compiler and analyzer diagnostics, plus project-aware Razor diagnostics, completion, hover, navigation, rename, and formatting
 - completion with import edits, negotiated snippets, lazy documentation, hover, and signature help
-- definitions, declarations, implementations, references, highlights, links, monikers, and linked editing
+- definitions, declarations, implementations, references, reference CodeLens, highlights, links, monikers, and linked editing
 - document and workspace symbols
 - semantic tokens with full and delta responses
 - call hierarchy, type hierarchy, selection ranges, folding ranges, and inlay hints
@@ -27,6 +27,13 @@ document clears its published diagnostics.
 Compiler and analyzer results are cached by the dependent Roslyn project version.
 An edit recomputes affected projects on demand while unrelated projects keep their
 current result identifiers and cached analysis.
+
+Reference CodeLens is discovered from C# declaration syntax without starting a
+reference search. The editor resolves visible lenses on demand, producing exact
+`0 references` and `1 reference` labels and a capped `99+ references` label for
+larger result sets. Selecting a lens runs a current reference request and opens
+the editor's native references view. Clients that support CodeLens refresh are
+notified when edits or workspace changes can affect a visible count.
 
 Roslyn diagnostics with hidden severity are omitted unless they fade unnecessary
 code. Diagnostics explicitly raised to information remain visible and use the same

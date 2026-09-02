@@ -111,6 +111,11 @@ public sealed record ServerCapabilities
     public InlayHintOptions? InlayHintProvider { get; init; }
 
     /// <summary>
+    /// Gets the source declaration code-lens discovery and resolve behavior.
+    /// </summary>
+    public CodeLensOptions? CodeLensProvider { get; init; }
+
+    /// <summary>
     /// Gets whether source reference requests are supported.
     /// </summary>
     public bool ReferencesProvider { get; init; }

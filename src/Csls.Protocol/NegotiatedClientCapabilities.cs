@@ -76,6 +76,11 @@ public sealed record NegotiatedClientCapabilities
     public bool InlayHintRefresh { get; init; }
 
     /// <summary>
+    /// Gets whether the client supports code-lens refresh requests.
+    /// </summary>
+    public bool CodeLensRefresh { get; init; }
+
+    /// <summary>
     /// Gets whether the client supports dynamic file watcher registration.
     /// </summary>
     public bool DynamicFileWatching { get; init; }

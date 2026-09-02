@@ -35,6 +35,10 @@ These public wire-contract types are generated from the compiled assemblies and 
 | `Csls.Protocol.CodeActionContext` | Describes diagnostics and action categories requested by an editor. |
 | `Csls.Protocol.CodeActionOptions` | Advertises the concrete code-action categories implemented by the server. |
 | `Csls.Protocol.CodeActionParams` | Identifies a document range and the editor's requested code-action context. |
+| `Csls.Protocol.CodeLens` | Describes one source declaration annotation resolved on demand by the client. |
+| `Csls.Protocol.CodeLensData` | Preserves immutable declaration coordinates required to resolve a code lens. |
+| `Csls.Protocol.CodeLensOptions` | Describes the server's code-lens resolution behavior. |
+| `Csls.Protocol.CodeLensParams` | Identifies the source document requested for code-lens discovery. |
 | `Csls.Protocol.CompletionContext` | Describes how the client triggered one completion request. |
 | `Csls.Protocol.CompletionItem` | Describes one bounded Roslyn completion candidate and its exact document edits. |
 | `Csls.Protocol.CompletionItemData` | Identifies one completion candidate for deterministic lazy resolution. |
@@ -113,6 +117,7 @@ These public wire-contract types are generated from the compiled assemblies and 
 | `Csls.Protocol.LinkedEditingRangeParams` | Selects one document position for a linked editing range request. |
 | `Csls.Protocol.LinkedEditingRanges` | Describes equal, non-overlapping source ranges that clients edit together. |
 | `Csls.Protocol.Location` | Identifies one source URI and exact UTF-16 range. |
+| `Csls.Protocol.LspCommand` | Describes one editor command and its JSON-compatible arguments. |
 | `Csls.Protocol.LspJson` | Creates the shared source-generated JSON configuration used by LSP transports. |
 | `Csls.Protocol.LspJsonSerializerContext` | Provides generated System.Text.Json metadata for every registered LSP contract. |
 | `Csls.Protocol.LspServerCancelledException` | Represents an LSP request that the server cancels because its input snapshot became stale. |

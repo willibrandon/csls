@@ -218,6 +218,16 @@ public static class LspMethodRegistry
                 target.InlayHintResolveAsync));
         AddParameterObjectMethod(
             rpc,
+            "textDocument/codeLens",
+            new Func<CodeLensParams, CancellationToken, Task<IReadOnlyList<CodeLens>>>(
+                target.CodeLensAsync));
+        AddParameterObjectMethod(
+            rpc,
+            "codeLens/resolve",
+            new Func<CodeLens, CancellationToken, Task<CodeLens>>(
+                target.CodeLensResolveAsync));
+        AddParameterObjectMethod(
+            rpc,
             "textDocument/references",
             new Func<ReferenceParams, CancellationToken, Task<IReadOnlyList<Location>>>(
                 target.ReferencesAsync));

@@ -71,4 +71,11 @@ public interface ILspClientConnection
     /// <param name="cancellationToken">The request cancellation token.</param>
     /// <returns>A task that completes after the client accepts the refresh.</returns>
     Task RefreshInlayHintsAsync(CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Requests that the connected client refresh code lenses.
+    /// </summary>
+    /// <param name="cancellationToken">The request cancellation token.</param>
+    /// <returns>A task that completes after the client accepts the refresh.</returns>
+    Task RefreshCodeLensesAsync(CancellationToken cancellationToken);
 }

@@ -108,6 +108,34 @@ public sealed partial class LanguageServer
             cancellationToken);
     }
 
+    /// <inheritdoc />
+    public Task<IReadOnlyList<CodeLens>> CodeLensAsync(
+        CodeLensParams parameters,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(parameters);
+        return ScheduleWorkspaceReadAsync(
+            token => _workspaceManager.GetCodeLensesAsync(parameters, token),
+            "code lens",
+            cancellationToken);
+    }
+
+    /// <inheritdoc />
+    public Task<CodeLens> CodeLensResolveAsync(
+        CodeLens codeLens,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(codeLens);
+        return ScheduleWorkspaceReadAsync(
+            token => _workspaceManager.ResolveCodeLensAsync(
+                codeLens,
+                _codeLensCommandIdentifier,
+                _codeLensCommandIncludesLocations,
+                token),
+            "code lens resolve",
+            cancellationToken);
+    }
+
     private Task<T> ScheduleWorkspaceReadAsync<T>(
         Func<CancellationToken, Task<T>> operation,
         string feature,

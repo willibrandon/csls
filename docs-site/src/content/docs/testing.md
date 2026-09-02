@@ -42,9 +42,9 @@ document updates without restarting the editor.
 Fresh, GNU Emacs with Eglot, Helix, and Neovim run in real Hex1b terminals. The
 packaged VS Code extension runs in desktop and remote extension hosts. Its browser
 extension and WebAssembly server run in Chromium, Firefox, and WebKit. Every VS Code
-host executes the same hover, completion, definition, semantic token, configurable
-inlay hint, diagnostics, formatting, rename, code action, file synchronization, and
-restart contract. Zed runs with the csls extension.
+host executes the same hover, completion, definition, reference CodeLens, semantic
+token, configurable inlay hint, diagnostics, formatting, rename, code action, file
+synchronization, and restart contract. Zed runs with the csls extension.
 Tests wait for visible editor or protocol state instead of fixed delays.
 
 Provisioners are .NET file-based apps. Each one selects a compatible release

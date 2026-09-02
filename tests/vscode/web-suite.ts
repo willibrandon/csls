@@ -159,6 +159,7 @@ export async function runFeatureContract(options: FeatureContractOptions): Promi
   }
   await assertExtensionMethodDefinitionOpens(document);
   await assertSemanticTokens(document);
+  await assertReferenceCodeLens(document);
   await assertConfigurableInlayHints(document);
   await assertDiagnosticsTrackEdits(document);
   await assertFormatting(document);
@@ -508,6 +509,52 @@ async function assertSemanticTokens(document: vscode.TextDocument): Promise<void
       tokens.data.length >= 5,
     "csls must return semantic C# tokens in VS Code.",
   );
+}
+
+async function assertReferenceCodeLens(document: vscode.TextDocument): Promise<void> {
+  const source =
+    "class LensTarget { const int Used = 1; int unused; void Run() { _ = Used; } }\n";
+  await replaceDocumentText(document, source);
+  const lenses = await withTimeout(
+    vscode.commands.executeCommand<readonly vscode.CodeLens[]>(
+      "vscode.executeCodeLensProvider",
+      document.uri,
+      20,
+    ),
+    languageFeatureTimeoutMilliseconds,
+    "The VS Code CodeLens provider did not complete.",
+  );
+  assert(lenses.length === 4, `csls must return four declaration lenses. Received ${lenses.length}.`);
+  const usedLens = lenses.find((lens) =>
+    document.getText(lens.range) === "Used"
+  );
+  assert(usedLens?.command !== undefined, "The Used CodeLens must resolve its reference count.");
+  assert(usedLens.command.title === "1 reference", "The Used CodeLens must report one reference.");
+  assert(
+    usedLens.command.command === "csls.client.peekReferences",
+    "The VS Code reference lens must use the registered csls popup command.",
+  );
+  assert(
+    usedLens.command.arguments?.length === 2,
+    "The VS Code reference lens must provide its document URI and declaration position.",
+  );
+  const unusedLens = lenses.find((lens) =>
+    document.getText(lens.range) === "unused"
+  );
+  assert(
+    unusedLens?.command?.title === "0 references",
+    "The unused field CodeLens must report zero references.",
+  );
+
+  await withTimeout(
+    vscode.commands.executeCommand(
+      usedLens.command.command,
+      ...usedLens.command.arguments,
+    ),
+    languageFeatureTimeoutMilliseconds,
+    "The VS Code reference popup command did not complete.",
+  );
+  await vscode.commands.executeCommand("closeReferenceSearch");
 }
 
 async function assertConfigurableInlayHints(document: vscode.TextDocument): Promise<void> {

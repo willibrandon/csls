@@ -10,6 +10,7 @@ Use `lsp.csls.binary` in Zed settings to select a local build. Settings under
 
 ```json
 {
+  "code_lens": "on",
   "lsp": {
     "csls": {
       "binary": {
@@ -24,6 +25,10 @@ Use `lsp.csls.binary` in Zed settings to select a local build. Settings under
   }
 }
 ```
+
+Set `code_lens` to `menu` to show reference counts in the code-action menu
+instead of above declarations. Selecting a count opens Zed's native location
+view.
 
 Build the extension with `dotnet run --file scripts/Build-ZedExtension.cs` from
 the repository root.

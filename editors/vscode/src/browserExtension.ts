@@ -9,6 +9,7 @@ import { BrowserLanguageClient } from "./browserLanguageClient.js";
 import { BrowserWorkspaceMapping } from "./browserWorkspaceMapping.js";
 import { BrowserWorkspaceExperience } from "./browserWorkspaceExperience.js";
 import { registerCSharpVirtualDocumentProvider } from "./csharpVirtualDocumentProvider.js";
+import { registerReferenceCodeLensCommands } from "./referenceCodeLensCommands.js";
 
 const conflictingExtensionIds = ["ms-dotnettools.csharp", "ms-dotnettools.csdevkit"];
 const synchronizationInclude = "**/*.{cs,csx,razor,cshtml,sln,slnx,csproj,props,targets,editorconfig,globalconfig,json,config}";
@@ -84,6 +85,7 @@ export async function activate(
     vscode.commands.registerCommand("csls.showOutput", () => outputChannel?.show()),
   );
   workspaceMapping = new BrowserWorkspaceMapping(vscode.workspace.workspaceFolders ?? []);
+  registerReferenceCodeLensCommands(context, workspaceMapping.toCodeUri);
   workspaceExperience = new BrowserWorkspaceExperience(outputChannel, workspaceMapping);
   context.subscriptions.push(workspaceExperience);
   registerCSharpVirtualDocumentProvider(context, () => client);

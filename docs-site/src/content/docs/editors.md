@@ -82,6 +82,7 @@ Use a local build while developing the server:
 
 ```json
 {
+  "code_lens": "on",
   "languages": {
     "CSharp": {
       "language_servers": ["csls", "!roslyn", "!omnisharp", "!csharp-ls"]
@@ -98,6 +99,10 @@ Use a local build while developing the server:
 }
 ```
 
+`code_lens` can also be set to `menu` to put reference counts in the code-action
+menu instead of above declarations. Selecting a reference lens opens Zed's native
+location view.
+
 ## VS Code
 
 Install the `willibrandon.csls` extension and disable the Microsoft C# and C# Dev
@@ -105,6 +110,8 @@ Kit extensions so one language client owns each C# document. Desktop and remote
 extension hosts run the packaged Native AOT launcher and Roslyn worker. The .NET
 Install Tool supplies the supported runtime and SDK. The Solution view supports
 restore, build, run, debug, and Microsoft Testing Platform tests.
+Reference counts appear above supported C# declarations and open VS Code's native
+references popup when selected.
 
 VS Code for the Web runs csls in a WebAssembly worker and synchronizes the virtual
 workspace without requiring a local .NET installation. Language features and the
@@ -113,8 +120,9 @@ desktop and remote workspace hosts.
 
 The repository runs one feature contract against desktop, remote, Chromium,
 Firefox, and WebKit extension hosts. The contract covers hover, completion,
-definition, semantic tokens, configurable inlay hints, diagnostics after edits,
-formatting, rename, code actions, created files, and server restart.
+definition, reference CodeLens, semantic tokens, configurable inlay hints,
+diagnostics after edits, formatting, rename, code actions, created files, and
+server restart.
 
 ## Other clients
 

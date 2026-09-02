@@ -1,6 +1,7 @@
 using Csls.Protocol;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.Classification;
+using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.Text;
 using System.Collections.Frozen;
 using SemanticTokenFragment = (int Start, int End, int TokenType, int Modifiers, int Specificity, int Ordinal);
@@ -66,16 +67,6 @@ internal static class WorkspaceSemanticTokensService
             [ClassificationTypeNames.EventName] = "event",
             [ClassificationTypeNames.NamespaceName] = "namespace",
             [ClassificationTypeNames.LabelName] = "label",
-            [ClassificationTypeNames.XmlDocCommentAttributeName] = "comment",
-            [ClassificationTypeNames.XmlDocCommentAttributeQuotes] = "comment",
-            [ClassificationTypeNames.XmlDocCommentAttributeValue] = "comment",
-            [ClassificationTypeNames.XmlDocCommentCDataSection] = "comment",
-            [ClassificationTypeNames.XmlDocCommentComment] = "comment",
-            [ClassificationTypeNames.XmlDocCommentDelimiter] = "comment",
-            [ClassificationTypeNames.XmlDocCommentEntityReference] = "comment",
-            [ClassificationTypeNames.XmlDocCommentName] = "comment",
-            [ClassificationTypeNames.XmlDocCommentProcessingInstruction] = "comment",
-            [ClassificationTypeNames.XmlDocCommentText] = "comment",
             [ClassificationTypeNames.RegexComment] = "regexp",
             [ClassificationTypeNames.RegexCharacterClass] = "regexp",
             [ClassificationTypeNames.RegexAnchor] = "regexp",
@@ -122,6 +113,20 @@ internal static class WorkspaceSemanticTokensService
             return [];
         }
 
+        SyntaxNode root = await document.GetSyntaxRootAsync(cancellationToken)
+            .ConfigureAwait(false)
+            ?? throw new InvalidOperationException("Roslyn returned no syntax root.");
+        TextSpan[] documentationCommentSpans =
+        [
+            .. root
+                .DescendantTrivia(descendIntoTrivia: false)
+                .Where(static trivia =>
+                    trivia.IsKind(SyntaxKind.SingleLineDocumentationCommentTrivia) ||
+                    trivia.IsKind(SyntaxKind.MultiLineDocumentationCommentTrivia))
+                .Select(static trivia => trivia.FullSpan)
+                .OrderBy(static span => span.Start)
+        ];
+
         IReadOnlyList<ClassifiedSpan> classifiedSpans =
         [
             .. await Classifier.GetClassifiedSpansAsync(
@@ -141,7 +146,8 @@ internal static class WorkspaceSemanticTokensService
         {
             cancellationToken.ThrowIfCancellationRequested();
             TextSpan span = classifiedSpan.TextSpan;
-            if (span.Length == 0)
+            if (span.Length == 0 ||
+                OverlapsDocumentationComment(span, documentationCommentSpans))
             {
                 continue;
             }
@@ -214,6 +220,33 @@ internal static class WorkspaceSemanticTokensService
         }
 
         return data;
+    }
+
+    private static bool OverlapsDocumentationComment(
+        TextSpan span,
+        TextSpan[] documentationCommentSpans)
+    {
+        int lower = 0;
+        int upper = documentationCommentSpans.Length - 1;
+        while (lower <= upper)
+        {
+            int middle = lower + ((upper - lower) / 2);
+            TextSpan documentationSpan = documentationCommentSpans[middle];
+            if (documentationSpan.End <= span.Start)
+            {
+                lower = middle + 1;
+            }
+            else if (documentationSpan.Start >= span.End)
+            {
+                upper = middle - 1;
+            }
+            else
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private static void AddSingleLineFragments(
