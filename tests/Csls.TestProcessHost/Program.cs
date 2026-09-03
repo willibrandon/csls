@@ -12,6 +12,18 @@ if (args is ["--debugger-step-fixture", string stepFixturePath])
     return DebuggerStepFixture.Run(stepFixturePath);
 }
 
+if (args is [
+    "--debugger-hit-fixture",
+    string hitSignalPath,
+    string hitProgressPath,
+    string hitCount])
+{
+    return DebuggerHitFixture.Run(
+        hitSignalPath,
+        hitProgressPath,
+        int.Parse(hitCount, NumberStyles.None, CultureInfo.InvariantCulture));
+}
+
 if (args is ["--debugger-exception-fixture", string exceptionFixturePath])
 {
     return DebuggerExceptionFixture.Run(exceptionFixturePath);

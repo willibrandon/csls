@@ -64,6 +64,14 @@ DAP uses standard input and output exclusively for protocol messages. Diagnostic
 text is written to standard error. A concrete `program` is required; project,
 launch-profile, and test discovery belongs to the editor or calling tool.
 
+Source and function breakpoints accept DAP `hitCondition` values in the forms
+`N`, `>=N`, and `%N`, where `N` is a positive decimal integer. These forms stop
+on exactly the Nth hit, on the Nth and every later hit, or on every Nth hit,
+respectively. Hit counts belong to the logical breakpoint, span all of its
+runtime module bindings, and reset when the client replaces that breakpoint.
+Invalid hit conditions produce an unverified breakpoint with a diagnostic
+message; they do not fail unrelated breakpoints in the same request.
+
 ## Runtime and symbol requirements
 
 The target must run CoreCLR and match the host architecture. Source breakpoints,

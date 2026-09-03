@@ -20,10 +20,11 @@ is advertised by the server.
 The bundled editor-independent .NET debugger launches or attaches to managed
 processes without downloading a proprietary debugger. VS Code and Zed use the
 same `csls debugger dap` engine for source breakpoints, pause and continue,
-source stepping, stacks, modules, arguments, locals, fields, and arrays across
-C#, Visual Basic, F#, and other Portable-PDB-producing .NET languages. Advanced
-breakpoints, expression evaluation, dumps, Hot Reload, and debugger MCP workflows
-remain under development and are not advertised as available. Run
+source stepping, stacks, modules, arguments, locals, fields, arrays, function
+breakpoints, and hit-count breakpoints across C#, Visual Basic, F#, and other
+Portable-PDB-producing .NET languages. Conditional and data breakpoints,
+expression evaluation, dumps, Hot Reload, and debugger MCP workflows remain
+under development and are not advertised as available. Run
 `csls debugger tui launch` or `csls debugger tui attach` for the interactive
 Hex1b source, stack, arguments, and locals workflow.
 

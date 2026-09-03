@@ -46,10 +46,17 @@ internal sealed partial class FunctionBreakpointManager : IDisposable
         foreach (DebugFunctionBreakpointRequest request in requests)
         {
             ArgumentException.ThrowIfNullOrWhiteSpace(request.Name);
+            bool validHitCondition = DebugHitCondition.TryParse(
+                request.HitCondition,
+                out DebugHitCondition? hitCondition);
             _definitions.Add(new FunctionBreakpointDefinition
             {
                 Id = checked(++_nextBreakpointId),
-                Name = NormalizeName(request.Name)
+                Name = NormalizeName(request.Name),
+                HitCondition = hitCondition,
+                ValidationMessage = validHitCondition
+                    ? null
+                    : DebugHitCondition.ValidationErrorMessage
             });
         }
 
@@ -63,18 +70,20 @@ internal sealed partial class FunctionBreakpointManager : IDisposable
     }
 
     /// <summary>
-    /// Tests whether a runtime breakpoint callback belongs to a function binding.
+    /// Records a runtime function-breakpoint callback and evaluates its hit condition.
     /// </summary>
     /// <param name="breakpoint">The borrowed ICorDebugBreakpoint pointer.</param>
-    /// <returns>True when this manager owns the runtime breakpoint.</returns>
-    internal bool Contains(nint breakpoint)
+    /// <returns>Null when unowned, otherwise whether the target should stop.</returns>
+    internal bool? GetBreakDecision(nint breakpoint)
     {
         ObjectDisposedException.ThrowIf(_disposed != 0, this);
         ArgumentOutOfRangeException.ThrowIfZero(breakpoint);
         nint identity = ComAbi.QueryInterface(breakpoint, s_iUnknownInterfaceId);
         try
         {
-            return _bindings.ContainsKey(identity);
+            return _bindings.TryGetValue(identity, out FunctionBreakpointBinding? binding)
+                ? binding.Definition.RegisterHit()
+                : null;
         }
         finally
         {

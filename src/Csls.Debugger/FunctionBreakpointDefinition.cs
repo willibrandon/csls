@@ -18,6 +18,16 @@ internal sealed class FunctionBreakpointDefinition
     internal required string Name { get; init; }
 
     /// <summary>
+    /// Gets the optional validated hit-count predicate.
+    /// </summary>
+    internal DebugHitCondition? HitCondition { get; init; }
+
+    /// <summary>
+    /// Gets a request-validation failure that prevents runtime binding.
+    /// </summary>
+    internal string? ValidationMessage { get; init; }
+
+    /// <summary>
     /// Gets or sets the number of active runtime method bindings.
     /// </summary>
     internal int BindingCount { get; set; }
@@ -30,7 +40,13 @@ internal sealed class FunctionBreakpointDefinition
         Id,
         Name,
         BindingCount > 0,
-        BindingCount == 0
+        ValidationMessage ?? (BindingCount == 0
             ? "The breakpoint is pending until a matching managed function is loaded."
-            : null);
+            : null));
+
+    /// <summary>
+    /// Records one runtime hit and determines whether the target should stop.
+    /// </summary>
+    /// <returns>True when the breakpoint has no hit condition or its predicate matches.</returns>
+    internal bool RegisterHit() => HitCondition?.RegisterHit() ?? true;
 }

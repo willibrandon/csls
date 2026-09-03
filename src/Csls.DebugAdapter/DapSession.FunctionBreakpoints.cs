@@ -77,8 +77,12 @@ internal sealed partial class DapSession
             }
 
             RejectUnsupportedFunctionBreakpointOption(breakpoint, "condition");
-            RejectUnsupportedFunctionBreakpointOption(breakpoint, "hitCondition");
-            result.Add(new DebugFunctionBreakpointRequest(nameValue.GetString()!));
+            string? hitCondition = GetOptionalFunctionBreakpointString(
+                breakpoint,
+                "hitCondition");
+            result.Add(new DebugFunctionBreakpointRequest(
+                nameValue.GetString()!,
+                hitCondition));
         }
 
         return result;
@@ -95,6 +99,24 @@ internal sealed partial class DapSession
             throw new ArgumentException(
                 $"Function breakpoint {propertyName} is not supported by this capability set.");
         }
+    }
+
+    private static string? GetOptionalFunctionBreakpointString(
+        JsonElement breakpoint,
+        string propertyName)
+    {
+        if (!breakpoint.TryGetProperty(propertyName, out JsonElement value))
+        {
+            return null;
+        }
+
+        if (value.ValueKind != JsonValueKind.String)
+        {
+            throw new ArgumentException(
+                $"Function breakpoint {propertyName} must be a string.");
+        }
+
+        return value.GetString();
     }
 
     private static void WriteFunctionBreakpoint(

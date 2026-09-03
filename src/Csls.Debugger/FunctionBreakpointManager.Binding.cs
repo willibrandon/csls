@@ -43,8 +43,9 @@ internal sealed partial class FunctionBreakpointManager
                         metadata.GetMethodDefinition(methodHandle).Name);
                     foreach (FunctionBreakpointDefinition definition in _definitions)
                     {
-                        if (!Matches(definition.Name, typeName, methodName) ||
-                            !TryBind(module, methodHandle, definition.Id))
+                        if (definition.ValidationMessage is not null ||
+                            !Matches(definition.Name, typeName, methodName) ||
+                            !TryBind(module, methodHandle, definition))
                         {
                             continue;
                         }
@@ -75,7 +76,7 @@ internal sealed partial class FunctionBreakpointManager
     private unsafe bool TryBind(
         CorDebugLoadedModule module,
         MethodDefinitionHandle methodHandle,
-        int breakpointId)
+        FunctionBreakpointDefinition definition)
     {
         nint function = 0;
         nint code = 0;
@@ -106,7 +107,8 @@ internal sealed partial class FunctionBreakpointManager
             identity = ComAbi.QueryInterface(breakpoint, s_iUnknownInterfaceId);
             _bindings.Add(identity, new FunctionBreakpointBinding
             {
-                BreakpointId = breakpointId,
+                BreakpointId = definition.Id,
+                Definition = definition,
                 ModuleIdentity = module.Identity,
                 Breakpoint = breakpoint,
                 Identity = identity

@@ -11,6 +11,11 @@ internal sealed class FunctionBreakpointBinding
     internal required int BreakpointId { get; init; }
 
     /// <summary>
+    /// Gets the logical definition that owns the hit-count state.
+    /// </summary>
+    internal required FunctionBreakpointDefinition Definition { get; init; }
+
+    /// <summary>
     /// Gets the canonical identity of the module owning this binding.
     /// </summary>
     internal required nint ModuleIdentity { get; init; }

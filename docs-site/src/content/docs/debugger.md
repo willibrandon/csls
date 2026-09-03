@@ -36,6 +36,12 @@ starting DAP; the adapter does not execute build commands or interpret shell
 text. The adapter owns launched processes and terminates their process trees if
 its client disconnects unexpectedly.
 
+Source and function breakpoints accept `hitCondition` values of `N`, `>=N`, or
+`%N` for the exact Nth hit, the Nth and every later hit, or every Nth hit.
+`N` must be a positive decimal integer. Counts span every runtime binding of the
+logical breakpoint and reset when the client replaces it. An invalid value is
+reported as an unverified breakpoint without rejecting other breakpoints.
+
 ## Security and process ownership
 
 - Target commands are executed directly without a command shell.
@@ -58,11 +64,9 @@ termination, assignment, function evaluation, and Hot Reload require explicit
 per-session agent-control authorization. Results are bounded and cursor-paged,
 and session-owned targets are cleaned up when their MCP owner disconnects.
 
-## Compatibility
+## Client behavior
 
-The current adapter supports DAP initialization, configuration sequencing,
-process supervision, output, exit, disconnect, and `launch` with
-`"noDebug": true`. Managed breakpoints, stack inspection, stepping, attach, and
-debugger MCP tools are not exposed until their CLR-backed implementations meet
-the same lifecycle and cleanup guarantees. Unknown or unavailable operations
-return an unsuccessful protocol response instead of being advertised.
+Clients should use only capabilities returned by `initialize`. Unknown or
+unavailable operations return an unsuccessful protocol response. Handles for
+frames, scopes, and variables are valid only for the stop generation in which
+the adapter returned them.

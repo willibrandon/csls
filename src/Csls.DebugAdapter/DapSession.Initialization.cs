@@ -31,6 +31,7 @@ internal sealed partial class DapSession
                 writer.WriteBoolean("supportsLoadedSourcesRequest", true);
                 writer.WriteBoolean("supportsBreakpointLocationsRequest", true);
                 writer.WriteBoolean("supportsFunctionBreakpoints", true);
+                writer.WriteBoolean("supportsHitConditionalBreakpoints", true);
                 writer.WriteStartArray("exceptionBreakpointFilters");
                 WriteExceptionBreakpointFilter(
                     writer,

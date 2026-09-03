@@ -89,18 +89,20 @@ internal sealed partial class SourceBreakpointManager
     }
 
     /// <summary>
-    /// Tests whether a runtime breakpoint callback belongs to an active source binding.
+    /// Records a runtime source-breakpoint callback and evaluates its hit condition.
     /// </summary>
     /// <param name="breakpoint">The borrowed ICorDebugBreakpoint pointer.</param>
-    /// <returns>True when the runtime breakpoint is owned by this manager.</returns>
-    internal bool Contains(nint breakpoint)
+    /// <returns>Null when unowned, otherwise whether the target should stop.</returns>
+    internal bool? GetBreakDecision(nint breakpoint)
     {
         ObjectDisposedException.ThrowIf(_disposed != 0, this);
         ArgumentOutOfRangeException.ThrowIfZero(breakpoint);
         nint identity = ComAbi.QueryInterface(breakpoint, s_iUnknownInterfaceId);
         try
         {
-            return _bindings.ContainsKey(identity);
+            return _bindings.TryGetValue(identity, out SourceBreakpointBinding? binding)
+                ? binding.Definition.RegisterHit()
+                : null;
         }
         finally
         {

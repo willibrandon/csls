@@ -28,6 +28,16 @@ internal sealed class SourceBreakpointDefinition
     internal required int? RequestedColumn { get; init; }
 
     /// <summary>
+    /// Gets the optional validated hit-count predicate.
+    /// </summary>
+    internal DebugHitCondition? HitCondition { get; init; }
+
+    /// <summary>
+    /// Gets a request-validation failure that prevents runtime binding.
+    /// </summary>
+    internal string? ValidationMessage { get; init; }
+
+    /// <summary>
     /// Gets or sets the resolved one-based source line.
     /// </summary>
     internal int? ResolvedLine { get; set; }
@@ -47,7 +57,13 @@ internal sealed class SourceBreakpointDefinition
         ResolvedLine is not null,
         ResolvedLine ?? RequestedLine,
         ResolvedColumn ?? RequestedColumn,
-        ResolvedLine is null
+        ValidationMessage ?? (ResolvedLine is null
             ? "The breakpoint is pending until a matching module and Portable PDB are loaded."
-            : null);
+            : null));
+
+    /// <summary>
+    /// Records one runtime hit and determines whether the target should stop.
+    /// </summary>
+    /// <returns>True when the breakpoint has no hit condition or its predicate matches.</returns>
+    internal bool RegisterHit() => HitCondition?.RegisterHit() ?? true;
 }

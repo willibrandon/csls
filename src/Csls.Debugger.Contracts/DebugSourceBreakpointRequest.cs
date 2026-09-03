@@ -5,4 +5,8 @@ namespace Csls.Debugger.Contracts;
 /// </summary>
 /// <param name="Line">The one-based requested source line.</param>
 /// <param name="Column">The optional one-based requested source column.</param>
-public sealed record DebugSourceBreakpointRequest(int Line, int? Column);
+/// <param name="HitCondition">The optional hit-count expression.</param>
+public sealed record DebugSourceBreakpointRequest(
+    int Line,
+    int? Column,
+    string? HitCondition = null);
