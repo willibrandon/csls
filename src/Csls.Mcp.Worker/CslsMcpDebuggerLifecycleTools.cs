@@ -33,7 +33,6 @@ internal sealed class CslsMcpDebuggerLifecycleTools
     /// <param name="runtimeHostPath">The optional absolute managed runtime host path.</param>
     /// <param name="initialSourcePath">The optional initial source breakpoint path.</param>
     /// <param name="initialLine">The optional one-based initial breakpoint line.</param>
-    /// <param name="agentControl">Whether this MCP connection may control execution.</param>
     /// <param name="suppressJitOptimizations">Whether CoreCLR should emit debuggable code for symbol-bearing modules.</param>
     /// <param name="justMyCode">Whether source stepping excludes non-user code.</param>
     /// <param name="enableStepFiltering">Whether stepping skips properties and operators.</param>
@@ -64,8 +63,6 @@ internal sealed class CslsMcpDebuggerLifecycleTools
         string? initialSourcePath = null,
         [Description("Optional one-based line paired with initialSourcePath.")]
         int? initialLine = null,
-        [Description("Explicitly permit this MCP connection to resume, pause, step, or mutate the target.")]
-        bool agentControl = false,
         [Description("Ask CoreCLR to suppress JIT optimizations for symbol-bearing modules.")]
         bool suppressJitOptimizations = false,
         [Description("Classify and step only user code by default.")]
@@ -98,7 +95,6 @@ internal sealed class CslsMcpDebuggerLifecycleTools
                 },
                 initialSourcePath is null ? null : Path.GetFullPath(initialSourcePath),
                 initialLine,
-                agentControl,
                 cancellationToken).ConfigureAwait(false);
         });
     }
@@ -109,7 +105,6 @@ internal sealed class CslsMcpDebuggerLifecycleTools
     /// <param name="processId">The positive operating-system process identifier.</param>
     /// <param name="cancellationToken">The MCP request cancellation token.</param>
     /// <param name="pause">Whether attachment immediately pauses the target.</param>
-    /// <param name="agentControl">Whether this MCP connection may control execution.</param>
     /// <returns>The new explicit debugger-session identity and initial state.</returns>
     [McpServerTool(
         Name = "debug_session_attach",
@@ -126,9 +121,7 @@ internal sealed class CslsMcpDebuggerLifecycleTools
         int processId,
         CancellationToken cancellationToken,
         [Description("Pause the target immediately after attachment.")]
-        bool pause = true,
-        [Description("Explicitly permit this MCP connection to resume, pause, step, or mutate the target.")]
-        bool agentControl = false)
+        bool pause = true)
     {
         return McpDebuggerToolResult.RunAsync(async () =>
         {
@@ -136,7 +129,6 @@ internal sealed class CslsMcpDebuggerLifecycleTools
             return await _broker.AttachAsync(
                 new DebugAttachRequest(processId),
                 pause,
-                agentControl,
                 cancellationToken).ConfigureAwait(false);
         });
     }

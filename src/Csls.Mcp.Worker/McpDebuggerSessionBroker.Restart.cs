@@ -20,8 +20,7 @@ internal sealed partial class McpDebuggerSessionBroker
         CancellationToken cancellationToken)
     {
         McpDebuggerSession session = Resolve(debugSession);
-        RequireAgentControl(session);
-        DebugSessionSnapshot restarted = await session.InvokeAsync(
+        DebugSessionSnapshot restarted = await session.InvokeControlledAsync(
             async (client, token) =>
             {
                 DebugSessionSnapshot current = await client.GetSessionAsync(token)
@@ -30,10 +29,6 @@ internal sealed partial class McpDebuggerSessionBroker
                 return await client.RestartAsync(token).ConfigureAwait(false);
             },
             cancellationToken).ConfigureAwait(false);
-        return McpDebugSessionInfo.Create(
-            session.Id,
-            session.Kind,
-            session.AgentControl,
-            restarted);
+        return session.CreateInfo(restarted);
     }
 }

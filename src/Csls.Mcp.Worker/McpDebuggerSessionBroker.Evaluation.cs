@@ -26,8 +26,7 @@ internal sealed partial class McpDebuggerSessionBroker
         ValidatePositive(frameId, nameof(frameId));
         ValidateExpression(expression);
         McpDebuggerSession session = Resolve(debugSession);
-        RequireAgentControl(session);
-        return InvokeStoppedAsync(
+        return InvokeControlledStoppedAsync(
             session,
             stopGeneration,
             async (selectedSession, client, token) =>

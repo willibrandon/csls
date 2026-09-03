@@ -22,11 +22,7 @@ internal sealed partial class McpDebuggerSessionBroker
                     .ConfigureAwait(false);
                 DebugBreakpointSnapshot breakpoints = await client.GetBreakpointsAsync(token)
                     .ConfigureAwait(false);
-                string state = McpDebugSessionInfo.Create(
-                    session.Id,
-                    session.Kind,
-                    session.AgentControl,
-                    current).State;
+                string state = session.CreateInfo(current).State;
                 return new McpDebugBreakpointsResult(
                     session.Id,
                     state,

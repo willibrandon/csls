@@ -148,10 +148,15 @@ its bundled debugger worker is available:
   state.
 - `debug_session_restart` replaces a stopped launch target or reattaches an
   attached target while preserving its `debugSession` and breakpoints. It requires
-  `agentControl` and the exact current `stopGeneration`.
+  an active agent-control grant and the exact current `stopGeneration`.
+- `debug_agent_control_set` separately grants or revokes target-changing authority.
+  Grants require an explicit duration from 1 through 3,600 seconds, are scoped to
+  the exact MCP connection and session, expire using monotonic elapsed time, and
+  are rechecked when each serialized mutation begins. Every session starts
+  observation-only.
 - `debug_session_end` terminates launched targets and detaches attached targets.
   Terminating an attached target additionally requires both
-  `terminateAttachedTarget: true` and the session's explicit `agentControl` grant.
+  `terminateAttachedTarget: true` and an active agent-control grant.
 - `debug_threads_get`, `debug_stack_get`, `debug_scopes_get`, and
   `debug_variables_get` inspect one exact stopped generation. Returned frame and
   variable handles expire when execution resumes.
@@ -161,18 +166,18 @@ its bundled debugger worker is available:
   and managed-exception breakpoint without granting control. Valid hit-count
   predicates are returned in normalized form.
 - `debug_execution_control` pauses, continues, or source-steps. It requires the
-  session's `agentControl` grant; continue and step also require the exact current
+  session's active agent-control grant; continue and step also require the exact current
   `stopGeneration`, and step selects a managed thread and `into`, `over`, or
   `out`. Step Into can select a `targetId` returned by
   `debug_step_targets_get`.
 - `debug_source_breakpoints_set`, `debug_function_breakpoints_set`,
   `debug_instruction_breakpoints_set`, and `debug_exception_breakpoints_set`
   replace complete breakpoint sets at an exact stopped generation. They require
-  `agentControl`; an empty list clears the corresponding set.
+  an active agent-control grant; an empty list clears the corresponding set.
 - `debug_exception_get`, `debug_step_targets_get`, and
   `debug_goto_targets_get` inspect exception and runtime-approved execution
   targets. `debug_goto` moves a thread only to one returned generation-bound
-  destination and requires `agentControl`.
+  destination and requires an active agent-control grant.
 - `debug_source_get`, `debug_memory_read`, and `debug_disassemble` return bounded
   source pages, target memory, and symbolic managed IL from opaque stopped-state
   references.

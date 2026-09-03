@@ -60,20 +60,17 @@ internal sealed partial class McpDebuggerSessionBroker : IAsyncDisposable
     /// <param name="request">The validated managed launch request.</param>
     /// <param name="initialSourcePath">The optional initial breakpoint source.</param>
     /// <param name="initialLine">The optional one-based initial breakpoint line.</param>
-    /// <param name="agentControl">Whether target execution control is explicitly granted.</param>
     /// <param name="cancellationToken">The MCP request cancellation token.</param>
     /// <returns>The activated debugger-session projection.</returns>
     internal Task<McpDebugSessionInfo> LaunchAsync(
         DebugLaunchRequest request,
         string? initialSourcePath,
         int? initialLine,
-        bool agentControl,
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(request);
         return StartAsync(
             McpDebuggerSessionKind.Launch,
-            agentControl,
             async (session, token) =>
             {
                 if (initialSourcePath is not null)
@@ -95,19 +92,16 @@ internal sealed partial class McpDebuggerSessionBroker : IAsyncDisposable
     /// </summary>
     /// <param name="request">The validated managed attach request.</param>
     /// <param name="pause">Whether the target is paused after attachment.</param>
-    /// <param name="agentControl">Whether target execution control is explicitly granted.</param>
     /// <param name="cancellationToken">The MCP request cancellation token.</param>
     /// <returns>The activated debugger-session projection.</returns>
     internal Task<McpDebugSessionInfo> AttachAsync(
         DebugAttachRequest request,
         bool pause,
-        bool agentControl,
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(request);
         return StartAsync(
             McpDebuggerSessionKind.Attach,
-            agentControl,
             async (session, token) =>
             {
                 DebugSessionSnapshot snapshot = await session.Client.AttachAsync(request, token)

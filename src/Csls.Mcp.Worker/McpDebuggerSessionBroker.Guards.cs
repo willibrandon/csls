@@ -41,14 +41,26 @@ internal sealed partial class McpDebuggerSessionBroker
             cancellationToken).ConfigureAwait(false);
     }
 
-    private static void RequireAgentControl(McpDebuggerSession session)
+    private static async Task<T> InvokeControlledStoppedAsync<T>(
+        McpDebuggerSession session,
+        long stopGeneration,
+        Func<McpDebuggerSession, DebuggerRpcClient, CancellationToken, Task<T>> operation,
+        CancellationToken cancellationToken)
     {
-        if (!session.AgentControl)
+        if (stopGeneration <= 0)
         {
-            throw new McpDebuggerException(
-                "debugger_control_denied",
-                $"Debugger session {session.Id} has no agent-control grant.");
+            throw InvalidRequest("stopGeneration must be positive.");
         }
+
+        return await session.InvokeControlledAsync(
+            async (client, token) =>
+            {
+                DebugSessionSnapshot current = await client.GetSessionAsync(token)
+                    .ConfigureAwait(false);
+                RequireStoppedGeneration(current, stopGeneration);
+                return await operation(session, client, token).ConfigureAwait(false);
+            },
+            cancellationToken).ConfigureAwait(false);
     }
 
     private static void RequireStoppedGeneration(

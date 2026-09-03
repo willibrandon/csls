@@ -1,5 +1,6 @@
 using ModelContextProtocol.Client;
 using System.Runtime.CompilerServices;
+using System.Text.Json;
 
 namespace Csls.Tests;
 
@@ -13,6 +14,7 @@ public sealed partial class McpDebuggerLifecycleTests
     [
         "debug_session_start",
         "debug_session_attach",
+        "debug_agent_control_set",
         "debug_sessions_list",
         "debug_session_get",
         "debug_session_restart",
@@ -40,6 +42,11 @@ public sealed partial class McpDebuggerLifecycleTests
         "debug_goto_targets_get",
         "debug_goto",
         "debug_output_get"
+    ];
+    private static readonly string[] s_authorizationRequiredArguments =
+    [
+        "debugSession",
+        "enabled"
     ];
 
     /// <summary>
@@ -77,6 +84,7 @@ public sealed partial class McpDebuggerLifecycleTests
         AssertAnnotations(tools, "debug_session_get", true, false, true, false);
         AssertAnnotations(tools, "debug_session_start", false, true, false, true);
         AssertAnnotations(tools, "debug_session_attach", false, true, false, true);
+        AssertAnnotations(tools, "debug_agent_control_set", false, false, false, false);
         AssertAnnotations(tools, "debug_session_restart", false, true, false, true);
         AssertAnnotations(tools, "debug_session_end", false, true, false, true);
         AssertAnnotations(tools, "debug_execution_control", false, true, false, true);
@@ -102,6 +110,33 @@ public sealed partial class McpDebuggerLifecycleTests
         AssertAnnotations(tools, "debug_goto_targets_get", true, false, true, false);
         AssertAnnotations(tools, "debug_goto", false, true, false, true);
         AssertAnnotations(tools, "debug_output_get", true, false, true, false);
+        JsonElement startProperties = tools.Single(
+            static tool => tool.Name == "debug_session_start")
+            .ProtocolTool.InputSchema.GetProperty("properties");
+        Assert.IsFalse(startProperties.TryGetProperty("agentControl", out _));
+        JsonElement attachProperties = tools.Single(
+            static tool => tool.Name == "debug_session_attach")
+            .ProtocolTool.InputSchema.GetProperty("properties");
+        Assert.IsFalse(attachProperties.TryGetProperty("agentControl", out _));
+        JsonElement authorizationSchema = tools.Single(
+            static tool => tool.Name == "debug_agent_control_set")
+            .ProtocolTool.InputSchema;
+        JsonElement authorizationOutputProperties = tools.Single(
+            static tool => tool.Name == "debug_agent_control_set")
+            .ProtocolTool.OutputSchema!.Value.GetProperty("properties");
+        Assert.IsTrue(
+            authorizationOutputProperties.TryGetProperty(
+                "agentControlExpiresAtUtc",
+                out _));
+        string[] requiredAuthorizationArguments =
+        [
+            .. authorizationSchema.GetProperty("required")
+                .EnumerateArray()
+                .Select(static element => element.GetString()!)
+        ];
+        Assert.AreSequenceEqual(
+            s_authorizationRequiredArguments,
+            requiredAuthorizationArguments);
         string[] templateUris =
             [.. templates.Select(static template => template.UriTemplate)];
         Assert.Contains("csls://debug/session/{debugSession}", templateUris);

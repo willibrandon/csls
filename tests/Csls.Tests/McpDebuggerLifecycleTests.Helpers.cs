@@ -26,7 +26,6 @@ public sealed partial class McpDebuggerLifecycleTests
             sourcePath,
             breakpointLine,
             Path.Join(testDirectory, "first.signal"),
-            agentControl: false,
             cancellationToken).ConfigureAwait(false);
         string debugSession = started.GetProperty("debugSession").GetString()
             ?? throw new InvalidDataException("MCP returned no debugger-session identifier.");
@@ -46,6 +45,13 @@ public sealed partial class McpDebuggerLifecycleTests
             sourcePath,
             localLine,
             EditorToolResolver.ResolveTestProcessHost(repositoryRoot),
+            cancellationToken).ConfigureAwait(false);
+        await AssertForeignConnectionCannotGrantAsync(
+            debugSession,
+            cancellationToken).ConfigureAwait(false);
+        await AssertAgentControlLifecycleAsync(
+            mcp.Client,
+            stopped,
             cancellationToken).ConfigureAwait(false);
 
         JsonElement listed = await CallAsync(
@@ -70,13 +76,17 @@ public sealed partial class McpDebuggerLifecycleTests
             sourcePath,
             breakpointLine,
             secondSignalPath,
-            agentControl: true,
             cancellationToken).ConfigureAwait(false);
         int secondProcessId = second.GetProperty("processId").GetInt32();
         ProcessExitObservation secondExit = ProcessExitWaiter.Observe(secondProcessId);
         JsonElement secondStopped = await WaitForStoppedAsync(
             mcp.Client,
             second.GetProperty("debugSession").GetString()!,
+            cancellationToken).ConfigureAwait(false);
+        secondStopped = await GrantAgentControlAsync(
+            mcp.Client,
+            secondStopped.GetProperty("debugSession").GetString()!,
+            durationSeconds: 60,
             cancellationToken).ConfigureAwait(false);
         secondStopped = await AssertAuthorizedExpressionExecutionAsync(
             mcp.Client,
@@ -123,7 +133,6 @@ public sealed partial class McpDebuggerLifecycleTests
         string sourcePath,
         int breakpointLine,
         string signalPath,
-        bool agentControl,
         CancellationToken cancellationToken) =>
         await CallAsync(
             client,
@@ -135,7 +144,6 @@ public sealed partial class McpDebuggerLifecycleTests
                 ["arguments"] = new[] { "--debugger-fixture", signalPath },
                 ["initialSourcePath"] = sourcePath,
                 ["initialLine"] = breakpointLine,
-                ["agentControl"] = agentControl,
                 ["suppressJitOptimizations"] = true
             },
             cancellationToken).ConfigureAwait(false);

@@ -32,11 +32,7 @@ internal sealed partial class McpDebuggerSessionBroker
                 DebugOutputPage page = await client.GetOutputAsync(
                     new DebugOutputRequest(afterSequence, count),
                     token).ConfigureAwait(false);
-                var info = McpDebugSessionInfo.Create(
-                    session.Id,
-                    session.Kind,
-                    session.AgentControl,
-                    snapshot);
+                McpDebugSessionInfo info = session.CreateInfo(snapshot);
                 return new McpDebugOutputResult(
                     session.Id,
                     info.State,

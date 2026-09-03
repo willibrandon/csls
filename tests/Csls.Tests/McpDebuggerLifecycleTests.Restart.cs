@@ -45,10 +45,9 @@ public sealed partial class McpDebuggerLifecycleTests
         }
         finally
         {
-            if (Directory.Exists(testDirectory))
-            {
-                Directory.Delete(testDirectory, recursive: true);
-            }
+            await DirectoryReleaseWaiter.DeleteAsync(
+                testDirectory,
+                TimeSpan.FromSeconds(10)).ConfigureAwait(false);
         }
     }
 
@@ -67,7 +66,6 @@ public sealed partial class McpDebuggerLifecycleTests
             sourcePath,
             breakpointLine,
             Path.Join(testDirectory, "continue.signal"),
-            agentControl: true,
             cancellationToken).ConfigureAwait(false);
         string debugSession = started.GetProperty("debugSession").GetString()!;
         int originalProcessId = started.GetProperty("processId").GetInt32();
@@ -75,6 +73,11 @@ public sealed partial class McpDebuggerLifecycleTests
         JsonElement stopped = await WaitForStoppedAsync(
             mcp.Client,
             debugSession,
+            cancellationToken).ConfigureAwait(false);
+        stopped = await GrantAgentControlAsync(
+            mcp.Client,
+            debugSession,
+            durationSeconds: 60,
             cancellationToken).ConfigureAwait(false);
         long originalGeneration = stopped.GetProperty("stopGeneration").GetInt64();
         await AssertToolErrorAsync(

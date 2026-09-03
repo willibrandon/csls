@@ -22,7 +22,6 @@ internal sealed class McpDebuggerSessionLease : IAsyncDisposable
     /// </summary>
     /// <param name="id">The stable MCP session identifier.</param>
     /// <param name="kind">How the target will be acquired.</param>
-    /// <param name="agentControl">Whether target control is explicitly allowed.</param>
     /// <param name="worker">The supervised debugger worker.</param>
     /// <param name="diagnostics">The bounded worker diagnostics reader.</param>
     /// <param name="client">The private debugger RPC client.</param>
@@ -30,7 +29,6 @@ internal sealed class McpDebuggerSessionLease : IAsyncDisposable
     internal static McpDebuggerSessionLease Create(
         string id,
         McpDebuggerSessionKind kind,
-        bool agentControl,
         Process worker,
         ValueTask<string> diagnostics,
         DebuggerRpcClient client)
@@ -40,7 +38,6 @@ internal sealed class McpDebuggerSessionLease : IAsyncDisposable
             _session = new McpDebuggerSession(
                 id,
                 kind,
-                agentControl,
                 worker,
                 diagnostics,
                 client)

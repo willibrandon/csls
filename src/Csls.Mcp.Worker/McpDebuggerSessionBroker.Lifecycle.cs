@@ -10,7 +10,6 @@ internal sealed partial class McpDebuggerSessionBroker
 {
     private async Task<McpDebugSessionInfo> StartAsync(
         McpDebuggerSessionKind kind,
-        bool agentControl,
         Func<McpDebuggerSession, CancellationToken, Task<DebugSessionSnapshot>> activation,
         CancellationToken cancellationToken)
     {
@@ -37,7 +36,6 @@ internal sealed partial class McpDebuggerSessionBroker
                     "This MCP installation has no debugger worker."),
                 id,
                 kind,
-                agentControl,
                 cancellationToken).ConfigureAwait(false);
             await using ConfiguredAsyncDisposable leaseScope = lease.ConfigureAwait(false);
             McpDebuggerSession session = lease.Session;
@@ -53,7 +51,7 @@ internal sealed partial class McpDebuggerSessionBroker
                 registered = true;
             }
 
-            return McpDebugSessionInfo.Create(id, kind, agentControl, snapshot);
+            return session.CreateInfo(snapshot);
         }
         finally
         {
@@ -100,7 +98,7 @@ internal sealed partial class McpDebuggerSessionBroker
                 throw new McpDebuggerException(
                     "debugger_control_denied",
                     $"Debugger session {debugSession} " +
-                    "has no agent-control grant.");
+                    "has no active agent-control grant.");
             }
 
             _sessions.Remove(debugSession);

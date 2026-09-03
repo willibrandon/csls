@@ -20,7 +20,7 @@ internal sealed partial class CslsMcpDebuggerExecutionTools
         ReadOnly = false,
         UseStructuredContent = true,
         OutputSchemaType = typeof(McpDebugEvaluationResult))]
-    [Description("Execute an explicitly qualified instance or loaded-type static method in the target. Requires agentControl and the exact stopGeneration; the method may have arbitrary side effects.")]
+    [Description("Execute an explicitly qualified instance or loaded-type static method in the target. Requires an active debug_agent_control_set grant and the exact stopGeneration; the method may have arbitrary side effects.")]
     public Task<ModelContextProtocol.Protocol.CallToolResult> ExecuteExpressionAsync(
         [Description("Opaque identifier returned by a debugger lifecycle tool.")]
         string debugSession,

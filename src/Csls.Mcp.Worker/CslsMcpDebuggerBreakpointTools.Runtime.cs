@@ -20,7 +20,7 @@ internal sealed partial class CslsMcpDebuggerBreakpointTools
         ReadOnly = false,
         UseStructuredContent = true,
         OutputSchemaType = typeof(McpDebugInstructionBreakpointsResult))]
-    [Description("Replace all managed-IL instruction breakpoints at an exact stopped generation. Requires agentControl.")]
+    [Description("Replace all managed-IL instruction breakpoints at an exact stopped generation. Requires an active debug_agent_control_set grant.")]
     public Task<ModelContextProtocol.Protocol.CallToolResult> SetInstructionBreakpointsAsync(
         [Description("Opaque identifier returned by a debugger lifecycle tool.")]
         string debugSession,
@@ -47,7 +47,7 @@ internal sealed partial class CslsMcpDebuggerBreakpointTools
         ReadOnly = false,
         UseStructuredContent = true,
         OutputSchemaType = typeof(McpDebugExceptionBreakpointsResult))]
-    [Description("Replace the managed-exception policy at an exact stopped generation. Requires agentControl.")]
+    [Description("Replace the managed-exception policy at an exact stopped generation. Requires an active debug_agent_control_set grant.")]
     public Task<ModelContextProtocol.Protocol.CallToolResult> SetExceptionBreakpointsAsync(
         [Description("Opaque identifier returned by a debugger lifecycle tool.")]
         string debugSession,

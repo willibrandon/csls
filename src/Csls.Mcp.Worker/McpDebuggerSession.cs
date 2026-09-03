@@ -20,21 +20,18 @@ internal sealed partial class McpDebuggerSession : IAsyncDisposable
     /// </summary>
     /// <param name="id">The stable MCP session identifier.</param>
     /// <param name="kind">How the target will be acquired.</param>
-    /// <param name="agentControl">Whether target control is explicitly allowed.</param>
     /// <param name="worker">The supervised debugger worker.</param>
     /// <param name="diagnostics">The bounded worker diagnostics reader.</param>
     /// <param name="client">The private debugger RPC client.</param>
     internal McpDebuggerSession(
         string id,
         McpDebuggerSessionKind kind,
-        bool agentControl,
         Process worker,
         ValueTask<string> diagnostics,
         DebuggerRpcClient client)
     {
         Id = id;
         Kind = kind;
-        AgentControl = agentControl;
         _worker = worker;
         _diagnostics = diagnostics;
         Client = client;
@@ -50,11 +47,6 @@ internal sealed partial class McpDebuggerSession : IAsyncDisposable
     /// Gets how the debugger acquired its target.
     /// </summary>
     internal McpDebuggerSessionKind Kind { get; }
-
-    /// <summary>
-    /// Gets whether execution control was explicitly granted at activation.
-    /// </summary>
-    internal bool AgentControl { get; }
 
     /// <summary>
     /// Gets the private RPC client connected to the debugger worker.
@@ -121,7 +113,7 @@ internal sealed partial class McpDebuggerSession : IAsyncDisposable
         DebugSessionSnapshot snapshot = await InvokeAsync(
             static (client, token) => client.GetSessionAsync(token),
             cancellationToken).ConfigureAwait(false);
-        return McpDebugSessionInfo.Create(Id, Kind, AgentControl, snapshot);
+        return CreateInfo(snapshot);
     }
 
     /// <summary>
@@ -138,7 +130,7 @@ internal sealed partial class McpDebuggerSession : IAsyncDisposable
         {
             throw new McpDebuggerException(
                 "debugger_control_denied",
-                $"Debugger session {Id} has no agent-control grant.");
+                $"Debugger session {Id} has no active agent-control grant.");
         }
 
         DebugSessionSnapshot current = await InvokeAsync(
@@ -147,13 +139,17 @@ internal sealed partial class McpDebuggerSession : IAsyncDisposable
         DebugSessionSnapshot ended = current.State is
             DebugSessionState.Terminated or DebugSessionState.Faulted
             ? current
-            : Kind == McpDebuggerSessionKind.Launch || terminateAttachedTarget
+            : Kind == McpDebuggerSessionKind.Launch
                 ? await InvokeAsync(
                     static (client, token) => client.TerminateAsync(token),
                     cancellationToken).ConfigureAwait(false)
+                : terminateAttachedTarget
+                    ? await InvokeControlledAsync(
+                        static (client, token) => client.TerminateAsync(token),
+                        cancellationToken).ConfigureAwait(false)
                 : await InvokeAsync(
                     static (client, token) => client.DetachAsync(token),
                     cancellationToken).ConfigureAwait(false);
-        return McpDebugSessionInfo.Create(Id, Kind, AgentControl, ended);
+        return CreateInfo(ended);
     }
 }

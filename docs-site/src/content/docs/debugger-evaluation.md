@@ -64,7 +64,8 @@ generation because target code may allocate, collect, or mutate state. If cooper
 abort cannot restore a trustworthy stop, the session faults.
 
 MCP separates these semantics into `debug_execute_expression`, which requires
-`agentControl: true` and the exact current generation. The tool is correctly marked
+an active time-bounded grant from `debug_agent_control_set` and the exact current
+generation. The tool is correctly marked
 destructive, non-idempotent, and open-world because invoked target code may mutate
 state outside the debuggee.
 

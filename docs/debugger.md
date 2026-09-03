@@ -356,12 +356,20 @@ worker does not advertise tools that it cannot run.
   and pauses by default.
 - `debug_sessions_list` lists only sessions owned by the current MCP connection.
 - `debug_session_get` reads one session selected by its returned `debugSession`.
+- `debug_agent_control_set` is the separate authorization boundary for all
+  target-changing operations after activation. Enabling control requires an
+  explicit duration from 1 through 3,600 seconds. The grant belongs only to the
+  current MCP connection and `debugSession`, expires against a monotonic clock,
+  can be revoked immediately, and is never inherited by another session or
+  connection. Session results expose `agentControl` and include
+  `agentControlExpiresAtUtc` while a grant is active; observation never creates
+  or renews a grant.
 - `debug_session_restart` replaces a stopped launch target or reattaches an attached
   target while retaining `debugSession` and breakpoint policy. It requires
-  `agentControl: true` and the exact current `stopGeneration`.
+  an active agent-control grant and the exact current `stopGeneration`.
 - `debug_session_end` terminates a launched target. It safely detaches an attached
   target unless `terminateAttachedTarget` and the session's explicit
-  `agentControl` grant are both true.
+  agent-control grant are both active.
 - `debug_threads_get`, `debug_stack_get`, `debug_scopes_get`, and
   `debug_variables_get` inspect one exact stopped generation. Frame and variable
   handles expire as soon as execution resumes.
@@ -371,13 +379,13 @@ worker does not advertise tools that it cannot run.
 - `debug_execute_expression` executes an explicitly qualified instance or loaded-type
   static method with supported bounded arguments in an explicit current-generation
   frame. It requires
-  `agentControl: true` and the exact `stopGeneration`; successful, exceptional,
+  an active agent-control grant and the exact `stopGeneration`; successful, exceptional,
   and cooperatively cancelled execution invalidates old frame and variable handles
   and advances the stop generation. The tool is marked destructive, non-idempotent,
   and open-world because the target method may mutate local or external state.
 - `debug_variable_set` and `debug_expression_set` directly assign a local, argument,
   instance field, or managed array element using a side-effect-free value expression.
-  Both require `agentControl: true` and the exact `stopGeneration`, return the updated
+  Both require an active agent-control grant and the exact `stopGeneration`, return the updated
   value at that unchanged generation, and publish variable-resource invalidation.
 - `debug_modules_get` returns a bounded module page and validated symbol status.
 - `debug_breakpoints_get` reads every authoritative source, function, managed-IL,
@@ -385,13 +393,13 @@ worker does not advertise tools that it cannot run.
   and log messages are preserved, and valid hit-count predicates are returned in
   normalized form.
 - `debug_execution_control` pauses, continues, or source-steps a session.
-  Execution control requires `agentControl: true`; continue and step also require
+  Execution control requires an active agent-control grant; continue and step also require
   the exact current `stopGeneration`, and step selects one managed thread and
   `into`, `over`, or `out` behavior. Step Into can also select a `targetId`
   returned by `debug_step_targets_get`.
 - `debug_source_breakpoints_set`, `debug_function_breakpoints_set`,
   `debug_instruction_breakpoints_set`, and `debug_exception_breakpoints_set`
-  replace their complete breakpoint set. They require `agentControl: true`, an
+  replace their complete breakpoint set. They require an active agent-control grant, an
   exact stopped generation, and accept an empty list to clear the set. Source,
   function, and managed-IL requests accept source-language conditions; source
   requests also accept interpolated log messages.
@@ -427,9 +435,10 @@ counterparts, so a URI cannot silently resolve handles against a later stop.
 Clients using the current MCP protocol can include exact debugger URIs in a
 `subscriptions/listen` request. csls acknowledges only resources owned by that MCP
 connection, then streams subscription-tagged `notifications/resources/updated`
-events from engine state, output, and breakpoint-binding notifications. The path
-is event-driven and does not poll the debug target. Legacy resource subscription
-RPCs are not exposed.
+events from engine state, output, and breakpoint-binding notifications. Agent-control
+grant, revoke, and expiry transitions also publish the exact session resource so
+subscribed clients do not cache stale authorization state. The path is event-driven
+and does not poll the debug target. Legacy resource subscription RPCs are not exposed.
 
 Three read-first prompts are advertised with the debugger worker:
 `diagnose_dotnet_debugger_failure`, `plan_dotnet_breakpoints`, and

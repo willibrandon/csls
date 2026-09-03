@@ -74,8 +74,12 @@ requires them.
 
 Exactly one client owns lifecycle mutation. DAP and TUI sessions own themselves.
 An MCP-launched session is MCP-owned. Other clients may observe a session, but
-mutation requires explicit control transfer. An existing user-owned session is
-agent-mutable only when it was created with `allowAgentControl`.
+mutation requires a separate explicit, revocable grant for the exact MCP connection
+and debugger session. MCP launch and attach begin observation-only. A grant has an
+explicit duration of at most one hour, expires using monotonic elapsed time, and is
+rechecked inside the serialized session-operation queue so an expired or revoked
+grant cannot authorize a queued mutation. Revocation does not abort an operation that
+already began under a valid grant. No grant transfers to another session or connection.
 
 Unexpected owner disconnection has deterministic behavior:
 

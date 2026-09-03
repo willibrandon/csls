@@ -29,8 +29,7 @@ internal sealed partial class McpDebuggerSessionBroker
         ValidateExpression(name);
         ValidateExpression(value);
         McpDebuggerSession session = Resolve(debugSession);
-        RequireAgentControl(session);
-        return InvokeStoppedAsync(
+        return InvokeControlledStoppedAsync(
             session,
             stopGeneration,
             async (selectedSession, client, token) => new McpDebugAssignmentResult(
@@ -68,8 +67,7 @@ internal sealed partial class McpDebuggerSessionBroker
         ValidateExpression(expression);
         ValidateExpression(value);
         McpDebuggerSession session = Resolve(debugSession);
-        RequireAgentControl(session);
-        return InvokeStoppedAsync(
+        return InvokeControlledStoppedAsync(
             session,
             stopGeneration,
             async (selectedSession, client, token) => new McpDebugAssignmentResult(

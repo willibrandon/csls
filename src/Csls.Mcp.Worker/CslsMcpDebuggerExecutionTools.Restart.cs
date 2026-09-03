@@ -24,7 +24,7 @@ internal sealed partial class CslsMcpDebuggerExecutionTools
         ReadOnly = false,
         UseStructuredContent = true,
         OutputSchemaType = typeof(McpDebugSessionInfo))]
-    [Description("Restart one stopped debugger target with its original launch or attach request. Requires agentControl and the exact stopGeneration.")]
+    [Description("Restart one stopped debugger target with its original launch or attach request. Requires an active debug_agent_control_set grant and the exact stopGeneration.")]
     public Task<ModelContextProtocol.Protocol.CallToolResult> RestartAsync(
         [Description("Opaque identifier returned by a debugger lifecycle tool.")]
         string debugSession,

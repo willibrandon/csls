@@ -50,7 +50,8 @@ bounded module, source, memory, managed-IL, and cursor-addressable target-output
 pages. Resource templates expose the same selected session, output, thread,
 stack, scope, variable, module, exception, source, memory, and managed-IL state to
 resource-oriented clients. Breakpoint replacement, restart, pause, continue,
-step, and go-to require the session's explicit `agentControl` grant and reject
+step, and go-to require a separate time-bounded grant created by
+`debug_agent_control_set` and reject
 stale stopped-state handles. See the
 [.NET debugger guide](../debugger/#mcp-integration) for the complete ownership
 and error contract. Debugger-specific diagnosis, breakpoint-planning, and

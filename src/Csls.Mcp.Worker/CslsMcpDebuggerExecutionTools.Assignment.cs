@@ -20,7 +20,7 @@ internal sealed partial class CslsMcpDebuggerExecutionTools
         ReadOnly = false,
         UseStructuredContent = true,
         OutputSchemaType = typeof(McpDebugAssignmentResult))]
-    [Description("Set one child of a current-generation variable container using a side-effect-free value expression. Requires agentControl and the exact stopGeneration.")]
+    [Description("Set one child of a current-generation variable container using a side-effect-free value expression. Requires an active debug_agent_control_set grant and the exact stopGeneration.")]
     public Task<ModelContextProtocol.Protocol.CallToolResult> SetVariableAsync(
         [Description("Opaque identifier returned by a debugger lifecycle tool.")]
         string debugSession,
@@ -53,7 +53,7 @@ internal sealed partial class CslsMcpDebuggerExecutionTools
         ReadOnly = false,
         UseStructuredContent = true,
         OutputSchemaType = typeof(McpDebugAssignmentResult))]
-    [Description("Set a writable local, argument, instance field, or array element using a side-effect-free value expression. Requires agentControl and the exact stopGeneration.")]
+    [Description("Set a writable local, argument, instance field, or array element using a side-effect-free value expression. Requires an active debug_agent_control_set grant and the exact stopGeneration.")]
     public Task<ModelContextProtocol.Protocol.CallToolResult> SetExpressionAsync(
         [Description("Opaque identifier returned by a debugger lifecycle tool.")]
         string debugSession,

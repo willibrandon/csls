@@ -20,7 +20,7 @@ internal sealed partial class CslsMcpDebuggerExecutionTools
         ReadOnly = false,
         UseStructuredContent = true,
         OutputSchemaType = typeof(McpDebugSessionInfo))]
-    [Description("Move a managed thread to a runtime-approved debug_goto_targets_get destination. Requires agentControl and the exact stopGeneration.")]
+    [Description("Move a managed thread to a runtime-approved debug_goto_targets_get destination. Requires an active debug_agent_control_set grant and the exact stopGeneration.")]
     public Task<ModelContextProtocol.Protocol.CallToolResult> GotoAsync(
         [Description("Opaque identifier returned by a debugger lifecycle tool.")]
         string debugSession,

@@ -28,6 +28,11 @@ internal sealed class McpDebugSessionInfo : IMcpDebugSessionResult
     public bool AgentControl { get; init; }
 
     /// <summary>
+    /// Gets the UTC expiration of the active agent-control grant.
+    /// </summary>
+    public DateTimeOffset? AgentControlExpiresAtUtc { get; init; }
+
+    /// <summary>
     /// Gets the target display name when available.
     /// </summary>
     public string? ProcessName { get; init; }
@@ -63,12 +68,14 @@ internal sealed class McpDebugSessionInfo : IMcpDebugSessionResult
     /// <param name="debugSession">The stable MCP session identifier.</param>
     /// <param name="kind">How the target was acquired.</param>
     /// <param name="agentControl">Whether control was explicitly granted.</param>
+    /// <param name="agentControlExpiresAtUtc">The active grant expiration.</param>
     /// <param name="snapshot">The private debugger snapshot.</param>
     /// <returns>The MCP session projection.</returns>
     internal static McpDebugSessionInfo Create(
         string debugSession,
         McpDebuggerSessionKind kind,
         bool agentControl,
+        DateTimeOffset? agentControlExpiresAtUtc,
         DebugSessionSnapshot snapshot)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(debugSession);
@@ -90,6 +97,7 @@ internal sealed class McpDebugSessionInfo : IMcpDebugSessionResult
                     $"Unknown debugger session state {snapshot.State}.")
             },
             AgentControl = agentControl,
+            AgentControlExpiresAtUtc = agentControlExpiresAtUtc,
             ProcessName = snapshot.ProcessName,
             ProcessId = snapshot.ProcessId,
             StopReason = snapshot.StopReason,

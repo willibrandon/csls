@@ -41,7 +41,7 @@ internal sealed partial class CslsMcpDebuggerExecutionTools
         ReadOnly = false,
         UseStructuredContent = true,
         OutputSchemaType = typeof(McpDebugSessionInfo))]
-    [Description("Pause, continue, or source-step one explicit debugger session. Requires its agentControl grant; continue and step also require the current stopGeneration.")]
+    [Description("Pause, continue, or source-step one explicit debugger session. Requires an active debug_agent_control_set grant; continue and step also require the current stopGeneration.")]
     public Task<ModelContextProtocol.Protocol.CallToolResult> ControlAsync(
         [Description("Opaque identifier returned by a debugger lifecycle tool.")]
         string debugSession,

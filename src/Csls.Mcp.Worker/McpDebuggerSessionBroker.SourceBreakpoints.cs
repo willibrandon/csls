@@ -44,8 +44,7 @@ internal sealed partial class McpDebuggerSessionBroker
         }
 
         McpDebuggerSession session = Resolve(debugSession);
-        RequireAgentControl(session);
-        return InvokeStoppedAsync(
+        return InvokeControlledStoppedAsync(
             session,
             stopGeneration,
             async (selected, client, token) => new McpDebugSourceBreakpointsResult(
@@ -85,8 +84,7 @@ internal sealed partial class McpDebuggerSessionBroker
         }
 
         McpDebuggerSession session = Resolve(debugSession);
-        RequireAgentControl(session);
-        return InvokeStoppedAsync(
+        return InvokeControlledStoppedAsync(
             session,
             stopGeneration,
             async (selected, client, token) => new McpDebugFunctionBreakpointsResult(

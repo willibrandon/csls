@@ -20,14 +20,10 @@ internal sealed partial class McpDebuggerSessionBroker
         ValidatePositive(threadId, nameof(threadId));
         ValidatePositive(targetId, nameof(targetId));
         McpDebuggerSession session = Resolve(debugSession);
-        RequireAgentControl(session);
-        return InvokeStoppedAsync(
+        return InvokeControlledStoppedAsync(
             session,
             stopGeneration,
-            async (selected, client, token) => McpDebugSessionInfo.Create(
-                selected.Id,
-                selected.Kind,
-                selected.AgentControl,
+            async (selected, client, token) => selected.CreateInfo(
                 await client.GotoAsync(
                     new DebugGotoRequest(threadId, targetId),
                     token).ConfigureAwait(false)),

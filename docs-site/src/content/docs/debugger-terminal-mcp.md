@@ -72,9 +72,15 @@ Observation never grants target control. Read-only tools include:
 - the side-effect-free `debug_evaluate` operation.
 
 Execution, breakpoint replacement, direct assignment, function evaluation, restart,
-and attached-target termination require the session's explicit `agentControl: true`
-grant. Operations that act on a stop also require its exact generation. Another client
-cannot reuse the grant or commandeer the session.
+and attached-target termination require an active agent-control grant. Use
+`debug_agent_control_set` as a separate approval step with `enabled: true` and an
+explicit `durationSeconds` from 1 through 3,600. Every session starts observation-only.
+The grant is scoped to the exact session and MCP connection, expires against monotonic
+elapsed time, can be revoked immediately with `enabled: false`, and is rechecked when a
+queued mutation begins. Session results expose `agentControlExpiresAtUtc` while the
+grant is active.
+Operations that act on a stop also require its exact generation. Another client cannot
+reuse the grant or commandeer the session.
 
 `debug_execute_expression` is marked destructive, non-idempotent, and open-world.
 Direct assignments are destructive but do not execute target code or advance the
@@ -102,8 +108,8 @@ cannot silently inspect a later stop.
 
 Clients using the current MCP protocol can listen to exact owned URIs through
 `subscriptions/listen`. Resource update notifications come from engine state, output,
-and breakpoint-binding events; csls does not poll the target. Legacy subscription RPCs
-are not exposed.
+breakpoint-binding events, and agent-control grant, revoke, and expiry transitions;
+csls does not poll the target. Legacy subscription RPCs are not exposed.
 
 The prompts `diagnose_dotnet_debugger_failure`, `plan_dotnet_breakpoints`, and
 `explain_dotnet_debugger_state` gather bounded read-first evidence for one explicit

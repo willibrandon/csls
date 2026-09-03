@@ -33,7 +33,7 @@ internal sealed partial class CslsMcpDebuggerBreakpointTools
         ReadOnly = false,
         UseStructuredContent = true,
         OutputSchemaType = typeof(McpDebugSourceBreakpointsResult))]
-    [Description("Replace all source breakpoints for one absolute document at an exact stopped generation. Requires agentControl.")]
+    [Description("Replace all source breakpoints for one absolute document at an exact stopped generation. Requires an active debug_agent_control_set grant.")]
     public Task<ModelContextProtocol.Protocol.CallToolResult> SetSourceBreakpointsAsync(
         [Description("Opaque identifier returned by a debugger lifecycle tool.")]
         string debugSession,
@@ -63,7 +63,7 @@ internal sealed partial class CslsMcpDebuggerBreakpointTools
         ReadOnly = false,
         UseStructuredContent = true,
         OutputSchemaType = typeof(McpDebugFunctionBreakpointsResult))]
-    [Description("Replace all managed-function breakpoints at an exact stopped generation. Requires agentControl.")]
+    [Description("Replace all managed-function breakpoints at an exact stopped generation. Requires an active debug_agent_control_set grant.")]
     public Task<ModelContextProtocol.Protocol.CallToolResult> SetFunctionBreakpointsAsync(
         [Description("Opaque identifier returned by a debugger lifecycle tool.")]
         string debugSession,

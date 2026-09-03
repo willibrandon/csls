@@ -86,6 +86,9 @@ internal static class McpHost
                     new CslsMcpDebuggerLifecycleTools(debuggerBroker),
                     serializerOptions)
                 .WithTools(
+                    new CslsMcpDebuggerAuthorizationTools(debuggerBroker),
+                    serializerOptions)
+                .WithTools(
                     new CslsMcpDebuggerSessionTools(debuggerBroker),
                     serializerOptions)
                 .WithTools(

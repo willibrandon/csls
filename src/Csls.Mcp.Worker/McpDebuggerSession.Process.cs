@@ -15,14 +15,12 @@ internal sealed partial class McpDebuggerSession
     /// <param name="workerPath">The absolute debugger worker path.</param>
     /// <param name="id">The stable MCP session identifier.</param>
     /// <param name="kind">How the target will be acquired.</param>
-    /// <param name="agentControl">Whether target control is explicitly allowed.</param>
     /// <param name="cancellationToken">The startup cancellation token.</param>
     /// <returns>An ownership lease for the connected supervised session.</returns>
     internal static async Task<McpDebuggerSessionLease> StartAsync(
         string workerPath,
         string id,
         McpDebuggerSessionKind kind,
-        bool agentControl,
         CancellationToken cancellationToken)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(workerPath);
@@ -62,7 +60,6 @@ internal sealed partial class McpDebuggerSession
             return McpDebuggerSessionLease.Create(
                 id,
                 kind,
-                agentControl,
                 process,
                 diagnostics,
                 client);
@@ -81,6 +78,11 @@ internal sealed partial class McpDebuggerSession
         if (Interlocked.Exchange(ref _disposeState, 1) != 0)
         {
             return;
+        }
+
+        lock (_agentControlGate)
+        {
+            ClearAgentControl();
         }
 
         await _operationGate.WaitAsync(CancellationToken.None).ConfigureAwait(false);
