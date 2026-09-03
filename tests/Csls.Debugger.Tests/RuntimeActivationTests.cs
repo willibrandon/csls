@@ -24,16 +24,13 @@ public sealed class RuntimeActivationTests
     public async Task ManagedTargetActivatesThroughDbgShimAndCleansUpProcess()
     {
         string repositoryRoot = FindRepositoryRoot();
-        string executableName = OperatingSystem.IsWindows()
-            ? "csls-test-process-host.exe"
-            : "csls-test-process-host";
         string program = Path.Join(
             repositoryRoot,
             "artifacts",
             "bin",
             "Csls.TestProcessHost",
             "debug",
-            executableName);
+            "csls-test-process-host.dll");
         string absentSignal = Path.Join(
             Path.GetTempPath(),
             $"csls-debugger-activation-{Guid.NewGuid():N}.signal");

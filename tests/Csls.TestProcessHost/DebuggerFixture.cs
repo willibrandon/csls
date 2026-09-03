@@ -74,7 +74,7 @@ internal static class DebuggerFixture
         Console.Out.Flush();
         while (!File.Exists(path))
         {
-            Thread.SpinWait(10_000);
+            Thread.Sleep(1);
         }
 
         GC.KeepAlive(path);

@@ -44,7 +44,7 @@ public sealed partial class DapAttachTests
         int waitEndLine = sourceLines
             .Select(static (line, index) => (Line: line, Number: index + 1))
             .Single(candidate => candidate.Line.Contains(
-                "Thread.SpinWait(10_000);",
+                "Thread.Sleep(1);",
                 StringComparison.Ordinal))
             .Number;
         string signalPath = Path.Join(

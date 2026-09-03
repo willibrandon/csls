@@ -16,7 +16,7 @@ internal static class DebuggerStepFilteringFixture
         int answer = value.Answer;
         while (!File.Exists(path))
         {
-            Thread.SpinWait(10_000);
+            Thread.Sleep(1);
         }
 
         return answer == 42 ? 0 : 1;

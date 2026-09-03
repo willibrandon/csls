@@ -19,7 +19,7 @@ internal static class DebuggerStepFixture
         int combined = AddTwo(seed - 1) + AddTwo(seed);
         while (!File.Exists(path))
         {
-            Thread.SpinWait(10_000);
+            Thread.Sleep(1);
         }
 
         return answer == 42 && combined == 83 ? 0 : 1;

@@ -142,6 +142,10 @@ public sealed partial class McpDebuggerLifecycleTests
                 ["program"] = EditorToolResolver.ResolveTestProcessHost(repositoryRoot),
                 ["workingDirectory"] = repositoryRoot,
                 ["arguments"] = new[] { "--debugger-fixture", signalPath },
+                ["sourceFileMap"] = new Dictionary<string, string>
+                {
+                    ["/_/"] = repositoryRoot
+                },
                 ["initialSourcePath"] = sourcePath,
                 ["initialLine"] = breakpointLine,
                 ["suppressJitOptimizations"] = true

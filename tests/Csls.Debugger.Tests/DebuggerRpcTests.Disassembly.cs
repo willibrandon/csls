@@ -24,7 +24,7 @@ public sealed partial class DebuggerRpcTests
         Assert.HasCount(12, disassembly.Instructions);
         Assert.IsNotEmpty(disassembly.Instructions.Where(instruction =>
             instruction.Instruction.Contains(
-                "System.Threading.Thread.SpinWait",
+                "System.Threading.Thread.Sleep",
                 StringComparison.Ordinal)).ToArray());
         Assert.IsNotEmpty(disassembly.Instructions.Where(instruction =>
             instruction.Source is not null && instruction.Line > 0).ToArray());

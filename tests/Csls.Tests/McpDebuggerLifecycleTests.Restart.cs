@@ -27,7 +27,7 @@ public sealed partial class McpDebuggerLifecycleTests
             TestContext.CancellationToken).ConfigureAwait(false))
             .Select(static (line, index) => (Line: line, Number: index + 1))
             .Single(static candidate => candidate.Line.Contains(
-                "Thread.SpinWait(10_000);",
+                "Thread.Sleep(1);",
                 StringComparison.Ordinal))
             .Number;
         string testDirectory = Path.Join(

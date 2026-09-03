@@ -82,7 +82,7 @@ internal static class CollectibleAssemblyRunner
     {
         while (!File.Exists(path))
         {
-            Thread.SpinWait(10_000);
+            Thread.Sleep(1);
         }
     }
 

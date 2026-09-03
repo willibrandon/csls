@@ -31,6 +31,7 @@ internal sealed class CslsMcpDebuggerLifecycleTools
     /// <param name="arguments">The ordered target arguments.</param>
     /// <param name="environment">Target environment additions and removals.</param>
     /// <param name="runtimeHostPath">The optional absolute managed runtime host path.</param>
+    /// <param name="sourceFileMap">Build-time source prefixes mapped to local source prefixes.</param>
     /// <param name="initialSourcePath">The optional initial source breakpoint path.</param>
     /// <param name="initialLine">The optional one-based initial breakpoint line.</param>
     /// <param name="suppressJitOptimizations">Whether CoreCLR should emit debuggable code for symbol-bearing modules.</param>
@@ -59,6 +60,8 @@ internal sealed class CslsMcpDebuggerLifecycleTools
         IReadOnlyDictionary<string, string?>? environment = null,
         [Description("Optional absolute dotnet or executable host path.")]
         string? runtimeHostPath = null,
+        [Description("Build-time source path prefixes mapped to local source path prefixes.")]
+        IReadOnlyDictionary<string, string>? sourceFileMap = null,
         [Description("Optional absolute source path for an initial breakpoint.")]
         string? initialSourcePath = null,
         [Description("Optional one-based line paired with initialSourcePath.")]
@@ -76,6 +79,7 @@ internal sealed class CslsMcpDebuggerLifecycleTools
                 program,
                 workingDirectory,
                 runtimeHostPath,
+                sourceFileMap,
                 initialSourcePath,
                 initialLine);
             return await _broker.LaunchAsync(
@@ -89,6 +93,8 @@ internal sealed class CslsMcpDebuggerLifecycleTools
                     RuntimeHostPath = runtimeHostPath is null
                         ? null
                         : Path.GetFullPath(runtimeHostPath),
+                    SourceFileMap = sourceFileMap ??
+                        new Dictionary<string, string>(StringComparer.Ordinal),
                     SuppressJitOptimizations = suppressJitOptimizations,
                     JustMyCode = justMyCode,
                     EnableStepFiltering = enableStepFiltering
@@ -105,6 +111,7 @@ internal sealed class CslsMcpDebuggerLifecycleTools
     /// <param name="processId">The positive operating-system process identifier.</param>
     /// <param name="cancellationToken">The MCP request cancellation token.</param>
     /// <param name="pause">Whether attachment immediately pauses the target.</param>
+    /// <param name="sourceFileMap">Build-time source prefixes mapped to local source prefixes.</param>
     /// <returns>The new explicit debugger-session identity and initial state.</returns>
     [McpServerTool(
         Name = "debug_session_attach",
@@ -121,13 +128,19 @@ internal sealed class CslsMcpDebuggerLifecycleTools
         int processId,
         CancellationToken cancellationToken,
         [Description("Pause the target immediately after attachment.")]
-        bool pause = true)
+        bool pause = true,
+        [Description("Build-time source path prefixes mapped to local source path prefixes.")]
+        IReadOnlyDictionary<string, string>? sourceFileMap = null)
     {
         return McpDebuggerToolResult.RunAsync(async () =>
         {
-            McpDebuggerLaunchValidator.ValidateAttach(processId);
+            McpDebuggerLaunchValidator.ValidateAttach(processId, sourceFileMap);
             return await _broker.AttachAsync(
-                new DebugAttachRequest(processId),
+                new DebugAttachRequest(processId)
+                {
+                    SourceFileMap = sourceFileMap ??
+                        new Dictionary<string, string>(StringComparer.Ordinal)
+                },
                 pause,
                 cancellationToken).ConfigureAwait(false);
         });

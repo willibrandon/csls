@@ -28,7 +28,7 @@ public sealed partial class DapSessionTests
             instruction.TryGetProperty("instructionBytes", out _)).ToArray());
         Assert.IsNotEmpty(instructions.Where(instruction =>
             instruction.GetProperty("instruction").GetString()!.Contains(
-                "System.Threading.Thread.SpinWait",
+                "System.Threading.Thread.Sleep",
                 StringComparison.Ordinal)).ToArray());
         Assert.IsNotEmpty(instructions.Where(instruction =>
             instruction.TryGetProperty("location", out _) &&

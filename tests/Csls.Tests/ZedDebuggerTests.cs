@@ -70,6 +70,7 @@ public sealed class ZedDebuggerTests
             await WriteDebugConfigurationAsync(
                 Path.Join(userDataPath, "config", "debug.json"),
                 programPath,
+                repositoryRoot,
                 signalPath,
                 startedPath,
                 continuedPath).ConfigureAwait(false);
@@ -221,6 +222,7 @@ public sealed class ZedDebuggerTests
     private async Task WriteDebugConfigurationAsync(
         string path,
         string programPath,
+        string repositoryRoot,
         string signalPath,
         string startedPath,
         string continuedPath)
@@ -242,7 +244,11 @@ public sealed class ZedDebuggerTests
                     cwd = Path.GetDirectoryName(programPath),
                     label = ".NET Launch",
                     program = programPath,
-                    request = "launch"
+                    request = "launch",
+                    sourceFileMap = new Dictionary<string, string>
+                    {
+                        ["/_/"] = repositoryRoot
+                    }
                 }
             },
             s_jsonOptions);
@@ -303,6 +309,8 @@ public sealed class ZedDebuggerTests
         startInfo.Environment["CSLS_WORKER_PATH"] = serverWorkerPath;
         startInfo.Environment["CSLS_DEBUGGER_WORKER_PATH"] = debuggerWorkerPath;
         startInfo.Environment[ControlEndpoint.SocketDirectoryEnvironmentVariable] = socketDirectory;
+        startInfo.Environment["NUGET_PACKAGES"] =
+            EditorToolResolver.ResolveNuGetPackagesPath();
         startInfo.Environment["HOME"] = homePath;
         startInfo.Environment["NO_AT_BRIDGE"] = "1";
         startInfo.Environment["ZED_ALLOW_EMULATED_GPU"] = "1";

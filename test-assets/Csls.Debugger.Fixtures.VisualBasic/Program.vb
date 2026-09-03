@@ -19,7 +19,7 @@ Friend Module Program
         Console.Write(arguments(2))
         Console.Out.Flush()
         While Not File.Exists(arguments(0))
-            Thread.SpinWait(10_000)
+            Thread.Sleep(1)
         End While
 
         GC.KeepAlive(value)

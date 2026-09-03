@@ -114,10 +114,12 @@ public sealed partial class McpDebuggerLifecycleTests
             static tool => tool.Name == "debug_session_start")
             .ProtocolTool.InputSchema.GetProperty("properties");
         Assert.IsFalse(startProperties.TryGetProperty("agentControl", out _));
+        Assert.IsTrue(startProperties.TryGetProperty("sourceFileMap", out _));
         JsonElement attachProperties = tools.Single(
             static tool => tool.Name == "debug_session_attach")
             .ProtocolTool.InputSchema.GetProperty("properties");
         Assert.IsFalse(attachProperties.TryGetProperty("agentControl", out _));
+        Assert.IsTrue(attachProperties.TryGetProperty("sourceFileMap", out _));
         JsonElement authorizationSchema = tools.Single(
             static tool => tool.Name == "debug_agent_control_set")
             .ProtocolTool.InputSchema;
@@ -179,6 +181,44 @@ public sealed partial class McpDebuggerLifecycleTests
     }
 
     /// <summary>
+    /// Rejects relative source mappings before any debugger worker is started.
+    /// </summary>
+    [TestMethod]
+    [Timeout(30000, CooperativeCancellation = true)]
+    public async Task DebuggerLifecycleToolsRejectRelativeSourceMappings()
+    {
+        string repositoryRoot = EditorToolResolver.FindRepositoryRoot();
+        var sourceFileMap = new Dictionary<string, string>
+        {
+            ["relative/source"] = repositoryRoot
+        };
+        McpProcessSession mcp = await StartMcpAsync(
+            TestContext.CancellationToken).ConfigureAwait(false);
+        await using ConfiguredAsyncDisposable cleanup = mcp.ConfigureAwait(false);
+        await AssertToolErrorAsync(
+            mcp.Client,
+            "debug_session_start",
+            new Dictionary<string, object?>
+            {
+                ["program"] = EditorToolResolver.ResolveTestProcessHost(repositoryRoot),
+                ["workingDirectory"] = repositoryRoot,
+                ["sourceFileMap"] = sourceFileMap
+            },
+            "debugger_request_invalid",
+            TestContext.CancellationToken).ConfigureAwait(false);
+        await AssertToolErrorAsync(
+            mcp.Client,
+            "debug_session_attach",
+            new Dictionary<string, object?>
+            {
+                ["processId"] = Environment.ProcessId,
+                ["sourceFileMap"] = sourceFileMap
+            },
+            "debugger_request_invalid",
+            TestContext.CancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
     /// Launches, selects, ends, and disconnect-cleans real managed target processes.
     /// </summary>
     [TestMethod]
@@ -198,7 +238,7 @@ public sealed partial class McpDebuggerLifecycleTests
         int breakpointLine = sourceLines
             .Select(static (line, index) => (Text: line, Line: index + 1))
             .Single(static item => item.Text.Contains(
-                "Thread.SpinWait(10_000);",
+                "Thread.Sleep(1);",
                 StringComparison.Ordinal))
             .Line;
         int localLine = sourceLines

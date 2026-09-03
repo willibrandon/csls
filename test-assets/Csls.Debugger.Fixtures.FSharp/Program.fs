@@ -19,7 +19,7 @@ let main arguments =
     Console.Write(arguments[2])
     Console.Out.Flush()
     while not (File.Exists(arguments[0])) do
-        Thread.SpinWait(10_000)
+        Thread.Sleep(1)
 
     GC.KeepAlive(value)
     answer + numbers[0] - 83

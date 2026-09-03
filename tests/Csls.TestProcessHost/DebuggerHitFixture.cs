@@ -26,7 +26,7 @@ internal static class DebuggerHitFixture
 
         while (!File.Exists(signalPath))
         {
-            Thread.SpinWait(10_000);
+            Thread.Sleep(1);
         }
 
         return 0;

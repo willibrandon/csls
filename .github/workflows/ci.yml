@@ -193,6 +193,7 @@ jobs:
           dotnet test
           --test-modules artifacts/bin/Csls.Debugger.Tests/debug/Csls.Debugger.Tests.dll
           --root-directory .
+          --results-directory artifacts/test-results
           --minimum-expected-tests 70
           --no-ansi
 

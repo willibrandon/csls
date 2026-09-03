@@ -34,10 +34,9 @@ public sealed partial class DebuggerRpcTests
         }
         finally
         {
-            if (Directory.Exists(testDirectory))
-            {
-                Directory.Delete(testDirectory, recursive: true);
-            }
+            await DebuggerTestDirectoryReleaseWaiter.DeleteAsync(
+                testDirectory,
+                TimeSpan.FromSeconds(10)).ConfigureAwait(false);
         }
     }
 
@@ -56,7 +55,7 @@ public sealed partial class DebuggerRpcTests
         int breakpointLine = sourceLines
             .Select(static (line, index) => (Line: line, Number: index + 1))
             .Single(static candidate => candidate.Line.Contains(
-                "Thread.SpinWait(10_000);",
+                "Thread.Sleep(1);",
                 StringComparison.Ordinal))
             .Number;
         int localLine = sourceLines

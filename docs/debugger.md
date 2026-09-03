@@ -350,10 +350,13 @@ worker does not advertise tools that it cannot run.
 - `debug_session_start` launches an absolute managed program in a new isolated
   worker. `program` and `workingDirectory` are required. The optional paired
   `initialSourcePath` and one-based `initialLine` establish a source breakpoint
-  before launch. Set `suppressJitOptimizations` when reliable target-code
+  before launch. `sourceFileMap` maps absolute build-machine prefixes from PDBs
+  to absolute local source prefixes; POSIX, drive-letter, and UNC paths are
+  accepted on every host. Set `suppressJitOptimizations` when reliable target-code
   evaluation is more important than optimized target execution.
 - `debug_session_attach` attaches to one positive operating-system `processId`
-  and pauses by default.
+  and pauses by default. It accepts the same `sourceFileMap` when the attached
+  target was built in another location.
 - `debug_sessions_list` lists only sessions owned by the current MCP connection.
 - `debug_session_get` reads one session selected by its returned `debugSession`.
 - `debug_agent_control_set` is the separate authorization boundary for all

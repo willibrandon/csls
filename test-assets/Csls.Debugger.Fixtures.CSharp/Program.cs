@@ -37,7 +37,7 @@ internal static class Program
         Console.Out.Flush();
         while (!File.Exists(arguments[0]))
         {
-            Thread.SpinWait(10_000);
+            Thread.Sleep(1);
         }
 
         GC.KeepAlive(value);
@@ -74,7 +74,7 @@ internal static class Program
     {
         while (!File.Exists(path))
         {
-            Thread.SpinWait(10_000);
+            Thread.Sleep(1);
         }
     }
 }

@@ -130,7 +130,7 @@ if (args is ["--announce-and-spin-until-file", string spinPath])
     await Console.Out.FlushAsync().ConfigureAwait(false);
     while (!File.Exists(spinPath))
     {
-        Thread.SpinWait(10_000);
+        await Task.Delay(1).ConfigureAwait(false);
     }
 
     return 0;

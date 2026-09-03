@@ -114,10 +114,9 @@ public sealed partial class DapSessionTests
         }
         finally
         {
-            if (Directory.Exists(testDirectory))
-            {
-                Directory.Delete(testDirectory, recursive: true);
-            }
+            await DebuggerTestDirectoryReleaseWaiter.DeleteAsync(
+                testDirectory,
+                TimeSpan.FromSeconds(10)).ConfigureAwait(false);
         }
     }
 

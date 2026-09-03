@@ -72,7 +72,7 @@ public sealed partial class DapSessionTests
                 sourcePath,
                 TestContext.CancellationToken).ConfigureAwait(false);
             int logLine = FindSourceLine(lines, "GC.KeepAlive(observedHit);");
-            int stopLine = FindSourceLine(lines, "Thread.SpinWait(10_000);");
+            int stopLine = FindSourceLine(lines, "Thread.Sleep(1);");
             int breakpointSequence = await client.SendRequestAsync(
                 "setBreakpoints",
                 writer => WriteLogpointArguments(writer, sourcePath, logLine, stopLine),
@@ -172,10 +172,9 @@ public sealed partial class DapSessionTests
         }
         finally
         {
-            if (Directory.Exists(testDirectory))
-            {
-                Directory.Delete(testDirectory, recursive: true);
-            }
+            await DebuggerTestDirectoryReleaseWaiter.DeleteAsync(
+                testDirectory,
+                TimeSpan.FromSeconds(10)).ConfigureAwait(false);
         }
     }
 

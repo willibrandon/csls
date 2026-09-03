@@ -20,7 +20,7 @@ internal static class DebuggerExceptionFixture
         {
             while (!File.Exists(signalPath))
             {
-                Thread.SpinWait(10_000);
+                Thread.Sleep(1);
             }
         }
 

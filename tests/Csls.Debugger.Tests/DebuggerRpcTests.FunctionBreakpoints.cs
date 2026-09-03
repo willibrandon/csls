@@ -47,10 +47,9 @@ public sealed partial class DebuggerRpcTests
         }
         finally
         {
-            if (Directory.Exists(testDirectory))
-            {
-                Directory.Delete(testDirectory, recursive: true);
-            }
+            await DebuggerTestDirectoryReleaseWaiter.DeleteAsync(
+                testDirectory,
+                TimeSpan.FromSeconds(10)).ConfigureAwait(false);
         }
     }
 }

@@ -17,7 +17,7 @@ internal static class Program
         int embeddedNumber = number + 1;
         while (!File.Exists(args[0]))
         {
-            Thread.SpinWait(10_000);
+            Thread.Sleep(1);
         }
 
         GC.KeepAlive(args);

@@ -16,7 +16,7 @@ public static class InMemoryFixture
         answer++;
         while (!File.Exists(signalPath))
         {
-            Thread.SpinWait(10_000);
+            Thread.Sleep(1);
         }
 
         return answer - 42;
