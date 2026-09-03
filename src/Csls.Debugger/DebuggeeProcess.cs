@@ -149,11 +149,9 @@ internal sealed class DebuggeeProcess : IDebuggeeProcess
     }
 
     /// <inheritdoc />
-    public Task DetachAsync(CancellationToken cancellationToken)
+    public void Detach()
     {
-        cancellationToken.ThrowIfCancellationRequested();
         Volatile.Write(ref _detached, 1);
-        return Task.CompletedTask;
     }
 
     /// <inheritdoc />

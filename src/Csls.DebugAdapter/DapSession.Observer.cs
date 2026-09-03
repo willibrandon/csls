@@ -1,4 +1,6 @@
+using Csls.DebugAdapter.Protocol;
 using Csls.Debugger.Contracts;
+using System.Text.Json;
 
 namespace Csls.DebugAdapter;
 
@@ -18,7 +20,15 @@ internal sealed partial class DapSession
             return;
         }
 
-        if (_pendingConfigurationRequest is null || _pendingTargetRequest is null)
+        if (_isRestarting)
+        {
+            await CompleteRestartAsync(name, processId, cancellationToken)
+                .ConfigureAwait(false);
+            return;
+        }
+
+        if (_pendingConfigurationRequest is null || _pendingTargetRequest is null ||
+            _pendingTargetArguments is null)
         {
             throw new InvalidOperationException(
                 "The engine reported a process before DAP launch configuration completed.");
@@ -39,18 +49,9 @@ internal sealed partial class DapSession
                 message: null,
                 writeBody: null,
                 cancellationToken).ConfigureAwait(false);
-            await _writer.WriteEventAsync(
-                "process",
-                writer =>
-                {
-                    writer.WriteStartObject();
-                    writer.WriteString("name", name);
-                    writer.WriteNumber("systemProcessId", processId);
-                    writer.WriteBoolean("isLocalProcess", true);
-                    writer.WriteString("startMethod", _startMethod);
-                    writer.WriteEndObject();
-                },
-                cancellationToken).ConfigureAwait(false);
+            await WriteProcessEventAsync(name, processId, cancellationToken)
+                .ConfigureAwait(false);
+            _activeTargetArguments = _pendingTargetArguments;
             ClearPendingTarget();
         }
         catch (Exception transportException) when (
@@ -145,6 +146,11 @@ internal sealed partial class DapSession
     /// <inheritdoc />
     public async ValueTask OnTerminatedAsync(CancellationToken cancellationToken)
     {
+        if (_isRestarting)
+        {
+            return;
+        }
+
         bool endedWithoutClientRequest = _state == DapSessionState.Running;
         _state = DapSessionState.Terminated;
         if (IsProtocolClosed)
@@ -169,4 +175,43 @@ internal sealed partial class DapSession
             await _lifetime.CancelAsync().ConfigureAwait(false);
         }
     }
+
+    private async ValueTask CompleteRestartAsync(
+        string name,
+        int processId,
+        CancellationToken cancellationToken)
+    {
+        Request request = _restartRequest ?? throw new InvalidOperationException(
+            "The engine reported a restarted process without a DAP restart request.");
+        JsonElement arguments = _restartTargetArguments ?? throw new InvalidOperationException(
+            "The engine reported a restarted process without target arguments.");
+        _state = DapSessionState.Running;
+        _activeTargetArguments = arguments;
+        _restartRequest = null;
+        _restartTargetArguments = null;
+        _isRestarting = false;
+        await _writer.WriteResponseAsync(
+            request,
+            success: true,
+            message: null,
+            writeBody: null,
+            cancellationToken).ConfigureAwait(false);
+        await WriteProcessEventAsync(name, processId, cancellationToken).ConfigureAwait(false);
+    }
+
+    private ValueTask WriteProcessEventAsync(
+        string name,
+        int processId,
+        CancellationToken cancellationToken) => _writer.WriteEventAsync(
+            "process",
+            writer =>
+            {
+                writer.WriteStartObject();
+                writer.WriteString("name", name);
+                writer.WriteNumber("systemProcessId", processId);
+                writer.WriteBoolean("isLocalProcess", true);
+                writer.WriteString("startMethod", _startMethod);
+                writer.WriteEndObject();
+            },
+            cancellationToken);
 }

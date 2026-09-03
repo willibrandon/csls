@@ -1,3 +1,5 @@
+using Csls.Debugger.Contracts;
+
 namespace Csls.Debugger;
 
 /// <summary>
@@ -20,6 +22,25 @@ public static class DebuggerEngine
     /// Verifies that the native runtime-debugging shim supports this platform.
     /// </summary>
     public static void VerifyPlatformSupport() => DbgShimLibrary.VerifyPlatformSupport();
+
+    /// <summary>
+    /// Validates source mapping, Source Link, and symbol lookup policy without activation.
+    /// </summary>
+    /// <param name="mappings">The complete build-time source mapping.</param>
+    /// <param name="sourceLinkOptions">The complete Source Link URL policy.</param>
+    /// <param name="symbolOptions">The complete trusted symbol search policy.</param>
+    public static void ValidateSourceOptions(
+        IReadOnlyDictionary<string, string> mappings,
+        IReadOnlyDictionary<string, bool> sourceLinkOptions,
+        DebugSymbolOptions symbolOptions)
+    {
+        var mapper = new SourcePathMapper();
+        mapper.Set(mappings);
+        var sourceLink = new SourceLinkPolicy();
+        sourceLink.Set(sourceLinkOptions);
+        var symbols = new PortablePdbLocator();
+        symbols.Set(symbolOptions);
+    }
 
     /// <summary>
     /// Verifies suspended launch and CoreCLR debugger activation against a real target.

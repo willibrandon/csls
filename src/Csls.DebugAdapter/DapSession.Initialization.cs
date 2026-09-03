@@ -60,6 +60,7 @@ internal sealed partial class DapSession
                 writer.WriteBoolean("supportsDisassembleRequest", true);
                 writer.WriteBoolean("supportsStepInTargetsRequest", true);
                 writer.WriteBoolean("supportsGotoTargetsRequest", true);
+                writer.WriteBoolean("supportsRestartRequest", true);
                 writer.WriteEndObject();
             },
             cancellationToken).ConfigureAwait(false);

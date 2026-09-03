@@ -1,3 +1,5 @@
+using Csls.Debugger.Interop;
+
 namespace Csls.Debugger;
 
 /// <summary>
@@ -6,24 +8,26 @@ namespace Csls.Debugger;
 internal sealed partial class CorDebugDebuggee
 {
     /// <inheritdoc />
-    public async Task DetachAsync(CancellationToken cancellationToken)
+    public void Detach()
     {
-        cancellationToken.ThrowIfCancellationRequested();
-        if (Interlocked.Exchange(ref _detached, 1) != 0)
+        if (Volatile.Read(ref _detached) != 0)
         {
             return;
         }
 
-        nint corDebug = Interlocked.Exchange(ref _corDebug, 0);
-        nint debugProcess = Interlocked.Exchange(ref _debugProcess, 0);
-        await _actor.InvokeAsync(
-            token =>
-            {
-                _ = token;
-                DetachRuntimeReferences(corDebug, debugProcess);
-                return ValueTask.CompletedTask;
-            },
-            CancellationToken.None).ConfigureAwait(false);
+        nint corDebug = Volatile.Read(ref _corDebug);
+        nint debugProcess = Volatile.Read(ref _debugProcess);
+        if (debugProcess != 0)
+        {
+            CorDebugHResult.ThrowIfFailed(
+                new ICorDebugControllerAbi(debugProcess).Detach(),
+                "ICorDebugController.Detach");
+        }
+
+        _ = Interlocked.Exchange(ref _corDebug, 0);
+        _ = Interlocked.Exchange(ref _debugProcess, 0);
+        ReleaseRuntimeReferences(corDebug, debugProcess);
+        Volatile.Write(ref _detached, 1);
     }
 
     /// <inheritdoc />
@@ -60,7 +64,15 @@ internal sealed partial class CorDebugDebuggee
             }
             else
             {
-                await DetachAsync(CancellationToken.None).ConfigureAwait(false);
+                await _actor.InvokeAsync(
+                    token =>
+                    {
+                        _ = token;
+                        _ = PrepareForDetach();
+                        Detach();
+                        return ValueTask.CompletedTask;
+                    },
+                    CancellationToken.None).ConfigureAwait(false);
             }
         }
 

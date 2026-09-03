@@ -1,6 +1,7 @@
 using Csls.DebugAdapter.Protocol;
 using Csls.Debugger;
 using Csls.Debugger.Contracts;
+using System.Text.Json;
 
 namespace Csls.DebugAdapter;
 
@@ -19,6 +20,11 @@ internal sealed partial class DapSession : IDebuggerSessionObserver, IAsyncDispo
     private Request? _pendingConfigurationRequest;
     private DapLaunchConfiguration? _pendingLaunch;
     private DapAttachConfiguration? _pendingAttach;
+    private JsonElement? _pendingTargetArguments;
+    private JsonElement? _activeTargetArguments;
+    private JsonElement? _restartTargetArguments;
+    private Request? _restartRequest;
+    private bool _isRestarting;
     private string _startMethod = "launch";
     private bool _terminateDebuggeeByDefault = true;
     private bool _clientLinesStartAtOne = true;
@@ -107,6 +113,7 @@ internal sealed partial class DapSession : IDebuggerSessionObserver, IAsyncDispo
         _pendingConfigurationRequest = null;
         _pendingLaunch = null;
         _pendingAttach = null;
+        _pendingTargetArguments = null;
     }
 
     private bool IsProtocolClosed => Volatile.Read(ref _protocolClosed) != 0;

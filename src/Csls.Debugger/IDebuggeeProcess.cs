@@ -57,7 +57,5 @@ internal interface IDebuggeeProcess : IAsyncDisposable
     /// <summary>
     /// Relinquishes debugger ownership without terminating the target.
     /// </summary>
-    /// <param name="cancellationToken">Cancels waiting for detachment.</param>
-    /// <returns>A task that completes after debugger ownership is released.</returns>
-    Task DetachAsync(CancellationToken cancellationToken);
+    void Detach();
 }

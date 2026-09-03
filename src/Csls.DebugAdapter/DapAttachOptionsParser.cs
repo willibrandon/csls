@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Csls.Debugger;
 
 namespace Csls.DebugAdapter;
 
@@ -23,12 +24,28 @@ internal static class DapAttachOptionsParser
                 "The attach request requires a positive integer processId.");
         }
 
-        return new DapAttachConfiguration(
-            processId,
-            DapBooleanOptionParser.Get(arguments, "justMyCode", defaultValue: true),
-            DapBooleanOptionParser.Get(
-                arguments,
-                "enableStepFiltering",
-                defaultValue: true));
+        var result = new DapAttachConfiguration
+        {
+            Options = new DebuggeeAttachOptions
+            {
+                ProcessId = processId,
+                SourceFileMap = DapSourceOptionsParser.ParseSourceFileMap(arguments),
+                SourceLinkOptions = DapSourceOptionsParser.ParseSourceLinkOptions(arguments),
+                SymbolOptions = DapSymbolOptionsParser.Parse(arguments),
+                JustMyCode = DapBooleanOptionParser.Get(
+                    arguments,
+                    "justMyCode",
+                    defaultValue: true),
+                EnableStepFiltering = DapBooleanOptionParser.Get(
+                    arguments,
+                    "enableStepFiltering",
+                    defaultValue: true)
+            }
+        };
+        DebuggerEngine.ValidateSourceOptions(
+            result.Options.SourceFileMap,
+            result.Options.SourceLinkOptions,
+            result.Options.SymbolOptions);
+        return result;
     }
 }

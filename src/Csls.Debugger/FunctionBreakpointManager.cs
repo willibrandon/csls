@@ -99,6 +99,10 @@ internal sealed partial class FunctionBreakpointManager : IDisposable
         ObjectDisposedException.ThrowIf(_disposed != 0, this);
         ReleaseBindings();
         ReleaseModules();
+        foreach (FunctionBreakpointDefinition definition in _definitions)
+        {
+            definition.HitCondition?.Reset();
+        }
     }
 
     /// <inheritdoc />

@@ -8,7 +8,7 @@ namespace Csls.Debugger.Tests;
 /// Verifies debugger attachment and non-owning target lifecycle behavior.
 /// </summary>
 [TestClass]
-public sealed class DapAttachTests
+public sealed partial class DapAttachTests
 {
     /// <summary>
     /// Gets the active MSTest context and its framework-managed cancellation token.

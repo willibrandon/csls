@@ -141,7 +141,12 @@ internal sealed partial class DapTestClient : IAsyncDisposable
                 .ConfigureAwait(false);
             if (count == 0)
             {
-                throw new EndOfStreamException("The DAP response stream ended in a header.");
+                await CaptureAdapterExitAsync(process).ConfigureAwait(false);
+
+                throw new EndOfStreamException(
+                    "The DAP response stream ended in a header. " +
+                    $"Adapter exit code: {(process.HasExited ? process.ExitCode : null)}. " +
+                    $"Adapter diagnostics: {Diagnostics}");
             }
 
             header.Add(oneByte[0]);
@@ -162,5 +167,19 @@ internal sealed partial class DapTestClient : IAsyncDisposable
         await process.StandardOutput.BaseStream.ReadExactlyAsync(payload, cancellationToken)
             .ConfigureAwait(false);
         return JsonDocument.Parse(payload);
+    }
+
+    private async Task CaptureAdapterExitAsync(Process process)
+    {
+        try
+        {
+            await process.WaitForExitAsync(CancellationToken.None)
+                .WaitAsync(TimeSpan.FromSeconds(2), CancellationToken.None)
+                .ConfigureAwait(false);
+            await CaptureDiagnosticsAsync(process.StandardError).ConfigureAwait(false);
+        }
+        catch (TimeoutException)
+        {
+        }
     }
 }

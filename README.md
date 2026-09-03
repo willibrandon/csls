@@ -36,14 +36,14 @@ bounded inspection tools through isolated supervised workers. Agents can inspect
 threads, stacks, scopes, variables, and modules; execution changes require an
 explicit per-session control grant and the current stop generation. The same
 contract supports deterministic source, function, instruction, and exception
-breakpoint replacement, authoritative breakpoint inspection, plus bounded source,
-memory, managed-IL, exception, and execution-target inspection. Cursor-addressable
-stdout and stderr remain available through both a tool and debugger resource after
-bursts or target termination.
+breakpoint replacement, generation-safe target restart, authoritative breakpoint
+inspection, plus bounded source, memory, managed-IL, exception, and execution-target
+inspection. Cursor-addressable stdout and stderr remain available through both a
+tool and debugger resource after bursts or target termination.
 Current MCP subscriptions deliver debugger resource invalidations from engine
 events without polling.
-Conditional and data breakpoints, expression evaluation, dumps, Hot Reload, and
-the remaining debugger MCP operations remain under development. Run
+Conditional and data breakpoints, expression evaluation, dumps, and Hot Reload
+remain under development. Run
 `csls debugger tui launch` or `csls debugger tui attach` for the interactive
 Hex1b source, stack, arguments, and locals workflow.
 

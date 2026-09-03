@@ -45,6 +45,20 @@ public sealed partial class DebuggerSession
         await _lifecycleGate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
+            await LaunchManagedCoreAsync(options, cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            _ = _lifecycleGate.Release();
+        }
+    }
+
+    private async Task LaunchManagedCoreAsync(
+        DebuggeeLaunchOptions options,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
             await _actor.InvokeAsync(
                 token => BeginManagedLaunchAsync(options, token),
                 cancellationToken).ConfigureAwait(false);
@@ -67,10 +81,6 @@ public sealed partial class DebuggerSession
         {
             await ResetFailedManagedLaunchAsync().ConfigureAwait(false);
             throw;
-        }
-        finally
-        {
-            _ = _lifecycleGate.Release();
         }
     }
 

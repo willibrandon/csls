@@ -20,15 +20,6 @@ internal sealed partial class DapSession
         try
         {
             _pendingAttach = DapAttachOptionsParser.Parse(request.Arguments);
-            await _engineSession.ConfigureRuntimeOptionsAsync(
-                _pendingAttach.JustMyCode,
-                _pendingAttach.EnableStepFiltering,
-                cancellationToken).ConfigureAwait(false);
-            await _engineSession.ConfigureSourceOptionsAsync(
-                DapSourceOptionsParser.ParseSourceFileMap(request.Arguments),
-                DapSourceOptionsParser.ParseSourceLinkOptions(request.Arguments),
-                DapSymbolOptionsParser.Parse(request.Arguments),
-                cancellationToken).ConfigureAwait(false);
         }
         catch (ArgumentException exception)
         {
@@ -38,6 +29,7 @@ internal sealed partial class DapSession
         }
 
         _pendingTargetRequest = request;
+        _pendingTargetArguments = request.Arguments.Clone();
         _startMethod = "attach";
         _terminateDebuggeeByDefault = false;
         _state = DapSessionState.Configuring;

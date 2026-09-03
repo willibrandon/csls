@@ -36,6 +36,12 @@ starting DAP; the adapter does not execute build commands or interpret shell
 text. The adapter owns launched processes and terminates their process trees if
 its client disconnects unexpectedly.
 
+The adapter implements the standard DAP `restart` request for launch and attach.
+It accepts the client's latest nested launch or attach arguments, retains logical
+breakpoints, invalidates runtime handles, and keeps stop generations monotonic.
+Launch restart replaces the owned process; attach restart detaches and reattaches
+without terminating the independent target.
+
 Source and function breakpoints accept `hitCondition` values of `N`, `>=N`, or
 `%N` for the exact Nth hit, the Nth and every later hit, or every Nth hit.
 `N` must be a positive decimal integer. Counts span every runtime binding of the
@@ -134,6 +140,9 @@ its bundled debugger worker is available:
   by default.
 - `debug_sessions_list` and `debug_session_get` read connection-owned session
   state.
+- `debug_session_restart` replaces a stopped launch target or reattaches an
+  attached target while preserving its `debugSession` and breakpoints. It requires
+  `agentControl` and the exact current `stopGeneration`.
 - `debug_session_end` terminates launched targets and detaches attached targets.
   Terminating an attached target additionally requires both
   `terminateAttachedTarget: true` and the session's explicit `agentControl` grant.

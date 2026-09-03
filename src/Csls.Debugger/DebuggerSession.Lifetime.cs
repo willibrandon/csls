@@ -79,15 +79,7 @@ public sealed partial class DebuggerSession
 
     private async Task DisposeAttachedDebuggeeAsync()
     {
-        await _actor.InvokeAsync(
-            token =>
-            {
-                _ = token;
-                _state = DebugSessionState.Terminating;
-                return ValueTask.CompletedTask;
-            },
-            CancellationToken.None).ConfigureAwait(false);
-        await _debuggee!.DetachAsync(CancellationToken.None).ConfigureAwait(false);
+        await DetachDebuggeeAsync(CancellationToken.None).ConfigureAwait(false);
         await StopObservingDebuggeeAsync().ConfigureAwait(false);
         await _actor.InvokeAsync(
             token =>

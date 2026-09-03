@@ -56,29 +56,33 @@ internal sealed partial class CorDebugManagedCallback
                 nint currentSubject = Interlocked.Exchange(ref ownedSubject, 0);
                 try
                 {
-                    bool shouldContinue = continueAfterCallback;
-                    try
+                    bool detaching = Volatile.Read(ref target._detaching) != 0;
+                    bool shouldContinue = continueAfterCallback && !detaching;
+                    if (!detaching)
                     {
-                        if (callbackOperation is not null)
+                        try
                         {
-                            shouldContinue = await callbackOperation(
-                                target,
-                                currentThread,
-                                currentSubject,
-                                actorCancellationToken).ConfigureAwait(false);
+                            if (callbackOperation is not null)
+                            {
+                                shouldContinue = await callbackOperation(
+                                    target,
+                                    currentThread,
+                                    currentSubject,
+                                    actorCancellationToken).ConfigureAwait(false);
+                            }
+                        }
+                        catch (Exception exception) when (IsRecoverableCallbackFailure(exception))
+                        {
+                            if (createsProcess)
+                            {
+                                _ = target._createProcessCompletion.TrySetException(exception);
+                            }
+
+                            shouldContinue = continueAfterCallback;
                         }
                     }
-                    catch (Exception exception) when (IsRecoverableCallbackFailure(exception))
-                    {
-                        if (createsProcess)
-                        {
-                            _ = target._createProcessCompletion.TrySetException(exception);
-                        }
 
-                        shouldContinue = continueAfterCallback;
-                    }
-
-                    if (shouldContinue)
+                    if (shouldContinue && Volatile.Read(ref target._detaching) == 0)
                     {
                         int result = new ICorDebugControllerAbi(currentController)
                             .Continue(fIsOutOfBand: 0);

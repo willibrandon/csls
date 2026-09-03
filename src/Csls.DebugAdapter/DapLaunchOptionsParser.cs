@@ -56,7 +56,7 @@ internal static class DapLaunchOptionsParser
                 $"The launch working directory does not exist: {workingDirectory}");
         }
 
-        return new DapLaunchConfiguration
+        var result = new DapLaunchConfiguration
         {
             NoDebug = noDebug,
             Options = new DebuggeeLaunchOptions
@@ -83,6 +83,11 @@ internal static class DapLaunchOptionsParser
                     defaultValue: true)
             }
         };
+        DebuggerEngine.ValidateSourceOptions(
+            result.Options.SourceFileMap,
+            result.Options.SourceLinkOptions,
+            result.Options.SymbolOptions);
+        return result;
     }
 
     private static List<string> ParseArguments(JsonElement arguments)

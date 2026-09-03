@@ -49,9 +49,9 @@ Read-only tools inspect generation-bound threads, stacks, scopes, variables, and
 bounded module, source, memory, managed-IL, and cursor-addressable target-output
 pages. Resource templates expose the same selected session, output, thread,
 stack, scope, variable, module, exception, source, memory, and managed-IL state to
-resource-oriented clients. Breakpoint replacement,
-pause, continue, step, and go-to require the session's explicit `agentControl`
-grant and reject stale stopped-state handles. See the
+resource-oriented clients. Breakpoint replacement, restart, pause, continue,
+step, and go-to require the session's explicit `agentControl` grant and reject
+stale stopped-state handles. See the
 [.NET debugger guide](../debugger/#mcp-integration) for the complete ownership
 and error contract. Debugger-specific diagnosis, breakpoint-planning, and
 state-explanation prompts are read-only by construction.

@@ -13,6 +13,8 @@ public sealed partial class DebuggerControlService :
     private readonly Lock _stateLock = new();
     private readonly DebuggerOutputBuffer _output = new();
     private readonly DebuggerSession _session;
+    private DebugAttachRequest? _attachRequest;
+    private DebugLaunchRequest? _launchRequest;
     private DebugSessionSnapshot _snapshot = new() { State = DebugSessionState.Created };
 
     /// <summary>
@@ -129,6 +131,7 @@ public sealed partial class DebuggerControlService :
     public async Task<DebugSessionSnapshot> DetachAsync(CancellationToken cancellationToken)
     {
         await _session.DetachAsync(cancellationToken).ConfigureAwait(false);
+        await OnTerminatedAsync(cancellationToken).ConfigureAwait(false);
         return GetSnapshot();
     }
 

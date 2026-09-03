@@ -82,6 +82,9 @@ internal sealed partial class DapSession
             case "goto":
                 await GotoAsync(request, cancellationToken).ConfigureAwait(false);
                 break;
+            case "restart":
+                await RestartAsync(request, cancellationToken).ConfigureAwait(false);
+                break;
             case "stackTrace":
                 await WriteStackTraceAsync(request, cancellationToken).ConfigureAwait(false);
                 break;

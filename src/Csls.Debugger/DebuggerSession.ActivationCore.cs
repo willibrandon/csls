@@ -112,10 +112,9 @@ public sealed partial class DebuggerSession
         await debuggee.TerminateAsync(cancellationToken).ConfigureAwait(false);
     }
 
-    private async Task<IDebuggeeProcess> BeginDetachAsync(CancellationToken cancellationToken)
+    private Task DetachDebuggeeAsync(CancellationToken cancellationToken)
     {
-        IDebuggeeProcess? result = null;
-        await _actor.InvokeAsync(
+        return _actor.InvokeAsync(
             token =>
             {
                 _ = token;
@@ -126,12 +125,39 @@ public sealed partial class DebuggerSession
                         $"A target cannot be detached while the debugger session is {_state}.");
                 }
 
+                DebugSessionState previousState = _state;
                 _state = DebugSessionState.Terminating;
-                result = _debuggee;
+                var managedDebuggee = _debuggee as CorDebugDebuggee;
+                bool resumeAfterFailure = false;
+                try
+                {
+                    if (managedDebuggee is not null)
+                    {
+                        resumeAfterFailure = managedDebuggee.PrepareForDetach();
+                    }
+
+                    _sourceBreakpoints.ResetRuntimeBindings();
+                    _functionBreakpoints.ResetRuntimeBindings();
+                    _instructionBreakpoints.ResetRuntimeBindings();
+                    _debuggee.Detach();
+                }
+                catch
+                {
+                    managedDebuggee?.CancelDetach(resumeAfterFailure);
+                    _state = previousState;
+                    throw;
+                }
+
                 return ValueTask.CompletedTask;
             },
-            cancellationToken).ConfigureAwait(false);
-        return result!;
+            cancellationToken);
+    }
+
+    private ValueTask CompleteDetachCoreAsync(CancellationToken cancellationToken)
+    {
+        _ = cancellationToken;
+        _state = DebugSessionState.Terminated;
+        return ValueTask.CompletedTask;
     }
 
     private async Task StopObservingDebuggeeAsync()

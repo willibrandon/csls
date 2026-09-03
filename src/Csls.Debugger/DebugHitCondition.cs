@@ -103,4 +103,9 @@ internal sealed class DebugHitCondition
             _ => false
         };
     }
+
+    /// <summary>
+    /// Resets the predicate for a newly activated target.
+    /// </summary>
+    internal void Reset() => _hitCount = 0;
 }

@@ -142,6 +142,16 @@ public sealed partial class McpDebuggerLifecycleTests
             cancellationToken).ConfigureAwait(false);
         await AssertToolErrorAsync(
             client,
+            "debug_session_restart",
+            new Dictionary<string, object?>
+            {
+                ["debugSession"] = debugSession,
+                ["stopGeneration"] = generation
+            },
+            "debugger_control_denied",
+            cancellationToken).ConfigureAwait(false);
+        await AssertToolErrorAsync(
+            client,
             "debug_source_breakpoints_set",
             new Dictionary<string, object?>
             {

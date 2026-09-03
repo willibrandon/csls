@@ -103,6 +103,11 @@ internal sealed partial class InstructionBreakpointManager : IDisposable
         ObjectDisposedException.ThrowIf(_disposed != 0, this);
         ReleaseBindings();
         ReleaseModules();
+        foreach (InstructionBreakpointDefinition definition in _definitions)
+        {
+            definition.BindingMessage = null;
+            definition.HitCondition?.Reset();
+        }
     }
 
     /// <inheritdoc />

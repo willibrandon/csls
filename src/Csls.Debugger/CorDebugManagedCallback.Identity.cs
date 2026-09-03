@@ -38,6 +38,7 @@ internal sealed partial class CorDebugManagedCallback : IDisposable
     private readonly TaskCompletionSource _exitProcessCompletion =
         new(TaskCreationOptions.RunContinuationsAsynchronously);
     private nint _instance;
+    private int _detaching;
 
     /// <summary>
     /// Creates one callback object with an independently reference-counted native identity.

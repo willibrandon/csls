@@ -26,6 +26,11 @@ public static class DebuggerControlMethods
     public const string Attach = "debugger/attach";
 
     /// <summary>
+    /// Restarts the current debugger target with its activation request.
+    /// </summary>
+    public const string Restart = "debugger/restart";
+
+    /// <summary>
     /// Replaces source breakpoints for one document.
     /// </summary>
     public const string SetSourceBreakpoints = "debugger/setSourceBreakpoints";

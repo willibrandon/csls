@@ -45,6 +45,16 @@ public sealed partial class DebuggerRpcClient : IAsyncDisposable
             cancellationToken);
 
     /// <summary>
+    /// Restarts the current target with its original activation request.
+    /// </summary>
+    /// <param name="cancellationToken">Cancels target shutdown or activation.</param>
+    /// <returns>The replacement target snapshot.</returns>
+    public Task<DebugSessionSnapshot> RestartAsync(CancellationToken cancellationToken) =>
+        GetRpc().InvokeWithCancellationAsync<DebugSessionSnapshot>(
+            DebuggerControlMethods.Restart,
+            cancellationToken: cancellationToken);
+
+    /// <summary>
     /// Replaces source breakpoints for one document.
     /// </summary>
     /// <param name="request">The complete replacement breakpoint set.</param>

@@ -21,11 +21,6 @@ internal sealed partial class DapSession
         try
         {
             _pendingLaunch = DapLaunchOptionsParser.Parse(request.Arguments);
-            await _engineSession.ConfigureSourceOptionsAsync(
-                _pendingLaunch.Options.SourceFileMap,
-                _pendingLaunch.Options.SourceLinkOptions,
-                _pendingLaunch.Options.SymbolOptions,
-                cancellationToken).ConfigureAwait(false);
         }
         catch (Exception exception) when (
             exception is ArgumentException or IOException or UnauthorizedAccessException)
@@ -40,6 +35,7 @@ internal sealed partial class DapSession
         }
 
         _pendingTargetRequest = request;
+        _pendingTargetArguments = request.Arguments.Clone();
         _pendingAttach = null;
         _startMethod = "launch";
         _terminateDebuggeeByDefault = true;
@@ -69,7 +65,7 @@ internal sealed partial class DapSession
             if (_pendingAttach is DapAttachConfiguration attach)
             {
                 await _engineSession
-                    .AttachManagedAsync(attach.ProcessId, cancellationToken)
+                    .AttachManagedAsync(attach.Options, cancellationToken)
                     .ConfigureAwait(false);
             }
             else if (_pendingLaunch!.NoDebug)

@@ -64,6 +64,12 @@ DAP uses standard input and output exclusively for protocol messages. Diagnostic
 text is written to standard error. A concrete `program` is required; project,
 launch-profile, and test discovery belongs to the editor or calling tool.
 
+The adapter advertises the standard DAP `restart` request for launch and attach.
+Restart accepts the client's latest nested launch or attach arguments, retains
+logical breakpoint policy, invalidates runtime handles, and never reuses a stop
+generation. A launch restart replaces and owns a new process; an attach restart
+detaches and reattaches without terminating the independently owned target.
+
 Source and function breakpoints accept DAP `hitCondition` values in the forms
 `N`, `>=N`, and `%N`, where `N` is a positive decimal integer. These forms stop
 on exactly the Nth hit, on the Nth and every later hit, or on every Nth hit,
@@ -229,6 +235,9 @@ worker does not advertise tools that it cannot run.
   and pauses by default.
 - `debug_sessions_list` lists only sessions owned by the current MCP connection.
 - `debug_session_get` reads one session selected by its returned `debugSession`.
+- `debug_session_restart` replaces a stopped launch target or reattaches an attached
+  target while retaining `debugSession` and breakpoint policy. It requires
+  `agentControl: true` and the exact current `stopGeneration`.
 - `debug_session_end` terminates a launched target. It safely detaches an attached
   target unless `terminateAttachedTarget` and the session's explicit
   `agentControl` grant are both true.

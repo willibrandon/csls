@@ -78,12 +78,14 @@ internal sealed partial class SourceBreakpointManager
     {
         ObjectDisposedException.ThrowIf(_disposed != 0, this);
         ReleaseRuntimeBindings();
+        ClearSources();
         foreach (List<SourceBreakpointDefinition> definitions in _definitions.Values)
         {
             foreach (SourceBreakpointDefinition definition in definitions)
             {
                 definition.ResolvedLine = null;
                 definition.ResolvedColumn = null;
+                definition.HitCondition?.Reset();
             }
         }
     }

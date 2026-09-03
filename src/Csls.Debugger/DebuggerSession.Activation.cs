@@ -1,5 +1,3 @@
-using Csls.Debugger.Contracts;
-
 namespace Csls.Debugger;
 
 /// <summary>
@@ -10,19 +8,38 @@ public sealed partial class DebuggerSession
     /// <summary>
     /// Attaches to a running process that has loaded CoreCLR.
     /// </summary>
-    /// <param name="processId">The operating-system process identifier.</param>
+    /// <param name="options">The validated target and runtime options.</param>
     /// <param name="cancellationToken">Cancels runtime activation without terminating the target.</param>
     /// <returns>A task that completes after the process notification is accepted.</returns>
-    public async Task AttachManagedAsync(int processId, CancellationToken cancellationToken)
+    public async Task AttachManagedAsync(
+        DebuggeeAttachOptions options,
+        CancellationToken cancellationToken)
     {
         ObjectDisposedException.ThrowIf(_disposed != 0, this);
-        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(processId);
+        ArgumentNullException.ThrowIfNull(options);
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(options.ProcessId);
         await _lifecycleGate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            await _actor.InvokeAsync(BeginLaunchCoreAsync, cancellationToken).ConfigureAwait(false);
+            await AttachManagedCoreAsync(options, cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            _ = _lifecycleGate.Release();
+        }
+    }
+
+    private async Task AttachManagedCoreAsync(
+        DebuggeeAttachOptions options,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            await _actor.InvokeAsync(
+                token => BeginManagedAttachAsync(options, token),
+                cancellationToken).ConfigureAwait(false);
             _debuggee = await CorDebugDebuggee.AttachAsync(
-                processId,
+                options.ProcessId,
                 _actor,
                 _sourceBreakpoints,
                 _functionBreakpoints,
@@ -38,27 +55,24 @@ public sealed partial class DebuggerSession
         }
         catch
         {
-            if (_debuggee is not null)
-            {
-                await _debuggee.DisposeAsync().ConfigureAwait(false);
-                _debuggee = null;
-            }
-
-            await _actor.InvokeAsync(
-                token =>
-                {
-                    _sourceBreakpoints.ResetRuntimeBindings();
-                    _functionBreakpoints.ResetRuntimeBindings();
-                    _instructionBreakpoints.ResetRuntimeBindings();
-                    return ResetFailedLaunchCoreAsync(token);
-                },
-                CancellationToken.None).ConfigureAwait(false);
+            await ResetFailedManagedLaunchAsync().ConfigureAwait(false);
             throw;
         }
-        finally
-        {
-            _ = _lifecycleGate.Release();
-        }
+    }
+
+    private ValueTask BeginManagedAttachAsync(
+        DebuggeeAttachOptions options,
+        CancellationToken cancellationToken)
+    {
+        _sourceBreakpoints.SetSourceOptions(
+            options.SourceFileMap,
+            options.SourceLinkOptions,
+            options.SymbolOptions);
+        _sourceBreakpoints.SetRuntimeOptions(
+            suppressJitOptimizations: false,
+            options.JustMyCode,
+            options.EnableStepFiltering);
+        return BeginLaunchCoreAsync(cancellationToken);
     }
 
     /// <summary>
@@ -96,18 +110,10 @@ public sealed partial class DebuggerSession
         await _lifecycleGate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            IDebuggeeProcess debuggee = await BeginDetachAsync(cancellationToken)
-                .ConfigureAwait(false);
-            await debuggee.DetachAsync(cancellationToken).ConfigureAwait(false);
+            await DetachDebuggeeAsync(cancellationToken).ConfigureAwait(false);
             await StopObservingDebuggeeAsync().ConfigureAwait(false);
-            await _actor.InvokeAsync(
-                token =>
-                {
-                    _ = token;
-                    _state = DebugSessionState.Terminated;
-                    return ValueTask.CompletedTask;
-                },
-                CancellationToken.None).ConfigureAwait(false);
+            await _actor.InvokeAsync(CompleteDetachCoreAsync, CancellationToken.None)
+                .ConfigureAwait(false);
         }
         finally
         {

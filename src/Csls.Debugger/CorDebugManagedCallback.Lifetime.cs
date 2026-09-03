@@ -32,6 +32,16 @@ internal sealed partial class CorDebugManagedCallback
     internal Task WaitForExitProcessAsync(CancellationToken cancellationToken) =>
         _exitProcessCompletion.Task.WaitAsync(cancellationToken);
 
+    /// <summary>
+    /// Prevents queued runtime callbacks from resuming a target that is being detached.
+    /// </summary>
+    internal void BeginDetach() => Volatile.Write(ref _detaching, 1);
+
+    /// <summary>
+    /// Allows managed callbacks to resume the target after a failed detachment attempt.
+    /// </summary>
+    internal void CancelDetach() => Volatile.Write(ref _detaching, 0);
+
     /// <inheritdoc />
     public void Dispose()
     {

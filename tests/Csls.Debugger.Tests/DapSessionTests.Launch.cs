@@ -43,7 +43,8 @@ public sealed partial class DapSessionTests
         Assert.IsTrue(capabilities.GetProperty("supportsInstructionBreakpoints").GetBoolean());
         Assert.IsTrue(capabilities.GetProperty("supportsStepInTargetsRequest").GetBoolean());
         Assert.IsTrue(capabilities.GetProperty("supportsGotoTargetsRequest").GetBoolean());
-        Assert.HasCount(15, capabilities.EnumerateObject().ToArray());
+        Assert.IsTrue(capabilities.GetProperty("supportsRestartRequest").GetBoolean());
+        Assert.HasCount(16, capabilities.EnumerateObject().ToArray());
 
         string processHost = ResolveTestProcessHost();
         int launchSequence = await client.SendRequestAsync(
