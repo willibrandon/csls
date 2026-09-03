@@ -21,15 +21,15 @@ internal sealed partial class SourceBreakpointManager
             return;
         }
 
-        using var symbols = PortablePdbReader.TryOpen(modulePath);
-        if (symbols is null)
-        {
-            return;
-        }
-
         Dictionary<int, SourceBreakpointLocation> locations;
         try
         {
+            using var symbols = PortablePdbReader.TryOpen(modulePath);
+            if (symbols is null)
+            {
+                return;
+            }
+
             locations = ResolveLocations(symbols.Metadata, definitions);
         }
         catch (Exception exception) when (
