@@ -39,7 +39,7 @@ internal static class CollectibleAssemblyRunner
             Thread.Sleep(10);
         }
 
-        File.WriteAllText(
+        WriteSignalAtomically(
             unloadedSignalPath,
             loadContext.IsAlive ? "retained" : "unloaded");
         WaitForFile(finishSignalPath);
@@ -72,5 +72,12 @@ internal static class CollectibleAssemblyRunner
         {
             Thread.SpinWait(10_000);
         }
+    }
+
+    private static void WriteSignalAtomically(string path, string content)
+    {
+        string temporaryPath = $"{path}.{Guid.NewGuid():N}.tmp";
+        File.WriteAllText(temporaryPath, content);
+        File.Move(temporaryPath, path);
     }
 }

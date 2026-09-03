@@ -10,6 +10,10 @@ namespace Csls.Debugger;
 internal sealed class DebugSymbolReader : IDisposable
 {
     private const int HiddenSequencePointLine = 0x00feefee;
+    private const int MaximumAsyncAwaitCount = 16 * 1024;
+    private const uint MethodDefinitionTokenKind = 0x06000000;
+    private static readonly Guid s_asyncMethodSteppingInformation =
+        new("54FD2AC5-E925-401A-9C2A-F94F171072F8");
     private readonly PortablePdbReader? _portable;
     private readonly WindowsPdbReader? _windows;
 
@@ -235,6 +239,78 @@ internal sealed class DebugSymbolReader : IDisposable
     }
 
     /// <summary>
+    /// Gets the user-authored method that produced a state-machine MoveNext method.
+    /// </summary>
+    /// <param name="methodToken">The candidate state-machine method token.</param>
+    /// <returns>The kickoff method token, or null for an ordinary method.</returns>
+    internal uint? GetStateMachineKickoffMethod(uint methodToken)
+    {
+        if (_windows is not null)
+        {
+            return _windows.GetStateMachineKickoffMethod(methodToken);
+        }
+
+        MetadataReader reader = GetPortableReader().Metadata;
+        int rowNumber = checked((int)(methodToken & 0x00ffffff));
+        if (rowNumber == 0 || rowNumber > reader.MethodDebugInformation.Count)
+        {
+            return null;
+        }
+
+        MethodDefinitionHandle kickoff = reader
+            .GetMethodDebugInformation(
+                MetadataTokens.MethodDebugInformationHandle(rowNumber))
+            .GetStateMachineKickoffMethod();
+        return kickoff.IsNil
+            ? null
+            : checked((uint)MetadataTokens.GetToken(kickoff));
+    }
+
+    /// <summary>
+    /// Finds the next compiler-recorded asynchronous suspension after an IL offset.
+    /// </summary>
+    /// <param name="methodToken">The active state-machine method token.</param>
+    /// <param name="ilOffset">The active IL instruction offset.</param>
+    /// <param name="point">Receives the matching yield and resume locations.</param>
+    /// <returns>True when a later await exists in the active method.</returns>
+    internal bool TryGetNextAsyncAwait(
+        uint methodToken,
+        uint ilOffset,
+        out ManagedAsyncAwaitPoint point)
+    {
+        IReadOnlyList<ManagedAsyncAwaitPoint> points = _windows is not null
+            ? _windows.GetAsyncAwaitPoints(methodToken)
+            : GetPortableAsyncAwaitPoints(methodToken);
+        foreach (ManagedAsyncAwaitPoint candidate in points)
+        {
+            if (ilOffset <= candidate.YieldOffset)
+            {
+                ManagedSequencePoint? resumed = GetSequencePoints(
+                    candidate.ResumeMethodToken).FirstOrDefault(sequencePoint =>
+                        sequencePoint.IlOffset >= candidate.ResumeOffset);
+                if (resumed is not null)
+                {
+                    point = candidate with
+                    {
+                        ResumeStopOffset = checked((uint)resumed.IlOffset)
+                    };
+                    return true;
+                }
+
+                break;
+            }
+
+            if (ilOffset < candidate.ResumeOffset)
+            {
+                break;
+            }
+        }
+
+        point = default;
+        return false;
+    }
+
+    /// <summary>
     /// Releases the selected Portable or Windows PDB owner.
     /// </summary>
     public void Dispose()
@@ -269,6 +345,65 @@ internal sealed class DebugSymbolReader : IDisposable
                     MetadataTokens.MethodDefinitionHandle(row))),
                 reader.GetMethodDebugInformation(handle));
         }
+    }
+
+    private List<ManagedAsyncAwaitPoint> GetPortableAsyncAwaitPoints(
+        uint methodToken)
+    {
+        MetadataReader reader = GetPortableReader().Metadata;
+        int rowNumber = checked((int)(methodToken & 0x00ffffff));
+        if (rowNumber == 0 || rowNumber > reader.MethodDebugInformation.Count)
+        {
+            return [];
+        }
+
+        MethodDefinitionHandle method = MetadataTokens.MethodDefinitionHandle(rowNumber);
+        foreach (CustomDebugInformationHandle handle in reader.GetCustomDebugInformation(method))
+        {
+            CustomDebugInformation information = reader.GetCustomDebugInformation(handle);
+            if (reader.GetGuid(information.Kind) != s_asyncMethodSteppingInformation)
+            {
+                continue;
+            }
+
+            BlobReader blob = reader.GetBlobReader(information.Value);
+            if (blob.RemainingBytes < sizeof(uint))
+            {
+                throw new BadImageFormatException(
+                    "The async stepping record is missing its catch-handler offset.");
+            }
+
+            _ = blob.ReadUInt32();
+            var result = new List<ManagedAsyncAwaitPoint>();
+            while (blob.RemainingBytes > 0)
+            {
+                if (blob.RemainingBytes < 2 * sizeof(uint) ||
+                    result.Count == MaximumAsyncAwaitCount)
+                {
+                    throw new BadImageFormatException(
+                        $"The async stepping record exceeds {MaximumAsyncAwaitCount} entries or is truncated.");
+                }
+
+                uint yieldOffset = blob.ReadUInt32();
+                uint resumeOffset = blob.ReadUInt32();
+                int resumeMethodRow = blob.ReadCompressedInteger();
+                if (resumeMethodRow <= 0 || resumeOffset < yieldOffset)
+                {
+                    throw new BadImageFormatException(
+                        "The async stepping record contains an invalid continuation.");
+                }
+
+                result.Add(new ManagedAsyncAwaitPoint(
+                    yieldOffset,
+                    resumeOffset,
+                    MethodDefinitionTokenKind | checked((uint)resumeMethodRow),
+                    ResumeStopOffset: resumeOffset));
+            }
+
+            return result;
+        }
+
+        return [];
     }
 
     private static string? GetAdjacentSymbolPath(string modulePath)

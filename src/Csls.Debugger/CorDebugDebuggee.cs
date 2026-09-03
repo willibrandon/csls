@@ -31,6 +31,7 @@ internal sealed partial class CorDebugDebuggee : IDebuggeeProcess
     private nint _debugProcess;
     private nint _activeStepper;
     private nint _activeStepperIdentity;
+    private ManagedAsyncStep? _asyncStep;
     private ManagedTargetBreakpoint? _targetBreakpoint;
     private int _nextFrameId;
     private int _nextStepTargetId;

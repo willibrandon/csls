@@ -12,6 +12,23 @@ if (args is ["--debugger-step-fixture", string stepFixturePath])
     return DebuggerStepFixture.Run(stepFixturePath);
 }
 
+if (args is ["--debugger-async-step-fixture", string asyncInitialValue])
+{
+    return await DebuggerAsyncStepFixture.RunAsync(
+        int.Parse(asyncInitialValue, NumberStyles.None, CultureInfo.InvariantCulture))
+        .ConfigureAwait(false);
+}
+
+if (args is ["--debugger-concurrent-async-step-fixture"])
+{
+    return await DebuggerAsyncStepFixture.RunConcurrentAsync().ConfigureAwait(false);
+}
+
+if (args is ["--debugger-iterator-step-fixture"])
+{
+    return DebuggerIteratorStepFixture.Run();
+}
+
 if (args is ["--debugger-step-filtering-fixture", string stepFilteringPath])
 {
     return DebuggerStepFilteringFixture.Run(stepFilteringPath);

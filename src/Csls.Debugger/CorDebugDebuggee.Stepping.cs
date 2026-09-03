@@ -33,7 +33,6 @@ internal sealed partial class CorDebugDebuggee
             targetId,
             generation);
         nint thread = 0;
-        nint stepper = 0;
         try
         {
             thread = GetThread(threadId);
@@ -43,15 +42,12 @@ internal sealed partial class CorDebugDebuggee
                 CreateTargetBreakpoint(target!);
             }
 
-            stepper = CreateStepper(thread);
-            ConfigureStepper(stepper);
-            int stepResult = targetsCall
-                ? StartGuardedTargetStep(stepper, target!)
-                : StartStep(stepper, thread, kind);
-            CorDebugHResult.ThrowIfFailed(stepResult, $"ICorDebugStepper.Step{kind}");
-            _activeStepperIdentity = ComAbi.GetIdentity(stepper);
-            _activeStepper = stepper;
-            stepper = 0;
+            if (!targetsCall && kind != DebugStepKind.Out)
+            {
+                PrepareAsyncStep(threadId, thread, kind);
+            }
+
+            StartRuntimeStep(thread, kind, target);
             ClearFrameHandles();
             CorDebugHResult.ThrowIfFailed(
                 new ICorDebugControllerAbi(_debugProcess).Continue(fIsOutOfBand: 0),
@@ -64,7 +60,6 @@ internal sealed partial class CorDebugDebuggee
         }
         finally
         {
-            ReleaseUnusedStepper(stepper);
             if (thread != 0)
             {
                 _ = ComAbi.Release(thread);
@@ -90,6 +85,7 @@ internal sealed partial class CorDebugDebuggee
 
             ReleaseActiveStepper(deactivate: false);
             ReleaseTargetBreakpoint();
+            ReleaseAsyncStep();
             return true;
         }
         finally
@@ -103,8 +99,33 @@ internal sealed partial class CorDebugDebuggee
     /// </summary>
     internal void CancelStep()
     {
+        ReleaseAsyncStep();
         ReleaseTargetBreakpoint();
         ReleaseActiveStepper(deactivate: true);
+    }
+
+    private void StartRuntimeStep(
+        nint thread,
+        DebugStepKind kind,
+        ManagedStepTargetHandle? target = null)
+    {
+        nint stepper = 0;
+        try
+        {
+            stepper = CreateStepper(thread);
+            ConfigureStepper(stepper);
+            int stepResult = target is null
+                ? StartStep(stepper, thread, kind)
+                : StartGuardedTargetStep(stepper, target);
+            CorDebugHResult.ThrowIfFailed(stepResult, $"ICorDebugStepper.Step{kind}");
+            _activeStepperIdentity = ComAbi.GetIdentity(stepper);
+            _activeStepper = stepper;
+            stepper = 0;
+        }
+        finally
+        {
+            ReleaseUnusedStepper(stepper);
+        }
     }
 
     private ManagedStepTargetHandle? GetStepTarget(

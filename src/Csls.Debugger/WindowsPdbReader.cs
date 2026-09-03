@@ -18,6 +18,7 @@ internal sealed class WindowsPdbReader : IDisposable
     private const int MaximumScopeItemCount = 65_536;
     private const int MaximumSequencePointCount = 1_048_576;
     private const int MaximumSourceBytes = 32 * 1024 * 1024;
+    private const int MaximumAsyncAwaitCount = 16 * 1024;
     private static readonly Guid s_sha1Algorithm =
         new("FF1816EC-AA5E-4D10-87F7-6F4963833460");
     private static readonly Guid s_sha256Algorithm =
@@ -201,6 +202,67 @@ internal sealed class WindowsPdbReader : IDisposable
                 method.GetRootScope(out ISymUnmanagedScope root),
                 "ISymUnmanagedMethod.GetRootScope");
             return ReadLocalScopes(root, ilOffset);
+        }
+        finally
+        {
+            DisposeComObject(method);
+        }
+    }
+
+    /// <summary>
+    /// Gets the user-authored kickoff method for a Windows-PDB async method.
+    /// </summary>
+    /// <param name="methodToken">The candidate async MoveNext method token.</param>
+    /// <returns>The kickoff method token, or null for an ordinary method.</returns>
+    internal uint? GetStateMachineKickoffMethod(uint methodToken)
+    {
+        ISymUnmanagedMethod? method = TryGetMethod(methodToken);
+        if (method is null)
+        {
+            return null;
+        }
+
+        try
+        {
+            ISymUnmanagedAsyncMethod? asyncMethod = method.AsAsyncMethod();
+            return asyncMethod is null
+                ? null
+                : checked((uint)asyncMethod.GetKickoffMethod());
+        }
+        finally
+        {
+            DisposeComObject(method);
+        }
+    }
+
+    /// <summary>
+    /// Reads bounded async yield and resume locations for a Windows-PDB method.
+    /// </summary>
+    /// <param name="methodToken">The async state-machine method token.</param>
+    /// <returns>The compiler-recorded asynchronous stepping locations.</returns>
+    internal IReadOnlyList<ManagedAsyncAwaitPoint> GetAsyncAwaitPoints(uint methodToken)
+    {
+        ISymUnmanagedMethod? method = TryGetMethod(methodToken);
+        if (method is null)
+        {
+            return [];
+        }
+
+        try
+        {
+            ISymUnmanagedAsyncMethod? asyncMethod = method.AsAsyncMethod();
+            if (asyncMethod is null)
+            {
+                return [];
+            }
+
+            SymUnmanagedAsyncStepInfo[] points = [.. asyncMethod.GetAsyncStepInfos()];
+            ValidateCount(points.Length, MaximumAsyncAwaitCount, "async-await");
+            return [.. points.Select(static point => new ManagedAsyncAwaitPoint(
+                checked((uint)point.YieldOffset),
+                checked((uint)point.ResumeOffset),
+                checked((uint)point.ResumeMethod),
+                checked((uint)point.ResumeOffset)))];
         }
         finally
         {

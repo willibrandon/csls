@@ -83,26 +83,19 @@ internal static class ManagedSymbolFrameResolver
         uint ilOffset,
         string fallbackName)
     {
-        int rowNumber = checked((int)(methodToken & 0x00ffffff));
         string displayName = fallbackName;
+        MetadataReader? metadata = null;
         using PEReader? peReader = module.OpenPeReader();
         if (peReader is not null)
         {
-            MetadataReader metadata = peReader.GetMetadataReader();
+            metadata = peReader.GetMetadataReader();
+            int rowNumber = checked((int)(methodToken & 0x00ffffff));
             if (rowNumber == 0 || rowNumber > metadata.MethodDefinitions.Count)
             {
                 return Unknown(fallbackName, module);
             }
 
-            MethodDefinitionHandle methodHandle = MetadataTokens.MethodDefinitionHandle(rowNumber);
-            MethodDefinition method = metadata.GetMethodDefinition(methodHandle);
-            TypeDefinition declaringType = metadata.GetTypeDefinition(method.GetDeclaringType());
-            string typeName = metadata.GetString(declaringType.Name);
-            string typeNamespace = metadata.GetString(declaringType.Namespace);
-            string methodName = metadata.GetString(method.Name);
-            displayName = string.IsNullOrEmpty(typeNamespace)
-                ? $"{typeName}.{methodName}"
-                : $"{typeNamespace}.{typeName}.{methodName}";
+            displayName = ResolveMethodName(metadata, methodToken, fallbackName);
         }
 
         using DebugSymbolReader? symbols = module.SymbolImage is not null
@@ -113,6 +106,12 @@ internal static class ManagedSymbolFrameResolver
         if (symbols is null)
         {
             return Unknown(displayName, module);
+        }
+
+        if (metadata is not null &&
+            symbols.GetStateMachineKickoffMethod(methodToken) is uint kickoffMethod)
+        {
+            displayName = ResolveMethodName(metadata, kickoffMethod, displayName);
         }
 
         ManagedSequencePoint? selected = null;
@@ -145,6 +144,28 @@ internal static class ManagedSymbolFrameResolver
             Line = selected.StartLine,
             Column = selected.StartColumn
         };
+    }
+
+    private static string ResolveMethodName(
+        MetadataReader metadata,
+        uint methodToken,
+        string fallbackName)
+    {
+        int rowNumber = checked((int)(methodToken & 0x00ffffff));
+        if (rowNumber == 0 || rowNumber > metadata.MethodDefinitions.Count)
+        {
+            return fallbackName;
+        }
+
+        MethodDefinition method = metadata.GetMethodDefinition(
+            MetadataTokens.MethodDefinitionHandle(rowNumber));
+        TypeDefinition declaringType = metadata.GetTypeDefinition(method.GetDeclaringType());
+        string typeName = metadata.GetString(declaringType.Name);
+        string typeNamespace = metadata.GetString(declaringType.Namespace);
+        string methodName = metadata.GetString(method.Name);
+        return string.IsNullOrEmpty(typeNamespace)
+            ? $"{typeName}.{methodName}"
+            : $"{typeNamespace}.{typeName}.{methodName}";
     }
 
     private static ManagedFrameLocation Unknown(

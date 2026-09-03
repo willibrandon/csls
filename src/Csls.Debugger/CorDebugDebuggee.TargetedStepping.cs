@@ -19,6 +19,14 @@ internal sealed partial class CorDebugDebuggee
     {
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(threadId);
         ArgumentOutOfRangeException.ThrowIfZero(breakpoint);
+        ManagedTargetBreakpointDecision asyncDecision = CompleteAsyncBreakpoint(
+            threadId,
+            breakpoint);
+        if (asyncDecision != ManagedTargetBreakpointDecision.Unrecognized)
+        {
+            return asyncDecision;
+        }
+
         ManagedTargetBreakpoint? target = _targetBreakpoint;
         if (target is null || target.ThreadId != threadId)
         {
