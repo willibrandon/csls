@@ -8,7 +8,7 @@ namespace Csls.Debugger.Control;
 /// <summary>
 /// Invokes one explicitly selected private debugger control session.
 /// </summary>
-public sealed class DebuggerRpcClient : IAsyncDisposable
+public sealed partial class DebuggerRpcClient : IAsyncDisposable
 {
     private const int MaximumMessageBytes = 4 * 1024 * 1024;
     private readonly string _socketPath;

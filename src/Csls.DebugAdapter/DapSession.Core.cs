@@ -119,6 +119,7 @@ internal sealed partial class DapSession : IDebuggerSessionObserver, IAsyncDispo
                 writer.WriteBoolean("supportsModulesRequest", true);
                 writer.WriteBoolean("supportsLoadedSourcesRequest", true);
                 writer.WriteBoolean("supportsBreakpointLocationsRequest", true);
+                writer.WriteBoolean("supportsFunctionBreakpoints", true);
                 writer.WriteStartArray("exceptionBreakpointFilters");
                 WriteExceptionBreakpointFilter(
                     writer,

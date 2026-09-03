@@ -43,6 +43,16 @@ public interface IDebuggerControlTarget
         CancellationToken cancellationToken);
 
     /// <summary>
+    /// Replaces every managed function breakpoint.
+    /// </summary>
+    /// <param name="request">The complete replacement set.</param>
+    /// <param name="cancellationToken">Cancels breakpoint binding.</param>
+    /// <returns>The current ordered breakpoint states.</returns>
+    Task<IReadOnlyList<DebugFunctionBreakpointInfo>> SetFunctionBreakpointsAsync(
+        DebugFunctionBreakpointSetRequest request,
+        CancellationToken cancellationToken);
+
+    /// <summary>
     /// Pauses the target.
     /// </summary>
     /// <param name="cancellationToken">Cancels the request.</param>

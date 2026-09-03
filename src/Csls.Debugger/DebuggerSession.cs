@@ -12,6 +12,7 @@ public sealed partial class DebuggerSession : IAsyncDisposable
     private readonly DebuggerSessionActor _actor = new();
     private readonly SemaphoreSlim _lifecycleGate = new(1, 1);
     private readonly SourceBreakpointManager _sourceBreakpoints;
+    private readonly FunctionBreakpointManager _functionBreakpoints;
     private IDebuggeeProcess? _debuggee;
     private Task? _debuggeeLifetime;
     private CancellationTokenSource? _debuggeeObservationCancellation;
@@ -34,6 +35,9 @@ public sealed partial class DebuggerSession : IAsyncDisposable
         _sourceBreakpoints = new SourceBreakpointManager(
             (breakpoint, cancellationToken) =>
                 _observer.OnBreakpointChangedAsync(breakpoint, cancellationToken));
+        _functionBreakpoints = new FunctionBreakpointManager(
+            (breakpoint, cancellationToken) =>
+                _observer.OnFunctionBreakpointChangedAsync(breakpoint, cancellationToken));
     }
 
     /// <summary>
@@ -135,6 +139,7 @@ public sealed partial class DebuggerSession : IAsyncDisposable
                     {
                         _ = token;
                         _sourceBreakpoints.Dispose();
+                        _functionBreakpoints.Dispose();
                         return ValueTask.CompletedTask;
                     },
                     CancellationToken.None).ConfigureAwait(false);
@@ -145,6 +150,7 @@ public sealed partial class DebuggerSession : IAsyncDisposable
             else
             {
                 _sourceBreakpoints.Dispose();
+                _functionBreakpoints.Dispose();
             }
         }
         finally
@@ -238,11 +244,15 @@ public sealed partial class DebuggerSession : IAsyncDisposable
 
     private ValueTask HandleRuntimeBreakpointCoreAsync(
         int threadId,
+        DebugBreakpointKind kind,
         CancellationToken cancellationToken)
     {
+        string reason = kind == DebugBreakpointKind.Function
+            ? "function breakpoint"
+            : "breakpoint";
         if (_state == DebugSessionState.Starting)
         {
-            _pendingStop = new PendingDebugStop("breakpoint", threadId, Exception: null);
+            _pendingStop = new PendingDebugStop(reason, threadId, Exception: null);
             return ValueTask.CompletedTask;
         }
 
@@ -257,7 +267,7 @@ public sealed partial class DebuggerSession : IAsyncDisposable
             managedDebuggee.CancelStep();
         }
 
-        return EnterStoppedStateAsync("breakpoint", threadId, cancellationToken);
+        return EnterStoppedStateAsync(reason, threadId, cancellationToken);
     }
 
     private async ValueTask<bool> HandleRuntimeStepCoreAsync(

@@ -168,13 +168,28 @@ internal sealed partial class CorDebugManagedCallback
         nint breakpoint,
         CancellationToken cancellationToken)
     {
-        if (thread == 0 || breakpoint == 0 || !_sourceBreakpoints.Contains(breakpoint))
+        if (thread == 0 || breakpoint == 0)
+        {
+            return true;
+        }
+
+        DebugBreakpointKind kind;
+        if (_sourceBreakpoints.Contains(breakpoint))
+        {
+            kind = DebugBreakpointKind.Source;
+        }
+        else if (_functionBreakpoints.Contains(breakpoint))
+        {
+            kind = DebugBreakpointKind.Function;
+        }
+        else
         {
             return true;
         }
 
         uint threadId = GetThreadId(thread);
-        await _breakpointStopped(checked((int)threadId), cancellationToken).ConfigureAwait(false);
+        await _breakpointStopped(checked((int)threadId), kind, cancellationToken)
+            .ConfigureAwait(false);
         return false;
     }
 
@@ -211,6 +226,7 @@ internal sealed partial class CorDebugManagedCallback
         CancellationToken cancellationToken)
     {
         await _sourceBreakpoints.LoadModuleAsync(module, cancellationToken).ConfigureAwait(false);
+        await _functionBreakpoints.LoadModuleAsync(module, cancellationToken).ConfigureAwait(false);
         return true;
     }
 
@@ -219,6 +235,8 @@ internal sealed partial class CorDebugManagedCallback
         CancellationToken cancellationToken)
     {
         await _sourceBreakpoints.UnloadModuleAsync(module, cancellationToken)
+            .ConfigureAwait(false);
+        await _functionBreakpoints.UnloadModuleAsync(module, cancellationToken)
             .ConfigureAwait(false);
         return true;
     }

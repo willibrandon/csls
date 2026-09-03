@@ -16,7 +16,7 @@ internal sealed partial class CorDebugDebuggee : IDebuggeeProcess
     private readonly TextReader _standardOutput;
     private readonly TextReader _standardError;
     private readonly Process _process;
-    private readonly Task<int>? _unixExitCode;
+    private readonly UnixChildExitMonitor? _unixExitMonitor;
     private readonly bool _ownsProcess;
     private readonly Dictionary<(int ThreadId, int FrameIndex), ManagedFrameHandle> _frames = [];
     private readonly Dictionary<(int FrameId, ManagedScopeKind Kind), ManagedScopeHandle> _scopes = [];
@@ -37,7 +37,7 @@ internal sealed partial class CorDebugDebuggee : IDebuggeeProcess
         CorDebugRuntimeStartupRegistration registration,
         DbgShimStandardStreams? standardStreams,
         Process process,
-        Task<int>? unixExitCode,
+        UnixChildExitMonitor? unixExitMonitor,
         bool ownsProcess,
         CorDebugActivationResult activation)
     {
@@ -52,7 +52,7 @@ internal sealed partial class CorDebugDebuggee : IDebuggeeProcess
             ? TextReader.Null
             : CreateReader(standardStreams.StandardError);
         _process = process;
-        _unixExitCode = unixExitCode;
+        _unixExitMonitor = unixExitMonitor;
         _ownsProcess = ownsProcess;
         _corDebug = activation.CorDebug;
         _debugProcess = activation.Process;
@@ -83,9 +83,10 @@ internal sealed partial class CorDebugDebuggee : IDebuggeeProcess
     public async Task<int> WaitForExitAsync(CancellationToken cancellationToken)
     {
         int exitCode;
-        if (_unixExitCode is not null)
+        if (_unixExitMonitor is not null)
         {
-            exitCode = await _unixExitCode.WaitAsync(cancellationToken).ConfigureAwait(false);
+            exitCode = await _unixExitMonitor.WaitAsync(cancellationToken)
+                .ConfigureAwait(false);
         }
         else
         {
@@ -99,7 +100,7 @@ internal sealed partial class CorDebugDebuggee : IDebuggeeProcess
 
     /// <inheritdoc />
     public Task TerminateAsync(CancellationToken cancellationToken) =>
-        TerminateProcessAsync(_process, cancellationToken);
+        TerminateProcessAsync(_process, _unixExitMonitor, cancellationToken);
 
     /// <inheritdoc />
     public async Task DetachAsync(CancellationToken cancellationToken)
@@ -134,7 +135,8 @@ internal sealed partial class CorDebugDebuggee : IDebuggeeProcess
         {
             if (_ownsProcess)
             {
-                await TerminateProcessAsync(_process, CancellationToken.None).ConfigureAwait(false);
+                await TerminateProcessAsync(_process, _unixExitMonitor, CancellationToken.None)
+                    .ConfigureAwait(false);
                 await _managedCallback.WaitForExitProcessAsync(CancellationToken.None)
                     .ConfigureAwait(false);
             }
@@ -267,30 +269,6 @@ internal sealed partial class CorDebugDebuggee : IDebuggeeProcess
         {
             ReleaseRuntimeReferences(corDebug, debugProcess);
         }
-    }
-
-    private static int GetExitCode(Process process)
-    {
-        try
-        {
-            return process.ExitCode;
-        }
-        catch (InvalidOperationException)
-        {
-            return 0;
-        }
-    }
-
-    private static async Task TerminateProcessAsync(
-        Process process,
-        CancellationToken cancellationToken)
-    {
-        if (!process.HasExited)
-        {
-            process.Kill(entireProcessTree: true);
-        }
-
-        await process.WaitForExitAsync(cancellationToken).ConfigureAwait(false);
     }
 
     private static void ValidateOptions(DebuggeeLaunchOptions options)

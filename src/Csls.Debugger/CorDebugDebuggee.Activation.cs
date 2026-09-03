@@ -15,6 +15,7 @@ internal sealed partial class CorDebugDebuggee
     /// <param name="options">The validated target invocation.</param>
     /// <param name="actor">The session actor that owns runtime calls and callbacks.</param>
     /// <param name="sourceBreakpoints">The session source-breakpoint owner.</param>
+    /// <param name="functionBreakpoints">The session function-breakpoint owner.</param>
     /// <param name="breakpointStopped">The ordered runtime-breakpoint stop callback.</param>
     /// <param name="stepCompleted">The ordered runtime-step completion callback.</param>
     /// <param name="exceptionRaised">The ordered managed-exception callback.</param>
@@ -24,7 +25,8 @@ internal sealed partial class CorDebugDebuggee
         DebuggeeLaunchOptions options,
         DebuggerSessionActor actor,
         SourceBreakpointManager sourceBreakpoints,
-        Func<int, CancellationToken, ValueTask> breakpointStopped,
+        FunctionBreakpointManager functionBreakpoints,
+        Func<int, DebugBreakpointKind, CancellationToken, ValueTask> breakpointStopped,
         Func<int, nint, int, CancellationToken, ValueTask<bool>> stepCompleted,
         Func<int, nint, DebugExceptionStage, CancellationToken, ValueTask<bool>> exceptionRaised,
         CancellationToken cancellationToken)
@@ -32,6 +34,7 @@ internal sealed partial class CorDebugDebuggee
         ArgumentNullException.ThrowIfNull(options);
         ArgumentNullException.ThrowIfNull(actor);
         ArgumentNullException.ThrowIfNull(sourceBreakpoints);
+        ArgumentNullException.ThrowIfNull(functionBreakpoints);
         ArgumentNullException.ThrowIfNull(breakpointStopped);
         ArgumentNullException.ThrowIfNull(stepCompleted);
         ArgumentNullException.ThrowIfNull(exceptionRaised);
@@ -47,7 +50,7 @@ internal sealed partial class CorDebugDebuggee
         Process? process = null;
         CorDebugManagedCallback? managedCallback = null;
         CorDebugRuntimeStartupRegistration? registration = null;
-        Task<int>? unixExitCode = null;
+        UnixChildExitMonitor? unixExitMonitor = null;
         nint corDebug = 0;
         nint debugProcess = 0;
         bool ownsActivationGate = false;
@@ -71,12 +74,13 @@ internal sealed partial class CorDebugDebuggee
             process = Process.GetProcessById(checked((int)processId));
             if (!OperatingSystem.IsWindows())
             {
-                unixExitCode = UnixChildExitMonitor.StartAsync(processId);
+                unixExitMonitor = UnixChildExitMonitor.Start(processId);
             }
 
             managedCallback = new CorDebugManagedCallback(
                 actor,
                 sourceBreakpoints,
+                functionBreakpoints,
                 breakpointStopped,
                 stepCompleted,
                 exceptionRaised);
@@ -115,13 +119,13 @@ internal sealed partial class CorDebugDebuggee
                 registration,
                 standardStreamsOwner.Detach(),
                 process,
-                unixExitCode,
+                unixExitMonitor,
                 ownsProcess: true,
                 activation);
             managedCallback = null;
             registration = null;
             process = null;
-            unixExitCode = null;
+            unixExitMonitor = null;
             corDebug = 0;
             debugProcess = 0;
             return result;
@@ -135,13 +139,9 @@ internal sealed partial class CorDebugDebuggee
 
             if (process is not null)
             {
-                await TerminateProcessAsync(process, CancellationToken.None).ConfigureAwait(false);
+                await TerminateProcessAsync(process, unixExitMonitor, CancellationToken.None)
+                    .ConfigureAwait(false);
                 process.Dispose();
-            }
-
-            if (unixExitCode is not null)
-            {
-                _ = await unixExitCode.ConfigureAwait(false);
             }
 
             if (corDebug != 0 && managedCallback is not null)
@@ -166,6 +166,7 @@ internal sealed partial class CorDebugDebuggee
     /// <param name="processId">The operating-system process identifier.</param>
     /// <param name="actor">The session actor that owns runtime calls and callbacks.</param>
     /// <param name="sourceBreakpoints">The session source-breakpoint owner.</param>
+    /// <param name="functionBreakpoints">The session function-breakpoint owner.</param>
     /// <param name="breakpointStopped">The ordered runtime-breakpoint stop callback.</param>
     /// <param name="stepCompleted">The ordered runtime-step completion callback.</param>
     /// <param name="exceptionRaised">The ordered managed-exception callback.</param>
@@ -175,7 +176,8 @@ internal sealed partial class CorDebugDebuggee
         int processId,
         DebuggerSessionActor actor,
         SourceBreakpointManager sourceBreakpoints,
-        Func<int, CancellationToken, ValueTask> breakpointStopped,
+        FunctionBreakpointManager functionBreakpoints,
+        Func<int, DebugBreakpointKind, CancellationToken, ValueTask> breakpointStopped,
         Func<int, nint, int, CancellationToken, ValueTask<bool>> stepCompleted,
         Func<int, nint, DebugExceptionStage, CancellationToken, ValueTask<bool>> exceptionRaised,
         CancellationToken cancellationToken)
@@ -183,6 +185,7 @@ internal sealed partial class CorDebugDebuggee
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(processId);
         ArgumentNullException.ThrowIfNull(actor);
         ArgumentNullException.ThrowIfNull(sourceBreakpoints);
+        ArgumentNullException.ThrowIfNull(functionBreakpoints);
         ArgumentNullException.ThrowIfNull(breakpointStopped);
         ArgumentNullException.ThrowIfNull(stepCompleted);
         ArgumentNullException.ThrowIfNull(exceptionRaised);
@@ -213,6 +216,7 @@ internal sealed partial class CorDebugDebuggee
             managedCallback = new CorDebugManagedCallback(
                 actor,
                 sourceBreakpoints,
+                functionBreakpoints,
                 breakpointStopped,
                 stepCompleted,
                 exceptionRaised);
@@ -245,7 +249,7 @@ internal sealed partial class CorDebugDebuggee
                 registration,
                 standardStreams: null,
                 process,
-                unixExitCode: null,
+                unixExitMonitor: null,
                 ownsProcess: false,
                 activation);
             managedCallback = null;

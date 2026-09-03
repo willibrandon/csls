@@ -5,7 +5,7 @@ namespace Csls.Debugger.Control;
 /// <summary>
 /// Owns one protocol-neutral debugger session exposed through private local RPC.
 /// </summary>
-public sealed class DebuggerControlService :
+public sealed partial class DebuggerControlService :
     IDebuggerControlTarget,
     IDebuggerSessionObserver,
     IAsyncDisposable

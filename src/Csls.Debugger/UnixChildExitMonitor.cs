@@ -6,25 +6,43 @@ namespace Csls.Debugger;
 /// <summary>
 /// Reaps a dbgshim-created Unix child and preserves its real exit status.
 /// </summary>
-internal static partial class UnixChildExitMonitor
+internal sealed partial class UnixChildExitMonitor
 {
     private const int InterruptedError = 4;
+    private readonly Task<int> _exitCode;
+
+    private UnixChildExitMonitor(int processId)
+    {
+        _exitCode = Task.Factory.StartNew(
+            () => WaitForExit(processId),
+            CancellationToken.None,
+            TaskCreationOptions.LongRunning,
+            TaskScheduler.Default);
+    }
 
     /// <summary>
     /// Starts a dedicated blocking wait before the CoreCLR transport poller can reap the child.
     /// </summary>
     /// <param name="processId">The direct child process identifier returned by dbgshim.</param>
-    /// <returns>A task containing the process exit code or signal-derived status.</returns>
-    internal static Task<int> StartAsync(uint processId)
+    /// <returns>The sole child-reaping owner.</returns>
+    internal static UnixChildExitMonitor Start(uint processId)
     {
         ArgumentOutOfRangeException.ThrowIfZero(processId);
-        int checkedProcessId = checked((int)processId);
-        return Task.Factory.StartNew(
-            () => WaitForExit(checkedProcessId),
-            CancellationToken.None,
-            TaskCreationOptions.LongRunning,
-            TaskScheduler.Default);
+        return new UnixChildExitMonitor(checked((int)processId));
     }
+
+    /// <summary>
+    /// Gets whether the child has already been reaped.
+    /// </summary>
+    internal bool IsCompleted => _exitCode.IsCompleted;
+
+    /// <summary>
+    /// Waits for the owned child and returns its decoded exit status.
+    /// </summary>
+    /// <param name="cancellationToken">Cancels waiting without abandoning child ownership.</param>
+    /// <returns>The process exit code or signal-derived status.</returns>
+    internal Task<int> WaitAsync(CancellationToken cancellationToken) =>
+        _exitCode.WaitAsync(cancellationToken);
 
     private static int WaitForExit(int processId)
     {

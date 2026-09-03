@@ -24,7 +24,9 @@ internal sealed partial class CorDebugManagedCallback : IDisposable
     private static readonly nint s_callback4Vtable = CreateCallback4Vtable();
     private readonly DebuggerSessionActor _actor;
     private readonly SourceBreakpointManager _sourceBreakpoints;
-    private readonly Func<int, CancellationToken, ValueTask> _breakpointStopped;
+    private readonly FunctionBreakpointManager _functionBreakpoints;
+    private readonly Func<int, DebugBreakpointKind, CancellationToken, ValueTask>
+        _breakpointStopped;
     private readonly Func<int, nint, int, CancellationToken, ValueTask<bool>> _stepCompleted;
     private readonly Func<int, nint, DebugExceptionStage, CancellationToken, ValueTask<bool>>
         _exceptionRaised;
@@ -39,23 +41,27 @@ internal sealed partial class CorDebugManagedCallback : IDisposable
     /// </summary>
     /// <param name="actor">The engine actor that owns callback continuation.</param>
     /// <param name="sourceBreakpoints">The source-breakpoint binding owner.</param>
-    /// <param name="breakpointStopped">The ordered source-breakpoint stop callback.</param>
+    /// <param name="functionBreakpoints">The function-breakpoint binding owner.</param>
+    /// <param name="breakpointStopped">The ordered runtime-breakpoint stop callback.</param>
     /// <param name="stepCompleted">The ordered source-step completion callback.</param>
     /// <param name="exceptionRaised">The ordered managed-exception callback.</param>
     internal unsafe CorDebugManagedCallback(
         DebuggerSessionActor actor,
         SourceBreakpointManager sourceBreakpoints,
-        Func<int, CancellationToken, ValueTask> breakpointStopped,
+        FunctionBreakpointManager functionBreakpoints,
+        Func<int, DebugBreakpointKind, CancellationToken, ValueTask> breakpointStopped,
         Func<int, nint, int, CancellationToken, ValueTask<bool>> stepCompleted,
         Func<int, nint, DebugExceptionStage, CancellationToken, ValueTask<bool>> exceptionRaised)
     {
         ArgumentNullException.ThrowIfNull(actor);
         ArgumentNullException.ThrowIfNull(sourceBreakpoints);
+        ArgumentNullException.ThrowIfNull(functionBreakpoints);
         ArgumentNullException.ThrowIfNull(breakpointStopped);
         ArgumentNullException.ThrowIfNull(stepCompleted);
         ArgumentNullException.ThrowIfNull(exceptionRaised);
         _actor = actor;
         _sourceBreakpoints = sourceBreakpoints;
+        _functionBreakpoints = functionBreakpoints;
         _breakpointStopped = breakpointStopped;
         _stepCompleted = stepCompleted;
         _exceptionRaised = exceptionRaised;

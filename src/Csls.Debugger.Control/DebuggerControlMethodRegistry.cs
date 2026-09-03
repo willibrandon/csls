@@ -38,6 +38,11 @@ internal static class DebuggerControlMethodRegistry
             DebuggerControlMethods.SetSourceBreakpoints,
             new Func<DebugSourceBreakpointSetRequest, CancellationToken,
                 Task<IReadOnlyList<DebugSourceBreakpointInfo>>>(target.SetSourceBreakpointsAsync));
+        AddParameterObjectMethod(
+            rpc,
+            DebuggerControlMethods.SetFunctionBreakpoints,
+            new Func<DebugFunctionBreakpointSetRequest, CancellationToken,
+                Task<IReadOnlyList<DebugFunctionBreakpointInfo>>>(target.SetFunctionBreakpointsAsync));
         rpc.AddLocalRpcMethod(
             DebuggerControlMethods.Pause,
             new Func<CancellationToken, Task<DebugSessionSnapshot>>(target.PauseAsync));

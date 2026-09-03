@@ -32,12 +32,13 @@ public sealed partial class DapSessionTests
         Assert.IsTrue(capabilities.GetProperty("supportsLoadedSourcesRequest").GetBoolean());
         Assert.IsTrue(
             capabilities.GetProperty("supportsBreakpointLocationsRequest").GetBoolean());
+        Assert.IsTrue(capabilities.GetProperty("supportsFunctionBreakpoints").GetBoolean());
         Assert.HasCount(
             3,
             capabilities.GetProperty("exceptionBreakpointFilters").EnumerateArray().ToArray());
         Assert.IsTrue(capabilities.GetProperty("supportsExceptionInfoRequest").GetBoolean());
         Assert.IsTrue(capabilities.GetProperty("supportsVariablePaging").GetBoolean());
-        Assert.HasCount(7, capabilities.EnumerateObject().ToArray());
+        Assert.HasCount(8, capabilities.EnumerateObject().ToArray());
 
         string processHost = ResolveTestProcessHost();
         int launchSequence = await client.SendRequestAsync(

@@ -22,11 +22,14 @@ internal static class CorDebugRuntimeActivator
             callbackActor.ConfigureAwait(false);
         using var sourceBreakpoints = new SourceBreakpointManager(
             static (_, _) => ValueTask.CompletedTask);
+        using var functionBreakpoints = new FunctionBreakpointManager(
+            static (_, _) => ValueTask.CompletedTask);
         CorDebugDebuggee debuggee = await CorDebugDebuggee.LaunchAsync(
             options,
             callbackActor,
             sourceBreakpoints,
-            static (_, _) => ValueTask.CompletedTask,
+            functionBreakpoints,
+            static (_, _, _) => ValueTask.CompletedTask,
             static (_, _, _, _) => ValueTask.FromResult(false),
             static (_, _, _, _) => ValueTask.FromResult(false),
             cancellationToken).ConfigureAwait(false);

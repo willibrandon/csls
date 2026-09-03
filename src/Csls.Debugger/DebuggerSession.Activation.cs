@@ -52,6 +52,7 @@ public sealed partial class DebuggerSession
                 options,
                 _actor,
                 _sourceBreakpoints,
+                _functionBreakpoints,
                 HandleRuntimeBreakpointCoreAsync,
                 HandleRuntimeStepCoreAsync,
                 HandleRuntimeExceptionCoreAsync,
@@ -73,6 +74,7 @@ public sealed partial class DebuggerSession
                 token =>
                 {
                     _sourceBreakpoints.ResetRuntimeBindings();
+                    _functionBreakpoints.ResetRuntimeBindings();
                     return ResetFailedLaunchCoreAsync(token);
                 },
                 CancellationToken.None)
@@ -103,6 +105,7 @@ public sealed partial class DebuggerSession
                 processId,
                 _actor,
                 _sourceBreakpoints,
+                _functionBreakpoints,
                 HandleRuntimeBreakpointCoreAsync,
                 HandleRuntimeStepCoreAsync,
                 HandleRuntimeExceptionCoreAsync,
@@ -123,6 +126,7 @@ public sealed partial class DebuggerSession
                 token =>
                 {
                     _sourceBreakpoints.ResetRuntimeBindings();
+                    _functionBreakpoints.ResetRuntimeBindings();
                     return ResetFailedLaunchCoreAsync(token);
                 },
                 CancellationToken.None).ConfigureAwait(false);

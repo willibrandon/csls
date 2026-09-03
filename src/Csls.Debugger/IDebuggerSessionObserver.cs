@@ -58,6 +58,16 @@ public interface IDebuggerSessionObserver
         CancellationToken cancellationToken);
 
     /// <summary>
+    /// Reports that a logical function breakpoint changed binding state.
+    /// </summary>
+    /// <param name="breakpoint">The complete current breakpoint state.</param>
+    /// <param name="cancellationToken">Cancels notification delivery.</param>
+    /// <returns>A task that completes after the notification is accepted.</returns>
+    ValueTask OnFunctionBreakpointChangedAsync(
+        DebugFunctionBreakpointInfo breakpoint,
+        CancellationToken cancellationToken);
+
+    /// <summary>
     /// Reports that debugger execution resumed for every target thread.
     /// </summary>
     /// <param name="cancellationToken">Cancels notification delivery.</param>

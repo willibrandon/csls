@@ -31,6 +31,11 @@ public static class DebuggerControlMethods
     public const string SetSourceBreakpoints = "debugger/setSourceBreakpoints";
 
     /// <summary>
+    /// Replaces every managed function breakpoint.
+    /// </summary>
+    public const string SetFunctionBreakpoints = "debugger/setFunctionBreakpoints";
+
+    /// <summary>
     /// Pauses the managed target.
     /// </summary>
     public const string Pause = "debugger/pause";
