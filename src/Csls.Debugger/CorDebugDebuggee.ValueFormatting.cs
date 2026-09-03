@@ -1,4 +1,5 @@
 using Csls.Debugger.Interop;
+using System.Buffers.Binary;
 using System.Reflection.Metadata;
 using System.Reflection.Metadata.Ecma335;
 using System.Reflection.PortableExecutable;
@@ -41,6 +42,15 @@ internal sealed partial class CorDebugDebuggee
                 TryFormatEnumValue(inspectedValue, exactType, out string enumDisplay))
             {
                 return new ManagedValueDisplay(enumDisplay, type);
+            }
+
+            if (elementType == 0x11 &&
+                hasInspectedValue &&
+                string.Equals(type, "decimal", StringComparison.Ordinal))
+            {
+                return new ManagedValueDisplay(
+                    FormatDecimalValue(inspectedValue, exactType),
+                    type);
             }
 
             if (elementType == 0x11 && IsNullableType(exactType) && hasInspectedValue)
@@ -150,6 +160,11 @@ internal sealed partial class CorDebugDebuggee
             }
 
             string displayName = RemoveGenericArity(name);
+            if (string.Equals(displayName, "System.Decimal", StringComparison.Ordinal))
+            {
+                return "decimal";
+            }
+
             return arguments.Count == 0
                 ? displayName
                 : $"{displayName}<{string.Join(", ", arguments)}>";
@@ -436,5 +451,42 @@ internal sealed partial class CorDebugDebuggee
         }
 
         return result.ToString();
+    }
+
+    private static unsafe ulong ReadIntegralValueBits(nint value, out uint size)
+    {
+        uint runtimeSize = 0;
+        uint* sizeAddress = &runtimeSize;
+        CorDebugHResult.ThrowIfFailed(
+            new ICorDebugValueAbi(value).GetSize((nint)sizeAddress),
+            "ICorDebugValue.GetSize");
+        size = Volatile.Read(ref *sizeAddress);
+        if (size is 0 or > 8)
+        {
+            throw new InvalidOperationException(
+                $"The managed integral value has an unsupported size of {size} bytes.");
+        }
+
+        nint generic = 0;
+        try
+        {
+            generic = ComAbi.QueryInterface(value, ICorDebugGenericValueAbi.InterfaceId);
+            Span<byte> bytes = stackalloc byte[8];
+            fixed (byte* bytesAddress = bytes)
+            {
+                CorDebugHResult.ThrowIfFailed(
+                    new ICorDebugGenericValueAbi(generic).GetValue((nint)bytesAddress),
+                    "ICorDebugGenericValue.GetValue");
+            }
+
+            return BinaryPrimitives.ReadUInt64LittleEndian(bytes);
+        }
+        finally
+        {
+            if (generic != 0)
+            {
+                _ = ComAbi.Release(generic);
+            }
+        }
     }
 }

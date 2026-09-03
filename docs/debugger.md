@@ -201,6 +201,9 @@ their concrete type arguments; arrays include their live dimensions and nullable
 values display either their contained value or `null` without target execution.
 Enums use their actual underlying runtime storage and metadata constants, including
 symbolic decomposition for `[Flags]`; unnamed values retain their numeric display.
+`decimal` values are reconstructed from their 96-bit integer, scale, and sign fields
+inside the debugger process, preserving significant trailing zeroes without invoking
+formatting code in the debuggee.
 
 The frame is explicit when supplied; otherwise the adapter uses the selected
 stopped thread's top managed frame. The same generation-bound read-only operation

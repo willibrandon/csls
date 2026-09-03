@@ -441,6 +441,9 @@ contained value are read directly from the runtime value; presentation must not 
 Enum presentation follows the same rule: the engine reads `value__`, matches metadata
 constants using the exact underlying width, decomposes `[Flags]` deterministically,
 and preserves the numeric representation when no symbolic name exists.
+Decimal presentation reads both current and earlier supported CoreLib layouts,
+validates the 96-bit integer, scale, and sign representation, and formats it in the
+debugger host. It never asks the target to run `System.Decimal` formatting code.
 
 C# and Visual Basic Hot Reload use compiler-produced metadata, IL, and PDB deltas.
 The engine validates rude edits, applies deltas, advances module generations, and

@@ -1,5 +1,4 @@
 using Csls.Debugger.Interop;
-using System.Buffers.Binary;
 using System.Reflection;
 using System.Reflection.Metadata;
 using System.Reflection.Metadata.Ecma335;
@@ -135,46 +134,15 @@ internal sealed partial class CorDebugDebuggee
         }
     }
 
-    private static unsafe ulong ReadEnumStorage(
+    private static ulong ReadEnumStorage(
         nint value,
         out ulong mask,
         out string display)
     {
-        uint size = 0;
-        uint* sizeAddress = &size;
-        CorDebugHResult.ThrowIfFailed(
-            new ICorDebugValueAbi(value).GetSize((nint)sizeAddress),
-            "ICorDebugValue.GetSize");
-        size = Volatile.Read(ref *sizeAddress);
-        if (size is 0 or > 8)
-        {
-            throw new InvalidOperationException(
-                $"The managed enum has an unsupported storage size of {size} bytes.");
-        }
-
-        nint generic = 0;
-        try
-        {
-            generic = ComAbi.QueryInterface(value, ICorDebugGenericValueAbi.InterfaceId);
-            Span<byte> bytes = stackalloc byte[8];
-            fixed (byte* bytesAddress = bytes)
-            {
-                CorDebugHResult.ThrowIfFailed(
-                    new ICorDebugGenericValueAbi(generic).GetValue((nint)bytesAddress),
-                    "ICorDebugGenericValue.GetValue");
-            }
-
-            mask = size == 8 ? ulong.MaxValue : (1UL << checked((int)size * 8)) - 1;
-            display = CorDebugValueFormatter.Format(value).Value;
-            return BinaryPrimitives.ReadUInt64LittleEndian(bytes) & mask;
-        }
-        finally
-        {
-            if (generic != 0)
-            {
-                _ = ComAbi.Release(generic);
-            }
-        }
+        ulong bits = ReadIntegralValueBits(value, out uint size);
+        mask = size == 8 ? ulong.MaxValue : (1UL << checked((int)size * 8)) - 1;
+        display = CorDebugValueFormatter.Format(value).Value;
+        return bits & mask;
     }
 
     private static ulong ReadEnumConstant(MetadataReader metadata, ConstantHandle handle)

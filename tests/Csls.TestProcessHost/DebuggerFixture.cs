@@ -33,6 +33,7 @@ internal static class DebuggerFixture
         var localUnknownMode = (DebuggerFixtureMode)7;
         DebuggerFixtureOptions localOptions = DebuggerFixtureOptions.Read |
             DebuggerFixtureOptions.Execute;
+        decimal localDecimal = -1234.50m;
         Console.Write(announcement);
         Console.Out.Flush();
         while (!File.Exists(path))
@@ -53,6 +54,7 @@ internal static class DebuggerFixture
         GC.KeepAlive(localMode);
         GC.KeepAlive(localUnknownMode);
         GC.KeepAlive(localOptions);
+        GC.KeepAlive(localDecimal);
         return localNumber == 43 && localText == "answer!" ? 0 : 1;
     }
 }

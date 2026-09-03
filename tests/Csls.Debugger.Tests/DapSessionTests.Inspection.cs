@@ -334,6 +334,12 @@ public sealed partial class DapSessionTests
             Assert.AreEqual(
                 "Read | Execute",
                 localsByName["localOptions"].GetProperty("value").GetString());
+            Assert.AreEqual(
+                "-1234.50",
+                localsByName["localDecimal"].GetProperty("value").GetString());
+            Assert.AreEqual(
+                "decimal",
+                localsByName["localDecimal"].GetProperty("type").GetString());
 
             JsonElement evaluatedLocal = await ReadEvaluationAsync(
                 client,
