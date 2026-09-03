@@ -238,7 +238,7 @@ internal sealed partial class CorDebugDebuggee
                 ? StringComparison.OrdinalIgnoreCase
                 : StringComparison.Ordinal;
         DebugVariableInfo? local = EnumerateValues(
-            frame.Pointer,
+            frame,
             ManagedScopeKind.Locals,
             GetVariableNames(frame, ManagedScopeKind.Locals),
             generation,
@@ -253,7 +253,7 @@ internal sealed partial class CorDebugDebuggee
         }
 
         DebugVariableInfo? argument = EnumerateValues(
-            frame.Pointer,
+            frame,
             ManagedScopeKind.Arguments,
             GetVariableNames(frame, ManagedScopeKind.Arguments),
             generation,

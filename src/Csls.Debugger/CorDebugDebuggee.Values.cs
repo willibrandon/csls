@@ -61,7 +61,7 @@ internal sealed partial class CorDebugDebuggee
         ValidateGeneration(variablesReference, scope.Generation, generation);
         ManagedFrameHandle frame = GetFrame(scope.FrameId, generation);
         IReadOnlyDictionary<int, string> names = GetVariableNames(frame, scope.Kind);
-        return EnumerateValues(frame.Pointer, scope.Kind, names, generation, start, count);
+        return EnumerateValues(frame, scope.Kind, names, generation, start, count);
     }
 
     private DebugScopeInfo CreateScope(

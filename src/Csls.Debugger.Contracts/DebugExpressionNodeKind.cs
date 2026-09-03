@@ -31,7 +31,7 @@ public enum DebugExpressionNodeKind
     ElementAccess,
 
     /// <summary>
-    /// Invokes one instance method on its receiver and argument children.
+    /// Invokes one instance or loaded-type static method on its receiver and arguments.
     /// </summary>
     Invocation,
 

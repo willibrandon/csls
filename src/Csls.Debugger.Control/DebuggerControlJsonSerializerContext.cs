@@ -42,6 +42,8 @@ namespace Csls.Debugger.Control;
 [JsonSerializable(typeof(DebuggerResourceChangeEventArgs))]
 [JsonSerializable(typeof(DebugScopeInfo))]
 [JsonSerializable(typeof(DebugScopesRequest))]
+[JsonSerializable(typeof(DebugSetExpressionRequest))]
+[JsonSerializable(typeof(DebugSetVariableRequest))]
 [JsonSerializable(typeof(DebugSessionSnapshot))]
 [JsonSerializable(typeof(DebugSourceBreakpointInfo))]
 [JsonSerializable(typeof(DebugSourceBreakpointRequest))]

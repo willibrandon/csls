@@ -20,7 +20,7 @@ internal sealed partial class CslsMcpDebuggerExecutionTools
         ReadOnly = false,
         UseStructuredContent = true,
         OutputSchemaType = typeof(McpDebugEvaluationResult))]
-    [Description("Execute an explicitly qualified instance method in the target. Requires agentControl and the exact stopGeneration; the method may have arbitrary side effects.")]
+    [Description("Execute an explicitly qualified instance or loaded-type static method in the target. Requires agentControl and the exact stopGeneration; the method may have arbitrary side effects.")]
     public Task<ModelContextProtocol.Protocol.CallToolResult> ExecuteExpressionAsync(
         [Description("Opaque identifier returned by a debugger lifecycle tool.")]
         string debugSession,
@@ -28,7 +28,7 @@ internal sealed partial class CslsMcpDebuggerExecutionTools
         long stopGeneration,
         [Description("Positive generation-bound frame identifier.")]
         int frameId,
-        [Description("Explicitly qualified instance-method call with supported argument values.")]
+        [Description("Explicitly qualified instance or loaded-type static call with supported argument values.")]
         string expression,
         CancellationToken cancellationToken) =>
         McpDebuggerToolResult.RunAsync(() => _broker.ExecuteExpressionAsync(

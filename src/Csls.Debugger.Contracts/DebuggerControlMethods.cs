@@ -121,6 +121,16 @@ public static class DebuggerControlMethods
     public const string ExecuteExpression = "debugger/executeExpression";
 
     /// <summary>
+    /// Assigns one immediate variable-container child.
+    /// </summary>
+    public const string SetVariable = "debugger/setVariable";
+
+    /// <summary>
+    /// Assigns one writable source expression.
+    /// </summary>
+    public const string SetExpression = "debugger/setExpression";
+
+    /// <summary>
     /// Gets a bounded page of managed modules.
     /// </summary>
     public const string GetModules = "debugger/getModules";

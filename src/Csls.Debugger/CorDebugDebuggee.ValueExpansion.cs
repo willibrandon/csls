@@ -36,6 +36,7 @@ internal sealed partial class CorDebugDebuggee
                     return ExpandArray(
                         array,
                         handle.EvaluateName,
+                        handle.FrameId,
                         generation,
                         start,
                         count);
@@ -49,6 +50,7 @@ internal sealed partial class CorDebugDebuggee
             return ExpandObject(
                 value,
                 handle.EvaluateName,
+                handle.FrameId,
                 generation,
                 start,
                 count);

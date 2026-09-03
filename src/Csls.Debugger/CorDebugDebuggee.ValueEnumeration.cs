@@ -9,7 +9,7 @@ namespace Csls.Debugger;
 internal sealed partial class CorDebugDebuggee
 {
     private unsafe List<DebugVariableInfo> EnumerateValues(
-        nint frame,
+        ManagedFrameHandle frame,
         ManagedScopeKind kind,
         IReadOnlyDictionary<int, string> names,
         DebugStopGeneration generation,
@@ -21,7 +21,7 @@ internal sealed partial class CorDebugDebuggee
         nint enumerator = 0;
         try
         {
-            ilFrame = ComAbi.QueryInterface(frame, ICorDebugILFrameAbi.InterfaceId);
+            ilFrame = ComAbi.QueryInterface(frame.Pointer, ICorDebugILFrameAbi.InterfaceId);
             nint* enumeratorAddress = &enumerator;
             var api = new ICorDebugILFrameAbi(ilFrame);
             int enumerateResult = kind == ManagedScopeKind.Arguments
@@ -68,7 +68,8 @@ internal sealed partial class CorDebugDebuggee
                         ManagedValueReferences references = RetainValue(
                             value,
                             generation,
-                            evaluateName);
+                            evaluateName,
+                            frame.Id);
                         result.Add(new DebugVariableInfo(
                             name,
                             display.Value,

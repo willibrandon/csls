@@ -39,7 +39,7 @@ internal sealed partial class CorDebugDebuggee
         {
             if (scalar is not null)
             {
-                SetFunctionArgumentValue(value, argument.Display.Type, scalar);
+                SetManagedPrimitiveValue(value, argument.Display.Type, scalar);
             }
 
             temporaryArguments.Add(value);
@@ -76,7 +76,7 @@ internal sealed partial class CorDebugDebuggee
                     $"type '{type}'.")
             };
 
-    private static unsafe void SetFunctionArgumentValue(
+    private static unsafe void SetManagedPrimitiveValue(
         nint value,
         string type,
         object scalar)
@@ -144,7 +144,7 @@ internal sealed partial class CorDebugDebuggee
                     break;
                 default:
                     throw new NotSupportedException(
-                        $"Managed function evaluation cannot set an argument of type '{type}'.");
+                        $"The debugger cannot set a managed primitive of type '{type}'.");
             }
         }
         finally

@@ -118,6 +118,19 @@ public sealed partial class McpDebuggerLifecycleTests
             },
             "debugger_control_denied",
             cancellationToken).ConfigureAwait(false);
+        await AssertToolErrorAsync(
+            client,
+            "debug_variable_set",
+            new Dictionary<string, object?>
+            {
+                ["debugSession"] = debugSession,
+                ["stopGeneration"] = generation,
+                ["variablesReference"] = locals.GetProperty("variablesReference").GetInt32(),
+                ["name"] = "localNumber",
+                ["value"] = "44"
+            },
+            "debugger_control_denied",
+            cancellationToken).ConfigureAwait(false);
 
         JsonElement modules = await CallAsync(
             client,

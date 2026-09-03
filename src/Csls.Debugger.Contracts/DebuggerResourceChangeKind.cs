@@ -19,5 +19,10 @@ public enum DebuggerResourceChangeKind
     /// <summary>
     /// Breakpoint bindings or managed-exception policies changed.
     /// </summary>
-    Breakpoints = 4
+    Breakpoints = 4,
+
+    /// <summary>
+    /// One or more stopped-state managed values changed.
+    /// </summary>
+    Variables = 8
 }

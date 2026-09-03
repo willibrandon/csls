@@ -210,6 +210,16 @@ assignments, properties, user-defined operators, and implicit `ToString` executi
 rejected. Variables include `evaluateName` only when csls can provide a valid source
 expression for the value.
 
+DAP `setVariable` and `setExpression` apply direct stopped-state writes without
+executing target code. Writable targets are named locals, arguments, instance fields,
+and managed array elements. The assigned value uses the selected frame's same
+side-effect-free C#, Visual Basic, F#, or portable CLR evaluator and currently requires
+an exact CLR primitive, null, or an existing runtime reference of the same displayed
+type. Direct writes preserve the stop generation because they cannot run target code or
+trigger collection, and DAP publishes variable invalidation so aliased views refresh.
+Constructing a replacement object or string and implicit/user-defined conversions remain
+unsupported until they can use the guarded function-evaluation lifecycle.
+
 Assemblies loaded from PE and Portable PDB byte arrays receive the same source
 breakpoint, stack, local-name, stepping, goto, disassembly, and managed-IL
 breakpoint behavior as file-backed assemblies. During launch, csls consumes the
@@ -326,6 +336,10 @@ worker does not advertise tools that it cannot run.
   and cooperatively cancelled execution invalidates old frame and variable handles
   and advances the stop generation. The tool is marked destructive, non-idempotent,
   and open-world because the target method may mutate local or external state.
+- `debug_variable_set` and `debug_expression_set` directly assign a local, argument,
+  instance field, or managed array element using a side-effect-free value expression.
+  Both require `agentControl: true` and the exact `stopGeneration`, return the updated
+  value at that unchanged generation, and publish variable-resource invalidation.
 - `debug_modules_get` returns a bounded module page and validated symbol status.
 - `debug_breakpoints_get` reads every authoritative source, function, managed-IL,
   and managed-exception breakpoint without granting target control. Conditions

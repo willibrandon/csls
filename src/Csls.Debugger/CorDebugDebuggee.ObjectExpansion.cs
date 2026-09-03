@@ -15,6 +15,7 @@ internal sealed partial class CorDebugDebuggee
     private unsafe List<DebugVariableInfo> ExpandObject(
         nint value,
         string? parentEvaluateName,
+        int? frameId,
         DebugStopGeneration generation,
         int start,
         int count)
@@ -39,6 +40,7 @@ internal sealed partial class CorDebugDebuggee
                 metadata,
                 typeToken,
                 parentEvaluateName,
+                frameId,
                 generation,
                 start,
                 count);
@@ -69,6 +71,7 @@ internal sealed partial class CorDebugDebuggee
         MetadataReader metadata,
         uint initialTypeToken,
         string? parentEvaluateName,
+        int? frameId,
         DebugStopGeneration generation,
         int start,
         int count)
@@ -103,6 +106,7 @@ internal sealed partial class CorDebugDebuggee
                             fieldHandle,
                             field,
                             parentEvaluateName,
+                            frameId,
                             generation));
                     }
 
@@ -140,6 +144,7 @@ internal sealed partial class CorDebugDebuggee
         FieldDefinitionHandle fieldHandle,
         FieldDefinition field,
         string? parentEvaluateName,
+        int? frameId,
         DebugStopGeneration generation)
     {
         nint fieldValue = 0;
@@ -166,7 +171,8 @@ internal sealed partial class CorDebugDebuggee
             ManagedValueReferences references = RetainValue(
                 fieldValue,
                 generation,
-                evaluateName);
+                evaluateName,
+                frameId);
             return new DebugVariableInfo(
                 name,
                 display.Value,

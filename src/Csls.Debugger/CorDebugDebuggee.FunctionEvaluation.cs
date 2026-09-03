@@ -361,7 +361,8 @@ internal sealed partial class CorDebugDebuggee
                         ManagedValueReferences references = RetainValue(
                             value,
                             resultGeneration,
-                            evaluateName: null);
+                            evaluateName: null,
+                            frameId: null);
                         result = new DebugEvaluateResult(
                             display.Value,
                             display.Type,

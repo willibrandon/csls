@@ -111,7 +111,9 @@ internal sealed class McpDebuggerSubscriptions
             change.Kind.HasFlag(DebuggerResourceChangeKind.Output) &&
             path.StartsWith("/output/", StringComparison.Ordinal) ||
             change.Kind.HasFlag(DebuggerResourceChangeKind.Breakpoints) &&
-            path.StartsWith("/breakpoints/", StringComparison.Ordinal);
+            path.StartsWith("/breakpoints/", StringComparison.Ordinal) ||
+            change.Kind.HasFlag(DebuggerResourceChangeKind.Variables) &&
+            path.StartsWith("/variables/", StringComparison.Ordinal);
     }
 
     private static bool TryGetSession(string value, out string session)

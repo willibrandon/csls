@@ -59,6 +59,8 @@ internal sealed partial class DapSession
                 writer.WriteBoolean("supportsExceptionInfoRequest", true);
                 writer.WriteBoolean("supportsVariablePaging", true);
                 writer.WriteBoolean("supportsEvaluateForHovers", true);
+                writer.WriteBoolean("supportsSetVariable", true);
+                writer.WriteBoolean("supportsSetExpression", true);
                 writer.WriteBoolean("supportsInvalidatedEvent", true);
                 writer.WriteBoolean("supportsCancelRequest", true);
                 writer.WriteBoolean("supportsReadMemoryRequest", true);

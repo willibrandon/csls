@@ -214,6 +214,23 @@ public sealed partial class DapSessionTests
                     stoppedThreadId,
                     sourcePath,
                     breakpointLine).ConfigureAwait(false);
+                JsonElement assigned = await ReadSetExpressionAsync(
+                    client,
+                    frameId,
+                    "answer",
+                    "43",
+                    success: true,
+                    TestContext.CancellationToken).ConfigureAwait(false);
+                Assert.AreEqual(
+                    "43",
+                    assigned.GetProperty("value").GetString(),
+                    $"Unexpected {project} assignment result.");
+
+                frameId = await AssertStoppedFrameAsync(
+                    client,
+                    stoppedThreadId,
+                    sourcePath,
+                    breakpointLine).ConfigureAwait(false);
                 JsonElement afterInvocation = await ReadEvaluationAsync(
                     client,
                     frameId,
@@ -221,9 +238,9 @@ public sealed partial class DapSessionTests
                     success: true,
                     TestContext.CancellationToken).ConfigureAwait(false);
                 Assert.AreEqual(
-                    "42",
+                    "44",
                     afterInvocation.GetProperty("result").GetString(),
-                    $"Unexpected {project} result after function evaluation.");
+                    $"Unexpected {project} result after assignment.");
             }
 
             await DisconnectAsync(client).ConfigureAwait(false);

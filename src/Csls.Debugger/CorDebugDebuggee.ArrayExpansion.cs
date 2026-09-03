@@ -11,6 +11,7 @@ internal sealed partial class CorDebugDebuggee
     private unsafe List<DebugVariableInfo> ExpandArray(
         nint array,
         string? parentEvaluateName,
+        int? frameId,
         DebugStopGeneration generation,
         int start,
         int count)
@@ -59,7 +60,8 @@ internal sealed partial class CorDebugDebuggee
                 ManagedValueReferences references = RetainValue(
                     element,
                     generation,
-                    evaluateName);
+                    evaluateName,
+                    frameId);
                 result.Add(new DebugVariableInfo(
                     name,
                     display.Value,

@@ -11,7 +11,8 @@ internal sealed partial class CorDebugDebuggee
     private ManagedValueReferences RetainValue(
         nint value,
         DebugStopGeneration generation,
-        string? evaluateName)
+        string? evaluateName,
+        int? frameId)
     {
         if (!IsExpandable(value))
         {
@@ -30,7 +31,11 @@ internal sealed partial class CorDebugDebuggee
                 $"required COM identity: {exception.Message}",
                 exception);
         }
-        if (_valueIdentities.TryGetValue(identity, out ManagedValueHandle? existing))
+        (nint Identity, int? FrameId, string? EvaluateName) key = (
+            identity,
+            frameId,
+            evaluateName);
+        if (_valueIdentities.TryGetValue(key, out ManagedValueHandle? existing))
         {
             _ = ComAbi.Release(identity);
             return new ManagedValueReferences(existing.Id, existing.MemoryReference);
@@ -53,6 +58,7 @@ internal sealed partial class CorDebugDebuggee
         {
             Id = id,
             Generation = generation,
+            FrameId = frameId,
             Pointer = value,
             Identity = identity,
             MemoryReference = memoryReference,
@@ -60,7 +66,7 @@ internal sealed partial class CorDebugDebuggee
             EvaluateName = evaluateName
         };
         _values.Add(handle.Id, handle);
-        _valueIdentities.Add(handle.Identity, handle);
+        _valueIdentities.Add(key, handle);
         if (memoryReference is not null)
         {
             _memoryValues.Add(memoryReference, handle);

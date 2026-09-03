@@ -97,6 +97,72 @@ public sealed partial class McpDebuggerLifecycleTests
         Assert.IsGreaterThan(
             stringGeneration,
             staticResult.GetProperty("stopGeneration").GetInt64());
+        long staticGeneration = staticResult.GetProperty("stopGeneration").GetInt64();
+
+        frame = await GetSourceFrameAsync(
+            client,
+            debugSession,
+            staticGeneration,
+            threadId,
+            sourcePath,
+            cancellationToken).ConfigureAwait(false);
+        JsonElement assignment = await CallAsync(
+            client,
+            "debug_expression_set",
+            new Dictionary<string, object?>
+            {
+                ["debugSession"] = debugSession,
+                ["stopGeneration"] = staticGeneration,
+                ["frameId"] = frame.GetProperty("id").GetInt32(),
+                ["expression"] = "localObject.Number",
+                ["value"] = "50"
+            },
+            cancellationToken).ConfigureAwait(false);
+        Assert.AreEqual(staticGeneration, assignment.GetProperty("stopGeneration").GetInt64());
+        Assert.AreEqual(
+            "50",
+            assignment.GetProperty("variable").GetProperty("value").GetString());
+        JsonElement assignedValue = await CallAsync(
+            client,
+            "debug_evaluate",
+            new Dictionary<string, object?>
+            {
+                ["debugSession"] = debugSession,
+                ["stopGeneration"] = staticGeneration,
+                ["frameId"] = frame.GetProperty("id").GetInt32(),
+                ["expression"] = "localObject.Number"
+            },
+            cancellationToken).ConfigureAwait(false);
+        Assert.AreEqual(
+            "50",
+            assignedValue.GetProperty("evaluation").GetProperty("result").GetString());
+        JsonElement scopes = await CallAsync(
+            client,
+            "debug_scopes_get",
+            new Dictionary<string, object?>
+            {
+                ["debugSession"] = debugSession,
+                ["stopGeneration"] = staticGeneration,
+                ["frameId"] = frame.GetProperty("id").GetInt32()
+            },
+            cancellationToken).ConfigureAwait(false);
+        JsonElement locals = scopes.GetProperty("scopes").EnumerateArray().Single(item =>
+            item.GetProperty("name").GetString() == "Locals");
+        JsonElement variableAssignment = await CallAsync(
+            client,
+            "debug_variable_set",
+            new Dictionary<string, object?>
+            {
+                ["debugSession"] = debugSession,
+                ["stopGeneration"] = staticGeneration,
+                ["variablesReference"] = locals.GetProperty("variablesReference").GetInt32(),
+                ["name"] = "localNumber",
+                ["value"] = "51"
+            },
+            cancellationToken).ConfigureAwait(false);
+        Assert.AreEqual(
+            "51",
+            variableAssignment.GetProperty("variable").GetProperty("value").GetString());
 
         await AssertToolErrorAsync(
             client,
@@ -108,6 +174,19 @@ public sealed partial class McpDebuggerLifecycleTests
             },
             "debugger_stale_generation",
             cancellationToken).ConfigureAwait(false);
+        await AssertToolErrorAsync(
+            client,
+            "debug_expression_set",
+            new Dictionary<string, object?>
+            {
+                ["debugSession"] = debugSession,
+                ["stopGeneration"] = generation,
+                ["frameId"] = frame.GetProperty("id").GetInt32(),
+                ["expression"] = "localObject.Number",
+                ["value"] = "52"
+            },
+            "debugger_stale_generation",
+            cancellationToken).ConfigureAwait(false);
         JsonElement current = await CallAsync(
             client,
             "debug_session_get",
@@ -115,7 +194,7 @@ public sealed partial class McpDebuggerLifecycleTests
             cancellationToken).ConfigureAwait(false);
         Assert.AreEqual("stopped", current.GetProperty("state").GetString());
         Assert.AreEqual(
-            staticResult.GetProperty("stopGeneration").GetInt64(),
+            staticGeneration,
             current.GetProperty("stopGeneration").GetInt64());
         return await AssertExpressionCancellationAsync(
             client,

@@ -18,6 +18,11 @@ internal sealed class ManagedValueHandle
     internal required DebugStopGeneration Generation { get; init; }
 
     /// <summary>
+    /// Gets or initializes the frame context used to evaluate source assignments.
+    /// </summary>
+    internal int? FrameId { get; init; }
+
+    /// <summary>
     /// Gets or initializes the owned ICorDebugValue pointer.
     /// </summary>
     internal required nint Pointer { get; init; }
