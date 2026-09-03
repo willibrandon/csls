@@ -204,6 +204,10 @@ symbolic decomposition for `[Flags]`; unnamed values retain their numeric displa
 `decimal` values are reconstructed from their 96-bit integer, scale, and sign fields
 inside the debugger process, preserving significant trailing zeroes without invoking
 formatting code in the debuggee.
+String and character displays escape quotes, backslashes, NUL, standard control
+characters, other control code points, and unpaired UTF-16 surrogates deterministically
+while preserving valid Unicode scalar pairs, so protocol payloads never depend on an
+editor's handling of embedded control text.
 
 The frame is explicit when supplied; otherwise the adapter uses the selected
 stopped thread's top managed frame. The same generation-bound read-only operation

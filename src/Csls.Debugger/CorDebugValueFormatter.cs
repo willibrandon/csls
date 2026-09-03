@@ -157,7 +157,7 @@ internal static class CorDebugValueFormatter
         elementType switch
         {
             0x02 => bytes[0] == 0 ? "false" : "true",
-            0x03 => $"'{(char)BinaryPrimitives.ReadUInt16LittleEndian(bytes)}'",
+            0x03 => QuoteCharacter((char)BinaryPrimitives.ReadUInt16LittleEndian(bytes)),
             0x04 => unchecked((sbyte)bytes[0]).ToString(CultureInfo.InvariantCulture),
             0x05 => bytes[0].ToString(CultureInfo.InvariantCulture),
             0x06 => BinaryPrimitives.ReadInt16LittleEndian(bytes).ToString(CultureInfo.InvariantCulture),
@@ -205,19 +205,64 @@ internal static class CorDebugValueFormatter
     {
         var result = new StringBuilder(value.Length + 2);
         result.Append('"');
-        foreach (char character in value)
+        for (int index = 0; index < value.Length; index++)
         {
-            result.Append(character switch
+            char character = value[index];
+            if (char.IsHighSurrogate(character) &&
+                index + 1 < value.Length &&
+                char.IsLowSurrogate(value[index + 1]))
             {
-                '\\' => "\\\\",
-                '"' => "\\\"",
-                '\r' => "\\r",
-                '\n' => "\\n",
-                '\t' => "\\t",
-                _ => character.ToString()
-            });
+                result.Append(character);
+                result.Append(value[++index]);
+            }
+            else
+            {
+                AppendEscapedCharacter(result, character, '"');
+            }
         }
 
         return result.Append('"').ToString();
+    }
+
+    private static string QuoteCharacter(char value)
+    {
+        var result = new StringBuilder(8);
+        result.Append('\'');
+        AppendEscapedCharacter(result, value, '\'');
+        return result.Append('\'').ToString();
+    }
+
+    private static void AppendEscapedCharacter(
+        StringBuilder result,
+        char character,
+        char quote)
+    {
+        string? escape = character switch
+        {
+            '\0' => "\\0",
+            '\a' => "\\a",
+            '\b' => "\\b",
+            '\f' => "\\f",
+            '\n' => "\\n",
+            '\r' => "\\r",
+            '\t' => "\\t",
+            '\v' => "\\v",
+            '\\' => "\\\\",
+            _ when character == quote => string.Concat('\\', quote),
+            _ => null
+        };
+        if (escape is not null)
+        {
+            result.Append(escape);
+        }
+        else if (char.IsControl(character) || char.IsSurrogate(character))
+        {
+            result.Append("\\u");
+            result.Append(((int)character).ToString("X4", CultureInfo.InvariantCulture));
+        }
+        else
+        {
+            result.Append(character);
+        }
     }
 }

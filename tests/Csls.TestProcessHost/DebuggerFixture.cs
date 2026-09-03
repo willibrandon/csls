@@ -34,6 +34,8 @@ internal static class DebuggerFixture
         DebuggerFixtureOptions localOptions = DebuggerFixtureOptions.Read |
             DebuggerFixtureOptions.Execute;
         decimal localDecimal = -1234.50m;
+        string localEscapedText = "a\0\a\b\f\v\\\"\u0001😀";
+        char localEscapedCharacter = '\n';
         Console.Write(announcement);
         Console.Out.Flush();
         while (!File.Exists(path))
@@ -55,6 +57,8 @@ internal static class DebuggerFixture
         GC.KeepAlive(localUnknownMode);
         GC.KeepAlive(localOptions);
         GC.KeepAlive(localDecimal);
+        GC.KeepAlive(localEscapedText);
+        GC.KeepAlive(localEscapedCharacter);
         return localNumber == 43 && localText == "answer!" ? 0 : 1;
     }
 }

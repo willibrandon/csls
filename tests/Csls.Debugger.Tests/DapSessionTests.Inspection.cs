@@ -340,6 +340,12 @@ public sealed partial class DapSessionTests
             Assert.AreEqual(
                 "decimal",
                 localsByName["localDecimal"].GetProperty("type").GetString());
+            Assert.AreEqual(
+                "\"a\\0\\a\\b\\f\\v\\\\\\\"\\u0001😀\"",
+                localsByName["localEscapedText"].GetProperty("value").GetString());
+            Assert.AreEqual(
+                "'\\n'",
+                localsByName["localEscapedCharacter"].GetProperty("value").GetString());
 
             JsonElement evaluatedLocal = await ReadEvaluationAsync(
                 client,

@@ -444,6 +444,9 @@ and preserves the numeric representation when no symbolic name exists.
 Decimal presentation reads both current and earlier supported CoreLib layouts,
 validates the 96-bit integer, scale, and sign representation, and formats it in the
 debugger host. It never asks the target to run `System.Decimal` formatting code.
+String and character presentation is protocol-safe before serialization: quotes,
+backslashes, NUL, standard controls, remaining control code points, and unpaired UTF-16
+surrogates receive deterministic literal escapes; valid surrogate pairs remain readable.
 
 C# and Visual Basic Hot Reload use compiler-produced metadata, IL, and PDB deltas.
 The engine validates rude edits, applies deltas, advances module generations, and
