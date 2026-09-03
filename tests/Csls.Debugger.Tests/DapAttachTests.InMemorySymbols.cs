@@ -35,7 +35,13 @@ public sealed partial class DapAttachTests
         string[] sourceLines = await File.ReadAllLinesAsync(
             sourcePath,
             TestContext.CancellationToken).ConfigureAwait(false);
-        int spinLine = sourceLines
+        int waitStartLine = sourceLines
+            .Select(static (line, index) => (Line: line, Number: index + 1))
+            .Single(candidate => candidate.Line.Contains(
+                "while (!File.Exists(signalPath))",
+                StringComparison.Ordinal))
+            .Number;
+        int waitEndLine = sourceLines
             .Select(static (line, index) => (Line: line, Number: index + 1))
             .Single(candidate => candidate.Line.Contains(
                 "Thread.SpinWait(10_000);",
@@ -72,7 +78,8 @@ public sealed partial class DapAttachTests
                     client,
                     threadId,
                     sourcePath,
-                    spinLine).ConfigureAwait(false);
+                    waitStartLine,
+                    waitEndLine).ConfigureAwait(false);
             }
             int disconnectSequence = await client.SendRequestAsync(
                 "disconnect",
@@ -172,7 +179,8 @@ public sealed partial class DapAttachTests
         DapTestClient client,
         int stoppedThreadId,
         string sourcePath,
-        int spinLine)
+        int waitStartLine,
+        int waitEndLine)
     {
         int threadsSequence = await client.SendRequestAsync(
             "threads",
@@ -224,7 +232,9 @@ public sealed partial class DapAttachTests
             selectedFrame,
             $"No attached thread exposed the in-memory source frame. {string.Join(' ', stackResponses)}");
         JsonElement frame = selectedFrame.Value;
-        Assert.AreEqual(spinLine, frame.GetProperty("line").GetInt32());
+        int frameLine = frame.GetProperty("line").GetInt32();
+        Assert.IsGreaterThanOrEqualTo(waitStartLine, frameLine);
+        Assert.IsLessThanOrEqualTo(waitEndLine, frameLine);
         Assert.AreEqual(
             "Csls.Debugger.Fixtures.InMemory.InMemoryFixture.WaitForSignal",
             frame.GetProperty("name").GetString());

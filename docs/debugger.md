@@ -93,6 +93,14 @@ The DAP `modules` response reports `isOptimized` when CoreCLR exposes the state;
 if the runtime rejects the policy or cannot report it, `symbolStatus` includes a
 bounded diagnostic instead of claiming that suppression succeeded.
 
+Source, function, instruction, and temporary stepping breakpoints are installed
+against managed IL. CoreCLR projects those breakpoints into code that is already
+JIT-compiled and into code produced by later tiered compilations, so promotion
+from quick Tier 0 code to optimized Tier 1 code does not make a breakpoint stale.
+The `isOptimized` module field reports the module's effective JIT policy; it does
+not guess a per-method optimization tier that the public ICorDebug contract does
+not expose.
+
 `justMyCode` defaults to `true` for launch and attach. Before the first source
 step, the debugger marks symbol-bearing, unoptimized modules as user code and
 enables the CoreCLR JMC stepper so framework, symbol-free, and optimized modules
