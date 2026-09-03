@@ -1,3 +1,4 @@
+using Csls.Debugger;
 using System.Diagnostics;
 
 namespace Csls.App;
@@ -37,6 +38,8 @@ internal static class DebuggerWorkerSupervisor
         {
             startInfo.ArgumentList.Add(argument);
         }
+
+        DebuggerWorkerEnvironment.Configure(startInfo, workerPath);
 
         using Process process = Process.Start(startInfo)
             ?? throw new InvalidOperationException("The csls debugger worker did not start.");

@@ -1,4 +1,3 @@
-using Csls.DebugAdapter;
 using System.CommandLine;
 using System.Globalization;
 
@@ -30,10 +29,8 @@ internal static class DebuggerCommand
             "dap",
             "Run the csls Debug Adapter Protocol host over standard I/O.");
         command.SetAction(
-            static (_, cancellationToken) => DebugAdapterHost.RunAsync(
-                Console.OpenStandardInput(),
-                Console.OpenStandardOutput(),
-                Console.Error,
+            static (_, cancellationToken) => DebuggerWorkerSupervisor.RunAsync(
+                ["dap"],
                 cancellationToken));
         return command;
     }
@@ -155,25 +152,10 @@ internal static class DebuggerCommand
         var command = new Command(
             "doctor",
             "Verify the packaged native .NET runtime-debugging components.");
-        command.SetAction(static _ =>
-        {
-            try
-            {
-                Csls.Debugger.DebuggerEngine.VerifyPlatformSupport();
-                Console.Out.WriteLine(
-                    "The native .NET runtime-debugging components are available.");
-                return 0;
-            }
-            catch (Exception exception) when (
-                exception is DllNotFoundException or
-                EntryPointNotFoundException or
-                BadImageFormatException or
-                InvalidOperationException)
-            {
-                Console.Error.WriteLine(exception.Message);
-                return 1;
-            }
-        });
+        command.SetAction(
+            static (_, cancellationToken) => DebuggerWorkerSupervisor.RunAsync(
+                ["doctor"],
+                cancellationToken));
         return command;
     }
 }

@@ -116,12 +116,20 @@ try
             "csls",
             "csls",
             "src/Csls.App/Csls.App.csproj",
-            ["workers/server/csls-worker", "workers/cli/csls-cli-worker"]),
+            [
+                "workers/server/csls-worker",
+                "workers/cli/csls-cli-worker",
+                "workers/debugger/csls-debugger-worker"
+            ]),
         (
             "csls-mcp",
             "csls-mcp",
             "src/Csls.Mcp/Csls.Mcp.csproj",
-            ["workers/mcp/csls-mcp-worker", "workers/server/csls-worker"])
+            [
+                "workers/mcp/csls-mcp-worker",
+                "workers/server/csls-worker",
+                "workers/debugger/csls-debugger-worker"
+            ])
     ];
 
     foreach ((string packageId, _, string project, _) in products)
@@ -390,6 +398,21 @@ static void ValidateImplementationPackage(
         : workerPath + ".dll"))
     {
         RequireEntry(archive, $"{root}/{workerName}");
+    }
+
+    if (!(native && runtimeIdentifier.StartsWith("win-", StringComparison.Ordinal)) &&
+        !(string.Equals(runtimeIdentifier, "any", StringComparison.Ordinal) &&
+            OperatingSystem.IsWindows()))
+    {
+        string interposerExtension =
+            runtimeIdentifier.StartsWith("osx-", StringComparison.Ordinal) ||
+            string.Equals(runtimeIdentifier, "any", StringComparison.Ordinal) &&
+            OperatingSystem.IsMacOS()
+                ? ".dylib"
+                : ".so";
+        RequireEntry(
+            archive,
+            $"{root}/workers/debugger/Csls.Debugger.UnixWait{interposerExtension}");
     }
 
     XDocument settings = LoadXml(RequireEntry(

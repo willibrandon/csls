@@ -45,11 +45,13 @@
   </ItemGroup>
 
   <ItemGroup Condition="'$(MSBuildProjectName)' != 'Csls.SourceGen' and
+                        '$(MSBuildProjectName)' != 'Csls.Debugger.UnixWait' and
                         Exists('$(MSBuildThisFileDirectory)src/Csls.SourceGen/Csls.SourceGen.csproj')">
     <ProjectReference Include="$(MSBuildThisFileDirectory)src/Csls.SourceGen/Csls.SourceGen.csproj"
                       OutputItemType="Analyzer"
                       ReferenceOutputAssembly="false"
-                      PrivateAssets="All" />
+                      PrivateAssets="All"
+                      GlobalPropertiesToRemove="PublishAot;NativeLib;SelfContained;RuntimeIdentifier;PublishReadyToRun;PublishSingleFile" />
   </ItemGroup>
 
   <Target Name="CslsNormalizeSdkBaselineNoWarn" BeforeTargets="CslsValidateWarningPolicy">

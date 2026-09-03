@@ -21,10 +21,13 @@ internal static partial class DebuggerWorkerHost
         ArgumentNullException.ThrowIfNull(arguments);
         try
         {
+            DebuggerWorkerEnvironment.InitializeCurrentProcess();
             return arguments.Count == 0
                 ? Fail("The launcher supplied no debugger operation.")
                 : arguments[0] switch
                 {
+                    "dap" => await RunDapAsync(cancellationToken).ConfigureAwait(false),
+                    "doctor" => RunDoctor(),
                     "control" => await RunControlAsync(arguments, cancellationToken)
                         .ConfigureAwait(false),
                     "launch" => await RunLaunchAsync(arguments, cancellationToken)
@@ -40,6 +43,9 @@ internal static partial class DebuggerWorkerHost
         }
         catch (Exception exception) when (
             exception is ArgumentException or
+                BadImageFormatException or
+                DllNotFoundException or
+                EntryPointNotFoundException or
                 IOException or
                 InvalidDataException or
                 InvalidOperationException or

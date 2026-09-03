@@ -1,4 +1,5 @@
 using Csls.Debugger.Control;
+using Csls.Debugger;
 using System.Diagnostics;
 
 namespace Csls.Mcp.Worker;
@@ -46,6 +47,7 @@ internal sealed partial class McpDebuggerSession
         }
 
         startInfo.ArgumentList.Add("control");
+        DebuggerWorkerEnvironment.Configure(startInfo, workerPath);
         Process process = Process.Start(startInfo)
             ?? throw new InvalidOperationException("The debugger worker did not start.");
         ValueTask<string> diagnostics = new(

@@ -42,17 +42,4 @@ public static class DebuggerEngine
         symbols.Set(symbolOptions);
     }
 
-    /// <summary>
-    /// Verifies suspended launch and CoreCLR debugger activation against a real target.
-    /// </summary>
-    /// <param name="options">The concrete managed target invocation to probe.</param>
-    /// <param name="cancellationToken">Cancels activation and terminates the probe target.</param>
-    /// <returns>The operating-system identifier of the successfully activated probe target.</returns>
-    public static Task<uint> VerifyRuntimeActivationAsync(
-        DebuggeeLaunchOptions options,
-        CancellationToken cancellationToken)
-    {
-        ArgumentNullException.ThrowIfNull(options);
-        return CorDebugRuntimeActivator.VerifyAsync(options, cancellationToken);
-    }
 }

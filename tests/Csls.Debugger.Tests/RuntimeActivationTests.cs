@@ -1,3 +1,5 @@
+using Csls.Debugger.Contracts;
+using Csls.Debugger.Control;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
 
@@ -35,21 +37,28 @@ public sealed class RuntimeActivationTests
         string absentSignal = Path.Join(
             Path.GetTempPath(),
             $"csls-debugger-activation-{Guid.NewGuid():N}.signal");
-        var options = new DebuggeeLaunchOptions
-        {
-            Program = program,
-            WorkingDirectory = repositoryRoot,
-            Arguments = ["--wait-for-file", absentSignal],
-            Environment = new Dictionary<string, string?>()
-        };
-
-        uint processId = await DebuggerEngine.VerifyRuntimeActivationAsync(
-            options,
+        DebuggerWorkerTestSession worker = await DebuggerWorkerTestSession
+            .StartAsync(TestContext.CancellationToken).ConfigureAwait(false);
+        await using ConfiguredAsyncDisposable workerDisposal = worker.ConfigureAwait(false);
+        DebuggerRpcClient client = worker.Client;
+        DebugSessionSnapshot running = await client.LaunchAsync(
+            new DebugLaunchRequest
+            {
+                Program = program,
+                WorkingDirectory = repositoryRoot,
+                Arguments = ["--wait-for-file", absentSignal]
+            },
             TestContext.CancellationToken).ConfigureAwait(false);
+        Assert.AreEqual(DebugSessionState.Running, running.State);
+        Assert.IsNotNull(running.ProcessId);
+        int processId = running.ProcessId.Value;
+        DebugSessionSnapshot terminated = await client
+            .TerminateAsync(TestContext.CancellationToken).ConfigureAwait(false);
+        Assert.AreEqual(DebugSessionState.Terminated, terminated.State);
 
-        Assert.IsGreaterThan(0u, processId);
+        Assert.IsGreaterThan(0, processId);
         _ = Assert.ThrowsExactly<ArgumentException>(
-            () => Process.GetProcessById(checked((int)processId)));
+            () => Process.GetProcessById(processId));
         Assert.IsFalse(File.Exists(absentSignal));
     }
 

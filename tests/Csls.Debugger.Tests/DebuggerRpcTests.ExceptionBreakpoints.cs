@@ -40,16 +40,11 @@ public sealed partial class DebuggerRpcTests
         string testDirectory,
         CancellationToken cancellationToken)
     {
-        string socketPath = Path.Join(testDirectory, "debugger.sock");
         string signalPath = Path.Join(testDirectory, "continue.signal");
-        var service = new DebuggerControlService();
-        await using ConfiguredAsyncDisposable serviceDisposal = service.ConfigureAwait(false);
-        var server = new DebuggerRpcServer(socketPath, service);
-        await using ConfiguredAsyncDisposable serverDisposal = server.ConfigureAwait(false);
-        server.Start();
-        var client = new DebuggerRpcClient(socketPath);
-        await using ConfiguredAsyncDisposable clientDisposal = client.ConfigureAwait(false);
-        await client.ConnectAsync(cancellationToken).ConfigureAwait(false);
+        DebuggerWorkerTestSession worker = await DebuggerWorkerTestSession
+            .StartAsync(cancellationToken).ConfigureAwait(false);
+        await using ConfiguredAsyncDisposable workerDisposal = worker.ConfigureAwait(false);
+        DebuggerRpcClient client = worker.Client;
         await client.SetExceptionBreakpointsAsync(
             new DebugExceptionBreakpointSetRequest(
                 [

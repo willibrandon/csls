@@ -15,6 +15,7 @@ internal sealed partial class UnixChildExitMonitor
 
     private UnixChildExitMonitor(int processId)
     {
+        UnixWaitStatusInterposer.Track(processId);
         using var ownershipReady = new ManualResetEventSlim();
         _exitCode = Task.Factory.StartNew(
             () => WaitForExit(processId, ownershipReady),
@@ -72,7 +73,9 @@ internal sealed partial class UnixChildExitMonitor
 
                 if (result < 0 && error == NoChildProcessError)
                 {
-                    return null;
+                    return UnixWaitStatusInterposer.TryGetExitCode(processId, out int exitCode)
+                        ? exitCode
+                        : null;
                 }
 
                 if (!preflightComplete && result == 0)

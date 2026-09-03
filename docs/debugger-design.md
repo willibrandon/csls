@@ -157,13 +157,14 @@ through a short process-wide gate that redirects all three handles only for the
 `CreateProcessForLaunch` call and restores them in nested `finally` blocks. The
 parent owns dedicated anonymous-pipe endpoints and closes every local child endpoint
 immediately after launch. Target output therefore reaches bounded debugger output
-handling and can never share the adapter's protocol stdout. On Unix, a dedicated
-blocking `waitpid` owner starts before runtime activation. It preserves the direct
-child's real signed exit status before CoreCLR's polling transport can reap it;
-CoreCLR then observes `ECHILD` and uses its documented process-existence path.
-The owner completes a nonblocking child-identity preflight before the suspended
-target resumes. If another native waiter nevertheless wins the terminal reap,
-shutdown treats `ECHILD` as lost status ownership rather than a debugger fault.
+handling and can never share the adapter's protocol stdout. On Unix, the launcher
+starts the supervised worker with an adjacent NativeAOT `waitpid` interposer loaded
+before CoreCLR initializes. A dedicated blocking waiter selects the direct child
+before runtime activation and completes a nonblocking identity preflight before
+the suspended target resumes. If CoreCLR's polling transport reaps that child
+first, the interposer retains its exact process or signal exit code without
+changing libc behavior; the blocking waiter recovers that status after `ECHILD`.
+Missing or unloadable interposer assets prevent the worker from starting.
 
 ICorDebug projections are generated from the current public IDL and checked into
 the repository for offline builds. Source-generated COM and `LibraryImport` are

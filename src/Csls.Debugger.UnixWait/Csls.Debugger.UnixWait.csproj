@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <AssemblyName>Csls.Debugger.UnixWait</AssemblyName>
+    <RootNamespace>Csls.Debugger.UnixWait</RootNamespace>
+    <Description>The NativeAOT Unix child-status interposer for the csls debugger.</Description>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <NativeLib>Shared</NativeLib>
+    <PublishAot>true</PublishAot>
+    <SelfContained>true</SelfContained>
+    <IsAotCompatible>true</IsAotCompatible>
+    <InvariantGlobalization>true</InvariantGlobalization>
+  </PropertyGroup>
+
+  <Target Name="ValidateCslsUnixWaitPublish" BeforeTargets="Publish">
+    <Error Condition="'$(PublishAot)' != 'true'"
+           Text="Csls.Debugger.UnixWait must publish with PublishAot=true; current value is '$(PublishAot)'." />
+    <Error Condition="'$(NativeLib)' != 'Shared'"
+           Text="Csls.Debugger.UnixWait must publish with NativeLib=Shared; current value is '$(NativeLib)'." />
+    <Error Condition="'$(SelfContained)' != 'true'"
+           Text="Csls.Debugger.UnixWait must publish self-contained; current value is '$(SelfContained)'." />
+  </Target>
+</Project>

@@ -22,18 +22,10 @@ public sealed partial class DebuggerRpcTests
         Directory.CreateDirectory(testDirectory);
         try
         {
-            string socketPath = Path.Join(testDirectory, "debugger.sock");
-            var service = new DebuggerControlService();
-            await using ConfiguredAsyncDisposable serviceDisposal =
-                service.ConfigureAwait(false);
-            var server = new DebuggerRpcServer(socketPath, service);
-            await using ConfiguredAsyncDisposable serverDisposal =
-                server.ConfigureAwait(false);
-            server.Start();
-            var client = new DebuggerRpcClient(socketPath);
-            await using ConfiguredAsyncDisposable clientDisposal =
-                client.ConfigureAwait(false);
-            await client.ConnectAsync(TestContext.CancellationToken).ConfigureAwait(false);
+            DebuggerWorkerTestSession worker = await DebuggerWorkerTestSession
+                .StartAsync(TestContext.CancellationToken).ConfigureAwait(false);
+            await using ConfiguredAsyncDisposable workerDisposal = worker.ConfigureAwait(false);
+            DebuggerRpcClient client = worker.Client;
 
             IReadOnlyList<DebugFunctionBreakpointInfo> pending = await client
                 .SetFunctionBreakpointsAsync(

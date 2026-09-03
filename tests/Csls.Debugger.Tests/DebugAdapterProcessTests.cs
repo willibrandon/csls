@@ -44,6 +44,13 @@ public sealed class DebugAdapterProcessTests
         startInfo.ArgumentList.Add(applicationPath);
         startInfo.ArgumentList.Add("debugger");
         startInfo.ArgumentList.Add("dap");
+        startInfo.Environment["CSLS_DEBUGGER_WORKER_PATH"] = Path.Join(
+            repositoryRoot,
+            "artifacts",
+            "bin",
+            "Csls.Debugger.Worker",
+            "debug",
+            "csls-debugger-worker.dll");
         using Process process = Process.Start(startInfo)
             ?? throw new InvalidOperationException("The csls debugger command did not start.");
         Task<string> standardErrorTask = process.StandardError.ReadToEndAsync(

@@ -64,15 +64,10 @@ public sealed partial class DebuggerRpcTests
             File.Exists(Path.ChangeExtension(programPath, ".pdb")),
             "The embedded-symbol fixture unexpectedly emitted a sidecar PDB.");
 
-        var service = new DebuggerControlService();
-        await using ConfiguredAsyncDisposable serviceDisposal = service.ConfigureAwait(false);
-        string socketPath = Path.Join(testDirectory, "debugger.sock");
-        var server = new DebuggerRpcServer(socketPath, service);
-        await using ConfiguredAsyncDisposable serverDisposal = server.ConfigureAwait(false);
-        server.Start();
-        var client = new DebuggerRpcClient(socketPath);
-        await using ConfiguredAsyncDisposable clientDisposal = client.ConfigureAwait(false);
-        await client.ConnectAsync(cancellationToken).ConfigureAwait(false);
+        DebuggerWorkerTestSession worker = await DebuggerWorkerTestSession
+            .StartAsync(cancellationToken).ConfigureAwait(false);
+        await using ConfiguredAsyncDisposable workerDisposal = worker.ConfigureAwait(false);
+        DebuggerRpcClient client = worker.Client;
         _ = await client.SetSourceBreakpointsAsync(
             new DebugSourceBreakpointSetRequest(
                 sourcePath,
