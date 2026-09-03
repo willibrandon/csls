@@ -91,11 +91,11 @@ internal sealed partial class SourceBreakpointManager
     }
 
     /// <summary>
-    /// Records a runtime source-breakpoint callback and evaluates its hit condition.
+    /// Resolves the logical definition for a runtime source-breakpoint callback.
     /// </summary>
     /// <param name="breakpoint">The borrowed ICorDebugBreakpoint pointer.</param>
-    /// <returns>Null when unowned, otherwise whether the target should stop.</returns>
-    internal bool? GetBreakDecision(nint breakpoint)
+    /// <returns>The owned definition, or null when the callback is unrecognized.</returns>
+    internal IManagedBreakpointDefinition? FindDefinition(nint breakpoint)
     {
         ObjectDisposedException.ThrowIf(_disposed != 0, this);
         ArgumentOutOfRangeException.ThrowIfZero(breakpoint);
@@ -103,7 +103,7 @@ internal sealed partial class SourceBreakpointManager
         try
         {
             return _bindings.TryGetValue(identity, out SourceBreakpointBinding? binding)
-                ? binding.Definition.RegisterHit()
+                ? binding.Definition
                 : null;
         }
         finally

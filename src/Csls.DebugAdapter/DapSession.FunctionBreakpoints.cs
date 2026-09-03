@@ -76,29 +76,19 @@ internal sealed partial class DapSession
                     "Every function breakpoint requires a non-empty name.");
             }
 
-            RejectUnsupportedFunctionBreakpointOption(breakpoint, "condition");
+            string? condition = GetOptionalFunctionBreakpointString(
+                breakpoint,
+                "condition");
             string? hitCondition = GetOptionalFunctionBreakpointString(
                 breakpoint,
                 "hitCondition");
             result.Add(new DebugFunctionBreakpointRequest(
                 nameValue.GetString()!,
+                condition,
                 hitCondition));
         }
 
         return result;
-    }
-
-    private static void RejectUnsupportedFunctionBreakpointOption(
-        JsonElement breakpoint,
-        string propertyName)
-    {
-        if (breakpoint.TryGetProperty(propertyName, out JsonElement value) &&
-            value.ValueKind == JsonValueKind.String &&
-            !string.IsNullOrEmpty(value.GetString()))
-        {
-            throw new ArgumentException(
-                $"Function breakpoint {propertyName} is not supported by this capability set.");
-        }
     }
 
     private static string? GetOptionalFunctionBreakpointString(

@@ -26,8 +26,8 @@ internal sealed partial class CorDebugManagedCallback : IDisposable
     private readonly SourceBreakpointManager _sourceBreakpoints;
     private readonly FunctionBreakpointManager _functionBreakpoints;
     private readonly InstructionBreakpointManager _instructionBreakpoints;
-    private readonly Func<int, DebugBreakpointKind, CancellationToken, ValueTask>
-        _breakpointStopped;
+    private readonly Func<int, ManagedBreakpointHit, CancellationToken, ValueTask<bool>>
+        _breakpointReached;
     private readonly Func<int, nint, CancellationToken,
         ValueTask<ManagedTargetBreakpointDecision>> _targetBreakpointReached;
     private readonly Func<int, nint, int, CancellationToken, ValueTask<bool>> _stepCompleted;
@@ -47,7 +47,7 @@ internal sealed partial class CorDebugManagedCallback : IDisposable
     /// <param name="sourceBreakpoints">The source-breakpoint binding owner.</param>
     /// <param name="functionBreakpoints">The function-breakpoint binding owner.</param>
     /// <param name="instructionBreakpoints">The managed-IL breakpoint binding owner.</param>
-    /// <param name="breakpointStopped">The ordered runtime-breakpoint stop callback.</param>
+    /// <param name="breakpointReached">The ordered runtime-breakpoint decision callback.</param>
     /// <param name="targetBreakpointReached">The ordered targeted-step breakpoint callback.</param>
     /// <param name="stepCompleted">The ordered source-step completion callback.</param>
     /// <param name="exceptionRaised">The ordered managed-exception callback.</param>
@@ -56,7 +56,7 @@ internal sealed partial class CorDebugManagedCallback : IDisposable
         SourceBreakpointManager sourceBreakpoints,
         FunctionBreakpointManager functionBreakpoints,
         InstructionBreakpointManager instructionBreakpoints,
-        Func<int, DebugBreakpointKind, CancellationToken, ValueTask> breakpointStopped,
+        Func<int, ManagedBreakpointHit, CancellationToken, ValueTask<bool>> breakpointReached,
         Func<int, nint, CancellationToken, ValueTask<ManagedTargetBreakpointDecision>>
             targetBreakpointReached,
         Func<int, nint, int, CancellationToken, ValueTask<bool>> stepCompleted,
@@ -66,7 +66,7 @@ internal sealed partial class CorDebugManagedCallback : IDisposable
         ArgumentNullException.ThrowIfNull(sourceBreakpoints);
         ArgumentNullException.ThrowIfNull(functionBreakpoints);
         ArgumentNullException.ThrowIfNull(instructionBreakpoints);
-        ArgumentNullException.ThrowIfNull(breakpointStopped);
+        ArgumentNullException.ThrowIfNull(breakpointReached);
         ArgumentNullException.ThrowIfNull(targetBreakpointReached);
         ArgumentNullException.ThrowIfNull(stepCompleted);
         ArgumentNullException.ThrowIfNull(exceptionRaised);
@@ -74,7 +74,7 @@ internal sealed partial class CorDebugManagedCallback : IDisposable
         _sourceBreakpoints = sourceBreakpoints;
         _functionBreakpoints = functionBreakpoints;
         _instructionBreakpoints = instructionBreakpoints;
-        _breakpointStopped = breakpointStopped;
+        _breakpointReached = breakpointReached;
         _targetBreakpointReached = targetBreakpointReached;
         _stepCompleted = stepCompleted;
         _exceptionRaised = exceptionRaised;

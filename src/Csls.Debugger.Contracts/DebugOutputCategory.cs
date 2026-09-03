@@ -1,10 +1,15 @@
 namespace Csls.Debugger.Contracts;
 
 /// <summary>
-/// Identifies a debugger-owned target output stream.
+/// Identifies a debugger or target output channel.
 /// </summary>
 public enum DebugOutputCategory
 {
+    /// <summary>
+    /// Debugger console output such as an evaluated logpoint message.
+    /// </summary>
+    Console,
+
     /// <summary>
     /// Standard output from the target process.
     /// </summary>

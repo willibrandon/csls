@@ -67,14 +67,28 @@ public sealed partial class DebuggerSession
         if (_pendingStop is PendingDebugStop pendingStop)
         {
             _pendingStop = null;
-            _currentException = pendingStop.Exception;
-            _currentExceptionThreadId = pendingStop.Exception is null
-                ? null
-                : pendingStop.ThreadId;
-            await EnterStoppedStateAsync(
-                pendingStop.Reason,
-                pendingStop.ThreadId,
-                cancellationToken).ConfigureAwait(false);
+            if (pendingStop.BreakpointHit is not null)
+            {
+                bool shouldContinue = await HandleRunningBreakpointAsync(
+                    pendingStop.ThreadId,
+                    pendingStop.BreakpointHit,
+                    cancellationToken).ConfigureAwait(false);
+                if (shouldContinue)
+                {
+                    ((CorDebugDebuggee)debuggee).Continue();
+                }
+            }
+            else
+            {
+                _currentException = pendingStop.Exception;
+                _currentExceptionThreadId = pendingStop.Exception is null
+                    ? null
+                    : pendingStop.ThreadId;
+                await EnterStoppedStateAsync(
+                    pendingStop.Reason,
+                    pendingStop.ThreadId,
+                    cancellationToken).ConfigureAwait(false);
+            }
         }
 
         _debuggeeObservationCancellation?.Dispose();

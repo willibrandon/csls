@@ -79,7 +79,9 @@ internal sealed partial class SourceBreakpointManager : IDisposable
                 SourcePath = normalizedPath,
                 RequestedLine = request.Line,
                 RequestedColumn = request.Column,
+                Condition = NormalizeOptionalExpression(request.Condition),
                 HitCondition = hitCondition,
+                LogMessage = NormalizeOptionalExpression(request.LogMessage),
                 ValidationMessage = validHitCondition
                     ? null
                     : DebugHitCondition.ValidationErrorMessage
@@ -189,4 +191,7 @@ internal sealed partial class SourceBreakpointManager : IDisposable
         _definitions.Clear();
         ClearSources();
     }
+
+    private static string? NormalizeOptionalExpression(string? expression) =>
+        string.IsNullOrWhiteSpace(expression) ? null : expression;
 }

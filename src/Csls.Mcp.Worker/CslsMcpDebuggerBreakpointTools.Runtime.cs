@@ -26,7 +26,7 @@ internal sealed partial class CslsMcpDebuggerBreakpointTools
         string debugSession,
         [Description("Exact current positive stop generation.")]
         long stopGeneration,
-        [Description("Complete replacement list; an empty list clears every instruction breakpoint.")]
+        [Description("Complete replacement list with optional conditions and hit counts; an empty list clears every instruction breakpoint.")]
         IReadOnlyList<McpDebugInstructionBreakpoint> breakpoints,
         CancellationToken cancellationToken) =>
         McpDebuggerToolResult.RunAsync(() => _broker.SetInstructionBreakpointsAsync(

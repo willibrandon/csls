@@ -90,6 +90,7 @@ public sealed partial class DapSessionTests
         writer.WriteStartObject();
         writer.WriteString("instructionReference", instructionReference);
         writer.WriteNumber("offset", offset);
+        writer.WriteString("condition", "localNumber == 43");
         writer.WriteString("hitCondition", "3");
         writer.WriteEndObject();
         writer.WriteEndArray();

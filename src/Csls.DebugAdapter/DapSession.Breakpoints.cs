@@ -92,11 +92,11 @@ internal sealed partial class DapSession
                         "Every source breakpoint requires an integer line.");
                 }
 
-                RejectUnsupportedBreakpointOption(breakpoint, "condition");
-                RejectUnsupportedBreakpointOption(breakpoint, "logMessage");
+                string? condition = GetOptionalBreakpointString(breakpoint, "condition");
                 string? hitCondition = GetOptionalBreakpointString(
                     breakpoint,
                     "hitCondition");
+                string? logMessage = GetOptionalBreakpointString(breakpoint, "logMessage");
                 int? column = null;
                 if (breakpoint.TryGetProperty("column", out JsonElement columnValue))
                 {
@@ -114,7 +114,9 @@ internal sealed partial class DapSession
                     column is null
                         ? null
                         : FromClientColumn(column.Value, "setBreakpoints"),
-                    hitCondition));
+                    condition,
+                    hitCondition,
+                    logMessage));
             }
         }
         else if (arguments.TryGetProperty("lines", out JsonElement lines) &&
@@ -135,19 +137,6 @@ internal sealed partial class DapSession
         }
 
         return (pathValue.GetString()!, result);
-    }
-
-    private static void RejectUnsupportedBreakpointOption(
-        JsonElement breakpoint,
-        string propertyName)
-    {
-        if (breakpoint.TryGetProperty(propertyName, out JsonElement value) &&
-            value.ValueKind == JsonValueKind.String &&
-            !string.IsNullOrEmpty(value.GetString()))
-        {
-            throw new ArgumentException(
-                $"Source breakpoint {propertyName} is not supported by this capability set.");
-        }
     }
 
     private static string? GetOptionalBreakpointString(

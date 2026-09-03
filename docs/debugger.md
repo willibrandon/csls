@@ -71,13 +71,25 @@ logical breakpoint policy, invalidates runtime handles, and never reuses a stop
 generation. A launch restart replaces and owns a new process; an attach restart
 detaches and reattaches without terminating the independently owned target.
 
-Source and function breakpoints accept DAP `hitCondition` values in the forms
-`N`, `>=N`, and `%N`, where `N` is a positive decimal integer. These forms stop
-on exactly the Nth hit, on the Nth and every later hit, or on every Nth hit,
-respectively. Hit counts belong to the logical breakpoint, span all of its
-runtime module bindings, and reset when the client replaces that breakpoint.
-Invalid hit conditions produce an unverified breakpoint with a diagnostic
-message; they do not fail unrelated breakpoints in the same request.
+Source, function, and managed-IL instruction breakpoints accept source-language
+`condition` expressions and DAP `hitCondition` values in the forms `N`, `>=N`,
+and `%N`, where `N` is a positive decimal integer. These forms stop on exactly
+the Nth matching hit, on the Nth and every later matching hit, or on every Nth
+matching hit, respectively. The condition is evaluated first in the callback
+thread's top managed frame using the language recorded in its PDB; only a true
+condition advances the logical hit count. Hit counts span all runtime module
+bindings and reset when the client replaces that breakpoint. Invalid hit
+conditions produce an unverified breakpoint with a diagnostic message and do
+not fail unrelated breakpoints in the same request. A condition evaluation error
+is written to the debugger console and exposes the runtime stop so the expression
+can be corrected instead of being silently ignored.
+
+A non-empty source-breakpoint `logMessage` makes the breakpoint a logpoint. Text
+inside `{}` is evaluated with the same side-effect-free language provider,
+`{{` and `}}` produce literal braces, and a trailing newline is supplied when
+needed. Conditions and hit counts are applied before interpolation. A successful
+logpoint and an interpolation error both continue without publishing a stopped
+event; errors are written to debugger-console output.
 
 Each advertised exception stage accepts a DAP filter condition containing one
 or more comma-separated managed exception type names. A name matches both an
@@ -143,10 +155,10 @@ land on an exact IL instruction boundary.
 CoreCLR can reject a valid IL boundary when the JIT cannot patch it. That item is
 returned as unverified with the runtime diagnostic without rejecting the rest of
 the replacement set. Successful instruction breakpoints rebind when the same module
-reloads, support the same `hitCondition` forms as source and function breakpoints,
-and stop with the `instruction breakpoint` reason. Managed-IL references expire
-when execution resumes; installed logical breakpoints retain their independently
-validated module, method, and IL identities.
+reloads, support the same conditions and hit-count forms as source and function
+breakpoints, and stop with the `instruction breakpoint` reason. Managed-IL
+references expire when execution resumes; installed logical breakpoints retain
+their independently validated module, method, and IL identities.
 
 ## Runtime and symbol requirements
 
@@ -286,8 +298,9 @@ worker does not advertise tools that it cannot run.
   read-only and does not require an agent-control grant.
 - `debug_modules_get` returns a bounded module page and validated symbol status.
 - `debug_breakpoints_get` reads every authoritative source, function, managed-IL,
-  and managed-exception breakpoint without granting target control. Valid hit-count
-  predicates are returned in normalized form.
+  and managed-exception breakpoint without granting target control. Conditions
+  and log messages are preserved, and valid hit-count predicates are returned in
+  normalized form.
 - `debug_execution_control` pauses, continues, or source-steps a session.
   Execution control requires `agentControl: true`; continue and step also require
   the exact current `stopGeneration`, and step selects one managed thread and
@@ -296,7 +309,9 @@ worker does not advertise tools that it cannot run.
 - `debug_source_breakpoints_set`, `debug_function_breakpoints_set`,
   `debug_instruction_breakpoints_set`, and `debug_exception_breakpoints_set`
   replace their complete breakpoint set. They require `agentControl: true`, an
-  exact stopped generation, and accept an empty list to clear the set.
+  exact stopped generation, and accept an empty list to clear the set. Source,
+  function, and managed-IL requests accept source-language conditions; source
+  requests also accept interpolated log messages.
 - `debug_exception_get`, `debug_step_targets_get`, and
   `debug_goto_targets_get` inspect generation-bound stop details and
   runtime-approved execution destinations. `debug_goto` moves one thread only to

@@ -132,6 +132,11 @@ internal sealed partial class CorDebugDebuggee
         }
     }
 
+    /// <summary>
+    /// Releases handles created while inspecting a breakpoint that will not stop.
+    /// </summary>
+    internal void DiscardBreakpointInspection() => ClearFrameHandles();
+
     private void ClearFrameHandles()
     {
         foreach (ManagedFrameHandle frame in _frames.Values)

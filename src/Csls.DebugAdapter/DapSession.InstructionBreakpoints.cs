@@ -68,7 +68,6 @@ internal sealed partial class DapSession
                     "Every instruction breakpoint requires a non-empty instructionReference.");
             }
 
-            RejectUnsupportedInstructionBreakpointOption(breakpoint, "condition");
             RejectUnsupportedInstructionBreakpointOption(breakpoint, "mode");
             long offset = 0;
             if (breakpoint.TryGetProperty("offset", out JsonElement offsetValue) &&
@@ -81,6 +80,7 @@ internal sealed partial class DapSession
             result.Add(new DebugInstructionBreakpointRequest(
                 referenceValue.GetString()!,
                 offset,
+                GetOptionalBreakpointString(breakpoint, "condition"),
                 GetOptionalBreakpointString(breakpoint, "hitCondition")));
         }
 

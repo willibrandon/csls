@@ -51,7 +51,10 @@ public sealed partial class DapSessionTests
             AssertEvent(initialized.RootElement, "initialized");
             int breakpointSequence = await client.SendRequestAsync(
                 "setBreakpoints",
-                writer => WriteHitSourceBreakpointArguments(writer, "not-a-hit-count"),
+                writer => WriteHitSourceBreakpointArguments(
+                    writer,
+                    condition: null,
+                    hitCondition: "not-a-hit-count"),
                 TestContext.CancellationToken).ConfigureAwait(false);
             using JsonDocument response = await client
                 .ReadMessageAsync(TestContext.CancellationToken)

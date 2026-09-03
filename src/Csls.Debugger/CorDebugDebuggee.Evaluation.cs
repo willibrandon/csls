@@ -34,6 +34,27 @@ internal sealed partial class CorDebugDebuggee
         return EvaluateNode(frame, plan, plan.Root, generation).ToResult();
     }
 
+    /// <summary>
+    /// Resolves a safe expression plan and requires a Boolean result.
+    /// </summary>
+    /// <param name="frameId">The session-local frame handle.</param>
+    /// <param name="plan">The compiler-bound language-neutral expression plan.</param>
+    /// <param name="generation">The stop generation that owns the frame.</param>
+    /// <returns>The Boolean condition result.</returns>
+    internal bool EvaluateCondition(
+        int frameId,
+        DebugExpressionPlan plan,
+        DebugStopGeneration generation)
+    {
+        ManagedFrameHandle frame = GetFrame(frameId, generation);
+        ManagedExpressionPlanValidator.Validate(plan, frame.ExpressionLanguage);
+        return ManagedExpressionValueFactory.RequireBoolean(EvaluateNode(
+            frame,
+            plan,
+            plan.Root,
+            generation));
+    }
+
     private ManagedExpressionValue EvaluateNode(
         ManagedFrameHandle frame,
         DebugExpressionPlan plan,

@@ -114,7 +114,10 @@ public sealed partial class DapSessionTests
             int stoppedThreadId = await ConfigureBreakpointAsync(
                 client,
                 sourcePath,
-                breakpointLine).ConfigureAwait(false);
+                breakpointLine,
+                project.EndsWith("CSharp", StringComparison.Ordinal)
+                    ? "answer == 41"
+                    : "answer = 41").ConfigureAwait(false);
             int frameId = await AssertStoppedFrameAsync(
                 client,
                 stoppedThreadId,
@@ -188,14 +191,29 @@ public sealed partial class DapSessionTests
     private async Task<int> ConfigureBreakpointAsync(
         DapTestClient client,
         string sourcePath,
-        int breakpointLine)
+        int breakpointLine,
+        string? condition = null)
     {
         _ = await client.SendRequestAsync(
             "setBreakpoints",
-            writer => WriteSourceBreakpointArguments(
-                writer,
-                sourcePath,
-                breakpointLine),
+            writer =>
+            {
+                writer.WriteStartObject();
+                writer.WriteStartObject("source");
+                writer.WriteString("path", sourcePath);
+                writer.WriteEndObject();
+                writer.WriteStartArray("breakpoints");
+                writer.WriteStartObject();
+                writer.WriteNumber("line", breakpointLine);
+                if (condition is not null)
+                {
+                    writer.WriteString("condition", condition);
+                }
+
+                writer.WriteEndObject();
+                writer.WriteEndArray();
+                writer.WriteEndObject();
+            },
             TestContext.CancellationToken).ConfigureAwait(false);
         using JsonDocument pending = await client
             .ReadMessageAsync(TestContext.CancellationToken)

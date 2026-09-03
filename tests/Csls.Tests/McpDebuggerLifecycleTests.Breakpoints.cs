@@ -49,7 +49,9 @@ public sealed partial class McpDebuggerLifecycleTests
                     new Dictionary<string, object?>
                     {
                         ["line"] = frame.GetProperty("line").GetInt32(),
-                        ["hitCondition"] = ">=1"
+                        ["condition"] = "localNumber == 43",
+                        ["hitCondition"] = ">=1",
+                        ["logMessage"] = "localNumber = {localNumber}"
                     }
                 }
             },
@@ -69,6 +71,7 @@ public sealed partial class McpDebuggerLifecycleTests
                     new Dictionary<string, object?>
                     {
                         ["name"] = "Csls.TestProcessHost.DebuggerFixture.WaitForSignal",
+                        ["condition"] = "number == 42",
                         ["hitCondition"] = "%2"
                     }
                 }
@@ -90,6 +93,7 @@ public sealed partial class McpDebuggerLifecycleTests
                     {
                         ["instructionReference"] = frame
                             .GetProperty("instructionReference").GetString(),
+                        ["condition"] = "localNumber == 43",
                         ["hitCondition"] = "1"
                     }
                 }

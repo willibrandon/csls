@@ -34,18 +34,10 @@ public sealed partial class DebuggerSession
             },
             cancellationToken).ConfigureAwait(false);
 
-        DebugExpressionPlan plan = language switch
-        {
-            DebugExpressionLanguage.CSharp or DebugExpressionLanguage.VisualBasic or
-            DebugExpressionLanguage.FSharp =>
-                await _evaluator.CompileAsync(
-                    new DebugExpressionCompileRequest(language, expression),
-                    cancellationToken).ConfigureAwait(false),
-            DebugExpressionLanguage.Common =>
-                ManagedSideEffectFreeExpressionParser.Parse(expression, language),
-            _ => throw new InvalidOperationException(
-                $"Expression language {language} is unavailable.")
-        };
+        DebugExpressionPlan plan = await CompileExpressionAsync(
+            language,
+            expression,
+            cancellationToken).ConfigureAwait(false);
 
         DebugEvaluateResult? result = null;
         await _actor.InvokeAsync(
@@ -59,6 +51,21 @@ public sealed partial class DebuggerSession
             cancellationToken).ConfigureAwait(false);
         return result!;
     }
+
+    private Task<DebugExpressionPlan> CompileExpressionAsync(
+        DebugExpressionLanguage language,
+        string expression,
+        CancellationToken cancellationToken) => language switch
+        {
+            DebugExpressionLanguage.CSharp or DebugExpressionLanguage.VisualBasic or
+            DebugExpressionLanguage.FSharp => _evaluator.CompileAsync(
+                new DebugExpressionCompileRequest(language, expression),
+                cancellationToken),
+            DebugExpressionLanguage.Common => Task.FromResult(
+                ManagedSideEffectFreeExpressionParser.Parse(expression, language)),
+            _ => throw new InvalidOperationException(
+                $"Expression language {language} is unavailable.")
+        };
 
     private CorDebugDebuggee GetStoppedManagedDebuggee() =>
         _state == DebugSessionState.Stopped && _debuggee is CorDebugDebuggee managedDebuggee

@@ -5,7 +5,7 @@ namespace Csls.Debugger;
 /// <summary>
 /// Tracks one logical managed function breakpoint across loaded modules.
 /// </summary>
-internal sealed class FunctionBreakpointDefinition
+internal sealed class FunctionBreakpointDefinition : IManagedBreakpointDefinition
 {
     /// <summary>
     /// Gets the stable session-local breakpoint identifier.
@@ -16,6 +16,12 @@ internal sealed class FunctionBreakpointDefinition
     /// Gets the normalized requested function name.
     /// </summary>
     internal required string Name { get; init; }
+
+    /// <inheritdoc />
+    public string? Condition { get; init; }
+
+    /// <inheritdoc />
+    public string? LogMessage => null;
 
     /// <summary>
     /// Gets the optional validated hit-count predicate.
@@ -43,11 +49,12 @@ internal sealed class FunctionBreakpointDefinition
         ValidationMessage ?? (BindingCount == 0
             ? "The breakpoint is pending until a matching managed function is loaded."
             : null),
+        Condition,
         HitCondition?.Expression);
 
     /// <summary>
     /// Records one runtime hit and determines whether the target should stop.
     /// </summary>
     /// <returns>True when the breakpoint has no hit condition or its predicate matches.</returns>
-    internal bool RegisterHit() => HitCondition?.RegisterHit() ?? true;
+    public bool RegisterHit() => HitCondition?.RegisterHit() ?? true;
 }

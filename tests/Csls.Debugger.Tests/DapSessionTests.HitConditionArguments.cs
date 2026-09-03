@@ -10,27 +10,30 @@ public sealed partial class DapSessionTests
     private static void WriteHitConditionBreakpointArguments(
         Utf8JsonWriter writer,
         bool useFunctionBreakpoint,
-        string hitCondition)
+        string? condition,
+        string? hitCondition)
     {
         if (useFunctionBreakpoint)
         {
-            WriteHitFunctionBreakpointArguments(writer, hitCondition);
+            WriteHitFunctionBreakpointArguments(writer, condition, hitCondition);
         }
         else
         {
-            WriteHitSourceBreakpointArguments(writer, hitCondition);
+            WriteHitSourceBreakpointArguments(writer, condition, hitCondition);
         }
     }
 
     private static void WriteHitFunctionBreakpointArguments(
         Utf8JsonWriter writer,
-        string hitCondition)
+        string? condition,
+        string? hitCondition)
     {
         writer.WriteStartObject();
         writer.WriteStartArray("breakpoints");
         writer.WriteStartObject();
         writer.WriteString("name", "Csls.TestProcessHost.DebuggerHitFixture.RecordHit");
-        writer.WriteString("hitCondition", hitCondition);
+        WriteOptionalBreakpointPredicate(writer, "condition", condition);
+        WriteOptionalBreakpointPredicate(writer, "hitCondition", hitCondition);
         writer.WriteEndObject();
         writer.WriteEndArray();
         writer.WriteEndObject();
@@ -38,7 +41,8 @@ public sealed partial class DapSessionTests
 
     private static void WriteHitSourceBreakpointArguments(
         Utf8JsonWriter writer,
-        string hitCondition)
+        string? condition,
+        string? hitCondition)
     {
         string sourcePath = Path.Join(
             FindRepositoryRoot(),
@@ -53,9 +57,21 @@ public sealed partial class DapSessionTests
         writer.WriteStartArray("breakpoints");
         writer.WriteStartObject();
         writer.WriteNumber("line", line);
-        writer.WriteString("hitCondition", hitCondition);
+        WriteOptionalBreakpointPredicate(writer, "condition", condition);
+        WriteOptionalBreakpointPredicate(writer, "hitCondition", hitCondition);
         writer.WriteEndObject();
         writer.WriteEndArray();
         writer.WriteEndObject();
+    }
+
+    private static void WriteOptionalBreakpointPredicate(
+        Utf8JsonWriter writer,
+        string name,
+        string? value)
+    {
+        if (value is not null)
+        {
+            writer.WriteString(name, value);
+        }
     }
 }

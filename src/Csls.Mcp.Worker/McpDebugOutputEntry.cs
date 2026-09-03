@@ -6,7 +6,7 @@ namespace Csls.Mcp.Worker;
 /// Describes one MCP-facing target-output segment.
 /// </summary>
 /// <param name="Sequence">The monotonically increasing session-local sequence.</param>
-/// <param name="Category">The target stream name.</param>
+/// <param name="Category">The debugger or target output channel.</param>
 /// <param name="Output">The retained output text.</param>
 /// <param name="Truncated">Whether text preceding this segment was omitted.</param>
 internal sealed record McpDebugOutputEntry(
@@ -22,6 +22,7 @@ internal sealed record McpDebugOutputEntry(
         entry.Sequence,
         entry.Category switch
         {
+            DebugOutputCategory.Console => "console",
             DebugOutputCategory.StandardOutput => "standardOutput",
             DebugOutputCategory.StandardError => "standardError",
             _ => throw new InvalidDataException(

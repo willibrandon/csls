@@ -41,7 +41,7 @@ internal sealed partial class CslsMcpDebuggerBreakpointTools
         long stopGeneration,
         [Description("Absolute source document path.")]
         string sourcePath,
-        [Description("Complete replacement list; an empty list clears the document.")]
+        [Description("Complete replacement list with optional conditions, hit counts, and log messages; an empty list clears the document.")]
         IReadOnlyList<McpDebugSourceBreakpoint> breakpoints,
         CancellationToken cancellationToken) =>
         McpDebuggerToolResult.RunAsync(() => _broker.SetSourceBreakpointsAsync(
@@ -69,7 +69,7 @@ internal sealed partial class CslsMcpDebuggerBreakpointTools
         string debugSession,
         [Description("Exact current positive stop generation.")]
         long stopGeneration,
-        [Description("Complete replacement list; an empty list clears every function breakpoint.")]
+        [Description("Complete replacement list with optional conditions and hit counts; an empty list clears every function breakpoint.")]
         IReadOnlyList<McpDebugFunctionBreakpoint> breakpoints,
         CancellationToken cancellationToken) =>
         McpDebuggerToolResult.RunAsync(() => _broker.SetFunctionBreakpointsAsync(

@@ -22,7 +22,7 @@ public interface IDebuggerSessionObserver
     /// <summary>
     /// Reports target output without merging its standard streams.
     /// </summary>
-    /// <param name="category">The source target stream.</param>
+    /// <param name="category">The debugger or target output channel.</param>
     /// <param name="output">The exact output segment.</param>
     /// <param name="cancellationToken">Cancels notification delivery.</param>
     /// <returns>A task that completes after the notification is accepted.</returns>

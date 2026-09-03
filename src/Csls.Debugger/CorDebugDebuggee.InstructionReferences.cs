@@ -36,6 +36,7 @@ internal sealed partial class CorDebugDebuggee
         {
             InstructionReference = reference,
             Offset = request.Offset,
+            Condition = request.Condition,
             HitCondition = request.HitCondition
         };
         try
@@ -58,6 +59,7 @@ internal sealed partial class CorDebugDebuggee
             {
                 InstructionReference = reference,
                 Offset = request.Offset,
+                Condition = request.Condition,
                 HitCondition = request.HitCondition,
                 ModulePath = frame.ModulePath,
                 ModuleId = frame.ModuleId,
@@ -74,6 +76,7 @@ internal sealed partial class CorDebugDebuggee
             {
                 InstructionReference = result.InstructionReference,
                 Offset = result.Offset,
+                Condition = result.Condition,
                 HitCondition = result.HitCondition,
                 ValidationMessage = exception.Message
             };

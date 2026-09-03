@@ -9,6 +9,8 @@ internal sealed partial class McpDebuggerSessionBroker
 {
     private const int MaximumBreakpointCount = 256;
     private const int MaximumBreakpointTextLength = 1024;
+    private const int MaximumBreakpointExpressionLength = 4096;
+    private const int MaximumLogMessageLength = 16 * 1024;
 
     /// <summary>
     /// Replaces every source breakpoint for one document at an exact stop.
@@ -30,7 +32,15 @@ internal sealed partial class McpDebuggerSessionBroker
                 throw InvalidRequest("breakpoint column must be positive when specified.");
             }
 
+            ValidateOptionalBreakpointText(
+                breakpoint.Condition,
+                "condition",
+                MaximumBreakpointExpressionLength);
             ValidateOptionalBreakpointText(breakpoint.HitCondition, "hitCondition");
+            ValidateOptionalBreakpointText(
+                breakpoint.LogMessage,
+                "logMessage",
+                MaximumLogMessageLength);
         }
 
         McpDebuggerSession session = Resolve(debugSession);
@@ -47,7 +57,9 @@ internal sealed partial class McpDebuggerSessionBroker
                         breakpoints.Select(static item => new DebugSourceBreakpointRequest(
                             item.Line,
                             item.Column,
-                            item.HitCondition)).ToArray()),
+                            item.Condition,
+                            item.HitCondition,
+                            item.LogMessage)).ToArray()),
                     token).ConfigureAwait(false)),
             cancellationToken);
     }
@@ -65,6 +77,10 @@ internal sealed partial class McpDebuggerSessionBroker
         foreach (McpDebugFunctionBreakpoint breakpoint in breakpoints)
         {
             ValidateRequiredBreakpointText(breakpoint.Name, "function name");
+            ValidateOptionalBreakpointText(
+                breakpoint.Condition,
+                "condition",
+                MaximumBreakpointExpressionLength);
             ValidateOptionalBreakpointText(breakpoint.HitCondition, "hitCondition");
         }
 
@@ -80,6 +96,7 @@ internal sealed partial class McpDebuggerSessionBroker
                     new DebugFunctionBreakpointSetRequest(
                         breakpoints.Select(static item => new DebugFunctionBreakpointRequest(
                             item.Name,
+                            item.Condition,
                             item.HitCondition)).ToArray()),
                     token).ConfigureAwait(false)),
             cancellationToken);
@@ -104,20 +121,26 @@ internal sealed partial class McpDebuggerSessionBroker
         }
     }
 
-    private static void ValidateRequiredBreakpointText(string value, string name)
+    private static void ValidateRequiredBreakpointText(
+        string value,
+        string name,
+        int maximumLength = MaximumBreakpointTextLength)
     {
-        if (string.IsNullOrWhiteSpace(value) || value.Length > MaximumBreakpointTextLength)
+        if (string.IsNullOrWhiteSpace(value) || value.Length > maximumLength)
         {
             throw InvalidRequest(
-                $"{name} must contain between 1 and {MaximumBreakpointTextLength} characters.");
+                $"{name} must contain between 1 and {maximumLength} characters.");
         }
     }
 
-    private static void ValidateOptionalBreakpointText(string? value, string name)
+    private static void ValidateOptionalBreakpointText(
+        string? value,
+        string name,
+        int maximumLength = MaximumBreakpointTextLength)
     {
         if (value is not null)
         {
-            ValidateRequiredBreakpointText(value, name);
+            ValidateRequiredBreakpointText(value, name, maximumLength);
         }
     }
 }

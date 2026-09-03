@@ -5,7 +5,7 @@ namespace Csls.Debugger;
 /// <summary>
 /// Tracks one logical source breakpoint independently of runtime module bindings.
 /// </summary>
-internal sealed class SourceBreakpointDefinition
+internal sealed class SourceBreakpointDefinition : IManagedBreakpointDefinition
 {
     /// <summary>
     /// Gets the stable session-local identifier.
@@ -26,6 +26,12 @@ internal sealed class SourceBreakpointDefinition
     /// Gets the optional requested one-based source column.
     /// </summary>
     internal required int? RequestedColumn { get; init; }
+
+    /// <inheritdoc />
+    public string? Condition { get; init; }
+
+    /// <inheritdoc />
+    public string? LogMessage { get; init; }
 
     /// <summary>
     /// Gets the optional validated hit-count predicate.
@@ -60,11 +66,13 @@ internal sealed class SourceBreakpointDefinition
         ValidationMessage ?? (ResolvedLine is null
             ? "The breakpoint is pending until a matching module and debug symbols are loaded."
             : null),
-        HitCondition?.Expression);
+        Condition,
+        HitCondition?.Expression,
+        LogMessage);
 
     /// <summary>
     /// Records one runtime hit and determines whether the target should stop.
     /// </summary>
     /// <returns>True when the breakpoint has no hit condition or its predicate matches.</returns>
-    internal bool RegisterHit() => HitCondition?.RegisterHit() ?? true;
+    public bool RegisterHit() => HitCondition?.RegisterHit() ?? true;
 }

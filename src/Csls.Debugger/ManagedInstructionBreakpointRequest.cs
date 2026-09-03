@@ -16,6 +16,11 @@ internal sealed class ManagedInstructionBreakpointRequest
     internal required long Offset { get; init; }
 
     /// <summary>
+    /// Gets or initializes the optional source-language Boolean condition.
+    /// </summary>
+    internal string? Condition { get; init; }
+
+    /// <summary>
     /// Gets or initializes the optional hit-count expression.
     /// </summary>
     internal string? HitCondition { get; init; }

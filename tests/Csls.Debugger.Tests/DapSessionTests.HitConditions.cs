@@ -56,9 +56,19 @@ public sealed partial class DapSessionTests
             hitCondition: ">=2",
             expectedProgress: "2");
 
-    private async Task ExerciseHitConditionAsync(
+    private Task ExerciseHitConditionAsync(
         bool useFunctionBreakpoint,
         string hitCondition,
+        string expectedProgress) => ExerciseBreakpointPredicateAsync(
+            useFunctionBreakpoint,
+            condition: null,
+            hitCondition,
+            expectedProgress);
+
+    private async Task ExerciseBreakpointPredicateAsync(
+        bool useFunctionBreakpoint,
+        string? condition,
+        string? hitCondition,
         string expectedProgress)
     {
         string testDirectory = Path.Join(
@@ -88,6 +98,9 @@ public sealed partial class DapSessionTests
             Assert.IsTrue(initialize.RootElement.GetProperty("body")
                 .GetProperty("supportsHitConditionalBreakpoints")
                 .GetBoolean());
+            Assert.IsTrue(initialize.RootElement.GetProperty("body")
+                .GetProperty("supportsConditionalBreakpoints")
+                .GetBoolean());
             int launchSequence = await client.SendRequestAsync(
                 "launch",
                 writer => WriteLaunchArguments(
@@ -104,6 +117,7 @@ public sealed partial class DapSessionTests
             int breakpointId = await SetHitConditionBreakpointAsync(
                 client,
                 useFunctionBreakpoint,
+                condition,
                 hitCondition)
                 .ConfigureAwait(false);
             int configurationSequence = await client.SendRequestAsync(
@@ -151,7 +165,8 @@ public sealed partial class DapSessionTests
     private async Task<int> SetHitConditionBreakpointAsync(
         DapTestClient client,
         bool useFunctionBreakpoint,
-        string hitCondition)
+        string? condition,
+        string? hitCondition)
     {
         string command = useFunctionBreakpoint
             ? "setFunctionBreakpoints"
@@ -161,6 +176,7 @@ public sealed partial class DapSessionTests
             writer => WriteHitConditionBreakpointArguments(
                 writer,
                 useFunctionBreakpoint,
+                condition,
                 hitCondition),
             TestContext.CancellationToken).ConfigureAwait(false);
         using JsonDocument response = await client

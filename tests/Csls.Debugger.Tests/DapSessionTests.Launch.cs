@@ -33,6 +33,8 @@ public sealed partial class DapSessionTests
         Assert.IsTrue(
             capabilities.GetProperty("supportsBreakpointLocationsRequest").GetBoolean());
         Assert.IsTrue(capabilities.GetProperty("supportsFunctionBreakpoints").GetBoolean());
+        Assert.IsTrue(capabilities.GetProperty("supportsConditionalBreakpoints").GetBoolean());
+        Assert.IsTrue(capabilities.GetProperty("supportsLogPoints").GetBoolean());
         Assert.HasCount(
             3,
             capabilities.GetProperty("exceptionBreakpointFilters").EnumerateArray().ToArray());
@@ -45,7 +47,7 @@ public sealed partial class DapSessionTests
         Assert.IsTrue(capabilities.GetProperty("supportsStepInTargetsRequest").GetBoolean());
         Assert.IsTrue(capabilities.GetProperty("supportsGotoTargetsRequest").GetBoolean());
         Assert.IsTrue(capabilities.GetProperty("supportsRestartRequest").GetBoolean());
-        Assert.HasCount(17, capabilities.EnumerateObject().ToArray());
+        Assert.HasCount(19, capabilities.EnumerateObject().ToArray());
 
         string processHost = ResolveTestProcessHost();
         int launchSequence = await client.SendRequestAsync(

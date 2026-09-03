@@ -22,6 +22,10 @@ internal sealed partial class McpDebuggerSessionBroker
             ValidateRequiredBreakpointText(
                 breakpoint.InstructionReference,
                 "instructionReference");
+            ValidateOptionalBreakpointText(
+                breakpoint.Condition,
+                "condition",
+                MaximumBreakpointExpressionLength);
             ValidateOptionalBreakpointText(breakpoint.HitCondition, "hitCondition");
         }
 
@@ -39,6 +43,7 @@ internal sealed partial class McpDebuggerSessionBroker
                             new DebugInstructionBreakpointRequest(
                                 item.InstructionReference,
                                 item.Offset,
+                                item.Condition,
                                 item.HitCondition)).ToArray()),
                     token).ConfigureAwait(false)),
             cancellationToken);

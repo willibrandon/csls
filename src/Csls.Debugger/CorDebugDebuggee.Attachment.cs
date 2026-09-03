@@ -16,7 +16,7 @@ internal sealed partial class CorDebugDebuggee
     /// <param name="sourceBreakpoints">The session source-breakpoint owner.</param>
     /// <param name="functionBreakpoints">The session function-breakpoint owner.</param>
     /// <param name="instructionBreakpoints">The session managed-IL breakpoint owner.</param>
-    /// <param name="breakpointStopped">The ordered runtime-breakpoint stop callback.</param>
+    /// <param name="breakpointReached">The ordered runtime-breakpoint decision callback.</param>
     /// <param name="targetBreakpointReached">The ordered targeted-step breakpoint callback.</param>
     /// <param name="stepCompleted">The ordered runtime-step completion callback.</param>
     /// <param name="exceptionRaised">The ordered managed-exception callback.</param>
@@ -28,7 +28,7 @@ internal sealed partial class CorDebugDebuggee
         SourceBreakpointManager sourceBreakpoints,
         FunctionBreakpointManager functionBreakpoints,
         InstructionBreakpointManager instructionBreakpoints,
-        Func<int, DebugBreakpointKind, CancellationToken, ValueTask> breakpointStopped,
+        Func<int, ManagedBreakpointHit, CancellationToken, ValueTask<bool>> breakpointReached,
         Func<int, nint, CancellationToken, ValueTask<ManagedTargetBreakpointDecision>>
             targetBreakpointReached,
         Func<int, nint, int, CancellationToken, ValueTask<bool>> stepCompleted,
@@ -40,7 +40,7 @@ internal sealed partial class CorDebugDebuggee
         ArgumentNullException.ThrowIfNull(sourceBreakpoints);
         ArgumentNullException.ThrowIfNull(functionBreakpoints);
         ArgumentNullException.ThrowIfNull(instructionBreakpoints);
-        ArgumentNullException.ThrowIfNull(breakpointStopped);
+        ArgumentNullException.ThrowIfNull(breakpointReached);
         ArgumentNullException.ThrowIfNull(targetBreakpointReached);
         ArgumentNullException.ThrowIfNull(stepCompleted);
         ArgumentNullException.ThrowIfNull(exceptionRaised);
@@ -73,7 +73,7 @@ internal sealed partial class CorDebugDebuggee
                 sourceBreakpoints,
                 functionBreakpoints,
                 instructionBreakpoints,
-                breakpointStopped,
+                breakpointReached,
                 targetBreakpointReached,
                 stepCompleted,
                 exceptionRaised);

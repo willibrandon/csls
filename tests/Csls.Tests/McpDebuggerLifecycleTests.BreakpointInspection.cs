@@ -42,17 +42,25 @@ public sealed partial class McpDebuggerLifecycleTests
         JsonElement source = Assert.ContainsSingle(
             snapshot.GetProperty("sourceBreakpoints").EnumerateArray());
         Assert.AreEqual(sourcePath, source.GetProperty("sourcePath").GetString());
+        Assert.AreEqual("localNumber == 43", source.GetProperty("condition").GetString());
         Assert.AreEqual(">=1", source.GetProperty("hitCondition").GetString());
+        Assert.AreEqual(
+            "localNumber = {localNumber}",
+            source.GetProperty("logMessage").GetString());
 
         JsonElement function = Assert.ContainsSingle(
             snapshot.GetProperty("functionBreakpoints").EnumerateArray());
         Assert.AreEqual(
             "Csls.TestProcessHost.DebuggerFixture.WaitForSignal",
             function.GetProperty("name").GetString());
+        Assert.AreEqual("number == 42", function.GetProperty("condition").GetString());
         Assert.AreEqual("%2", function.GetProperty("hitCondition").GetString());
 
         JsonElement instruction = Assert.ContainsSingle(
             snapshot.GetProperty("instructionBreakpoints").EnumerateArray());
+        Assert.AreEqual(
+            "localNumber == 43",
+            instruction.GetProperty("condition").GetString());
         Assert.AreEqual("1", instruction.GetProperty("hitCondition").GetString());
 
         JsonElement exception = Assert.ContainsSingle(

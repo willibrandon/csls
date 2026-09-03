@@ -58,6 +58,9 @@ internal sealed partial class InstructionBreakpointManager : IDisposable
                 ModuleId = request.ModuleId,
                 MethodToken = request.MethodToken,
                 IlOffset = request.IlOffset,
+                Condition = string.IsNullOrWhiteSpace(request.Condition)
+                    ? null
+                    : request.Condition,
                 HitCondition = hitCondition,
                 ValidationMessage = request.ValidationMessage ?? (validHitCondition
                     ? null
@@ -75,11 +78,11 @@ internal sealed partial class InstructionBreakpointManager : IDisposable
     }
 
     /// <summary>
-    /// Records a runtime callback and evaluates its hit-count predicate.
+    /// Resolves the logical definition for a runtime breakpoint callback.
     /// </summary>
     /// <param name="breakpoint">The borrowed ICorDebugBreakpoint pointer.</param>
-    /// <returns>Null when unowned, otherwise whether the target should stop.</returns>
-    internal bool? GetBreakDecision(nint breakpoint)
+    /// <returns>The owned definition, or null when the callback is unrecognized.</returns>
+    internal IManagedBreakpointDefinition? FindDefinition(nint breakpoint)
     {
         ObjectDisposedException.ThrowIf(_disposed != 0, this);
         ArgumentOutOfRangeException.ThrowIfZero(breakpoint);
@@ -87,7 +90,7 @@ internal sealed partial class InstructionBreakpointManager : IDisposable
         try
         {
             return _bindings.TryGetValue(identity, out InstructionBreakpointBinding? binding)
-                ? binding.Definition.RegisterHit()
+                ? binding.Definition
                 : null;
         }
         finally

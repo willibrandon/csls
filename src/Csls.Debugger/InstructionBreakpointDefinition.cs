@@ -5,7 +5,7 @@ namespace Csls.Debugger;
 /// <summary>
 /// Tracks one logical managed-IL breakpoint across matching runtime modules.
 /// </summary>
-internal sealed class InstructionBreakpointDefinition
+internal sealed class InstructionBreakpointDefinition : IManagedBreakpointDefinition
 {
     /// <summary>
     /// Gets the stable session-local identifier.
@@ -42,6 +42,12 @@ internal sealed class InstructionBreakpointDefinition
     /// </summary>
     internal uint IlOffset { get; init; }
 
+    /// <inheritdoc />
+    public string? Condition { get; init; }
+
+    /// <inheritdoc />
+    public string? LogMessage => null;
+
     /// <summary>
     /// Gets the optional validated hit-count predicate.
     /// </summary>
@@ -66,7 +72,7 @@ internal sealed class InstructionBreakpointDefinition
     /// Records one runtime hit and evaluates the optional hit-count predicate.
     /// </summary>
     /// <returns>True when the target should stop.</returns>
-    internal bool RegisterHit() => HitCondition?.RegisterHit() ?? true;
+    public bool RegisterHit() => HitCondition?.RegisterHit() ?? true;
 
     /// <summary>
     /// Creates the externally visible breakpoint state.
@@ -80,5 +86,6 @@ internal sealed class InstructionBreakpointDefinition
         ValidationMessage ?? BindingMessage ?? (BindingCount == 0
             ? "The managed-IL breakpoint is pending until its module is loaded."
             : null),
+        Condition,
         HitCondition?.Expression);
 }

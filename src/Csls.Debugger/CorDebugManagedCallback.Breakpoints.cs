@@ -25,35 +25,31 @@ internal sealed partial class CorDebugManagedCallback
             return targetDecision == ManagedTargetBreakpointDecision.Continue;
         }
 
-        DebugBreakpointKind kind;
-        bool shouldBreak;
-        if (_sourceBreakpoints.GetBreakDecision(breakpoint) is bool sourceDecision)
+        ManagedBreakpointHit? hit = null;
+        if (_sourceBreakpoints.FindDefinition(breakpoint) is
+            IManagedBreakpointDefinition sourceDefinition)
         {
-            kind = DebugBreakpointKind.Source;
-            shouldBreak = sourceDecision;
+            hit = new ManagedBreakpointHit(DebugBreakpointKind.Source, sourceDefinition);
         }
-        else if (_functionBreakpoints.GetBreakDecision(breakpoint) is bool functionDecision)
+        else if (_functionBreakpoints.FindDefinition(breakpoint) is
+            IManagedBreakpointDefinition functionDefinition)
         {
-            kind = DebugBreakpointKind.Function;
-            shouldBreak = functionDecision;
+            hit = new ManagedBreakpointHit(DebugBreakpointKind.Function, functionDefinition);
         }
-        else if (_instructionBreakpoints.GetBreakDecision(breakpoint) is bool instructionDecision)
+        else if (_instructionBreakpoints.FindDefinition(breakpoint) is
+            IManagedBreakpointDefinition instructionDefinition)
         {
-            kind = DebugBreakpointKind.Instruction;
-            shouldBreak = instructionDecision;
+            hit = new ManagedBreakpointHit(
+                DebugBreakpointKind.Instruction,
+                instructionDefinition);
         }
-        else
+
+        if (hit is null)
         {
             return true;
         }
 
-        if (!shouldBreak)
-        {
-            return true;
-        }
-
-        await _breakpointStopped(managedThreadId, kind, cancellationToken)
+        return await _breakpointReached(managedThreadId, hit, cancellationToken)
             .ConfigureAwait(false);
-        return false;
     }
 }

@@ -7,36 +7,70 @@ namespace Csls.Debugger;
 /// </summary>
 public sealed partial class DebuggerSession
 {
-    private ValueTask HandleRuntimeBreakpointCoreAsync(
+    private async ValueTask<bool> HandleRuntimeBreakpointCoreAsync(
         int threadId,
-        DebugBreakpointKind kind,
+        ManagedBreakpointHit hit,
         CancellationToken cancellationToken)
     {
-        string reason = kind switch
-        {
-            DebugBreakpointKind.Function => "function breakpoint",
-            DebugBreakpointKind.Instruction => "instruction breakpoint",
-            _ => "breakpoint"
-        };
         if (_state == DebugSessionState.Starting)
         {
-            _pendingStop = new PendingDebugStop(reason, threadId, Exception: null);
-            return ValueTask.CompletedTask;
+            if (hit.Definition.Condition is null && hit.Definition.LogMessage is null)
+            {
+                if (!hit.Definition.RegisterHit())
+                {
+                    return true;
+                }
+
+                _pendingStop = new PendingDebugStop(
+                    GetBreakpointReason(hit.Kind),
+                    threadId,
+                    Exception: null);
+            }
+            else
+            {
+                _pendingStop = new PendingDebugStop(
+                    GetBreakpointReason(hit.Kind),
+                    threadId,
+                    Exception: null,
+                    hit);
+            }
+
+            return false;
         }
 
         if (_state != DebugSessionState.Running)
         {
-            throw new InvalidOperationException(
-                $"A runtime breakpoint cannot stop a debugger session while it is {_state}.");
+            return false;
         }
 
+        return await HandleRunningBreakpointAsync(threadId, hit, cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    private async ValueTask StopAtBreakpointAsync(
+        int threadId,
+        DebugBreakpointKind kind,
+        DebugStopGeneration? generation,
+        CancellationToken cancellationToken)
+    {
         if (_debuggee is CorDebugDebuggee managedDebuggee)
         {
             managedDebuggee.CancelStep();
         }
 
-        return EnterStoppedStateAsync(reason, threadId, cancellationToken);
+        await EnterStoppedStateAsync(
+            GetBreakpointReason(kind),
+            threadId,
+            cancellationToken,
+            generation).ConfigureAwait(false);
     }
+
+    private static string GetBreakpointReason(DebugBreakpointKind kind) => kind switch
+    {
+        DebugBreakpointKind.Function => "function breakpoint",
+        DebugBreakpointKind.Instruction => "instruction breakpoint",
+        _ => "breakpoint"
+    };
 
     private async ValueTask<bool> HandleRuntimeStepCoreAsync(
         int threadId,
@@ -87,7 +121,8 @@ public sealed partial class DebuggerSession
     private async ValueTask EnterStoppedStateAsync(
         string reason,
         int? threadId,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        DebugStopGeneration? generation = null)
     {
         if (!string.Equals(reason, "exception", StringComparison.Ordinal))
         {
@@ -95,9 +130,9 @@ public sealed partial class DebuggerSession
             _currentExceptionThreadId = null;
         }
 
-        _stopGeneration = _stopGeneration.Value == 0
+        _stopGeneration = generation ?? (_stopGeneration.Value == 0
             ? DebugStopGeneration.First
-            : _stopGeneration.Next();
+            : _stopGeneration.Next());
         _state = DebugSessionState.Stopped;
         await _observer.OnStoppedAsync(
             reason,

@@ -251,9 +251,14 @@ resolved source location. Pending breakpoints rebind when modules load, update, 
 reload and unbind when their module unloads.
 
 Conditional, hit-count, and log breakpoints share the evaluator pipeline. Hit
-counts are maintained per logical breakpoint and reset only when the client
-replaces it. A failed condition or interpolation reports one bounded diagnostic and
-follows the documented break policy; it never silently changes expression meaning.
+counts are maintained per logical breakpoint, advance only after a language
+condition returns true, and reset only when the client replaces the breakpoint.
+Conditions bind against the callback thread's top managed frame using the PDB
+language identity. A failed condition reports bounded debugger-console output and
+retains the stop so a developer can inspect and correct it. A source logpoint
+interpolates bounded brace-delimited expressions after condition and hit-count
+selection; success and interpolation failure both emit console output and resume
+without exposing a stop. It never silently changes expression meaning.
 Data breakpoints use runtime value-breakpoint support only while the underlying
 storage identity is stable. Instruction breakpoints address managed IL, not machine
 instructions. Their references are resolved only through a current stop generation,

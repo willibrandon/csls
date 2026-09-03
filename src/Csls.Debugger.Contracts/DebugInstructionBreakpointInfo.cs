@@ -8,6 +8,7 @@ namespace Csls.Debugger.Contracts;
 /// <param name="InstructionReference">The requested instruction reference.</param>
 /// <param name="Offset">The requested signed byte offset.</param>
 /// <param name="Message">An optional validation or pending-binding diagnostic.</param>
+/// <param name="Condition">The optional source-language Boolean condition.</param>
 /// <param name="HitCondition">The normalized hit-count predicate when valid.</param>
 public sealed record DebugInstructionBreakpointInfo(
     int Id,
@@ -15,4 +16,5 @@ public sealed record DebugInstructionBreakpointInfo(
     string InstructionReference,
     long Offset,
     string? Message,
+    string? Condition,
     string? HitCondition);

@@ -25,9 +25,12 @@ internal sealed partial class DapSession
                 writer =>
                 {
                     writer.WriteStartObject();
-                    writer.WriteString(
-                        "category",
-                        category == DebugOutputCategory.StandardOutput ? "stdout" : "stderr");
+                    writer.WriteString("category", category switch
+                    {
+                        DebugOutputCategory.Console => "console",
+                        DebugOutputCategory.StandardOutput => "stdout",
+                        _ => "stderr"
+                    });
                     writer.WriteString("output", output);
                     writer.WriteEndObject();
                 },

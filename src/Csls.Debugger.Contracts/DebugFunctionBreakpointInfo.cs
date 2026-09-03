@@ -7,10 +7,12 @@ namespace Csls.Debugger.Contracts;
 /// <param name="Name">The requested managed function name.</param>
 /// <param name="Verified">Whether at least one runtime method is bound.</param>
 /// <param name="Message">An optional explanation when no method is bound.</param>
+/// <param name="Condition">The optional source-language Boolean condition.</param>
 /// <param name="HitCondition">The normalized hit-count predicate when valid.</param>
 public sealed record DebugFunctionBreakpointInfo(
     int Id,
     string Name,
     bool Verified,
     string? Message,
+    string? Condition,
     string? HitCondition);
