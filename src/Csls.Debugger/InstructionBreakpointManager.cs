@@ -55,6 +55,7 @@ internal sealed partial class InstructionBreakpointManager : IDisposable
                 InstructionReference = request.InstructionReference,
                 Offset = request.Offset,
                 ModulePath = request.ModulePath,
+                ModuleId = request.ModuleId,
                 MethodToken = request.MethodToken,
                 IlOffset = request.IlOffset,
                 HitCondition = hitCondition,

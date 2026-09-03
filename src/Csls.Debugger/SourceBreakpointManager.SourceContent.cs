@@ -25,13 +25,39 @@ internal sealed partial class SourceBreakpointManager
     internal DebugSourceInfo GetSourceInfo(string modulePath, string sourcePath)
     {
         ObjectDisposedException.ThrowIf(_disposed != 0, this);
-        string key = CreateSourceKey(modulePath, sourcePath);
+        CorDebugLoadedModule? module = FindModule(modulePath);
+        string moduleKey = module is null ? Path.GetFullPath(modulePath) : GetSourceModuleKey(module);
+        return GetSourceInfo(module, moduleKey, sourcePath);
+    }
+
+    /// <summary>
+    /// Resolves one stack-frame document by its stable session-local module identifier.
+    /// </summary>
+    /// <param name="moduleId">The module identifier returned by debugger module inspection.</param>
+    /// <param name="sourcePath">The exact document path from the Portable PDB.</param>
+    /// <returns>The stable source descriptor.</returns>
+    internal DebugSourceInfo GetSourceInfo(int moduleId, string sourcePath)
+    {
+        ObjectDisposedException.ThrowIf(_disposed != 0, this);
+        CorDebugLoadedModule module = FindModule(moduleId)
+            ?? throw new KeyNotFoundException($"Debugger module {moduleId} is no longer loaded.");
+        return GetSourceInfo(module, GetSourceModuleKey(module), sourcePath);
+    }
+
+    private DebugSourceInfo GetSourceInfo(
+        CorDebugLoadedModule? module,
+        string moduleKey,
+        string sourcePath)
+    {
+        string key = CreateSourceKey(moduleKey, sourcePath);
         if (_sources.TryGetValue(key, out DebugSourceRegistration? existing))
         {
             return existing.Info;
         }
 
-        using PortablePdbReader? symbols = OpenSymbols(modulePath);
+        using PortablePdbReader? symbols = module is null
+            ? PortablePdbReader.TryOpen(moduleKey)
+            : OpenSymbols(module);
         if (symbols is not null)
         {
             foreach (DocumentHandle handle in symbols.Metadata.Documents)
@@ -40,12 +66,12 @@ internal sealed partial class SourceBreakpointManager
                     symbols.Metadata.GetDocument(handle).Name);
                 if (PathsEqual(candidate, sourcePath))
                 {
-                    return RegisterSource(modulePath, symbols, handle).Info;
+                    return RegisterSource(moduleKey, symbols, handle).Info;
                 }
             }
         }
 
-        return RegisterUnavailableSource(modulePath, sourcePath).Info;
+        return RegisterUnavailableSource(moduleKey, sourcePath).Info;
     }
 
     /// <summary>
@@ -180,8 +206,11 @@ internal sealed partial class SourceBreakpointManager
     private static string GetPortableFileName(string path) =>
         Path.GetFileName(path.Replace('\\', '/'));
 
-    private static string CreateSourceKey(string modulePath, string sourcePath) =>
-        $"{Path.GetFullPath(modulePath)}\0{sourcePath}";
+    private static string CreateSourceKey(string moduleKey, string sourcePath) =>
+        $"{moduleKey}\0{sourcePath}";
+
+    private static string GetSourceModuleKey(CorDebugLoadedModule module) =>
+        module.Path ?? $"in-memory:{module.Id}";
 
     private void ClearSources()
     {

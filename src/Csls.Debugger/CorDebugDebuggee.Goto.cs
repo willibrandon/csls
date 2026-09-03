@@ -31,7 +31,7 @@ internal sealed partial class CorDebugDebuggee
 
         ManagedFrameHandle frame = GetFrame(request.FrameId, generation);
         ValidateActiveFrame(frame);
-        if (frame.ModulePath is null || frame.MethodToken == 0)
+        if ((frame.ModulePath is null && frame.ModuleImage is null) || frame.MethodToken == 0)
         {
             return [];
         }
@@ -49,7 +49,7 @@ internal sealed partial class CorDebugDebuggee
 
             _gotoTargets.Clear();
             IEnumerable<ManagedSequencePoint> points = PortablePdbMethodMap
-                .Read(frame.ModulePath, frame.MethodToken, frame.SymbolPath)
+                .Read(frame, frame.MethodToken)
                 .Where(point => request.Line >= point.StartLine &&
                     request.Line <= point.EndLine &&
                     _sourceBreakpoints.PathsReferToSameSource(

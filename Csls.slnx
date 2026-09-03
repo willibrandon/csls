@@ -50,6 +50,7 @@
     <Project Path="test-assets/Csls.Debugger.Fixtures.CSharp/Csls.Debugger.Fixtures.CSharp.csproj" />
     <Project Path="test-assets/Csls.Debugger.Fixtures.Embedded/Csls.Debugger.Fixtures.Embedded.csproj" />
     <Project Path="test-assets/Csls.Debugger.Fixtures.FSharp/Csls.Debugger.Fixtures.FSharp.fsproj" />
+    <Project Path="test-assets/Csls.Debugger.Fixtures.InMemory/Csls.Debugger.Fixtures.InMemory.csproj" />
     <Project Path="test-assets/Csls.Debugger.Fixtures.VisualBasic/Csls.Debugger.Fixtures.VisualBasic.vbproj" />
     <Project Path="test-assets/Csls.CancellationProbeTransport/Csls.CancellationProbeTransport.csproj" />
     <Project Path="tests/Csls.CancellationProbeAnalyzer/Csls.CancellationProbeAnalyzer.csproj" />

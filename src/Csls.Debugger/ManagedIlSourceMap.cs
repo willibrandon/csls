@@ -13,25 +13,19 @@ internal static class ManagedIlSourceMap
     /// <summary>
     /// Reads every visible source mapping for one method definition.
     /// </summary>
-    /// <param name="modulePath">The absolute managed PE path.</param>
-    /// <param name="methodToken">The method-definition metadata token.</param>
-    /// <param name="methodName">The language-neutral method display name.</param>
-    /// <param name="symbolPath">The selected associated PDB path, when applicable.</param>
+    /// <param name="frame">The generation-bound frame and immutable symbol snapshot.</param>
     /// <returns>Visible source locations keyed by exact IL offset.</returns>
-    internal static IReadOnlyDictionary<int, ManagedFrameLocation> Read(
-        string modulePath,
-        uint methodToken,
-        string methodName,
-        string? symbolPath)
+    internal static IReadOnlyDictionary<int, ManagedFrameLocation> Read(ManagedFrameHandle frame)
     {
-        using var symbols = PortablePdbReader.TryOpen(modulePath, symbolPath);
+        ArgumentNullException.ThrowIfNull(frame);
+        using PortablePdbReader? symbols = frame.OpenSymbols();
         if (symbols is null)
         {
             return new Dictionary<int, ManagedFrameLocation>();
         }
 
         MetadataReader reader = symbols.Metadata;
-        int rowNumber = checked((int)(methodToken & 0x00ffffff));
+        int rowNumber = checked((int)(frame.MethodToken & 0x00ffffff));
         if (rowNumber == 0 || rowNumber > reader.MethodDebugInformation.Count)
         {
             return new Dictionary<int, ManagedFrameLocation>();
@@ -51,8 +45,11 @@ internal static class ManagedIlSourceMap
             Document document = reader.GetDocument(point.Document);
             result[point.Offset] = new ManagedFrameLocation
             {
-                Name = methodName,
-                ModulePath = modulePath,
+                Name = frame.Name,
+                ModulePath = frame.ModulePath,
+                ModuleId = frame.ModuleId,
+                ModuleImage = frame.ModuleImage,
+                SymbolImage = frame.SymbolImage,
                 SourcePath = reader.GetString(document.Name),
                 Line = point.StartLine,
                 Column = point.StartColumn

@@ -39,6 +39,32 @@ if (args is ["--debugger-exception-filter-fixture", string exceptionFilterFixtur
     return DebuggerExceptionFilterFixture.Run(exceptionFilterFixturePath);
 }
 
+if (args is [
+    "--debugger-in-memory-fixture",
+    string assemblyPath,
+    string symbolPath,
+    string inMemorySignalPath])
+{
+    return InMemoryAssemblyRunner.Run(
+        assemblyPath,
+        symbolPath,
+        inMemorySignalPath,
+        announce: false);
+}
+
+if (args is [
+    "--debugger-in-memory-attach-fixture",
+    string attachAssemblyPath,
+    string attachSymbolPath,
+    string attachSignalPath])
+{
+    return InMemoryAssemblyRunner.Run(
+        attachAssemblyPath,
+        attachSymbolPath,
+        attachSignalPath,
+        announce: true);
+}
+
 if (args is ["--print-environment-and-exit", string printedVariable, string exitCode])
 {
     await Console.Out.WriteAsync(

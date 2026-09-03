@@ -45,7 +45,7 @@ internal sealed partial class CorDebugDebuggee
                     frame,
                     methodToken,
                     ilOffset,
-                    _sourceBreakpoints.GetSymbolPath);
+                    _sourceBreakpoints.FindModule);
             }
         }
         finally
@@ -73,6 +73,9 @@ internal sealed partial class CorDebugDebuggee
                 MethodToken = methodToken,
                 IlOffset = ilOffset,
                 ModulePath = location.ModulePath,
+                ModuleId = location.ModuleId,
+                ModuleImage = location.ModuleImage,
+                SymbolImage = location.SymbolImage,
                 SymbolPath = location.ModulePath is null
                     ? null
                     : _sourceBreakpoints.GetSymbolPath(location.ModulePath),
@@ -89,9 +92,8 @@ internal sealed partial class CorDebugDebuggee
                 });
         }
 
-        DebugSourceInfo? source = location.ModulePath is not null &&
-            location.SourcePath is not null
-            ? _sourceBreakpoints.GetSourceInfo(location.ModulePath, location.SourcePath)
+        DebugSourceInfo? source = location.ModuleId is not null && location.SourcePath is not null
+            ? _sourceBreakpoints.GetSourceInfo(location.ModuleId.Value, location.SourcePath)
             : null;
         return new DebugStackFrameInfo(
             existing.Id,
@@ -99,7 +101,8 @@ internal sealed partial class CorDebugDebuggee
             source,
             location.Line,
             location.Column,
-            methodToken == 0 || location.ModulePath is null
+            methodToken == 0 ||
+                location.ModulePath is null && location.ModuleImage is null
                 ? null
                 : existing.InstructionReference);
     }

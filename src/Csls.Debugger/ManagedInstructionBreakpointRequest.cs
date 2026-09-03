@@ -26,6 +26,11 @@ internal sealed class ManagedInstructionBreakpointRequest
     internal string? ModulePath { get; init; }
 
     /// <summary>
+    /// Gets or initializes the stable session-local module identifier.
+    /// </summary>
+    internal int? ModuleId { get; init; }
+
+    /// <summary>
     /// Gets or initializes the managed method token when resolution succeeded.
     /// </summary>
     internal uint MethodToken { get; init; }

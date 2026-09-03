@@ -13,16 +13,15 @@ internal static class PortablePdbMethodMap
     /// <summary>
     /// Reads the ordered visible sequence points for a method.
     /// </summary>
-    /// <param name="modulePath">The absolute managed PE path.</param>
+    /// <param name="frame">The generation-bound frame and immutable symbol snapshot.</param>
     /// <param name="methodToken">The method-definition metadata token.</param>
-    /// <param name="symbolPath">The selected associated PDB path, when applicable.</param>
     /// <returns>The ordered visible source positions.</returns>
     internal static IReadOnlyList<ManagedSequencePoint> Read(
-        string modulePath,
-        uint methodToken,
-        string? symbolPath)
+        ManagedFrameHandle frame,
+        uint methodToken)
     {
-        using var symbols = PortablePdbReader.TryOpen(modulePath, symbolPath);
+        ArgumentNullException.ThrowIfNull(frame);
+        using PortablePdbReader? symbols = frame.OpenSymbols();
         if (symbols is null)
         {
             return [];

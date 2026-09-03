@@ -24,13 +24,17 @@ internal sealed partial class CorDebugDebuggee
     {
         ManagedFrameHandle frame = GetFrame(frameId, generation);
         ValidateActiveFrame(frame);
-        if (frame.ModulePath is null || frame.MethodToken == 0)
+        if ((frame.ModulePath is null && frame.ModuleImage is null) || frame.MethodToken == 0)
         {
             return [];
         }
 
-        using FileStream stream = File.OpenRead(frame.ModulePath);
-        using var peReader = new PEReader(stream);
+        using PEReader? peReader = frame.OpenPeReader();
+        if (peReader is null)
+        {
+            return [];
+        }
+
         MetadataReader metadata = peReader.GetMetadataReader();
         MethodDefinition method = GetMethodDefinition(metadata, frame.MethodToken);
         if (method.RelativeVirtualAddress == 0)
@@ -40,9 +44,8 @@ internal sealed partial class CorDebugDebuggee
 
         byte[] bytes = peReader.GetMethodBody(method.RelativeVirtualAddress).GetILBytes() ?? [];
         IReadOnlyList<ManagedSequencePoint> points = PortablePdbMethodMap.Read(
-            frame.ModulePath,
-            frame.MethodToken,
-            frame.SymbolPath);
+            frame,
+            frame.MethodToken);
         ManagedSequencePoint? current = points.LastOrDefault(
             point => point.IlOffset <= frame.IlOffset);
         if (current is null)
@@ -65,9 +68,8 @@ internal sealed partial class CorDebugDebuggee
             }
 
             IReadOnlyList<ManagedSequencePoint> calleePoints = PortablePdbMethodMap.Read(
-                frame.ModulePath,
-                calleeToken,
-                frame.SymbolPath);
+                frame,
+                calleeToken);
             if (calleePoints.Count == 0)
             {
                 continue;

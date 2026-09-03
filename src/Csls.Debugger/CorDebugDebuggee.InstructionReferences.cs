@@ -60,6 +60,7 @@ internal sealed partial class CorDebugDebuggee
                 Offset = request.Offset,
                 HitCondition = request.HitCondition,
                 ModulePath = frame.ModulePath,
+                ModuleId = frame.ModuleId,
                 MethodToken = frame.MethodToken,
                 IlOffset = checked((uint)requestedOffset)
             };

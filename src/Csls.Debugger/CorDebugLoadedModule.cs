@@ -1,4 +1,5 @@
 using Csls.Debugger.Contracts;
+using System.Reflection.PortableExecutable;
 
 namespace Csls.Debugger;
 
@@ -7,6 +8,11 @@ namespace Csls.Debugger;
 /// </summary>
 internal sealed class CorDebugLoadedModule
 {
+    /// <summary>
+    /// Gets or initializes the runtime-reported module display name when available.
+    /// </summary>
+    internal string? Name { get; init; }
+
     /// <summary>
     /// Gets the stable session-local module identifier.
     /// </summary>
@@ -38,6 +44,26 @@ internal sealed class CorDebugLoadedModule
     internal string? SymbolPath { get; set; }
 
     /// <summary>
+    /// Gets or sets an immutable Portable PDB image supplied by the runtime.
+    /// </summary>
+    internal byte[]? SymbolImage { get; set; }
+
+    /// <summary>
+    /// Gets whether CoreCLR reports that the module was loaded from memory.
+    /// </summary>
+    internal bool IsInMemory { get; init; }
+
+    /// <summary>
+    /// Gets whether CoreCLR reports that the module can grow through LoadClass callbacks.
+    /// </summary>
+    internal bool IsDynamic { get; init; }
+
+    /// <summary>
+    /// Gets or sets the immutable PE image copied from an in-memory module.
+    /// </summary>
+    internal byte[]? ModuleImage { get; set; }
+
+    /// <summary>
     /// Gets or sets whether symbol discovery has completed for this module.
     /// </summary>
     internal bool SymbolsInspected { get; set; }
@@ -66,4 +92,18 @@ internal sealed class CorDebugLoadedModule
     /// Gets or sets whether runtime JMC configuration has completed for this module.
     /// </summary>
     internal bool JustMyCodeConfigured { get; set; }
+
+    /// <summary>
+    /// Opens an owned PE reader over the file or immutable in-memory module image.
+    /// </summary>
+    /// <returns>An owned PE reader, or null when the module image is unavailable.</returns>
+    internal PEReader? OpenPeReader() => ModuleImage is not null
+        ? new PEReader(new MemoryStream(ModuleImage, writable: false))
+        : Path is not null && File.Exists(Path)
+            ? new PEReader(new FileStream(
+                Path,
+                FileMode.Open,
+                FileAccess.Read,
+                FileShare.Read | FileShare.Delete))
+            : null;
 }

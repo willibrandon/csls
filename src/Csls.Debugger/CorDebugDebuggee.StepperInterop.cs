@@ -71,7 +71,7 @@ internal sealed partial class CorDebugDebuggee
 
         if (!PortablePdbStepRangeResolver.TryResolve(
             thread,
-            _sourceBreakpoints.GetSymbolPath,
+            _sourceBreakpoints.FindModule,
             out ManagedStepRange range))
         {
             return api.Step(kind == DebugStepKind.Into ? 1 : 0);

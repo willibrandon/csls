@@ -13,5 +13,10 @@ internal enum PortablePdbStorageKind
     /// <summary>
     /// The Portable PDB is embedded in the managed PE image.
     /// </summary>
-    Embedded
+    Embedded,
+
+    /// <summary>
+    /// The Portable PDB was supplied as a runtime-owned in-memory symbol stream.
+    /// </summary>
+    InMemory
 }

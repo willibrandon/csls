@@ -1,5 +1,6 @@
 using System.Reflection.Metadata;
 using System.Reflection.PortableExecutable;
+using System.Runtime.InteropServices;
 
 namespace Csls.Debugger;
 
@@ -33,7 +34,7 @@ internal sealed class PortablePdbReader : IDisposable
     internal PortablePdbStorageKind StorageKind { get; }
 
     /// <summary>
-    /// Gets the associated Portable PDB path, or null for embedded symbols.
+    /// Gets the associated Portable PDB path, or null for embedded or in-memory symbols.
     /// </summary>
     internal string? Path { get; }
 
@@ -80,6 +81,41 @@ internal sealed class PortablePdbReader : IDisposable
                 return reader;
             }
 
+            return null;
+        }
+        finally
+        {
+            provider?.Dispose();
+        }
+    }
+
+    /// <summary>
+    /// Opens a runtime-supplied in-memory Portable PDB image.
+    /// </summary>
+    /// <param name="image">The complete immutable Portable PDB image.</param>
+    /// <returns>An owned symbol reader, or null when the image is not a Portable PDB.</returns>
+    internal static PortablePdbReader? TryOpen(byte[] image)
+    {
+        ArgumentNullException.ThrowIfNull(image);
+        if (image.Length == 0)
+        {
+            return null;
+        }
+
+        MetadataReaderProvider? provider = null;
+        try
+        {
+            provider = MetadataReaderProvider.FromPortablePdbImage(
+                ImmutableCollectionsMarshal.AsImmutableArray(image));
+            var reader = new PortablePdbReader(
+                provider,
+                PortablePdbStorageKind.InMemory,
+                path: null);
+            provider = null;
+            return reader;
+        }
+        catch (BadImageFormatException)
+        {
             return null;
         }
         finally

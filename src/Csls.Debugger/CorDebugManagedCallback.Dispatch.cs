@@ -13,6 +13,7 @@ internal sealed partial class CorDebugManagedCallback
             controller,
             thread: 0,
             subject: 0,
+            auxiliary: 0,
             createsProcess,
             exitsProcess: false,
             continueAfterCallback: true,
@@ -23,10 +24,11 @@ internal sealed partial class CorDebugManagedCallback
         nint controller,
         nint thread,
         nint subject,
+        nint auxiliary,
         bool createsProcess,
         bool exitsProcess,
         bool continueAfterCallback,
-        Func<CorDebugManagedCallback, nint, nint, CancellationToken, ValueTask<bool>>? callbackOperation)
+        CorDebugCallbackOperation? callbackOperation)
     {
         if (controller == 0)
         {
@@ -45,15 +47,22 @@ internal sealed partial class CorDebugManagedCallback
             _ = ComAbi.AddRef(subject);
         }
 
+        if (auxiliary != 0)
+        {
+            _ = ComAbi.AddRef(auxiliary);
+        }
+
         nint ownedController = controller;
         nint ownedThread = thread;
         nint ownedSubject = subject;
+        nint ownedAuxiliary = auxiliary;
         Task queuedOperation = target._actor.InvokeAsync(
             async actorCancellationToken =>
             {
                 nint currentController = Interlocked.Exchange(ref ownedController, 0);
                 nint currentThread = Interlocked.Exchange(ref ownedThread, 0);
                 nint currentSubject = Interlocked.Exchange(ref ownedSubject, 0);
+                nint currentAuxiliary = Interlocked.Exchange(ref ownedAuxiliary, 0);
                 try
                 {
                     bool detaching = Volatile.Read(ref target._detaching) != 0;
@@ -68,6 +77,7 @@ internal sealed partial class CorDebugManagedCallback
                                     target,
                                     currentThread,
                                     currentSubject,
+                                    currentAuxiliary,
                                     actorCancellationToken).ConfigureAwait(false);
                             }
                         }
@@ -96,6 +106,11 @@ internal sealed partial class CorDebugManagedCallback
                 }
                 finally
                 {
+                    if (currentAuxiliary != 0)
+                    {
+                        _ = ComAbi.Release(currentAuxiliary);
+                    }
+
                     if (currentSubject != 0)
                     {
                         _ = ComAbi.Release(currentSubject);
@@ -119,6 +134,12 @@ internal sealed partial class CorDebugManagedCallback
             queuedOperation,
             () =>
             {
+                nint currentAuxiliary = Interlocked.Exchange(ref ownedAuxiliary, 0);
+                if (currentAuxiliary != 0)
+                {
+                    _ = ComAbi.Release(currentAuxiliary);
+                }
+
                 nint currentSubject = Interlocked.Exchange(ref ownedSubject, 0);
                 if (currentSubject != 0)
                 {

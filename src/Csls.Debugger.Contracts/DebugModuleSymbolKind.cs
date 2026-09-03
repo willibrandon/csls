@@ -18,5 +18,10 @@ public enum DebugModuleSymbolKind
     /// <summary>
     /// A matching Portable PDB embedded in the module is loaded.
     /// </summary>
-    EmbeddedPortablePdb
+    EmbeddedPortablePdb,
+
+    /// <summary>
+    /// A Portable PDB supplied by the runtime for an in-memory module is loaded.
+    /// </summary>
+    InMemoryPortablePdb
 }

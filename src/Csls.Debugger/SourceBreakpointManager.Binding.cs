@@ -14,25 +14,22 @@ internal sealed partial class SourceBreakpointManager
         bool notifyChanges,
         CancellationToken cancellationToken)
     {
-        string? modulePath = module.Path;
-        if (modulePath is null)
-        {
-            return;
-        }
-
         Dictionary<int, SourceBreakpointLocation> locations;
         try
         {
-            using PortablePdbReader? symbols = OpenSymbols(modulePath);
+            using PortablePdbReader? symbols = OpenSymbols(module);
             module.SymbolsInspected = true;
             if (symbols is null)
             {
                 return;
             }
 
-            module.SymbolKind = symbols.StorageKind == PortablePdbStorageKind.Embedded
-                ? DebugModuleSymbolKind.EmbeddedPortablePdb
-                : DebugModuleSymbolKind.PortablePdb;
+            module.SymbolKind = symbols.StorageKind switch
+            {
+                PortablePdbStorageKind.Embedded => DebugModuleSymbolKind.EmbeddedPortablePdb,
+                PortablePdbStorageKind.InMemory => DebugModuleSymbolKind.InMemoryPortablePdb,
+                _ => DebugModuleSymbolKind.PortablePdb
+            };
             module.SymbolPath = symbols.Path;
 
             locations = ResolveLocations(symbols.Metadata, definitions);

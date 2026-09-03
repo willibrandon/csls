@@ -94,6 +94,7 @@ internal sealed partial class DapSession
         {
             DebugModuleSymbolKind.PortablePdb => "Symbols loaded.",
             DebugModuleSymbolKind.EmbeddedPortablePdb => "Embedded Portable PDB loaded.",
+            DebugModuleSymbolKind.InMemoryPortablePdb => "In-memory Portable PDB loaded.",
             _ => "Symbols not found."
         };
         return string.Concat(

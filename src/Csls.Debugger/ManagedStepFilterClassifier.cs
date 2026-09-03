@@ -19,21 +19,16 @@ internal static class ManagedStepFilterClassifier
     /// <summary>
     /// Gets type and method tokens excluded by attributes and step-filtering policy.
     /// </summary>
-    /// <param name="modulePath">The absolute managed module path.</param>
+    /// <param name="peReader">The readable managed module image.</param>
     /// <param name="justMyCode">Whether non-user-code attributes are honored.</param>
     /// <param name="enableStepFiltering">Whether properties and operators are skipped.</param>
     /// <returns>The bounded distinct metadata-token sequence.</returns>
     internal static uint[] GetExcludedTokens(
-        string modulePath,
+        PEReader peReader,
         bool justMyCode,
         bool enableStepFiltering)
     {
-        using FileStream stream = new(
-            modulePath,
-            FileMode.Open,
-            FileAccess.Read,
-            FileShare.Read | FileShare.Delete);
-        using var peReader = new PEReader(stream);
+        ArgumentNullException.ThrowIfNull(peReader);
         MetadataReader reader = peReader.GetMetadataReader();
         var tokens = new HashSet<uint>();
         foreach (TypeDefinitionHandle typeHandle in reader.TypeDefinitions)

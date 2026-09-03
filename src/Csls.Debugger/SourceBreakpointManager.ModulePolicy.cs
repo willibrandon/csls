@@ -42,8 +42,28 @@ internal sealed partial class SourceBreakpointManager
                 (DebugModuleSymbolKind.EmbeddedPortablePdb, null),
             PortablePdbStorageKind.AssociatedFile =>
                 (DebugModuleSymbolKind.PortablePdb, symbols.Path),
+            PortablePdbStorageKind.InMemory =>
+                (DebugModuleSymbolKind.InMemoryPortablePdb, null),
             _ => (DebugModuleSymbolKind.None, null)
         };
+    }
+
+    private static unsafe bool IsInMemoryModule(nint module)
+    {
+        int inMemory = 0;
+        int* inMemoryAddress = &inMemory;
+        int result = new ICorDebugModuleAbi(module).IsInMemory((nint)inMemoryAddress);
+        inMemory = Volatile.Read(ref *inMemoryAddress);
+        return result >= 0 && inMemory != 0;
+    }
+
+    private static unsafe bool IsDynamicModule(nint module)
+    {
+        int dynamic = 0;
+        int* dynamicAddress = &dynamic;
+        int result = new ICorDebugModuleAbi(module).IsDynamic((nint)dynamicAddress);
+        dynamic = Volatile.Read(ref *dynamicAddress);
+        return result >= 0 && dynamic != 0;
     }
 
     private static void EnsureSymbolsInspected(CorDebugLoadedModule module)

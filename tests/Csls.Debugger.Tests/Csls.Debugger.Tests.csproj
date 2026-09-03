@@ -19,6 +19,8 @@
                       ReferenceOutputAssembly="false" />
     <ProjectReference Include="../../test-assets/Csls.Debugger.Fixtures.Embedded/Csls.Debugger.Fixtures.Embedded.csproj"
                       ReferenceOutputAssembly="false" />
+    <ProjectReference Include="../../test-assets/Csls.Debugger.Fixtures.InMemory/Csls.Debugger.Fixtures.InMemory.csproj"
+                      ReferenceOutputAssembly="false" />
     <ProjectReference Include="../Csls.TestProcessHost/Csls.TestProcessHost.csproj"
                       ReferenceOutputAssembly="false" />
   </ItemGroup>

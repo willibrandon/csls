@@ -13,24 +13,19 @@ internal static class PortablePdbVariableNameResolver
     /// <summary>
     /// Resolves runtime argument indexes to source parameter names.
     /// </summary>
-    /// <param name="modulePath">The loaded managed module path.</param>
-    /// <param name="methodToken">The method-definition metadata token.</param>
-    /// <param name="symbolPath">The selected associated PDB path, when applicable.</param>
+    /// <param name="frame">The generation-bound managed frame and module snapshot.</param>
     /// <returns>Argument names keyed by their ICorDebug argument index.</returns>
-    internal static IReadOnlyDictionary<int, string> GetArguments(
-        string? modulePath,
-        uint methodToken,
-        string? symbolPath)
+    internal static IReadOnlyDictionary<int, string> GetArguments(ManagedFrameHandle frame)
     {
-        if (modulePath is null || !File.Exists(modulePath))
+        ArgumentNullException.ThrowIfNull(frame);
+        using PEReader? peReader = frame.OpenPeReader();
+        if (peReader is null)
         {
             return new Dictionary<int, string>();
         }
 
-        using FileStream stream = File.OpenRead(modulePath);
-        using var peReader = new PEReader(stream);
         MetadataReader metadata = peReader.GetMetadataReader();
-        MethodDefinition method = GetMethod(metadata, methodToken);
+        MethodDefinition method = GetMethod(metadata, frame.MethodToken);
         bool hasThis = (method.Attributes & MethodAttributes.Static) == 0;
         Dictionary<int, string> result = [];
         if (hasThis)
@@ -59,29 +54,18 @@ internal static class PortablePdbVariableNameResolver
     /// <summary>
     /// Resolves active Portable PDB local slots to source names.
     /// </summary>
-    /// <param name="modulePath">The loaded managed module path.</param>
-    /// <param name="methodToken">The method-definition metadata token.</param>
-    /// <param name="ilOffset">The current IL instruction offset.</param>
-    /// <param name="symbolPath">The selected associated PDB path, when applicable.</param>
+    /// <param name="frame">The generation-bound managed frame and symbol snapshot.</param>
     /// <returns>Local names keyed by their ICorDebug local slot.</returns>
-    internal static IReadOnlyDictionary<int, string> GetLocals(
-        string? modulePath,
-        uint methodToken,
-        uint ilOffset,
-        string? symbolPath)
+    internal static IReadOnlyDictionary<int, string> GetLocals(ManagedFrameHandle frame)
     {
-        if (modulePath is null)
-        {
-            return new Dictionary<int, string>();
-        }
-
-        using var symbols = PortablePdbReader.TryOpen(modulePath, symbolPath);
+        ArgumentNullException.ThrowIfNull(frame);
+        using PortablePdbReader? symbols = frame.OpenSymbols();
         if (symbols is null)
         {
             return new Dictionary<int, string>();
         }
 
-        int rowNumber = checked((int)(methodToken & 0x00ffffff));
+        int rowNumber = checked((int)(frame.MethodToken & 0x00ffffff));
         MetadataReader pdb = symbols.Metadata;
         MethodDefinitionHandle methodHandle = MetadataTokens.MethodDefinitionHandle(rowNumber);
         Dictionary<int, string> result = [];
@@ -90,7 +74,7 @@ internal static class PortablePdbVariableNameResolver
             LocalScope scope = pdb.GetLocalScope(scopeHandle);
             uint start = checked((uint)scope.StartOffset);
             uint end = checked((uint)(scope.StartOffset + scope.Length));
-            if (ilOffset < start || ilOffset >= end)
+            if (frame.IlOffset < start || frame.IlOffset >= end)
             {
                 continue;
             }

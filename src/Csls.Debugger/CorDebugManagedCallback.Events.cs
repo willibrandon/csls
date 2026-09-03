@@ -40,8 +40,14 @@ internal sealed partial class CorDebugManagedCallback
         CancellationToken cancellationToken)
     {
         await _sourceBreakpoints.LoadModuleAsync(module, cancellationToken).ConfigureAwait(false);
-        await _functionBreakpoints.LoadModuleAsync(module, cancellationToken).ConfigureAwait(false);
-        await _instructionBreakpoints.LoadModuleAsync(module, cancellationToken)
+        await _functionBreakpoints.LoadModuleAsync(
+            module,
+            _sourceBreakpoints.FindModule(module)?.ModuleImage,
+            cancellationToken).ConfigureAwait(false);
+        await _instructionBreakpoints.LoadModuleAsync(
+            module,
+            _sourceBreakpoints.FindModule(module)?.Id,
+            cancellationToken)
             .ConfigureAwait(false);
         return true;
     }
@@ -56,6 +62,65 @@ internal sealed partial class CorDebugManagedCallback
             .ConfigureAwait(false);
         await _instructionBreakpoints.UnloadModuleAsync(module, cancellationToken)
             .ConfigureAwait(false);
+        return true;
+    }
+
+    private async ValueTask<bool> HandleLoadClassAsync(
+        nint @class,
+        CancellationToken cancellationToken)
+    {
+        if (@class == 0)
+        {
+            return true;
+        }
+
+        nint module = 0;
+        try
+        {
+            module = GetClassModule(@class);
+            if (module != 0)
+            {
+                await _sourceBreakpoints.RefreshInMemorySymbolsAsync(
+                    module,
+                    cancellationToken).ConfigureAwait(false);
+            }
+
+            return true;
+        }
+        finally
+        {
+            if (module != 0)
+            {
+                _ = ComAbi.Release(module);
+            }
+        }
+    }
+
+    private static unsafe nint GetClassModule(nint @class)
+    {
+        nint module = 0;
+        nint* moduleAddress = &module;
+        CorDebugHResult.ThrowIfFailed(
+            new ICorDebugClassAbi(@class).GetModule((nint)moduleAddress),
+            "ICorDebugClass.GetModule");
+        return Volatile.Read(ref *moduleAddress);
+    }
+
+    private async ValueTask<bool> HandleUpdateModuleSymbolsAsync(
+        nint module,
+        nint symbolStream,
+        CancellationToken cancellationToken)
+    {
+        if (module == 0 || symbolStream == 0)
+        {
+            return true;
+        }
+
+        byte[] image = ComStreamReader.ReadAll(symbolStream);
+        await _sourceBreakpoints.UpdateModuleSymbolsAsync(
+            module,
+            image,
+            cancellationToken).ConfigureAwait(false);
         return true;
     }
 

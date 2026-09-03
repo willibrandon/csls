@@ -18,15 +18,15 @@ internal static class PortablePdbFrameResolver
     /// <param name="frame">The borrowed ICorDebugFrame pointer.</param>
     /// <param name="methodToken">The method-definition metadata token.</param>
     /// <param name="ilOffset">The current IL instruction offset.</param>
-    /// <param name="symbolPathResolver">Resolves the selected associated PDB for a module.</param>
+    /// <param name="moduleResolver">Resolves the retained symbol state for a runtime module.</param>
     /// <returns>The resolved method and optional source location.</returns>
     internal static unsafe ManagedFrameLocation Resolve(
         nint frame,
         uint methodToken,
         uint ilOffset,
-        Func<string, string?> symbolPathResolver)
+        Func<nint, CorDebugLoadedModule?> moduleResolver)
     {
-        ArgumentNullException.ThrowIfNull(symbolPathResolver);
+        ArgumentNullException.ThrowIfNull(moduleResolver);
         string fallbackName = $"0x{methodToken:X8}";
         nint function = 0;
         nint module = 0;
@@ -52,13 +52,14 @@ internal static class PortablePdbFrameResolver
                 return Unknown(fallbackName);
             }
 
-            string modulePath = CorDebugModulePath.Get(module);
-            return ResolveFiles(
-                modulePath,
+            CorDebugLoadedModule? loadedModule = moduleResolver(module);
+            return loadedModule is null
+                ? Unknown(fallbackName)
+                : ResolveModule(
+                loadedModule,
                 methodToken,
                 ilOffset,
-                fallbackName,
-                symbolPathResolver(modulePath));
+                fallbackName);
         }
         catch (Exception exception) when (
             exception is IOException or UnauthorizedAccessException or BadImageFormatException)
@@ -79,38 +80,50 @@ internal static class PortablePdbFrameResolver
         }
     }
 
-    private static ManagedFrameLocation ResolveFiles(
-        string modulePath,
+    private static ManagedFrameLocation ResolveModule(
+        CorDebugLoadedModule module,
         uint methodToken,
         uint ilOffset,
-        string fallbackName,
-        string? symbolPath)
+        string fallbackName)
     {
-        using FileStream moduleStream = File.OpenRead(modulePath);
-        using var peReader = new PEReader(moduleStream);
-        MetadataReader metadata = peReader.GetMetadataReader();
         int rowNumber = checked((int)(methodToken & 0x00ffffff));
-        if (rowNumber == 0 || rowNumber > metadata.MethodDefinitions.Count)
+        string displayName = fallbackName;
+        using PEReader? peReader = module.OpenPeReader();
+        if (peReader is not null)
         {
-            return Unknown(fallbackName);
+            MetadataReader metadata = peReader.GetMetadataReader();
+            if (rowNumber == 0 || rowNumber > metadata.MethodDefinitions.Count)
+            {
+                return Unknown(fallbackName, module);
+            }
+
+            MethodDefinitionHandle methodHandle = MetadataTokens.MethodDefinitionHandle(rowNumber);
+            MethodDefinition method = metadata.GetMethodDefinition(methodHandle);
+            TypeDefinition declaringType = metadata.GetTypeDefinition(method.GetDeclaringType());
+            string typeName = metadata.GetString(declaringType.Name);
+            string typeNamespace = metadata.GetString(declaringType.Namespace);
+            string methodName = metadata.GetString(method.Name);
+            displayName = string.IsNullOrEmpty(typeNamespace)
+                ? $"{typeName}.{methodName}"
+                : $"{typeNamespace}.{typeName}.{methodName}";
         }
 
-        MethodDefinitionHandle methodHandle = MetadataTokens.MethodDefinitionHandle(rowNumber);
-        MethodDefinition method = metadata.GetMethodDefinition(methodHandle);
-        TypeDefinition declaringType = metadata.GetTypeDefinition(method.GetDeclaringType());
-        string typeName = metadata.GetString(declaringType.Name);
-        string typeNamespace = metadata.GetString(declaringType.Namespace);
-        string methodName = metadata.GetString(method.Name);
-        string displayName = string.IsNullOrEmpty(typeNamespace)
-            ? $"{typeName}.{methodName}"
-            : $"{typeNamespace}.{typeName}.{methodName}";
-        using var symbols = PortablePdbReader.TryOpen(modulePath, symbolPath);
+        using PortablePdbReader? symbols = module.SymbolImage is not null
+            ? PortablePdbReader.TryOpen(module.SymbolImage)
+            : module.Path is null
+                ? null
+                : PortablePdbReader.TryOpen(module.Path, module.SymbolPath);
         if (symbols is null)
         {
-            return Unknown(displayName, modulePath);
+            return Unknown(displayName, module);
         }
 
         MetadataReader pdb = symbols.Metadata;
+        if (rowNumber == 0 || rowNumber > pdb.MethodDebugInformation.Count)
+        {
+            return Unknown(displayName, module);
+        }
+
         MethodDebugInformation debugInformation = pdb.GetMethodDebugInformation(
             MetadataTokens.MethodDebugInformationHandle(rowNumber));
         SequencePoint? selected = null;
@@ -134,25 +147,46 @@ internal static class PortablePdbFrameResolver
 
         if (selected is null)
         {
-            return Unknown(displayName, modulePath);
+            return Unknown(displayName, module);
         }
 
         Document document = pdb.GetDocument(selected.Value.Document);
         return new ManagedFrameLocation
         {
             Name = displayName,
-            ModulePath = modulePath,
+            ModulePath = module.Path,
+            ModuleId = module.Id,
+            ModuleImage = module.ModuleImage,
+            SymbolImage = module.SymbolImage,
             SourcePath = pdb.GetString(document.Name),
             Line = selected.Value.StartLine,
             Column = selected.Value.StartColumn
         };
     }
 
-    private static ManagedFrameLocation Unknown(string name, string? modulePath = null) =>
+    private static ManagedFrameLocation Unknown(
+        string name,
+        string? modulePath = null,
+        int? moduleId = null) =>
         new()
         {
             Name = name,
             ModulePath = modulePath,
+            ModuleId = moduleId,
+            Line = 0,
+            Column = 0
+        };
+
+    private static ManagedFrameLocation Unknown(
+        string name,
+        CorDebugLoadedModule module) =>
+        new()
+        {
+            Name = name,
+            ModulePath = module.Path,
+            ModuleId = module.Id,
+            ModuleImage = module.ModuleImage,
+            SymbolImage = module.SymbolImage,
             Line = 0,
             Column = 0
         };

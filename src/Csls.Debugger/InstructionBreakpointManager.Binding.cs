@@ -12,16 +12,10 @@ internal sealed partial class InstructionBreakpointManager
         bool notifyChanges,
         CancellationToken cancellationToken)
     {
-        if (module.Path is null)
-        {
-            return;
-        }
-
         foreach (InstructionBreakpointDefinition definition in _definitions)
         {
             if (definition.ValidationMessage is not null ||
-                definition.ModulePath is null ||
-                !PathsEqual(module.Path, definition.ModulePath))
+                !MatchesModule(module, definition))
             {
                 continue;
             }
@@ -48,6 +42,13 @@ internal sealed partial class InstructionBreakpointManager
             }
         }
     }
+
+    private static bool MatchesModule(
+        InstructionBreakpointModule module,
+        InstructionBreakpointDefinition definition) =>
+        definition.ModulePath is not null && module.Path is not null
+            ? PathsEqual(module.Path, definition.ModulePath)
+            : definition.ModuleId is not null && definition.ModuleId == module.Id;
 
     private unsafe void Bind(
         InstructionBreakpointModule module,

@@ -37,6 +37,7 @@ internal sealed record McpDebugModuleInfo(
             DebugModuleSymbolKind.None => "none",
             DebugModuleSymbolKind.PortablePdb => "portablePdb",
             DebugModuleSymbolKind.EmbeddedPortablePdb => "embeddedPortablePdb",
+            DebugModuleSymbolKind.InMemoryPortablePdb => "inMemoryPortablePdb",
             _ => throw new InvalidDataException(
                 $"Unknown debugger module symbol kind {module.SymbolKind}.")
         },

@@ -29,4 +29,19 @@ internal sealed class ManagedFrameLocation
     /// Gets or initializes the loaded module path used for metadata lookup.
     /// </summary>
     internal string? ModulePath { get; init; }
+
+    /// <summary>
+    /// Gets or initializes the stable session-local module identifier when available.
+    /// </summary>
+    internal int? ModuleId { get; init; }
+
+    /// <summary>
+    /// Gets or initializes the immutable in-memory PE image when applicable.
+    /// </summary>
+    internal byte[]? ModuleImage { get; init; }
+
+    /// <summary>
+    /// Gets or initializes the immutable in-memory Portable PDB image when applicable.
+    /// </summary>
+    internal byte[]? SymbolImage { get; init; }
 }

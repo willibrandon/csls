@@ -287,6 +287,16 @@ the standard `symbolOptions` module filter; Microsoft and NuGet.org servers are
 opt-in. Windows PDB support uses the public native symbol-reader component on
 Windows. A PDB is accepted only when its identity matches the module.
 
+CoreCLR symbol-update callbacks are copied synchronously into bounded immutable
+Portable PDB snapshots while the target is stopped; no borrowed `IStream` or
+reader-owned pointer crosses the callback boundary. Attach recovery asks
+`ICorDebugModule3` for `ISymUnmanagedReader4`, copies its Portable Debug Metadata,
+invokes the reader's explicit destroy boundary, and releases every COM interface.
+Dynamic modules invalidate and replace that snapshot on `LoadClass`. The paired PE
+image is copied through `ICorDebugProcess::ReadMemory`, validated as managed PE,
+and shared by frame naming, local scopes, stepping, goto, disassembly, function
+breakpoints, and managed-IL breakpoints.
+
 Source resolution order is:
 
 1. Checksum-valid embedded source.

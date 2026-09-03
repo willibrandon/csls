@@ -15,16 +15,16 @@ internal static class PortablePdbStepRangeResolver
     /// Tries to resolve the active managed frame's current source statement.
     /// </summary>
     /// <param name="thread">The borrowed ICorDebugThread pointer.</param>
-    /// <param name="symbolPathResolver">Resolves the selected associated PDB for a module.</param>
+    /// <param name="moduleResolver">Resolves the retained symbol state for a runtime module.</param>
     /// <param name="range">Receives the resolved half-open IL range.</param>
     /// <returns>True when adjacent Portable PDB data describes the current instruction.</returns>
     internal static unsafe bool TryResolve(
         nint thread,
-        Func<string, string?> symbolPathResolver,
+        Func<nint, CorDebugLoadedModule?> moduleResolver,
         out ManagedStepRange range)
     {
         ArgumentOutOfRangeException.ThrowIfZero(thread);
-        ArgumentNullException.ThrowIfNull(symbolPathResolver);
+        ArgumentNullException.ThrowIfNull(moduleResolver);
         range = default;
         nint frame = 0;
         nint ilFrame = 0;
@@ -82,13 +82,12 @@ internal static class PortablePdbStepRangeResolver
                 new ICorDebugCodeAbi(code).GetSize((nint)codeSizeAddress),
                 "ICorDebugCode.GetSize");
             codeSize = Volatile.Read(ref *codeSizeAddress);
-            string modulePath = CorDebugModulePath.Get(module);
-            return TryResolveFiles(
-                modulePath,
+            CorDebugLoadedModule? loadedModule = moduleResolver(module);
+            return loadedModule is not null && TryResolveSymbols(
+                loadedModule,
                 methodToken,
                 ilOffset,
                 codeSize,
-                symbolPathResolver(modulePath),
                 out range);
         }
         catch (Exception exception) when (
@@ -126,12 +125,11 @@ internal static class PortablePdbStepRangeResolver
         }
     }
 
-    private static bool TryResolveFiles(
-        string modulePath,
+    private static bool TryResolveSymbols(
+        CorDebugLoadedModule module,
         uint methodToken,
         uint ilOffset,
         uint codeSize,
-        string? symbolPath,
         out ManagedStepRange range)
     {
         range = default;
@@ -141,7 +139,11 @@ internal static class PortablePdbStepRangeResolver
             return false;
         }
 
-        using var symbols = PortablePdbReader.TryOpen(modulePath, symbolPath);
+        using PortablePdbReader? symbols = module.SymbolImage is not null
+            ? PortablePdbReader.TryOpen(module.SymbolImage)
+            : module.Path is null
+                ? null
+                : PortablePdbReader.TryOpen(module.Path, module.SymbolPath);
         if (symbols is null)
         {
             return false;

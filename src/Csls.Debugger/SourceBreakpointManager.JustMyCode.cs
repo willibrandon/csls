@@ -1,5 +1,6 @@
 using Csls.Debugger.Contracts;
 using Csls.Debugger.Interop;
+using System.Reflection.PortableExecutable;
 
 namespace Csls.Debugger;
 
@@ -41,22 +42,33 @@ internal sealed partial class SourceBreakpointManager
     {
         ClassifyUserCode(module);
         module.JustMyCodeConfigured = true;
-        if (module.Path is null || module.IsUserCode != true)
+        if (module.IsUserCode != true)
         {
             _ = SetModuleJustMyCode(module, isUserCode: false);
             return;
         }
 
+        if (!SetModuleJustMyCode(module, isUserCode: true))
+        {
+            return;
+        }
+
         try
         {
+            using PEReader? peReader = module.OpenPeReader();
+            if (peReader is null)
+            {
+                module.IsUserCode = false;
+                module.JustMyCodeDiagnostic =
+                    "Step-filter metadata is unavailable because the module image cannot be read.";
+                return;
+            }
+
             uint[] excludedTokens = ManagedStepFilterClassifier.GetExcludedTokens(
-                module.Path,
+                peReader,
                 _justMyCode,
                 _enableStepFiltering);
-            if (SetModuleJustMyCode(module, isUserCode: true))
-            {
-                ApplyStepFilters(module, excludedTokens);
-            }
+            ApplyStepFilters(module, excludedTokens);
         }
         catch (Exception exception) when (
             exception is IOException or UnauthorizedAccessException or

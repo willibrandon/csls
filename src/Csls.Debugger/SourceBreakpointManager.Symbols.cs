@@ -21,14 +21,9 @@ internal sealed partial class SourceBreakpointManager
         var sources = new Dictionary<string, DebugSourceInfo>(PathComparer);
         foreach (CorDebugLoadedModule module in _modules.Values.OrderBy(static module => module.Id))
         {
-            if (module.Path is null)
-            {
-                continue;
-            }
-
             try
             {
-                AddLoadedSources(module.Path, sources);
+                AddLoadedSources(module, sources);
             }
             catch (Exception exception) when (IsSymbolReadException(exception))
             {
@@ -46,10 +41,10 @@ internal sealed partial class SourceBreakpointManager
     }
 
     private void AddLoadedSources(
-        string modulePath,
+        CorDebugLoadedModule module,
         Dictionary<string, DebugSourceInfo> sources)
     {
-        using PortablePdbReader? symbols = OpenSymbols(modulePath);
+        using PortablePdbReader? symbols = OpenSymbols(module);
         if (symbols is null)
         {
             return;
@@ -60,7 +55,10 @@ internal sealed partial class SourceBreakpointManager
             string? path = GetDocumentPath(symbols.Metadata, handle);
             if (path is not null && !sources.ContainsKey(path))
             {
-                DebugSourceInfo source = RegisterSource(modulePath, symbols, handle).Info;
+                DebugSourceInfo source = RegisterSource(
+                    GetSourceModuleKey(module),
+                    symbols,
+                    handle).Info;
                 sources.Add(path, source);
                 if (sources.Count >= MaximumSourceCount)
                 {
@@ -123,14 +121,9 @@ internal sealed partial class SourceBreakpointManager
         int endColumn,
         HashSet<DebugBreakpointLocation> locations)
     {
-        if (module.Path is null)
-        {
-            return;
-        }
-
         try
         {
-            PortablePdbReader? symbols = OpenSymbols(module.Path);
+            PortablePdbReader? symbols = OpenSymbols(module);
             try
             {
                 if (symbols is null)

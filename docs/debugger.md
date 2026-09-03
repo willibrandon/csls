@@ -147,6 +147,14 @@ Portable PDB. Immediate primitive, string, field, object, and array inspection
 does not execute target code. Handles for frames, scopes, and variables are valid
 only for the stop at which they were returned.
 
+Assemblies loaded from PE and Portable PDB byte arrays receive the same source
+breakpoint, stack, local-name, stepping, goto, disassembly, and managed-IL
+breakpoint behavior as file-backed assemblies. During launch, csls consumes the
+runtime's symbol-update stream before continuing the callback. During attach, it
+recovers the current immutable snapshot through `ICorDebugModule3`; dynamic
+module snapshots are refreshed when CoreCLR reports newly loaded classes. No
+temporary PE or PDB file is required.
+
 The debugger validates embedded, local, mapped, and Source Link source against
 the checksum recorded in the Portable PDB. Use the established `sourceFileMap`
 launch or attach option when sources moved between build and debug machines:

@@ -15,7 +15,7 @@ internal sealed partial class FunctionBreakpointManager
         bool notifyChanges,
         CancellationToken cancellationToken)
     {
-        if (_definitions.Count == 0 || module.Path is null || !File.Exists(module.Path))
+        if (_definitions.Count == 0)
         {
             return;
         }
@@ -26,12 +26,12 @@ internal sealed partial class FunctionBreakpointManager
             .ToHashSet();
         try
         {
-            using FileStream stream = File.Open(
-                module.Path,
-                FileMode.Open,
-                FileAccess.Read,
-                FileShare.Read | FileShare.Delete);
-            using var peReader = new PEReader(stream);
+            using PEReader? peReader = module.OpenPeReader();
+            if (peReader is null)
+            {
+                return;
+            }
+
             MetadataReader metadata = peReader.GetMetadataReader();
             foreach (TypeDefinitionHandle typeHandle in metadata.TypeDefinitions)
             {

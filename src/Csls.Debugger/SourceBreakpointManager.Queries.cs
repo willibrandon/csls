@@ -59,9 +59,7 @@ internal sealed partial class SourceBreakpointManager
             ClassifyUserCode(module);
             result.Add(new DebugModuleInfo(
                 module.Id,
-                module.Path is null
-                    ? $"Dynamic module {module.Id}"
-                    : Path.GetFileName(module.Path),
+                module.Name ?? $"Dynamic module {module.Id}",
                 module.Path,
                 module.SymbolKind,
                 module.SymbolPath,

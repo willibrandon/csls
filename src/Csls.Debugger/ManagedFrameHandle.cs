@@ -1,4 +1,5 @@
 using Csls.Debugger.Contracts;
+using System.Reflection.PortableExecutable;
 
 namespace Csls.Debugger;
 
@@ -48,6 +49,21 @@ internal sealed class ManagedFrameHandle
     internal string? ModulePath { get; init; }
 
     /// <summary>
+    /// Gets or initializes the stable session-local module identifier when available.
+    /// </summary>
+    internal int? ModuleId { get; init; }
+
+    /// <summary>
+    /// Gets or initializes the immutable in-memory PE image when applicable.
+    /// </summary>
+    internal byte[]? ModuleImage { get; init; }
+
+    /// <summary>
+    /// Gets or initializes the immutable in-memory Portable PDB image when applicable.
+    /// </summary>
+    internal byte[]? SymbolImage { get; init; }
+
+    /// <summary>
     /// Gets or initializes the selected associated PDB path when symbols are external.
     /// </summary>
     internal string? SymbolPath { get; init; }
@@ -61,4 +77,28 @@ internal sealed class ManagedFrameHandle
     /// Gets or initializes the opaque stopped-state managed-IL reference.
     /// </summary>
     internal required string InstructionReference { get; init; }
+
+    /// <summary>
+    /// Opens an owned PE reader over the file or immutable in-memory module image.
+    /// </summary>
+    /// <returns>An owned PE reader, or null when the module image is unavailable.</returns>
+    internal PEReader? OpenPeReader() => ModuleImage is not null
+        ? new PEReader(new MemoryStream(ModuleImage, writable: false))
+        : ModulePath is not null && File.Exists(ModulePath)
+            ? new PEReader(new FileStream(
+                ModulePath,
+                FileMode.Open,
+                FileAccess.Read,
+                FileShare.Read | FileShare.Delete))
+            : null;
+
+    /// <summary>
+    /// Opens an owned Portable PDB reader over the selected frame symbols.
+    /// </summary>
+    /// <returns>An owned symbol reader, or null when symbols are unavailable.</returns>
+    internal PortablePdbReader? OpenSymbols() => SymbolImage is not null
+        ? PortablePdbReader.TryOpen(SymbolImage)
+        : ModulePath is null
+            ? null
+            : PortablePdbReader.TryOpen(ModulePath, SymbolPath);
 }

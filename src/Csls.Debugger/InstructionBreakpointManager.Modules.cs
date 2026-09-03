@@ -11,9 +11,13 @@ internal sealed partial class InstructionBreakpointManager
     /// Retains a newly loaded module and binds matching definitions.
     /// </summary>
     /// <param name="module">The borrowed ICorDebugModule pointer.</param>
+    /// <param name="moduleId">The stable source-manager module identifier.</param>
     /// <param name="cancellationToken">Cancels breakpoint-change notification.</param>
     /// <returns>A task completed after matching breakpoints bind.</returns>
-    internal async ValueTask LoadModuleAsync(nint module, CancellationToken cancellationToken)
+    internal async ValueTask LoadModuleAsync(
+        nint module,
+        int? moduleId,
+        CancellationToken cancellationToken)
     {
         ObjectDisposedException.ThrowIf(_disposed != 0, this);
         ArgumentOutOfRangeException.ThrowIfZero(module);
@@ -27,6 +31,7 @@ internal sealed partial class InstructionBreakpointManager
         _ = ComAbi.AddRef(module);
         var loadedModule = new InstructionBreakpointModule
         {
+            Id = moduleId,
             Path = GetModulePath(module),
             Pointer = module,
             Identity = identity

@@ -36,7 +36,7 @@ internal sealed partial class CorDebugDebuggee
             request.InstructionReference,
             generation);
         ManagedFrameHandle frame = location.Frame;
-        if (frame.ModulePath is null || frame.MethodToken == 0)
+        if ((frame.ModulePath is null && frame.ModuleImage is null) || frame.MethodToken == 0)
         {
             throw new InvalidOperationException("The selected frame has no managed IL body.");
         }
@@ -49,8 +49,12 @@ internal sealed partial class CorDebugDebuggee
         uint baseIlOffset,
         DebugDisassemblyRequest request)
     {
-        using FileStream stream = File.OpenRead(frame.ModulePath!);
-        using var peReader = new PEReader(stream);
+        using PEReader? peReader = frame.OpenPeReader();
+        if (peReader is null)
+        {
+            throw new InvalidOperationException("The selected frame has no readable managed PE image.");
+        }
+
         MetadataReader metadata = peReader.GetMetadataReader();
         int rowNumber = checked((int)(frame.MethodToken & 0x00ffffff));
         if (rowNumber == 0 || rowNumber > metadata.MethodDefinitions.Count)
@@ -69,11 +73,7 @@ internal sealed partial class CorDebugDebuggee
         byte[] bytes = peReader.GetMethodBody(method.RelativeVirtualAddress).GetILBytes()
             ?? throw new BadImageFormatException("The selected managed method has no IL bytes.");
         IReadOnlyList<ManagedIlInstruction> decoded = ManagedIlDecoder.Decode(bytes);
-        IReadOnlyDictionary<int, ManagedFrameLocation> sources = ManagedIlSourceMap.Read(
-            frame.ModulePath!,
-            frame.MethodToken,
-            frame.Name,
-            frame.SymbolPath);
+        IReadOnlyDictionary<int, ManagedFrameLocation> sources = ManagedIlSourceMap.Read(frame);
         return SelectInstructions(frame, baseIlOffset, request, metadata, decoded, sources);
     }
 
@@ -120,9 +120,13 @@ internal sealed partial class CorDebugDebuggee
         }
 
         ManagedFrameLocation? location = FindSource(sources, instruction.Offset);
-        DebugSourceInfo? source = location?.SourcePath is string sourcePath
-            ? _sourceBreakpoints.GetSourceInfo(frame.ModulePath!, sourcePath)
-            : null;
+        DebugSourceInfo? source = location?.SourcePath is not string sourcePath
+            ? null
+            : frame.ModuleId is int moduleId
+                ? _sourceBreakpoints.GetSourceInfo(moduleId, sourcePath)
+                : frame.ModulePath is not null
+                    ? _sourceBreakpoints.GetSourceInfo(frame.ModulePath, sourcePath)
+                    : null;
         return new DebugInstructionInfo(
             CreateVirtualAddress(frame.Id, instruction.Offset),
             instruction.Bytes,

@@ -11,9 +11,13 @@ internal sealed partial class FunctionBreakpointManager
     /// Retains a loaded module and binds matching function breakpoints.
     /// </summary>
     /// <param name="module">The borrowed ICorDebugModule pointer.</param>
+    /// <param name="moduleImage">The immutable in-memory PE image, when applicable.</param>
     /// <param name="cancellationToken">Cancels breakpoint-change notification.</param>
     /// <returns>A task that completes after applicable methods are bound.</returns>
-    internal async ValueTask LoadModuleAsync(nint module, CancellationToken cancellationToken)
+    internal async ValueTask LoadModuleAsync(
+        nint module,
+        byte[]? moduleImage,
+        CancellationToken cancellationToken)
     {
         ObjectDisposedException.ThrowIf(_disposed != 0, this);
         ArgumentOutOfRangeException.ThrowIfZero(module);
@@ -30,7 +34,8 @@ internal sealed partial class FunctionBreakpointManager
             Id = 0,
             Path = GetModulePath(module),
             Pointer = module,
-            Identity = identity
+            Identity = identity,
+            ModuleImage = moduleImage
         };
         if (!_modules.TryAdd(identity, loadedModule))
         {

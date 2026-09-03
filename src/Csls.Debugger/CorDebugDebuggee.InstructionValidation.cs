@@ -11,13 +11,18 @@ internal sealed partial class CorDebugDebuggee
 {
     private static void ValidateInstructionBoundary(ManagedFrameHandle frame, uint ilOffset)
     {
-        if (frame.ModulePath is null || frame.MethodToken == 0)
+        if (frame.MethodToken == 0)
         {
             throw new InvalidOperationException("The selected frame has no managed IL body.");
         }
 
-        using FileStream stream = File.OpenRead(frame.ModulePath);
-        using var peReader = new PEReader(stream);
+        using PEReader? peReader = frame.OpenPeReader();
+        if (peReader is null)
+        {
+            throw new InvalidOperationException(
+                "The selected frame has no readable managed PE image.");
+        }
+
         MetadataReader metadata = peReader.GetMetadataReader();
         int rowNumber = checked((int)(frame.MethodToken & 0x00ffffff));
         if (rowNumber == 0 || rowNumber > metadata.MethodDefinitions.Count)

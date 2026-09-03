@@ -16,10 +16,11 @@ internal sealed partial class CorDebugManagedCallback
             appDomain,
             thread,
             breakpoint,
+            auxiliary: 0,
             createsProcess: false,
             exitsProcess: false,
             continueAfterCallback: true,
-            static (target, ownedThread, ownedBreakpoint, cancellationToken) =>
+            static (target, ownedThread, ownedBreakpoint, _, cancellationToken) =>
                 target.HandleBreakpointAsync(
                     ownedThread,
                     ownedBreakpoint,
@@ -34,10 +35,11 @@ internal sealed partial class CorDebugManagedCallback
             appDomain,
             thread,
             stepper,
+            auxiliary: 0,
             createsProcess: false,
             exitsProcess: false,
             continueAfterCallback: true,
-            (target, ownedThread, ownedStepper, cancellationToken) =>
+            (target, ownedThread, ownedStepper, _, cancellationToken) =>
                 target.HandleStepCompleteAsync(
                     ownedThread,
                     ownedStepper,
@@ -90,6 +92,7 @@ internal sealed partial class CorDebugManagedCallback
             process,
             thread: 0,
             subject: 0,
+            auxiliary: 0,
             createsProcess: false,
             exitsProcess: true,
             continueAfterCallback: false,
@@ -118,10 +121,11 @@ internal sealed partial class CorDebugManagedCallback
             appDomain,
             thread: 0,
             module,
+            auxiliary: 0,
             createsProcess: false,
             exitsProcess: false,
             continueAfterCallback: true,
-            static (target, _, ownedModule, cancellationToken) =>
+            static (target, _, ownedModule, _, cancellationToken) =>
                 target.HandleLoadModuleAsync(ownedModule, cancellationToken));
     }
 
@@ -133,18 +137,28 @@ internal sealed partial class CorDebugManagedCallback
             appDomain,
             thread: 0,
             module,
+            auxiliary: 0,
             createsProcess: false,
             exitsProcess: false,
             continueAfterCallback: true,
-            static (target, _, ownedModule, cancellationToken) =>
+            static (target, _, ownedModule, _, cancellationToken) =>
                 target.HandleUnloadModuleAsync(ownedModule, cancellationToken));
     }
 
     [UnmanagedCallersOnly(CallConvs = [typeof(CallConvStdcall)])]
     private static int LoadClass(nint self, nint appDomain, nint @class)
     {
-        _ = @class;
-        return QueueContinue(self, appDomain, createsProcess: false);
+        return QueueCallback(
+            self,
+            appDomain,
+            thread: 0,
+            @class,
+            auxiliary: 0,
+            createsProcess: false,
+            exitsProcess: false,
+            continueAfterCallback: true,
+            static (target, _, ownedClass, _, cancellationToken) =>
+                target.HandleLoadClassAsync(ownedClass, cancellationToken));
     }
 
     [UnmanagedCallersOnly(CallConvs = [typeof(CallConvStdcall)])]
@@ -227,9 +241,20 @@ internal sealed partial class CorDebugManagedCallback
     [UnmanagedCallersOnly(CallConvs = [typeof(CallConvStdcall)])]
     private static int UpdateModuleSymbols(nint self, nint appDomain, nint module, nint symbolStream)
     {
-        _ = module;
-        _ = symbolStream;
-        return QueueContinue(self, appDomain, createsProcess: false);
+        return QueueCallback(
+            self,
+            appDomain,
+            thread: 0,
+            module,
+            symbolStream,
+            createsProcess: false,
+            exitsProcess: false,
+            continueAfterCallback: true,
+            static (target, _, ownedModule, ownedSymbolStream, cancellationToken) =>
+                target.HandleUpdateModuleSymbolsAsync(
+                    ownedModule,
+                    ownedSymbolStream,
+                    cancellationToken));
     }
 
     [UnmanagedCallersOnly(CallConvs = [typeof(CallConvStdcall)])]
@@ -310,10 +335,11 @@ internal sealed partial class CorDebugManagedCallback
             appDomain,
             thread,
             subject: 0,
+            auxiliary: 0,
             createsProcess: false,
             exitsProcess: false,
             continueAfterCallback: true,
-            (target, ownedThread, _, cancellationToken) =>
+            (target, ownedThread, _, _, cancellationToken) =>
                 target.HandleExceptionAsync(ownedThread, eventType, cancellationToken));
     }
 

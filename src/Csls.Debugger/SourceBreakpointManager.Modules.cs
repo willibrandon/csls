@@ -132,16 +132,21 @@ internal sealed partial class SourceBreakpointManager
         _steppingPolicyActivated = false;
     }
 
-    private static string? GetModulePath(nint module)
+    private static string? GetModuleName(nint module)
     {
         try
         {
-            string path = CorDebugModulePath.Get(module);
-            return Path.IsPathFullyQualified(path) ? Path.GetFullPath(path) : null;
+            string name = CorDebugModulePath.Get(module);
+            return string.IsNullOrWhiteSpace(name) ? null : name;
         }
         catch (InvalidOperationException)
         {
             return null;
         }
     }
+
+    private static string? GetModulePath(string? reportedName) =>
+        reportedName is not null && Path.IsPathFullyQualified(reportedName)
+            ? Path.GetFullPath(reportedName)
+            : null;
 }
