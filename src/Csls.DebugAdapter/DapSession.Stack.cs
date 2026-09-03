@@ -69,6 +69,13 @@ internal sealed partial class DapSession
 
             writer.WriteNumber("line", ToClientLine(frame.Line));
             writer.WriteNumber("column", ToClientColumn(frame.Column));
+            if (frame.InstructionReference is not null)
+            {
+                writer.WriteString(
+                    "instructionPointerReference",
+                    frame.InstructionReference);
+            }
+
             writer.WriteEndObject();
         }
 

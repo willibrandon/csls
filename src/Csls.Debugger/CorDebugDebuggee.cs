@@ -18,6 +18,8 @@ internal sealed partial class CorDebugDebuggee : IDebuggeeProcess
     private readonly UnixChildExitMonitor? _unixExitMonitor;
     private readonly bool _ownsProcess;
     private readonly Dictionary<(int ThreadId, int FrameIndex), ManagedFrameHandle> _frames = [];
+    private readonly Dictionary<string, ManagedFrameHandle> _instructionFrames =
+        new(StringComparer.Ordinal);
     private readonly Dictionary<(int FrameId, ManagedScopeKind Kind), ManagedScopeHandle> _scopes = [];
     private readonly Dictionary<int, ManagedValueHandle> _values = [];
     private readonly Dictionary<nint, ManagedValueHandle> _valueIdentities = [];

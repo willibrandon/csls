@@ -122,6 +122,15 @@ resolved address as hexadecimal and the bytes as base64. Writes remain
 unadvertised until explicit mutation authorization and runtime safety policy
 exist.
 
+Managed frames independently expose opaque IL references. Disassembly reads the
+method body from the module PE without loading target code, decodes the complete
+runtime opcode catalog, formats branch and switch targets, and resolves metadata
+operands only from the module's metadata reader. Validated Portable PDB sequence
+points add source locations. Results always contain the DAP-requested count;
+locations outside the method are explicit invalid placeholders. Session-local
+virtual hexadecimal addresses distinguish methods without representing writable
+process memory.
+
 One bounded channel receives client commands and runtime callbacks. Separate
 bounded channels carry target output and client events. Saturation applies
 backpressure to requests and coalesces eligible progress/output notifications;

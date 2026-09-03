@@ -66,9 +66,12 @@ internal sealed partial class CorDebugDebuggee
                 Pointer = frame,
                 MethodToken = methodToken,
                 IlOffset = ilOffset,
-                ModulePath = location.ModulePath
+                ModulePath = location.ModulePath,
+                Name = location.Name,
+                InstructionReference = $"csls-il-{Guid.NewGuid():N}"
             };
             _frames.Add(key, existing);
+            _instructionFrames.Add(existing.InstructionReference, existing);
         }
 
         DebugSourceInfo? source = location.ModulePath is not null &&
@@ -80,6 +83,9 @@ internal sealed partial class CorDebugDebuggee
             location.Name,
             source,
             location.Line,
-            location.Column);
+            location.Column,
+            methodToken == 0 || location.ModulePath is null
+                ? null
+                : existing.InstructionReference);
     }
 }

@@ -71,6 +71,14 @@ the response uses the DAP-required hexadecimal address and base64 data. Resuming
 execution retires every memory reference. Primitive and ordinary object values
 do not advertise memory navigation, and `writeMemory` is not supported.
 
+Managed stack frames also expose opaque `instructionPointerReference` values.
+`disassemble` returns exact-count ECMA-335 instruction windows with encoded
+bytes, branch labels, optional metadata names, and Portable PDB source mappings.
+Out-of-range entries are explicit `invalid` placeholders, and references expire
+when the target resumes. This is managed IL rather than architecture-specific
+native machine code, so it works consistently across supported .NET languages
+and target architectures.
+
 ## Security and process ownership
 
 - Target commands are executed directly without a command shell.

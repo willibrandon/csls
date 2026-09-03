@@ -21,8 +21,8 @@ The bundled editor-independent .NET debugger launches or attaches to managed
 processes without downloading a proprietary debugger. VS Code and Zed use the
 same `csls debugger dap` engine for source breakpoints, pause and continue,
 source stepping, stacks, modules, arguments, locals, fields, arrays, function
-breakpoints, hit-count breakpoints, and bounded array-memory inspection across
-C#, Visual Basic, F#, and other
+breakpoints, hit-count breakpoints, bounded array-memory inspection, and symbolic
+managed-IL disassembly across C#, Visual Basic, F#, and other
 Portable-PDB-producing .NET languages. Managed exception filters accept exact
 and base type names. Launches can suppress JIT optimizations for symbol-bearing
 modules, and module inspection reports the effective runtime policy. Conditional

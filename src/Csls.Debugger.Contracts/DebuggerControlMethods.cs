@@ -86,6 +86,11 @@ public static class DebuggerControlMethods
     public const string ReadMemory = "debugger/readMemory";
 
     /// <summary>
+    /// Disassembles managed IL through an opaque stopped-state handle.
+    /// </summary>
+    public const string Disassemble = "debugger/disassemble";
+
+    /// <summary>
     /// Gets source content by its session-local reference.
     /// </summary>
     public const string GetSourceContent = "debugger/getSourceContent";

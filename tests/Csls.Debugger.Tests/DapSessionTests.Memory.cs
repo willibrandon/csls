@@ -21,7 +21,7 @@ public sealed partial class DapSessionTests
             $"csls-debugger-memory-{Guid.NewGuid():N}.signal");
         try
         {
-            DapTestClient client = await StartMemoryFixtureAsync(waitPath).ConfigureAwait(false);
+            DapTestClient client = await StartStoppedFixtureAsync(waitPath).ConfigureAwait(false);
             await using ConfiguredAsyncDisposable disposal = client.ConfigureAwait(false);
             string memoryReference = await GetArrayMemoryReferenceAsync(client)
                 .ConfigureAwait(false);
@@ -42,6 +42,8 @@ public sealed partial class DapSessionTests
             Assert.IsTrue(ContainsArrayValues(bytes), "The array payload was absent from target memory.");
             await AssertOversizedMemoryReadRejectedAsync(client, memoryReference)
                 .ConfigureAwait(false);
+            string instructionReference = await AssertManagedFrameDisassemblyAsync(client)
+                .ConfigureAwait(false);
 
             await ContinueAndPauseAsync(client).ConfigureAwait(false);
             int staleSequence = await client.SendRequestAsync(
@@ -56,6 +58,8 @@ public sealed partial class DapSessionTests
                 "stale",
                 stale.RootElement.GetProperty("message").GetString()!,
                 StringComparison.OrdinalIgnoreCase);
+            await AssertStaleDisassemblyRejectedAsync(client, instructionReference)
+                .ConfigureAwait(false);
 
             await ResumeAndReleaseFixtureAsync(client, waitPath).ConfigureAwait(false);
             Assert.AreEqual(string.Empty, client.Diagnostics.ToString());
@@ -66,7 +70,7 @@ public sealed partial class DapSessionTests
         }
     }
 
-    private async Task<DapTestClient> StartMemoryFixtureAsync(string waitPath)
+    private async Task<DapTestClient> StartStoppedFixtureAsync(string waitPath)
     {
         DapTestClient client = await DapTestClient
             .CreateAsync(TestContext.CancellationToken)
@@ -109,49 +113,10 @@ public sealed partial class DapSessionTests
 
     private async Task<string> GetArrayMemoryReferenceAsync(DapTestClient client)
     {
-        int threadsSequence = await client.SendRequestAsync(
-            "threads",
-            WriteEmptyObject,
-            TestContext.CancellationToken).ConfigureAwait(false);
-        using JsonDocument threads = await client
-            .ReadMessageAsync(TestContext.CancellationToken)
-            .ConfigureAwait(false);
-        AssertResponse(threads.RootElement, threadsSequence, "threads", success: true);
-        foreach (JsonElement thread in threads.RootElement.GetProperty("body")
-            .GetProperty("threads").EnumerateArray())
-        {
-            int? frameId = await FindFixtureFrameAsync(
-                client,
-                thread.GetProperty("id").GetInt32()).ConfigureAwait(false);
-            if (frameId is not null)
-            {
-                return await GetLocalArrayMemoryReferenceAsync(client, frameId.Value)
-                    .ConfigureAwait(false);
-            }
-        }
-
-        Assert.Fail("No managed stack frame resolved to the debugger fixture.");
-        return string.Empty;
-    }
-
-    private async Task<int?> FindFixtureFrameAsync(DapTestClient client, int threadId)
-    {
-        int sequence = await client.SendRequestAsync(
-            "stackTrace",
-            writer => WriteStackArguments(writer, threadId),
-            TestContext.CancellationToken).ConfigureAwait(false);
-        using JsonDocument response = await client
-            .ReadMessageAsync(TestContext.CancellationToken)
-            .ConfigureAwait(false);
-        AssertResponse(response.RootElement, sequence, "stackTrace", success: true);
-        JsonElement frame = response.RootElement.GetProperty("body").GetProperty("stackFrames")
-            .EnumerateArray().FirstOrDefault(candidate =>
-                candidate.TryGetProperty("source", out JsonElement source) &&
-                source.GetProperty("path").GetString() is string path &&
-                path.EndsWith("DebuggerFixture.cs", StringComparison.Ordinal));
-        return frame.ValueKind == JsonValueKind.Undefined
-            ? null
-            : frame.GetProperty("id").GetInt32();
+        JsonElement frame = await GetFixtureFrameAsync(client).ConfigureAwait(false);
+        return await GetLocalArrayMemoryReferenceAsync(
+            client,
+            frame.GetProperty("id").GetInt32()).ConfigureAwait(false);
     }
 
     private async Task<string> GetLocalArrayMemoryReferenceAsync(

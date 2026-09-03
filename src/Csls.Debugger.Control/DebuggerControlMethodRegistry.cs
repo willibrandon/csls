@@ -90,6 +90,11 @@ internal static class DebuggerControlMethodRegistry
                 target.ReadMemoryAsync));
         AddParameterObjectMethod(
             rpc,
+            DebuggerControlMethods.Disassemble,
+            new Func<DebugDisassemblyRequest, CancellationToken, Task<DebugDisassembly>>(
+                target.DisassembleAsync));
+        AddParameterObjectMethod(
+            rpc,
             DebuggerControlMethods.GetSourceContent,
             new Func<DebugSourceRequest, CancellationToken, Task<DebugSourceContent>>(
                 target.GetSourceContentAsync));

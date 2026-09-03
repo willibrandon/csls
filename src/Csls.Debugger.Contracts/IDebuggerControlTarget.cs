@@ -144,6 +144,16 @@ public interface IDebuggerControlTarget
         CancellationToken cancellationToken);
 
     /// <summary>
+    /// Disassembles a bounded managed-IL range through a stopped-state handle.
+    /// </summary>
+    /// <param name="request">The selected IL handle and instruction window.</param>
+    /// <param name="cancellationToken">Cancels disassembly.</param>
+    /// <returns>The exact-count managed-IL response.</returns>
+    Task<DebugDisassembly> DisassembleAsync(
+        DebugDisassemblyRequest request,
+        CancellationToken cancellationToken);
+
+    /// <summary>
     /// Gets source content by its session-local reference.
     /// </summary>
     /// <param name="request">The selected source reference.</param>

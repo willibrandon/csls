@@ -133,6 +133,9 @@ public sealed partial class DebuggerRpcTests
             new DebugMemoryReadRequest(localArray.MemoryReference, 0, 64),
             cancellationToken).ConfigureAwait(false);
         AssertRpcArrayMemory(memory);
+        Assert.IsNotNull(frame.InstructionReference);
+        await AssertRpcDisassemblyAsync(client, frame.InstructionReference, cancellationToken)
+            .ConfigureAwait(false);
 
         DebugSessionSnapshot terminated = await client.TerminateAsync(cancellationToken)
             .ConfigureAwait(false);

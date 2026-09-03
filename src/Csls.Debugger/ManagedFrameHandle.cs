@@ -36,4 +36,14 @@ internal sealed class ManagedFrameHandle
     /// Gets or initializes the loaded module path when available.
     /// </summary>
     internal string? ModulePath { get; init; }
+
+    /// <summary>
+    /// Gets or initializes the language-neutral managed method name.
+    /// </summary>
+    internal required string Name { get; init; }
+
+    /// <summary>
+    /// Gets or initializes the opaque stopped-state managed-IL reference.
+    /// </summary>
+    internal required string InstructionReference { get; init; }
 }

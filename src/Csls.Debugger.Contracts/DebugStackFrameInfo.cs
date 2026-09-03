@@ -8,9 +8,11 @@ namespace Csls.Debugger.Contracts;
 /// <param name="Source">The source document identity when symbols resolve it.</param>
 /// <param name="Line">The one-based source line, or zero when unavailable.</param>
 /// <param name="Column">The one-based source column, or zero when unavailable.</param>
+/// <param name="InstructionReference">The opaque managed-IL location, or null when unavailable.</param>
 public sealed record DebugStackFrameInfo(
     int Id,
     string Name,
     DebugSourceInfo? Source,
     int Line,
-    int Column);
+    int Column,
+    string? InstructionReference);
