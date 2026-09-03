@@ -13,5 +13,10 @@ internal enum DebugBreakpointKind
     /// <summary>
     /// Identifies a managed function-entry breakpoint.
     /// </summary>
-    Function
+    Function,
+
+    /// <summary>
+    /// Identifies a managed-IL instruction breakpoint.
+    /// </summary>
+    Instruction
 }

@@ -36,6 +36,11 @@ public static class DebuggerControlMethods
     public const string SetFunctionBreakpoints = "debugger/setFunctionBreakpoints";
 
     /// <summary>
+    /// Replaces every managed-IL instruction breakpoint.
+    /// </summary>
+    public const string SetInstructionBreakpoints = "debugger/setInstructionBreakpoints";
+
+    /// <summary>
     /// Replaces the complete managed exception breakpoint policy.
     /// </summary>
     public const string SetExceptionBreakpoints = "debugger/setExceptionBreakpoints";

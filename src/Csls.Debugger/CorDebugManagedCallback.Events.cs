@@ -41,6 +41,8 @@ internal sealed partial class CorDebugManagedCallback
     {
         await _sourceBreakpoints.LoadModuleAsync(module, cancellationToken).ConfigureAwait(false);
         await _functionBreakpoints.LoadModuleAsync(module, cancellationToken).ConfigureAwait(false);
+        await _instructionBreakpoints.LoadModuleAsync(module, cancellationToken)
+            .ConfigureAwait(false);
         return true;
     }
 
@@ -51,6 +53,8 @@ internal sealed partial class CorDebugManagedCallback
         await _sourceBreakpoints.UnloadModuleAsync(module, cancellationToken)
             .ConfigureAwait(false);
         await _functionBreakpoints.UnloadModuleAsync(module, cancellationToken)
+            .ConfigureAwait(false);
+        await _instructionBreakpoints.UnloadModuleAsync(module, cancellationToken)
             .ConfigureAwait(false);
         return true;
     }

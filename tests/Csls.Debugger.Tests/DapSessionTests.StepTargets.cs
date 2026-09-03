@@ -135,6 +135,8 @@ public sealed partial class DapSessionTests
             TestContext.CancellationToken).ConfigureAwait(false);
         using JsonDocument initialize = await client
             .ReadMessageAsync(TestContext.CancellationToken).ConfigureAwait(false);
+        Assert.IsTrue(initialize.RootElement.GetProperty("body")
+            .GetProperty("supportsInstructionBreakpoints").GetBoolean());
         int launchSequence = await client.SendRequestAsync(
             "launch",
             writer => WriteLaunchArguments(
@@ -146,6 +148,7 @@ public sealed partial class DapSessionTests
             TestContext.CancellationToken).ConfigureAwait(false);
         using JsonDocument initialized = await client
             .ReadMessageAsync(TestContext.CancellationToken).ConfigureAwait(false);
+        await ClearInstructionBreakpointsAsync(client).ConfigureAwait(false);
         int breakpointsSequence = await client.SendRequestAsync(
             "setBreakpoints",
             writer => WriteSourceBreakpointArguments(writer, sourcePath, breakpointLine),

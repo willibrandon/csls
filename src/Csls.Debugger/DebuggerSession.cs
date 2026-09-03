@@ -13,6 +13,7 @@ public sealed partial class DebuggerSession : IAsyncDisposable
     private readonly SemaphoreSlim _lifecycleGate = new(1, 1);
     private readonly SourceBreakpointManager _sourceBreakpoints;
     private readonly FunctionBreakpointManager _functionBreakpoints;
+    private readonly InstructionBreakpointManager _instructionBreakpoints;
     private IDebuggeeProcess? _debuggee;
     private Task? _debuggeeLifetime;
     private CancellationTokenSource? _debuggeeObservationCancellation;
@@ -33,6 +34,9 @@ public sealed partial class DebuggerSession : IAsyncDisposable
         _functionBreakpoints = new FunctionBreakpointManager(
             (breakpoint, cancellationToken) =>
                 _observer.OnFunctionBreakpointChangedAsync(breakpoint, cancellationToken));
+        _instructionBreakpoints = new InstructionBreakpointManager(
+            (breakpoint, cancellationToken) =>
+                _observer.OnInstructionBreakpointChangedAsync(breakpoint, cancellationToken));
     }
 
     /// <summary>

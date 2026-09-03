@@ -25,6 +25,7 @@ internal sealed partial class CorDebugManagedCallback : IDisposable
     private readonly DebuggerSessionActor _actor;
     private readonly SourceBreakpointManager _sourceBreakpoints;
     private readonly FunctionBreakpointManager _functionBreakpoints;
+    private readonly InstructionBreakpointManager _instructionBreakpoints;
     private readonly Func<int, DebugBreakpointKind, CancellationToken, ValueTask>
         _breakpointStopped;
     private readonly Func<int, nint, CancellationToken,
@@ -44,6 +45,7 @@ internal sealed partial class CorDebugManagedCallback : IDisposable
     /// <param name="actor">The engine actor that owns callback continuation.</param>
     /// <param name="sourceBreakpoints">The source-breakpoint binding owner.</param>
     /// <param name="functionBreakpoints">The function-breakpoint binding owner.</param>
+    /// <param name="instructionBreakpoints">The managed-IL breakpoint binding owner.</param>
     /// <param name="breakpointStopped">The ordered runtime-breakpoint stop callback.</param>
     /// <param name="targetBreakpointReached">The ordered targeted-step breakpoint callback.</param>
     /// <param name="stepCompleted">The ordered source-step completion callback.</param>
@@ -52,6 +54,7 @@ internal sealed partial class CorDebugManagedCallback : IDisposable
         DebuggerSessionActor actor,
         SourceBreakpointManager sourceBreakpoints,
         FunctionBreakpointManager functionBreakpoints,
+        InstructionBreakpointManager instructionBreakpoints,
         Func<int, DebugBreakpointKind, CancellationToken, ValueTask> breakpointStopped,
         Func<int, nint, CancellationToken, ValueTask<ManagedTargetBreakpointDecision>>
             targetBreakpointReached,
@@ -61,6 +64,7 @@ internal sealed partial class CorDebugManagedCallback : IDisposable
         ArgumentNullException.ThrowIfNull(actor);
         ArgumentNullException.ThrowIfNull(sourceBreakpoints);
         ArgumentNullException.ThrowIfNull(functionBreakpoints);
+        ArgumentNullException.ThrowIfNull(instructionBreakpoints);
         ArgumentNullException.ThrowIfNull(breakpointStopped);
         ArgumentNullException.ThrowIfNull(targetBreakpointReached);
         ArgumentNullException.ThrowIfNull(stepCompleted);
@@ -68,6 +72,7 @@ internal sealed partial class CorDebugManagedCallback : IDisposable
         _actor = actor;
         _sourceBreakpoints = sourceBreakpoints;
         _functionBreakpoints = functionBreakpoints;
+        _instructionBreakpoints = instructionBreakpoints;
         _breakpointStopped = breakpointStopped;
         _targetBreakpointReached = targetBreakpointReached;
         _stepCompleted = stepCompleted;
@@ -92,41 +97,6 @@ internal sealed partial class CorDebugManagedCallback : IDisposable
         instance[7] = _instance;
         instance[ContextSlot] = GCHandle.ToIntPtr(context);
         *(int*)((byte*)_instance + s_referenceCountOffset) = 1;
-    }
-
-    /// <summary>
-    /// Gets the COM interface pointer accepted by ICorDebug.SetManagedHandler.
-    /// </summary>
-    internal nint Pointer => Volatile.Read(ref _instance);
-
-    /// <summary>
-    /// Waits until CoreCLR reports and resumes the initial create-process stop.
-    /// </summary>
-    /// <param name="cancellationToken">Cancels the wait for the initial managed callback.</param>
-    /// <returns>A task that completes after the runtime accepts Continue.</returns>
-    internal async Task WaitForCreateProcessAsync(CancellationToken cancellationToken)
-    {
-        int result = await _createProcessCompletion.Task.WaitAsync(cancellationToken)
-            .ConfigureAwait(false);
-        CorDebugHResult.ThrowIfFailed(result, "ICorDebugController.Continue");
-    }
-
-    /// <summary>
-    /// Waits until CoreCLR delivers the terminal process callback on the engine actor.
-    /// </summary>
-    /// <param name="cancellationToken">Cancels waiting for callback delivery.</param>
-    /// <returns>A task that completes after the callback relinquishes its process pointer.</returns>
-    internal Task WaitForExitProcessAsync(CancellationToken cancellationToken) =>
-        _exitProcessCompletion.Task.WaitAsync(cancellationToken);
-
-    /// <inheritdoc />
-    public void Dispose()
-    {
-        nint instance = Interlocked.Exchange(ref _instance, 0);
-        if (instance != 0)
-        {
-            _ = ReleaseCore(instance);
-        }
     }
 
     [UnmanagedCallersOnly(CallConvs = [typeof(CallConvStdcall)])]

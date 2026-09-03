@@ -92,6 +92,14 @@ when the target resumes. This is managed IL rather than architecture-specific
 native machine code, so it works consistently across supported .NET languages
 and target architectures.
 
+Managed-IL instruction breakpoints accept an opaque frame reference with a signed
+byte offset or a virtual address returned by `disassemble`. Each requested address
+must belong to the current stop and land on an exact ECMA-335 instruction boundary.
+If CoreCLR cannot patch an otherwise valid location, that item is returned as an
+unverified breakpoint with its runtime diagnostic. Valid instruction breakpoints
+rebind across module reloads and accept the same hit-count forms as source and
+function breakpoints.
+
 ## Security and process ownership
 
 - Target commands are executed directly without a command shell.

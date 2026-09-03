@@ -24,11 +24,14 @@ internal static class CorDebugRuntimeActivator
             static (_, _) => ValueTask.CompletedTask);
         using var functionBreakpoints = new FunctionBreakpointManager(
             static (_, _) => ValueTask.CompletedTask);
+        using var instructionBreakpoints = new InstructionBreakpointManager(
+            static (_, _) => ValueTask.CompletedTask);
         CorDebugDebuggee debuggee = await CorDebugDebuggee.LaunchAsync(
             options,
             callbackActor,
             sourceBreakpoints,
             functionBreakpoints,
+            instructionBreakpoints,
             static (_, _, _) => ValueTask.CompletedTask,
             static (_, _, _) => ValueTask.FromResult(
                 ManagedTargetBreakpointDecision.Unrecognized),

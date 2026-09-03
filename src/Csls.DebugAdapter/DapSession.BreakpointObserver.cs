@@ -64,4 +64,33 @@ internal sealed partial class DapSession
         {
         }
     }
+
+    /// <inheritdoc />
+    public async ValueTask OnInstructionBreakpointChangedAsync(
+        DebugInstructionBreakpointInfo breakpoint,
+        CancellationToken cancellationToken)
+    {
+        if (IsProtocolClosed)
+        {
+            return;
+        }
+
+        try
+        {
+            await _writer.WriteEventAsync(
+                "breakpoint",
+                writer =>
+                {
+                    writer.WriteStartObject();
+                    writer.WriteString("reason", "changed");
+                    writer.WritePropertyName("breakpoint");
+                    WriteInstructionBreakpoint(writer, breakpoint);
+                    writer.WriteEndObject();
+                },
+                cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception exception) when (IsExpectedClosedTransportException(exception))
+        {
+        }
+    }
 }

@@ -33,6 +33,10 @@ internal sealed partial class DapSession
                 await SetFunctionBreakpointsAsync(request, cancellationToken)
                     .ConfigureAwait(false);
                 break;
+            case "setInstructionBreakpoints":
+                await SetInstructionBreakpointsAsync(request, cancellationToken)
+                    .ConfigureAwait(false);
+                break;
             case "setExceptionBreakpoints":
                 await SetExceptionBreakpointsAsync(request, cancellationToken).ConfigureAwait(false);
                 break;

@@ -118,6 +118,21 @@ new `stopped` event, and all old frame, variable, memory, disassembly, step-targ
 and goto-target handles then become stale. csls does not offer advisory targets
 for which CoreCLR cannot guarantee correct continuation.
 
+Managed stack frames expose opaque `instructionPointerReference` values.
+`disassemble` returns exact-count ECMA-335 instruction windows with encoded bytes,
+metadata symbols, and Portable PDB source mappings. `setInstructionBreakpoints`
+accepts either one of those frame references plus a signed byte offset or a virtual
+address returned by `disassemble`. The address must belong to the current stop and
+land on an exact IL instruction boundary.
+
+CoreCLR can reject a valid IL boundary when the JIT cannot patch it. That item is
+returned as unverified with the runtime diagnostic without rejecting the rest of
+the replacement set. Successful instruction breakpoints rebind when the same module
+reloads, support the same `hitCondition` forms as source and function breakpoints,
+and stop with the `instruction breakpoint` reason. Managed-IL references expire
+when execution resumes; installed logical breakpoints retain their independently
+validated module, method, and IL identities.
+
 ## Runtime and symbol requirements
 
 The target must run CoreCLR and match the host architecture. Source breakpoints,

@@ -242,8 +242,13 @@ counts are maintained per logical breakpoint and reset only when the client
 replaces it. A failed condition or interpolation reports one bounded diagnostic and
 follows the documented break policy; it never silently changes expression meaning.
 Data breakpoints use runtime value-breakpoint support only while the underlying
-storage identity is stable. Instruction breakpoints initially address managed IL,
-not machine instructions.
+storage identity is stable. Instruction breakpoints address managed IL, not machine
+instructions. Their references are resolved only through a current stop generation,
+must land on decoded ECMA-335 instruction boundaries, and can be expressed as an
+opaque frame reference plus byte offset or a virtual address returned by disassembly.
+Logical bindings retain module path, method token, and IL offset so they can rebind
+after module churn. A JIT-unpatchable location remains an unverified item with the
+CoreCLR diagnostic rather than failing the replacement request.
 
 Pause maps to a balanced process stop. Continue invalidates the current stop
 generation before resuming. Step operations create one active stepper for the

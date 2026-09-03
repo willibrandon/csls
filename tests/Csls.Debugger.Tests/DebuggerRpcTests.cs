@@ -142,6 +142,10 @@ public sealed partial class DebuggerRpcTests
         Assert.IsNotNull(frame.InstructionReference);
         await AssertRpcDisassemblyAsync(client, frame.InstructionReference, cancellationToken)
             .ConfigureAwait(false);
+        await AssertRpcInstructionBreakpointValidationAsync(
+            client,
+            frame.InstructionReference,
+            cancellationToken).ConfigureAwait(false);
         await AssertRpcNavigationAsync(
             client,
             frame,
@@ -178,23 +182,4 @@ public sealed partial class DebuggerRpcTests
         }
     }
 
-    private static string ResolveTestProcessHost(string repositoryRoot) => Path.Join(
-        repositoryRoot,
-        "artifacts",
-        "bin",
-        "Csls.TestProcessHost",
-        "debug",
-        "csls-test-process-host.dll");
-
-    private static string FindRepositoryRoot([CallerFilePath] string sourcePath = "")
-    {
-        DirectoryInfo? directory = new FileInfo(sourcePath).Directory;
-        while (directory is not null && !File.Exists(Path.Join(directory.FullName, "Csls.slnx")))
-        {
-            directory = directory.Parent;
-        }
-
-        return directory?.FullName
-            ?? throw new DirectoryNotFoundException("Could not locate the csls repository root.");
-    }
 }

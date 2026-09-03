@@ -16,6 +16,7 @@ internal sealed partial class CorDebugDebuggee
     /// <param name="actor">The session actor that owns runtime calls and callbacks.</param>
     /// <param name="sourceBreakpoints">The session source-breakpoint owner.</param>
     /// <param name="functionBreakpoints">The session function-breakpoint owner.</param>
+    /// <param name="instructionBreakpoints">The session managed-IL breakpoint owner.</param>
     /// <param name="breakpointStopped">The ordered runtime-breakpoint stop callback.</param>
     /// <param name="targetBreakpointReached">The ordered targeted-step breakpoint callback.</param>
     /// <param name="stepCompleted">The ordered runtime-step completion callback.</param>
@@ -27,6 +28,7 @@ internal sealed partial class CorDebugDebuggee
         DebuggerSessionActor actor,
         SourceBreakpointManager sourceBreakpoints,
         FunctionBreakpointManager functionBreakpoints,
+        InstructionBreakpointManager instructionBreakpoints,
         Func<int, DebugBreakpointKind, CancellationToken, ValueTask> breakpointStopped,
         Func<int, nint, CancellationToken, ValueTask<ManagedTargetBreakpointDecision>>
             targetBreakpointReached,
@@ -38,6 +40,7 @@ internal sealed partial class CorDebugDebuggee
         ArgumentNullException.ThrowIfNull(actor);
         ArgumentNullException.ThrowIfNull(sourceBreakpoints);
         ArgumentNullException.ThrowIfNull(functionBreakpoints);
+        ArgumentNullException.ThrowIfNull(instructionBreakpoints);
         ArgumentNullException.ThrowIfNull(breakpointStopped);
         ArgumentNullException.ThrowIfNull(targetBreakpointReached);
         ArgumentNullException.ThrowIfNull(stepCompleted);
@@ -85,6 +88,7 @@ internal sealed partial class CorDebugDebuggee
                 actor,
                 sourceBreakpoints,
                 functionBreakpoints,
+                instructionBreakpoints,
                 breakpointStopped,
                 targetBreakpointReached,
                 stepCompleted,

@@ -61,6 +61,7 @@ public sealed partial class DebuggerSession
                     _ = token;
                     _sourceBreakpoints.Dispose();
                     _functionBreakpoints.Dispose();
+                    _instructionBreakpoints.Dispose();
                     return ValueTask.CompletedTask;
                 },
                 CancellationToken.None).ConfigureAwait(false);
@@ -72,6 +73,7 @@ public sealed partial class DebuggerSession
         {
             _sourceBreakpoints.Dispose();
             _functionBreakpoints.Dispose();
+            _instructionBreakpoints.Dispose();
         }
     }
 

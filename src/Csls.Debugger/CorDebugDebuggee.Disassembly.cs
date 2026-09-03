@@ -32,16 +32,10 @@ internal sealed partial class CorDebugDebuggee
                 $"Disassembly cannot exceed {MaximumDisassemblyInstructionCount} instructions.");
         }
 
-        if (!_instructionFrames.TryGetValue(
+        ManagedInstructionReferenceHandle location = ResolveInstructionReference(
             request.InstructionReference,
-            out ManagedInstructionReferenceHandle? location))
-        {
-            throw new InvalidOperationException(
-                $"Instruction reference '{request.InstructionReference}' is stale or unknown.");
-        }
-
+            generation);
         ManagedFrameHandle frame = location.Frame;
-        ValidateGeneration(frame.Id, frame.Generation, generation);
         if (frame.ModulePath is null || frame.MethodToken == 0)
         {
             throw new InvalidOperationException("The selected frame has no managed IL body.");

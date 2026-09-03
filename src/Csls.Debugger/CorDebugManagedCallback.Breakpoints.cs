@@ -37,6 +37,11 @@ internal sealed partial class CorDebugManagedCallback
             kind = DebugBreakpointKind.Function;
             shouldBreak = functionDecision;
         }
+        else if (_instructionBreakpoints.GetBreakDecision(breakpoint) is bool instructionDecision)
+        {
+            kind = DebugBreakpointKind.Instruction;
+            shouldBreak = instructionDecision;
+        }
         else
         {
             return true;

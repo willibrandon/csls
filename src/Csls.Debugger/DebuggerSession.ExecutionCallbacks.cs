@@ -12,9 +12,12 @@ public sealed partial class DebuggerSession
         DebugBreakpointKind kind,
         CancellationToken cancellationToken)
     {
-        string reason = kind == DebugBreakpointKind.Function
-            ? "function breakpoint"
-            : "breakpoint";
+        string reason = kind switch
+        {
+            DebugBreakpointKind.Function => "function breakpoint",
+            DebugBreakpointKind.Instruction => "instruction breakpoint",
+            _ => "breakpoint"
+        };
         if (_state == DebugSessionState.Starting)
         {
             _pendingStop = new PendingDebugStop(reason, threadId, Exception: null);
