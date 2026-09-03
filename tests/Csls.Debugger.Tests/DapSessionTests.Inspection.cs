@@ -46,6 +46,11 @@ public sealed partial class DapSessionTests
                     .GetProperty("body")
                     .GetProperty("supportsSetExpression")
                     .GetBoolean());
+            Assert.IsTrue(
+                initialize.RootElement
+                    .GetProperty("body")
+                    .GetProperty("supportsCompletionsRequest")
+                    .GetBoolean());
             _ = await client.SendRequestAsync(
                 "launch",
                 writer => WriteLaunchArguments(
@@ -298,6 +303,50 @@ public sealed partial class DapSessionTests
                 TestContext.CancellationToken).ConfigureAwait(false);
             Assert.AreEqual("44", evaluatedArithmetic.GetProperty("result").GetString());
             Assert.AreEqual("int", evaluatedArithmetic.GetProperty("type").GetString());
+
+            JsonElement[] rootCompletions = await ReadCompletionsAsync(
+                client,
+                fixtureFrameId,
+                "localN",
+                TestContext.CancellationToken).ConfigureAwait(false);
+            JsonElement localNumberCompletion = rootCompletions.Single(completion =>
+                completion.GetProperty("label").GetString() == "localNumber");
+            Assert.AreEqual("variable", localNumberCompletion.GetProperty("type").GetString());
+            Assert.AreEqual("int", localNumberCompletion.GetProperty("detail").GetString());
+            Assert.AreEqual(1, localNumberCompletion.GetProperty("start").GetInt32());
+            Assert.AreEqual(6, localNumberCompletion.GetProperty("length").GetInt32());
+
+            JsonElement[] memberCompletions = await ReadCompletionsAsync(
+                client,
+                fixtureFrameId,
+                "localObject.N",
+                TestContext.CancellationToken).ConfigureAwait(false);
+            Assert.Contains(
+                "Number",
+                memberCompletions.Select(completion =>
+                    completion.GetProperty("label").GetString()!));
+            Assert.Contains(
+                "NextNumber",
+                memberCompletions.Select(completion =>
+                    completion.GetProperty("label").GetString()!));
+            Assert.AreEqual(
+                "field",
+                memberCompletions.Single(completion =>
+                        completion.GetProperty("label").GetString() == "Number")
+                    .GetProperty("type")
+                    .GetString());
+
+            JsonElement[] staticCompletions = await ReadCompletionsAsync(
+                client,
+                fixtureFrameId,
+                "System.Math.A",
+                TestContext.CancellationToken).ConfigureAwait(false);
+            Assert.AreEqual(
+                "method",
+                staticCompletions.First(completion =>
+                        completion.GetProperty("label").GetString() == "Abs")
+                    .GetProperty("type")
+                    .GetString());
 
             JsonElement evaluatedConditional = await ReadEvaluationAsync(
                 client,
@@ -629,6 +678,33 @@ public sealed partial class DapSessionTests
         }
 
         return result;
+    }
+
+    private static async Task<JsonElement[]> ReadCompletionsAsync(
+        DapTestClient client,
+        int frameId,
+        string text,
+        CancellationToken cancellationToken)
+    {
+        int sequence = await client.SendRequestAsync(
+            "completions",
+            writer =>
+            {
+                writer.WriteStartObject();
+                writer.WriteNumber("frameId", frameId);
+                writer.WriteString("text", text);
+                writer.WriteNumber("column", checked(text.Length + 1));
+                writer.WriteEndObject();
+            },
+            cancellationToken).ConfigureAwait(false);
+        using JsonDocument response = await client.ReadMessageAsync(cancellationToken)
+            .ConfigureAwait(false);
+        AssertResponse(response.RootElement, sequence, "completions", success: true);
+        return [.. response.RootElement
+            .GetProperty("body")
+            .GetProperty("targets")
+            .EnumerateArray()
+            .Select(static completion => completion.Clone())];
     }
 
     private static async Task<JsonElement> ReadSetExpressionAsync(

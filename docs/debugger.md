@@ -181,6 +181,16 @@ and conditional expressions do not execute target code. C# casts, Visual Basic
 the same language-neutral conversion operation. Unknown Portable-PDB languages use
 the portable CLR subset for locals, arguments, fields, and array indexes.
 
+DAP expression completions are derived from the exact selected stop rather than an
+unrelated editor workspace. Root completion includes current-generation locals,
+arguments, and language-appropriate literal keywords. Member completion evaluates
+only a side-effect-free receiver and walks its exact CoreCLR type hierarchy and loaded
+module metadata for fields and methods the evaluator currently supports. Explicitly
+qualified loaded types provide static-method completion. Results are prefix-filtered,
+bounded to 2,048 candidates, carry UTF-16 replacement spans, and use case-insensitive
+matching for Visual Basic. If `frameId` is omitted, the selected stopped thread's top
+managed frame supplies the context.
+
 The frame is explicit when supplied; otherwise the adapter uses the selected
 stopped thread's top managed frame. The same generation-bound read-only operation
 is available through private `debugger/evaluate` RPC and the MCP `debug_evaluate`

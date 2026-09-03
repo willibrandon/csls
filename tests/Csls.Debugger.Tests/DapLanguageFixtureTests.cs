@@ -158,6 +158,26 @@ public sealed partial class DapSessionTests
                 "long",
                 convertedEvaluation.GetProperty("type").GetString(),
                 $"Unexpected {project} {configuration} conversion type.");
+            JsonElement[] rootCompletions = await ReadCompletionsAsync(
+                client,
+                frameId,
+                sourceExtension == "vb" ? "ANS" : "ans",
+                TestContext.CancellationToken).ConfigureAwait(false);
+            Assert.Contains(
+                "answer",
+                rootCompletions.Select(completion =>
+                    completion.GetProperty("label").GetString()!),
+                $"Missing {project} {configuration} root completion.");
+            JsonElement[] memberCompletions = await ReadCompletionsAsync(
+                client,
+                frameId,
+                "value.A",
+                TestContext.CancellationToken).ConfigureAwait(false);
+            Assert.Contains(
+                "AddNumber",
+                memberCompletions.Select(completion =>
+                    completion.GetProperty("label").GetString()!),
+                $"Missing {project} {configuration} member completion.");
             if (project.EndsWith("FSharp", StringComparison.Ordinal))
             {
                 JsonElement indexedEvaluation = await ReadEvaluationAsync(

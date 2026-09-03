@@ -367,6 +367,14 @@ assignment, type tests, conditions, and interpolated log output. The engine reso
 runtime types and methods and executes the IR through ICorDebug. Compiler objects,
 syntax trees, and runtime pointers never appear in the wire contract.
 
+Expression completion is stop-generation-owned. Root candidates come from the exact
+frame's Portable PDB names and runtime values; member candidates come from a
+side-effect-free receiver and the exact `ICorDebugType` hierarchy across loaded module
+metadata. Only members supported by the current evaluator are offered. Loaded-type
+static completion uses the same ambiguity rules as static function evaluation. Every
+result is bounded, deterministically ordered, language-case-aware, and carries a UTF-16
+replacement span for direct DAP translation.
+
 Pure metadata/value evaluation is preferred. Implicit property and `ToString`
 evaluation use familiar .NET defaults but are disabled when the runtime cannot
 safely evaluate. Only one function evaluation runs per stopped process. It has a

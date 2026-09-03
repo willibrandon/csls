@@ -97,6 +97,9 @@ internal sealed partial class DapSession
             case "evaluate":
                 await EvaluateAsync(request, cancellationToken).ConfigureAwait(false);
                 break;
+            case "completions":
+                await WriteCompletionsAsync(request, cancellationToken).ConfigureAwait(false);
+                break;
             case "setVariable":
                 await SetVariableAsync(request, cancellationToken).ConfigureAwait(false);
                 break;
