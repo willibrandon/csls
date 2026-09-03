@@ -40,7 +40,9 @@ public sealed partial class DapSessionTests
         Assert.IsTrue(capabilities.GetProperty("supportsVariablePaging").GetBoolean());
         Assert.IsTrue(capabilities.GetProperty("supportsReadMemoryRequest").GetBoolean());
         Assert.IsTrue(capabilities.GetProperty("supportsDisassembleRequest").GetBoolean());
-        Assert.HasCount(12, capabilities.EnumerateObject().ToArray());
+        Assert.IsTrue(capabilities.GetProperty("supportsStepInTargetsRequest").GetBoolean());
+        Assert.IsTrue(capabilities.GetProperty("supportsGotoTargetsRequest").GetBoolean());
+        Assert.HasCount(14, capabilities.EnumerateObject().ToArray());
 
         string processHost = ResolveTestProcessHost();
         int launchSequence = await client.SendRequestAsync(

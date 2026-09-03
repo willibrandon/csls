@@ -1,5 +1,5 @@
-using Csls.DebugAdapter;
 using System.Buffers;
+using System.Diagnostics;
 using System.Globalization;
 using System.Text;
 using System.Text.Json;
@@ -9,11 +9,9 @@ namespace Csls.Debugger.Tests;
 /// <summary>
 /// Drives the production DAP session through real anonymous operating-system pipes.
 /// </summary>
-internal sealed class DapTestClient : IAsyncDisposable
+internal sealed partial class DapTestClient : IAsyncDisposable
 {
-    private ConnectedNamedPipePair? _pipe;
-    private readonly CancellationTokenSource _lifetime = new();
-    private Task<int>? _sessionTask;
+    private Process? _process;
     private int _sequence;
     private int _disposed;
 
@@ -62,7 +60,7 @@ internal sealed class DapTestClient : IAsyncDisposable
         Action<Utf8JsonWriter>? writeArguments,
         CancellationToken cancellationToken)
     {
-        ConnectedNamedPipePair pipe = _pipe ?? throw new InvalidOperationException(
+        Process process = _process ?? throw new InvalidOperationException(
             "The DAP test client has not been initialized.");
         int sequence = Interlocked.Increment(ref _sequence);
         ArrayBufferWriter<byte> payload = new();
@@ -81,14 +79,13 @@ internal sealed class DapTestClient : IAsyncDisposable
             writer.WriteEndObject();
         }
 
-        byte[] header = Encoding.ASCII.GetBytes(string.Create(
-            CultureInfo.InvariantCulture,
-            $"Content-Length: {payload.WrittenCount}\r\n\r\n"));
-        await pipe.Client.WriteAsync(header, cancellationToken).ConfigureAwait(false);
-        await pipe.Client
+        byte[] header = Encoding.ASCII.GetBytes($"Content-Length: {payload.WrittenCount}\r\n\r\n");
+        await process.StandardInput.BaseStream
+            .WriteAsync(header, cancellationToken).ConfigureAwait(false);
+        await process.StandardInput.BaseStream
             .WriteAsync(payload.WrittenMemory, cancellationToken)
             .ConfigureAwait(false);
-        await pipe.Client.FlushAsync(cancellationToken).ConfigureAwait(false);
+        await process.StandardInput.BaseStream.FlushAsync(cancellationToken).ConfigureAwait(false);
         return sequence;
     }
 
@@ -104,24 +101,26 @@ internal sealed class DapTestClient : IAsyncDisposable
         bool fragment,
         CancellationToken cancellationToken)
     {
-        ConnectedNamedPipePair pipe = _pipe ?? throw new InvalidOperationException(
+        Process process = _process ?? throw new InvalidOperationException(
             "The DAP test client has not been initialized.");
         if (fragment)
         {
             foreach (byte value in frame)
             {
                 byte[] singleByte = [value];
-                await pipe.Client
+                await process.StandardInput.BaseStream
                     .WriteAsync(singleByte, cancellationToken)
                     .ConfigureAwait(false);
-                await pipe.Client.FlushAsync(cancellationToken).ConfigureAwait(false);
+                await process.StandardInput.BaseStream.FlushAsync(cancellationToken)
+                    .ConfigureAwait(false);
             }
 
             return;
         }
 
-        await pipe.Client.WriteAsync(frame, cancellationToken).ConfigureAwait(false);
-        await pipe.Client.FlushAsync(cancellationToken).ConfigureAwait(false);
+        await process.StandardInput.BaseStream.WriteAsync(frame, cancellationToken)
+            .ConfigureAwait(false);
+        await process.StandardInput.BaseStream.FlushAsync(cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -131,13 +130,13 @@ internal sealed class DapTestClient : IAsyncDisposable
     /// <returns>An owned JSON document containing the message.</returns>
     internal async Task<JsonDocument> ReadMessageAsync(CancellationToken cancellationToken)
     {
-        ConnectedNamedPipePair pipe = _pipe ?? throw new InvalidOperationException(
+        Process process = _process ?? throw new InvalidOperationException(
             "The DAP test client has not been initialized.");
         List<byte> header = [];
         byte[] oneByte = new byte[1];
         while (header.Count < 8 * 1024)
         {
-            int count = await pipe.Client
+            int count = await process.StandardOutput.BaseStream
                 .ReadAsync(oneByte, cancellationToken)
                 .ConfigureAwait(false);
             if (count == 0)
@@ -160,65 +159,8 @@ internal sealed class DapTestClient : IAsyncDisposable
         string lengthText = headerText["Content-Length: ".Length..^4];
         int payloadLength = int.Parse(lengthText, CultureInfo.InvariantCulture);
         byte[] payload = GC.AllocateUninitializedArray<byte>(payloadLength);
-        await pipe.Client.ReadExactlyAsync(payload, cancellationToken).ConfigureAwait(false);
-        return JsonDocument.Parse(payload);
-    }
-
-    /// <summary>
-    /// Waits for the production DAP session to finish.
-    /// </summary>
-    /// <param name="cancellationToken">Cancels the wait.</param>
-    /// <returns>The session exit code.</returns>
-    internal Task<int> WaitForExitAsync(CancellationToken cancellationToken)
-    {
-        Task<int> sessionTask = _sessionTask ?? throw new InvalidOperationException(
-            "The DAP test client has not been initialized.");
-        return sessionTask.WaitAsync(cancellationToken);
-    }
-
-    /// <summary>
-    /// Closes the client protocol endpoint so the adapter observes end of stream.
-    /// </summary>
-    /// <returns>A task that completes after the endpoint closes.</returns>
-    internal ValueTask CloseProtocolAsync()
-    {
-        ConnectedNamedPipePair pipe = _pipe ?? throw new InvalidOperationException(
-            "The DAP test client has not been initialized.");
-        return pipe.Client.DisposeAsync();
-    }
-
-    /// <inheritdoc />
-    public async ValueTask DisposeAsync()
-    {
-        if (Interlocked.Exchange(ref _disposed, 1) != 0)
-        {
-            return;
-        }
-
-        await _lifetime.CancelAsync().ConfigureAwait(false);
-        if (_sessionTask is not null)
-        {
-            _ = await WaitForExitAsync(CancellationToken.None).ConfigureAwait(false);
-        }
-
-        if (_pipe is not null)
-        {
-            await _pipe.DisposeAsync().ConfigureAwait(false);
-        }
-
-        _lifetime.Dispose();
-        Diagnostics.Dispose();
-    }
-
-    private async Task InitializeAsync(CancellationToken cancellationToken)
-    {
-        _pipe = await ConnectedNamedPipePair
-            .CreateAsync(cancellationToken)
+        await process.StandardOutput.BaseStream.ReadExactlyAsync(payload, cancellationToken)
             .ConfigureAwait(false);
-        _sessionTask = DebugAdapterHost.RunAsync(
-            _pipe.Server,
-            _pipe.Server,
-            Diagnostics,
-            _lifetime.Token);
+        return JsonDocument.Parse(payload);
     }
 }

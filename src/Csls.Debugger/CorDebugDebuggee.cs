@@ -18,8 +18,10 @@ internal sealed partial class CorDebugDebuggee : IDebuggeeProcess
     private readonly UnixChildExitMonitor? _unixExitMonitor;
     private readonly bool _ownsProcess;
     private readonly Dictionary<(int ThreadId, int FrameIndex), ManagedFrameHandle> _frames = [];
-    private readonly Dictionary<string, ManagedFrameHandle> _instructionFrames =
+    private readonly Dictionary<string, ManagedInstructionReferenceHandle> _instructionFrames =
         new(StringComparer.Ordinal);
+    private readonly Dictionary<int, ManagedStepTargetHandle> _stepTargets = [];
+    private readonly Dictionary<int, ManagedGotoTargetHandle> _gotoTargets = [];
     private readonly Dictionary<(int FrameId, ManagedScopeKind Kind), ManagedScopeHandle> _scopes = [];
     private readonly Dictionary<int, ManagedValueHandle> _values = [];
     private readonly Dictionary<nint, ManagedValueHandle> _valueIdentities = [];
@@ -29,8 +31,12 @@ internal sealed partial class CorDebugDebuggee : IDebuggeeProcess
     private nint _debugProcess;
     private nint _activeStepper;
     private nint _activeStepperIdentity;
+    private ManagedTargetBreakpoint? _targetBreakpoint;
     private int _nextFrameId;
+    private int _nextStepTargetId;
+    private int _nextGotoTargetId;
     private int _nextVariablesReference;
+    private int _ownsRuntimeLease;
     private int _detached;
     private int _disposed;
 
@@ -43,6 +49,7 @@ internal sealed partial class CorDebugDebuggee : IDebuggeeProcess
         Process process,
         UnixChildExitMonitor? unixExitMonitor,
         bool ownsProcess,
+        bool ownsRuntimeLease,
         CorDebugActivationResult activation)
     {
         _actor = actor;
@@ -59,6 +66,7 @@ internal sealed partial class CorDebugDebuggee : IDebuggeeProcess
         _process = process;
         _unixExitMonitor = unixExitMonitor;
         _ownsProcess = ownsProcess;
+        _ownsRuntimeLease = ownsRuntimeLease ? 1 : 0;
         _corDebug = activation.CorDebug;
         _debugProcess = activation.Process;
     }

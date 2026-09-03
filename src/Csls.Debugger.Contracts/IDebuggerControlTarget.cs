@@ -3,7 +3,7 @@ namespace Csls.Debugger.Contracts;
 /// <summary>
 /// Defines the engine operations exposed through private debugger control RPC.
 /// </summary>
-public interface IDebuggerControlTarget
+public partial interface IDebuggerControlTarget
 {
     /// <summary>
     /// Gets the current debugger session snapshot.

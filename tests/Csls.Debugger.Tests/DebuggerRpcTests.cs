@@ -59,6 +59,12 @@ public sealed partial class DebuggerRpcTests
                 "Thread.SpinWait(10_000);",
                 StringComparison.Ordinal))
             .Number;
+        int localLine = sourceLines
+            .Select(static (line, index) => (Line: line, Number: index + 1))
+            .Single(static candidate => candidate.Line.Contains(
+                "int localNumber = number + 1;",
+                StringComparison.Ordinal))
+            .Number;
         string socketPath = Path.Join(testDirectory, "debugger.sock");
         string signalPath = Path.Join(testDirectory, "continue.signal");
 
@@ -136,6 +142,13 @@ public sealed partial class DebuggerRpcTests
         Assert.IsNotNull(frame.InstructionReference);
         await AssertRpcDisassemblyAsync(client, frame.InstructionReference, cancellationToken)
             .ConfigureAwait(false);
+        await AssertRpcNavigationAsync(
+            client,
+            frame,
+            stopped,
+            sourcePath,
+            localLine,
+            cancellationToken).ConfigureAwait(false);
 
         DebugSessionSnapshot terminated = await client.TerminateAsync(cancellationToken)
             .ConfigureAwait(false);

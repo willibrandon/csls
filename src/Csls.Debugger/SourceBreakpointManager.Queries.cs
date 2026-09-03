@@ -8,6 +8,19 @@ namespace Csls.Debugger;
 internal sealed partial class SourceBreakpointManager
 {
     /// <summary>
+    /// Determines whether a symbol document resolves to an absolute client source path.
+    /// </summary>
+    /// <param name="symbolPath">The path recorded in the Portable PDB.</param>
+    /// <param name="clientPath">The absolute path supplied by the client.</param>
+    /// <returns>True when source path mapping identifies the same document.</returns>
+    internal bool PathsReferToSameSource(string symbolPath, string clientPath)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(symbolPath);
+        string normalizedClient = NormalizeAbsolutePath(clientPath);
+        return PathsEqual(_sourcePathMapper.Map(symbolPath), normalizedClient);
+    }
+
+    /// <summary>
     /// Gets a stable ordered page of modules observed through runtime callbacks.
     /// </summary>
     /// <param name="start">The zero-based first module to return.</param>

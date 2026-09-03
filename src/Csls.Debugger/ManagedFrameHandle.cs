@@ -23,6 +23,16 @@ internal sealed class ManagedFrameHandle
     internal required nint Pointer { get; init; }
 
     /// <summary>
+    /// Gets or initializes the managed thread that owns the frame.
+    /// </summary>
+    internal required int ThreadId { get; init; }
+
+    /// <summary>
+    /// Gets or initializes the zero-based position in the managed stack.
+    /// </summary>
+    internal required int FrameIndex { get; init; }
+
+    /// <summary>
     /// Gets or initializes the method-definition metadata token when available.
     /// </summary>
     internal required uint MethodToken { get; init; }

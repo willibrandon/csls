@@ -1,14 +1,14 @@
 namespace Csls.Debugger;
 
 /// <summary>
-/// Bounds process-wide CoreCLR activation so concurrent sessions do not exhaust startup handshakes.
+/// Enforces one live ICorDebug owner per debugger host process.
 /// </summary>
 internal static class CorDebugRuntimeActivationGate
 {
     private static readonly SemaphoreSlim s_gate = new(initialCount: 1, maxCount: 1);
 
     /// <summary>
-    /// Waits for exclusive ownership of one CoreCLR activation handshake.
+    /// Waits for exclusive ownership of the process-wide ICorDebug runtime.
     /// </summary>
     /// <param name="cancellationToken">Cancels waiting before the handshake begins.</param>
     /// <returns>A task that completes when activation ownership is acquired.</returns>
@@ -16,7 +16,7 @@ internal static class CorDebugRuntimeActivationGate
         s_gate.WaitAsync(cancellationToken);
 
     /// <summary>
-    /// Releases ownership after the runtime and initial managed callback are ready.
+    /// Releases runtime ownership after the managed debuggee is fully disposed.
     /// </summary>
     internal static void Release() => _ = s_gate.Release();
 }

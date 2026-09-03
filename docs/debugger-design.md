@@ -248,10 +248,19 @@ not machine instructions.
 Pause maps to a balanced process stop. Continue invalidates the current stop
 generation before resuming. Step operations create one active stepper for the
 selected managed thread, apply sequence-point and Just My Code ranges, and disable
-the stepper on completion or competing stop. Async and iterator stepping use PDB
-state-machine information and runtime stepper support. SetIP first calls the
-runtime's validation operation, requires a target sequence point in the same safe
-method context, and never claims success for a partial move.
+the stepper on completion or competing stop. Step Into targets decode calls within
+the active statement and expose only same-module managed callees with Portable PDB
+source. A selected occurrence combines a callee-entry breakpoint with a caller
+statement guard; earlier invocations of the same callee are counted and resumed.
+Target handles belong to one stop generation. Async and iterator stepping use PDB
+state-machine information and runtime stepper support.
+
+SetIP targets are visible sequence points in the active method. Discovery calls
+`ICorDebugILFrame.CanSetIP` and accepts only `S_OK`, because the public CoreCLR
+contract guarantees safe, correct continued execution for no other result. The
+engine repeats the validation immediately before `SetIP`, then invalidates all
+generation-owned handles and publishes a new stopped generation. The DAP adapter
+orders the successful `goto` response before the corresponding `stopped` event.
 
 Exception policy is compiled from DAP filters and exception options. First-chance,
 user-unhandled, and unhandled events remain distinct. Exception information is

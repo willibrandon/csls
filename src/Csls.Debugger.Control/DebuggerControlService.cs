@@ -61,7 +61,11 @@ public sealed partial class DebuggerControlService :
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(request);
-        await _session.StepAsync(request.ThreadId, request.Kind, cancellationToken)
+        await _session.StepAsync(
+            request.ThreadId,
+            request.Kind,
+            request.TargetId,
+            cancellationToken)
             .ConfigureAwait(false);
         return GetSnapshot();
     }

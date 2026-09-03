@@ -15,6 +15,16 @@ internal sealed partial class CorDebugManagedCallback
             return true;
         }
 
+        int managedThreadId = checked((int)GetThreadId(thread));
+        ManagedTargetBreakpointDecision targetDecision = await _targetBreakpointReached(
+            managedThreadId,
+            breakpoint,
+            cancellationToken).ConfigureAwait(false);
+        if (targetDecision != ManagedTargetBreakpointDecision.Unrecognized)
+        {
+            return targetDecision == ManagedTargetBreakpointDecision.Continue;
+        }
+
         DebugBreakpointKind kind;
         bool shouldBreak;
         if (_sourceBreakpoints.GetBreakDecision(breakpoint) is bool sourceDecision)
@@ -37,8 +47,7 @@ internal sealed partial class CorDebugManagedCallback
             return true;
         }
 
-        uint threadId = GetThreadId(thread);
-        await _breakpointStopped(checked((int)threadId), kind, cancellationToken)
+        await _breakpointStopped(managedThreadId, kind, cancellationToken)
             .ConfigureAwait(false);
         return false;
     }

@@ -64,6 +64,21 @@ internal static class DebuggerControlMethodRegistry
             DebuggerControlMethods.Step,
             new Func<DebugStepRequest, CancellationToken, Task<DebugSessionSnapshot>>(
                 target.StepAsync));
+        AddParameterObjectMethod(
+            rpc,
+            DebuggerControlMethods.GetStepTargets,
+            new Func<DebugStepTargetsRequest, CancellationToken,
+                Task<IReadOnlyList<DebugStepTargetInfo>>>(target.GetStepTargetsAsync));
+        AddParameterObjectMethod(
+            rpc,
+            DebuggerControlMethods.GetGotoTargets,
+            new Func<DebugGotoTargetsRequest, CancellationToken,
+                Task<IReadOnlyList<DebugGotoTargetInfo>>>(target.GetGotoTargetsAsync));
+        AddParameterObjectMethod(
+            rpc,
+            DebuggerControlMethods.Goto,
+            new Func<DebugGotoRequest, CancellationToken, Task<DebugSessionSnapshot>>(
+                target.GotoAsync));
         rpc.AddLocalRpcMethod(
             DebuggerControlMethods.GetThreads,
             new Func<CancellationToken, Task<IReadOnlyList<DebugThreadInfo>>>(

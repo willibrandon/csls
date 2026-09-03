@@ -65,6 +65,19 @@ operator methods during Step Into. `DebuggerHidden` and `DebuggerStepThrough`
 also remain filtered, while `DebuggerNonUserCode` follows `justMyCode`. Set the
 option to `false` to enter properties and operators.
 
+For a statement with multiple eligible local managed calls, `stepInTargets`
+returns one generation-bound target per occurrence. Passing a target to `stepIn`
+enters that exact occurrence, including when the same method is called more than
+once on the line. Calls without a same-module managed implementation and Portable
+PDB are omitted rather than presented as selectable targets that cannot be honored.
+
+Go to Line is available through `gotoTargets` and `goto` for visible sequence
+points in the active managed method. csls offers a location only when CoreCLR's
+`ICorDebugILFrame.CanSetIP` returns `S_OK`, the runtime guarantee for safe, correct
+continued execution, and repeats the validation immediately before the move. A
+successful `goto` response precedes the resulting `stopped` event. Step and goto
+target identifiers expire whenever the stop generation changes.
+
 Managed arrays expose an opaque `memoryReference` while their owning stop is
 active. `readMemory` accepts signed offsets and reads at most 1 MiB per request;
 the response uses the DAP-required hexadecimal address and base64 data. Resuming

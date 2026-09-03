@@ -141,6 +141,8 @@ internal sealed partial class CorDebugDebuggee
 
         _frames.Clear();
         _instructionFrames.Clear();
+        _stepTargets.Clear();
+        _gotoTargets.Clear();
         _scopes.Clear();
         foreach (ManagedValueHandle value in _values.Values)
         {

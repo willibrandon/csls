@@ -30,6 +30,8 @@ internal static class CorDebugRuntimeActivator
             sourceBreakpoints,
             functionBreakpoints,
             static (_, _, _) => ValueTask.CompletedTask,
+            static (_, _, _) => ValueTask.FromResult(
+                ManagedTargetBreakpointDecision.Unrecognized),
             static (_, _, _, _) => ValueTask.FromResult(false),
             static (_, _, _, _) => ValueTask.FromResult(false),
             cancellationToken).ConfigureAwait(false);

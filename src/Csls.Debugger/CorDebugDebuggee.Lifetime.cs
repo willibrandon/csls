@@ -34,6 +34,21 @@ internal sealed partial class CorDebugDebuggee
             return;
         }
 
+        try
+        {
+            await DisposeCoreAsync().ConfigureAwait(false);
+        }
+        finally
+        {
+            if (Interlocked.Exchange(ref _ownsRuntimeLease, 0) != 0)
+            {
+                CorDebugRuntimeActivationGate.Release();
+            }
+        }
+    }
+
+    private async ValueTask DisposeCoreAsync()
+    {
         if (Volatile.Read(ref _detached) == 0)
         {
             if (_ownsProcess)

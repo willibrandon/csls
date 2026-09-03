@@ -21,6 +21,10 @@ internal sealed partial class DapSession
 
         try
         {
+            _stoppedThreadId = GetOptionalPositiveInteger(
+                request.Arguments,
+                "threadId",
+                request.Command);
             await _engineSession.PauseAsync(cancellationToken).ConfigureAwait(false);
             await _writer.WriteResponseAsync(
                 request,
@@ -29,7 +33,8 @@ internal sealed partial class DapSession
                 writeBody: null,
                 cancellationToken).ConfigureAwait(false);
         }
-        catch (InvalidOperationException exception)
+        catch (Exception exception) when (
+            exception is ArgumentException or InvalidOperationException)
         {
             await _writer.WriteResponseAsync(
                 request,
@@ -90,8 +95,14 @@ internal sealed partial class DapSession
         try
         {
             int threadId = GetRequiredInteger(request.Arguments, "threadId", request.Command);
+            int? targetId = kind == DebugStepKind.Into &&
+                request.Arguments.TryGetProperty("targetId", out JsonElement targetValue)
+                ? targetValue.TryGetInt32(out int parsedTarget)
+                    ? parsedTarget
+                    : throw new ArgumentException("The stepIn targetId must be an integer.")
+                : null;
             await _engineSession
-                .StepAsync(threadId, kind, cancellationToken)
+                .StepAsync(threadId, kind, targetId, cancellationToken)
                 .ConfigureAwait(false);
             await _writer.WriteResponseAsync(
                 request,

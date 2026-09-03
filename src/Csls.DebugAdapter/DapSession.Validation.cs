@@ -43,6 +43,26 @@ internal sealed partial class DapSession
         return result;
     }
 
+    private static int? GetOptionalPositiveInteger(
+        JsonElement arguments,
+        string propertyName,
+        string requestName)
+    {
+        if (arguments.ValueKind != JsonValueKind.Object ||
+            !arguments.TryGetProperty(propertyName, out JsonElement value))
+        {
+            return null;
+        }
+
+        if (!value.TryGetInt32(out int result) || result <= 0)
+        {
+            throw new ArgumentException(
+                $"The {requestName} {propertyName} value must be a positive integer.");
+        }
+
+        return result;
+    }
+
     private ValueTask WriteRequestFailureAsync(
         Request request,
         string message,

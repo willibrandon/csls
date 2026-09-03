@@ -24,10 +24,12 @@ source stepping, stacks, modules, arguments, locals, fields, arrays, function
 breakpoints, hit-count breakpoints, bounded array-memory inspection, and symbolic
 managed-IL disassembly across C#, Visual Basic, F#, and other
 Portable-PDB-producing .NET languages. Managed exception filters accept exact
-and base type names. Launches can suppress JIT optimizations for symbol-bearing
-modules, and module inspection reports the effective runtime policy. Conditional
-and data breakpoints, expression evaluation, dumps, Hot Reload, and debugger MCP
-workflows remain under development and are not advertised as available. Run
+and base type names. Source-aware Step Into can select a particular local managed
+call on a statement, and Go to Line exposes only destinations that CoreCLR certifies
+for safe continued execution. Launches can suppress JIT optimizations for
+symbol-bearing modules, and module inspection reports the effective runtime policy.
+Conditional and data breakpoints, expression evaluation, dumps, Hot Reload, and
+debugger MCP workflows remain under development and are not advertised as available. Run
 `csls debugger tui launch` or `csls debugger tui attach` for the interactive
 Hex1b source, stack, arguments, and locals workflow.
 

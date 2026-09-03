@@ -13,7 +13,13 @@ internal sealed partial class CorDebugDebuggee
     /// </summary>
     /// <param name="threadId">The managed thread identifier to step.</param>
     /// <param name="kind">The requested source-level stepping operation.</param>
-    internal void Step(int threadId, DebugStepKind kind)
+    /// <param name="targetId">The optional generation-bound Step Into target.</param>
+    /// <param name="generation">The current debugger stop generation.</param>
+    internal void Step(
+        int threadId,
+        DebugStepKind kind,
+        int? targetId,
+        DebugStopGeneration generation)
     {
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(threadId);
         if (_activeStepper != 0)
@@ -21,14 +27,27 @@ internal sealed partial class CorDebugDebuggee
             throw new InvalidOperationException("A managed step is already active.");
         }
 
+        ManagedStepTargetHandle? target = GetStepTarget(
+            threadId,
+            kind,
+            targetId,
+            generation);
         nint thread = 0;
         nint stepper = 0;
         try
         {
             thread = GetThread(threadId);
+            bool targetsCall = target is not null;
+            if (targetsCall)
+            {
+                CreateTargetBreakpoint(target!);
+            }
+
             stepper = CreateStepper(thread);
             ConfigureStepper(stepper);
-            int stepResult = StartStep(stepper, thread, kind);
+            int stepResult = targetsCall
+                ? StartGuardedTargetStep(stepper, target!)
+                : StartStep(stepper, thread, kind);
             CorDebugHResult.ThrowIfFailed(stepResult, $"ICorDebugStepper.Step{kind}");
             _activeStepperIdentity = ComAbi.GetIdentity(stepper);
             _activeStepper = stepper;
@@ -70,6 +89,7 @@ internal sealed partial class CorDebugDebuggee
             }
 
             ReleaseActiveStepper(deactivate: false);
+            ReleaseTargetBreakpoint();
             return true;
         }
         finally
@@ -81,93 +101,42 @@ internal sealed partial class CorDebugDebuggee
     /// <summary>
     /// Deactivates and releases an interrupted source step.
     /// </summary>
-    internal void CancelStep() => ReleaseActiveStepper(deactivate: true);
-
-    private unsafe nint GetThread(int threadId)
+    internal void CancelStep()
     {
-        nint thread = 0;
-        nint* threadAddress = &thread;
-        CorDebugHResult.ThrowIfFailed(
-            new ICorDebugProcessAbi(_debugProcess).GetThread(
-                checked((uint)threadId),
-                (nint)threadAddress),
-            "ICorDebugProcess.GetThread");
-        thread = Volatile.Read(ref *threadAddress);
-        if (thread == 0)
-        {
-            throw new InvalidOperationException($"Managed thread {threadId} no longer exists.");
-        }
-
-        return thread;
+        ReleaseTargetBreakpoint();
+        ReleaseActiveStepper(deactivate: true);
     }
 
-    private static unsafe nint CreateStepper(nint thread)
+    private ManagedStepTargetHandle? GetStepTarget(
+        int threadId,
+        DebugStepKind kind,
+        int? targetId,
+        DebugStopGeneration generation)
     {
-        nint stepper = 0;
-        nint* stepperAddress = &stepper;
-        CorDebugHResult.ThrowIfFailed(
-            new ICorDebugThreadAbi(thread).CreateStepper((nint)stepperAddress),
-            "ICorDebugThread.CreateStepper");
-        stepper = Volatile.Read(ref *stepperAddress);
-        return stepper != 0
-            ? stepper
-            : throw new InvalidOperationException(
-                "ICorDebugThread.CreateStepper returned no stepper.");
+        if (targetId is null)
+        {
+            return null;
+        }
+
+        if (kind != DebugStepKind.Into)
+        {
+            throw new ArgumentException("Only Step Into accepts a target identifier.");
+        }
+
+        if (!_stepTargets.TryGetValue(targetId.Value, out ManagedStepTargetHandle? target) ||
+            target.Generation != generation)
+        {
+            throw new InvalidOperationException(
+                $"Step Into target {targetId.Value} is stale or unknown.");
+        }
+
+        if (target.ThreadId != threadId)
+        {
+            throw new InvalidOperationException(
+                $"Step Into target {targetId.Value} belongs to managed thread {target.ThreadId}.");
+        }
+
+        return target;
     }
 
-    private static void ConfigureStepper(nint stepper)
-    {
-        var api = new ICorDebugStepperAbi(stepper);
-        CorDebugHResult.ThrowIfFailed(
-            api.SetInterceptMask(mask: 0),
-            "ICorDebugStepper.SetInterceptMask");
-        CorDebugHResult.ThrowIfFailed(
-            api.SetUnmappedStopMask(mask: 0),
-            "ICorDebugStepper.SetUnmappedStopMask");
-        CorDebugHResult.ThrowIfFailed(api.SetRangeIL(bIL: 1), "ICorDebugStepper.SetRangeIL");
-        nint stepper2 = ComAbi.QueryInterface(stepper, ICorDebugStepper2Abi.InterfaceId);
-        try
-        {
-            CorDebugHResult.ThrowIfFailed(
-                new ICorDebugStepper2Abi(stepper2).SetJMC(fIsJMCStepper: 1),
-                "ICorDebugStepper2.SetJMC");
-        }
-        finally
-        {
-            _ = ComAbi.Release(stepper2);
-        }
-    }
-
-    private static unsafe int StartStep(nint stepper, nint thread, DebugStepKind kind)
-    {
-        var api = new ICorDebugStepperAbi(stepper);
-        if (kind == DebugStepKind.Out)
-        {
-            return api.StepOut();
-        }
-
-        if (!PortablePdbStepRangeResolver.TryResolve(thread, out ManagedStepRange range))
-        {
-            return api.Step(kind == DebugStepKind.Into ? 1 : 0);
-        }
-
-        uint* nativeRange = stackalloc uint[2];
-        nativeRange[0] = range.StartOffset;
-        nativeRange[1] = range.EndOffset;
-        return api.StepRange(
-            kind == DebugStepKind.Into ? 1 : 0,
-            (nint)nativeRange,
-            cRangeCount: 1);
-    }
-
-    private static void ReleaseUnusedStepper(nint stepper)
-    {
-        if (stepper == 0)
-        {
-            return;
-        }
-
-        _ = new ICorDebugStepperAbi(stepper).Deactivate();
-        _ = ComAbi.Release(stepper);
-    }
 }

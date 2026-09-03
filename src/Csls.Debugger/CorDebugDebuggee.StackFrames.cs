@@ -64,6 +64,8 @@ internal sealed partial class CorDebugDebuggee
                 Id = checked(++_nextFrameId),
                 Generation = generation,
                 Pointer = frame,
+                ThreadId = threadId,
+                FrameIndex = frameIndex,
                 MethodToken = methodToken,
                 IlOffset = ilOffset,
                 ModulePath = location.ModulePath,
@@ -71,7 +73,13 @@ internal sealed partial class CorDebugDebuggee
                 InstructionReference = $"csls-il-{Guid.NewGuid():N}"
             };
             _frames.Add(key, existing);
-            _instructionFrames.Add(existing.InstructionReference, existing);
+            _instructionFrames.Add(
+                existing.InstructionReference,
+                new ManagedInstructionReferenceHandle
+                {
+                    Frame = existing,
+                    IlOffset = existing.IlOffset
+                });
         }
 
         DebugSourceInfo? source = location.ModulePath is not null &&

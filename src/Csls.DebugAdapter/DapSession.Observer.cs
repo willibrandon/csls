@@ -60,37 +60,6 @@ internal sealed partial class DapSession
     }
 
     /// <inheritdoc />
-    public async ValueTask OnOutputAsync(
-        DebugOutputCategory category,
-        string output,
-        CancellationToken cancellationToken)
-    {
-        if (IsProtocolClosed)
-        {
-            return;
-        }
-
-        try
-        {
-            await _writer.WriteEventAsync(
-                "output",
-                writer =>
-                {
-                    writer.WriteStartObject();
-                    writer.WriteString(
-                        "category",
-                        category == DebugOutputCategory.StandardOutput ? "stdout" : "stderr");
-                    writer.WriteString("output", output);
-                    writer.WriteEndObject();
-                },
-                cancellationToken).ConfigureAwait(false);
-        }
-        catch (Exception exception) when (IsExpectedClosedTransportException(exception))
-        {
-        }
-    }
-
-    /// <inheritdoc />
     public async ValueTask OnStoppedAsync(
         string reason,
         int? threadId,
@@ -98,36 +67,23 @@ internal sealed partial class DapSession
         DebugExceptionInfo? exception,
         CancellationToken cancellationToken)
     {
-        _ = generation;
         if (IsProtocolClosed)
         {
             return;
         }
 
         _state = DapSessionState.Stopped;
+        _stoppedThreadId = threadId ?? _stoppedThreadId;
+        if (_deferGotoStoppedEvent && string.Equals(reason, "goto", StringComparison.Ordinal))
+        {
+            _deferredStop = (reason, threadId, generation, exception);
+            return;
+        }
+
         try
         {
-            await _writer.WriteEventAsync(
-                "stopped",
-                writer =>
-                {
-                    writer.WriteStartObject();
-                    writer.WriteString("reason", reason);
-                    if (exception is not null)
-                    {
-                        writer.WriteString("description", exception.Description);
-                        writer.WriteString("text", exception.ExceptionId);
-                    }
-
-                    if (threadId is not null)
-                    {
-                        writer.WriteNumber("threadId", threadId.Value);
-                    }
-
-                    writer.WriteBoolean("allThreadsStopped", true);
-                    writer.WriteEndObject();
-                },
-                cancellationToken).ConfigureAwait(false);
+            await WriteStoppedEventAsync(reason, threadId, exception, cancellationToken)
+                .ConfigureAwait(false);
         }
         catch (Exception transportException) when (
             IsExpectedClosedTransportException(transportException))
@@ -135,89 +91,31 @@ internal sealed partial class DapSession
         }
     }
 
-    /// <inheritdoc />
-    public async ValueTask OnBreakpointChangedAsync(
-        DebugSourceBreakpointInfo breakpoint,
-        CancellationToken cancellationToken)
-    {
-        if (IsProtocolClosed)
-        {
-            return;
-        }
-
-        try
-        {
-            await _writer.WriteEventAsync(
-                "breakpoint",
-                writer =>
+    private ValueTask WriteStoppedEventAsync(
+        string reason,
+        int? threadId,
+        DebugExceptionInfo? exception,
+        CancellationToken cancellationToken) => _writer.WriteEventAsync(
+            "stopped",
+            writer =>
+            {
+                writer.WriteStartObject();
+                writer.WriteString("reason", reason);
+                if (exception is not null)
                 {
-                    writer.WriteStartObject();
-                    writer.WriteString("reason", "changed");
-                    writer.WritePropertyName("breakpoint");
-                    WriteBreakpoint(writer, breakpoint);
-                    writer.WriteEndObject();
-                },
-                cancellationToken).ConfigureAwait(false);
-        }
-        catch (Exception exception) when (IsExpectedClosedTransportException(exception))
-        {
-        }
-    }
+                    writer.WriteString("description", exception.Description);
+                    writer.WriteString("text", exception.ExceptionId);
+                }
 
-    /// <inheritdoc />
-    public async ValueTask OnFunctionBreakpointChangedAsync(
-        DebugFunctionBreakpointInfo breakpoint,
-        CancellationToken cancellationToken)
-    {
-        if (IsProtocolClosed)
-        {
-            return;
-        }
-
-        try
-        {
-            await _writer.WriteEventAsync(
-                "breakpoint",
-                writer =>
+                if (threadId is not null)
                 {
-                    writer.WriteStartObject();
-                    writer.WriteString("reason", "changed");
-                    writer.WritePropertyName("breakpoint");
-                    WriteFunctionBreakpoint(writer, breakpoint);
-                    writer.WriteEndObject();
-                },
-                cancellationToken).ConfigureAwait(false);
-        }
-        catch (Exception exception) when (IsExpectedClosedTransportException(exception))
-        {
-        }
-    }
+                    writer.WriteNumber("threadId", threadId.Value);
+                }
 
-    /// <inheritdoc />
-    public async ValueTask OnContinuedAsync(CancellationToken cancellationToken)
-    {
-        if (IsProtocolClosed)
-        {
-            return;
-        }
-
-        _state = DapSessionState.Running;
-        try
-        {
-            await _writer.WriteEventAsync(
-                "continued",
-                writer =>
-                {
-                    writer.WriteStartObject();
-                    writer.WriteBoolean("allThreadsContinued", true);
-                    writer.WriteEndObject();
-                },
-                cancellationToken).ConfigureAwait(false);
-        }
-        catch (Exception exception) when (IsExpectedClosedTransportException(exception))
-        {
-        }
-    }
+                writer.WriteBoolean("allThreadsStopped", true);
+                writer.WriteEndObject();
+            },
+            cancellationToken);
 
     /// <inheritdoc />
     public async ValueTask OnExitedAsync(int exitCode, CancellationToken cancellationToken)

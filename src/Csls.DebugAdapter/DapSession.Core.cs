@@ -1,5 +1,6 @@
 using Csls.DebugAdapter.Protocol;
 using Csls.Debugger;
+using Csls.Debugger.Contracts;
 
 namespace Csls.DebugAdapter;
 
@@ -22,6 +23,10 @@ internal sealed partial class DapSession : IDebuggerSessionObserver, IAsyncDispo
     private bool _terminateDebuggeeByDefault = true;
     private bool _clientLinesStartAtOne = true;
     private bool _clientColumnsStartAtOne = true;
+    private int? _stoppedThreadId;
+    private bool _deferGotoStoppedEvent;
+    private (string Reason, int? ThreadId, DebugStopGeneration Generation,
+        DebugExceptionInfo? Exception)? _deferredStop;
     private int _protocolClosed;
 
     /// <summary>
@@ -58,6 +63,8 @@ internal sealed partial class DapSession : IDebuggerSessionObserver, IAsyncDispo
             {
                 Request? request = await _reader
                     .ReadRequestAsync(linked.Token)
+                    .AsTask()
+                    .WaitAsync(linked.Token)
                     .ConfigureAwait(false);
                 if (request is null)
                 {

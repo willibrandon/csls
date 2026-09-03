@@ -34,23 +34,25 @@ internal sealed partial class CorDebugDebuggee
 
         if (!_instructionFrames.TryGetValue(
             request.InstructionReference,
-            out ManagedFrameHandle? frame))
+            out ManagedInstructionReferenceHandle? location))
         {
             throw new InvalidOperationException(
                 $"Instruction reference '{request.InstructionReference}' is stale or unknown.");
         }
 
+        ManagedFrameHandle frame = location.Frame;
         ValidateGeneration(frame.Id, frame.Generation, generation);
         if (frame.ModulePath is null || frame.MethodToken == 0)
         {
             throw new InvalidOperationException("The selected frame has no managed IL body.");
         }
 
-        return ReadDisassembly(frame, request);
+        return ReadDisassembly(frame, location.IlOffset, request);
     }
 
     private DebugDisassembly ReadDisassembly(
         ManagedFrameHandle frame,
+        uint baseIlOffset,
         DebugDisassemblyRequest request)
     {
         using FileStream stream = File.OpenRead(frame.ModulePath!);
@@ -77,17 +79,18 @@ internal sealed partial class CorDebugDebuggee
             frame.ModulePath!,
             frame.MethodToken,
             frame.Name);
-        return SelectInstructions(frame, request, metadata, decoded, sources);
+        return SelectInstructions(frame, baseIlOffset, request, metadata, decoded, sources);
     }
 
     private DebugDisassembly SelectInstructions(
         ManagedFrameHandle frame,
+        uint baseIlOffset,
         DebugDisassemblyRequest request,
         MetadataReader metadata,
         IReadOnlyList<ManagedIlInstruction> decoded,
         IReadOnlyDictionary<int, ManagedFrameLocation> sources)
     {
-        long byteOffset = checked((long)frame.IlOffset + request.ByteOffset);
+        long byteOffset = checked((long)baseIlOffset + request.ByteOffset);
         int anchor = FindInstruction(decoded, byteOffset);
         long first = checked(anchor + request.InstructionOffset);
         var result = new List<DebugInstructionInfo>(request.InstructionCount);

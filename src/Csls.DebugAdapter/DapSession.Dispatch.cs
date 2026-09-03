@@ -69,6 +69,15 @@ internal sealed partial class DapSession
                 await StepAsync(request, DebugStepKind.Out, cancellationToken)
                     .ConfigureAwait(false);
                 break;
+            case "stepInTargets":
+                await WriteStepInTargetsAsync(request, cancellationToken).ConfigureAwait(false);
+                break;
+            case "gotoTargets":
+                await WriteGotoTargetsAsync(request, cancellationToken).ConfigureAwait(false);
+                break;
+            case "goto":
+                await GotoAsync(request, cancellationToken).ConfigureAwait(false);
+                break;
             case "stackTrace":
                 await WriteStackTraceAsync(request, cancellationToken).ConfigureAwait(false);
                 break;

@@ -16,12 +16,13 @@ internal static class DebuggerStepFixture
     {
         int seed = 40;
         int answer = AddTwo(seed);
+        int combined = AddTwo(seed - 1) + AddTwo(seed);
         while (!File.Exists(path))
         {
             Thread.SpinWait(10_000);
         }
 
-        return answer == 42 ? 0 : 1;
+        return answer == 42 && combined == 83 ? 0 : 1;
     }
 
     /// <summary>

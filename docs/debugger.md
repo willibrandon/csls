@@ -102,6 +102,22 @@ those members. `DebuggerHidden` and `DebuggerStepThrough` remain step filters;
 uses CLR metadata tokens and therefore applies consistently to C#, Visual Basic,
 F#, and other managed languages rather than depending on source syntax.
 
+When one source statement contains multiple eligible calls, clients can request
+`stepInTargets` and pass the selected target identifier to `stepIn`. The debugger
+currently offers calls whose managed implementation and Portable PDB are in the
+same loaded module. Repeated calls to the same method remain distinct targets,
+and selecting a later occurrence skips earlier occurrences on that statement.
+Target identifiers expire as soon as the process reaches another stop.
+
+Go to Line uses DAP `gotoTargets` and `goto`. A destination is offered only when
+it is a visible sequence point in the active method and CoreCLR returns `S_OK`
+from `ICorDebugILFrame.CanSetIP`, which is the runtime's guarantee that continued
+execution is safe and correct. The debugger repeats that check immediately before
+moving the instruction pointer. The successful `goto` response is sent before the
+new `stopped` event, and all old frame, variable, memory, disassembly, step-target,
+and goto-target handles then become stale. csls does not offer advisory targets
+for which CoreCLR cannot guarantee correct continuation.
+
 ## Runtime and symbol requirements
 
 The target must run CoreCLR and match the host architecture. Source breakpoints,

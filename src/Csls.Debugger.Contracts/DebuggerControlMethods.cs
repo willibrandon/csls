@@ -61,6 +61,21 @@ public static class DebuggerControlMethods
     public const string Step = "debugger/step";
 
     /// <summary>
+    /// Gets source-aware Step Into targets for an active frame.
+    /// </summary>
+    public const string GetStepTargets = "debugger/getStepTargets";
+
+    /// <summary>
+    /// Gets safe instruction-pointer destinations for an active frame.
+    /// </summary>
+    public const string GetGotoTargets = "debugger/getGotoTargets";
+
+    /// <summary>
+    /// Moves a managed thread to a previously approved source destination.
+    /// </summary>
+    public const string Goto = "debugger/goto";
+
+    /// <summary>
     /// Gets managed threads at the current stop.
     /// </summary>
     public const string GetThreads = "debugger/getThreads";
