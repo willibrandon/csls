@@ -66,6 +66,11 @@ internal sealed partial class CorDebugDebuggee
             DebugExpressionNodeKind.This => ManagedExpressionValueFactory.FromVariable(
                 ResolveRoot(frame, "this", generation)),
             DebugExpressionNodeKind.Literal => ManagedExpressionValueFactory.FromLiteral(node),
+            DebugExpressionNodeKind.Conversion =>
+                ManagedPrimitiveConversionEvaluator.EvaluateExplicit(
+                    EvaluateNode(frame, plan, node.Children[0], generation),
+                    node.TypeName!,
+                    plan.Language),
             DebugExpressionNodeKind.MemberAccess => EvaluateMember(
                 frame,
                 plan,

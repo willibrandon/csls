@@ -157,7 +157,7 @@ public sealed partial class McpDebuggerLifecycleTests
                 ["stopGeneration"] = staticGeneration,
                 ["variablesReference"] = locals.GetProperty("variablesReference").GetInt32(),
                 ["name"] = "localNumber",
-                ["value"] = "51"
+                ["value"] = "(int)(byte)51"
             },
             cancellationToken).ConfigureAwait(false);
         Assert.AreEqual(

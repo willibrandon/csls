@@ -47,7 +47,11 @@ internal sealed partial class CorDebugDebuggee
                 value,
                 value.Root,
                 generation);
-            AssignManagedValue(destination, source);
+            AssignManagedValue(
+                destination,
+                source,
+                value.Language,
+                value.Root.Kind == DebugExpressionNodeKind.Literal);
             ManagedValueDisplay display = CorDebugValueFormatter.Format(destination);
             ManagedValueReferences references = RetainValue(
                 destination,

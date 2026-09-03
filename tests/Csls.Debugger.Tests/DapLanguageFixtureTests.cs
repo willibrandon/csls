@@ -138,6 +138,26 @@ public sealed partial class DapSessionTests
                 "42",
                 evaluation.GetProperty("result").GetString(),
                 $"Unexpected {project} {configuration} expression result.");
+            string conversionExpression = sourceExtension switch
+            {
+                "cs" => "(long)answer",
+                "vb" => "CType(answer, Long)",
+                _ => "int64 answer"
+            };
+            JsonElement convertedEvaluation = await ReadEvaluationAsync(
+                client,
+                frameId,
+                conversionExpression,
+                success: true,
+                TestContext.CancellationToken).ConfigureAwait(false);
+            Assert.AreEqual(
+                "41",
+                convertedEvaluation.GetProperty("result").GetString(),
+                $"Unexpected {project} {configuration} conversion result.");
+            Assert.AreEqual(
+                "long",
+                convertedEvaluation.GetProperty("type").GetString(),
+                $"Unexpected {project} {configuration} conversion type.");
             if (project.EndsWith("FSharp", StringComparison.Ordinal))
             {
                 JsonElement indexedEvaluation = await ReadEvaluationAsync(
@@ -218,7 +238,12 @@ public sealed partial class DapSessionTests
                     client,
                     frameId,
                     "answer",
-                    "43",
+                    sourceExtension switch
+                    {
+                        "cs" => "(int)(short)43",
+                        "vb" => "CInt(CShort(43))",
+                        _ => "int (int16 43)"
+                    },
                     success: true,
                     TestContext.CancellationToken).ConfigureAwait(false);
                 Assert.AreEqual(

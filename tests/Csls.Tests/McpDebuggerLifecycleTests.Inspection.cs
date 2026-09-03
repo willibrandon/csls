@@ -94,6 +94,23 @@ public sealed partial class McpDebuggerLifecycleTests
         Assert.AreEqual(
             "42",
             evaluation.GetProperty("evaluation").GetProperty("result").GetString());
+        JsonElement convertedEvaluation = await CallAsync(
+            client,
+            "debug_evaluate",
+            new Dictionary<string, object?>
+            {
+                ["debugSession"] = debugSession,
+                ["stopGeneration"] = generation,
+                ["frameId"] = frame.GetProperty("id").GetInt32(),
+                ["expression"] = "(long)localNumber"
+            },
+            cancellationToken).ConfigureAwait(false);
+        Assert.AreEqual(
+            "43",
+            convertedEvaluation.GetProperty("evaluation").GetProperty("result").GetString());
+        Assert.AreEqual(
+            "long",
+            convertedEvaluation.GetProperty("evaluation").GetProperty("type").GetString());
         await AssertToolErrorAsync(
             client,
             "debug_evaluate",

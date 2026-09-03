@@ -227,6 +227,10 @@ public sealed partial class DapSessionTests
             Assert.AreEqual(
                 "localNumber",
                 localsByName["localNumber"].GetProperty("evaluateName").GetString());
+            Assert.AreEqual("44", localsByName["localLong"].GetProperty("value").GetString());
+            Assert.AreEqual("long", localsByName["localLong"].GetProperty("type").GetString());
+            Assert.AreEqual("1", localsByName["localByte"].GetProperty("value").GetString());
+            Assert.AreEqual("byte", localsByName["localByte"].GetProperty("type").GetString());
             Assert.AreEqual(
                 "\"answer!\"",
                 localsByName["localText"].GetProperty("value").GetString());
@@ -312,6 +316,38 @@ public sealed partial class DapSessionTests
                 TestContext.CancellationToken).ConfigureAwait(false);
             Assert.AreEqual("44", assignedLocal.GetProperty("value").GetString());
             Assert.AreEqual("int", assignedLocal.GetProperty("type").GetString());
+
+            JsonElement assignedWidenedLocal = await ReadSetVariableAsync(
+                client,
+                localVariablesReference,
+                "localLong",
+                "localNumber + 4",
+                success: true,
+                TestContext.CancellationToken).ConfigureAwait(false);
+            Assert.AreEqual("48", assignedWidenedLocal.GetProperty("value").GetString());
+            Assert.AreEqual("long", assignedWidenedLocal.GetProperty("type").GetString());
+
+            JsonElement assignedContextualLiteral = await ReadSetVariableAsync(
+                client,
+                localVariablesReference,
+                "localByte",
+                "255",
+                success: true,
+                TestContext.CancellationToken).ConfigureAwait(false);
+            Assert.AreEqual("255", assignedContextualLiteral.GetProperty("value").GetString());
+            Assert.AreEqual("byte", assignedContextualLiteral.GetProperty("type").GetString());
+
+            JsonElement overflowingContextualLiteral = await ReadSetVariableAsync(
+                client,
+                localVariablesReference,
+                "localByte",
+                "256",
+                success: false,
+                TestContext.CancellationToken).ConfigureAwait(false);
+            Assert.Contains(
+                "outside the range",
+                overflowingContextualLiteral.GetProperty("message").GetString()!,
+                StringComparison.Ordinal);
 
             JsonElement assignedField = await ReadSetExpressionAsync(
                 client,
@@ -408,6 +444,26 @@ public sealed partial class DapSessionTests
                     client,
                     fixtureFrameId,
                     "number",
+                    success: true,
+                    TestContext.CancellationToken).ConfigureAwait(false))
+                    .GetProperty("result")
+                    .GetString());
+            Assert.AreEqual(
+                "48",
+                (await ReadEvaluationAsync(
+                    client,
+                    fixtureFrameId,
+                    "localLong",
+                    success: true,
+                    TestContext.CancellationToken).ConfigureAwait(false))
+                    .GetProperty("result")
+                    .GetString());
+            Assert.AreEqual(
+                "255",
+                (await ReadEvaluationAsync(
+                    client,
+                    fixtureFrameId,
+                    "localByte",
                     success: true,
                     TestContext.CancellationToken).ConfigureAwait(false))
                     .GetProperty("result")

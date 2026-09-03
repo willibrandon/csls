@@ -20,6 +20,8 @@ internal static class DebuggerFixture
         string text)
     {
         int localNumber = number + 1;
+        long localLong = number + 2L;
+        byte localByte = 1;
         string localText = text + "!";
         int[] localArray = [41, 42, 43];
         var localObject = new DebuggerFixtureValue(number, localText, path + ".evaluation");
@@ -32,6 +34,8 @@ internal static class DebuggerFixture
 
         GC.KeepAlive(path);
         GC.KeepAlive(text);
+        GC.KeepAlive(localLong);
+        GC.KeepAlive(localByte);
         GC.KeepAlive(localArray);
         GC.KeepAlive(localObject);
         return localNumber == 43 && localText == "answer!" ? 0 : 1;

@@ -62,6 +62,7 @@ internal static class ManagedExpressionPlanValidator
             DebugExpressionNodeKind.This or
             DebugExpressionNodeKind.Literal => 0,
             DebugExpressionNodeKind.MemberAccess or
+            DebugExpressionNodeKind.Conversion or
             DebugExpressionNodeKind.Unary => 1,
             DebugExpressionNodeKind.Binary => 2,
             DebugExpressionNodeKind.Conditional => 3,
@@ -87,6 +88,13 @@ internal static class ManagedExpressionPlanValidator
         {
             throw new InvalidDataException(
                 $"Expression node {node.Kind} requires a source name.");
+        }
+
+        if (node.Kind == DebugExpressionNodeKind.Conversion &&
+            string.IsNullOrWhiteSpace(node.TypeName))
+        {
+            throw new InvalidDataException(
+                "A conversion expression requires a destination type.");
         }
 
         ValidateOperator(node);

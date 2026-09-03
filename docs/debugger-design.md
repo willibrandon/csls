@@ -402,13 +402,15 @@ requires the selected session's agent-control grant and exact stop generation.
 Direct assignment is a separate mutation path. DAP `setVariable`/`setExpression` and
 private/MCP equivalents require an exact stopped generation and resolve a writable
 local, argument, instance field, or managed array element from compiler-lowered source
-syntax. The right-hand side passes through the side-effect-free evaluator. Exact CLR
-primitives write through `ICorDebugGenericValue`; null and retained references with
-the same displayed runtime type write through `ICorDebugReferenceValue`. These writes
-do not resume the
-target, allocate, or collect, so the stop generation and frame handles remain valid;
-variable resources are invalidated for aliased client views. Object/string construction
-and conversions that require target execution use the guarded evaluator only after that
+syntax. The right-hand side passes through the side-effect-free evaluator. Explicit
+built-in conversions are compiler-lowered into the versioned IR; direct assignment also
+accepts checked contextual integral literals and language-valid built-in numeric
+widening. Converted CLR primitives write through `ICorDebugGenericValue`; null and
+retained references with the same displayed runtime type write through
+`ICorDebugReferenceValue`. These writes do not resume the target, allocate, or collect,
+so the stop generation and frame handles remain valid; variable resources are
+invalidated for aliased client views. Object/string construction, boxing, reference
+conversions, and user-defined conversions use the guarded evaluator only after that
 materialization path is implemented.
 
 Expansion understands debugger display/proxy/browsable attributes, raw and results

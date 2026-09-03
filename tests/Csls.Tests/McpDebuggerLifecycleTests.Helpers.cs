@@ -172,7 +172,9 @@ public sealed partial class McpDebuggerLifecycleTests
             tool,
             arguments,
             cancellationToken: cancellationToken).ConfigureAwait(false);
-        Assert.IsNull(result.IsError, tool);
+        string diagnostic = result.Content.OfType<TextContentBlock>()
+            .FirstOrDefault()?.Text ?? "No textual MCP result was returned.";
+        Assert.IsNull(result.IsError, $"{tool}: {diagnostic}");
         Assert.IsTrue(result.StructuredContent.HasValue, tool);
         JsonElement structuredContent = result.StructuredContent.Value;
         if (structuredContent.ValueKind == JsonValueKind.Object &&

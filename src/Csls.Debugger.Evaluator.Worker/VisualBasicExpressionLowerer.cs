@@ -42,6 +42,12 @@ internal static class VisualBasicExpressionLowerer
         MeExpressionSyntax => Node(DebugExpressionNodeKind.This),
         LiteralExpressionSyntax literal => ExpressionLiteral.Create(literal.Token.Value),
         ParenthesizedExpressionSyntax parenthesized => Lower(parenthesized.Expression),
+        CTypeExpressionSyntax conversion => ConversionNode(
+            conversion.Type.ToString(),
+            Lower(conversion.Expression)),
+        PredefinedCastExpressionSyntax conversion => ConversionNode(
+            conversion.Keyword.ValueText,
+            Lower(conversion.Expression)),
         MemberAccessExpressionSyntax member => Node(
             DebugExpressionNodeKind.MemberAccess,
             member.Name.Identifier.ValueText,
@@ -155,4 +161,13 @@ internal static class VisualBasicExpressionLowerer
             Text: null,
             TypeName: null,
             children);
+
+    private static DebugExpressionNode ConversionNode(
+        string typeName,
+        DebugExpressionNode operand) => new(
+            DebugExpressionNodeKind.Conversion,
+            DebugExpressionOperator.None,
+            Text: null,
+            typeName,
+            [operand]);
 }

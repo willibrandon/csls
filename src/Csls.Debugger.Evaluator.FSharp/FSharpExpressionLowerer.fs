@@ -97,6 +97,32 @@ module FSharpExpressionLowerer =
         | "op_ExclusiveOr" -> DebugExpressionOperator.ExclusiveOr
         | _ -> raise (unsupported $"operator '{name}'")
 
+    let private conversionType name =
+        match name with
+        | "sbyte" -> Some "sbyte"
+        | "byte" -> Some "byte"
+        | "int16" -> Some "short"
+        | "uint16" -> Some "ushort"
+        | "int" -> Some "int"
+        | "uint32" -> Some "uint"
+        | "int64" -> Some "long"
+        | "uint64" -> Some "ulong"
+        | "nativeint" -> Some "nint"
+        | "unativeint" -> Some "nuint"
+        | "char" -> Some "char"
+        | "float32" -> Some "float"
+        | "float" -> Some "double"
+        | "decimal" -> Some "decimal"
+        | _ -> None
+
+    let private conversionNode typeName operand =
+        DebugExpressionNode(
+            DebugExpressionNodeKind.Conversion,
+            DebugExpressionOperator.None,
+            noText,
+            typeName,
+            [| operand |])
+
     let rec private lowerLongIdentifier (names: Ident list) =
         match names with
         | [] -> raise (unsupported "empty identifier")
@@ -180,10 +206,13 @@ module FSharpExpressionLowerer =
                 (binaryOperator (operatorName operation))
                 [ lower left; lower right ]
         | SynExpr.App(funcExpr = operation; argExpr = operand) ->
-            operatorNode
-                DebugExpressionNodeKind.Unary
-                (unaryOperator (operatorName operation))
-                [ lower operand ]
+            match conversionType (operatorName operation) with
+            | Some typeName -> conversionNode typeName (lower operand)
+            | None ->
+                operatorNode
+                    DebugExpressionNodeKind.Unary
+                    (unaryOperator (operatorName operation))
+                    [ lower operand ]
         | SynExpr.IfThenElse(ifExpr = condition;
                              thenExpr = whenTrue;
                              elseExpr = Some whenFalse) ->

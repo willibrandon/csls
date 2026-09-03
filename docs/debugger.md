@@ -175,9 +175,11 @@ identity. C#, Visual Basic, and F# expressions are parsed in a lazy per-session
 managed compiler worker, lowered to a bounded versioned IR, and bound to
 current-generation runtime values in the debugger engine. Locals, arguments,
 `this`/`Me`, literals, instance fields, array indexes, built-in unary and binary
-operators, short-circuit Boolean operations, and conditional expressions do not
-execute target code. Unknown Portable-PDB languages use the portable CLR subset
-for locals, arguments, fields, and array indexes.
+operators, explicit built-in primitive conversions, short-circuit Boolean operations,
+and conditional expressions do not execute target code. C# casts, Visual Basic
+`CType` and predefined conversions, and F# numeric conversion functions lower to
+the same language-neutral conversion operation. Unknown Portable-PDB languages use
+the portable CLR subset for locals, arguments, fields, and array indexes.
 
 The frame is explicit when supplied; otherwise the adapter uses the selected
 stopped thread's top managed frame. The same generation-bound read-only operation
@@ -213,12 +215,14 @@ expression for the value.
 DAP `setVariable` and `setExpression` apply direct stopped-state writes without
 executing target code. Writable targets are named locals, arguments, instance fields,
 and managed array elements. The assigned value uses the selected frame's same
-side-effect-free C#, Visual Basic, F#, or portable CLR evaluator and currently requires
-an exact CLR primitive, null, or an existing runtime reference of the same displayed
-type. Direct writes preserve the stop generation because they cannot run target code or
-trigger collection, and DAP publishes variable invalidation so aliased views refresh.
-Constructing a replacement object or string and implicit/user-defined conversions remain
-unsupported until they can use the guarded function-evaluation lifecycle.
+side-effect-free C#, Visual Basic, F#, or portable CLR evaluator. Exact primitives,
+checked contextual integral literals, language-valid built-in numeric widening,
+explicit built-in primitive conversions, null, and existing runtime references of the
+same displayed type are supported. Direct writes preserve the stop generation because
+they cannot run target code or trigger collection, and DAP publishes variable
+invalidation so aliased views refresh. Constructing a replacement object or string,
+boxing, reference conversions, and user-defined conversions remain unsupported until
+they can use the guarded function-evaluation lifecycle.
 
 Assemblies loaded from PE and Portable PDB byte arrays receive the same source
 breakpoint, stack, local-name, stepping, goto, disassembly, and managed-IL

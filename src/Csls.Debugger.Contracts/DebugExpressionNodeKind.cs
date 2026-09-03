@@ -21,6 +21,11 @@ public enum DebugExpressionNodeKind
     Literal,
 
     /// <summary>
+    /// Applies one explicit built-in CLR conversion to its child.
+    /// </summary>
+    Conversion,
+
+    /// <summary>
     /// Reads an instance member from its receiver child.
     /// </summary>
     MemberAccess,

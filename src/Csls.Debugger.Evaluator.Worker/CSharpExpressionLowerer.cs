@@ -42,6 +42,9 @@ internal static class CSharpExpressionLowerer
         ThisExpressionSyntax => Node(DebugExpressionNodeKind.This),
         LiteralExpressionSyntax literal => ExpressionLiteral.Create(literal.Token.Value),
         ParenthesizedExpressionSyntax parenthesized => Lower(parenthesized.Expression),
+        CastExpressionSyntax conversion => ConversionNode(
+            conversion.Type.ToString(),
+            Lower(conversion.Expression)),
         MemberAccessExpressionSyntax member
             when member.IsKind(SyntaxKind.SimpleMemberAccessExpression) => Node(
                 DebugExpressionNodeKind.MemberAccess,
@@ -146,4 +149,13 @@ internal static class CSharpExpressionLowerer
             Text: null,
             TypeName: null,
             children);
+
+    private static DebugExpressionNode ConversionNode(
+        string typeName,
+        DebugExpressionNode operand) => new(
+            DebugExpressionNodeKind.Conversion,
+            DebugExpressionOperator.None,
+            Text: null,
+            typeName,
+            [operand]);
 }
