@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <AssemblyName>Csls.Debugger.Terminal</AssemblyName>
+    <RootNamespace>Csls.Debugger.Terminal</RootNamespace>
+    <Description>The interactive Hex1b client for private csls debugger sessions.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Hex1b" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../Csls.Debugger.Control/Csls.Debugger.Control.csproj" />
+    <ProjectReference Include="../Csls.Debugger.Contracts/Csls.Debugger.Contracts.csproj" />
+  </ItemGroup>
+</Project>

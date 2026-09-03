@@ -88,7 +88,11 @@ internal sealed partial class CorDebugDebuggee
         nint dereferenced = 0;
         try
         {
-            dereferenced = DereferenceValue(value);
+            if (!TryDereferenceValue(value, out dereferenced))
+            {
+                return false;
+            }
+
             if (ComAbi.TryQueryInterface(
                 dereferenced,
                 ICorDebugArrayValueAbi.InterfaceId,
@@ -120,12 +124,20 @@ internal sealed partial class CorDebugDebuggee
 
     private static unsafe nint DereferenceValue(nint value)
     {
+        return TryDereferenceValue(value, out nint result)
+            ? result
+            : throw new InvalidOperationException("A null managed value cannot be expanded.");
+    }
+
+    private static unsafe bool TryDereferenceValue(nint value, out nint result)
+    {
         if (!ComAbi.TryQueryInterface(
             value,
             ICorDebugReferenceValueAbi.InterfaceId,
             out nint reference))
         {
-            return Retain(value);
+            result = Retain(value);
+            return true;
         }
 
         try
@@ -137,17 +149,18 @@ internal sealed partial class CorDebugDebuggee
                 "ICorDebugReferenceValue.IsNull");
             if (Volatile.Read(ref *isNullAddress) != 0)
             {
-                throw new InvalidOperationException("A null managed value cannot be expanded.");
+                result = 0;
+                return false;
             }
 
-            nint result = 0;
-            nint* resultAddress = &result;
+            nint dereferenced = 0;
+            nint* resultAddress = &dereferenced;
             CorDebugHResult.ThrowIfFailed(
                 new ICorDebugReferenceValueAbi(reference).Dereference((nint)resultAddress),
                 "ICorDebugReferenceValue.Dereference");
             result = Volatile.Read(ref *resultAddress);
             return result != 0
-                ? result
+                ? true
                 : throw new InvalidOperationException(
                     "ICorDebugReferenceValue.Dereference returned no value.");
         }

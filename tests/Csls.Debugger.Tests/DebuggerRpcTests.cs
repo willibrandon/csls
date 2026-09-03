@@ -118,6 +118,14 @@ public sealed class DebuggerRpcTests
         DebugVariableInfo number = variables.Single(static variable => variable.Name == "number");
         Assert.AreEqual("42", number.Value);
         Assert.AreEqual("int", number.Type);
+        DebugScopeInfo locals = scopes.Single(static scope => scope.Name == "Locals");
+        IReadOnlyList<DebugVariableInfo> localVariables = await client.GetVariablesAsync(
+            new DebugVariablesRequest(locals.VariablesReference, 0, 0),
+            cancellationToken).ConfigureAwait(false);
+        DebugVariableInfo localNumber = localVariables.Single(
+            static variable => variable.Name == "localNumber");
+        Assert.AreEqual("0", localNumber.Value);
+        Assert.AreEqual("int", localNumber.Type);
 
         DebugSessionSnapshot terminated = await client.TerminateAsync(cancellationToken)
             .ConfigureAwait(false);

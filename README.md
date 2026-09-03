@@ -22,8 +22,10 @@ processes without downloading a proprietary debugger. VS Code and Zed use the
 same `csls debugger dap` engine for source breakpoints, pause and continue,
 source stepping, stacks, modules, arguments, locals, fields, and arrays across
 C#, Visual Basic, F#, and other Portable-PDB-producing .NET languages. Advanced
-breakpoints, expression evaluation, dumps, Hot Reload, terminal UI, and debugger
-MCP workflows remain under development and are not advertised as available.
+breakpoints, expression evaluation, dumps, Hot Reload, and debugger MCP workflows
+remain under development and are not advertised as available. Run
+`csls debugger tui launch` or `csls debugger tui attach` for the interactive
+Hex1b source, stack, arguments, and locals workflow.
 
 Read the [csls documentation](https://willibrandon.github.io/csls/) for editor,
 CLI, MCP, and development guidance.
