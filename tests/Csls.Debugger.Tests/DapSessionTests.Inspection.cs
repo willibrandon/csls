@@ -341,6 +341,36 @@ public sealed partial class DapSessionTests
                 "decimal",
                 localsByName["localDecimal"].GetProperty("type").GetString());
             Assert.AreEqual(
+                "2026-09-03T12:34:56.7890123Z",
+                localsByName["localDateTime"].GetProperty("value").GetString());
+            Assert.AreEqual(
+                "System.DateTime",
+                localsByName["localDateTime"].GetProperty("type").GetString());
+            Assert.AreEqual(
+                "2026-09-03T12:34:56.0000000",
+                localsByName["localUnspecifiedDateTime"].GetProperty("value").GetString());
+            Assert.AreEqual(
+                "2026-09-03T12:34:56.0000000 (Local)",
+                localsByName["localLocalDateTime"].GetProperty("value").GetString());
+            Assert.AreEqual(
+                "1.02:03:04.5000000",
+                localsByName["localTimeSpan"].GetProperty("value").GetString());
+            Assert.AreEqual(
+                "System.TimeSpan",
+                localsByName["localTimeSpan"].GetProperty("type").GetString());
+            Assert.AreEqual(
+                "00112233-4455-6677-8899-aabbccddeeff",
+                localsByName["localGuid"].GetProperty("value").GetString());
+            Assert.AreEqual(
+                "System.Guid",
+                localsByName["localGuid"].GetProperty("type").GetString());
+            Assert.AreEqual(
+                "2026-09-03T12:34:56.0000000-07:00",
+                localsByName["localDateTimeOffset"].GetProperty("value").GetString());
+            Assert.AreEqual(
+                "System.DateTimeOffset",
+                localsByName["localDateTimeOffset"].GetProperty("type").GetString());
+            Assert.AreEqual(
                 "\"a\\0\\a\\b\\f\\v\\\\\\\"\\u0001😀\"",
                 localsByName["localEscapedText"].GetProperty("value").GetString());
             Assert.AreEqual(

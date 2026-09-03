@@ -34,6 +34,40 @@ internal static class DebuggerFixture
         DebuggerFixtureOptions localOptions = DebuggerFixtureOptions.Read |
             DebuggerFixtureOptions.Execute;
         decimal localDecimal = -1234.50m;
+        DateTime localDateTime = new DateTime(
+            2026,
+            9,
+            3,
+            12,
+            34,
+            56,
+            DateTimeKind.Utc).AddTicks(7_890_123);
+        var localUnspecifiedDateTime = new DateTime(
+            2026,
+            9,
+            3,
+            12,
+            34,
+            56,
+            DateTimeKind.Unspecified);
+        var localLocalDateTime = new DateTime(
+            2026,
+            9,
+            3,
+            12,
+            34,
+            56,
+            DateTimeKind.Local);
+        var localTimeSpan = new TimeSpan(1, 2, 3, 4, 500);
+        var localGuid = new Guid("00112233-4455-6677-8899-aabbccddeeff");
+        var localDateTimeOffset = new DateTimeOffset(
+            2026,
+            9,
+            3,
+            12,
+            34,
+            56,
+            TimeSpan.FromHours(-7));
         string localEscapedText = "a\0\a\b\f\v\\\"\u0001😀";
         char localEscapedCharacter = '\n';
         Console.Write(announcement);
@@ -57,6 +91,12 @@ internal static class DebuggerFixture
         GC.KeepAlive(localUnknownMode);
         GC.KeepAlive(localOptions);
         GC.KeepAlive(localDecimal);
+        GC.KeepAlive(localDateTime);
+        GC.KeepAlive(localUnspecifiedDateTime);
+        GC.KeepAlive(localLocalDateTime);
+        GC.KeepAlive(localTimeSpan);
+        GC.KeepAlive(localGuid);
+        GC.KeepAlive(localDateTimeOffset);
         GC.KeepAlive(localEscapedText);
         GC.KeepAlive(localEscapedCharacter);
         return localNumber == 43 && localText == "answer!" ? 0 : 1;

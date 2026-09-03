@@ -451,6 +451,11 @@ and preserves the numeric representation when no symbolic name exists.
 Decimal presentation reads both current and earlier supported CoreLib layouts,
 validates the 96-bit integer, scale, and sign representation, and formats it in the
 debugger host. It never asks the target to run `System.Decimal` formatting code.
+Date and time presentation reads validated CoreLib ticks, kind, and offset storage,
+then uses invariant ISO 8601 or constant-duration forms in the debugger host. A local
+`DateTime` is explicitly labeled instead of applying the debugger host's time zone,
+which may differ from the target. `Guid` presentation reconstructs its stable field
+layout and uses the invariant hyphenated form. None of these paths executes target code.
 String and character presentation is protocol-safe before serialization: quotes,
 backslashes, NUL, standard controls, remaining control code points, and unpaired UTF-16
 surrogates receive deterministic literal escapes; valid surrogate pairs remain readable.

@@ -204,6 +204,9 @@ symbolic decomposition for `[Flags]`; unnamed values retain their numeric displa
 `decimal` values are reconstructed from their 96-bit integer, scale, and sign fields
 inside the debugger process, preserving significant trailing zeroes without invoking
 formatting code in the debuggee.
+`DateTime`, `DateTimeOffset`, `TimeSpan`, and `Guid` values are likewise reconstructed
+from validated runtime storage and rendered with deterministic invariant forms. Local
+`DateTime` values are labeled without borrowing the debugger host's time-zone offset.
 String and character displays escape quotes, backslashes, NUL, standard control
 characters, other control code points, and unpaired UTF-16 surrogates deterministically
 while preserving valid Unicode scalar pairs, so protocol payloads never depend on an

@@ -53,6 +53,17 @@ internal sealed partial class CorDebugDebuggee
                     type);
             }
 
+            if (elementType == 0x11 &&
+                hasInspectedValue &&
+                TryFormatKnownFrameworkValue(
+                    inspectedValue,
+                    exactType,
+                    type,
+                    out string frameworkDisplay))
+            {
+                return new ManagedValueDisplay(frameworkDisplay, type);
+            }
+
             if (elementType == 0x11 && IsNullableType(exactType) && hasInspectedValue)
             {
                 return new ManagedValueDisplay(
