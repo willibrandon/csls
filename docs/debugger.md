@@ -187,7 +187,8 @@ and the separate private `debugger/executeExpression` operation additionally acc
 explicitly qualified instance-method calls in C#, Visual Basic, and F# when CoreCLR
 permits function evaluation at the selected frame. Calls accept up to 64 arguments
 that bind to exact CLR primitive values, null, or retained runtime object and array
-references. Optimized methods,
+references. Method binding follows the exact runtime type and its inherited base types,
+including methods implemented in another loaded assembly. Optimized methods,
 prologs, native frames, GC-unsafe points, and other runtime-restricted locations
 return the CoreCLR failure instead of attempting a less safe evaluation.
 

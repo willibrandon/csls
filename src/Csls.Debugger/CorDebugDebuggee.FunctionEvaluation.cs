@@ -100,8 +100,6 @@ internal sealed partial class CorDebugDebuggee
         nint receiverValue = GetRuntimeValue(receiver);
         nint dereferencedReceiver = 0;
         nint objectValue = 0;
-        nint runtimeClass = 0;
-        nint module = 0;
         nint function = 0;
         nint thread = 0;
         nint evaluation = 0;
@@ -121,15 +119,11 @@ internal sealed partial class CorDebugDebuggee
                     "The invocation receiver is not a managed object value.");
             }
             setupPhase = "resolving the runtime method";
-            runtimeClass = GetObjectClass(objectValue);
-            module = GetClassModule(runtimeClass);
-            uint methodToken = ResolveInstanceMethod(
-                module,
-                runtimeClass,
+            function = ResolveInstanceFunction(
+                dereferencedReceiver,
                 invocation.Text!,
                 plan.Language,
                 suppliedArguments);
-            function = GetModuleFunction(module, methodToken);
             setupPhase = "creating the CoreCLR evaluation";
             thread = GetThread(frame.ThreadId);
             evaluation = CreateEvaluation(thread);
@@ -240,16 +234,6 @@ internal sealed partial class CorDebugDebuggee
             if (function != 0)
             {
                 _ = ComAbi.Release(function);
-            }
-
-            if (module != 0)
-            {
-                _ = ComAbi.Release(module);
-            }
-
-            if (runtimeClass != 0)
-            {
-                _ = ComAbi.Release(runtimeClass);
             }
 
             if (objectValue != 0)

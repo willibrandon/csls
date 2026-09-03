@@ -380,7 +380,9 @@ through the side-effect-free evaluator. Arguments may be exact CLR primitives, n
 or retained runtime object and array references; unsupported argument materialization
 fails before execution. Exact metadata parameter identities select primitive overloads;
 an overload set that cannot be selected uniquely fails before execution. The engine
-resolves the runtime type and CLR method, suspends every other managed thread, starts
+walks the exact `ICorDebugType` inheritance graph reported by CoreCLR, so inherited
+methods resolve through the target's actual loaded modules and generic base types rather
+than metadata-only assembly guesses. It then suspends every other managed thread, starts
 `ICorDebugEval`, and treats all nested
 breakpoint, step, and exception callbacks as evaluation-internal until the matching
 evaluation callback arrives. Threads created during the call are suspended too.

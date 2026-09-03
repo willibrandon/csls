@@ -198,6 +198,21 @@ public sealed partial class DapSessionTests
             AssertEvent(referenceArgumentInvalidated.RootElement, "invalidated");
 
             frame = await GetFixtureFrameAsync(client).ConfigureAwait(false);
+            JsonElement inheritedMethodEvaluation = await ReadEvaluationAsync(
+                client,
+                frame.GetProperty("id").GetInt32(),
+                "localObject.Equals(localObject)",
+                success: true,
+                TestContext.CancellationToken).ConfigureAwait(false);
+            Assert.AreEqual(
+                "true",
+                inheritedMethodEvaluation.GetProperty("result").GetString());
+            using JsonDocument inheritedMethodInvalidated = await client
+                .ReadMessageAsync(TestContext.CancellationToken)
+                .ConfigureAwait(false);
+            AssertEvent(inheritedMethodInvalidated.RootElement, "invalidated");
+
+            frame = await GetFixtureFrameAsync(client).ConfigureAwait(false);
             JsonElement nullArgumentEvaluation = await ReadEvaluationAsync(
                 client,
                 frame.GetProperty("id").GetInt32(),
