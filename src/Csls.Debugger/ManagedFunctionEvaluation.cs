@@ -28,6 +28,11 @@ internal sealed class ManagedFunctionEvaluation
     internal required nint Receiver { get; init; }
 
     /// <summary>
+    /// Gets whether the final CoreCLR operation constructs a new managed object.
+    /// </summary>
+    internal required bool ConstructsObject { get; init; }
+
+    /// <summary>
     /// Gets or initializes the bound debugger values for user-supplied arguments.
     /// </summary>
     internal required ManagedExpressionValue[] Arguments { get; init; }

@@ -31,7 +31,8 @@ internal sealed partial class CorDebugDebuggee
                     ThrowIfFunctionEvaluationUnavailable(
                         new ICorDebugEval2Abi(evaluation2).NewStringWithLength(
                             (nint)textAddress,
-                            checked((uint)text.Length)));
+                            checked((uint)text.Length)),
+                        "ICorDebugEval2.NewStringWithLength");
                 }
 
                 evaluation.PendingStringArgumentIndex = index;
@@ -68,13 +69,23 @@ internal sealed partial class CorDebugDebuggee
             int callResult;
             fixed (nint* argumentsAddress = arguments)
             {
-                callResult = new ICorDebugEvalAbi(evaluation.Pointer).CallFunction(
-                    evaluation.Function,
-                    checked((uint)arguments.Length),
-                    (nint)argumentsAddress);
+                var api = new ICorDebugEvalAbi(evaluation.Pointer);
+                callResult = evaluation.ConstructsObject
+                    ? api.NewObject(
+                        evaluation.Function,
+                        checked((uint)arguments.Length),
+                        (nint)argumentsAddress)
+                    : api.CallFunction(
+                        evaluation.Function,
+                        checked((uint)arguments.Length),
+                        (nint)argumentsAddress);
             }
 
-            ThrowIfFunctionEvaluationUnavailable(callResult);
+            ThrowIfFunctionEvaluationUnavailable(
+                callResult,
+                evaluation.ConstructsObject
+                    ? "ICorDebugEval.NewObject"
+                    : "ICorDebugEval.CallFunction");
             evaluation.PendingStringArgumentIndex = -1;
             evaluation.MethodCallScheduled = true;
         }

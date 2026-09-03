@@ -69,6 +69,7 @@ internal static class ManagedExpressionPlanValidator
             DebugExpressionNodeKind.Invocation when children.Count >= 1 => children.Count,
             DebugExpressionNodeKind.Invocation => throw new InvalidDataException(
                 "An invocation requires an instance receiver."),
+            DebugExpressionNodeKind.ObjectCreation => children.Count,
             DebugExpressionNodeKind.ElementAccess when children.Count >= 2 => children.Count,
             DebugExpressionNodeKind.ElementAccess => throw new InvalidDataException(
                 "An element access requires a receiver and at least one index."),
@@ -84,7 +85,8 @@ internal static class ManagedExpressionPlanValidator
 
         if ((node.Kind is DebugExpressionNodeKind.Identifier or
             DebugExpressionNodeKind.MemberAccess or
-            DebugExpressionNodeKind.Invocation) && string.IsNullOrWhiteSpace(node.Text))
+            DebugExpressionNodeKind.Invocation or
+            DebugExpressionNodeKind.ObjectCreation) && string.IsNullOrWhiteSpace(node.Text))
         {
             throw new InvalidDataException(
                 $"Expression node {node.Kind} requires a source name.");

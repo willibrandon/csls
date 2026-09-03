@@ -52,6 +52,7 @@ internal static class VisualBasicExpressionLowerer
             DebugExpressionNodeKind.MemberAccess,
             member.Name.Identifier.ValueText,
             Lower(member.Expression)),
+        ObjectCreationExpressionSyntax creation => LowerObjectCreation(creation),
         InvocationExpressionSyntax invocation => LowerInvocationOrElementAccess(invocation),
         UnaryExpressionSyntax unary => OperatorNode(
             DebugExpressionNodeKind.Unary,
@@ -73,6 +74,26 @@ internal static class VisualBasicExpressionLowerer
         _ => throw new NotSupportedException(
             $"Visual Basic expression kind {syntax.Kind()} is not supported by safe evaluation.")
     };
+
+    private static DebugExpressionNode LowerObjectCreation(
+        ObjectCreationExpressionSyntax creation)
+    {
+        if (creation.Initializer is not null ||
+            creation.Type.DescendantNodesAndSelf().Any(static node =>
+                node is GenericNameSyntax))
+        {
+            throw new NotSupportedException(
+                "Visual Basic object construction currently requires a non-generic loaded " +
+                "type without an object or collection initializer.");
+        }
+
+        return Node(
+            DebugExpressionNodeKind.ObjectCreation,
+            creation.Type.ToString(),
+            creation.ArgumentList?.Arguments
+                .Select(LowerArgument)
+                .ToArray() ?? []);
+    }
 
     private static DebugExpressionNode LowerInvocationOrElementAccess(
         InvocationExpressionSyntax invocation)

@@ -49,7 +49,8 @@ public sealed partial class DebuggerSession
             {
                 _ = token;
                 CorDebugDebuggee managedDebuggee = GetStoppedManagedDebuggee();
-                if (plan.Root.Kind == DebugExpressionNodeKind.Invocation)
+                if (plan.Root.Kind is DebugExpressionNodeKind.Invocation or
+                    DebugExpressionNodeKind.ObjectCreation)
                 {
                     if (!allowTargetCodeExecution)
                     {

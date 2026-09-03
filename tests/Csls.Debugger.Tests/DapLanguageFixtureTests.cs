@@ -254,6 +254,41 @@ public sealed partial class DapSessionTests
                     stoppedThreadId,
                     sourcePath,
                     breakpointLine).ConfigureAwait(false);
+                string constructedType = $"Csls.Debugger.Fixtures.{project["Csls.Debugger.Fixtures.".Length..]}.DebuggerFixtureValue";
+                string constructionExpression = sourceExtension switch
+                {
+                    "cs" => $"new {constructedType}(7)",
+                    "vb" => $"New {constructedType}(7)",
+                    _ => $"new {constructedType}(7)"
+                };
+                JsonElement constructed = await ReadEvaluationAsync(
+                    client,
+                    frameId,
+                    constructionExpression,
+                    success: true,
+                    TestContext.CancellationToken).ConfigureAwait(false);
+                Assert.AreEqual(
+                    $"{{{constructedType}}}",
+                    constructed.GetProperty("result").GetString(),
+                    $"Unexpected {project} constructed value.");
+                Assert.AreEqual(
+                    constructedType,
+                    constructed.GetProperty("type").GetString(),
+                    $"Unexpected {project} constructed type.");
+                Assert.IsGreaterThan(
+                    0,
+                    constructed.GetProperty("variablesReference").GetInt32(),
+                    $"The {project} constructed value is not expandable.");
+                using JsonDocument constructionInvalidated = await client
+                    .ReadMessageAsync(TestContext.CancellationToken)
+                    .ConfigureAwait(false);
+                AssertEvent(constructionInvalidated.RootElement, "invalidated");
+
+                frameId = await AssertStoppedFrameAsync(
+                    client,
+                    stoppedThreadId,
+                    sourcePath,
+                    breakpointLine).ConfigureAwait(false);
                 JsonElement assigned = await ReadSetExpressionAsync(
                     client,
                     frameId,

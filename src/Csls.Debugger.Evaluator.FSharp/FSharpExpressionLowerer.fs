@@ -134,6 +134,16 @@ module FSharpExpressionLowerer =
                 (if first.idText = "null" then literal noText noText
                  else node DebugExpressionNodeKind.Identifier first.idText [])
 
+    let rec private lowerTypeName (typeSyntax: SynType) =
+        match typeSyntax with
+        | SynType.LongIdent(longDotId = identifier) ->
+            identifier.LongIdent
+            |> List.map (fun part -> part.idText)
+            |> String.concat "."
+        | SynType.Paren(innerType = inner) -> lowerTypeName inner
+        | _ ->
+            raise (unsupported "construction of a generic or compound runtime type")
+
     let rec private lower (expression: SynExpr) =
         match expression with
         | SynExpr.Paren(expr = inner) -> lower inner
@@ -154,6 +164,14 @@ module FSharpExpressionLowerer =
                 | single -> [ lower single ]
 
             node DebugExpressionNodeKind.ElementAccess noText (lower receiver :: loweredIndexes)
+        | SynExpr.New(targetType = targetType; expr = argument) ->
+            let arguments =
+                match argument with
+                | SynExpr.Const(constant = SynConst.Unit) -> []
+                | SynExpr.Tuple(exprs = expressions) -> expressions |> List.map lower
+                | single -> [ lower single ]
+
+            node DebugExpressionNodeKind.ObjectCreation (lowerTypeName targetType) arguments
         | SynExpr.App(funcExpr = SynExpr.DotGet(expr = receiver; longDotId = members);
                       argExpr = argument) ->
             let names = members.LongIdent

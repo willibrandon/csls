@@ -24,38 +24,10 @@ internal sealed partial class CorDebugDebuggee
                 "A static method call requires an explicitly qualified type receiver.");
         }
 
-        StringComparison comparison = language == DebugExpressionLanguage.VisualBasic
-            ? StringComparison.OrdinalIgnoreCase
-            : StringComparison.Ordinal;
-        bool simpleName = !typeName.Contains('.', StringComparison.Ordinal) &&
-            !typeName.Contains('+', StringComparison.Ordinal);
-        var matches = new List<(CorDebugLoadedModule Module, uint TypeToken)>();
-        int scannedTypeCount = 0;
-        foreach (CorDebugLoadedModule module in _sourceBreakpoints.GetRuntimeModules())
-        {
-            scannedTypeCount = AddFunctionEvaluationTypeMatches(
-                module,
-                typeName,
-                simpleName,
-                comparison,
-                matches,
-                scannedTypeCount);
-        }
-
-        if (matches.Count == 0)
-        {
-            throw new InvalidOperationException(
-                $"No loaded runtime type named '{typeName}' is available for a static call.");
-        }
-
-        if (matches.Count > 1)
-        {
-            throw new InvalidOperationException(
-                $"Static type name '{typeName}' is ambiguous across loaded runtime modules. " +
-                "Use its fully qualified metadata name.");
-        }
-
-        (CorDebugLoadedModule resolvedModule, uint typeToken) = matches[0];
+        (CorDebugLoadedModule resolvedModule, uint typeToken) = ResolveLoadedRuntimeType(
+            typeName,
+            language,
+            "static call");
         using PEReader? resolvedReader = resolvedModule.OpenPeReader();
         if (resolvedReader is null)
         {
@@ -79,6 +51,45 @@ internal sealed partial class CorDebugDebuggee
         }
 
         return GetModuleFunction(resolvedModule.Pointer, methodToken.Value);
+    }
+
+    private (CorDebugLoadedModule Module, uint TypeToken) ResolveLoadedRuntimeType(
+        string typeName,
+        DebugExpressionLanguage language,
+        string operation)
+    {
+        StringComparison comparison = language == DebugExpressionLanguage.VisualBasic
+            ? StringComparison.OrdinalIgnoreCase
+            : StringComparison.Ordinal;
+        bool simpleName = !typeName.Contains('.', StringComparison.Ordinal) &&
+            !typeName.Contains('+', StringComparison.Ordinal);
+        var matches = new List<(CorDebugLoadedModule Module, uint TypeToken)>();
+        int scannedTypeCount = 0;
+        foreach (CorDebugLoadedModule module in _sourceBreakpoints.GetRuntimeModules())
+        {
+            scannedTypeCount = AddFunctionEvaluationTypeMatches(
+                module,
+                typeName,
+                simpleName,
+                comparison,
+                matches,
+                scannedTypeCount);
+        }
+
+        if (matches.Count == 0)
+        {
+            throw new InvalidOperationException(
+                $"No loaded runtime type named '{typeName}' is available for {operation}.");
+        }
+
+        if (matches.Count > 1)
+        {
+            throw new InvalidOperationException(
+                $"Runtime type name '{typeName}' is ambiguous across loaded modules for " +
+                $"{operation}. Use its fully qualified metadata name.");
+        }
+
+        return matches[0];
     }
 
     private static int AddFunctionEvaluationTypeMatches(

@@ -29,7 +29,8 @@ internal sealed partial class CorDebugDebuggee
         ManagedFrameHandle frame = GetFrame(frameId, generation);
         ManagedExpressionPlanValidator.Validate(target, frame.ExpressionLanguage);
         ManagedExpressionPlanValidator.Validate(value, frame.ExpressionLanguage);
-        if (value.Root.Kind == DebugExpressionNodeKind.Invocation)
+        if (value.Root.Kind is DebugExpressionNodeKind.Invocation or
+            DebugExpressionNodeKind.ObjectCreation)
         {
             throw new InvalidOperationException(
                 "Assignment values cannot execute target code.");

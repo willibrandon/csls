@@ -106,19 +106,47 @@ public sealed partial class McpDebuggerLifecycleTests
             threadId,
             sourcePath,
             cancellationToken).ConfigureAwait(false);
+        JsonElement constructionResult = await CallAsync(
+            client,
+            "debug_execute_expression",
+            new Dictionary<string, object?>
+            {
+                ["debugSession"] = debugSession,
+                ["stopGeneration"] = staticGeneration,
+                ["frameId"] = frame.GetProperty("id").GetInt32(),
+                ["expression"] = "new Csls.TestProcessHost.DebuggerFixtureValue(7, \"built\", \"unused\")"
+            },
+            cancellationToken).ConfigureAwait(false);
+        Assert.AreEqual(
+            "Csls.TestProcessHost.DebuggerFixtureValue",
+            constructionResult.GetProperty("evaluation").GetProperty("type").GetString());
+        long constructionGeneration = constructionResult
+            .GetProperty("stopGeneration")
+            .GetInt64();
+        Assert.IsGreaterThan(staticGeneration, constructionGeneration);
+
+        frame = await GetSourceFrameAsync(
+            client,
+            debugSession,
+            constructionGeneration,
+            threadId,
+            sourcePath,
+            cancellationToken).ConfigureAwait(false);
         JsonElement assignment = await CallAsync(
             client,
             "debug_expression_set",
             new Dictionary<string, object?>
             {
                 ["debugSession"] = debugSession,
-                ["stopGeneration"] = staticGeneration,
+                ["stopGeneration"] = constructionGeneration,
                 ["frameId"] = frame.GetProperty("id").GetInt32(),
                 ["expression"] = "localObject.Number",
                 ["value"] = "50"
             },
             cancellationToken).ConfigureAwait(false);
-        Assert.AreEqual(staticGeneration, assignment.GetProperty("stopGeneration").GetInt64());
+        Assert.AreEqual(
+            constructionGeneration,
+            assignment.GetProperty("stopGeneration").GetInt64());
         Assert.AreEqual(
             "50",
             assignment.GetProperty("variable").GetProperty("value").GetString());
@@ -128,7 +156,7 @@ public sealed partial class McpDebuggerLifecycleTests
             new Dictionary<string, object?>
             {
                 ["debugSession"] = debugSession,
-                ["stopGeneration"] = staticGeneration,
+                ["stopGeneration"] = constructionGeneration,
                 ["frameId"] = frame.GetProperty("id").GetInt32(),
                 ["expression"] = "localObject.Number"
             },
@@ -142,7 +170,7 @@ public sealed partial class McpDebuggerLifecycleTests
             new Dictionary<string, object?>
             {
                 ["debugSession"] = debugSession,
-                ["stopGeneration"] = staticGeneration,
+                ["stopGeneration"] = constructionGeneration,
                 ["frameId"] = frame.GetProperty("id").GetInt32()
             },
             cancellationToken).ConfigureAwait(false);
@@ -154,7 +182,7 @@ public sealed partial class McpDebuggerLifecycleTests
             new Dictionary<string, object?>
             {
                 ["debugSession"] = debugSession,
-                ["stopGeneration"] = staticGeneration,
+                ["stopGeneration"] = constructionGeneration,
                 ["variablesReference"] = locals.GetProperty("variablesReference").GetInt32(),
                 ["name"] = "localNumber",
                 ["value"] = "(int)(byte)51"
@@ -194,7 +222,7 @@ public sealed partial class McpDebuggerLifecycleTests
             cancellationToken).ConfigureAwait(false);
         Assert.AreEqual("stopped", current.GetProperty("state").GetString());
         Assert.AreEqual(
-            staticGeneration,
+            constructionGeneration,
             current.GetProperty("stopGeneration").GetInt64());
         return await AssertExpressionCancellationAsync(
             client,

@@ -125,6 +125,18 @@ public sealed partial class McpDebuggerLifecycleTests
             cancellationToken).ConfigureAwait(false);
         await AssertToolErrorAsync(
             client,
+            "debug_evaluate",
+            new Dictionary<string, object?>
+            {
+                ["debugSession"] = debugSession,
+                ["stopGeneration"] = generation,
+                ["frameId"] = frame.GetProperty("id").GetInt32(),
+                ["expression"] = "new Csls.TestProcessHost.DebuggerFixtureValue(7, \"built\", \"unused\")"
+            },
+            "debugger_operation_failed",
+            cancellationToken).ConfigureAwait(false);
+        await AssertToolErrorAsync(
+            client,
             "debug_execute_expression",
             new Dictionary<string, object?>
             {

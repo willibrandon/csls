@@ -41,6 +41,11 @@ public enum DebugExpressionNodeKind
     Invocation,
 
     /// <summary>
+    /// Constructs one loaded non-generic runtime type through a selected constructor.
+    /// </summary>
+    ObjectCreation,
+
+    /// <summary>
     /// Applies one unary operation to its child.
     /// </summary>
     Unary,

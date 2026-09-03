@@ -57,6 +57,7 @@ internal static class CSharpExpressionLowerer
                 Lower(element.Expression),
                 .. element.ArgumentList.Arguments.Select(argument => Lower(argument.Expression))
             ]),
+        ObjectCreationExpressionSyntax creation => LowerObjectCreation(creation),
         InvocationExpressionSyntax invocation => LowerInvocation(invocation),
         PrefixUnaryExpressionSyntax unary => OperatorNode(
             DebugExpressionNodeKind.Unary,
@@ -78,6 +79,32 @@ internal static class CSharpExpressionLowerer
         _ => throw new NotSupportedException(
             $"C# expression kind {syntax.Kind()} is not supported by safe evaluation.")
     };
+
+    private static DebugExpressionNode LowerObjectCreation(
+        ObjectCreationExpressionSyntax creation)
+    {
+        if (creation.Initializer is not null ||
+            creation.Type.DescendantNodesAndSelf().Any(static node =>
+                node is GenericNameSyntax))
+        {
+            throw new NotSupportedException(
+                "C# object construction currently requires a non-generic loaded type " +
+                "without an object or collection initializer.");
+        }
+
+        string typeName = creation.Type.ToString();
+        if (typeName.StartsWith("global::", StringComparison.Ordinal))
+        {
+            typeName = typeName["global::".Length..];
+        }
+
+        return Node(
+            DebugExpressionNodeKind.ObjectCreation,
+            typeName,
+            creation.ArgumentList?.Arguments
+                .Select(argument => Lower(argument.Expression))
+                .ToArray() ?? []);
+    }
 
     private static DebugExpressionNode LowerInvocation(InvocationExpressionSyntax invocation)
     {

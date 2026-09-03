@@ -407,6 +407,13 @@ tool never grant this authorization. Private `debugger/executeExpression` RPC an
 MCP `debug_execute_expression` are distinct mutation paths; the MCP path additionally
 requires the selected session's agent-control grant and exact stop generation.
 
+Explicit construction is another root operation in the versioned expression plan.
+C#, Visual Basic, and F# non-generic type syntax resolves to exactly one loaded runtime
+type, binds one instance constructor by metadata signature, and executes through
+`ICorDebugEval.NewObject` under the same authorization, timeout, cancellation, thread,
+and stop-generation rules as method calls. Initializers and generic construction are
+not approximated when their complete semantics are unavailable.
+
 Direct assignment is a separate mutation path. DAP `setVariable`/`setExpression` and
 private/MCP equivalents require an exact stopped generation and resolve a writable
 local, argument, instance field, or managed array element from compiler-lowered source

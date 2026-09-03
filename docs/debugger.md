@@ -234,11 +234,15 @@ DAP advertises request cancellation; cancellation and deadline expiry use
 to `RudeAbort`. A call result, thrown exception, or cooperative abort invalidates
 the client's stack and variable handles because target code may allocate, collect,
 or mutate state. If cooperative abort cannot restore a trustworthy stop, the
-session faults and must be disconnected. Unsupported value-type arguments, overload
-sets that exact metadata parameter identities cannot select uniquely, constructors,
+session faults and must be disconnected. Explicit C# `new T(...)`, Visual Basic
+`New T(...)`, and F# `new T(...)` expressions use the guarded path for loaded
+non-generic runtime types and bind the constructor by metadata signature. Generic
+construction and object or collection initializers remain rejected until their full
+binding and materialization semantics are available. Unsupported value-type arguments,
+overload sets that exact metadata parameter identities cannot select uniquely,
 assignments, properties, user-defined operators, and implicit `ToString` execution are
-rejected. Variables include `evaluateName` only when csls can provide a valid source
-expression for the value.
+also rejected. Variables include `evaluateName` only when csls can provide a valid
+source expression for the value.
 
 DAP `setVariable` and `setExpression` apply direct stopped-state writes without
 executing target code. Writable targets are named locals, arguments, instance fields,

@@ -56,14 +56,17 @@ internal sealed partial class CorDebugDebuggee
 
         ManagedFrameHandle frame = GetFrame(frameId, generation);
         ManagedExpressionPlanValidator.Validate(plan, frame.ExpressionLanguage);
-        DebugExpressionNode invocation = plan.Root;
-        if (invocation.Kind != DebugExpressionNodeKind.Invocation)
+        DebugExpressionNode operation = plan.Root;
+        if (operation.Kind is not DebugExpressionNodeKind.Invocation and
+            not DebugExpressionNodeKind.ObjectCreation)
         {
             throw new InvalidDataException(
-                "Target-code evaluation requires an invocation expression root.");
+                "Target-code evaluation requires an invocation or object-creation root.");
         }
 
-        int argumentCount = invocation.Children.Count - 1;
+        bool constructsObject = operation.Kind == DebugExpressionNodeKind.ObjectCreation;
+        int argumentOffset = constructsObject ? 0 : 1;
+        int argumentCount = operation.Children.Count - argumentOffset;
         if (argumentCount > MaximumFunctionEvaluationArgumentCount)
         {
             throw new NotSupportedException(
@@ -77,14 +80,17 @@ internal sealed partial class CorDebugDebuggee
         {
             try
             {
-                receiver = EvaluateNode(
-                    frame,
-                    plan,
-                    invocation.Children[0],
-                    generation);
+                if (!constructsObject)
+                {
+                    receiver = EvaluateNode(
+                        frame,
+                        plan,
+                        operation.Children[0],
+                        generation);
+                }
             }
             catch (InvalidOperationException) when (TryGetQualifiedTypeName(
-                invocation.Children[0],
+                operation.Children[0],
                 out _))
             {
             }
@@ -94,7 +100,7 @@ internal sealed partial class CorDebugDebuggee
                 suppliedArguments[index] = EvaluateNode(
                     frame,
                     plan,
-                    invocation.Children[index + 1],
+                    operation.Children[index + argumentOffset],
                     generation);
             }
         }
@@ -134,15 +140,20 @@ internal sealed partial class CorDebugDebuggee
             }
 
             setupPhase = "resolving the runtime method";
-            function = receiverValue == 0
+            function = constructsObject
+                ? ResolveConstructor(
+                    operation.Text!,
+                    plan.Language,
+                    suppliedArguments)
+                : receiverValue == 0
                 ? ResolveStaticFunction(
-                    invocation.Children[0],
-                    invocation.Text!,
+                    operation.Children[0],
+                    operation.Text!,
                     plan.Language,
                     suppliedArguments)
                 : ResolveInstanceFunction(
                     dereferencedReceiver,
-                    invocation.Text!,
+                    operation.Text!,
                     plan.Language,
                     suppliedArguments);
             setupPhase = "creating the CoreCLR evaluation";
@@ -168,6 +179,7 @@ internal sealed partial class CorDebugDebuggee
                 Function = function,
                 Thread = thread,
                 Receiver = receiverHandle,
+                ConstructsObject = constructsObject,
                 Arguments = suppliedArguments,
                 RuntimeArguments = runtimeArguments,
                 ThreadId = frame.ThreadId,
@@ -530,7 +542,7 @@ internal sealed partial class CorDebugDebuggee
             "ICorDebugThread.CreateEval");
     }
 
-    private static void ThrowIfFunctionEvaluationUnavailable(int hresult)
+    private static void ThrowIfFunctionEvaluationUnavailable(int hresult, string operation)
     {
         string? restriction = hresult switch
         {
@@ -543,7 +555,7 @@ internal sealed partial class CorDebugDebuggee
         };
         if (restriction is null)
         {
-            CorDebugHResult.ThrowIfFailed(hresult, "ICorDebugEval.CallFunction");
+            CorDebugHResult.ThrowIfFailed(hresult, operation);
             return;
         }
 
