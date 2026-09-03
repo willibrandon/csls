@@ -1,0 +1,8 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>Csls.Debugger.Fixtures.CSharp</AssemblyName>
+    <RootNamespace>Csls.Debugger.Fixtures.CSharp</RootNamespace>
+    <Description>C# executable fixture for debugger integration tests.</Description>
+  </PropertyGroup>
+</Project>

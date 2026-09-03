@@ -43,6 +43,9 @@
     <Project Path="benchmarks/Csls.EndToEndPerformance/Csls.EndToEndPerformance.csproj" />
   </Folder>
   <Folder Name="/tests/">
+    <Project Path="test-assets/Csls.Debugger.Fixtures.CSharp/Csls.Debugger.Fixtures.CSharp.csproj" />
+    <Project Path="test-assets/Csls.Debugger.Fixtures.FSharp/Csls.Debugger.Fixtures.FSharp.fsproj" />
+    <Project Path="test-assets/Csls.Debugger.Fixtures.VisualBasic/Csls.Debugger.Fixtures.VisualBasic.vbproj" />
     <Project Path="test-assets/Csls.CancellationProbeTransport/Csls.CancellationProbeTransport.csproj" />
     <Project Path="tests/Csls.CancellationProbeAnalyzer/Csls.CancellationProbeAnalyzer.csproj" />
     <Project Path="tests/Csls.Debugger.Tests/Csls.Debugger.Tests.csproj" />

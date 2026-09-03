@@ -267,6 +267,11 @@ Portable PDBs provide documents, scopes, locals, constants, imports, generated
 method mappings, and language identity. The provider is selected per frame rather
 than once per session, allowing mixed-language call stacks.
 
+The integration matrix compiles and debugs checked-in C#, Visual Basic, and F#
+executables in both Debug and Release configurations. Each probe binds a Portable
+PDB source breakpoint, observes the runtime stop, and resolves the stopped source
+frame through the same DAP and engine path used by editors.
+
 `IDebugLanguageProvider` defines breakpoint validation, source mapping, display
 formatting, expression binding, completion, and generated-code classification.
 C# and Visual Basic implementations use public compiler APIs. F# uses the official

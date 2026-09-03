@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>Csls.Debugger.Fixtures.FSharp</AssemblyName>
+    <RootNamespace>Csls.Debugger.Fixtures.FSharp</RootNamespace>
+    <Description>F# executable fixture for debugger integration tests.</Description>
+    <LangVersion>latest</LangVersion>
+    <NoWarn></NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="Program.fs" />
+  </ItemGroup>
+</Project>

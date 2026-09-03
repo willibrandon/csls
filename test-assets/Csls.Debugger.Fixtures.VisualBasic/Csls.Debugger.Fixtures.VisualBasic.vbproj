@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>Csls.Debugger.Fixtures.VisualBasic</AssemblyName>
+    <RootNamespace>Csls.Debugger.Fixtures.VisualBasic</RootNamespace>
+    <Description>Visual Basic executable fixture for debugger integration tests.</Description>
+    <LangVersion>latest</LangVersion>
+    <OptionExplicit>On</OptionExplicit>
+    <OptionInfer>On</OptionInfer>
+    <OptionStrict>On</OptionStrict>
+    <NoWarn></NoWarn>
+  </PropertyGroup>
+</Project>
