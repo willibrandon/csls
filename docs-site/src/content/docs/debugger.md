@@ -7,6 +7,12 @@ csls includes an editor-independent Debug Adapter Protocol (DAP) host for .NET
 programs. The adapter is designed for C#, Visual Basic, F#, and other managed
 languages that emit CLR metadata and Portable PDBs.
 
+Use the task-focused guides for [setup and lifecycle](../debugger-setup/),
+[breakpoints and stepping](../debugger-breakpoints/),
+[evaluation and inspection](../debugger-evaluation/),
+[symbols and source](../debugger-symbols/), [terminal and MCP workflows](../debugger-terminal-mcp/),
+and the [compatibility and security reference](../debugger-compatibility/).
+
 ## Verify the installation
 
 Run the platform check after installing or updating csls:
