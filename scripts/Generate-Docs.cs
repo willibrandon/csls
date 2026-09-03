@@ -10,6 +10,7 @@
 #:project ../src/Csls.Protocol/Csls.Protocol.csproj
 #:include ScriptSupport.cs
 
+using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using ModelContextProtocol.Client;
@@ -26,7 +27,7 @@ const string Usage = "Usage: dotnet run --file scripts/Generate-Docs.cs [--verif
 if (args.Length == 1 && args[0] is "--help" or "-h" or "-?")
 {
     await Console.Out.WriteLineAsync(
-        "Generates reference documentation from the built CLI, MCP server, and XML contracts.")
+        "Generates reference documentation from the built CLI, DAP, MCP server, and XML contracts.")
         .ConfigureAwait(false);
     await Console.Out.WriteLineAsync(Usage).ConfigureAwait(false);
     return 0;
@@ -49,6 +50,7 @@ try
     string cliReference = await GenerateCliReferenceAsync(
         repositoryRoot,
         cancellationToken).ConfigureAwait(false);
+    string dapReference = GenerateDapReference(repositoryRoot);
     string mcpReference = await GenerateMcpReferenceAsync(
         repositoryRoot,
         cancellationToken).ConfigureAwait(false);
@@ -57,6 +59,7 @@ try
     (string Path, string Content)[] outputs =
     [
         ("docs-site/src/content/docs/cli-reference.md", cliReference),
+        ("docs-site/src/content/docs/debugger-dap-reference.md", dapReference),
         ("docs-site/src/content/docs/mcp-reference.md", mcpReference),
         ("docs-site/src/content/docs/configuration-reference.md", configurationReference),
         ("docs-site/src/content/docs/contract-reference.md", contractReference)
@@ -158,6 +161,249 @@ static async Task<string> GenerateCliReferenceAsync(
     return EnsureFinalNewLine(page.ToString());
 }
 
+static string GenerateDapReference(string repositoryRoot)
+{
+    string dispatchPath = Path.Join(
+        repositoryRoot,
+        "src",
+        "Csls.DebugAdapter",
+        "DapSession.Dispatch.cs");
+    string initializationPath = Path.Join(
+        repositoryRoot,
+        "src",
+        "Csls.DebugAdapter",
+        "DapSession.Initialization.cs");
+    string packagePath = Path.Join(
+        repositoryRoot,
+        "editors",
+        "vscode",
+        "package.json");
+    RequireFile(dispatchPath);
+    RequireFile(initializationPath);
+    RequireFile(packagePath);
+
+    CompilationUnitSyntax dispatch = CSharpSyntaxTree.ParseText(File.ReadAllText(dispatchPath))
+        .GetCompilationUnitRoot();
+    string[] requests =
+    [
+        .. dispatch.DescendantNodes()
+            .OfType<CaseSwitchLabelSyntax>()
+            .Select(static label => label.Value)
+            .OfType<LiteralExpressionSyntax>()
+            .Where(static literal => literal.IsKind(SyntaxKind.StringLiteralExpression))
+            .Select(static literal => literal.Token.ValueText)
+            .Distinct(StringComparer.Ordinal)
+    ];
+    if (requests.Length == 0)
+    {
+        throw new InvalidDataException("The DAP dispatcher exposes no request cases.");
+    }
+
+    CompilationUnitSyntax initialization = CSharpSyntaxTree
+        .ParseText(File.ReadAllText(initializationPath))
+        .GetCompilationUnitRoot();
+    string[] capabilities =
+    [
+        .. initialization.DescendantNodes()
+            .OfType<InvocationExpressionSyntax>()
+            .Where(static invocation => GetInvokedMethodName(invocation) == "WriteBoolean")
+            .Select(static invocation => invocation.ArgumentList.Arguments)
+            .Where(static arguments => arguments.Count >= 2 &&
+                arguments[0].Expression is LiteralExpressionSyntax name &&
+                name.IsKind(SyntaxKind.StringLiteralExpression) &&
+                arguments[1].Expression.IsKind(SyntaxKind.TrueLiteralExpression))
+            .Select(static arguments =>
+                ((LiteralExpressionSyntax)arguments[0].Expression).Token.ValueText)
+            .Distinct(StringComparer.Ordinal)
+            .Order(StringComparer.Ordinal)
+    ];
+    if (capabilities.Length == 0)
+    {
+        throw new InvalidDataException("DAP initialization advertises no capabilities.");
+    }
+
+    (string Id, string Label, string Description, bool Default)[] exceptionFilters =
+    [
+        .. initialization.DescendantNodes()
+            .OfType<InvocationExpressionSyntax>()
+            .Where(static invocation =>
+                GetInvokedMethodName(invocation) == "WriteExceptionBreakpointFilter")
+            .Select(static invocation => invocation.ArgumentList.Arguments)
+            .Select(static arguments =>
+            {
+                if (arguments.Count != 5 ||
+                    arguments[1].Expression is not LiteralExpressionSyntax id ||
+                    arguments[2].Expression is not LiteralExpressionSyntax label ||
+                    arguments[3].Expression is not LiteralExpressionSyntax description ||
+                    !id.IsKind(SyntaxKind.StringLiteralExpression) ||
+                    !label.IsKind(SyntaxKind.StringLiteralExpression) ||
+                    !description.IsKind(SyntaxKind.StringLiteralExpression) ||
+                    arguments[4].Expression.Kind() is not (
+                        SyntaxKind.TrueLiteralExpression or SyntaxKind.FalseLiteralExpression))
+                {
+                    throw new InvalidDataException(
+                        "A DAP exception filter does not use the documented literal shape.");
+                }
+
+                return (
+                    id.Token.ValueText,
+                    label.Token.ValueText,
+                    description.Token.ValueText,
+                    arguments[4].Expression.IsKind(SyntaxKind.TrueLiteralExpression));
+            })
+    ];
+    if (exceptionFilters.Length == 0)
+    {
+        throw new InvalidDataException("DAP initialization exposes no exception filters.");
+    }
+
+    using var package = JsonDocument.Parse(File.ReadAllText(packagePath));
+    JsonElement debugger = package.RootElement
+        .GetProperty("contributes")
+        .GetProperty("debuggers")
+        .EnumerateArray()
+        .Single(static candidate => string.Equals(
+            candidate.GetProperty("type").GetString(),
+            "coreclr",
+            StringComparison.Ordinal));
+
+    var page = new StringBuilder(
+        "---\ntitle: Debug Adapter Protocol reference\ndescription: Generated csls DAP requests, capabilities, and target configuration.\n---\n\n" +
+        "This page is generated from the shipping DAP dispatcher, initialize response, and " +
+        "editor configuration schema. Unknown requests return an unsuccessful DAP response.\n\n" +
+        "## Requests\n\n" +
+        "| Request | Purpose |\n" +
+        "| --- | --- |\n");
+    foreach (string request in requests)
+    {
+        page.Append("| `").Append(request).Append("` | ")
+            .Append(GetDapRequestDescription(request)).AppendLine(" |");
+    }
+
+    page.AppendLine().AppendLine("## Advertised capabilities").AppendLine()
+        .AppendLine("| Initialize capability |")
+        .AppendLine("| --- |");
+    foreach (string capability in capabilities)
+    {
+        page.Append("| `").Append(capability).AppendLine("` |");
+    }
+
+    page.AppendLine().AppendLine("## Exception filters").AppendLine()
+        .AppendLine("| Filter | Label | Default | Description |")
+        .AppendLine("| --- | --- | --- | --- |");
+    foreach ((string id, string label, string description, bool defaultValue) in exceptionFilters)
+    {
+        page.Append("| `").Append(id).Append("` | ")
+            .Append(EscapeTableText(label)).Append(" | ")
+            .Append(defaultValue ? "Yes" : "No").Append(" | ")
+            .Append(EscapeTableText(description)).AppendLine(" |");
+    }
+
+    JsonElement configurations = debugger.GetProperty("configurationAttributes");
+    AppendDapConfiguration(page, configurations.GetProperty("launch"), "Launch");
+    AppendDapConfiguration(page, configurations.GetProperty("attach"), "Attach");
+    return EnsureFinalNewLine(page.ToString());
+}
+
+static void AppendDapConfiguration(
+    StringBuilder page,
+    JsonElement configuration,
+    string name)
+{
+    var required = new HashSet<string>(StringComparer.Ordinal);
+    if (configuration.TryGetProperty("required", out JsonElement requiredProperties))
+    {
+        required.UnionWith(requiredProperties
+            .EnumerateArray()
+            .Select(static property => property.GetString())
+            .OfType<string>());
+    }
+
+    page.AppendLine().Append("## ").Append(name).AppendLine(" configuration").AppendLine()
+        .AppendLine("| Property | Type | Required | Default | Description |")
+        .AppendLine("| --- | --- | --- | --- | --- |");
+    foreach (JsonProperty property in configuration.GetProperty("properties").EnumerateObject())
+    {
+        JsonElement schema = property.Value;
+        page.Append("| `").Append(property.Name).Append("` | `")
+            .Append(FormatJsonSchemaType(schema)).Append("` | ")
+            .Append(required.Contains(property.Name) ? "Yes" : "No").Append(" | ")
+            .Append(schema.TryGetProperty("default", out JsonElement defaultValue)
+                ? $"`{EscapeTableText(defaultValue.GetRawText())}`"
+                : string.Empty)
+            .Append(" | ")
+            .Append(schema.TryGetProperty("description", out JsonElement description)
+                ? EscapeTableText(description.GetString())
+                : string.Empty)
+            .AppendLine(" |");
+    }
+}
+
+static string FormatJsonSchemaType(JsonElement schema)
+{
+    if (!schema.TryGetProperty("type", out JsonElement type))
+    {
+        return "value";
+    }
+
+    return type.ValueKind switch
+    {
+        JsonValueKind.String => type.GetString() ?? "value",
+        JsonValueKind.Array => string.Join(" or ", type.EnumerateArray()
+            .Select(static item => item.GetString())
+            .OfType<string>()),
+        _ => throw new InvalidDataException("A DAP configuration type is not a string or array.")
+    };
+}
+
+static string? GetInvokedMethodName(InvocationExpressionSyntax invocation) =>
+    invocation.Expression switch
+    {
+        MemberAccessExpressionSyntax member => member.Name.Identifier.ValueText,
+        IdentifierNameSyntax identifier => identifier.Identifier.ValueText,
+        _ => null
+    };
+
+static string GetDapRequestDescription(string request) => request switch
+{
+    "initialize" => "Negotiate client coordinates and the supported capability allowlist.",
+    "launch" => "Prepare one concrete debugger-owned managed process launch.",
+    "attach" => "Prepare attachment to one explicitly selected CoreCLR process.",
+    "configurationDone" => "Commit configured breakpoints and start the pending target.",
+    "setBreakpoints" => "Atomically replace source breakpoints for one document.",
+    "setFunctionBreakpoints" => "Atomically replace managed function breakpoints.",
+    "setInstructionBreakpoints" => "Atomically replace generation-safe managed-IL breakpoints.",
+    "setExceptionBreakpoints" => "Atomically replace managed exception-stage policy.",
+    "threads" => "List managed runtime threads.",
+    "modules" => "Page loaded managed modules and effective symbol and JIT policy.",
+    "loadedSources" => "List source documents from validated loaded symbols.",
+    "source" => "Read bounded source content from an opaque source reference.",
+    "breakpointLocations" => "List executable source locations in a requested range.",
+    "pause" => "Pause the managed target.",
+    "continue" => "Resume the managed target.",
+    "next" => "Step over at source level.",
+    "stepIn" => "Step into at source level, optionally selecting one call target.",
+    "stepOut" => "Step out at source level.",
+    "stepInTargets" => "List selectable managed call occurrences on the active statement.",
+    "gotoTargets" => "List runtime-approved destinations in the active managed method.",
+    "goto" => "Move to one previously approved destination.",
+    "restart" => "Restart a launch or detach and reattach an attach session.",
+    "stackTrace" => "Page generation-bound managed stack frames.",
+    "scopes" => "List argument and local scopes for one frame.",
+    "variables" => "Page values retained by one generation-bound variable reference.",
+    "evaluate" => "Evaluate a source-language expression in one managed frame.",
+    "completions" => "Complete an expression from exact stopped-frame runtime state.",
+    "setVariable" => "Assign one writable child through side-effect-free evaluation.",
+    "setExpression" => "Assign one writable expression through side-effect-free evaluation.",
+    "readMemory" => "Read bounded bytes from an opaque managed-array memory reference.",
+    "disassemble" => "Read exact-count symbolic ECMA-335 instructions.",
+    "exceptionInfo" => "Describe the current managed exception stop.",
+    "disconnect" => "End the adapter session with launch or attach ownership semantics.",
+    "cancel" => "Acknowledge DAP cancellation after propagating request cancellation.",
+    _ => throw new InvalidDataException(
+        $"DAP request '{request}' has no generated-reference description.")
+};
+
 static async Task<string> GenerateMcpReferenceAsync(
     string repositoryRoot,
     CancellationToken cancellationToken)
@@ -170,11 +416,20 @@ static async Task<string> GenerateMcpReferenceAsync(
         "debug",
         "csls-mcp-worker.dll");
     RequireFile(mcpWorkerPath);
+    string debuggerWorkerPath = Path.Join(
+        repositoryRoot,
+        "artifacts",
+        "bin",
+        "Csls.Debugger.Worker",
+        "debug",
+        "csls-debugger-worker.dll");
+    RequireFile(debuggerWorkerPath);
     Dictionary<string, string?> environment =
         StdioClientTransportOptions.GetDefaultEnvironmentVariables();
     environment["DOTNET_CLI_TELEMETRY_OPTOUT"] = "1";
     environment["DOTNET_CLI_WORKLOAD_UPDATE_NOTIFY_DISABLE"] = "true";
     environment["DOTNET_NOLOGO"] = "1";
+    environment["CSLS_DEBUGGER_WORKER_PATH"] = debuggerWorkerPath;
     var transport = new StdioClientTransport(
         new StdioClientTransportOptions
         {
@@ -216,10 +471,10 @@ static string BuildMcpReference(
 {
     var page = new StringBuilder(
         "---\ntitle: MCP reference\ndescription: Generated multi-workspace tools, resource templates, and prompts from csls-mcp.\n---\n\n" +
-        "This page is generated through the official MCP client from the bare csls MCP server. " +
-        "Start `csls-mcp` without arguments. Every target-dependent tool and resource requires " +
-        "exactly one of `workspace`, `session`, or `socket`. Target selectors are shown " +
-        "separately from operation-specific inputs.\n\n" +
+        "This page is generated through the official MCP client from the complete csls MCP " +
+        "installation. Start `csls-mcp` without arguments. Language-service operations select " +
+        "exactly one `workspace`, `session`, or `socket`; debugger operations use their explicit " +
+        "`debugSession`. Target selectors are shown separately from operation-specific inputs.\n\n" +
         "## Tools\n\n" +
         "| Tool | Behavior | Target | Operation inputs | Description |\n" +
         "| --- | --- | --- | --- | --- |\n");
@@ -387,10 +642,26 @@ static string GenerateContractReference(string repositoryRoot)
                 "bin",
                 "Csls.Control.Contracts",
                 "debug",
-                "Csls.Control.Contracts.xml"))
+                "Csls.Control.Contracts.xml")),
+        (
+            "Csls.Debugger.Contracts",
+            Path.Join(
+                repositoryRoot,
+                "artifacts",
+                "bin",
+                "Csls.Debugger.Contracts",
+                "debug",
+                "Csls.Debugger.Contracts.dll"),
+            Path.Join(
+                repositoryRoot,
+                "artifacts",
+                "bin",
+                "Csls.Debugger.Contracts",
+                "debug",
+                "Csls.Debugger.Contracts.xml"))
     ];
     var page = new StringBuilder(
-        "---\ntitle: Contract reference\ndescription: Generated public LSP and control contract type index.\n---\n\n" +
+        "---\ntitle: Contract reference\ndescription: Generated public LSP, control, and debugger RPC contract type index.\n---\n\n" +
         "These public wire-contract types are generated from the compiled assemblies and their XML documentation.\n");
     foreach ((string assemblyName, string assemblyPath, string xmlPath) in contracts)
     {
@@ -568,7 +839,21 @@ static string GetToolTarget(JsonElement schema)
     int selectorCount = selectors.Count(selector => properties.TryGetProperty(selector, out _));
     if (selectorCount == 0)
     {
-        return "None";
+        if (!properties.TryGetProperty("debugSession", out _))
+        {
+            return "None";
+        }
+
+        if (!schema.TryGetProperty("required", out JsonElement debuggerRequired) ||
+            debuggerRequired.ValueKind != JsonValueKind.Array ||
+            !debuggerRequired.EnumerateArray().Any(static property =>
+                string.Equals(property.GetString(), "debugSession", StringComparison.Ordinal)))
+        {
+            throw new InvalidDataException(
+                "An existing-session debugger tool does not require debugSession.");
+        }
+
+        return "`debugSession` required";
     }
 
     if (selectorCount != selectors.Length)
@@ -625,7 +910,7 @@ static string GetToolInputs(JsonElement schema, bool excludeTargetSelectors)
 }
 
 static bool IsTargetSelector(string name) =>
-    name is "workspace" or "session" or "socket";
+    name is "workspace" or "session" or "socket" or "debugSession";
 
 static string NormalizeHelp(string help, string repositoryRoot)
 {

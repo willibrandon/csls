@@ -22,11 +22,10 @@ internal static class DapLaunchOptionsParser
 
         bool noDebug = arguments.TryGetProperty("noDebug", out JsonElement noDebugValue) &&
             noDebugValue.ValueKind == JsonValueKind.True;
-        if (arguments.TryGetProperty("stopAtEntry", out JsonElement stopAtEntry) &&
-            stopAtEntry.ValueKind == JsonValueKind.True &&
-            noDebug)
+        if (DapBooleanOptionParser.Get(arguments, "stopAtEntry", defaultValue: false))
         {
-            throw new ArgumentException("stopAtEntry cannot be used when noDebug is true.");
+            throw new ArgumentException(
+                "The launch stopAtEntry option is not supported by this debugger capability set.");
         }
 
         string program = GetRequiredString(arguments, "program");

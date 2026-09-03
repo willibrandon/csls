@@ -109,6 +109,5 @@ The prompts `diagnose_dotnet_debugger_failure`, `plan_dotnet_breakpoints`, and
 `explain_dotnet_debugger_state` gather bounded read-first evidence for one explicit
 session. They contain no hidden execution or breakpoint changes.
 
-For language-workspace tool schemas and the shared MCP transport conventions, see the
-generated [MCP reference](../mcp-reference/). Debugger operations are documented here
-until their schemas are incorporated into that generated reference.
+For every tool schema, resource URI, prompt, annotation, and shared transport convention,
+see the generated [MCP reference](../mcp-reference/).

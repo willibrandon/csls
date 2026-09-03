@@ -324,10 +324,48 @@
               },
               "args": {
                 "type": "array",
+                "description": "Arguments passed directly to the managed target without shell interpretation.",
                 "items": {
                   "type": "string"
                 },
                 "default": []
+              },
+              "noDebug": {
+                "type": "boolean",
+                "default": false,
+                "description": "Launch the target without attaching CoreCLR."
+              },
+              "env": {
+                "type": "object",
+                "description": "Environment variables added to the target. A null value removes an inherited variable.",
+                "additionalProperties": {
+                  "type": ["string", "null"]
+                }
+              },
+              "runtimeHost": {
+                "type": "string",
+                "description": "Absolute path to the compatible dotnet host used for a managed assembly."
+              },
+              "sourceFileMap": {
+                "type": "object",
+                "description": "Maps absolute build-time source prefixes to absolute local source prefixes.",
+                "additionalProperties": {
+                  "type": "string"
+                }
+              },
+              "sourceLinkOptions": {
+                "type": "object",
+                "description": "Controls Source Link URL patterns, including explicit private-network authorization.",
+                "additionalProperties": {
+                  "type": "object",
+                  "required": ["enabled"],
+                  "properties": {
+                    "enabled": {
+                      "type": "boolean"
+                    }
+                  },
+                  "additionalProperties": false
+                }
               },
               "symbolOptions": {
                 "type": "object",
@@ -377,11 +415,18 @@
               },
               "justMyCode": {
                 "type": "boolean",
-                "default": true
+                "default": true,
+                "description": "Restrict source stepping to symbol-bearing unoptimized user modules."
               },
-              "stopAtEntry": {
+              "enableStepFiltering": {
                 "type": "boolean",
-                "default": false
+                "default": true,
+                "description": "Skip properties, CLR operators, and debugger step-filter attributes during source stepping."
+              },
+              "suppressJITOptimizations": {
+                "type": "boolean",
+                "default": false,
+                "description": "Request unoptimized JIT code for symbol-bearing modules during launch."
               }
             }
           },
@@ -395,6 +440,27 @@
                 "type": "integer",
                 "minimum": 1,
                 "description": "Operating-system process identifier for a running .NET process."
+              },
+              "sourceFileMap": {
+                "type": "object",
+                "description": "Maps absolute build-time source prefixes to absolute local source prefixes.",
+                "additionalProperties": {
+                  "type": "string"
+                }
+              },
+              "sourceLinkOptions": {
+                "type": "object",
+                "description": "Controls Source Link URL patterns, including explicit private-network authorization.",
+                "additionalProperties": {
+                  "type": "object",
+                  "required": ["enabled"],
+                  "properties": {
+                    "enabled": {
+                      "type": "boolean"
+                    }
+                  },
+                  "additionalProperties": false
+                }
               },
               "symbolOptions": {
                 "type": "object",
@@ -439,6 +505,16 @@
                     }
                   }
                 }
+              },
+              "justMyCode": {
+                "type": "boolean",
+                "default": true,
+                "description": "Restrict source stepping to symbol-bearing unoptimized user modules."
+              },
+              "enableStepFiltering": {
+                "type": "boolean",
+                "default": true,
+                "description": "Skip properties, CLR operators, and debugger step-filter attributes during source stepping."
               }
             }
           }

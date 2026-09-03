@@ -9,6 +9,48 @@ namespace Csls.Debugger.Tests;
 public sealed partial class DapSessionTests
 {
     /// <summary>
+    /// Rejects stop-at-entry requests until the adapter can honor their runtime semantics.
+    /// </summary>
+    [TestMethod]
+    public async Task LaunchRejectsUnadvertisedStopAtEntry()
+    {
+        DapTestClient client = await DapTestClient
+            .CreateAsync(TestContext.CancellationToken)
+            .ConfigureAwait(false);
+        await using ConfiguredAsyncDisposable disposal = client.ConfigureAwait(false);
+        _ = await client.SendRequestAsync(
+            "initialize",
+            WriteEmptyObject,
+            TestContext.CancellationToken).ConfigureAwait(false);
+        using JsonDocument initialize = await client
+            .ReadMessageAsync(TestContext.CancellationToken)
+            .ConfigureAwait(false);
+        int sequence = await client.SendRequestAsync(
+            "launch",
+            writer =>
+            {
+                writer.WriteStartObject();
+                writer.WriteString("program", ResolveTestProcessHost());
+                writer.WriteBoolean("stopAtEntry", true);
+                writer.WriteEndObject();
+            },
+            TestContext.CancellationToken).ConfigureAwait(false);
+        using JsonDocument response = await client
+            .ReadMessageAsync(TestContext.CancellationToken)
+            .ConfigureAwait(false);
+        AssertResponse(response.RootElement, sequence, "launch", success: false);
+        Assert.Contains(
+            "stopAtEntry option is not supported",
+            response.RootElement.GetProperty("message").GetString()!,
+            StringComparison.Ordinal);
+        await client.CloseProtocolAsync().ConfigureAwait(false);
+        Assert.AreEqual(
+            0,
+            await client.WaitForExitAsync(TestContext.CancellationToken).ConfigureAwait(false));
+        Assert.AreEqual(string.Empty, client.Diagnostics.ToString());
+    }
+
+    /// <summary>
     /// Launches a real managed process after configuration and forwards its output and exit.
     /// </summary>
     [TestMethod]

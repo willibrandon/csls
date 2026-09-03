@@ -54,6 +54,7 @@ export default defineConfig({
         {
           label: "Reference",
           items: [
+            { slug: "debugger-dap-reference", label: "DAP reference" },
             { slug: "cli-reference" },
             { slug: "mcp-reference" },
             { slug: "configuration-reference" },

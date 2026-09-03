@@ -136,3 +136,5 @@ paths.
 
 Continue with [breakpoints and stepping](../debugger-breakpoints/) or configure
 [symbols and source retrieval](../debugger-symbols/).
+The generated [DAP reference](../debugger-dap-reference/) lists every implemented
+request, advertised capability, and editor configuration property.
