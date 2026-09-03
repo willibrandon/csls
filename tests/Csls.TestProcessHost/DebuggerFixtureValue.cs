@@ -40,6 +40,39 @@ internal sealed class DebuggerFixtureValue
     internal int NextNumber() => Number + 1;
 
     /// <summary>
+    /// Adds one debugger-supplied primitive argument to the stored number.
+    /// </summary>
+    /// <param name="value">The value supplied by managed function evaluation.</param>
+    /// <returns>The stored number plus the supplied value.</returns>
+    internal int AddForDebugger(int value) => Number + value;
+
+    /// <summary>
+    /// Returns the length of a debugger-supplied string argument.
+    /// </summary>
+    /// <param name="value">The string supplied by managed function evaluation.</param>
+    /// <returns>The supplied string length.</returns>
+    internal int LengthForDebugger(string value) => value.Length + Number - 42;
+
+    /// <summary>
+    /// Tests whether a debugger-supplied reference is this receiver.
+    /// </summary>
+    /// <param name="value">The runtime reference supplied by managed function evaluation.</param>
+    /// <returns>True when the supplied reference is this receiver.</returns>
+    internal bool IsSameForDebugger(DebuggerFixtureValue? value) =>
+        ReferenceEquals(this, value);
+
+    /// <summary>
+    /// Tests whether a debugger-supplied reference is null.
+    /// </summary>
+    /// <param name="value">The reference supplied by managed function evaluation.</param>
+    /// <returns>True when the supplied reference is null.</returns>
+    internal bool IsNullForDebugger(object? value)
+    {
+        GC.KeepAlive(Number);
+        return value is null;
+    }
+
+    /// <summary>
     /// Throws a stable exception for debugger function-evaluation recovery tests.
     /// </summary>
     /// <returns>This method does not return normally.</returns>

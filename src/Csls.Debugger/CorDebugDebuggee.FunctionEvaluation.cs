@@ -8,6 +8,7 @@ namespace Csls.Debugger;
 /// </summary>
 internal sealed partial class CorDebugDebuggee
 {
+    private const int MaximumFunctionEvaluationArgumentCount = 64;
     private const int IllegalInStackOverflowHResult = unchecked((int)0x80131C22);
     private const int IllegalAtGcUnsafePointHResult = unchecked((int)0x80131C23);
     private const int IllegalInPrologHResult = unchecked((int)0x80131C24);
@@ -62,13 +63,16 @@ internal sealed partial class CorDebugDebuggee
                 "Target-code evaluation requires an invocation expression root.");
         }
 
-        if (invocation.Children.Count != 1)
+        int argumentCount = invocation.Children.Count - 1;
+        if (argumentCount > MaximumFunctionEvaluationArgumentCount)
         {
             throw new NotSupportedException(
-                "Managed function evaluation does not yet support method arguments.");
+                $"Managed function evaluation supports at most " +
+                $"{MaximumFunctionEvaluationArgumentCount} method arguments.");
         }
 
         ManagedExpressionValue receiver;
+        var suppliedArguments = new ManagedExpressionValue[argumentCount];
         try
         {
             receiver = EvaluateNode(
@@ -76,11 +80,19 @@ internal sealed partial class CorDebugDebuggee
                 plan,
                 invocation.Children[0],
                 generation);
+            for (int index = 0; index < suppliedArguments.Length; index++)
+            {
+                suppliedArguments[index] = EvaluateNode(
+                    frame,
+                    plan,
+                    invocation.Children[index + 1],
+                    generation);
+            }
         }
         catch (Exception exception) when (exception is not OperationCanceledException)
         {
             throw new InvalidOperationException(
-                $"Managed function evaluation failed while binding its receiver: " +
+                $"Managed function evaluation failed while binding its receiver or arguments: " +
                 exception.Message,
                 exception);
         }
@@ -95,6 +107,7 @@ internal sealed partial class CorDebugDebuggee
         nint evaluation = 0;
         bool callbackEvaluationActive = false;
         bool callScheduled = false;
+        List<nint> temporaryArguments = [];
         string setupPhase = "resolving the invocation receiver";
         try
         {
@@ -114,7 +127,8 @@ internal sealed partial class CorDebugDebuggee
                 module,
                 runtimeClass,
                 invocation.Text!,
-                plan.Language);
+                plan.Language,
+                suppliedArguments);
             function = GetModuleFunction(module, methodToken);
             setupPhase = "creating the CoreCLR evaluation";
             thread = GetThread(frame.ThreadId);
@@ -134,12 +148,25 @@ internal sealed partial class CorDebugDebuggee
             callbackEvaluationActive = true;
 
             setupPhase = "starting the CoreCLR method call";
-            nint* arguments = stackalloc nint[1];
+            nint[] arguments = new nint[checked(argumentCount + 1)];
             arguments[0] = receiverValue;
-            int callResult = new ICorDebugEvalAbi(active.Pointer).CallFunction(
-                function,
-                1,
-                (nint)arguments);
+            for (int index = 0; index < suppliedArguments.Length; index++)
+            {
+                arguments[index + 1] = CreateFunctionArgument(
+                    active.Pointer,
+                    suppliedArguments[index],
+                    temporaryArguments);
+            }
+
+            int callResult;
+            fixed (nint* argumentsAddress = arguments)
+            {
+                callResult = new ICorDebugEvalAbi(active.Pointer).CallFunction(
+                    function,
+                    checked((uint)arguments.Length),
+                    (nint)argumentsAddress);
+            }
+
             ThrowIfFunctionEvaluationUnavailable(callResult);
             callScheduled = true;
             CorDebugHResult.ThrowIfFailed(
@@ -195,6 +222,11 @@ internal sealed partial class CorDebugDebuggee
         }
         finally
         {
+            foreach (nint temporaryArgument in temporaryArguments)
+            {
+                _ = ComAbi.Release(temporaryArgument);
+            }
+
             if (evaluation != 0)
             {
                 _ = ComAbi.Release(evaluation);

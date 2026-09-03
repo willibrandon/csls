@@ -24,4 +24,11 @@ internal sealed class DebuggerFixtureValue
     /// </summary>
     /// <returns>The stored number incremented by one.</returns>
     internal int NextNumber() => Number + 1;
+
+    /// <summary>
+    /// Adds one debugger-supplied argument to the stored number.
+    /// </summary>
+    /// <param name="value">The value supplied by managed function evaluation.</param>
+    /// <returns>The stored number plus the supplied value.</returns>
+    internal int AddNumber(int value) => Number + value;
 }

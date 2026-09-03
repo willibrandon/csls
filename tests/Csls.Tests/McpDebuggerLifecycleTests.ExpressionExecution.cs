@@ -33,7 +33,7 @@ public sealed partial class McpDebuggerLifecycleTests
                 ["debugSession"] = debugSession,
                 ["stopGeneration"] = generation,
                 ["frameId"] = frame.GetProperty("id").GetInt32(),
-                ["expression"] = "localObject.NextNumber()"
+                ["expression"] = "localObject.AddForDebugger(localNumber - 42)"
             },
             cancellationToken).ConfigureAwait(false);
         Assert.AreEqual("43", result.GetProperty("evaluation").GetProperty("result").GetString());

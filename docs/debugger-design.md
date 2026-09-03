@@ -374,10 +374,12 @@ deadline and cancellation invokes `ICorDebugEval.Abort`; automatic `RudeAbort` i
 forbidden because it can destabilize the target. An evaluation that leaves target
 safety uncertain faults mutation for the session and explains why.
 
-DAP may explicitly authorize target-code evaluation. The initial call contract is
-an explicitly qualified, parameterless instance method whose receiver binds through
-the side-effect-free evaluator. The engine resolves the runtime type and CLR method,
-suspends every other managed thread, starts `ICorDebugEval`, and treats all nested
+DAP may explicitly authorize target-code evaluation. The current call contract is
+an explicitly qualified instance method whose receiver and bounded arguments bind
+through the side-effect-free evaluator. Arguments may be exact CLR primitives, null,
+or retained runtime object and array references; unsupported argument materialization
+fails before execution. The engine resolves the runtime type and CLR method, suspends
+every other managed thread, starts `ICorDebugEval`, and treats all nested
 breakpoint, step, and exception callbacks as evaluation-internal until the matching
 evaluation callback arrives. Threads created during the call are suspended too.
 Normal completion, exception completion, and cooperative abort restore the exact

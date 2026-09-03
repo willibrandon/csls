@@ -157,7 +157,7 @@ public sealed partial class DapSessionTests
                 JsonElement invoked = await ReadEvaluationAsync(
                     client,
                     frameId,
-                    "value.NextNumber()",
+                    "value.AddNumber(1)",
                     success: true,
                     TestContext.CancellationToken).ConfigureAwait(false);
                 Assert.AreEqual(

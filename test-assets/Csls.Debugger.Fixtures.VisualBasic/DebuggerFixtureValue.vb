@@ -23,5 +23,14 @@ Namespace Global.Csls.Debugger.Fixtures.VisualBasic
         Friend Function NextNumber() As Integer
             Return Number + 1
         End Function
+
+        ''' <summary>
+        ''' Adds one debugger-supplied argument to the stored number.
+        ''' </summary>
+        ''' <param name="value">The value supplied by managed function evaluation.</param>
+        ''' <returns>The stored number plus the supplied value.</returns>
+        Friend Function AddNumber(value As Integer) As Integer
+            Return Number + value
+        End Function
     End Class
 End Namespace

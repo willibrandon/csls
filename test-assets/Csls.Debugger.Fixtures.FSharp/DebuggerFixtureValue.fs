@@ -14,3 +14,10 @@ type internal DebuggerFixtureValue(number: int) =
     /// </summary>
     /// <returns>The stored number incremented by one.</returns>
     member internal _.NextNumber() = number + 1
+
+    /// <summary>
+    /// Adds one debugger-supplied argument to the stored number.
+    /// </summary>
+    /// <param name="value">The value supplied by managed function evaluation.</param>
+    /// <returns>The stored number plus the supplied value.</returns>
+    member internal _.AddNumber(value: int) = number + value

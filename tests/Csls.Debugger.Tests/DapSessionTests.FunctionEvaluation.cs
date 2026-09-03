@@ -105,6 +105,84 @@ public sealed partial class DapSessionTests
             Assert.Contains("variables", invalidatedAreas);
 
             frame = await GetFixtureFrameAsync(client).ConfigureAwait(false);
+            JsonElement stringArgumentEvaluation = await ReadEvaluationAsync(
+                client,
+                frame.GetProperty("id").GetInt32(),
+                "localObject.LengthForDebugger(localText)",
+                success: true,
+                TestContext.CancellationToken).ConfigureAwait(false);
+            Assert.AreEqual(
+                "7",
+                stringArgumentEvaluation.GetProperty("result").GetString());
+            using JsonDocument stringArgumentInvalidated = await client
+                .ReadMessageAsync(TestContext.CancellationToken)
+                .ConfigureAwait(false);
+            AssertEvent(stringArgumentInvalidated.RootElement, "invalidated");
+
+            frame = await GetFixtureFrameAsync(client).ConfigureAwait(false);
+            JsonElement unsupportedArgument = await ReadEvaluationAsync(
+                client,
+                frame.GetProperty("id").GetInt32(),
+                "localObject.LengthForDebugger(\"answer!\")",
+                success: false,
+                TestContext.CancellationToken).ConfigureAwait(false);
+            Assert.Contains(
+                "string arguments",
+                unsupportedArgument.GetProperty("message").GetString()!,
+                StringComparison.OrdinalIgnoreCase);
+            JsonElement afterUnsupportedArgument = await ReadEvaluationAsync(
+                client,
+                frame.GetProperty("id").GetInt32(),
+                "localObject.Number",
+                success: true,
+                TestContext.CancellationToken).ConfigureAwait(false);
+            Assert.AreEqual(
+                "42",
+                afterUnsupportedArgument.GetProperty("result").GetString());
+
+            JsonElement argumentEvaluation = await ReadEvaluationAsync(
+                client,
+                frame.GetProperty("id").GetInt32(),
+                "localObject.AddForDebugger(localNumber - 42)",
+                success: true,
+                TestContext.CancellationToken).ConfigureAwait(false);
+            Assert.AreEqual("43", argumentEvaluation.GetProperty("result").GetString());
+            using JsonDocument argumentInvalidated = await client
+                .ReadMessageAsync(TestContext.CancellationToken)
+                .ConfigureAwait(false);
+            AssertEvent(argumentInvalidated.RootElement, "invalidated");
+
+            frame = await GetFixtureFrameAsync(client).ConfigureAwait(false);
+            JsonElement referenceArgumentEvaluation = await ReadEvaluationAsync(
+                client,
+                frame.GetProperty("id").GetInt32(),
+                "localObject.IsSameForDebugger(localObject)",
+                success: true,
+                TestContext.CancellationToken).ConfigureAwait(false);
+            Assert.AreEqual(
+                "true",
+                referenceArgumentEvaluation.GetProperty("result").GetString());
+            using JsonDocument referenceArgumentInvalidated = await client
+                .ReadMessageAsync(TestContext.CancellationToken)
+                .ConfigureAwait(false);
+            AssertEvent(referenceArgumentInvalidated.RootElement, "invalidated");
+
+            frame = await GetFixtureFrameAsync(client).ConfigureAwait(false);
+            JsonElement nullArgumentEvaluation = await ReadEvaluationAsync(
+                client,
+                frame.GetProperty("id").GetInt32(),
+                "localObject.IsNullForDebugger(null)",
+                success: true,
+                TestContext.CancellationToken).ConfigureAwait(false);
+            Assert.AreEqual(
+                "true",
+                nullArgumentEvaluation.GetProperty("result").GetString());
+            using JsonDocument nullArgumentInvalidated = await client
+                .ReadMessageAsync(TestContext.CancellationToken)
+                .ConfigureAwait(false);
+            AssertEvent(nullArgumentInvalidated.RootElement, "invalidated");
+
+            frame = await GetFixtureFrameAsync(client).ConfigureAwait(false);
             JsonElement stillStopped = await ReadEvaluationAsync(
                 client,
                 frame.GetProperty("id").GetInt32(),
