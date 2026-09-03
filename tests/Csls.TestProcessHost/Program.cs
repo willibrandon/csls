@@ -65,6 +65,22 @@ if (args is [
         announce: true);
 }
 
+if (args is [
+    "--debugger-module-churn-fixture",
+    string collectibleAssemblyPath,
+    string loadSignalPath,
+    string collectibleFixtureSignalPath,
+    string unloadedSignalPath,
+    string finishSignalPath])
+{
+    return CollectibleAssemblyRunner.Run(
+        collectibleAssemblyPath,
+        loadSignalPath,
+        collectibleFixtureSignalPath,
+        unloadedSignalPath,
+        finishSignalPath);
+}
+
 if (args is ["--print-environment-and-exit", string printedVariable, string exitCode])
 {
     await Console.Out.WriteAsync(
