@@ -12,16 +12,19 @@ public sealed partial class DebuggerSession
     /// </summary>
     /// <param name="mappings">The complete source mapping dictionary.</param>
     /// <param name="sourceLinkOptions">The complete Source Link URL policy.</param>
+    /// <param name="symbolOptions">The complete trusted symbol search policy.</param>
     /// <param name="cancellationToken">Cancels queueing the configuration.</param>
     /// <returns>A task that completes after mappings are validated and installed.</returns>
     public Task ConfigureSourceOptionsAsync(
         IReadOnlyDictionary<string, string> mappings,
         IReadOnlyDictionary<string, bool> sourceLinkOptions,
+        DebugSymbolOptions symbolOptions,
         CancellationToken cancellationToken)
     {
         ObjectDisposedException.ThrowIf(_disposed != 0, this);
         ArgumentNullException.ThrowIfNull(mappings);
         ArgumentNullException.ThrowIfNull(sourceLinkOptions);
+        ArgumentNullException.ThrowIfNull(symbolOptions);
         return _actor.InvokeAsync(
             token =>
             {
@@ -32,7 +35,7 @@ public sealed partial class DebuggerSession
                         $"Source mappings cannot be changed while the debugger session is {_state}.");
                 }
 
-                _sourceBreakpoints.SetSourceOptions(mappings, sourceLinkOptions);
+                _sourceBreakpoints.SetSourceOptions(mappings, sourceLinkOptions, symbolOptions);
                 return ValueTask.CompletedTask;
             },
             cancellationToken);

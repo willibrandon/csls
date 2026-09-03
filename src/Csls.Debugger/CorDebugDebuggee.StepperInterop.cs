@@ -61,7 +61,7 @@ internal sealed partial class CorDebugDebuggee
         }
     }
 
-    private static unsafe int StartStep(nint stepper, nint thread, DebugStepKind kind)
+    private unsafe int StartStep(nint stepper, nint thread, DebugStepKind kind)
     {
         var api = new ICorDebugStepperAbi(stepper);
         if (kind == DebugStepKind.Out)
@@ -69,7 +69,10 @@ internal sealed partial class CorDebugDebuggee
             return api.StepOut();
         }
 
-        if (!PortablePdbStepRangeResolver.TryResolve(thread, out ManagedStepRange range))
+        if (!PortablePdbStepRangeResolver.TryResolve(
+            thread,
+            _sourceBreakpoints.GetSymbolPath,
+            out ManagedStepRange range))
         {
             return api.Step(kind == DebugStepKind.Into ? 1 : 0);
         }

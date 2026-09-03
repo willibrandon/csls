@@ -15,11 +15,16 @@ internal static class PortablePdbStepRangeResolver
     /// Tries to resolve the active managed frame's current source statement.
     /// </summary>
     /// <param name="thread">The borrowed ICorDebugThread pointer.</param>
+    /// <param name="symbolPathResolver">Resolves the selected associated PDB for a module.</param>
     /// <param name="range">Receives the resolved half-open IL range.</param>
     /// <returns>True when adjacent Portable PDB data describes the current instruction.</returns>
-    internal static unsafe bool TryResolve(nint thread, out ManagedStepRange range)
+    internal static unsafe bool TryResolve(
+        nint thread,
+        Func<string, string?> symbolPathResolver,
+        out ManagedStepRange range)
     {
         ArgumentOutOfRangeException.ThrowIfZero(thread);
+        ArgumentNullException.ThrowIfNull(symbolPathResolver);
         range = default;
         nint frame = 0;
         nint ilFrame = 0;
@@ -77,11 +82,13 @@ internal static class PortablePdbStepRangeResolver
                 new ICorDebugCodeAbi(code).GetSize((nint)codeSizeAddress),
                 "ICorDebugCode.GetSize");
             codeSize = Volatile.Read(ref *codeSizeAddress);
+            string modulePath = CorDebugModulePath.Get(module);
             return TryResolveFiles(
-                CorDebugModulePath.Get(module),
+                modulePath,
                 methodToken,
                 ilOffset,
                 codeSize,
+                symbolPathResolver(modulePath),
                 out range);
         }
         catch (Exception exception) when (
@@ -124,6 +131,7 @@ internal static class PortablePdbStepRangeResolver
         uint methodToken,
         uint ilOffset,
         uint codeSize,
+        string? symbolPath,
         out ManagedStepRange range)
     {
         range = default;
@@ -133,7 +141,7 @@ internal static class PortablePdbStepRangeResolver
             return false;
         }
 
-        using var symbols = PortablePdbReader.TryOpen(modulePath);
+        using var symbols = PortablePdbReader.TryOpen(modulePath, symbolPath);
         if (symbols is null)
         {
             return false;

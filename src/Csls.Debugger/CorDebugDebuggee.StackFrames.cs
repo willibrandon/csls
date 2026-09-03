@@ -41,7 +41,11 @@ internal sealed partial class CorDebugDebuggee
                     "ICorDebugILFrame.GetIP");
                 methodToken = Volatile.Read(ref *methodTokenAddress);
                 ilOffset = Volatile.Read(ref *ilOffsetAddress);
-                location = PortablePdbFrameResolver.Resolve(frame, methodToken, ilOffset);
+                location = PortablePdbFrameResolver.Resolve(
+                    frame,
+                    methodToken,
+                    ilOffset,
+                    _sourceBreakpoints.GetSymbolPath);
             }
         }
         finally
@@ -69,6 +73,9 @@ internal sealed partial class CorDebugDebuggee
                 MethodToken = methodToken,
                 IlOffset = ilOffset,
                 ModulePath = location.ModulePath,
+                SymbolPath = location.ModulePath is null
+                    ? null
+                    : _sourceBreakpoints.GetSymbolPath(location.ModulePath),
                 Name = location.Name,
                 InstructionReference = $"csls-il-{Guid.NewGuid():N}"
             };

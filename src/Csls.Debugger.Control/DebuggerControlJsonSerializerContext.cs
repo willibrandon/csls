@@ -45,6 +45,8 @@ namespace Csls.Debugger.Control;
 [JsonSerializable(typeof(DebugStepRequest))]
 [JsonSerializable(typeof(DebugStepTargetInfo))]
 [JsonSerializable(typeof(DebugStepTargetsRequest))]
+[JsonSerializable(typeof(DebugSymbolModuleFilterOptions))]
+[JsonSerializable(typeof(DebugSymbolOptions))]
 [JsonSerializable(typeof(DebugThreadInfo))]
 [JsonSerializable(typeof(DebugVariableInfo))]
 [JsonSerializable(typeof(DebugVariablesRequest))]

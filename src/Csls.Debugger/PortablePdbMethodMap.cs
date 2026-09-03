@@ -15,12 +15,14 @@ internal static class PortablePdbMethodMap
     /// </summary>
     /// <param name="modulePath">The absolute managed PE path.</param>
     /// <param name="methodToken">The method-definition metadata token.</param>
+    /// <param name="symbolPath">The selected associated PDB path, when applicable.</param>
     /// <returns>The ordered visible source positions.</returns>
     internal static IReadOnlyList<ManagedSequencePoint> Read(
         string modulePath,
-        uint methodToken)
+        uint methodToken,
+        string? symbolPath)
     {
-        using var symbols = PortablePdbReader.TryOpen(modulePath);
+        using var symbols = PortablePdbReader.TryOpen(modulePath, symbolPath);
         if (symbols is null)
         {
             return [];

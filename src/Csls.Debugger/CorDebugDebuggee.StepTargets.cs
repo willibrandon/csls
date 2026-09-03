@@ -41,7 +41,8 @@ internal sealed partial class CorDebugDebuggee
         byte[] bytes = peReader.GetMethodBody(method.RelativeVirtualAddress).GetILBytes() ?? [];
         IReadOnlyList<ManagedSequencePoint> points = PortablePdbMethodMap.Read(
             frame.ModulePath,
-            frame.MethodToken);
+            frame.MethodToken,
+            frame.SymbolPath);
         ManagedSequencePoint? current = points.LastOrDefault(
             point => point.IlOffset <= frame.IlOffset);
         if (current is null)
@@ -65,7 +66,8 @@ internal sealed partial class CorDebugDebuggee
 
             IReadOnlyList<ManagedSequencePoint> calleePoints = PortablePdbMethodMap.Read(
                 frame.ModulePath,
-                calleeToken);
+                calleeToken,
+                frame.SymbolPath);
             if (calleePoints.Count == 0)
             {
                 continue;

@@ -48,6 +48,11 @@ internal sealed class ManagedFrameHandle
     internal string? ModulePath { get; init; }
 
     /// <summary>
+    /// Gets or initializes the selected associated PDB path when symbols are external.
+    /// </summary>
+    internal string? SymbolPath { get; init; }
+
+    /// <summary>
     /// Gets or initializes the language-neutral managed method name.
     /// </summary>
     internal required string Name { get; init; }

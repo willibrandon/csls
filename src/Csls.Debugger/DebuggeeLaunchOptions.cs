@@ -1,3 +1,5 @@
+using Csls.Debugger.Contracts;
+
 namespace Csls.Debugger;
 
 /// <summary>
@@ -41,6 +43,11 @@ public sealed class DebuggeeLaunchOptions
     /// </summary>
     public IReadOnlyDictionary<string, bool> SourceLinkOptions { get; init; } =
         new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Gets trusted symbol search paths, servers, and cache configuration.
+    /// </summary>
+    public DebugSymbolOptions SymbolOptions { get; init; } = new();
 
     /// <summary>
     /// Gets whether the debugger requests unoptimized JIT code for symbol-bearing modules.

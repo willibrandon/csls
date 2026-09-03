@@ -16,13 +16,15 @@ internal static class ManagedIlSourceMap
     /// <param name="modulePath">The absolute managed PE path.</param>
     /// <param name="methodToken">The method-definition metadata token.</param>
     /// <param name="methodName">The language-neutral method display name.</param>
+    /// <param name="symbolPath">The selected associated PDB path, when applicable.</param>
     /// <returns>Visible source locations keyed by exact IL offset.</returns>
     internal static IReadOnlyDictionary<int, ManagedFrameLocation> Read(
         string modulePath,
         uint methodToken,
-        string methodName)
+        string methodName,
+        string? symbolPath)
     {
-        using var symbols = PortablePdbReader.TryOpen(modulePath);
+        using var symbols = PortablePdbReader.TryOpen(modulePath, symbolPath);
         if (symbols is null)
         {
             return new Dictionary<int, ManagedFrameLocation>();

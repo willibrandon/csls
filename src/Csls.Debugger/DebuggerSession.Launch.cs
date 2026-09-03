@@ -78,7 +78,10 @@ public sealed partial class DebuggerSession
         DebuggeeLaunchOptions options,
         CancellationToken cancellationToken)
     {
-        _sourceBreakpoints.SetSourceOptions(options.SourceFileMap, options.SourceLinkOptions);
+        _sourceBreakpoints.SetSourceOptions(
+            options.SourceFileMap,
+            options.SourceLinkOptions,
+            options.SymbolOptions);
         _sourceBreakpoints.SetRuntimeOptions(
             options.SuppressJitOptimizations,
             options.JustMyCode,

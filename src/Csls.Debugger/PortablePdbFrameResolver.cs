@@ -18,12 +18,15 @@ internal static class PortablePdbFrameResolver
     /// <param name="frame">The borrowed ICorDebugFrame pointer.</param>
     /// <param name="methodToken">The method-definition metadata token.</param>
     /// <param name="ilOffset">The current IL instruction offset.</param>
+    /// <param name="symbolPathResolver">Resolves the selected associated PDB for a module.</param>
     /// <returns>The resolved method and optional source location.</returns>
     internal static unsafe ManagedFrameLocation Resolve(
         nint frame,
         uint methodToken,
-        uint ilOffset)
+        uint ilOffset,
+        Func<string, string?> symbolPathResolver)
     {
+        ArgumentNullException.ThrowIfNull(symbolPathResolver);
         string fallbackName = $"0x{methodToken:X8}";
         nint function = 0;
         nint module = 0;
@@ -50,7 +53,12 @@ internal static class PortablePdbFrameResolver
             }
 
             string modulePath = CorDebugModulePath.Get(module);
-            return ResolveFiles(modulePath, methodToken, ilOffset, fallbackName);
+            return ResolveFiles(
+                modulePath,
+                methodToken,
+                ilOffset,
+                fallbackName,
+                symbolPathResolver(modulePath));
         }
         catch (Exception exception) when (
             exception is IOException or UnauthorizedAccessException or BadImageFormatException)
@@ -75,7 +83,8 @@ internal static class PortablePdbFrameResolver
         string modulePath,
         uint methodToken,
         uint ilOffset,
-        string fallbackName)
+        string fallbackName,
+        string? symbolPath)
     {
         using FileStream moduleStream = File.OpenRead(modulePath);
         using var peReader = new PEReader(moduleStream);
@@ -95,7 +104,7 @@ internal static class PortablePdbFrameResolver
         string displayName = string.IsNullOrEmpty(typeNamespace)
             ? $"{typeName}.{methodName}"
             : $"{typeNamespace}.{typeName}.{methodName}";
-        using var symbols = PortablePdbReader.TryOpen(modulePath);
+        using var symbols = PortablePdbReader.TryOpen(modulePath, symbolPath);
         if (symbols is null)
         {
             return Unknown(displayName, modulePath);

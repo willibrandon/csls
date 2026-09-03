@@ -23,7 +23,7 @@ internal sealed partial class SourceBreakpointManager
         Dictionary<int, SourceBreakpointLocation> locations;
         try
         {
-            using var symbols = PortablePdbReader.TryOpen(modulePath);
+            using PortablePdbReader? symbols = OpenSymbols(modulePath);
             module.SymbolsInspected = true;
             if (symbols is null)
             {

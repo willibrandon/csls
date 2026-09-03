@@ -278,9 +278,13 @@ request atomically replaces the complete policy.
 ## Symbols and source
 
 Portable and Embedded PDBs are read directly with `System.Reflection.Metadata`.
-Modules may supply adjacent, embedded, in-memory, or downloaded symbols. Windows
-PDB support uses the public native symbol-reader component on Windows. A PDB is
-accepted only when its identity matches the module.
+Modules may supply adjacent, embedded, in-memory, or downloaded symbols. Portable
+PDB symbol-store keys are derived from the module CodeView record, and every local,
+cached, or downloaded candidate is independently reopened against that module
+before acceptance. Configured directory and anonymous HTTP(S) searches implement
+the standard `symbolOptions` module filter; Microsoft and NuGet.org servers are
+opt-in. Windows PDB support uses the public native symbol-reader component on
+Windows. A PDB is accepted only when its identity matches the module.
 
 Source resolution order is:
 
@@ -300,6 +304,12 @@ query secrets are redacted. Localhost and private-address access require explici
 configuration to prevent Source Link SSRF. Paths are canonicalized beneath their
 cache root, symlinks are rejected at trust boundaries, archives are bounded, and
 legacy source-server command streams are never executed.
+
+CoreCLR currently returns `E_NOTIMPL` from the public
+`ICorDebugValue::CreateBreakpoint` implementation. The adapter therefore does not
+advertise managed data breakpoints until the runtime supplies a portable storage
+watchpoint contract; a platform-specific native watchpoint is not presented as a
+language-neutral managed data breakpoint.
 
 ## Values and language services
 

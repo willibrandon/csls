@@ -42,6 +42,61 @@
       "minimum": 1,
       "description": "Operating-system process identifier for attachment."
     },
+    "symbolOptions": {
+      "type": "object",
+      "description": "Controls identity-validated Portable PDB discovery and caching.",
+      "properties": {
+        "searchPaths": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": []
+        },
+        "searchMicrosoftSymbolServer": {
+          "type": "boolean",
+          "default": false
+        },
+        "searchNuGetOrgSymbolServer": {
+          "type": "boolean",
+          "default": false
+        },
+        "cachePath": {
+          "type": "string"
+        },
+        "moduleFilter": {
+          "type": "object",
+          "properties": {
+            "mode": {
+              "type": "string",
+              "enum": [
+                "loadAllButExcluded",
+                "loadOnlyIncluded"
+              ],
+              "default": "loadAllButExcluded"
+            },
+            "excludedModules": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "default": []
+            },
+            "includedModules": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "default": []
+            },
+            "includeSymbolsNextToModules": {
+              "type": "boolean",
+              "default": true
+            }
+          }
+        }
+      }
+    },
     "stopAtEntry": {
       "type": "boolean",
       "default": false

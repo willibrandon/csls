@@ -157,6 +157,37 @@ Mappings understand POSIX, Windows drive-letter, and UNC build paths regardless
 of the operating system running the adapter. The most specific matching prefix
 wins.
 
+Use `symbolOptions` to add trusted local directories or symbol servers. The
+Microsoft and NuGet.org servers remain opt-in. Downloaded Portable PDBs are
+accepted only when their CodeView identity matches the loaded module and are
+written atomically to an identity-keyed cache:
+
+```json
+{
+  "symbolOptions": {
+    "searchPaths": ["/srv/symbols", "https://symbols.example.com/"],
+    "searchMicrosoftSymbolServer": true,
+    "searchNuGetOrgSymbolServer": false,
+    "cachePath": "/home/me/.cache/csls/symbols",
+    "moduleFilter": {
+      "mode": "loadOnlyIncluded",
+      "includedModules": ["MyCompany.*.dll"],
+      "includeSymbolsNextToModules": true
+    }
+  }
+}
+```
+
+`moduleFilter.mode` is either `loadAllButExcluded` (the default) with
+`excludedModules`, or `loadOnlyIncluded` with `includedModules`. Patterns are
+case-insensitive and may contain `*`. `includeSymbolsNextToModules` defaults to
+`true`, preserving adjacent and embedded lookup for modules excluded from
+configured search paths. Search URLs must be anonymous HTTP(S) base URLs without
+queries or fragments. Redirects stay on the configured authority, HTTPS cannot
+downgrade, responses are bounded, and unavailable servers do not abort launch.
+The default cache is `%TEMP%\SymbolCache` on Windows and
+`~/.dotnet/symbolcache` on Linux and macOS.
+
 Source Link retrieval is lazy, bounded, redirect-limited, and session-cached.
 Public HTTPS endpoints are enabled by default. HTTP endpoints and localhost or
 private-network hosts require a specific enabled URL rule; a catch-all `*` does

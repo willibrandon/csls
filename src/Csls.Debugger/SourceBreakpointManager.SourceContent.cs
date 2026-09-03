@@ -31,7 +31,7 @@ internal sealed partial class SourceBreakpointManager
             return existing.Info;
         }
 
-        using var symbols = PortablePdbReader.TryOpen(modulePath);
+        using PortablePdbReader? symbols = OpenSymbols(modulePath);
         if (symbols is not null)
         {
             foreach (DocumentHandle handle in symbols.Metadata.Documents)
@@ -53,13 +53,16 @@ internal sealed partial class SourceBreakpointManager
     /// </summary>
     /// <param name="mappings">The complete source path mapping dictionary.</param>
     /// <param name="sourceLinkOptions">The complete Source Link URL policy.</param>
+    /// <param name="symbolOptions">The complete trusted symbol search policy.</param>
     internal void SetSourceOptions(
         IReadOnlyDictionary<string, string> mappings,
-        IReadOnlyDictionary<string, bool> sourceLinkOptions)
+        IReadOnlyDictionary<string, bool> sourceLinkOptions,
+        DebugSymbolOptions symbolOptions)
     {
         ObjectDisposedException.ThrowIf(_disposed != 0, this);
         _sourcePathMapper.Set(mappings);
         _sourceLinkPolicy.Set(sourceLinkOptions);
+        _symbolLocator.Set(symbolOptions);
         ClearSources();
     }
 

@@ -15,10 +15,12 @@ internal static class PortablePdbVariableNameResolver
     /// </summary>
     /// <param name="modulePath">The loaded managed module path.</param>
     /// <param name="methodToken">The method-definition metadata token.</param>
+    /// <param name="symbolPath">The selected associated PDB path, when applicable.</param>
     /// <returns>Argument names keyed by their ICorDebug argument index.</returns>
     internal static IReadOnlyDictionary<int, string> GetArguments(
         string? modulePath,
-        uint methodToken)
+        uint methodToken,
+        string? symbolPath)
     {
         if (modulePath is null || !File.Exists(modulePath))
         {
@@ -60,18 +62,20 @@ internal static class PortablePdbVariableNameResolver
     /// <param name="modulePath">The loaded managed module path.</param>
     /// <param name="methodToken">The method-definition metadata token.</param>
     /// <param name="ilOffset">The current IL instruction offset.</param>
+    /// <param name="symbolPath">The selected associated PDB path, when applicable.</param>
     /// <returns>Local names keyed by their ICorDebug local slot.</returns>
     internal static IReadOnlyDictionary<int, string> GetLocals(
         string? modulePath,
         uint methodToken,
-        uint ilOffset)
+        uint ilOffset,
+        string? symbolPath)
     {
         if (modulePath is null)
         {
             return new Dictionary<int, string>();
         }
 
-        using var symbols = PortablePdbReader.TryOpen(modulePath);
+        using var symbols = PortablePdbReader.TryOpen(modulePath, symbolPath);
         if (symbols is null)
         {
             return new Dictionary<int, string>();

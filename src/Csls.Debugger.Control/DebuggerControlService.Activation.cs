@@ -23,6 +23,7 @@ public sealed partial class DebuggerControlService
                 RuntimeHostPath = request.RuntimeHostPath,
                 SourceFileMap = request.SourceFileMap,
                 SourceLinkOptions = request.SourceLinkOptions,
+                SymbolOptions = request.SymbolOptions,
                 SuppressJitOptimizations = request.SuppressJitOptimizations,
                 JustMyCode = request.JustMyCode,
                 EnableStepFiltering = request.EnableStepFiltering
@@ -44,6 +45,7 @@ public sealed partial class DebuggerControlService
         await _session.ConfigureSourceOptionsAsync(
             request.SourceFileMap,
             request.SourceLinkOptions,
+            request.SymbolOptions,
             cancellationToken).ConfigureAwait(false);
         await _session.AttachManagedAsync(request.ProcessId, cancellationToken)
             .ConfigureAwait(false);

@@ -24,6 +24,7 @@ internal sealed partial class DapSession
             await _engineSession.ConfigureSourceOptionsAsync(
                 _pendingLaunch.Options.SourceFileMap,
                 _pendingLaunch.Options.SourceLinkOptions,
+                _pendingLaunch.Options.SymbolOptions,
                 cancellationToken).ConfigureAwait(false);
         }
         catch (Exception exception) when (

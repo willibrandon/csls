@@ -49,7 +49,7 @@ internal sealed partial class CorDebugDebuggee
 
             _gotoTargets.Clear();
             IEnumerable<ManagedSequencePoint> points = PortablePdbMethodMap
-                .Read(frame.ModulePath, frame.MethodToken)
+                .Read(frame.ModulePath, frame.MethodToken, frame.SymbolPath)
                 .Where(point => request.Line >= point.StartLine &&
                     request.Line <= point.EndLine &&
                     _sourceBreakpoints.PathsReferToSameSource(

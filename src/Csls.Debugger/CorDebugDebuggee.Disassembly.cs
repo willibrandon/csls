@@ -72,7 +72,8 @@ internal sealed partial class CorDebugDebuggee
         IReadOnlyDictionary<int, ManagedFrameLocation> sources = ManagedIlSourceMap.Read(
             frame.ModulePath!,
             frame.MethodToken,
-            frame.Name);
+            frame.Name,
+            frame.SymbolPath);
         return SelectInstructions(frame, baseIlOffset, request, metadata, decoded, sources);
     }
 

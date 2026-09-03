@@ -33,31 +33,17 @@ internal sealed partial class SourceBreakpointManager
         _enableStepFiltering = enableStepFiltering;
     }
 
-    private static (DebugModuleSymbolKind SymbolKind, string? SymbolPath) InspectSymbols(
-        string? modulePath)
+    private static (DebugModuleSymbolKind SymbolKind, string? SymbolPath) GetSymbolInfo(
+        PortablePdbResolution? symbols)
     {
-        if (modulePath is null)
+        return symbols?.StorageKind switch
         {
-            return (DebugModuleSymbolKind.None, null);
-        }
-
-        try
-        {
-            using var symbols = PortablePdbReader.TryOpen(modulePath);
-            return symbols?.StorageKind switch
-            {
-                PortablePdbStorageKind.Embedded =>
-                    (DebugModuleSymbolKind.EmbeddedPortablePdb, null),
-                PortablePdbStorageKind.AssociatedFile =>
-                    (DebugModuleSymbolKind.PortablePdb, symbols.Path),
-                _ => (DebugModuleSymbolKind.None, null)
-            };
-        }
-        catch (Exception exception) when (
-            exception is IOException or UnauthorizedAccessException or BadImageFormatException)
-        {
-            return (DebugModuleSymbolKind.None, null);
-        }
+            PortablePdbStorageKind.Embedded =>
+                (DebugModuleSymbolKind.EmbeddedPortablePdb, null),
+            PortablePdbStorageKind.AssociatedFile =>
+                (DebugModuleSymbolKind.PortablePdb, symbols.Path),
+            _ => (DebugModuleSymbolKind.None, null)
+        };
     }
 
     private static void EnsureSymbolsInspected(CorDebugLoadedModule module)
@@ -67,7 +53,6 @@ internal sealed partial class SourceBreakpointManager
             return;
         }
 
-        (module.SymbolKind, module.SymbolPath) = InspectSymbols(module.Path);
         module.SymbolsInspected = true;
     }
 

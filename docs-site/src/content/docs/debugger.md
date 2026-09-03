@@ -65,6 +65,18 @@ operator methods during Step Into. `DebuggerHidden` and `DebuggerStepThrough`
 also remain filtered, while `DebuggerNonUserCode` follows `justMyCode`. Set the
 option to `false` to enter properties and operators.
 
+`symbolOptions` accepts ordered local directories or anonymous HTTP(S) symbol
+servers through `searchPaths`. `searchMicrosoftSymbolServer` and
+`searchNuGetOrgSymbolServer` are opt-in, while `cachePath` selects an absolute
+download cache directory. Each Portable PDB must match the module's CodeView
+identity before use or caching. `moduleFilter.mode` supports
+`loadAllButExcluded` with `excludedModules` and `loadOnlyIncluded` with
+`includedModules`; case-insensitive `*` wildcards are supported. Set
+`includeSymbolsNextToModules` to preserve adjacent and embedded lookup for
+otherwise excluded modules. Redirects cannot change authority or downgrade
+HTTPS, responses are bounded, and a failed server does not abort the debug
+session.
+
 For a statement with multiple eligible local managed calls, `stepInTargets`
 returns one generation-bound target per occurrence. Passing a target to `stepIn`
 enters that exact occurrence, including when the same method is called more than

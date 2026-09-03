@@ -16,6 +16,7 @@ internal sealed partial class SourceBreakpointManager : IDisposable
     private readonly Dictionary<string, List<SourceBreakpointDefinition>> _definitions;
     private readonly Dictionary<nint, SourceBreakpointBinding> _bindings = [];
     private readonly Dictionary<nint, CorDebugLoadedModule> _modules = [];
+    private readonly PortablePdbLocator _symbolLocator = new();
     private int _nextBreakpointId;
     private int _nextModuleId;
     private bool _suppressJitOptimizations;
@@ -124,9 +125,11 @@ internal sealed partial class SourceBreakpointManager : IDisposable
         nint identity = ComAbi.QueryInterface(module, s_iUnknownInterfaceId);
         _ = ComAbi.AddRef(module);
         string? modulePath = GetModulePath(module);
-        (DebugModuleSymbolKind symbolKind, string? symbolPath) = _suppressJitOptimizations
-            ? InspectSymbols(modulePath)
-            : (DebugModuleSymbolKind.None, null);
+        PortablePdbResolution? symbols = modulePath is null
+            ? null
+            : await _symbolLocator.ResolveAsync(modulePath, cancellationToken)
+                .ConfigureAwait(false);
+        (DebugModuleSymbolKind symbolKind, string? symbolPath) = GetSymbolInfo(symbols);
         (bool? isOptimized, string? optimizationDiagnostic) = ConfigureJitPolicy(
             module,
             symbolKind != DebugModuleSymbolKind.None);
@@ -138,7 +141,7 @@ internal sealed partial class SourceBreakpointManager : IDisposable
             Identity = identity,
             SymbolKind = symbolKind,
             SymbolPath = symbolPath,
-            SymbolsInspected = _suppressJitOptimizations,
+            SymbolsInspected = true,
             IsOptimized = isOptimized,
             OptimizationDiagnostic = optimizationDiagnostic
         };

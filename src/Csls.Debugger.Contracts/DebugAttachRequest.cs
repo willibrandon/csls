@@ -19,6 +19,11 @@ public sealed record DebugAttachRequest(int ProcessId)
         new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>
+    /// Gets trusted symbol search paths, servers, and cache configuration.
+    /// </summary>
+    public DebugSymbolOptions SymbolOptions { get; init; } = new();
+
+    /// <summary>
     /// Gets whether source stepping excludes non-user managed code.
     /// </summary>
     public bool JustMyCode { get; init; } = true;

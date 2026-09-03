@@ -49,7 +49,7 @@ internal sealed partial class SourceBreakpointManager
         string modulePath,
         Dictionary<string, DebugSourceInfo> sources)
     {
-        using var symbols = PortablePdbReader.TryOpen(modulePath);
+        using PortablePdbReader? symbols = OpenSymbols(modulePath);
         if (symbols is null)
         {
             return;
@@ -130,7 +130,7 @@ internal sealed partial class SourceBreakpointManager
 
         try
         {
-            var symbols = PortablePdbReader.TryOpen(module.Path);
+            PortablePdbReader? symbols = OpenSymbols(module.Path);
             try
             {
                 if (symbols is null)

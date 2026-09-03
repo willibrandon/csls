@@ -27,6 +27,7 @@ internal sealed partial class DapSession
             await _engineSession.ConfigureSourceOptionsAsync(
                 DapSourceOptionsParser.ParseSourceFileMap(request.Arguments),
                 DapSourceOptionsParser.ParseSourceLinkOptions(request.Arguments),
+                DapSymbolOptionsParser.Parse(request.Arguments),
                 cancellationToken).ConfigureAwait(false);
         }
         catch (ArgumentException exception)

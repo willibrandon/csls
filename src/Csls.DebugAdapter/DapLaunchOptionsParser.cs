@@ -68,6 +68,7 @@ internal static class DapLaunchOptionsParser
                 RuntimeHostPath = ResolveRuntimeHost(arguments),
                 SourceFileMap = DapSourceOptionsParser.ParseSourceFileMap(arguments),
                 SourceLinkOptions = DapSourceOptionsParser.ParseSourceLinkOptions(arguments),
+                SymbolOptions = DapSymbolOptionsParser.Parse(arguments),
                 SuppressJitOptimizations = DapBooleanOptionParser.Get(
                     arguments,
                     "suppressJITOptimizations",
