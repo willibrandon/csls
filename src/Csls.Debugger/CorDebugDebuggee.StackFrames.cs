@@ -80,7 +80,8 @@ internal sealed partial class CorDebugDebuggee
                     ? null
                     : _sourceBreakpoints.GetSymbolPath(location.ModulePath),
                 Name = location.Name,
-                InstructionReference = $"csls-il-{Guid.NewGuid():N}"
+                InstructionReference = $"csls-il-{Guid.NewGuid():N}",
+                ExpressionLanguage = location.ExpressionLanguage
             };
             _frames.Add(key, existing);
             _instructionFrames.Add(

@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using Csls.Debugger.Evaluation;
 
 namespace Csls.Debugger;
 
@@ -27,6 +28,7 @@ public static class DebuggerWorkerEnvironment
     {
         ArgumentNullException.ThrowIfNull(startInfo);
         ArgumentException.ThrowIfNullOrWhiteSpace(workerPath);
+        DebuggerEvaluatorWorkerEnvironment.Configure(startInfo, workerPath);
         if (OperatingSystem.IsWindows())
         {
             return;

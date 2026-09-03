@@ -271,14 +271,31 @@ public sealed partial class DapSessionTests
                 TestContext.CancellationToken).ConfigureAwait(false);
             Assert.AreEqual("42", evaluatedArrayElement.GetProperty("result").GetString());
 
-            JsonElement unsupportedEvaluation = await ReadEvaluationAsync(
+            JsonElement evaluatedArithmetic = await ReadEvaluationAsync(
                 client,
                 fixtureFrameId,
                 "localNumber + 1",
+                success: true,
+                TestContext.CancellationToken).ConfigureAwait(false);
+            Assert.AreEqual("44", evaluatedArithmetic.GetProperty("result").GetString());
+            Assert.AreEqual("int", evaluatedArithmetic.GetProperty("type").GetString());
+
+            JsonElement evaluatedConditional = await ReadEvaluationAsync(
+                client,
+                fixtureFrameId,
+                "localNumber > 40 ? localArray[localNumber - 42] : 0",
+                success: true,
+                TestContext.CancellationToken).ConfigureAwait(false);
+            Assert.AreEqual("42", evaluatedConditional.GetProperty("result").GetString());
+
+            JsonElement unsupportedEvaluation = await ReadEvaluationAsync(
+                client,
+                fixtureFrameId,
+                "localObject.ToString()",
                 success: false,
                 TestContext.CancellationToken).ConfigureAwait(false);
             Assert.Contains(
-                "side-effect-free evaluator",
+                "not supported by safe evaluation",
                 unsupportedEvaluation.GetProperty("message").GetString()!,
                 StringComparison.Ordinal);
 

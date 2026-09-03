@@ -31,7 +31,8 @@ internal static class ManagedIlSourceMap
                 SymbolImage = frame.SymbolImage,
                 SourcePath = point.SourcePath,
                 Line = point.StartLine,
-                Column = point.StartColumn
+                Column = point.StartColumn,
+                ExpressionLanguage = ManagedExpressionLanguageResolver.Resolve(point.LanguageId)
             };
         }
 

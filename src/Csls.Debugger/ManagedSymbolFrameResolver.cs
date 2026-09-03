@@ -142,7 +142,8 @@ internal static class ManagedSymbolFrameResolver
             SymbolImage = module.SymbolImage,
             SourcePath = selected.SourcePath,
             Line = selected.StartLine,
-            Column = selected.StartColumn
+            Column = selected.StartColumn,
+            ExpressionLanguage = ManagedExpressionLanguageResolver.Resolve(selected.LanguageId)
         };
     }
 

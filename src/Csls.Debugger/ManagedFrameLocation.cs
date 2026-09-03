@@ -1,3 +1,5 @@
+using Csls.Debugger.Contracts;
+
 namespace Csls.Debugger;
 
 /// <summary>
@@ -44,4 +46,9 @@ internal sealed class ManagedFrameLocation
     /// Gets or initializes the immutable in-memory Portable PDB image when applicable.
     /// </summary>
     internal byte[]? SymbolImage { get; init; }
+
+    /// <summary>
+    /// Gets or initializes the source-language evaluator grammar.
+    /// </summary>
+    internal DebugExpressionLanguage ExpressionLanguage { get; init; }
 }

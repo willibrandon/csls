@@ -10,6 +10,7 @@ namespace Csls.Debugger;
 /// <param name="StartColumn">The one-based start column.</param>
 /// <param name="EndLine">The one-based inclusive end line.</param>
 /// <param name="EndColumn">The one-based exclusive end column.</param>
+/// <param name="LanguageId">The source-language identifier from the symbol document.</param>
 internal sealed record ManagedSequencePoint(
     uint MethodToken,
     int IlOffset,
@@ -17,4 +18,5 @@ internal sealed record ManagedSequencePoint(
     int StartLine,
     int StartColumn,
     int EndLine,
-    int EndColumn);
+    int EndColumn,
+    Guid LanguageId);

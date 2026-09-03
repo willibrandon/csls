@@ -22,6 +22,7 @@ public sealed partial class DebuggerSession
         }
         finally
         {
+            await _evaluator.DisposeAsync().ConfigureAwait(false);
             _ = _lifecycleGate.Release();
         }
 

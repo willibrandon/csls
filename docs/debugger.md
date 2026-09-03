@@ -158,14 +158,23 @@ primitive, string, field, object, and array inspection does not execute target
 code. Handles for frames, scopes, and variables are valid only for the stop at
 which they were returned.
 
-DAP `evaluate` resolves locals, arguments, `this` (`Me` is accepted for Visual
-Basic), instance-field chains, and single- or multidimensional array indexes
-without executing target code. The frame is explicit when supplied; otherwise
-the adapter uses the selected stopped thread's top managed frame. The same
-generation-bound operation is available through private debugger RPC and the MCP
-`debug_evaluate` tool. Unsupported operators, properties, calls, or malformed
-expressions fail explicitly rather than being approximated. Variables include
-`evaluateName` only when csls can provide a valid source expression for the value.
+DAP `evaluate` selects expression syntax from the selected frame's PDB language
+identity. C# and Visual Basic expressions are parsed in a lazy per-session managed
+compiler worker, lowered to a bounded versioned IR, and bound to current-generation
+runtime values in the debugger engine. Locals, arguments, `this`/`Me`, literals,
+instance fields, array indexes, built-in unary and binary operators, short-circuit
+Boolean operations, and conditional expressions do not execute target code. F#
+and unknown Portable-PDB languages currently use the portable CLR subset for
+locals, arguments, fields, and array indexes.
+
+The frame is explicit when supplied; otherwise the adapter uses the selected
+stopped thread's top managed frame. The same generation-bound operation is
+available through private debugger RPC and the MCP `debug_evaluate` tool.
+Properties, calls, assignments, construction, user-defined operators, and other
+operations that could execute target code fail explicitly until function
+evaluation is enabled with its cancellation and authorization policy. Variables
+include `evaluateName` only when csls can provide a valid source expression for
+the value.
 
 Assemblies loaded from PE and Portable PDB byte arrays receive the same source
 breakpoint, stack, local-name, stepping, goto, disassembly, and managed-IL
@@ -272,9 +281,9 @@ worker does not advertise tools that it cannot run.
 - `debug_threads_get`, `debug_stack_get`, `debug_scopes_get`, and
   `debug_variables_get` inspect one exact stopped generation. Frame and variable
   handles expire as soon as execution resumes.
-- `debug_evaluate` reads one local, argument, instance-field chain, or array
-  element in an explicit current-generation frame without executing target code.
-  It is read-only and does not require an agent-control grant.
+- `debug_evaluate` evaluates the same source-language-aware, side-effect-free
+  expression subset as DAP in an explicit current-generation frame. It is
+  read-only and does not require an agent-control grant.
 - `debug_modules_get` returns a bounded module page and validated symbol status.
 - `debug_breakpoints_get` reads every authoritative source, function, managed-IL,
   and managed-exception breakpoint without granting target control. Valid hit-count

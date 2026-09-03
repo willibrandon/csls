@@ -179,6 +179,7 @@ internal sealed class DebugSymbolReader : IDisposable
                 string path = reader.GetString(reader.GetDocument(document).Name);
                 if (!string.IsNullOrWhiteSpace(path))
                 {
+                    Document sourceDocument = reader.GetDocument(document);
                     result.Add(new ManagedSequencePoint(
                         token,
                         point.Offset,
@@ -186,7 +187,10 @@ internal sealed class DebugSymbolReader : IDisposable
                         point.StartLine,
                         point.StartColumn,
                         point.EndLine,
-                        point.EndColumn));
+                        point.EndColumn,
+                        sourceDocument.Language.IsNil
+                            ? Guid.Empty
+                            : reader.GetGuid(sourceDocument.Language)));
                 }
             }
         }

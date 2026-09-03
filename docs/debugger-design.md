@@ -49,20 +49,26 @@ MCP worker ── private RPC ────┘             └── managed eval
 progress, sequencing, and capability negotiation. `Csls.Debugger` owns runtime
 state, COM lifetimes, symbols, sources, breakpoints, stepping, and values.
 `Csls.Debugger.Contracts` owns transport-safe evaluator and control contracts.
-`Csls.Debugger.Client` provides the private StreamJsonRpc client. The managed
-`Csls.Debugger.Worker` owns compiler services and dump inspection that are not
-NativeAOT-safe.
+`Csls.Debugger.Control` provides the private session RPC client and server.
+`Csls.Debugger.Evaluation` owns evaluator process supervision and bounded private
+RPC. The managed `Csls.Debugger.Evaluator.Worker` owns compiler services that are
+not NativeAOT-safe; dump inspection will join that managed-process boundary.
 
 `csls debugger dap` runs one session over standard input/output. An internal host
 mode registers a discoverable local session and exposes an owner-only Unix-domain
 socket or named pipe. It never listens on TCP. Remote development runs the adapter
 inside the target environment and transports DAP through the editor connection.
 
-The evaluator worker is lazy and belongs to exactly one session. Anonymous pipes
-are preferred when the parent is its only client. If a named endpoint is required,
-it is placed in an owner-only directory and authenticated with an unguessable
-session nonce. COM pointers never cross RPC. In-memory module metadata and PDBs are
-copied to bounded owner-only temporary files and identified by content hash.
+The evaluator worker is lazy and belongs to exactly one session. It uses inherited
+standard streams with length-prefixed, source-generated JSON messages bounded to
+four MiB and an exact private protocol version. Standard output is protocol-only;
+bounded diagnostics drain concurrently from standard error. A lost connection is
+recreated once through the same language provider and never switches to a generic
+fallback. Closing the session closes the request pipe, waits for orderly exit, and
+terminates the evaluator process tree after a bounded deadline. COM pointers never
+cross RPC. In-memory module metadata and PDBs are copied to bounded owner-only
+temporary files and identified by content hash when compiler semantic binding
+requires them.
 
 ## Session ownership and state
 
@@ -339,8 +345,9 @@ than once per session, allowing mixed-language call stacks.
 
 The integration matrix compiles and debugs checked-in C#, Visual Basic, and F#
 executables in both Debug and Release configurations. Each probe binds a Portable
-PDB source breakpoint, observes the runtime stop, and resolves the stopped source
-frame through the same DAP and engine path used by editors.
+PDB source breakpoint, observes the runtime stop, resolves the stopped source
+frame, and evaluates a live local through the same DAP and engine path used by
+editors.
 
 `IDebugLanguageProvider` defines breakpoint validation, source mapping, display
 formatting, expression binding, completion, and generated-code classification.

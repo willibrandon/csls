@@ -115,11 +115,24 @@ public sealed partial class DapSessionTests
                 client,
                 sourcePath,
                 breakpointLine).ConfigureAwait(false);
-            await AssertStoppedFrameAsync(
+            int frameId = await AssertStoppedFrameAsync(
                 client,
                 stoppedThreadId,
                 sourcePath,
                 breakpointLine).ConfigureAwait(false);
+            string expression = project.EndsWith("FSharp", StringComparison.Ordinal)
+                ? "answer"
+                : "answer + 1";
+            JsonElement evaluation = await ReadEvaluationAsync(
+                client,
+                frameId,
+                expression,
+                success: true,
+                TestContext.CancellationToken).ConfigureAwait(false);
+            Assert.AreEqual(
+                project.EndsWith("FSharp", StringComparison.Ordinal) ? "41" : "42",
+                evaluation.GetProperty("result").GetString(),
+                $"Unexpected {project} {configuration} expression result.");
             await DisconnectAsync(client).ConfigureAwait(false);
             Assert.AreEqual(string.Empty, client.Diagnostics.ToString());
         }
@@ -197,7 +210,7 @@ public sealed partial class DapSessionTests
         }
     }
 
-    private async Task AssertStoppedFrameAsync(
+    private async Task<int> AssertStoppedFrameAsync(
         DapTestClient client,
         int threadId,
         string sourcePath,
@@ -229,6 +242,7 @@ public sealed partial class DapSessionTests
                     source.GetProperty("path").GetString(),
                     sourcePath));
         Assert.AreEqual(breakpointLine, frame.GetProperty("line").GetInt32());
+        return frame.GetProperty("id").GetInt32();
     }
 
     private async Task DisconnectAsync(DapTestClient client)

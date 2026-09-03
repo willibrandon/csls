@@ -331,6 +331,10 @@ internal sealed class WindowsPdbReader : IDisposable
                 string path = ReadName(documents[index]);
                 if (!string.IsNullOrWhiteSpace(path))
                 {
+                    Guid languageId = default;
+                    ThrowIfFailed(
+                        documents[index].GetLanguage(ref languageId),
+                        "ISymUnmanagedDocument.GetLanguage");
                     result.Add(new ManagedSequencePoint(
                         methodToken,
                         offsets[index],
@@ -338,7 +342,8 @@ internal sealed class WindowsPdbReader : IDisposable
                         startLines[index],
                         startColumns[index],
                         endLines[index],
-                        endColumns[index]));
+                        endColumns[index],
+                        languageId));
                 }
             }
         }

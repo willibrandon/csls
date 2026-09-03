@@ -1,4 +1,5 @@
 using Csls.Debugger.Contracts;
+using Csls.Debugger.Evaluation;
 
 namespace Csls.Debugger;
 
@@ -11,6 +12,7 @@ public sealed partial class DebuggerSession : IAsyncDisposable
     private readonly CancellationTokenSource _lifetime = new();
     private readonly DebuggerSessionActor _actor = new();
     private readonly SemaphoreSlim _lifecycleGate = new(1, 1);
+    private readonly DebuggerEvaluatorSupervisor _evaluator = new();
     private readonly SourceBreakpointManager _sourceBreakpoints;
     private readonly FunctionBreakpointManager _functionBreakpoints;
     private readonly InstructionBreakpointManager _instructionBreakpoints;

@@ -18,6 +18,12 @@
     <ProjectReference Include="../Csls.Debugger.Terminal/Csls.Debugger.Terminal.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <CslsBundledWorker Include="../Csls.Debugger.Evaluator.Worker/Csls.Debugger.Evaluator.Worker.csproj">
+      <BundlePath>evaluator</BundlePath>
+    </CslsBundledWorker>
+  </ItemGroup>
+
   <PropertyGroup Condition="!$([MSBuild]::IsOSPlatform('Windows'))">
     <_CslsUnixWaitRuntimeIdentifier Condition="'$(RuntimeIdentifier)' != '' and '$(RuntimeIdentifier)' != 'any'">$(RuntimeIdentifier)</_CslsUnixWaitRuntimeIdentifier>
     <_CslsUnixWaitRuntimeIdentifier Condition="'$(_CslsUnixWaitRuntimeIdentifier)' == ''">$(NETCoreSdkRuntimeIdentifier)</_CslsUnixWaitRuntimeIdentifier>
@@ -53,4 +59,6 @@
           SkipUnchangedFiles="true"
           Condition="'$(PublishDir)' != '' and '$(PublishDir)' != '$(TargetDir)'" />
   </Target>
+
+  <Import Project="../../build/Csls.BundledWorkers.targets" />
 </Project>

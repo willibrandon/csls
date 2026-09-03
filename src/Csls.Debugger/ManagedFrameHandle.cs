@@ -79,6 +79,11 @@ internal sealed class ManagedFrameHandle
     internal required string InstructionReference { get; init; }
 
     /// <summary>
+    /// Gets or initializes the source-language evaluator grammar.
+    /// </summary>
+    internal required DebugExpressionLanguage ExpressionLanguage { get; init; }
+
+    /// <summary>
     /// Opens an owned PE reader over the file or immutable in-memory module image.
     /// </summary>
     /// <returns>An owned PE reader, or null when the module image is unavailable.</returns>

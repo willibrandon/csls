@@ -80,7 +80,7 @@ internal sealed partial class CslsMcpDebuggerInspectionTools
         ReadOnly = true,
         UseStructuredContent = true,
         OutputSchemaType = typeof(McpDebugEvaluationResult))]
-    [Description("Evaluate a local, argument, instance-field chain, or array index without executing target code.")]
+    [Description("Evaluate a source-language-aware side-effect-free expression without executing target code.")]
     public Task<ModelContextProtocol.Protocol.CallToolResult> EvaluateAsync(
         [Description("Opaque identifier returned by a debugger lifecycle tool.")]
         string debugSession,
