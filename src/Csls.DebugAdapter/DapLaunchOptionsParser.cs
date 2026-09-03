@@ -67,7 +67,10 @@ internal static class DapLaunchOptionsParser
                 Environment = ParseEnvironment(arguments),
                 RuntimeHostPath = ResolveRuntimeHost(arguments),
                 SourceFileMap = DapSourceOptionsParser.ParseSourceFileMap(arguments),
-                SourceLinkOptions = DapSourceOptionsParser.ParseSourceLinkOptions(arguments)
+                SourceLinkOptions = DapSourceOptionsParser.ParseSourceLinkOptions(arguments),
+                SuppressJitOptimizations = GetOptionalBoolean(
+                    arguments,
+                    "suppressJITOptimizations")
             }
         };
     }
@@ -145,6 +148,21 @@ internal static class DapLaunchOptionsParser
         }
 
         return GetString(value, propertyName);
+    }
+
+    private static bool GetOptionalBoolean(JsonElement owner, string propertyName)
+    {
+        if (!owner.TryGetProperty(propertyName, out JsonElement value))
+        {
+            return false;
+        }
+
+        if (value.ValueKind is not JsonValueKind.True and not JsonValueKind.False)
+        {
+            throw new ArgumentException($"The launch '{propertyName}' value must be a boolean.");
+        }
+
+        return value.GetBoolean();
     }
 
     private static string GetString(JsonElement value, string propertyName)

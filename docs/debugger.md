@@ -78,6 +78,14 @@ exact thrown type and any exception derived from that base type. Multiple plain
 filters and conditional filter options are additive, and replacing the request
 atomically replaces the complete exception policy.
 
+Set `suppressJITOptimizations` to `true` on a launch request to ask CoreCLR to
+disable JIT optimizations for each module with a validated Portable PDB. The
+default is `false`. This setting is launch-only because CoreCLR accepts the
+policy change only during the module-load callback, before code is compiled.
+The DAP `modules` response reports `isOptimized` when CoreCLR exposes the state;
+if the runtime rejects the policy or cannot report it, `symbolStatus` includes a
+bounded diagnostic instead of claiming that suppression succeeded.
+
 ## Runtime and symbol requirements
 
 The target must run CoreCLR and match the host architecture. Source breakpoints,

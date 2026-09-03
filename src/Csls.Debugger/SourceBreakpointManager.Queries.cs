@@ -26,39 +26,23 @@ internal sealed partial class SourceBreakpointManager
             modules = modules.Take(count);
         }
 
-        return modules.Select(static module =>
+        var result = new List<DebugModuleInfo>();
+        foreach (CorDebugLoadedModule module in modules)
         {
-            DebugModuleSymbolKind symbolKind = DebugModuleSymbolKind.None;
-            string? symbolPath = null;
-            if (module.Path is not null)
-            {
-                try
-                {
-                    using var symbols = PortablePdbReader.TryOpen(module.Path);
-                    if (symbols is not null)
-                    {
-                        symbolKind = symbols.StorageKind == PortablePdbStorageKind.Embedded
-                            ? DebugModuleSymbolKind.EmbeddedPortablePdb
-                            : DebugModuleSymbolKind.PortablePdb;
-                        symbolPath = symbols.Path;
-                    }
-                }
-                catch (Exception exception) when (
-                    exception is IOException or UnauthorizedAccessException or
-                        BadImageFormatException)
-                {
-                }
-            }
-
-            return new DebugModuleInfo(
+            EnsureSymbolsInspected(module);
+            result.Add(new DebugModuleInfo(
                 module.Id,
                 module.Path is null
                     ? $"Dynamic module {module.Id}"
                     : Path.GetFileName(module.Path),
                 module.Path,
-                symbolKind,
-                symbolPath);
-        }).ToArray();
+                module.SymbolKind,
+                module.SymbolPath,
+                module.IsOptimized,
+                module.OptimizationDiagnostic));
+        }
+
+        return result;
     }
 
     /// <summary>

@@ -46,6 +46,13 @@ Exception filter conditions accept comma-separated managed exception type
 names. Each name matches that exact type and its derived exception types. Plain
 stage filters and conditional stage filters are additive.
 
+Set `suppressJITOptimizations` to `true` for a launch to request unoptimized JIT
+code for modules with validated Portable PDBs. The default is `false`, and the
+setting does not apply to attach because CoreCLR permits the change only while a
+module is loading. The `modules` response reports `isOptimized` when the runtime
+can determine it and appends a diagnostic to `symbolStatus` when a request could
+not be honored.
+
 ## Security and process ownership
 
 - Target commands are executed directly without a command shell.

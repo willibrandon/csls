@@ -44,7 +44,8 @@ public sealed partial class DebuggerControlService :
                 Environment = request.Environment,
                 RuntimeHostPath = request.RuntimeHostPath,
                 SourceFileMap = request.SourceFileMap,
-                SourceLinkOptions = request.SourceLinkOptions
+                SourceLinkOptions = request.SourceLinkOptions,
+                SuppressJitOptimizations = request.SuppressJitOptimizations
             },
             cancellationToken).ConfigureAwait(false);
         return GetSnapshot();

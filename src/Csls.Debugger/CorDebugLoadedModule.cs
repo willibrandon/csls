@@ -1,3 +1,5 @@
+using Csls.Debugger.Contracts;
+
 namespace Csls.Debugger;
 
 /// <summary>
@@ -24,4 +26,29 @@ internal sealed class CorDebugLoadedModule
     /// Gets the owned canonical IUnknown identity pointer.
     /// </summary>
     internal required nint Identity { get; init; }
+
+    /// <summary>
+    /// Gets the validated symbol format discovered when the module loaded.
+    /// </summary>
+    internal DebugModuleSymbolKind SymbolKind { get; set; }
+
+    /// <summary>
+    /// Gets the associated Portable PDB path when symbols are stored separately.
+    /// </summary>
+    internal string? SymbolPath { get; set; }
+
+    /// <summary>
+    /// Gets or sets whether symbol discovery has completed for this module.
+    /// </summary>
+    internal bool SymbolsInspected { get; set; }
+
+    /// <summary>
+    /// Gets whether the runtime permits optimized JIT code, when known.
+    /// </summary>
+    internal bool? IsOptimized { get; init; }
+
+    /// <summary>
+    /// Gets a bounded diagnostic when the requested JIT policy could not be established.
+    /// </summary>
+    internal string? OptimizationDiagnostic { get; init; }
 }

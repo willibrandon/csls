@@ -41,4 +41,9 @@ public sealed class DebuggeeLaunchOptions
     /// </summary>
     public IReadOnlyDictionary<string, bool> SourceLinkOptions { get; init; } =
         new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Gets whether the debugger requests unoptimized JIT code for symbol-bearing modules.
+    /// </summary>
+    public bool SuppressJitOptimizations { get; init; }
 }

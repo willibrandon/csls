@@ -8,9 +8,13 @@ namespace Csls.Debugger.Contracts;
 /// <param name="Path">The absolute module path when the runtime exposes one.</param>
 /// <param name="SymbolKind">The validated loaded symbol format.</param>
 /// <param name="SymbolPath">The associated Portable PDB path when available.</param>
+/// <param name="IsOptimized">Whether the runtime permits optimized JIT code, when known.</param>
+/// <param name="OptimizationDiagnostic">A bounded JIT-policy diagnostic when one exists.</param>
 public sealed record DebugModuleInfo(
     int Id,
     string Name,
     string? Path,
     DebugModuleSymbolKind SymbolKind,
-    string? SymbolPath);
+    string? SymbolPath,
+    bool? IsOptimized,
+    string? OptimizationDiagnostic);

@@ -18,6 +18,7 @@ internal sealed partial class SourceBreakpointManager : IDisposable
     private readonly Dictionary<nint, CorDebugLoadedModule> _modules = [];
     private int _nextBreakpointId;
     private int _nextModuleId;
+    private bool _suppressJitOptimizations;
     private int _disposed;
 
     /// <summary>
@@ -119,12 +120,24 @@ internal sealed partial class SourceBreakpointManager : IDisposable
 
         nint identity = ComAbi.QueryInterface(module, s_iUnknownInterfaceId);
         _ = ComAbi.AddRef(module);
+        string? modulePath = GetModulePath(module);
+        (DebugModuleSymbolKind symbolKind, string? symbolPath) = _suppressJitOptimizations
+            ? InspectSymbols(modulePath)
+            : (DebugModuleSymbolKind.None, null);
+        (bool? isOptimized, string? optimizationDiagnostic) = ConfigureJitPolicy(
+            module,
+            symbolKind != DebugModuleSymbolKind.None);
         var loadedModule = new CorDebugLoadedModule
         {
             Id = checked(++_nextModuleId),
-            Path = GetModulePath(module),
+            Path = modulePath,
             Pointer = module,
-            Identity = identity
+            Identity = identity,
+            SymbolKind = symbolKind,
+            SymbolPath = symbolPath,
+            SymbolsInspected = _suppressJitOptimizations,
+            IsOptimized = isOptimized,
+            OptimizationDiagnostic = optimizationDiagnostic
         };
         if (!_modules.TryAdd(identity, loadedModule))
         {
