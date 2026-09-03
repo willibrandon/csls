@@ -53,6 +53,26 @@ public interface IDebuggerControlTarget
         CancellationToken cancellationToken);
 
     /// <summary>
+    /// Replaces the complete managed exception breakpoint policy.
+    /// </summary>
+    /// <param name="request">The complete replacement policy.</param>
+    /// <param name="cancellationToken">Cancels exception policy configuration.</param>
+    /// <returns>A task that completes after the policy is applied.</returns>
+    Task SetExceptionBreakpointsAsync(
+        DebugExceptionBreakpointSetRequest request,
+        CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Gets the managed exception responsible for the current stop.
+    /// </summary>
+    /// <param name="request">The selected managed thread.</param>
+    /// <param name="cancellationToken">Cancels exception inspection.</param>
+    /// <returns>The current managed exception details.</returns>
+    Task<DebugExceptionInfo> GetExceptionInfoAsync(
+        DebugExceptionInfoRequest request,
+        CancellationToken cancellationToken);
+
+    /// <summary>
     /// Pauses the target.
     /// </summary>
     /// <param name="cancellationToken">Cancels the request.</param>

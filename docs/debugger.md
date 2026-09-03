@@ -72,6 +72,12 @@ runtime module bindings, and reset when the client replaces that breakpoint.
 Invalid hit conditions produce an unverified breakpoint with a diagnostic
 message; they do not fail unrelated breakpoints in the same request.
 
+Each advertised exception stage accepts a DAP filter condition containing one
+or more comma-separated managed exception type names. A name matches both an
+exact thrown type and any exception derived from that base type. Multiple plain
+filters and conditional filter options are additive, and replacing the request
+atomically replaces the complete exception policy.
+
 ## Runtime and symbol requirements
 
 The target must run CoreCLR and match the host architecture. Source breakpoints,

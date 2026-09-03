@@ -42,6 +42,10 @@ Source and function breakpoints accept `hitCondition` values of `N`, `>=N`, or
 logical breakpoint and reset when the client replaces it. An invalid value is
 reported as an unverified breakpoint without rejecting other breakpoints.
 
+Exception filter conditions accept comma-separated managed exception type
+names. Each name matches that exact type and its derived exception types. Plain
+stage filters and conditional stage filters are additive.
+
 ## Security and process ownership
 
 - Target commands are executed directly without a command shell.

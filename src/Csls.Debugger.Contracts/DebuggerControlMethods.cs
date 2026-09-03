@@ -36,6 +36,16 @@ public static class DebuggerControlMethods
     public const string SetFunctionBreakpoints = "debugger/setFunctionBreakpoints";
 
     /// <summary>
+    /// Replaces the complete managed exception breakpoint policy.
+    /// </summary>
+    public const string SetExceptionBreakpoints = "debugger/setExceptionBreakpoints";
+
+    /// <summary>
+    /// Gets the managed exception responsible for the current stop.
+    /// </summary>
+    public const string GetExceptionInfo = "debugger/getExceptionInfo";
+
+    /// <summary>
     /// Pauses the managed target.
     /// </summary>
     public const string Pause = "debugger/pause";

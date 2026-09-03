@@ -7,18 +7,35 @@ namespace Csls.Debugger;
 /// </summary>
 public sealed partial class DebuggerSession
 {
+    private readonly List<DebugExceptionBreakpoint> _exceptionBreakpoints =
+        [DebugExceptionBreakpoint.Create(
+            new DebugExceptionBreakpointRequest(DebugExceptionBreakMode.Unhandled, []))];
+    private PendingDebugStop? _pendingStop;
+    private DebugExceptionInfo? _currentException;
+    private int? _currentExceptionThreadId;
+
     /// <summary>
-    /// Replaces the managed exception stages that should stop execution.
+    /// Replaces the complete managed exception breakpoint policy.
     /// </summary>
-    /// <param name="breakModes">The complete replacement exception-stage set.</param>
+    /// <param name="request">The complete replacement exception policy.</param>
     /// <param name="cancellationToken">Cancels queueing exception configuration.</param>
     /// <returns>A task that completes after configuration is applied.</returns>
-    public Task SetExceptionBreakModesAsync(
-        IReadOnlyCollection<DebugExceptionBreakMode> breakModes,
+    public Task SetExceptionBreakpointsAsync(
+        DebugExceptionBreakpointSetRequest request,
         CancellationToken cancellationToken)
     {
         ObjectDisposedException.ThrowIf(_disposed != 0, this);
-        ArgumentNullException.ThrowIfNull(breakModes);
+        ArgumentNullException.ThrowIfNull(request);
+        ArgumentNullException.ThrowIfNull(request.Breakpoints);
+        if (request.Breakpoints.Count > 256)
+        {
+            throw new ArgumentException(
+                "A debugger session accepts at most 256 exception breakpoint filters.",
+                nameof(request));
+        }
+
+        DebugExceptionBreakpoint[] breakpoints =
+            [.. request.Breakpoints.Select(DebugExceptionBreakpoint.Create)];
         return _actor.InvokeAsync(
             token =>
             {
@@ -29,11 +46,8 @@ public sealed partial class DebuggerSession
                         $"Exception breakpoints cannot be changed while the debugger session is {_state}.");
                 }
 
-                _exceptionBreakModes.Clear();
-                foreach (DebugExceptionBreakMode breakMode in breakModes)
-                {
-                    _ = _exceptionBreakModes.Add(breakMode);
-                }
+                _exceptionBreakpoints.Clear();
+                _exceptionBreakpoints.AddRange(breakpoints);
 
                 return ValueTask.CompletedTask;
             },
@@ -83,12 +97,19 @@ public sealed partial class DebuggerSession
             DebugExceptionStage.Unhandled => DebugExceptionBreakMode.Unhandled,
             _ => throw new ArgumentOutOfRangeException(nameof(stage))
         };
-        if (!_exceptionBreakModes.Contains(breakMode))
+        if (!_exceptionBreakpoints.Any(breakpoint => breakpoint.BreakMode == breakMode))
         {
             return false;
         }
 
-        string exceptionId = CorDebugExceptionInspector.GetTypeName(thread);
+        IReadOnlyList<string> typeHierarchy = CorDebugExceptionInspector.GetTypeHierarchy(thread);
+        if (!_exceptionBreakpoints.Any(
+            breakpoint => breakpoint.Matches(breakMode, typeHierarchy)))
+        {
+            return false;
+        }
+
+        string exceptionId = typeHierarchy[0];
         var exception = new DebugExceptionInfo(
             exceptionId,
             DescribeException(exceptionId, breakMode),

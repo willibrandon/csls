@@ -10,18 +10,18 @@ namespace Csls.Debugger;
 /// </summary>
 internal static class CorDebugExceptionInspector
 {
+    private const int MaximumHierarchyDepth = 256;
+
     /// <summary>
-    /// Gets the fully qualified type name of the thread's current exception.
+    /// Gets the exact managed exception type followed by its base types.
     /// </summary>
     /// <param name="thread">The borrowed ICorDebugThread pointer.</param>
-    /// <returns>The managed exception type name.</returns>
-    internal static unsafe string GetTypeName(nint thread)
+    /// <returns>The ordered managed exception type hierarchy.</returns>
+    internal static unsafe IReadOnlyList<string> GetTypeHierarchy(nint thread)
     {
         ArgumentOutOfRangeException.ThrowIfZero(thread);
         nint value = 0;
-        nint exactType = 0;
-        nint @class = 0;
-        nint module = 0;
+        nint currentType = 0;
         try
         {
             nint* valueAddress = &value;
@@ -32,25 +32,54 @@ internal static class CorDebugExceptionInspector
             if (value == 0 ||
                 !ComAbi.TryQueryInterface(value, ICorDebugValue2Abi.InterfaceId, out nint value2))
             {
-                return "<unknown exception>";
+                return ["<unknown exception>"];
             }
 
             try
             {
-                nint* exactTypeAddress = &exactType;
+                nint* exactTypeAddress = &currentType;
                 CorDebugHResult.ThrowIfFailed(
                     new ICorDebugValue2Abi(value2).GetExactType((nint)exactTypeAddress),
                     "ICorDebugValue2.GetExactType");
-                exactType = Volatile.Read(ref *exactTypeAddress);
+                currentType = Volatile.Read(ref *exactTypeAddress);
             }
             finally
             {
                 _ = ComAbi.Release(value2);
             }
 
+            var result = new List<string>();
+            while (currentType != 0 && result.Count < MaximumHierarchyDepth)
+            {
+                result.Add(ReadTypeName(currentType));
+                nint baseType = 0;
+                nint* baseTypeAddress = &baseType;
+                CorDebugHResult.ThrowIfFailed(
+                    new ICorDebugTypeAbi(currentType).GetBase((nint)baseTypeAddress),
+                    "ICorDebugType.GetBase");
+                baseType = Volatile.Read(ref *baseTypeAddress);
+                _ = ComAbi.Release(currentType);
+                currentType = baseType;
+            }
+
+            return result.Count == 0 ? ["<unknown exception>"] : result;
+        }
+        finally
+        {
+            Release(currentType);
+            Release(value);
+        }
+    }
+
+    private static unsafe string ReadTypeName(nint type)
+    {
+        nint @class = 0;
+        nint module = 0;
+        try
+        {
             nint* classAddress = &@class;
             CorDebugHResult.ThrowIfFailed(
-                new ICorDebugTypeAbi(exactType).GetClass((nint)classAddress),
+                new ICorDebugTypeAbi(type).GetClass((nint)classAddress),
                 "ICorDebugType.GetClass");
             @class = Volatile.Read(ref *classAddress);
             nint* moduleAddress = &module;
@@ -64,18 +93,16 @@ internal static class CorDebugExceptionInspector
                 new ICorDebugClassAbi(@class).GetToken((nint)tokenAddress),
                 "ICorDebugClass.GetToken");
             token = Volatile.Read(ref *tokenAddress);
-            return ReadTypeName(CorDebugModulePath.Get(module), token);
+            return ReadMetadataTypeName(CorDebugModulePath.Get(module), token);
         }
         finally
         {
             Release(module);
             Release(@class);
-            Release(exactType);
-            Release(value);
         }
     }
 
-    private static string ReadTypeName(string modulePath, uint token)
+    private static string ReadMetadataTypeName(string modulePath, uint token)
     {
         using FileStream stream = File.Open(
             modulePath,
@@ -91,7 +118,19 @@ internal static class CorDebugExceptionInspector
         }
 
         TypeDefinition definition = reader.GetTypeDefinition((TypeDefinitionHandle)handle);
+        return GetMetadataTypeName(reader, (TypeDefinitionHandle)handle);
+    }
+
+    private static string GetMetadataTypeName(MetadataReader reader, TypeDefinitionHandle handle)
+    {
+        TypeDefinition definition = reader.GetTypeDefinition(handle);
         string name = reader.GetString(definition.Name);
+        TypeDefinitionHandle declaringType = definition.GetDeclaringType();
+        if (!declaringType.IsNil)
+        {
+            return $"{GetMetadataTypeName(reader, declaringType)}+{name}";
+        }
+
         string @namespace = reader.GetString(definition.Namespace);
         return string.IsNullOrEmpty(@namespace) ? name : $"{@namespace}.{name}";
     }

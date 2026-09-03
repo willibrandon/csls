@@ -29,6 +29,11 @@ if (args is ["--debugger-exception-fixture", string exceptionFixturePath])
     return DebuggerExceptionFixture.Run(exceptionFixturePath);
 }
 
+if (args is ["--debugger-exception-filter-fixture", string exceptionFilterFixturePath])
+{
+    return DebuggerExceptionFilterFixture.Run(exceptionFilterFixturePath);
+}
+
 if (args is ["--print-environment-and-exit", string printedVariable, string exitCode])
 {
     await Console.Out.WriteAsync(

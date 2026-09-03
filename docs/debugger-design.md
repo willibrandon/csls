@@ -141,7 +141,6 @@ handling and can never share the adapter's protocol stdout. On Unix, a dedicated
 blocking `waitpid` owner starts before runtime activation. It preserves the direct
 child's real signed exit status before CoreCLR's polling transport can reap it;
 CoreCLR then observes `ECHILD` and uses its documented process-existence path.
-
 ICorDebug projections are generated from the current public IDL and checked into
 the repository for offline builds. Source-generated COM and `LibraryImport` are
 used where supported; ABI-sensitive interfaces use generated unmanaged vtables.
@@ -233,6 +232,10 @@ method context, and never claims success for a partial move.
 Exception policy is compiled from DAP filters and exception options. First-chance,
 user-unhandled, and unhandled events remain distinct. Exception information is
 available only for the corresponding stopped generation.
+Conditional stage filters accept comma-separated managed type names and match
+against the exact runtime exception type and its bounded base-type hierarchy.
+Plain stage filters and conditional stage filters are additive; each replacement
+request atomically replaces the complete policy.
 
 ## Symbols and source
 
