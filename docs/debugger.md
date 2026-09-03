@@ -159,13 +159,13 @@ code. Handles for frames, scopes, and variables are valid only for the stop at
 which they were returned.
 
 DAP `evaluate` selects expression syntax from the selected frame's PDB language
-identity. C# and Visual Basic expressions are parsed in a lazy per-session managed
-compiler worker, lowered to a bounded versioned IR, and bound to current-generation
-runtime values in the debugger engine. Locals, arguments, `this`/`Me`, literals,
-instance fields, array indexes, built-in unary and binary operators, short-circuit
-Boolean operations, and conditional expressions do not execute target code. F#
-and unknown Portable-PDB languages currently use the portable CLR subset for
-locals, arguments, fields, and array indexes.
+identity. C#, Visual Basic, and F# expressions are parsed in a lazy per-session
+managed compiler worker, lowered to a bounded versioned IR, and bound to
+current-generation runtime values in the debugger engine. Locals, arguments,
+`this`/`Me`, literals, instance fields, array indexes, built-in unary and binary
+operators, short-circuit Boolean operations, and conditional expressions do not
+execute target code. Unknown Portable-PDB languages use the portable CLR subset
+for locals, arguments, fields, and array indexes.
 
 The frame is explicit when supplied; otherwise the adapter uses the selected
 stopped thread's top managed frame. The same generation-bound operation is

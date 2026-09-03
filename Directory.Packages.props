@@ -1,12 +1,15 @@
 <Project>
   <PropertyGroup>
     <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+    <FSharpCompilerServiceVersion>43.12.400</FSharpCompilerServiceVersion>
     <RoslynVersion>5.9.0</RoslynVersion>
     <SourceGeneratorRoslynVersion>5.0.0</SourceGeneratorRoslynVersion>
   </PropertyGroup>
 
   <ItemGroup>
     <PackageVersion Include="BenchmarkDotNet" Version="0.15.8" />
+    <PackageVersion Include="FSharp.Compiler.Service"
+                    Version="$(FSharpCompilerServiceVersion)" />
     <PackageVersion Include="Hex1b" Version="0.165.0" />
     <PackageVersion Include="Microsoft.Build" Version="18.9.6" />
     <PackageVersion Include="Microsoft.Build.Framework" Version="18.9.6" />

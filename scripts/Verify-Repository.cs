@@ -266,6 +266,7 @@ static void VerifyDependencies(string repositoryRoot, ICollection<string> failur
 {
     string[] approvedCorePrefixes =
     [
+        "FSharp.Compiler.Service",
         "Hex1b",
         "Microsoft.AspNetCore.Razor",
         "Microsoft.Bcl",

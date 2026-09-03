@@ -13,10 +13,11 @@ open System.Threading
 [<EntryPoint>]
 let main arguments =
     let mutable answer = Int32.Parse(arguments[1], CultureInfo.InvariantCulture)
+    let numbers = [| answer; answer + 1 |]
     answer <- answer + 1
     Console.Write(arguments[2])
     Console.Out.Flush()
     while not (File.Exists(arguments[0])) do
         Thread.SpinWait(10_000)
 
-    answer - 42
+    answer + numbers[0] - 83

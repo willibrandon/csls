@@ -36,11 +36,12 @@ public sealed partial class DebuggerSession
 
         DebugExpressionPlan plan = language switch
         {
-            DebugExpressionLanguage.CSharp or DebugExpressionLanguage.VisualBasic =>
+            DebugExpressionLanguage.CSharp or DebugExpressionLanguage.VisualBasic or
+            DebugExpressionLanguage.FSharp =>
                 await _evaluator.CompileAsync(
                     new DebugExpressionCompileRequest(language, expression),
                     cancellationToken).ConfigureAwait(false),
-            DebugExpressionLanguage.Common or DebugExpressionLanguage.FSharp =>
+            DebugExpressionLanguage.Common =>
                 ManagedSideEffectFreeExpressionParser.Parse(expression, language),
             _ => throw new InvalidOperationException(
                 $"Expression language {language} is unavailable.")

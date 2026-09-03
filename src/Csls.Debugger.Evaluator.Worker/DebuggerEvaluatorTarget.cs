@@ -1,4 +1,5 @@
 using Csls.Debugger.Contracts;
+using Csls.Debugger.Evaluator.FSharp;
 
 namespace Csls.Debugger.Evaluator.Worker;
 
@@ -15,14 +16,17 @@ internal sealed class DebuggerEvaluatorTarget : IDebuggerEvaluatorTarget
         ArgumentNullException.ThrowIfNull(request);
         ArgumentException.ThrowIfNullOrWhiteSpace(request.Expression);
         cancellationToken.ThrowIfCancellationRequested();
-        DebugExpressionPlan result = request.Language switch
+        return request.Language switch
         {
-            DebugExpressionLanguage.CSharp => CSharpExpressionLowerer.Bind(request.Expression),
+            DebugExpressionLanguage.CSharp => Task.FromResult(
+                CSharpExpressionLowerer.Bind(request.Expression)),
             DebugExpressionLanguage.VisualBasic =>
-                VisualBasicExpressionLowerer.Bind(request.Expression),
+                Task.FromResult(VisualBasicExpressionLowerer.Bind(request.Expression)),
+            DebugExpressionLanguage.FSharp => FSharpExpressionLowerer.BindAsync(
+                request.Expression,
+                cancellationToken),
             _ => throw new NotSupportedException(
                 $"The managed evaluator worker does not bind {request.Language} expressions.")
         };
-        return Task.FromResult(result);
     }
 }

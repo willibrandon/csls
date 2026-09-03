@@ -20,5 +20,6 @@
   <ItemGroup>
     <ProjectReference Include="../Csls.Debugger.Contracts/Csls.Debugger.Contracts.csproj" />
     <ProjectReference Include="../Csls.Debugger.Evaluation/Csls.Debugger.Evaluation.csproj" />
+    <ProjectReference Include="../Csls.Debugger.Evaluator.FSharp/Csls.Debugger.Evaluator.FSharp.fsproj" />
   </ItemGroup>
 </Project>
