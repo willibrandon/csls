@@ -68,6 +68,15 @@ internal sealed class DebuggerFixtureValue
     internal int LengthForDebugger(string value) => value.Length + Number - 42;
 
     /// <summary>
+    /// Returns the combined length of two debugger-materialized strings.
+    /// </summary>
+    /// <param name="first">The first string supplied by managed function evaluation.</param>
+    /// <param name="second">The second string supplied by managed function evaluation.</param>
+    /// <returns>The combined length of both strings.</returns>
+    internal int CombinedLengthForDebugger(string first, string second) =>
+        first.Length + second.Length + Number - 42;
+
+    /// <summary>
     /// Tests whether a debugger-supplied reference is this receiver.
     /// </summary>
     /// <param name="value">The runtime reference supplied by managed function evaluation.</param>

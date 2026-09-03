@@ -21,3 +21,10 @@ type internal DebuggerFixtureValue(number: int) =
     /// <param name="value">The value supplied by managed function evaluation.</param>
     /// <returns>The stored number plus the supplied value.</returns>
     member internal _.AddNumber(value: int) = number + value
+
+    /// <summary>
+    /// Returns the length of a debugger-materialized string.
+    /// </summary>
+    /// <param name="value">The string supplied by managed function evaluation.</param>
+    /// <returns>The supplied string length.</returns>
+    member internal _.StringLength(value: string) = value.Length + number - 41

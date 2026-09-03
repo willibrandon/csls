@@ -120,26 +120,51 @@ public sealed partial class DapSessionTests
             AssertEvent(stringArgumentInvalidated.RootElement, "invalidated");
 
             frame = await GetFixtureFrameAsync(client).ConfigureAwait(false);
-            JsonElement unsupportedArgument = await ReadEvaluationAsync(
+            JsonElement literalStringArgument = await ReadEvaluationAsync(
                 client,
                 frame.GetProperty("id").GetInt32(),
                 "localObject.LengthForDebugger(\"answer!\")",
-                success: false,
-                TestContext.CancellationToken).ConfigureAwait(false);
-            Assert.Contains(
-                "string arguments",
-                unsupportedArgument.GetProperty("message").GetString()!,
-                StringComparison.OrdinalIgnoreCase);
-            JsonElement afterUnsupportedArgument = await ReadEvaluationAsync(
-                client,
-                frame.GetProperty("id").GetInt32(),
-                "localObject.Number",
                 success: true,
                 TestContext.CancellationToken).ConfigureAwait(false);
             Assert.AreEqual(
-                "42",
-                afterUnsupportedArgument.GetProperty("result").GetString());
+                "7",
+                literalStringArgument.GetProperty("result").GetString());
+            using JsonDocument literalStringInvalidated = await client
+                .ReadMessageAsync(TestContext.CancellationToken)
+                .ConfigureAwait(false);
+            AssertEvent(literalStringInvalidated.RootElement, "invalidated");
 
+            frame = await GetFixtureFrameAsync(client).ConfigureAwait(false);
+            JsonElement computedStringArgument = await ReadEvaluationAsync(
+                client,
+                frame.GetProperty("id").GetInt32(),
+                "localObject.LengthForDebugger(\"answer\" + \"!\")",
+                success: true,
+                TestContext.CancellationToken).ConfigureAwait(false);
+            Assert.AreEqual(
+                "7",
+                computedStringArgument.GetProperty("result").GetString());
+            using JsonDocument computedStringInvalidated = await client
+                .ReadMessageAsync(TestContext.CancellationToken)
+                .ConfigureAwait(false);
+            AssertEvent(computedStringInvalidated.RootElement, "invalidated");
+
+            frame = await GetFixtureFrameAsync(client).ConfigureAwait(false);
+            JsonElement multipleStringArguments = await ReadEvaluationAsync(
+                client,
+                frame.GetProperty("id").GetInt32(),
+                "localObject.CombinedLengthForDebugger(\"a\\0\", \"bc\")",
+                success: true,
+                TestContext.CancellationToken).ConfigureAwait(false);
+            Assert.AreEqual(
+                "4",
+                multipleStringArguments.GetProperty("result").GetString());
+            using JsonDocument multipleStringInvalidated = await client
+                .ReadMessageAsync(TestContext.CancellationToken)
+                .ConfigureAwait(false);
+            AssertEvent(multipleStringInvalidated.RootElement, "invalidated");
+
+            frame = await GetFixtureFrameAsync(client).ConfigureAwait(false);
             JsonElement argumentEvaluation = await ReadEvaluationAsync(
                 client,
                 frame.GetProperty("id").GetInt32(),
@@ -274,6 +299,30 @@ public sealed partial class DapSessionTests
                 },
                 TestContext.CancellationToken).ConfigureAwait(false);
             await WaitForSignalAsync(waitPath + ".evaluation").ConfigureAwait(false);
+            int concurrentEvaluationSequence = await client.SendRequestAsync(
+                "evaluate",
+                writer =>
+                {
+                    writer.WriteStartObject();
+                    writer.WriteString("expression", "localObject.Number");
+                    writer.WriteNumber("frameId", frame.GetProperty("id").GetInt32());
+                    writer.WriteString("context", "watch");
+                    writer.WriteEndObject();
+                },
+                TestContext.CancellationToken).ConfigureAwait(false);
+            using JsonDocument concurrentEvaluation = await client
+                .ReadMessageAsync(TestContext.CancellationToken)
+                .ConfigureAwait(false);
+            AssertResponse(
+                concurrentEvaluation.RootElement,
+                concurrentEvaluationSequence,
+                "evaluate",
+                success: false);
+            Assert.Contains(
+                "still in progress",
+                concurrentEvaluation.RootElement.GetProperty("message").GetString()!,
+                StringComparison.OrdinalIgnoreCase);
+
             int cancelSequence = await client.SendRequestAsync(
                 "cancel",
                 writer =>

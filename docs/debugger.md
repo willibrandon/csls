@@ -186,9 +186,11 @@ tool. Both reject every expression that could execute target code. DAP `evaluate
 and the separate private `debugger/executeExpression` operation additionally accept
 explicitly qualified instance-method calls in C#, Visual Basic, and F# when CoreCLR
 permits function evaluation at the selected frame. Calls accept up to 64 arguments
-that bind to exact CLR primitive values, null, or retained runtime object and array
-references. Method binding follows the exact runtime type and its inherited base types,
-including methods implemented in another loaded assembly. Optimized methods,
+that bind to exact CLR primitive values, null, retained runtime object and array
+references, or literal and side-effect-free computed strings. String arguments are
+allocated inside the target with their exact length, including embedded NUL characters.
+Method binding follows the exact runtime type and its inherited base types, including
+methods implemented in another loaded assembly. Optimized methods,
 prologs, native frames, GC-unsafe points, and other runtime-restricted locations
 return the CoreCLR failure instead of attempting a less safe evaluation.
 
@@ -199,13 +201,11 @@ DAP advertises request cancellation; cancellation and deadline expiry use
 to `RudeAbort`. A call result, thrown exception, or cooperative abort invalidates
 the client's stack and variable handles because target code may allocate, collect,
 or mutate state. If cooperative abort cannot restore a trustworthy stop, the
-session faults and must be disconnected. String literals and computed strings that
-would require a separate target allocation, unsupported value-type arguments,
-overload sets that exact metadata parameter identities cannot select uniquely, static
-methods, constructors, assignments, properties, user-defined operators, and implicit
-`ToString` execution are rejected. Live string references from the stopped target are
-accepted. Variables include `evaluateName` only when csls can provide a valid source
-expression for the value.
+session faults and must be disconnected. Unsupported value-type arguments, overload
+sets that exact metadata parameter identities cannot select uniquely, static methods,
+constructors, assignments, properties, user-defined operators, and implicit `ToString`
+execution are rejected. Variables include `evaluateName` only when csls can provide a
+valid source expression for the value.
 
 Assemblies loaded from PE and Portable PDB byte arrays receive the same source
 breakpoint, stack, local-name, stepping, goto, disassembly, and managed-IL

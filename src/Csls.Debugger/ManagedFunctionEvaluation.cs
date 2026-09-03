@@ -8,14 +8,34 @@ namespace Csls.Debugger;
 internal sealed class ManagedFunctionEvaluation
 {
     /// <summary>
-    /// Gets or initializes the owned ICorDebugEval pointer.
+    /// Gets or sets the owned ICorDebugEval pointer for the active stage.
     /// </summary>
-    internal required nint Pointer { get; init; }
+    internal required nint Pointer { get; set; }
 
     /// <summary>
-    /// Gets or initializes the stop generation in which the evaluation began.
+    /// Gets or initializes the owned ICorDebugFunction pointer for the final call.
     /// </summary>
-    internal required DebugStopGeneration Generation { get; init; }
+    internal required nint Function { get; init; }
+
+    /// <summary>
+    /// Gets or initializes the owned ICorDebugThread pointer selected for evaluation.
+    /// </summary>
+    internal required nint Thread { get; init; }
+
+    /// <summary>
+    /// Gets or initializes the owned strong-handle receiver passed to the final call.
+    /// </summary>
+    internal required nint Receiver { get; init; }
+
+    /// <summary>
+    /// Gets or initializes the bound debugger values for user-supplied arguments.
+    /// </summary>
+    internal required ManagedExpressionValue[] Arguments { get; init; }
+
+    /// <summary>
+    /// Gets or initializes owned strong handles for runtime and materialized arguments.
+    /// </summary>
+    internal required nint[] RuntimeArguments { get; init; }
 
     /// <summary>
     /// Gets or initializes the managed thread selected for target execution.
@@ -37,4 +57,14 @@ internal sealed class ManagedFunctionEvaluation
     /// Gets or sets whether cooperative cancellation requested ICorDebugEval.Abort.
     /// </summary>
     internal bool AbortRequested { get; set; }
+
+    /// <summary>
+    /// Gets or sets the string argument being materialized by the active stage.
+    /// </summary>
+    internal int PendingStringArgumentIndex { get; set; } = -1;
+
+    /// <summary>
+    /// Gets or sets whether the final user method call has been scheduled.
+    /// </summary>
+    internal bool MethodCallScheduled { get; set; }
 }

@@ -32,5 +32,14 @@ Namespace Global.Csls.Debugger.Fixtures.VisualBasic
         Friend Function AddNumber(value As Integer) As Integer
             Return Number + value
         End Function
+
+        ''' <summary>
+        ''' Returns the length of a debugger-materialized string.
+        ''' </summary>
+        ''' <param name="value">The string supplied by managed function evaluation.</param>
+        ''' <returns>The supplied string length.</returns>
+        Friend Function StringLength(value As String) As Integer
+            Return value.Length + Number - 41
+        End Function
     End Class
 End Namespace

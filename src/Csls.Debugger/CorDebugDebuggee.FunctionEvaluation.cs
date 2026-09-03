@@ -38,7 +38,7 @@ internal sealed partial class CorDebugDebuggee
     /// <param name="plan">The validated invocation expression.</param>
     /// <param name="generation">The stop generation that owns the frame.</param>
     /// <returns>The result completed by the matching CoreCLR evaluation callback.</returns>
-    internal unsafe Task<DebugEvaluateResult> BeginFunctionEvaluationAsync(
+    internal Task<DebugEvaluateResult> BeginFunctionEvaluationAsync(
         int frameId,
         DebugExpressionPlan plan,
         DebugStopGeneration generation)
@@ -103,9 +103,10 @@ internal sealed partial class CorDebugDebuggee
         nint function = 0;
         nint thread = 0;
         nint evaluation = 0;
+        nint receiverHandle = 0;
+        nint[] runtimeArguments = new nint[argumentCount];
         bool callbackEvaluationActive = false;
         bool callScheduled = false;
-        List<nint> temporaryArguments = [];
         string setupPhase = "resolving the invocation receiver";
         try
         {
@@ -127,42 +128,42 @@ internal sealed partial class CorDebugDebuggee
             setupPhase = "creating the CoreCLR evaluation";
             thread = GetThread(frame.ThreadId);
             evaluation = CreateEvaluation(thread);
+            receiverHandle = CreateFunctionEvaluationHandle(receiverValue);
+            for (int index = 0; index < suppliedArguments.Length; index++)
+            {
+                if (suppliedArguments[index].Display.VariablesReference > 0)
+                {
+                    runtimeArguments[index] = CreateFunctionEvaluationHandle(
+                        GetRuntimeValue(suppliedArguments[index]));
+                }
+            }
+
             Dictionary<int, int> threadStates = [];
             var active = new ManagedFunctionEvaluation
             {
                 Pointer = evaluation,
-                Generation = generation,
+                Function = function,
+                Thread = thread,
+                Receiver = receiverHandle,
+                Arguments = suppliedArguments,
+                RuntimeArguments = runtimeArguments,
                 ThreadId = frame.ThreadId,
                 ThreadStates = threadStates
             };
             _activeFunctionEvaluation = active;
             evaluation = 0;
+            function = 0;
+            thread = 0;
+            receiverHandle = 0;
+            runtimeArguments = [];
             SuspendOtherThreads(frame.ThreadId, threadStates);
             _managedCallback.BeginFunctionEvaluation();
             callbackEvaluationActive = true;
 
-            setupPhase = "starting the CoreCLR method call";
-            nint[] arguments = new nint[checked(argumentCount + 1)];
-            arguments[0] = receiverValue;
-            for (int index = 0; index < suppliedArguments.Length; index++)
-            {
-                arguments[index + 1] = CreateFunctionArgument(
-                    active.Pointer,
-                    suppliedArguments[index],
-                    temporaryArguments);
-            }
-
-            int callResult;
-            fixed (nint* argumentsAddress = arguments)
-            {
-                callResult = new ICorDebugEvalAbi(active.Pointer).CallFunction(
-                    function,
-                    checked((uint)arguments.Length),
-                    (nint)argumentsAddress);
-            }
-
-            ThrowIfFunctionEvaluationUnavailable(callResult);
+            setupPhase = "starting the CoreCLR evaluation";
+            ScheduleNextFunctionEvaluationStage(active);
             callScheduled = true;
+            ClearFrameHandles();
             CorDebugHResult.ThrowIfFailed(
                 new ICorDebugControllerAbi(_debugProcess).Continue(fIsOutOfBand: 0),
                 "ICorDebugController.Continue");
@@ -198,7 +199,7 @@ internal sealed partial class CorDebugDebuggee
                     }
                     finally
                     {
-                        _ = ComAbi.Release(active.Pointer);
+                        ReleaseFunctionEvaluationResources(active);
                     }
                 }
             }
@@ -216,9 +217,14 @@ internal sealed partial class CorDebugDebuggee
         }
         finally
         {
-            foreach (nint temporaryArgument in temporaryArguments)
+            foreach (nint runtimeArgument in runtimeArguments)
             {
-                _ = ComAbi.Release(temporaryArgument);
+                ReleaseFunctionEvaluationHandle(runtimeArgument);
+            }
+
+            if (receiverHandle != 0)
+            {
+                ReleaseFunctionEvaluationHandle(receiverHandle);
             }
 
             if (evaluation != 0)
@@ -271,54 +277,76 @@ internal sealed partial class CorDebugDebuggee
             return false;
         }
 
+        Exception? stageFailure = null;
+        if (!active.MethodCallScheduled && !active.AbortRequested && !isException)
+        {
+            try
+            {
+                ContinueAfterStringMaterialization(active);
+                return true;
+            }
+            catch (Exception exception) when (
+                exception is ArgumentException or InvalidOperationException or IOException or
+                UnauthorizedAccessException or BadImageFormatException)
+            {
+                stageFailure = new InvalidOperationException(
+                    "Managed function evaluation failed while materializing a string " +
+                    $"argument: {exception.Message}",
+                    exception);
+            }
+        }
+
         _activeFunctionEvaluation = null;
         DebugEvaluateResult? result = null;
-        Exception? failure = null;
+        Exception? failure = stageFailure;
         nint value = 0;
         bool handlesCleared = false;
         try
         {
-            nint* valueAddress = &value;
-            CorDebugHResult.ThrowIfFailed(
-                new ICorDebugEvalAbi(evaluation).GetResult((nint)valueAddress),
-                "ICorDebugEval.GetResult");
-            value = Volatile.Read(ref *valueAddress);
             ClearFrameHandles();
             handlesCleared = true;
-            if (active.AbortRequested)
+            if (failure is null)
             {
-                failure = new OperationCanceledException(
-                    "Managed function evaluation was canceled cooperatively.");
-            }
-            else if (value == 0)
-            {
-                result = new DebugEvaluateResult(
-                    string.Empty,
-                    "void",
-                    VariablesReference: 0,
-                    MemoryReference: null,
-                    TargetCodeExecuted: true);
-            }
-            else
-            {
-                ManagedValueDisplay display = CorDebugValueFormatter.Format(value);
-                if (isException)
+                nint* valueAddress = &value;
+                CorDebugHResult.ThrowIfFailed(
+                    new ICorDebugEvalAbi(evaluation).GetResult((nint)valueAddress),
+                    "ICorDebugEval.GetResult");
+                value = Volatile.Read(ref *valueAddress);
+                if (active.AbortRequested)
                 {
-                    failure = new InvalidOperationException(
-                        $"Managed function evaluation threw {display.Type}: {display.Value}");
+                    failure = new OperationCanceledException(
+                        "Managed function evaluation was canceled cooperatively.");
+                }
+                else if (value == 0)
+                {
+                    result = new DebugEvaluateResult(
+                        string.Empty,
+                        "void",
+                        VariablesReference: 0,
+                        MemoryReference: null,
+                        TargetCodeExecuted: true);
                 }
                 else
                 {
-                    ManagedValueReferences references = RetainValue(
-                        value,
-                        resultGeneration,
-                        evaluateName: null);
-                    result = new DebugEvaluateResult(
-                        display.Value,
-                        display.Type,
-                        references.VariablesReference,
-                        references.MemoryReference,
-                        TargetCodeExecuted: true);
+                    ManagedValueDisplay display = CorDebugValueFormatter.Format(value);
+                    if (isException)
+                    {
+                        failure = new InvalidOperationException(
+                            $"Managed function evaluation threw {display.Type}: {display.Value}");
+                    }
+                    else
+                    {
+                        ManagedValueReferences references = RetainValue(
+                            value,
+                            resultGeneration,
+                            evaluateName: null);
+                        result = new DebugEvaluateResult(
+                            display.Value,
+                            display.Type,
+                            references.VariablesReference,
+                            references.MemoryReference,
+                            TargetCodeExecuted: true);
+                    }
                 }
             }
         }
@@ -366,7 +394,7 @@ internal sealed partial class CorDebugDebuggee
             finally
             {
                 _managedCallback.EndFunctionEvaluation();
-                _ = ComAbi.Release(active.Pointer);
+                ReleaseFunctionEvaluationResources(active);
             }
         }
 
@@ -434,7 +462,7 @@ internal sealed partial class CorDebugDebuggee
 
         _activeFunctionEvaluation = null;
         _managedCallback.EndFunctionEvaluation();
-        _ = ComAbi.Release(active.Pointer);
+        ReleaseFunctionEvaluationResources(active);
         _ = active.Completion.TrySetException(exception);
     }
 

@@ -377,8 +377,11 @@ safety uncertain faults mutation for the session and explains why.
 DAP may explicitly authorize target-code evaluation. The current call contract is
 an explicitly qualified instance method whose receiver and bounded arguments bind
 through the side-effect-free evaluator. Arguments may be exact CLR primitives, null,
-or retained runtime object and array references; unsupported argument materialization
-fails before execution. Exact metadata parameter identities select primitive overloads;
+retained runtime object and array references, or literal and side-effect-free computed
+strings. The engine materializes strings with length-preserving CoreCLR evaluations and
+holds pre-existing references through strong runtime handles across those stages;
+unsupported argument materialization fails before execution. Exact metadata parameter
+identities select primitive overloads;
 an overload set that cannot be selected uniquely fails before execution. The engine
 walks the exact `ICorDebugType` inheritance graph reported by CoreCLR, so inherited
 methods resolve through the target's actual loaded modules and generic base types rather

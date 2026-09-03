@@ -174,6 +174,26 @@ public sealed partial class DapSessionTests
                     stoppedThreadId,
                     sourcePath,
                     breakpointLine).ConfigureAwait(false);
+                JsonElement stringInvocation = await ReadEvaluationAsync(
+                    client,
+                    frameId,
+                    "value.StringLength(\"dotnet\")",
+                    success: true,
+                    TestContext.CancellationToken).ConfigureAwait(false);
+                Assert.AreEqual(
+                    "6",
+                    stringInvocation.GetProperty("result").GetString(),
+                    $"Unexpected {project} string function-evaluation result.");
+                using JsonDocument stringInvalidated = await client
+                    .ReadMessageAsync(TestContext.CancellationToken)
+                    .ConfigureAwait(false);
+                AssertEvent(stringInvalidated.RootElement, "invalidated");
+
+                frameId = await AssertStoppedFrameAsync(
+                    client,
+                    stoppedThreadId,
+                    sourcePath,
+                    breakpointLine).ConfigureAwait(false);
                 JsonElement afterInvocation = await ReadEvaluationAsync(
                     client,
                     frameId,

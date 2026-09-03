@@ -31,4 +31,11 @@ internal sealed class DebuggerFixtureValue
     /// <param name="value">The value supplied by managed function evaluation.</param>
     /// <returns>The stored number plus the supplied value.</returns>
     internal int AddNumber(int value) => Number + value;
+
+    /// <summary>
+    /// Returns the length of a debugger-materialized string.
+    /// </summary>
+    /// <param name="value">The string supplied by managed function evaluation.</param>
+    /// <returns>The supplied string length.</returns>
+    internal int StringLength(string value) => value.Length + Number - 41;
 }

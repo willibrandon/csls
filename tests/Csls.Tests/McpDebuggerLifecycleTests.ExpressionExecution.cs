@@ -25,7 +25,7 @@ public sealed partial class McpDebuggerLifecycleTests
             threadId,
             sourcePath,
             cancellationToken).ConfigureAwait(false);
-        JsonElement result = await CallAsync(
+        JsonElement primitiveResult = await CallAsync(
             client,
             "debug_execute_expression",
             new Dictionary<string, object?>
@@ -36,9 +36,41 @@ public sealed partial class McpDebuggerLifecycleTests
                 ["expression"] = "localObject.AddForDebugger(localNumber - 42)"
             },
             cancellationToken).ConfigureAwait(false);
-        Assert.AreEqual("43", result.GetProperty("evaluation").GetProperty("result").GetString());
-        Assert.IsTrue(result.GetProperty("evaluation").GetProperty("targetCodeExecuted").GetBoolean());
-        Assert.IsGreaterThan(generation, result.GetProperty("stopGeneration").GetInt64());
+        Assert.AreEqual(
+            "43",
+            primitiveResult.GetProperty("evaluation").GetProperty("result").GetString());
+        Assert.IsTrue(
+            primitiveResult
+                .GetProperty("evaluation")
+                .GetProperty("targetCodeExecuted")
+                .GetBoolean());
+        long primitiveGeneration = primitiveResult.GetProperty("stopGeneration").GetInt64();
+        Assert.IsGreaterThan(generation, primitiveGeneration);
+
+        frame = await GetSourceFrameAsync(
+            client,
+            debugSession,
+            primitiveGeneration,
+            threadId,
+            sourcePath,
+            cancellationToken).ConfigureAwait(false);
+        JsonElement stringResult = await CallAsync(
+            client,
+            "debug_execute_expression",
+            new Dictionary<string, object?>
+            {
+                ["debugSession"] = debugSession,
+                ["stopGeneration"] = primitiveGeneration,
+                ["frameId"] = frame.GetProperty("id").GetInt32(),
+                ["expression"] = "localObject.LengthForDebugger(\"answer!\")"
+            },
+            cancellationToken).ConfigureAwait(false);
+        Assert.AreEqual(
+            "7",
+            stringResult.GetProperty("evaluation").GetProperty("result").GetString());
+        Assert.IsGreaterThan(
+            primitiveGeneration,
+            stringResult.GetProperty("stopGeneration").GetInt64());
 
         await AssertToolErrorAsync(
             client,
@@ -57,7 +89,7 @@ public sealed partial class McpDebuggerLifecycleTests
             cancellationToken).ConfigureAwait(false);
         Assert.AreEqual("stopped", current.GetProperty("state").GetString());
         Assert.AreEqual(
-            result.GetProperty("stopGeneration").GetInt64(),
+            stringResult.GetProperty("stopGeneration").GetInt64(),
             current.GetProperty("stopGeneration").GetInt64());
         return await AssertExpressionCancellationAsync(
             client,

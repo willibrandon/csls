@@ -65,6 +65,7 @@ public sealed partial class DebuggerSession
                             frameId,
                             plan,
                             generation);
+                        _state = DebugSessionState.Running;
                     }
                     catch (Exception exception) when (
                         managedDebuggee.FunctionEvaluationSafetyFailure is string reason)

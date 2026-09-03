@@ -10,20 +10,19 @@ internal sealed partial class CorDebugDebuggee
     private unsafe nint CreateFunctionArgument(
         nint evaluation,
         ManagedExpressionValue argument,
+        nint runtimeArgument,
         List<nint> temporaryArguments)
     {
-        if (argument.Display.VariablesReference > 0)
+        if (argument.Display.VariablesReference > 0 ||
+            argument.HasScalar && argument.Scalar is string)
         {
-            return GetRuntimeValue(argument);
+            return runtimeArgument != 0
+                ? runtimeArgument
+                : throw new InvalidOperationException(
+                    $"Function argument '{argument.Display.Name}' has no retained runtime value.");
         }
 
         object? scalar = ManagedExpressionValueFactory.RequireScalar(argument);
-        if (scalar is string)
-        {
-            throw new NotSupportedException(
-                "Managed function evaluation does not yet materialize string arguments.");
-        }
-
         uint elementType = GetFunctionArgumentElementType(argument.Display.Type, scalar);
         nint value = 0;
         nint* valueAddress = &value;
@@ -159,4 +158,61 @@ internal sealed partial class CorDebugDebuggee
         CorDebugHResult.ThrowIfFailed(
             new ICorDebugGenericValueAbi(generic).SetValue((nint)value),
             "ICorDebugGenericValue.SetValue");
+
+    private static unsafe nint CreateFunctionEvaluationHandle(nint value)
+    {
+        nint dereferenced = 0;
+        nint heapValue = 0;
+        nint handle = 0;
+        try
+        {
+            dereferenced = DereferenceValue(value);
+            heapValue = ComAbi.QueryInterface(
+                dereferenced,
+                ICorDebugHeapValue2Abi.InterfaceId);
+            nint* handleAddress = &handle;
+            int createResult = new ICorDebugHeapValue2Abi(heapValue).CreateHandle(
+                type: 1,
+                (nint)handleAddress);
+            handle = Volatile.Read(ref *handleAddress);
+            if (createResult < 0)
+            {
+                if (handle != 0)
+                {
+                    ReleaseFunctionEvaluationHandle(handle);
+                }
+
+                CorDebugHResult.ThrowIfFailed(
+                    createResult,
+                    "ICorDebugHeapValue2.CreateHandle");
+            }
+
+            return RequirePointer(
+                Volatile.Read(ref *handleAddress),
+                "ICorDebugHeapValue2.CreateHandle");
+        }
+        finally
+        {
+            if (heapValue != 0)
+            {
+                _ = ComAbi.Release(heapValue);
+            }
+
+            if (dereferenced != 0)
+            {
+                _ = ComAbi.Release(dereferenced);
+            }
+        }
+    }
+
+    private static void ReleaseFunctionEvaluationHandle(nint handle)
+    {
+        if (handle == 0)
+        {
+            return;
+        }
+
+        _ = new ICorDebugHandleValueAbi(handle).Dispose();
+        _ = ComAbi.Release(handle);
+    }
 }

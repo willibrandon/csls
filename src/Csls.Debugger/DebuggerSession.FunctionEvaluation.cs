@@ -129,6 +129,12 @@ public sealed partial class DebuggerSession
             {
                 _state = DebugSessionState.Faulted;
             }
+            else
+            {
+                _state = managedDebuggee.IsFunctionEvaluationActive
+                    ? DebugSessionState.Running
+                    : DebugSessionState.Stopped;
+            }
         }
 
         return ValueTask.FromResult(recognized);
