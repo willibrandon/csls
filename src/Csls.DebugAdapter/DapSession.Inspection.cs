@@ -13,9 +13,18 @@ internal sealed partial class DapSession
         Request request,
         CancellationToken cancellationToken)
     {
-        if (_state != DapSessionState.Stopped)
+        if (_state is not DapSessionState.Running and not DapSessionState.Stopped)
         {
             await WriteStateFailureAsync(request, cancellationToken).ConfigureAwait(false);
+            return;
+        }
+
+        if (_state == DapSessionState.Running)
+        {
+            await WriteThreadsResponseAsync(
+                request,
+                [],
+                cancellationToken).ConfigureAwait(false);
             return;
         }
 
@@ -35,7 +44,14 @@ internal sealed partial class DapSession
             return;
         }
 
-        await _writer.WriteResponseAsync(
+        await WriteThreadsResponseAsync(request, threads, cancellationToken).ConfigureAwait(false);
+    }
+
+    private ValueTask WriteThreadsResponseAsync(
+        Request request,
+        IReadOnlyList<DebugThreadInfo> threads,
+        CancellationToken cancellationToken) =>
+        _writer.WriteResponseAsync(
             request,
             success: true,
             message: null,
@@ -54,8 +70,7 @@ internal sealed partial class DapSession
                 writer.WriteEndArray();
                 writer.WriteEndObject();
             },
-            cancellationToken).ConfigureAwait(false);
-    }
+            cancellationToken);
 
     private async ValueTask WriteModulesAsync(
         Request request,

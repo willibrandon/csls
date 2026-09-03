@@ -12,8 +12,9 @@ worker, so C# language features remain available in virtual workspaces without a
 local .NET installation.
 
 The Testing view discovers and runs Microsoft Testing Platform projects. Debugging
-uses Microsoft's .NET debugger and installs its verified platform package when it is
-first needed.
+launches the bundled `csls debugger dap` adapter directly; it never downloads or
+discovers another debugger. The adapter supports managed launch and attach, source
+breakpoints, stepping, stacks, modules, arguments, locals, fields, and arrays.
 
 Disable the C# and C# Dev Kit extensions before enabling csls so only one C#
 language client owns each document. Open a C# project, solution, or file-based app

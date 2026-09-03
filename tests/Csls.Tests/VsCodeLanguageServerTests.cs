@@ -60,10 +60,6 @@ public sealed class VsCodeLanguageServerTests
             repositoryRoot,
             "vscode-dotnet-runtime",
             platformSpecific: false);
-        string csharpExtensionPath = EditorToolResolver.ResolveVsCodeExtension(
-            repositoryRoot,
-            "vscode-csharp",
-            platformSpecific: true);
         string runId = Guid.NewGuid().ToString("N")[..16];
         string fixturePath = Path.Join(Path.GetTempPath(), $"cv-shutdown-{runId}");
         string workspacePath = Path.Join(fixturePath, "workspace");
@@ -79,13 +75,9 @@ public sealed class VsCodeLanguageServerTests
         {
             string settingsPath = Path.Join(userDataPath, "User", "settings.json");
             Directory.CreateDirectory(Path.GetDirectoryName(settingsPath)!);
-            string debuggerPath = await VsCodeDebuggerFixture.ExtractAsync(
-                csharpExtensionPath,
-                Path.Join(fixturePath, "debugger"),
-                TestContext.CancellationToken).ConfigureAwait(false);
             await File.WriteAllTextAsync(
                 settingsPath,
-                CreateSettingsText(debuggerPath, EditorToolResolver.ResolveAbsoluteDotNetHost()),
+                CreateSettingsText(EditorToolResolver.ResolveAbsoluteDotNetHost()),
                 TestContext.CancellationToken).ConfigureAwait(false);
             await File.WriteAllTextAsync(
                 Path.Join(workspacePath, "Fixture.slnx"),
@@ -221,10 +213,6 @@ public sealed class VsCodeLanguageServerTests
             repositoryRoot,
             "vscode-dotnet-runtime",
             platformSpecific: false);
-        string csharpExtensionPath = EditorToolResolver.ResolveVsCodeExtension(
-            repositoryRoot,
-            "vscode-csharp",
-            platformSpecific: true);
         string remoteServerRoot = EditorToolResolver.ResolveVsCodeRemoteServerRoot(repositoryRoot);
 
         string runId = Guid.NewGuid().ToString("N")[..16];
@@ -239,13 +227,9 @@ public sealed class VsCodeLanguageServerTests
             Directory.CreateDirectory(remoteDataPath);
             string settingsPath = Path.Join(userDataPath, "User", "settings.json");
             Directory.CreateDirectory(Path.GetDirectoryName(settingsPath)!);
-            string debuggerPath = await VsCodeDebuggerFixture.ExtractAsync(
-                csharpExtensionPath,
-                Path.Join(fixturePath, "debugger"),
-                TestContext.CancellationToken).ConfigureAwait(false);
             await File.WriteAllTextAsync(
                 settingsPath,
-                CreateSettingsText(debuggerPath, EditorToolResolver.ResolveAbsoluteDotNetHost()),
+                CreateSettingsText(EditorToolResolver.ResolveAbsoluteDotNetHost()),
                 TestContext.CancellationToken).ConfigureAwait(false);
             string extensionPath = await VsCodeExtensionPackage.GetAsync(
                 repositoryRoot,
@@ -303,10 +287,6 @@ public sealed class VsCodeLanguageServerTests
             repositoryRoot,
             "vscode-dotnet-runtime",
             platformSpecific: false);
-        string csharpExtensionPath = EditorToolResolver.ResolveVsCodeExtension(
-            repositoryRoot,
-            "vscode-csharp",
-            platformSpecific: true);
         string? remoteServerRoot = remote
             ? EditorToolResolver.ResolveVsCodeRemoteServerRoot(repositoryRoot)
             : null;
@@ -331,13 +311,9 @@ public sealed class VsCodeLanguageServerTests
             Directory.CreateDirectory(remoteDataPath);
             string settingsPath = Path.Join(userDataPath, "User", "settings.json");
             Directory.CreateDirectory(Path.GetDirectoryName(settingsPath)!);
-            string debuggerPath = await VsCodeDebuggerFixture.ExtractAsync(
-                csharpExtensionPath,
-                Path.Join(fixturePath, "debugger"),
-                TestContext.CancellationToken).ConfigureAwait(false);
             await File.WriteAllTextAsync(
                 settingsPath,
-                CreateSettingsText(debuggerPath, EditorToolResolver.ResolveAbsoluteDotNetHost()),
+                CreateSettingsText(EditorToolResolver.ResolveAbsoluteDotNetHost()),
                 TestContext.CancellationToken).ConfigureAwait(false);
             await File.WriteAllTextAsync(
                 Path.Join(sourceProjectPath, "Fixture.csproj"),
@@ -847,10 +823,9 @@ public sealed class VsCodeLanguageServerTests
         }
     }
 
-    private static string CreateSettingsText(string debuggerPath, string dotNetHostPath) => $$"""
+    private static string CreateSettingsText(string dotNetHostPath) => $$"""
         {
           "chat.disableAIFeatures": true,
-          "csls.debugger.path": {{JsonSerializer.Serialize(debuggerPath)}},
           "csls.diagnostics.reportInformationAsHint": false,
           "dotnetAcquisitionExtension.allowInvalidPaths": true,
           "dotnetAcquisitionExtension.sharedExistingDotnetPath": {{JsonSerializer.Serialize(dotNetHostPath)}},

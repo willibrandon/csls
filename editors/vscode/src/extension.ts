@@ -75,10 +75,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<CslsEx
   const watchers = createFileWatchers(context);
   client = createLanguageClient(serverPath, runtimePath, watchers);
   const debuggerProvider = new DebuggerProvider(
-    context,
     serverPath,
     runtimePath,
-    outputChannel,
   );
   workspaceExperience = new WorkspaceExperience(sdkPath, outputChannel);
   registerCSharpVirtualDocumentProvider(context, () => client);

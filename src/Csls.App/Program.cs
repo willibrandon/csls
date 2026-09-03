@@ -13,35 +13,9 @@ lspCommand.SetAction(
     static (_, cancellationToken) => WorkerSupervisor.RunAsync(cancellationToken));
 rootCommand.Subcommands.Add(lspCommand);
 
-var debuggerOutputOption = new Option<string>("--output")
-{
-    Description = "Private directory used to store the verified debugger.",
-    HelpName = "directory",
-    Required = true
-};
-var debuggerArchiveOption = new Option<string?>("--archive")
-{
-    Description = "Use a previously downloaded official debugger archive.",
-    HelpName = "path"
-};
-var debuggerInstallCommand = new Command(
-    "install",
-    "Install the verified Microsoft .NET debugger for the active platform.")
-{
-    debuggerOutputOption,
-    debuggerArchiveOption
-};
-debuggerInstallCommand.SetAction((parseResult, cancellationToken) =>
-    DebuggerInstaller.InstallAsync(
-        parseResult.GetRequiredValue(debuggerOutputOption),
-        parseResult.GetValue(debuggerArchiveOption),
-        cancellationToken));
 var debuggerCommand = new Command(
     "debugger",
-    "Manage native .NET debugging and editor debugger integration.")
-{
-    debuggerInstallCommand
-};
+    "Run native .NET debugging and editor debugger integration.");
 var debuggerDapCommand = new Command(
     "dap",
     "Run the csls Debug Adapter Protocol host over standard I/O.");

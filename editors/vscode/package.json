@@ -227,12 +227,6 @@
           "scope": "machine-overridable",
           "description": "Absolute path to a csls executable. Leave empty to use the server included with the extension."
         },
-        "csls.debugger.path": {
-          "type": "string",
-          "default": "",
-          "scope": "machine-overridable",
-          "description": "Absolute path to vsdbg. Leave empty to download the verified Microsoft debugger when it is first used."
-        },
         "csls.enableAnalyzers": {
           "type": "boolean",
           "default": true,
@@ -306,9 +300,11 @@
     "debuggers": [
       {
         "type": "coreclr",
-        "label": ".NET",
+        "label": ".NET (csls)",
         "languages": [
           "csharp",
+          "fsharp",
+          "vb",
           "razor"
         ],
         "configurationAttributes": {
@@ -340,6 +336,19 @@
               "stopAtEntry": {
                 "type": "boolean",
                 "default": false
+              }
+            }
+          },
+          "attach": {
+            "type": "object",
+            "required": [
+              "processId"
+            ],
+            "properties": {
+              "processId": {
+                "type": "integer",
+                "minimum": 1,
+                "description": "Operating-system process identifier for a running .NET process."
               }
             }
           }

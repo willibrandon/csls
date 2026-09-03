@@ -1,0 +1,80 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": ".NET (csls)",
+  "type": "object",
+  "required": [
+    "request"
+  ],
+  "properties": {
+    "request": {
+      "type": "string",
+      "enum": [
+        "launch",
+        "attach"
+      ]
+    },
+    "program": {
+      "type": "string",
+      "description": "Absolute path to the managed executable or assembly."
+    },
+    "cwd": {
+      "type": "string",
+      "description": "Working directory for the launched application."
+    },
+    "args": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "default": []
+    },
+    "env": {
+      "type": "object",
+      "additionalProperties": {
+        "type": [
+          "string",
+          "null"
+        ]
+      }
+    },
+    "processId": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Operating-system process identifier for attachment."
+    },
+    "stopAtEntry": {
+      "type": "boolean",
+      "default": false
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "request": {
+            "const": "launch"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "program"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "request": {
+            "const": "attach"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "processId"
+        ]
+      }
+    }
+  ]
+}
