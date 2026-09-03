@@ -96,6 +96,34 @@ public sealed partial class McpDebuggerLifecycleTests
         Assert.Contains(
             "csls://debug/output/{debugSession}{?afterSequence,count}",
             templateUris);
+        Assert.Contains(
+            "csls://debug/threads/{debugSession}/{stopGeneration}",
+            templateUris);
+        Assert.Contains(
+            "csls://debug/stack/{debugSession}/{stopGeneration}/{threadId}{?startFrame,levels}",
+            templateUris);
+        Assert.Contains(
+            "csls://debug/scopes/{debugSession}/{stopGeneration}/{frameId}",
+            templateUris);
+        Assert.Contains(
+            "csls://debug/variables/{debugSession}/{stopGeneration}/{variablesReference}{?start,count}",
+            templateUris);
+        Assert.Contains(
+            "csls://debug/modules/{debugSession}{?startModule,moduleCount}",
+            templateUris);
+        Assert.Contains(
+            "csls://debug/exception/{debugSession}/{stopGeneration}/{threadId}",
+            templateUris);
+        Assert.Contains(
+            "csls://debug/source/{debugSession}/{stopGeneration}/{sourceReference}{?start,count}",
+            templateUris);
+        Assert.Contains(
+            "csls://debug/memory/{debugSession}/{stopGeneration}{?memoryReference,offset,count}",
+            templateUris);
+        Assert.Contains(
+            "csls://debug/disassembly/{debugSession}/{stopGeneration}" +
+                "{?instructionReference,byteOffset,instructionOffset,instructionCount,resolveSymbols}",
+            templateUris);
         string[] promptNames = [.. prompts.Select(static prompt => prompt.Name)];
         Assert.Contains("diagnose_dotnet_debugger_failure", promptNames);
         Assert.Contains("plan_dotnet_breakpoints", promptNames);

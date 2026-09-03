@@ -47,7 +47,8 @@ per MCP connection. Debugger lifecycle calls return an opaque `debugSession`;
 debugger tools use that identifier instead of a language-workspace selector.
 Read-only tools inspect generation-bound threads, stacks, scopes, variables, and
 bounded module, source, memory, managed-IL, and cursor-addressable target-output
-pages. Session and output resource templates expose the same selected state to
+pages. Resource templates expose the same selected session, output, thread,
+stack, scope, variable, module, exception, source, memory, and managed-IL state to
 resource-oriented clients. Breakpoint replacement,
 pause, continue, step, and go-to require the session's explicit `agentControl`
 grant and reject stale stopped-state handles. See the

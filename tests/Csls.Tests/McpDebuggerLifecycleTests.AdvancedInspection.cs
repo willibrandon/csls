@@ -36,6 +36,14 @@ public sealed partial class McpDebuggerLifecycleTests
         byte[] bytes = Convert.FromBase64String(memory.GetProperty("data").GetString()!);
         Assert.HasCount(12, bytes);
         Assert.AreEqual(0, memory.GetProperty("unreadableBytes").GetInt32());
+        JsonElement memoryResource = await ReadAsync(
+            client,
+            $"csls://debug/memory/{debugSession}/{generation}?memoryReference=" +
+                $"{Uri.EscapeDataString(memoryReference)}&count=12",
+            cancellationToken).ConfigureAwait(false);
+        Assert.HasCount(
+            12,
+            Convert.FromBase64String(memoryResource.GetProperty("data").GetString()!));
 
         string instructionReference = frame.GetProperty("instructionReference")
             .GetString()!;
@@ -51,6 +59,14 @@ public sealed partial class McpDebuggerLifecycleTests
             },
             cancellationToken).ConfigureAwait(false);
         Assert.HasCount(8, disassembly.GetProperty("instructions").EnumerateArray());
+        JsonElement disassemblyResource = await ReadAsync(
+            client,
+            $"csls://debug/disassembly/{debugSession}/{generation}?instructionReference=" +
+                $"{Uri.EscapeDataString(instructionReference)}&instructionCount=8",
+            cancellationToken).ConfigureAwait(false);
+        Assert.HasCount(
+            8,
+            disassemblyResource.GetProperty("instructions").EnumerateArray());
 
         JsonElement stepTargets = await CallAsync(
             client,

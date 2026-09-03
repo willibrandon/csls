@@ -256,10 +256,23 @@ worker does not advertise tools that it cannot run.
   `afterSequence` cursor. Responses identify retention gaps with
   `droppedBeforeStart` and advertise additional retained entries with `hasMore`.
 
-The `csls://debug/session/{debugSession}` resource returns current lifecycle and
-stop-generation state. The
-`csls://debug/output/{debugSession}{?afterSequence,count}` resource exposes the
-same bounded output stream for clients that compose resources into their context.
+Debugger resource templates expose the same explicit, bounded projections for
+clients that compose resources into their context:
+
+- `csls://debug/session/{debugSession}`
+- `csls://debug/output/{debugSession}{?afterSequence,count}`
+- `csls://debug/threads/{debugSession}/{stopGeneration}`
+- `csls://debug/stack/{debugSession}/{stopGeneration}/{threadId}{?startFrame,levels}`
+- `csls://debug/scopes/{debugSession}/{stopGeneration}/{frameId}`
+- `csls://debug/variables/{debugSession}/{stopGeneration}/{variablesReference}{?start,count}`
+- `csls://debug/modules/{debugSession}{?startModule,moduleCount}`
+- `csls://debug/exception/{debugSession}/{stopGeneration}/{threadId}`
+- `csls://debug/source/{debugSession}/{stopGeneration}/{sourceReference}{?start,count}`
+- `csls://debug/memory/{debugSession}/{stopGeneration}{?memoryReference,offset,count}`
+- `csls://debug/disassembly/{debugSession}/{stopGeneration}{?instructionReference,byteOffset,instructionOffset,instructionCount,resolveSymbols}`
+
+Stopped-state resources require the exact current generation just like their tool
+counterparts, so a URI cannot silently resolve handles against a later stop.
 
 Three read-first prompts are advertised with the debugger worker:
 `diagnose_dotnet_debugger_failure`, `plan_dotnet_breakpoints`, and

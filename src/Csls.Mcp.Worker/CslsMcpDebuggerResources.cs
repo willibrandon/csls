@@ -11,7 +11,7 @@ namespace Csls.Mcp.Worker;
 /// Exposes explicit debugger session and output state as MCP resource templates.
 /// </summary>
 [McpServerResourceType]
-internal sealed class CslsMcpDebuggerResources
+internal sealed partial class CslsMcpDebuggerResources
 {
     private const string SessionTemplate = "csls://debug/session/{debugSession}";
     private const string OutputTemplate =
@@ -120,5 +120,54 @@ internal sealed class CslsMcpDebuggerResources
         }
 
         return (int)parsed;
+    }
+
+    private static int ParseInt(string? value, int defaultValue, string name)
+    {
+        long parsed = Parse(value, defaultValue, name);
+        if (parsed > int.MaxValue)
+        {
+            throw InvalidResourceArgument(name);
+        }
+
+        return (int)parsed;
+    }
+
+    private static long ParseSigned(string? value, long defaultValue, string name)
+    {
+        if (value is null)
+        {
+            return defaultValue;
+        }
+
+        if (!long.TryParse(
+            value,
+            NumberStyles.AllowLeadingSign,
+            CultureInfo.InvariantCulture,
+            out long result))
+        {
+            throw new McpDebuggerException(
+                "debugger_request_invalid",
+                $"{name} must be an integer.");
+        }
+
+        return result;
+    }
+
+    private static bool ParseBoolean(string? value, bool defaultValue, string name)
+    {
+        if (value is null)
+        {
+            return defaultValue;
+        }
+
+        if (!bool.TryParse(value, out bool result))
+        {
+            throw new McpDebuggerException(
+                "debugger_request_invalid",
+                $"{name} must be true or false.");
+        }
+
+        return result;
     }
 }

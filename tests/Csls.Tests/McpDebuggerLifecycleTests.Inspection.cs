@@ -34,7 +34,6 @@ public sealed partial class McpDebuggerLifecycleTests
             stoppedThreadId,
             threads.GetProperty("threads").EnumerateArray()
                 .Select(static thread => thread.GetProperty("id").GetInt32()));
-
         JsonElement stack = await CallAsync(
             client,
             "debug_stack_get",
@@ -91,6 +90,17 @@ public sealed partial class McpDebuggerLifecycleTests
         Assert.AreEqual(
             "portablePdb",
             programModule.GetProperty("symbolKind").GetString());
+
+        await AssertInspectionResourcesAsync(
+            client,
+            debugSession,
+            generation,
+            stoppedThreadId,
+            frame.GetProperty("id").GetInt32(),
+            locals.GetProperty("variablesReference").GetInt32(),
+            sourcePath,
+            programPath,
+            cancellationToken).ConfigureAwait(false);
 
         await AssertOutputAsync(
             client,

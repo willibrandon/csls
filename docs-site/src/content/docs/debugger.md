@@ -161,9 +161,11 @@ its bundled debugger worker is available:
 - `debug_output_get` pages retained stdout and stderr after a stable sequence
   cursor and reports any gap caused by bounded retention.
 
-Clients can also read current state from
-`csls://debug/session/{debugSession}` and output pages from
-`csls://debug/output/{debugSession}{?afterSequence,count}`.
+Clients can also read the same selected state through `csls://debug/` resource
+templates for session state, output, threads, stacks, scopes, variables, modules,
+exceptions, source, memory, and managed-IL disassembly. Every stopped-state URI
+carries the exact `stopGeneration`, and bounded collections expose their cursor
+or paging inputs in the URI template.
 
 The `diagnose_dotnet_debugger_failure`, `plan_dotnet_breakpoints`, and
 `explain_dotnet_debugger_state` prompts use explicit session identity and
