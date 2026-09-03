@@ -106,9 +106,12 @@ internal sealed class McpDebuggerSubscriptions
             return false;
         }
 
+        string path = new Uri(uri).AbsolutePath;
         return change.Kind.HasFlag(DebuggerResourceChangeKind.Session) ||
             change.Kind.HasFlag(DebuggerResourceChangeKind.Output) &&
-            new Uri(uri).AbsolutePath.StartsWith("/output/", StringComparison.Ordinal);
+            path.StartsWith("/output/", StringComparison.Ordinal) ||
+            change.Kind.HasFlag(DebuggerResourceChangeKind.Breakpoints) &&
+            path.StartsWith("/breakpoints/", StringComparison.Ordinal);
     }
 
     private static bool TryGetSession(string value, out string session)
@@ -133,7 +136,7 @@ internal sealed class McpDebuggerSubscriptions
     }
 
     private static bool IsResourceGroup(string value) => value is
-        "session" or "output" or "threads" or "stack" or "scopes" or
+        "session" or "output" or "breakpoints" or "threads" or "stack" or "scopes" or
         "variables" or "modules" or "exception" or "source" or "memory" or
         "disassembly";
 

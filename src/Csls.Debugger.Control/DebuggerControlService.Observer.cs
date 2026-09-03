@@ -31,10 +31,7 @@ public sealed partial class DebuggerControlService
     {
         cancellationToken.ThrowIfCancellationRequested();
         _output.Add(category, output);
-        ResourceChanged?.Invoke(this, new DebuggerResourceChangeEventArgs
-        {
-            Kind = DebuggerResourceChangeKind.Output
-        });
+        NotifyResourceChanged(DebuggerResourceChangeKind.Output);
         return ValueTask.CompletedTask;
     }
 
@@ -68,6 +65,7 @@ public sealed partial class DebuggerControlService
     {
         _ = breakpoint;
         cancellationToken.ThrowIfCancellationRequested();
+        NotifyResourceChanged(DebuggerResourceChangeKind.Breakpoints);
         return ValueTask.CompletedTask;
     }
 

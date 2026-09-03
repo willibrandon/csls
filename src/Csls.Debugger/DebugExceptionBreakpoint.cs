@@ -61,6 +61,14 @@ internal sealed class DebugExceptionBreakpoint
         BreakMode == breakMode &&
         (_exceptionTypeNames.Count == 0 || typeHierarchy.Any(_exceptionTypeNames.Contains));
 
+    /// <summary>
+    /// Creates the normalized transport-safe policy represented by this breakpoint.
+    /// </summary>
+    /// <returns>The immutable managed-exception policy.</returns>
+    internal DebugExceptionBreakpointRequest ToRequest() => new(
+        BreakMode,
+        _exceptionTypeNames.Order(StringComparer.Ordinal).ToArray());
+
     private static string NormalizeTypeName(string name)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(name);

@@ -46,7 +46,11 @@ public sealed partial class McpDebuggerLifecycleTests
                 ["sourcePath"] = sourcePath,
                 ["breakpoints"] = new[]
                 {
-                    new Dictionary<string, object?> { ["line"] = frame.GetProperty("line").GetInt32() }
+                    new Dictionary<string, object?>
+                    {
+                        ["line"] = frame.GetProperty("line").GetInt32(),
+                        ["hitCondition"] = ">=1"
+                    }
                 }
             },
             cancellationToken).ConfigureAwait(false);
@@ -64,7 +68,8 @@ public sealed partial class McpDebuggerLifecycleTests
                 {
                     new Dictionary<string, object?>
                     {
-                        ["name"] = "Csls.TestProcessHost.DebuggerFixture.WaitForSignal"
+                        ["name"] = "Csls.TestProcessHost.DebuggerFixture.WaitForSignal",
+                        ["hitCondition"] = "%2"
                     }
                 }
             },
@@ -84,7 +89,8 @@ public sealed partial class McpDebuggerLifecycleTests
                     new Dictionary<string, object?>
                     {
                         ["instructionReference"] = frame
-                            .GetProperty("instructionReference").GetString()
+                            .GetProperty("instructionReference").GetString(),
+                        ["hitCondition"] = "1"
                     }
                 }
             },
@@ -92,26 +98,37 @@ public sealed partial class McpDebuggerLifecycleTests
         Assert.IsTrue(instructions.GetProperty("breakpoints")[0]
             .GetProperty("verified").GetBoolean());
 
-        JsonElement exceptions = await CallAsync(
+        JsonElement exceptions = await AssertResourceSubscriptionAsync(
             client,
-            "debug_exception_breakpoints_set",
-            new Dictionary<string, object?>
-            {
-                ["debugSession"] = debugSession,
-                ["stopGeneration"] = generation,
-                ["breakpoints"] = new[]
+            $"csls://debug/breakpoints/{debugSession}",
+            () => CallAsync(
+                client,
+                "debug_exception_breakpoints_set",
+                new Dictionary<string, object?>
                 {
-                    new Dictionary<string, object?>
+                    ["debugSession"] = debugSession,
+                    ["stopGeneration"] = generation,
+                    ["breakpoints"] = new[]
                     {
-                        ["breakMode"] = "thrown",
-                        ["exceptionTypeNames"] = s_invalidOperationExceptionType
+                        new Dictionary<string, object?>
+                        {
+                            ["breakMode"] = "thrown",
+                            ["exceptionTypeNames"] = s_invalidOperationExceptionType
+                        }
                     }
-                }
-            },
+                },
+                cancellationToken),
             cancellationToken).ConfigureAwait(false);
         Assert.AreEqual(
             "thrown",
             exceptions.GetProperty("breakpoints")[0].GetProperty("breakMode").GetString());
+
+        await AssertBreakpointInspectionAsync(
+            client,
+            debugSession,
+            generation,
+            sourcePath,
+            cancellationToken).ConfigureAwait(false);
 
         await ClearControlledBreakpointsAsync(
             client,

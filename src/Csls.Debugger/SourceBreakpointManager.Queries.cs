@@ -8,6 +8,19 @@ namespace Csls.Debugger;
 internal sealed partial class SourceBreakpointManager
 {
     /// <summary>
+    /// Gets every logical source breakpoint ordered by session-local identifier.
+    /// </summary>
+    internal IReadOnlyList<DebugSourceBreakpointInfo> GetBreakpoints()
+    {
+        ObjectDisposedException.ThrowIf(_disposed != 0, this);
+        return _definitions.Values
+            .SelectMany(static definitions => definitions)
+            .OrderBy(static definition => definition.Id)
+            .Select(static definition => definition.ToInfo())
+            .ToArray();
+    }
+
+    /// <summary>
     /// Determines whether a symbol document resolves to an absolute client source path.
     /// </summary>
     /// <param name="symbolPath">The path recorded in the Portable PDB.</param>

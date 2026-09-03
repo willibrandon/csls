@@ -24,6 +24,7 @@ namespace Csls.Mcp.Worker;
 [JsonSerializable(typeof(McpDebugFunctionBreakpoint))]
 [JsonSerializable(typeof(McpDebugInstructionBreakpoint))]
 [JsonSerializable(typeof(McpDebugExceptionBreakpoint))]
+[JsonSerializable(typeof(McpDebugBreakpointsResult))]
 [JsonSerializable(typeof(McpDebugSourceBreakpointsResult))]
 [JsonSerializable(typeof(McpDebugFunctionBreakpointsResult))]
 [JsonSerializable(typeof(McpDebugInstructionBreakpointsResult))]

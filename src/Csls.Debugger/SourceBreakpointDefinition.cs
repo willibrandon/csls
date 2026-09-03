@@ -59,7 +59,8 @@ internal sealed class SourceBreakpointDefinition
         ResolvedColumn ?? RequestedColumn,
         ValidationMessage ?? (ResolvedLine is null
             ? "The breakpoint is pending until a matching module and Portable PDB are loaded."
-            : null));
+            : null),
+        HitCondition?.Expression);
 
     /// <summary>
     /// Records one runtime hit and determines whether the target should stop.

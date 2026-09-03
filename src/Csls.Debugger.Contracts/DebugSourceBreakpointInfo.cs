@@ -9,10 +9,12 @@ namespace Csls.Debugger.Contracts;
 /// <param name="Line">The requested or resolved one-based source line.</param>
 /// <param name="Column">The requested or resolved one-based source column.</param>
 /// <param name="Message">An optional explanation when the breakpoint is not verified.</param>
+/// <param name="HitCondition">The normalized hit-count predicate when valid.</param>
 public sealed record DebugSourceBreakpointInfo(
     int Id,
     string SourcePath,
     bool Verified,
     int Line,
     int? Column,
-    string? Message);
+    string? Message,
+    string? HitCondition);

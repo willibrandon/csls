@@ -36,15 +36,18 @@ public sealed partial class DebuggerControlService :
     }
 
     /// <inheritdoc />
-    public Task<IReadOnlyList<DebugSourceBreakpointInfo>> SetSourceBreakpointsAsync(
+    public async Task<IReadOnlyList<DebugSourceBreakpointInfo>> SetSourceBreakpointsAsync(
         DebugSourceBreakpointSetRequest request,
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(request);
-        return _session.SetSourceBreakpointsAsync(
-            request.SourcePath,
-            request.Breakpoints,
-            cancellationToken);
+        IReadOnlyList<DebugSourceBreakpointInfo> result =
+            await _session.SetSourceBreakpointsAsync(
+                request.SourcePath,
+                request.Breakpoints,
+                cancellationToken).ConfigureAwait(false);
+        NotifyResourceChanged(DebuggerResourceChangeKind.Breakpoints);
+        return result;
     }
 
     /// <inheritdoc />
@@ -147,9 +150,9 @@ public sealed partial class DebuggerControlService :
             _snapshot = snapshot;
         }
 
-        ResourceChanged?.Invoke(this, new DebuggerResourceChangeEventArgs
-        {
-            Kind = DebuggerResourceChangeKind.Session
-        });
+        NotifyResourceChanged(DebuggerResourceChangeKind.Session);
     }
+
+    private void NotifyResourceChanged(DebuggerResourceChangeKind kind) =>
+        ResourceChanged?.Invoke(this, new DebuggerResourceChangeEventArgs { Kind = kind });
 }

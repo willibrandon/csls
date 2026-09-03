@@ -22,6 +22,7 @@ public sealed partial class McpDebuggerLifecycleTests
         "debug_scopes_get",
         "debug_variables_get",
         "debug_modules_get",
+        "debug_breakpoints_get",
         "debug_source_breakpoints_set",
         "debug_function_breakpoints_set",
         "debug_instruction_breakpoints_set",
@@ -78,6 +79,7 @@ public sealed partial class McpDebuggerLifecycleTests
         AssertAnnotations(tools, "debug_scopes_get", true, false, true, false);
         AssertAnnotations(tools, "debug_variables_get", true, false, true, false);
         AssertAnnotations(tools, "debug_modules_get", true, false, true, false);
+        AssertAnnotations(tools, "debug_breakpoints_get", true, false, true, false);
         AssertAnnotations(tools, "debug_source_breakpoints_set", false, true, true, true);
         AssertAnnotations(tools, "debug_function_breakpoints_set", false, true, true, true);
         AssertAnnotations(tools, "debug_instruction_breakpoints_set", false, true, true, true);
@@ -96,6 +98,7 @@ public sealed partial class McpDebuggerLifecycleTests
         Assert.Contains(
             "csls://debug/output/{debugSession}{?afterSequence,count}",
             templateUris);
+        Assert.Contains("csls://debug/breakpoints/{debugSession}", templateUris);
         Assert.Contains(
             "csls://debug/threads/{debugSession}/{stopGeneration}",
             templateUris);

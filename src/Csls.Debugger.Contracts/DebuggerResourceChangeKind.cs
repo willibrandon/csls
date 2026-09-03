@@ -14,5 +14,10 @@ public enum DebuggerResourceChangeKind
     /// <summary>
     /// New retained target output is available.
     /// </summary>
-    Output = 2
+    Output = 2,
+
+    /// <summary>
+    /// Breakpoint bindings or managed-exception policies changed.
+    /// </summary>
+    Breakpoints = 4
 }

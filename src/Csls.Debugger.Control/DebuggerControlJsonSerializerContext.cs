@@ -10,6 +10,7 @@ namespace Csls.Debugger.Control;
 [JsonSourceGenerationOptions(GenerationMode = JsonSourceGenerationMode.Metadata)]
 [JsonSerializable(typeof(CommonErrorData))]
 [JsonSerializable(typeof(DebugAttachRequest))]
+[JsonSerializable(typeof(DebugBreakpointSnapshot))]
 [JsonSerializable(typeof(DebugExceptionBreakpointRequest))]
 [JsonSerializable(typeof(DebugExceptionBreakpointSetRequest))]
 [JsonSerializable(typeof(DebugExceptionInfo))]

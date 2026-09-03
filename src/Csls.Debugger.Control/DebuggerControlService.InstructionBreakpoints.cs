@@ -8,13 +8,18 @@ namespace Csls.Debugger.Control;
 public sealed partial class DebuggerControlService
 {
     /// <inheritdoc />
-    public Task<IReadOnlyList<DebugInstructionBreakpointInfo>>
+    public async Task<IReadOnlyList<DebugInstructionBreakpointInfo>>
         SetInstructionBreakpointsAsync(
             DebugInstructionBreakpointSetRequest request,
             CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(request);
-        return _session.SetInstructionBreakpointsAsync(request.Breakpoints, cancellationToken);
+        IReadOnlyList<DebugInstructionBreakpointInfo> result =
+            await _session.SetInstructionBreakpointsAsync(
+                request.Breakpoints,
+                cancellationToken).ConfigureAwait(false);
+        NotifyResourceChanged(DebuggerResourceChangeKind.Breakpoints);
+        return result;
     }
 
     /// <inheritdoc />
@@ -24,6 +29,7 @@ public sealed partial class DebuggerControlService
     {
         _ = breakpoint;
         cancellationToken.ThrowIfCancellationRequested();
+        NotifyResourceChanged(DebuggerResourceChangeKind.Breakpoints);
         return ValueTask.CompletedTask;
     }
 }

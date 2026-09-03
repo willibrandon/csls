@@ -8,12 +8,14 @@ namespace Csls.Debugger.Control;
 public sealed partial class DebuggerControlService
 {
     /// <inheritdoc />
-    public Task SetExceptionBreakpointsAsync(
+    public async Task SetExceptionBreakpointsAsync(
         DebugExceptionBreakpointSetRequest request,
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(request);
-        return _session.SetExceptionBreakpointsAsync(request, cancellationToken);
+        await _session.SetExceptionBreakpointsAsync(request, cancellationToken)
+            .ConfigureAwait(false);
+        NotifyResourceChanged(DebuggerResourceChangeKind.Breakpoints);
     }
 
     /// <inheritdoc />

@@ -236,6 +236,9 @@ worker does not advertise tools that it cannot run.
   `debug_variables_get` inspect one exact stopped generation. Frame and variable
   handles expire as soon as execution resumes.
 - `debug_modules_get` returns a bounded module page and validated symbol status.
+- `debug_breakpoints_get` reads every authoritative source, function, managed-IL,
+  and managed-exception breakpoint without granting target control. Valid hit-count
+  predicates are returned in normalized form.
 - `debug_execution_control` pauses, continues, or source-steps a session.
   Execution control requires `agentControl: true`; continue and step also require
   the exact current `stopGeneration`, and step selects one managed thread and
@@ -261,6 +264,7 @@ clients that compose resources into their context:
 
 - `csls://debug/session/{debugSession}`
 - `csls://debug/output/{debugSession}{?afterSequence,count}`
+- `csls://debug/breakpoints/{debugSession}`
 - `csls://debug/threads/{debugSession}/{stopGeneration}`
 - `csls://debug/stack/{debugSession}/{stopGeneration}/{threadId}{?startFrame,levels}`
 - `csls://debug/scopes/{debugSession}/{stopGeneration}/{frameId}`
@@ -276,8 +280,9 @@ counterparts, so a URI cannot silently resolve handles against a later stop.
 Clients using the current MCP protocol can include exact debugger URIs in a
 `subscriptions/listen` request. csls acknowledges only resources owned by that MCP
 connection, then streams subscription-tagged `notifications/resources/updated`
-events from engine state and output notifications. The path is event-driven and
-does not poll the debug target. Legacy resource subscription RPCs are not exposed.
+events from engine state, output, and breakpoint-binding notifications. The path
+is event-driven and does not poll the debug target. Legacy resource subscription
+RPCs are not exposed.
 
 Three read-first prompts are advertised with the debugger worker:
 `diagnose_dotnet_debugger_failure`, `plan_dotnet_breakpoints`, and

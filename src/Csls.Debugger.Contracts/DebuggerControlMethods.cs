@@ -46,6 +46,11 @@ public static class DebuggerControlMethods
     public const string SetExceptionBreakpoints = "debugger/setExceptionBreakpoints";
 
     /// <summary>
+    /// Gets every configured breakpoint and managed-exception policy.
+    /// </summary>
+    public const string GetBreakpoints = "debugger/getBreakpoints";
+
+    /// <summary>
     /// Gets the managed exception responsible for the current stop.
     /// </summary>
     public const string GetExceptionInfo = "debugger/getExceptionInfo";

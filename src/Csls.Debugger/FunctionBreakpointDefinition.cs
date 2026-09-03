@@ -42,7 +42,8 @@ internal sealed class FunctionBreakpointDefinition
         BindingCount > 0,
         ValidationMessage ?? (BindingCount == 0
             ? "The breakpoint is pending until a matching managed function is loaded."
-            : null));
+            : null),
+        HitCondition?.Expression);
 
     /// <summary>
     /// Records one runtime hit and determines whether the target should stop.

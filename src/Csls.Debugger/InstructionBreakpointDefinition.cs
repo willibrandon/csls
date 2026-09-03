@@ -74,5 +74,6 @@ internal sealed class InstructionBreakpointDefinition
         Offset,
         ValidationMessage ?? BindingMessage ?? (BindingCount == 0
             ? "The managed-IL breakpoint is pending until its module is loaded."
-            : null));
+            : null),
+        HitCondition?.Expression);
 }

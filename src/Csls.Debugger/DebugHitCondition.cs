@@ -26,6 +26,19 @@ internal sealed class DebugHitCondition
     internal uint Value { get; }
 
     /// <summary>
+    /// Gets the normalized transport expression for this predicate.
+    /// </summary>
+    internal string Expression => Kind switch
+    {
+        DebugHitConditionKind.Equal => Value.ToString(CultureInfo.InvariantCulture),
+        DebugHitConditionKind.GreaterThanOrEqual =>
+            $">={Value.ToString(CultureInfo.InvariantCulture)}",
+        DebugHitConditionKind.Multiple =>
+            $"%{Value.ToString(CultureInfo.InvariantCulture)}",
+        _ => throw new InvalidOperationException($"Unknown hit condition kind {Kind}.")
+    };
+
+    /// <summary>
     /// Gets the diagnostic returned for an invalid hit condition.
     /// </summary>
     internal const string ValidationErrorMessage =

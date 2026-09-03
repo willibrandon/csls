@@ -142,6 +142,9 @@ its bundled debugger worker is available:
   variable handles expire when execution resumes.
 - `debug_modules_get` returns a bounded managed-module page and validated symbol
   status.
+- `debug_breakpoints_get` reads every authoritative source, function, managed-IL,
+  and managed-exception breakpoint without granting control. Valid hit-count
+  predicates are returned in normalized form.
 - `debug_execution_control` pauses, continues, or source-steps. It requires the
   session's `agentControl` grant; continue and step also require the exact current
   `stopGeneration`, and step selects a managed thread and `into`, `over`, or
@@ -162,15 +165,16 @@ its bundled debugger worker is available:
   cursor and reports any gap caused by bounded retention.
 
 Clients can also read the same selected state through `csls://debug/` resource
-templates for session state, output, threads, stacks, scopes, variables, modules,
-exceptions, source, memory, and managed-IL disassembly. Every stopped-state URI
-carries the exact `stopGeneration`, and bounded collections expose their cursor
-or paging inputs in the URI template.
+templates for session state, output, breakpoints, threads, stacks, scopes,
+variables, modules, exceptions, source, memory, and managed-IL disassembly. Every
+stopped-state URI carries the exact `stopGeneration`, and bounded collections
+expose their cursor or paging inputs in the URI template.
 
 Current MCP clients can subscribe to exact debugger URIs through
 `subscriptions/listen`. csls grants only resources belonging to the connection
-and streams subscription-tagged updates directly from engine state and output
-events; it does not poll the target or expose legacy subscription RPCs.
+and streams subscription-tagged updates directly from engine state, output, and
+breakpoint-binding events; it does not poll the target or expose legacy
+subscription RPCs.
 
 The `diagnose_dotnet_debugger_failure`, `plan_dotnet_breakpoints`, and
 `explain_dotnet_debugger_state` prompts use explicit session identity and

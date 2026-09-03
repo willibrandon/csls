@@ -56,7 +56,8 @@ grant and reject stale stopped-state handles. See the
 and error contract. Debugger-specific diagnosis, breakpoint-planning, and
 state-explanation prompts are read-only by construction.
 Current-protocol `subscriptions/listen` streams provide event-driven invalidation
-for explicitly selected debugger resource URIs without polling.
+for explicitly selected debugger resource URIs without polling, including
+authoritative breakpoint-state changes.
 
 `get_workspace_state` returns a fixed-size overview, including lifecycle, workspace,
 project, document, request, build-host, cache, and retained-log counts. It does not
