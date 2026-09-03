@@ -34,7 +34,10 @@ symbol-bearing modules, and module inspection reports the effective runtime poli
 The installed MCP server exposes explicit debugger lifecycle, execution, and
 bounded inspection tools through isolated supervised workers. Agents can inspect
 threads, stacks, scopes, variables, and modules; execution changes require an
-explicit per-session control grant and the current stop generation.
+explicit per-session control grant and the current stop generation. The same
+contract supports deterministic source, function, instruction, and exception
+breakpoint replacement plus bounded source, memory, managed-IL, exception, and
+execution-target inspection.
 Conditional and data breakpoints, expression evaluation, dumps, Hot Reload, and
 the remaining debugger MCP operations remain under development. Run
 `csls debugger tui launch` or `csls debugger tui attach` for the interactive

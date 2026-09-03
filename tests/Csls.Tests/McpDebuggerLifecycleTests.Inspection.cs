@@ -13,6 +13,7 @@ public sealed partial class McpDebuggerLifecycleTests
         McpClient client,
         JsonElement stopped,
         string sourcePath,
+        int gotoLine,
         string programPath,
         CancellationToken cancellationToken)
     {
@@ -88,6 +89,17 @@ public sealed partial class McpDebuggerLifecycleTests
                 .Select(static module => module.GetProperty("path").GetString()),
             StringComparer.Ordinal);
 
+        await AssertAdvancedInspectionAsync(
+            client,
+            debugSession,
+            generation,
+            stoppedThreadId,
+            frame,
+            variables,
+            sourcePath,
+            gotoLine,
+            cancellationToken).ConfigureAwait(false);
+
         await AssertToolErrorAsync(
             client,
             "debug_threads_get",
@@ -106,6 +118,18 @@ public sealed partial class McpDebuggerLifecycleTests
                 ["debugSession"] = debugSession,
                 ["operation"] = "continue",
                 ["stopGeneration"] = generation
+            },
+            "debugger_control_denied",
+            cancellationToken).ConfigureAwait(false);
+        await AssertToolErrorAsync(
+            client,
+            "debug_source_breakpoints_set",
+            new Dictionary<string, object?>
+            {
+                ["debugSession"] = debugSession,
+                ["stopGeneration"] = generation,
+                ["sourcePath"] = sourcePath,
+                ["breakpoints"] = Array.Empty<object>()
             },
             "debugger_control_denied",
             cancellationToken).ConfigureAwait(false);

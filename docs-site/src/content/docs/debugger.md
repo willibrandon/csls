@@ -144,14 +144,28 @@ its bundled debugger worker is available:
   status.
 - `debug_execution_control` pauses, continues, or source-steps. It requires the
   session's `agentControl` grant; continue and step also require the exact current
-  `stopGeneration`, and step selects a managed thread and `into`, `over`, or `out`.
+  `stopGeneration`, and step selects a managed thread and `into`, `over`, or
+  `out`. Step Into can select a `targetId` returned by
+  `debug_step_targets_get`.
+- `debug_source_breakpoints_set`, `debug_function_breakpoints_set`,
+  `debug_instruction_breakpoints_set`, and `debug_exception_breakpoints_set`
+  replace complete breakpoint sets at an exact stopped generation. They require
+  `agentControl`; an empty list clears the corresponding set.
+- `debug_exception_get`, `debug_step_targets_get`, and
+  `debug_goto_targets_get` inspect exception and runtime-approved execution
+  targets. `debug_goto` moves a thread only to one returned generation-bound
+  destination and requires `agentControl`.
+- `debug_source_get`, `debug_memory_read`, and `debug_disassemble` return bounded
+  source pages, target memory, and symbolic managed IL from opaque stopped-state
+  references.
 
 Each lifecycle result returns an opaque `debugSession` identifier and current
 `stopGeneration`. Later operations use that explicit identity; a language
 workspace, active editor, or visible process is never inferred as the debugger
 target.
 
-Stack, variable, and module pages are bounded to at most 256 entries. Expected
+Stack, variable, module, source, memory, and disassembly results are bounded;
+source pages include `nextStart` until complete. Expected
 failures are MCP errors with stable codes in `_meta.errorCode`, including
 `debugger_control_denied`, `debugger_invalid_state`,
 `debugger_request_invalid`, and `debugger_stale_generation`. Successful calls

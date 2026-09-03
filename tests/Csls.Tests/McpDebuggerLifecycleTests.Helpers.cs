@@ -14,6 +14,7 @@ public sealed partial class McpDebuggerLifecycleTests
         string repositoryRoot,
         string sourcePath,
         int breakpointLine,
+        int localLine,
         string testDirectory,
         CancellationToken cancellationToken)
     {
@@ -43,6 +44,7 @@ public sealed partial class McpDebuggerLifecycleTests
             mcp.Client,
             stopped,
             sourcePath,
+            localLine,
             EditorToolResolver.ResolveTestProcessHost(repositoryRoot),
             cancellationToken).ConfigureAwait(false);
 
@@ -74,6 +76,11 @@ public sealed partial class McpDebuggerLifecycleTests
         JsonElement secondStopped = await WaitForStoppedAsync(
             mcp.Client,
             second.GetProperty("debugSession").GetString()!,
+            cancellationToken).ConfigureAwait(false);
+        await AssertControlledBreakpointUpdatesAsync(
+            mcp.Client,
+            secondStopped,
+            sourcePath,
             cancellationToken).ConfigureAwait(false);
         JsonElement continued = await CallAsync(
             mcp.Client,
@@ -155,30 +162,6 @@ public sealed partial class McpDebuggerLifecycleTests
         Assert.IsNull(result.IsError, tool);
         Assert.IsTrue(result.StructuredContent.HasValue, tool);
         return result.StructuredContent.Value;
-    }
-
-    private static async Task<McpProcessSession> StartMcpAsync(
-        CancellationToken cancellationToken)
-    {
-        string repositoryRoot = EditorToolResolver.FindRepositoryRoot();
-        string artifactsRoot = EditorToolResolver.ResolveArtifactsRoot(repositoryRoot);
-        return await McpProcessSession.StartAsync(
-            repositoryRoot,
-            Path.Join(artifactsRoot, "bin", "Csls.Mcp", "debug", "csls-mcp.dll"),
-            Path.Join(
-                artifactsRoot,
-                "bin",
-                "Csls.Mcp.Worker",
-                "debug",
-                "csls-mcp-worker.dll"),
-            serverWorkerPath: null,
-            cancellationToken,
-            Path.Join(
-                artifactsRoot,
-                "bin",
-                "Csls.Debugger.Worker",
-                "debug",
-                "csls-debugger-worker.dll")).ConfigureAwait(false);
     }
 
     private static void AssertAnnotations(

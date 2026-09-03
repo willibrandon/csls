@@ -21,7 +21,18 @@ public sealed partial class McpDebuggerLifecycleTests
         "debug_stack_get",
         "debug_scopes_get",
         "debug_variables_get",
-        "debug_modules_get"
+        "debug_modules_get",
+        "debug_source_breakpoints_set",
+        "debug_function_breakpoints_set",
+        "debug_instruction_breakpoints_set",
+        "debug_exception_breakpoints_set",
+        "debug_exception_get",
+        "debug_source_get",
+        "debug_memory_read",
+        "debug_disassemble",
+        "debug_step_targets_get",
+        "debug_goto_targets_get",
+        "debug_goto"
     ];
 
     /// <summary>
@@ -61,6 +72,17 @@ public sealed partial class McpDebuggerLifecycleTests
         AssertAnnotations(tools, "debug_scopes_get", true, false, true, false);
         AssertAnnotations(tools, "debug_variables_get", true, false, true, false);
         AssertAnnotations(tools, "debug_modules_get", true, false, true, false);
+        AssertAnnotations(tools, "debug_source_breakpoints_set", false, true, true, true);
+        AssertAnnotations(tools, "debug_function_breakpoints_set", false, true, true, true);
+        AssertAnnotations(tools, "debug_instruction_breakpoints_set", false, true, true, true);
+        AssertAnnotations(tools, "debug_exception_breakpoints_set", false, true, true, true);
+        AssertAnnotations(tools, "debug_exception_get", true, false, true, false);
+        AssertAnnotations(tools, "debug_source_get", true, false, true, false);
+        AssertAnnotations(tools, "debug_memory_read", true, false, true, false);
+        AssertAnnotations(tools, "debug_disassemble", true, false, true, false);
+        AssertAnnotations(tools, "debug_step_targets_get", true, false, true, false);
+        AssertAnnotations(tools, "debug_goto_targets_get", true, false, true, false);
+        AssertAnnotations(tools, "debug_goto", false, true, false, true);
     }
 
     /// <summary>
@@ -77,12 +99,19 @@ public sealed partial class McpDebuggerLifecycleTests
             "tests",
             "Csls.TestProcessHost",
             "DebuggerFixture.cs");
-        int breakpointLine = (await File.ReadAllLinesAsync(
+        string[] sourceLines = await File.ReadAllLinesAsync(
             sourcePath,
-            TestContext.CancellationToken).ConfigureAwait(false))
+            TestContext.CancellationToken).ConfigureAwait(false);
+        int breakpointLine = sourceLines
             .Select(static (line, index) => (Text: line, Line: index + 1))
             .Single(static item => item.Text.Contains(
                 "Thread.SpinWait(10_000);",
+                StringComparison.Ordinal))
+            .Line;
+        int localLine = sourceLines
+            .Select(static (line, index) => (Text: line, Line: index + 1))
+            .Single(static item => item.Text.Contains(
+                "int localNumber = number + 1;",
                 StringComparison.Ordinal))
             .Line;
         string testDirectory = Path.Join(
@@ -95,6 +124,7 @@ public sealed partial class McpDebuggerLifecycleTests
                 repositoryRoot,
                 sourcePath,
                 breakpointLine,
+                localLine,
                 testDirectory,
                 TestContext.CancellationToken).ConfigureAwait(false);
         }

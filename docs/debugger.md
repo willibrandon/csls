@@ -239,10 +239,23 @@ worker does not advertise tools that it cannot run.
 - `debug_execution_control` pauses, continues, or source-steps a session.
   Execution control requires `agentControl: true`; continue and step also require
   the exact current `stopGeneration`, and step selects one managed thread and
-  `into`, `over`, or `out` behavior.
+  `into`, `over`, or `out` behavior. Step Into can also select a `targetId`
+  returned by `debug_step_targets_get`.
+- `debug_source_breakpoints_set`, `debug_function_breakpoints_set`,
+  `debug_instruction_breakpoints_set`, and `debug_exception_breakpoints_set`
+  replace their complete breakpoint set. They require `agentControl: true`, an
+  exact stopped generation, and accept an empty list to clear the set.
+- `debug_exception_get`, `debug_step_targets_get`, and
+  `debug_goto_targets_get` inspect generation-bound stop details and
+  runtime-approved execution destinations. `debug_goto` moves one thread only to
+  a returned destination and requires the same control grant and generation.
+- `debug_source_get`, `debug_memory_read`, and `debug_disassemble` retrieve
+  bounded source-text pages, up to 65,536 target bytes, and up to 256 managed-IL
+  instructions from opaque generation-bound references.
 
 Stack, variable, and module pages accept only non-negative offsets and at most
-256 entries per call. Expected failures are MCP errors with stable codes in
+256 entries per call. Source results include `nextStart` until their complete
+text has been read. Expected failures are MCP errors with stable codes in
 `_meta.errorCode`, including `debugger_control_denied`,
 `debugger_invalid_state`, `debugger_request_invalid`, and
 `debugger_stale_generation`. Successful calls return structured content and a

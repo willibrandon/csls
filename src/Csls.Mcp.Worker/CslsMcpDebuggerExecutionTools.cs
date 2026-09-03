@@ -7,7 +7,7 @@ namespace Csls.Mcp.Worker;
 /// Exposes explicitly authorized debugger execution control.
 /// </summary>
 [McpServerToolType]
-internal sealed class CslsMcpDebuggerExecutionTools
+internal sealed partial class CslsMcpDebuggerExecutionTools
 {
     private readonly McpDebuggerSessionBroker _broker;
 
@@ -30,6 +30,7 @@ internal sealed class CslsMcpDebuggerExecutionTools
     /// <param name="stopGeneration">The current generation required by continue and step.</param>
     /// <param name="threadId">The managed thread required by step.</param>
     /// <param name="stepKind">The into, over, or out source step kind.</param>
+    /// <param name="targetId">The optional generation-bound Step Into target.</param>
     /// <returns>The debugger-session state after accepting the operation.</returns>
     [McpServerTool(
         Name = "debug_execution_control",
@@ -52,12 +53,15 @@ internal sealed class CslsMcpDebuggerExecutionTools
         [Description("Positive managed thread identifier required by step.")]
         int? threadId = null,
         [Description("Source step kind required by step: into, over, or out.")]
-        string? stepKind = null) =>
+        string? stepKind = null,
+        [Description("Optional positive target returned by debug_step_targets_get for Step Into.")]
+        int? targetId = null) =>
         McpDebuggerToolResult.RunAsync(() => _broker.ExecuteAsync(
             debugSession,
             operation,
             stopGeneration,
             threadId,
             stepKind,
+            targetId,
             cancellationToken));
 }
