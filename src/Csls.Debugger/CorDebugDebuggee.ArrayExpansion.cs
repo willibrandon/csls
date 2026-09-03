@@ -52,7 +52,7 @@ internal sealed partial class CorDebugDebuggee
 
             try
             {
-                ManagedValueDisplay display = CorDebugValueFormatter.Format(element);
+                ManagedValueDisplay display = FormatRuntimeValue(element);
                 string name = FormatArrayIndex(index, dimensions, bases);
                 string? evaluateName = parentEvaluateName is null
                     ? null

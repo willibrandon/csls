@@ -195,6 +195,10 @@ Object expansion follows the value's exact CoreCLR type and base-type chain rath
 than assuming every declaring type belongs to the object's leaf module. Inherited
 fields therefore expand across loaded assemblies in one deterministic paged sequence,
 and retain the same evaluate names used by completion, evaluation, and assignment.
+Immediate value presentation uses the exact CoreCLR type plus the declaring module's
+metadata. Generic types, arrays, tuples, and nullable value types therefore retain
+their concrete type arguments; arrays include their live dimensions and nullable
+values display either their contained value or `null` without target execution.
 
 The frame is explicit when supplied; otherwise the adapter uses the selected
 stopped thread's top managed frame. The same generation-bound read-only operation

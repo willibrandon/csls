@@ -52,7 +52,7 @@ internal sealed partial class CorDebugDebuggee
                 source,
                 value.Language,
                 value.Root.Kind == DebugExpressionNodeKind.Literal);
-            ManagedValueDisplay display = CorDebugValueFormatter.Format(destination);
+            ManagedValueDisplay display = FormatRuntimeValue(destination);
             ManagedValueReferences references = RetainValue(
                 destination,
                 generation,

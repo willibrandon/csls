@@ -148,8 +148,9 @@ public sealed partial class DapSessionTests
                     stack.RootElement.GetProperty("body").GetProperty("totalFrames").GetInt32());
                 JsonElement fixtureFrame = frames.FirstOrDefault(frame =>
                     frame.TryGetProperty("source", out JsonElement source) &&
+                    source.TryGetProperty("path", out JsonElement sourcePath) &&
                     DebuggerTestPath.AreEquivalent(
-                        source.GetProperty("path").GetString(),
+                        sourcePath.GetString(),
                         fixtureSourcePath) &&
                     frame.GetProperty("line").GetInt32() > 0);
                 if (fixtureFrame.ValueKind != JsonValueKind.Undefined)
@@ -240,6 +241,8 @@ public sealed partial class DapSessionTests
                 "\"answer!\"",
                 localsByName["localText"].GetProperty("value").GetString());
             JsonElement localArray = localsByName["localArray"];
+            Assert.AreEqual("{int[3]}", localArray.GetProperty("value").GetString());
+            Assert.AreEqual("int[]", localArray.GetProperty("type").GetString());
             int arrayReference = localArray.GetProperty("variablesReference").GetInt32();
             Assert.IsGreaterThan(0, arrayReference);
             JsonElement[] arrayElements = await ReadVariablesAsync(client, arrayReference)
@@ -254,6 +257,12 @@ public sealed partial class DapSessionTests
             Assert.AreEqual("43", arrayElements[2].GetProperty("value").GetString());
 
             JsonElement localObject = localsByName["localObject"];
+            Assert.AreEqual(
+                "{Csls.TestProcessHost.DebuggerFixtureValue}",
+                localObject.GetProperty("value").GetString());
+            Assert.AreEqual(
+                "Csls.TestProcessHost.DebuggerFixtureValue",
+                localObject.GetProperty("type").GetString());
             int objectReference = localObject.GetProperty("variablesReference").GetInt32();
             Assert.IsGreaterThan(0, objectReference);
             JsonElement[] fields = await ReadVariablesAsync(client, objectReference)
@@ -270,6 +279,9 @@ public sealed partial class DapSessionTests
                 fieldsByName["Text"].GetProperty("value").GetString());
 
             JsonElement localList = localsByName["localList"];
+            Assert.AreEqual(
+                "Csls.TestProcessHost.DebuggerFixtureList",
+                localList.GetProperty("type").GetString());
             int listReference = localList.GetProperty("variablesReference").GetInt32();
             Assert.IsGreaterThan(0, listReference);
             JsonElement[] listFields = await ReadVariablesAsync(client, listReference)
@@ -290,6 +302,27 @@ public sealed partial class DapSessionTests
                 "_size",
                 inheritedFieldCompletions.Select(completion =>
                     completion.GetProperty("label").GetString()!));
+
+            JsonElement localNullable = localsByName["localNullable"];
+            Assert.AreEqual("45", localNullable.GetProperty("value").GetString());
+            Assert.AreEqual("int?", localNullable.GetProperty("type").GetString());
+            JsonElement localEmptyNullable = localsByName["localEmptyNullable"];
+            Assert.AreEqual("null", localEmptyNullable.GetProperty("value").GetString());
+            Assert.AreEqual("int?", localEmptyNullable.GetProperty("type").GetString());
+            JsonElement localTuple = localsByName["localTuple"];
+            Assert.AreEqual("{(int, string)}", localTuple.GetProperty("value").GetString());
+            Assert.AreEqual("(int, string)", localTuple.GetProperty("type").GetString());
+            int tupleReference = localTuple.GetProperty("variablesReference").GetInt32();
+            Assert.IsGreaterThan(0, tupleReference);
+            Dictionary<string, JsonElement> tupleFields = (await ReadVariablesAsync(
+                client,
+                tupleReference).ConfigureAwait(false)).ToDictionary(
+                    field => field.GetProperty("name").GetString()!,
+                    StringComparer.Ordinal);
+            Assert.AreEqual("42", tupleFields["Item1"].GetProperty("value").GetString());
+            Assert.AreEqual(
+                "\"answer\"",
+                tupleFields["Item2"].GetProperty("value").GetString());
 
             JsonElement evaluatedLocal = await ReadEvaluationAsync(
                 client,

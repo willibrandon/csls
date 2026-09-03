@@ -433,6 +433,12 @@ a base class belongs to another assembly. One pagination cursor spans the comple
 derived-to-base field sequence, and retained field identities are shared with
 completion, side-effect-free evaluation, and direct assignment.
 
+Every value surface uses one exact-type formatter backed by `ICorDebugType` and the
+loaded declaring module's metadata. It preserves generic arguments, array rank and
+live dimensions, tuple shape, and nullable underlying types. Nullable state and its
+contained value are read directly from the runtime value; presentation must not invoke
+`ToString`, properties, operators, or any other target code.
+
 C# and Visual Basic Hot Reload use compiler-produced metadata, IL, and PDB deltas.
 The engine validates rude edits, applies deltas, advances module generations, and
 rebinds breakpoints and active statements. F# has ordinary first-class debugging,

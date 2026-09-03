@@ -68,6 +68,51 @@ internal sealed partial class CorDebugDebuggee
             : throw new InvalidOperationException("A null managed value cannot be expanded.");
     }
 
+    private static unsafe bool TryDereferenceAndUnboxValue(nint value, out nint result)
+    {
+        if (!TryDereferenceValue(value, out nint dereferenced))
+        {
+            result = 0;
+            return false;
+        }
+
+        nint box = 0;
+        try
+        {
+            if (!ComAbi.TryQueryInterface(
+                dereferenced,
+                ICorDebugBoxValueAbi.InterfaceId,
+                out box))
+            {
+                result = dereferenced;
+                dereferenced = 0;
+                return true;
+            }
+
+            nint unboxed = 0;
+            nint* unboxedAddress = &unboxed;
+            CorDebugHResult.ThrowIfFailed(
+                new ICorDebugBoxValueAbi(box).GetObject((nint)unboxedAddress),
+                "ICorDebugBoxValue.GetObject");
+            result = RequirePointer(
+                Volatile.Read(ref *unboxedAddress),
+                "ICorDebugBoxValue.GetObject");
+            return true;
+        }
+        finally
+        {
+            if (box != 0)
+            {
+                _ = ComAbi.Release(box);
+            }
+
+            if (dereferenced != 0)
+            {
+                _ = ComAbi.Release(dereferenced);
+            }
+        }
+    }
+
     private static unsafe bool TryDereferenceValue(nint value, out nint result)
     {
         if (!ComAbi.TryQueryInterface(

@@ -350,7 +350,7 @@ internal sealed partial class CorDebugDebuggee
                 }
                 else
                 {
-                    ManagedValueDisplay display = CorDebugValueFormatter.Format(value);
+                    ManagedValueDisplay display = FormatRuntimeValue(value);
                     if (isException)
                     {
                         failure = new InvalidOperationException(

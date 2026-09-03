@@ -26,6 +26,9 @@ internal static class DebuggerFixture
         int[] localArray = [41, 42, 43];
         var localObject = new DebuggerFixtureValue(number, localText, path + ".evaluation");
         var localList = new DebuggerFixtureList(number);
+        int? localNullable = number + 3;
+        int? localEmptyNullable = null;
+        (int Number, string Text) localTuple = (number, text);
         Console.Write(announcement);
         Console.Out.Flush();
         while (!File.Exists(path))
@@ -40,6 +43,9 @@ internal static class DebuggerFixture
         GC.KeepAlive(localArray);
         GC.KeepAlive(localObject);
         GC.KeepAlive(localList);
+        GC.KeepAlive(localNullable);
+        GC.KeepAlive(localEmptyNullable);
+        GC.KeepAlive(localTuple);
         return localNumber == 43 && localText == "answer!" ? 0 : 1;
     }
 }

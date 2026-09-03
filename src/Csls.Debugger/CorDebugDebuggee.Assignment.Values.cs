@@ -21,7 +21,7 @@ internal sealed partial class CorDebugDebuggee
         {
             _ = ComAbi.Release(generic);
             object? scalar = ManagedExpressionValueFactory.RequireScalar(source);
-            ManagedValueDisplay destinationDisplay = CorDebugValueFormatter.Format(destination);
+            ManagedValueDisplay destinationDisplay = FormatRuntimeValue(destination);
             source = ManagedPrimitiveConversionEvaluator.ConvertForAssignment(
                 source,
                 destinationDisplay.Type,
@@ -83,7 +83,7 @@ internal sealed partial class CorDebugDebuggee
                 "materializing a new target object is not supported yet.");
         }
 
-        ManagedValueDisplay destinationDisplay = CorDebugValueFormatter.Format(destination);
+        ManagedValueDisplay destinationDisplay = FormatRuntimeValue(destination);
         if (!string.Equals(
             destinationDisplay.Type,
             source.Display.Type,

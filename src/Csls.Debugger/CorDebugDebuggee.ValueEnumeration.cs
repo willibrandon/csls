@@ -56,7 +56,7 @@ internal sealed partial class CorDebugDebuggee
                 {
                     if (index >= start && (count == 0 || result.Count < count))
                     {
-                        ManagedValueDisplay display = CorDebugValueFormatter.Format(value);
+                        ManagedValueDisplay display = FormatRuntimeValue(value);
                         bool hasSourceName = names.TryGetValue(index, out string? sourceName) &&
                             !string.IsNullOrEmpty(sourceName);
                         string name = hasSourceName

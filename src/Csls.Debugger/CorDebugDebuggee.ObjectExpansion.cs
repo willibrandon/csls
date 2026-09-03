@@ -207,7 +207,7 @@ internal sealed partial class CorDebugDebuggee
 
         try
         {
-            ManagedValueDisplay display = CorDebugValueFormatter.Format(fieldValue);
+            ManagedValueDisplay display = FormatRuntimeValue(fieldValue);
             string name = metadata.GetString(field.Name);
             string? evaluateName = CreateMemberEvaluateName(parentEvaluateName, name);
             ManagedValueReferences references = RetainValue(
