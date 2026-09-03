@@ -392,10 +392,13 @@ The Hex1b TUI is a client of the private debugger RPC. It presents sessions,
 threads, frames, source, breakpoints, variables, watches, modules, exceptions,
 output, and a command palette without embedding engine logic.
 
-MCP uses private debugger RPC rather than translating through DAP. Mutation tools
-are `debug_session_start`, `debug_session_attach`, `debug_breakpoints_set`,
-`debug_execution_control`, `debug_evaluate`, `debug_hot_reload`, and
-`debug_session_end`. Inspection is exposed as subscribable resources beneath
+MCP uses private debugger RPC rather than translating through DAP. Pure expression
+evaluation is the read-only `debug_evaluate` inspection tool. Operations that can
+execute target code or assign values use separate mutation tools so their MCP
+annotations and authorization remain truthful. Other mutation tools include
+`debug_session_start`, `debug_session_attach`, breakpoint replacement,
+`debug_execution_control`, `debug_hot_reload`, and `debug_session_end`.
+Inspection is exposed as subscribable resources beneath
 `csls://debug/sessions/{sessionId}` for state, threads, stack, scopes, variables,
 modules, output, and breakpoints. Results use declared structured schemas,
 generation-aware pagination, progress, cancellation, and recoverable tool errors.
@@ -423,8 +426,9 @@ idempotent.
 Lifecycle tools launch, attach, open dumps, describe capabilities, and end owned
 sessions. Execution tools pause, continue, step, and restart. Breakpoint tools
 replace versioned breakpoint sets. Inspection tools cover threads, stacks, scopes,
-variables, watches, modules, exceptions, source, memory, and disassembly. Mutation
-tools evaluate with side effects, assign values, and apply Hot Reload. Each tool
+variables, watches, modules, exceptions, source, memory, disassembly, and pure
+expressions. Mutation tools execute expressions, assign values, and apply Hot
+Reload. Each tool
 has a closed input schema and a declared structured output schema; errors use
 stable codes for stale generation, invalid state, unavailable symbols, unsupported
 language/runtime, denied control, timeout, cancellation, and target exit.

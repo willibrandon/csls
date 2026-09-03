@@ -102,6 +102,34 @@ internal sealed partial class McpDebuggerSessionBroker
     }
 
     /// <summary>
+    /// Evaluates a side-effect-free expression in a current-generation frame.
+    /// </summary>
+    internal Task<McpDebugEvaluationResult> EvaluateAsync(
+        string debugSession,
+        long stopGeneration,
+        int frameId,
+        string expression,
+        CancellationToken cancellationToken)
+    {
+        ValidatePositive(frameId, nameof(frameId));
+        if (string.IsNullOrWhiteSpace(expression))
+        {
+            throw InvalidRequest("expression must not be empty.");
+        }
+
+        return InvokeStoppedAsync(
+            debugSession,
+            stopGeneration,
+            async (session, client, token) => new McpDebugEvaluationResult(
+                session.Id,
+                stopGeneration,
+                await client.EvaluateAsync(
+                    new DebugEvaluateRequest(frameId, expression),
+                    token).ConfigureAwait(false)),
+            cancellationToken);
+    }
+
+    /// <summary>
     /// Gets a bounded managed module page for the selected session.
     /// </summary>
     internal async Task<McpDebugModulesResult> GetModulesAsync(

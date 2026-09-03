@@ -57,19 +57,25 @@ internal sealed partial class CorDebugDebuggee
                     if (index >= start && (count == 0 || result.Count < count))
                     {
                         ManagedValueDisplay display = CorDebugValueFormatter.Format(value);
-                        string name = names.TryGetValue(index, out string? sourceName) &&
-                            !string.IsNullOrEmpty(sourceName)
-                                ? sourceName
+                        bool hasSourceName = names.TryGetValue(index, out string? sourceName) &&
+                            !string.IsNullOrEmpty(sourceName);
+                        string name = hasSourceName
+                                ? sourceName!
                                 : kind == ManagedScopeKind.Arguments
                                     ? $"argument {index}"
                                     : $"local {index}";
-                        ManagedValueReferences references = RetainValue(value, generation);
+                        string? evaluateName = hasSourceName ? sourceName : null;
+                        ManagedValueReferences references = RetainValue(
+                            value,
+                            generation,
+                            evaluateName);
                         result.Add(new DebugVariableInfo(
                             name,
                             display.Value,
                             display.Type,
                             references.VariablesReference,
-                            references.MemoryReference));
+                            references.MemoryReference,
+                            evaluateName));
                     }
                 }
                 finally

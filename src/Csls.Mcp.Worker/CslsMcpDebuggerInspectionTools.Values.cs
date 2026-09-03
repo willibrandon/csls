@@ -67,4 +67,34 @@ internal sealed partial class CslsMcpDebuggerInspectionTools
             start,
             count,
             cancellationToken));
+
+    /// <summary>
+    /// Evaluates a side-effect-free expression in one current-generation frame.
+    /// </summary>
+    [McpServerTool(
+        Name = "debug_evaluate",
+        Title = "Evaluate a .NET debugger expression",
+        Destructive = false,
+        Idempotent = true,
+        OpenWorld = false,
+        ReadOnly = true,
+        UseStructuredContent = true,
+        OutputSchemaType = typeof(McpDebugEvaluationResult))]
+    [Description("Evaluate a local, argument, instance-field chain, or array index without executing target code.")]
+    public Task<ModelContextProtocol.Protocol.CallToolResult> EvaluateAsync(
+        [Description("Opaque identifier returned by a debugger lifecycle tool.")]
+        string debugSession,
+        [Description("Current positive stop generation.")]
+        long stopGeneration,
+        [Description("Positive generation-bound frame identifier.")]
+        int frameId,
+        [Description("Side-effect-free source expression to evaluate.")]
+        string expression,
+        CancellationToken cancellationToken) =>
+        McpDebuggerToolResult.RunAsync(() => _broker.EvaluateAsync(
+            debugSession,
+            stopGeneration,
+            frameId,
+            expression,
+            cancellationToken));
 }

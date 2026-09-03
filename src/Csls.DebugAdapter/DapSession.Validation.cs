@@ -43,6 +43,23 @@ internal sealed partial class DapSession
         return result;
     }
 
+    private static string GetRequiredNonEmptyString(
+        JsonElement arguments,
+        string propertyName,
+        string requestName)
+    {
+        if (arguments.ValueKind != JsonValueKind.Object ||
+            !arguments.TryGetProperty(propertyName, out JsonElement value) ||
+            value.ValueKind != JsonValueKind.String ||
+            string.IsNullOrWhiteSpace(value.GetString()))
+        {
+            throw new ArgumentException(
+                $"The {requestName} request requires a non-empty string {propertyName}.");
+        }
+
+        return value.GetString()!;
+    }
+
     private static int? GetOptionalPositiveInteger(
         JsonElement arguments,
         string propertyName,

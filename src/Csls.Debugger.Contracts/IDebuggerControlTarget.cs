@@ -141,6 +141,16 @@ public partial interface IDebuggerControlTarget
         CancellationToken cancellationToken);
 
     /// <summary>
+    /// Evaluates an expression in a current-generation managed frame.
+    /// </summary>
+    /// <param name="request">The selected frame and expression.</param>
+    /// <param name="cancellationToken">Cancels evaluation.</param>
+    /// <returns>The current formatted expression result.</returns>
+    Task<DebugEvaluateResult> EvaluateAsync(
+        DebugEvaluateRequest request,
+        CancellationToken cancellationToken);
+
+    /// <summary>
     /// Reads a bounded target-memory range through a stopped-state handle.
     /// </summary>
     /// <param name="request">The selected memory handle and relative range.</param>

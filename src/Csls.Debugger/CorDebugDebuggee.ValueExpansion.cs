@@ -33,7 +33,12 @@ internal sealed partial class CorDebugDebuggee
             {
                 try
                 {
-                    return ExpandArray(array, generation, start, count);
+                    return ExpandArray(
+                        array,
+                        handle.EvaluateName,
+                        generation,
+                        start,
+                        count);
                 }
                 finally
                 {
@@ -41,7 +46,12 @@ internal sealed partial class CorDebugDebuggee
                 }
             }
 
-            return ExpandObject(value, generation, start, count);
+            return ExpandObject(
+                value,
+                handle.EvaluateName,
+                generation,
+                start,
+                count);
         }
         finally
         {

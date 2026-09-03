@@ -113,6 +113,11 @@ internal static class DebuggerControlMethodRegistry
                 Task<IReadOnlyList<DebugVariableInfo>>>(target.GetVariablesAsync));
         AddParameterObjectMethod(
             rpc,
+            DebuggerControlMethods.Evaluate,
+            new Func<DebugEvaluateRequest, CancellationToken, Task<DebugEvaluateResult>>(
+                target.EvaluateAsync));
+        AddParameterObjectMethod(
+            rpc,
             DebuggerControlMethods.GetModules,
             new Func<DebugModulesRequest, CancellationToken, Task<DebugModulePage>>(
                 target.GetModulesAsync));

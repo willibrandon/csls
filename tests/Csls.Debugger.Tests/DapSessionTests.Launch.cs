@@ -38,13 +38,14 @@ public sealed partial class DapSessionTests
             capabilities.GetProperty("exceptionBreakpointFilters").EnumerateArray().ToArray());
         Assert.IsTrue(capabilities.GetProperty("supportsExceptionInfoRequest").GetBoolean());
         Assert.IsTrue(capabilities.GetProperty("supportsVariablePaging").GetBoolean());
+        Assert.IsTrue(capabilities.GetProperty("supportsEvaluateForHovers").GetBoolean());
         Assert.IsTrue(capabilities.GetProperty("supportsReadMemoryRequest").GetBoolean());
         Assert.IsTrue(capabilities.GetProperty("supportsDisassembleRequest").GetBoolean());
         Assert.IsTrue(capabilities.GetProperty("supportsInstructionBreakpoints").GetBoolean());
         Assert.IsTrue(capabilities.GetProperty("supportsStepInTargetsRequest").GetBoolean());
         Assert.IsTrue(capabilities.GetProperty("supportsGotoTargetsRequest").GetBoolean());
         Assert.IsTrue(capabilities.GetProperty("supportsRestartRequest").GetBoolean());
-        Assert.HasCount(16, capabilities.EnumerateObject().ToArray());
+        Assert.HasCount(17, capabilities.EnumerateObject().ToArray());
 
         string processHost = ResolveTestProcessHost();
         int launchSequence = await client.SendRequestAsync(

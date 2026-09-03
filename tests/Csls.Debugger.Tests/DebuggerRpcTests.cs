@@ -137,6 +137,12 @@ public sealed partial class DebuggerRpcTests
             static variable => variable.Name == "localNumber");
         Assert.AreEqual("43", localNumber.Value);
         Assert.AreEqual("int", localNumber.Type);
+        Assert.AreEqual("localNumber", localNumber.EvaluateName);
+        DebugEvaluateResult evaluation = await client.EvaluateAsync(
+            new DebugEvaluateRequest(frame.Id, "localObject.Number"),
+            cancellationToken).ConfigureAwait(false);
+        Assert.AreEqual("42", evaluation.Result);
+        Assert.AreEqual("int", evaluation.Type);
         DebugVariableInfo localArray = localVariables.Single(
             static variable => variable.Name == "localArray");
         Assert.IsNotNull(localArray.MemoryReference);

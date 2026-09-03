@@ -8,5 +8,5 @@ public static class DebuggerControlProtocol
     /// <summary>
     /// Gets the exact protocol version implemented by this build.
     /// </summary>
-    public const int CurrentVersion = 19;
+    public const int CurrentVersion = 20;
 }

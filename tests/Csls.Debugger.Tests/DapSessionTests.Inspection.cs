@@ -210,6 +210,9 @@ public sealed partial class DapSessionTests
                 StringComparer.Ordinal);
             Assert.AreEqual("43", localsByName["localNumber"].GetProperty("value").GetString());
             Assert.AreEqual(
+                "localNumber",
+                localsByName["localNumber"].GetProperty("evaluateName").GetString());
+            Assert.AreEqual(
                 "\"answer!\"",
                 localsByName["localText"].GetProperty("value").GetString());
             JsonElement localArray = localsByName["localArray"];
@@ -220,6 +223,9 @@ public sealed partial class DapSessionTests
             Assert.HasCount(3, arrayElements);
             Assert.AreEqual("[0]", arrayElements[0].GetProperty("name").GetString());
             Assert.AreEqual("41", arrayElements[0].GetProperty("value").GetString());
+            Assert.AreEqual(
+                "localArray[0]",
+                arrayElements[0].GetProperty("evaluateName").GetString());
             Assert.AreEqual("[2]", arrayElements[2].GetProperty("name").GetString());
             Assert.AreEqual("43", arrayElements[2].GetProperty("value").GetString());
 
@@ -233,8 +239,48 @@ public sealed partial class DapSessionTests
                 StringComparer.Ordinal);
             Assert.AreEqual("42", fieldsByName["Number"].GetProperty("value").GetString());
             Assert.AreEqual(
+                "localObject.Number",
+                fieldsByName["Number"].GetProperty("evaluateName").GetString());
+            Assert.AreEqual(
                 "\"answer!\"",
                 fieldsByName["Text"].GetProperty("value").GetString());
+
+            JsonElement evaluatedLocal = await ReadEvaluationAsync(
+                client,
+                fixtureFrameId,
+                "localNumber",
+                success: true,
+                TestContext.CancellationToken).ConfigureAwait(false);
+            Assert.AreEqual("43", evaluatedLocal.GetProperty("result").GetString());
+            Assert.AreEqual("int", evaluatedLocal.GetProperty("type").GetString());
+            Assert.AreEqual(0, evaluatedLocal.GetProperty("variablesReference").GetInt32());
+
+            JsonElement evaluatedField = await ReadEvaluationAsync(
+                client,
+                fixtureFrameId,
+                "localObject.Number",
+                success: true,
+                TestContext.CancellationToken).ConfigureAwait(false);
+            Assert.AreEqual("42", evaluatedField.GetProperty("result").GetString());
+
+            JsonElement evaluatedArrayElement = await ReadEvaluationAsync(
+                client,
+                fixtureFrameId,
+                "localArray[1]",
+                success: true,
+                TestContext.CancellationToken).ConfigureAwait(false);
+            Assert.AreEqual("42", evaluatedArrayElement.GetProperty("result").GetString());
+
+            JsonElement unsupportedEvaluation = await ReadEvaluationAsync(
+                client,
+                fixtureFrameId,
+                "localNumber + 1",
+                success: false,
+                TestContext.CancellationToken).ConfigureAwait(false);
+            Assert.Contains(
+                "side-effect-free evaluator",
+                unsupportedEvaluation.GetProperty("message").GetString()!,
+                StringComparison.Ordinal);
 
             int continueSequence = await client.SendRequestAsync(
                 "continue",
@@ -326,6 +372,32 @@ public sealed partial class DapSessionTests
         {
             File.Delete(waitPath);
         }
+    }
+
+    private static async Task<JsonElement> ReadEvaluationAsync(
+        DapTestClient client,
+        int frameId,
+        string expression,
+        bool success,
+        CancellationToken cancellationToken)
+    {
+        int sequence = await client.SendRequestAsync(
+            "evaluate",
+            writer =>
+            {
+                writer.WriteStartObject();
+                writer.WriteString("expression", expression);
+                writer.WriteNumber("frameId", frameId);
+                writer.WriteString("context", "watch");
+                writer.WriteEndObject();
+            },
+            cancellationToken).ConfigureAwait(false);
+        using JsonDocument response = await client.ReadMessageAsync(cancellationToken)
+            .ConfigureAwait(false);
+        AssertResponse(response.RootElement, sequence, "evaluate", success);
+        return (success
+            ? response.RootElement.GetProperty("body")
+            : response.RootElement).Clone();
     }
 
 }

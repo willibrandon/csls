@@ -10,7 +10,8 @@ internal sealed partial class CorDebugDebuggee
 {
     private ManagedValueReferences RetainValue(
         nint value,
-        DebugStopGeneration generation)
+        DebugStopGeneration generation,
+        string? evaluateName)
     {
         if (!IsExpandable(value))
         {
@@ -44,7 +45,8 @@ internal sealed partial class CorDebugDebuggee
             Pointer = value,
             Identity = identity,
             MemoryReference = memoryReference,
-            MemoryAddress = memoryAddress
+            MemoryAddress = memoryAddress,
+            EvaluateName = evaluateName
         };
         _values.Add(handle.Id, handle);
         _valueIdentities.Add(handle.Identity, handle);

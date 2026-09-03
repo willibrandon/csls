@@ -15,6 +15,8 @@ namespace Csls.Debugger.Control;
 [JsonSerializable(typeof(DebugExceptionBreakpointSetRequest))]
 [JsonSerializable(typeof(DebugExceptionInfo))]
 [JsonSerializable(typeof(DebugExceptionInfoRequest))]
+[JsonSerializable(typeof(DebugEvaluateRequest))]
+[JsonSerializable(typeof(DebugEvaluateResult))]
 [JsonSerializable(typeof(DebugFunctionBreakpointInfo))]
 [JsonSerializable(typeof(DebugFunctionBreakpointRequest))]
 [JsonSerializable(typeof(DebugFunctionBreakpointSetRequest))]

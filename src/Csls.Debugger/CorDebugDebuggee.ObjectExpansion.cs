@@ -14,6 +14,7 @@ internal sealed partial class CorDebugDebuggee
 {
     private unsafe List<DebugVariableInfo> ExpandObject(
         nint value,
+        string? parentEvaluateName,
         DebugStopGeneration generation,
         int start,
         int count)
@@ -37,6 +38,7 @@ internal sealed partial class CorDebugDebuggee
                 runtimeClass,
                 metadata,
                 typeToken,
+                parentEvaluateName,
                 generation,
                 start,
                 count);
@@ -66,6 +68,7 @@ internal sealed partial class CorDebugDebuggee
         nint runtimeClass,
         MetadataReader metadata,
         uint initialTypeToken,
+        string? parentEvaluateName,
         DebugStopGeneration generation,
         int start,
         int count)
@@ -99,6 +102,7 @@ internal sealed partial class CorDebugDebuggee
                             metadata,
                             fieldHandle,
                             field,
+                            parentEvaluateName,
                             generation));
                     }
 
@@ -135,6 +139,7 @@ internal sealed partial class CorDebugDebuggee
         MetadataReader metadata,
         FieldDefinitionHandle fieldHandle,
         FieldDefinition field,
+        string? parentEvaluateName,
         DebugStopGeneration generation)
     {
         nint fieldValue = 0;
@@ -156,18 +161,52 @@ internal sealed partial class CorDebugDebuggee
         try
         {
             ManagedValueDisplay display = CorDebugValueFormatter.Format(fieldValue);
-            ManagedValueReferences references = RetainValue(fieldValue, generation);
+            string name = metadata.GetString(field.Name);
+            string? evaluateName = CreateMemberEvaluateName(parentEvaluateName, name);
+            ManagedValueReferences references = RetainValue(
+                fieldValue,
+                generation,
+                evaluateName);
             return new DebugVariableInfo(
-                metadata.GetString(field.Name),
+                name,
                 display.Value,
                 display.Type,
                 references.VariablesReference,
-                references.MemoryReference);
+                references.MemoryReference,
+                evaluateName);
         }
         finally
         {
             _ = ComAbi.Release(fieldValue);
         }
+    }
+
+    private static string? CreateMemberEvaluateName(string? parent, string name)
+    {
+        if (parent is null || !IsSimpleIdentifier(name))
+        {
+            return null;
+        }
+
+        return $"{parent}.{name}";
+    }
+
+    private static bool IsSimpleIdentifier(string value)
+    {
+        if (value.Length == 0 || !(value[0] == '_' || char.IsLetter(value[0])))
+        {
+            return false;
+        }
+
+        for (int index = 1; index < value.Length; index++)
+        {
+            if (value[index] != '_' && !char.IsLetterOrDigit(value[index]))
+            {
+                return false;
+            }
+        }
+
+        return true;
     }
 
 }

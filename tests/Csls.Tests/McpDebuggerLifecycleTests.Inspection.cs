@@ -76,6 +76,24 @@ public sealed partial class McpDebuggerLifecycleTests
         JsonElement localNumber = variables.GetProperty("variables").EnumerateArray().Single(
             item => item.GetProperty("name").GetString() == "localNumber");
         Assert.AreEqual("43", localNumber.GetProperty("value").GetString());
+        Assert.AreEqual(
+            "localNumber",
+            localNumber.GetProperty("evaluateName").GetString());
+        JsonElement evaluation = await CallAsync(
+            client,
+            "debug_evaluate",
+            new Dictionary<string, object?>
+            {
+                ["debugSession"] = debugSession,
+                ["stopGeneration"] = generation,
+                ["frameId"] = frame.GetProperty("id").GetInt32(),
+                ["expression"] = "localObject.Number"
+            },
+            cancellationToken).ConfigureAwait(false);
+        Assert.AreEqual(generation, evaluation.GetProperty("stopGeneration").GetInt64());
+        Assert.AreEqual(
+            "42",
+            evaluation.GetProperty("evaluation").GetProperty("result").GetString());
 
         JsonElement modules = await CallAsync(
             client,
@@ -126,6 +144,18 @@ public sealed partial class McpDebuggerLifecycleTests
             {
                 ["debugSession"] = debugSession,
                 ["stopGeneration"] = generation + 1
+            },
+            "debugger_stale_generation",
+            cancellationToken).ConfigureAwait(false);
+        await AssertToolErrorAsync(
+            client,
+            "debug_evaluate",
+            new Dictionary<string, object?>
+            {
+                ["debugSession"] = debugSession,
+                ["stopGeneration"] = generation + 1,
+                ["frameId"] = frame.GetProperty("id").GetInt32(),
+                ["expression"] = "localNumber"
             },
             "debugger_stale_generation",
             cancellationToken).ConfigureAwait(false);

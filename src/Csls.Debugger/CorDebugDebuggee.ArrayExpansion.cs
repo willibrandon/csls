@@ -10,6 +10,7 @@ internal sealed partial class CorDebugDebuggee
 {
     private unsafe List<DebugVariableInfo> ExpandArray(
         nint array,
+        string? parentEvaluateName,
         DebugStopGeneration generation,
         int start,
         int count)
@@ -51,13 +52,21 @@ internal sealed partial class CorDebugDebuggee
             try
             {
                 ManagedValueDisplay display = CorDebugValueFormatter.Format(element);
-                ManagedValueReferences references = RetainValue(element, generation);
+                string name = FormatArrayIndex(index, dimensions, bases);
+                string? evaluateName = parentEvaluateName is null
+                    ? null
+                    : string.Concat(parentEvaluateName, name);
+                ManagedValueReferences references = RetainValue(
+                    element,
+                    generation,
+                    evaluateName);
                 result.Add(new DebugVariableInfo(
-                    FormatArrayIndex(index, dimensions, bases),
+                    name,
                     display.Value,
                     display.Type,
                     references.VariablesReference,
-                    references.MemoryReference));
+                    references.MemoryReference,
+                    evaluateName));
             }
             finally
             {

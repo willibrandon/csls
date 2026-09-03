@@ -121,6 +121,18 @@ public sealed partial class DebuggerControlService :
     }
 
     /// <inheritdoc />
+    public Task<DebugEvaluateResult> EvaluateAsync(
+        DebugEvaluateRequest request,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        return _session.EvaluateAsync(
+            request.FrameId,
+            request.Expression,
+            cancellationToken);
+    }
+
+    /// <inheritdoc />
     public async Task<DebugSessionSnapshot> TerminateAsync(CancellationToken cancellationToken)
     {
         await _session.TerminateAsync(cancellationToken).ConfigureAwait(false);
