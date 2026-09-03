@@ -83,7 +83,7 @@ internal sealed partial class CorDebugDebuggee
 
             using var resumeHandle = new DbgShimResumeHandle(rawResumeHandle);
             processOwner.Acquire(() => Process.GetProcessById(checked((int)processId)));
-            Process process = processOwner.Value
+            _ = processOwner.Value
                 ?? throw new InvalidOperationException("The debuggee process was not acquired.");
             if (!OperatingSystem.IsWindows())
             {

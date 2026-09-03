@@ -70,6 +70,7 @@ jobs:
         if: steps.test-binaries-cache.outputs.cache-hit != 'true' || steps.source-generator-test-binaries-cache.outputs.cache-hit != 'true'
         run: |
           dotnet build tests/Csls.Tests/Csls.Tests.csproj
+          dotnet build tests/Csls.Debugger.Tests/Csls.Debugger.Tests.csproj
           dotnet build tests/Csls.SourceGen.Tests/Csls.SourceGen.Tests.csproj
 
       - name: Pack test binaries
@@ -131,29 +132,31 @@ jobs:
     name: Debugger tests (${{ matrix.rid }})
     runs-on: ${{ matrix.os }}
     timeout-minutes: 5
-    needs: debugger-unix-wait
+    needs:
+      - debugger-unix-wait
+      - test-binaries
     strategy:
       fail-fast: false
       matrix:
         include:
           - os: ubuntu-latest
             rid: linux-x64
-            interposer: artifacts/debugger-unix-wait/Csls.Debugger.UnixWait.so
+            unix_wait: true
           - os: ubuntu-24.04-arm
             rid: linux-arm64
-            interposer: artifacts/debugger-unix-wait/Csls.Debugger.UnixWait.so
+            unix_wait: true
           - os: windows-latest
             rid: win-x64
-            interposer: ''
+            unix_wait: false
           - os: windows-11-arm
             rid: win-arm64
-            interposer: ''
+            unix_wait: false
           - os: macos-26-intel
             rid: osx-x64
-            interposer: artifacts/debugger-unix-wait/Csls.Debugger.UnixWait.dylib
+            unix_wait: true
           - os: macos-26
             rid: osx-arm64
-            interposer: artifacts/debugger-unix-wait/Csls.Debugger.UnixWait.dylib
+            unix_wait: true
 
     steps:
       - name: Check out repository
@@ -167,20 +170,29 @@ jobs:
         with:
           dotnet-version: 10.x
 
+      - name: Download test binaries
+        uses: actions/download-artifact@v8
+        with:
+          name: test-binaries-${{ github.run_attempt }}
+          path: artifacts
+
+      - name: Extract test binaries
+        run: tar --extract --file artifacts/test-binaries.tar --directory artifacts
+
       - name: Restore Unix wait interposer
-        if: matrix.interposer != ''
+        if: matrix.unix_wait
         uses: actions/download-artifact@v8
         with:
           name: debugger-unix-wait-${{ matrix.rid }}-${{ github.run_attempt }}
-          path: artifacts/debugger-unix-wait
+          path: artifacts/bin/Csls.Debugger.Worker/debug
 
       - name: Run debugger tests
         env:
-          CslsUnixWaitInterposerPath: ${{ matrix.interposer }}
           CSLS_REPOSITORY_ROOT: ${{ github.workspace }}
         run: >-
           dotnet test
-          --project tests/Csls.Debugger.Tests/Csls.Debugger.Tests.csproj
+          --test-modules artifacts/bin/Csls.Debugger.Tests/debug/Csls.Debugger.Tests.dll
+          --root-directory .
           --minimum-expected-tests 70
           --no-ansi
 
@@ -553,12 +565,45 @@ jobs:
         run: >-
           dotnet test --test-modules artifacts/bin/Csls.Tests/debug/Csls.Tests.dll
           --root-directory .
-          --filter "FullyQualifiedName!~LanguageServerTests&TestCategory!=VsCodeHost&TestCategory!=VsCodeOracle&TestCategory!=LegacyBuildHost&FullyQualifiedName!~Csls.Tests.UpstreamParityTests&FullyQualifiedName!~Csls.Tests.ZedHighlightQueryTests"
+          --filter "FullyQualifiedName!~LanguageServerTests&FullyQualifiedName!~McpDebuggerLifecycleTests&TestCategory!=VsCodeHost&TestCategory!=VsCodeOracle&TestCategory!=ZedHost&TestCategory!=LegacyBuildHost&FullyQualifiedName!~Csls.Tests.UpstreamParityTests&FullyQualifiedName!~Csls.Tests.ZedHighlightQueryTests"
           --minimum-expected-tests 62
           && dotnet test
           --test-modules artifacts/bin/Csls.SourceGen.Tests/debug/Csls.SourceGen.Tests.dll
           --root-directory .
           --minimum-expected-tests 8
+
+  debugger-mcp-tests:
+    name: Debugger MCP tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    needs: test-binaries
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 10.x
+
+      - name: Download test binaries
+        uses: actions/download-artifact@v8
+        with:
+          name: test-binaries-${{ github.run_attempt }}
+          path: artifacts
+
+      - name: Extract test binaries
+        run: tar --extract --file artifacts/test-binaries.tar --directory artifacts
+
+      - name: Run debugger MCP tests
+        run: >-
+          dotnet test --test-modules artifacts/bin/Csls.Tests/debug/Csls.Tests.dll
+          --root-directory .
+          --filter "FullyQualifiedName~Csls.Tests.McpDebuggerLifecycleTests"
+          --minimum-expected-tests 3
 
   terminal-editor-tests:
     name: Terminal editor tests

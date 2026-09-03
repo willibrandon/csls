@@ -45,10 +45,7 @@ internal sealed class McpDebuggerSubscriptions
         {
             foreach (string uri in subscriptions.Where(uri => Matches(uri, change)))
             {
-                if (pending.TryAdd(uri, 0))
-                {
-                    signal.Writer.TryWrite(true);
-                }
+                EnqueueChangedResource(pending, signal.Writer, uri);
             }
         }
 
@@ -85,6 +82,17 @@ internal sealed class McpDebuggerSubscriptions
         }
 
         return new EmptyResult();
+    }
+
+    private static void EnqueueChangedResource(
+        ConcurrentDictionary<string, byte> pending,
+        ChannelWriter<bool> signal,
+        string uri)
+    {
+        if (pending.TryAdd(uri, 0))
+        {
+            signal.TryWrite(true);
+        }
     }
 
     private string[] SelectSubscriptions(

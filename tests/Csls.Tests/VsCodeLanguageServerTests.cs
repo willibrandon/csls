@@ -776,6 +776,8 @@ public sealed class VsCodeLanguageServerTests
         startInfo.Environment["CSLS_VSCODE_WORKSPACE_PATH"] = workspacePath;
         startInfo.Environment[ControlEndpoint.SocketDirectoryEnvironmentVariable] =
             socketDirectory;
+        startInfo.Environment["CSLS_DEBUGGER_WORKER_PATH"] =
+            EditorToolResolver.ResolveDebuggerWorker(repositoryRoot);
         startInfo.Environment["NUGET_PACKAGES"] =
             EditorToolResolver.ResolveNuGetPackagesPath();
         if (localSuite is not null)

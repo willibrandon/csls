@@ -1,4 +1,5 @@
 using Csls.Control;
+using Csls.Control.Contracts;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Text.Json;
@@ -93,11 +94,16 @@ public sealed class ZedDebuggerTests
                 EditorToolResolver.ResolveDebuggerWorker(repositoryRoot));
             Task<string> output = zed.StandardOutput.ReadToEndAsync(TestContext.CancellationToken);
             Task<string> error = zed.StandardError.ReadToEndAsync(TestContext.CancellationToken);
+            ProcessExitObservation? serverExit = null;
             try
             {
                 await FocusZedAsync(display.DisplayName).ConfigureAwait(false);
-                string logPath = Path.Join(userDataPath, "logs", "Zed.log");
-                await WaitForWorkspaceAsync(logPath).ConfigureAwait(false);
+                ControlSessionInfo session = await ControlSessionWaiter.WaitForRunningAsync(
+                    workspacePath,
+                    TimeSpan.FromSeconds(60),
+                    TestContext.CancellationToken,
+                    socketDirectory: socketDirectory).ConfigureAwait(false);
+                serverExit = ProcessExitWaiter.Observe(session.ProcessId);
                 X11Input.SendF9(display.DisplayName);
                 X11Input.SendF4(display.DisplayName);
                 await Task.Delay(
@@ -129,6 +135,14 @@ public sealed class ZedDebuggerTests
                 string diagnostics = string.Concat(
                     await output.ConfigureAwait(false),
                     await error.ConfigureAwait(false));
+                if (serverExit is ProcessExitObservation observation)
+                {
+                    await ProcessExitWaiter.WaitAsync(
+                        observation,
+                        TimeSpan.FromSeconds(10),
+                        TestContext.CancellationToken).ConfigureAwait(false);
+                }
+
                 Assert.DoesNotContain("failed to spawn", diagnostics, StringComparison.OrdinalIgnoreCase);
             }
         }
@@ -196,31 +210,6 @@ public sealed class ZedDebuggerTests
         }
 
         throw new TimeoutException($"Zed did not launch the debuggee: {path}");
-    }
-
-    private async Task WaitForWorkspaceAsync(string logPath)
-    {
-        for (int attempt = 0; attempt < 200; attempt++)
-        {
-            if (File.Exists(logPath))
-            {
-                string log = await File.ReadAllTextAsync(
-                    logPath,
-                    TestContext.CancellationToken).ConfigureAwait(false);
-                if (log.Contains(
-                    "starting language server process",
-                    StringComparison.OrdinalIgnoreCase))
-                {
-                    return;
-                }
-            }
-
-            await Task.Delay(
-                TimeSpan.FromMilliseconds(100),
-                TestContext.CancellationToken).ConfigureAwait(false);
-        }
-
-        Assert.Fail("Zed did not finish loading the C# workspace.");
     }
 
     private static int FindBreakpointLine(string sourcePath) => File

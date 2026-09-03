@@ -24,17 +24,11 @@ internal static class ManagedIlOpCodeCatalog
 
     private static FrozenDictionary<ushort, OpCode> Create(
         [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicFields)] Type type)
-    {
-        var result = new Dictionary<ushort, OpCode>();
-        foreach (FieldInfo field in type.GetFields(BindingFlags.Public | BindingFlags.Static)
-            .Where(static field => field.FieldType == typeof(OpCode)))
-        {
-            if (field.GetValue(null) is OpCode opCode)
-            {
-                result.Add(unchecked((ushort)opCode.Value), opCode);
-            }
-        }
-
-        return result.ToFrozenDictionary();
-    }
+        => type.GetFields(BindingFlags.Public | BindingFlags.Static)
+            .Where(static field => field.FieldType == typeof(OpCode))
+            .Select(static field => field.GetValue(null))
+            .OfType<OpCode>()
+            .ToFrozenDictionary(
+                static opCode => unchecked((ushort)opCode.Value),
+                static opCode => opCode);
 }

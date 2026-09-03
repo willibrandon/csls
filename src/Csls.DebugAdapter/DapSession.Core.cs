@@ -35,7 +35,7 @@ internal sealed partial class DapSession : IDebuggerSessionObserver, IAsyncDispo
         DebugExceptionInfo? Exception)? _deferredStop;
     private Task? _evaluationRequest;
     private CancellationTokenSource? _evaluationRequestCancellation;
-    private TaskCompletionSource? _evaluationHandlerCompletion;
+    private TaskCompletionSource? _evaluationResponseCompletion;
     private int _evaluationRequestSequence;
     private int _protocolClosed;
 
@@ -90,7 +90,7 @@ internal sealed partial class DapSession : IDebuggerSessionObserver, IAsyncDispo
                 if (_evaluationRequest is not null)
                 {
                     if (!_evaluationRequest.IsCompleted &&
-                        !_evaluationHandlerCompletion!.Task.IsCompleted)
+                        !_evaluationResponseCompletion!.Task.IsCompleted)
                     {
                         await WriteRequestFailureAsync(
                             request,
@@ -107,12 +107,12 @@ internal sealed partial class DapSession : IDebuggerSessionObserver, IAsyncDispo
                 {
                     _evaluationRequestCancellation = CancellationTokenSource
                         .CreateLinkedTokenSource(linked.Token);
-                    _evaluationHandlerCompletion = new TaskCompletionSource(
+                    _evaluationResponseCompletion = new TaskCompletionSource(
                         TaskCreationOptions.RunContinuationsAsynchronously);
                     _evaluationRequestSequence = request.Seq;
                     _evaluationRequest = HandleEvaluationRequestAsync(
                         request,
-                        _evaluationHandlerCompletion,
+                        _evaluationResponseCompletion,
                         _evaluationRequestCancellation.Token);
                     continue;
                 }
@@ -205,14 +205,14 @@ internal sealed partial class DapSession : IDebuggerSessionObserver, IAsyncDispo
         using CancellationTokenSource cancellation = _evaluationRequestCancellation!;
         _evaluationRequest = null;
         _evaluationRequestCancellation = null;
-        _evaluationHandlerCompletion = null;
+        _evaluationResponseCompletion = null;
         _evaluationRequestSequence = 0;
         await evaluationRequest.WaitAsync(CancellationToken.None).ConfigureAwait(false);
     }
 
     private async Task HandleEvaluationRequestAsync(
         Request request,
-        TaskCompletionSource handlerCompletion,
+        TaskCompletionSource responseCompletion,
         CancellationToken cancellationToken)
     {
         try
@@ -221,7 +221,7 @@ internal sealed partial class DapSession : IDebuggerSessionObserver, IAsyncDispo
         }
         finally
         {
-            _ = handlerCompletion.TrySetResult();
+            _ = responseCompletion.TrySetResult();
         }
     }
 }

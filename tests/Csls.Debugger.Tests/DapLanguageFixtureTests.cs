@@ -42,10 +42,9 @@ public sealed partial class DapSessionTests
                 }
                 finally
                 {
-                    if (Directory.Exists(artifactsPath))
-                    {
-                        Directory.Delete(artifactsPath, recursive: true);
-                    }
+                    await DebuggerTestDirectoryReleaseWaiter.DeleteAsync(
+                        artifactsPath,
+                        TimeSpan.FromSeconds(10)).ConfigureAwait(false);
                 }
             }
         }
