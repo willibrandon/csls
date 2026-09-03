@@ -12,6 +12,11 @@ if (args is ["--debugger-step-fixture", string stepFixturePath])
     return DebuggerStepFixture.Run(stepFixturePath);
 }
 
+if (args is ["--debugger-exception-fixture", string exceptionFixturePath])
+{
+    return DebuggerExceptionFixture.Run(exceptionFixturePath);
+}
+
 if (args is ["--print-environment-and-exit", string printedVariable, string exitCode])
 {
     await Console.Out.WriteAsync(

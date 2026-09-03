@@ -37,12 +37,14 @@ public interface IDebuggerSessionObserver
     /// <param name="reason">The protocol-neutral stop reason.</param>
     /// <param name="threadId">The triggering managed thread identifier when known.</param>
     /// <param name="generation">The generation owning inspection handles at this stop.</param>
+    /// <param name="exception">The current managed exception for an exception stop.</param>
     /// <param name="cancellationToken">Cancels notification delivery.</param>
     /// <returns>A task that completes after the notification is accepted.</returns>
     ValueTask OnStoppedAsync(
         string reason,
         int? threadId,
         DebugStopGeneration generation,
+        DebugExceptionInfo? exception,
         CancellationToken cancellationToken);
 
     /// <summary>

@@ -117,7 +117,7 @@ public sealed partial class DapSessionTests
         await AssertLoadedSourceAsync(client, sourcePath).ConfigureAwait(false);
         await AssertBreakpointLocationAsync(client, sourcePath, breakpointLine - 1)
             .ConfigureAwait(false);
-        await DisconnectSymbolSessionAsync(client).ConfigureAwait(false);
+        await DisconnectStoppedSessionAsync(client).ConfigureAwait(false);
         Assert.AreEqual(
             0,
             await client.WaitForExitAsync(TestContext.CancellationToken).ConfigureAwait(false));
@@ -190,7 +190,7 @@ public sealed partial class DapSessionTests
             matchingLocation.GetProperty("column").GetInt32());
     }
 
-    private async Task DisconnectSymbolSessionAsync(DapTestClient client)
+    private async Task DisconnectStoppedSessionAsync(DapTestClient client)
     {
         int sequence = await client.SendRequestAsync(
             "disconnect",

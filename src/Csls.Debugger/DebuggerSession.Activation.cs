@@ -54,6 +54,7 @@ public sealed partial class DebuggerSession
                 _sourceBreakpoints,
                 HandleRuntimeBreakpointCoreAsync,
                 HandleRuntimeStepCoreAsync,
+                HandleRuntimeExceptionCoreAsync,
                 cancellationToken)
                 .ConfigureAwait(false);
             await _actor.InvokeAsync(
@@ -104,6 +105,7 @@ public sealed partial class DebuggerSession
                 _sourceBreakpoints,
                 HandleRuntimeBreakpointCoreAsync,
                 HandleRuntimeStepCoreAsync,
+                HandleRuntimeExceptionCoreAsync,
                 cancellationToken).ConfigureAwait(false);
             await _actor.InvokeAsync(
                 token => CompleteLaunchCoreAsync(_debuggee, token),
@@ -245,10 +247,17 @@ public sealed partial class DebuggerSession
             debuggee.Id,
             cancellationToken).ConfigureAwait(false);
         _state = DebugSessionState.Running;
-        if (_pendingStopThreadId is int threadId)
+        if (_pendingStop is PendingDebugStop pendingStop)
         {
-            _pendingStopThreadId = null;
-            await EnterStoppedStateAsync("breakpoint", threadId, cancellationToken)
+            _pendingStop = null;
+            _currentException = pendingStop.Exception;
+            _currentExceptionThreadId = pendingStop.Exception is null
+                ? null
+                : pendingStop.ThreadId;
+            await EnterStoppedStateAsync(
+                pendingStop.Reason,
+                pendingStop.ThreadId,
+                cancellationToken)
                 .ConfigureAwait(false);
         }
 

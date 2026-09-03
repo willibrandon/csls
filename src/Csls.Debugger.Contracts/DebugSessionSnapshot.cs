@@ -36,6 +36,11 @@ public sealed class DebugSessionSnapshot
     public long StopGeneration { get; init; }
 
     /// <summary>
+    /// Gets the current managed exception for an exception stop.
+    /// </summary>
+    public DebugExceptionInfo? Exception { get; init; }
+
+    /// <summary>
     /// Gets the target exit code after target exit.
     /// </summary>
     public int? ExitCode { get; init; }

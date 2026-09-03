@@ -17,6 +17,7 @@ internal sealed partial class CorDebugDebuggee
     /// <param name="sourceBreakpoints">The session source-breakpoint owner.</param>
     /// <param name="breakpointStopped">The ordered runtime-breakpoint stop callback.</param>
     /// <param name="stepCompleted">The ordered runtime-step completion callback.</param>
+    /// <param name="exceptionRaised">The ordered managed-exception callback.</param>
     /// <param name="cancellationToken">Cancels runtime activation and cleans up the target.</param>
     /// <returns>The live debugger-owned target.</returns>
     internal static async Task<CorDebugDebuggee> LaunchAsync(
@@ -25,6 +26,7 @@ internal sealed partial class CorDebugDebuggee
         SourceBreakpointManager sourceBreakpoints,
         Func<int, CancellationToken, ValueTask> breakpointStopped,
         Func<int, nint, int, CancellationToken, ValueTask<bool>> stepCompleted,
+        Func<int, nint, DebugExceptionStage, CancellationToken, ValueTask<bool>> exceptionRaised,
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(options);
@@ -32,6 +34,7 @@ internal sealed partial class CorDebugDebuggee
         ArgumentNullException.ThrowIfNull(sourceBreakpoints);
         ArgumentNullException.ThrowIfNull(breakpointStopped);
         ArgumentNullException.ThrowIfNull(stepCompleted);
+        ArgumentNullException.ThrowIfNull(exceptionRaised);
         ValidateOptions(options);
         DbgShimLibrary.VerifyPlatformSupport();
 
@@ -75,7 +78,8 @@ internal sealed partial class CorDebugDebuggee
                 actor,
                 sourceBreakpoints,
                 breakpointStopped,
-                stepCompleted);
+                stepCompleted,
+                exceptionRaised);
             registration = new CorDebugRuntimeStartupRegistration(
                 processId,
                 actor,
@@ -164,6 +168,7 @@ internal sealed partial class CorDebugDebuggee
     /// <param name="sourceBreakpoints">The session source-breakpoint owner.</param>
     /// <param name="breakpointStopped">The ordered runtime-breakpoint stop callback.</param>
     /// <param name="stepCompleted">The ordered runtime-step completion callback.</param>
+    /// <param name="exceptionRaised">The ordered managed-exception callback.</param>
     /// <param name="cancellationToken">Cancels runtime activation without terminating the target.</param>
     /// <returns>The live debugger attachment.</returns>
     internal static async Task<CorDebugDebuggee> AttachAsync(
@@ -172,6 +177,7 @@ internal sealed partial class CorDebugDebuggee
         SourceBreakpointManager sourceBreakpoints,
         Func<int, CancellationToken, ValueTask> breakpointStopped,
         Func<int, nint, int, CancellationToken, ValueTask<bool>> stepCompleted,
+        Func<int, nint, DebugExceptionStage, CancellationToken, ValueTask<bool>> exceptionRaised,
         CancellationToken cancellationToken)
     {
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(processId);
@@ -179,6 +185,7 @@ internal sealed partial class CorDebugDebuggee
         ArgumentNullException.ThrowIfNull(sourceBreakpoints);
         ArgumentNullException.ThrowIfNull(breakpointStopped);
         ArgumentNullException.ThrowIfNull(stepCompleted);
+        ArgumentNullException.ThrowIfNull(exceptionRaised);
         if (processId == Environment.ProcessId)
         {
             throw new ArgumentException("The debugger cannot attach to its own process.", nameof(processId));
@@ -207,7 +214,8 @@ internal sealed partial class CorDebugDebuggee
                 actor,
                 sourceBreakpoints,
                 breakpointStopped,
-                stepCompleted);
+                stepCompleted,
+                exceptionRaised);
             registration = new CorDebugRuntimeStartupRegistration(
                 checked((uint)processId),
                 actor,

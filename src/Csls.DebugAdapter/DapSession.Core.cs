@@ -1,6 +1,5 @@
 using Csls.DebugAdapter.Protocol;
 using Csls.Debugger;
-using Csls.Debugger.Contracts;
 using System.ComponentModel;
 using System.Text.Json;
 
@@ -97,88 +96,6 @@ internal sealed partial class DapSession : IDebuggerSessionObserver, IAsyncDispo
         await _writer.DisposeAsync().ConfigureAwait(false);
     }
 
-    private async ValueTask HandleRequestAsync(
-        Request request,
-        CancellationToken cancellationToken)
-    {
-        switch (request.Command)
-        {
-            case "initialize":
-                await InitializeAsync(request, cancellationToken).ConfigureAwait(false);
-                break;
-            case "launch":
-                await PrepareLaunchAsync(request, cancellationToken).ConfigureAwait(false);
-                break;
-            case "attach":
-                await PrepareAttachAsync(request, cancellationToken).ConfigureAwait(false);
-                break;
-            case "configurationDone":
-                await CompleteTargetStartAsync(request, cancellationToken).ConfigureAwait(false);
-                break;
-            case "setBreakpoints":
-                await SetBreakpointsAsync(request, cancellationToken).ConfigureAwait(false);
-                break;
-            case "threads":
-                await WriteThreadsAsync(request, cancellationToken).ConfigureAwait(false);
-                break;
-            case "modules":
-                await WriteModulesAsync(request, cancellationToken).ConfigureAwait(false);
-                break;
-            case "loadedSources":
-                await WriteLoadedSourcesAsync(request, cancellationToken).ConfigureAwait(false);
-                break;
-            case "breakpointLocations":
-                await WriteBreakpointLocationsAsync(request, cancellationToken).ConfigureAwait(false);
-                break;
-            case "pause":
-                await PauseAsync(request, cancellationToken).ConfigureAwait(false);
-                break;
-            case "continue":
-                await ContinueAsync(request, cancellationToken).ConfigureAwait(false);
-                break;
-            case "next":
-                await StepAsync(request, DebugStepKind.Over, cancellationToken)
-                    .ConfigureAwait(false);
-                break;
-            case "stepIn":
-                await StepAsync(request, DebugStepKind.Into, cancellationToken)
-                    .ConfigureAwait(false);
-                break;
-            case "stepOut":
-                await StepAsync(request, DebugStepKind.Out, cancellationToken)
-                    .ConfigureAwait(false);
-                break;
-            case "stackTrace":
-                await WriteStackTraceAsync(request, cancellationToken).ConfigureAwait(false);
-                break;
-            case "scopes":
-                await WriteScopesAsync(request, cancellationToken).ConfigureAwait(false);
-                break;
-            case "variables":
-                await WriteVariablesAsync(request, cancellationToken).ConfigureAwait(false);
-                break;
-            case "disconnect":
-                await DisconnectAsync(request, cancellationToken).ConfigureAwait(false);
-                break;
-            case "cancel":
-                await _writer.WriteResponseAsync(
-                    request,
-                    success: true,
-                    message: null,
-                    writeBody: null,
-                    cancellationToken).ConfigureAwait(false);
-                break;
-            default:
-                await _writer.WriteResponseAsync(
-                    request,
-                    success: false,
-                    $"The request '{request.Command}' is not supported by this debugger capability set.",
-                    writeBody: null,
-                    cancellationToken).ConfigureAwait(false);
-                break;
-        }
-    }
-
     private async ValueTask InitializeAsync(
         Request request,
         CancellationToken cancellationToken)
@@ -202,6 +119,27 @@ internal sealed partial class DapSession : IDebuggerSessionObserver, IAsyncDispo
                 writer.WriteBoolean("supportsModulesRequest", true);
                 writer.WriteBoolean("supportsLoadedSourcesRequest", true);
                 writer.WriteBoolean("supportsBreakpointLocationsRequest", true);
+                writer.WriteStartArray("exceptionBreakpointFilters");
+                WriteExceptionBreakpointFilter(
+                    writer,
+                    "all",
+                    "Thrown Exceptions",
+                    "Break when any managed exception is thrown.",
+                    defaultValue: false);
+                WriteExceptionBreakpointFilter(
+                    writer,
+                    "user-unhandled",
+                    "User-Unhandled Exceptions",
+                    "Break when a managed exception escapes user code.",
+                    defaultValue: false);
+                WriteExceptionBreakpointFilter(
+                    writer,
+                    "unhandled",
+                    "Unhandled Exceptions",
+                    "Break when a managed exception has no runtime handler.",
+                    defaultValue: true);
+                writer.WriteEndArray();
+                writer.WriteBoolean("supportsExceptionInfoRequest", true);
                 writer.WriteBoolean("supportsVariablePaging", true);
                 writer.WriteEndObject();
             },

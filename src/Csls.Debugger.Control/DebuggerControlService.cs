@@ -182,6 +182,7 @@ public sealed class DebuggerControlService :
         string reason,
         int? threadId,
         DebugStopGeneration generation,
+        DebugExceptionInfo? exception,
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
@@ -193,7 +194,8 @@ public sealed class DebuggerControlService :
             ProcessId = current.ProcessId,
             StopReason = reason,
             StoppedThreadId = threadId,
-            StopGeneration = generation.Value
+            StopGeneration = generation.Value,
+            Exception = exception
         });
         return ValueTask.CompletedTask;
     }

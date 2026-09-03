@@ -17,7 +17,11 @@ public sealed partial class DebuggerSession : IAsyncDisposable
     private CancellationTokenSource? _debuggeeObservationCancellation;
     private DebugStopGeneration _stopGeneration;
     private volatile DebugSessionState _state = DebugSessionState.Created;
-    private int? _pendingStopThreadId;
+    private readonly HashSet<DebugExceptionBreakMode> _exceptionBreakModes =
+        [DebugExceptionBreakMode.Unhandled];
+    private PendingDebugStop? _pendingStop;
+    private DebugExceptionInfo? _currentException;
+    private int? _currentExceptionThreadId;
     private int _disposed;
 
     /// <summary>
@@ -179,6 +183,8 @@ public sealed partial class DebuggerSession : IAsyncDisposable
         }
 
         managedDebuggee.Continue();
+        _currentException = null;
+        _currentExceptionThreadId = null;
         _state = DebugSessionState.Running;
         await _observer.OnContinuedAsync(cancellationToken).ConfigureAwait(false);
     }
@@ -196,6 +202,8 @@ public sealed partial class DebuggerSession : IAsyncDisposable
         }
 
         managedDebuggee.Step(threadId, kind);
+        _currentException = null;
+        _currentExceptionThreadId = null;
         _state = DebugSessionState.Running;
         await _observer.OnContinuedAsync(cancellationToken).ConfigureAwait(false);
     }
@@ -234,7 +242,7 @@ public sealed partial class DebuggerSession : IAsyncDisposable
     {
         if (_state == DebugSessionState.Starting)
         {
-            _pendingStopThreadId = threadId;
+            _pendingStop = new PendingDebugStop("breakpoint", threadId, Exception: null);
             return ValueTask.CompletedTask;
         }
 
@@ -276,6 +284,12 @@ public sealed partial class DebuggerSession : IAsyncDisposable
         int? threadId,
         CancellationToken cancellationToken)
     {
+        if (!string.Equals(reason, "exception", StringComparison.Ordinal))
+        {
+            _currentException = null;
+            _currentExceptionThreadId = null;
+        }
+
         _stopGeneration = _stopGeneration.Value == 0
             ? DebugStopGeneration.First
             : _stopGeneration.Next();
@@ -284,6 +298,7 @@ public sealed partial class DebuggerSession : IAsyncDisposable
             reason,
             threadId,
             _stopGeneration,
+            _currentException,
             cancellationToken).ConfigureAwait(false);
     }
 }

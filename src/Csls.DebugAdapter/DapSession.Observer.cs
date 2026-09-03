@@ -53,7 +53,8 @@ internal sealed partial class DapSession
                 cancellationToken).ConfigureAwait(false);
             ClearPendingTarget();
         }
-        catch (Exception exception) when (IsExpectedClosedTransportException(exception))
+        catch (Exception transportException) when (
+            IsExpectedClosedTransportException(transportException))
         {
         }
     }
@@ -94,6 +95,7 @@ internal sealed partial class DapSession
         string reason,
         int? threadId,
         DebugStopGeneration generation,
+        DebugExceptionInfo? exception,
         CancellationToken cancellationToken)
     {
         _ = generation;
@@ -111,6 +113,12 @@ internal sealed partial class DapSession
                 {
                     writer.WriteStartObject();
                     writer.WriteString("reason", reason);
+                    if (exception is not null)
+                    {
+                        writer.WriteString("description", exception.Description);
+                        writer.WriteString("text", exception.ExceptionId);
+                    }
+
                     if (threadId is not null)
                     {
                         writer.WriteNumber("threadId", threadId.Value);
@@ -121,7 +129,8 @@ internal sealed partial class DapSession
                 },
                 cancellationToken).ConfigureAwait(false);
         }
-        catch (Exception exception) when (IsExpectedClosedTransportException(exception))
+        catch (Exception transportException) when (
+            IsExpectedClosedTransportException(transportException))
         {
         }
     }
