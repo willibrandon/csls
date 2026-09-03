@@ -56,7 +56,7 @@ public sealed partial class DebuggerRpcTests
         int breakpointLine = sourceLines
             .Select(static (line, index) => (Line: line, Number: index + 1))
             .Single(static candidate => candidate.Line.Contains(
-                "int localNumber = number + 1;",
+                "Thread.SpinWait(10_000);",
                 StringComparison.Ordinal))
             .Number;
         string socketPath = Path.Join(testDirectory, "debugger.sock");
@@ -124,8 +124,15 @@ public sealed partial class DebuggerRpcTests
             cancellationToken).ConfigureAwait(false);
         DebugVariableInfo localNumber = localVariables.Single(
             static variable => variable.Name == "localNumber");
-        Assert.AreEqual("0", localNumber.Value);
+        Assert.AreEqual("43", localNumber.Value);
         Assert.AreEqual("int", localNumber.Type);
+        DebugVariableInfo localArray = localVariables.Single(
+            static variable => variable.Name == "localArray");
+        Assert.IsNotNull(localArray.MemoryReference);
+        DebugMemoryReadResult memory = await client.ReadMemoryAsync(
+            new DebugMemoryReadRequest(localArray.MemoryReference, 0, 64),
+            cancellationToken).ConfigureAwait(false);
+        AssertRpcArrayMemory(memory);
 
         DebugSessionSnapshot terminated = await client.TerminateAsync(cancellationToken)
             .ConfigureAwait(false);

@@ -78,6 +78,9 @@ internal sealed partial class DapSession
             case "variables":
                 await WriteVariablesAsync(request, cancellationToken).ConfigureAwait(false);
                 break;
+            case "readMemory":
+                await ReadMemoryAsync(request, cancellationToken).ConfigureAwait(false);
+                break;
             case "exceptionInfo":
                 await WriteExceptionInfoAsync(request, cancellationToken).ConfigureAwait(false);
                 break;

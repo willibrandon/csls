@@ -26,4 +26,14 @@ internal sealed class ManagedValueHandle
     /// Gets or initializes the owned canonical COM identity pointer.
     /// </summary>
     internal required nint Identity { get; init; }
+
+    /// <summary>
+    /// Gets or initializes the opaque stopped-state memory handle.
+    /// </summary>
+    internal string? MemoryReference { get; init; }
+
+    /// <summary>
+    /// Gets or initializes the managed address represented by the memory handle.
+    /// </summary>
+    internal ulong MemoryAddress { get; init; }
 }

@@ -21,6 +21,8 @@ internal sealed partial class CorDebugDebuggee : IDebuggeeProcess
     private readonly Dictionary<(int FrameId, ManagedScopeKind Kind), ManagedScopeHandle> _scopes = [];
     private readonly Dictionary<int, ManagedValueHandle> _values = [];
     private readonly Dictionary<nint, ManagedValueHandle> _valueIdentities = [];
+    private readonly Dictionary<string, ManagedValueHandle> _memoryValues =
+        new(StringComparer.Ordinal);
     private nint _corDebug;
     private nint _debugProcess;
     private nint _activeStepper;

@@ -134,6 +134,16 @@ public interface IDebuggerControlTarget
         CancellationToken cancellationToken);
 
     /// <summary>
+    /// Reads a bounded target-memory range through a stopped-state handle.
+    /// </summary>
+    /// <param name="request">The selected memory handle and relative range.</param>
+    /// <param name="cancellationToken">Cancels memory inspection.</param>
+    /// <returns>The readable prefix and trailing unreadable byte count.</returns>
+    Task<DebugMemoryReadResult> ReadMemoryAsync(
+        DebugMemoryReadRequest request,
+        CancellationToken cancellationToken);
+
+    /// <summary>
     /// Gets source content by its session-local reference.
     /// </summary>
     /// <param name="request">The selected source reference.</param>

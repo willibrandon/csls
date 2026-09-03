@@ -18,6 +18,8 @@ namespace Csls.Debugger.Control;
 [JsonSerializable(typeof(DebugFunctionBreakpointRequest))]
 [JsonSerializable(typeof(DebugFunctionBreakpointSetRequest))]
 [JsonSerializable(typeof(DebugLaunchRequest))]
+[JsonSerializable(typeof(DebugMemoryReadRequest))]
+[JsonSerializable(typeof(DebugMemoryReadResult))]
 [JsonSerializable(typeof(DebugScopeInfo))]
 [JsonSerializable(typeof(DebugScopesRequest))]
 [JsonSerializable(typeof(DebugSessionSnapshot))]

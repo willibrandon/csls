@@ -111,6 +111,17 @@ array indexing and metadata-backed instance-field enumeration apply DAP paging
 before reading child values. All retained handles are invalidated and released
 before every continue.
 
+Only pointer-like values expose DAP memory navigation; the initial managed
+backend limits this to non-null arrays, matching the Microsoft adapter's rule
+that scalar and ordinary object variables must not misleadingly open at their
+storage address. The client receives an opaque stop-generation token. A bounded
+engine operation resolves it to the current array address, applies a checked
+signed offset, calls `ICorDebugProcess.ReadMemory`, and returns a contiguous
+readable prefix plus the trailing unreadable count. DAP alone formats the
+resolved address as hexadecimal and the bytes as base64. Writes remain
+unadvertised until explicit mutation authorization and runtime safety policy
+exist.
+
 One bounded channel receives client commands and runtime callbacks. Separate
 bounded channels carry target output and client events. Saturation applies
 backpressure to requests and coalesces eligible progress/output notifications;

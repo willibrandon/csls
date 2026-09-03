@@ -51,11 +51,13 @@ internal sealed partial class CorDebugDebuggee
             try
             {
                 ManagedValueDisplay display = CorDebugValueFormatter.Format(element);
+                ManagedValueReferences references = RetainValue(element, generation);
                 result.Add(new DebugVariableInfo(
                     FormatArrayIndex(index, dimensions, bases),
                     display.Value,
                     display.Type,
-                    RetainExpandableValue(element, generation)));
+                    references.VariablesReference,
+                    references.MemoryReference));
             }
             finally
             {

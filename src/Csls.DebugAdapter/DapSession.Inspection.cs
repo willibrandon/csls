@@ -159,6 +159,11 @@ internal sealed partial class DapSession
                         writer.WriteString("value", variable.Value);
                         writer.WriteString("type", variable.Type);
                         writer.WriteNumber("variablesReference", variable.VariablesReference);
+                        if (variable.MemoryReference is not null)
+                        {
+                            writer.WriteString("memoryReference", variable.MemoryReference);
+                        }
+
                         writer.WriteEndObject();
                     }
 

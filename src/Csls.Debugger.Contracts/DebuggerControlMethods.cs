@@ -81,6 +81,11 @@ public static class DebuggerControlMethods
     public const string GetVariables = "debugger/getVariables";
 
     /// <summary>
+    /// Reads target memory through an opaque stopped-state handle.
+    /// </summary>
+    public const string ReadMemory = "debugger/readMemory";
+
+    /// <summary>
     /// Gets source content by its session-local reference.
     /// </summary>
     public const string GetSourceContent = "debugger/getSourceContent";

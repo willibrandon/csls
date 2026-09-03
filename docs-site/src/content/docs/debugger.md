@@ -65,6 +65,12 @@ operator methods during Step Into. `DebuggerHidden` and `DebuggerStepThrough`
 also remain filtered, while `DebuggerNonUserCode` follows `justMyCode`. Set the
 option to `false` to enter properties and operators.
 
+Managed arrays expose an opaque `memoryReference` while their owning stop is
+active. `readMemory` accepts signed offsets and reads at most 1 MiB per request;
+the response uses the DAP-required hexadecimal address and base64 data. Resuming
+execution retires every memory reference. Primitive and ordinary object values
+do not advertise memory navigation, and `writeMemory` is not supported.
+
 ## Security and process ownership
 
 - Target commands are executed directly without a command shell.
@@ -91,5 +97,5 @@ and session-owned targets are cleaned up when their MCP owner disconnects.
 
 Clients should use only capabilities returned by `initialize`. Unknown or
 unavailable operations return an unsuccessful protocol response. Handles for
-frames, scopes, and variables are valid only for the stop generation in which
-the adapter returned them.
+frames, scopes, variables, and memory are valid only for the stop generation in
+which the adapter returned them.
