@@ -83,7 +83,12 @@ public sealed partial class DebuggerRpcTests
             {
                 Program = programPath,
                 WorkingDirectory = testDirectory,
-                Arguments = [Path.Join(testDirectory, "continue.signal")]
+                Arguments = [Path.Join(testDirectory, "continue.signal")],
+                SourceFileMap = new Dictionary<string, string>(StringComparer.Ordinal)
+                {
+                    ["C:\\agent\\_work\\Csls.Debugger.Fixtures.Embedded"] =
+                        Path.GetDirectoryName(sourcePath)!
+                }
             },
             cancellationToken).ConfigureAwait(false);
 

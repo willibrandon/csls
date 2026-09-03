@@ -56,7 +56,7 @@ internal sealed partial class SourceBreakpointManager
         }
     }
 
-    private static Dictionary<int, SourceBreakpointLocation> ResolveLocations(
+    private Dictionary<int, SourceBreakpointLocation> ResolveLocations(
         MetadataReader reader,
         IReadOnlyList<SourceBreakpointDefinition> definitions)
     {
@@ -79,7 +79,7 @@ internal sealed partial class SourceBreakpointManager
                     continue;
                 }
 
-                string documentPath = Path.GetFullPath(
+                string documentPath = _sourcePathMapper.Map(
                     reader.GetString(reader.GetDocument(documentHandle).Name));
                 foreach (SourceBreakpointDefinition definition in definitions)
                 {

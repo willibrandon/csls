@@ -243,9 +243,9 @@ accepted only when its identity matches the module.
 
 Source resolution order is:
 
-1. A checksum-valid `sourceFileMap` path.
-2. A checksum-valid original local path.
-3. Checksum-valid embedded source.
+1. Checksum-valid embedded source.
+2. A checksum-valid `sourceFileMap` path.
+3. A checksum-valid original local path.
 4. Checksum-valid Source Link content.
 
 Raw and CRLF-normalized checksum validation is supported where compiler/source

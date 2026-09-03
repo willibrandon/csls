@@ -21,4 +21,9 @@ internal sealed class PortablePdbSourceDocument
     /// Gets the uncompressed embedded source bytes when available.
     /// </summary>
     internal byte[]? EmbeddedSource { get; init; }
+
+    /// <summary>
+    /// Gets the resolved Source Link URI when the Portable PDB provides one.
+    /// </summary>
+    internal Uri? SourceLinkUri { get; init; }
 }

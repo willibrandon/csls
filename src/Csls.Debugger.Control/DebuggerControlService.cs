@@ -42,7 +42,9 @@ public sealed partial class DebuggerControlService :
                 WorkingDirectory = request.WorkingDirectory,
                 Arguments = request.Arguments,
                 Environment = request.Environment,
-                RuntimeHostPath = request.RuntimeHostPath
+                RuntimeHostPath = request.RuntimeHostPath,
+                SourceFileMap = request.SourceFileMap,
+                SourceLinkOptions = request.SourceLinkOptions
             },
             cancellationToken).ConfigureAwait(false);
         return GetSnapshot();
@@ -54,6 +56,10 @@ public sealed partial class DebuggerControlService :
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(request);
+        await _session.ConfigureSourceOptionsAsync(
+            request.SourceFileMap,
+            request.SourceLinkOptions,
+            cancellationToken).ConfigureAwait(false);
         await _session.AttachManagedAsync(request.ProcessId, cancellationToken)
             .ConfigureAwait(false);
         return GetSnapshot();
@@ -147,114 +153,6 @@ public sealed partial class DebuggerControlService :
     {
         await _session.DetachAsync(cancellationToken).ConfigureAwait(false);
         return GetSnapshot();
-    }
-
-    /// <inheritdoc />
-    public ValueTask OnProcessStartedAsync(
-        string name,
-        int processId,
-        CancellationToken cancellationToken)
-    {
-        cancellationToken.ThrowIfCancellationRequested();
-        UpdateSnapshot(new DebugSessionSnapshot
-        {
-            State = DebugSessionState.Running,
-            ProcessName = name,
-            ProcessId = processId
-        });
-        return ValueTask.CompletedTask;
-    }
-
-    /// <inheritdoc />
-    public ValueTask OnOutputAsync(
-        DebugOutputCategory category,
-        string output,
-        CancellationToken cancellationToken)
-    {
-        _ = category;
-        _ = output;
-        cancellationToken.ThrowIfCancellationRequested();
-        return ValueTask.CompletedTask;
-    }
-
-    /// <inheritdoc />
-    public ValueTask OnStoppedAsync(
-        string reason,
-        int? threadId,
-        DebugStopGeneration generation,
-        DebugExceptionInfo? exception,
-        CancellationToken cancellationToken)
-    {
-        cancellationToken.ThrowIfCancellationRequested();
-        DebugSessionSnapshot current = GetSnapshot();
-        UpdateSnapshot(new DebugSessionSnapshot
-        {
-            State = DebugSessionState.Stopped,
-            ProcessName = current.ProcessName,
-            ProcessId = current.ProcessId,
-            StopReason = reason,
-            StoppedThreadId = threadId,
-            StopGeneration = generation.Value,
-            Exception = exception
-        });
-        return ValueTask.CompletedTask;
-    }
-
-    /// <inheritdoc />
-    public ValueTask OnBreakpointChangedAsync(
-        DebugSourceBreakpointInfo breakpoint,
-        CancellationToken cancellationToken)
-    {
-        _ = breakpoint;
-        cancellationToken.ThrowIfCancellationRequested();
-        return ValueTask.CompletedTask;
-    }
-
-    /// <inheritdoc />
-    public ValueTask OnContinuedAsync(CancellationToken cancellationToken)
-    {
-        cancellationToken.ThrowIfCancellationRequested();
-        DebugSessionSnapshot current = GetSnapshot();
-        UpdateSnapshot(new DebugSessionSnapshot
-        {
-            State = DebugSessionState.Running,
-            ProcessName = current.ProcessName,
-            ProcessId = current.ProcessId,
-            StopGeneration = current.StopGeneration
-        });
-        return ValueTask.CompletedTask;
-    }
-
-    /// <inheritdoc />
-    public ValueTask OnExitedAsync(int exitCode, CancellationToken cancellationToken)
-    {
-        cancellationToken.ThrowIfCancellationRequested();
-        DebugSessionSnapshot current = GetSnapshot();
-        UpdateSnapshot(new DebugSessionSnapshot
-        {
-            State = current.State,
-            ProcessName = current.ProcessName,
-            ProcessId = current.ProcessId,
-            StopGeneration = current.StopGeneration,
-            ExitCode = exitCode
-        });
-        return ValueTask.CompletedTask;
-    }
-
-    /// <inheritdoc />
-    public ValueTask OnTerminatedAsync(CancellationToken cancellationToken)
-    {
-        cancellationToken.ThrowIfCancellationRequested();
-        DebugSessionSnapshot current = GetSnapshot();
-        UpdateSnapshot(new DebugSessionSnapshot
-        {
-            State = DebugSessionState.Terminated,
-            ProcessName = current.ProcessName,
-            ProcessId = current.ProcessId,
-            StopGeneration = current.StopGeneration,
-            ExitCode = current.ExitCode
-        });
-        return ValueTask.CompletedTask;
     }
 
     /// <inheritdoc />

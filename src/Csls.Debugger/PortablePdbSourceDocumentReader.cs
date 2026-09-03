@@ -2,7 +2,6 @@ using Csls.Debugger.Contracts;
 using System.Buffers.Binary;
 using System.IO.Compression;
 using System.Reflection.Metadata;
-using System.Security.Cryptography;
 
 namespace Csls.Debugger;
 
@@ -24,17 +23,19 @@ internal static class PortablePdbSourceDocumentReader
     /// </summary>
     /// <param name="reader">The owning Portable PDB metadata reader.</param>
     /// <param name="handle">The selected document handle.</param>
+    /// <param name="sourceLinkMappings">The module's validated Source Link map.</param>
     /// <returns>The validated source-document metadata.</returns>
     internal static PortablePdbSourceDocument Read(
         MetadataReader reader,
-        DocumentHandle handle)
+        DocumentHandle handle,
+        IReadOnlyList<KeyValuePair<string, string>> sourceLinkMappings)
     {
         Document document = reader.GetDocument(handle);
         string path = reader.GetString(document.Name);
         DebugSourceChecksum? checksum = ReadChecksum(reader, document);
         byte[]? embeddedSource = ReadEmbeddedSource(reader, handle);
         if (embeddedSource is not null && checksum is not null &&
-            !ChecksumMatches(embeddedSource, checksum))
+            !SourceChecksumVerifier.Matches(embeddedSource, checksum))
         {
             throw new BadImageFormatException(
                 $"Embedded source for '{path}' does not match its Portable PDB checksum.");
@@ -44,7 +45,10 @@ internal static class PortablePdbSourceDocumentReader
         {
             Path = path,
             Checksum = checksum,
-            EmbeddedSource = embeddedSource
+            EmbeddedSource = embeddedSource,
+            SourceLinkUri = PortablePdbSourceLinkResolver.TryResolve(
+                sourceLinkMappings,
+                path)
         };
     }
 
@@ -122,17 +126,4 @@ internal static class PortablePdbSourceDocumentReader
         return source.ToArray();
     }
 
-    private static bool ChecksumMatches(byte[] source, DebugSourceChecksum checksum)
-    {
-        if (checksum.Algorithm != "SHA256")
-        {
-            return true;
-        }
-
-        byte[] actual = SHA256.HashData(source);
-        return string.Equals(
-            Convert.ToHexString(actual),
-            checksum.Value,
-            StringComparison.OrdinalIgnoreCase);
-    }
 }

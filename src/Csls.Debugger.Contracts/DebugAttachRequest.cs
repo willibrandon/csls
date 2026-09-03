@@ -4,4 +4,17 @@ namespace Csls.Debugger.Contracts;
 /// Selects one running CoreCLR process for debugger attachment.
 /// </summary>
 /// <param name="ProcessId">The positive operating-system process identifier.</param>
-public sealed record DebugAttachRequest(int ProcessId);
+public sealed record DebugAttachRequest(int ProcessId)
+{
+    /// <summary>
+    /// Gets build-time source prefixes mapped to local editor paths.
+    /// </summary>
+    public IReadOnlyDictionary<string, string> SourceFileMap { get; init; } =
+        new Dictionary<string, string>(StringComparer.Ordinal);
+
+    /// <summary>
+    /// Gets Source Link URL patterns mapped to enabled states.
+    /// </summary>
+    public IReadOnlyDictionary<string, bool> SourceLinkOptions { get; init; } =
+        new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
+}

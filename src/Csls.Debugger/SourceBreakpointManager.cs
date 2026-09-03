@@ -48,12 +48,12 @@ internal sealed partial class SourceBreakpointManager : IDisposable
         ObjectDisposedException.ThrowIf(_disposed != 0, this);
         ArgumentException.ThrowIfNullOrWhiteSpace(sourcePath);
         ArgumentNullException.ThrowIfNull(requests);
-        if (!Path.IsPathFullyQualified(sourcePath))
+        if (!SourcePathMapper.IsAbsolutePath(sourcePath))
         {
             throw new ArgumentException("A source breakpoint path must be absolute.", nameof(sourcePath));
         }
 
-        string normalizedPath = Path.GetFullPath(sourcePath);
+        string normalizedPath = SourcePathMapper.NormalizePath(sourcePath);
         RemoveBindings(normalizedPath);
         var definitions = new List<SourceBreakpointDefinition>(requests.Count);
         foreach (DebugSourceBreakpointRequest request in requests)

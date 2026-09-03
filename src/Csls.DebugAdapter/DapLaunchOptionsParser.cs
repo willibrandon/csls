@@ -65,7 +65,9 @@ internal static class DapLaunchOptionsParser
                 WorkingDirectory = workingDirectory,
                 Arguments = ParseArguments(arguments),
                 Environment = ParseEnvironment(arguments),
-                RuntimeHostPath = ResolveRuntimeHost(arguments)
+                RuntimeHostPath = ResolveRuntimeHost(arguments),
+                SourceFileMap = DapSourceOptionsParser.ParseSourceFileMap(arguments),
+                SourceLinkOptions = DapSourceOptionsParser.ParseSourceLinkOptions(arguments)
             }
         };
     }

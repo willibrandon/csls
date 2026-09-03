@@ -30,4 +30,16 @@ public sealed class DebugLaunchRequest
     /// Gets the optional host used to run a managed assembly.
     /// </summary>
     public string? RuntimeHostPath { get; init; }
+
+    /// <summary>
+    /// Gets build-time source prefixes mapped to local editor paths.
+    /// </summary>
+    public IReadOnlyDictionary<string, string> SourceFileMap { get; init; } =
+        new Dictionary<string, string>(StringComparer.Ordinal);
+
+    /// <summary>
+    /// Gets Source Link URL patterns mapped to enabled states.
+    /// </summary>
+    public IReadOnlyDictionary<string, bool> SourceLinkOptions { get; init; } =
+        new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
 }

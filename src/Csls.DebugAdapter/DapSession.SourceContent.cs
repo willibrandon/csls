@@ -39,8 +39,9 @@ internal sealed partial class DapSession
                 cancellationToken).ConfigureAwait(false);
         }
         catch (Exception exception) when (
-            exception is ArgumentException or InvalidOperationException or
-                KeyNotFoundException or OverflowException)
+            exception is ArgumentException or HttpRequestException or InvalidDataException or
+                InvalidOperationException or IOException or KeyNotFoundException or
+                OverflowException)
         {
             await WriteRequestFailureAsync(request, exception.Message, cancellationToken)
                 .ConfigureAwait(false);

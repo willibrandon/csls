@@ -19,6 +19,7 @@ internal sealed class PortablePdbReader : IDisposable
         StorageKind = storageKind;
         Path = path;
         Metadata = provider.GetMetadataReader();
+        SourceLinkMappings = PortablePdbSourceLinkResolver.Read(Metadata);
     }
 
     /// <summary>
@@ -35,6 +36,11 @@ internal sealed class PortablePdbReader : IDisposable
     /// Gets the associated Portable PDB path, or null for embedded symbols.
     /// </summary>
     internal string? Path { get; }
+
+    /// <summary>
+    /// Gets the validated Source Link mappings ordered by specificity.
+    /// </summary>
+    internal IReadOnlyList<KeyValuePair<string, string>> SourceLinkMappings { get; }
 
     /// <summary>
     /// Opens matching associated or embedded Portable PDB metadata for one module.

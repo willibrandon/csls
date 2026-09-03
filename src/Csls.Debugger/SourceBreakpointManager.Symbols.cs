@@ -60,7 +60,7 @@ internal sealed partial class SourceBreakpointManager
             string? path = GetDocumentPath(symbols.Metadata, handle);
             if (path is not null && !sources.ContainsKey(path))
             {
-                DebugSourceInfo source = RegisterSource(modulePath, symbols.Metadata, handle).Info;
+                DebugSourceInfo source = RegisterSource(modulePath, symbols, handle).Info;
                 sources.Add(path, source);
                 if (sources.Count >= MaximumSourceCount)
                 {
@@ -114,7 +114,7 @@ internal sealed partial class SourceBreakpointManager
             .ToArray();
     }
 
-    private static void AddBreakpointLocations(
+    private void AddBreakpointLocations(
         CorDebugLoadedModule module,
         string sourcePath,
         int startLine,
@@ -179,7 +179,7 @@ internal sealed partial class SourceBreakpointManager
         }
     }
 
-    private static bool IsMatchingLocation(
+    private bool IsMatchingLocation(
         MetadataReader reader,
         MethodDebugInformation method,
         SequencePoint point,
@@ -202,23 +202,23 @@ internal sealed partial class SourceBreakpointManager
             PathsEqual(documentPath, sourcePath);
     }
 
-    private static string? GetDocumentPath(MetadataReader reader, DocumentHandle handle)
+    private string? GetDocumentPath(MetadataReader reader, DocumentHandle handle)
     {
         string path = reader.GetString(reader.GetDocument(handle).Name);
-        return string.IsNullOrWhiteSpace(path) || !Path.IsPathFullyQualified(path)
+        return string.IsNullOrWhiteSpace(path)
             ? null
-            : Path.GetFullPath(path);
+            : _sourcePathMapper.Map(path);
     }
 
     private static string NormalizeAbsolutePath(string path)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(path);
-        if (!Path.IsPathFullyQualified(path))
+        if (!SourcePathMapper.IsAbsolutePath(path))
         {
             throw new ArgumentException("The source document path must be absolute.", nameof(path));
         }
 
-        return Path.GetFullPath(path);
+        return SourcePathMapper.NormalizePath(path);
     }
 
     private static void ValidateRange(

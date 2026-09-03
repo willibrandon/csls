@@ -72,6 +72,39 @@ Portable PDB. Immediate primitive, string, field, object, and array inspection
 does not execute target code. Handles for frames, scopes, and variables are valid
 only for the stop at which they were returned.
 
+The debugger validates embedded, local, mapped, and Source Link source against
+the checksum recorded in the Portable PDB. Use the established `sourceFileMap`
+launch or attach option when sources moved between build and debug machines:
+
+```json
+{
+  "sourceFileMap": {
+    "C:\\agent\\_work\\app": "/workspaces/app"
+  }
+}
+```
+
+Mappings understand POSIX, Windows drive-letter, and UNC build paths regardless
+of the operating system running the adapter. The most specific matching prefix
+wins.
+
+Source Link retrieval is lazy, bounded, redirect-limited, and session-cached.
+Public HTTPS endpoints are enabled by default. HTTP endpoints and localhost or
+private-network hosts require a specific enabled URL rule; a catch-all `*` does
+not grant private-network access:
+
+```json
+{
+  "sourceLinkOptions": {
+    "http://127.0.0.1:8080/source/*": { "enabled": true },
+    "https://untrusted.example/*": { "enabled": false }
+  }
+}
+```
+
+Source Link requests do not send debugger-managed credentials or cookies, and
+downloaded content is rejected unless its PDB checksum matches exactly.
+
 Run the packaged component check when startup fails:
 
 ```console

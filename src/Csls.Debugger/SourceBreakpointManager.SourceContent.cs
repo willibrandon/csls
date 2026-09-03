@@ -1,7 +1,5 @@
 using Csls.Debugger.Contracts;
 using System.Reflection.Metadata;
-using System.Security.Cryptography;
-using System.Text;
 
 namespace Csls.Debugger;
 
@@ -14,6 +12,8 @@ internal sealed partial class SourceBreakpointManager
     private readonly Dictionary<string, DebugSourceRegistration> _sources =
         new(PathComparer);
     private readonly Dictionary<int, DebugSourceRegistration> _sourcesByReference = [];
+    private readonly SourceLinkPolicy _sourceLinkPolicy = new();
+    private readonly SourcePathMapper _sourcePathMapper = new();
     private int _nextSourceReference;
 
     /// <summary>
@@ -40,7 +40,7 @@ internal sealed partial class SourceBreakpointManager
                     symbols.Metadata.GetDocument(handle).Name);
                 if (PathsEqual(candidate, sourcePath))
                 {
-                    return RegisterSource(modulePath, symbols.Metadata, handle).Info;
+                    return RegisterSource(modulePath, symbols, handle).Info;
                 }
             }
         }
@@ -49,60 +49,67 @@ internal sealed partial class SourceBreakpointManager
     }
 
     /// <summary>
-    /// Gets embedded source content by its positive session-local reference.
+    /// Replaces build-time to local source mappings before runtime binding.
     /// </summary>
-    /// <param name="sourceReference">The reference returned in a source descriptor.</param>
-    /// <returns>The complete source text and media type.</returns>
-    internal DebugSourceContent GetSourceContent(int sourceReference)
+    /// <param name="mappings">The complete source path mapping dictionary.</param>
+    /// <param name="sourceLinkOptions">The complete Source Link URL policy.</param>
+    internal void SetSourceOptions(
+        IReadOnlyDictionary<string, string> mappings,
+        IReadOnlyDictionary<string, bool> sourceLinkOptions)
     {
         ObjectDisposedException.ThrowIf(_disposed != 0, this);
-        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(sourceReference);
-        if (!_sourcesByReference.TryGetValue(
-            sourceReference,
-            out DebugSourceRegistration? registration) ||
-            registration.Content is null)
-        {
-            throw new KeyNotFoundException(
-                $"Source reference {sourceReference} does not exist in this debugger session.");
-        }
-
-        return registration.Content;
+        _sourcePathMapper.Set(mappings);
+        _sourceLinkPolicy.Set(sourceLinkOptions);
+        ClearSources();
     }
 
     private DebugSourceRegistration RegisterSource(
         string modulePath,
-        MetadataReader reader,
+        PortablePdbReader symbols,
         DocumentHandle handle)
     {
-        PortablePdbSourceDocument document = PortablePdbSourceDocumentReader.Read(reader, handle);
+        PortablePdbSourceDocument document = PortablePdbSourceDocumentReader.Read(
+            symbols.Metadata,
+            handle,
+            symbols.SourceLinkMappings);
         string key = CreateSourceKey(modulePath, document.Path);
         if (_sources.TryGetValue(key, out DebugSourceRegistration? existing))
         {
             return existing;
         }
 
-        int sourceReference = document.EmbeddedSource is null
+        string resolvedPath = _sourcePathMapper.Map(document.Path);
+        bool localSourceIsCurrent = document.EmbeddedSource is null &&
+            IsLocalSourceCurrent(resolvedPath, document.Checksum);
+        bool useSourceLink = document.EmbeddedSource is null &&
+            !localSourceIsCurrent &&
+            document.Checksum is not null &&
+            document.SourceLinkUri is not null;
+        int sourceReference = document.EmbeddedSource is null && !useSourceLink
             ? 0
             : checked(++_nextSourceReference);
-        bool localSourceIsCurrent = document.EmbeddedSource is null &&
-            IsLocalSourceCurrent(document.Path, document.Checksum);
         var registration = new DebugSourceRegistration
         {
             Info = new DebugSourceInfo(
-                Path.GetFileName(document.Path),
-                sourceReference > 0 || localSourceIsCurrent ? document.Path : null,
+                GetPortableFileName(document.Path),
+                document.EmbeddedSource is not null || localSourceIsCurrent
+                    ? resolvedPath
+                    : null,
                 sourceReference,
-                sourceReference > 0
+                document.EmbeddedSource is not null
                     ? "embedded source"
                     : localSourceIsCurrent
                         ? null
-                        : "original source is unavailable or does not match its checksum",
+                        : useSourceLink
+                            ? "Source Link"
+                            : "original source is unavailable or does not match its checksum",
                 document.Checksum),
             Content = document.EmbeddedSource is null
                 ? null
                 : new DebugSourceContent(
-                    DecodeSource(document.EmbeddedSource),
-                    GetMimeType(document.Path))
+                    SourceTextDecoder.Decode(document.EmbeddedSource),
+                    GetMimeType(GetPortableFileName(document.Path))),
+            SourceLinkUri = useSourceLink ? document.SourceLinkUri : null
         };
         _sources.Add(key, registration);
         if (sourceReference > 0)
@@ -121,7 +128,7 @@ internal sealed partial class SourceBreakpointManager
         var registration = new DebugSourceRegistration
         {
             Info = new DebugSourceInfo(
-                Path.GetFileName(sourcePath),
+                GetPortableFileName(sourcePath),
                 File.Exists(sourcePath) ? sourcePath : null,
                 SourceReference: 0,
                 Origin: File.Exists(sourcePath) ? null : "source is unavailable",
@@ -129,16 +136,6 @@ internal sealed partial class SourceBreakpointManager
         };
         _sources.Add(key, registration);
         return registration;
-    }
-
-    private static string DecodeSource(byte[] source)
-    {
-        using var stream = new MemoryStream(source, writable: false);
-        using var reader = new StreamReader(
-            stream,
-            new UTF8Encoding(encoderShouldEmitUTF8Identifier: false, throwOnInvalidBytes: true),
-            detectEncodingFromByteOrderMarks: true);
-        return reader.ReadToEnd();
     }
 
     private static bool IsLocalSourceCurrent(
@@ -158,20 +155,8 @@ internal sealed partial class SourceBreakpointManager
                 return true;
             }
 
-            if (checksum.Algorithm != "SHA256")
-            {
-                return false;
-            }
-
-            using FileStream stream = File.Open(
-                path,
-                FileMode.Open,
-                FileAccess.Read,
-                FileShare.Read | FileShare.Delete);
-            return string.Equals(
-                Convert.ToHexString(SHA256.HashData(stream)),
-                checksum.Value,
-                StringComparison.OrdinalIgnoreCase);
+            byte[] source = File.ReadAllBytes(path);
+            return SourceChecksumVerifier.Matches(source, checksum);
         }
         catch (Exception exception) when (
             exception is IOException or UnauthorizedAccessException)
@@ -188,6 +173,9 @@ internal sealed partial class SourceBreakpointManager
             ".FS" or ".FSX" => "text/x-fsharp",
             _ => "text/plain"
         };
+
+    private static string GetPortableFileName(string path) =>
+        Path.GetFileName(path.Replace('\\', '/'));
 
     private static string CreateSourceKey(string modulePath, string sourcePath) =>
         $"{Path.GetFullPath(modulePath)}\0{sourcePath}";
