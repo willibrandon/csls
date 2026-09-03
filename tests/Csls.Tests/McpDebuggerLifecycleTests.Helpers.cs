@@ -161,7 +161,20 @@ public sealed partial class McpDebuggerLifecycleTests
             cancellationToken: cancellationToken).ConfigureAwait(false);
         Assert.IsNull(result.IsError, tool);
         Assert.IsTrue(result.StructuredContent.HasValue, tool);
-        return result.StructuredContent.Value;
+        JsonElement structuredContent = result.StructuredContent.Value;
+        if (structuredContent.ValueKind == JsonValueKind.Object &&
+            structuredContent.TryGetProperty("debugSession", out JsonElement debugSession))
+        {
+            ResourceLinkBlock link = Assert.ContainsSingle(
+                result.Content.OfType<ResourceLinkBlock>());
+            Assert.AreEqual(
+                $"csls://debug/session/{debugSession.GetString()}",
+                link.Uri,
+                tool);
+            Assert.AreEqual("application/json", link.MimeType, tool);
+        }
+
+        return structuredContent;
     }
 
     private static void AssertAnnotations(

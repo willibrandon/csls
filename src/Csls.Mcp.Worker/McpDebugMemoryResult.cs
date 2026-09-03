@@ -13,4 +13,4 @@ internal sealed record McpDebugMemoryResult(
     long StopGeneration,
     ulong Address,
     ReadOnlyMemory<byte> Data,
-    int UnreadableBytes);
+    int UnreadableBytes) : IMcpDebugSessionResult;

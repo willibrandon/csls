@@ -117,7 +117,10 @@ internal sealed partial class McpDebuggerSessionBroker
                 new DebugModulesRequest(startModule, moduleCount),
                 token),
             cancellationToken).ConfigureAwait(false);
-        return new McpDebugModulesResult(session.Id, page.Modules, page.TotalModules);
+        return new McpDebugModulesResult(
+            session.Id,
+            page.Modules.Select(McpDebugModuleInfo.Create).ToArray(),
+            page.TotalModules);
     }
 
 }

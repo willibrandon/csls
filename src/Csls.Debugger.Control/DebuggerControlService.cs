@@ -11,6 +11,7 @@ public sealed partial class DebuggerControlService :
     IAsyncDisposable
 {
     private readonly Lock _stateLock = new();
+    private readonly DebuggerOutputBuffer _output = new();
     private readonly DebuggerSession _session;
     private DebugSessionSnapshot _snapshot = new() { State = DebugSessionState.Created };
 

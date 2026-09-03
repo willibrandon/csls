@@ -37,7 +37,8 @@ threads, stacks, scopes, variables, and modules; execution changes require an
 explicit per-session control grant and the current stop generation. The same
 contract supports deterministic source, function, instruction, and exception
 breakpoint replacement plus bounded source, memory, managed-IL, exception, and
-execution-target inspection.
+execution-target inspection. Cursor-addressable stdout and stderr remain available
+through both a tool and debugger resource after bursts or target termination.
 Conditional and data breakpoints, expression evaluation, dumps, Hot Reload, and
 the remaining debugger MCP operations remain under development. Run
 `csls debugger tui launch` or `csls debugger tui attach` for the interactive

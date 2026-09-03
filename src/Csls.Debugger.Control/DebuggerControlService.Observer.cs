@@ -29,9 +29,8 @@ public sealed partial class DebuggerControlService
         string output,
         CancellationToken cancellationToken)
     {
-        _ = category;
-        _ = output;
         cancellationToken.ThrowIfCancellationRequested();
+        _output.Add(category, output);
         return ValueTask.CompletedTask;
     }
 

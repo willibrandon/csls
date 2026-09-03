@@ -158,6 +158,16 @@ its bundled debugger worker is available:
 - `debug_source_get`, `debug_memory_read`, and `debug_disassemble` return bounded
   source pages, target memory, and symbolic managed IL from opaque stopped-state
   references.
+- `debug_output_get` pages retained stdout and stderr after a stable sequence
+  cursor and reports any gap caused by bounded retention.
+
+Clients can also read current state from
+`csls://debug/session/{debugSession}` and output pages from
+`csls://debug/output/{debugSession}{?afterSequence,count}`.
+
+The `diagnose_dotnet_debugger_failure`, `plan_dotnet_breakpoints`, and
+`explain_dotnet_debugger_state` prompts use explicit session identity and
+read-first evidence. None embeds execution control or breakpoint mutation.
 
 Each lifecycle result returns an opaque `debugSession` identifier and current
 `stopGeneration`. Later operations use that explicit identity; a language
@@ -165,7 +175,8 @@ workspace, active editor, or visible process is never inferred as the debugger
 target.
 
 Stack, variable, module, source, memory, and disassembly results are bounded;
-source pages include `nextStart` until complete. Expected
+source pages include `nextStart` until complete. The newest 1,024 target-output
+segments are retained, with each segment bounded to 8,192 characters. Expected
 failures are MCP errors with stable codes in `_meta.errorCode`, including
 `debugger_control_denied`, `debugger_invalid_state`,
 `debugger_request_invalid`, and `debugger_stale_generation`. Successful calls

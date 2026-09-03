@@ -106,6 +106,11 @@ public static class DebuggerControlMethods
     public const string GetModules = "debugger/getModules";
 
     /// <summary>
+    /// Gets a bounded target-output page after a stable sequence cursor.
+    /// </summary>
+    public const string GetOutput = "debugger/getOutput";
+
+    /// <summary>
     /// Reads target memory through an opaque stopped-state handle.
     /// </summary>
     public const string ReadMemory = "debugger/readMemory";

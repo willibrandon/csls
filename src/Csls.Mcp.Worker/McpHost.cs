@@ -89,7 +89,9 @@ internal static class McpHost
                     serializerOptions)
                 .WithTools(
                     new CslsMcpDebuggerInspectionTools(debuggerBroker),
-                    serializerOptions);
+                    serializerOptions)
+                .WithResources(new CslsMcpDebuggerResources(debuggerBroker));
+            mcpBuilder.WithPrompts(new CslsMcpDebuggerPrompts());
         }
 
         using IHost host = builder.Build();

@@ -26,9 +26,9 @@ internal sealed partial class McpDebuggerSessionBroker
             async (session, client, token) => new McpDebugExceptionResult(
                 session.Id,
                 stopGeneration,
-                await client.GetExceptionInfoAsync(
+                McpDebugExceptionInfo.Create(await client.GetExceptionInfoAsync(
                     new DebugExceptionInfoRequest(threadId),
-                    token).ConfigureAwait(false)),
+                    token).ConfigureAwait(false))),
             cancellationToken);
     }
 

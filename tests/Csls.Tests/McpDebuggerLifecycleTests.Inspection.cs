@@ -83,11 +83,20 @@ public sealed partial class McpDebuggerLifecycleTests
             "debug_modules_get",
             new Dictionary<string, object?> { ["debugSession"] = debugSession },
             cancellationToken).ConfigureAwait(false);
-        Assert.Contains(
-            programPath,
-            modules.GetProperty("modules").EnumerateArray()
-                .Select(static module => module.GetProperty("path").GetString()),
-            StringComparer.Ordinal);
+        JsonElement programModule = modules.GetProperty("modules").EnumerateArray()
+            .Single(module => string.Equals(
+                module.GetProperty("path").GetString(),
+                programPath,
+                StringComparison.Ordinal));
+        Assert.AreEqual(
+            "portablePdb",
+            programModule.GetProperty("symbolKind").GetString());
+
+        await AssertOutputAsync(
+            client,
+            debugSession,
+            generation,
+            cancellationToken).ConfigureAwait(false);
 
         await AssertAdvancedInspectionAsync(
             client,

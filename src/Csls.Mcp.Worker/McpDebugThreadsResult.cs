@@ -11,4 +11,4 @@ namespace Csls.Mcp.Worker;
 internal sealed record McpDebugThreadsResult(
     string DebugSession,
     long StopGeneration,
-    IReadOnlyList<DebugThreadInfo> Threads);
+    IReadOnlyList<DebugThreadInfo> Threads) : IMcpDebugSessionResult;

@@ -11,4 +11,4 @@ namespace Csls.Mcp.Worker;
 internal sealed record McpDebugVariablesResult(
     string DebugSession,
     long StopGeneration,
-    IReadOnlyList<DebugVariableInfo> Variables);
+    IReadOnlyList<DebugVariableInfo> Variables) : IMcpDebugSessionResult;

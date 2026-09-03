@@ -17,4 +17,4 @@ internal sealed record McpDebugSourceResult(
     string MimeType,
     int Start,
     int TotalCharacters,
-    int? NextStart);
+    int? NextStart) : IMcpDebugSessionResult;

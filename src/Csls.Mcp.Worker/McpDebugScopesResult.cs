@@ -11,4 +11,4 @@ namespace Csls.Mcp.Worker;
 internal sealed record McpDebugScopesResult(
     string DebugSession,
     long StopGeneration,
-    IReadOnlyList<DebugScopeInfo> Scopes);
+    IReadOnlyList<DebugScopeInfo> Scopes) : IMcpDebugSessionResult;

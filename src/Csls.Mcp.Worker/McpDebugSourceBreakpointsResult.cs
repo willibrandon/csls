@@ -11,4 +11,4 @@ namespace Csls.Mcp.Worker;
 internal sealed record McpDebugSourceBreakpointsResult(
     string DebugSession,
     long StopGeneration,
-    IReadOnlyList<DebugSourceBreakpointInfo> Breakpoints);
+    IReadOnlyList<DebugSourceBreakpointInfo> Breakpoints) : IMcpDebugSessionResult;

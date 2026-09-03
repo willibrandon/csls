@@ -5,7 +5,7 @@ namespace Csls.Mcp.Worker;
 /// <summary>
 /// Describes one explicitly selected MCP debugger session.
 /// </summary>
-internal sealed class McpDebugSessionInfo
+internal sealed class McpDebugSessionInfo : IMcpDebugSessionResult
 {
     /// <summary>
     /// Gets the stable opaque debugger-session identifier.

@@ -13,4 +13,4 @@ internal sealed record McpDebugStackResult(
     string DebugSession,
     long StopGeneration,
     IReadOnlyList<DebugStackFrameInfo> StackFrames,
-    int TotalFrames);
+    int TotalFrames) : IMcpDebugSessionResult;

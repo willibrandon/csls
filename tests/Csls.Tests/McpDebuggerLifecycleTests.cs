@@ -32,7 +32,8 @@ public sealed partial class McpDebuggerLifecycleTests
         "debug_disassemble",
         "debug_step_targets_get",
         "debug_goto_targets_get",
-        "debug_goto"
+        "debug_goto",
+        "debug_output_get"
     ];
 
     /// <summary>
@@ -51,6 +52,11 @@ public sealed partial class McpDebuggerLifecycleTests
             TestContext.CancellationToken).ConfigureAwait(false);
         await using ConfiguredAsyncDisposable mcpCleanup = mcp.ConfigureAwait(false);
         IList<McpClientTool> tools = await mcp.Client.ListToolsAsync(
+            cancellationToken: TestContext.CancellationToken).ConfigureAwait(false);
+        IList<McpClientResourceTemplate> templates = await mcp.Client
+            .ListResourceTemplatesAsync(cancellationToken: TestContext.CancellationToken)
+            .ConfigureAwait(false);
+        IList<McpClientPrompt> prompts = await mcp.Client.ListPromptsAsync(
             cancellationToken: TestContext.CancellationToken).ConfigureAwait(false);
 
         foreach (string name in s_debuggerToolNames)
@@ -83,6 +89,17 @@ public sealed partial class McpDebuggerLifecycleTests
         AssertAnnotations(tools, "debug_step_targets_get", true, false, true, false);
         AssertAnnotations(tools, "debug_goto_targets_get", true, false, true, false);
         AssertAnnotations(tools, "debug_goto", false, true, false, true);
+        AssertAnnotations(tools, "debug_output_get", true, false, true, false);
+        string[] templateUris =
+            [.. templates.Select(static template => template.UriTemplate)];
+        Assert.Contains("csls://debug/session/{debugSession}", templateUris);
+        Assert.Contains(
+            "csls://debug/output/{debugSession}{?afterSequence,count}",
+            templateUris);
+        string[] promptNames = [.. prompts.Select(static prompt => prompt.Name)];
+        Assert.Contains("diagnose_dotnet_debugger_failure", promptNames);
+        Assert.Contains("plan_dotnet_breakpoints", promptNames);
+        Assert.Contains("explain_dotnet_debugger_state", promptNames);
     }
 
     /// <summary>

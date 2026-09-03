@@ -46,11 +46,14 @@ The installed package also supervises up to eight independent debugger sessions
 per MCP connection. Debugger lifecycle calls return an opaque `debugSession`;
 debugger tools use that identifier instead of a language-workspace selector.
 Read-only tools inspect generation-bound threads, stacks, scopes, variables, and
-bounded module, source, memory, and managed-IL pages. Breakpoint replacement,
+bounded module, source, memory, managed-IL, and cursor-addressable target-output
+pages. Session and output resource templates expose the same selected state to
+resource-oriented clients. Breakpoint replacement,
 pause, continue, step, and go-to require the session's explicit `agentControl`
 grant and reject stale stopped-state handles. See the
 [.NET debugger guide](../debugger/#mcp-integration) for the complete ownership
-and error contract.
+and error contract. Debugger-specific diagnosis, breakpoint-planning, and
+state-explanation prompts are read-only by construction.
 
 `get_workspace_state` returns a fixed-size overview, including lifecycle, workspace,
 project, document, request, build-host, cache, and retained-log counts. It does not

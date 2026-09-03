@@ -26,7 +26,7 @@ internal static class McpDebuggerToolResult
                 McpJsonSerializerContext.Default.Options);
             return new CallToolResult
             {
-                Content = [new TextContentBlock { Text = structuredContent.GetRawText() }],
+                Content = CreateContent(value, structuredContent),
                 StructuredContent = structuredContent
             };
         }
@@ -43,5 +43,24 @@ internal static class McpDebuggerToolResult
                 Meta = new JsonObject { ["errorCode"] = error.Code }
             };
         }
+    }
+
+    private static List<ContentBlock> CreateContent<T>(T value, JsonElement structuredContent)
+    {
+        List<ContentBlock> content =
+            [new TextContentBlock { Text = structuredContent.GetRawText() }];
+        if (value is IMcpDebugSessionResult debuggerResult)
+        {
+            content.Add(new ResourceLinkBlock
+            {
+                Uri = $"csls://debug/session/{debuggerResult.DebugSession}",
+                Name = $"csls-debug-session-{debuggerResult.DebugSession}",
+                Title = "Current .NET debugger session",
+                Description = "Current lifecycle and stop-generation state for this explicit debugger session.",
+                MimeType = "application/json"
+            });
+        }
+
+        return content;
     }
 }

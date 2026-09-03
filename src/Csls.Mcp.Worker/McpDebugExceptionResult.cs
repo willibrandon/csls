@@ -1,5 +1,3 @@
-using Csls.Debugger.Contracts;
-
 namespace Csls.Mcp.Worker;
 
 /// <summary>
@@ -11,4 +9,4 @@ namespace Csls.Mcp.Worker;
 internal sealed record McpDebugExceptionResult(
     string DebugSession,
     long StopGeneration,
-    DebugExceptionInfo Exception);
+    McpDebugExceptionInfo Exception) : IMcpDebugSessionResult;

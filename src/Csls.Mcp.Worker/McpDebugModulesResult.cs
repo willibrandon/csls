@@ -1,5 +1,3 @@
-using Csls.Debugger.Contracts;
-
 namespace Csls.Mcp.Worker;
 
 /// <summary>
@@ -10,5 +8,5 @@ namespace Csls.Mcp.Worker;
 /// <param name="TotalModules">The complete module count before paging.</param>
 internal sealed record McpDebugModulesResult(
     string DebugSession,
-    IReadOnlyList<DebugModuleInfo> Modules,
-    int TotalModules);
+    IReadOnlyList<McpDebugModuleInfo> Modules,
+    int TotalModules) : IMcpDebugSessionResult;

@@ -252,10 +252,26 @@ worker does not advertise tools that it cannot run.
 - `debug_source_get`, `debug_memory_read`, and `debug_disassemble` retrieve
   bounded source-text pages, up to 65,536 target bytes, and up to 256 managed-IL
   instructions from opaque generation-bound references.
+- `debug_output_get` reads retained stdout and stderr after a stable
+  `afterSequence` cursor. Responses identify retention gaps with
+  `droppedBeforeStart` and advertise additional retained entries with `hasMore`.
+
+The `csls://debug/session/{debugSession}` resource returns current lifecycle and
+stop-generation state. The
+`csls://debug/output/{debugSession}{?afterSequence,count}` resource exposes the
+same bounded output stream for clients that compose resources into their context.
+
+Three read-first prompts are advertised with the debugger worker:
+`diagnose_dotnet_debugger_failure`, `plan_dotnet_breakpoints`, and
+`explain_dotnet_debugger_state`. They require an explicit `debugSession`, ground
+their guidance in bounded debugger evidence, and explicitly prohibit hidden
+execution or breakpoint mutations.
 
 Stack, variable, and module pages accept only non-negative offsets and at most
 256 entries per call. Source results include `nextStart` until their complete
-text has been read. Expected failures are MCP errors with stable codes in
+text has been read. Debugger control retains the newest 1,024 output segments,
+bounds each segment to 8,192 characters, and marks a segment when older text was
+truncated. Expected failures are MCP errors with stable codes in
 `_meta.errorCode`, including `debugger_control_denied`,
 `debugger_invalid_state`, `debugger_request_invalid`, and
 `debugger_stale_generation`. Successful calls return structured content and a
