@@ -192,4 +192,40 @@ internal sealed partial class CorDebugManagedCallback
         exception is ArgumentException or InvalidOperationException or IOException or
             UnauthorizedAccessException or BadImageFormatException or
             OperationCanceledException or System.Threading.Channels.ChannelClosedException;
+
+    private static unsafe int QueueNameChange(nint self, nint appDomain, nint thread)
+    {
+        if (appDomain != 0)
+        {
+            return QueueContinue(self, appDomain, createsProcess: false);
+        }
+
+        if (thread == 0)
+        {
+            return NullPointerHResult;
+        }
+
+        nint resolvedAppDomain = 0;
+        nint* appDomainAddress = &resolvedAppDomain;
+        int result = new ICorDebugThreadAbi(thread).GetAppDomain((nint)appDomainAddress);
+        resolvedAppDomain = Volatile.Read(ref *appDomainAddress);
+        if (result < 0)
+        {
+            return result;
+        }
+
+        if (resolvedAppDomain == 0)
+        {
+            return NullPointerHResult;
+        }
+
+        try
+        {
+            return QueueContinue(self, resolvedAppDomain, createsProcess: false);
+        }
+        finally
+        {
+            _ = ComAbi.Release(resolvedAppDomain);
+        }
+    }
 }

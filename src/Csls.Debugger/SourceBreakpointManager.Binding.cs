@@ -156,8 +156,6 @@ internal sealed partial class SourceBreakpointManager
         }
     }
 
-    private static bool PathsEqual(string left, string right) => string.Equals(
-        left,
-        right,
-        OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal);
+    private static bool PathsEqual(string left, string right) =>
+        DebuggerPathIdentity.AreEquivalent(left, right);
 }

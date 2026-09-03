@@ -24,14 +24,14 @@ public sealed partial class DapSessionTests
     [Timeout(120000, CooperativeCancellation = true)]
     public async Task PortablePdbLanguagesBindInDebugAndRelease()
     {
-        foreach (string configuration in s_configurations)
+        string artifactsPath = Path.Join(
+            Path.GetTempPath(),
+            $"csls-debugger-language-{Guid.NewGuid():N}");
+        try
         {
-            foreach (string project in s_projects)
+            foreach (string configuration in s_configurations)
             {
-                string artifactsPath = Path.Join(
-                    Path.GetTempPath(),
-                    $"csls-debugger-language-{Guid.NewGuid():N}");
-                try
+                foreach (string project in s_projects)
                 {
                     string program = await BuildFixtureAsync(
                         project,
@@ -40,13 +40,13 @@ public sealed partial class DapSessionTests
                     await AssertFixtureStopsAsync(project, configuration, program)
                         .ConfigureAwait(false);
                 }
-                finally
-                {
-                    await DebuggerTestDirectoryReleaseWaiter.DeleteAsync(
-                        artifactsPath,
-                        TimeSpan.FromSeconds(10)).ConfigureAwait(false);
-                }
             }
+        }
+        finally
+        {
+            await DebuggerTestDirectoryReleaseWaiter.DeleteAsync(
+                artifactsPath,
+                TimeSpan.FromSeconds(10)).ConfigureAwait(false);
         }
     }
 
@@ -87,11 +87,14 @@ public sealed partial class DapSessionTests
             0,
             process.ExitCode,
             $"Fixture build failed for {project} ({configuration}):{Environment.NewLine}{diagnostic}");
-        return Directory.EnumerateFiles(
-                Path.Join(artifactsPath, "bin"),
-                $"{project}.dll",
-                SearchOption.AllDirectories)
-            .Single();
+        string program = Path.Join(
+            artifactsPath,
+            "bin",
+            project,
+            configuration == "Debug" ? "debug" : "release",
+            $"{project}.dll");
+        Assert.IsTrue(File.Exists(program), $"Fixture output was not found at {program}.");
+        return program;
     }
 
     private async Task AssertFixtureStopsAsync(

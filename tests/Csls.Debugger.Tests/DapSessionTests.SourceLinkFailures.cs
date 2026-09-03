@@ -45,6 +45,7 @@ public sealed partial class DapSessionTests
             Path.GetTempPath(),
             $"csls-debugger-sourcelink-rejection-{Guid.NewGuid():N}");
         Directory.CreateDirectory(testDirectory);
+        testDirectory = DebuggerTestPath.Canonicalize(testDirectory);
         try
         {
             string programPath = await BuildSourceLinkFixtureAsync(

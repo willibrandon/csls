@@ -13,6 +13,8 @@ namespace Csls.Tests;
 public sealed class ZedDebuggerTests
 {
     private static readonly string[] s_debuggerArguments = ["debugger", "dap"];
+    private static readonly string[] s_languageServerArguments = ["lsp"];
+    private static readonly string[] s_languageServers = ["csls"];
     private static readonly JsonSerializerOptions s_jsonOptions = new() { WriteIndented = true };
 
     /// <summary>
@@ -261,13 +263,35 @@ public sealed class ZedDebuggerTests
         string json = JsonSerializer.Serialize(
             new
             {
+                auto_install_extensions = new
+                {
+                    csls = false,
+                    csharp = false,
+                    html = false
+                },
                 auto_update = false,
+                disable_ai = true,
                 dap = new
                 {
                     csls = new
                     {
                         args = s_debuggerArguments,
                         binary = launcherPath
+                    }
+                },
+                languages = new Dictionary<string, object>
+                {
+                    ["CSharp"] = new { language_servers = s_languageServers }
+                },
+                lsp = new
+                {
+                    csls = new
+                    {
+                        binary = new
+                        {
+                            path = launcherPath,
+                            arguments = s_languageServerArguments
+                        }
                     }
                 },
                 debugger = new { log_dap_communications = true },

@@ -70,7 +70,7 @@ jobs:
         if: steps.test-binaries-cache.outputs.cache-hit != 'true' || steps.source-generator-test-binaries-cache.outputs.cache-hit != 'true'
         run: |
           dotnet build tests/Csls.Tests/Csls.Tests.csproj
-          dotnet build tests/Csls.Debugger.Tests/Csls.Debugger.Tests.csproj
+          dotnet build tests/Csls.Debugger.Tests/Csls.Debugger.Tests.csproj --property:CslsIncludeAllDebuggerNativeAssets=true
           dotnet build tests/Csls.SourceGen.Tests/Csls.SourceGen.Tests.csproj
 
       - name: Pack test binaries

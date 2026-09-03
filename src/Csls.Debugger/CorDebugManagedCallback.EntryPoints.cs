@@ -265,8 +265,7 @@ internal sealed partial class CorDebugManagedCallback
     [UnmanagedCallersOnly(CallConvs = [typeof(CallConvStdcall)])]
     private static int NameChange(nint self, nint appDomain, nint thread)
     {
-        _ = thread;
-        return QueueContinue(self, appDomain, createsProcess: false);
+        return QueueNameChange(self, appDomain, thread);
     }
 
     [UnmanagedCallersOnly(CallConvs = [typeof(CallConvStdcall)])]

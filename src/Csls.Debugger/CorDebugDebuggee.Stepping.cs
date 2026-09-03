@@ -85,6 +85,11 @@ internal sealed partial class CorDebugDebuggee
 
             ReleaseActiveStepper(deactivate: false);
             ReleaseTargetBreakpoint();
+            if (_asyncStep is not null)
+            {
+                return false;
+            }
+
             ReleaseAsyncStep();
             return true;
         }
