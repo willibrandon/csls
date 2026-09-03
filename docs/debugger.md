@@ -200,10 +200,11 @@ the client's stack and variable handles because target code may allocate, collec
 or mutate state. If cooperative abort cannot restore a trustworthy stop, the
 session faults and must be disconnected. String literals and computed strings that
 would require a separate target allocation, unsupported value-type arguments,
-same-arity overload ambiguity, static methods, constructors, assignments, properties,
-user-defined operators, and implicit `ToString` execution are rejected. Live string
-references from the stopped target are accepted. Variables include `evaluateName`
-only when csls can provide a valid source expression for the value.
+overload sets that exact metadata parameter identities cannot select uniquely, static
+methods, constructors, assignments, properties, user-defined operators, and implicit
+`ToString` execution are rejected. Live string references from the stopped target are
+accepted. Variables include `evaluateName` only when csls can provide a valid source
+expression for the value.
 
 Assemblies loaded from PE and Portable PDB byte arrays receive the same source
 breakpoint, stack, local-name, stepping, goto, disassembly, and managed-IL

@@ -378,8 +378,10 @@ DAP may explicitly authorize target-code evaluation. The current call contract i
 an explicitly qualified instance method whose receiver and bounded arguments bind
 through the side-effect-free evaluator. Arguments may be exact CLR primitives, null,
 or retained runtime object and array references; unsupported argument materialization
-fails before execution. The engine resolves the runtime type and CLR method, suspends
-every other managed thread, starts `ICorDebugEval`, and treats all nested
+fails before execution. Exact metadata parameter identities select primitive overloads;
+an overload set that cannot be selected uniquely fails before execution. The engine
+resolves the runtime type and CLR method, suspends every other managed thread, starts
+`ICorDebugEval`, and treats all nested
 breakpoint, step, and exception callbacks as evaluation-internal until the matching
 evaluation callback arrives. Threads created during the call are suspended too.
 Normal completion, exception completion, and cooperative abort restore the exact

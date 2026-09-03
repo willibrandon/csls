@@ -1,4 +1,5 @@
 using Csls.Debugger.Contracts;
+using System.Collections.Immutable;
 using System.Reflection;
 using System.Reflection.Metadata;
 using System.Reflection.Metadata.Ecma335;
@@ -36,34 +37,47 @@ internal sealed partial class CorDebugDebuggee
 
             TypeDefinition type = metadata.GetTypeDefinition(
                 MetadataTokens.TypeDefinitionHandle(row));
-            List<MethodDefinitionHandle> matches = [];
+            List<(MethodDefinitionHandle Handle, int Score)> matches = [];
             foreach (MethodDefinitionHandle methodHandle in type.GetMethods())
             {
                 MethodDefinition method = metadata.GetMethodDefinition(methodHandle);
-                (int parameterCount, bool isGeneric) = GetMethodSignatureInfo(
-                    metadata,
-                    method);
                 if ((method.Attributes & (MethodAttributes.Static | MethodAttributes.Abstract)) != 0 ||
-                    !string.Equals(metadata.GetString(method.Name), methodName, comparison) ||
-                    isGeneric ||
-                    parameterCount != arguments.Length)
+                    !string.Equals(metadata.GetString(method.Name), methodName, comparison))
                 {
                     continue;
                 }
 
-                matches.Add(methodHandle);
+                MethodSignature<string> signature = method.DecodeSignature(
+                    FunctionEvaluationSignatureTypeProvider.Instance,
+                    genericContext: null);
+                if (signature.Header.IsGeneric ||
+                    signature.ParameterTypes.Length != arguments.Length)
+                {
+                    continue;
+                }
+
+                int score = ScoreParameters(signature.ParameterTypes, arguments);
+                if (score >= 0)
+                {
+                    matches.Add((methodHandle, score));
+                }
             }
 
-            if (matches.Count > 1)
+            if (matches.Count > 0)
             {
-                throw new InvalidOperationException(
-                    $"Method call '{methodName}' with {arguments.Length} argument(s) is " +
-                    "ambiguous on the runtime type.");
-            }
+                int bestScore = matches.Max(static candidate => candidate.Score);
+                MethodDefinitionHandle[] bestMatches =
+                    [.. matches
+                        .Where(candidate => candidate.Score == bestScore)
+                        .Select(static candidate => candidate.Handle)];
+                if (bestMatches.Length > 1)
+                {
+                    throw new InvalidOperationException(
+                        $"Method call '{methodName}' with {arguments.Length} argument(s) is " +
+                        "ambiguous on the runtime type.");
+                }
 
-            if (matches.Count == 1)
-            {
-                return checked((uint)MetadataTokens.GetToken(matches[0]));
+                return checked((uint)MetadataTokens.GetToken(bestMatches[0]));
             }
 
             EntityHandle baseType = type.BaseType;
@@ -77,17 +91,58 @@ internal sealed partial class CorDebugDebuggee
             "is available on the runtime type in its defining module.");
     }
 
-    private static (int ParameterCount, bool IsGeneric) GetMethodSignatureInfo(
-        MetadataReader metadata,
-        MethodDefinition method)
+    private static int ScoreParameters(
+        ImmutableArray<string> parameterTypes,
+        ManagedExpressionValue[] arguments)
     {
-        BlobReader signature = metadata.GetBlobReader(method.Signature);
-        SignatureHeader header = signature.ReadSignatureHeader();
-        if (header.IsGeneric)
+        int score = 0;
+        for (int index = 0; index < arguments.Length; index++)
         {
-            _ = signature.ReadCompressedInteger();
+            int parameterScore = ScoreParameter(parameterTypes[index], arguments[index]);
+            if (parameterScore < 0)
+            {
+                return -1;
+            }
+
+            score = checked(score + parameterScore);
         }
 
-        return (signature.ReadCompressedInteger(), header.IsGeneric);
+        return score;
+    }
+
+    private static int ScoreParameter(string parameterType, ManagedExpressionValue argument)
+    {
+        if (parameterType.StartsWith("by-reference:", StringComparison.Ordinal) ||
+            parameterType.StartsWith("pointer:", StringComparison.Ordinal) ||
+            parameterType.StartsWith("method-parameter:", StringComparison.Ordinal) ||
+            parameterType.StartsWith("type-parameter:", StringComparison.Ordinal) ||
+            string.Equals(parameterType, "function-pointer", StringComparison.Ordinal))
+        {
+            return -1;
+        }
+
+        bool referenceType = parameterType.StartsWith(
+            "reference:",
+            StringComparison.Ordinal) ||
+            string.Equals(parameterType, "string", StringComparison.Ordinal) ||
+            string.Equals(parameterType, "object", StringComparison.Ordinal);
+        string normalizedType = parameterType.StartsWith(
+            "reference:",
+            StringComparison.Ordinal)
+                ? parameterType["reference:".Length..]
+                : parameterType.StartsWith("value:", StringComparison.Ordinal)
+                    ? parameterType["value:".Length..]
+                    : parameterType;
+        if (argument.HasScalar && argument.Scalar is null)
+        {
+            return referenceType ? 1 : -1;
+        }
+
+        if (string.Equals(normalizedType, argument.Display.Type, StringComparison.Ordinal))
+        {
+            return 4;
+        }
+
+        return argument.Display.VariablesReference > 0 && referenceType ? 1 : -1;
     }
 }

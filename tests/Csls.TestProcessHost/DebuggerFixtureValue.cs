@@ -47,6 +47,20 @@ internal sealed class DebuggerFixtureValue
     internal int AddForDebugger(int value) => Number + value;
 
     /// <summary>
+    /// Selects the Int32 overload for exact debugger argument binding.
+    /// </summary>
+    /// <param name="value">The Int32 value supplied by managed function evaluation.</param>
+    /// <returns>The stored number plus the supplied value.</returns>
+    internal int AddOverloadedForDebugger(int value) => Number + value;
+
+    /// <summary>
+    /// Selects the Int64 overload for exact debugger argument binding.
+    /// </summary>
+    /// <param name="value">The Int64 value supplied by managed function evaluation.</param>
+    /// <returns>The stored number plus the supplied value and an overload marker.</returns>
+    internal long AddOverloadedForDebugger(long value) => Number + value + 100;
+
+    /// <summary>
     /// Returns the length of a debugger-supplied string argument.
     /// </summary>
     /// <param name="value">The string supplied by managed function evaluation.</param>

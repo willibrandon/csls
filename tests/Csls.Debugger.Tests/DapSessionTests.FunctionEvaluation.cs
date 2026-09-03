@@ -153,6 +153,36 @@ public sealed partial class DapSessionTests
             AssertEvent(argumentInvalidated.RootElement, "invalidated");
 
             frame = await GetFixtureFrameAsync(client).ConfigureAwait(false);
+            JsonElement intOverloadEvaluation = await ReadEvaluationAsync(
+                client,
+                frame.GetProperty("id").GetInt32(),
+                "localObject.AddOverloadedForDebugger(1)",
+                success: true,
+                TestContext.CancellationToken).ConfigureAwait(false);
+            Assert.AreEqual(
+                "43",
+                intOverloadEvaluation.GetProperty("result").GetString());
+            using JsonDocument intOverloadInvalidated = await client
+                .ReadMessageAsync(TestContext.CancellationToken)
+                .ConfigureAwait(false);
+            AssertEvent(intOverloadInvalidated.RootElement, "invalidated");
+
+            frame = await GetFixtureFrameAsync(client).ConfigureAwait(false);
+            JsonElement longOverloadEvaluation = await ReadEvaluationAsync(
+                client,
+                frame.GetProperty("id").GetInt32(),
+                "localObject.AddOverloadedForDebugger(1L)",
+                success: true,
+                TestContext.CancellationToken).ConfigureAwait(false);
+            Assert.AreEqual(
+                "143",
+                longOverloadEvaluation.GetProperty("result").GetString());
+            using JsonDocument longOverloadInvalidated = await client
+                .ReadMessageAsync(TestContext.CancellationToken)
+                .ConfigureAwait(false);
+            AssertEvent(longOverloadInvalidated.RootElement, "invalidated");
+
+            frame = await GetFixtureFrameAsync(client).ConfigureAwait(false);
             JsonElement referenceArgumentEvaluation = await ReadEvaluationAsync(
                 client,
                 frame.GetProperty("id").GetInt32(),
