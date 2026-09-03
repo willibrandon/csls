@@ -438,6 +438,9 @@ loaded declaring module's metadata. It preserves generic arguments, array rank a
 live dimensions, tuple shape, and nullable underlying types. Nullable state and its
 contained value are read directly from the runtime value; presentation must not invoke
 `ToString`, properties, operators, or any other target code.
+Enum presentation follows the same rule: the engine reads `value__`, matches metadata
+constants using the exact underlying width, decomposes `[Flags]` deterministically,
+and preserves the numeric representation when no symbolic name exists.
 
 C# and Visual Basic Hot Reload use compiler-produced metadata, IL, and PDB deltas.
 The engine validates rude edits, applies deltas, advances module generations, and

@@ -199,6 +199,8 @@ Immediate value presentation uses the exact CoreCLR type plus the declaring modu
 metadata. Generic types, arrays, tuples, and nullable value types therefore retain
 their concrete type arguments; arrays include their live dimensions and nullable
 values display either their contained value or `null` without target execution.
+Enums use their actual underlying runtime storage and metadata constants, including
+symbolic decomposition for `[Flags]`; unnamed values retain their numeric display.
 
 The frame is explicit when supplied; otherwise the adapter uses the selected
 stopped thread's top managed frame. The same generation-bound read-only operation

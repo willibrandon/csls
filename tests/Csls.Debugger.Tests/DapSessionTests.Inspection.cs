@@ -323,6 +323,17 @@ public sealed partial class DapSessionTests
             Assert.AreEqual(
                 "\"answer\"",
                 tupleFields["Item2"].GetProperty("value").GetString());
+            JsonElement localMode = localsByName["localMode"];
+            Assert.AreEqual("Second", localMode.GetProperty("value").GetString());
+            Assert.AreEqual(
+                "Csls.TestProcessHost.DebuggerFixtureMode",
+                localMode.GetProperty("type").GetString());
+            Assert.AreEqual(
+                "7",
+                localsByName["localUnknownMode"].GetProperty("value").GetString());
+            Assert.AreEqual(
+                "Read | Execute",
+                localsByName["localOptions"].GetProperty("value").GetString());
 
             JsonElement evaluatedLocal = await ReadEvaluationAsync(
                 client,

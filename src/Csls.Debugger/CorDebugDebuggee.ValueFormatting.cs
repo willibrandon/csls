@@ -36,6 +36,13 @@ internal sealed partial class CorDebugDebuggee
             }
 
             string type = FormatRuntimeType(exactType, depth: 0, out uint elementType);
+            if (elementType == 0x11 &&
+                hasInspectedValue &&
+                TryFormatEnumValue(inspectedValue, exactType, out string enumDisplay))
+            {
+                return new ManagedValueDisplay(enumDisplay, type);
+            }
+
             if (elementType == 0x11 && IsNullableType(exactType) && hasInspectedValue)
             {
                 return new ManagedValueDisplay(

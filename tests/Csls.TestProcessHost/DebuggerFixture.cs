@@ -29,6 +29,10 @@ internal static class DebuggerFixture
         int? localNullable = number + 3;
         int? localEmptyNullable = null;
         (int Number, string Text) localTuple = (number, text);
+        DebuggerFixtureMode localMode = DebuggerFixtureMode.Second;
+        var localUnknownMode = (DebuggerFixtureMode)7;
+        DebuggerFixtureOptions localOptions = DebuggerFixtureOptions.Read |
+            DebuggerFixtureOptions.Execute;
         Console.Write(announcement);
         Console.Out.Flush();
         while (!File.Exists(path))
@@ -46,6 +50,9 @@ internal static class DebuggerFixture
         GC.KeepAlive(localNullable);
         GC.KeepAlive(localEmptyNullable);
         GC.KeepAlive(localTuple);
+        GC.KeepAlive(localMode);
+        GC.KeepAlive(localUnknownMode);
+        GC.KeepAlive(localOptions);
         return localNumber == 43 && localText == "answer!" ? 0 : 1;
     }
 }
