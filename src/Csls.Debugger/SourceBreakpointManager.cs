@@ -212,5 +212,6 @@ internal sealed partial class SourceBreakpointManager : IDisposable
 
         ReleaseRuntimeBindings();
         _definitions.Clear();
+        ClearSources();
     }
 }

@@ -115,6 +115,7 @@ internal sealed partial class CorDebugDebuggee
 
             var result = new CorDebugDebuggee(
                 actor,
+                sourceBreakpoints,
                 managedCallback,
                 registration,
                 standardStreamsOwner.Detach(),
@@ -245,6 +246,7 @@ internal sealed partial class CorDebugDebuggee
 
             var result = new CorDebugDebuggee(
                 actor,
+                sourceBreakpoints,
                 managedCallback,
                 registration,
                 standardStreams: null,

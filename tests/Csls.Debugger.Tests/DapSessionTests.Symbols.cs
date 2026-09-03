@@ -107,14 +107,18 @@ public sealed partial class DapSessionTests
             "configurationDone",
             WriteEmptyObject,
             TestContext.CancellationToken).ConfigureAwait(false);
-        _ = await ReadInitialBreakpointStopAsync(
+        int threadId = await ReadInitialBreakpointStopAsync(
             client,
             configurationSequence,
             launchSequence,
             TestContext.CancellationToken).ConfigureAwait(false);
 
         await AssertEmbeddedModuleAsync(client, programPath).ConfigureAwait(false);
-        await AssertLoadedSourceAsync(client, sourcePath).ConfigureAwait(false);
+        int sourceReference = await AssertLoadedSourceAsync(client, sourcePath)
+            .ConfigureAwait(false);
+        await AssertEmbeddedSourceContentAsync(client, sourceReference).ConfigureAwait(false);
+        await AssertEmbeddedStackSourceAsync(client, threadId, sourceReference)
+            .ConfigureAwait(false);
         await AssertBreakpointLocationAsync(client, sourcePath, breakpointLine - 1)
             .ConfigureAwait(false);
         await DisconnectStoppedSessionAsync(client).ConfigureAwait(false);
@@ -144,7 +148,7 @@ public sealed partial class DapSessionTests
         Assert.IsFalse(module.TryGetProperty("symbolFilePath", out _));
     }
 
-    private async Task AssertLoadedSourceAsync(DapTestClient client, string sourcePath)
+    private async Task<int> AssertLoadedSourceAsync(DapTestClient client, string sourcePath)
     {
         int sequence = await client.SendRequestAsync(
             "loadedSources",
@@ -161,6 +165,13 @@ public sealed partial class DapSessionTests
                 sourcePath,
                 StringComparison.Ordinal));
         Assert.AreEqual(Path.GetFileName(sourcePath), source.GetProperty("name").GetString());
+        Assert.AreEqual("embedded source", source.GetProperty("origin").GetString());
+        int sourceReference = source.GetProperty("sourceReference").GetInt32();
+        Assert.IsGreaterThan(0, sourceReference);
+        JsonElement checksum = source.GetProperty("checksums")[0];
+        Assert.AreEqual("SHA256", checksum.GetProperty("algorithm").GetString());
+        Assert.HasCount(64, checksum.GetProperty("checksum").GetString()!);
+        return sourceReference;
     }
 
     private async Task AssertBreakpointLocationAsync(

@@ -105,7 +105,7 @@ public sealed partial class DebuggerRpcTests
             new DebugStackRequest(stopped.StoppedThreadId!.Value, 0, 64),
             cancellationToken).ConfigureAwait(false);
         DebugStackFrameInfo frame = stack.StackFrames.Single(candidate =>
-            string.Equals(candidate.SourcePath, sourcePath, StringComparison.Ordinal) &&
+            string.Equals(candidate.Source?.Path, sourcePath, StringComparison.Ordinal) &&
             candidate.Line == breakpointLine);
         IReadOnlyList<DebugScopeInfo> scopes = await client.GetScopesAsync(
             new DebugScopesRequest(frame.Id),

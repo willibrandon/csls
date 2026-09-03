@@ -73,6 +73,11 @@ internal static class DebuggerControlMethodRegistry
             DebuggerControlMethods.GetVariables,
             new Func<DebugVariablesRequest, CancellationToken,
                 Task<IReadOnlyList<DebugVariableInfo>>>(target.GetVariablesAsync));
+        AddParameterObjectMethod(
+            rpc,
+            DebuggerControlMethods.GetSourceContent,
+            new Func<DebugSourceRequest, CancellationToken, Task<DebugSourceContent>>(
+                target.GetSourceContentAsync));
         rpc.AddLocalRpcMethod(
             DebuggerControlMethods.Terminate,
             new Func<CancellationToken, Task<DebugSessionSnapshot>>(target.TerminateAsync));

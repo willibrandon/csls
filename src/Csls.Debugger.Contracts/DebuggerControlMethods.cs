@@ -71,6 +71,11 @@ public static class DebuggerControlMethods
     public const string GetVariables = "debugger/getVariables";
 
     /// <summary>
+    /// Gets source content by its session-local reference.
+    /// </summary>
+    public const string GetSourceContent = "debugger/getSourceContent";
+
+    /// <summary>
     /// Terminates a debugger-owned target.
     /// </summary>
     public const string Terminate = "debugger/terminate";

@@ -34,10 +34,7 @@ internal sealed partial class DapSession
                     writer.WriteStartArray("sources");
                     foreach (DebugSourceInfo source in sources)
                     {
-                        writer.WriteStartObject();
-                        writer.WriteString("name", source.Name);
-                        writer.WriteString("path", source.Path);
-                        writer.WriteEndObject();
+                        WriteSource(writer, source);
                     }
 
                     writer.WriteEndArray();

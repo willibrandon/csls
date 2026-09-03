@@ -18,7 +18,7 @@ internal sealed partial class SourceBreakpointManager
     internal IReadOnlyList<DebugSourceInfo> GetLoadedSources()
     {
         ObjectDisposedException.ThrowIf(_disposed != 0, this);
-        var paths = new HashSet<string>(PathComparer);
+        var sources = new Dictionary<string, DebugSourceInfo>(PathComparer);
         foreach (CorDebugLoadedModule module in _modules.Values.OrderBy(static module => module.Id))
         {
             if (module.Path is null)
@@ -28,25 +28,26 @@ internal sealed partial class SourceBreakpointManager
 
             try
             {
-                AddLoadedSources(module.Path, paths);
+                AddLoadedSources(module.Path, sources);
             }
             catch (Exception exception) when (IsSymbolReadException(exception))
             {
             }
 
-            if (paths.Count >= MaximumSourceCount)
+            if (sources.Count >= MaximumSourceCount)
             {
                 break;
             }
         }
 
-        return paths
-            .Order(PathComparer)
-            .Select(static path => new DebugSourceInfo(Path.GetFileName(path), path))
+        return sources.Values
+            .OrderBy(static source => source.Path ?? source.Name, PathComparer)
             .ToArray();
     }
 
-    private static void AddLoadedSources(string modulePath, HashSet<string> paths)
+    private void AddLoadedSources(
+        string modulePath,
+        Dictionary<string, DebugSourceInfo> sources)
     {
         using var symbols = PortablePdbReader.TryOpen(modulePath);
         if (symbols is null)
@@ -57,9 +58,14 @@ internal sealed partial class SourceBreakpointManager
         foreach (DocumentHandle handle in symbols.Metadata.Documents)
         {
             string? path = GetDocumentPath(symbols.Metadata, handle);
-            if (path is not null && paths.Add(path) && paths.Count >= MaximumSourceCount)
+            if (path is not null && !sources.ContainsKey(path))
             {
-                return;
+                DebugSourceInfo source = RegisterSource(modulePath, symbols.Metadata, handle).Info;
+                sources.Add(path, source);
+                if (sources.Count >= MaximumSourceCount)
+                {
+                    return;
+                }
             }
         }
     }

@@ -45,6 +45,9 @@ internal sealed partial class DapSession
             case "loadedSources":
                 await WriteLoadedSourcesAsync(request, cancellationToken).ConfigureAwait(false);
                 break;
+            case "source":
+                await WriteSourceContentAsync(request, cancellationToken).ConfigureAwait(false);
+                break;
             case "breakpointLocations":
                 await WriteBreakpointLocationsAsync(request, cancellationToken).ConfigureAwait(false);
                 break;

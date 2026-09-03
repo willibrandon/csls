@@ -148,10 +148,10 @@ internal sealed class DebuggerTerminalState
         StackLines = stack.StackFrames
             .Select(static frame => string.Create(
                 CultureInfo.InvariantCulture,
-                $"{frame.Name}  {Path.GetFileName(frame.SourcePath)}:{frame.Line}"))
+                $"{frame.Name}  {frame.Source?.Name}:{frame.Line}"))
             .ToArray();
         DebugStackFrameInfo? selectedFrame = stack.StackFrames.FirstOrDefault(
-            static frame => !string.IsNullOrWhiteSpace(frame.SourcePath) && frame.Line > 0)
+            static frame => frame.Source is not null && frame.Line > 0)
             ?? (stack.StackFrames.Count == 0 ? null : stack.StackFrames[0]);
         if (selectedFrame is null)
         {
@@ -187,17 +187,36 @@ internal sealed class DebuggerTerminalState
         return lines;
     }
 
-    private static async Task<IReadOnlyList<string>> LoadSourceContextAsync(
+    private async Task<IReadOnlyList<string>> LoadSourceContextAsync(
         DebugStackFrameInfo frame,
         CancellationToken cancellationToken)
     {
-        if (frame.SourcePath is null || !File.Exists(frame.SourcePath))
+        if (frame.Source is null)
         {
             return ["Source is unavailable for the selected frame."];
         }
 
-        string[] lines = await File.ReadAllLinesAsync(frame.SourcePath, cancellationToken)
-            .ConfigureAwait(false);
+        string[] lines;
+        if (frame.Source.SourceReference > 0)
+        {
+            DebugSourceContent source = await _client.GetSourceContentAsync(
+                new DebugSourceRequest(frame.Source.SourceReference),
+                cancellationToken).ConfigureAwait(false);
+            lines = source.Content
+                .Replace("\r\n", "\n", StringComparison.Ordinal)
+                .Replace('\r', '\n')
+                .Split('\n');
+        }
+        else if (frame.Source.Path is not null && File.Exists(frame.Source.Path))
+        {
+            lines = await File.ReadAllLinesAsync(frame.Source.Path, cancellationToken)
+                .ConfigureAwait(false);
+        }
+        else
+        {
+            return ["Source is unavailable for the selected frame."];
+        }
+
         int first = Math.Max(1, frame.Line - 50);
         int last = Math.Min(lines.Length, frame.Line + 50);
         return Enumerable.Range(first, last - first + 1)

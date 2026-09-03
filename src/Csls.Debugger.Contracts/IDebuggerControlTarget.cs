@@ -114,6 +114,16 @@ public interface IDebuggerControlTarget
         CancellationToken cancellationToken);
 
     /// <summary>
+    /// Gets source content by its session-local reference.
+    /// </summary>
+    /// <param name="request">The selected source reference.</param>
+    /// <param name="cancellationToken">Cancels source retrieval.</param>
+    /// <returns>The complete source text and media type.</returns>
+    Task<DebugSourceContent> GetSourceContentAsync(
+        DebugSourceRequest request,
+        CancellationToken cancellationToken);
+
+    /// <summary>
     /// Terminates the owned target.
     /// </summary>
     /// <param name="cancellationToken">Cancels waiting for termination.</param>
