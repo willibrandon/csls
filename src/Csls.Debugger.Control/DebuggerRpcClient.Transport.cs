@@ -19,7 +19,7 @@ public sealed partial class DebuggerRpcClient
     private BoundedMessageStream? _boundedSendingStream;
     private BoundedMessageStream? _boundedReceivingStream;
     private LengthHeaderMessageHandler? _handler;
-    private SystemTextJsonFormatter? _formatter;
+    private NerdbankMessagePackFormatter? _formatter;
     private JsonRpc? _rpc;
     private int _disposed;
 
@@ -102,7 +102,7 @@ public sealed partial class DebuggerRpcClient
         _boundedReceivingStream = ReferenceEquals(sendingStream, receivingStream)
             ? _boundedSendingStream
             : new BoundedMessageStream(receivingStream, MaximumMessageBytes, leaveOpen: true);
-        _formatter = DebuggerControlJson.CreateFormatter();
+        _formatter = DebuggerControlRpcFormatter.Create();
         _handler = new LengthHeaderMessageHandler(
             _boundedSendingStream,
             _boundedReceivingStream,

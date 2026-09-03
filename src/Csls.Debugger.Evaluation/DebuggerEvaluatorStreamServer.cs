@@ -47,7 +47,7 @@ public static class DebuggerEvaluatorStreamServer
             leaveOpen: true);
         await using ConfiguredAsyncDisposable sendingCleanup =
             boundedSendingStream.ConfigureAwait(false);
-        using SystemTextJsonFormatter formatter = DebuggerEvaluatorJson.CreateFormatter();
+        using NerdbankMessagePackFormatter formatter = DebuggerEvaluatorRpcFormatter.Create();
         using var handler = new LengthHeaderMessageHandler(
             boundedSendingStream,
             boundedReceivingStream,

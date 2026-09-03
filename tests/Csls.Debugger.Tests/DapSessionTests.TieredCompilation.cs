@@ -171,6 +171,7 @@ public sealed partial class DapSessionTests
         writer.WriteString("DOTNET_TieredCompilation", "1");
         writer.WriteString("DOTNET_TC_AggressiveTiering", "1");
         writer.WriteEndObject();
+        WriteDefaultSourceFileMap(writer);
         writer.WriteEndObject();
     }
 

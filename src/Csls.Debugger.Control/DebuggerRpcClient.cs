@@ -1,5 +1,6 @@
 using Csls.Debugger.Contracts;
 using StreamJsonRpc;
+using System.Diagnostics.CodeAnalysis;
 
 namespace Csls.Debugger.Control;
 
@@ -180,7 +181,13 @@ public sealed partial class DebuggerRpcClient : IAsyncDisposable
             "The debugger RPC client is not connected.");
     }
 
-    private Task<TResult> InvokeAsync<TRequest, TResult>(
+    private Task<TResult> InvokeAsync<
+        [DynamicallyAccessedMembers(
+            DynamicallyAccessedMemberTypes.PublicProperties |
+            DynamicallyAccessedMemberTypes.PublicFields |
+            DynamicallyAccessedMemberTypes.NonPublicProperties |
+            DynamicallyAccessedMemberTypes.NonPublicFields)] TRequest,
+        TResult>(
         string method,
         TRequest request,
         CancellationToken cancellationToken)

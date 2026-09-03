@@ -59,12 +59,14 @@ internal static partial class DebuggerWorkerHost
         IReadOnlyList<string> arguments,
         CancellationToken cancellationToken)
     {
-        if (arguments.Count < 6 ||
+        if (arguments.Count < 7 ||
             !int.TryParse(
                 arguments[4],
                 NumberStyles.None,
                 CultureInfo.InvariantCulture,
-                out int line))
+                out int line) ||
+            !TryParseSourceFileMap(arguments, 6, out Dictionary<string, string>? sourceFileMap,
+                out int targetArgumentIndex))
         {
             throw new InvalidDataException(
                 "The launcher supplied an invalid interactive launch request.");
@@ -78,7 +80,8 @@ internal static partial class DebuggerWorkerHost
                 SourcePath = arguments[3],
                 Line = line,
                 RuntimeHostPath = string.IsNullOrEmpty(arguments[5]) ? null : arguments[5],
-                Arguments = arguments.Skip(6).ToArray()
+                SourceFileMap = sourceFileMap,
+                Arguments = arguments.Skip(targetArgumentIndex).ToArray()
             },
             cancellationToken);
     }
@@ -87,20 +90,58 @@ internal static partial class DebuggerWorkerHost
         IReadOnlyList<string> arguments,
         CancellationToken cancellationToken)
     {
-        if (arguments.Count != 2 ||
+        if (arguments.Count < 3 ||
             !int.TryParse(
                 arguments[1],
                 NumberStyles.None,
                 CultureInfo.InvariantCulture,
-                out int processId))
+                out int processId) ||
+            !TryParseSourceFileMap(arguments, 2, out Dictionary<string, string>? sourceFileMap,
+                out int nextArgumentIndex) ||
+            nextArgumentIndex != arguments.Count)
         {
             throw new InvalidDataException(
                 "The launcher supplied an invalid interactive attach request.");
         }
 
         return DebuggerTerminalHost.RunAttachAsync(
-            new DebuggerTerminalAttachOptions(processId),
+            new DebuggerTerminalAttachOptions(processId)
+            {
+                SourceFileMap = sourceFileMap
+            },
             cancellationToken);
+    }
+
+    private static bool TryParseSourceFileMap(
+        IReadOnlyList<string> arguments,
+        int countIndex,
+        out Dictionary<string, string> sourceFileMap,
+        out int nextArgumentIndex)
+    {
+        sourceFileMap = new Dictionary<string, string>(StringComparer.Ordinal);
+        nextArgumentIndex = countIndex;
+        if (countIndex >= arguments.Count ||
+            !int.TryParse(
+                arguments[countIndex],
+                NumberStyles.None,
+                CultureInfo.InvariantCulture,
+                out int count) ||
+            count < 0 ||
+            count > (arguments.Count - countIndex - 1) / 2)
+        {
+            return false;
+        }
+
+        nextArgumentIndex = checked(countIndex + 1 + (count * 2));
+        for (int index = countIndex + 1; index < nextArgumentIndex; index += 2)
+        {
+            if (!sourceFileMap.TryAdd(arguments[index], arguments[index + 1]))
+            {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     private static int Fail(string message)

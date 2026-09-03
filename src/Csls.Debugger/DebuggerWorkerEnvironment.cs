@@ -1,5 +1,5 @@
-using System.Diagnostics;
 using Csls.Debugger.Evaluation;
+using System.Diagnostics;
 
 namespace Csls.Debugger;
 

@@ -7,6 +7,12 @@ namespace Csls.Debugger.Tests;
 /// </summary>
 public sealed partial class DebuggerRpcTests
 {
+    private static Dictionary<string, string> CreateDefaultSourceFileMap() =>
+        new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            ["/_/"] = FindRepositoryRoot()
+        };
+
     private static string ResolveTestProcessHost(string repositoryRoot) => Path.Join(
         repositoryRoot,
         "artifacts",
@@ -16,14 +22,5 @@ public sealed partial class DebuggerRpcTests
         "csls-test-process-host.dll");
 
     private static string FindRepositoryRoot([CallerFilePath] string sourcePath = "")
-    {
-        DirectoryInfo? directory = new FileInfo(sourcePath).Directory;
-        while (directory is not null && !File.Exists(Path.Join(directory.FullName, "Csls.slnx")))
-        {
-            directory = directory.Parent;
-        }
-
-        return directory?.FullName
-            ?? throw new DirectoryNotFoundException("Could not locate the csls repository root.");
-    }
+        => DebuggerTestEnvironment.FindRepositoryRoot(sourcePath);
 }

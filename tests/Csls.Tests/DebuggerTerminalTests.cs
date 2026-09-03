@@ -18,12 +18,12 @@ public sealed class DebuggerTerminalTests
     public TestContext TestContext { get; set; } = null!;
 
     /// <summary>
-    /// Renders real source, stack, and locals and steps the managed target.
+    /// Navigates real debugger state and keeps execution controls responsive.
     /// </summary>
     [TestMethod]
     [OSCondition(ConditionMode.Include, OperatingSystems.Linux)]
     [Timeout(60000, CooperativeCancellation = true)]
-    public async Task TerminalShowsStoppedManagedStateAndStepsOver()
+    public async Task TerminalNavigatesStoppedStateAndKeepsExecutionControlsResponsive()
     {
         string repositoryRoot = EditorToolResolver.FindRepositoryRoot();
         string artifactsRoot = EditorToolResolver.ResolveArtifactsRoot(repositoryRoot);
@@ -74,6 +74,8 @@ public sealed class DebuggerTerminalTests
                     sourcePath,
                     "--line",
                     breakpointLine.ToString(CultureInfo.InvariantCulture),
+                    "--source-file-map",
+                    $"/_/={repositoryRoot}",
                     "--",
                     "--debugger-fixture",
                     signalPath
@@ -108,14 +110,34 @@ public sealed class DebuggerTerminalTests
 
                     await automator.WaitUntilTextAsync("csls debugger").ConfigureAwait(false);
                     await automator.WaitUntilTextAsync("Source").ConfigureAwait(false);
+                    await automator.WaitUntilTextAsync("Threads").ConfigureAwait(false);
                     await automator.WaitUntilTextAsync("Stack").ConfigureAwait(false);
                     await automator.WaitUntilTextAsync("Arguments and Locals").ConfigureAwait(false);
+                    await automator.WaitUntilTextAsync("Target Output").ConfigureAwait(false);
                     await automator.WaitUntilTextAsync("WaitForSignal").ConfigureAwait(false);
+                    await automator.WaitUntilTextAsync("with symbols").ConfigureAwait(false);
                     await automator.WaitUntilTextAsync("number = 42").ConfigureAwait(false);
                     await automator.WaitUntilTextAsync("localNumber = 0").ConfigureAwait(false);
+                    await automator.WaitUntilTextAsync($"●    {breakpointLine}")
+                        .ConfigureAwait(false);
+                    await automator.KeyAsync(
+                        Hex1bKey.F9,
+                        TestContext.CancellationToken).ConfigureAwait(false);
+                    await automator.WaitUntilTextAsync(
+                        $"Removed breakpoint at {Path.GetFileName(sourcePath)}:{breakpointLine}.")
+                        .ConfigureAwait(false);
                     await automator.KeyAsync(
                         Hex1bKey.F10,
                         TestContext.CancellationToken).ConfigureAwait(false);
+                    await automator.WaitUntilTextAsync("localNumber = 43").ConfigureAwait(false);
+                    await automator.KeyAsync(
+                        Hex1bKey.F5,
+                        TestContext.CancellationToken).ConfigureAwait(false);
+                    await automator.WaitUntilTextAsync("Target is running.").ConfigureAwait(false);
+                    await automator.KeyAsync(
+                        Hex1bKey.F6,
+                        TestContext.CancellationToken).ConfigureAwait(false);
+                    await automator.WaitUntilTextAsync("out> ready").ConfigureAwait(false);
                     await automator.WaitUntilTextAsync("localNumber = 43").ConfigureAwait(false);
                     await automator.Ctrl().KeyAsync(
                         Hex1bKey.C,

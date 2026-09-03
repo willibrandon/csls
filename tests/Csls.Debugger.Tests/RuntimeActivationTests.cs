@@ -46,7 +46,11 @@ public sealed class RuntimeActivationTests
             {
                 Program = program,
                 WorkingDirectory = repositoryRoot,
-                Arguments = ["--wait-for-file", absentSignal]
+                Arguments = ["--wait-for-file", absentSignal],
+                SourceFileMap = new Dictionary<string, string>(StringComparer.Ordinal)
+                {
+                    ["/_/"] = repositoryRoot
+                }
             },
             TestContext.CancellationToken).ConfigureAwait(false);
         Assert.AreEqual(DebugSessionState.Running, running.State);
@@ -63,14 +67,5 @@ public sealed class RuntimeActivationTests
     }
 
     private static string FindRepositoryRoot([CallerFilePath] string sourcePath = "")
-    {
-        DirectoryInfo? directory = new FileInfo(sourcePath).Directory;
-        while (directory is not null && !File.Exists(Path.Join(directory.FullName, "Csls.slnx")))
-        {
-            directory = directory.Parent;
-        }
-
-        return directory?.FullName
-            ?? throw new DirectoryNotFoundException("Could not locate the csls repository root.");
-    }
+        => DebuggerTestEnvironment.FindRepositoryRoot(sourcePath);
 }

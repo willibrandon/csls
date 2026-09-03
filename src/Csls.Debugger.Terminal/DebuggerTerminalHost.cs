@@ -42,7 +42,8 @@ public static class DebuggerTerminalHost
                 Program = options.Program,
                 WorkingDirectory = options.WorkingDirectory,
                 Arguments = options.Arguments,
-                RuntimeHostPath = options.RuntimeHostPath
+                RuntimeHostPath = options.RuntimeHostPath,
+                SourceFileMap = options.SourceFileMap
             },
             cancellationToken).ConfigureAwait(false);
         return await RunTerminalAsync(client, cancellationToken).ConfigureAwait(false);
@@ -70,7 +71,10 @@ public static class DebuggerTerminalHost
         await using ConfiguredAsyncDisposable clientCleanup = client.ConfigureAwait(false);
         await client.ConnectAsync(cancellationToken).ConfigureAwait(false);
         _ = await client.AttachAsync(
-            new DebugAttachRequest(options.ProcessId),
+            new DebugAttachRequest(options.ProcessId)
+            {
+                SourceFileMap = options.SourceFileMap
+            },
             cancellationToken).ConfigureAwait(false);
         _ = await client.PauseAsync(cancellationToken).ConfigureAwait(false);
         return await RunTerminalAsync(client, cancellationToken).ConfigureAwait(false);
@@ -83,6 +87,7 @@ public static class DebuggerTerminalHost
         DebuggerTerminalState state = await DebuggerTerminalState
             .CreateAsync(client, cancellationToken)
             .ConfigureAwait(false);
+        await using ConfiguredAsyncDisposable stateCleanup = state.ConfigureAwait(false);
         Hex1bTerminal terminal = Hex1bTerminal.CreateBuilder()
             .WithHex1bApp(
                 static _ => { },

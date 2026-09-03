@@ -11,10 +11,10 @@ internal struct WindowsStartupInfoEx
     /// <summary>
     /// Gets or sets the base Windows startup state.
     /// </summary>
-    internal WindowsStartupInfo StartupInfo;
+    internal WindowsStartupInfo _startupInfo;
 
     /// <summary>
     /// Gets or sets the initialized process-thread attribute list.
     /// </summary>
-    internal nint AttributeList;
+    internal nint _attributeList;
 }

@@ -1,18 +1,23 @@
 using Csls.Debugger.Contracts;
 using Csls.Debugger.Control;
 using Hex1b;
-using System.Globalization;
+using StreamJsonRpc;
 
 namespace Csls.Debugger.Terminal;
 
 /// <summary>
 /// Holds immutable debugger snapshots loaded exclusively through private control RPC.
 /// </summary>
-internal sealed class DebuggerTerminalState
+internal sealed partial class DebuggerTerminalState : IAsyncDisposable
 {
     private readonly DebuggerRpcClient _client;
     private readonly CancellationToken _cancellationToken;
+    private readonly Lock _notificationGate = new();
+    private readonly SemaphoreSlim _mutationGate = new(1, 1);
     private Hex1bApp? _app;
+    private CancellationTokenSource? _runObservationCancellation;
+    private Task? _runObservationTask;
+    private TaskCompletionSource _sessionChanged = CreateSessionChangedSource();
 
     private DebuggerTerminalState(
         DebuggerRpcClient client,
@@ -20,6 +25,7 @@ internal sealed class DebuggerTerminalState
     {
         _client = client;
         _cancellationToken = cancellationToken;
+        _client.ResourceChanged += OnResourceChanged;
     }
 
     /// <summary>
@@ -29,24 +35,9 @@ internal sealed class DebuggerTerminalState
         new() { State = DebugSessionState.Created };
 
     /// <summary>
-    /// Gets the bounded source context around the selected frame.
+    /// Gets the latest non-fatal interactive operation diagnostic.
     /// </summary>
-    internal IReadOnlyList<string> SourceLines { get; private set; } = [];
-
-    /// <summary>
-    /// Gets the source row that should remain visible and focused.
-    /// </summary>
-    internal int SourceFocusedIndex { get; private set; }
-
-    /// <summary>
-    /// Gets the current managed stack display rows.
-    /// </summary>
-    internal IReadOnlyList<string> StackLines { get; private set; } = [];
-
-    /// <summary>
-    /// Gets the current argument and local variable display rows.
-    /// </summary>
-    internal IReadOnlyList<string> VariableLines { get; private set; } = [];
+    internal string? StatusMessage { get; private set; }
 
     /// <summary>
     /// Creates state and waits until the target reaches its initial stop.
@@ -60,7 +51,7 @@ internal sealed class DebuggerTerminalState
     {
         ArgumentNullException.ThrowIfNull(client);
         var state = new DebuggerTerminalState(client, cancellationToken);
-        await state.WaitForStopAndLoadAsync().ConfigureAwait(false);
+        await state.WaitForStopAndLoadAsync(cancellationToken).ConfigureAwait(false);
         return state;
     }
 
@@ -75,162 +66,134 @@ internal sealed class DebuggerTerminalState
     }
 
     /// <summary>
-    /// Continues execution until the next debugger stop or process exit.
+    /// Stops background observation and releases its owned cancellation state.
     /// </summary>
-    /// <returns>A task that completes after refreshed state is available.</returns>
-    internal async Task ContinueAsync()
+    public async ValueTask DisposeAsync()
     {
-        Snapshot = await _client.ContinueAsync(_cancellationToken).ConfigureAwait(false);
-        ClearInspection();
-        _app?.Invalidate();
-        await WaitForStopAndLoadAsync().ConfigureAwait(false);
+        _client.ResourceChanged -= OnResourceChanged;
+        await StopRunObservationAsync().ConfigureAwait(false);
+        _mutationGate.Dispose();
     }
 
-    /// <summary>
-    /// Pauses a running target and reloads its managed state.
-    /// </summary>
-    /// <returns>A task that completes after refreshed state is available.</returns>
-    internal async Task PauseAsync()
+    private void StartRunObservation()
     {
-        Snapshot = await _client.PauseAsync(_cancellationToken).ConfigureAwait(false);
-        await LoadStoppedStateAsync().ConfigureAwait(false);
+        _runObservationCancellation?.Dispose();
+        _runObservationCancellation = CancellationTokenSource.CreateLinkedTokenSource(
+            _cancellationToken);
+        _runObservationTask = ObserveRunAsync(_runObservationCancellation.Token);
     }
 
-    /// <summary>
-    /// Performs one source-level step and reloads the next stopped state.
-    /// </summary>
-    /// <param name="kind">The source-level step kind.</param>
-    /// <returns>A task that completes after refreshed state is available.</returns>
-    internal async Task StepAsync(DebugStepKind kind)
+    private async Task StopRunObservationAsync()
     {
-        int threadId = Snapshot.StoppedThreadId
-            ?? throw new InvalidOperationException("The stopped thread is unavailable.");
-        Snapshot = await _client.StepAsync(
-            new DebugStepRequest(threadId, kind),
-            _cancellationToken).ConfigureAwait(false);
-        ClearInspection();
-        _app?.Invalidate();
-        await WaitForStopAndLoadAsync().ConfigureAwait(false);
-    }
-
-    private async Task WaitForStopAndLoadAsync()
-    {
-        while (true)
+        CancellationTokenSource? cancellation = _runObservationCancellation;
+        Task? observation = _runObservationTask;
+        _runObservationCancellation = null;
+        _runObservationTask = null;
+        if (cancellation is null)
         {
-            Snapshot = await _client.GetSessionAsync(_cancellationToken).ConfigureAwait(false);
-            if (Snapshot.State == DebugSessionState.Stopped)
-            {
-                await LoadStoppedStateAsync().ConfigureAwait(false);
-                return;
-            }
-
-            if (Snapshot.State is DebugSessionState.Terminated or DebugSessionState.Faulted)
-            {
-                ClearInspection();
-                _app?.Invalidate();
-                return;
-            }
-
-            await Task.Delay(TimeSpan.FromMilliseconds(25), _cancellationToken)
-                .ConfigureAwait(false);
-        }
-    }
-
-    private async Task LoadStoppedStateAsync()
-    {
-        IReadOnlyList<DebugThreadInfo> threads = await _client
-            .GetThreadsAsync(_cancellationToken)
-            .ConfigureAwait(false);
-        int threadId = Snapshot.StoppedThreadId ?? threads[0].Id;
-        DebugStackTrace stack = await _client.GetStackAsync(
-            new DebugStackRequest(threadId, 0, 200),
-            _cancellationToken).ConfigureAwait(false);
-        StackLines = stack.StackFrames
-            .Select(static frame => string.Create(
-                CultureInfo.InvariantCulture,
-                $"{frame.Name}  {frame.Source?.Name}:{frame.Line}"))
-            .ToArray();
-        DebugStackFrameInfo? selectedFrame = stack.StackFrames.FirstOrDefault(
-            static frame => frame.Source is not null && frame.Line > 0)
-            ?? (stack.StackFrames.Count == 0 ? null : stack.StackFrames[0]);
-        if (selectedFrame is null)
-        {
-            SourceLines = ["No managed frame is available."];
-            VariableLines = [];
-            _app?.Invalidate();
             return;
         }
 
-        SourceLines = await LoadSourceContextAsync(selectedFrame, _cancellationToken)
-            .ConfigureAwait(false);
-        SourceFocusedIndex = Math.Min(50, selectedFrame.Line - 1);
-        VariableLines = await LoadVariablesAsync(selectedFrame.Id).ConfigureAwait(false);
-        _app?.Invalidate();
+        await cancellation.CancelAsync().ConfigureAwait(false);
+        if (observation is not null)
+        {
+            await observation.ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
+        }
+
+        cancellation.Dispose();
     }
 
-    private async Task<IReadOnlyList<string>> LoadVariablesAsync(int frameId)
+    private async Task ObserveRunAsync(CancellationToken cancellationToken)
     {
-        IReadOnlyList<DebugScopeInfo> scopes = await _client.GetScopesAsync(
-            new DebugScopesRequest(frameId),
-            _cancellationToken).ConfigureAwait(false);
-        var lines = new List<string>();
-        foreach (DebugScopeInfo scope in scopes)
+        try
         {
-            lines.Add($"[{scope.Name}]");
-            IReadOnlyList<DebugVariableInfo> variables = await _client.GetVariablesAsync(
-                new DebugVariablesRequest(scope.VariablesReference, 0, 200),
-                _cancellationToken).ConfigureAwait(false);
-            lines.AddRange(variables.Select(static variable =>
-                $"{variable.Name} = {variable.Value}  {variable.Type}"));
+            await WaitForStopAndLoadAsync(cancellationToken).ConfigureAwait(false);
         }
-
-        return lines;
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+        }
+        catch (Exception exception) when (exception is
+            IOException or
+            InvalidDataException or
+            InvalidOperationException or
+            ObjectDisposedException or
+            RemoteInvocationException)
+        {
+            await _mutationGate.WaitAsync(CancellationToken.None).ConfigureAwait(false);
+            try
+            {
+                StatusMessage = exception.Message;
+                _app?.Invalidate();
+            }
+            finally
+            {
+                _ = _mutationGate.Release();
+            }
+        }
     }
 
-    private async Task<IReadOnlyList<string>> LoadSourceContextAsync(
-        DebugStackFrameInfo frame,
-        CancellationToken cancellationToken)
+    private async Task WaitForStopAndLoadAsync(CancellationToken cancellationToken)
     {
-        if (frame.Source is null)
+        while (true)
         {
-            return ["Source is unavailable for the selected frame."];
-        }
+            Task sessionChanged;
+            lock (_notificationGate)
+            {
+                sessionChanged = _sessionChanged.Task;
+            }
 
-        string[] lines;
-        if (frame.Source.SourceReference > 0)
-        {
-            DebugSourceContent source = await _client.GetSourceContentAsync(
-                new DebugSourceRequest(frame.Source.SourceReference),
-                cancellationToken).ConfigureAwait(false);
-            lines = source.Content
-                .Replace("\r\n", "\n", StringComparison.Ordinal)
-                .Replace('\r', '\n')
-                .Split('\n');
-        }
-        else if (frame.Source.Path is not null && File.Exists(frame.Source.Path))
-        {
-            lines = await File.ReadAllLinesAsync(frame.Source.Path, cancellationToken)
+            DebugSessionSnapshot snapshot = await _client.GetSessionAsync(cancellationToken)
                 .ConfigureAwait(false);
-        }
-        else
-        {
-            return ["Source is unavailable for the selected frame."];
-        }
+            if (snapshot.State is DebugSessionState.Stopped or
+                DebugSessionState.Terminated or
+                DebugSessionState.Faulted)
+            {
+                await _mutationGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+                try
+                {
+                    Snapshot = snapshot;
+                    if (snapshot.State == DebugSessionState.Stopped)
+                    {
+                        await LoadStoppedStateAsync(cancellationToken).ConfigureAwait(false);
+                    }
+                    else
+                    {
+                        ClearInspection();
+                        _app?.Invalidate();
+                    }
 
-        int first = Math.Max(1, frame.Line - 50);
-        int last = Math.Min(lines.Length, frame.Line + 50);
-        return Enumerable.Range(first, last - first + 1)
-            .Select(line => string.Create(
-                CultureInfo.InvariantCulture,
-                $"{(line == frame.Line ? '>' : ' ')} {line,5}  {lines[line - 1]}"))
-            .ToArray();
+                    return;
+                }
+                finally
+                {
+                    _ = _mutationGate.Release();
+                }
+            }
+
+            await sessionChanged.WaitAsync(cancellationToken).ConfigureAwait(false);
+        }
     }
 
-    private void ClearInspection()
+    private void OnResourceChanged(
+        object? sender,
+        DebuggerResourceChangeEventArgs change)
     {
-        SourceLines = ["Target is running."];
-        SourceFocusedIndex = 0;
-        StackLines = [];
-        VariableLines = [];
+        _ = sender;
+        if ((change.Kind & DebuggerResourceChangeKind.Session) == 0)
+        {
+            return;
+        }
+
+        TaskCompletionSource changed;
+        lock (_notificationGate)
+        {
+            changed = _sessionChanged;
+            _sessionChanged = CreateSessionChangedSource();
+        }
+
+        changed.TrySetResult();
     }
+
+    private static TaskCompletionSource CreateSessionChangedSource() =>
+        new(TaskCreationOptions.RunContinuationsAsynchronously);
 }

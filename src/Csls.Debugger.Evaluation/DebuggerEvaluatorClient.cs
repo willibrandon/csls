@@ -8,14 +8,14 @@ namespace Csls.Debugger.Evaluation;
 /// <summary>
 /// Owns one supervised managed evaluator process and private RPC connection.
 /// </summary>
-internal sealed class DebuggerEvaluatorClient : IAsyncDisposable
+internal sealed partial class DebuggerEvaluatorClient : IAsyncDisposable
 {
     private const int MaximumMessageBytes = 4 * 1024 * 1024;
     private readonly Process _process;
     private readonly ValueTask<string> _diagnostics;
     private readonly BoundedMessageStream _sending;
     private readonly BoundedMessageStream _receiving;
-    private readonly SystemTextJsonFormatter _formatter;
+    private readonly NerdbankMessagePackFormatter _formatter;
     private readonly LengthHeaderMessageHandler _handler;
     private readonly JsonRpc _rpc;
     private string _capturedDiagnostics = string.Empty;
@@ -26,7 +26,7 @@ internal sealed class DebuggerEvaluatorClient : IAsyncDisposable
         ValueTask<string> diagnostics,
         BoundedMessageStream sending,
         BoundedMessageStream receiving,
-        SystemTextJsonFormatter formatter,
+        NerdbankMessagePackFormatter formatter,
         LengthHeaderMessageHandler handler,
         JsonRpc rpc)
     {
@@ -81,7 +81,7 @@ internal sealed class DebuggerEvaluatorClient : IAsyncDisposable
             process.StandardOutput.BaseStream,
             MaximumMessageBytes,
             leaveOpen: true);
-        SystemTextJsonFormatter formatter = DebuggerEvaluatorJson.CreateFormatter();
+        NerdbankMessagePackFormatter formatter = DebuggerEvaluatorRpcFormatter.Create();
         var handler = new LengthHeaderMessageHandler(sending, receiving, formatter);
         var rpc = new JsonRpc(handler)
         {

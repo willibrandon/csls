@@ -33,6 +33,7 @@ public sealed partial class DapSessionTests
                 writer.WriteStringValue(waitPath);
                 writer.WriteEndArray();
                 writer.WriteBoolean("enableStepFiltering", enableStepFiltering);
+                WriteDefaultSourceFileMap(writer);
                 writer.WriteEndObject();
             },
             TestContext.CancellationToken).ConfigureAwait(false);

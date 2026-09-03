@@ -11,55 +11,55 @@ internal struct ComStorageStatistics
     /// <summary>
     /// Receives an optional COM-allocated name that is suppressed by the caller.
     /// </summary>
-    internal nint Name;
+    internal nint _name;
 
     /// <summary>
     /// Receives the storage object type.
     /// </summary>
-    internal uint Type;
+    internal uint _type;
 
     /// <summary>
     /// Receives the stream size in bytes.
     /// </summary>
-    internal ulong Size;
+    internal ulong _size;
 
     /// <summary>
     /// Receives the last modification timestamp.
     /// </summary>
-    internal long ModifiedTime;
+    internal long _modifiedTime;
 
     /// <summary>
     /// Receives the creation timestamp.
     /// </summary>
-    internal long CreationTime;
+    internal long _creationTime;
 
     /// <summary>
     /// Receives the last access timestamp.
     /// </summary>
-    internal long AccessTime;
+    internal long _accessTime;
 
     /// <summary>
     /// Receives the storage mode flags.
     /// </summary>
-    internal uint Mode;
+    internal uint _mode;
 
     /// <summary>
     /// Receives the supported locking flags.
     /// </summary>
-    internal uint SupportedLocks;
+    internal uint _supportedLocks;
 
     /// <summary>
     /// Receives the storage class identifier.
     /// </summary>
-    internal Guid ClassId;
+    internal Guid _classId;
 
     /// <summary>
     /// Receives the storage state bits.
     /// </summary>
-    internal uint StateBits;
+    internal uint _stateBits;
 
     /// <summary>
     /// Receives the reserved storage field.
     /// </summary>
-    internal uint Reserved;
+    internal uint _reserved;
 }

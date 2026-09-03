@@ -34,4 +34,10 @@ public sealed class DebuggerTerminalLaunchOptions
     /// Gets the optional runtime host used for a managed assembly.
     /// </summary>
     public string? RuntimeHostPath { get; init; }
+
+    /// <summary>
+    /// Gets build-time source prefixes mapped to local source prefixes.
+    /// </summary>
+    public IReadOnlyDictionary<string, string> SourceFileMap { get; init; } =
+        new Dictionary<string, string>(StringComparer.Ordinal);
 }

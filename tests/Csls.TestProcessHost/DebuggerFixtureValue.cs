@@ -21,17 +21,17 @@ internal sealed class DebuggerFixtureValue
     /// <summary>
     /// Gets the numeric field value.
     /// </summary>
-    internal int Number;
+    public int Number;
 
     /// <summary>
     /// Gets the textual field value.
     /// </summary>
-    internal string Text;
+    public string Text;
 
     /// <summary>
     /// Gets the file used to prove that target-code evaluation began.
     /// </summary>
-    internal string EvaluationSignalPath;
+    public string EvaluationSignalPath;
 
     /// <summary>
     /// Computes a stable value by executing target code for debugger evaluation tests.

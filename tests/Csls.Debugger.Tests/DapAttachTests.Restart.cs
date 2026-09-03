@@ -119,6 +119,9 @@ public sealed partial class DapAttachTests
     {
         writer.WriteStartObject();
         writer.WriteNumber("processId", processId);
+        writer.WriteStartObject("sourceFileMap");
+        writer.WriteString("/_/", FindRepositoryRoot());
+        writer.WriteEndObject();
         writer.WriteEndObject();
     }
 }

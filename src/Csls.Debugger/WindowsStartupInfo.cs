@@ -11,90 +11,90 @@ internal struct WindowsStartupInfo
     /// <summary>
     /// Gets or sets the complete extended startup structure size.
     /// </summary>
-    internal uint Size;
+    internal uint _size;
 
     /// <summary>
     /// Gets or sets the reserved desktop-station pointer.
     /// </summary>
-    internal nint Reserved;
+    internal nint _reserved;
 
     /// <summary>
     /// Gets or sets the target desktop name pointer.
     /// </summary>
-    internal nint Desktop;
+    internal nint _desktop;
 
     /// <summary>
     /// Gets or sets the target window title pointer.
     /// </summary>
-    internal nint Title;
+    internal nint _title;
 
     /// <summary>
     /// Gets or sets the requested window horizontal position.
     /// </summary>
-    internal uint X;
+    internal uint _x;
 
     /// <summary>
     /// Gets or sets the requested window vertical position.
     /// </summary>
-    internal uint Y;
+    internal uint _y;
 
     /// <summary>
     /// Gets or sets the requested window width.
     /// </summary>
-    internal uint XSize;
+    internal uint _xSize;
 
     /// <summary>
     /// Gets or sets the requested window height.
     /// </summary>
-    internal uint YSize;
+    internal uint _ySize;
 
     /// <summary>
     /// Gets or sets the requested console buffer width.
     /// </summary>
-    internal uint XCountChars;
+    internal uint _xCountChars;
 
     /// <summary>
     /// Gets or sets the requested console buffer height.
     /// </summary>
-    internal uint YCountChars;
+    internal uint _yCountChars;
 
     /// <summary>
     /// Gets or sets the requested console fill attributes.
     /// </summary>
-    internal uint FillAttribute;
+    internal uint _fillAttribute;
 
     /// <summary>
     /// Gets or sets the startup option flags.
     /// </summary>
-    internal uint Flags;
+    internal uint _flags;
 
     /// <summary>
     /// Gets or sets the requested window display state.
     /// </summary>
-    internal ushort ShowWindow;
+    internal ushort _showWindow;
 
     /// <summary>
     /// Gets or sets the reserved byte count.
     /// </summary>
-    internal ushort ReservedByteCount;
+    internal ushort _reservedByteCount;
 
     /// <summary>
     /// Gets or sets the reserved byte-buffer pointer.
     /// </summary>
-    internal nint ReservedBytes;
+    internal nint _reservedBytes;
 
     /// <summary>
     /// Gets or sets the inherited standard-input handle.
     /// </summary>
-    internal nint StandardInput;
+    internal nint _standardInput;
 
     /// <summary>
     /// Gets or sets the inherited standard-output handle.
     /// </summary>
-    internal nint StandardOutput;
+    internal nint _standardOutput;
 
     /// <summary>
     /// Gets or sets the inherited standard-error handle.
     /// </summary>
-    internal nint StandardError;
+    internal nint _standardError;
 }

@@ -83,6 +83,48 @@ jobs:
           compression-level: 0
           if-no-files-found: error
 
+  debugger-tests:
+    name: Debugger tests (${{ matrix.rid }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 5
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            rid: linux-x64
+          - os: ubuntu-24.04-arm
+            rid: linux-arm64
+          - os: windows-latest
+            rid: win-x64
+          - os: windows-11-arm
+            rid: win-arm64
+          - os: macos-26-intel
+            rid: osx-x64
+          - os: macos-26
+            rid: osx-arm64
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Set up .NET
+        if: matrix.rid != 'win-arm64'
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 10.x
+
+      - name: Run debugger tests
+        env:
+          CSLS_REPOSITORY_ROOT: ${{ github.workspace }}
+        run: >-
+          dotnet test
+          --project tests/Csls.Debugger.Tests/Csls.Debugger.Tests.csproj
+          --minimum-expected-tests 69
+          --no-ansi
+
   native-aot-size:
     name: Native AOT size (${{ matrix.command }})
     runs-on: ubuntu-latest
@@ -97,9 +139,15 @@ jobs:
           - command: csls
             project: src/Csls.App/Csls.App.csproj
             target: artifacts/obj/Csls.App/release_linux-x64/native/csls.mstat
+            budget: max=8mb
           - command: csls-mcp
             project: src/Csls.Mcp/Csls.Mcp.csproj
             target: artifacts/obj/Csls.Mcp/release_linux-x64/native/csls-mcp.mstat
+            budget: max=8mb
+          - command: csls-debugger-worker
+            project: src/Csls.Debugger.Worker/Csls.Debugger.Worker.csproj
+            target: artifacts/obj/Csls.Debugger.Worker/release_linux-x64/native/csls-debugger-worker.mstat
+            budget: max=40mb
 
     steps:
       - name: Check out repository
@@ -126,10 +174,22 @@ jobs:
         with:
           target: ${{ matrix.target }}
           baseline-key: ${{ matrix.command }}-linux-x64
-          budgets: max=8mb
+          budgets: ${{ matrix.budget }}
           top: '20'
           report-directory: ${{ runner.temp }}/dotsider-size-${{ matrix.command }}-linux-x64
           artifact-name: dotsider-size-${{ matrix.command }}-linux-x64
+
+      - name: Exercise Native AOT debugger worker
+        if: matrix.command == 'csls-debugger-worker'
+        env:
+          CSLS_DEBUGGER_WORKER_TEST_PATH: ${{ github.workspace }}/artifacts/size-check/csls-debugger-worker/csls-debugger-worker
+          CSLS_REPOSITORY_ROOT: ${{ github.workspace }}
+        run: >-
+          dotnet test
+          --project tests/Csls.Debugger.Tests/Csls.Debugger.Tests.csproj
+          --filter FullyQualifiedName=Csls.Debugger.Tests.DebuggerRpcTests.PrivateRpcInspectsStoppedManagedTarget
+          --minimum-expected-tests 1
+          --no-ansi
 
   repository-policy:
     name: Repository policy

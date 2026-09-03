@@ -1,16 +1,13 @@
 # Native .NET debugger design
 
-## Status and authority
+## Design authority
 
-This document is the normative design for the csls debugger. `plan.md` tracks
-execution. Public protocol specifications and observed current runtime behavior
-override examples from any implementation. An implementation discrepancy must be
+This document defines the csls debugger architecture. Public protocol and runtime
+contracts govern observable behavior. An implementation discrepancy must be
 recorded as a decision; it must not silently become compatibility behavior.
 
-The design uses only public contracts and suitably licensed public dependencies.
-Proprietary debugger binaries are neither linked nor inspected. They may be
-exercised only through a normally licensed editor as an optional black-box user
-experience comparison and never determine acceptance.
+The implementation uses public contracts and suitably licensed dependencies. The
+distribution neither links nor redistributes proprietary debugger components.
 
 ## Product definition
 
@@ -59,16 +56,16 @@ mode registers a discoverable local session and exposes an owner-only Unix-domai
 socket or named pipe. It never listens on TCP. Remote development runs the adapter
 inside the target environment and transports DAP through the editor connection.
 
-The evaluator worker is lazy and belongs to exactly one session. It uses inherited
-standard streams with length-prefixed, source-generated JSON messages bounded to
-four MiB and an exact private protocol version. Standard output is protocol-only;
-bounded diagnostics drain concurrently from standard error. A lost connection is
-recreated once through the same language provider and never switches to a generic
-fallback. Closing the session closes the request pipe, waits for orderly exit, and
-terminates the evaluator process tree after a bounded deadline. COM pointers never
-cross RPC. In-memory module metadata and PDBs are copied to bounded owner-only
-temporary files and identified by content hash when compiler semantic binding
-requires them.
+The evaluator worker is lazy and belongs to exactly one session. Private debugger
+control and evaluator RPC use inherited standard streams with length-prefixed
+MessagePack payloads, generated type shapes, a four-MiB message bound, and exact
+protocol versions. Standard output is protocol-only; bounded diagnostics drain
+concurrently from standard error. A lost evaluator connection is recreated once
+through the same language provider and never switches to a generic fallback.
+Closing the session closes the request pipe, waits for orderly exit, and terminates
+the evaluator process tree after a bounded deadline. COM pointers never cross RPC.
+In-memory module metadata and PDBs are copied to bounded owner-only temporary files
+and identified by content hash when compiler semantic binding requires them.
 
 ## Session ownership and state
 
@@ -561,8 +558,8 @@ is stated directly beside each workflow.
 
 DAP, private RPC, CLI, configuration, and MCP reference pages are generated from
 shipping contracts by repository C# automation. Repository verification fails on
-drift. Removing the proprietary downloader also requires migration notes for its
-command, setting, cache, and editor configuration in the same pull request.
+drift. Replacing a debugger distribution mechanism also requires migration notes
+for its command, setting, cache, and editor configuration in the same change.
 
 ## Diagnostics, security, and privacy
 
@@ -592,9 +589,8 @@ Package versions exist only in Central Package Management where NuGet requires
 them. Schema, IDL, and generated-code updates are performed by repository .NET
 file-based apps and verified offline.
 
-There is no compatibility promise for the unreleased proprietary debugger command,
-setting, cache layout, or implementation. Its removal is atomic with the managed
-vertical slice. DAP compatibility is capability-negotiated and additive; csls never
+There is no compatibility promise for pre-release debugger commands, settings, or
+cache layouts. DAP compatibility is capability-negotiated and additive; csls never
 lies to preserve a client assumption.
 
 ## Verification model
@@ -608,8 +604,7 @@ Every capability row records three forms of evidence:
 | Probe | A real executable process, stream, socket, file, compiler, runtime, or editor test |
 
 Contract plus observed runtime behavior wins when sources disagree. The decision
-log records the discrepancy and the test that locks the behavior. Proprietary
-implementation details and private issue mappings are never recorded.
+log records the discrepancy and the test that locks the behavior.
 
 The real-process matrix covers C#, VB, and F# in Debug and Release; framework-
 dependent, self-contained, single-file, and ReadyToRun apps; portable, embedded,

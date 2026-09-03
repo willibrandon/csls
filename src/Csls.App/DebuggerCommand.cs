@@ -87,6 +87,7 @@ internal static class DebuggerCommand
             Description = "Optional dotnet host path used to run a managed assembly.",
             HelpName = "path"
         };
+        Option<string[]> sourceFileMapOption = CreateSourceFileMapOption();
         var command = new Command(
             "launch",
             "Launch a managed target and stop at an initial source breakpoint.")
@@ -96,11 +97,14 @@ internal static class DebuggerCommand
             sourceOption,
             lineOption,
             workingDirectoryOption,
-            runtimeOption
+            runtimeOption,
+            sourceFileMapOption
         };
         command.SetAction((parseResult, cancellationToken) =>
         {
             string? runtime = parseResult.GetValue(runtimeOption);
+            Dictionary<string, string> sourceFileMap = ParseSourceFileMap(
+                parseResult.GetValue(sourceFileMapOption));
             return DebuggerWorkerSupervisor.RunAsync(
                 [
                     "launch",
@@ -110,6 +114,9 @@ internal static class DebuggerCommand
                     parseResult.GetRequiredValue(lineOption)
                         .ToString(CultureInfo.InvariantCulture),
                     string.IsNullOrWhiteSpace(runtime) ? string.Empty : Path.GetFullPath(runtime),
+                    sourceFileMap.Count.ToString(CultureInfo.InvariantCulture),
+                    .. sourceFileMap.SelectMany(static mapping =>
+                        new[] { mapping.Key, mapping.Value }),
                     .. parseResult.GetRequiredValue(argumentsArgument)
                 ],
                 cancellationToken);
@@ -130,22 +137,93 @@ internal static class DebuggerCommand
                 result.AddError("process-id must be positive.");
             }
         });
+        Option<string[]> sourceFileMapOption = CreateSourceFileMapOption();
         var command = new Command(
             "attach",
             "Attach to and pause a running CoreCLR process.")
         {
-            processIdArgument
+            processIdArgument,
+            sourceFileMapOption
         };
         command.SetAction((parseResult, cancellationToken) =>
-            DebuggerWorkerSupervisor.RunAsync(
+        {
+            Dictionary<string, string> sourceFileMap = ParseSourceFileMap(
+                parseResult.GetValue(sourceFileMapOption));
+            return DebuggerWorkerSupervisor.RunAsync(
                 [
                     "attach",
                     parseResult.GetRequiredValue(processIdArgument)
-                        .ToString(CultureInfo.InvariantCulture)
+                        .ToString(CultureInfo.InvariantCulture),
+                    sourceFileMap.Count.ToString(CultureInfo.InvariantCulture),
+                    .. sourceFileMap.SelectMany(static mapping =>
+                        new[] { mapping.Key, mapping.Value })
                 ],
-                cancellationToken));
+                cancellationToken);
+        });
         return command;
     }
+
+    private static Option<string[]> CreateSourceFileMapOption()
+    {
+        var option = new Option<string[]>("--source-file-map")
+        {
+            Description =
+                "Map an absolute PDB build-path prefix to an absolute local source prefix.",
+            HelpName = "build=local",
+            Arity = ArgumentArity.OneOrMore,
+            AllowMultipleArgumentsPerToken = true
+        };
+        option.Validators.Add(static result =>
+        {
+            var buildPaths = new HashSet<string>(StringComparer.Ordinal);
+            foreach (string entry in result.GetValueOrDefault<string[]>() ?? [])
+            {
+                int separator = entry.IndexOf('=', StringComparison.Ordinal);
+                if (separator <= 0 || separator == entry.Length - 1)
+                {
+                    result.AddError(
+                        "--source-file-map values must use the form <absolute-build-path>=<absolute-local-path>.");
+                    continue;
+                }
+
+                string buildPath = entry[..separator];
+                string localPath = entry[(separator + 1)..];
+                if (!IsPortableAbsolutePath(buildPath) || !IsPortableAbsolutePath(localPath))
+                {
+                    result.AddError(
+                        "--source-file-map build and local paths must both be absolute.");
+                }
+                else if (!buildPaths.Add(buildPath))
+                {
+                    result.AddError(
+                        $"--source-file-map contains the build path more than once: {buildPath}");
+                }
+            }
+        });
+        return option;
+    }
+
+    private static Dictionary<string, string> ParseSourceFileMap(
+        IReadOnlyList<string>? entries)
+    {
+        var result = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (string entry in entries ?? [])
+        {
+            int separator = entry.IndexOf('=', StringComparison.Ordinal);
+            result.Add(entry[..separator], entry[(separator + 1)..]);
+        }
+
+        return result;
+    }
+
+    private static bool IsPortableAbsolutePath(string path) =>
+        !string.IsNullOrWhiteSpace(path) &&
+        (path[0] == '/' ||
+            path.StartsWith("\\\\", StringComparison.Ordinal) ||
+            path.Length >= 3 &&
+            char.IsAsciiLetter(path[0]) &&
+            path[1] == ':' &&
+            path[2] is '/' or '\\');
 
     private static Command CreateDoctorCommand()
     {

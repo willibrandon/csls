@@ -30,6 +30,9 @@ internal static class DebuggerTerminalView
                             left.Border(nested =>
                                 [nested.List(state.SourceLines)
                                     .FocusedIndex(state.SourceFocusedIndex)
+                                    .OnFocusChanged(
+                                        selection => state.SelectSourceLineAsync(
+                                            selection.FocusedIndex))
                                     .Fill()])
                                 .Title("Source")
                                 .Fill()
@@ -39,19 +42,36 @@ internal static class DebuggerTerminalView
                             right.VStack(details =>
                             [
                                 details.Border(nested =>
-                                    [nested.List(state.StackLines).Fill()])
+                                    [nested.List(state.ThreadLines)
+                                        .FocusedIndex(state.SelectedThreadIndex)
+                                        .OnFocusChanged(selection =>
+                                            state.SelectThreadAsync(selection.FocusedIndex))
+                                        .Fill()])
+                                    .Title("Threads")
+                                    .FixedHeight(6),
+                                details.Border(nested =>
+                                    [nested.List(state.StackLines)
+                                        .FocusedIndex(state.SelectedStackFrameIndex)
+                                        .OnFocusChanged(selection =>
+                                            state.SelectStackFrameAsync(
+                                                selection.FocusedIndex))
+                                        .Fill()])
                                     .Title("Stack")
-                                    .Fill(),
+                                    .FixedHeight(8),
                                 details.Border(nested =>
                                     [nested.List(state.VariableLines).Fill()])
                                     .Title("Arguments and Locals")
-                                    .Fill()
+                                    .Fill(),
+                                details.Border(nested =>
+                                    [nested.List(state.OutputLines).Fill()])
+                                    .Title("Target Output")
+                                    .FixedHeight(6)
                             ]).Fill()
                         ],
-                        leftWidth: 52).Fill(),
+                        leftWidth: 64).Fill(),
                     vertical.InfoBar(
-                        "F5 Continue  F6 Pause  F10 Step Over  F11 Step Into  " +
-                        "F12 Step Out  Ctrl+C Exit")
+                        "F5 Continue  F6 Pause  F9 Breakpoint  F10 Over  F11 Into  " +
+                        "F12 Out  Tab Panes  Ctrl+C Exit")
                 ]).InputBindings(bindings =>
                 {
                     bindings.Key(Hex1bKey.F5).Action(
@@ -60,6 +80,9 @@ internal static class DebuggerTerminalView
                     bindings.Key(Hex1bKey.F6).Action(
                         _ => state.PauseAsync(),
                         "Pause target");
+                    bindings.Key(Hex1bKey.F9).Action(
+                        _ => state.ToggleSourceBreakpointAsync(),
+                        "Toggle source breakpoint");
                     bindings.Key(Hex1bKey.F10).Action(
                         _ => state.StepAsync(DebugStepKind.Over),
                         "Step over");
@@ -76,10 +99,11 @@ internal static class DebuggerTerminalView
     private static string BuildHeader(DebuggerTerminalState state)
     {
         DebugSessionSnapshot snapshot = state.Snapshot;
-        return string.Create(
-            CultureInfo.InvariantCulture,
-            $"csls debugger  {snapshot.ProcessName ?? "managed target"}  " +
+        return $"csls debugger  {snapshot.ProcessName ?? "managed target"}  " +
             $"pid {snapshot.ProcessId?.ToString(CultureInfo.InvariantCulture) ?? "-"}  " +
-            $"{snapshot.State}  {snapshot.StopReason ?? string.Empty}");
+            $"{snapshot.State}  {snapshot.StopReason ?? string.Empty}  " +
+            $"{state.ModuleSummary}" +
+            (state.ExceptionSummary is null ? string.Empty : $"  {state.ExceptionSummary}") +
+            (state.StatusMessage is null ? string.Empty : $"  {state.StatusMessage}");
     }
 }

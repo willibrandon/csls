@@ -37,25 +37,37 @@ internal sealed class DebuggerWorkerTestSession : IAsyncDisposable
         CancellationToken cancellationToken)
     {
         string repositoryRoot = FindRepositoryRoot();
-        string workerPath = Path.Join(
-            repositoryRoot,
-            "artifacts",
-            "bin",
-            "Csls.Debugger.Worker",
-            "debug",
-            "csls-debugger-worker.dll");
+        string? configuredWorkerPath = Environment.GetEnvironmentVariable(
+            "CSLS_DEBUGGER_WORKER_TEST_PATH");
+        string workerPath = string.IsNullOrWhiteSpace(configuredWorkerPath)
+            ? Path.Join(
+                repositoryRoot,
+                "artifacts",
+                "bin",
+                "Csls.Debugger.Worker",
+                "debug",
+                "csls-debugger-worker.dll")
+            : Path.GetFullPath(configuredWorkerPath);
+        bool managed = string.Equals(
+            Path.GetExtension(workerPath),
+            ".dll",
+            StringComparison.OrdinalIgnoreCase);
         var startInfo = new ProcessStartInfo
         {
-            FileName = ResolveDotNetHost(),
+            FileName = managed ? ResolveDotNetHost() : workerPath,
             WorkingDirectory = repositoryRoot,
             RedirectStandardError = true,
             RedirectStandardInput = true,
             RedirectStandardOutput = true,
             UseShellExecute = false
         };
-        startInfo.ArgumentList.Add(workerPath);
+        if (managed)
+        {
+            startInfo.ArgumentList.Add(workerPath);
+        }
+
         startInfo.ArgumentList.Add("control");
-        Csls.Debugger.DebuggerWorkerEnvironment.Configure(startInfo, workerPath);
+        DebuggerWorkerEnvironment.Configure(startInfo, workerPath);
         Process process = Process.Start(startInfo)
             ?? throw new InvalidOperationException("The debugger worker did not start.");
         ValueTask<string> diagnostics = new(
@@ -126,14 +138,5 @@ internal sealed class DebuggerWorkerTestSession : IAsyncDisposable
     }
 
     private static string FindRepositoryRoot([CallerFilePath] string sourcePath = "")
-    {
-        DirectoryInfo? directory = new FileInfo(sourcePath).Directory;
-        while (directory is not null && !File.Exists(Path.Join(directory.FullName, "Csls.slnx")))
-        {
-            directory = directory.Parent;
-        }
-
-        return directory?.FullName
-            ?? throw new DirectoryNotFoundException("Could not locate the csls repository root.");
-    }
+        => DebuggerTestEnvironment.FindRepositoryRoot(sourcePath);
 }

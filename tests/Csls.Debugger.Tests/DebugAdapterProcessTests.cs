@@ -163,14 +163,5 @@ public sealed class DebugAdapterProcessTests
     }
 
     private static string FindRepositoryRoot([CallerFilePath] string sourcePath = "")
-    {
-        DirectoryInfo? directory = new FileInfo(sourcePath).Directory;
-        while (directory is not null && !File.Exists(Path.Join(directory.FullName, "Csls.slnx")))
-        {
-            directory = directory.Parent;
-        }
-
-        return directory?.FullName
-            ?? throw new DirectoryNotFoundException("Could not locate the csls repository root.");
-    }
+        => DebuggerTestEnvironment.FindRepositoryRoot(sourcePath);
 }

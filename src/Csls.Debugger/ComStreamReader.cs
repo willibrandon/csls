@@ -25,10 +25,10 @@ internal static class ComStreamReader
         CorDebugHResult.ThrowIfFailed(
             stat(stream, &statistics, StatFlagNoName),
             "IStream.Stat");
-        if (statistics.Size == 0 || statistics.Size > MaximumStreamBytes)
+        if (statistics._size == 0 || statistics._size > MaximumStreamBytes)
         {
             throw new InvalidDataException(
-                $"The in-memory symbol stream size {statistics.Size} is outside the supported range of 1 through {MaximumStreamBytes} bytes.");
+                $"The in-memory symbol stream size {statistics._size} is outside the supported range of 1 through {MaximumStreamBytes} bytes.");
         }
 
         ulong position = 0;
@@ -43,7 +43,7 @@ internal static class ComStreamReader
                 $"The in-memory symbol stream began at unexpected offset {position}.");
         }
 
-        byte[] content = GC.AllocateUninitializedArray<byte>(checked((int)statistics.Size));
+        byte[] content = GC.AllocateUninitializedArray<byte>(checked((int)statistics._size));
         fixed (byte* contentAddress = content)
         {
             var read = (delegate* unmanaged[Stdcall]<nint, byte*, uint, uint*, int>)vtable[3];

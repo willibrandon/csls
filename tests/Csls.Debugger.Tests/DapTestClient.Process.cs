@@ -82,13 +82,18 @@ internal sealed partial class DapTestClient
         startInfo.ArgumentList.Add(applicationPath);
         startInfo.ArgumentList.Add("debugger");
         startInfo.ArgumentList.Add("dap");
-        startInfo.Environment["CSLS_DEBUGGER_WORKER_PATH"] = Path.Join(
-            repositoryRoot,
-            "artifacts",
-            "bin",
-            "Csls.Debugger.Worker",
-            "debug",
-            "csls-debugger-worker.dll");
+        string? configuredWorkerPath = Environment.GetEnvironmentVariable(
+            "CSLS_DEBUGGER_WORKER_TEST_PATH");
+        startInfo.Environment["CSLS_DEBUGGER_WORKER_PATH"] =
+            string.IsNullOrWhiteSpace(configuredWorkerPath)
+                ? Path.Join(
+                    repositoryRoot,
+                    "artifacts",
+                    "bin",
+                    "Csls.Debugger.Worker",
+                    "debug",
+                    "csls-debugger-worker.dll")
+                : Path.GetFullPath(configuredWorkerPath);
         _process = Process.Start(startInfo)
             ?? throw new InvalidOperationException("The csls debugger command did not start.");
         return Task.CompletedTask;
@@ -116,14 +121,5 @@ internal sealed partial class DapTestClient
     }
 
     private static string FindRepositoryRoot([CallerFilePath] string sourcePath = "")
-    {
-        DirectoryInfo? directory = new FileInfo(sourcePath).Directory;
-        while (directory is not null && !File.Exists(Path.Join(directory.FullName, "Csls.slnx")))
-        {
-            directory = directory.Parent;
-        }
-
-        return directory?.FullName
-            ?? throw new DirectoryNotFoundException("Could not locate the csls repository root.");
-    }
+        => DebuggerTestEnvironment.FindRepositoryRoot(sourcePath);
 }

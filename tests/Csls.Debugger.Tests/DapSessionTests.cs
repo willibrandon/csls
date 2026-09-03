@@ -280,6 +280,7 @@ public sealed partial class DapSessionTests
         }
 
         writer.WriteEndArray();
+        WriteDefaultSourceFileMap(writer);
         if (!wait)
         {
             writer.WriteStartObject("env");
@@ -287,6 +288,13 @@ public sealed partial class DapSessionTests
             writer.WriteEndObject();
         }
 
+        writer.WriteEndObject();
+    }
+
+    private static void WriteDefaultSourceFileMap(Utf8JsonWriter writer)
+    {
+        writer.WriteStartObject("sourceFileMap");
+        writer.WriteString("/_/", FindRepositoryRoot());
         writer.WriteEndObject();
     }
 
@@ -348,16 +356,7 @@ public sealed partial class DapSessionTests
     }
 
     private static string FindRepositoryRoot([CallerFilePath] string sourcePath = "")
-    {
-        DirectoryInfo? directory = new FileInfo(sourcePath).Directory;
-        while (directory is not null && !File.Exists(Path.Join(directory.FullName, "Csls.slnx")))
-        {
-            directory = directory.Parent;
-        }
-
-        return directory?.FullName
-            ?? throw new DirectoryNotFoundException("Could not locate the csls repository root.");
-    }
+        => DebuggerTestEnvironment.FindRepositoryRoot(sourcePath);
 
     private static async Task AssertProcessExitedAsync(
         int processId,

@@ -50,12 +50,7 @@ public sealed partial class DapAttachTests
 
             int attachSequence = await client.SendRequestAsync(
                 "attach",
-                writer =>
-                {
-                    writer.WriteStartObject();
-                    writer.WriteNumber("processId", target.Id);
-                    writer.WriteEndObject();
-                },
+                writer => WriteAttachArguments(writer, target.Id),
                 TestContext.CancellationToken).ConfigureAwait(false);
             using JsonDocument initialized = await client
                 .ReadMessageAsync(TestContext.CancellationToken)
@@ -164,16 +159,7 @@ public sealed partial class DapAttachTests
     }
 
     private static string FindRepositoryRoot([CallerFilePath] string sourcePath = "")
-    {
-        DirectoryInfo? directory = new FileInfo(sourcePath).Directory;
-        while (directory is not null && !File.Exists(Path.Join(directory.FullName, "Csls.slnx")))
-        {
-            directory = directory.Parent;
-        }
-
-        return directory?.FullName
-            ?? throw new DirectoryNotFoundException("Could not locate the csls repository root.");
-    }
+        => DebuggerTestEnvironment.FindRepositoryRoot(sourcePath);
 
     private static void WriteEmptyObject(Utf8JsonWriter writer)
     {

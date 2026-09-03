@@ -99,7 +99,8 @@ public sealed partial class DebuggerRpcTests
             {
                 Program = ResolveTestProcessHost(repositoryRoot),
                 WorkingDirectory = repositoryRoot,
-                Arguments = ["--debugger-fixture", signalPath]
+                Arguments = ["--debugger-fixture", signalPath],
+                SourceFileMap = CreateDefaultSourceFileMap()
             },
             cancellationToken).ConfigureAwait(false);
         DebugSessionSnapshot stopped = await WaitForStoppedAsync(client, cancellationToken)

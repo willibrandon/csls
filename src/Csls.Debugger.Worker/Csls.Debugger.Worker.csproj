@@ -4,12 +4,15 @@
     <AssemblyName>csls-debugger-worker</AssemblyName>
     <RootNamespace>Csls.Debugger.Worker</RootNamespace>
     <Description>The self-contained interactive csls debugger worker.</Description>
-    <PublishReadyToRun Condition="'$(RuntimeIdentifier)' != '' and '$(RuntimeIdentifier)' != 'any'">true</PublishReadyToRun>
+    <PublishAot Condition="'$(RuntimeIdentifier)' != '' and
+                           '$(RuntimeIdentifier)' != 'any' and
+                           '$(RuntimeIdentifier)' != 'win-x86'">true</PublishAot>
+    <PublishAot Condition="'$(PublishAot)' == ''">false</PublishAot>
+    <PublishReadyToRun Condition="'$(RuntimeIdentifier)' == 'win-x86'">true</PublishReadyToRun>
     <PublishReadyToRun Condition="'$(PublishReadyToRun)' == ''">false</PublishReadyToRun>
     <SelfContained Condition="'$(RuntimeIdentifier)' != '' and '$(RuntimeIdentifier)' != 'any'">true</SelfContained>
     <SelfContained Condition="'$(SelfContained)' == ''">false</SelfContained>
     <PublishSingleFile>false</PublishSingleFile>
-    <PublishAot>false</PublishAot>
   </PropertyGroup>
 
   <ItemGroup>

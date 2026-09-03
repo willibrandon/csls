@@ -55,7 +55,7 @@ public static class DebuggerRpcStreamServer
             leaveOpen: true);
         await using ConfiguredAsyncDisposable sendingCleanup =
             boundedSendingStream.ConfigureAwait(false);
-        using SystemTextJsonFormatter formatter = DebuggerControlJson.CreateFormatter();
+        using NerdbankMessagePackFormatter formatter = DebuggerControlRpcFormatter.Create();
         using var handler = new LengthHeaderMessageHandler(
             boundedSendingStream,
             boundedReceivingStream,

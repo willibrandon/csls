@@ -48,15 +48,15 @@ internal static unsafe partial class WindowsProcessLauncher
         attributes.SetInheritedHandles(inheritedHandles);
         var startupInfo = new WindowsStartupInfoEx
         {
-            StartupInfo = new WindowsStartupInfo
+            _startupInfo = new WindowsStartupInfo
             {
-                Size = checked((uint)sizeof(WindowsStartupInfoEx)),
-                Flags = UseStandardHandles,
-                StandardInput = standardInput,
-                StandardOutput = standardOutput,
-                StandardError = standardError
+                _size = checked((uint)sizeof(WindowsStartupInfoEx)),
+                _flags = UseStandardHandles,
+                _standardInput = standardInput,
+                _standardOutput = standardOutput,
+                _standardError = standardError
             },
-            AttributeList = attributes.Pointer
+            _attributeList = attributes.Pointer
         };
         char[] mutableCommandLine = [.. commandLine, '\0'];
         WindowsProcessInformation processInformation;
@@ -80,12 +80,12 @@ internal static unsafe partial class WindowsProcessLauncher
         }
 
         using var processHandle = new SafeWaitHandle(
-            processInformation.ProcessHandle,
+            processInformation._processHandle,
             ownsHandle: true);
         using var threadHandle = new SafeWaitHandle(
-            processInformation.ThreadHandle,
+            processInformation._threadHandle,
             ownsHandle: true);
-        if (processInformation.ProcessId == 0 || processHandle.IsInvalid || threadHandle.IsInvalid)
+        if (processInformation._processId == 0 || processHandle.IsInvalid || threadHandle.IsInvalid)
         {
             throw new InvalidOperationException(
                 "CreateProcessW succeeded without returning complete target ownership.");
@@ -93,7 +93,7 @@ internal static unsafe partial class WindowsProcessLauncher
 
         nint resumeHandle = threadHandle.DangerousGetHandle();
         threadHandle.SetHandleAsInvalid();
-        return (processInformation.ProcessId, resumeHandle);
+        return (processInformation._processId, resumeHandle);
     }
 
     [LibraryImport(
