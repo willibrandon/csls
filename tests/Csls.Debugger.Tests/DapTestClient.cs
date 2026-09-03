@@ -11,6 +11,7 @@ namespace Csls.Debugger.Tests;
 /// </summary>
 internal sealed partial class DapTestClient : IAsyncDisposable
 {
+    private ValueTask _diagnostics = ValueTask.CompletedTask;
     private Process? _process;
     private int _sequence;
     private int _disposed;
@@ -181,7 +182,7 @@ internal sealed partial class DapTestClient : IAsyncDisposable
             await process.WaitForExitAsync(CancellationToken.None)
                 .WaitAsync(TimeSpan.FromSeconds(2), CancellationToken.None)
                 .ConfigureAwait(false);
-            await CaptureDiagnosticsAsync(process.StandardError).ConfigureAwait(false);
+            await _diagnostics.ConfigureAwait(false);
         }
         catch (TimeoutException)
         {

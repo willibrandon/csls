@@ -18,7 +18,7 @@ internal sealed partial class DapTestClient
         Process process = _process ?? throw new InvalidOperationException(
             "The DAP test client has not been initialized.");
         await process.WaitForExitAsync(cancellationToken).ConfigureAwait(false);
-        await CaptureDiagnosticsAsync(process.StandardError).ConfigureAwait(false);
+        await _diagnostics.ConfigureAwait(false);
         return process.ExitCode;
     }
 
@@ -52,7 +52,7 @@ internal sealed partial class DapTestClient
             }
 
             await process.WaitForExitAsync(CancellationToken.None).ConfigureAwait(false);
-            await CaptureDiagnosticsAsync(process.StandardError).ConfigureAwait(false);
+            await _diagnostics.ConfigureAwait(false);
             process.Dispose();
         }
 
@@ -96,6 +96,7 @@ internal sealed partial class DapTestClient
                 : Path.GetFullPath(configuredWorkerPath);
         _process = Process.Start(startInfo)
             ?? throw new InvalidOperationException("The csls debugger command did not start.");
+        _diagnostics = new ValueTask(CaptureDiagnosticsAsync(_process.StandardError));
         return Task.CompletedTask;
     }
 
