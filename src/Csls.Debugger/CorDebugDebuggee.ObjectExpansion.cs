@@ -21,40 +21,104 @@ internal sealed partial class CorDebugDebuggee
         int count)
     {
         nint instance = 0;
-        nint runtimeClass = 0;
-        nint module = 0;
+        nint value2 = 0;
+        nint currentType = 0;
         try
         {
             instance = ComAbi.QueryInterface(value, ICorDebugObjectValueAbi.InterfaceId);
-            runtimeClass = GetObjectClass(instance);
-            module = GetClassModule(runtimeClass);
-            uint typeToken = GetClassToken(runtimeClass);
-            string modulePath = CorDebugModulePath.Get(module);
-            using FileStream stream = File.OpenRead(modulePath);
-            using var peReader = new PEReader(stream);
-            MetadataReader metadata = peReader.GetMetadataReader();
-            return ReadInstanceFields(
-                instance,
-                module,
-                runtimeClass,
-                metadata,
-                typeToken,
-                parentEvaluateName,
-                frameId,
-                generation,
-                start,
-                count);
+            value2 = ComAbi.QueryInterface(value, ICorDebugValue2Abi.InterfaceId);
+            nint* exactTypeAddress = &currentType;
+            CorDebugHResult.ThrowIfFailed(
+                new ICorDebugValue2Abi(value2).GetExactType((nint)exactTypeAddress),
+                "ICorDebugValue2.GetExactType");
+            currentType = RequirePointer(
+                Volatile.Read(ref *exactTypeAddress),
+                "ICorDebugValue2.GetExactType");
+
+            var result = new List<DebugVariableInfo>();
+            int fieldIndex = 0;
+            for (int depth = 0;
+                currentType != 0 && depth < MaximumFunctionEvaluationHierarchyDepth;
+                depth++)
+            {
+                nint runtimeClass = 0;
+                nint module = 0;
+                nint baseType = 0;
+                try
+                {
+                    runtimeClass = GetRuntimeTypeClass(currentType);
+                    module = GetClassModule(runtimeClass);
+                    uint typeToken = GetClassToken(runtimeClass);
+                    using PEReader peReader = _sourceBreakpoints
+                        .FindModule(module)
+                        ?.OpenPeReader() ?? new PEReader(new FileStream(
+                            CorDebugModulePath.Get(module),
+                            FileMode.Open,
+                            FileAccess.Read,
+                            FileShare.Read | FileShare.Delete));
+                    ReadDeclaredInstanceFields(
+                        result,
+                        instance,
+                        runtimeClass,
+                        peReader.GetMetadataReader(),
+                        typeToken,
+                        parentEvaluateName,
+                        frameId,
+                        generation,
+                        start,
+                        count,
+                        ref fieldIndex);
+                    if (count > 0 && result.Count == count)
+                    {
+                        return result;
+                    }
+
+                    nint* baseTypeAddress = &baseType;
+                    CorDebugHResult.ThrowIfFailed(
+                        new ICorDebugTypeAbi(currentType).GetBase((nint)baseTypeAddress),
+                        "ICorDebugType.GetBase");
+                    baseType = Volatile.Read(ref *baseTypeAddress);
+                }
+                finally
+                {
+                    if (module != 0)
+                    {
+                        _ = ComAbi.Release(module);
+                    }
+
+                    if (runtimeClass != 0)
+                    {
+                        _ = ComAbi.Release(runtimeClass);
+                    }
+
+                    if (currentType != 0)
+                    {
+                        _ = ComAbi.Release(currentType);
+                    }
+
+                    currentType = baseType;
+                }
+            }
+
+            if (currentType != 0)
+            {
+                throw new InvalidOperationException(
+                    $"The runtime type hierarchy exceeds the supported depth of " +
+                    $"{MaximumFunctionEvaluationHierarchyDepth}.");
+            }
+
+            return result;
         }
         finally
         {
-            if (module != 0)
+            if (currentType != 0)
             {
-                _ = ComAbi.Release(module);
+                _ = ComAbi.Release(currentType);
             }
 
-            if (runtimeClass != 0)
+            if (value2 != 0)
             {
-                _ = ComAbi.Release(runtimeClass);
+                _ = ComAbi.Release(value2);
             }
 
             if (instance != 0)
@@ -64,77 +128,55 @@ internal sealed partial class CorDebugDebuggee
         }
     }
 
-    private unsafe List<DebugVariableInfo> ReadInstanceFields(
+    private void ReadDeclaredInstanceFields(
+        List<DebugVariableInfo> result,
         nint instance,
-        nint module,
-        nint runtimeClass,
+        nint declaringClass,
         MetadataReader metadata,
-        uint initialTypeToken,
+        uint typeToken,
         string? parentEvaluateName,
         int? frameId,
         DebugStopGeneration generation,
         int start,
-        int count)
+        int count,
+        ref int fieldIndex)
     {
-        var result = new List<DebugVariableInfo>();
-        uint typeToken = initialTypeToken;
-        int fieldIndex = 0;
-        while (typeToken != 0)
+        TypeDefinitionHandle typeHandle = MetadataTokens.TypeDefinitionHandle(
+            checked((int)(typeToken & 0x00FFFFFF)));
+        TypeDefinition type = metadata.GetTypeDefinition(typeHandle);
+        foreach (FieldDefinitionHandle fieldHandle in type.GetFields())
         {
-            TypeDefinitionHandle typeHandle = MetadataTokens.TypeDefinitionHandle(
-                checked((int)(typeToken & 0x00FFFFFF)));
-            TypeDefinition type = metadata.GetTypeDefinition(typeHandle);
-            nint declaringClass = typeToken == initialTypeToken
-                ? Retain(runtimeClass)
-                : GetModuleClass(module, typeToken);
-            try
+            FieldDefinition field = metadata.GetFieldDefinition(fieldHandle);
+            if ((field.Attributes & FieldAttributes.Static) != 0)
             {
-                foreach (FieldDefinitionHandle fieldHandle in type.GetFields())
-                {
-                    FieldDefinition field = metadata.GetFieldDefinition(fieldHandle);
-                    if ((field.Attributes & FieldAttributes.Static) != 0)
-                    {
-                        continue;
-                    }
-
-                    if (fieldIndex >= start && (count == 0 || result.Count < count))
-                    {
-                        result.Add(ReadInstanceField(
-                            instance,
-                            declaringClass,
-                            metadata,
-                            fieldHandle,
-                            field,
-                            parentEvaluateName,
-                            frameId,
-                            generation));
-                    }
-
-                    fieldIndex++;
-                    if (count > 0 && result.Count == count)
-                    {
-                        return result;
-                    }
-
-                    if (fieldIndex > MaximumExpandableValueCount)
-                    {
-                        throw new InvalidOperationException(
-                            $"The object exceeds the field limit of {MaximumExpandableValueCount}.");
-                    }
-                }
-            }
-            finally
-            {
-                _ = ComAbi.Release(declaringClass);
+                continue;
             }
 
-            EntityHandle baseType = type.BaseType;
-            typeToken = baseType.Kind == HandleKind.TypeDefinition
-                ? checked((uint)MetadataTokens.GetToken((TypeDefinitionHandle)baseType))
-                : 0;
+            if (fieldIndex >= start && (count == 0 || result.Count < count))
+            {
+                result.Add(ReadInstanceField(
+                    instance,
+                    declaringClass,
+                    metadata,
+                    fieldHandle,
+                    field,
+                    parentEvaluateName,
+                    frameId,
+                    generation));
+            }
+
+            fieldIndex++;
+            if (count > 0 && result.Count == count)
+            {
+                return;
+            }
+
+            if (fieldIndex > MaximumExpandableValueCount)
+            {
+                throw new InvalidOperationException(
+                    $"The object exceeds the field limit of {MaximumExpandableValueCount}.");
+            }
         }
-
-        return result;
     }
 
     private unsafe DebugVariableInfo ReadInstanceField(

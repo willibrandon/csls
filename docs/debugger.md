@@ -191,6 +191,11 @@ bounded to 2,048 candidates, carry UTF-16 replacement spans, and use case-insens
 matching for Visual Basic. If `frameId` is omitted, the selected stopped thread's top
 managed frame supplies the context.
 
+Object expansion follows the value's exact CoreCLR type and base-type chain rather
+than assuming every declaring type belongs to the object's leaf module. Inherited
+fields therefore expand across loaded assemblies in one deterministic paged sequence,
+and retain the same evaluate names used by completion, evaluation, and assignment.
+
 The frame is explicit when supplied; otherwise the adapter uses the selected
 stopped thread's top managed frame. The same generation-bound read-only operation
 is available through private `debugger/evaluate` RPC and the MCP `debug_evaluate`

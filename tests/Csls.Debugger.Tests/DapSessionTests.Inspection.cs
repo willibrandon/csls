@@ -269,6 +269,28 @@ public sealed partial class DapSessionTests
                 "\"answer!\"",
                 fieldsByName["Text"].GetProperty("value").GetString());
 
+            JsonElement localList = localsByName["localList"];
+            int listReference = localList.GetProperty("variablesReference").GetInt32();
+            Assert.IsGreaterThan(0, listReference);
+            JsonElement[] listFields = await ReadVariablesAsync(client, listReference)
+                .ConfigureAwait(false);
+            Dictionary<string, JsonElement> listFieldsByName = listFields.ToDictionary(
+                field => field.GetProperty("name").GetString()!,
+                StringComparer.Ordinal);
+            Assert.AreEqual("1", listFieldsByName["_size"].GetProperty("value").GetString());
+            Assert.AreEqual(
+                "localList._size",
+                listFieldsByName["_size"].GetProperty("evaluateName").GetString());
+            JsonElement[] inheritedFieldCompletions = await ReadCompletionsAsync(
+                client,
+                fixtureFrameId,
+                "localList._s",
+                TestContext.CancellationToken).ConfigureAwait(false);
+            Assert.Contains(
+                "_size",
+                inheritedFieldCompletions.Select(completion =>
+                    completion.GetProperty("label").GetString()!));
+
             JsonElement evaluatedLocal = await ReadEvaluationAsync(
                 client,
                 fixtureFrameId,
@@ -407,6 +429,15 @@ public sealed partial class DapSessionTests
                 TestContext.CancellationToken).ConfigureAwait(false);
             Assert.AreEqual("45", assignedField.GetProperty("value").GetString());
 
+            JsonElement assignedInheritedField = await ReadSetExpressionAsync(
+                client,
+                fixtureFrameId,
+                "localList._size",
+                "2",
+                success: true,
+                TestContext.CancellationToken).ConfigureAwait(false);
+            Assert.AreEqual("2", assignedInheritedField.GetProperty("value").GetString());
+
             JsonElement assignedElement = await ReadSetVariableAsync(
                 client,
                 arrayReference,
@@ -513,6 +544,16 @@ public sealed partial class DapSessionTests
                     client,
                     fixtureFrameId,
                     "localByte",
+                    success: true,
+                    TestContext.CancellationToken).ConfigureAwait(false))
+                    .GetProperty("result")
+                    .GetString());
+            Assert.AreEqual(
+                "2",
+                (await ReadEvaluationAsync(
+                    client,
+                    fixtureFrameId,
+                    "localList._size",
                     success: true,
                     TestContext.CancellationToken).ConfigureAwait(false))
                     .GetProperty("result")

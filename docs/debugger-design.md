@@ -427,6 +427,12 @@ collections, spans, ref structs, pointers, function pointers, closures, hoisted
 locals, async state machines, object IDs, and lazy paging. Attribute evaluation is
 cycle-limited and depth-limited.
 
+Object fields are discovered from the exact `ICorDebugType` hierarchy. Each declaring
+runtime class supplies its own loaded module image and metadata tokens, including when
+a base class belongs to another assembly. One pagination cursor spans the complete
+derived-to-base field sequence, and retained field identities are shared with
+completion, side-effect-free evaluation, and direct assignment.
+
 C# and Visual Basic Hot Reload use compiler-produced metadata, IL, and PDB deltas.
 The engine validates rude edits, applies deltas, advances module generations, and
 rebinds breakpoints and active statements. F# has ordinary first-class debugging,
