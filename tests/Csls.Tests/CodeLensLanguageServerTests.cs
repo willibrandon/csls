@@ -188,7 +188,13 @@ public sealed class CodeLensLanguageServerTests
             CodeLens unresolvedAfterRemoval = await lsp.ResolveCodeLensAsync(
                 oneReference with { Command = null },
                 TestContext.CancellationToken).ConfigureAwait(false);
-            Assert.IsNull(unresolvedAfterRemoval.Command);
+            Assert.IsNotNull(unresolvedAfterRemoval.Command);
+            Assert.AreEqual("0 references", unresolvedAfterRemoval.Command.Title);
+            Assert.AreEqual(
+                "csls.client.peekReferences",
+                unresolvedAfterRemoval.Command.Command);
+            Assert.IsNotNull(unresolvedAfterRemoval.Command.Arguments);
+            Assert.HasCount(2, unresolvedAfterRemoval.Command.Arguments);
             Assert.IsNull(unresolvedAfterRemoval.Data);
             Assert.AreEqual(oneReference.Range, unresolvedAfterRemoval.Range);
 

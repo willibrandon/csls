@@ -74,12 +74,14 @@ public sealed partial class McpDebuggerLifecycleTests
             mcp.Client,
             debugSession,
             cancellationToken).ConfigureAwait(false);
+        long stoppedGeneration = stopped.GetProperty("stopGeneration").GetInt64();
         stopped = await GrantAgentControlAsync(
             mcp.Client,
             debugSession,
             durationSeconds: 60,
             cancellationToken).ConfigureAwait(false);
         long originalGeneration = stopped.GetProperty("stopGeneration").GetInt64();
+        Assert.AreEqual(stoppedGeneration, originalGeneration);
         await AssertToolErrorAsync(
             mcp.Client,
             "debug_session_restart",

@@ -18,15 +18,13 @@ internal static partial class DebuggerWorkerHost
                 "The debugger control worker accepts no positional arguments.");
         }
 
-        Stream input = Console.OpenStandardInput();
-        await using ConfiguredAsyncDisposable inputCleanup = input.ConfigureAwait(false);
-        Stream output = Console.OpenStandardOutput();
-        await using ConfiguredAsyncDisposable outputCleanup = output.ConfigureAwait(false);
+        var standardStreams = DebuggerWorkerStandardStreams.Open(stabilizeInput: true);
+        await using ConfiguredAsyncDisposable cleanup = standardStreams.ConfigureAwait(false);
         var service = new DebuggerControlService();
         await using ConfiguredAsyncDisposable serviceCleanup = service.ConfigureAwait(false);
         await DebuggerRpcStreamServer.RunAsync(
-            input,
-            output,
+            standardStreams.Input,
+            standardStreams.Output,
             service,
             cancellationToken).ConfigureAwait(false);
         return 0;

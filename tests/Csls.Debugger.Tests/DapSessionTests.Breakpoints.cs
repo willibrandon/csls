@@ -87,9 +87,9 @@ public sealed partial class DapSessionTests
             bool launchReceived = false;
             bool processReceived = false;
             bool breakpointChanged = false;
-            int? stoppedThreadId = null;
+            int stoppedThreadId = 0;
             while (!configurationReceived || !launchReceived || !processReceived ||
-                !breakpointChanged || stoppedThreadId is null)
+                !breakpointChanged || stoppedThreadId == 0)
             {
                 using JsonDocument message = await client
                     .ReadMessageAsync(TestContext.CancellationToken)
@@ -146,7 +146,7 @@ public sealed partial class DapSessionTests
                 writer =>
                 {
                     writer.WriteStartObject();
-                    writer.WriteNumber("threadId", stoppedThreadId.Value);
+                    writer.WriteNumber("threadId", stoppedThreadId);
                     writer.WriteEndObject();
                 },
                 TestContext.CancellationToken).ConfigureAwait(false);

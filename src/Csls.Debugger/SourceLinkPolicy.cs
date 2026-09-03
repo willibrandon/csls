@@ -118,11 +118,19 @@ internal sealed class SourceLinkPolicy
             return (bytes[0] & 0xfe) == 0xfc;
         }
 
-        return bytes[0] is 0 or 10 or 127 ||
-            bytes[0] == 169 && bytes[1] == 254 ||
-            bytes[0] == 172 && bytes[1] is >= 16 and <= 31 ||
-            bytes[0] == 192 && bytes[1] == 168 ||
-            bytes[0] == 100 && bytes[1] is >= 64 and <= 127 ||
-            bytes[0] >= 224;
+        return bytes[0] is 0 or 10 or 127 or >= 224 ||
+            IsLinkLocalAddress(bytes) ||
+            IsPrivateAddress(bytes) ||
+            IsSharedAddress(bytes);
     }
+
+    private static bool IsLinkLocalAddress(byte[] bytes) =>
+        bytes[0] == 169 && bytes[1] == 254;
+
+    private static bool IsPrivateAddress(byte[] bytes) =>
+        bytes[0] == 172 && bytes[1] is >= 16 and <= 31 ||
+        bytes[0] == 192 && bytes[1] == 168;
+
+    private static bool IsSharedAddress(byte[] bytes) =>
+        bytes[0] == 100 && bytes[1] is >= 64 and <= 127;
 }

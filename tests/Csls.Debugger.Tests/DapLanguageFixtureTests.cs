@@ -28,13 +28,33 @@ public sealed partial class DapSessionTests
         {
             foreach (string project in s_projects)
             {
-                await BuildFixtureAsync(project, configuration).ConfigureAwait(false);
-                await AssertFixtureStopsAsync(project, configuration).ConfigureAwait(false);
+                string artifactsPath = Path.Join(
+                    Path.GetTempPath(),
+                    $"csls-debugger-language-{Guid.NewGuid():N}");
+                try
+                {
+                    string program = await BuildFixtureAsync(
+                        project,
+                        configuration,
+                        artifactsPath).ConfigureAwait(false);
+                    await AssertFixtureStopsAsync(project, configuration, program)
+                        .ConfigureAwait(false);
+                }
+                finally
+                {
+                    if (Directory.Exists(artifactsPath))
+                    {
+                        Directory.Delete(artifactsPath, recursive: true);
+                    }
+                }
             }
         }
     }
 
-    private async Task BuildFixtureAsync(string project, string configuration)
+    private async Task<string> BuildFixtureAsync(
+        string project,
+        string configuration,
+        string artifactsPath)
     {
         string repositoryRoot = FindRepositoryRoot();
         string extension = project.EndsWith("CSharp", StringComparison.Ordinal)
@@ -54,6 +74,7 @@ public sealed partial class DapSessionTests
         startInfo.ArgumentList.Add(Path.Join("test-assets", project, $"{project}.{extension}"));
         startInfo.ArgumentList.Add("--configuration");
         startInfo.ArgumentList.Add(configuration);
+        startInfo.ArgumentList.Add($"--property:ArtifactsPath={artifactsPath}");
         startInfo.ArgumentList.Add("--nologo");
         using Process process = Process.Start(startInfo)
             ?? throw new InvalidOperationException($"Could not build debugger fixture {project}.");
@@ -67,9 +88,17 @@ public sealed partial class DapSessionTests
             0,
             process.ExitCode,
             $"Fixture build failed for {project} ({configuration}):{Environment.NewLine}{diagnostic}");
+        return Directory.EnumerateFiles(
+                Path.Join(artifactsPath, "bin"),
+                $"{project}.dll",
+                SearchOption.AllDirectories)
+            .Single();
     }
 
-    private async Task AssertFixtureStopsAsync(string project, string configuration)
+    private async Task AssertFixtureStopsAsync(
+        string project,
+        string configuration,
+        string program)
     {
         string repositoryRoot = FindRepositoryRoot();
         string sourceExtension = project.EndsWith("CSharp", StringComparison.Ordinal)
@@ -94,13 +123,6 @@ public sealed partial class DapSessionTests
             .Select(static (line, index) => (Line: line, Number: index + 1))
             .Single(candidate => candidate.Line.Contains(marker, StringComparison.Ordinal))
             .Number;
-        string program = Path.Join(
-            repositoryRoot,
-            "artifacts",
-            "bin",
-            project,
-            configuration == "Debug" ? "debug" : "release",
-            $"{project}.dll");
         string waitPath = Path.Join(
             Path.GetTempPath(),
             $"csls-debugger-language-{Guid.NewGuid():N}.signal");

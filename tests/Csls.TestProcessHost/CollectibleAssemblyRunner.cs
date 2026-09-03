@@ -31,19 +31,31 @@ internal static class CollectibleAssemblyRunner
         (int fixtureExitCode, WeakReference loadContext) = InvokeCollectibleFixture(
             assemblyPath,
             fixtureSignalPath);
-        for (int attempt = 0; attempt < 100 && loadContext.IsAlive; attempt++)
-        {
-            GC.Collect();
-            GC.WaitForPendingFinalizers();
-            GC.Collect();
-            Thread.Sleep(10);
-        }
+        ApplyBoundedAllocationPressure(loadContext);
 
         WriteSignalAtomically(
             unloadedSignalPath,
             loadContext.IsAlive ? "retained" : "unloaded");
         WaitForFile(finishSignalPath);
         return fixtureExitCode != 0 ? fixtureExitCode : loadContext.IsAlive ? 4 : 0;
+    }
+
+    private static void ApplyBoundedAllocationPressure(WeakReference loadContext)
+    {
+        const int allocationSize = 1024 * 1024;
+        byte[][] retainedPressure = new byte[32][];
+        for (int attempt = 0; attempt < 2048 && loadContext.IsAlive; attempt++)
+        {
+            retainedPressure[attempt % retainedPressure.Length] =
+                GC.AllocateUninitializedArray<byte>(allocationSize);
+            if (attempt % retainedPressure.Length == retainedPressure.Length - 1)
+            {
+                GC.WaitForPendingFinalizers();
+                Thread.Sleep(1);
+            }
+        }
+
+        GC.KeepAlive(retainedPressure);
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]

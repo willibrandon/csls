@@ -39,12 +39,9 @@ internal sealed class DebugExceptionBreakpoint
         }
 
         ArgumentNullException.ThrowIfNull(request.ExceptionTypeNames);
-        var names = new HashSet<string>(StringComparer.Ordinal);
-        foreach (string name in request.ExceptionTypeNames)
-        {
-            string normalized = NormalizeTypeName(name);
-            _ = names.Add(normalized);
-        }
+        var names = request.ExceptionTypeNames
+            .Select(NormalizeTypeName)
+            .ToHashSet(StringComparer.Ordinal);
 
         return new DebugExceptionBreakpoint(request.BreakMode, names);
     }

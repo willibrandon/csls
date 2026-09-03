@@ -191,6 +191,8 @@ public sealed partial class DebuggerSession
             catch (OperationCanceledException) when (
                 _debuggeeObservationCancellation.IsCancellationRequested)
             {
+                System.Diagnostics.Debug.Assert(
+                    _debuggeeObservationCancellation.IsCancellationRequested);
             }
         }
     }

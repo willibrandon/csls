@@ -121,9 +121,9 @@ public sealed partial class DapSessionTests
                 threadItems.Select(thread => thread.GetProperty("id").GetInt32()).Distinct().ToArray());
 
             int fixtureFrameId = 0;
-            foreach (JsonElement thread in threadItems)
+            foreach (int threadId in threadItems.Select(thread =>
+                thread.GetProperty("id").GetInt32()))
             {
-                int threadId = thread.GetProperty("id").GetInt32();
                 int stackSequence = await client.SendRequestAsync(
                     "stackTrace",
                     writer =>

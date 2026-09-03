@@ -47,15 +47,22 @@ internal sealed partial class CorDebugDebuggee : IDebuggeeProcess
     private CorDebugDebuggee(
         DebuggerSessionActor actor,
         SourceBreakpointManager sourceBreakpoints,
-        CorDebugManagedCallback managedCallback,
-        CorDebugRuntimeStartupRegistration registration,
-        DbgShimStandardStreams? standardStreams,
-        Process process,
+        DisposableOwner<CorDebugManagedCallback> managedCallbackOwner,
+        DisposableOwner<CorDebugRuntimeStartupRegistration> registrationOwner,
+        DbgShimStandardStreamsOwner? standardStreamsOwner,
+        DisposableOwner<Process> processOwner,
         UnixChildExitMonitor? unixExitMonitor,
         bool ownsProcess,
         bool ownsRuntimeLease,
         CorDebugActivationResult activation)
     {
+        CorDebugManagedCallback managedCallback = managedCallbackOwner.Value
+            ?? throw new InvalidOperationException("No managed callback is owned.");
+        CorDebugRuntimeStartupRegistration registration = registrationOwner.Value
+            ?? throw new InvalidOperationException("No runtime registration is owned.");
+        DbgShimStandardStreams? standardStreams = standardStreamsOwner?.Value;
+        Process process = processOwner.Value
+            ?? throw new InvalidOperationException("No debuggee process is owned.");
         _actor = actor;
         _sourceBreakpoints = sourceBreakpoints;
         _managedCallback = managedCallback;
@@ -73,6 +80,14 @@ internal sealed partial class CorDebugDebuggee : IDebuggeeProcess
         _ownsRuntimeLease = ownsRuntimeLease ? 1 : 0;
         _corDebug = activation.CorDebug;
         _debugProcess = activation.Process;
+        _ = managedCallbackOwner.Detach();
+        _ = registrationOwner.Detach();
+        if (standardStreamsOwner is not null)
+        {
+            _ = standardStreamsOwner.Detach();
+        }
+
+        _ = processOwner.Detach();
     }
 
     /// <inheritdoc />

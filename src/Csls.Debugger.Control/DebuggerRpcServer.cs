@@ -105,6 +105,7 @@ public sealed class DebuggerRpcServer : IAsyncDisposable
             catch (Exception exception) when (
                 exception is OperationCanceledException or ObjectDisposedException or SocketException)
             {
+                System.Diagnostics.Debug.Assert(_lifetime.IsCancellationRequested);
             }
         }
 

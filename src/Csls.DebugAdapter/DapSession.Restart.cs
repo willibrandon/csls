@@ -72,16 +72,19 @@ internal sealed partial class DapSession
             }
             else
             {
-                if (launch!.NoDebug)
+                DapLaunchConfiguration launchConfiguration = launch
+                    ?? throw new InvalidOperationException(
+                        "The active launch configuration is unavailable.");
+                if (launchConfiguration.NoDebug)
                 {
                     await _engineSession.RestartWithoutDebuggingAsync(
-                        launch.Options,
+                        launchConfiguration.Options,
                         cancellationToken).ConfigureAwait(false);
                 }
                 else
                 {
                     await _engineSession.RestartManagedAsync(
-                        launch.Options,
+                        launchConfiguration.Options,
                         cancellationToken).ConfigureAwait(false);
                 }
             }

@@ -8,7 +8,7 @@ namespace Csls.Debugger.Evaluation;
 /// </summary>
 public sealed class DebuggerEvaluatorSupervisor : IAsyncDisposable
 {
-    private readonly SemaphoreSlim _gate = new(1, 1);
+    private readonly DebuggerEvaluatorOperationGate _gate = new();
     private DebuggerEvaluatorClient? _client;
     private int _disposed;
 
@@ -24,7 +24,7 @@ public sealed class DebuggerEvaluatorSupervisor : IAsyncDisposable
     {
         ArgumentNullException.ThrowIfNull(request);
         ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
-        await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        await _gate.EnterAsync(cancellationToken).ConfigureAwait(false);
         try
         {
             ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
@@ -52,7 +52,7 @@ public sealed class DebuggerEvaluatorSupervisor : IAsyncDisposable
         }
         finally
         {
-            _ = _gate.Release();
+            _gate.Exit();
         }
     }
 
@@ -64,7 +64,7 @@ public sealed class DebuggerEvaluatorSupervisor : IAsyncDisposable
             return;
         }
 
-        await _gate.WaitAsync(CancellationToken.None).ConfigureAwait(false);
+        await _gate.EnterAsync(CancellationToken.None).ConfigureAwait(false);
         try
         {
             if (_client is not null)
@@ -75,8 +75,7 @@ public sealed class DebuggerEvaluatorSupervisor : IAsyncDisposable
         }
         finally
         {
-            _ = _gate.Release();
-            _gate.Dispose();
+            _gate.Exit();
         }
     }
 }

@@ -33,9 +33,8 @@ internal static class ManagedSymbolVariableNameResolver
             result[0] = "this";
         }
 
-        foreach (ParameterHandle parameterHandle in method.GetParameters())
+        foreach (Parameter parameter in method.GetParameters().Select(metadata.GetParameter))
         {
-            Parameter parameter = metadata.GetParameter(parameterHandle);
             if (parameter.SequenceNumber == 0)
             {
                 continue;

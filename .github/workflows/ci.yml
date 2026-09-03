@@ -83,8 +83,8 @@ jobs:
           compression-level: 0
           if-no-files-found: error
 
-  debugger-tests:
-    name: Debugger tests (${{ matrix.rid }})
+  debugger-unix-wait:
+    name: Debugger Unix wait (${{ matrix.rid }})
     runs-on: ${{ matrix.os }}
     timeout-minutes: 5
     strategy:
@@ -95,14 +95,65 @@ jobs:
             rid: linux-x64
           - os: ubuntu-24.04-arm
             rid: linux-arm64
-          - os: windows-latest
-            rid: win-x64
-          - os: windows-11-arm
-            rid: win-arm64
           - os: macos-26-intel
             rid: osx-x64
           - os: macos-26
             rid: osx-arm64
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 10.x
+
+      - name: Publish Unix wait interposer
+        run: >-
+          dotnet publish
+          src/Csls.Debugger.UnixWait/Csls.Debugger.UnixWait.csproj
+          --configuration Release
+          --runtime ${{ matrix.rid }}
+          --self-contained true
+          --output artifacts/debugger-unix-wait/${{ matrix.rid }}
+
+      - name: Share Unix wait interposer
+        uses: actions/upload-artifact@v7
+        with:
+          name: debugger-unix-wait-${{ matrix.rid }}-${{ github.run_attempt }}
+          path: artifacts/debugger-unix-wait/${{ matrix.rid }}/Csls.Debugger.UnixWait.*
+          if-no-files-found: error
+
+  debugger-tests:
+    name: Debugger tests (${{ matrix.rid }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 5
+    needs: debugger-unix-wait
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            rid: linux-x64
+            interposer: artifacts/debugger-unix-wait/Csls.Debugger.UnixWait.so
+          - os: ubuntu-24.04-arm
+            rid: linux-arm64
+            interposer: artifacts/debugger-unix-wait/Csls.Debugger.UnixWait.so
+          - os: windows-latest
+            rid: win-x64
+            interposer: ''
+          - os: windows-11-arm
+            rid: win-arm64
+            interposer: ''
+          - os: macos-26-intel
+            rid: osx-x64
+            interposer: artifacts/debugger-unix-wait/Csls.Debugger.UnixWait.dylib
+          - os: macos-26
+            rid: osx-arm64
+            interposer: artifacts/debugger-unix-wait/Csls.Debugger.UnixWait.dylib
 
     steps:
       - name: Check out repository
@@ -116,13 +167,21 @@ jobs:
         with:
           dotnet-version: 10.x
 
+      - name: Restore Unix wait interposer
+        if: matrix.interposer != ''
+        uses: actions/download-artifact@v8
+        with:
+          name: debugger-unix-wait-${{ matrix.rid }}-${{ github.run_attempt }}
+          path: artifacts/debugger-unix-wait
+
       - name: Run debugger tests
         env:
+          CslsUnixWaitInterposerPath: ${{ matrix.interposer }}
           CSLS_REPOSITORY_ROOT: ${{ github.workspace }}
         run: >-
           dotnet test
           --project tests/Csls.Debugger.Tests/Csls.Debugger.Tests.csproj
-          --minimum-expected-tests 69
+          --minimum-expected-tests 70
           --no-ansi
 
   native-aot-size:
@@ -182,14 +241,8 @@ jobs:
       - name: Exercise Native AOT debugger worker
         if: matrix.command == 'csls-debugger-worker'
         env:
-          CSLS_DEBUGGER_WORKER_TEST_PATH: ${{ github.workspace }}/artifacts/size-check/csls-debugger-worker/csls-debugger-worker
-          CSLS_REPOSITORY_ROOT: ${{ github.workspace }}
-        run: >-
-          dotnet test
-          --project tests/Csls.Debugger.Tests/Csls.Debugger.Tests.csproj
-          --filter FullyQualifiedName=Csls.Debugger.Tests.DebuggerRpcTests.PrivateRpcInspectsStoppedManagedTarget
-          --minimum-expected-tests 1
-          --no-ansi
+          LD_LIBRARY_PATH: ${{ github.workspace }}/artifacts/size-check/csls-debugger-worker
+        run: artifacts/size-check/csls-debugger-worker/csls-debugger-worker doctor
 
   repository-policy:
     name: Repository policy
@@ -210,17 +263,39 @@ jobs:
       - name: Verify repository policy
         run: dotnet run --file scripts/Verify-Repository.cs
 
-      - name: Restore
-        run: dotnet restore Csls.slnx
-
-      - name: Verify formatting
-        run: dotnet format Csls.slnx --verify-no-changes --no-restore
-
       - name: Provision actionlint
         run: dotnet run --file scripts/Provision-Actionlint.cs
 
       - name: Verify GitHub Actions workflows
         run: dotnet run --file scripts/Verify-GitHubActions.cs
+
+  repository-formatting:
+    name: Repository formatting
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 10.x
+
+      - name: Restore
+        run: dotnet restore Csls.slnx
+
+      - name: Build F# expression provider
+        run: >-
+          dotnet build
+          src/Csls.Debugger.Evaluator.FSharp/Csls.Debugger.Evaluator.FSharp.fsproj
+          --no-restore
+
+      - name: Verify formatting
+        run: dotnet format Csls.slnx --verify-no-changes --no-restore
 
   file-apps:
     name: File apps (${{ matrix.group }}/${{ matrix.count }})
@@ -568,6 +643,9 @@ jobs:
           - group: refresh
             count: 1
             filter: FullyQualifiedName=Csls.Tests.ZedLanguageServerTests.ZedRefreshesNewCompileItemsWithoutRestart
+          - group: debugger
+            count: 1
+            filter: FullyQualifiedName=Csls.Tests.ZedDebuggerTests.ZedStopsAtSourceBreakpointThroughCslsDebugger
 
     steps:
       - name: Check out repository

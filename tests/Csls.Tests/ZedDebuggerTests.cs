@@ -89,7 +89,8 @@ public sealed class ZedDebuggerTests
                 cachePath,
                 socketDirectory,
                 display.DisplayName,
-                EditorToolResolver.ResolveServerWorker(repositoryRoot));
+                EditorToolResolver.ResolveServerWorker(repositoryRoot),
+                EditorToolResolver.ResolveDebuggerWorker(repositoryRoot));
             Task<string> output = zed.StandardOutput.ReadToEndAsync(TestContext.CancellationToken);
             Task<string> error = zed.StandardError.ReadToEndAsync(TestContext.CancellationToken);
             try
@@ -293,7 +294,8 @@ public sealed class ZedDebuggerTests
         string cachePath,
         string socketDirectory,
         string displayName,
-        string workerPath)
+        string serverWorkerPath,
+        string debuggerWorkerPath)
     {
         var startInfo = new ProcessStartInfo
         {
@@ -309,7 +311,8 @@ public sealed class ZedDebuggerTests
         startInfo.ArgumentList.Add(workspacePath);
         startInfo.ArgumentList.Add($"{sourcePath}:{line}:1");
         startInfo.Environment["DISPLAY"] = displayName;
-        startInfo.Environment["CSLS_WORKER_PATH"] = workerPath;
+        startInfo.Environment["CSLS_WORKER_PATH"] = serverWorkerPath;
+        startInfo.Environment["CSLS_DEBUGGER_WORKER_PATH"] = debuggerWorkerPath;
         startInfo.Environment[ControlEndpoint.SocketDirectoryEnvironmentVariable] = socketDirectory;
         startInfo.Environment["HOME"] = homePath;
         startInfo.Environment["NO_AT_BRIDGE"] = "1";

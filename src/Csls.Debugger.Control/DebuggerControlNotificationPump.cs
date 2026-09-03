@@ -19,6 +19,7 @@ internal sealed class DebuggerControlNotificationPump : IDisposable
             SingleWriter = false
         });
     private int _pendingKinds;
+    private int _completed;
 
     /// <summary>
     /// Starts observing one debugger control service.
@@ -51,13 +52,23 @@ internal sealed class DebuggerControlNotificationPump : IDisposable
     }
 
     /// <summary>
-    /// Stops observing and drains already accepted invalidations.
+    /// Stops observing and lets the notification reader drain accepted invalidations.
     /// </summary>
-    public void Dispose()
+    internal void Complete()
     {
+        if (Interlocked.Exchange(ref _completed, 1) != 0)
+        {
+            return;
+        }
+
         _service.ResourceChanged -= OnResourceChanged;
         _signals.Writer.TryComplete();
     }
+
+    /// <summary>
+    /// Stops observing and completes the accepted-invalidation channel.
+    /// </summary>
+    public void Dispose() => Complete();
 
     private void OnResourceChanged(object? sender, DebuggerResourceChangeEventArgs change)
     {

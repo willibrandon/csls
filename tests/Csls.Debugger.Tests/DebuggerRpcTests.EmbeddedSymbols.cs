@@ -90,8 +90,10 @@ public sealed partial class DebuggerRpcTests
         DebugSessionSnapshot stopped = await WaitForStoppedAsync(client, cancellationToken)
             .ConfigureAwait(false);
         Assert.IsNotNull(stopped.StoppedThreadId);
+        int stoppedThreadId = stopped.StoppedThreadId
+            ?? throw new InvalidOperationException("The target did not report a stopped thread.");
         DebugStackTrace stack = await client.GetStackAsync(
-            new DebugStackRequest(stopped.StoppedThreadId.Value, 0, 64),
+            new DebugStackRequest(stoppedThreadId, 0, 64),
             cancellationToken).ConfigureAwait(false);
         DebugStackFrameInfo frame = stack.StackFrames.Single(candidate =>
             DebuggerTestPath.AreEquivalent(candidate.Source?.Path, sourcePath) &&

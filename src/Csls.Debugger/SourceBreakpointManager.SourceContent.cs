@@ -59,12 +59,10 @@ internal sealed partial class SourceBreakpointManager
             : OpenSymbols(module);
         if (symbols is not null)
         {
-            foreach (ManagedSymbolDocument document in symbols.GetDocuments())
+            foreach (ManagedSymbolDocument document in symbols.GetDocuments().Where(
+                document => PathsEqual(document.Path, sourcePath)))
             {
-                if (PathsEqual(document.Path, sourcePath))
-                {
-                    return RegisterSource(moduleKey, document).Info;
-                }
+                return RegisterSource(moduleKey, document).Info;
             }
         }
 

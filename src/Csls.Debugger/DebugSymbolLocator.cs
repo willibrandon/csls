@@ -76,13 +76,12 @@ internal sealed partial class DebugSymbolLocator
             return null;
         }
 
-        foreach (string directory in _directories)
+        string? localMatch = _directories
+            .Select(directory => FindLocalMatch(modulePath, reference, directory))
+            .FirstOrDefault(static match => match is not null);
+        if (localMatch is not null)
         {
-            string? match = FindLocalMatch(modulePath, reference, directory);
-            if (match is not null)
-            {
-                return new DebugSymbolResolution(DebugSymbolStorageKind.AssociatedFile, match);
-            }
+            return new DebugSymbolResolution(DebugSymbolStorageKind.AssociatedFile, localMatch);
         }
 
         foreach (string identity in GetIdentities(reference))

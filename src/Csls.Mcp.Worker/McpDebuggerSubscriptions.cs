@@ -43,9 +43,9 @@ internal sealed class McpDebuggerSubscriptions
         });
         void OnChanged(McpDebuggerResourceChange change)
         {
-            foreach (string uri in subscriptions)
+            foreach (string uri in subscriptions.Where(uri => Matches(uri, change)))
             {
-                if (Matches(uri, change) && pending.TryAdd(uri, 0))
+                if (pending.TryAdd(uri, 0))
                 {
                     signal.Writer.TryWrite(true);
                 }
@@ -63,18 +63,19 @@ internal sealed class McpDebuggerSubscriptions
                     .ConfigureAwait(false))
                 {
                     _ = signalValue;
-                    foreach (string uri in pending.Keys.Order(StringComparer.Ordinal).ToArray())
+                    foreach (string uri in pending.Keys
+                        .Order(StringComparer.Ordinal)
+                        .Where(uri => pending.TryRemove(uri, out _))
+                        .ToArray())
                     {
-                        if (pending.TryRemove(uri, out _))
-                        {
-                            await SendResourceChangedAsync(request, uri, cancellationToken)
-                                .ConfigureAwait(false);
-                        }
+                        await SendResourceChangedAsync(request, uri, cancellationToken)
+                            .ConfigureAwait(false);
                     }
                 }
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
+                return new EmptyResult();
             }
         }
         finally
@@ -107,12 +108,24 @@ internal sealed class McpDebuggerSubscriptions
         }
 
         string path = new Uri(uri).AbsolutePath;
-        return change.Kind.HasFlag(DebuggerResourceChangeKind.Session) ||
-            change.Kind.HasFlag(DebuggerResourceChangeKind.Output) &&
-            path.StartsWith("/output/", StringComparison.Ordinal) ||
-            change.Kind.HasFlag(DebuggerResourceChangeKind.Breakpoints) &&
-            path.StartsWith("/breakpoints/", StringComparison.Ordinal) ||
-            change.Kind.HasFlag(DebuggerResourceChangeKind.Variables) &&
+        if (change.Kind.HasFlag(DebuggerResourceChangeKind.Session))
+        {
+            return true;
+        }
+
+        if (change.Kind.HasFlag(DebuggerResourceChangeKind.Output) &&
+            path.StartsWith("/output/", StringComparison.Ordinal))
+        {
+            return true;
+        }
+
+        if (change.Kind.HasFlag(DebuggerResourceChangeKind.Breakpoints) &&
+            path.StartsWith("/breakpoints/", StringComparison.Ordinal))
+        {
+            return true;
+        }
+
+        return change.Kind.HasFlag(DebuggerResourceChangeKind.Variables) &&
             path.StartsWith("/variables/", StringComparison.Ordinal);
     }
 

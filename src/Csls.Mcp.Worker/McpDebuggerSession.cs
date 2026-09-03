@@ -34,6 +34,11 @@ internal sealed partial class McpDebuggerSession : IAsyncDisposable
         Kind = kind;
         _worker = worker;
         _diagnostics = diagnostics;
+        _agentControlExpirationTimer = new Timer(
+            static state => ((McpDebuggerSession)state!).ExpireAgentControl(),
+            this,
+            Timeout.InfiniteTimeSpan,
+            Timeout.InfiniteTimeSpan);
         Client = client;
         Client.ResourceChanged += OnResourceChanged;
     }

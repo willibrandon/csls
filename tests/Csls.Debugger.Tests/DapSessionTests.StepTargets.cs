@@ -39,6 +39,7 @@ public sealed partial class DapSessionTests
             await using ConfiguredAsyncDisposable disposal = client.ConfigureAwait(false);
             JsonElement caller = await ReadTopSourceFrameAsync(client, threadId)
                 .ConfigureAwait(false);
+            Assert.AreEqual(callLine, caller.GetProperty("line").GetInt32());
             int gotoSeed = await ReadGotoTargetAsync(
                 client,
                 sourcePath,

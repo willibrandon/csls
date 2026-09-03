@@ -59,9 +59,10 @@ internal sealed partial class CorDebugDebuggee
                     process.Kill(entireProcessTree: true);
                 }
                 catch (Exception exception) when (
-                    exception is InvalidOperationException or Win32Exception &&
+                    exception is (InvalidOperationException or Win32Exception) &&
                     unixExitMonitor.IsCompleted)
                 {
+                    Debug.Assert(unixExitMonitor.IsCompleted);
                 }
             }
 

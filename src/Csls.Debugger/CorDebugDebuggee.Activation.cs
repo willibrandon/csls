@@ -57,9 +57,10 @@ internal sealed partial class CorDebugDebuggee
         await using ConfiguredAsyncDisposable standardStreamsOwnerScope =
             standardStreamsOwner.ConfigureAwait(false);
         DbgShimStandardStreams standardStreams = standardStreamsOwner.Value;
-        Process? process = null;
-        CorDebugManagedCallback? managedCallback = null;
-        CorDebugRuntimeStartupRegistration? registration = null;
+        using var processOwner = new DisposableOwner<Process>();
+        using var managedCallbackOwner = new DisposableOwner<CorDebugManagedCallback>();
+        using var registrationOwner =
+            new DisposableOwner<CorDebugRuntimeStartupRegistration>();
         UnixChildExitMonitor? unixExitMonitor = null;
         nint corDebug = 0;
         nint debugProcess = 0;
@@ -81,13 +82,16 @@ internal sealed partial class CorDebugDebuggee
             }
 
             using var resumeHandle = new DbgShimResumeHandle(rawResumeHandle);
-            process = Process.GetProcessById(checked((int)processId));
+            processOwner.Acquire(() => Process.GetProcessById(checked((int)processId)));
+            Process process = processOwner.Value
+                ?? throw new InvalidOperationException("The debuggee process was not acquired.");
             if (!OperatingSystem.IsWindows())
             {
                 unixExitMonitor = UnixChildExitMonitor.Start(processId);
             }
 
-            managedCallback = new CorDebugManagedCallback(
+            managedCallbackOwner.Acquire(() =>
+                new CorDebugManagedCallback(
                 actor,
                 sourceBreakpoints,
                 functionBreakpoints,
@@ -96,11 +100,17 @@ internal sealed partial class CorDebugDebuggee
                 targetBreakpointReached,
                 stepCompleted,
                 exceptionRaised,
-                evaluationCompleted);
-            registration = new CorDebugRuntimeStartupRegistration(
-                processId,
-                actor,
-                managedCallback);
+                evaluationCompleted));
+            CorDebugManagedCallback managedCallback = managedCallbackOwner.Value
+                ?? throw new InvalidOperationException("The managed callback was not created.");
+            registrationOwner.Acquire(() =>
+                new CorDebugRuntimeStartupRegistration(
+                    processId,
+                    actor,
+                    managedCallback));
+            CorDebugRuntimeStartupRegistration registration = registrationOwner.Value
+                ?? throw new InvalidOperationException(
+                    "The runtime-startup registration was not created.");
             int registerResult = DbgShimNativeMethods.RegisterForRuntimeStartup(
                 processId,
                 CorDebugRuntimeStartupRegistration.Callback,
@@ -127,18 +137,15 @@ internal sealed partial class CorDebugDebuggee
             var result = new CorDebugDebuggee(
                 actor,
                 sourceBreakpoints,
-                managedCallback,
-                registration,
-                standardStreamsOwner.Detach(),
-                process,
+                managedCallbackOwner,
+                registrationOwner,
+                standardStreamsOwner,
+                processOwner,
                 unixExitMonitor,
                 ownsProcess: true,
                 ownsRuntimeLease: true,
                 activation);
             ownsActivationGate = false;
-            managedCallback = null;
-            registration = null;
-            process = null;
             unixExitMonitor = null;
             corDebug = 0;
             debugProcess = 0;
@@ -151,16 +158,15 @@ internal sealed partial class CorDebugDebuggee
                 CorDebugRuntimeActivationGate.Release();
             }
 
-            if (process is not null)
+            if (processOwner.Value is Process process)
             {
                 await TerminateProcessAsync(process, unixExitMonitor, CancellationToken.None)
                     .ConfigureAwait(false);
-                process.Dispose();
             }
 
-            if (corDebug != 0 && managedCallback is not null)
+            if (corDebug != 0 && managedCallbackOwner.Value is CorDebugManagedCallback callback)
             {
-                await managedCallback.WaitForExitProcessAsync(CancellationToken.None)
+                await callback.WaitForExitProcessAsync(CancellationToken.None)
                     .ConfigureAwait(false);
             }
 
@@ -168,9 +174,6 @@ internal sealed partial class CorDebugDebuggee
             {
                 await ReleaseRuntimeAsync(actor, corDebug, debugProcess).ConfigureAwait(false);
             }
-
-            registration?.Dispose();
-            managedCallback?.Dispose();
         }
     }
 

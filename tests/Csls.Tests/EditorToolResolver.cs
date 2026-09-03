@@ -388,6 +388,30 @@ internal static class EditorToolResolver
     }
 
     /// <summary>
+    /// Resolves the debugger worker built for editor integration tests.
+    /// </summary>
+    /// <param name="repositoryRoot">The absolute repository root.</param>
+    /// <returns>The absolute debugger worker path.</returns>
+    internal static string ResolveDebuggerWorker(string repositoryRoot)
+    {
+        string? configuredPath = Environment.GetEnvironmentVariable(
+            "CSLS_DEBUGGER_WORKER_TEST_PATH");
+        string workerPath = string.IsNullOrWhiteSpace(configuredPath)
+            ? Path.Join(
+                ResolveArtifactsRoot(repositoryRoot),
+                "bin",
+                "Csls.Debugger.Worker",
+                "debug",
+                "csls-debugger-worker.dll")
+            : Path.GetFullPath(configuredPath);
+        return File.Exists(workerPath)
+            ? workerPath
+            : throw new FileNotFoundException(
+                "The debugger worker was not built for editor integration tests.",
+                workerPath);
+    }
+
+    /// <summary>
     /// Resolves the current official C# extension used by the Zed integration test.
     /// </summary>
     /// <param name="repositoryRoot">The absolute repository root.</param>

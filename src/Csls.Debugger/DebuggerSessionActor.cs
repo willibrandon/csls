@@ -72,6 +72,7 @@ internal sealed class DebuggerSessionActor : IAsyncDisposable
         }
         catch (OperationCanceledException) when (_lifetime.IsCancellationRequested)
         {
+            return;
         }
     }
 }

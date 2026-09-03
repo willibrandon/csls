@@ -12,15 +12,18 @@ internal sealed class PortablePdbReader : IDisposable
     private readonly MetadataReaderProvider _provider;
 
     private PortablePdbReader(
-        MetadataReaderProvider provider,
+        DisposableOwner<MetadataReaderProvider> owner,
         DebugSymbolStorageKind storageKind,
         string? path)
     {
+        MetadataReaderProvider provider = owner.Value
+            ?? throw new InvalidOperationException("No Portable PDB metadata provider is owned.");
         _provider = provider;
         StorageKind = storageKind;
         Path = path;
         Metadata = provider.GetMetadataReader();
         SourceLinkMappings = ManagedSourceLinkResolver.Read(Metadata);
+        _ = owner.Detach();
     }
 
     /// <summary>
@@ -59,34 +62,32 @@ internal sealed class PortablePdbReader : IDisposable
 
         using FileStream moduleStream = OpenRead(modulePath);
         using var peReader = new PEReader(moduleStream);
-        MetadataReaderProvider? provider = null;
-        try
+        using var providerOwner = new DisposableOwner<MetadataReaderProvider>();
+        bool opened = false;
+        string? associatedPath = null;
+        providerOwner.Acquire(() =>
         {
-            if (peReader.TryOpenAssociatedPortablePdb(
+            opened = peReader.TryOpenAssociatedPortablePdb(
                 modulePath,
                 symbolPath is null ? OpenIfPresent : _ => OpenIfPresent(symbolPath),
-                out provider,
-                out string? associatedPath) &&
-                provider is not null)
-            {
-                var reader = new PortablePdbReader(
-                    provider,
-                    associatedPath is null
-                        ? DebugSymbolStorageKind.Embedded
-                        : DebugSymbolStorageKind.AssociatedFile,
-                    associatedPath is null
-                        ? null
-                        : System.IO.Path.GetFullPath(symbolPath ?? associatedPath));
-                provider = null;
-                return reader;
-            }
+                out MetadataReaderProvider? provider,
+                out associatedPath);
+            return provider;
+        });
 
+        if (!opened || providerOwner.Value is null)
+        {
             return null;
         }
-        finally
-        {
-            provider?.Dispose();
-        }
+
+        return new PortablePdbReader(
+            providerOwner,
+            associatedPath is null
+                ? DebugSymbolStorageKind.Embedded
+                : DebugSymbolStorageKind.AssociatedFile,
+            associatedPath is null
+                ? null
+                : System.IO.Path.GetFullPath(symbolPath ?? associatedPath));
     }
 
     /// <summary>
@@ -102,26 +103,21 @@ internal sealed class PortablePdbReader : IDisposable
             return null;
         }
 
-        MetadataReaderProvider? provider = null;
+        using var providerOwner = new DisposableOwner<MetadataReaderProvider>();
         try
         {
-            provider = MetadataReaderProvider.FromPortablePdbImage(
-                ImmutableCollectionsMarshal.AsImmutableArray(image));
-            var reader = new PortablePdbReader(
-                provider,
-                DebugSymbolStorageKind.InMemory,
-                path: null);
-            provider = null;
-            return reader;
+            providerOwner.Acquire(() => MetadataReaderProvider.FromPortablePdbImage(
+                ImmutableCollectionsMarshal.AsImmutableArray(image)));
         }
         catch (BadImageFormatException)
         {
             return null;
         }
-        finally
-        {
-            provider?.Dispose();
-        }
+
+        return new PortablePdbReader(
+            providerOwner,
+            DebugSymbolStorageKind.InMemory,
+            path: null);
     }
 
     /// <summary>

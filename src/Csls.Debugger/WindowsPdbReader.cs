@@ -30,15 +30,24 @@ internal sealed class WindowsPdbReader : IDisposable
 
     private WindowsPdbReader(
         string path,
-        PEReader peReader,
-        FileStream pdbStream,
-        ISymUnmanagedReader5 reader)
+        DisposableOwner<PEReader> peReaderOwner,
+        DisposableOwner<FileStream> pdbStreamOwner,
+        ref ISymUnmanagedReader5? reader)
     {
+        PEReader peReader = peReaderOwner.Value
+            ?? throw new InvalidOperationException("No PE reader is owned.");
+        FileStream pdbStream = pdbStreamOwner.Value
+            ?? throw new InvalidOperationException("No Windows PDB stream is owned.");
+        ISymUnmanagedReader5 symReader = reader
+            ?? throw new InvalidOperationException("No Windows PDB reader is owned.");
         Path = path;
         _peReader = peReader;
         _pdbStream = pdbStream;
-        _reader = reader;
-        _sourceLinkMappings = ReadSourceLinkMappings(reader);
+        _reader = symReader;
+        _sourceLinkMappings = ReadSourceLinkMappings(symReader);
+        _ = peReaderOwner.Detach();
+        _ = pdbStreamOwner.Detach();
+        reader = null;
     }
 
     /// <summary>
@@ -65,17 +74,22 @@ internal sealed class WindowsPdbReader : IDisposable
             return null;
         }
 
-        var moduleStream = new FileStream(
+        using var peReaderOwner = new DisposableOwner<PEReader>();
+        peReaderOwner.Acquire(() => new PEReader(new FileStream(
             modulePath,
             FileMode.Open,
             FileAccess.Read,
-            FileShare.Read | FileShare.Delete);
-        var peReader = new PEReader(moduleStream);
-        var pdbStream = new FileStream(
+            FileShare.Read | FileShare.Delete)));
+        PEReader peReader = peReaderOwner.Value
+            ?? throw new InvalidOperationException("The PE reader was not created.");
+        using var pdbStreamOwner = new DisposableOwner<FileStream>();
+        pdbStreamOwner.Acquire(() => new FileStream(
             symbolPath,
             FileMode.Open,
             FileAccess.Read,
-            FileShare.Read | FileShare.Delete);
+            FileShare.Read | FileShare.Delete));
+        FileStream pdbStream = pdbStreamOwner.Value
+            ?? throw new InvalidOperationException("The Windows PDB stream was not created.");
         ISymUnmanagedReader5? reader = null;
         try
         {
@@ -98,21 +112,15 @@ internal sealed class WindowsPdbReader : IDisposable
                 return null;
             }
 
-            var result = new WindowsPdbReader(
+            return new WindowsPdbReader(
                 System.IO.Path.GetFullPath(symbolPath),
-                peReader,
-                pdbStream,
-                reader);
-            reader = null;
-            peReader = null!;
-            pdbStream = null!;
-            return result;
+                peReaderOwner,
+                pdbStreamOwner,
+                ref reader);
         }
         finally
         {
             DisposeComObject(reader);
-            pdbStream?.Dispose();
-            peReader?.Dispose();
         }
     }
 

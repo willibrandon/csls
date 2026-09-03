@@ -843,11 +843,12 @@ Arguments:
   <arguments>  Arguments passed to the managed target.
 
 Options:
-  --source <path> (REQUIRED)  Source document containing the initial breakpoint.
-  --line <number> (REQUIRED)  One-based line for the initial source breakpoint.
-  --cwd <path>                Target working directory. [default: .]
-  --runtime <path>            Optional dotnet host path used to run a managed assembly.
-  -?, -h, --help              Show help and usage information
+  --source <path> (REQUIRED)       Source document containing the initial breakpoint.
+  --line <number> (REQUIRED)       One-based line for the initial source breakpoint.
+  --cwd <path>                     Target working directory. [default: .]
+  --runtime <path>                 Optional dotnet host path used to run a managed assembly.
+  --source-file-map <build=local>  Map an absolute PDB build-path prefix to an absolute local source prefix.
+  -?, -h, --help                   Show help and usage information
 ```
 
 ## csls debugger tui attach
@@ -863,5 +864,6 @@ Arguments:
   <process-id>  Running managed process identifier.
 
 Options:
-  -?, -h, --help  Show help and usage information
+  --source-file-map <build=local>  Map an absolute PDB build-path prefix to an absolute local source prefix.
+  -?, -h, --help                   Show help and usage information
 ```

@@ -124,22 +124,18 @@ public sealed partial class DapSessionTests
                 "configurationDone",
                 WriteEmptyObject,
                 TestContext.CancellationToken).ConfigureAwait(false);
-            if (useFunctionBreakpoint)
-            {
-                _ = await ReadFunctionBreakpointStopAsync(
+            Task<int> stop = useFunctionBreakpoint
+                ? ReadFunctionBreakpointStopAsync(
                     client,
                     configurationSequence,
                     launchSequence,
-                    breakpointId).ConfigureAwait(false);
-            }
-            else
-            {
-                _ = await ReadInitialBreakpointStopAsync(
+                    breakpointId)
+                : ReadInitialBreakpointStopAsync(
                     client,
                     configurationSequence,
                     launchSequence,
-                    TestContext.CancellationToken).ConfigureAwait(false);
-            }
+                    TestContext.CancellationToken);
+            _ = await stop.ConfigureAwait(false);
 
             Assert.AreEqual(
                 expectedProgress,

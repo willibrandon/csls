@@ -10,14 +10,12 @@ internal static partial class DebuggerWorkerHost
 {
     private static async Task<int> RunDapAsync(CancellationToken cancellationToken)
     {
-        Stream input = Console.OpenStandardInput();
-        await using ConfiguredAsyncDisposable inputCleanup = input.ConfigureAwait(false);
-        Stream output = Console.OpenStandardOutput();
-        await using ConfiguredAsyncDisposable outputCleanup = output.ConfigureAwait(false);
+        var standardStreams = DebuggerWorkerStandardStreams.Open(stabilizeInput: false);
+        await using ConfiguredAsyncDisposable cleanup = standardStreams.ConfigureAwait(false);
         return await DebugAdapterHost.RunAsync(
-            input,
-            output,
-            Console.Error,
+            standardStreams.Input,
+            standardStreams.Output,
+            standardStreams.Error,
             cancellationToken).ConfigureAwait(false);
     }
 }

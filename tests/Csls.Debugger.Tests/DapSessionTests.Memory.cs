@@ -130,6 +130,7 @@ public sealed partial class DapSessionTests
         using JsonDocument scopes = await client
             .ReadMessageAsync(TestContext.CancellationToken)
             .ConfigureAwait(false);
+        AssertResponse(scopes.RootElement, sequence, "scopes", success: true);
         JsonElement locals = scopes.RootElement.GetProperty("body").GetProperty("scopes")
             .EnumerateArray().Single(scope => scope.GetProperty("name").GetString() == "Locals");
         JsonElement[] variables = await ReadVariablesAsync(

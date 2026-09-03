@@ -76,9 +76,11 @@ internal sealed class SourceLinkTestServer : IAsyncDisposable
         }
         catch (OperationCanceledException) when (_lifetime.IsCancellationRequested)
         {
+            return;
         }
         catch (SocketException) when (_lifetime.IsCancellationRequested)
         {
+            return;
         }
     }
 
@@ -90,9 +92,14 @@ internal sealed class SourceLinkTestServer : IAsyncDisposable
             Encoding.ASCII,
             detectEncodingFromByteOrderMarks: false,
             leaveOpen: true);
-        while (!string.IsNullOrEmpty(
-            await reader.ReadLineAsync(cancellationToken).ConfigureAwait(false)))
+        while (true)
         {
+            string? headerLine = await reader.ReadLineAsync(cancellationToken)
+                .ConfigureAwait(false);
+            if (string.IsNullOrEmpty(headerLine))
+            {
+                break;
+            }
         }
 
         _ = Interlocked.Increment(ref _requestCount);

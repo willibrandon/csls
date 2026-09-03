@@ -185,9 +185,7 @@ internal sealed partial class CorDebugDebuggee
             value = RequirePointer(
                 Volatile.Read(ref *valueAddress),
                 $"ICorDebugILFrame.Get{kind}");
-            nint resolved = value;
-            value = 0;
-            return resolved;
+            return value;
         }
         finally
         {

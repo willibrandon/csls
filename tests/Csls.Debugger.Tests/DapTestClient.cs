@@ -49,6 +49,12 @@ internal sealed partial class DapTestClient : IAsyncDisposable
     internal StringWriter Diagnostics { get; }
 
     /// <summary>
+    /// Gets the operating-system identifier of the csls adapter launcher process.
+    /// </summary>
+    internal int HostProcessId => (_process ?? throw new InvalidOperationException(
+        "The DAP test client has not been initialized.")).Id;
+
+    /// <summary>
     /// Sends one framed DAP request through the client-to-adapter pipe.
     /// </summary>
     /// <param name="command">The request command.</param>
@@ -105,9 +111,8 @@ internal sealed partial class DapTestClient : IAsyncDisposable
             "The DAP test client has not been initialized.");
         if (fragment)
         {
-            foreach (byte value in frame)
+            foreach (byte[] singleByte in frame.Select(static value => new[] { value }))
             {
-                byte[] singleByte = [value];
                 await process.StandardInput.BaseStream
                     .WriteAsync(singleByte, cancellationToken)
                     .ConfigureAwait(false);
@@ -180,6 +185,7 @@ internal sealed partial class DapTestClient : IAsyncDisposable
         }
         catch (TimeoutException)
         {
+            Debug.Assert(!process.HasExited);
         }
     }
 }

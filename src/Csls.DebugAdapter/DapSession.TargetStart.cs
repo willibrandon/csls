@@ -50,9 +50,12 @@ internal sealed partial class DapSession
         Request request,
         CancellationToken cancellationToken)
     {
+        Request? targetRequest = _pendingTargetRequest;
+        DapLaunchConfiguration? launch = _pendingLaunch;
+        DapAttachConfiguration? attach = _pendingAttach;
         if (_state != DapSessionState.Configuring ||
-            _pendingTargetRequest is null ||
-            (_pendingLaunch is null) == (_pendingAttach is null))
+            targetRequest is null ||
+            (launch is null) == (attach is null))
         {
             await WriteStateFailureAsync(request, cancellationToken).ConfigureAwait(false);
             return;
@@ -62,22 +65,25 @@ internal sealed partial class DapSession
         _pendingConfigurationRequest = request;
         try
         {
-            if (_pendingAttach is DapAttachConfiguration attach)
+            if (attach is not null)
             {
                 await _engineSession
                     .AttachManagedAsync(attach.Options, cancellationToken)
                     .ConfigureAwait(false);
             }
-            else if (_pendingLaunch!.NoDebug)
+            else if (launch is not null && launch.NoDebug)
             {
                 await _engineSession
-                    .LaunchWithoutDebuggingAsync(_pendingLaunch.Options, cancellationToken)
+                    .LaunchWithoutDebuggingAsync(launch.Options, cancellationToken)
                     .ConfigureAwait(false);
             }
             else
             {
                 await _engineSession
-                    .LaunchManagedAsync(_pendingLaunch.Options, cancellationToken)
+                    .LaunchManagedAsync(
+                        launch?.Options ?? throw new InvalidOperationException(
+                            "The pending launch configuration is unavailable."),
+                        cancellationToken)
                     .ConfigureAwait(false);
             }
         }
@@ -93,7 +99,7 @@ internal sealed partial class DapSession
                 writeBody: null,
                 cancellationToken).ConfigureAwait(false);
             await _writer.WriteResponseAsync(
-                _pendingTargetRequest,
+                targetRequest,
                 success: false,
                 exception.Message,
                 writeBody: null,

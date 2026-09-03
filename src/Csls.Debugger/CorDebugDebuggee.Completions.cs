@@ -327,20 +327,18 @@ internal sealed partial class CorDebugDebuggee
             DebugExpressionLanguage.FSharp => ["false", "null", "true"],
             _ => ["false", "null", "this", "true"]
         };
-        foreach (string keyword in keywords)
+        foreach (string keyword in keywords.Where(keyword =>
+            MatchesCompletionPrefix(keyword, prefix, language)))
         {
-            if (MatchesCompletionPrefix(keyword, prefix, language))
-            {
-                candidates.TryAdd(
+            candidates.TryAdd(
+                keyword,
+                new DebugCompletionInfo(
                     keyword,
-                    new DebugCompletionInfo(
-                        keyword,
-                        keyword,
-                        "language keyword",
-                        DebugCompletionItemKind.Keyword,
-                        replacementStart,
-                        replacementLength));
-            }
+                    keyword,
+                    "language keyword",
+                    DebugCompletionItemKind.Keyword,
+                    replacementStart,
+                    replacementLength));
         }
     }
 
@@ -359,9 +357,8 @@ internal sealed partial class CorDebugDebuggee
         string declaringType = metadata.GetString(type.Name);
         if (!staticMembers)
         {
-            foreach (FieldDefinitionHandle fieldHandle in type.GetFields())
+            foreach (FieldDefinition field in type.GetFields().Select(metadata.GetFieldDefinition))
             {
-                FieldDefinition field = metadata.GetFieldDefinition(fieldHandle);
                 string name = metadata.GetString(field.Name);
                 if ((field.Attributes & FieldAttributes.Static) != 0 ||
                     !IsSimpleIdentifier(name) ||

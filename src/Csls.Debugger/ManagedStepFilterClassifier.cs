@@ -111,18 +111,13 @@ internal static class ManagedStepFilterClassifier
         CustomAttributeHandleCollection attributes,
         string expectedName)
     {
-        foreach (CustomAttributeHandle handle in attributes)
-        {
-            if (string.Equals(
-                GetAttributeTypeName(reader, reader.GetCustomAttribute(handle)),
+        return attributes
+            .Select(handle => reader.GetCustomAttribute(handle))
+            .Select(attribute => GetAttributeTypeName(reader, attribute))
+            .Any(name => string.Equals(
+                name,
                 expectedName,
-                StringComparison.Ordinal))
-            {
-                return true;
-            }
-        }
-
-        return false;
+                StringComparison.Ordinal));
     }
 
     private static string? GetAttributeTypeName(

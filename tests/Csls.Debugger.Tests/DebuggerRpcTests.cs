@@ -108,13 +108,15 @@ public sealed partial class DebuggerRpcTests
         await resourcesChanged.Task.WaitAsync(cancellationToken).ConfigureAwait(false);
         Assert.AreEqual("breakpoint", stopped.StopReason);
         Assert.IsNotNull(stopped.StoppedThreadId);
-        Assert.IsGreaterThan(0, stopped.StoppedThreadId.Value);
+        int stoppedThreadId = stopped.StoppedThreadId
+            ?? throw new InvalidOperationException("The target did not report a stopped thread.");
+        Assert.IsGreaterThan(0, stoppedThreadId);
 
         IReadOnlyList<DebugThreadInfo> threads = await client.GetThreadsAsync(cancellationToken)
             .ConfigureAwait(false);
         Assert.IsNotEmpty(threads);
         DebugStackTrace stack = await client.GetStackAsync(
-            new DebugStackRequest(stopped.StoppedThreadId!.Value, 0, 64),
+            new DebugStackRequest(stoppedThreadId, 0, 64),
             cancellationToken).ConfigureAwait(false);
         DebugStackFrameInfo frame = stack.StackFrames.Single(candidate =>
             DebuggerTestPath.AreEquivalent(candidate.Source?.Path, sourcePath) &&

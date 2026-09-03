@@ -143,10 +143,13 @@ internal sealed partial class CorDebugDebuggee
                 new ICorDebugReferenceValueAbi(reference).Dereference((nint)resultAddress),
                 "ICorDebugReferenceValue.Dereference");
             result = Volatile.Read(ref *resultAddress);
-            return result != 0
-                ? true
-                : throw new InvalidOperationException(
+            if (result == 0)
+            {
+                throw new InvalidOperationException(
                     "ICorDebugReferenceValue.Dereference returned no value.");
+            }
+
+            return true;
         }
         finally
         {

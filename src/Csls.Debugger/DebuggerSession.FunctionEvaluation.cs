@@ -83,6 +83,7 @@ public sealed partial class DebuggerSession
             completion.IsCompleted &&
             exception is OperationCanceledException or InvalidOperationException)
         {
+            System.Diagnostics.Debug.Assert(completion.IsCompleted);
         }
         catch (TimeoutException)
         {
@@ -125,16 +126,13 @@ public sealed partial class DebuggerSession
         if (recognized)
         {
             _stopGeneration = resultGeneration;
-            if (managedDebuggee.FunctionEvaluationSafetyFailure is not null)
+            _state = (managedDebuggee.FunctionEvaluationSafetyFailure,
+                managedDebuggee.IsFunctionEvaluationActive) switch
             {
-                _state = DebugSessionState.Faulted;
-            }
-            else
-            {
-                _state = managedDebuggee.IsFunctionEvaluationActive
-                    ? DebugSessionState.Running
-                    : DebugSessionState.Stopped;
-            }
+                (not null, _) => DebugSessionState.Faulted,
+                (_, true) => DebugSessionState.Running,
+                _ => DebugSessionState.Stopped
+            };
         }
 
         return ValueTask.FromResult(recognized);

@@ -107,6 +107,7 @@ public sealed partial class DebuggerSession
         catch (Exception exception) when (
             exception is InvalidOperationException or IOException)
         {
+            completion = null;
         }
 
         if (completion is null)
@@ -124,6 +125,7 @@ public sealed partial class DebuggerSession
             exception is OperationCanceledException or InvalidOperationException or
                 TimeoutException)
         {
+            return;
         }
     }
 

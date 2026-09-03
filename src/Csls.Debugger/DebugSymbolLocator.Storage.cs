@@ -32,20 +32,15 @@ internal sealed partial class DebugSymbolLocator
         CodeViewSymbolReference reference,
         string directory)
     {
-        foreach (string candidate in new[]
-        {
-            Path.Join(directory, reference.FileName),
-            GetStorePath(directory, reference.FileName, reference.PortableIdentity),
-            GetStorePath(directory, reference.FileName, reference.WindowsIdentity)
-        })
-        {
-            if (IsMatch(modulePath, candidate))
+        return new[]
             {
-                return Path.GetFullPath(candidate);
+                Path.Join(directory, reference.FileName),
+                GetStorePath(directory, reference.FileName, reference.PortableIdentity),
+                GetStorePath(directory, reference.FileName, reference.WindowsIdentity)
             }
-        }
-
-        return null;
+            .Where(candidate => IsMatch(modulePath, candidate))
+            .Select(Path.GetFullPath)
+            .FirstOrDefault();
     }
 
     private static async Task<string?> DownloadAndCacheAsync(
@@ -104,6 +99,7 @@ internal sealed partial class DebugSymbolLocator
             }
             catch (IOException) when (File.Exists(cacheFile))
             {
+                System.Diagnostics.Debug.Assert(File.Exists(cacheFile));
             }
 
             return IsMatch(modulePath, cacheFile) ? cacheFile : null;
@@ -114,8 +110,10 @@ internal sealed partial class DebugSymbolLocator
             {
                 File.Delete(temporary);
             }
-            catch (IOException)
+            catch (IOException exception)
             {
+                System.Diagnostics.Debug.WriteLine(
+                    $"Could not remove temporary symbol file {temporary}: {exception.Message}");
             }
         }
     }

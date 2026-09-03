@@ -31,7 +31,19 @@ internal sealed class DebuggerFixtureValue
     /// <summary>
     /// Gets the file used to prove that target-code evaluation began.
     /// </summary>
-    public string EvaluationSignalPath;
+    public readonly string EvaluationSignalPath;
+
+    /// <summary>
+    /// Replaces the numeric field through ordinary target code when a fixture requires it.
+    /// </summary>
+    /// <param name="value">The replacement numeric value.</param>
+    internal void SetNumber(int value) => Number = value;
+
+    /// <summary>
+    /// Replaces the textual field through ordinary target code when a fixture requires it.
+    /// </summary>
+    /// <param name="value">The replacement textual value.</param>
+    internal void SetText(string value) => Text = value;
 
     /// <summary>
     /// Computes a stable value by executing target code for debugger evaluation tests.

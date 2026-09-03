@@ -4,6 +4,7 @@
     <AssemblyName>csls-debugger-worker</AssemblyName>
     <RootNamespace>Csls.Debugger.Worker</RootNamespace>
     <Description>The self-contained interactive csls debugger worker.</Description>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <PublishAot Condition="'$(RuntimeIdentifier)' != '' and
                            '$(RuntimeIdentifier)' != 'any' and
                            '$(RuntimeIdentifier)' != 'win-x86'">true</PublishAot>
@@ -34,11 +35,15 @@
     <_CslsUnixWaitPublishDirectory>$([MSBuild]::NormalizePath('$(_CslsUnixWaitArtifactsPath)', 'publish', '$(Configuration)'))</_CslsUnixWaitPublishDirectory>
     <_CslsUnixWaitFileName Condition="$(_CslsUnixWaitRuntimeIdentifier.StartsWith('osx-'))">Csls.Debugger.UnixWait.dylib</_CslsUnixWaitFileName>
     <_CslsUnixWaitFileName Condition="'$(_CslsUnixWaitFileName)' == ''">Csls.Debugger.UnixWait.so</_CslsUnixWaitFileName>
+    <_CslsUnixWaitSourcePath Condition="'$(CslsUnixWaitInterposerPath)' != ''">$([MSBuild]::NormalizePath('$(CslsUnixWaitInterposerPath)'))</_CslsUnixWaitSourcePath>
+    <_CslsUnixWaitSourcePath Condition="'$(_CslsUnixWaitSourcePath)' == ''">$([MSBuild]::NormalizePath('$(_CslsUnixWaitPublishDirectory)', '$(_CslsUnixWaitFileName)'))</_CslsUnixWaitSourcePath>
   </PropertyGroup>
 
   <Target Name="_PublishCslsUnixWaitInterposer"
           BeforeTargets="CoreCompile"
-          Condition="!$([MSBuild]::IsOSPlatform('Windows')) and '$(DesignTimeBuild)' != 'true'">
+          Condition="!$([MSBuild]::IsOSPlatform('Windows')) and
+                     '$(DesignTimeBuild)' != 'true' and
+                     '$(CslsUnixWaitInterposerPath)' == ''">
     <MSBuild Projects="../Csls.Debugger.UnixWait/Csls.Debugger.UnixWait.csproj"
              Targets="Restore"
              BuildInParallel="false"
@@ -54,10 +59,12 @@
   <Target Name="_CopyCslsUnixWaitInterposer"
           AfterTargets="Build;Publish"
           Condition="!$([MSBuild]::IsOSPlatform('Windows')) and '$(DesignTimeBuild)' != 'true'">
-    <Copy SourceFiles="$([MSBuild]::NormalizePath('$(_CslsUnixWaitPublishDirectory)', '$(_CslsUnixWaitFileName)'))"
+    <Error Condition="!Exists('$(_CslsUnixWaitSourcePath)')"
+           Text="The debugger Unix wait interposer is missing: $(_CslsUnixWaitSourcePath)" />
+    <Copy SourceFiles="$(_CslsUnixWaitSourcePath)"
           DestinationFolder="$(TargetDir)"
           SkipUnchangedFiles="true" />
-    <Copy SourceFiles="$([MSBuild]::NormalizePath('$(_CslsUnixWaitPublishDirectory)', '$(_CslsUnixWaitFileName)'))"
+    <Copy SourceFiles="$(_CslsUnixWaitSourcePath)"
           DestinationFolder="$(PublishDir)"
           SkipUnchangedFiles="true"
           Condition="'$(PublishDir)' != '' and '$(PublishDir)' != '$(TargetDir)'" />

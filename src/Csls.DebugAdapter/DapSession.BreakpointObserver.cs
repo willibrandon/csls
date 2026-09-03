@@ -33,6 +33,7 @@ internal sealed partial class DapSession
         }
         catch (Exception exception) when (IsExpectedClosedTransportException(exception))
         {
+            return;
         }
     }
 
@@ -62,6 +63,7 @@ internal sealed partial class DapSession
         }
         catch (Exception exception) when (IsExpectedClosedTransportException(exception))
         {
+            return;
         }
     }
 
@@ -91,6 +93,7 @@ internal sealed partial class DapSession
         }
         catch (Exception exception) when (IsExpectedClosedTransportException(exception))
         {
+            return;
         }
     }
 }

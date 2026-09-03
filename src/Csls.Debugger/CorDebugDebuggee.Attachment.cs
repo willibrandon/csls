@@ -53,15 +53,18 @@ internal sealed partial class CorDebugDebuggee
         }
 
         DbgShimLibrary.VerifyPlatformSupport();
-        Process? process = null;
-        CorDebugManagedCallback? managedCallback = null;
-        CorDebugRuntimeStartupRegistration? registration = null;
+        using var processOwner = new DisposableOwner<Process>();
+        using var managedCallbackOwner = new DisposableOwner<CorDebugManagedCallback>();
+        using var registrationOwner =
+            new DisposableOwner<CorDebugRuntimeStartupRegistration>();
         nint corDebug = 0;
         nint debugProcess = 0;
         bool ownsActivationGate = false;
         try
         {
-            process = Process.GetProcessById(processId);
+            processOwner.Acquire(() => Process.GetProcessById(processId));
+            Process process = processOwner.Value
+                ?? throw new InvalidOperationException("The attached process was not acquired.");
             if (process.HasExited)
             {
                 throw new InvalidOperationException($"Process {processId} has already exited.");
@@ -71,7 +74,8 @@ internal sealed partial class CorDebugDebuggee
                 .ConfigureAwait(false);
             ownsActivationGate = true;
             _ = DbgShimRuntimeDiscovery.GetSingleRuntimePath(checked((uint)processId));
-            managedCallback = new CorDebugManagedCallback(
+            managedCallbackOwner.Acquire(() =>
+                new CorDebugManagedCallback(
                 actor,
                 sourceBreakpoints,
                 functionBreakpoints,
@@ -80,11 +84,17 @@ internal sealed partial class CorDebugDebuggee
                 targetBreakpointReached,
                 stepCompleted,
                 exceptionRaised,
-                evaluationCompleted);
-            registration = new CorDebugRuntimeStartupRegistration(
-                checked((uint)processId),
-                actor,
-                managedCallback);
+                evaluationCompleted));
+            CorDebugManagedCallback managedCallback = managedCallbackOwner.Value
+                ?? throw new InvalidOperationException("The managed callback was not created.");
+            registrationOwner.Acquire(() =>
+                new CorDebugRuntimeStartupRegistration(
+                    checked((uint)processId),
+                    actor,
+                    managedCallback));
+            CorDebugRuntimeStartupRegistration registration = registrationOwner.Value
+                ?? throw new InvalidOperationException(
+                    "The runtime-startup registration was not created.");
             CorDebugHResult.ThrowIfFailed(
                 DbgShimNativeMethods.RegisterForRuntimeStartup(
                     checked((uint)processId),
@@ -105,18 +115,15 @@ internal sealed partial class CorDebugDebuggee
             var result = new CorDebugDebuggee(
                 actor,
                 sourceBreakpoints,
-                managedCallback,
-                registration,
-                standardStreams: null,
-                process,
+                managedCallbackOwner,
+                registrationOwner,
+                standardStreamsOwner: null,
+                processOwner,
                 unixExitMonitor: null,
                 ownsProcess: false,
                 ownsRuntimeLease: true,
                 activation);
             ownsActivationGate = false;
-            managedCallback = null;
-            registration = null;
-            process = null;
             corDebug = 0;
             debugProcess = 0;
             return result;
@@ -132,10 +139,6 @@ internal sealed partial class CorDebugDebuggee
             {
                 await DetachRuntimeAsync(actor, corDebug, debugProcess).ConfigureAwait(false);
             }
-
-            registration?.Dispose();
-            managedCallback?.Dispose();
-            process?.Dispose();
         }
     }
 }

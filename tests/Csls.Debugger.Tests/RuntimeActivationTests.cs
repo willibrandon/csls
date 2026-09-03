@@ -55,7 +55,8 @@ public sealed class RuntimeActivationTests
             TestContext.CancellationToken).ConfigureAwait(false);
         Assert.AreEqual(DebugSessionState.Running, running.State);
         Assert.IsNotNull(running.ProcessId);
-        int processId = running.ProcessId.Value;
+        int processId = running.ProcessId
+            ?? throw new InvalidOperationException("The running target has no process identifier.");
         DebugSessionSnapshot terminated = await client
             .TerminateAsync(TestContext.CancellationToken).ConfigureAwait(false);
         Assert.AreEqual(DebugSessionState.Terminated, terminated.State);

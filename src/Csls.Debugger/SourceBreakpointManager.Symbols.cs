@@ -26,6 +26,8 @@ internal sealed partial class SourceBreakpointManager
             }
             catch (Exception exception) when (IsSymbolReadException(exception))
             {
+                System.Diagnostics.Debug.WriteLine(
+                    $"Could not enumerate symbols for module {module.Name}: {exception.Message}");
             }
 
             if (sources.Count >= MaximumSourceCount)
@@ -121,45 +123,41 @@ internal sealed partial class SourceBreakpointManager
     {
         try
         {
-            DebugSymbolReader? symbols = OpenSymbols(module);
-            try
+            using DebugSymbolReader? symbols = OpenSymbols(module);
+            if (symbols is null)
             {
-                if (symbols is null)
+                return;
+            }
+
+            foreach (ManagedSequencePoint point in symbols.GetSequencePoints(methodToken: null))
+            {
+                if (!IsMatchingLocation(
+                    point,
+                    sourcePath,
+                    startLine,
+                    startColumn,
+                    endLine,
+                    endColumn))
+                {
+                    continue;
+                }
+
+                _ = locations.Add(new DebugBreakpointLocation(
+                    point.StartLine,
+                    point.StartColumn,
+                    point.EndLine,
+                    point.EndColumn));
+                if (locations.Count >= MaximumBreakpointLocationCount)
                 {
                     return;
                 }
-
-                foreach (ManagedSequencePoint point in symbols.GetSequencePoints(methodToken: null))
-                {
-                    if (!IsMatchingLocation(
-                        point,
-                        sourcePath,
-                        startLine,
-                        startColumn,
-                        endLine,
-                        endColumn))
-                    {
-                        continue;
-                    }
-
-                    _ = locations.Add(new DebugBreakpointLocation(
-                        point.StartLine,
-                        point.StartColumn,
-                        point.EndLine,
-                        point.EndColumn));
-                    if (locations.Count >= MaximumBreakpointLocationCount)
-                    {
-                        return;
-                    }
-                }
-            }
-            finally
-            {
-                symbols?.Dispose();
             }
         }
         catch (Exception exception) when (IsSymbolReadException(exception))
         {
+            System.Diagnostics.Debug.WriteLine(
+                $"Could not enumerate breakpoint locations for module {module.Name}: " +
+                    exception.Message);
         }
     }
 

@@ -111,6 +111,7 @@ internal sealed partial class DebuggerTerminalState : IAsyncDisposable
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
+            return;
         }
         catch (Exception exception) when (exception is
             IOException or

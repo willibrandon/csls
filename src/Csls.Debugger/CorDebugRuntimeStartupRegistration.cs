@@ -14,6 +14,7 @@ internal sealed class CorDebugRuntimeStartupRegistration : IDisposable
     private readonly uint _processId;
     private readonly DebuggerSessionActor _actor;
     private readonly CorDebugManagedCallback _managedCallback;
+    private readonly Lock _registrationGate = new();
     private GCHandle _context;
     private DbgShimRegistrationHandle? _unregisterHandle;
     private int _disposed;
@@ -56,12 +57,21 @@ internal sealed class CorDebugRuntimeStartupRegistration : IDisposable
     internal void SetUnregisterToken(nint unregisterToken)
     {
         ArgumentOutOfRangeException.ThrowIfZero(unregisterToken);
-        var handle = new DbgShimRegistrationHandle(unregisterToken);
-        if (Interlocked.CompareExchange(ref _unregisterHandle, handle, null) is not null)
+        lock (_registrationGate)
         {
-            handle.Dispose();
-            throw new InvalidOperationException(
-                "A runtime-startup registration token was already recorded.");
+            if (_disposed != 0)
+            {
+                using var abandonedHandle = new DbgShimRegistrationHandle(unregisterToken);
+                throw new ObjectDisposedException(nameof(CorDebugRuntimeStartupRegistration));
+            }
+
+            if (_unregisterHandle is not null)
+            {
+                throw new InvalidOperationException(
+                    "A runtime-startup registration token was already recorded.");
+            }
+
+            _unregisterHandle = new DbgShimRegistrationHandle(unregisterToken);
         }
     }
 
@@ -76,12 +86,17 @@ internal sealed class CorDebugRuntimeStartupRegistration : IDisposable
     /// <inheritdoc />
     public void Dispose()
     {
-        if (Interlocked.Exchange(ref _disposed, 1) != 0)
+        lock (_registrationGate)
         {
-            return;
-        }
+            if (_disposed != 0)
+            {
+                return;
+            }
 
-        Interlocked.Exchange(ref _unregisterHandle, null)?.Dispose();
+            _disposed = 1;
+            _unregisterHandle?.Dispose();
+            _unregisterHandle = null;
+        }
 
         if (_context.IsAllocated)
         {

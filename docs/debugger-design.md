@@ -163,9 +163,16 @@ interface for the selected runtime. Architecture and permission mismatches are
 reported before partial session activation where the platform exposes enough data.
 
 On Unix, dbgshim inherits the host's process-wide standard handles, so launch is
-serialized through a short process-wide gate that redirects all three descriptors
-only for the `CreateProcessForLaunch` call and restores them in nested `finally`
-blocks. On Windows, `STARTUPINFOEX` assigns all three standard handles and
+serialized through a short process-wide gate. Before protocol processing starts,
+the worker duplicates its output and diagnostic descriptors into stable
+close-on-exec handles. The concurrent private-control reader also receives a stable
+input descriptor; the sequential DAP reader retains its cancellation-aware standard
+input because it cannot read during launch. Launch redirects descriptors zero
+through two only for the `CreateProcessForLaunch` call, marks its saved restoration
+handles close-on-exec, and restores them in nested `finally` blocks. Protocol writes
+therefore remain on the stable handles during launch, and neither the stable nor
+restoration handles can enter the target. On Windows, `STARTUPINFOEX` assigns all
+three standard handles and
 `PROC_THREAD_ATTRIBUTE_HANDLE_LIST` prevents every unrelated inheritable handle
 from entering the target. The parent owns dedicated anonymous-pipe endpoints and
 closes every local child endpoint immediately after launch. Target output therefore

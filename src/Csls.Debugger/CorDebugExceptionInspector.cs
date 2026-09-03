@@ -117,7 +117,6 @@ internal static class CorDebugExceptionInspector
             return "<unknown exception>";
         }
 
-        TypeDefinition definition = reader.GetTypeDefinition((TypeDefinitionHandle)handle);
         return GetMetadataTypeName(reader, (TypeDefinitionHandle)handle);
     }
 

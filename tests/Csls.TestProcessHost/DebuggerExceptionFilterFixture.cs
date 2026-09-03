@@ -16,8 +16,9 @@ internal static class DebuggerExceptionFilterFixture
         {
             throw new ArgumentException("base exception filter fixture");
         }
-        catch (ArgumentException)
+        catch (ArgumentException exception)
         {
+            System.Diagnostics.Debug.Assert(exception.Message.Length > 0);
         }
 
         try

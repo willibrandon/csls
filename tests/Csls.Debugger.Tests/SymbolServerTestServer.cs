@@ -79,9 +79,11 @@ internal sealed class SymbolServerTestServer : IAsyncDisposable
         }
         catch (OperationCanceledException) when (_lifetime.IsCancellationRequested)
         {
+            return;
         }
         catch (SocketException) when (_lifetime.IsCancellationRequested)
         {
+            return;
         }
     }
 
@@ -95,9 +97,14 @@ internal sealed class SymbolServerTestServer : IAsyncDisposable
             leaveOpen: true);
         string requestLine = await reader.ReadLineAsync(cancellationToken).ConfigureAwait(false)
             ?? string.Empty;
-        while (!string.IsNullOrEmpty(
-            await reader.ReadLineAsync(cancellationToken).ConfigureAwait(false)))
+        while (true)
         {
+            string? headerLine = await reader.ReadLineAsync(cancellationToken)
+                .ConfigureAwait(false);
+            if (string.IsNullOrEmpty(headerLine))
+            {
+                break;
+            }
         }
 
         _ = Interlocked.Increment(ref _requestCount);

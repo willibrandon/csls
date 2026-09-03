@@ -231,7 +231,9 @@ public sealed partial class DapAttachTests
         Assert.IsNotNull(
             selectedFrame,
             $"No attached thread exposed the in-memory source frame. {string.Join(' ', stackResponses)}");
-        JsonElement frame = selectedFrame.Value;
+        JsonElement frame = selectedFrame
+            ?? throw new InvalidOperationException(
+                "No attached thread exposed the in-memory source frame.");
         int frameLine = frame.GetProperty("line").GetInt32();
         Assert.IsGreaterThanOrEqualTo(waitStartLine, frameLine);
         Assert.IsLessThanOrEqualTo(waitEndLine, frameLine);

@@ -26,9 +26,10 @@ internal static class ManagedIlOpCodeCatalog
         [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicFields)] Type type)
     {
         var result = new Dictionary<ushort, OpCode>();
-        foreach (FieldInfo field in type.GetFields(BindingFlags.Public | BindingFlags.Static))
+        foreach (FieldInfo field in type.GetFields(BindingFlags.Public | BindingFlags.Static)
+            .Where(static field => field.FieldType == typeof(OpCode)))
         {
-            if (field.FieldType == typeof(OpCode) && field.GetValue(null) is OpCode opCode)
+            if (field.GetValue(null) is OpCode opCode)
             {
                 result.Add(unchecked((ushort)opCode.Value), opCode);
             }

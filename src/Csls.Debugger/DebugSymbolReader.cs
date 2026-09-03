@@ -17,18 +17,24 @@ internal sealed class DebugSymbolReader : IDisposable
     private readonly PortablePdbReader? _portable;
     private readonly WindowsPdbReader? _windows;
 
-    private DebugSymbolReader(PortablePdbReader portable)
+    private DebugSymbolReader(DisposableOwner<PortablePdbReader> owner)
     {
+        PortablePdbReader portable = owner.Value
+            ?? throw new InvalidOperationException("No Portable PDB reader is owned.");
         _portable = portable;
         StorageKind = portable.StorageKind;
         Path = portable.Path;
+        _ = owner.Detach();
     }
 
-    private DebugSymbolReader(WindowsPdbReader windows)
+    private DebugSymbolReader(DisposableOwner<WindowsPdbReader> owner)
     {
+        WindowsPdbReader windows = owner.Value
+            ?? throw new InvalidOperationException("No Windows PDB reader is owned.");
         _windows = windows;
         StorageKind = DebugSymbolStorageKind.Windows;
         Path = windows.Path;
+        _ = owner.Detach();
     }
 
     /// <summary>
@@ -51,44 +57,32 @@ internal sealed class DebugSymbolReader : IDisposable
         string modulePath,
         string? symbolPath = null)
     {
-        PortablePdbReader? portable = null;
-        WindowsPdbReader? windows = null;
-        try
+        using var portableOwner = new DisposableOwner<PortablePdbReader>();
+        portableOwner.Acquire(() => TryOpenPortable(modulePath, symbolPath));
+        if (portableOwner.Value is not null)
         {
-            portable = TryOpenPortable(modulePath, symbolPath);
-            if (portable is not null)
-            {
-                var result = new DebugSymbolReader(portable);
-                portable = null;
-                return result;
-            }
-
-            if (!OperatingSystem.IsWindows())
-            {
-                return null;
-            }
-
-            string? candidate = symbolPath ?? GetAdjacentSymbolPath(modulePath);
-            if (candidate is null)
-            {
-                return null;
-            }
-
-            windows = WindowsPdbReader.TryOpen(modulePath, candidate);
-            if (windows is null)
-            {
-                return null;
-            }
-
-            var windowsResult = new DebugSymbolReader(windows);
-            windows = null;
-            return windowsResult;
+            return new DebugSymbolReader(portableOwner);
         }
-        finally
+
+        if (!OperatingSystem.IsWindows())
         {
-            portable?.Dispose();
-            windows?.Dispose();
+            return null;
         }
+
+        string? candidate = symbolPath ?? GetAdjacentSymbolPath(modulePath);
+        if (candidate is null)
+        {
+            return null;
+        }
+
+        using var windowsOwner = new DisposableOwner<WindowsPdbReader>();
+        windowsOwner.Acquire(() => WindowsPdbReader.TryOpen(modulePath, candidate));
+        if (windowsOwner.Value is null)
+        {
+            return null;
+        }
+
+        return new DebugSymbolReader(windowsOwner);
     }
 
     /// <summary>
@@ -98,23 +92,14 @@ internal sealed class DebugSymbolReader : IDisposable
     /// <returns>An owned symbol reader, or null when the image is not a Portable PDB.</returns>
     internal static DebugSymbolReader? TryOpen(byte[] image)
     {
-        PortablePdbReader? portable = null;
-        try
+        using var owner = new DisposableOwner<PortablePdbReader>();
+        owner.Acquire(() => PortablePdbReader.TryOpen(image));
+        if (owner.Value is null)
         {
-            portable = PortablePdbReader.TryOpen(image);
-            if (portable is null)
-            {
-                return null;
-            }
+            return null;
+        }
 
-            var result = new DebugSymbolReader(portable);
-            portable = null;
-            return result;
-        }
-        finally
-        {
-            portable?.Dispose();
-        }
+        return new DebugSymbolReader(owner);
     }
 
     /// <summary>
@@ -222,9 +207,8 @@ internal sealed class DebugSymbolReader : IDisposable
 
         MethodDefinitionHandle method = MetadataTokens.MethodDefinitionHandle(rowNumber);
         var result = new Dictionary<int, string>();
-        foreach (LocalScopeHandle scopeHandle in reader.GetLocalScopes(method))
+        foreach (LocalScope scope in reader.GetLocalScopes(method).Select(reader.GetLocalScope))
         {
-            LocalScope scope = reader.GetLocalScope(scopeHandle);
             uint start = checked((uint)scope.StartOffset);
             uint end = checked((uint)(scope.StartOffset + scope.Length));
             if (ilOffset < start || ilOffset >= end)
@@ -232,9 +216,9 @@ internal sealed class DebugSymbolReader : IDisposable
                 continue;
             }
 
-            foreach (LocalVariableHandle variableHandle in scope.GetLocalVariables())
+            foreach (LocalVariable variable in scope.GetLocalVariables()
+                .Select(reader.GetLocalVariable))
             {
-                LocalVariable variable = reader.GetLocalVariable(variableHandle);
                 result[variable.Index] = reader.GetString(variable.Name);
             }
         }

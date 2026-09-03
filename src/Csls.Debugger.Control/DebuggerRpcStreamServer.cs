@@ -67,7 +67,8 @@ public static class DebuggerRpcStreamServer
             SynchronizationContext = null
         };
         DebuggerControlMethodRegistry.Register(rpc, target);
-        DebuggerControlNotificationPump? notifications = target is DebuggerControlService service
+        using DebuggerControlNotificationPump? notifications =
+            target is DebuggerControlService service
             ? new DebuggerControlNotificationPump(service, rpc)
             : null;
         Task? notificationTask = notifications?.RunAsync();
@@ -88,7 +89,7 @@ public static class DebuggerRpcStreamServer
         }
         finally
         {
-            notifications?.Dispose();
+            notifications?.Complete();
             if (notificationTask is not null)
             {
                 await notificationTask.ConfigureAwait(

@@ -67,8 +67,10 @@ public sealed partial class DebuggerRpcTests
             .ConfigureAwait(false);
         Assert.AreEqual("exception", stopped.StopReason);
         Assert.IsNotNull(stopped.StoppedThreadId);
+        int stoppedThreadId = stopped.StoppedThreadId
+            ?? throw new InvalidOperationException("The target did not report a stopped thread.");
         DebugExceptionInfo exception = await client.GetExceptionInfoAsync(
-            new DebugExceptionInfoRequest(stopped.StoppedThreadId.Value),
+            new DebugExceptionInfoRequest(stoppedThreadId),
             cancellationToken).ConfigureAwait(false);
         Assert.AreEqual("System.InvalidOperationException", exception.ExceptionId);
         Assert.AreEqual(DebugExceptionBreakMode.Thrown, exception.BreakMode);

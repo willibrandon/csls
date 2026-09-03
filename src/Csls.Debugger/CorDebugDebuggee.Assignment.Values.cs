@@ -20,14 +20,13 @@ internal sealed partial class CorDebugDebuggee
             out nint generic))
         {
             _ = ComAbi.Release(generic);
-            object? scalar = ManagedExpressionValueFactory.RequireScalar(source);
             ManagedValueDisplay destinationDisplay = FormatRuntimeValue(destination);
             source = ManagedPrimitiveConversionEvaluator.ConvertForAssignment(
                 source,
                 destinationDisplay.Type,
                 language,
                 sourceIsContextualLiteral);
-            scalar = ManagedExpressionValueFactory.RequireScalar(source);
+            object? scalar = ManagedExpressionValueFactory.RequireScalar(source);
             if (scalar is null || scalar is string ||
                 !string.Equals(
                     destinationDisplay.Type,

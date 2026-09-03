@@ -102,6 +102,11 @@ public sealed partial class DapSessionTests
         using JsonDocument breakpoint = await client
             .ReadMessageAsync(TestContext.CancellationToken)
             .ConfigureAwait(false);
+        AssertResponse(
+            breakpoint.RootElement,
+            breakpointSequence,
+            "setBreakpoints",
+            success: true);
         int configurationSequence = await client.SendRequestAsync(
             "configurationDone",
             WriteEmptyObject,

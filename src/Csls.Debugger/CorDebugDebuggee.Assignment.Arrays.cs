@@ -60,9 +60,7 @@ internal sealed partial class CorDebugDebuggee
             element = RequirePointer(
                 Volatile.Read(ref *elementAddress),
                 "ICorDebugArrayValue.GetElement");
-            nint resolved = element;
-            element = 0;
-            return resolved;
+            return element;
         }
         catch (OverflowException exception)
         {

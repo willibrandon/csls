@@ -193,12 +193,11 @@ internal static class ManagedSourceLinkResolver
     {
         int pathWildcard = pattern.IndexOf('*', StringComparison.Ordinal);
         int uriWildcard = uriPattern.IndexOf('*', StringComparison.Ordinal);
-        return pattern.Length > 0 &&
-            (pathWildcard < 0 ||
-                pathWildcard == pattern.Length - 1 &&
-                pattern.LastIndexOf('*') == pathWildcard) &&
-            (pathWildcard < 0
-                ? uriWildcard < 0
-                : uriWildcard >= 0 && uriPattern.LastIndexOf('*') == uriWildcard);
+        bool pathWildcardIsValid = pathWildcard < 0 ||
+            pathWildcard == pattern.Length - 1 && pattern.LastIndexOf('*') == pathWildcard;
+        bool uriWildcardIsValid = pathWildcard < 0
+            ? uriWildcard < 0
+            : uriWildcard >= 0 && uriPattern.LastIndexOf('*') == uriWildcard;
+        return pattern.Length > 0 && pathWildcardIsValid && uriWildcardIsValid;
     }
 }

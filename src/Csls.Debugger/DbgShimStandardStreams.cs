@@ -13,6 +13,8 @@ internal sealed partial class DbgShimStandardStreams : IAsyncDisposable
     private const int StandardInputDescriptor = 0;
     private const int StandardOutputDescriptor = 1;
     private const int StandardErrorDescriptor = 2;
+    private const int SetFileDescriptorFlags = 2;
+    private const int CloseOnExec = 1;
     private static readonly SemaphoreSlim s_launchGate = new(1, 1);
     private readonly AnonymousPipeServerStream _standardInput =
         new(PipeDirection.Out, HandleInheritability.Inheritable);
@@ -107,12 +109,9 @@ internal sealed partial class DbgShimStandardStreams : IAsyncDisposable
         int savedError = -1;
         try
         {
-            savedInput = Duplicate(StandardInputDescriptor);
-            ThrowIfUnixFailed(savedInput, "dup(stdin)");
-            savedOutput = Duplicate(StandardOutputDescriptor);
-            ThrowIfUnixFailed(savedOutput, "dup(stdout)");
-            savedError = Duplicate(StandardErrorDescriptor);
-            ThrowIfUnixFailed(savedError, "dup(stderr)");
+            savedInput = DuplicateCloseOnExec(StandardInputDescriptor, "stdin");
+            savedOutput = DuplicateCloseOnExec(StandardOutputDescriptor, "stdout");
+            savedError = DuplicateCloseOnExec(StandardErrorDescriptor, "stderr");
             DuplicateTo(_standardInput.ClientSafePipeHandle.DangerousGetHandle(), StandardInputDescriptor);
             DuplicateTo(_standardOutput.ClientSafePipeHandle.DangerousGetHandle(), StandardOutputDescriptor);
             DuplicateTo(_standardError.ClientSafePipeHandle.DangerousGetHandle(), StandardErrorDescriptor);
@@ -153,6 +152,20 @@ internal sealed partial class DbgShimStandardStreams : IAsyncDisposable
     {
         int result = DuplicateDescriptor(checked((int)source), destination);
         ThrowIfUnixFailed(result, $"dup2({source}, {destination})");
+    }
+
+    private static int DuplicateCloseOnExec(int descriptor, string name)
+    {
+        int duplicate = Duplicate(descriptor);
+        ThrowIfUnixFailed(duplicate, $"dup({name})");
+        if (SetDescriptorFlags(duplicate, SetFileDescriptorFlags, CloseOnExec) >= 0)
+        {
+            return duplicate;
+        }
+
+        int error = Marshal.GetLastPInvokeError();
+        _ = CloseDescriptor(duplicate);
+        throw new Win32Exception(error, $"fcntl({name}, F_SETFD, FD_CLOEXEC)");
     }
 
     private static void RestoreUnixDescriptor(int saved, int destination)
@@ -200,6 +213,10 @@ internal sealed partial class DbgShimStandardStreams : IAsyncDisposable
     [LibraryImport("libc", EntryPoint = "dup2", SetLastError = true)]
     [DefaultDllImportSearchPaths(DllImportSearchPath.SafeDirectories)]
     private static partial int DuplicateDescriptor(int source, int destination);
+
+    [LibraryImport("libc", EntryPoint = "fcntl", SetLastError = true)]
+    [DefaultDllImportSearchPaths(DllImportSearchPath.SafeDirectories)]
+    private static partial int SetDescriptorFlags(int descriptor, int command, int flags);
 
     [LibraryImport("libc", EntryPoint = "close", SetLastError = true)]
     [DefaultDllImportSearchPaths(DllImportSearchPath.SafeDirectories)]

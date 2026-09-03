@@ -89,10 +89,12 @@ internal sealed partial class CorDebugDebuggee
                         generation);
                 }
             }
-            catch (InvalidOperationException) when (TryGetQualifiedTypeName(
+            catch (InvalidOperationException exception) when (TryGetQualifiedTypeName(
                 operation.Children[0],
                 out _))
             {
+                System.Diagnostics.Debug.WriteLine(
+                    $"The invocation receiver will be bound as a static type: {exception.Message}");
             }
 
             for (int index = 0; index < suppliedArguments.Length; index++)

@@ -10,10 +10,9 @@ namespace Csls.Mcp.Worker;
 internal sealed partial class McpDebuggerSession
 {
     private readonly Lock _agentControlGate = new();
-    private Timer? _agentControlExpirationTimer;
+    private readonly Timer _agentControlExpirationTimer;
     private DateTimeOffset? _agentControlExpiresAtUtc;
     private TimeSpan _agentControlDuration;
-    private long _agentControlGrantId;
     private long _agentControlGrantedTimestamp;
 
     /// <summary>
@@ -36,17 +35,7 @@ internal sealed partial class McpDebuggerSession
                 _agentControlGrantedTimestamp = Stopwatch.GetTimestamp();
                 _agentControlDuration = duration;
                 _agentControlExpiresAtUtc = DateTimeOffset.UtcNow.Add(duration);
-                long grantId = _agentControlGrantId;
-                _agentControlExpirationTimer = new Timer(
-                    static state =>
-                    {
-                        (McpDebuggerSession Session, long GrantId) expiration =
-                            ((McpDebuggerSession, long))state!;
-                        expiration.Session.ExpireAgentControl(expiration.GrantId);
-                    },
-                    (this, grantId),
-                    duration,
-                    Timeout.InfiniteTimeSpan);
+                _ = _agentControlExpirationTimer.Change(duration, Timeout.InfiniteTimeSpan);
             }
         }
 
@@ -125,20 +114,30 @@ internal sealed partial class McpDebuggerSession
 
     private void ClearAgentControl()
     {
-        _agentControlGrantId++;
-        _agentControlExpirationTimer?.Dispose();
-        _agentControlExpirationTimer = null;
+        _ = _agentControlExpirationTimer.Change(
+            Timeout.InfiniteTimeSpan,
+            Timeout.InfiniteTimeSpan);
         _agentControlExpiresAtUtc = null;
         _agentControlDuration = TimeSpan.Zero;
         _agentControlGrantedTimestamp = 0;
     }
 
-    private void ExpireAgentControl(long grantId)
+    private void ExpireAgentControl()
     {
         lock (_agentControlGate)
         {
-            if (grantId != _agentControlGrantId || _agentControlExpiresAtUtc is null)
+            if (_agentControlExpiresAtUtc is null)
             {
+                return;
+            }
+
+            TimeSpan remaining = _agentControlDuration -
+                Stopwatch.GetElapsedTime(_agentControlGrantedTimestamp);
+            if (remaining > TimeSpan.Zero)
+            {
+                _ = _agentControlExpirationTimer.Change(
+                    remaining,
+                    Timeout.InfiniteTimeSpan);
                 return;
             }
 

@@ -83,6 +83,7 @@ internal sealed partial class McpDebuggerSession
         lock (_agentControlGate)
         {
             ClearAgentControl();
+            _agentControlExpirationTimer.Dispose();
         }
 
         await _operationGate.WaitAsync(CancellationToken.None).ConfigureAwait(false);
@@ -105,7 +106,7 @@ internal sealed partial class McpDebuggerSession
         Process process,
         ValueTask<string> diagnostics)
     {
-        try
+        using (process)
         {
             if (!process.HasExited)
             {
@@ -127,10 +128,6 @@ internal sealed partial class McpDebuggerSession
                 throw new InvalidDataException(
                     $"Debugger worker exited with code {process.ExitCode}: {diagnosticText}");
             }
-        }
-        finally
-        {
-            process.Dispose();
         }
     }
 

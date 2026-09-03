@@ -84,13 +84,11 @@ internal sealed partial class InstructionBreakpointManager
 
             _ = ComAbi.Release(loadedModule.Identity);
             _ = ComAbi.Release(loadedModule.Pointer);
-            foreach (InstructionBreakpointDefinition definition in affected)
+            foreach (InstructionBreakpointDefinition definition in affected.Where(
+                static definition => definition.BindingCount == 0))
             {
-                if (definition.BindingCount == 0)
-                {
-                    await _notifyChanged(definition.ToInfo(), cancellationToken)
-                        .ConfigureAwait(false);
-                }
+                await _notifyChanged(definition.ToInfo(), cancellationToken)
+                    .ConfigureAwait(false);
             }
         }
         finally
