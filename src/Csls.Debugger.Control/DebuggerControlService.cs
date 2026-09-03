@@ -30,43 +30,6 @@ public sealed partial class DebuggerControlService :
     }
 
     /// <inheritdoc />
-    public async Task<DebugSessionSnapshot> LaunchAsync(
-        DebugLaunchRequest request,
-        CancellationToken cancellationToken)
-    {
-        ArgumentNullException.ThrowIfNull(request);
-        await _session.LaunchManagedAsync(
-            new DebuggeeLaunchOptions
-            {
-                Program = request.Program,
-                WorkingDirectory = request.WorkingDirectory,
-                Arguments = request.Arguments,
-                Environment = request.Environment,
-                RuntimeHostPath = request.RuntimeHostPath,
-                SourceFileMap = request.SourceFileMap,
-                SourceLinkOptions = request.SourceLinkOptions,
-                SuppressJitOptimizations = request.SuppressJitOptimizations
-            },
-            cancellationToken).ConfigureAwait(false);
-        return GetSnapshot();
-    }
-
-    /// <inheritdoc />
-    public async Task<DebugSessionSnapshot> AttachAsync(
-        DebugAttachRequest request,
-        CancellationToken cancellationToken)
-    {
-        ArgumentNullException.ThrowIfNull(request);
-        await _session.ConfigureSourceOptionsAsync(
-            request.SourceFileMap,
-            request.SourceLinkOptions,
-            cancellationToken).ConfigureAwait(false);
-        await _session.AttachManagedAsync(request.ProcessId, cancellationToken)
-            .ConfigureAwait(false);
-        return GetSnapshot();
-    }
-
-    /// <inheritdoc />
     public Task<IReadOnlyList<DebugSourceBreakpointInfo>> SetSourceBreakpointsAsync(
         DebugSourceBreakpointSetRequest request,
         CancellationToken cancellationToken)

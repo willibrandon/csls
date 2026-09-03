@@ -47,4 +47,9 @@ public sealed class DebugLaunchRequest
     /// Gets whether the debugger requests unoptimized JIT code for symbol-bearing modules.
     /// </summary>
     public bool SuppressJitOptimizations { get; init; }
+
+    /// <summary>
+    /// Gets whether source stepping excludes non-user managed code.
+    /// </summary>
+    public bool JustMyCode { get; init; } = true;
 }

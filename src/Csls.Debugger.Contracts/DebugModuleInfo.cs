@@ -10,6 +10,8 @@ namespace Csls.Debugger.Contracts;
 /// <param name="SymbolPath">The associated Portable PDB path when available.</param>
 /// <param name="IsOptimized">Whether the runtime permits optimized JIT code, when known.</param>
 /// <param name="OptimizationDiagnostic">A bounded JIT-policy diagnostic when one exists.</param>
+/// <param name="IsUserCode">Whether the module is classified as user code, when known.</param>
+/// <param name="JustMyCodeDiagnostic">A bounded JMC-policy diagnostic when one exists.</param>
 public sealed record DebugModuleInfo(
     int Id,
     string Name,
@@ -17,4 +19,6 @@ public sealed record DebugModuleInfo(
     DebugModuleSymbolKind SymbolKind,
     string? SymbolPath,
     bool? IsOptimized,
-    string? OptimizationDiagnostic);
+    string? OptimizationDiagnostic,
+    bool? IsUserCode,
+    string? JustMyCodeDiagnostic);

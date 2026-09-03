@@ -51,4 +51,19 @@ internal sealed class CorDebugLoadedModule
     /// Gets a bounded diagnostic when the requested JIT policy could not be established.
     /// </summary>
     internal string? OptimizationDiagnostic { get; init; }
+
+    /// <summary>
+    /// Gets or sets whether the module is classified as user code.
+    /// </summary>
+    internal bool? IsUserCode { get; set; }
+
+    /// <summary>
+    /// Gets or sets a bounded diagnostic when runtime JMC configuration fails.
+    /// </summary>
+    internal string? JustMyCodeDiagnostic { get; set; }
+
+    /// <summary>
+    /// Gets or sets whether runtime JMC configuration has completed for this module.
+    /// </summary>
+    internal bool JustMyCodeConfigured { get; set; }
 }

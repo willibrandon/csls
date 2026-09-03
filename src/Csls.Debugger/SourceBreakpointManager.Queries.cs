@@ -30,6 +30,7 @@ internal sealed partial class SourceBreakpointManager
         foreach (CorDebugLoadedModule module in modules)
         {
             EnsureSymbolsInspected(module);
+            ClassifyUserCode(module);
             result.Add(new DebugModuleInfo(
                 module.Id,
                 module.Path is null
@@ -39,7 +40,9 @@ internal sealed partial class SourceBreakpointManager
                 module.SymbolKind,
                 module.SymbolPath,
                 module.IsOptimized,
-                module.OptimizationDiagnostic));
+                module.OptimizationDiagnostic,
+                module.IsUserCode,
+                module.JustMyCodeDiagnostic));
         }
 
         return result;

@@ -86,6 +86,14 @@ The DAP `modules` response reports `isOptimized` when CoreCLR exposes the state;
 if the runtime rejects the policy or cannot report it, `symbolStatus` includes a
 bounded diagnostic instead of claiming that suppression succeeded.
 
+`justMyCode` defaults to `true` for launch and attach. Before the first source
+step, the debugger marks symbol-bearing, unoptimized modules as user code and
+enables the CoreCLR JMC stepper so framework, symbol-free, and optimized modules
+are skipped. Later-loaded modules receive the same policy. Set `justMyCode` to
+`false` to disable runtime JMC filtering. The `modules` response reports the
+effective classification as `isUserCode`; a Release module becomes user code
+when successful JIT optimization suppression makes it debuggable.
+
 ## Runtime and symbol requirements
 
 The target must run CoreCLR and match the host architecture. Source breakpoints,

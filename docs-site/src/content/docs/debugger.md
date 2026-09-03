@@ -53,6 +53,12 @@ module is loading. The `modules` response reports `isOptimized` when the runtime
 can determine it and appends a diagnostic to `symbolStatus` when a request could
 not be honored.
 
+`justMyCode` defaults to `true` for launch and attach. The first source step
+classifies modules with validated symbols and unoptimized JIT policy as user
+code, then enables CoreCLR JMC stepping. Modules loaded later receive the same
+policy. Set the option to `false` to disable JMC filtering. Module inspection
+reports the effective classification through `isUserCode`.
+
 ## Security and process ownership
 
 - Target commands are executed directly without a command shell.

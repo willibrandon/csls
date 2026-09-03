@@ -77,7 +77,9 @@ public sealed partial class DebuggerSession
         CancellationToken cancellationToken)
     {
         _sourceBreakpoints.SetSourceOptions(options.SourceFileMap, options.SourceLinkOptions);
-        _sourceBreakpoints.SetRuntimeOptions(options.SuppressJitOptimizations);
+        _sourceBreakpoints.SetRuntimeOptions(
+            options.SuppressJitOptimizations,
+            options.JustMyCode);
         return BeginLaunchCoreAsync(cancellationToken);
     }
 

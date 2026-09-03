@@ -1,3 +1,4 @@
+using Csls.Debugger.Contracts;
 using Csls.Debugger.Interop;
 
 namespace Csls.Debugger;
@@ -23,16 +24,23 @@ internal sealed partial class SourceBreakpointManager
         try
         {
             using var symbols = PortablePdbReader.TryOpen(modulePath);
+            module.SymbolsInspected = true;
             if (symbols is null)
             {
                 return;
             }
+
+            module.SymbolKind = symbols.StorageKind == PortablePdbStorageKind.Embedded
+                ? DebugModuleSymbolKind.EmbeddedPortablePdb
+                : DebugModuleSymbolKind.PortablePdb;
+            module.SymbolPath = symbols.Path;
 
             locations = ResolveLocations(symbols.Metadata, definitions);
         }
         catch (Exception exception) when (
             exception is IOException or UnauthorizedAccessException or BadImageFormatException)
         {
+            module.SymbolsInspected = true;
             return;
         }
 

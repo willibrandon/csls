@@ -19,6 +19,8 @@ internal sealed partial class SourceBreakpointManager : IDisposable
     private int _nextBreakpointId;
     private int _nextModuleId;
     private bool _suppressJitOptimizations;
+    private bool _justMyCode = true;
+    private bool _steppingPolicyActivated;
     private int _disposed;
 
     /// <summary>
@@ -144,6 +146,11 @@ internal sealed partial class SourceBreakpointManager : IDisposable
             _ = ComAbi.Release(identity);
             _ = ComAbi.Release(module);
             return;
+        }
+
+        if (_steppingPolicyActivated)
+        {
+            ConfigureJustMyCode(loadedModule);
         }
 
         foreach (List<SourceBreakpointDefinition> definitions in _definitions.Values)

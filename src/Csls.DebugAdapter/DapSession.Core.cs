@@ -17,7 +17,7 @@ internal sealed partial class DapSession : IDebuggerSessionObserver, IAsyncDispo
     private Request? _pendingTargetRequest;
     private Request? _pendingConfigurationRequest;
     private DapLaunchConfiguration? _pendingLaunch;
-    private int? _pendingAttachProcessId;
+    private DapAttachConfiguration? _pendingAttach;
     private string _startMethod = "launch";
     private bool _terminateDebuggeeByDefault = true;
     private bool _clientLinesStartAtOne = true;
@@ -99,7 +99,7 @@ internal sealed partial class DapSession : IDebuggerSessionObserver, IAsyncDispo
         _pendingTargetRequest = null;
         _pendingConfigurationRequest = null;
         _pendingLaunch = null;
-        _pendingAttachProcessId = null;
+        _pendingAttach = null;
     }
 
     private bool IsProtocolClosed => Volatile.Read(ref _protocolClosed) != 0;

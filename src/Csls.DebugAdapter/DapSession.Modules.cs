@@ -68,6 +68,11 @@ internal sealed partial class DapSession
                         writer.WriteBoolean("isOptimized", isOptimized);
                     }
 
+                    if (module.IsUserCode is bool isUserCode)
+                    {
+                        writer.WriteBoolean("isUserCode", isUserCode);
+                    }
+
                     writer.WriteString("symbolStatus", GetModuleStatus(module));
                     if (module.SymbolPath is not null)
                     {
@@ -91,8 +96,13 @@ internal sealed partial class DapSession
             DebugModuleSymbolKind.EmbeddedPortablePdb => "Embedded Portable PDB loaded.",
             _ => "Symbols not found."
         };
-        return module.OptimizationDiagnostic is null
-            ? symbolStatus
-            : $"{symbolStatus} {module.OptimizationDiagnostic}";
+        return string.Concat(
+            symbolStatus,
+            module.OptimizationDiagnostic is null
+                ? null
+                : $" {module.OptimizationDiagnostic}",
+            module.JustMyCodeDiagnostic is null
+                ? null
+                : $" {module.JustMyCodeDiagnostic}");
     }
 }

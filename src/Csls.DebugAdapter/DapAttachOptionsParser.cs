@@ -8,11 +8,11 @@ namespace Csls.DebugAdapter;
 internal static class DapAttachOptionsParser
 {
     /// <summary>
-    /// Parses the required positive operating-system process identifier.
+    /// Parses the required process identifier and optional runtime behavior.
     /// </summary>
     /// <param name="arguments">The DAP attach arguments.</param>
-    /// <returns>The validated process identifier.</returns>
-    internal static int Parse(JsonElement arguments)
+    /// <returns>The validated attach configuration.</returns>
+    internal static DapAttachConfiguration Parse(JsonElement arguments)
     {
         if (arguments.ValueKind != JsonValueKind.Object ||
             !arguments.TryGetProperty("processId", out JsonElement processIdValue) ||
@@ -23,6 +23,8 @@ internal static class DapAttachOptionsParser
                 "The attach request requires a positive integer processId.");
         }
 
-        return processId;
+        return new DapAttachConfiguration(
+            processId,
+            DapBooleanOptionParser.Get(arguments, "justMyCode", defaultValue: true));
     }
 }

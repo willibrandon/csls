@@ -4,15 +4,15 @@ using System.Text.Json;
 namespace Csls.Debugger.Tests;
 
 /// <summary>
-/// Verifies strict validation of DAP JIT optimization settings.
+/// Verifies strict validation of DAP Just My Code settings.
 /// </summary>
 public sealed partial class DapSessionTests
 {
     /// <summary>
-    /// Rejects a non-boolean suppression setting without starting a target.
+    /// Rejects a non-boolean attach setting before opening a target process.
     /// </summary>
     [TestMethod]
-    public async Task SuppressJitOptimizationsRejectsNonBooleanValue()
+    public async Task AttachJustMyCodeRejectsNonBooleanValue()
     {
         DapTestClient client = await DapTestClient
             .CreateAsync(TestContext.CancellationToken)
@@ -26,21 +26,21 @@ public sealed partial class DapSessionTests
             .ReadMessageAsync(TestContext.CancellationToken)
             .ConfigureAwait(false);
         int sequence = await client.SendRequestAsync(
-            "launch",
+            "attach",
             writer =>
             {
                 writer.WriteStartObject();
-                writer.WriteString("program", ResolveTestProcessHost());
-                writer.WriteString("suppressJITOptimizations", "true");
+                writer.WriteNumber("processId", 1);
+                writer.WriteString("justMyCode", "true");
                 writer.WriteEndObject();
             },
             TestContext.CancellationToken).ConfigureAwait(false);
         using JsonDocument response = await client
             .ReadMessageAsync(TestContext.CancellationToken)
             .ConfigureAwait(false);
-        AssertResponse(response.RootElement, sequence, "launch", success: false);
+        AssertResponse(response.RootElement, sequence, "attach", success: false);
         Assert.Contains(
-            "target 'suppressJITOptimizations' value must be a boolean",
+            "target 'justMyCode' value must be a boolean",
             response.RootElement.GetProperty("message").GetString()!,
             StringComparison.Ordinal);
         await client.CloseProtocolAsync().ConfigureAwait(false);

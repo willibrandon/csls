@@ -64,6 +64,9 @@ public sealed partial class DapSessionTests
             Assert.HasCount(1, modules, response.RootElement.ToString());
             JsonElement module = modules[0];
             Assert.AreEqual(isSuppressed, !module.GetProperty("isOptimized").GetBoolean());
+            Assert.AreEqual(
+                isSuppressed,
+                module.GetProperty("isUserCode").GetBoolean());
             Assert.AreEqual("Symbols loaded.", module.GetProperty("symbolStatus").GetString());
             await DisconnectAsync(client).ConfigureAwait(false);
             Assert.AreEqual(string.Empty, client.Diagnostics.ToString());

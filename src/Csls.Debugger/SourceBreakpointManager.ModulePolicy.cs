@@ -14,7 +14,8 @@ internal sealed partial class SourceBreakpointManager
     /// Configures runtime policy that must be applied during subsequent module-load callbacks.
     /// </summary>
     /// <param name="suppressJitOptimizations">Whether symbol-bearing modules request unoptimized code.</param>
-    internal void SetRuntimeOptions(bool suppressJitOptimizations)
+    /// <param name="justMyCode">Whether source stepping excludes non-user managed code.</param>
+    internal void SetRuntimeOptions(bool suppressJitOptimizations, bool justMyCode)
     {
         ObjectDisposedException.ThrowIf(_disposed != 0, this);
         if (_modules.Count != 0)
@@ -24,6 +25,7 @@ internal sealed partial class SourceBreakpointManager
         }
 
         _suppressJitOptimizations = suppressJitOptimizations;
+        _justMyCode = justMyCode;
     }
 
     private static (DebugModuleSymbolKind SymbolKind, string? SymbolPath) InspectSymbols(

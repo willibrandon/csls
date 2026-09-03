@@ -127,6 +127,7 @@ internal sealed partial class SourceBreakpointManager
         }
 
         _modules.Clear();
+        _steppingPolicyActivated = false;
     }
 
     private static string? GetModulePath(nint module)

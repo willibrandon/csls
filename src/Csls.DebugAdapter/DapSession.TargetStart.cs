@@ -39,7 +39,7 @@ internal sealed partial class DapSession
         }
 
         _pendingTargetRequest = request;
-        _pendingAttachProcessId = null;
+        _pendingAttach = null;
         _startMethod = "launch";
         _terminateDebuggeeByDefault = true;
         _state = DapSessionState.Configuring;
@@ -55,7 +55,7 @@ internal sealed partial class DapSession
     {
         if (_state != DapSessionState.Configuring ||
             _pendingTargetRequest is null ||
-            (_pendingLaunch is null) == (_pendingAttachProcessId is null))
+            (_pendingLaunch is null) == (_pendingAttach is null))
         {
             await WriteStateFailureAsync(request, cancellationToken).ConfigureAwait(false);
             return;
@@ -65,10 +65,10 @@ internal sealed partial class DapSession
         _pendingConfigurationRequest = request;
         try
         {
-            if (_pendingAttachProcessId is int processId)
+            if (_pendingAttach is DapAttachConfiguration attach)
             {
                 await _engineSession
-                    .AttachManagedAsync(processId, cancellationToken)
+                    .AttachManagedAsync(attach.ProcessId, cancellationToken)
                     .ConfigureAwait(false);
             }
             else if (_pendingLaunch!.NoDebug)

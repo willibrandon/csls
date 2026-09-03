@@ -17,4 +17,9 @@ public sealed record DebugAttachRequest(int ProcessId)
     /// </summary>
     public IReadOnlyDictionary<string, bool> SourceLinkOptions { get; init; } =
         new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Gets whether source stepping excludes non-user managed code.
+    /// </summary>
+    public bool JustMyCode { get; init; } = true;
 }
