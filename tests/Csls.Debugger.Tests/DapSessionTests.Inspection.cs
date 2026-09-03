@@ -20,6 +20,11 @@ public sealed partial class DapSessionTests
             $"csls-debugger-pause-{Guid.NewGuid():N}.signal");
         try
         {
+            string fixtureSourcePath = Path.Join(
+                FindRepositoryRoot(),
+                "tests",
+                "Csls.TestProcessHost",
+                "DebuggerFixture.cs");
             DapTestClient client = await DapTestClient
                 .CreateAsync(TestContext.CancellationToken)
                 .ConfigureAwait(false);
@@ -128,10 +133,9 @@ public sealed partial class DapSessionTests
                     stack.RootElement.GetProperty("body").GetProperty("totalFrames").GetInt32());
                 JsonElement fixtureFrame = frames.FirstOrDefault(frame =>
                     frame.TryGetProperty("source", out JsonElement source) &&
-                    source.GetProperty("path").GetString() is string path &&
-                    path.EndsWith(
-                        Path.Join("tests", "Csls.TestProcessHost", "DebuggerFixture.cs"),
-                        StringComparison.Ordinal) &&
+                    DebuggerTestPath.AreEquivalent(
+                        source.GetProperty("path").GetString(),
+                        fixtureSourcePath) &&
                     frame.GetProperty("line").GetInt32() > 0);
                 if (fixtureFrame.ValueKind != JsonValueKind.Undefined)
                 {

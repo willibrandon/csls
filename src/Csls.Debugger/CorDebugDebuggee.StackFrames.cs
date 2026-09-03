@@ -41,7 +41,7 @@ internal sealed partial class CorDebugDebuggee
                     "ICorDebugILFrame.GetIP");
                 methodToken = Volatile.Read(ref *methodTokenAddress);
                 ilOffset = Volatile.Read(ref *ilOffsetAddress);
-                location = PortablePdbFrameResolver.Resolve(
+                location = ManagedSymbolFrameResolver.Resolve(
                     frame,
                     methodToken,
                     ilOffset,

@@ -103,7 +103,7 @@ returned work without misreporting the complete managed-frame count.
 
 Scopes are split into receiver/arguments and lexically active locals. Parameter
 names come from ECMA-335 metadata; local slot names and lifetimes come from the
-current Portable PDB scope at the frame's IL offset. Immediate primitive and
+current managed PDB scope at the frame's IL offset. Immediate primitive and
 string formatting reads ICorDebug values without target code execution. Scope
 and variable handles carry the same stop generation as their frame. Expandable
 values retain canonical COM identities so repeated requests reuse stable handles;
@@ -125,7 +125,7 @@ exist.
 Managed frames independently expose opaque IL references. Disassembly reads the
 method body from the module PE without loading target code, decodes the complete
 runtime opcode catalog, formats branch and switch targets, and resolves metadata
-operands only from the module's metadata reader. Validated Portable PDB sequence
+operands only from the module's metadata reader. Validated managed-symbol sequence
 points add source locations. Results always contain the DAP-requested count;
 locations outside the method are explicit invalid placeholders. Session-local
 virtual hexadecimal addresses distinguish methods without representing writable
@@ -145,19 +145,25 @@ the package manager for its RID. The product never downloads a debugger. Dbgshim
 is loaded by absolute path from the application layout, and required exports are
 validated before a target starts.
 
-Launch uses `CreateProcessForLaunch` in the suspended state, registers for runtime
-startup, resumes the process, obtains the correct debugging interface, initializes
-ICorDebug, installs managed callbacks, and attaches to the created process. Attach
+Launch creates the target in the suspended state, registers for runtime startup,
+resumes the process, obtains the correct debugging interface, initializes ICorDebug,
+installs managed callbacks, and attaches to the created process. Unix hosts use
+dbgshim's `CreateProcessForLaunch`. Windows hosts use `CreateProcessW` with a Unicode
+environment and an extended-startup handle allowlist because dbgshim's convenience
+wrapper neither enables Unicode environments nor exposes standard-handle inheritance. Attach
 enumerates loaded CoreCLR instances, reports ambiguity explicitly, and creates the
 interface for the selected runtime. Architecture and permission mismatches are
 reported before partial session activation where the platform exposes enough data.
 
-Dbgshim inherits the host's process-wide standard handles, so launch is serialized
-through a short process-wide gate that redirects all three handles only for the
-`CreateProcessForLaunch` call and restores them in nested `finally` blocks. The
-parent owns dedicated anonymous-pipe endpoints and closes every local child endpoint
-immediately after launch. Target output therefore reaches bounded debugger output
-handling and can never share the adapter's protocol stdout. On Unix, the launcher
+On Unix, dbgshim inherits the host's process-wide standard handles, so launch is
+serialized through a short process-wide gate that redirects all three descriptors
+only for the `CreateProcessForLaunch` call and restores them in nested `finally`
+blocks. On Windows, `STARTUPINFOEX` assigns all three standard handles and
+`PROC_THREAD_ATTRIBUTE_HANDLE_LIST` prevents every unrelated inheritable handle
+from entering the target. The parent owns dedicated anonymous-pipe endpoints and
+closes every local child endpoint immediately after launch. Target output therefore
+reaches bounded debugger output handling and can never share the adapter's protocol
+stdout. On Unix, the launcher
 starts the supervised worker with an adjacent NativeAOT `waitpid` interposer loaded
 before CoreCLR initializes. A dedicated blocking waiter selects the direct child
 before runtime activation and completes a nonblocking identity preflight before
@@ -255,7 +261,7 @@ Pause maps to a balanced process stop. Continue invalidates the current stop
 generation before resuming. Step operations create one active stepper for the
 selected managed thread, apply sequence-point and Just My Code ranges, and disable
 the stepper on completion or competing stop. Step Into targets decode calls within
-the active statement and expose only same-module managed callees with Portable PDB
+the active statement and expose only same-module managed callees with managed-symbol
 source. A selected occurrence combines a callee-entry breakpoint with a caller
 statement guard; earlier invocations of the same callee are counted and resumed.
 Target handles belong to one stop generation. Async and iterator stepping use PDB
@@ -278,14 +284,16 @@ request atomically replaces the complete policy.
 
 ## Symbols and source
 
-Portable and Embedded PDBs are read directly with `System.Reflection.Metadata`.
+Portable and embedded PDBs are read directly with `System.Reflection.Metadata`.
 Modules may supply adjacent, embedded, in-memory, or downloaded symbols. Portable
 PDB symbol-store keys are derived from the module CodeView record, and every local,
 cached, or downloaded candidate is independently reopened against that module
 before acceptance. Configured directory and anonymous HTTP(S) searches implement
 the standard `symbolOptions` module filter; Microsoft and NuGet.org servers are
-opt-in. Windows PDB support uses the public native symbol-reader component on
-Windows. A PDB is accepted only when its identity matches the module.
+opt-in. Windows PDB support uses `Microsoft.DiaSymReader` and Microsoft's packaged
+native reader on Windows, including x86, x64, and ARM64. Portable identities are
+validated by the metadata reader; Windows identities are validated with
+`ISymUnmanagedReader5.MatchesModule`. A PDB is never accepted merely by file name.
 
 CoreCLR symbol-update callbacks are copied synchronously into bounded immutable
 Portable PDB snapshots while the target is stopped; no borrowed `IStream` or

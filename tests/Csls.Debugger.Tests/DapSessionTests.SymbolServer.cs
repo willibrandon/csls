@@ -129,7 +129,7 @@ public sealed partial class DapSessionTests
         JsonElement module = response.RootElement.GetProperty("body").GetProperty("modules")
             .EnumerateArray()
             .Single(candidate => candidate.TryGetProperty("path", out JsonElement path) &&
-                string.Equals(path.GetString(), programPath, StringComparison.Ordinal));
+                DebuggerTestPath.AreEquivalent(path.GetString(), programPath));
         string symbolPath = module.GetProperty("symbolFilePath").GetString()!;
         Assert.StartsWith(cachePath, symbolPath, StringComparison.Ordinal);
         Assert.IsTrue(File.Exists(symbolPath));
@@ -150,7 +150,9 @@ public sealed partial class DapSessionTests
             .ConfigureAwait(false);
         AssertResponse(response.RootElement, sequence, "stackTrace", success: true);
         JsonElement frame = response.RootElement.GetProperty("body").GetProperty("stackFrames")[0];
-        Assert.AreEqual(sourcePath, frame.GetProperty("source").GetProperty("path").GetString());
+        Assert.IsTrue(DebuggerTestPath.AreEquivalent(
+            sourcePath,
+            frame.GetProperty("source").GetProperty("path").GetString()));
         Assert.AreEqual(8, frame.GetProperty("line").GetInt32());
     }
 }

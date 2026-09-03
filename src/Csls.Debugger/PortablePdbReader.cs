@@ -13,14 +13,14 @@ internal sealed class PortablePdbReader : IDisposable
 
     private PortablePdbReader(
         MetadataReaderProvider provider,
-        PortablePdbStorageKind storageKind,
+        DebugSymbolStorageKind storageKind,
         string? path)
     {
         _provider = provider;
         StorageKind = storageKind;
         Path = path;
         Metadata = provider.GetMetadataReader();
-        SourceLinkMappings = PortablePdbSourceLinkResolver.Read(Metadata);
+        SourceLinkMappings = ManagedSourceLinkResolver.Read(Metadata);
     }
 
     /// <summary>
@@ -31,7 +31,7 @@ internal sealed class PortablePdbReader : IDisposable
     /// <summary>
     /// Gets the symbol storage kind.
     /// </summary>
-    internal PortablePdbStorageKind StorageKind { get; }
+    internal DebugSymbolStorageKind StorageKind { get; }
 
     /// <summary>
     /// Gets the associated Portable PDB path, or null for embedded or in-memory symbols.
@@ -72,8 +72,8 @@ internal sealed class PortablePdbReader : IDisposable
                 var reader = new PortablePdbReader(
                     provider,
                     associatedPath is null
-                        ? PortablePdbStorageKind.Embedded
-                        : PortablePdbStorageKind.AssociatedFile,
+                        ? DebugSymbolStorageKind.Embedded
+                        : DebugSymbolStorageKind.AssociatedFile,
                     associatedPath is null
                         ? null
                         : System.IO.Path.GetFullPath(symbolPath ?? associatedPath));
@@ -109,7 +109,7 @@ internal sealed class PortablePdbReader : IDisposable
                 ImmutableCollectionsMarshal.AsImmutableArray(image));
             var reader = new PortablePdbReader(
                 provider,
-                PortablePdbStorageKind.InMemory,
+                DebugSymbolStorageKind.InMemory,
                 path: null);
             provider = null;
             return reader;
@@ -129,7 +129,7 @@ internal sealed class PortablePdbReader : IDisposable
     /// </summary>
     /// <param name="modulePath">The absolute managed PE path.</param>
     /// <returns>The CodeView identity, or null when the image does not name a PDB.</returns>
-    internal static PortablePdbReference? ReadReference(string modulePath)
+    internal static CodeViewSymbolReference? ReadCodeViewReference(string modulePath)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(modulePath);
         using FileStream moduleStream = OpenRead(modulePath);
@@ -142,10 +142,15 @@ internal sealed class PortablePdbReader : IDisposable
             }
 
             CodeViewDebugDirectoryData data = peReader.ReadCodeViewDebugDirectoryData(entry);
-            string fileName = GetPortableFileName(data.Path);
+            string fileName = GetSymbolFileName(data.Path);
             if (fileName.Length != 0 && fileName.EndsWith(".pdb", StringComparison.OrdinalIgnoreCase))
             {
-                return new PortablePdbReference(fileName, data.Path, data.Guid, data.Age);
+                return new CodeViewSymbolReference(
+                    fileName,
+                    data.Path,
+                    data.Guid,
+                    entry.Stamp,
+                    data.Age);
             }
         }
 
@@ -176,6 +181,6 @@ internal sealed class PortablePdbReader : IDisposable
         }
     }
 
-    private static string GetPortableFileName(string path) =>
+    private static string GetSymbolFileName(string path) =>
         System.IO.Path.GetFileName(path.Replace('\\', '/'));
 }

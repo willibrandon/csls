@@ -1,9 +1,9 @@
 namespace Csls.Debugger;
 
 /// <summary>
-/// Implements safe local storage and identity validation for Portable PDB lookup.
+/// Implements safe local storage and identity validation for managed PDB lookup.
 /// </summary>
-internal sealed partial class PortablePdbLocator
+internal sealed partial class DebugSymbolLocator
 {
     private void AddSearchPath(string searchPath)
     {
@@ -29,7 +29,7 @@ internal sealed partial class PortablePdbLocator
 
     private static string? FindLocalMatch(
         string modulePath,
-        PortablePdbReference reference,
+        CodeViewSymbolReference reference,
         string directory)
     {
         foreach (string candidate in new[]
@@ -129,34 +129,34 @@ internal sealed partial class PortablePdbLocator
 
         try
         {
-            using var symbols = PortablePdbReader.TryOpen(modulePath, symbolPath);
+            using var symbols = DebugSymbolReader.TryOpen(
+                modulePath,
+                symbolPath);
             return symbols is not null;
         }
-        catch (Exception exception) when (
-            exception is IOException or UnauthorizedAccessException or BadImageFormatException)
+        catch (Exception exception) when (DebugSymbolReader.IsReadFailure(exception))
         {
             return false;
         }
     }
 
-    private static PortablePdbReader? TryOpen(string modulePath, string? symbolPath)
+    private static DebugSymbolReader? TryOpen(string modulePath, string? symbolPath)
     {
         try
         {
-            return PortablePdbReader.TryOpen(modulePath, symbolPath);
+            return DebugSymbolReader.TryOpen(modulePath, symbolPath);
         }
-        catch (Exception exception) when (
-            exception is IOException or UnauthorizedAccessException or BadImageFormatException)
+        catch (Exception exception) when (DebugSymbolReader.IsReadFailure(exception))
         {
             return null;
         }
     }
 
-    private static PortablePdbReference? TryReadReference(string modulePath)
+    private static CodeViewSymbolReference? TryReadReference(string modulePath)
     {
         try
         {
-            return PortablePdbReader.ReadReference(modulePath);
+            return PortablePdbReader.ReadCodeViewReference(modulePath);
         }
         catch (Exception exception) when (
             exception is IOException or UnauthorizedAccessException or BadImageFormatException)

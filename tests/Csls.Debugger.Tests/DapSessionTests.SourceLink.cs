@@ -13,7 +13,6 @@ public sealed partial class DapSessionTests
     /// Downloads checksum-valid Source Link content once and reuses the session cache.
     /// </summary>
     [TestMethod]
-    [OSCondition(ConditionMode.Exclude, OperatingSystems.Windows)]
     [Timeout(30000, CooperativeCancellation = true)]
     public async Task SourceLinkProvidesVerifiedSourceContent()
     {
@@ -166,16 +165,17 @@ public sealed partial class DapSessionTests
                 }
             }),
             TestContext.CancellationToken).ConfigureAwait(false);
+        string debugType = OperatingSystem.IsWindows() ? "full" : "portable";
         await File.WriteAllTextAsync(
             projectPath,
-            """
+            $$"""
             <Project Sdk="Microsoft.NET.Sdk">
               <PropertyGroup>
                 <OutputType>Exe</OutputType>
                 <TargetFramework>net10.0</TargetFramework>
                 <ImplicitUsings>enable</ImplicitUsings>
                 <Nullable>enable</Nullable>
-                <DebugType>portable</DebugType>
+                <DebugType>{{debugType}}</DebugType>
                 <DebugSymbols>true</DebugSymbols>
                 <PathMap>$(MSBuildProjectDirectory)=/_/SourceLink</PathMap>
                 <SourceLink>$(MSBuildProjectDirectory)/sourcelink.json</SourceLink>

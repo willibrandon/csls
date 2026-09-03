@@ -3,9 +3,9 @@ using Csls.Debugger.Contracts;
 namespace Csls.Debugger;
 
 /// <summary>
-/// Resolves and caches identity-matched Portable PDBs from configured locations.
+/// Resolves and caches identity-matched managed PDBs from configured locations.
 /// </summary>
-internal sealed partial class PortablePdbLocator
+internal sealed partial class DebugSymbolLocator
 {
     private static readonly Uri s_microsoftServer =
         new("https://msdl.microsoft.com/download/symbols/");
@@ -47,21 +47,21 @@ internal sealed partial class PortablePdbLocator
     }
 
     /// <summary>
-    /// Resolves one matching Portable PDB without accepting unvalidated cache content.
+    /// Resolves one matching managed PDB without accepting unvalidated cache content.
     /// </summary>
     /// <param name="modulePath">The absolute managed PE path.</param>
     /// <param name="cancellationToken">Cancels symbol-server retrieval.</param>
     /// <returns>The selected storage location, or null when symbols are unavailable.</returns>
-    internal async Task<PortablePdbResolution?> ResolveAsync(
+    internal async Task<DebugSymbolResolution?> ResolveAsync(
         string modulePath,
         CancellationToken cancellationToken)
     {
         if (_moduleFilter.AllowsAdjacent(modulePath))
         {
-            using PortablePdbReader? adjacent = TryOpen(modulePath, symbolPath: null);
+            using DebugSymbolReader? adjacent = TryOpen(modulePath, symbolPath: null);
             if (adjacent is not null)
             {
-                return new PortablePdbResolution(adjacent.StorageKind, adjacent.Path);
+                return new DebugSymbolResolution(adjacent.StorageKind, adjacent.Path);
             }
         }
 
@@ -70,7 +70,7 @@ internal sealed partial class PortablePdbLocator
             return null;
         }
 
-        PortablePdbReference? reference = TryReadReference(modulePath);
+        CodeViewSymbolReference? reference = TryReadReference(modulePath);
         if (reference is null)
         {
             return null;
@@ -81,7 +81,7 @@ internal sealed partial class PortablePdbLocator
             string? match = FindLocalMatch(modulePath, reference, directory);
             if (match is not null)
             {
-                return new PortablePdbResolution(PortablePdbStorageKind.AssociatedFile, match);
+                return new DebugSymbolResolution(DebugSymbolStorageKind.AssociatedFile, match);
             }
         }
 
@@ -90,7 +90,7 @@ internal sealed partial class PortablePdbLocator
             string cacheFile = GetStorePath(_cachePath, reference.FileName, identity);
             if (IsMatch(modulePath, cacheFile))
             {
-                return new PortablePdbResolution(PortablePdbStorageKind.AssociatedFile, cacheFile);
+                return new DebugSymbolResolution(DebugSymbolStorageKind.AssociatedFile, cacheFile);
             }
 
             foreach (Uri server in _servers)
@@ -103,7 +103,7 @@ internal sealed partial class PortablePdbLocator
                     cancellationToken).ConfigureAwait(false);
                 if (cached is not null)
                 {
-                    return new PortablePdbResolution(PortablePdbStorageKind.AssociatedFile, cached);
+                    return new DebugSymbolResolution(DebugSymbolStorageKind.AssociatedFile, cached);
                 }
             }
         }

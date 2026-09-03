@@ -91,7 +91,7 @@ public sealed partial class DapSessionTests
                 sourcePath,
                 TestContext.CancellationToken).ConfigureAwait(false);
             Assert.AreEqual("Csls.TestProcessHost.DebuggerStepFixture.Run", frameName);
-            Assert.AreEqual(sourcePath, framePath);
+            Assert.IsTrue(DebuggerTestPath.AreEquivalent(sourcePath, framePath));
             Assert.AreEqual(breakpointLine, frameLine);
 
             int modulesSequence = await client.SendRequestAsync(
@@ -111,12 +111,11 @@ public sealed partial class DapSessionTests
                 modules.RootElement.GetProperty("body").GetProperty("totalModules").GetInt32());
             Assert.IsGreaterThan(0, moduleItems.Length);
             string processHost = ResolveTestProcessHost();
-            JsonElement fixtureModule = moduleItems.Single(module => string.Equals(
+            JsonElement fixtureModule = moduleItems.Single(module => DebuggerTestPath.AreEquivalent(
                 module.TryGetProperty("path", out JsonElement path)
                     ? path.GetString()
                     : null,
-                processHost,
-                StringComparison.Ordinal));
+                processHost));
             Assert.IsGreaterThan(0, fixtureModule.GetProperty("id").GetInt32());
             Assert.AreEqual(Path.GetFileName(processHost), fixtureModule.GetProperty("name").GetString());
             Assert.AreEqual("Symbols loaded.", fixtureModule.GetProperty("symbolStatus").GetString());
@@ -135,7 +134,7 @@ public sealed partial class DapSessionTests
                 sourcePath,
                 TestContext.CancellationToken).ConfigureAwait(false);
             Assert.AreEqual("Csls.TestProcessHost.DebuggerStepFixture.Run", frameName);
-            Assert.AreEqual(sourcePath, framePath);
+            Assert.IsTrue(DebuggerTestPath.AreEquivalent(sourcePath, framePath));
             Assert.AreEqual(callLine, frameLine);
 
             threadId = await StepAndReadStopAsync(
@@ -149,7 +148,7 @@ public sealed partial class DapSessionTests
                 sourcePath,
                 TestContext.CancellationToken).ConfigureAwait(false);
             Assert.AreEqual("Csls.TestProcessHost.DebuggerStepFixture.AddTwo", frameName);
-            Assert.AreEqual(sourcePath, framePath);
+            Assert.IsTrue(DebuggerTestPath.AreEquivalent(sourcePath, framePath));
             Assert.AreEqual(calleeEntryLine, frameLine);
 
             threadId = await StepAndReadStopAsync(
@@ -163,7 +162,7 @@ public sealed partial class DapSessionTests
                 sourcePath,
                 TestContext.CancellationToken).ConfigureAwait(false);
             Assert.AreEqual("Csls.TestProcessHost.DebuggerStepFixture.Run", frameName);
-            Assert.AreEqual(sourcePath, framePath);
+            Assert.IsTrue(DebuggerTestPath.AreEquivalent(sourcePath, framePath));
             Assert.AreEqual(callLine, frameLine);
 
             await File.WriteAllTextAsync(
@@ -334,10 +333,9 @@ public sealed partial class DapSessionTests
             .EnumerateArray()
             .First(candidate =>
                 candidate.TryGetProperty("source", out JsonElement source) &&
-                string.Equals(
+                DebuggerTestPath.AreEquivalent(
                     source.GetProperty("path").GetString(),
-                    sourcePath,
-                    StringComparison.Ordinal));
+                    sourcePath));
         return (
             frame.GetProperty("name").GetString()!,
             frame.GetProperty("source").GetProperty("path").GetString(),

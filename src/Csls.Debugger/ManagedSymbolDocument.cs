@@ -3,12 +3,12 @@ using Csls.Debugger.Contracts;
 namespace Csls.Debugger;
 
 /// <summary>
-/// Carries one Portable PDB document and its optional embedded source bytes.
+/// Carries one debugger symbol document and its validated source metadata.
 /// </summary>
-internal sealed class PortablePdbSourceDocument
+internal sealed class ManagedSymbolDocument
 {
     /// <summary>
-    /// Gets the exact document path stored in the Portable PDB.
+    /// Gets the exact document path stored in the symbol file.
     /// </summary>
     internal required string Path { get; init; }
 
@@ -23,7 +23,7 @@ internal sealed class PortablePdbSourceDocument
     internal byte[]? EmbeddedSource { get; init; }
 
     /// <summary>
-    /// Gets the resolved Source Link URI when the Portable PDB provides one.
+    /// Gets the resolved Source Link URI when the symbols provide one.
     /// </summary>
     internal Uri? SourceLinkUri { get; init; }
 }

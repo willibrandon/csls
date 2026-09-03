@@ -11,21 +11,21 @@ internal sealed partial class SourceBreakpointManager
     /// Opens the identity-validated symbols selected for one loaded module.
     /// </summary>
     /// <param name="modulePath">The absolute managed module path.</param>
-    /// <returns>An owned Portable PDB reader, or null when symbols are unavailable.</returns>
-    internal PortablePdbReader? OpenSymbols(string modulePath)
+    /// <returns>An owned symbol reader, or null when symbols are unavailable.</returns>
+    internal DebugSymbolReader? OpenSymbols(string modulePath)
     {
         CorDebugLoadedModule? module = FindModule(modulePath);
         return module is null
-            ? PortablePdbReader.TryOpen(modulePath)
+            ? DebugSymbolReader.TryOpen(modulePath)
             : OpenSymbols(module);
     }
 
-    private static PortablePdbReader? OpenSymbols(CorDebugLoadedModule module) =>
+    private static DebugSymbolReader? OpenSymbols(CorDebugLoadedModule module) =>
         module.SymbolImage is not null
-            ? PortablePdbReader.TryOpen(module.SymbolImage)
+            ? DebugSymbolReader.TryOpen(module.SymbolImage)
             : module.Path is null
                 ? null
-                : PortablePdbReader.TryOpen(module.Path, module.SymbolPath);
+                : DebugSymbolReader.TryOpen(module.Path, module.SymbolPath);
 
     /// <summary>
     /// Gets the identity-validated associated PDB selected for one loaded module.

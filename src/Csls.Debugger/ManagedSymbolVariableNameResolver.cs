@@ -6,9 +6,9 @@ using System.Reflection.PortableExecutable;
 namespace Csls.Debugger;
 
 /// <summary>
-/// Resolves argument and active-local names from PE metadata and Portable PDB scopes.
+/// Resolves argument and active-local names from PE metadata and managed symbols.
 /// </summary>
-internal static class PortablePdbVariableNameResolver
+internal static class ManagedSymbolVariableNameResolver
 {
     /// <summary>
     /// Resolves runtime argument indexes to source parameter names.
@@ -52,41 +52,20 @@ internal static class PortablePdbVariableNameResolver
     }
 
     /// <summary>
-    /// Resolves active Portable PDB local slots to source names.
+    /// Resolves active symbol local slots to source names.
     /// </summary>
     /// <param name="frame">The generation-bound managed frame and symbol snapshot.</param>
     /// <returns>Local names keyed by their ICorDebug local slot.</returns>
     internal static IReadOnlyDictionary<int, string> GetLocals(ManagedFrameHandle frame)
     {
         ArgumentNullException.ThrowIfNull(frame);
-        using PortablePdbReader? symbols = frame.OpenSymbols();
+        using DebugSymbolReader? symbols = frame.OpenSymbols();
         if (symbols is null)
         {
             return new Dictionary<int, string>();
         }
 
-        int rowNumber = checked((int)(frame.MethodToken & 0x00ffffff));
-        MetadataReader pdb = symbols.Metadata;
-        MethodDefinitionHandle methodHandle = MetadataTokens.MethodDefinitionHandle(rowNumber);
-        Dictionary<int, string> result = [];
-        foreach (LocalScopeHandle scopeHandle in pdb.GetLocalScopes(methodHandle))
-        {
-            LocalScope scope = pdb.GetLocalScope(scopeHandle);
-            uint start = checked((uint)scope.StartOffset);
-            uint end = checked((uint)(scope.StartOffset + scope.Length));
-            if (frame.IlOffset < start || frame.IlOffset >= end)
-            {
-                continue;
-            }
-
-            foreach (LocalVariableHandle variableHandle in scope.GetLocalVariables())
-            {
-                LocalVariable variable = pdb.GetLocalVariable(variableHandle);
-                result[variable.Index] = pdb.GetString(variable.Name);
-            }
-        }
-
-        return result;
+        return symbols.GetLocalNames(frame.MethodToken, frame.IlOffset);
     }
 
     private static MethodDefinition GetMethod(MetadataReader metadata, uint methodToken)

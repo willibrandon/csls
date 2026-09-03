@@ -23,5 +23,10 @@ public enum DebugModuleSymbolKind
     /// <summary>
     /// A Portable PDB supplied by the runtime for an in-memory module is loaded.
     /// </summary>
-    InMemoryPortablePdb
+    InMemoryPortablePdb,
+
+    /// <summary>
+    /// A matching associated Windows PDB file is loaded through DiaSymReader.
+    /// </summary>
+    WindowsPdb
 }

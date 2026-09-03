@@ -25,7 +25,7 @@ internal static class PortablePdbSourceDocumentReader
     /// <param name="handle">The selected document handle.</param>
     /// <param name="sourceLinkMappings">The module's validated Source Link map.</param>
     /// <returns>The validated source-document metadata.</returns>
-    internal static PortablePdbSourceDocument Read(
+    internal static ManagedSymbolDocument Read(
         MetadataReader reader,
         DocumentHandle handle,
         IReadOnlyList<KeyValuePair<string, string>> sourceLinkMappings)
@@ -41,12 +41,12 @@ internal static class PortablePdbSourceDocumentReader
                 $"Embedded source for '{path}' does not match its Portable PDB checksum.");
         }
 
-        return new PortablePdbSourceDocument
+        return new ManagedSymbolDocument
         {
             Path = path,
             Checksum = checksum,
             EmbeddedSource = embeddedSource,
-            SourceLinkUri = PortablePdbSourceLinkResolver.TryResolve(
+            SourceLinkUri = ManagedSourceLinkResolver.TryResolve(
                 sourceLinkMappings,
                 path)
         };
@@ -94,7 +94,12 @@ internal static class PortablePdbSourceDocumentReader
         return null;
     }
 
-    private static byte[] DecodeEmbeddedSource(byte[] blob)
+    /// <summary>
+    /// Decodes one bounded embedded-source record shared by portable and Windows PDBs.
+    /// </summary>
+    /// <param name="blob">The compressed or uncompressed embedded-source record.</param>
+    /// <returns>The exact uncompressed source bytes.</returns>
+    internal static byte[] DecodeEmbeddedSource(byte[] blob)
     {
         if (blob.Length < sizeof(int))
         {

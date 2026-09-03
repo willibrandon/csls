@@ -4,7 +4,7 @@ using Csls.Debugger.Interop;
 namespace Csls.Debugger;
 
 /// <summary>
-/// Resolves Portable PDB locations and binds them to runtime breakpoints.
+/// Resolves managed-symbol locations and binds them to runtime breakpoints.
 /// </summary>
 internal sealed partial class SourceBreakpointManager
 {
@@ -17,7 +17,7 @@ internal sealed partial class SourceBreakpointManager
         Dictionary<int, SourceBreakpointLocation> locations;
         try
         {
-            using PortablePdbReader? symbols = OpenSymbols(module);
+            using DebugSymbolReader? symbols = OpenSymbols(module);
             module.SymbolsInspected = true;
             if (symbols is null)
             {
@@ -26,16 +26,16 @@ internal sealed partial class SourceBreakpointManager
 
             module.SymbolKind = symbols.StorageKind switch
             {
-                PortablePdbStorageKind.Embedded => DebugModuleSymbolKind.EmbeddedPortablePdb,
-                PortablePdbStorageKind.InMemory => DebugModuleSymbolKind.InMemoryPortablePdb,
+                DebugSymbolStorageKind.Embedded => DebugModuleSymbolKind.EmbeddedPortablePdb,
+                DebugSymbolStorageKind.InMemory => DebugModuleSymbolKind.InMemoryPortablePdb,
+                DebugSymbolStorageKind.Windows => DebugModuleSymbolKind.WindowsPdb,
                 _ => DebugModuleSymbolKind.PortablePdb
             };
             module.SymbolPath = symbols.Path;
 
-            locations = ResolveLocations(symbols.Metadata, definitions);
+            locations = ResolveLocations(symbols.GetSequencePoints(methodToken: null), definitions);
         }
-        catch (Exception exception) when (
-            exception is IOException or UnauthorizedAccessException or BadImageFormatException)
+        catch (Exception exception) when (DebugSymbolReader.IsReadFailure(exception))
         {
             module.SymbolsInspected = true;
             return;

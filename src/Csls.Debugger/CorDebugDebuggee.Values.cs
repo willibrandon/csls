@@ -92,8 +92,8 @@ internal sealed partial class CorDebugDebuggee
         try
         {
             return kind == ManagedScopeKind.Arguments
-                ? PortablePdbVariableNameResolver.GetArguments(frame)
-                : PortablePdbVariableNameResolver.GetLocals(frame);
+                ? ManagedSymbolVariableNameResolver.GetArguments(frame)
+                : ManagedSymbolVariableNameResolver.GetLocals(frame);
         }
         catch (Exception exception) when (
             exception is IOException or UnauthorizedAccessException or BadImageFormatException)

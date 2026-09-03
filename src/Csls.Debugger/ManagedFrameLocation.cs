@@ -1,7 +1,7 @@
 namespace Csls.Debugger;
 
 /// <summary>
-/// Carries metadata and Portable PDB identity for one managed instruction pointer.
+/// Carries metadata and symbol identity for one managed instruction pointer.
 /// </summary>
 internal sealed class ManagedFrameLocation
 {

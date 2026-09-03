@@ -1,23 +1,19 @@
 using Csls.Debugger.Interop;
-using System.Reflection.Metadata;
-using System.Reflection.Metadata.Ecma335;
 
 namespace Csls.Debugger;
 
 /// <summary>
-/// Resolves the current source statement to a half-open Portable PDB IL range.
+/// Resolves the current source statement to a half-open managed-symbol IL range.
 /// </summary>
-internal static class PortablePdbStepRangeResolver
+internal static class ManagedSymbolStepRangeResolver
 {
-    private const int HiddenSequencePointLine = 0x00feefee;
-
     /// <summary>
     /// Tries to resolve the active managed frame's current source statement.
     /// </summary>
     /// <param name="thread">The borrowed ICorDebugThread pointer.</param>
     /// <param name="moduleResolver">Resolves the retained symbol state for a runtime module.</param>
     /// <param name="range">Receives the resolved half-open IL range.</param>
-    /// <returns>True when adjacent Portable PDB data describes the current instruction.</returns>
+    /// <returns>True when managed symbol data describes the current instruction.</returns>
     internal static unsafe bool TryResolve(
         nint thread,
         Func<nint, CorDebugLoadedModule?> moduleResolver,
@@ -91,8 +87,8 @@ internal static class PortablePdbStepRangeResolver
                 out range);
         }
         catch (Exception exception) when (
-            exception is IOException or UnauthorizedAccessException or
-                BadImageFormatException or InvalidOperationException or ArgumentException)
+            DebugSymbolReader.IsReadFailure(exception) ||
+            exception is InvalidOperationException or ArgumentException)
         {
             return false;
         }
@@ -139,34 +135,21 @@ internal static class PortablePdbStepRangeResolver
             return false;
         }
 
-        using PortablePdbReader? symbols = module.SymbolImage is not null
-            ? PortablePdbReader.TryOpen(module.SymbolImage)
+        using DebugSymbolReader? symbols = module.SymbolImage is not null
+            ? DebugSymbolReader.TryOpen(module.SymbolImage)
             : module.Path is null
                 ? null
-                : PortablePdbReader.TryOpen(module.Path, module.SymbolPath);
+                : DebugSymbolReader.TryOpen(module.Path, module.SymbolPath);
         if (symbols is null)
         {
             return false;
         }
 
-        MetadataReader reader = symbols.Metadata;
-        if (rowNumber > reader.MethodDebugInformation.Count)
+        ManagedSequencePoint? current = null;
+        ManagedSequencePoint? next = null;
+        foreach (ManagedSequencePoint point in symbols.GetSequencePoints(methodToken))
         {
-            return false;
-        }
-
-        MethodDebugInformation method = reader.GetMethodDebugInformation(
-            MetadataTokens.MethodDebugInformationHandle(rowNumber));
-        SequencePoint? current = null;
-        SequencePoint? next = null;
-        foreach (SequencePoint point in method.GetSequencePoints())
-        {
-            if (point.IsHidden || point.StartLine == HiddenSequencePointLine)
-            {
-                continue;
-            }
-
-            if (point.Offset <= ilOffset)
+            if (point.IlOffset <= ilOffset)
             {
                 current = point;
                 continue;
@@ -181,8 +164,8 @@ internal static class PortablePdbStepRangeResolver
             return false;
         }
 
-        uint endOffset = next is null ? codeSize : checked((uint)next.Value.Offset);
-        uint startOffset = checked((uint)current.Value.Offset);
+        uint endOffset = next is null ? codeSize : checked((uint)next.IlOffset);
+        uint startOffset = checked((uint)current.IlOffset);
         if (endOffset <= startOffset)
         {
             return false;

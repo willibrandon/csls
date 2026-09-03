@@ -20,7 +20,7 @@ public sealed partial class DapSessionTests
         JsonElement module = response.RootElement.GetProperty("body").GetProperty("modules")
             .EnumerateArray()
             .Single(candidate => candidate.TryGetProperty("path", out JsonElement path) &&
-                string.Equals(path.GetString(), programPath, StringComparison.Ordinal));
+                DebuggerTestPath.AreEquivalent(path.GetString(), programPath));
         Assert.AreEqual(
             "Embedded Portable PDB loaded.",
             module.GetProperty("symbolStatus").GetString());
@@ -39,10 +39,9 @@ public sealed partial class DapSessionTests
         AssertResponse(response.RootElement, sequence, "loadedSources", success: true);
         JsonElement source = response.RootElement.GetProperty("body").GetProperty("sources")
             .EnumerateArray()
-            .Single(candidate => string.Equals(
+            .Single(candidate => DebuggerTestPath.AreEquivalent(
                 candidate.GetProperty("path").GetString(),
-                sourcePath,
-                StringComparison.Ordinal));
+                sourcePath));
         Assert.AreEqual(Path.GetFileName(sourcePath), source.GetProperty("name").GetString());
         Assert.AreEqual("embedded source", source.GetProperty("origin").GetString());
         int sourceReference = source.GetProperty("sourceReference").GetInt32();

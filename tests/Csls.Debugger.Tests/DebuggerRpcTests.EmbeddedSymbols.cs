@@ -94,7 +94,7 @@ public sealed partial class DebuggerRpcTests
             new DebugStackRequest(stopped.StoppedThreadId.Value, 0, 64),
             cancellationToken).ConfigureAwait(false);
         DebugStackFrameInfo frame = stack.StackFrames.Single(candidate =>
-            string.Equals(candidate.Source?.Path, sourcePath, StringComparison.Ordinal) &&
+            DebuggerTestPath.AreEquivalent(candidate.Source?.Path, sourcePath) &&
             candidate.Line == breakpointLine);
         Assert.IsNotNull(frame.Source);
         Assert.IsGreaterThan(0, frame.Source.SourceReference);

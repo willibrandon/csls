@@ -48,7 +48,7 @@ internal sealed partial class CorDebugDebuggee
             }
 
             _gotoTargets.Clear();
-            IEnumerable<ManagedSequencePoint> points = PortablePdbMethodMap
+            IEnumerable<ManagedSequencePoint> points = ManagedSymbolMethodMap
                 .Read(frame, frame.MethodToken)
                 .Where(point => request.Line >= point.StartLine &&
                     request.Line <= point.EndLine &&

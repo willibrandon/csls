@@ -131,7 +131,9 @@ public sealed partial class DapSessionTests
             .GetProperty("stackFrames")
             .EnumerateArray()
             .Single(candidate => candidate.TryGetProperty("source", out JsonElement source) &&
-                string.Equals(source.GetProperty("path").GetString(), sourcePath, StringComparison.Ordinal));
+                DebuggerTestPath.AreEquivalent(
+                    source.GetProperty("path").GetString(),
+                    sourcePath));
         Assert.AreEqual(breakpointLine, frame.GetProperty("line").GetInt32());
         Assert.AreEqual(
             "Csls.Debugger.Fixtures.InMemory.InMemoryFixture.WaitForSignal",
@@ -192,10 +194,9 @@ public sealed partial class DapSessionTests
             instruction.TryGetProperty("instructionBytes", out _)).ToArray());
         Assert.IsNotEmpty(instructions.Where(instruction =>
             instruction.TryGetProperty("location", out JsonElement location) &&
-            string.Equals(
+            DebuggerTestPath.AreEquivalent(
                 location.GetProperty("path").GetString(),
-                sourcePath,
-                StringComparison.Ordinal)).ToArray());
+                sourcePath)).ToArray());
 
         JsonElement instructionBreakpoint = await SetInstructionBreakpointAsync(
             client,

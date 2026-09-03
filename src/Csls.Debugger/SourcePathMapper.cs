@@ -1,7 +1,7 @@
 namespace Csls.Debugger;
 
 /// <summary>
-/// Applies deterministic longest-prefix mappings to Portable PDB document paths.
+/// Applies deterministic longest-prefix mappings to managed PDB document paths.
 /// </summary>
 internal sealed class SourcePathMapper
 {
@@ -42,7 +42,7 @@ internal sealed class SourcePathMapper
     /// <summary>
     /// Maps one build-time document path through the most-specific matching prefix.
     /// </summary>
-    /// <param name="path">The absolute Portable PDB document path.</param>
+    /// <param name="path">The absolute managed PDB document path.</param>
     /// <returns>The normalized mapped path, or the original normalized path.</returns>
     internal string Map(string path)
     {

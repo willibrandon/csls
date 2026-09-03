@@ -39,7 +39,7 @@ internal sealed class CorDebugLoadedModule
     internal DebugModuleSymbolKind SymbolKind { get; set; }
 
     /// <summary>
-    /// Gets the associated Portable PDB path when symbols are stored separately.
+    /// Gets the associated managed PDB path when symbols are stored separately.
     /// </summary>
     internal string? SymbolPath { get; set; }
 

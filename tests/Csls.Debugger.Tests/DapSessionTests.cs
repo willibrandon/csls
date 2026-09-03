@@ -281,7 +281,7 @@ public sealed partial class DapSessionTests
         if (!wait)
         {
             writer.WriteStartObject("env");
-            writer.WriteString("CSLS_DEBUGGER_TEST_VALUE", "transport-value");
+            writer.WriteString("CSLS_DEBUGGER_TEST_VALUE", "transport-π-é");
             writer.WriteEndObject();
         }
 

@@ -58,7 +58,7 @@ internal sealed class SourceBreakpointDefinition
         ResolvedLine ?? RequestedLine,
         ResolvedColumn ?? RequestedColumn,
         ValidationMessage ?? (ResolvedLine is null
-            ? "The breakpoint is pending until a matching module and Portable PDB are loaded."
+            ? "The breakpoint is pending until a matching module and debug symbols are loaded."
             : null),
         HitCondition?.Expression);
 

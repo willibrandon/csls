@@ -4,9 +4,9 @@ using System.Text.Json;
 namespace Csls.Debugger;
 
 /// <summary>
-/// Parses Portable PDB Source Link maps and resolves document URIs.
+/// Parses managed PDB Source Link maps and resolves document URIs.
 /// </summary>
-internal static class PortablePdbSourceLinkResolver
+internal static class ManagedSourceLinkResolver
 {
     private const int MaximumMappingCount = 4096;
     private const int MaximumSourceLinkBytes = 1024 * 1024;
@@ -29,17 +29,42 @@ internal static class PortablePdbSourceLinkResolver
         BlobReader blob = reader.GetBlobReader(value);
         if (blob.Length > MaximumSourceLinkBytes)
         {
-            throw new BadImageFormatException("The Portable PDB Source Link map is too large.");
+            throw new BadImageFormatException("The PDB Source Link map is too large.");
         }
 
         try
         {
-            return Parse(reader.GetBlobBytes(value));
+            return Read(reader.GetBlobBytes(value));
         }
         catch (JsonException exception)
         {
             throw new BadImageFormatException(
-                "The Portable PDB Source Link map contains invalid JSON.",
+                "The PDB Source Link map contains invalid JSON.",
+                exception);
+        }
+    }
+
+    /// <summary>
+    /// Parses and validates one raw Source Link JSON document.
+    /// </summary>
+    /// <param name="sourceLink">The exact UTF-8 Source Link payload.</param>
+    /// <returns>The mappings ordered from most to least specific.</returns>
+    internal static IReadOnlyList<KeyValuePair<string, string>> Read(
+        ReadOnlyMemory<byte> sourceLink)
+    {
+        if (sourceLink.Length > MaximumSourceLinkBytes)
+        {
+            throw new BadImageFormatException("The PDB Source Link map is too large.");
+        }
+
+        try
+        {
+            return Parse(sourceLink);
+        }
+        catch (JsonException exception)
+        {
+            throw new BadImageFormatException(
+                "The PDB Source Link map contains invalid JSON.",
                 exception);
         }
     }
@@ -93,7 +118,8 @@ internal static class PortablePdbSourceLinkResolver
         return default;
     }
 
-    private static List<KeyValuePair<string, string>> Parse(byte[] sourceLink)
+    private static List<KeyValuePair<string, string>> Parse(
+        ReadOnlyMemory<byte> sourceLink)
     {
         using var json = JsonDocument.Parse(
             sourceLink,
@@ -102,7 +128,7 @@ internal static class PortablePdbSourceLinkResolver
             !json.RootElement.TryGetProperty("documents", out JsonElement documents) ||
             documents.ValueKind != JsonValueKind.Object)
         {
-            throw new BadImageFormatException("The Portable PDB Source Link map is invalid.");
+            throw new BadImageFormatException("The PDB Source Link map is invalid.");
         }
 
         var mappings = new List<KeyValuePair<string, string>>();
@@ -113,7 +139,7 @@ internal static class PortablePdbSourceLinkResolver
                 !IsValidMapping(mapping.Name, mapping.Value.GetString()!))
             {
                 throw new BadImageFormatException(
-                    "The Portable PDB Source Link map contains an invalid mapping.");
+                    "The PDB Source Link map contains an invalid mapping.");
             }
 
             mappings.Add(new KeyValuePair<string, string>(

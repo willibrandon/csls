@@ -1,11 +1,11 @@
 namespace Csls.Debugger;
 
 /// <summary>
-/// Generates canonical Microsoft symbol-store paths for Portable PDB lookup.
+/// Generates canonical Microsoft symbol-store paths for managed PDB lookup.
 /// </summary>
-internal sealed partial class PortablePdbLocator
+internal sealed partial class DebugSymbolLocator
 {
-    private static IEnumerable<string> GetIdentities(PortablePdbReference reference)
+    private static IEnumerable<string> GetIdentities(CodeViewSymbolReference reference)
     {
         yield return reference.PortableIdentity;
         if (!string.Equals(

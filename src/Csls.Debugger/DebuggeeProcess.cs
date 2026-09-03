@@ -1,4 +1,6 @@
 using System.Diagnostics;
+using System.Globalization;
+using System.Text;
 
 namespace Csls.Debugger;
 
@@ -55,6 +57,15 @@ internal sealed class DebuggeeProcess : IDebuggeeProcess
             RedirectStandardError = true,
             CreateNoWindow = true
         };
+        if (OperatingSystem.IsWindows())
+        {
+            Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
+            var outputEncoding = Encoding.GetEncoding(
+                CultureInfo.CurrentCulture.TextInfo.OEMCodePage);
+            startInfo.StandardOutputEncoding = outputEncoding;
+            startInfo.StandardErrorEncoding = outputEncoding;
+        }
+
         if (managedAssembly)
         {
             startInfo.ArgumentList.Add(options.Program);

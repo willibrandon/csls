@@ -1,10 +1,11 @@
 # Debugging .NET applications
 
 The csls debugger is an editor-independent CoreCLR debugger. VS Code, Zed, and
-the terminal interface share the same runtime engine, Portable PDB reader,
+the terminal interface share the same runtime engine, managed-symbol reader,
 breakpoint behavior, stepping rules, stack model, and value formatter. The
 engine is language-neutral: C#, Visual Basic, F#, and other .NET languages that
-emit Portable PDBs can use the managed source-debugging workflow.
+emit Portable PDBs can use the managed source-debugging workflow on every
+supported platform. Matching Windows PDBs receive the same workflow on Windows.
 
 ## Terminal launch
 
@@ -85,7 +86,7 @@ filters and conditional filter options are additive, and replacing the request
 atomically replaces the complete exception policy.
 
 Set `suppressJITOptimizations` to `true` on a launch request to ask CoreCLR to
-disable JIT optimizations for each module with a validated Portable PDB. The
+disable JIT optimizations for each module with validated managed symbols. The
 default is `false`. This setting is launch-only because CoreCLR accepts the
 policy change only during the module-load callback, before code is compiled.
 The DAP `modules` response reports `isOptimized` when CoreCLR exposes the state;
@@ -110,7 +111,7 @@ F#, and other managed languages rather than depending on source syntax.
 
 When one source statement contains multiple eligible calls, clients can request
 `stepInTargets` and pass the selected target identifier to `stepIn`. The debugger
-currently offers calls whose managed implementation and Portable PDB are in the
+currently offers calls whose managed implementation and debug symbols are in the
 same loaded module. Repeated calls to the same method remain distinct targets,
 and selecting a later occurrence skips earlier occurrences on that statement.
 Target identifiers expire as soon as the process reaches another stop.
@@ -126,7 +127,7 @@ for which CoreCLR cannot guarantee correct continuation.
 
 Managed stack frames expose opaque `instructionPointerReference` values.
 `disassemble` returns exact-count ECMA-335 instruction windows with encoded bytes,
-metadata symbols, and Portable PDB source mappings. `setInstructionBreakpoints`
+metadata symbols, and managed-symbol source mappings. `setInstructionBreakpoints`
 accepts either one of those frame references plus a signed byte offset or a virtual
 address returned by `disassemble`. The address must belong to the current stop and
 land on an exact IL instruction boundary.
@@ -142,10 +143,12 @@ validated module, method, and IL identities.
 ## Runtime and symbol requirements
 
 The target must run CoreCLR and match the host architecture. Source breakpoints,
-stack source locations, argument names, and local names require a matching
-Portable PDB. Immediate primitive, string, field, object, and array inspection
-does not execute target code. Handles for frames, scopes, and variables are valid
-only for the stop at which they were returned.
+stack source locations, argument names, and local names require matching managed
+symbols. Portable PDBs work on Windows, Linux, and macOS; identity-matched Windows
+PDBs work on Windows through Microsoft's public DiaSymReader component. Immediate
+primitive, string, field, object, and array inspection does not execute target
+code. Handles for frames, scopes, and variables are valid only for the stop at
+which they were returned.
 
 Assemblies loaded from PE and Portable PDB byte arrays receive the same source
 breakpoint, stack, local-name, stepping, goto, disassembly, and managed-IL
@@ -172,7 +175,7 @@ of the operating system running the adapter. The most specific matching prefix
 wins.
 
 Use `symbolOptions` to add trusted local directories or symbol servers. The
-Microsoft and NuGet.org servers remain opt-in. Downloaded Portable PDBs are
+Microsoft and NuGet.org servers remain opt-in. Downloaded managed PDBs are
 accepted only when their CodeView identity matches the loaded module and are
 written atomically to an identity-keyed cache:
 

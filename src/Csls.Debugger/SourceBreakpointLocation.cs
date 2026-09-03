@@ -1,7 +1,7 @@
 namespace Csls.Debugger;
 
 /// <summary>
-/// Identifies one executable Portable PDB sequence point.
+/// Identifies one executable managed-symbol sequence point.
 /// </summary>
 /// <param name="MethodToken">The defining method metadata token.</param>
 /// <param name="IlOffset">The IL instruction offset.</param>

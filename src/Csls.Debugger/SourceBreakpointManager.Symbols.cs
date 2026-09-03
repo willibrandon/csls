@@ -1,10 +1,9 @@
 using Csls.Debugger.Contracts;
-using System.Reflection.Metadata;
 
 namespace Csls.Debugger;
 
 /// <summary>
-/// Enumerates loaded source documents and executable Portable PDB locations.
+/// Enumerates loaded source documents and executable managed-symbol locations.
 /// </summary>
 internal sealed partial class SourceBreakpointManager
 {
@@ -44,21 +43,20 @@ internal sealed partial class SourceBreakpointManager
         CorDebugLoadedModule module,
         Dictionary<string, DebugSourceInfo> sources)
     {
-        using PortablePdbReader? symbols = OpenSymbols(module);
+        using DebugSymbolReader? symbols = OpenSymbols(module);
         if (symbols is null)
         {
             return;
         }
 
-        foreach (DocumentHandle handle in symbols.Metadata.Documents)
+        foreach (ManagedSymbolDocument document in symbols.GetDocuments())
         {
-            string? path = GetDocumentPath(symbols.Metadata, handle);
+            string? path = GetDocumentPath(document.Path);
             if (path is not null && !sources.ContainsKey(path))
             {
                 DebugSourceInfo source = RegisterSource(
                     GetSourceModuleKey(module),
-                    symbols,
-                    handle).Info;
+                    document).Info;
                 sources.Add(path, source);
                 if (sources.Count >= MaximumSourceCount)
                 {
@@ -123,7 +121,7 @@ internal sealed partial class SourceBreakpointManager
     {
         try
         {
-            PortablePdbReader? symbols = OpenSymbols(module);
+            DebugSymbolReader? symbols = OpenSymbols(module);
             try
             {
                 if (symbols is null)
@@ -131,34 +129,27 @@ internal sealed partial class SourceBreakpointManager
                     return;
                 }
 
-                MetadataReader reader = symbols.Metadata;
-                foreach (MethodDebugInformationHandle handle in reader.MethodDebugInformation)
+                foreach (ManagedSequencePoint point in symbols.GetSequencePoints(methodToken: null))
                 {
-                    MethodDebugInformation method = reader.GetMethodDebugInformation(handle);
-                    foreach (SequencePoint point in method.GetSequencePoints())
+                    if (!IsMatchingLocation(
+                        point,
+                        sourcePath,
+                        startLine,
+                        startColumn,
+                        endLine,
+                        endColumn))
                     {
-                        if (!IsMatchingLocation(
-                            reader,
-                            method,
-                            point,
-                            sourcePath,
-                            startLine,
-                            startColumn,
-                            endLine,
-                            endColumn))
-                        {
-                            continue;
-                        }
+                        continue;
+                    }
 
-                        _ = locations.Add(new DebugBreakpointLocation(
-                            point.StartLine,
-                            point.StartColumn,
-                            point.EndLine,
-                            point.EndColumn));
-                        if (locations.Count >= MaximumBreakpointLocationCount)
-                        {
-                            return;
-                        }
+                    _ = locations.Add(new DebugBreakpointLocation(
+                        point.StartLine,
+                        point.StartColumn,
+                        point.EndLine,
+                        point.EndColumn));
+                    if (locations.Count >= MaximumBreakpointLocationCount)
+                    {
+                        return;
                     }
                 }
             }
@@ -173,31 +164,25 @@ internal sealed partial class SourceBreakpointManager
     }
 
     private bool IsMatchingLocation(
-        MetadataReader reader,
-        MethodDebugInformation method,
-        SequencePoint point,
+        ManagedSequencePoint point,
         string sourcePath,
         int startLine,
         int startColumn,
         int endLine,
         int endColumn)
     {
-        if (point.IsHidden || point.StartLine == HiddenSequencePointLine ||
-            ComparePosition(point.StartLine, point.StartColumn, startLine, startColumn) < 0 ||
+        if (ComparePosition(point.StartLine, point.StartColumn, startLine, startColumn) < 0 ||
             ComparePosition(point.StartLine, point.StartColumn, endLine, endColumn) > 0)
         {
             return false;
         }
 
-        DocumentHandle document = point.Document.IsNil ? method.Document : point.Document;
-        return !document.IsNil &&
-            GetDocumentPath(reader, document) is string documentPath &&
+        return GetDocumentPath(point.SourcePath) is string documentPath &&
             PathsEqual(documentPath, sourcePath);
     }
 
-    private string? GetDocumentPath(MetadataReader reader, DocumentHandle handle)
+    private string? GetDocumentPath(string path)
     {
-        string path = reader.GetString(reader.GetDocument(handle).Name);
         return string.IsNullOrWhiteSpace(path)
             ? null
             : _sourcePathMapper.Map(path);
@@ -234,7 +219,7 @@ internal sealed partial class SourceBreakpointManager
         leftLine != rightLine ? leftLine.CompareTo(rightLine) : leftColumn.CompareTo(rightColumn);
 
     private static bool IsSymbolReadException(Exception exception) =>
-        exception is IOException or UnauthorizedAccessException or BadImageFormatException;
+        DebugSymbolReader.IsReadFailure(exception);
 
     private static StringComparer PathComparer => OperatingSystem.IsWindows()
         ? StringComparer.OrdinalIgnoreCase

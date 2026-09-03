@@ -60,7 +60,7 @@ public sealed partial class DapSessionTests
                 .GetProperty("modules")
                 .EnumerateArray()
                 .Where(candidate => candidate.TryGetProperty("path", out JsonElement path) &&
-                    string.Equals(path.GetString(), programPath, StringComparison.Ordinal))];
+                    DebuggerTestPath.AreEquivalent(path.GetString(), programPath))];
             Assert.HasCount(1, modules, response.RootElement.ToString());
             JsonElement module = modules[0];
             Assert.AreEqual(isSuppressed, !module.GetProperty("isOptimized").GetBoolean());

@@ -13,9 +13,6 @@ internal sealed partial class DbgShimStandardStreams : IAsyncDisposable
     private const int StandardInputDescriptor = 0;
     private const int StandardOutputDescriptor = 1;
     private const int StandardErrorDescriptor = 2;
-    private const int StandardInputHandle = -10;
-    private const int StandardOutputHandle = -11;
-    private const int StandardErrorHandle = -12;
     private static readonly SemaphoreSlim s_launchGate = new(1, 1);
     private readonly AnonymousPipeServerStream _standardInput =
         new(PipeDirection.Out, HandleInheritability.Inheritable);
@@ -144,37 +141,13 @@ internal sealed partial class DbgShimStandardStreams : IAsyncDisposable
     private (uint ProcessId, nint ResumeHandle) CreateSuspendedWindows(
         string commandLine,
         nint environment,
-        string workingDirectory)
-    {
-        nint savedInput = GetStandardHandle(StandardInputHandle);
-        nint savedOutput = GetStandardHandle(StandardOutputHandle);
-        nint savedError = GetStandardHandle(StandardErrorHandle);
-        try
-        {
-            SetStandardHandle(StandardInputHandle, _standardInput.ClientSafePipeHandle.DangerousGetHandle());
-            SetStandardHandle(StandardOutputHandle, _standardOutput.ClientSafePipeHandle.DangerousGetHandle());
-            SetStandardHandle(StandardErrorHandle, _standardError.ClientSafePipeHandle.DangerousGetHandle());
-            return InvokeCreateProcess(commandLine, environment, workingDirectory);
-        }
-        finally
-        {
-            try
-            {
-                SetStandardHandle(StandardInputHandle, savedInput);
-            }
-            finally
-            {
-                try
-                {
-                    SetStandardHandle(StandardOutputHandle, savedOutput);
-                }
-                finally
-                {
-                    SetStandardHandle(StandardErrorHandle, savedError);
-                }
-            }
-        }
-    }
+        string workingDirectory) => WindowsProcessLauncher.Create(
+            commandLine,
+            environment,
+            workingDirectory,
+            _standardInput.ClientSafePipeHandle.DangerousGetHandle(),
+            _standardOutput.ClientSafePipeHandle.DangerousGetHandle(),
+            _standardError.ClientSafePipeHandle.DangerousGetHandle());
 
     private static void DuplicateTo(nint source, int destination)
     {
@@ -208,14 +181,6 @@ internal sealed partial class DbgShimStandardStreams : IAsyncDisposable
         }
     }
 
-    private static void SetStandardHandle(int standardHandle, nint value)
-    {
-        if (!SetStandardHandleNative(standardHandle, value))
-        {
-            throw new Win32Exception(Marshal.GetLastPInvokeError());
-        }
-    }
-
     private void CloseChildHandles()
     {
         if (Interlocked.Exchange(ref _childHandlesClosed, 1) != 0)
@@ -240,12 +205,4 @@ internal sealed partial class DbgShimStandardStreams : IAsyncDisposable
     [DefaultDllImportSearchPaths(DllImportSearchPath.SafeDirectories)]
     private static partial int CloseDescriptor(int descriptor);
 
-    [LibraryImport("kernel32", EntryPoint = "GetStdHandle", SetLastError = true)]
-    [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
-    private static partial nint GetStandardHandle(int standardHandle);
-
-    [LibraryImport("kernel32", EntryPoint = "SetStdHandle", SetLastError = true)]
-    [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static partial bool SetStandardHandleNative(int standardHandle, nint value);
 }

@@ -69,7 +69,7 @@ internal sealed partial class CorDebugDebuggee
             return api.StepOut();
         }
 
-        if (!PortablePdbStepRangeResolver.TryResolve(
+        if (!ManagedSymbolStepRangeResolver.TryResolve(
             thread,
             _sourceBreakpoints.FindModule,
             out ManagedStepRange range))

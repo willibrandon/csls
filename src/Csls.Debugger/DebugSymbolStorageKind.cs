@@ -1,12 +1,12 @@
 namespace Csls.Debugger;
 
 /// <summary>
-/// Identifies where matching Portable PDB metadata was resolved.
+/// Identifies where matching managed debug symbols were resolved.
 /// </summary>
-internal enum PortablePdbStorageKind
+internal enum DebugSymbolStorageKind
 {
     /// <summary>
-    /// The Portable PDB is stored in a matching associated file.
+    /// Managed symbols are stored in a matching associated PDB file.
     /// </summary>
     AssociatedFile,
 
@@ -18,5 +18,10 @@ internal enum PortablePdbStorageKind
     /// <summary>
     /// The Portable PDB was supplied as a runtime-owned in-memory symbol stream.
     /// </summary>
-    InMemory
+    InMemory,
+
+    /// <summary>
+    /// Symbols are stored in an identity-matched Windows PDB file.
+    /// </summary>
+    Windows
 }

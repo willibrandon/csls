@@ -38,7 +38,7 @@ public static class DebuggerEngine
         mapper.Set(mappings);
         var sourceLink = new SourceLinkPolicy();
         sourceLink.Set(sourceLinkOptions);
-        var symbols = new PortablePdbLocator();
+        var symbols = new DebugSymbolLocator();
         symbols.Set(symbolOptions);
     }
 

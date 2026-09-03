@@ -22,7 +22,7 @@ internal sealed partial class CorDebugDebuggee
     private static StreamReader CreateReader(Stream stream) =>
         new(
             stream,
-            Encoding.UTF8,
+            OperatingSystem.IsWindows() ? Console.OutputEncoding : Encoding.UTF8,
             detectEncodingFromByteOrderMarks: true,
             bufferSize: 4096,
             leaveOpen: true);

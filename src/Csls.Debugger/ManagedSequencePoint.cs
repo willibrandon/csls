@@ -1,8 +1,9 @@
 namespace Csls.Debugger;
 
 /// <summary>
-/// Represents one visible Portable PDB sequence point in a managed method.
+/// Represents one visible managed-symbol sequence point in a managed method.
 /// </summary>
+/// <param name="MethodToken">The containing method-definition metadata token.</param>
 /// <param name="IlOffset">The zero-based method-body IL offset.</param>
 /// <param name="SourcePath">The symbol document path.</param>
 /// <param name="StartLine">The one-based start line.</param>
@@ -10,6 +11,7 @@ namespace Csls.Debugger;
 /// <param name="EndLine">The one-based inclusive end line.</param>
 /// <param name="EndColumn">The one-based exclusive end column.</param>
 internal sealed record ManagedSequencePoint(
+    uint MethodToken,
     int IlOffset,
     string SourcePath,
     int StartLine,

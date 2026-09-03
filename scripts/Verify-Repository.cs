@@ -271,6 +271,7 @@ static void VerifyDependencies(string repositoryRoot, ICollection<string> failur
         "Microsoft.Bcl",
         "Microsoft.Build",
         "Microsoft.CodeAnalysis",
+        "Microsoft.DiaSymReader",
         "Microsoft.Diagnostics",
         "Microsoft.Extensions",
         "Microsoft.NET.StringTools",

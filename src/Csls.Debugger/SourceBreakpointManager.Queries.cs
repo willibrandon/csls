@@ -23,7 +23,7 @@ internal sealed partial class SourceBreakpointManager
     /// <summary>
     /// Determines whether a symbol document resolves to an absolute client source path.
     /// </summary>
-    /// <param name="symbolPath">The path recorded in the Portable PDB.</param>
+    /// <param name="symbolPath">The path recorded in the selected managed PDB.</param>
     /// <param name="clientPath">The absolute path supplied by the client.</param>
     /// <returns>True when source path mapping identifies the same document.</returns>
     internal bool PathsReferToSameSource(string symbolPath, string clientPath)

@@ -225,10 +225,9 @@ public sealed partial class DapSessionTests
             .GetProperty("stackFrames")
             .EnumerateArray()
             .First(candidate => candidate.TryGetProperty("source", out JsonElement source) &&
-                string.Equals(
+                DebuggerTestPath.AreEquivalent(
                     source.GetProperty("path").GetString(),
-                    sourcePath,
-                    StringComparison.Ordinal));
+                    sourcePath));
         Assert.AreEqual(breakpointLine, frame.GetProperty("line").GetInt32());
     }
 

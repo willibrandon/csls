@@ -6,12 +6,10 @@ using System.Reflection.PortableExecutable;
 namespace Csls.Debugger;
 
 /// <summary>
-/// Resolves managed frame names and source positions from PE metadata and Portable PDBs.
+/// Resolves managed frame names and source positions from PE metadata and debug symbols.
 /// </summary>
-internal static class PortablePdbFrameResolver
+internal static class ManagedSymbolFrameResolver
 {
-    private const int HiddenSequencePointLine = 0x00feefee;
-
     /// <summary>
     /// Resolves the best available display information for one IL frame.
     /// </summary>
@@ -61,8 +59,7 @@ internal static class PortablePdbFrameResolver
                 ilOffset,
                 fallbackName);
         }
-        catch (Exception exception) when (
-            exception is IOException or UnauthorizedAccessException or BadImageFormatException)
+        catch (Exception exception) when (DebugSymbolReader.IsReadFailure(exception))
         {
             return Unknown(fallbackName);
         }
@@ -108,38 +105,25 @@ internal static class PortablePdbFrameResolver
                 : $"{typeNamespace}.{typeName}.{methodName}";
         }
 
-        using PortablePdbReader? symbols = module.SymbolImage is not null
-            ? PortablePdbReader.TryOpen(module.SymbolImage)
+        using DebugSymbolReader? symbols = module.SymbolImage is not null
+            ? DebugSymbolReader.TryOpen(module.SymbolImage)
             : module.Path is null
                 ? null
-                : PortablePdbReader.TryOpen(module.Path, module.SymbolPath);
+                : DebugSymbolReader.TryOpen(module.Path, module.SymbolPath);
         if (symbols is null)
         {
             return Unknown(displayName, module);
         }
 
-        MetadataReader pdb = symbols.Metadata;
-        if (rowNumber == 0 || rowNumber > pdb.MethodDebugInformation.Count)
+        ManagedSequencePoint? selected = null;
+        foreach (ManagedSequencePoint point in symbols.GetSequencePoints(methodToken))
         {
-            return Unknown(displayName, module);
-        }
-
-        MethodDebugInformation debugInformation = pdb.GetMethodDebugInformation(
-            MetadataTokens.MethodDebugInformationHandle(rowNumber));
-        SequencePoint? selected = null;
-        foreach (SequencePoint point in debugInformation.GetSequencePoints())
-        {
-            if (point.IsHidden || point.StartLine == HiddenSequencePointLine)
-            {
-                continue;
-            }
-
-            if (selected is null || point.Offset <= ilOffset)
+            if (selected is null || point.IlOffset <= ilOffset)
             {
                 selected = point;
             }
 
-            if (point.Offset > ilOffset)
+            if (point.IlOffset > ilOffset)
             {
                 break;
             }
@@ -150,7 +134,6 @@ internal static class PortablePdbFrameResolver
             return Unknown(displayName, module);
         }
 
-        Document document = pdb.GetDocument(selected.Value.Document);
         return new ManagedFrameLocation
         {
             Name = displayName,
@@ -158,9 +141,9 @@ internal static class PortablePdbFrameResolver
             ModuleId = module.Id,
             ModuleImage = module.ModuleImage,
             SymbolImage = module.SymbolImage,
-            SourcePath = pdb.GetString(document.Name),
-            Line = selected.Value.StartLine,
-            Column = selected.Value.StartColumn
+            SourcePath = selected.SourcePath,
+            Line = selected.StartLine,
+            Column = selected.StartColumn
         };
     }
 

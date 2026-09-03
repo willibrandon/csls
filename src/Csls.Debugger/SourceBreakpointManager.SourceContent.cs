@@ -1,5 +1,4 @@
 using Csls.Debugger.Contracts;
-using System.Reflection.Metadata;
 
 namespace Csls.Debugger;
 
@@ -19,8 +18,8 @@ internal sealed partial class SourceBreakpointManager
     /// <summary>
     /// Resolves one stack-frame document into its stable session source identity.
     /// </summary>
-    /// <param name="modulePath">The module containing the Portable PDB identity.</param>
-    /// <param name="sourcePath">The exact document path from the Portable PDB.</param>
+    /// <param name="modulePath">The module containing the managed PDB identity.</param>
+    /// <param name="sourcePath">The exact document path from the managed PDB.</param>
     /// <returns>The stable source descriptor.</returns>
     internal DebugSourceInfo GetSourceInfo(string modulePath, string sourcePath)
     {
@@ -34,7 +33,7 @@ internal sealed partial class SourceBreakpointManager
     /// Resolves one stack-frame document by its stable session-local module identifier.
     /// </summary>
     /// <param name="moduleId">The module identifier returned by debugger module inspection.</param>
-    /// <param name="sourcePath">The exact document path from the Portable PDB.</param>
+    /// <param name="sourcePath">The exact document path from the managed PDB.</param>
     /// <returns>The stable source descriptor.</returns>
     internal DebugSourceInfo GetSourceInfo(int moduleId, string sourcePath)
     {
@@ -55,18 +54,16 @@ internal sealed partial class SourceBreakpointManager
             return existing.Info;
         }
 
-        using PortablePdbReader? symbols = module is null
-            ? PortablePdbReader.TryOpen(moduleKey)
+        using DebugSymbolReader? symbols = module is null
+            ? DebugSymbolReader.TryOpen(moduleKey)
             : OpenSymbols(module);
         if (symbols is not null)
         {
-            foreach (DocumentHandle handle in symbols.Metadata.Documents)
+            foreach (ManagedSymbolDocument document in symbols.GetDocuments())
             {
-                string candidate = symbols.Metadata.GetString(
-                    symbols.Metadata.GetDocument(handle).Name);
-                if (PathsEqual(candidate, sourcePath))
+                if (PathsEqual(document.Path, sourcePath))
                 {
-                    return RegisterSource(moduleKey, symbols, handle).Info;
+                    return RegisterSource(moduleKey, document).Info;
                 }
             }
         }
@@ -94,13 +91,8 @@ internal sealed partial class SourceBreakpointManager
 
     private DebugSourceRegistration RegisterSource(
         string modulePath,
-        PortablePdbReader symbols,
-        DocumentHandle handle)
+        ManagedSymbolDocument document)
     {
-        PortablePdbSourceDocument document = PortablePdbSourceDocumentReader.Read(
-            symbols.Metadata,
-            handle,
-            symbols.SourceLinkMappings);
         string key = CreateSourceKey(modulePath, document.Path);
         if (_sources.TryGetValue(key, out DebugSourceRegistration? existing))
         {

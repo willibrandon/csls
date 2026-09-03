@@ -4,12 +4,12 @@ using System.Security.Cryptography;
 namespace Csls.Debugger;
 
 /// <summary>
-/// Verifies debugger source bytes against Portable PDB checksums.
+/// Verifies debugger source bytes against managed PDB checksums.
 /// </summary>
 internal static class SourceChecksumVerifier
 {
     /// <summary>
-    /// Determines whether source bytes match a supported Portable PDB checksum.
+    /// Determines whether source bytes match a supported managed PDB checksum.
     /// </summary>
     /// <param name="source">The exact source bytes.</param>
     /// <param name="checksum">The expected checksum.</param>

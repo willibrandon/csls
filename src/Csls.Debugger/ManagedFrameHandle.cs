@@ -93,12 +93,12 @@ internal sealed class ManagedFrameHandle
             : null;
 
     /// <summary>
-    /// Opens an owned Portable PDB reader over the selected frame symbols.
+    /// Opens an owned managed-symbol reader over the selected frame symbols.
     /// </summary>
     /// <returns>An owned symbol reader, or null when symbols are unavailable.</returns>
-    internal PortablePdbReader? OpenSymbols() => SymbolImage is not null
-        ? PortablePdbReader.TryOpen(SymbolImage)
+    internal DebugSymbolReader? OpenSymbols() => SymbolImage is not null
+        ? DebugSymbolReader.TryOpen(SymbolImage)
         : ModulePath is null
             ? null
-            : PortablePdbReader.TryOpen(ModulePath, SymbolPath);
+            : DebugSymbolReader.TryOpen(ModulePath, SymbolPath);
 }

@@ -84,7 +84,7 @@ public sealed partial class DapSessionTests
                 threadId,
                 expectedPath,
                 TestContext.CancellationToken).ConfigureAwait(false);
-            Assert.AreEqual(expectedPath, framePath);
+            Assert.IsTrue(DebuggerTestPath.AreEquivalent(expectedPath, framePath));
             Assert.AreEqual(expectedLine, frameLine);
             await CompleteStepFilteringTargetAsync(client, waitPath).WaitAsync(
                 TimeSpan.FromSeconds(15),

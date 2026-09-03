@@ -8,7 +8,6 @@ namespace Csls.Debugger;
 /// </summary>
 internal sealed partial class SourceBreakpointManager : IDisposable
 {
-    private const int HiddenSequencePointLine = 0x00feefee;
     private const int MaximumModuleCount = 4096;
     private static readonly Guid s_iUnknownInterfaceId =
         new("00000000-0000-0000-C000-000000000046");
@@ -16,7 +15,7 @@ internal sealed partial class SourceBreakpointManager : IDisposable
     private readonly Dictionary<string, List<SourceBreakpointDefinition>> _definitions;
     private readonly Dictionary<nint, SourceBreakpointBinding> _bindings = [];
     private readonly Dictionary<nint, CorDebugLoadedModule> _modules = [];
-    private readonly PortablePdbLocator _symbolLocator = new();
+    private readonly DebugSymbolLocator _symbolLocator = new();
     private int _nextBreakpointId;
     private int _nextModuleId;
     private bool _suppressJitOptimizations;
@@ -126,7 +125,7 @@ internal sealed partial class SourceBreakpointManager : IDisposable
         _ = ComAbi.AddRef(module);
         string? reportedName = GetModuleName(module);
         string? modulePath = GetModulePath(reportedName);
-        PortablePdbResolution? symbols = modulePath is null
+        DebugSymbolResolution? symbols = modulePath is null
             ? null
             : await _symbolLocator.ResolveAsync(modulePath, cancellationToken)
                 .ConfigureAwait(false);

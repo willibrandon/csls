@@ -88,7 +88,7 @@ public sealed partial class DapSessionTests
         AssertEvent(output.RootElement, "output");
         Assert.AreEqual("stdout", output.RootElement.GetProperty("body").GetProperty("category").GetString());
         Assert.AreEqual(
-            "transport-value",
+            "transport-π-é",
             output.RootElement.GetProperty("body").GetProperty("output").GetString());
         using JsonDocument exited = await client
             .ReadMessageAsync(TestContext.CancellationToken)
@@ -166,7 +166,7 @@ public sealed partial class DapSessionTests
         AssertEvent(output.RootElement, "output");
         Assert.AreEqual("stdout", output.RootElement.GetProperty("body").GetProperty("category").GetString());
         Assert.AreEqual(
-            "transport-value",
+            "transport-π-é",
             output.RootElement.GetProperty("body").GetProperty("output").GetString());
         using JsonDocument exited = await client
             .ReadMessageAsync(TestContext.CancellationToken)

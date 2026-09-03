@@ -34,16 +34,18 @@ internal sealed partial class SourceBreakpointManager
     }
 
     private static (DebugModuleSymbolKind SymbolKind, string? SymbolPath) GetSymbolInfo(
-        PortablePdbResolution? symbols)
+        DebugSymbolResolution? symbols)
     {
         return symbols?.StorageKind switch
         {
-            PortablePdbStorageKind.Embedded =>
+            DebugSymbolStorageKind.Embedded =>
                 (DebugModuleSymbolKind.EmbeddedPortablePdb, null),
-            PortablePdbStorageKind.AssociatedFile =>
+            DebugSymbolStorageKind.AssociatedFile =>
                 (DebugModuleSymbolKind.PortablePdb, symbols.Path),
-            PortablePdbStorageKind.InMemory =>
+            DebugSymbolStorageKind.InMemory =>
                 (DebugModuleSymbolKind.InMemoryPortablePdb, null),
+            DebugSymbolStorageKind.Windows =>
+                (DebugModuleSymbolKind.WindowsPdb, symbols.Path),
             _ => (DebugModuleSymbolKind.None, null)
         };
     }

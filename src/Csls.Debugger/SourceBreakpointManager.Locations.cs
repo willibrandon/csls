@@ -1,54 +1,32 @@
-using System.Reflection.Metadata;
-using System.Reflection.Metadata.Ecma335;
-
 namespace Csls.Debugger;
 
 /// <summary>
-/// Resolves source breakpoint requests to Portable PDB sequence points.
+/// Resolves source breakpoint requests to managed-symbol sequence points.
 /// </summary>
 internal sealed partial class SourceBreakpointManager
 {
     private Dictionary<int, SourceBreakpointLocation> ResolveLocations(
-        MetadataReader reader,
+        IReadOnlyList<ManagedSequencePoint> sequencePoints,
         IReadOnlyList<SourceBreakpointDefinition> definitions)
     {
         var result = new Dictionary<int, SourceBreakpointLocation>();
-        int rowNumber = 0;
-        foreach (MethodDebugInformationHandle handle in reader.MethodDebugInformation)
+        foreach (ManagedSequencePoint point in sequencePoints)
         {
-            rowNumber++;
-            MethodDebugInformation method = reader.GetMethodDebugInformation(handle);
-            foreach (SequencePoint point in method.GetSequencePoints())
+            string documentPath = _sourcePathMapper.Map(point.SourcePath);
+            foreach (SourceBreakpointDefinition definition in definitions)
             {
-                if (point.IsHidden || point.StartLine == HiddenSequencePointLine)
+                if (!PathsEqual(documentPath, definition.SourcePath) ||
+                    !IsBetterLocation(definition, point, result))
                 {
                     continue;
                 }
 
-                DocumentHandle documentHandle = point.Document.IsNil ? method.Document : point.Document;
-                if (documentHandle.IsNil)
-                {
-                    continue;
-                }
-
-                string documentPath = _sourcePathMapper.Map(
-                    reader.GetString(reader.GetDocument(documentHandle).Name));
-                foreach (SourceBreakpointDefinition definition in definitions)
-                {
-                    if (!PathsEqual(documentPath, definition.SourcePath) ||
-                        !IsBetterLocation(definition, point, result))
-                    {
-                        continue;
-                    }
-
-                    result[definition.Id] = new SourceBreakpointLocation(
-                        checked((uint)MetadataTokens.GetToken(
-                            MetadataTokens.MethodDefinitionHandle(rowNumber))),
-                        checked((uint)point.Offset),
-                        point.StartLine,
-                        point.StartColumn,
-                        point.EndLine);
-                }
+                result[definition.Id] = new SourceBreakpointLocation(
+                    point.MethodToken,
+                    checked((uint)point.IlOffset),
+                    point.StartLine,
+                    point.StartColumn,
+                    point.EndLine);
             }
         }
 
@@ -57,7 +35,7 @@ internal sealed partial class SourceBreakpointManager
 
     private static bool IsBetterLocation(
         SourceBreakpointDefinition definition,
-        SequencePoint candidate,
+        ManagedSequencePoint candidate,
         Dictionary<int, SourceBreakpointLocation> current)
     {
         bool candidateContainsLine = definition.RequestedLine >= candidate.StartLine &&

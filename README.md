@@ -25,8 +25,9 @@ breakpoints, hit-count breakpoints, bounded array-memory inspection, symbolic
 managed-IL disassembly, and instruction breakpoints across C#, Visual Basic, F#,
 and other
 Portable-PDB-producing .NET languages. Managed exception filters accept exact
-and base type names. Matching Portable PDBs can be loaded from trusted local or
-HTTP symbol stores with identity validation and bounded caching. Source-aware
+and base type names. Matching Portable PDBs on every platform and Windows PDBs on
+Windows can be loaded from trusted local or HTTP symbol stores with identity
+validation and bounded caching. Source-aware
 Step Into can select a particular local managed
 call on a statement, and Go to Line exposes only destinations that CoreCLR certifies
 for safe continued execution. Launches can suppress JIT optimizations for
