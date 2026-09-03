@@ -22,7 +22,7 @@ internal static class DebuggerFixture
         int localNumber = number + 1;
         string localText = text + "!";
         int[] localArray = [41, 42, 43];
-        var localObject = new DebuggerFixtureValue(number, localText);
+        var localObject = new DebuggerFixtureValue(number, localText, path + ".evaluation");
         Console.Write(announcement);
         Console.Out.Flush();
         while (!File.Exists(path))

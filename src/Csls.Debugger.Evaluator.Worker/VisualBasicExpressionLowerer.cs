@@ -46,7 +46,7 @@ internal static class VisualBasicExpressionLowerer
             DebugExpressionNodeKind.MemberAccess,
             member.Name.Identifier.ValueText,
             Lower(member.Expression)),
-        InvocationExpressionSyntax invocation => LowerElementAccess(invocation),
+        InvocationExpressionSyntax invocation => LowerInvocationOrElementAccess(invocation),
         UnaryExpressionSyntax unary => OperatorNode(
             DebugExpressionNodeKind.Unary,
             UnaryOperator(unary.Kind()),
@@ -68,7 +68,8 @@ internal static class VisualBasicExpressionLowerer
             $"Visual Basic expression kind {syntax.Kind()} is not supported by safe evaluation.")
     };
 
-    private static DebugExpressionNode LowerElementAccess(InvocationExpressionSyntax invocation)
+    private static DebugExpressionNode LowerInvocationOrElementAccess(
+        InvocationExpressionSyntax invocation)
     {
         if (invocation.ArgumentList is null)
         {
@@ -76,19 +77,32 @@ internal static class VisualBasicExpressionLowerer
                 "Visual Basic invocation without an argument list is not safe array access.");
         }
 
+        if (invocation.Expression is MemberAccessExpressionSyntax member)
+        {
+            return Node(
+                DebugExpressionNodeKind.Invocation,
+                member.Name.Identifier.ValueText,
+                [
+                    Lower(member.Expression),
+                    .. invocation.ArgumentList.Arguments.Select(LowerArgument)
+                ]);
+        }
+
         return Node(
             DebugExpressionNodeKind.ElementAccess,
             children:
             [
                 Lower(invocation.Expression),
-                .. invocation.ArgumentList.Arguments.Select(argument => argument switch
-                {
-                    SimpleArgumentSyntax simple => Lower(simple.Expression),
-                    _ => throw new NotSupportedException(
-                        "Named and omitted Visual Basic indexes are not supported.")
-                })
+                .. invocation.ArgumentList.Arguments.Select(LowerArgument)
             ]);
     }
+
+    private static DebugExpressionNode LowerArgument(ArgumentSyntax argument) => argument switch
+    {
+        SimpleArgumentSyntax simple => Lower(simple.Expression),
+        _ => throw new NotSupportedException(
+            "Named and omitted Visual Basic arguments are not supported.")
+    };
 
     private static DebugExpressionOperator UnaryOperator(SyntaxKind kind) => kind switch
     {

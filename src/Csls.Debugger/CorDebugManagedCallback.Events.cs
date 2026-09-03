@@ -13,12 +13,49 @@ internal sealed partial class CorDebugManagedCallback
         int reason,
         CancellationToken cancellationToken)
     {
+        if (IsFunctionEvaluationActive)
+        {
+            return ValueTask.FromResult(true);
+        }
+
         if (thread == 0 || stepper == 0)
         {
             return ValueTask.FromResult(true);
         }
 
         return CompleteStepAsync(thread, stepper, reason, cancellationToken);
+    }
+
+    private async ValueTask<bool> HandleEvaluationCompleteAsync(
+        nint evaluation,
+        bool isException,
+        CancellationToken cancellationToken)
+    {
+        if (evaluation == 0)
+        {
+            return true;
+        }
+
+        bool recognized = await _evaluationCompleted(
+            evaluation,
+            isException,
+            cancellationToken).ConfigureAwait(false);
+        return !recognized;
+    }
+
+    private ValueTask<bool> HandleCreateThreadAsync(
+        nint thread,
+        CancellationToken cancellationToken)
+    {
+        _ = cancellationToken;
+        if (thread != 0 && IsFunctionEvaluationActive)
+        {
+            CorDebugHResult.ThrowIfFailed(
+                new ICorDebugThreadAbi(thread).SetDebugState(1),
+                "ICorDebugThread.SetDebugState");
+        }
+
+        return ValueTask.FromResult(true);
     }
 
     private async ValueTask<bool> CompleteStepAsync(
@@ -129,6 +166,11 @@ internal sealed partial class CorDebugManagedCallback
         int eventType,
         CancellationToken cancellationToken)
     {
+        if (IsFunctionEvaluationActive)
+        {
+            return true;
+        }
+
         if (thread == 0 || !TryGetExceptionStage(eventType, out DebugExceptionStage stage))
         {
             return true;

@@ -46,4 +46,9 @@ public sealed partial class DebuggerSession : IAsyncDisposable
     /// </summary>
     public DebugSessionState State => _state;
 
+    /// <summary>
+    /// Gets the current stopped-state generation, or zero before the first debugger stop.
+    /// </summary>
+    public DebugStopGeneration StopGeneration => _stopGeneration;
+
 }

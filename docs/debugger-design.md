@@ -374,6 +374,19 @@ deadline and cancellation invokes `ICorDebugEval.Abort`; automatic `RudeAbort` i
 forbidden because it can destabilize the target. An evaluation that leaves target
 safety uncertain faults mutation for the session and explains why.
 
+DAP may explicitly authorize target-code evaluation. The initial call contract is
+an explicitly qualified, parameterless instance method whose receiver binds through
+the side-effect-free evaluator. The engine resolves the runtime type and CLR method,
+suspends every other managed thread, starts `ICorDebugEval`, and treats all nested
+breakpoint, step, and exception callbacks as evaluation-internal until the matching
+evaluation callback arrives. Threads created during the call are suspended too.
+Normal completion, exception completion, and cooperative abort restore the exact
+prior thread debug states and advance the stop generation before the client can
+inspect again. DAP publishes stack and variable invalidation after its evaluation
+response. Private RPC and the read-only MCP evaluation tool never grant this
+authorization; MCP target-code execution requires a distinct mutation tool and its
+per-session agent-control grant.
+
 Expansion understands debugger display/proxy/browsable attributes, raw and results
 views, root-hidden members, tuples, dynamic flags, nullable values, arrays,
 collections, spans, ref structs, pointers, function pointers, closures, hoisted

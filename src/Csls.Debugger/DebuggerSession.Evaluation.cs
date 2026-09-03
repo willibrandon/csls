@@ -8,15 +8,17 @@ namespace Csls.Debugger;
 public sealed partial class DebuggerSession
 {
     /// <summary>
-    /// Evaluates one side-effect-free expression in a stopped managed frame.
+    /// Evaluates one managed expression under the caller's target-code policy.
     /// </summary>
     /// <param name="frameId">The generation-bound managed frame handle.</param>
     /// <param name="expression">The source-language expression to evaluate.</param>
-    /// <param name="cancellationToken">Cancels expression binding or runtime inspection.</param>
+    /// <param name="allowTargetCodeExecution">Whether the caller explicitly authorizes function evaluation.</param>
+    /// <param name="cancellationToken">Cancels binding, inspection, or target-code evaluation.</param>
     /// <returns>The current formatted expression result.</returns>
     public async Task<DebugEvaluateResult> EvaluateAsync(
         int frameId,
         string expression,
+        bool allowTargetCodeExecution,
         CancellationToken cancellationToken)
     {
         ObjectDisposedException.ThrowIf(_disposed != 0, this);
@@ -40,16 +42,52 @@ public sealed partial class DebuggerSession
             cancellationToken).ConfigureAwait(false);
 
         DebugEvaluateResult? result = null;
+        Task<DebugEvaluateResult>? functionEvaluation = null;
+        CorDebugDebuggee? evaluationDebuggee = null;
         await _actor.InvokeAsync(
             token =>
             {
                 _ = token;
                 CorDebugDebuggee managedDebuggee = GetStoppedManagedDebuggee();
-                result = managedDebuggee.Evaluate(frameId, plan, generation);
+                if (plan.Root.Kind == DebugExpressionNodeKind.Invocation)
+                {
+                    if (!allowTargetCodeExecution)
+                    {
+                        throw new InvalidOperationException(
+                            "This caller is not authorized to execute target code during " +
+                            "expression evaluation.");
+                    }
+
+                    evaluationDebuggee = managedDebuggee;
+                    try
+                    {
+                        functionEvaluation = managedDebuggee.BeginFunctionEvaluationAsync(
+                            frameId,
+                            plan,
+                            generation);
+                    }
+                    catch (Exception exception) when (
+                        managedDebuggee.FunctionEvaluationSafetyFailure is string reason)
+                    {
+                        _stopGeneration = _stopGeneration.Next();
+                        _state = DebugSessionState.Faulted;
+                        throw new InvalidOperationException(reason, exception);
+                    }
+                }
+                else
+                {
+                    result = managedDebuggee.Evaluate(frameId, plan, generation);
+                }
+
                 return ValueTask.CompletedTask;
             },
             cancellationToken).ConfigureAwait(false);
-        return result!;
+        return functionEvaluation is null
+            ? result!
+            : await WaitForFunctionEvaluationAsync(
+                evaluationDebuggee!,
+                functionEvaluation,
+                cancellationToken).ConfigureAwait(false);
     }
 
     private Task<DebugExpressionPlan> CompileExpressionAsync(

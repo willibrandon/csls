@@ -182,11 +182,24 @@ for locals, arguments, fields, and array indexes.
 The frame is explicit when supplied; otherwise the adapter uses the selected
 stopped thread's top managed frame. The same generation-bound operation is
 available through private debugger RPC and the MCP `debug_evaluate` tool.
-Properties, calls, assignments, construction, user-defined operators, and other
-operations that could execute target code fail explicitly until function
-evaluation is enabled with its cancellation and authorization policy. Variables
-include `evaluateName` only when csls can provide a valid source expression for
-the value.
+Private debugger RPC and `debug_evaluate` are read-only and reject every expression
+that could execute target code. DAP `evaluate` additionally accepts explicitly
+qualified, parameterless instance-method calls in C#, Visual Basic, and F# when
+CoreCLR permits function evaluation at the selected frame. Optimized methods,
+prologs, native frames, GC-unsafe points, and other runtime-restricted locations
+return the CoreCLR failure instead of attempting a less safe evaluation.
+
+Function evaluation runs only the selected managed thread while the other managed
+threads remain stopped. One call may run at a time and has a five-second deadline.
+DAP advertises request cancellation; cancellation and deadline expiry use
+`ICorDebugEval.Abort`, wait for CoreCLR's completion callback, and never escalate
+to `RudeAbort`. A call result, thrown exception, or cooperative abort invalidates
+the client's stack and variable handles because target code may allocate, collect,
+or mutate state. If cooperative abort cannot restore a trustworthy stop, the
+session faults and must be disconnected. Calls with arguments, static methods,
+constructors, assignments, properties, user-defined operators, and implicit
+`ToString` execution are rejected. Variables include `evaluateName` only when
+csls can provide a valid source expression for the value.
 
 Assemblies loaded from PE and Portable PDB byte arrays receive the same source
 breakpoint, stack, local-name, stepping, goto, disassembly, and managed-IL

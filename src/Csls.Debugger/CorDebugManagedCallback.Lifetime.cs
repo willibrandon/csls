@@ -8,6 +8,27 @@ namespace Csls.Debugger;
 internal sealed partial class CorDebugManagedCallback
 {
     /// <summary>
+    /// Marks the callback pipeline as executing one debugger-owned function evaluation.
+    /// </summary>
+    internal void BeginFunctionEvaluation()
+    {
+        if (Interlocked.CompareExchange(ref _functionEvaluationActive, 1, 0) != 0)
+        {
+            throw new InvalidOperationException(
+                "Only one managed function evaluation may run at a time.");
+        }
+    }
+
+    /// <summary>
+    /// Restores ordinary callback handling after debugger-owned function evaluation.
+    /// </summary>
+    internal void EndFunctionEvaluation() =>
+        Volatile.Write(ref _functionEvaluationActive, 0);
+
+    private bool IsFunctionEvaluationActive =>
+        Volatile.Read(ref _functionEvaluationActive) != 0;
+
+    /// <summary>
     /// Gets the COM interface pointer accepted by ICorDebug.SetManagedHandler.
     /// </summary>
     internal nint Pointer => Volatile.Read(ref _instance);

@@ -18,7 +18,18 @@ internal sealed partial class CorDebugDebuggee
             return default;
         }
 
-        nint identity = ComAbi.GetIdentity(value);
+        nint identity;
+        try
+        {
+            identity = ComAbi.GetIdentity(value);
+        }
+        catch (InvalidOperationException exception)
+        {
+            throw new InvalidOperationException(
+                $"The runtime value '{evaluateName ?? "<anonymous>"}' did not expose its " +
+                $"required COM identity: {exception.Message}",
+                exception);
+        }
         if (_valueIdentities.TryGetValue(identity, out ManagedValueHandle? existing))
         {
             _ = ComAbi.Release(identity);

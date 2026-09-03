@@ -65,17 +65,39 @@ internal sealed partial class CorDebugManagedCallback
     [UnmanagedCallersOnly(CallConvs = [typeof(CallConvStdcall)])]
     private static int EvalComplete(nint self, nint appDomain, nint thread, nint eval)
     {
-        _ = thread;
-        _ = eval;
-        return QueueContinue(self, appDomain, createsProcess: false);
+        return QueueCallback(
+            self,
+            appDomain,
+            thread,
+            eval,
+            auxiliary: 0,
+            createsProcess: false,
+            exitsProcess: false,
+            continueAfterCallback: true,
+            static (target, _, ownedEval, _, cancellationToken) =>
+                target.HandleEvaluationCompleteAsync(
+                    ownedEval,
+                    isException: false,
+                    cancellationToken));
     }
 
     [UnmanagedCallersOnly(CallConvs = [typeof(CallConvStdcall)])]
     private static int EvalException(nint self, nint appDomain, nint thread, nint eval)
     {
-        _ = thread;
-        _ = eval;
-        return QueueContinue(self, appDomain, createsProcess: false);
+        return QueueCallback(
+            self,
+            appDomain,
+            thread,
+            eval,
+            auxiliary: 0,
+            createsProcess: false,
+            exitsProcess: false,
+            continueAfterCallback: true,
+            static (target, _, ownedEval, _, cancellationToken) =>
+                target.HandleEvaluationCompleteAsync(
+                    ownedEval,
+                    isException: true,
+                    cancellationToken));
     }
 
     [UnmanagedCallersOnly(CallConvs = [typeof(CallConvStdcall)])]
@@ -102,8 +124,17 @@ internal sealed partial class CorDebugManagedCallback
     [UnmanagedCallersOnly(CallConvs = [typeof(CallConvStdcall)])]
     private static int CreateThread(nint self, nint appDomain, nint thread)
     {
-        _ = thread;
-        return QueueContinue(self, appDomain, createsProcess: false);
+        return QueueCallback(
+            self,
+            appDomain,
+            thread,
+            subject: 0,
+            auxiliary: 0,
+            createsProcess: false,
+            exitsProcess: false,
+            continueAfterCallback: true,
+            static (target, ownedThread, _, _, cancellationToken) =>
+                target.HandleCreateThreadAsync(ownedThread, cancellationToken));
     }
 
     [UnmanagedCallersOnly(CallConvs = [typeof(CallConvStdcall)])]

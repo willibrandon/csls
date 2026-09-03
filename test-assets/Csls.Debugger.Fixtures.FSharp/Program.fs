@@ -13,6 +13,7 @@ open System.Threading
 [<EntryPoint>]
 let main arguments =
     let mutable answer = Int32.Parse(arguments[1], CultureInfo.InvariantCulture)
+    let value = DebuggerFixtureValue(answer)
     let numbers = [| answer; answer + 1 |]
     answer <- answer + 1
     Console.Write(arguments[2])
@@ -20,4 +21,5 @@ let main arguments =
     while not (File.Exists(arguments[0])) do
         Thread.SpinWait(10_000)
 
+    GC.KeepAlive(value)
     answer + numbers[0] - 83

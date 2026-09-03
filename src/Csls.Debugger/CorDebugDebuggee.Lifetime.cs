@@ -82,6 +82,8 @@ internal sealed partial class CorDebugDebuggee
             cancellationToken =>
             {
                 _ = cancellationToken;
+                FailFunctionEvaluation(new OperationCanceledException(
+                    "The debugger target ended during managed function evaluation."));
                 ClearFrameHandles();
                 CancelStep();
                 ReleaseRuntimeReferences(corDebug, debugProcess);

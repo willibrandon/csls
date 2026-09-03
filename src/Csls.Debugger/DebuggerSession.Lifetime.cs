@@ -35,6 +35,12 @@ public sealed partial class DebuggerSession
 
     private async Task DisposeDebuggeeAsync()
     {
+        if (_debuggee is CorDebugDebuggee activeManagedDebuggee)
+        {
+            await AbortFunctionEvaluationForShutdownAsync(activeManagedDebuggee)
+                .ConfigureAwait(false);
+        }
+
         if (_debuggee is not null &&
             _state is not DebugSessionState.Terminated and not DebugSessionState.Faulted)
         {
@@ -75,6 +81,49 @@ public sealed partial class DebuggerSession
             _sourceBreakpoints.Dispose();
             _functionBreakpoints.Dispose();
             _instructionBreakpoints.Dispose();
+        }
+    }
+
+    private async Task AbortFunctionEvaluationForShutdownAsync(
+        CorDebugDebuggee debuggee)
+    {
+        Task<DebugEvaluateResult>? completion = null;
+        try
+        {
+            await _actor.InvokeAsync(
+                token =>
+                {
+                    _ = token;
+                    completion = debuggee.ActiveFunctionEvaluationCompletion;
+                    if (completion is not null)
+                    {
+                        _ = debuggee.AbortFunctionEvaluation();
+                    }
+
+                    return ValueTask.CompletedTask;
+                },
+                CancellationToken.None).ConfigureAwait(false);
+        }
+        catch (Exception exception) when (
+            exception is InvalidOperationException or IOException)
+        {
+        }
+
+        if (completion is null)
+        {
+            return;
+        }
+
+        try
+        {
+            _ = await completion.WaitAsync(
+                s_functionEvaluationAbortGrace,
+                CancellationToken.None).ConfigureAwait(false);
+        }
+        catch (Exception exception) when (
+            exception is OperationCanceledException or InvalidOperationException or
+                TimeoutException)
+        {
         }
     }
 

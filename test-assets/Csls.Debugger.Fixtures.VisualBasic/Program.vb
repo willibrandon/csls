@@ -14,6 +14,7 @@ Friend Module Program
     ''' <returns>Zero when the expected local value remains live.</returns>
     Friend Function Main(arguments As String()) As Integer
         Dim answer As Integer = Integer.Parse(arguments(1), CultureInfo.InvariantCulture)
+        Dim value = New DebuggerFixtureValue(answer)
         answer += 1
         Console.Write(arguments(2))
         Console.Out.Flush()
@@ -21,6 +22,7 @@ Friend Module Program
             Thread.SpinWait(10_000)
         End While
 
+        GC.KeepAlive(value)
         Return answer - 42
     End Function
 End Module

@@ -21,6 +21,7 @@ internal sealed partial class CorDebugDebuggee
     /// <param name="targetBreakpointReached">The ordered targeted-step breakpoint callback.</param>
     /// <param name="stepCompleted">The ordered runtime-step completion callback.</param>
     /// <param name="exceptionRaised">The ordered managed-exception callback.</param>
+    /// <param name="evaluationCompleted">The ordered function-evaluation completion callback.</param>
     /// <param name="cancellationToken">Cancels runtime activation and cleans up the target.</param>
     /// <returns>The live debugger-owned target.</returns>
     internal static async Task<CorDebugDebuggee> LaunchAsync(
@@ -34,6 +35,7 @@ internal sealed partial class CorDebugDebuggee
             targetBreakpointReached,
         Func<int, nint, int, CancellationToken, ValueTask<bool>> stepCompleted,
         Func<int, nint, DebugExceptionStage, CancellationToken, ValueTask<bool>> exceptionRaised,
+        Func<nint, bool, CancellationToken, ValueTask<bool>> evaluationCompleted,
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(options);
@@ -45,6 +47,7 @@ internal sealed partial class CorDebugDebuggee
         ArgumentNullException.ThrowIfNull(targetBreakpointReached);
         ArgumentNullException.ThrowIfNull(stepCompleted);
         ArgumentNullException.ThrowIfNull(exceptionRaised);
+        ArgumentNullException.ThrowIfNull(evaluationCompleted);
         ValidateOptions(options);
         DbgShimLibrary.VerifyPlatformSupport();
 
@@ -92,7 +95,8 @@ internal sealed partial class CorDebugDebuggee
                 breakpointReached,
                 targetBreakpointReached,
                 stepCompleted,
-                exceptionRaised);
+                exceptionRaised,
+                evaluationCompleted);
             registration = new CorDebugRuntimeStartupRegistration(
                 processId,
                 actor,

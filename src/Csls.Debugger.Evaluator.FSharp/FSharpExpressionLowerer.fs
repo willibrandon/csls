@@ -128,6 +128,51 @@ module FSharpExpressionLowerer =
                 | single -> [ lower single ]
 
             node DebugExpressionNodeKind.ElementAccess noText (lower receiver :: loweredIndexes)
+        | SynExpr.App(funcExpr = SynExpr.DotGet(expr = receiver; longDotId = members);
+                      argExpr = argument) ->
+            let names = members.LongIdent
+            match List.rev names with
+            | [] -> raise (unsupported "empty method name")
+            | methodName :: reversedReceiverMembers ->
+                let loweredReceiver =
+                    reversedReceiverMembers
+                    |> List.rev
+                    |> List.fold
+                        (fun current memberName ->
+                            node
+                                DebugExpressionNodeKind.MemberAccess
+                                memberName.idText
+                                [ current ])
+                        (lower receiver)
+                let arguments =
+                    match argument with
+                    | SynExpr.Const(constant = SynConst.Unit) -> []
+                    | SynExpr.Tuple(exprs = expressions) -> expressions |> List.map lower
+                    | single -> [ lower single ]
+
+                node
+                    DebugExpressionNodeKind.Invocation
+                    methodName.idText
+                    (loweredReceiver :: arguments)
+        | SynExpr.App(funcExpr = SynExpr.LongIdent(longDotId = members);
+                      argExpr = argument) when members.LongIdent.Length >= 2 ->
+            match List.rev members.LongIdent with
+            | methodName :: reversedReceiverNames ->
+                let loweredReceiver =
+                    reversedReceiverNames
+                    |> List.rev
+                    |> lowerLongIdentifier
+                let arguments =
+                    match argument with
+                    | SynExpr.Const(constant = SynConst.Unit) -> []
+                    | SynExpr.Tuple(exprs = expressions) -> expressions |> List.map lower
+                    | single -> [ lower single ]
+
+                node
+                    DebugExpressionNodeKind.Invocation
+                    methodName.idText
+                    (loweredReceiver :: arguments)
+            | _ -> raise (unsupported "empty method name")
         | SynExpr.App(funcExpr = SynExpr.App(funcExpr = operation; argExpr = left);
                       argExpr = right) ->
             operatorNode

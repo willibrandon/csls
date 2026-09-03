@@ -31,6 +31,11 @@ public enum DebugExpressionNodeKind
     ElementAccess,
 
     /// <summary>
+    /// Invokes one instance method on its receiver and argument children.
+    /// </summary>
+    Invocation,
+
+    /// <summary>
     /// Applies one unary operation to its child.
     /// </summary>
     Unary,

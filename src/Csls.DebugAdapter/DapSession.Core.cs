@@ -33,6 +33,9 @@ internal sealed partial class DapSession : IDebuggerSessionObserver, IAsyncDispo
     private bool _deferGotoStoppedEvent;
     private (string Reason, int? ThreadId, DebugStopGeneration Generation,
         DebugExceptionInfo? Exception)? _deferredStop;
+    private Task? _evaluationRequest;
+    private CancellationTokenSource? _evaluationRequestCancellation;
+    private int _evaluationRequestSequence;
     private int _protocolClosed;
 
     /// <summary>
@@ -77,7 +80,45 @@ internal sealed partial class DapSession : IDebuggerSessionObserver, IAsyncDispo
                     break;
                 }
 
+                if (string.Equals(request.Command, "cancel", StringComparison.Ordinal))
+                {
+                    await CancelRequestAsync(request, linked.Token).ConfigureAwait(false);
+                    continue;
+                }
+
+                if (_evaluationRequest is not null)
+                {
+                    if (!_evaluationRequest.IsCompleted)
+                    {
+                        await WriteRequestFailureAsync(
+                            request,
+                            "A managed function evaluation is still in progress. Cancel it or " +
+                                "wait for its response before sending another request.",
+                            linked.Token).ConfigureAwait(false);
+                        continue;
+                    }
+
+                    await CompleteEvaluationRequestAsync().ConfigureAwait(false);
+                }
+
+                if (string.Equals(request.Command, "evaluate", StringComparison.Ordinal))
+                {
+                    _evaluationRequestCancellation = CancellationTokenSource
+                        .CreateLinkedTokenSource(linked.Token);
+                    _evaluationRequestSequence = request.Seq;
+                    _evaluationRequest = HandleRequestAsync(
+                        request,
+                        _evaluationRequestCancellation.Token).AsTask();
+                    continue;
+                }
+
                 await HandleRequestAsync(request, linked.Token).ConfigureAwait(false);
+            }
+
+            if (_evaluationRequest is not null)
+            {
+                await _evaluationRequestCancellation!.CancelAsync().ConfigureAwait(false);
+                await CompleteEvaluationRequestAsync().ConfigureAwait(false);
             }
 
             return _state == DapSessionState.Faulted ? 1 : 0;
@@ -103,6 +144,8 @@ internal sealed partial class DapSession : IDebuggerSessionObserver, IAsyncDispo
     {
         await _lifetime.CancelAsync().ConfigureAwait(false);
         await _engineSession.DisposeAsync().ConfigureAwait(false);
+        _evaluationRequestCancellation?.Dispose();
+        _evaluationRequestCancellation = null;
         _lifetime.Dispose();
         await _writer.DisposeAsync().ConfigureAwait(false);
     }
@@ -120,4 +163,51 @@ internal sealed partial class DapSession : IDebuggerSessionObserver, IAsyncDispo
 
     private bool IsExpectedClosedTransportException(Exception exception) =>
         IsProtocolClosed && exception is IOException or ObjectDisposedException or OperationCanceledException;
+
+    private async ValueTask CancelRequestAsync(
+        Request request,
+        CancellationToken cancellationToken)
+    {
+        int? requestId;
+        try
+        {
+            requestId = GetOptionalPositiveInteger(request.Arguments, "requestId", "cancel");
+        }
+        catch (ArgumentException exception)
+        {
+            await WriteRequestFailureAsync(request, exception.Message, cancellationToken)
+                .ConfigureAwait(false);
+            return;
+        }
+
+        if (requestId == _evaluationRequestSequence &&
+            _evaluationRequestCancellation is not null)
+        {
+            await _evaluationRequestCancellation.CancelAsync().ConfigureAwait(false);
+        }
+
+        await _writer.WriteResponseAsync(
+            request,
+            success: true,
+            message: null,
+            writeBody: null,
+            cancellationToken).ConfigureAwait(false);
+    }
+
+    private async Task CompleteEvaluationRequestAsync()
+    {
+        Task evaluationRequest = _evaluationRequest!;
+        CancellationTokenSource cancellation = _evaluationRequestCancellation!;
+        _evaluationRequest = null;
+        _evaluationRequestCancellation = null;
+        _evaluationRequestSequence = 0;
+        try
+        {
+            await evaluationRequest.WaitAsync(CancellationToken.None).ConfigureAwait(false);
+        }
+        finally
+        {
+            cancellation.Dispose();
+        }
+    }
 }

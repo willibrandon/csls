@@ -20,6 +20,7 @@ internal sealed partial class CorDebugDebuggee
     /// <param name="targetBreakpointReached">The ordered targeted-step breakpoint callback.</param>
     /// <param name="stepCompleted">The ordered runtime-step completion callback.</param>
     /// <param name="exceptionRaised">The ordered managed-exception callback.</param>
+    /// <param name="evaluationCompleted">The ordered function-evaluation completion callback.</param>
     /// <param name="cancellationToken">Cancels runtime activation without terminating the target.</param>
     /// <returns>The live debugger attachment.</returns>
     internal static async Task<CorDebugDebuggee> AttachAsync(
@@ -33,6 +34,7 @@ internal sealed partial class CorDebugDebuggee
             targetBreakpointReached,
         Func<int, nint, int, CancellationToken, ValueTask<bool>> stepCompleted,
         Func<int, nint, DebugExceptionStage, CancellationToken, ValueTask<bool>> exceptionRaised,
+        Func<nint, bool, CancellationToken, ValueTask<bool>> evaluationCompleted,
         CancellationToken cancellationToken)
     {
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(processId);
@@ -44,6 +46,7 @@ internal sealed partial class CorDebugDebuggee
         ArgumentNullException.ThrowIfNull(targetBreakpointReached);
         ArgumentNullException.ThrowIfNull(stepCompleted);
         ArgumentNullException.ThrowIfNull(exceptionRaised);
+        ArgumentNullException.ThrowIfNull(evaluationCompleted);
         if (processId == Environment.ProcessId)
         {
             throw new ArgumentException("The debugger cannot attach to its own process.", nameof(processId));
@@ -76,7 +79,8 @@ internal sealed partial class CorDebugDebuggee
                 breakpointReached,
                 targetBreakpointReached,
                 stepCompleted,
-                exceptionRaised);
+                exceptionRaised,
+                evaluationCompleted);
             registration = new CorDebugRuntimeStartupRegistration(
                 checked((uint)processId),
                 actor,

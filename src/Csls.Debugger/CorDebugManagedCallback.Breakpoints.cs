@@ -10,6 +10,11 @@ internal sealed partial class CorDebugManagedCallback
         nint breakpoint,
         CancellationToken cancellationToken)
     {
+        if (IsFunctionEvaluationActive)
+        {
+            return true;
+        }
+
         if (thread == 0 || breakpoint == 0)
         {
             return true;

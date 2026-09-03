@@ -155,6 +155,9 @@ public sealed partial class DapSessionTests
     {
         string projectPath = Path.Join(testDirectory, "SourceLinkFixture.csproj");
         File.Copy(sourcePath, Path.Join(testDirectory, "Program.cs"));
+        File.Copy(
+            Path.Join(Path.GetDirectoryName(sourcePath)!, "DebuggerFixtureValue.cs"),
+            Path.Join(testDirectory, "DebuggerFixtureValue.cs"));
         await File.WriteAllTextAsync(
             Path.Join(testDirectory, "sourcelink.json"),
             JsonSerializer.Serialize(new

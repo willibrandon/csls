@@ -18,7 +18,7 @@ public sealed partial class DapSessionTests
     ];
 
     /// <summary>
-    /// Binds and stops C#, Visual Basic, and F# Debug and Release executables.
+    /// Binds, inspects, and invokes C#, Visual Basic, and F# executables.
     /// </summary>
     [TestMethod]
     [Timeout(120000, CooperativeCancellation = true)]
@@ -110,7 +110,12 @@ public sealed partial class DapSessionTests
                 .CreateAsync(TestContext.CancellationToken)
                 .ConfigureAwait(false);
             await using ConfiguredAsyncDisposable disposal = client.ConfigureAwait(false);
-            await InitializeAndLaunchAsync(client, program, waitPath).ConfigureAwait(false);
+            bool runFunctionEvaluation = configuration == "Debug";
+            await InitializeAndLaunchAsync(
+                client,
+                program,
+                waitPath,
+                suppressJitOptimizations: runFunctionEvaluation).ConfigureAwait(false);
             int stoppedThreadId = await ConfigureBreakpointAsync(
                 client,
                 sourcePath,
@@ -147,6 +152,40 @@ public sealed partial class DapSessionTests
                     $"Unexpected {project} {configuration} indexed expression result.");
             }
 
+            if (runFunctionEvaluation)
+            {
+                JsonElement invoked = await ReadEvaluationAsync(
+                    client,
+                    frameId,
+                    "value.NextNumber()",
+                    success: true,
+                    TestContext.CancellationToken).ConfigureAwait(false);
+                Assert.AreEqual(
+                    "42",
+                    invoked.GetProperty("result").GetString(),
+                    $"Unexpected {project} function-evaluation result.");
+                using JsonDocument invalidated = await client
+                    .ReadMessageAsync(TestContext.CancellationToken)
+                    .ConfigureAwait(false);
+                AssertEvent(invalidated.RootElement, "invalidated");
+
+                frameId = await AssertStoppedFrameAsync(
+                    client,
+                    stoppedThreadId,
+                    sourcePath,
+                    breakpointLine).ConfigureAwait(false);
+                JsonElement afterInvocation = await ReadEvaluationAsync(
+                    client,
+                    frameId,
+                    "answer + 1",
+                    success: true,
+                    TestContext.CancellationToken).ConfigureAwait(false);
+                Assert.AreEqual(
+                    "42",
+                    afterInvocation.GetProperty("result").GetString(),
+                    $"Unexpected {project} result after function evaluation.");
+            }
+
             await DisconnectAsync(client).ConfigureAwait(false);
             Assert.AreEqual(string.Empty, client.Diagnostics.ToString());
         }
@@ -159,7 +198,8 @@ public sealed partial class DapSessionTests
     private async Task InitializeAndLaunchAsync(
         DapTestClient client,
         string program,
-        string waitPath)
+        string waitPath,
+        bool suppressJitOptimizations = false)
     {
         int initializeSequence = await client.SendRequestAsync(
             "initialize",
@@ -180,7 +220,8 @@ public sealed partial class DapSessionTests
                 program,
                 [waitPath, "41", "ready"],
                 wait: true,
-                noDebug: false),
+                noDebug: false,
+                suppressJitOptimizations: suppressJitOptimizations),
             TestContext.CancellationToken).ConfigureAwait(false);
         using JsonDocument initialized = await client
             .ReadMessageAsync(TestContext.CancellationToken)

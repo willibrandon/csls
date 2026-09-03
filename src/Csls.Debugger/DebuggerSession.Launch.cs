@@ -72,6 +72,7 @@ public sealed partial class DebuggerSession
                 HandleRuntimeTargetBreakpointCoreAsync,
                 HandleRuntimeStepCoreAsync,
                 HandleRuntimeExceptionCoreAsync,
+                HandleRuntimeEvaluationCoreAsync,
                 cancellationToken).ConfigureAwait(false);
             await _actor.InvokeAsync(
                 token => CompleteLaunchCoreAsync(_debuggee, token),

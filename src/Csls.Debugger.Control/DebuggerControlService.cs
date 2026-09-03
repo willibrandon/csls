@@ -129,6 +129,7 @@ public sealed partial class DebuggerControlService :
         return _session.EvaluateAsync(
             request.FrameId,
             request.Expression,
+            allowTargetCodeExecution: false,
             cancellationToken);
     }
 

@@ -288,17 +288,6 @@ public sealed partial class DapSessionTests
                 TestContext.CancellationToken).ConfigureAwait(false);
             Assert.AreEqual("42", evaluatedConditional.GetProperty("result").GetString());
 
-            JsonElement unsupportedEvaluation = await ReadEvaluationAsync(
-                client,
-                fixtureFrameId,
-                "localObject.ToString()",
-                success: false,
-                TestContext.CancellationToken).ConfigureAwait(false);
-            Assert.Contains(
-                "not supported by safe evaluation",
-                unsupportedEvaluation.GetProperty("message").GetString()!,
-                StringComparison.Ordinal);
-
             int continueSequence = await client.SendRequestAsync(
                 "continue",
                 WriteEmptyObject,

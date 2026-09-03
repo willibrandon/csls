@@ -21,6 +21,7 @@ internal static class Program
         }
 
         int answer = int.Parse(arguments[1], CultureInfo.InvariantCulture);
+        var value = new DebuggerFixtureValue(answer);
         if (arguments.Length >= 5)
         {
             File.WriteAllText(arguments[3], "started");
@@ -39,6 +40,7 @@ internal static class Program
             Thread.SpinWait(10_000);
         }
 
+        GC.KeepAlive(value);
         return answer - 42;
     }
 

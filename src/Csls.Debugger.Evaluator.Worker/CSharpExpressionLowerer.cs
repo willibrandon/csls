@@ -54,6 +54,7 @@ internal static class CSharpExpressionLowerer
                 Lower(element.Expression),
                 .. element.ArgumentList.Arguments.Select(argument => Lower(argument.Expression))
             ]),
+        InvocationExpressionSyntax invocation => LowerInvocation(invocation),
         PrefixUnaryExpressionSyntax unary => OperatorNode(
             DebugExpressionNodeKind.Unary,
             UnaryOperator(unary.Kind()),
@@ -74,6 +75,25 @@ internal static class CSharpExpressionLowerer
         _ => throw new NotSupportedException(
             $"C# expression kind {syntax.Kind()} is not supported by safe evaluation.")
     };
+
+    private static DebugExpressionNode LowerInvocation(InvocationExpressionSyntax invocation)
+    {
+        if (invocation.Expression is not MemberAccessExpressionSyntax member ||
+            !member.IsKind(SyntaxKind.SimpleMemberAccessExpression) ||
+            member.Name is not IdentifierNameSyntax method)
+        {
+            throw new NotSupportedException(
+                "Only explicitly qualified C# instance method calls are supported.");
+        }
+
+        return Node(
+            DebugExpressionNodeKind.Invocation,
+            method.Identifier.ValueText,
+            [
+                Lower(member.Expression),
+                .. invocation.ArgumentList.Arguments.Select(argument => Lower(argument.Expression))
+            ]);
+    }
 
     private static DebugExpressionOperator UnaryOperator(SyntaxKind kind) => kind switch
     {

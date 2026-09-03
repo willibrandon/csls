@@ -5,7 +5,7 @@ using System.Text.Json;
 namespace Csls.DebugAdapter;
 
 /// <summary>
-/// Handles stopped-frame expression evaluation for DAP clients.
+/// Handles stopped-frame inspection and target-code evaluation for DAP clients.
 /// </summary>
 internal sealed partial class DapSession
 {
@@ -19,6 +19,8 @@ internal sealed partial class DapSession
             return;
         }
 
+        DebugStopGeneration initialGeneration = _engineSession.StopGeneration;
+        bool targetCodeExecuted = false;
         try
         {
             string expression = GetRequiredNonEmptyString(
@@ -31,6 +33,7 @@ internal sealed partial class DapSession
             DebugEvaluateResult result = await _engineSession.EvaluateAsync(
                 frameId,
                 expression,
+                allowTargetCodeExecution: true,
                 cancellationToken).ConfigureAwait(false);
             await _writer.WriteResponseAsync(
                 request,
@@ -50,6 +53,7 @@ internal sealed partial class DapSession
                     writer.WriteEndObject();
                 },
                 cancellationToken).ConfigureAwait(false);
+            targetCodeExecuted = result.TargetCodeExecuted;
         }
         catch (Exception exception) when (
             exception is ArgumentException or InvalidOperationException or
@@ -57,6 +61,30 @@ internal sealed partial class DapSession
         {
             await WriteRequestFailureAsync(request, exception.Message, cancellationToken)
                 .ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            await WriteRequestFailureAsync(
+                request,
+                "cancelled",
+                _lifetime.Token).ConfigureAwait(false);
+        }
+
+        targetCodeExecuted |= _engineSession.StopGeneration != initialGeneration;
+        if (targetCodeExecuted)
+        {
+            await _writer.WriteEventAsync(
+                "invalidated",
+                static writer =>
+                {
+                    writer.WriteStartObject();
+                    writer.WriteStartArray("areas");
+                    writer.WriteStringValue("stacks");
+                    writer.WriteStringValue("variables");
+                    writer.WriteEndArray();
+                    writer.WriteEndObject();
+                },
+                _lifetime.Token).ConfigureAwait(false);
         }
     }
 
