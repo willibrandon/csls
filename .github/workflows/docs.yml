@@ -37,6 +37,10 @@ jobs:
 
       - name: Build and upload docs
         uses: withastro/action@v6
+        env:
+          NPM_CONFIG_AUDIT: 'false'
+          NPM_CONFIG_FUND: 'false'
+          NPM_CONFIG_PREFER_OFFLINE: 'true'
         with:
           path: docs-site
           node-version: 24.x

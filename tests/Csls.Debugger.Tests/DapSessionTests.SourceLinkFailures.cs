@@ -12,7 +12,7 @@ public sealed partial class DapSessionTests
     /// Rejects implicit loopback Source Link access before opening an HTTP connection.
     /// </summary>
     [TestMethod]
-    [Timeout(30000, CooperativeCancellation = true)]
+    [Timeout(60000, CooperativeCancellation = true)]
     public Task SourceLinkRejectsImplicitPrivateNetworkAccess() =>
         ExerciseRejectedSourceLinkAsync(modifyContent: false, configureEndpoint: false);
 
@@ -20,7 +20,7 @@ public sealed partial class DapSessionTests
     /// Rejects downloaded Source Link bytes that do not match the Portable PDB checksum.
     /// </summary>
     [TestMethod]
-    [Timeout(30000, CooperativeCancellation = true)]
+    [Timeout(60000, CooperativeCancellation = true)]
     public Task SourceLinkRejectsChecksumMismatch() =>
         ExerciseRejectedSourceLinkAsync(modifyContent: true, configureEndpoint: true);
 

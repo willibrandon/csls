@@ -75,17 +75,16 @@ public sealed partial class DapSessionTests
         startInfo.ArgumentList.Add(configuration);
         startInfo.ArgumentList.Add($"--property:ArtifactsPath={artifactsPath}");
         startInfo.ArgumentList.Add("--nologo");
-        using Process process = Process.Start(startInfo)
-            ?? throw new InvalidOperationException($"Could not build debugger fixture {project}.");
-        Task<string> output = process.StandardOutput.ReadToEndAsync(TestContext.CancellationToken);
-        Task<string> error = process.StandardError.ReadToEndAsync(TestContext.CancellationToken);
-        await process.WaitForExitAsync(TestContext.CancellationToken).ConfigureAwait(false);
+        startInfo.ArgumentList.Add("--disable-build-servers");
+        (int exitCode, string output, string error) = await DebuggerTestProcess.RunAsync(
+            startInfo,
+            TestContext.CancellationToken).ConfigureAwait(false);
         string diagnostic = string.Concat(
-            await output.ConfigureAwait(false),
-            await error.ConfigureAwait(false));
+            output,
+            error);
         Assert.AreEqual(
             0,
-            process.ExitCode,
+            exitCode,
             $"Fixture build failed for {project} ({configuration}):{Environment.NewLine}{diagnostic}");
         string program = Path.Join(
             artifactsPath,

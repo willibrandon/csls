@@ -118,29 +118,16 @@ public sealed partial class DapSessionTests
         startInfo.ArgumentList.Add("--property:Deterministic=false");
         startInfo.ArgumentList.Add("--property:EmbedAllSources=true");
         startInfo.ArgumentList.Add($"--property:ArtifactsPath={artifactsPath}");
-        using Process process = Process.Start(startInfo)
-            ?? throw new InvalidOperationException("Could not build the Windows PDB fixture.");
-        Task<string> output = process.StandardOutput.ReadToEndAsync(TestContext.CancellationToken);
-        Task<string> error = process.StandardError.ReadToEndAsync(TestContext.CancellationToken);
-        try
-        {
-            await process.WaitForExitAsync(TestContext.CancellationToken).ConfigureAwait(false);
-        }
-        finally
-        {
-            if (!process.HasExited)
-            {
-                process.Kill(entireProcessTree: true);
-                await process.WaitForExitAsync(CancellationToken.None).ConfigureAwait(false);
-            }
-        }
-
+        startInfo.ArgumentList.Add("--disable-build-servers");
+        (int exitCode, string output, string error) = await DebuggerTestProcess.RunAsync(
+            startInfo,
+            TestContext.CancellationToken).ConfigureAwait(false);
         string diagnostic = string.Concat(
-            await output.ConfigureAwait(false),
-            await error.ConfigureAwait(false));
+            output,
+            error);
         Assert.AreEqual(
             0,
-            process.ExitCode,
+            exitCode,
             $"Windows PDB fixture build failed:{Environment.NewLine}{diagnostic}");
         return Directory.EnumerateFiles(
                 Path.Join(artifactsPath, "bin"),

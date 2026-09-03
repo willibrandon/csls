@@ -57,13 +57,11 @@ public sealed partial class DapSessionTests
         startInfo.ArgumentList.Add("build");
         startInfo.ArgumentList.Add(projectPath);
         startInfo.ArgumentList.Add("--nologo");
-        using Process process = Process.Start(startInfo)!;
-        string output = await process.StandardOutput.ReadToEndAsync(
+        startInfo.ArgumentList.Add("--disable-build-servers");
+        (int exitCode, string output, string error) = await DebuggerTestProcess.RunAsync(
+            startInfo,
             TestContext.CancellationToken).ConfigureAwait(false);
-        string error = await process.StandardError.ReadToEndAsync(
-            TestContext.CancellationToken).ConfigureAwait(false);
-        await process.WaitForExitAsync(TestContext.CancellationToken).ConfigureAwait(false);
-        Assert.AreEqual(0, process.ExitCode, $"{output}{Environment.NewLine}{error}");
+        Assert.AreEqual(0, exitCode, $"{output}{Environment.NewLine}{error}");
         string outputDirectory = Path.Join(testDirectory, "bin", "Debug", "net10.0");
         return (
             Path.Join(outputDirectory, "SymbolServerFixture.dll"),

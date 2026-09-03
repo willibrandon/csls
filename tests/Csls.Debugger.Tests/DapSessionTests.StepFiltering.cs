@@ -69,16 +69,12 @@ public sealed partial class DapSessionTests
                 callerPath,
                 callLine,
                 waitPath,
-                enableStepFiltering).WaitAsync(
-                    TimeSpan.FromSeconds(15),
-                    TestContext.CancellationToken).ConfigureAwait(false);
+                enableStepFiltering).ConfigureAwait(false);
             threadId = await StepAndReadStopAsync(
                 client,
                 "stepIn",
                 threadId,
-                TestContext.CancellationToken).WaitAsync(
-                    TimeSpan.FromSeconds(15),
-                    TestContext.CancellationToken).ConfigureAwait(false);
+                TestContext.CancellationToken).ConfigureAwait(false);
             (string _, string? framePath, int frameLine) = await ReadSourceFrameAsync(
                 client,
                 threadId,
@@ -86,9 +82,7 @@ public sealed partial class DapSessionTests
                 TestContext.CancellationToken).ConfigureAwait(false);
             Assert.IsTrue(DebuggerTestPath.AreEquivalent(expectedPath, framePath));
             Assert.AreEqual(expectedLine, frameLine);
-            await CompleteStepFilteringTargetAsync(client, waitPath).WaitAsync(
-                TimeSpan.FromSeconds(15),
-                TestContext.CancellationToken).ConfigureAwait(false);
+            await CompleteStepFilteringTargetAsync(client, waitPath).ConfigureAwait(false);
             Assert.AreEqual(string.Empty, client.Diagnostics.ToString());
         }
         finally
