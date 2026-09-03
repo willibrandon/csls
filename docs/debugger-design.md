@@ -141,6 +141,10 @@ handling and can never share the adapter's protocol stdout. On Unix, a dedicated
 blocking `waitpid` owner starts before runtime activation. It preserves the direct
 child's real signed exit status before CoreCLR's polling transport can reap it;
 CoreCLR then observes `ECHILD` and uses its documented process-existence path.
+The owner completes a nonblocking child-identity preflight before the suspended
+target resumes. If another native waiter nevertheless wins the terminal reap,
+shutdown treats `ECHILD` as lost status ownership rather than a debugger fault.
+
 ICorDebug projections are generated from the current public IDL and checked into
 the repository for offline builds. Source-generated COM and `LibraryImport` are
 used where supported; ABI-sensitive interfaces use generated unmanaged vtables.

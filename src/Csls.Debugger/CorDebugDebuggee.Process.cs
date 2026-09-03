@@ -8,13 +8,38 @@ namespace Csls.Debugger;
 /// </summary>
 internal sealed partial class CorDebugDebuggee
 {
+    /// <inheritdoc />
+    public async Task<int> WaitForExitAsync(CancellationToken cancellationToken)
+    {
+        int exitCode;
+        if (_unixExitMonitor is not null)
+        {
+            int? monitoredExitCode = await _unixExitMonitor.WaitAsync(cancellationToken)
+                .ConfigureAwait(false);
+            exitCode = monitoredExitCode ?? GetExitCode(_process);
+        }
+        else
+        {
+            await _process.WaitForExitAsync(cancellationToken).ConfigureAwait(false);
+            exitCode = GetExitCode(_process);
+        }
+
+        await _managedCallback.WaitForExitProcessAsync(cancellationToken).ConfigureAwait(false);
+        return exitCode;
+    }
+
+    /// <inheritdoc />
+    public Task TerminateAsync(CancellationToken cancellationToken) =>
+        TerminateProcessAsync(_process, _unixExitMonitor, cancellationToken);
+
     private static int GetExitCode(Process process)
     {
         try
         {
             return process.ExitCode;
         }
-        catch (InvalidOperationException)
+        catch (Exception exception) when (
+            exception is InvalidOperationException or Win32Exception)
         {
             return 0;
         }
