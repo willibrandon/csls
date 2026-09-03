@@ -78,6 +78,12 @@ public sealed partial class McpDebuggerLifecycleTests
             mcp.Client,
             second.GetProperty("debugSession").GetString()!,
             cancellationToken).ConfigureAwait(false);
+        secondStopped = await AssertAuthorizedExpressionExecutionAsync(
+            mcp.Client,
+            secondStopped,
+            sourcePath,
+            secondSignalPath + ".evaluation",
+            cancellationToken).ConfigureAwait(false);
         await AssertControlledBreakpointUpdatesAsync(
             mcp.Client,
             secondStopped,
@@ -129,7 +135,8 @@ public sealed partial class McpDebuggerLifecycleTests
                 ["arguments"] = new[] { "--debugger-fixture", signalPath },
                 ["initialSourcePath"] = sourcePath,
                 ["initialLine"] = breakpointLine,
-                ["agentControl"] = agentControl
+                ["agentControl"] = agentControl,
+                ["suppressJitOptimizations"] = true
             },
             cancellationToken).ConfigureAwait(false);
 

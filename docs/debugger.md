@@ -180,10 +180,10 @@ execute target code. Unknown Portable-PDB languages use the portable CLR subset
 for locals, arguments, fields, and array indexes.
 
 The frame is explicit when supplied; otherwise the adapter uses the selected
-stopped thread's top managed frame. The same generation-bound operation is
-available through private debugger RPC and the MCP `debug_evaluate` tool.
-Private debugger RPC and `debug_evaluate` are read-only and reject every expression
-that could execute target code. DAP `evaluate` additionally accepts explicitly
+stopped thread's top managed frame. The same generation-bound read-only operation
+is available through private `debugger/evaluate` RPC and the MCP `debug_evaluate`
+tool. Both reject every expression that could execute target code. DAP `evaluate`
+and the separate private `debugger/executeExpression` operation additionally accept explicitly
 qualified, parameterless instance-method calls in C#, Visual Basic, and F# when
 CoreCLR permits function evaluation at the selected frame. Optimized methods,
 prologs, native frames, GC-unsafe points, and other runtime-restricted locations
@@ -292,7 +292,8 @@ worker does not advertise tools that it cannot run.
 - `debug_session_start` launches an absolute managed program in a new isolated
   worker. `program` and `workingDirectory` are required. The optional paired
   `initialSourcePath` and one-based `initialLine` establish a source breakpoint
-  before launch.
+  before launch. Set `suppressJitOptimizations` when reliable target-code
+  evaluation is more important than optimized target execution.
 - `debug_session_attach` attaches to one positive operating-system `processId`
   and pauses by default.
 - `debug_sessions_list` lists only sessions owned by the current MCP connection.
@@ -309,6 +310,12 @@ worker does not advertise tools that it cannot run.
 - `debug_evaluate` evaluates the same source-language-aware, side-effect-free
   expression subset as DAP in an explicit current-generation frame. It is
   read-only and does not require an agent-control grant.
+- `debug_execute_expression` executes an explicitly qualified, parameterless
+  instance method in an explicit current-generation frame. It requires
+  `agentControl: true` and the exact `stopGeneration`; successful, exceptional,
+  and cooperatively cancelled execution invalidates old frame and variable handles
+  and advances the stop generation. The tool is marked destructive, non-idempotent,
+  and open-world because the target method may mutate local or external state.
 - `debug_modules_get` returns a bounded module page and validated symbol status.
 - `debug_breakpoints_get` reads every authoritative source, function, managed-IL,
   and managed-exception breakpoint without granting target control. Conditions

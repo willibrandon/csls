@@ -383,9 +383,10 @@ evaluation callback arrives. Threads created during the call are suspended too.
 Normal completion, exception completion, and cooperative abort restore the exact
 prior thread debug states and advance the stop generation before the client can
 inspect again. DAP publishes stack and variable invalidation after its evaluation
-response. Private RPC and the read-only MCP evaluation tool never grant this
-authorization; MCP target-code execution requires a distinct mutation tool and its
-per-session agent-control grant.
+response. The private `debugger/evaluate` operation and the read-only MCP evaluation
+tool never grant this authorization. Private `debugger/executeExpression` RPC and
+MCP `debug_execute_expression` are distinct mutation paths; the MCP path additionally
+requires the selected session's agent-control grant and exact stop generation.
 
 Expansion understands debugger display/proxy/browsable attributes, raw and results
 views, root-hidden members, tuples, dynamic flags, nullable values, arrays,
@@ -429,6 +430,12 @@ modules, output, and breakpoints. Results use declared structured schemas,
 generation-aware pagination, progress, cancellation, and recoverable tool errors.
 Tool read-only, destructive, idempotent, and open-world annotations describe real
 behavior, not intent.
+
+`debug_execute_expression` is destructive and non-idempotent because even a method
+that returns a value may mutate process state. It is open-world because arbitrary
+target code may perform file, network, process, or other externally visible work.
+Cancellation reaches the supervised CoreCLR evaluation and does not authorize a
+more forceful abort than the engine's cooperative safety policy.
 
 ### MCP debugger contract
 

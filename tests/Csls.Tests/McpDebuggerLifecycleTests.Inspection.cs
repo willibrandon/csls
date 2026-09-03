@@ -94,6 +94,30 @@ public sealed partial class McpDebuggerLifecycleTests
         Assert.AreEqual(
             "42",
             evaluation.GetProperty("evaluation").GetProperty("result").GetString());
+        await AssertToolErrorAsync(
+            client,
+            "debug_evaluate",
+            new Dictionary<string, object?>
+            {
+                ["debugSession"] = debugSession,
+                ["stopGeneration"] = generation,
+                ["frameId"] = frame.GetProperty("id").GetInt32(),
+                ["expression"] = "localObject.NextNumber()"
+            },
+            "debugger_operation_failed",
+            cancellationToken).ConfigureAwait(false);
+        await AssertToolErrorAsync(
+            client,
+            "debug_execute_expression",
+            new Dictionary<string, object?>
+            {
+                ["debugSession"] = debugSession,
+                ["stopGeneration"] = generation,
+                ["frameId"] = frame.GetProperty("id").GetInt32(),
+                ["expression"] = "localObject.NextNumber()"
+            },
+            "debugger_control_denied",
+            cancellationToken).ConfigureAwait(false);
 
         JsonElement modules = await CallAsync(
             client,

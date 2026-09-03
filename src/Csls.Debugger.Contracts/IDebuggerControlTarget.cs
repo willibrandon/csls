@@ -151,6 +151,16 @@ public partial interface IDebuggerControlTarget
         CancellationToken cancellationToken);
 
     /// <summary>
+    /// Executes an explicitly authorized expression in a current-generation managed frame.
+    /// </summary>
+    /// <param name="request">The selected frame and expression.</param>
+    /// <param name="cancellationToken">Cancels execution and requests cooperative target recovery.</param>
+    /// <returns>The current formatted expression result.</returns>
+    Task<DebugEvaluateResult> ExecuteExpressionAsync(
+        DebugExecuteExpressionRequest request,
+        CancellationToken cancellationToken);
+
+    /// <summary>
     /// Reads a bounded target-memory range through a stopped-state handle.
     /// </summary>
     /// <param name="request">The selected memory handle and relative range.</param>

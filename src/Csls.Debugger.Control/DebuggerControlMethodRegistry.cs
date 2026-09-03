@@ -118,6 +118,11 @@ internal static class DebuggerControlMethodRegistry
                 target.EvaluateAsync));
         AddParameterObjectMethod(
             rpc,
+            DebuggerControlMethods.ExecuteExpression,
+            new Func<DebugExecuteExpressionRequest, CancellationToken, Task<DebugEvaluateResult>>(
+                target.ExecuteExpressionAsync));
+        AddParameterObjectMethod(
+            rpc,
             DebuggerControlMethods.GetModules,
             new Func<DebugModulesRequest, CancellationToken, Task<DebugModulePage>>(
                 target.GetModulesAsync));

@@ -154,20 +154,6 @@ public sealed partial class DebuggerRpcClient : IAsyncDisposable
             cancellationToken);
 
     /// <summary>
-    /// Evaluates an expression in a stopped managed frame.
-    /// </summary>
-    /// <param name="request">The selected frame and expression.</param>
-    /// <param name="cancellationToken">Cancels evaluation.</param>
-    /// <returns>The formatted expression result.</returns>
-    public Task<DebugEvaluateResult> EvaluateAsync(
-        DebugEvaluateRequest request,
-        CancellationToken cancellationToken) =>
-        InvokeAsync<DebugEvaluateRequest, DebugEvaluateResult>(
-            DebuggerControlMethods.Evaluate,
-            request,
-            cancellationToken);
-
-    /// <summary>
     /// Terminates the debugger-owned target.
     /// </summary>
     /// <param name="cancellationToken">Cancels waiting for termination.</param>

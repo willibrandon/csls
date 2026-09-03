@@ -34,6 +34,7 @@ internal sealed class CslsMcpDebuggerLifecycleTools
     /// <param name="initialSourcePath">The optional initial source breakpoint path.</param>
     /// <param name="initialLine">The optional one-based initial breakpoint line.</param>
     /// <param name="agentControl">Whether this MCP connection may control execution.</param>
+    /// <param name="suppressJitOptimizations">Whether CoreCLR should emit debuggable code for symbol-bearing modules.</param>
     /// <param name="justMyCode">Whether source stepping excludes non-user code.</param>
     /// <param name="enableStepFiltering">Whether stepping skips properties and operators.</param>
     /// <returns>The new explicit debugger-session identity and initial state.</returns>
@@ -65,6 +66,8 @@ internal sealed class CslsMcpDebuggerLifecycleTools
         int? initialLine = null,
         [Description("Explicitly permit this MCP connection to resume, pause, step, or mutate the target.")]
         bool agentControl = false,
+        [Description("Ask CoreCLR to suppress JIT optimizations for symbol-bearing modules.")]
+        bool suppressJitOptimizations = false,
         [Description("Classify and step only user code by default.")]
         bool justMyCode = true,
         [Description("Skip managed properties and operators while stepping by default.")]
@@ -89,6 +92,7 @@ internal sealed class CslsMcpDebuggerLifecycleTools
                     RuntimeHostPath = runtimeHostPath is null
                         ? null
                         : Path.GetFullPath(runtimeHostPath),
+                    SuppressJitOptimizations = suppressJitOptimizations,
                     JustMyCode = justMyCode,
                     EnableStepFiltering = enableStepFiltering
                 },

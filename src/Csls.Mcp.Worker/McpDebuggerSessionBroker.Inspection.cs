@@ -112,10 +112,7 @@ internal sealed partial class McpDebuggerSessionBroker
         CancellationToken cancellationToken)
     {
         ValidatePositive(frameId, nameof(frameId));
-        if (string.IsNullOrWhiteSpace(expression))
-        {
-            throw InvalidRequest("expression must not be empty.");
-        }
+        ValidateExpression(expression);
 
         return InvokeStoppedAsync(
             debugSession,

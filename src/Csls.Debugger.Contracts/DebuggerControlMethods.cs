@@ -116,6 +116,11 @@ public static class DebuggerControlMethods
     public const string Evaluate = "debugger/evaluate";
 
     /// <summary>
+    /// Executes an expression in a stopped managed frame.
+    /// </summary>
+    public const string ExecuteExpression = "debugger/executeExpression";
+
+    /// <summary>
     /// Gets a bounded page of managed modules.
     /// </summary>
     public const string GetModules = "debugger/getModules";
