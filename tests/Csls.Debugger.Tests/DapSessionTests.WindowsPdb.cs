@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.Json;
@@ -18,15 +17,15 @@ public sealed partial class DapSessionTests
     [Timeout(120000, CooperativeCancellation = true)]
     public async Task WindowsPdbSupportsSourceAndInspectionRequests()
     {
-        string repositoryRoot = FindRepositoryRoot();
         string testDirectory = Path.Join(
             Path.GetTempPath(),
             $"csls-debugger-windows-pdb-{Guid.NewGuid():N}");
         Directory.CreateDirectory(testDirectory);
         try
         {
-            string programPath = await BuildWindowsPdbFixtureAsync(testDirectory)
-                .ConfigureAwait(false);
+            string programPath = SymbolFixtures.WindowsPdbProgramPath
+                ?? throw new InvalidOperationException(
+                    "The Windows PDB fixture is unavailable on Windows.");
             string symbolPath = Path.ChangeExtension(programPath, ".pdb");
             byte[] signature = new byte[24];
             using (FileStream symbols = File.OpenRead(symbolPath))
@@ -40,11 +39,7 @@ public sealed partial class DapSessionTests
                 "Microsoft C/C++ MSF 7.00",
                 Encoding.ASCII.GetString(signature));
 
-            string sourcePath = Path.Join(
-                repositoryRoot,
-                "test-assets",
-                "Csls.Debugger.Fixtures.CSharp",
-                "Program.cs");
+            string sourcePath = SymbolFixtures.SourcePath;
             string[] sourceLines = await File.ReadAllLinesAsync(
                 sourcePath,
                 TestContext.CancellationToken).ConfigureAwait(false);
@@ -94,46 +89,6 @@ public sealed partial class DapSessionTests
                 testDirectory,
                 TimeSpan.FromSeconds(10)).ConfigureAwait(false);
         }
-    }
-
-    private async Task<string> BuildWindowsPdbFixtureAsync(string artifactsPath)
-    {
-        string repositoryRoot = FindRepositoryRoot();
-        var startInfo = new ProcessStartInfo
-        {
-            FileName = ResolveDotNetHost(),
-            WorkingDirectory = repositoryRoot,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            UseShellExecute = false
-        };
-        startInfo.ArgumentList.Add("build");
-        startInfo.ArgumentList.Add(Path.Join(
-            "test-assets",
-            "Csls.Debugger.Fixtures.CSharp",
-            "Csls.Debugger.Fixtures.CSharp.csproj"));
-        startInfo.ArgumentList.Add("--nologo");
-        startInfo.ArgumentList.Add("--property:DebugType=full");
-        startInfo.ArgumentList.Add("--property:DebugSymbols=true");
-        startInfo.ArgumentList.Add("--property:Deterministic=false");
-        startInfo.ArgumentList.Add("--property:EmbedAllSources=true");
-        startInfo.ArgumentList.Add($"--property:ArtifactsPath={artifactsPath}");
-        startInfo.ArgumentList.Add("--disable-build-servers");
-        (int exitCode, string output, string error) = await DebuggerTestProcess.RunAsync(
-            startInfo,
-            TestContext.CancellationToken).ConfigureAwait(false);
-        string diagnostic = string.Concat(
-            output,
-            error);
-        Assert.AreEqual(
-            0,
-            exitCode,
-            $"Windows PDB fixture build failed:{Environment.NewLine}{diagnostic}");
-        return Directory.EnumerateFiles(
-                Path.Join(artifactsPath, "bin"),
-                "Csls.Debugger.Fixtures.CSharp.dll",
-                SearchOption.AllDirectories)
-            .Single();
     }
 
     private async Task<(int FrameId, string InstructionReference)> AssertWindowsPdbFrameAsync(

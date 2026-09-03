@@ -81,7 +81,7 @@ jobs:
         with:
           name: test-binaries-${{ github.run_attempt }}
           path: artifacts/test-binaries.tar
-          compression-level: 0
+          compression-level: 6
           if-no-files-found: error
 
   debugger-unix-wait:

@@ -28,19 +28,12 @@ public sealed partial class DapSessionTests
         bool modifyContent,
         bool configureEndpoint)
     {
-        string repositoryRoot = FindRepositoryRoot();
-        string sourcePath = Path.Join(
-            repositoryRoot,
-            "test-assets",
-            "Csls.Debugger.Fixtures.CSharp",
-            "Program.cs");
-        byte[] original = await File.ReadAllBytesAsync(
-            sourcePath,
-            TestContext.CancellationToken).ConfigureAwait(false);
-        byte[] served = modifyContent ? [.. original, (byte)' '] : original;
-        var server = new SourceLinkTestServer(served);
-        await using ConfiguredAsyncDisposable serverDisposal = server.ConfigureAwait(false);
-        server.Start();
+        SourceLinkTestServer server = modifyContent
+            ? SymbolFixtures.MismatchedSourceLinkServer
+            : SymbolFixtures.ImplicitSourceLinkServer;
+        string programPath = modifyContent
+            ? SymbolFixtures.MismatchedSourceLinkProgramPath
+            : SymbolFixtures.ImplicitSourceLinkProgramPath;
         string testDirectory = Path.Join(
             Path.GetTempPath(),
             $"csls-debugger-sourcelink-rejection-{Guid.NewGuid():N}");
@@ -48,10 +41,6 @@ public sealed partial class DapSessionTests
         testDirectory = DebuggerTestPath.Canonicalize(testDirectory);
         try
         {
-            string programPath = await BuildSourceLinkFixtureAsync(
-                sourcePath,
-                testDirectory,
-                server.SourceLinkPattern).ConfigureAwait(false);
             await AssertRejectedSourceRequestAsync(
                 programPath,
                 testDirectory,

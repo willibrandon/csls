@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Text.Json;
 
@@ -16,18 +15,7 @@ public sealed partial class DapSessionTests
     [Timeout(60000, CooperativeCancellation = true)]
     public async Task SourceLinkProvidesVerifiedSourceContent()
     {
-        string repositoryRoot = FindRepositoryRoot();
-        string sourcePath = Path.Join(
-            repositoryRoot,
-            "test-assets",
-            "Csls.Debugger.Fixtures.CSharp",
-            "Program.cs");
-        byte[] source = await File.ReadAllBytesAsync(
-            sourcePath,
-            TestContext.CancellationToken).ConfigureAwait(false);
-        var server = new SourceLinkTestServer(source);
-        await using ConfiguredAsyncDisposable serverDisposal = server.ConfigureAwait(false);
-        server.Start();
+        SourceLinkTestServer server = SymbolFixtures.ValidSourceLinkServer;
         string testDirectory = Path.Join(
             Path.GetTempPath(),
             $"csls-debugger-sourcelink-{Guid.NewGuid():N}");
@@ -35,11 +23,10 @@ public sealed partial class DapSessionTests
         testDirectory = DebuggerTestPath.Canonicalize(testDirectory);
         try
         {
-            string programPath = await BuildSourceLinkFixtureAsync(
-                sourcePath,
+            await ExerciseSourceLinkAsync(
+                SymbolFixtures.ValidSourceLinkProgramPath,
                 testDirectory,
-                server.SourceLinkPattern).ConfigureAwait(false);
-            await ExerciseSourceLinkAsync(programPath, testDirectory, server)
+                server)
                 .ConfigureAwait(false);
         }
         finally
@@ -146,62 +133,6 @@ public sealed partial class DapSessionTests
             "answer++;",
             response.RootElement.GetProperty("body").GetProperty("content").GetString()!,
             StringComparison.Ordinal);
-    }
-
-    private async Task<string> BuildSourceLinkFixtureAsync(
-        string sourcePath,
-        string testDirectory,
-        string sourceLinkPattern)
-    {
-        string projectPath = Path.Join(testDirectory, "SourceLinkFixture.csproj");
-        File.Copy(sourcePath, Path.Join(testDirectory, "Program.cs"));
-        File.Copy(
-            Path.Join(Path.GetDirectoryName(sourcePath)!, "DebuggerFixtureValue.cs"),
-            Path.Join(testDirectory, "DebuggerFixtureValue.cs"));
-        await File.WriteAllTextAsync(
-            Path.Join(testDirectory, "sourcelink.json"),
-            JsonSerializer.Serialize(new
-            {
-                documents = new Dictionary<string, string>(StringComparer.Ordinal)
-                {
-                    ["/_/SourceLink/*"] = sourceLinkPattern
-                }
-            }),
-            TestContext.CancellationToken).ConfigureAwait(false);
-        string debugType = OperatingSystem.IsWindows() ? "full" : "portable";
-        await File.WriteAllTextAsync(
-            projectPath,
-            $$"""
-            <Project Sdk="Microsoft.NET.Sdk">
-              <PropertyGroup>
-                <OutputType>Exe</OutputType>
-                <TargetFramework>net10.0</TargetFramework>
-                <ImplicitUsings>enable</ImplicitUsings>
-                <Nullable>enable</Nullable>
-                <DebugType>{{debugType}}</DebugType>
-                <DebugSymbols>true</DebugSymbols>
-                <PathMap>$(MSBuildProjectDirectory)=/_/SourceLink</PathMap>
-                <SourceLink>$(MSBuildProjectDirectory)/sourcelink.json</SourceLink>
-              </PropertyGroup>
-            </Project>
-            """,
-            TestContext.CancellationToken).ConfigureAwait(false);
-        string dotnet = Environment.GetEnvironmentVariable("DOTNET_HOST_PATH") ?? "dotnet";
-        var startInfo = new ProcessStartInfo(dotnet)
-        {
-            WorkingDirectory = testDirectory,
-            RedirectStandardError = true,
-            RedirectStandardOutput = true
-        };
-        startInfo.ArgumentList.Add("build");
-        startInfo.ArgumentList.Add(projectPath);
-        startInfo.ArgumentList.Add("--nologo");
-        startInfo.ArgumentList.Add("--disable-build-servers");
-        (int exitCode, string output, string error) = await DebuggerTestProcess.RunAsync(
-            startInfo,
-            TestContext.CancellationToken).ConfigureAwait(false);
-        Assert.AreEqual(0, exitCode, $"{output}{Environment.NewLine}{error}");
-        return Path.Join(testDirectory, "bin", "Debug", "net10.0", "SourceLinkFixture.dll");
     }
 
     private static void WriteSourceArguments(Utf8JsonWriter writer, int sourceReference)

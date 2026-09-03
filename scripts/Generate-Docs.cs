@@ -99,7 +99,8 @@ static async Task BuildDocumentationInputsAsync(
     [
         "src/Csls.App/Csls.App.csproj",
         "src/Csls.Debugger.Worker/Csls.Debugger.Worker.csproj",
-        "src/Csls.Mcp.Worker/Csls.Mcp.Worker.csproj"
+        "src/Csls.Mcp.Worker/Csls.Mcp.Worker.csproj",
+        "src/Csls.Server/Csls.Server.csproj"
     ];
     foreach (string project in projects)
     {

@@ -40,6 +40,8 @@ internal static class DebuggerTestProcess
                 }
                 catch (InvalidOperationException) when (process.HasExited)
                 {
+                    await process.WaitForExitAsync(CancellationToken.None)
+                        .ConfigureAwait(false);
                 }
 
                 await process.WaitForExitAsync(CancellationToken.None).ConfigureAwait(false);

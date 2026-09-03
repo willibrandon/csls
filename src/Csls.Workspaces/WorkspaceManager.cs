@@ -520,7 +520,11 @@ public sealed partial class WorkspaceManager : IAsyncDisposable
             }
 
             if (!WorkspaceRazorDiagnosticService.IsRazorDocument(path) &&
-                FindDocument(_folders[folderIndex].Solution, path) is null)
+                FindDocument(_folders[folderIndex].Solution, path) is null &&
+                FindProjectsForCreatedSourceDocument(
+                    _folders[folderIndex].Solution,
+                    path).Length == 0 &&
+                WorkspaceDiscovery.IsDiscoverableFileBasedApp(path, cancellationToken))
             {
                 folderIndex = await TryLoadFileBasedAppAsync(
                     path,
@@ -559,14 +563,26 @@ public sealed partial class WorkspaceManager : IAsyncDisposable
             var openedText = SourceText.From(document.Text, Encoding.UTF8);
             if (roslynDocument is null)
             {
-                Project project = solution.Projects.FirstOrDefault()
-                    ?? throw new InvalidOperationException("The workspace contains no C# project.");
-                var documentId = DocumentId.CreateNewId(project.Id, debugName: path);
-                solution = solution.AddDocument(
-                    documentId,
-                    Path.GetFileName(path),
-                    openedText,
-                    filePath: path);
+                Project[] projects = FindProjectsForCreatedSourceDocument(solution, path);
+                if (projects.Length == 0)
+                {
+                    projects =
+                    [
+                        solution.Projects.FirstOrDefault()
+                            ?? throw new InvalidOperationException(
+                                "The workspace contains no C# project.")
+                    ];
+                }
+
+                foreach (Project project in projects)
+                {
+                    var documentId = DocumentId.CreateNewId(project.Id, debugName: path);
+                    solution = solution.AddDocument(
+                        documentId,
+                        Path.GetFileName(path),
+                        openedText,
+                        filePath: path);
+                }
             }
             else
             {

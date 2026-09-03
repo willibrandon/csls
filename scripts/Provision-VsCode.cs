@@ -102,6 +102,9 @@ try
             .. npmPrefix,
             "ci",
             "--ignore-scripts",
+            "--no-audit",
+            "--no-fund",
+            "--prefer-offline",
             "--prefix",
             fixturePath
         ],
@@ -114,6 +117,9 @@ try
                 .. npmPrefix,
                 "ci",
                 "--ignore-scripts",
+                "--no-audit",
+                "--no-fund",
+                "--prefer-offline",
                 "--prefix",
                 extensionPath
             ],
