@@ -1,0 +1,31 @@
+using Csls.Debugger.Contracts;
+using StreamJsonRpc.Protocol;
+using System.Text.Json.Serialization;
+
+namespace Csls.Debugger.Control;
+
+/// <summary>
+/// Provides NativeAOT-safe JSON metadata for debugger control RPC payloads.
+/// </summary>
+[JsonSourceGenerationOptions(GenerationMode = JsonSourceGenerationMode.Metadata)]
+[JsonSerializable(typeof(CommonErrorData))]
+[JsonSerializable(typeof(DebugAttachRequest))]
+[JsonSerializable(typeof(DebugLaunchRequest))]
+[JsonSerializable(typeof(DebugScopeInfo))]
+[JsonSerializable(typeof(DebugScopesRequest))]
+[JsonSerializable(typeof(DebugSessionSnapshot))]
+[JsonSerializable(typeof(DebugSourceBreakpointInfo))]
+[JsonSerializable(typeof(DebugSourceBreakpointRequest))]
+[JsonSerializable(typeof(DebugSourceBreakpointSetRequest))]
+[JsonSerializable(typeof(DebugStackFrameInfo))]
+[JsonSerializable(typeof(DebugStackRequest))]
+[JsonSerializable(typeof(DebugStackTrace))]
+[JsonSerializable(typeof(DebugStepRequest))]
+[JsonSerializable(typeof(DebugThreadInfo))]
+[JsonSerializable(typeof(DebugVariableInfo))]
+[JsonSerializable(typeof(DebugVariablesRequest))]
+[JsonSerializable(typeof(IReadOnlyList<DebugScopeInfo>))]
+[JsonSerializable(typeof(IReadOnlyList<DebugSourceBreakpointInfo>))]
+[JsonSerializable(typeof(IReadOnlyList<DebugThreadInfo>))]
+[JsonSerializable(typeof(IReadOnlyList<DebugVariableInfo>))]
+internal sealed partial class DebuggerControlJsonSerializerContext : JsonSerializerContext;

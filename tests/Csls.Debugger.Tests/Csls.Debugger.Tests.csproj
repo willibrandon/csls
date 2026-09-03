@@ -12,6 +12,7 @@
 
   <ItemGroup>
     <ProjectReference Include="../../src/Csls.DebugAdapter/Csls.DebugAdapter.csproj" />
+    <ProjectReference Include="../../src/Csls.Debugger.Control/Csls.Debugger.Control.csproj" />
     <ProjectReference Include="../../src/Csls.Debugger/Csls.Debugger.csproj" />
     <ProjectReference Include="../../src/Csls.App/Csls.App.csproj"
                       ReferenceOutputAssembly="false" />
