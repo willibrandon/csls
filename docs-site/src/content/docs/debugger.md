@@ -137,11 +137,25 @@ its bundled debugger worker is available:
 - `debug_session_end` terminates launched targets and detaches attached targets.
   Terminating an attached target additionally requires both
   `terminateAttachedTarget: true` and the session's explicit `agentControl` grant.
+- `debug_threads_get`, `debug_stack_get`, `debug_scopes_get`, and
+  `debug_variables_get` inspect one exact stopped generation. Returned frame and
+  variable handles expire when execution resumes.
+- `debug_modules_get` returns a bounded managed-module page and validated symbol
+  status.
+- `debug_execution_control` pauses, continues, or source-steps. It requires the
+  session's `agentControl` grant; continue and step also require the exact current
+  `stopGeneration`, and step selects a managed thread and `into`, `over`, or `out`.
 
 Each lifecycle result returns an opaque `debugSession` identifier and current
 `stopGeneration`. Later operations use that explicit identity; a language
 workspace, active editor, or visible process is never inferred as the debugger
 target.
+
+Stack, variable, and module pages are bounded to at most 256 entries. Expected
+failures are MCP errors with stable codes in `_meta.errorCode`, including
+`debugger_control_denied`, `debugger_invalid_state`,
+`debugger_request_invalid`, and `debugger_stale_generation`. Successful calls
+return structured content plus a matching JSON text representation.
 
 The MCP process supervises one isolated debugger worker per target through
 inherited standard-stream handles, not DAP or a network listener. MCP disconnect

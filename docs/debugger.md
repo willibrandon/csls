@@ -215,11 +215,11 @@ Remote and container debugging runs csls inside the target environment. The
 debugger does not expose a TCP listener; its terminal control channel uses an
 owner-only local endpoint created for the lifetime of the session.
 
-## MCP lifecycle
+## MCP integration
 
-The installed `csls-mcp` package includes the debugger worker and advertises five
-debugger lifecycle tools. A language-only development worker without the debugger
-binary does not advertise tools that it cannot run.
+The installed `csls-mcp` package includes the debugger worker and advertises
+debugger tools only when that worker is available. A language-only development
+worker does not advertise tools that it cannot run.
 
 - `debug_session_start` launches an absolute managed program in a new isolated
   worker. `program` and `workingDirectory` are required. The optional paired
@@ -232,6 +232,21 @@ binary does not advertise tools that it cannot run.
 - `debug_session_end` terminates a launched target. It safely detaches an attached
   target unless `terminateAttachedTarget` and the session's explicit
   `agentControl` grant are both true.
+- `debug_threads_get`, `debug_stack_get`, `debug_scopes_get`, and
+  `debug_variables_get` inspect one exact stopped generation. Frame and variable
+  handles expire as soon as execution resumes.
+- `debug_modules_get` returns a bounded module page and validated symbol status.
+- `debug_execution_control` pauses, continues, or source-steps a session.
+  Execution control requires `agentControl: true`; continue and step also require
+  the exact current `stopGeneration`, and step selects one managed thread and
+  `into`, `over`, or `out` behavior.
+
+Stack, variable, and module pages accept only non-negative offsets and at most
+256 entries per call. Expected failures are MCP errors with stable codes in
+`_meta.errorCode`, including `debugger_control_denied`,
+`debugger_invalid_state`, `debugger_request_invalid`, and
+`debugger_stale_generation`. Successful calls return structured content and a
+matching JSON text representation.
 
 Debugger RPC uses inherited standard-stream handles between the MCP process and
 each worker. It does not open a socket or translate through DAP. Closing the MCP

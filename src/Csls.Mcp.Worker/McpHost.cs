@@ -80,6 +80,12 @@ internal static class McpHost
                     serializerOptions)
                 .WithTools(
                     new CslsMcpDebuggerSessionTools(debuggerBroker),
+                    serializerOptions)
+                .WithTools(
+                    new CslsMcpDebuggerExecutionTools(debuggerBroker),
+                    serializerOptions)
+                .WithTools(
+                    new CslsMcpDebuggerInspectionTools(debuggerBroker),
                     serializerOptions);
         }
 

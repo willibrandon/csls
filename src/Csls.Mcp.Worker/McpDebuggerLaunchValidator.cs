@@ -1,5 +1,3 @@
-using ModelContextProtocol;
-
 namespace Csls.Mcp.Worker;
 
 /// <summary>
@@ -33,8 +31,8 @@ internal static class McpDebuggerLaunchValidator
 
         if ((initialSourcePath is null) != (initialLine is null))
         {
-            throw new McpException(
-                "debugger_request_invalid: initialSourcePath and initialLine must be specified together.");
+            throw InvalidRequest(
+                "initialSourcePath and initialLine must be specified together.");
         }
 
         if (initialSourcePath is not null)
@@ -42,8 +40,8 @@ internal static class McpDebuggerLaunchValidator
             ValidateExistingFile(initialSourcePath, nameof(initialSourcePath));
             if (initialLine <= 0)
             {
-                throw new McpException(
-                    "debugger_request_invalid: initialLine must be a positive one-based line number.");
+                throw InvalidRequest(
+                    "initialLine must be a positive one-based line number.");
             }
         }
     }
@@ -56,8 +54,7 @@ internal static class McpDebuggerLaunchValidator
     {
         if (processId <= 0)
         {
-            throw new McpException(
-                "debugger_request_invalid: processId must be a positive process identifier.");
+            throw InvalidRequest("processId must be a positive process identifier.");
         }
     }
 
@@ -66,8 +63,7 @@ internal static class McpDebuggerLaunchValidator
         ValidateAbsolutePath(path, name);
         if (!File.Exists(path))
         {
-            throw new McpException(
-                $"debugger_request_invalid: {name} does not name an existing file: {path}");
+            throw InvalidRequest($"{name} does not name an existing file: {path}");
         }
     }
 
@@ -76,8 +72,7 @@ internal static class McpDebuggerLaunchValidator
         ValidateAbsolutePath(path, name);
         if (!Directory.Exists(path))
         {
-            throw new McpException(
-                $"debugger_request_invalid: {name} does not name an existing directory: {path}");
+            throw InvalidRequest($"{name} does not name an existing directory: {path}");
         }
     }
 
@@ -87,9 +82,12 @@ internal static class McpDebuggerLaunchValidator
             path.Length > MaximumPathLength ||
             !Path.IsPathFullyQualified(path))
         {
-            throw new McpException(
-                $"debugger_request_invalid: {name} must be an absolute path containing " +
+            throw InvalidRequest(
+                $"{name} must be an absolute path containing " +
                 $"between 1 and {MaximumPathLength} characters.");
         }
     }
+
+    private static McpDebuggerException InvalidRequest(string message) =>
+        new("debugger_request_invalid", message);
 }

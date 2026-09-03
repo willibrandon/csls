@@ -15,7 +15,13 @@ public sealed partial class McpDebuggerLifecycleTests
         "debug_session_attach",
         "debug_sessions_list",
         "debug_session_get",
-        "debug_session_end"
+        "debug_session_end",
+        "debug_execution_control",
+        "debug_threads_get",
+        "debug_stack_get",
+        "debug_scopes_get",
+        "debug_variables_get",
+        "debug_modules_get"
     ];
 
     /// <summary>
@@ -49,6 +55,12 @@ public sealed partial class McpDebuggerLifecycleTests
         AssertAnnotations(tools, "debug_session_start", false, true, false, true);
         AssertAnnotations(tools, "debug_session_attach", false, true, false, true);
         AssertAnnotations(tools, "debug_session_end", false, true, false, true);
+        AssertAnnotations(tools, "debug_execution_control", false, true, false, true);
+        AssertAnnotations(tools, "debug_threads_get", true, false, true, false);
+        AssertAnnotations(tools, "debug_stack_get", true, false, true, false);
+        AssertAnnotations(tools, "debug_scopes_get", true, false, true, false);
+        AssertAnnotations(tools, "debug_variables_get", true, false, true, false);
+        AssertAnnotations(tools, "debug_modules_get", true, false, true, false);
     }
 
     /// <summary>

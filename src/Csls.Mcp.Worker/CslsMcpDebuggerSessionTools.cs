@@ -55,11 +55,12 @@ internal sealed class CslsMcpDebuggerSessionTools
         UseStructuredContent = true,
         OutputSchemaType = typeof(McpDebugSessionInfo))]
     [Description("Get current state for exactly one debugSession; no active target is inferred.")]
-    public Task<McpDebugSessionInfo> GetAsync(
+    public Task<ModelContextProtocol.Protocol.CallToolResult> GetAsync(
         [Description("Opaque identifier returned by debug_session_start or debug_session_attach.")]
         string debugSession,
         CancellationToken cancellationToken) =>
-        _broker.GetAsync(debugSession, cancellationToken);
+        McpDebuggerToolResult.RunAsync(() =>
+            _broker.GetAsync(debugSession, cancellationToken));
 
     /// <summary>
     /// Ends and releases one explicit debugger session.
@@ -78,11 +79,12 @@ internal sealed class CslsMcpDebuggerSessionTools
         UseStructuredContent = true,
         OutputSchemaType = typeof(McpDebugSessionInfo))]
     [Description("End one explicit debugger session. Launched targets terminate; attached targets detach unless terminateAttachedTarget is explicitly requested.")]
-    public Task<McpDebugSessionInfo> EndAsync(
+    public Task<ModelContextProtocol.Protocol.CallToolResult> EndAsync(
         [Description("Opaque identifier returned by debug_session_start or debug_session_attach.")]
         string debugSession,
         CancellationToken cancellationToken,
         [Description("Explicitly terminate an attached target instead of safely detaching it.")]
         bool terminateAttachedTarget = false) =>
-        _broker.EndAsync(debugSession, terminateAttachedTarget, cancellationToken);
+        McpDebuggerToolResult.RunAsync(() =>
+            _broker.EndAsync(debugSession, terminateAttachedTarget, cancellationToken));
 }

@@ -1,5 +1,5 @@
 using Csls.Debugger.Contracts;
-using ModelContextProtocol;
+using System.Runtime.CompilerServices;
 
 namespace Csls.Mcp.Worker;
 
@@ -16,12 +16,12 @@ internal sealed partial class McpDebuggerSessionBroker
     {
         if (!await _sessionSlots.WaitAsync(0, cancellationToken).ConfigureAwait(false))
         {
-            throw new McpException(
-                $"debugger_session_limit: This MCP connection already owns " +
+            throw new McpDebuggerException(
+                "debugger_session_limit",
+                $"This MCP connection already owns " +
                 $"{MaximumOwnedSessions} debugger sessions.");
         }
 
-        McpDebuggerSession? session = null;
         bool registered = false;
         try
         {
@@ -31,19 +31,24 @@ internal sealed partial class McpDebuggerSessionBroker
             }
 
             string id = Guid.NewGuid().ToString("N");
-            session = await McpDebuggerSession.StartAsync(
-                _workerPath ?? throw new McpException(
-                    "debugger_unavailable: This MCP installation has no debugger worker."),
+            McpDebuggerSessionLease lease = await McpDebuggerSession.StartAsync(
+                _workerPath ?? throw new McpDebuggerException(
+                    "debugger_unavailable",
+                    "This MCP installation has no debugger worker."),
                 id,
                 kind,
                 agentControl,
                 cancellationToken).ConfigureAwait(false);
-            DebugSessionSnapshot snapshot = await activation(session, cancellationToken)
-                .ConfigureAwait(false);
+            await using ConfiguredAsyncDisposable leaseScope = lease.ConfigureAwait(false);
+            McpDebuggerSession session = lease.Session;
+            DebugSessionSnapshot snapshot = await session.InvokeAsync(
+                (_, token) => activation(session, token),
+                cancellationToken).ConfigureAwait(false);
             lock (_gate)
             {
                 ThrowIfDisposed();
                 _sessions.Add(id, session);
+                lease.TransferOwnership();
                 registered = true;
             }
 
@@ -53,11 +58,6 @@ internal sealed partial class McpDebuggerSessionBroker
         {
             if (!registered)
             {
-                if (session is not null)
-                {
-                    await session.DisposeAsync().ConfigureAwait(false);
-                }
-
                 _ = _sessionSlots.Release();
             }
         }
@@ -71,8 +71,9 @@ internal sealed partial class McpDebuggerSessionBroker
             ThrowIfDisposed();
             return _sessions.TryGetValue(debugSession, out McpDebuggerSession? session)
                 ? session
-                : throw new McpException(
-                    $"debugger_session_not_found: Debugger session {debugSession} does not exist.");
+                : throw new McpDebuggerException(
+                    "debugger_session_not_found",
+                    $"Debugger session {debugSession} does not exist.");
         }
     }
 
@@ -86,16 +87,18 @@ internal sealed partial class McpDebuggerSessionBroker
             ThrowIfDisposed();
             if (!_sessions.TryGetValue(debugSession, out McpDebuggerSession? session))
             {
-                throw new McpException(
-                    $"debugger_session_not_found: Debugger session {debugSession} does not exist.");
+                throw new McpDebuggerException(
+                    "debugger_session_not_found",
+                    $"Debugger session {debugSession} does not exist.");
             }
 
             if (terminateAttachedTarget &&
                 session.Kind == McpDebuggerSessionKind.Attach &&
                 !session.AgentControl)
             {
-                throw new McpException(
-                    $"debugger_control_denied: Debugger session {debugSession} " +
+                throw new McpDebuggerException(
+                    "debugger_control_denied",
+                    $"Debugger session {debugSession} " +
                     "has no agent-control grant.");
             }
 
@@ -106,11 +109,12 @@ internal sealed partial class McpDebuggerSessionBroker
 
     private static void ValidateSessionId(string debugSession)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(debugSession);
-        if (!Guid.TryParseExact(debugSession, "N", out _))
+        if (string.IsNullOrWhiteSpace(debugSession) ||
+            !Guid.TryParseExact(debugSession, "N", out _))
         {
-            throw new McpException(
-                "debugger_session_invalid: debug_session must be the opaque identifier " +
+            throw new McpDebuggerException(
+                "debugger_session_invalid",
+                "debugSession must be the opaque identifier " +
                 "returned by a debugger lifecycle tool.");
         }
     }

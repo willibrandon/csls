@@ -101,6 +101,11 @@ public static class DebuggerControlMethods
     public const string GetVariables = "debugger/getVariables";
 
     /// <summary>
+    /// Gets a bounded page of managed modules.
+    /// </summary>
+    public const string GetModules = "debugger/getModules";
+
+    /// <summary>
     /// Reads target memory through an opaque stopped-state handle.
     /// </summary>
     public const string ReadMemory = "debugger/readMemory";

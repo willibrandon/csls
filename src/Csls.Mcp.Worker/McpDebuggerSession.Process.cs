@@ -16,8 +16,8 @@ internal sealed partial class McpDebuggerSession
     /// <param name="kind">How the target will be acquired.</param>
     /// <param name="agentControl">Whether target control is explicitly allowed.</param>
     /// <param name="cancellationToken">The startup cancellation token.</param>
-    /// <returns>The connected supervised session.</returns>
-    internal static async Task<McpDebuggerSession> StartAsync(
+    /// <returns>An ownership lease for the connected supervised session.</returns>
+    internal static async Task<McpDebuggerSessionLease> StartAsync(
         string workerPath,
         string id,
         McpDebuggerSessionKind kind,
@@ -57,7 +57,7 @@ internal sealed partial class McpDebuggerSession
         try
         {
             await client.ConnectAsync(cancellationToken).ConfigureAwait(false);
-            return new McpDebuggerSession(
+            return McpDebuggerSessionLease.Create(
                 id,
                 kind,
                 agentControl,

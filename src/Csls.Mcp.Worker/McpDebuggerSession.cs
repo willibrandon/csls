@@ -1,6 +1,6 @@
 using Csls.Debugger.Contracts;
 using Csls.Debugger.Control;
-using ModelContextProtocol;
+using StreamJsonRpc;
 using System.Diagnostics;
 
 namespace Csls.Mcp.Worker;
@@ -15,7 +15,16 @@ internal sealed partial class McpDebuggerSession : IAsyncDisposable
     private readonly SemaphoreSlim _operationGate = new(1, 1);
     private int _disposeState;
 
-    private McpDebuggerSession(
+    /// <summary>
+    /// Creates a connected session whose ownership is initially held by a lease.
+    /// </summary>
+    /// <param name="id">The stable MCP session identifier.</param>
+    /// <param name="kind">How the target will be acquired.</param>
+    /// <param name="agentControl">Whether target control is explicitly allowed.</param>
+    /// <param name="worker">The supervised debugger worker.</param>
+    /// <param name="diagnostics">The bounded worker diagnostics reader.</param>
+    /// <param name="client">The private debugger RPC client.</param>
+    internal McpDebuggerSession(
         string id,
         McpDebuggerSessionKind kind,
         bool agentControl,
@@ -73,8 +82,14 @@ internal sealed partial class McpDebuggerSession : IAsyncDisposable
         catch (Exception exception) when (
             exception is IOException or InvalidDataException or ObjectDisposedException)
         {
-            throw new McpException(
-                $"debugger_connection_lost: Debugger session {Id} disconnected: " +
+            throw new McpDebuggerException(
+                "debugger_connection_lost",
+                $"Debugger session {Id} disconnected: {exception.Message}");
+        }
+        catch (RemoteInvocationException exception)
+        {
+            throw new McpDebuggerException(
+                "debugger_operation_failed",
                 exception.Message);
         }
         finally
@@ -109,8 +124,9 @@ internal sealed partial class McpDebuggerSession : IAsyncDisposable
     {
         if (terminateAttachedTarget && Kind == McpDebuggerSessionKind.Attach && !AgentControl)
         {
-            throw new McpException(
-                $"debugger_control_denied: Debugger session {Id} has no agent-control grant.");
+            throw new McpDebuggerException(
+                "debugger_control_denied",
+                $"Debugger session {Id} has no agent-control grant.");
         }
 
         DebugSessionSnapshot current = await InvokeAsync(

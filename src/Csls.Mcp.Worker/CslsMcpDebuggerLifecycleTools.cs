@@ -47,7 +47,7 @@ internal sealed class CslsMcpDebuggerLifecycleTools
         UseStructuredContent = true,
         OutputSchemaType = typeof(McpDebugSessionInfo))]
     [Description("Launch one managed .NET target in an isolated debugger worker and return its explicit debugSession identifier.")]
-    public Task<McpDebugSessionInfo> StartAsync(
+    public Task<ModelContextProtocol.Protocol.CallToolResult> StartAsync(
         [Description("Absolute managed executable or assembly path.")]
         string program,
         [Description("Absolute target working directory.")]
@@ -70,30 +70,33 @@ internal sealed class CslsMcpDebuggerLifecycleTools
         [Description("Skip managed properties and operators while stepping by default.")]
         bool enableStepFiltering = true)
     {
-        McpDebuggerLaunchValidator.ValidateLaunch(
-            program,
-            workingDirectory,
-            runtimeHostPath,
-            initialSourcePath,
-            initialLine);
-        return _broker.LaunchAsync(
-            new DebugLaunchRequest
-            {
-                Program = Path.GetFullPath(program),
-                WorkingDirectory = Path.GetFullPath(workingDirectory),
-                Arguments = arguments ?? [],
-                Environment = environment ??
-                    new Dictionary<string, string?>(StringComparer.Ordinal),
-                RuntimeHostPath = runtimeHostPath is null
-                    ? null
-                    : Path.GetFullPath(runtimeHostPath),
-                JustMyCode = justMyCode,
-                EnableStepFiltering = enableStepFiltering
-            },
-            initialSourcePath is null ? null : Path.GetFullPath(initialSourcePath),
-            initialLine,
-            agentControl,
-            cancellationToken);
+        return McpDebuggerToolResult.RunAsync(async () =>
+        {
+            McpDebuggerLaunchValidator.ValidateLaunch(
+                program,
+                workingDirectory,
+                runtimeHostPath,
+                initialSourcePath,
+                initialLine);
+            return await _broker.LaunchAsync(
+                new DebugLaunchRequest
+                {
+                    Program = Path.GetFullPath(program),
+                    WorkingDirectory = Path.GetFullPath(workingDirectory),
+                    Arguments = arguments ?? [],
+                    Environment = environment ??
+                        new Dictionary<string, string?>(StringComparer.Ordinal),
+                    RuntimeHostPath = runtimeHostPath is null
+                        ? null
+                        : Path.GetFullPath(runtimeHostPath),
+                    JustMyCode = justMyCode,
+                    EnableStepFiltering = enableStepFiltering
+                },
+                initialSourcePath is null ? null : Path.GetFullPath(initialSourcePath),
+                initialLine,
+                agentControl,
+                cancellationToken).ConfigureAwait(false);
+        });
     }
 
     /// <summary>
@@ -114,7 +117,7 @@ internal sealed class CslsMcpDebuggerLifecycleTools
         UseStructuredContent = true,
         OutputSchemaType = typeof(McpDebugSessionInfo))]
     [Description("Attach an isolated debugger worker to one explicit managed process and return its debugSession identifier.")]
-    public Task<McpDebugSessionInfo> AttachAsync(
+    public Task<ModelContextProtocol.Protocol.CallToolResult> AttachAsync(
         [Description("Positive operating-system process identifier.")]
         int processId,
         CancellationToken cancellationToken,
@@ -123,11 +126,14 @@ internal sealed class CslsMcpDebuggerLifecycleTools
         [Description("Explicitly permit this MCP connection to resume, pause, step, or mutate the target.")]
         bool agentControl = false)
     {
-        McpDebuggerLaunchValidator.ValidateAttach(processId);
-        return _broker.AttachAsync(
-            new DebugAttachRequest(processId),
-            pause,
-            agentControl,
-            cancellationToken);
+        return McpDebuggerToolResult.RunAsync(async () =>
+        {
+            McpDebuggerLaunchValidator.ValidateAttach(processId);
+            return await _broker.AttachAsync(
+                new DebugAttachRequest(processId),
+                pause,
+                agentControl,
+                cancellationToken).ConfigureAwait(false);
+        });
     }
 }

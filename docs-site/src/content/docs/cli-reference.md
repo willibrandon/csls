@@ -20,7 +20,7 @@ Options:
 
 Commands:
   lsp            Run the Language Server Protocol over standard I/O.
-  debugger       Manage native .NET debugging and editor debugger integration.
+  debugger       Run native .NET debugging and editor debugger integration.
   sessions       Inspect live csls language-server sessions.
   dashboard      Inspect language-server state in the Hex1b dashboard.
   doctor <path>  Inspect SDK selection and load the workspace through a transient csls session. [default: .]
@@ -49,7 +49,7 @@ Options:
 
 ```text
 Description:
-  Manage native .NET debugging and editor debugger integration.
+  Run native .NET debugging and editor debugger integration.
 
 Usage:
   csls debugger [command] [options]
@@ -58,9 +58,9 @@ Options:
   -?, -h, --help  Show help and usage information
 
 Commands:
-  install  Install the verified Microsoft .NET debugger for the active platform.
-  dap      Run the csls Debug Adapter Protocol host over standard I/O.
-  doctor   Verify the packaged native .NET runtime-debugging components.
+  dap     Run the csls Debug Adapter Protocol host over standard I/O.
+  tui     Debug managed applications in an interactive terminal.
+  doctor  Verify the packaged native .NET runtime-debugging components.
 ```
 
 ## csls sessions
@@ -229,21 +229,6 @@ Commands:
   init  Create a reusable csls agent skill file.
 ```
 
-## csls debugger install
-
-```text
-Description:
-  Install the verified Microsoft .NET debugger for the active platform.
-
-Usage:
-  csls debugger install [options]
-
-Options:
-  --output <directory> (REQUIRED)  Private directory used to store the verified debugger.
-  --archive <path>                 Use a previously downloaded official debugger archive.
-  -?, -h, --help                   Show help and usage information
-```
-
 ## csls debugger dap
 
 ```text
@@ -255,6 +240,23 @@ Usage:
 
 Options:
   -?, -h, --help  Show help and usage information
+```
+
+## csls debugger tui
+
+```text
+Description:
+  Debug managed applications in an interactive terminal.
+
+Usage:
+  csls debugger tui [command] [options]
+
+Options:
+  -?, -h, --help  Show help and usage information
+
+Commands:
+  launch <program> <arguments>  Launch a managed target and stop at an initial source breakpoint.
+  attach <process-id>           Attach to and pause a running CoreCLR process.
 ```
 
 ## csls debugger doctor
@@ -824,5 +826,42 @@ Options:
   --force         Replace an existing skill file.
   --stdout        Write the skill content to standard output instead of a file.
   --json          Write the versioned machine-readable response envelope.
+  -?, -h, --help  Show help and usage information
+```
+
+## csls debugger tui launch
+
+```text
+Description:
+  Launch a managed target and stop at an initial source breakpoint.
+
+Usage:
+  csls debugger tui launch <program> [<arguments>...] [options]
+
+Arguments:
+  <program>    Managed executable or assembly path.
+  <arguments>  Arguments passed to the managed target.
+
+Options:
+  --source <path> (REQUIRED)  Source document containing the initial breakpoint.
+  --line <number> (REQUIRED)  One-based line for the initial source breakpoint.
+  --cwd <path>                Target working directory. [default: .]
+  --runtime <path>            Optional dotnet host path used to run a managed assembly.
+  -?, -h, --help              Show help and usage information
+```
+
+## csls debugger tui attach
+
+```text
+Description:
+  Attach to and pause a running CoreCLR process.
+
+Usage:
+  csls debugger tui attach <process-id> [options]
+
+Arguments:
+  <process-id>  Running managed process identifier.
+
+Options:
   -?, -h, --help  Show help and usage information
 ```

@@ -25,6 +25,7 @@ public sealed partial class McpDebuggerLifecycleTests
             sourcePath,
             breakpointLine,
             Path.Join(testDirectory, "first.signal"),
+            agentControl: false,
             cancellationToken).ConfigureAwait(false);
         string debugSession = started.GetProperty("debugSession").GetString()
             ?? throw new InvalidDataException("MCP returned no debugger-session identifier.");
@@ -38,6 +39,12 @@ public sealed partial class McpDebuggerLifecycleTests
         Assert.AreEqual("breakpoint", stopped.GetProperty("stopReason").GetString());
         Assert.IsGreaterThan(0, stopped.GetProperty("stopGeneration").GetInt64());
         Assert.IsFalse(stopped.GetProperty("agentControl").GetBoolean());
+        await AssertInspectionAndControlDenialAsync(
+            mcp.Client,
+            stopped,
+            sourcePath,
+            EditorToolResolver.ResolveTestProcessHost(repositoryRoot),
+            cancellationToken).ConfigureAwait(false);
 
         JsonElement listed = await CallAsync(
             mcp.Client,
@@ -60,13 +67,25 @@ public sealed partial class McpDebuggerLifecycleTests
             sourcePath,
             breakpointLine,
             Path.Join(testDirectory, "second.signal"),
+            agentControl: true,
             cancellationToken).ConfigureAwait(false);
         int secondProcessId = second.GetProperty("processId").GetInt32();
         ProcessExitObservation secondExit = ProcessExitWaiter.Observe(secondProcessId);
-        _ = await WaitForStoppedAsync(
+        JsonElement secondStopped = await WaitForStoppedAsync(
             mcp.Client,
             second.GetProperty("debugSession").GetString()!,
             cancellationToken).ConfigureAwait(false);
+        JsonElement continued = await CallAsync(
+            mcp.Client,
+            "debug_execution_control",
+            new Dictionary<string, object?>
+            {
+                ["debugSession"] = secondStopped.GetProperty("debugSession").GetString(),
+                ["operation"] = "continue",
+                ["stopGeneration"] = secondStopped.GetProperty("stopGeneration").GetInt64()
+            },
+            cancellationToken).ConfigureAwait(false);
+        Assert.AreEqual("running", continued.GetProperty("state").GetString());
         string diagnostics = await mcp.DisconnectAsync(
             TimeSpan.FromSeconds(20),
             cancellationToken).ConfigureAwait(false);
@@ -85,6 +104,7 @@ public sealed partial class McpDebuggerLifecycleTests
         string sourcePath,
         int breakpointLine,
         string signalPath,
+        bool agentControl,
         CancellationToken cancellationToken) =>
         await CallAsync(
             client,
@@ -95,7 +115,8 @@ public sealed partial class McpDebuggerLifecycleTests
                 ["workingDirectory"] = repositoryRoot,
                 ["arguments"] = new[] { "--debugger-fixture", signalPath },
                 ["initialSourcePath"] = sourcePath,
-                ["initialLine"] = breakpointLine
+                ["initialLine"] = breakpointLine,
+                ["agentControl"] = agentControl
             },
             cancellationToken).ConfigureAwait(false);
 
