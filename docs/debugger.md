@@ -90,9 +90,17 @@ bounded diagnostic instead of claiming that suppression succeeded.
 step, the debugger marks symbol-bearing, unoptimized modules as user code and
 enables the CoreCLR JMC stepper so framework, symbol-free, and optimized modules
 are skipped. Later-loaded modules receive the same policy. Set `justMyCode` to
-`false` to disable runtime JMC filtering. The `modules` response reports the
-effective classification as `isUserCode`; a Release module becomes user code
-when successful JIT optimization suppression makes it debuggable.
+`false` to make `DebuggerNonUserCode` members eligible while source stepping
+still avoids symbol-free code. The `modules` response reports the effective
+classification as `isUserCode`; a Release module becomes user code when
+successful JIT optimization suppression makes it debuggable.
+
+`enableStepFiltering` defaults to `true` and makes Step Into skip property
+accessors and CLR operator methods. Set it to `false` when debugging inside
+those members. `DebuggerHidden` and `DebuggerStepThrough` remain step filters;
+`DebuggerNonUserCode` is also excluded while `justMyCode` is enabled. Filtering
+uses CLR metadata tokens and therefore applies consistently to C#, Visual Basic,
+F#, and other managed languages rather than depending on source syntax.
 
 ## Runtime and symbol requirements
 

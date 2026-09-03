@@ -75,6 +75,10 @@ internal static class DapLaunchOptionsParser
                 JustMyCode = DapBooleanOptionParser.Get(
                     arguments,
                     "justMyCode",
+                    defaultValue: true),
+                EnableStepFiltering = DapBooleanOptionParser.Get(
+                    arguments,
+                    "enableStepFiltering",
                     defaultValue: true)
             }
         };

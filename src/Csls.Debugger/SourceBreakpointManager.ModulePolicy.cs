@@ -15,7 +15,11 @@ internal sealed partial class SourceBreakpointManager
     /// </summary>
     /// <param name="suppressJitOptimizations">Whether symbol-bearing modules request unoptimized code.</param>
     /// <param name="justMyCode">Whether source stepping excludes non-user managed code.</param>
-    internal void SetRuntimeOptions(bool suppressJitOptimizations, bool justMyCode)
+    /// <param name="enableStepFiltering">Whether stepping skips properties and operators.</param>
+    internal void SetRuntimeOptions(
+        bool suppressJitOptimizations,
+        bool justMyCode,
+        bool enableStepFiltering)
     {
         ObjectDisposedException.ThrowIf(_disposed != 0, this);
         if (_modules.Count != 0)
@@ -26,6 +30,7 @@ internal sealed partial class SourceBreakpointManager
 
         _suppressJitOptimizations = suppressJitOptimizations;
         _justMyCode = justMyCode;
+        _enableStepFiltering = enableStepFiltering;
     }
 
     private static (DebugModuleSymbolKind SymbolKind, string? SymbolPath) InspectSymbols(

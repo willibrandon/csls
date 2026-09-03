@@ -13,8 +13,7 @@ internal sealed partial class CorDebugDebuggee
     /// </summary>
     /// <param name="threadId">The managed thread identifier to step.</param>
     /// <param name="kind">The requested source-level stepping operation.</param>
-    /// <param name="justMyCode">Whether the stepper excludes non-user code.</param>
-    internal unsafe void Step(int threadId, DebugStepKind kind, bool justMyCode)
+    internal void Step(int threadId, DebugStepKind kind)
     {
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(threadId);
         if (_activeStepper != 0)
@@ -28,7 +27,7 @@ internal sealed partial class CorDebugDebuggee
         {
             thread = GetThread(threadId);
             stepper = CreateStepper(thread);
-            ConfigureStepper(stepper, justMyCode);
+            ConfigureStepper(stepper);
             int stepResult = StartStep(stepper, thread, kind);
             CorDebugHResult.ThrowIfFailed(stepResult, $"ICorDebugStepper.Step{kind}");
             _activeStepperIdentity = ComAbi.GetIdentity(stepper);
@@ -116,7 +115,7 @@ internal sealed partial class CorDebugDebuggee
                 "ICorDebugThread.CreateStepper returned no stepper.");
     }
 
-    private static void ConfigureStepper(nint stepper, bool justMyCode)
+    private static void ConfigureStepper(nint stepper)
     {
         var api = new ICorDebugStepperAbi(stepper);
         CorDebugHResult.ThrowIfFailed(
@@ -130,7 +129,7 @@ internal sealed partial class CorDebugDebuggee
         try
         {
             CorDebugHResult.ThrowIfFailed(
-                new ICorDebugStepper2Abi(stepper2).SetJMC(justMyCode ? 1 : 0),
+                new ICorDebugStepper2Abi(stepper2).SetJMC(fIsJMCStepper: 1),
                 "ICorDebugStepper2.SetJMC");
         }
         finally

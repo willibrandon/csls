@@ -25,6 +25,10 @@ internal static class DapAttachOptionsParser
 
         return new DapAttachConfiguration(
             processId,
-            DapBooleanOptionParser.Get(arguments, "justMyCode", defaultValue: true));
+            DapBooleanOptionParser.Get(arguments, "justMyCode", defaultValue: true),
+            DapBooleanOptionParser.Get(
+                arguments,
+                "enableStepFiltering",
+                defaultValue: true));
     }
 }

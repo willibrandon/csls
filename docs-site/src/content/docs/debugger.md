@@ -56,8 +56,14 @@ not be honored.
 `justMyCode` defaults to `true` for launch and attach. The first source step
 classifies modules with validated symbols and unoptimized JIT policy as user
 code, then enables CoreCLR JMC stepping. Modules loaded later receive the same
-policy. Set the option to `false` to disable JMC filtering. Module inspection
-reports the effective classification through `isUserCode`.
+policy. Set the option to `false` to make `DebuggerNonUserCode` members eligible;
+symbol-free code remains outside source stepping. Module inspection reports the
+effective classification through `isUserCode`.
+
+`enableStepFiltering` defaults to `true` and skips property accessors and CLR
+operator methods during Step Into. `DebuggerHidden` and `DebuggerStepThrough`
+also remain filtered, while `DebuggerNonUserCode` follows `justMyCode`. Set the
+option to `false` to enter properties and operators.
 
 ## Security and process ownership
 

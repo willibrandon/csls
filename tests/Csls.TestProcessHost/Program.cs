@@ -12,6 +12,11 @@ if (args is ["--debugger-step-fixture", string stepFixturePath])
     return DebuggerStepFixture.Run(stepFixturePath);
 }
 
+if (args is ["--debugger-step-filtering-fixture", string stepFilteringPath])
+{
+    return DebuggerStepFilteringFixture.Run(stepFilteringPath);
+}
+
 if (args is [
     "--debugger-hit-fixture",
     string hitSignalPath,

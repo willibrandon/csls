@@ -11,10 +11,12 @@ public sealed partial class DebuggerSession
     /// Replaces managed runtime options before target activation.
     /// </summary>
     /// <param name="justMyCode">Whether source stepping excludes non-user managed code.</param>
+    /// <param name="enableStepFiltering">Whether stepping skips properties and operators.</param>
     /// <param name="cancellationToken">Cancels queueing the configuration.</param>
     /// <returns>A task that completes after the options are installed.</returns>
     public Task ConfigureRuntimeOptionsAsync(
         bool justMyCode,
+        bool enableStepFiltering,
         CancellationToken cancellationToken)
     {
         ObjectDisposedException.ThrowIf(_disposed != 0, this);
@@ -30,7 +32,8 @@ public sealed partial class DebuggerSession
 
                 _sourceBreakpoints.SetRuntimeOptions(
                     suppressJitOptimizations: false,
-                    justMyCode: justMyCode);
+                    justMyCode: justMyCode,
+                    enableStepFiltering: enableStepFiltering);
                 return ValueTask.CompletedTask;
             },
             cancellationToken);

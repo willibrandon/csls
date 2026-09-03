@@ -20,6 +20,7 @@ internal sealed partial class SourceBreakpointManager : IDisposable
     private int _nextModuleId;
     private bool _suppressJitOptimizations;
     private bool _justMyCode = true;
+    private bool _enableStepFiltering = true;
     private bool _steppingPolicyActivated;
     private int _disposed;
 

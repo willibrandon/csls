@@ -51,4 +51,9 @@ public sealed class DebuggeeLaunchOptions
     /// Gets whether source stepping excludes non-user managed code.
     /// </summary>
     public bool JustMyCode { get; init; } = true;
+
+    /// <summary>
+    /// Gets whether source stepping skips managed properties and operators.
+    /// </summary>
+    public bool EnableStepFiltering { get; init; } = true;
 }

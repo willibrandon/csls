@@ -22,6 +22,7 @@ internal sealed partial class DapSession
             _pendingAttach = DapAttachOptionsParser.Parse(request.Arguments);
             await _engineSession.ConfigureRuntimeOptionsAsync(
                 _pendingAttach.JustMyCode,
+                _pendingAttach.EnableStepFiltering,
                 cancellationToken).ConfigureAwait(false);
             await _engineSession.ConfigureSourceOptionsAsync(
                 DapSourceOptionsParser.ParseSourceFileMap(request.Arguments),

@@ -79,7 +79,8 @@ public sealed partial class DebuggerSession
         _sourceBreakpoints.SetSourceOptions(options.SourceFileMap, options.SourceLinkOptions);
         _sourceBreakpoints.SetRuntimeOptions(
             options.SuppressJitOptimizations,
-            options.JustMyCode);
+            options.JustMyCode,
+            options.EnableStepFiltering);
         return BeginLaunchCoreAsync(cancellationToken);
     }
 

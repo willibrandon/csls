@@ -11,8 +11,7 @@ internal sealed partial class SourceBreakpointManager
     /// <summary>
     /// Installs module JMC status before the first source step.
     /// </summary>
-    /// <returns>Whether the runtime stepper should exclude non-user code.</returns>
-    internal bool ActivateSteppingPolicy()
+    internal void ActivateSteppingPolicy()
     {
         ObjectDisposedException.ThrowIf(_disposed != 0, this);
         if (!_steppingPolicyActivated)
@@ -24,8 +23,6 @@ internal sealed partial class SourceBreakpointManager
 
             _steppingPolicyActivated = true;
         }
-
-        return _justMyCode;
     }
 
     private void ClassifyUserCode(CorDebugLoadedModule module)
@@ -40,15 +37,41 @@ internal sealed partial class SourceBreakpointManager
             (!_justMyCode || module.IsOptimized == false);
     }
 
-    private void ConfigureJustMyCode(CorDebugLoadedModule module)
+    private unsafe void ConfigureJustMyCode(CorDebugLoadedModule module)
     {
         ClassifyUserCode(module);
         module.JustMyCodeConfigured = true;
-        if (!_justMyCode)
+        if (module.Path is null || module.IsUserCode != true)
         {
+            _ = SetModuleJustMyCode(module, isUserCode: false);
             return;
         }
 
+        try
+        {
+            uint[] excludedTokens = ManagedStepFilterClassifier.GetExcludedTokens(
+                module.Path,
+                _justMyCode,
+                _enableStepFiltering);
+            if (SetModuleJustMyCode(module, isUserCode: true))
+            {
+                ApplyStepFilters(module, excludedTokens);
+            }
+        }
+        catch (Exception exception) when (
+            exception is IOException or UnauthorizedAccessException or
+                BadImageFormatException or InvalidOperationException or OverflowException)
+        {
+            module.IsUserCode = false;
+            module.JustMyCodeDiagnostic =
+                $"Step-filter metadata is unavailable: {exception.Message}";
+        }
+    }
+
+    private static bool SetModuleJustMyCode(
+        CorDebugLoadedModule module,
+        bool isUserCode)
+    {
         if (!ComAbi.TryQueryInterface(
             module.Pointer,
             ICorDebugModule2Abi.InterfaceId,
@@ -57,21 +80,24 @@ internal sealed partial class SourceBreakpointManager
             module.IsUserCode = false;
             module.JustMyCodeDiagnostic =
                 "The runtime does not expose Just My Code module policy.";
-            return;
+            return false;
         }
 
         try
         {
             int result = new ICorDebugModule2Abi(module2).SetJMCStatus(
-                module.IsUserCode == true ? 1 : 0,
+                isUserCode ? 1 : 0,
                 cTokens: 0,
                 pTokens: 0);
-            if (result < 0)
+            if (result >= 0)
             {
-                module.IsUserCode = false;
-                module.JustMyCodeDiagnostic =
-                    $"Just My Code configuration failed with HRESULT 0x{result:X8}.";
+                return true;
             }
+
+            module.IsUserCode = false;
+            module.JustMyCodeDiagnostic =
+                $"Just My Code configuration failed with HRESULT 0x{result:X8}.";
+            return false;
         }
         finally
         {

@@ -5,4 +5,8 @@ namespace Csls.DebugAdapter;
 /// </summary>
 /// <param name="ProcessId">The positive operating-system process identifier.</param>
 /// <param name="JustMyCode">Whether source stepping excludes non-user managed code.</param>
-internal sealed record DapAttachConfiguration(int ProcessId, bool JustMyCode);
+/// <param name="EnableStepFiltering">Whether stepping skips properties and operators.</param>
+internal sealed record DapAttachConfiguration(
+    int ProcessId,
+    bool JustMyCode,
+    bool EnableStepFiltering);

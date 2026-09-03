@@ -24,7 +24,8 @@ public sealed partial class DebuggerControlService
                 SourceFileMap = request.SourceFileMap,
                 SourceLinkOptions = request.SourceLinkOptions,
                 SuppressJitOptimizations = request.SuppressJitOptimizations,
-                JustMyCode = request.JustMyCode
+                JustMyCode = request.JustMyCode,
+                EnableStepFiltering = request.EnableStepFiltering
             },
             cancellationToken).ConfigureAwait(false);
         return GetSnapshot();
@@ -38,6 +39,7 @@ public sealed partial class DebuggerControlService
         ArgumentNullException.ThrowIfNull(request);
         await _session.ConfigureRuntimeOptionsAsync(
             request.JustMyCode,
+            request.EnableStepFiltering,
             cancellationToken).ConfigureAwait(false);
         await _session.ConfigureSourceOptionsAsync(
             request.SourceFileMap,

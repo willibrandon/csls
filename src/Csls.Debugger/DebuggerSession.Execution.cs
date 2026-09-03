@@ -89,10 +89,8 @@ public sealed partial class DebuggerSession
                 $"A managed target cannot step while the debugger session is {_state}.");
         }
 
-        managedDebuggee.Step(
-            threadId,
-            kind,
-            _sourceBreakpoints.ActivateSteppingPolicy());
+        _sourceBreakpoints.ActivateSteppingPolicy();
+        managedDebuggee.Step(threadId, kind);
         _currentException = null;
         _currentExceptionThreadId = null;
         _state = DebugSessionState.Running;
