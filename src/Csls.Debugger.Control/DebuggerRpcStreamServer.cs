@@ -67,8 +67,33 @@ public static class DebuggerRpcStreamServer
             SynchronizationContext = null
         };
         DebuggerControlMethodRegistry.Register(rpc, target);
+        DebuggerControlNotificationPump? notifications = target is DebuggerControlService service
+            ? new DebuggerControlNotificationPump(service, rpc)
+            : null;
+        Task? notificationTask = notifications?.RunAsync();
         rpc.StartListening();
-        await rpc.Completion.WaitAsync(cancellationToken).ConfigureAwait(false);
-        await rpc.DispatchCompletion.ConfigureAwait(false);
+        try
+        {
+            Task rpcCompletion = rpc.Completion.WaitAsync(cancellationToken);
+            if (notificationTask is not null &&
+                await Task.WhenAny(rpcCompletion, notificationTask).ConfigureAwait(false) ==
+                    notificationTask)
+            {
+                await notificationTask.ConfigureAwait(false);
+                throw new IOException("The debugger notification stream ended unexpectedly.");
+            }
+
+            await rpcCompletion.ConfigureAwait(false);
+            await rpc.DispatchCompletion.ConfigureAwait(false);
+        }
+        finally
+        {
+            notifications?.Dispose();
+            if (notificationTask is not null)
+            {
+                await notificationTask.ConfigureAwait(
+                    ConfigureAwaitOptions.SuppressThrowing);
+            }
+        }
     }
 }

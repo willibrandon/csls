@@ -18,6 +18,11 @@ internal sealed partial class McpDebuggerSessionBroker : IAsyncDisposable
     private bool _disposed;
 
     /// <summary>
+    /// Signals authoritative resource changes for registered debugger sessions.
+    /// </summary>
+    internal event Action<McpDebuggerResourceChange>? ResourceChanged;
+
+    /// <summary>
     /// Creates a debugger broker for one installed worker executable.
     /// </summary>
     /// <param name="workerPath">The optional absolute debugger worker path.</param>
@@ -32,6 +37,22 @@ internal sealed partial class McpDebuggerSessionBroker : IAsyncDisposable
     /// Gets whether this installation can advertise debugger lifecycle tools.
     /// </summary>
     internal bool IsAvailable => _workerPath is not null;
+
+    /// <summary>
+    /// Tests whether this connection currently owns an exact debugger session.
+    /// </summary>
+    internal bool OwnsSession(string debugSession)
+    {
+        if (!Guid.TryParseExact(debugSession, "N", out _))
+        {
+            return false;
+        }
+
+        lock (_gate)
+        {
+            return !_disposed && _sessions.ContainsKey(debugSession);
+        }
+    }
 
     /// <summary>
     /// Launches one managed target through a newly supervised debugger worker.
@@ -174,8 +195,16 @@ internal sealed partial class McpDebuggerSessionBroker : IAsyncDisposable
             _sessions.Clear();
         }
 
+        foreach (McpDebuggerSession session in sessions)
+        {
+            session.ResourceChanged -= OnResourceChanged;
+        }
+
         await Task.WhenAll(sessions.Select(static item => item.DisposeAsync().AsTask()))
             .ConfigureAwait(false);
         _sessionSlots.Dispose();
     }
+
+    private void OnResourceChanged(McpDebuggerResourceChange change) =>
+        ResourceChanged?.Invoke(change);
 }

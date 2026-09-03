@@ -84,6 +84,7 @@ internal sealed partial class McpDebuggerSession
         await _operationGate.WaitAsync(CancellationToken.None).ConfigureAwait(false);
         try
         {
+            Client.ResourceChanged -= OnResourceChanged;
             await Client.DisposeAsync().ConfigureAwait(false);
             await _worker.StandardInput.DisposeAsync().ConfigureAwait(false);
         }

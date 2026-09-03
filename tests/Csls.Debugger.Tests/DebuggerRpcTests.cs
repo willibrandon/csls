@@ -76,6 +76,15 @@ public sealed partial class DebuggerRpcTests
         var client = new DebuggerRpcClient(socketPath);
         await using ConfiguredAsyncDisposable clientDisposal = client.ConfigureAwait(false);
         await client.ConnectAsync(cancellationToken).ConfigureAwait(false);
+        var resourcesChanged = new TaskCompletionSource<bool>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        client.ResourceChanged += (_, change) =>
+        {
+            if (change.Kind.HasFlag(DebuggerResourceChangeKind.Session))
+            {
+                resourcesChanged.TrySetResult(true);
+            }
+        };
 
         DebugSessionSnapshot created = await client.GetSessionAsync(cancellationToken)
             .ConfigureAwait(false);
@@ -100,6 +109,7 @@ public sealed partial class DebuggerRpcTests
             cancellationToken).ConfigureAwait(false);
         DebugSessionSnapshot stopped = await WaitForStoppedAsync(client, cancellationToken)
             .ConfigureAwait(false);
+        await resourcesChanged.Task.WaitAsync(cancellationToken).ConfigureAwait(false);
         Assert.AreEqual("breakpoint", stopped.StopReason);
         Assert.IsNotNull(stopped.StoppedThreadId);
         Assert.IsGreaterThan(0, stopped.StoppedThreadId.Value);

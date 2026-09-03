@@ -63,12 +63,13 @@ public sealed partial class McpDebuggerLifecycleTests
         await ProcessExitWaiter.WaitAsync(exit, TimeSpan.FromSeconds(10), cancellationToken)
             .ConfigureAwait(false);
 
+        string secondSignalPath = Path.Join(testDirectory, "second.signal");
         JsonElement second = await StartTargetAsync(
             mcp.Client,
             repositoryRoot,
             sourcePath,
             breakpointLine,
-            Path.Join(testDirectory, "second.signal"),
+            secondSignalPath,
             agentControl: true,
             cancellationToken).ConfigureAwait(false);
         int secondProcessId = second.GetProperty("processId").GetInt32();
@@ -82,15 +83,20 @@ public sealed partial class McpDebuggerLifecycleTests
             secondStopped,
             sourcePath,
             cancellationToken).ConfigureAwait(false);
-        JsonElement continued = await CallAsync(
+        string secondSession = secondStopped.GetProperty("debugSession").GetString()!;
+        JsonElement continued = await AssertResourceSubscriptionAsync(
             mcp.Client,
-            "debug_execution_control",
-            new Dictionary<string, object?>
-            {
-                ["debugSession"] = secondStopped.GetProperty("debugSession").GetString(),
-                ["operation"] = "continue",
-                ["stopGeneration"] = secondStopped.GetProperty("stopGeneration").GetInt64()
-            },
+            $"csls://debug/session/{secondSession}",
+            () => CallAsync(
+                mcp.Client,
+                "debug_execution_control",
+                new Dictionary<string, object?>
+                {
+                    ["debugSession"] = secondSession,
+                    ["operation"] = "continue",
+                    ["stopGeneration"] = secondStopped.GetProperty("stopGeneration").GetInt64()
+                },
+                cancellationToken),
             cancellationToken).ConfigureAwait(false);
         Assert.AreEqual("running", continued.GetProperty("state").GetString());
         string diagnostics = await mcp.DisconnectAsync(

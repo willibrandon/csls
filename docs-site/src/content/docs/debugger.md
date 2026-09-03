@@ -167,6 +167,11 @@ exceptions, source, memory, and managed-IL disassembly. Every stopped-state URI
 carries the exact `stopGeneration`, and bounded collections expose their cursor
 or paging inputs in the URI template.
 
+Current MCP clients can subscribe to exact debugger URIs through
+`subscriptions/listen`. csls grants only resources belonging to the connection
+and streams subscription-tagged updates directly from engine state and output
+events; it does not poll the target or expose legacy subscription RPCs.
+
 The `diagnose_dotnet_debugger_failure`, `plan_dotnet_breakpoints`, and
 `explain_dotnet_debugger_state` prompts use explicit session identity and
 read-first evidence. None embeds execution control or breakpoint mutation.

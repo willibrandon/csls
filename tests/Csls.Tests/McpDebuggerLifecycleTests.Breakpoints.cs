@@ -112,5 +112,53 @@ public sealed partial class McpDebuggerLifecycleTests
         Assert.AreEqual(
             "thrown",
             exceptions.GetProperty("breakpoints")[0].GetProperty("breakMode").GetString());
+
+        await ClearControlledBreakpointsAsync(
+            client,
+            debugSession,
+            generation,
+            sourcePath,
+            cancellationToken).ConfigureAwait(false);
+    }
+
+    private static async Task ClearControlledBreakpointsAsync(
+        McpClient client,
+        string debugSession,
+        long generation,
+        string sourcePath,
+        CancellationToken cancellationToken)
+    {
+        JsonElement source = await CallAsync(
+            client,
+            "debug_source_breakpoints_set",
+            new Dictionary<string, object?>
+            {
+                ["debugSession"] = debugSession,
+                ["stopGeneration"] = generation,
+                ["sourcePath"] = sourcePath,
+                ["breakpoints"] = Array.Empty<object>()
+            },
+            cancellationToken).ConfigureAwait(false);
+        Assert.AreEqual(0, source.GetProperty("breakpoints").GetArrayLength());
+
+        foreach (string tool in new[]
+        {
+            "debug_function_breakpoints_set",
+            "debug_instruction_breakpoints_set",
+            "debug_exception_breakpoints_set"
+        })
+        {
+            JsonElement result = await CallAsync(
+                client,
+                tool,
+                new Dictionary<string, object?>
+                {
+                    ["debugSession"] = debugSession,
+                    ["stopGeneration"] = generation,
+                    ["breakpoints"] = Array.Empty<object>()
+                },
+                cancellationToken).ConfigureAwait(false);
+            Assert.AreEqual(0, result.GetProperty("breakpoints").GetArrayLength(), tool);
+        }
     }
 }

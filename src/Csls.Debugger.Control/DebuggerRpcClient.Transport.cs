@@ -112,6 +112,9 @@ public sealed partial class DebuggerRpcClient
             CancelLocallyInvokedMethodsWhenConnectionIsClosed = true,
             DisplayName = "debugger-control-client"
         };
+        _rpc.AddLocalRpcMethod(
+            DebuggerControlNotifications.ResourceChanged,
+            new Action<DebuggerResourceChangeEventArgs>(OnResourceChanged));
         _rpc.StartListening();
         int version = await _rpc.InvokeWithCancellationAsync<int>(
             DebuggerControlMethods.GetProtocolVersion,
@@ -123,6 +126,14 @@ public sealed partial class DebuggerRpcClient
                 $"{DebuggerControlProtocol.CurrentVersion}.");
         }
     }
+
+    /// <summary>
+    /// Signals that authoritative state or output changed in the debugger worker.
+    /// </summary>
+    public event EventHandler<DebuggerResourceChangeEventArgs>? ResourceChanged;
+
+    private void OnResourceChanged(DebuggerResourceChangeEventArgs change) =>
+        ResourceChanged?.Invoke(this, change);
 
     /// <inheritdoc />
     public async ValueTask DisposeAsync()

@@ -273,6 +273,11 @@ clients that compose resources into their context:
 
 Stopped-state resources require the exact current generation just like their tool
 counterparts, so a URI cannot silently resolve handles against a later stop.
+Clients using the current MCP protocol can include exact debugger URIs in a
+`subscriptions/listen` request. csls acknowledges only resources owned by that MCP
+connection, then streams subscription-tagged `notifications/resources/updated`
+events from engine state and output notifications. The path is event-driven and
+does not poll the debug target. Legacy resource subscription RPCs are not exposed.
 
 Three read-first prompts are advertised with the debugger worker:
 `diagnose_dotnet_debugger_failure`, `plan_dotnet_breakpoints`, and

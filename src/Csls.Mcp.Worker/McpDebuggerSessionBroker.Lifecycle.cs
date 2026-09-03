@@ -48,6 +48,7 @@ internal sealed partial class McpDebuggerSessionBroker
             {
                 ThrowIfDisposed();
                 _sessions.Add(id, session);
+                session.ResourceChanged += OnResourceChanged;
                 lease.TransferOwnership();
                 registered = true;
             }
@@ -103,6 +104,7 @@ internal sealed partial class McpDebuggerSessionBroker
             }
 
             _sessions.Remove(debugSession);
+            session.ResourceChanged -= OnResourceChanged;
             return session;
         }
     }

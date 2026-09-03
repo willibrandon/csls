@@ -38,6 +38,7 @@ internal sealed partial class McpDebuggerSession : IAsyncDisposable
         _worker = worker;
         _diagnostics = diagnostics;
         Client = client;
+        Client.ResourceChanged += OnResourceChanged;
     }
 
     /// <summary>
@@ -59,6 +60,17 @@ internal sealed partial class McpDebuggerSession : IAsyncDisposable
     /// Gets the private RPC client connected to the debugger worker.
     /// </summary>
     internal DebuggerRpcClient Client { get; }
+
+    /// <summary>
+    /// Signals authoritative resource changes from the debugger worker.
+    /// </summary>
+    internal event Action<McpDebuggerResourceChange>? ResourceChanged;
+
+    private void OnResourceChanged(object? sender, DebuggerResourceChangeEventArgs change)
+    {
+        _ = sender;
+        ResourceChanged?.Invoke(new McpDebuggerResourceChange(Id, change.Kind));
+    }
 
     /// <summary>
     /// Invokes one serialized operation against the debugger worker.

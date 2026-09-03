@@ -53,6 +53,12 @@ internal static class McpHost
                     Version = typeof(McpHost).Assembly.GetName().Version?.ToString() ?? "0.0.0",
                     Description = "Language intelligence and supervised .NET debugging for explicit sessions."
                 };
+                if (debuggerBroker.IsAvailable)
+                {
+                    options.Capabilities ??= new ServerCapabilities();
+                    options.Capabilities.Resources ??= new ResourcesCapability();
+                    options.Capabilities.Resources.Subscribe = true;
+                }
                 const string commonInstructions =
                     "Use read-only inspection tools before requesting edits. Document positions " +
                     "are zero-based UTF-16 line and character offsets.";
@@ -74,6 +80,7 @@ internal static class McpHost
 
         if (debuggerBroker.IsAvailable)
         {
+            var debuggerSubscriptions = new McpDebuggerSubscriptions(debuggerBroker);
             mcpBuilder
                 .WithTools(
                     new CslsMcpDebuggerLifecycleTools(debuggerBroker),
@@ -92,6 +99,7 @@ internal static class McpHost
                     serializerOptions)
                 .WithResources(new CslsMcpDebuggerResources(debuggerBroker));
             mcpBuilder.WithPrompts(new CslsMcpDebuggerPrompts());
+            mcpBuilder.WithSubscriptionsListenHandler(debuggerSubscriptions.ListenAsync);
         }
 
         using IHost host = builder.Build();

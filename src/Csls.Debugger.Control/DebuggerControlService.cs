@@ -16,6 +16,11 @@ public sealed partial class DebuggerControlService :
     private DebugSessionSnapshot _snapshot = new() { State = DebugSessionState.Created };
 
     /// <summary>
+    /// Signals resource invalidation to the private RPC transport.
+    /// </summary>
+    internal event EventHandler<DebuggerResourceChangeEventArgs>? ResourceChanged;
+
+    /// <summary>
     /// Creates one empty debugger control session.
     /// </summary>
     public DebuggerControlService()
@@ -141,5 +146,10 @@ public sealed partial class DebuggerControlService :
         {
             _snapshot = snapshot;
         }
+
+        ResourceChanged?.Invoke(this, new DebuggerResourceChangeEventArgs
+        {
+            Kind = DebuggerResourceChangeKind.Session
+        });
     }
 }
