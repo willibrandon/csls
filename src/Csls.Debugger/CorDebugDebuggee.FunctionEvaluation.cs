@@ -4,7 +4,7 @@ using Csls.Debugger.Interop;
 namespace Csls.Debugger;
 
 /// <summary>
-/// Executes explicitly authorized instance calls through CoreCLR function evaluation.
+/// Executes explicitly authorized managed calls through CoreCLR function evaluation.
 /// </summary>
 internal sealed partial class CorDebugDebuggee
 {
@@ -32,7 +32,7 @@ internal sealed partial class CorDebugDebuggee
         _activeFunctionEvaluation?.Completion.Task;
 
     /// <summary>
-    /// Starts one instance-method evaluation and resumes only its selected managed thread.
+    /// Starts one managed-method evaluation and resumes only its selected managed thread.
     /// </summary>
     /// <param name="frameId">The generation-bound managed frame handle.</param>
     /// <param name="plan">The validated invocation expression.</param>
@@ -71,15 +71,24 @@ internal sealed partial class CorDebugDebuggee
                 $"{MaximumFunctionEvaluationArgumentCount} method arguments.");
         }
 
-        ManagedExpressionValue receiver;
+        ManagedExpressionValue? receiver = null;
         var suppliedArguments = new ManagedExpressionValue[argumentCount];
         try
         {
-            receiver = EvaluateNode(
-                frame,
-                plan,
+            try
+            {
+                receiver = EvaluateNode(
+                    frame,
+                    plan,
+                    invocation.Children[0],
+                    generation);
+            }
+            catch (InvalidOperationException) when (TryGetQualifiedTypeName(
                 invocation.Children[0],
-                generation);
+                out _))
+            {
+            }
+
             for (int index = 0; index < suppliedArguments.Length; index++)
             {
                 suppliedArguments[index] = EvaluateNode(
@@ -97,7 +106,7 @@ internal sealed partial class CorDebugDebuggee
                 exception);
         }
 
-        nint receiverValue = GetRuntimeValue(receiver);
+        nint receiverValue = receiver is null ? 0 : GetRuntimeValue(receiver);
         nint dereferencedReceiver = 0;
         nint objectValue = 0;
         nint function = 0;
@@ -105,30 +114,44 @@ internal sealed partial class CorDebugDebuggee
         nint evaluation = 0;
         nint receiverHandle = 0;
         nint[] runtimeArguments = new nint[argumentCount];
+        bool argumentHandlesTransferred = false;
         bool callbackEvaluationActive = false;
         bool callScheduled = false;
         string setupPhase = "resolving the invocation receiver";
         try
         {
-            dereferencedReceiver = DereferenceValue(receiverValue);
-            if (!ComAbi.TryQueryInterface(
-                dereferencedReceiver,
-                ICorDebugObjectValueAbi.InterfaceId,
-                out objectValue))
+            if (receiverValue != 0)
             {
-                throw new InvalidOperationException(
-                    "The invocation receiver is not a managed object value.");
+                dereferencedReceiver = DereferenceValue(receiverValue);
+                if (!ComAbi.TryQueryInterface(
+                    dereferencedReceiver,
+                    ICorDebugObjectValueAbi.InterfaceId,
+                    out objectValue))
+                {
+                    throw new InvalidOperationException(
+                        "The invocation receiver is not a managed object value.");
+                }
             }
+
             setupPhase = "resolving the runtime method";
-            function = ResolveInstanceFunction(
-                dereferencedReceiver,
-                invocation.Text!,
-                plan.Language,
-                suppliedArguments);
+            function = receiverValue == 0
+                ? ResolveStaticFunction(
+                    invocation.Children[0],
+                    invocation.Text!,
+                    plan.Language,
+                    suppliedArguments)
+                : ResolveInstanceFunction(
+                    dereferencedReceiver,
+                    invocation.Text!,
+                    plan.Language,
+                    suppliedArguments);
             setupPhase = "creating the CoreCLR evaluation";
             thread = GetThread(frame.ThreadId);
             evaluation = CreateEvaluation(thread);
-            receiverHandle = CreateFunctionEvaluationHandle(receiverValue);
+            if (receiverValue != 0)
+            {
+                receiverHandle = CreateFunctionEvaluationHandle(receiverValue);
+            }
             for (int index = 0; index < suppliedArguments.Length; index++)
             {
                 if (suppliedArguments[index].Display.VariablesReference > 0)
@@ -151,11 +174,10 @@ internal sealed partial class CorDebugDebuggee
                 ThreadStates = threadStates
             };
             _activeFunctionEvaluation = active;
+            argumentHandlesTransferred = true;
             evaluation = 0;
             function = 0;
             thread = 0;
-            receiverHandle = 0;
-            runtimeArguments = [];
             SuspendOtherThreads(frame.ThreadId, threadStates);
             _managedCallback.BeginFunctionEvaluation();
             callbackEvaluationActive = true;
@@ -217,13 +239,13 @@ internal sealed partial class CorDebugDebuggee
         }
         finally
         {
-            foreach (nint runtimeArgument in runtimeArguments)
+            if (!argumentHandlesTransferred)
             {
-                ReleaseFunctionEvaluationHandle(runtimeArgument);
-            }
+                foreach (nint runtimeArgument in runtimeArguments)
+                {
+                    ReleaseFunctionEvaluationHandle(runtimeArgument);
+                }
 
-            if (receiverHandle != 0)
-            {
                 ReleaseFunctionEvaluationHandle(receiverHandle);
             }
 

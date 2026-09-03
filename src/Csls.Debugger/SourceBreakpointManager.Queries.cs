@@ -73,6 +73,16 @@ internal sealed partial class SourceBreakpointManager
     }
 
     /// <summary>
+    /// Gets the ordered retained runtime modules for serialized engine evaluation.
+    /// </summary>
+    /// <returns>A shallow snapshot whose pointers remain owned by this manager.</returns>
+    internal IReadOnlyList<CorDebugLoadedModule> GetRuntimeModules()
+    {
+        ObjectDisposedException.ThrowIf(_disposed != 0, this);
+        return [.. _modules.Values.OrderBy(static module => module.Id)];
+    }
+
+    /// <summary>
     /// Gets the number of modules observed through runtime callbacks.
     /// </summary>
     internal int ModuleCount

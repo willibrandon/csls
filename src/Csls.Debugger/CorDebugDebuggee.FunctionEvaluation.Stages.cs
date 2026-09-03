@@ -49,11 +49,16 @@ internal sealed partial class CorDebugDebuggee
         var temporaryArguments = new List<nint>();
         try
         {
-            nint[] arguments = new nint[checked(evaluation.Arguments.Length + 1)];
-            arguments[0] = evaluation.Receiver;
+            int receiverCount = evaluation.Receiver == 0 ? 0 : 1;
+            nint[] arguments = new nint[checked(evaluation.Arguments.Length + receiverCount)];
+            if (receiverCount != 0)
+            {
+                arguments[0] = evaluation.Receiver;
+            }
+
             for (int index = 0; index < evaluation.Arguments.Length; index++)
             {
-                arguments[index + 1] = CreateFunctionArgument(
+                arguments[index + receiverCount] = CreateFunctionArgument(
                     evaluation.Pointer,
                     evaluation.Arguments[index],
                     evaluation.RuntimeArguments[index],

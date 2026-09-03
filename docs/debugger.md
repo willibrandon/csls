@@ -184,15 +184,18 @@ stopped thread's top managed frame. The same generation-bound read-only operatio
 is available through private `debugger/evaluate` RPC and the MCP `debug_evaluate`
 tool. Both reject every expression that could execute target code. DAP `evaluate`
 and the separate private `debugger/executeExpression` operation additionally accept
-explicitly qualified instance-method calls in C#, Visual Basic, and F# when CoreCLR
-permits function evaluation at the selected frame. Calls accept up to 64 arguments
-that bind to exact CLR primitive values, null, retained runtime object and array
+explicitly qualified instance-method and loaded-type static-method calls in C#,
+Visual Basic, and F# when CoreCLR permits function evaluation at the selected frame.
+Calls accept up to 64 arguments that bind to exact CLR primitive values, null,
+retained runtime object and array
 references, or literal and side-effect-free computed strings. String arguments are
 allocated inside the target with their exact length, including embedded NUL characters.
 Method binding follows the exact runtime type and its inherited base types, including
 methods implemented in another loaded assembly. Optimized methods,
 prologs, native frames, GC-unsafe points, and other runtime-restricted locations
-return the CoreCLR failure instead of attempting a less safe evaluation.
+return the CoreCLR failure instead of attempting a less safe evaluation. Static calls
+resolve an explicitly qualified metadata type from the target's loaded managed modules;
+missing and ambiguous type identities fail before target execution.
 
 Function evaluation runs only the selected managed thread while the other managed
 threads remain stopped. One call may run at a time and has a five-second deadline.
@@ -202,10 +205,10 @@ to `RudeAbort`. A call result, thrown exception, or cooperative abort invalidate
 the client's stack and variable handles because target code may allocate, collect,
 or mutate state. If cooperative abort cannot restore a trustworthy stop, the
 session faults and must be disconnected. Unsupported value-type arguments, overload
-sets that exact metadata parameter identities cannot select uniquely, static methods,
-constructors, assignments, properties, user-defined operators, and implicit `ToString`
-execution are rejected. Variables include `evaluateName` only when csls can provide a
-valid source expression for the value.
+sets that exact metadata parameter identities cannot select uniquely, constructors,
+assignments, properties, user-defined operators, and implicit `ToString` execution are
+rejected. Variables include `evaluateName` only when csls can provide a valid source
+expression for the value.
 
 Assemblies loaded from PE and Portable PDB byte arrays receive the same source
 breakpoint, stack, local-name, stepping, goto, disassembly, and managed-IL
@@ -316,8 +319,9 @@ worker does not advertise tools that it cannot run.
 - `debug_evaluate` evaluates the same source-language-aware, side-effect-free
   expression subset as DAP in an explicit current-generation frame. It is
   read-only and does not require an agent-control grant.
-- `debug_execute_expression` executes an explicitly qualified instance method with
-  supported bounded arguments in an explicit current-generation frame. It requires
+- `debug_execute_expression` executes an explicitly qualified instance or loaded-type
+  static method with supported bounded arguments in an explicit current-generation
+  frame. It requires
   `agentControl: true` and the exact `stopGeneration`; successful, exceptional,
   and cooperatively cancelled execution invalidates old frame and variable handles
   and advances the stop generation. The tool is marked destructive, non-idempotent,

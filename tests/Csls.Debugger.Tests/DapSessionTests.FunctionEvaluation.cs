@@ -9,11 +9,11 @@ namespace Csls.Debugger.Tests;
 public sealed partial class DapSessionTests
 {
     /// <summary>
-    /// Invokes a parameterless instance method and restores the stopped target afterward.
+    /// Invokes instance and static methods and restores the stopped target afterward.
     /// </summary>
     [TestMethod]
     [Timeout(30000, CooperativeCancellation = true)]
-    public async Task ManagedFunctionEvaluationInvokesAndCancelsInstanceMethods()
+    public async Task ManagedFunctionEvaluationInvokesAndCancelsMethods()
     {
         string sourcePath = Path.Join(
             FindRepositoryRoot(),
@@ -238,6 +238,33 @@ public sealed partial class DapSessionTests
             AssertEvent(inheritedMethodInvalidated.RootElement, "invalidated");
 
             frame = await GetFixtureFrameAsync(client).ConfigureAwait(false);
+            JsonElement staticMethodEvaluation = await ReadEvaluationAsync(
+                client,
+                frame.GetProperty("id").GetInt32(),
+                "System.Math.Abs(-42)",
+                success: true,
+                TestContext.CancellationToken).ConfigureAwait(false);
+            Assert.AreEqual(
+                "42",
+                staticMethodEvaluation.GetProperty("result").GetString());
+            Assert.AreEqual("int", staticMethodEvaluation.GetProperty("type").GetString());
+            using JsonDocument staticMethodInvalidated = await client
+                .ReadMessageAsync(TestContext.CancellationToken)
+                .ConfigureAwait(false);
+            AssertEvent(staticMethodInvalidated.RootElement, "invalidated");
+
+            frame = await GetFixtureFrameAsync(client).ConfigureAwait(false);
+            JsonElement missingStaticType = await ReadEvaluationAsync(
+                client,
+                frame.GetProperty("id").GetInt32(),
+                "Missing.Namespace.Type.Abs(-42)",
+                success: false,
+                TestContext.CancellationToken).ConfigureAwait(false);
+            Assert.Contains(
+                "No loaded runtime type",
+                missingStaticType.GetProperty("message").GetString()!,
+                StringComparison.Ordinal);
+
             JsonElement nullArgumentEvaluation = await ReadEvaluationAsync(
                 client,
                 frame.GetProperty("id").GetInt32(),

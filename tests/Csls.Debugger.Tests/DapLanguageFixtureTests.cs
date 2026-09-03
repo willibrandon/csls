@@ -194,6 +194,26 @@ public sealed partial class DapSessionTests
                     stoppedThreadId,
                     sourcePath,
                     breakpointLine).ConfigureAwait(false);
+                JsonElement staticInvocation = await ReadEvaluationAsync(
+                    client,
+                    frameId,
+                    "System.Math.Abs(-41)",
+                    success: true,
+                    TestContext.CancellationToken).ConfigureAwait(false);
+                Assert.AreEqual(
+                    "41",
+                    staticInvocation.GetProperty("result").GetString(),
+                    $"Unexpected {project} static function-evaluation result.");
+                using JsonDocument staticInvalidated = await client
+                    .ReadMessageAsync(TestContext.CancellationToken)
+                    .ConfigureAwait(false);
+                AssertEvent(staticInvalidated.RootElement, "invalidated");
+
+                frameId = await AssertStoppedFrameAsync(
+                    client,
+                    stoppedThreadId,
+                    sourcePath,
+                    breakpointLine).ConfigureAwait(false);
                 JsonElement afterInvocation = await ReadEvaluationAsync(
                     client,
                     frameId,

@@ -53,12 +53,13 @@ internal sealed partial class CorDebugDebuggee
                             FileMode.Open,
                             FileAccess.Read,
                             FileShare.Read | FileShare.Delete));
-                    uint? methodToken = TryResolveDeclaredInstanceMethod(
+                    uint? methodToken = TryResolveDeclaredMethod(
                         peReader.GetMetadataReader(),
                         typeToken,
                         methodName,
                         language,
-                        arguments);
+                        arguments,
+                        staticMethod: false);
                     if (methodToken is uint resolvedMethodToken)
                     {
                         return GetModuleFunction(module, resolvedMethodToken);
@@ -116,12 +117,13 @@ internal sealed partial class CorDebugDebuggee
             "is available on the runtime type hierarchy.");
     }
 
-    private static uint? TryResolveDeclaredInstanceMethod(
+    private static uint? TryResolveDeclaredMethod(
         MetadataReader metadata,
         uint typeToken,
         string methodName,
         DebugExpressionLanguage language,
-        ManagedExpressionValue[] arguments)
+        ManagedExpressionValue[] arguments,
+        bool staticMethod)
     {
         EntityHandle entity = MetadataTokens.EntityHandle(checked((int)typeToken));
         if (entity.Kind != HandleKind.TypeDefinition)
@@ -139,7 +141,9 @@ internal sealed partial class CorDebugDebuggee
         foreach (MethodDefinitionHandle methodHandle in type.GetMethods())
         {
             MethodDefinition method = metadata.GetMethodDefinition(methodHandle);
-            if ((method.Attributes & (MethodAttributes.Static | MethodAttributes.Abstract)) != 0 ||
+            bool methodIsStatic = (method.Attributes & MethodAttributes.Static) != 0;
+            if ((method.Attributes & MethodAttributes.Abstract) != 0 ||
+                methodIsStatic != staticMethod ||
                 !string.Equals(metadata.GetString(method.Name), methodName, comparison))
             {
                 continue;
