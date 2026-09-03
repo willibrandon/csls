@@ -214,3 +214,27 @@ csls debugger doctor
 Remote and container debugging runs csls inside the target environment. The
 debugger does not expose a TCP listener; its terminal control channel uses an
 owner-only local endpoint created for the lifetime of the session.
+
+## MCP lifecycle
+
+The installed `csls-mcp` package includes the debugger worker and advertises five
+debugger lifecycle tools. A language-only development worker without the debugger
+binary does not advertise tools that it cannot run.
+
+- `debug_session_start` launches an absolute managed program in a new isolated
+  worker. `program` and `workingDirectory` are required. The optional paired
+  `initialSourcePath` and one-based `initialLine` establish a source breakpoint
+  before launch.
+- `debug_session_attach` attaches to one positive operating-system `processId`
+  and pauses by default.
+- `debug_sessions_list` lists only sessions owned by the current MCP connection.
+- `debug_session_get` reads one session selected by its returned `debugSession`.
+- `debug_session_end` terminates a launched target. It safely detaches an attached
+  target unless `terminateAttachedTarget` and the session's explicit
+  `agentControl` grant are both true.
+
+Debugger RPC uses inherited standard-stream handles between the MCP process and
+each worker. It does not open a socket or translate through DAP. Closing the MCP
+connection terminates its launched process trees and detaches its attached
+processes before releasing the workers. A language workspace, editor selection,
+or visible process is never used as an implicit debugger target.

@@ -1,0 +1,178 @@
+using ModelContextProtocol.Client;
+using ModelContextProtocol.Protocol;
+using System.Runtime.CompilerServices;
+using System.Text.Json;
+
+namespace Csls.Tests;
+
+/// <summary>
+/// Drives real MCP debugger lifecycle operations and assertions.
+/// </summary>
+public sealed partial class McpDebuggerLifecycleTests
+{
+    private static async Task ExerciseLifecycleAsync(
+        string repositoryRoot,
+        string sourcePath,
+        int breakpointLine,
+        string testDirectory,
+        CancellationToken cancellationToken)
+    {
+        McpProcessSession mcp = await StartMcpAsync(cancellationToken).ConfigureAwait(false);
+        await using ConfiguredAsyncDisposable mcpCleanup = mcp.ConfigureAwait(false);
+        JsonElement started = await StartTargetAsync(
+            mcp.Client,
+            repositoryRoot,
+            sourcePath,
+            breakpointLine,
+            Path.Join(testDirectory, "first.signal"),
+            cancellationToken).ConfigureAwait(false);
+        string debugSession = started.GetProperty("debugSession").GetString()
+            ?? throw new InvalidDataException("MCP returned no debugger-session identifier.");
+        int processId = started.GetProperty("processId").GetInt32();
+        ProcessExitObservation exit = ProcessExitWaiter.Observe(processId);
+
+        JsonElement stopped = await WaitForStoppedAsync(
+            mcp.Client,
+            debugSession,
+            cancellationToken).ConfigureAwait(false);
+        Assert.AreEqual("breakpoint", stopped.GetProperty("stopReason").GetString());
+        Assert.IsGreaterThan(0, stopped.GetProperty("stopGeneration").GetInt64());
+        Assert.IsFalse(stopped.GetProperty("agentControl").GetBoolean());
+
+        JsonElement listed = await CallAsync(
+            mcp.Client,
+            "debug_sessions_list",
+            [],
+            cancellationToken).ConfigureAwait(false);
+        Assert.AreEqual(debugSession, listed[0].GetProperty("debugSession").GetString());
+        JsonElement ended = await CallAsync(
+            mcp.Client,
+            "debug_session_end",
+            new Dictionary<string, object?> { ["debugSession"] = debugSession },
+            cancellationToken).ConfigureAwait(false);
+        Assert.AreEqual("terminated", ended.GetProperty("state").GetString());
+        await ProcessExitWaiter.WaitAsync(exit, TimeSpan.FromSeconds(10), cancellationToken)
+            .ConfigureAwait(false);
+
+        JsonElement second = await StartTargetAsync(
+            mcp.Client,
+            repositoryRoot,
+            sourcePath,
+            breakpointLine,
+            Path.Join(testDirectory, "second.signal"),
+            cancellationToken).ConfigureAwait(false);
+        int secondProcessId = second.GetProperty("processId").GetInt32();
+        ProcessExitObservation secondExit = ProcessExitWaiter.Observe(secondProcessId);
+        _ = await WaitForStoppedAsync(
+            mcp.Client,
+            second.GetProperty("debugSession").GetString()!,
+            cancellationToken).ConfigureAwait(false);
+        string diagnostics = await mcp.DisconnectAsync(
+            TimeSpan.FromSeconds(20),
+            cancellationToken).ConfigureAwait(false);
+        Assert.DoesNotContain("fail:", diagnostics, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain(
+            "Unhandled exception",
+            diagnostics,
+            StringComparison.OrdinalIgnoreCase);
+        await ProcessExitWaiter.WaitAsync(secondExit, TimeSpan.FromSeconds(10), cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    private static async Task<JsonElement> StartTargetAsync(
+        McpClient client,
+        string repositoryRoot,
+        string sourcePath,
+        int breakpointLine,
+        string signalPath,
+        CancellationToken cancellationToken) =>
+        await CallAsync(
+            client,
+            "debug_session_start",
+            new Dictionary<string, object?>
+            {
+                ["program"] = EditorToolResolver.ResolveTestProcessHost(repositoryRoot),
+                ["workingDirectory"] = repositoryRoot,
+                ["arguments"] = new[] { "--debugger-fixture", signalPath },
+                ["initialSourcePath"] = sourcePath,
+                ["initialLine"] = breakpointLine
+            },
+            cancellationToken).ConfigureAwait(false);
+
+    private static async Task<JsonElement> WaitForStoppedAsync(
+        McpClient client,
+        string debugSession,
+        CancellationToken cancellationToken)
+    {
+        while (true)
+        {
+            JsonElement state = await CallAsync(
+                client,
+                "debug_session_get",
+                new Dictionary<string, object?> { ["debugSession"] = debugSession },
+                cancellationToken).ConfigureAwait(false);
+            if (state.GetProperty("state").GetString() == "stopped")
+            {
+                return state;
+            }
+
+            await Task.Delay(TimeSpan.FromMilliseconds(20), cancellationToken)
+                .ConfigureAwait(false);
+        }
+    }
+
+    private static async Task<JsonElement> CallAsync(
+        McpClient client,
+        string tool,
+        Dictionary<string, object?> arguments,
+        CancellationToken cancellationToken)
+    {
+        CallToolResult result = await client.CallToolAsync(
+            tool,
+            arguments,
+            cancellationToken: cancellationToken).ConfigureAwait(false);
+        Assert.IsNull(result.IsError, tool);
+        Assert.IsTrue(result.StructuredContent.HasValue, tool);
+        return result.StructuredContent.Value;
+    }
+
+    private static async Task<McpProcessSession> StartMcpAsync(
+        CancellationToken cancellationToken)
+    {
+        string repositoryRoot = EditorToolResolver.FindRepositoryRoot();
+        string artifactsRoot = EditorToolResolver.ResolveArtifactsRoot(repositoryRoot);
+        return await McpProcessSession.StartAsync(
+            repositoryRoot,
+            Path.Join(artifactsRoot, "bin", "Csls.Mcp", "debug", "csls-mcp.dll"),
+            Path.Join(
+                artifactsRoot,
+                "bin",
+                "Csls.Mcp.Worker",
+                "debug",
+                "csls-mcp-worker.dll"),
+            serverWorkerPath: null,
+            cancellationToken,
+            Path.Join(
+                artifactsRoot,
+                "bin",
+                "Csls.Debugger.Worker",
+                "debug",
+                "csls-debugger-worker.dll")).ConfigureAwait(false);
+    }
+
+    private static void AssertAnnotations(
+        IList<McpClientTool> tools,
+        string name,
+        bool readOnly,
+        bool destructive,
+        bool idempotent,
+        bool openWorld)
+    {
+        ToolAnnotations annotations = tools.Single(tool => tool.Name == name)
+            .ProtocolTool.Annotations!;
+        Assert.AreEqual(readOnly, annotations.ReadOnlyHint, name);
+        Assert.AreEqual(destructive, annotations.DestructiveHint, name);
+        Assert.AreEqual(idempotent, annotations.IdempotentHint, name);
+        Assert.AreEqual(openWorld, annotations.OpenWorldHint, name);
+    }
+}

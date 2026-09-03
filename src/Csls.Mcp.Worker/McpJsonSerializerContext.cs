@@ -11,5 +11,9 @@ namespace Csls.Mcp.Worker;
     DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
     GenerationMode = JsonSourceGenerationMode.Metadata)]
 [JsonSerializable(typeof(McpWorkspaceSummary))]
+[JsonSerializable(typeof(McpDebugSessionInfo))]
+[JsonSerializable(typeof(IReadOnlyList<McpDebugSessionInfo>))]
+[JsonSerializable(typeof(IReadOnlyList<string>))]
+[JsonSerializable(typeof(IReadOnlyDictionary<string, string?>))]
 [JsonSerializable(typeof(CallToolResult))]
 internal sealed partial class McpJsonSerializerContext : JsonSerializerContext;

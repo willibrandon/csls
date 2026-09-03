@@ -6,7 +6,7 @@ namespace Csls.Debugger.Worker;
 /// <summary>
 /// Validates normalized launcher requests and runs the interactive debugger.
 /// </summary>
-internal static class DebuggerWorkerHost
+internal static partial class DebuggerWorkerHost
 {
     /// <summary>
     /// Executes one normalized debugger operation.
@@ -25,6 +25,8 @@ internal static class DebuggerWorkerHost
                 ? Fail("The launcher supplied no debugger operation.")
                 : arguments[0] switch
                 {
+                    "control" => await RunControlAsync(arguments, cancellationToken)
+                        .ConfigureAwait(false),
                     "launch" => await RunLaunchAsync(arguments, cancellationToken)
                         .ConfigureAwait(false),
                     "attach" => await RunAttachAsync(arguments, cancellationToken)

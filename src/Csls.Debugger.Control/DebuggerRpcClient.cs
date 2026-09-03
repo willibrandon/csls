@@ -1,7 +1,5 @@
-using Csls.Control;
 using Csls.Debugger.Contracts;
 using StreamJsonRpc;
-using System.Net.Sockets;
 
 namespace Csls.Debugger.Control;
 
@@ -10,67 +8,6 @@ namespace Csls.Debugger.Control;
 /// </summary>
 public sealed partial class DebuggerRpcClient : IAsyncDisposable
 {
-    private const int MaximumMessageBytes = 4 * 1024 * 1024;
-    private readonly string _socketPath;
-    private Socket? _socket;
-    private NetworkStream? _stream;
-    private BoundedMessageStream? _boundedStream;
-    private LengthHeaderMessageHandler? _handler;
-    private SystemTextJsonFormatter? _formatter;
-    private JsonRpc? _rpc;
-    private int _disposed;
-
-    /// <summary>
-    /// Creates a client for an explicit absolute debugger socket path.
-    /// </summary>
-    /// <param name="socketPath">The absolute private socket path.</param>
-    public DebuggerRpcClient(string socketPath)
-    {
-        ArgumentException.ThrowIfNullOrWhiteSpace(socketPath);
-        if (!Path.IsPathFullyQualified(socketPath))
-        {
-            throw new ArgumentException("The debugger socket path must be absolute.", nameof(socketPath));
-        }
-
-        _socketPath = Path.GetFullPath(socketPath);
-    }
-
-    /// <summary>
-    /// Connects to the selected debugger session and verifies its protocol version.
-    /// </summary>
-    /// <param name="cancellationToken">Cancels connection establishment.</param>
-    public async Task ConnectAsync(CancellationToken cancellationToken)
-    {
-        ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
-        if (_rpc is not null)
-        {
-            throw new InvalidOperationException("The debugger RPC client is already connected.");
-        }
-
-        _socket = new Socket(AddressFamily.Unix, SocketType.Stream, ProtocolType.Unspecified);
-        await _socket.ConnectAsync(
-            new UnixDomainSocketEndPoint(_socketPath),
-            cancellationToken).ConfigureAwait(false);
-        _stream = new NetworkStream(_socket, ownsSocket: false);
-        _boundedStream = new BoundedMessageStream(
-            _stream,
-            MaximumMessageBytes,
-            leaveOpen: true);
-        _formatter = DebuggerControlJson.CreateFormatter();
-        _handler = new LengthHeaderMessageHandler(_boundedStream, _boundedStream, _formatter);
-        _rpc = new JsonRpc(_handler);
-        _rpc.StartListening();
-        int version = await _rpc.InvokeWithCancellationAsync<int>(
-            DebuggerControlMethods.GetProtocolVersion,
-            cancellationToken: cancellationToken).ConfigureAwait(false);
-        if (version != DebuggerControlProtocol.CurrentVersion)
-        {
-            throw new InvalidDataException(
-                $"Debugger control protocol {version} is incompatible with " +
-                $"{DebuggerControlProtocol.CurrentVersion}.");
-        }
-    }
-
     /// <summary>
     /// Gets the current target session snapshot.
     /// </summary>
@@ -225,34 +162,6 @@ public sealed partial class DebuggerRpcClient : IAsyncDisposable
         GetRpc().InvokeWithCancellationAsync<DebugSessionSnapshot>(
             DebuggerControlMethods.Detach,
             cancellationToken: cancellationToken);
-
-    /// <inheritdoc />
-    public async ValueTask DisposeAsync()
-    {
-        if (Interlocked.Exchange(ref _disposed, 1) != 0)
-        {
-            return;
-        }
-
-        _rpc?.Dispose();
-        if (_handler is not null)
-        {
-            await _handler.DisposeAsync().ConfigureAwait(false);
-        }
-
-        _formatter?.Dispose();
-        if (_boundedStream is not null)
-        {
-            await _boundedStream.DisposeAsync().ConfigureAwait(false);
-        }
-
-        if (_stream is not null)
-        {
-            await _stream.DisposeAsync().ConfigureAwait(false);
-        }
-
-        _socket?.Dispose();
-    }
 
     private JsonRpc GetRpc()
     {

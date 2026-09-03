@@ -39,6 +39,9 @@
     <CslsBundledWorker Include="../Csls.Mcp.Worker/Csls.Mcp.Worker.csproj">
       <BundlePath>workers/mcp</BundlePath>
     </CslsBundledWorker>
+    <CslsBundledWorker Include="../Csls.Debugger.Worker/Csls.Debugger.Worker.csproj">
+      <BundlePath>workers/debugger</BundlePath>
+    </CslsBundledWorker>
     <CslsBundledWorker Include="../Csls.Worker/Csls.Worker.csproj">
       <BundlePath>workers/server</BundlePath>
     </CslsBundledWorker>

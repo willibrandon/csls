@@ -124,15 +124,29 @@ function breakpoints.
 
 ## MCP integration
 
-Debugger MCP operations use the debugger's private local control protocol, not
-DAP. A debugger target is always selected by an explicit `debug_session`; a
-stopped-state request also supplies its `stopGeneration`. Language-workspace or
-active-editor selection never implicitly chooses a process.
+The installed `csls-mcp` package advertises debugger lifecycle tools only when
+its bundled debugger worker is available:
 
-Read access and execution control are separate grants. Resume, stepping,
-termination, assignment, function evaluation, and Hot Reload require explicit
-per-session agent-control authorization. Results are bounded and cursor-paged,
-and session-owned targets are cleaned up when their MCP owner disconnects.
+- `debug_session_start` launches an absolute managed program. An optional paired
+  `initialSourcePath` and one-based `initialLine` sets a source breakpoint before
+  launch.
+- `debug_session_attach` attaches to one explicit positive `processId` and pauses
+  by default.
+- `debug_sessions_list` and `debug_session_get` read connection-owned session
+  state.
+- `debug_session_end` terminates launched targets and detaches attached targets.
+  Terminating an attached target additionally requires both
+  `terminateAttachedTarget: true` and the session's explicit `agentControl` grant.
+
+Each lifecycle result returns an opaque `debugSession` identifier and current
+`stopGeneration`. Later operations use that explicit identity; a language
+workspace, active editor, or visible process is never inferred as the debugger
+target.
+
+The MCP process supervises one isolated debugger worker per target through
+inherited standard-stream handles, not DAP or a network listener. MCP disconnect
+terminates launched process trees and detaches attached processes before the
+workers exit.
 
 ## Client behavior
 

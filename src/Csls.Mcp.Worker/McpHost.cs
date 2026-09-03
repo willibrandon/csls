@@ -23,6 +23,10 @@ internal static class McpHost
     {
         var broker = new McpSessionBroker();
         await using ConfiguredAsyncDisposable brokerCleanup = broker.ConfigureAwait(false);
+        string? debuggerWorkerPath = McpDebuggerWorkerLocator.TryResolve();
+        var debuggerBroker = new McpDebuggerSessionBroker(debuggerWorkerPath);
+        await using ConfiguredAsyncDisposable debuggerBrokerCleanup =
+            debuggerBroker.ConfigureAwait(false);
         var tools = new CslsMcpTools(broker);
         var workspaceTools = new CslsMcpWorkspaceTools(broker);
         var requestTools = new CslsMcpRequestTools(broker);
@@ -39,7 +43,7 @@ internal static class McpHost
             options.FormatterName = ConsoleFormatterNames.Simple;
             options.LogToStandardErrorThreshold = LogLevel.Trace;
         });
-        builder.Services
+        IMcpServerBuilder mcpBuilder = builder.Services
             .AddMcpServer(options =>
             {
                 options.ServerInfo = new Implementation
@@ -47,13 +51,19 @@ internal static class McpHost
                     Name = "csls",
                     Title = "csls C# language intelligence",
                     Version = typeof(McpHost).Assembly.GetName().Version?.ToString() ?? "0.0.0",
-                    Description = "Language intelligence for explicitly selected csls workspaces and sessions."
+                    Description = "Language intelligence and supervised .NET debugging for explicit sessions."
                 };
-                options.ServerInstructions =
-                    "Except for list_sessions, every tool and resource requires exactly one " +
-                    "target selector: workspace, session, or socket. Use read-only inspection " +
-                    "tools before requesting edits. Document positions are zero-based UTF-16 " +
-                    "line and character offsets.";
+                const string commonInstructions =
+                    "Use read-only inspection tools before requesting edits. Document positions " +
+                    "are zero-based UTF-16 line and character offsets.";
+                options.ServerInstructions = debuggerBroker.IsAvailable
+                    ? "Language tools require exactly one workspace, session, or socket selector. " +
+                        "Debugger tools use only the explicit debugSession returned by a debugger " +
+                        "lifecycle tool; never infer a debugger target from a workspace or process. " +
+                        commonInstructions
+                    : "Except for list_sessions, every tool and resource requires exactly one " +
+                        "target selector: workspace, session, or socket. " +
+                        commonInstructions;
             })
             .WithStdioServerTransport()
             .WithTools(tools, serializerOptions)
@@ -61,6 +71,17 @@ internal static class McpHost
             .WithTools(requestTools, serializerOptions)
             .WithResources(resources)
             .WithPrompts(prompts);
+
+        if (debuggerBroker.IsAvailable)
+        {
+            mcpBuilder
+                .WithTools(
+                    new CslsMcpDebuggerLifecycleTools(debuggerBroker),
+                    serializerOptions)
+                .WithTools(
+                    new CslsMcpDebuggerSessionTools(debuggerBroker),
+                    serializerOptions);
+        }
 
         using IHost host = builder.Build();
         await host.RunAsync(cancellationToken).ConfigureAwait(false);

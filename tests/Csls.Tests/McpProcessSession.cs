@@ -37,13 +37,15 @@ internal sealed class McpProcessSession : IAsyncDisposable
     /// <param name="mcpWorkerPath">The managed MCP worker path.</param>
     /// <param name="serverWorkerPath">The optional language-server worker path.</param>
     /// <param name="cancellationToken">The startup cancellation token.</param>
+    /// <param name="debuggerWorkerPath">The optional debugger worker path.</param>
     /// <returns>The connected real-process MCP session.</returns>
     internal static async Task<McpProcessSession> StartAsync(
         string repositoryRoot,
         string mcpPath,
         string mcpWorkerPath,
         string? serverWorkerPath,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        string? debuggerWorkerPath = null)
     {
         string dotnetHost = EditorToolResolver.ResolveAbsoluteDotNetHost();
         Dictionary<string, string?> environment =
@@ -54,6 +56,11 @@ internal sealed class McpProcessSession : IAsyncDisposable
         if (serverWorkerPath is not null)
         {
             environment["CSLS_SERVER_WORKER_PATH"] = serverWorkerPath;
+        }
+
+        if (debuggerWorkerPath is not null)
+        {
+            environment["CSLS_DEBUGGER_WORKER_PATH"] = debuggerWorkerPath;
         }
 
         bool isManagedLauncher = string.Equals(

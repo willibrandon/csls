@@ -1,6 +1,4 @@
-using Csls.Control;
 using Csls.Debugger.Contracts;
-using StreamJsonRpc;
 using System.Net.Sockets;
 
 namespace Csls.Debugger.Control;
@@ -10,7 +8,6 @@ namespace Csls.Debugger.Control;
 /// </summary>
 public sealed class DebuggerRpcServer : IAsyncDisposable
 {
-    private const int MaximumMessageBytes = 4 * 1024 * 1024;
     private readonly string _socketPath;
     private readonly IDebuggerControlTarget _target;
     private readonly CancellationTokenSource _lifetime = new();
@@ -123,23 +120,10 @@ public sealed class DebuggerRpcServer : IAsyncDisposable
         using Socket connection = await _listener!.AcceptAsync(cancellationToken)
             .ConfigureAwait(false);
         using var stream = new NetworkStream(connection, ownsSocket: false);
-        using var boundedStream = new BoundedMessageStream(
+        await DebuggerRpcStreamServer.RunAsync(
             stream,
-            MaximumMessageBytes,
-            leaveOpen: true);
-        using SystemTextJsonFormatter formatter = DebuggerControlJson.CreateFormatter();
-        using var handler = new LengthHeaderMessageHandler(
-            boundedStream,
-            boundedStream,
-            formatter);
-        using var rpc = new JsonRpc(handler)
-        {
-            CancelLocallyInvokedMethodsWhenConnectionIsClosed = true,
-            SynchronizationContext = null
-        };
-        DebuggerControlMethodRegistry.Register(rpc, _target);
-        rpc.StartListening();
-        await rpc.Completion.WaitAsync(cancellationToken).ConfigureAwait(false);
-        await rpc.DispatchCompletion.ConfigureAwait(false);
+            stream,
+            _target,
+            cancellationToken).ConfigureAwait(false);
     }
 }

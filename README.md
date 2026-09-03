@@ -31,8 +31,10 @@ Step Into can select a particular local managed
 call on a statement, and Go to Line exposes only destinations that CoreCLR certifies
 for safe continued execution. Launches can suppress JIT optimizations for
 symbol-bearing modules, and module inspection reports the effective runtime policy.
+The installed MCP server exposes explicit debugger lifecycle tools for managed
+launch, attach, discovery, state, and cleanup through isolated supervised workers.
 Conditional and data breakpoints, expression evaluation, dumps, Hot Reload, and
-debugger MCP workflows remain under development and are not advertised as available. Run
+the remaining debugger MCP inspection and execution tools remain under development. Run
 `csls debugger tui launch` or `csls debugger tui attach` for the interactive
 Hex1b source, stack, arguments, and locals workflow.
 
