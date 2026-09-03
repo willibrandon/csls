@@ -71,16 +71,14 @@ internal static class PortablePdbVariableNameResolver
             return new Dictionary<int, string>();
         }
 
-        string pdbPath = Path.ChangeExtension(modulePath, ".pdb");
-        if (!File.Exists(pdbPath))
+        using var symbols = PortablePdbReader.TryOpen(modulePath);
+        if (symbols is null)
         {
             return new Dictionary<int, string>();
         }
 
         int rowNumber = checked((int)(methodToken & 0x00ffffff));
-        using FileStream stream = File.OpenRead(pdbPath);
-        using var provider = MetadataReaderProvider.FromPortablePdbStream(stream);
-        MetadataReader pdb = provider.GetMetadataReader();
+        MetadataReader pdb = symbols.Metadata;
         MethodDefinitionHandle methodHandle = MetadataTokens.MethodDefinitionHandle(rowNumber);
         Dictionary<int, string> result = [];
         foreach (LocalScopeHandle scopeHandle in pdb.GetLocalScopes(methodHandle))

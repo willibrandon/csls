@@ -127,16 +127,19 @@ internal static class PortablePdbStepRangeResolver
         out ManagedStepRange range)
     {
         range = default;
-        string pdbPath = Path.ChangeExtension(modulePath, ".pdb");
         int rowNumber = checked((int)(methodToken & 0x00ffffff));
-        if (!File.Exists(pdbPath) || rowNumber == 0)
+        if (rowNumber == 0)
         {
             return false;
         }
 
-        using FileStream stream = File.OpenRead(pdbPath);
-        using var provider = MetadataReaderProvider.FromPortablePdbStream(stream);
-        MetadataReader reader = provider.GetMetadataReader();
+        using var symbols = PortablePdbReader.TryOpen(modulePath);
+        if (symbols is null)
+        {
+            return false;
+        }
+
+        MetadataReader reader = symbols.Metadata;
         if (rowNumber > reader.MethodDebugInformation.Count)
         {
             return false;

@@ -53,7 +53,7 @@ internal sealed partial class DapSession
         }
     }
 
-    private static (string SourcePath, IReadOnlyList<DebugSourceBreakpointRequest> Breakpoints)
+    private (string SourcePath, IReadOnlyList<DebugSourceBreakpointRequest> Breakpoints)
         ParseSourceBreakpoints(JsonElement arguments)
     {
         if (arguments.ValueKind != JsonValueKind.Object ||
@@ -107,7 +107,11 @@ internal sealed partial class DapSession
                     column = parsedColumn;
                 }
 
-                result.Add(new DebugSourceBreakpointRequest(line, column));
+                result.Add(new DebugSourceBreakpointRequest(
+                    FromClientLine(line, "setBreakpoints"),
+                    column is null
+                        ? null
+                        : FromClientColumn(column.Value, "setBreakpoints")));
             }
         }
         else if (arguments.TryGetProperty("lines", out JsonElement lines) &&
@@ -121,7 +125,9 @@ internal sealed partial class DapSession
                         "Every setBreakpoints lines entry must be an integer.");
                 }
 
-                result.Add(new DebugSourceBreakpointRequest(line, Column: null));
+                result.Add(new DebugSourceBreakpointRequest(
+                    FromClientLine(line, "setBreakpoints"),
+                    Column: null));
             }
         }
 
@@ -141,7 +147,7 @@ internal sealed partial class DapSession
         }
     }
 
-    private static void WriteBreakpoint(
+    private void WriteBreakpoint(
         Utf8JsonWriter writer,
         DebugSourceBreakpointInfo breakpoint)
     {
@@ -152,10 +158,10 @@ internal sealed partial class DapSession
         writer.WriteString("name", Path.GetFileName(breakpoint.SourcePath));
         writer.WriteString("path", breakpoint.SourcePath);
         writer.WriteEndObject();
-        writer.WriteNumber("line", breakpoint.Line);
+        writer.WriteNumber("line", ToClientLine(breakpoint.Line));
         if (breakpoint.Column is not null)
         {
-            writer.WriteNumber("column", breakpoint.Column.Value);
+            writer.WriteNumber("column", ToClientColumn(breakpoint.Column.Value));
         }
 
         if (breakpoint.Message is not null)

@@ -113,9 +113,13 @@ internal sealed partial class DapSession
                             writer.WriteString("path", module.Path);
                         }
 
-                        writer.WriteString(
-                            "symbolStatus",
-                            module.SymbolPath is null ? "Symbols not found." : "Symbols loaded.");
+                        writer.WriteString("symbolStatus", module.SymbolKind switch
+                        {
+                            DebugModuleSymbolKind.PortablePdb => "Symbols loaded.",
+                            DebugModuleSymbolKind.EmbeddedPortablePdb =>
+                                "Embedded Portable PDB loaded.",
+                            _ => "Symbols not found."
+                        });
                         if (module.SymbolPath is not null)
                         {
                             writer.WriteString("symbolFilePath", module.SymbolPath);
@@ -187,8 +191,8 @@ internal sealed partial class DapSession
                             writer.WriteEndObject();
                         }
 
-                        writer.WriteNumber("line", frame.Line);
-                        writer.WriteNumber("column", frame.Column);
+                        writer.WriteNumber("line", ToClientLine(frame.Line));
+                        writer.WriteNumber("column", ToClientColumn(frame.Column));
                         writer.WriteEndObject();
                     }
 

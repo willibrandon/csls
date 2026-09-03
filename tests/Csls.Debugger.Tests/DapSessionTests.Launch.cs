@@ -29,8 +29,11 @@ public sealed partial class DapSessionTests
         JsonElement capabilities = initialize.RootElement.GetProperty("body");
         Assert.IsTrue(capabilities.GetProperty("supportsConfigurationDoneRequest").GetBoolean());
         Assert.IsTrue(capabilities.GetProperty("supportsModulesRequest").GetBoolean());
+        Assert.IsTrue(capabilities.GetProperty("supportsLoadedSourcesRequest").GetBoolean());
+        Assert.IsTrue(
+            capabilities.GetProperty("supportsBreakpointLocationsRequest").GetBoolean());
         Assert.IsTrue(capabilities.GetProperty("supportsVariablePaging").GetBoolean());
-        Assert.HasCount(3, capabilities.EnumerateObject().ToArray());
+        Assert.HasCount(5, capabilities.EnumerateObject().ToArray());
 
         string processHost = ResolveTestProcessHost();
         int launchSequence = await client.SendRequestAsync(

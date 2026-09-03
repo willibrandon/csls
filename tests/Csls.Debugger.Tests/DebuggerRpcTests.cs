@@ -8,7 +8,7 @@ namespace Csls.Debugger.Tests;
 /// Verifies the private debugger control protocol over its real local transport.
 /// </summary>
 [TestClass]
-public sealed class DebuggerRpcTests
+public sealed partial class DebuggerRpcTests
 {
     /// <summary>
     /// Gets the active MSTest context and its framework-managed cancellation token.

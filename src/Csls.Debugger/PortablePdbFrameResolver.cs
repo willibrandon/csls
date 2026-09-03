@@ -95,15 +95,13 @@ internal static class PortablePdbFrameResolver
         string displayName = string.IsNullOrEmpty(typeNamespace)
             ? $"{typeName}.{methodName}"
             : $"{typeNamespace}.{typeName}.{methodName}";
-        string pdbPath = Path.ChangeExtension(modulePath, ".pdb");
-        if (!File.Exists(pdbPath))
+        using var symbols = PortablePdbReader.TryOpen(modulePath);
+        if (symbols is null)
         {
             return Unknown(displayName, modulePath);
         }
 
-        using FileStream pdbStream = File.OpenRead(pdbPath);
-        using var provider = MetadataReaderProvider.FromPortablePdbStream(pdbStream);
-        MetadataReader pdb = provider.GetMetadataReader();
+        MetadataReader pdb = symbols.Metadata;
         MethodDebugInformation debugInformation = pdb.GetMethodDebugInformation(
             MetadataTokens.MethodDebugInformationHandle(rowNumber));
         SequencePoint? selected = null;

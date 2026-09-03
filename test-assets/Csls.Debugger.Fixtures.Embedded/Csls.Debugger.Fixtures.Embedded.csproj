@@ -1,0 +1,10 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>csls-debugger-fixture-embedded</AssemblyName>
+    <RootNamespace>Csls.Debugger.Fixtures.Embedded</RootNamespace>
+    <Description>Real embedded-Portable-PDB fixture for debugger tests.</Description>
+    <DebugType>embedded</DebugType>
+    <DebugSymbols>true</DebugSymbols>
+  </PropertyGroup>
+</Project>

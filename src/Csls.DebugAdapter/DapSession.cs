@@ -23,6 +23,8 @@ internal sealed partial class DapSession : IDebuggerSessionObserver, IAsyncDispo
     private int? _pendingAttachProcessId;
     private string _startMethod = "launch";
     private bool _terminateDebuggeeByDefault = true;
+    private bool _clientLinesStartAtOne = true;
+    private bool _clientColumnsStartAtOne = true;
     private int _protocolClosed;
 
     /// <summary>
@@ -122,6 +124,12 @@ internal sealed partial class DapSession : IDebuggerSessionObserver, IAsyncDispo
             case "modules":
                 await WriteModulesAsync(request, cancellationToken).ConfigureAwait(false);
                 break;
+            case "loadedSources":
+                await WriteLoadedSourcesAsync(request, cancellationToken).ConfigureAwait(false);
+                break;
+            case "breakpointLocations":
+                await WriteBreakpointLocationsAsync(request, cancellationToken).ConfigureAwait(false);
+                break;
             case "pause":
                 await PauseAsync(request, cancellationToken).ConfigureAwait(false);
                 break;
@@ -181,6 +189,7 @@ internal sealed partial class DapSession : IDebuggerSessionObserver, IAsyncDispo
             return;
         }
 
+        ConfigureCoordinateSystem(request.Arguments);
         _state = DapSessionState.Initialized;
         await _writer.WriteResponseAsync(
             request,
@@ -191,6 +200,8 @@ internal sealed partial class DapSession : IDebuggerSessionObserver, IAsyncDispo
                 writer.WriteStartObject();
                 writer.WriteBoolean("supportsConfigurationDoneRequest", true);
                 writer.WriteBoolean("supportsModulesRequest", true);
+                writer.WriteBoolean("supportsLoadedSourcesRequest", true);
+                writer.WriteBoolean("supportsBreakpointLocationsRequest", true);
                 writer.WriteBoolean("supportsVariablePaging", true);
                 writer.WriteEndObject();
             },
