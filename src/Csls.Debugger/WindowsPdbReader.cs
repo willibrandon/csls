@@ -99,7 +99,7 @@ internal sealed class WindowsPdbReader : IDisposable
                 return null;
             }
 
-            reader = SymUnmanagedReaderFactory.CreateReader<ISymUnmanagedReader5>(
+            reader = WindowsPdbReaderFactory.Create(
                 pdbStream,
                 new WindowsPdbMetadataProvider(peReader.GetMetadataReader()));
             int matchResult = reader.MatchesModule(

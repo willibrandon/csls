@@ -49,7 +49,7 @@ public sealed class DebugLaunchRequest
     public DebugSymbolOptions SymbolOptions { get; init; } = new();
 
     /// <summary>
-    /// Gets whether the debugger requests unoptimized JIT code for symbol-bearing modules.
+    /// Gets whether the debugger requests unoptimized JIT code for loaded managed modules.
     /// </summary>
     public bool SuppressJitOptimizations { get; init; }
 

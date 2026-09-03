@@ -34,7 +34,7 @@ internal sealed class CslsMcpDebuggerLifecycleTools
     /// <param name="sourceFileMap">Build-time source prefixes mapped to local source prefixes.</param>
     /// <param name="initialSourcePath">The optional initial source breakpoint path.</param>
     /// <param name="initialLine">The optional one-based initial breakpoint line.</param>
-    /// <param name="suppressJitOptimizations">Whether CoreCLR should emit debuggable code for symbol-bearing modules.</param>
+    /// <param name="suppressJitOptimizations">Whether CoreCLR should emit debuggable code for loaded managed modules.</param>
     /// <param name="justMyCode">Whether source stepping excludes non-user code.</param>
     /// <param name="enableStepFiltering">Whether stepping skips properties and operators.</param>
     /// <returns>The new explicit debugger-session identity and initial state.</returns>
@@ -66,7 +66,7 @@ internal sealed class CslsMcpDebuggerLifecycleTools
         string? initialSourcePath = null,
         [Description("Optional one-based line paired with initialSourcePath.")]
         int? initialLine = null,
-        [Description("Ask CoreCLR to suppress JIT optimizations for symbol-bearing modules.")]
+        [Description("Ask CoreCLR to suppress JIT optimizations for loaded managed modules.")]
         bool suppressJitOptimizations = false,
         [Description("Classify and step only user code by default.")]
         bool justMyCode = true,

@@ -127,15 +127,16 @@ internal sealed partial class SourceBreakpointManager : IDisposable
         _ = ComAbi.AddRef(module);
         string? reportedName = GetModuleName(module);
         string? modulePath = GetModulePath(reportedName);
+        bool isInMemory = IsInMemoryModule(module);
+        bool isDynamic = IsDynamicModule(module);
+        (bool? isOptimized, string? optimizationDiagnostic) = ConfigureJitPolicy(
+            module,
+            isDynamic);
         DebugSymbolResolution? symbols = modulePath is null
             ? null
             : await _symbolLocator.ResolveAsync(modulePath, cancellationToken)
                 .ConfigureAwait(false);
         (DebugModuleSymbolKind symbolKind, string? symbolPath) = GetSymbolInfo(symbols);
-        bool isInMemory = IsInMemoryModule(module);
-        (bool? isOptimized, string? optimizationDiagnostic) = ConfigureJitPolicy(
-            module,
-            symbolKind != DebugModuleSymbolKind.None || isInMemory);
         var loadedModule = new CorDebugLoadedModule
         {
             Id = checked(++_nextModuleId),
@@ -147,7 +148,7 @@ internal sealed partial class SourceBreakpointManager : IDisposable
             SymbolPath = symbolPath,
             SymbolsInspected = true,
             IsInMemory = isInMemory,
-            IsDynamic = IsDynamicModule(module),
+            IsDynamic = isDynamic,
             ModuleImage = isInMemory ? CorDebugModuleImageReader.TryRead(module) : null,
             IsOptimized = isOptimized,
             OptimizationDiagnostic = optimizationDiagnostic

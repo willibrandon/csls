@@ -426,7 +426,7 @@
               "suppressJITOptimizations": {
                 "type": "boolean",
                 "default": false,
-                "description": "Request unoptimized JIT code for symbol-bearing modules during launch."
+                "description": "Request unoptimized JIT code for loaded managed modules during launch."
               }
             }
           },

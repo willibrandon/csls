@@ -30,8 +30,8 @@ Windows can be loaded from trusted local or HTTP symbol stores with identity
 validation and bounded caching. Source-aware
 Step Into can select a particular local managed
 call on a statement, and Go to Line exposes only destinations that CoreCLR certifies
-for safe continued execution. Launches can suppress JIT optimizations for
-symbol-bearing modules, and module inspection reports the effective runtime policy.
+for safe continued execution. Launches can suppress JIT optimizations for loaded
+managed modules, and module inspection reports the effective runtime policy.
 The installed MCP server exposes explicit debugger lifecycle, execution, and
 bounded inspection tools through isolated supervised workers. Agents can inspect
 threads, stacks, scopes, variables, and modules; execution changes require an

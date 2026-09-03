@@ -13,7 +13,7 @@ internal sealed partial class SourceBreakpointManager
     /// <summary>
     /// Configures runtime policy that must be applied during subsequent module-load callbacks.
     /// </summary>
-    /// <param name="suppressJitOptimizations">Whether symbol-bearing modules request unoptimized code.</param>
+    /// <param name="suppressJitOptimizations">Whether loaded managed modules request unoptimized code.</param>
     /// <param name="justMyCode">Whether source stepping excludes non-user managed code.</param>
     /// <param name="enableStepFiltering">Whether stepping skips properties and operators.</param>
     internal void SetRuntimeOptions(
@@ -80,7 +80,7 @@ internal sealed partial class SourceBreakpointManager
 
     private unsafe (bool? IsOptimized, string? Diagnostic) ConfigureJitPolicy(
         nint module,
-        bool hasSymbols)
+        bool isDynamic)
     {
         if (!ComAbi.TryQueryInterface(module, ICorDebugModule2Abi.InterfaceId, out nint module2))
         {
@@ -91,7 +91,7 @@ internal sealed partial class SourceBreakpointManager
         {
             var api = new ICorDebugModule2Abi(module2);
             int setResult = 0;
-            if (_suppressJitOptimizations && hasSymbols)
+            if (_suppressJitOptimizations && !isDynamic)
             {
                 setResult = api.SetJITCompilerFlags(DisableJitOptimization);
             }

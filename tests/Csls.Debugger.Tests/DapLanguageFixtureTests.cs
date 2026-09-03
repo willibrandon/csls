@@ -31,12 +31,10 @@ public sealed partial class DapSessionTests
         {
             foreach (string configuration in s_configurations)
             {
+                await BuildFixturesAsync(configuration, artifactsPath).ConfigureAwait(false);
                 foreach (string project in s_projects)
                 {
-                    string program = await BuildFixtureAsync(
-                        project,
-                        configuration,
-                        artifactsPath).ConfigureAwait(false);
+                    string program = GetFixtureProgram(project, configuration, artifactsPath);
                     await AssertFixtureStopsAsync(project, configuration, program)
                         .ConfigureAwait(false);
                 }
@@ -50,17 +48,11 @@ public sealed partial class DapSessionTests
         }
     }
 
-    private async Task<string> BuildFixtureAsync(
-        string project,
+    private async Task BuildFixturesAsync(
         string configuration,
         string artifactsPath)
     {
         string repositoryRoot = FindRepositoryRoot();
-        string extension = project.EndsWith("CSharp", StringComparison.Ordinal)
-            ? "csproj"
-            : project.EndsWith("VisualBasic", StringComparison.Ordinal)
-                ? "vbproj"
-                : "fsproj";
         var startInfo = new ProcessStartInfo
         {
             FileName = ResolveDotNetHost(),
@@ -70,7 +62,9 @@ public sealed partial class DapSessionTests
             UseShellExecute = false
         };
         startInfo.ArgumentList.Add("build");
-        startInfo.ArgumentList.Add(Path.Join("test-assets", project, $"{project}.{extension}"));
+        startInfo.ArgumentList.Add(Path.Join(
+            "test-assets",
+            "Csls.Debugger.LanguageFixtures.slnx"));
         startInfo.ArgumentList.Add("--configuration");
         startInfo.ArgumentList.Add(configuration);
         startInfo.ArgumentList.Add($"--property:ArtifactsPath={artifactsPath}");
@@ -85,7 +79,14 @@ public sealed partial class DapSessionTests
         Assert.AreEqual(
             0,
             exitCode,
-            $"Fixture build failed for {project} ({configuration}):{Environment.NewLine}{diagnostic}");
+            $"Fixture build failed for {configuration}:{Environment.NewLine}{diagnostic}");
+    }
+
+    private static string GetFixtureProgram(
+        string project,
+        string configuration,
+        string artifactsPath)
+    {
         string program = Path.Join(
             artifactsPath,
             "bin",
