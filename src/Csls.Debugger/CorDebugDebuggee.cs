@@ -20,6 +20,8 @@ internal sealed partial class CorDebugDebuggee : IDebuggeeProcess
     private readonly bool _ownsProcess;
     private readonly Dictionary<(int ThreadId, int FrameIndex), ManagedFrameHandle> _frames = [];
     private readonly Dictionary<(int FrameId, ManagedScopeKind Kind), ManagedScopeHandle> _scopes = [];
+    private readonly Dictionary<int, ManagedValueHandle> _values = [];
+    private readonly Dictionary<nint, ManagedValueHandle> _valueIdentities = [];
     private nint _corDebug;
     private nint _debugProcess;
     private nint _activeStepper;

@@ -208,6 +208,29 @@ public sealed partial class DapSessionTests
             Assert.AreEqual(
                 "\"answer!\"",
                 localsByName["localText"].GetProperty("value").GetString());
+            JsonElement localArray = localsByName["localArray"];
+            int arrayReference = localArray.GetProperty("variablesReference").GetInt32();
+            Assert.IsGreaterThan(0, arrayReference);
+            JsonElement[] arrayElements = await ReadVariablesAsync(client, arrayReference)
+                .ConfigureAwait(false);
+            Assert.HasCount(3, arrayElements);
+            Assert.AreEqual("[0]", arrayElements[0].GetProperty("name").GetString());
+            Assert.AreEqual("41", arrayElements[0].GetProperty("value").GetString());
+            Assert.AreEqual("[2]", arrayElements[2].GetProperty("name").GetString());
+            Assert.AreEqual("43", arrayElements[2].GetProperty("value").GetString());
+
+            JsonElement localObject = localsByName["localObject"];
+            int objectReference = localObject.GetProperty("variablesReference").GetInt32();
+            Assert.IsGreaterThan(0, objectReference);
+            JsonElement[] fields = await ReadVariablesAsync(client, objectReference)
+                .ConfigureAwait(false);
+            Dictionary<string, JsonElement> fieldsByName = fields.ToDictionary(
+                field => field.GetProperty("name").GetString()!,
+                StringComparer.Ordinal);
+            Assert.AreEqual("42", fieldsByName["Number"].GetProperty("value").GetString());
+            Assert.AreEqual(
+                "\"answer!\"",
+                fieldsByName["Text"].GetProperty("value").GetString());
 
             int continueSequence = await client.SendRequestAsync(
                 "continue",

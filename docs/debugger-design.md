@@ -105,8 +105,11 @@ Scopes are split into receiver/arguments and lexically active locals. Parameter
 names come from ECMA-335 metadata; local slot names and lifetimes come from the
 current Portable PDB scope at the frame's IL offset. Immediate primitive and
 string formatting reads ICorDebug values without target code execution. Scope
-and variable handles carry the same stop generation as their frame, support DAP
-paging, and are invalidated and released before every continue.
+and variable handles carry the same stop generation as their frame. Expandable
+values retain canonical COM identities so repeated requests reuse stable handles;
+array indexing and metadata-backed instance-field enumeration apply DAP paging
+before reading child values. All retained handles are invalidated and released
+before every continue.
 
 One bounded channel receives client commands and runtime callbacks. Separate
 bounded channels carry target output and client events. Saturation applies

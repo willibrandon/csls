@@ -51,19 +51,17 @@ internal sealed partial class CorDebugDebuggee
     {
         ArgumentOutOfRangeException.ThrowIfNegative(start);
         ArgumentOutOfRangeException.ThrowIfNegative(count);
-        ManagedScopeHandle scope = _scopes.Values.FirstOrDefault(
-            candidate => candidate.Id == variablesReference)
-            ?? throw new InvalidOperationException(
-                $"Variable reference {variablesReference} is stale or unknown.");
-        if (scope.Generation != generation)
+        ManagedScopeHandle? scope = _scopes.Values.FirstOrDefault(
+            candidate => candidate.Id == variablesReference);
+        if (scope is null)
         {
-            throw new InvalidOperationException(
-                $"Variable reference {variablesReference} belongs to a retired stop generation.");
+            return ExpandValue(variablesReference, generation, start, count);
         }
 
+        ValidateGeneration(variablesReference, scope.Generation, generation);
         ManagedFrameHandle frame = GetFrame(scope.FrameId, generation);
         IReadOnlyDictionary<int, string> names = GetVariableNames(frame, scope.Kind);
-        return EnumerateValues(frame.Pointer, scope.Kind, names, start, count);
+        return EnumerateValues(frame.Pointer, scope.Kind, names, generation, start, count);
     }
 
     private DebugScopeInfo CreateScope(
@@ -107,10 +105,11 @@ internal sealed partial class CorDebugDebuggee
         }
     }
 
-    private static unsafe List<DebugVariableInfo> EnumerateValues(
+    private unsafe List<DebugVariableInfo> EnumerateValues(
         nint frame,
         ManagedScopeKind kind,
         IReadOnlyDictionary<int, string> names,
+        DebugStopGeneration generation,
         int start,
         int count)
     {
@@ -165,7 +164,7 @@ internal sealed partial class CorDebugDebuggee
                             name,
                             display.Value,
                             display.Type,
-                            VariablesReference: 0));
+                            RetainExpandableValue(value, generation)));
                     }
                 }
                 finally
@@ -196,6 +195,18 @@ internal sealed partial class CorDebugDebuggee
             {
                 _ = ComAbi.Release(ilFrame);
             }
+        }
+    }
+
+    private static void ValidateGeneration(
+        int variablesReference,
+        DebugStopGeneration actual,
+        DebugStopGeneration expected)
+    {
+        if (actual != expected)
+        {
+            throw new InvalidOperationException(
+                $"Variable reference {variablesReference} belongs to a retired stop generation.");
         }
     }
 }

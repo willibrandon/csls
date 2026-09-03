@@ -21,6 +21,8 @@ internal static class DebuggerFixture
     {
         int localNumber = number + 1;
         string localText = text + "!";
+        int[] localArray = [41, 42, 43];
+        var localObject = new DebuggerFixtureValue(number, localText);
         Console.Write(announcement);
         Console.Out.Flush();
         while (!File.Exists(path))
@@ -30,6 +32,8 @@ internal static class DebuggerFixture
 
         GC.KeepAlive(path);
         GC.KeepAlive(text);
+        GC.KeepAlive(localArray);
+        GC.KeepAlive(localObject);
         return localNumber == 43 && localText == "answer!" ? 0 : 1;
     }
 }

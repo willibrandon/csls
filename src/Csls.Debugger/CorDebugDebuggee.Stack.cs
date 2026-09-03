@@ -283,6 +283,14 @@ internal sealed partial class CorDebugDebuggee
 
         _frames.Clear();
         _scopes.Clear();
+        foreach (ManagedValueHandle value in _values.Values)
+        {
+            _ = ComAbi.Release(value.Pointer);
+            _ = ComAbi.Release(value.Identity);
+        }
+
+        _values.Clear();
+        _valueIdentities.Clear();
     }
 
     private void ReleaseActiveStepper(bool deactivate)
