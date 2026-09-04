@@ -186,38 +186,47 @@ internal sealed partial class CorDebugDebuggee
         MetadataReader metadata,
         TypeDefinitionHandle typeHandle)
     {
-        foreach (CustomAttribute attribute in metadata
+        return metadata
             .GetTypeDefinition(typeHandle)
             .GetCustomAttributes()
-            .Select(metadata.GetCustomAttribute))
+            .Select(metadata.GetCustomAttribute)
+            .Select(attribute => GetAttributeDeclaringType(metadata, attribute))
+            .Any(declaringType => IsFlagsAttributeType(metadata, declaringType));
+    }
+
+    private static bool IsFlagsAttributeType(
+        MetadataReader metadata,
+        EntityHandle declaringType)
+    {
+        return declaringType.Kind switch
         {
-            EntityHandle declaringType = attribute.Constructor.Kind switch
-            {
-                HandleKind.MemberReference => metadata
-                    .GetMemberReference((MemberReferenceHandle)attribute.Constructor)
-                    .Parent,
-                HandleKind.MethodDefinition => metadata
-                    .GetMethodDefinition((MethodDefinitionHandle)attribute.Constructor)
-                    .GetDeclaringType(),
-                _ => default
-            };
-            if (declaringType.Kind == HandleKind.TypeReference && IsNamedType(
+            HandleKind.TypeReference => IsNamedType(
                 metadata,
                 metadata.GetTypeReference((TypeReferenceHandle)declaringType),
                 "System",
-                "FlagsAttribute") ||
-                declaringType.Kind == HandleKind.TypeDefinition && IsNamedType(
-                    metadata,
-                    metadata.GetTypeDefinition((TypeDefinitionHandle)declaringType),
-                    "System",
-                    "FlagsAttribute"))
-            {
-                return true;
-            }
-        }
-
-        return false;
+                "FlagsAttribute"),
+            HandleKind.TypeDefinition => IsNamedType(
+                metadata,
+                metadata.GetTypeDefinition((TypeDefinitionHandle)declaringType),
+                "System",
+                "FlagsAttribute"),
+            _ => false
+        };
     }
+
+    private static EntityHandle GetAttributeDeclaringType(
+        MetadataReader metadata,
+        CustomAttribute attribute) =>
+        attribute.Constructor.Kind switch
+        {
+            HandleKind.MemberReference => metadata
+                .GetMemberReference((MemberReferenceHandle)attribute.Constructor)
+                .Parent,
+            HandleKind.MethodDefinition => metadata
+                .GetMethodDefinition((MethodDefinitionHandle)attribute.Constructor)
+                .GetDeclaringType(),
+            _ => default
+        };
 
     private static bool IsNamedType(
         MetadataReader metadata,

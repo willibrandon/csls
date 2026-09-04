@@ -57,15 +57,13 @@ public sealed class CodeQlMissedReadonlyModifierAnalyzer : DiagnosticAnalyzer
                 OperationKind.FieldReference);
             startContext.RegisterCompilationEndAction(endContext =>
             {
-                foreach (KeyValuePair<IFieldSymbol, Location> candidate in candidates)
+                foreach (KeyValuePair<IFieldSymbol, Location> candidate in candidates.Where(
+                    candidate => !disqualifyingWrites.ContainsKey(candidate.Key)))
                 {
-                    if (!disqualifyingWrites.ContainsKey(candidate.Key))
-                    {
-                        endContext.ReportDiagnostic(Diagnostic.Create(
-                            s_rule,
-                            candidate.Value,
-                            candidate.Key.Name));
-                    }
+                    endContext.ReportDiagnostic(Diagnostic.Create(
+                        s_rule,
+                        candidate.Value,
+                        candidate.Key.Name));
                 }
             });
         });

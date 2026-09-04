@@ -209,7 +209,7 @@ public sealed class RepositoryConventionAnalyzerTests
                 {
                     foreach (DocumentHandle handle in handles)
                     {
-                        ManagedSymbolDocument document = PortablePdbSourceDocumentReader.Read(handle);
+                        var document = PortablePdbSourceDocumentReader.Read(handle);
                         _ = document;
                     }
                 }
@@ -287,6 +287,69 @@ public sealed class RepositoryConventionAnalyzerTests
 
         Diagnostic diagnostic = Assert.ContainsSingle(diagnostics);
         Assert.AreEqual(CodeQlMissedSelectAnalyzer.DiagnosticId, diagnostic.Id);
+    }
+
+    /// <summary>
+    /// Verifies non-invocation projections are covered by the local CodeQL parity rule.
+    /// </summary>
+    [TestMethod]
+    public async Task ReportsSwitchMappingInsideForEach()
+    {
+        const string Source = """
+            using System.Collections.Generic;
+
+            internal static class Reader
+            {
+                internal static void ReadAll(IEnumerable<int> values)
+                {
+                    foreach (int value in values)
+                    {
+                        string display = value switch
+                        {
+                            0 => "zero",
+                            _ => "other"
+                        };
+                        System.Console.WriteLine(display);
+                    }
+                }
+            }
+            """;
+
+        ImmutableArray<Diagnostic> diagnostics = await AnalyzeAsync(
+            Source,
+            new CodeQlMissedSelectAnalyzer()).ConfigureAwait(false);
+
+        Diagnostic diagnostic = Assert.ContainsSingle(diagnostics);
+        Assert.AreEqual(CodeQlMissedSelectAnalyzer.DiagnosticId, diagnostic.Id);
+    }
+
+    /// <summary>
+    /// Verifies a loop variable used after a projection remains available to the loop body.
+    /// </summary>
+    [TestMethod]
+    public async Task AcceptsProjectionWhenLoopVariableIsUsedAgain()
+    {
+        const string Source = """
+            using System.Collections.Generic;
+
+            internal static class Reader
+            {
+                internal static void ReadAll(IEnumerable<int> values)
+                {
+                    foreach (int value in values)
+                    {
+                        string display = value.ToString();
+                        System.Console.WriteLine($"{value}: {display}");
+                    }
+                }
+            }
+            """;
+
+        ImmutableArray<Diagnostic> diagnostics = await AnalyzeAsync(
+            Source,
+            new CodeQlMissedSelectAnalyzer()).ConfigureAwait(false);
+
+        Assert.IsEmpty(diagnostics);
     }
 
     /// <summary>
@@ -768,6 +831,52 @@ public sealed class RepositoryConventionAnalyzerTests
         ImmutableArray<Diagnostic> diagnostics = await AnalyzeAsync(
             Source,
             new CodeQlSimplifiableBooleanExpressionAnalyzer()).ConfigureAwait(false);
+
+        Assert.IsEmpty(diagnostics);
+    }
+
+    /// <summary>
+    /// Verifies alternating Boolean branches are rejected at CodeQL's complexity threshold.
+    /// </summary>
+    [TestMethod]
+    public async Task ReportsComplexBooleanCondition()
+    {
+        const string Source = """
+            internal static class Matcher
+            {
+                internal static bool Matches(int name, int type) =>
+                    name == 1 && type == 1 ||
+                    name == 2 && type == 2 ||
+                    name == 3 && type == 3;
+            }
+            """;
+
+        ImmutableArray<Diagnostic> diagnostics = await AnalyzeAsync(
+            Source,
+            new CodeQlComplexConditionAnalyzer()).ConfigureAwait(false);
+
+        Diagnostic diagnostic = Assert.ContainsSingle(diagnostics);
+        Assert.AreEqual(CodeQlComplexConditionAnalyzer.DiagnosticId, diagnostic.Id);
+        Assert.Contains("4 logical groups", diagnostic.GetMessage(CultureInfo.InvariantCulture));
+    }
+
+    /// <summary>
+    /// Verifies a flat Boolean condition remains below CodeQL's complexity threshold.
+    /// </summary>
+    [TestMethod]
+    public async Task AcceptsFlatBooleanCondition()
+    {
+        const string Source = """
+            internal static class Matcher
+            {
+                internal static bool Matches(bool first, bool second, bool third, bool fourth) =>
+                    first && second && third && fourth;
+            }
+            """;
+
+        ImmutableArray<Diagnostic> diagnostics = await AnalyzeAsync(
+            Source,
+            new CodeQlComplexConditionAnalyzer()).ConfigureAwait(false);
 
         Assert.IsEmpty(diagnostics);
     }

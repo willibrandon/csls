@@ -11,3 +11,4 @@ CSLS0009 | CodeQuality | Error | Sequence filters are expressed before iteration
 CSLS0010 | CodeQuality | Error | Boolean conditional throws use statement control flow
 CSLS0011 | CodeQuality | Error | Initialization-only fields use the readonly modifier
 CSLS0012 | CodeQuality | Error | By-reference method state is encapsulated after two parameters
+CSLS0013 | CodeQuality | Error | Complex Boolean conditions use named decisions

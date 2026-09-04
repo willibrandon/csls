@@ -9,7 +9,7 @@ using System.Linq;
 namespace Csls.SourceGen;
 
 /// <summary>
-/// Prevents CodeQL missed-select findings in repository metadata projection loops.
+/// Prevents immediate loop-variable projections reported by CodeQL's missed-select query.
 /// </summary>
 [DiagnosticAnalyzer(LanguageNames.CSharp)]
 public sealed class CodeQlMissedSelectAnalyzer : DiagnosticAnalyzer
@@ -21,12 +21,12 @@ public sealed class CodeQlMissedSelectAnalyzer : DiagnosticAnalyzer
 
     private static readonly DiagnosticDescriptor s_rule = new(
         DiagnosticId,
-        "Project metadata before iteration",
+        "Project values before iteration",
         "Loop variable '{0}' is immediately mapped; project it with Select before iteration",
         "CodeQuality",
         DiagnosticSeverity.Error,
         isEnabledByDefault: true,
-        description: "Metadata projection loops must not introduce CodeQL cs/linq/missed-select findings.");
+        description: "Immediate loop-variable projections must not introduce CodeQL cs/linq/missed-select findings.");
 
     /// <inheritdoc />
     public override ImmutableArray<DiagnosticDescriptor> SupportedDiagnostics => [s_rule];
@@ -47,14 +47,15 @@ public sealed class CodeQlMissedSelectAnalyzer : DiagnosticAnalyzer
     private static void AnalyzeForEach(SyntaxNodeAnalysisContext context)
     {
         var statement = (ForEachStatementSyntax)context.Node;
-        if (statement.Statement is not BlockSyntax { Statements.Count: > 0 } body ||
+        if (!SupportsGenericLinq(statement, context) ||
+            statement.Statement is not BlockSyntax { Statements.Count: > 0 } body ||
             body.Statements[0] is not LocalDeclarationStatementSyntax declaration ||
             declaration.Declaration.Variables.Count != 1 ||
             declaration.Declaration.Variables[0].Initializer?.Value is not
-                InvocationExpressionSyntax invocation ||
-            context.SemanticModel.GetSymbolInfo(invocation, context.CancellationToken).Symbol is not
-                IMethodSymbol method ||
-            !IsMetadataProjection(method))
+                ExpressionSyntax initializer ||
+            initializer is CastExpressionSyntax ||
+            initializer.DescendantNodesAndSelf().OfType<AwaitExpressionSyntax>().Any() ||
+            IsOversized(declaration))
         {
             return;
         }
@@ -62,14 +63,10 @@ public sealed class CodeQlMissedSelectAnalyzer : DiagnosticAnalyzer
         ISymbol? iterationVariable = context.SemanticModel.GetDeclaredSymbol(
             statement,
             context.CancellationToken);
-        if (iterationVariable is null || !invocation
-            .DescendantNodesAndSelf()
-            .OfType<IdentifierNameSyntax>()
-            .Any(identifier => SymbolEqualityComparer.Default.Equals(
-                iterationVariable,
-                context.SemanticModel.GetSymbolInfo(
-                    identifier,
-                    context.CancellationToken).Symbol)))
+        if (iterationVariable is null ||
+            !ReferencesSymbol(initializer, iterationVariable, context) ||
+            body.Statements.Skip(1).Any(subsequent =>
+                ReferencesSymbol(subsequent, iterationVariable, context)))
         {
             return;
         }
@@ -80,14 +77,40 @@ public sealed class CodeQlMissedSelectAnalyzer : DiagnosticAnalyzer
             statement.Identifier.ValueText));
     }
 
-    private static bool IsMetadataProjection(IMethodSymbol method)
+    private static bool IsOversized(LocalDeclarationStatementSyntax declaration)
     {
-        string typeName = method.ContainingType.ToDisplayString();
-        return method.Name == "Read" &&
-                typeName == "Csls.Debugger.PortablePdbSourceDocumentReader" ||
-            method.Name == "FromMetadataImage" &&
-                typeName == "System.Reflection.Metadata.MetadataReaderProvider" ||
-            method.Name == "GetCustomAttribute" &&
-                typeName == "System.Reflection.Metadata.MetadataReader";
+        FileLinePositionSpan span = declaration.GetLocation().GetLineSpan();
+        return span.EndLinePosition.Character - span.StartLinePosition.Character > 65;
     }
+
+    private static bool SupportsGenericLinq(
+        ForEachStatementSyntax statement,
+        SyntaxNodeAnalysisContext context)
+    {
+        ITypeSymbol? type = context.SemanticModel.GetTypeInfo(
+            statement.Expression,
+            context.CancellationToken).Type;
+        return type is IArrayTypeSymbol { Rank: 1 } ||
+            type is not null && (IsGenericEnumerable(type) ||
+                type.AllInterfaces.Any(IsGenericEnumerable));
+    }
+
+    private static bool IsGenericEnumerable(INamedTypeSymbol type) =>
+        type.OriginalDefinition.SpecialType ==
+            SpecialType.System_Collections_Generic_IEnumerable_T;
+
+    private static bool IsGenericEnumerable(ITypeSymbol type) =>
+        type is INamedTypeSymbol named && IsGenericEnumerable(named);
+
+    private static bool ReferencesSymbol(
+        SyntaxNode node,
+        ISymbol symbol,
+        SyntaxNodeAnalysisContext context) =>
+        node.DescendantNodesAndSelf()
+            .OfType<IdentifierNameSyntax>()
+            .Any(identifier => SymbolEqualityComparer.Default.Equals(
+                symbol,
+                context.SemanticModel.GetSymbolInfo(
+                    identifier,
+                    context.CancellationToken).Symbol));
 }

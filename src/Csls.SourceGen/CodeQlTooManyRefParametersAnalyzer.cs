@@ -68,19 +68,10 @@ public sealed class CodeQlTooManyRefParametersAnalyzer : DiagnosticAnalyzer
 
     private static bool ImplementsInterfaceContract(IMethodSymbol method)
     {
-        foreach (INamedTypeSymbol @interface in method.ContainingType.AllInterfaces)
-        {
-            foreach (ISymbol member in @interface.GetMembers(method.Name))
-            {
-                if (SymbolEqualityComparer.Default.Equals(
+        return method.ContainingType.AllInterfaces.Any(@interface =>
+            @interface.GetMembers(method.Name).Any(member =>
+                SymbolEqualityComparer.Default.Equals(
                     method.ContainingType.FindImplementationForInterfaceMember(member),
-                    method))
-                {
-                    return true;
-                }
-            }
-        }
-
-        return false;
+                    method)));
     }
 }
