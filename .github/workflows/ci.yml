@@ -239,6 +239,7 @@ jobs:
           --runtime linux-x64
           --self-contained true
           --output artifacts/size-check/${{ matrix.command }}
+          -p:CslsPublishBundledWorkers=false
           -p:IlcGenerateMstatFile=true
 
       - name: Check Native AOT size

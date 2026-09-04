@@ -1,5 +1,6 @@
 <Project>
   <PropertyGroup>
+    <CslsPublishBundledWorkers Condition="'$(CslsPublishBundledWorkers)' == ''">true</CslsPublishBundledWorkers>
     <_CslsBundledWorkerBuildRoot>$([System.IO.Path]::GetFullPath('$(BaseIntermediateOutputPath)bundled-workers\$(MSBuildProjectName)\$(Configuration)\$(RuntimeIdentifier)\'))</_CslsBundledWorkerBuildRoot>
     <_CslsBundledWorkerPropertiesToRemove>TargetFramework;TargetFrameworks;RuntimeIdentifiers;SelfContained</_CslsBundledWorkerPropertiesToRemove>
     <_CslsBundledWorkerPropertiesToRemove>$(_CslsBundledWorkerPropertiesToRemove);PublishAot;PublishSingleFile;PublishTrimmed;PublishDir</_CslsBundledWorkerPropertiesToRemove>
@@ -12,7 +13,9 @@
 
   <Target Name="_PublishCslsBundledWorkers"
           AfterTargets="Publish"
-          Condition="'@(CslsBundledWorker)' != '' and '$(DesignTimeBuild)' != 'true'">
+          Condition="'@(CslsBundledWorker)' != '' and
+                     '$(DesignTimeBuild)' != 'true' and
+                     '$(CslsPublishBundledWorkers)' == 'true'">
     <ItemGroup>
       <_CslsBundledWorkerProject Include="@(CslsBundledWorker)">
         <AdditionalProperties>CslsBundledWorkerArtifactsPath=$(_CslsBundledWorkerBuildRoot)%(Filename)\artifacts\;CslsBundledWorkerPublishDir=$([System.IO.Path]::GetFullPath('$(PublishDir)%(BundlePath)\'))</AdditionalProperties>
