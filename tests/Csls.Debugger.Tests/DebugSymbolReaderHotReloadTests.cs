@@ -197,8 +197,8 @@ public sealed class DebugSymbolReaderHotReloadTests
 
     private static ImmutableArray<MetadataReference> GetPlatformReferences()
     {
-        string? assemblies = AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES") as string;
-        Assert.IsNotNull(assemblies);
+        string assemblies = AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES") as string
+            ?? throw new AssertFailedException("The trusted platform assembly list is unavailable.");
         return [.. assemblies
             .Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries)
             .Select(static path => MetadataReference.CreateFromFile(path))];
@@ -243,12 +243,11 @@ public sealed class DebugSymbolReaderHotReloadTests
 
     private static uint FindMethodToken(MetadataReader metadata, string name)
     {
-        foreach (MethodDefinitionHandle handle in metadata.MethodDefinitions)
+        MethodDefinitionHandle handle = metadata.MethodDefinitions.FirstOrDefault(
+            handle => metadata.GetString(metadata.GetMethodDefinition(handle).Name) == name);
+        if (!handle.IsNil)
         {
-            if (metadata.GetString(metadata.GetMethodDefinition(handle).Name) == name)
-            {
-                return checked((uint)MetadataTokens.GetToken(handle));
-            }
+            return checked((uint)MetadataTokens.GetToken(handle));
         }
 
         throw new AssertFailedException($"Method '{name}' was not emitted.");

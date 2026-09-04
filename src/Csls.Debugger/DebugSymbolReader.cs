@@ -593,11 +593,11 @@ internal sealed class DebugSymbolReader : IDisposable
         var metadataReaders = new List<MetadataReader>(deltaImages.Count);
         try
         {
-            foreach (byte[] image in deltaImages)
+            foreach (PortablePdbReader delta in deltaImages.Select(static image =>
+                         PortablePdbReader.TryOpen(image)
+                         ?? throw new BadImageFormatException(
+                             "A Hot Reload symbol generation is not a Portable PDB.")))
             {
-                PortablePdbReader delta = PortablePdbReader.TryOpen(image)
-                    ?? throw new BadImageFormatException(
-                        "A Hot Reload symbol generation is not a Portable PDB.");
                 deltas.Add(delta);
                 metadataReaders.Add(delta.Metadata);
             }
