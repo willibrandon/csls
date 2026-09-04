@@ -481,9 +481,11 @@ contract.
 
 A dump session uses the same session and value contracts but a read-only ClrMD
 backend in the managed worker. `dumpPath` is mutually exclusive with live
-`processId`. Threads, stacks, modules, memory, and values are available when the
-dump contains them. Continue, pause, stepping, breakpoints, writes, evaluation, and
-Hot Reload return typed `notSupported` errors.
+`processId`. The initial backend exposes bounded managed thread, stack, and module
+inspection without downloading symbols. Continue, pause, stepping, breakpoints,
+writes, evaluation, scopes, variables, exceptions, memory, source, disassembly, and
+Hot Reload return typed `notSupported` errors until their dump-specific semantics
+and hostile-input validation are implemented.
 
 VS Code registers debug type `coreclr` with label `.NET (csls)` for C#, VB, F#,
 and Razor and invokes the bundled `csls debugger dap`. Zed registers the same

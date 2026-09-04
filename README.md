@@ -43,9 +43,10 @@ inspection. Cursor-addressable stdout and stderr remain available through both a
 tool and debugger resource after bursts or target termination.
 Current MCP subscriptions deliver debugger resource invalidations from engine
 events without polling.
-Managed data breakpoints, dump sessions, Hot Reload, generic object construction,
-and debugger visualizer attributes remain unadvertised until their complete runtime
-semantics are available. Run
+Read-only MCP dump sessions inspect bounded managed thread, stack, and module evidence
+after the target has terminated. Managed data breakpoints, Hot Reload, generic object
+construction, and debugger visualizer attributes remain unadvertised until their
+complete runtime semantics are available. Run
 `csls debugger tui launch` or `csls debugger tui attach` for the interactive
 Hex1b source, stack, arguments, and locals workflow.
 

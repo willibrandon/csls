@@ -14,6 +14,7 @@ description: Understand supported .NET targets, platforms, language behavior, se
 | macOS | x64 and ARM64 NativeAOT packages. Portable PDBs. |
 | Editors | VS Code and Zed through the same standard-input/output DAP host. |
 | Other clients | Any DAP client that negotiates and uses the capabilities returned by `initialize`. |
+| Dumps | Read-only MCP sessions for bounded managed thread, stack, and module inspection. |
 
 Source-language behavior depends on the PDB language identity. C#, Visual Basic, and F#
 receive compiler-parsed expressions and language-appropriate completion matching. Other
@@ -58,7 +59,6 @@ does not advertise:
 - arbitrary memory writes;
 - generic object construction, initializers, or implicit property and `ToString` calls;
 - debugger display/proxy attributes, results views, or object IDs;
-- managed dump sessions; or
 - Hot Reload metadata, IL, and PDB delta application.
 
 Unsupported requests return a protocol error. csls does not download or fall back to a
