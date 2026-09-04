@@ -15,7 +15,7 @@ internal sealed partial class DebuggerTerminalState : IAsyncDisposable
     private readonly CancellationToken _cancellationToken;
     private readonly Lock _notificationGate = new();
     private readonly SemaphoreSlim _mutationGate = new(1, 1);
-    private Hex1bApp? _app;
+    private DebuggerTerminalRefresh? _viewRefresh;
     private CancellationTokenSource? _runObservationCancellation;
     private Task? _runObservationTask;
     private DebuggerResourceChangeKind _pendingResourceChanges;
@@ -76,7 +76,7 @@ internal sealed partial class DebuggerTerminalState : IAsyncDisposable
                 await _auxiliary.RefreshOutputAsync(_cancellationToken).ConfigureAwait(false);
             }
 
-            _app?.Invalidate();
+            PublishViewSnapshot();
         }
         finally
         {
@@ -101,14 +101,23 @@ internal sealed partial class DebuggerTerminalState : IAsyncDisposable
     }
 
     /// <summary>
-    /// Attaches the running Hex1b application used to redraw state changes.
+    /// Connects display publications to the terminal's existing application event queue.
     /// </summary>
-    /// <param name="app">The running application.</param>
-    internal void AttachApp(Hex1bApp app)
+    /// <param name="options">The options supplied by the terminal builder.</param>
+    internal void AttachWorkload(Hex1bAppOptions options)
     {
-        ArgumentNullException.ThrowIfNull(app);
-        _app = app;
+        ArgumentNullException.ThrowIfNull(options);
+        if (options.WorkloadAdapter is not Hex1bAppWorkloadAdapter workload)
+        {
+            throw new InvalidOperationException("The debugger requires an application workload.");
+        }
+
+        _viewRefresh = new DebuggerTerminalRefresh(workload);
     }
+
+    private void RequestViewRefresh() => _viewRefresh?.Request();
+
+    private void AcknowledgeViewRefresh() => _viewRefresh?.Acknowledge();
 
     /// <summary>
     /// Stops background observation and releases its owned cancellation state.
@@ -168,8 +177,7 @@ internal sealed partial class DebuggerTerminalState : IAsyncDisposable
             await _mutationGate.WaitAsync(CancellationToken.None).ConfigureAwait(false);
             try
             {
-                StatusMessage = exception.Message;
-                _app?.Invalidate();
+                PublishViewError(exception.Message);
             }
             finally
             {
@@ -199,7 +207,7 @@ internal sealed partial class DebuggerTerminalState : IAsyncDisposable
                     else
                     {
                         ClearInspection();
-                        _app?.Invalidate();
+                        PublishViewSnapshot();
                     }
 
                     return;
@@ -218,7 +226,7 @@ internal sealed partial class DebuggerTerminalState : IAsyncDisposable
                 try
                 {
                     await _auxiliary.RefreshOutputAsync(cancellationToken).ConfigureAwait(false);
-                    _app?.Invalidate();
+                    PublishViewSnapshot();
                 }
                 finally
                 {

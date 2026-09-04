@@ -41,8 +41,15 @@ internal sealed partial class DebuggerTerminalState
             ObjectDisposedException or
             StreamJsonRpc.RemoteInvocationException)
         {
-            StatusMessage = exception.Message;
-            _app?.Invalidate();
+            await _mutationGate.WaitAsync(_cancellationToken).ConfigureAwait(false);
+            try
+            {
+                PublishViewError(exception.Message);
+            }
+            finally
+            {
+                _ = _mutationGate.Release();
+            }
         }
     }
 
@@ -67,7 +74,7 @@ internal sealed partial class DebuggerTerminalState
                 expression,
                 _cancellationToken).ConfigureAwait(false);
             StatusMessage = $"Watching {expression.Trim()}.";
-            _app?.Invalidate();
+            PublishViewSnapshot();
         }
         catch (Exception exception) when (exception is
             ArgumentException or
@@ -75,7 +82,7 @@ internal sealed partial class DebuggerTerminalState
             StreamJsonRpc.RemoteInvocationException)
         {
             StatusMessage = exception.Message;
-            _app?.Invalidate();
+            PublishViewSnapshot();
         }
         finally
         {
@@ -101,7 +108,7 @@ internal sealed partial class DebuggerTerminalState
             Snapshot = await _client.ContinueAsync(_cancellationToken).ConfigureAwait(false);
             StatusMessage = null;
             ClearInspection();
-            _app?.Invalidate();
+            PublishViewSnapshot();
             StartRunObservation();
         }
         finally
@@ -165,7 +172,7 @@ internal sealed partial class DebuggerTerminalState
                 _cancellationToken).ConfigureAwait(false);
             StatusMessage = null;
             ClearInspection();
-            _app?.Invalidate();
+            PublishViewSnapshot();
             StartRunObservation();
         }
         finally
@@ -187,7 +194,7 @@ internal sealed partial class DebuggerTerminalState
             Snapshot = await _client.RestartAsync(_cancellationToken).ConfigureAwait(false);
             StatusMessage = "Restarted target.";
             ClearInspection();
-            _app?.Invalidate();
+            PublishViewSnapshot();
             StartRunObservation();
         }
         finally
@@ -215,7 +222,7 @@ internal sealed partial class DebuggerTerminalState
         {
             _auxiliary.ClearWatches();
             StatusMessage = "Cleared watches.";
-            _app?.Invalidate();
+            PublishViewSnapshot();
         }
         finally
         {
@@ -234,7 +241,7 @@ internal sealed partial class DebuggerTerminalState
                 : await _client.DetachAsync(_cancellationToken).ConfigureAwait(false);
             StatusMessage = terminate ? "Terminated target." : "Detached from target.";
             ClearInspection();
-            _app?.Invalidate();
+            PublishViewSnapshot();
         }
         finally
         {
@@ -250,7 +257,7 @@ internal sealed partial class DebuggerTerminalState
         }
 
         StatusMessage = $"Cannot {operation} while the target is {Snapshot.State}.";
-        _app?.Invalidate();
+        PublishViewSnapshot();
         return false;
     }
 }

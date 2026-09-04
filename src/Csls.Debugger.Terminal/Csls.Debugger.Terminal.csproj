@@ -7,6 +7,8 @@
 
   <ItemGroup>
     <PackageReference Include="Hex1b" />
+    <InternalsVisibleTo Include="Csls.Tests" />
+    <InternalsVisibleTo Include="Csls.Debugger.Tests" />
   </ItemGroup>
 
   <ItemGroup>

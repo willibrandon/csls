@@ -1,6 +1,7 @@
 using Hex1b;
 using Hex1b.Automation;
 using Hex1b.Input;
+using Hex1b.Layout;
 using System.Globalization;
 using System.Runtime.CompilerServices;
 
@@ -64,6 +65,7 @@ public sealed class DebuggerTerminalTests
             };
             const int width = 140;
             const int height = 35;
+            var auxiliaryContent = new Rect(66, height - 7, width - 66, 4);
             var workload = new Hex1bPtyWorkload(
                 EditorToolResolver.ResolveDotNetHost(),
                 [
@@ -149,20 +151,26 @@ public sealed class DebuggerTerminalTests
                         Hex1bKey.F2,
                         TestContext.CancellationToken).ConfigureAwait(false);
                     await automator.WaitUntilTextAsync("Target Output").ConfigureAwait(false);
-                    await automator.KeyAsync(
-                        Hex1bKey.F1,
-                        TestContext.CancellationToken).ConfigureAwait(false);
-                    await automator.WaitUntilTextAsync("Debugger commands").ConfigureAwait(false);
-                    await automator.TypeAsync(
-                        "add watch",
-                        TestContext.CancellationToken).ConfigureAwait(false);
-                    await automator.EnterAsync(TestContext.CancellationToken).ConfigureAwait(false);
-                    await automator.WaitUntilTextAsync("Watch expression").ConfigureAwait(false);
-                    await automator.TypeAsync(
-                        "number",
-                        TestContext.CancellationToken).ConfigureAwait(false);
-                    await automator.EnterAsync(TestContext.CancellationToken).ConfigureAwait(false);
-                    await automator.WaitUntilTextAsync("number = 42").ConfigureAwait(false);
+                    await AddWatchAsync(automator, "number").ConfigureAwait(false);
+                    await automator.WaitUntilAsync(
+                        screen => screen.GetRegion(auxiliaryContent).ContainsText("number = 42"),
+                        description: "number = 42 in the Watches pane")
+                        .ConfigureAwait(false);
+                    await AddWatchAsync(automator, string.Empty).ConfigureAwait(false);
+                    await automator.WaitUntilTextAsync("The value").ConfigureAwait(false);
+                    using (Hex1bTerminalSnapshot rejectedWatch = automator.CreateSnapshot())
+                    {
+                        Assert.Contains("localNumber = 0", rejectedWatch.GetScreenText());
+                        Assert.Contains(
+                            "number = 42",
+                            rejectedWatch.GetRegion(auxiliaryContent).GetText());
+                    }
+
+                    await AddWatchAsync(automator, "localNumber").ConfigureAwait(false);
+                    await automator.WaitUntilAsync(
+                        screen => screen.GetRegion(auxiliaryContent).ContainsText("localNumber = 0"),
+                        description: "corrected watch in the original stopped frame")
+                        .ConfigureAwait(false);
                     await automator.KeyAsync(
                         Hex1bKey.F9,
                         TestContext.CancellationToken).ConfigureAwait(false);
@@ -173,6 +181,18 @@ public sealed class DebuggerTerminalTests
                         Hex1bKey.F10,
                         TestContext.CancellationToken).ConfigureAwait(false);
                     await automator.WaitUntilTextAsync("localNumber = 43").ConfigureAwait(false);
+                    using (Hex1bTerminalSnapshot stepped = automator.CreateSnapshot())
+                    {
+                        Assert.Contains("Stopped  step", stepped.GetLine(0));
+                        Assert.Contains(
+                            "number = 42",
+                            stepped.GetRegion(auxiliaryContent).GetText());
+                        Assert.Contains(
+                            "localNumber = 43",
+                            stepped.GetRegion(auxiliaryContent).GetText());
+                        Assert.IsFalse(stepped.ContainsText("Target is running."));
+                    }
+
                     await automator.KeyAsync(
                         Hex1bKey.F5,
                         TestContext.CancellationToken).ConfigureAwait(false);
@@ -207,5 +227,20 @@ public sealed class DebuggerTerminalTests
                 testDirectory,
                 TimeSpan.FromSeconds(10)).ConfigureAwait(false);
         }
+    }
+
+    private async Task AddWatchAsync(Hex1bTerminalAutomator automator, string expression)
+    {
+        await automator.KeyAsync(Hex1bKey.F1, TestContext.CancellationToken).ConfigureAwait(false);
+        await automator.WaitUntilTextAsync("Debugger commands").ConfigureAwait(false);
+        await automator.TypeAsync("add watch", TestContext.CancellationToken).ConfigureAwait(false);
+        await automator.EnterAsync(TestContext.CancellationToken).ConfigureAwait(false);
+        await automator.WaitUntilTextAsync("Watch expression").ConfigureAwait(false);
+        if (expression.Length > 0)
+        {
+            await automator.TypeAsync(expression, TestContext.CancellationToken).ConfigureAwait(false);
+        }
+
+        await automator.EnterAsync(TestContext.CancellationToken).ConfigureAwait(false);
     }
 }

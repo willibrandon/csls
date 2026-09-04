@@ -90,12 +90,8 @@ public static class DebuggerTerminalHost
         await using ConfiguredAsyncDisposable stateCleanup = state.ConfigureAwait(false);
         Hex1bTerminal terminal = Hex1bTerminal.CreateBuilder()
             .WithHex1bApp(
-                static _ => { },
-                app =>
-                {
-                    state.AttachApp(app);
-                    return context => DebuggerTerminalView.Build(context, state);
-                })
+                state.AttachWorkload,
+                context => DebuggerTerminalView.Build(context, state))
             .WithMouse()
             .Build();
         await using (terminal.ConfigureAwait(false))

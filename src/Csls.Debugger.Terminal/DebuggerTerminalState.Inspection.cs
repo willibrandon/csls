@@ -11,6 +11,10 @@ internal sealed partial class DebuggerTerminalState
     private IReadOnlyList<DebugStackFrameInfo> _stackFrames = [];
     private IReadOnlyList<DebugThreadInfo> _threads = [];
     private DebugStackFrameInfo? _selectedFrame;
+    private long _sourceRevision;
+    private long _threadRevision;
+    private long _stackRevision;
+    private int _sourceFrameId;
     private int _sourceFirstLine;
     private string[] _sourceTextLines = [];
 
@@ -54,20 +58,22 @@ internal sealed partial class DebuggerTerminalState
     /// Selects a managed thread and loads its stack and first authored frame.
     /// </summary>
     /// <param name="index">The zero-based thread row.</param>
+    /// <param name="view">The published view that produced the selection.</param>
     /// <returns>A task that completes when the dependent panes are refreshed.</returns>
-    internal async Task SelectThreadAsync(int index)
+    internal async Task SelectThreadAsync(int index, DebuggerTerminalViewSnapshot view)
     {
         await _mutationGate.WaitAsync(_cancellationToken).ConfigureAwait(false);
         try
         {
-            if (Snapshot.State != DebugSessionState.Stopped ||
+            if (view.ThreadRevision != _threadRevision ||
+                Snapshot.State != DebugSessionState.Stopped ||
                 index < 0 || index >= _threads.Count || index == SelectedThreadIndex)
             {
                 return;
             }
 
             await LoadThreadAsync(index, _cancellationToken).ConfigureAwait(false);
-            _app?.Invalidate();
+            PublishViewSnapshot();
         }
         finally
         {
@@ -79,13 +85,15 @@ internal sealed partial class DebuggerTerminalState
     /// Selects a managed stack frame and reloads its source and variables.
     /// </summary>
     /// <param name="index">The zero-based stack-frame row.</param>
+    /// <param name="view">The published view that produced the selection.</param>
     /// <returns>A task that completes when the dependent panes are refreshed.</returns>
-    internal async Task SelectStackFrameAsync(int index)
+    internal async Task SelectStackFrameAsync(int index, DebuggerTerminalViewSnapshot view)
     {
         await _mutationGate.WaitAsync(_cancellationToken).ConfigureAwait(false);
         try
         {
-            if (Snapshot.State != DebugSessionState.Stopped ||
+            if (view.StackRevision != _stackRevision ||
+                Snapshot.State != DebugSessionState.Stopped ||
                 index < 0 || index >= _stackFrames.Count || index == SelectedStackFrameIndex)
             {
                 return;
@@ -93,7 +101,7 @@ internal sealed partial class DebuggerTerminalState
 
             SelectedStackFrameIndex = index;
             await LoadFrameAsync(_stackFrames[index], _cancellationToken).ConfigureAwait(false);
-            _app?.Invalidate();
+            PublishViewSnapshot();
         }
         finally
         {
@@ -105,14 +113,17 @@ internal sealed partial class DebuggerTerminalState
     /// Moves the source cursor used by interactive breakpoint operations.
     /// </summary>
     /// <param name="index">The zero-based visible source row.</param>
-    internal async Task SelectSourceLineAsync(int index)
+    /// <param name="view">The published view that produced the selection.</param>
+    internal async Task SelectSourceLineAsync(int index, DebuggerTerminalViewSnapshot view)
     {
         await _mutationGate.WaitAsync(_cancellationToken).ConfigureAwait(false);
         try
         {
-            if (index >= 0 && index < SourceLines.Count)
+            if (view.SourceRevision == _sourceRevision &&
+                index >= 0 && index < SourceLines.Count && index != SourceFocusedIndex)
             {
                 SourceFocusedIndex = index;
+                PublishViewSnapshot();
             }
         }
         finally
@@ -139,7 +150,7 @@ internal sealed partial class DebuggerTerminalState
             if (string.IsNullOrWhiteSpace(sourcePath) || _sourceFirstLine <= 0)
             {
                 StatusMessage = "The selected frame has no breakpoint-addressable source path.";
-                _app?.Invalidate();
+                PublishViewSnapshot();
                 return;
             }
 
@@ -175,7 +186,7 @@ internal sealed partial class DebuggerTerminalState
                         $"Breakpoint at {Path.GetFileName(sourcePath)}:{line} is pending.";
             await _auxiliary.RefreshBreakpointsAsync(_cancellationToken).ConfigureAwait(false);
             await LoadSourceAsync(_selectedFrame!, _cancellationToken).ConfigureAwait(false);
-            _app?.Invalidate();
+            PublishViewSnapshot();
         }
         finally
         {
@@ -187,7 +198,15 @@ internal sealed partial class DebuggerTerminalState
     {
         StatusMessage = null;
         await _auxiliary.LoadAsync(Snapshot, cancellationToken).ConfigureAwait(false);
-        _threads = await _client.GetThreadsAsync(cancellationToken).ConfigureAwait(false);
+        IReadOnlyList<DebugThreadInfo> threads = await _client.GetThreadsAsync(cancellationToken)
+            .ConfigureAwait(false);
+        if (!_threads.Select(static thread => thread.Id)
+            .SequenceEqual(threads.Select(static thread => thread.Id)))
+        {
+            _threadRevision = checked(_threadRevision + 1);
+        }
+
+        _threads = threads;
         ThreadLines = _threads.Select(static thread => string.Create(
             CultureInfo.InvariantCulture,
             $"{thread.Id,4}  {thread.Name}")).ToArray();
@@ -195,7 +214,7 @@ internal sealed partial class DebuggerTerminalState
         {
             ClearInspection();
             SourceLines = ["No managed thread is available."];
-            _app?.Invalidate();
+            PublishViewSnapshot();
             return;
         }
 
@@ -203,7 +222,7 @@ internal sealed partial class DebuggerTerminalState
             ? Math.Max(0, _threads.ToList().FindIndex(thread => thread.Id == stoppedThreadId))
             : 0;
         await LoadPreferredThreadAsync(stoppedIndex, cancellationToken).ConfigureAwait(false);
-        _app?.Invalidate();
+        PublishViewSnapshot();
     }
 
     private async Task LoadThreadAsync(int index, CancellationToken cancellationToken)
@@ -258,6 +277,12 @@ internal sealed partial class DebuggerTerminalState
         CancellationToken cancellationToken)
     {
         SelectedThreadIndex = index;
+        if (!_stackFrames.Select(static frame => frame.Id)
+            .SequenceEqual(stack.StackFrames.Select(static frame => frame.Id)))
+        {
+            _stackRevision = checked(_stackRevision + 1);
+        }
+
         _stackFrames = stack.StackFrames;
         StackLines = _stackFrames.Select(FormatStackFrame).ToArray();
         int authoredFrameIndex = _stackFrames.ToList().FindIndex(
@@ -266,8 +291,9 @@ internal sealed partial class DebuggerTerminalState
         if (_stackFrames.Count == 0)
         {
             _selectedFrame = null;
-            SourceLines = ["No managed frame is available."];
+            SetUnavailableSource("No managed frame is available.");
             VariableLines = [];
+            _auxiliary.ClearWatchValues("No managed frame is available.");
             return;
         }
 
@@ -344,10 +370,19 @@ internal sealed partial class DebuggerTerminalState
             return;
         }
 
-        _sourceFirstLine = Math.Max(1, frame.Line - 50);
+        int firstLine = Math.Max(1, frame.Line - 50);
         int last = Math.Min(_sourceTextLines.Length, frame.Line + 50);
+        bool sourceMappingChanged = _sourceFrameId != frame.Id ||
+            _sourceFirstLine != firstLine || SourceLines.Count != last - firstLine + 1;
+        if (sourceMappingChanged)
+        {
+            _sourceRevision = checked(_sourceRevision + 1);
+        }
+
+        _sourceFrameId = frame.Id;
+        _sourceFirstLine = firstLine;
         SourceFocusedIndex = Math.Clamp(
-            frame.Line - _sourceFirstLine,
+            sourceMappingChanged ? frame.Line - _sourceFirstLine : SourceFocusedIndex,
             0,
             Math.Max(0, last - _sourceFirstLine));
         HashSet<int> breakpointLines =
@@ -367,27 +402,40 @@ internal sealed partial class DebuggerTerminalState
 
     private void SetUnavailableSource(string message)
     {
+        _sourceRevision = checked(_sourceRevision + 1);
+        _sourceFrameId = 0;
         _sourceTextLines = [];
         _sourceFirstLine = 0;
         SourceFocusedIndex = 0;
         SourceLines = [message];
     }
 
-    private void ClearInspection()
+    private void ClearInspection(string? message = null)
     {
+        message ??= Snapshot.State switch
+        {
+            DebugSessionState.Running => "Target is running.",
+            DebugSessionState.Stopped => "Loading stopped-state details.",
+            DebugSessionState.Terminated => "Target has terminated.",
+            _ => "Debugger inspection is unavailable."
+        };
+        _threadRevision = checked(_threadRevision + 1);
+        _stackRevision = checked(_stackRevision + 1);
+        _sourceRevision = checked(_sourceRevision + 1);
+        _sourceFrameId = 0;
         _threads = [];
         _stackFrames = [];
         _selectedFrame = null;
         _sourceTextLines = [];
         _sourceFirstLine = 0;
-        SourceLines = ["Target is running."];
+        SourceLines = [message];
         SourceFocusedIndex = 0;
         ThreadLines = [];
         SelectedThreadIndex = 0;
         StackLines = [];
         SelectedStackFrameIndex = 0;
         VariableLines = [];
-        _auxiliary.ClearStoppedState();
+        _auxiliary.ClearStoppedState(message);
     }
 
     private static string FormatStackFrame(DebugStackFrameInfo frame) =>

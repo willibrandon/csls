@@ -2,7 +2,6 @@ using Csls.Debugger.Contracts;
 using Hex1b;
 using Hex1b.Input;
 using Hex1b.Widgets;
-using System.Globalization;
 
 namespace Csls.Debugger.Terminal;
 
@@ -20,22 +19,25 @@ internal static class DebuggerTerminalView
     /// <param name="context">The Hex1b root widget context.</param>
     /// <param name="state">The private-RPC debugger state.</param>
     /// <returns>The full-screen debugger widget.</returns>
-    internal static Hex1bWidget Build(RootContext context, DebuggerTerminalState state) =>
-        context.ZStack(stack =>
+    internal static Hex1bWidget Build(RootContext context, DebuggerTerminalState state)
+    {
+        DebuggerTerminalViewSnapshot snapshot = state.CaptureViewSnapshot();
+        return context.ZStack(stack =>
         [
             stack.WindowPanel()
                 .Background(background => background.VStack(vertical =>
                 [
-                    vertical.Text(BuildHeader(state)),
+                    vertical.Text(snapshot.Header),
                     vertical.HSplitter(
                         left =>
                         [
                             left.Border(nested =>
-                                [nested.List(state.SourceLines)
-                                    .FocusedIndex(state.SourceFocusedIndex)
+                                [nested.List(snapshot.SourceLines)
+                                    .FocusedIndex(snapshot.SourceFocusedIndex)
                                     .OnFocusChanged(
                                         selection => state.SelectSourceLineAsync(
-                                            selection.FocusedIndex))
+                                            selection.FocusedIndex,
+                                            snapshot))
                                     .Fill()])
                                 .Title("Source")
                                 .Fill()
@@ -45,29 +47,30 @@ internal static class DebuggerTerminalView
                             right.VStack(details =>
                             [
                                 details.Border(nested =>
-                                    [nested.List(state.ThreadLines)
-                                        .FocusedIndex(state.SelectedThreadIndex)
+                                    [nested.List(snapshot.ThreadLines)
+                                        .FocusedIndex(snapshot.SelectedThreadIndex)
                                         .OnFocusChanged(selection =>
-                                            state.SelectThreadAsync(selection.FocusedIndex))
+                                            state.SelectThreadAsync(selection.FocusedIndex, snapshot))
                                         .Fill()])
                                     .Title("Threads")
                                     .FixedHeight(6),
                                 details.Border(nested =>
-                                    [nested.List(state.StackLines)
-                                        .FocusedIndex(state.SelectedStackFrameIndex)
+                                    [nested.List(snapshot.StackLines)
+                                        .FocusedIndex(snapshot.SelectedStackFrameIndex)
                                         .OnFocusChanged(selection =>
                                             state.SelectStackFrameAsync(
-                                                selection.FocusedIndex))
+                                                selection.FocusedIndex,
+                                                snapshot))
                                         .Fill()])
                                     .Title("Stack")
                                     .FixedHeight(8),
                                 details.Border(nested =>
-                                    [nested.List(state.VariableLines).Fill()])
+                                    [nested.List(snapshot.VariableLines).Fill()])
                                     .Title("Arguments and Locals")
                                     .Fill(),
                                 details.Border(nested =>
-                                    [nested.List(state.AuxiliaryLines).Fill()])
-                                    .Title(state.AuxiliaryTitle)
+                                    [nested.List(snapshot.AuxiliaryLines).Fill()])
+                                    .Title(snapshot.AuxiliaryTitle)
                                     .FixedHeight(6)
                             ]).Fill()
                         ],
@@ -108,6 +111,7 @@ internal static class DebuggerTerminalView
                 }))
                 .Fill()
         ]);
+    }
 
     private static void OpenCommandPalette(
         WindowManager windows,
@@ -192,15 +196,4 @@ internal static class DebuggerTerminalView
         DebuggerTerminalCommand.Detach => "Detach",
         _ => throw new InvalidOperationException($"Unknown terminal command {command}.")
     };
-
-    private static string BuildHeader(DebuggerTerminalState state)
-    {
-        DebugSessionSnapshot snapshot = state.Snapshot;
-        return $"csls debugger  {snapshot.ProcessName ?? "managed target"}  " +
-            $"pid {snapshot.ProcessId?.ToString(CultureInfo.InvariantCulture) ?? "-"}  " +
-            $"{snapshot.State}  {snapshot.StopReason ?? string.Empty}  " +
-            $"{state.ModuleSummary}" +
-            (state.ExceptionSummary is null ? string.Empty : $"  {state.ExceptionSummary}") +
-            (state.StatusMessage is null ? string.Empty : $"  {state.StatusMessage}");
-    }
 }

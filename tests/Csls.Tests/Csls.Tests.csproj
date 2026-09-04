@@ -37,8 +37,7 @@
                       ReferenceOutputAssembly="false" />
     <ProjectReference Include="../../src/Csls.Cli.Worker/Csls.Cli.Worker.csproj"
                       ReferenceOutputAssembly="false" />
-    <ProjectReference Include="../../src/Csls.Debugger.Terminal/Csls.Debugger.Terminal.csproj"
-                      ReferenceOutputAssembly="false" />
+    <ProjectReference Include="../../src/Csls.Debugger.Terminal/Csls.Debugger.Terminal.csproj" />
     <ProjectReference Include="../../src/Csls.Debugger.Evaluator.Worker/Csls.Debugger.Evaluator.Worker.csproj"
                       ReferenceOutputAssembly="false" />
     <ProjectReference Include="../../src/Csls.Debugger.Worker/Csls.Debugger.Worker.csproj"

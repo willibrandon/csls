@@ -279,13 +279,24 @@ internal sealed class DebuggerTerminalAuxiliaryState
     /// <summary>
     /// Clears only generation-bound auxiliary state when the target resumes.
     /// </summary>
-    internal void ClearStoppedState()
+    /// <param name="message">The current inspection availability shown for configured watches.</param>
+    internal void ClearStoppedState(string message)
     {
         _exceptionLines = ["No current managed exception."];
         ExceptionSummary = null;
+        ClearWatchValues(message);
+    }
+
+    /// <summary>
+    /// Marks watch values unavailable while preserving configured expressions and other auxiliary state.
+    /// </summary>
+    /// <param name="message">The reason the selected frame cannot provide watch values.</param>
+    internal void ClearWatchValues(string message)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(message);
         _watchLines = _watchExpressions.Count == 0
             ? ["No watches configured."]
-            : ["Target is running."];
+            : [message];
     }
 
     private static string FormatModule(DebugModuleInfo module) => string.Create(
