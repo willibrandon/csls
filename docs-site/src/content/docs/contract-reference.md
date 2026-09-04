@@ -250,6 +250,7 @@ These public wire-contract types are generated from the compiled assemblies and 
 
 | Type | Description |
 | --- | --- |
+| `Csls.Debugger.Contracts.DebugAssignmentResult` | Describes one completed managed assignment and its resulting stop generation. |
 | `Csls.Debugger.Contracts.DebugAttachRequest` | Selects one running CoreCLR process for debugger attachment. |
 | `Csls.Debugger.Contracts.DebugBreakpointLocation` | Describes one executable source location reported by loaded symbols. |
 | `Csls.Debugger.Contracts.DebugBreakpointSnapshot` | Describes every authoritative breakpoint configured in one debugger session. |
