@@ -117,11 +117,18 @@ Set `enableHotReload` to `true` on a launch request to prepare symbol-bearing
 modules for compiler-driven Hot Reload. This option is disabled by default and
 is launch-only because CoreCLR accepts the required Edit and Continue policy
 during module load. The DAP `modules` response reports the runtime decision as
-`isHotReloadEnabled`, the committed `hotReloadGeneration`, and any bounded
-failure diagnostic in `symbolStatus`.
+`isHotReloadEnabled`, the exact compiler-facing `hotReloadCapabilities`, the
+committed `hotReloadGeneration`, and any bounded failure diagnostic in
+`symbolStatus`. Capabilities come from the target CoreCLR product generation;
+they are not inferred from the SDK that built the application or the debugger.
 
 The compiler owns language-specific edit analysis. It must reject rude edits
-and supply one matched metadata, IL, and minimal Portable PDB delta generation.
+and supply one matched metadata, IL, and minimal Portable PDB delta generation,
+the aggregate updated type and method tokens, and every runtime capability
+required by the edit. The debugger rejects a generation before mutation when a
+required capability is absent, a changed type does not resolve through the
+complete metadata generation chain, or the compiler's method set differs from
+the Portable PDB delta.
 When an updated method is active, it must also supply the old method token,
 method version, and IL offset together with the updated zero-based source span.
 The debugger validates module identity, generation ordering, payload bounds,

@@ -15,6 +15,9 @@ internal static class HotReloadDeltaValidator
     private const int MaximumMetadataDeltaBytes = 64 * 1024 * 1024;
     private const int MaximumPdbDeltaBytes = 64 * 1024 * 1024;
     private const int MaximumActiveStatementCount = 65_536;
+    private const int MaximumUpdatedTokenCount = 65_536;
+    private const int MaximumRequiredCapabilityCount = 64;
+    private const int MaximumRequiredCapabilityLength = 128;
 
     /// <summary>
     /// Validates one metadata, IL, and Portable PDB delta set before runtime mutation.
@@ -23,6 +26,9 @@ internal static class HotReloadDeltaValidator
     /// <param name="metadataDelta">The candidate ECMA-335 metadata delta.</param>
     /// <param name="ilDelta">The candidate managed IL delta.</param>
     /// <param name="pdbDelta">The candidate minimal Portable PDB delta.</param>
+    /// <param name="updatedTypes">The compiler-produced aggregate type-definition tokens.</param>
+    /// <param name="requiredCapabilities">The compiler capability names required by the update.</param>
+    /// <param name="updatedMethods">The compiler-produced aggregate method-definition tokens.</param>
     /// <param name="activeStatements">The compiler-produced active-statement updates.</param>
     /// <returns>The validated updated methods and exact runtime remap decisions.</returns>
     internal static HotReloadValidationResult Validate(
@@ -30,35 +36,54 @@ internal static class HotReloadDeltaValidator
         byte[] metadataDelta,
         byte[] ilDelta,
         byte[] pdbDelta,
+        IReadOnlyList<int> updatedTypes,
+        IReadOnlyList<string> requiredCapabilities,
+        IReadOnlyList<int> updatedMethods,
         IReadOnlyList<DebugHotReloadActiveStatement> activeStatements)
     {
         ArgumentNullException.ThrowIfNull(module);
+        ArgumentNullException.ThrowIfNull(updatedTypes);
+        ArgumentNullException.ThrowIfNull(requiredCapabilities);
+        ArgumentNullException.ThrowIfNull(updatedMethods);
         ArgumentNullException.ThrowIfNull(activeStatements);
         ValidateSize(metadataDelta, MaximumMetadataDeltaBytes, nameof(metadataDelta));
         ValidateSize(ilDelta, MaximumIlDeltaBytes, nameof(ilDelta));
         ValidateSize(pdbDelta, MaximumPdbDeltaBytes, nameof(pdbDelta));
 
-        ValidateMetadata(module, metadataDelta);
+        ValidateCapabilities(module, requiredCapabilities);
+        IReadOnlyList<uint> validatedUpdatedTypes = ValidateMetadata(
+            module,
+            metadataDelta,
+            updatedTypes);
         using DebugSymbolReader symbols = OpenSymbols(module, pdbDelta);
         using PortablePdbReader pdb = PortablePdbReader.TryOpen(pdbDelta)
             ?? throw new BadImageFormatException("The Hot Reload PDB delta is not portable.");
-        IReadOnlyList<uint> updatedMethods = [.. pdb.Metadata
+        IReadOnlyList<uint> discoveredUpdatedMethods = [.. pdb.Metadata
             .GetEditAndContinueMapEntries()
             .Where(static handle => handle.Kind == HandleKind.MethodDebugInformation)
             .Select(static handle => checked((uint)MetadataTokens.GetToken(
                 ((MethodDebugInformationHandle)handle).ToDefinitionHandle())))
             .Distinct()
             .Order()];
+        ValidateCompilerTokenSet(
+            updatedMethods,
+            discoveredTokens: discoveredUpdatedMethods,
+            expectedTokenKind: 0x06000000,
+            parameterName: "updatedMethods");
         List<HotReloadActiveStatementRemap> remaps = ValidateActiveStatements(
             symbols,
-            updatedMethods,
+            updatedMethods: discoveredUpdatedMethods,
             activeStatements);
-        return new HotReloadValidationResult(updatedMethods, remaps);
+        return new HotReloadValidationResult(
+            discoveredUpdatedMethods,
+            validatedUpdatedTypes,
+            remaps);
     }
 
-    private static void ValidateMetadata(
+    private static IReadOnlyList<uint> ValidateMetadata(
         CorDebugLoadedModule module,
-        byte[] metadataDelta)
+        byte[] metadataDelta,
+        IReadOnlyList<int> updatedTypes)
     {
         using PEReader basePe = module.OpenPeReader()
             ?? throw new InvalidOperationException(
@@ -111,6 +136,12 @@ internal static class HotReloadDeltaValidator
                 throw new BadImageFormatException(
                     "The Hot Reload metadata delta has no generation identifier.");
             }
+
+            return ValidateUpdatedTypes(
+                updatedTypes,
+                aggregator,
+                baseMetadata,
+                readers);
         }
         catch (ArgumentException exception)
         {
@@ -119,6 +150,123 @@ internal static class HotReloadDeltaValidator
                 exception);
         }
     }
+
+    private static IReadOnlyList<uint> ValidateUpdatedTypes(
+        IReadOnlyList<int> updatedTypes,
+        MetadataAggregator aggregator,
+        MetadataReader baseMetadata,
+        List<MetadataReader> deltas)
+    {
+        if (updatedTypes.Count > MaximumUpdatedTokenCount)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(updatedTypes),
+                $"A Hot Reload update may identify at most " +
+                $"{MaximumUpdatedTokenCount} updated metadata tokens.");
+        }
+
+        var validated = new HashSet<uint>();
+        foreach (int token in updatedTypes)
+        {
+            if ((token & unchecked((int)0xff000000)) != 0x02000000 ||
+                (token & 0x00ffffff) == 0 || !validated.Add(checked((uint)token)))
+            {
+                throw new ArgumentException(
+                    "Hot Reload updated types must be unique type-definition tokens.",
+                    nameof(updatedTypes));
+            }
+
+            var aggregateHandle = (TypeDefinitionHandle)MetadataTokens.Handle(token);
+            var relativeHandle = (TypeDefinitionHandle)aggregator.GetGenerationHandle(
+                aggregateHandle,
+                out int generation);
+            MetadataReader owner = generation == 0
+                ? baseMetadata
+                : deltas[generation - 1];
+            _ = owner.GetTypeDefinition(relativeHandle);
+        }
+
+        return [.. validated.Order()];
+    }
+
+    private static void ValidateCapabilities(
+        CorDebugLoadedModule module,
+        IReadOnlyList<string> requiredCapabilities)
+    {
+        if (requiredCapabilities.Count > MaximumRequiredCapabilityCount)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(requiredCapabilities),
+                $"A Hot Reload update may require at most " +
+                $"{MaximumRequiredCapabilityCount} capabilities.");
+        }
+
+        var available = module.HotReloadCapabilities.ToHashSet(StringComparer.Ordinal);
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        foreach (string capability in requiredCapabilities)
+        {
+            if (string.IsNullOrWhiteSpace(capability) ||
+                capability.Length > MaximumRequiredCapabilityLength)
+            {
+                throw new ArgumentException(
+                    "Hot Reload capability names must be non-empty and bounded.",
+                    nameof(requiredCapabilities));
+            }
+
+            if (!seen.Add(capability))
+            {
+                throw new ArgumentException(
+                    $"Hot Reload capability '{capability}' is duplicated.",
+                    nameof(requiredCapabilities));
+            }
+
+            if (!available.Contains(capability))
+            {
+                throw new NotSupportedException(
+                    $"The target runtime does not support the required Hot Reload " +
+                    $"capability '{capability}'.");
+            }
+        }
+    }
+
+    private static void ValidateCompilerTokenSet(
+        IReadOnlyList<int> compilerTokens,
+        IReadOnlyList<uint> discoveredTokens,
+        int expectedTokenKind,
+        string parameterName)
+    {
+        if (compilerTokens.Count > MaximumUpdatedTokenCount)
+        {
+            throw new ArgumentOutOfRangeException(
+                parameterName,
+                $"A Hot Reload update may identify at most " +
+                $"{MaximumUpdatedTokenCount} updated metadata tokens.");
+        }
+
+        var seen = new HashSet<uint>();
+        foreach (int token in compilerTokens)
+        {
+            if ((token & unchecked((int)0xff000000)) != expectedTokenKind ||
+                (token & 0x00ffffff) == 0 || !seen.Add(checked((uint)token)))
+            {
+                throw new ArgumentException(
+                    "Hot Reload updated metadata tokens must be unique definitions " +
+                    "of the expected kind.",
+                    parameterName);
+            }
+        }
+
+        if (!seen.SetEquals(discoveredTokens))
+        {
+            throw new BadImageFormatException(
+                "The compiler-reported updated metadata tokens do not match the delta " +
+                $"(compiler: {FormatTokens(seen)}, delta: {FormatTokens(discoveredTokens)}).");
+        }
+    }
+
+    private static string FormatTokens(IEnumerable<uint> tokens) => string.Join(
+        ", ",
+        tokens.Order().Take(16).Select(static token => $"0x{token:X8}"));
 
     private static DebugSymbolReader OpenSymbols(
         CorDebugLoadedModule module,

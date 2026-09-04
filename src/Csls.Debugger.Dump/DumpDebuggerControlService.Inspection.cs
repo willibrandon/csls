@@ -135,6 +135,7 @@ public sealed partial class DumpDebuggerControlService
                     DebugModuleSymbolKind.None,
                     null,
                     false,
+                    [],
                     0,
                     "Process-dump modules are read-only.",
                     null,

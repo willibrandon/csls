@@ -74,6 +74,11 @@ internal sealed class CorDebugLoadedModule
     internal string? HotReloadDiagnostic { get; init; }
 
     /// <summary>
+    /// Gets the compiler-facing Hot Reload capabilities of the target runtime.
+    /// </summary>
+    internal IReadOnlyList<string> HotReloadCapabilities { get; init; } = [];
+
+    /// <summary>
     /// Gets whether CoreCLR reports that the module was loaded from memory.
     /// </summary>
     internal bool IsInMemory { get; init; }

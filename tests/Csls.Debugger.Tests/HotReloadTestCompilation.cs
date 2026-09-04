@@ -31,7 +31,9 @@ internal static class HotReloadTestCompilation
         int UpdatedValueLine,
         byte[] MetadataDelta,
         byte[] IlDelta,
-        byte[] PdbDelta)> EmitAsync(
+        byte[] PdbDelta,
+        int[] UpdatedTypes,
+        int[] UpdatedMethods)> EmitAsync(
             string directory,
             CancellationToken cancellationToken)
     {
@@ -122,7 +124,9 @@ internal static class HotReloadTestCompilation
             updatedValueLine,
             metadataDelta.ToArray(),
             ilDelta.ToArray(),
-            pdbDelta.ToArray());
+            pdbDelta.ToArray(),
+            [.. updateResult.ChangedTypes.Select(static handle => MetadataTokens.GetToken(handle))],
+            [.. updateResult.UpdatedMethods.Select(static handle => MetadataTokens.GetToken(handle))]);
     }
 
     /// <summary>
@@ -139,7 +143,9 @@ internal static class HotReloadTestCompilation
         DebugHotReloadActiveStatement ActiveStatement,
         byte[] MetadataDelta,
         byte[] IlDelta,
-        byte[] PdbDelta)> EmitActiveMethodAsync(
+        byte[] PdbDelta,
+        int[] UpdatedTypes,
+        int[] UpdatedMethods)> EmitActiveMethodAsync(
             string directory,
             CancellationToken cancellationToken)
     {
@@ -247,7 +253,9 @@ internal static class HotReloadTestCompilation
             activeStatement,
             metadataDelta.ToArray(),
             ilDelta.ToArray(),
-            pdbDeltaImage);
+            pdbDeltaImage,
+            [.. updateResult.ChangedTypes.Select(static handle => MetadataTokens.GetToken(handle))],
+            [.. updateResult.UpdatedMethods.Select(static handle => MetadataTokens.GetToken(handle))]);
     }
 
     private static CSharpCompilation CreateCompilation(string source, string sourcePath) =>

@@ -8,9 +8,11 @@ namespace Csls.Mcp.Worker;
 /// <param name="ModuleGeneration">The newly committed module generation.</param>
 /// <param name="StopGeneration">The replacement stopped generation.</param>
 /// <param name="UpdatedMethods">The aggregate metadata tokens with updated symbols.</param>
+/// <param name="UpdatedTypes">The validated aggregate type-definition tokens.</param>
 internal sealed record McpDebugHotReloadResult(
     string DebugSession,
     int ModuleId,
     int ModuleGeneration,
     long StopGeneration,
-    IReadOnlyList<uint> UpdatedMethods) : IMcpDebugSessionResult;
+    IReadOnlyList<uint> UpdatedMethods,
+    IReadOnlyList<uint> UpdatedTypes) : IMcpDebugSessionResult;

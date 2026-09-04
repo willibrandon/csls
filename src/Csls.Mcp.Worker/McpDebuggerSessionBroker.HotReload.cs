@@ -9,6 +9,9 @@ internal sealed partial class McpDebuggerSessionBroker
 {
     private const int MaximumCombinedHotReloadDeltaBytes = 3 * 1024 * 1024;
     private const int MaximumHotReloadActiveStatementCount = 65_536;
+    private const int MaximumHotReloadUpdatedTokenCount = 65_536;
+    private const int MaximumHotReloadRequiredCapabilityCount = 64;
+    private const int MaximumHotReloadRequiredCapabilityLength = 128;
     private const int MaximumHotReloadBase64Characters =
         ((MaximumCombinedHotReloadDeltaBytes + 2) / 3) * 4;
 
@@ -22,6 +25,9 @@ internal sealed partial class McpDebuggerSessionBroker
     /// <param name="metadataDeltaBase64">The base64 ECMA-335 metadata delta.</param>
     /// <param name="ilDeltaBase64">The base64 managed IL delta.</param>
     /// <param name="pdbDeltaBase64">The base64 minimal Portable PDB delta.</param>
+    /// <param name="updatedTypes">The compiler-produced aggregate type-definition tokens.</param>
+    /// <param name="requiredCapabilities">The compiler capability names required by the update.</param>
+    /// <param name="updatedMethods">The compiler-produced aggregate method-definition tokens.</param>
     /// <param name="activeStatements">The compiler-produced active-statement remap set.</param>
     /// <param name="cancellationToken">Cancels validation before target mutation begins.</param>
     /// <returns>The committed module and replacement stopped generation.</returns>
@@ -33,10 +39,17 @@ internal sealed partial class McpDebuggerSessionBroker
         string metadataDeltaBase64,
         string ilDeltaBase64,
         string pdbDeltaBase64,
+        IReadOnlyList<int> updatedTypes,
+        IReadOnlyList<string> requiredCapabilities,
+        IReadOnlyList<int> updatedMethods,
         IReadOnlyList<McpDebugHotReloadActiveStatement> activeStatements,
         CancellationToken cancellationToken)
     {
         ValidatePositive(moduleId, nameof(moduleId));
+        ValidateHotReloadCompilerContract(
+            updatedTypes,
+            requiredCapabilities,
+            updatedMethods);
         ArgumentNullException.ThrowIfNull(activeStatements);
         if (activeStatements.Count > MaximumHotReloadActiveStatementCount)
         {
@@ -83,6 +96,9 @@ internal sealed partial class McpDebuggerSessionBroker
                         metadataDelta,
                         ilDelta,
                         pdbDelta,
+                        updatedTypes,
+                        requiredCapabilities,
+                        updatedMethods,
                         remaps),
                     token).ConfigureAwait(false);
                 return new McpDebugHotReloadResult(
@@ -90,9 +106,37 @@ internal sealed partial class McpDebuggerSessionBroker
                     result.ModuleId,
                     result.ModuleGeneration,
                     result.StopGeneration,
-                    result.UpdatedMethods);
+                    result.UpdatedMethods,
+                    result.UpdatedTypes);
             },
             cancellationToken);
+    }
+
+    private static void ValidateHotReloadCompilerContract(
+        IReadOnlyList<int> updatedTypes,
+        IReadOnlyList<string> requiredCapabilities,
+        IReadOnlyList<int> updatedMethods)
+    {
+        ArgumentNullException.ThrowIfNull(updatedTypes);
+        ArgumentNullException.ThrowIfNull(requiredCapabilities);
+        ArgumentNullException.ThrowIfNull(updatedMethods);
+        if (updatedTypes.Count > MaximumHotReloadUpdatedTokenCount ||
+            updatedMethods.Count > MaximumHotReloadUpdatedTokenCount)
+        {
+            throw InvalidRequest(
+                $"updatedTypes and updatedMethods cannot exceed " +
+                $"{MaximumHotReloadUpdatedTokenCount} entries each.");
+        }
+
+        if (requiredCapabilities.Count > MaximumHotReloadRequiredCapabilityCount ||
+            requiredCapabilities.Any(static capability =>
+                string.IsNullOrWhiteSpace(capability) ||
+                capability.Length > MaximumHotReloadRequiredCapabilityLength))
+        {
+            throw InvalidRequest(
+                $"requiredCapabilities must contain at most " +
+                $"{MaximumHotReloadRequiredCapabilityCount} non-empty bounded names.");
+        }
     }
 
     private static DebugHotReloadActiveStatement ConvertActiveStatement(

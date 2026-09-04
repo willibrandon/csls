@@ -116,13 +116,28 @@ public sealed class DebugSymbolReaderHotReloadTests
             Pointer = 1,
             Identity = 1,
             ModuleImage = peImage,
-            SymbolImage = pdbImage
+            SymbolImage = pdbImage,
+            HotReloadCapabilities = ["Baseline"]
         };
+        NotSupportedException unsupported = Assert.Throws<NotSupportedException>(() =>
+            HotReloadDeltaValidator.Validate(
+                loadedModule,
+                metadataDelta1,
+                ilDelta1,
+                pdbDelta1,
+                [.. result1.ChangedTypes.Select(static handle => MetadataTokens.GetToken(handle))],
+                ["FutureRuntimeCapability"],
+                [.. result1.UpdatedMethods.Select(static handle => MetadataTokens.GetToken(handle))],
+                []));
+        Assert.Contains("FutureRuntimeCapability", unsupported.Message, StringComparison.Ordinal);
         IReadOnlyList<uint> generation1Methods = HotReloadDeltaValidator.Validate(
             loadedModule,
             metadataDelta1,
             ilDelta1,
             pdbDelta1,
+            [.. result1.ChangedTypes.Select(static handle => MetadataTokens.GetToken(handle))],
+            ["Baseline"],
+            [.. result1.UpdatedMethods.Select(static handle => MetadataTokens.GetToken(handle))],
             []).UpdatedMethods;
         Assert.Contains(methodToken, generation1Methods);
         loadedModule.MetadataDeltas.Add(metadataDelta1);
@@ -133,6 +148,9 @@ public sealed class DebugSymbolReaderHotReloadTests
             metadataDelta2,
             ilDelta2,
             pdbDelta2,
+            [.. result2.ChangedTypes.Select(static handle => MetadataTokens.GetToken(handle))],
+            ["Baseline"],
+            [.. result2.UpdatedMethods.Select(static handle => MetadataTokens.GetToken(handle))],
             []).UpdatedMethods;
         Assert.Contains(methodToken, generation2Methods);
 

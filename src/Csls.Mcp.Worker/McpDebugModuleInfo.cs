@@ -11,6 +11,7 @@ namespace Csls.Mcp.Worker;
 /// <param name="SymbolKind">The validated symbol-format name.</param>
 /// <param name="SymbolPath">The associated Portable PDB path when available.</param>
 /// <param name="IsHotReloadEnabled">Whether CoreCLR accepted Edit and Continue policy.</param>
+/// <param name="HotReloadCapabilities">The exact compiler capability names supported by the target runtime.</param>
 /// <param name="HotReloadGeneration">The number of applied compiler delta generations.</param>
 /// <param name="HotReloadDiagnostic">The bounded Hot Reload policy diagnostic.</param>
 /// <param name="IsOptimized">Whether optimized JIT code is permitted, when known.</param>
@@ -24,6 +25,7 @@ internal sealed record McpDebugModuleInfo(
     string SymbolKind,
     string? SymbolPath,
     bool? IsHotReloadEnabled,
+    IReadOnlyList<string> HotReloadCapabilities,
     int HotReloadGeneration,
     string? HotReloadDiagnostic,
     bool? IsOptimized,
@@ -50,6 +52,7 @@ internal sealed record McpDebugModuleInfo(
         },
         module.SymbolPath,
         module.IsHotReloadEnabled,
+        module.HotReloadCapabilities,
         module.HotReloadGeneration,
         module.HotReloadDiagnostic,
         module.IsOptimized,

@@ -73,6 +73,13 @@ internal sealed partial class DapSession
                         writer.WriteBoolean("isHotReloadEnabled", isHotReloadEnabled);
                     }
 
+                    writer.WriteStartArray("hotReloadCapabilities");
+                    foreach (string capability in module.HotReloadCapabilities)
+                    {
+                        writer.WriteStringValue(capability);
+                    }
+
+                    writer.WriteEndArray();
                     writer.WriteNumber("hotReloadGeneration", module.HotReloadGeneration);
 
                     if (module.IsUserCode is bool isUserCode)

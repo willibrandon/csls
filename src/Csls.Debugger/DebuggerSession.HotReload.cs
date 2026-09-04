@@ -19,6 +19,10 @@ public sealed partial class DebuggerSession
     {
         ObjectDisposedException.ThrowIf(_disposed != 0, this);
         ArgumentNullException.ThrowIfNull(request);
+        ArgumentNullException.ThrowIfNull(request.UpdatedTypes);
+        ArgumentNullException.ThrowIfNull(request.RequiredCapabilities);
+        ArgumentNullException.ThrowIfNull(request.UpdatedMethods);
+        ArgumentNullException.ThrowIfNull(request.ActiveStatements);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(request.ModuleId);
         ArgumentOutOfRangeException.ThrowIfNegative(request.ExpectedModuleGeneration);
         byte[] metadataDelta = request.MetadataDelta.ToArray();
@@ -43,13 +47,17 @@ public sealed partial class DebuggerSession
                 }
 
                 DebugStopGeneration nextStopGeneration = _stopGeneration.Next();
-                (int moduleGeneration, IReadOnlyList<uint> updatedMethods) =
+                (int moduleGeneration, IReadOnlyList<uint> updatedMethods,
+                    IReadOnlyList<uint> updatedTypes) =
                     await managedDebuggee.ApplyHotReloadAsync(
                         request.ModuleId,
                         request.ExpectedModuleGeneration,
                         metadataDelta,
                         ilDelta,
                         pdbDelta,
+                        request.UpdatedTypes,
+                        request.RequiredCapabilities,
+                        request.UpdatedMethods,
                         request.ActiveStatements,
                         token).ConfigureAwait(false);
                 _stopGeneration = nextStopGeneration;
@@ -57,7 +65,8 @@ public sealed partial class DebuggerSession
                     request.ModuleId,
                     moduleGeneration,
                     nextStopGeneration.Value,
-                    updatedMethods);
+                    updatedMethods,
+                    updatedTypes);
             },
             cancellationToken).ConfigureAwait(false);
         return result!;

@@ -16,16 +16,23 @@ internal sealed partial class CorDebugDebuggee
     /// <param name="metadataDelta">The immutable ECMA-335 metadata delta.</param>
     /// <param name="ilDelta">The immutable managed IL delta.</param>
     /// <param name="pdbDelta">The immutable minimal Portable PDB delta.</param>
+    /// <param name="updatedTypes">The compiler-produced aggregate type-definition tokens.</param>
+    /// <param name="requiredCapabilities">The compiler capability names required by this update.</param>
+    /// <param name="updatedMethods">The compiler-produced aggregate method-definition tokens.</param>
     /// <param name="activeStatements">The compiler-produced active-statement updates.</param>
     /// <param name="cancellationToken">Cancels validation before CoreCLR mutation begins.</param>
-    /// <returns>The committed module generation and aggregate updated method tokens.</returns>
-    internal async ValueTask<(int ModuleGeneration, IReadOnlyList<uint> UpdatedMethods)>
+    /// <returns>The committed module generation and validated aggregate token sets.</returns>
+    internal async ValueTask<(int ModuleGeneration, IReadOnlyList<uint> UpdatedMethods,
+        IReadOnlyList<uint> UpdatedTypes)>
         ApplyHotReloadAsync(
             int moduleId,
             int expectedModuleGeneration,
             byte[] metadataDelta,
             byte[] ilDelta,
             byte[] pdbDelta,
+            IReadOnlyList<int> updatedTypes,
+            IReadOnlyList<string> requiredCapabilities,
+            IReadOnlyList<int> updatedMethods,
             IReadOnlyList<DebugHotReloadActiveStatement> activeStatements,
             CancellationToken cancellationToken)
     {
@@ -53,6 +60,9 @@ internal sealed partial class CorDebugDebuggee
             metadataDelta,
             ilDelta,
             pdbDelta,
+            updatedTypes,
+            requiredCapabilities,
+            updatedMethods,
             activeStatements);
         cancellationToken.ThrowIfCancellationRequested();
         ApplyRuntimeDeltas(module, metadataDelta, ilDelta);
@@ -71,7 +81,7 @@ internal sealed partial class CorDebugDebuggee
         await _instructionBreakpoints.RebindHotReloadModuleAsync(
             module.Identity,
             CancellationToken.None).ConfigureAwait(false);
-        return (module.HotReloadGeneration, update.UpdatedMethods);
+        return (module.HotReloadGeneration, update.UpdatedMethods, update.UpdatedTypes);
     }
 
     private static unsafe void ApplyRuntimeDeltas(

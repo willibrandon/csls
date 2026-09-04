@@ -472,9 +472,13 @@ backslashes, NUL, standard controls, remaining control code points, and unpaired
 surrogates receive deterministic literal escapes; valid surrogate pairs remain readable.
 
 C# and Visual Basic Hot Reload use compiler-produced metadata, IL, and minimal
-Portable PDB deltas. The compiler rejects rude edits and supplies exact active
-statement mappings. The engine validates payload bounds, module identity,
-generation ordering, PDB continuity, updated method identity, and those mappings
+Portable PDB deltas. The compiler rejects rude edits and supplies its required
+runtime capabilities, changed type and method tokens, and exact active-statement
+mappings. The debugger reads the target product version through
+`ICorDebugProcess2`, exposes only the edit capabilities implemented by that
+CoreCLR generation, and rejects an unsupported generation before mutation. The
+engine also validates payload bounds, module identity, generation ordering, PDB
+continuity, changed type resolution, updated method identity, and active mappings
 before applying a generation. It overlays current document checksums, rebinds
 source, function, and managed-IL instruction breakpoints, advances module and stop
 generations, and uses `ICorDebugILFrame2.RemapFunction` only for an exact

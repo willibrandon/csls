@@ -36,6 +36,12 @@ internal sealed partial class CslsMcpDebuggerExecutionTools
         string ilDeltaBase64,
         [Description("Base64 compiler-produced minimal Portable PDB delta.")]
         string pdbDeltaBase64,
+        [Description("Compiler-produced aggregate type-definition tokens changed by this generation.")]
+        IReadOnlyList<int> updatedTypes,
+        [Description("Compiler capability names required by this generation; compare with the module's hotReloadCapabilities.")]
+        IReadOnlyList<string> requiredCapabilities,
+        [Description("Compiler-produced aggregate method-definition tokens changed by this generation.")]
+        IReadOnlyList<int> updatedMethods,
         [Description("Compiler-produced active old-instruction to updated source-span mappings; pass an empty array when no updated method is active.")]
         IReadOnlyList<McpDebugHotReloadActiveStatement> activeStatements,
         CancellationToken cancellationToken) =>
@@ -47,6 +53,9 @@ internal sealed partial class CslsMcpDebuggerExecutionTools
             metadataDeltaBase64,
             ilDeltaBase64,
             pdbDeltaBase64,
+            updatedTypes,
+            requiredCapabilities,
+            updatedMethods,
             activeStatements,
             cancellationToken));
 }

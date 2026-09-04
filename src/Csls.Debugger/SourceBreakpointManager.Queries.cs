@@ -64,6 +64,7 @@ internal sealed partial class SourceBreakpointManager
                 module.SymbolKind,
                 module.SymbolPath,
                 module.IsHotReloadEnabled,
+                module.HotReloadCapabilities,
                 module.HotReloadGeneration,
                 module.HotReloadDiagnostic,
                 module.IsOptimized,

@@ -111,6 +111,11 @@ public sealed partial class DapSessionTests
                 enableHotReload,
                 module.GetProperty("isHotReloadEnabled").GetBoolean(),
                 response.RootElement.ToString());
+            bool advertisesBaseline = module
+                .GetProperty("hotReloadCapabilities")
+                .EnumerateArray()
+                .Any(static capability => capability.GetString() == "Baseline");
+            Assert.AreEqual(enableHotReload, advertisesBaseline);
             Assert.AreEqual(0, module.GetProperty("hotReloadGeneration").GetInt32());
             Assert.AreEqual(
                 isSuppressed,

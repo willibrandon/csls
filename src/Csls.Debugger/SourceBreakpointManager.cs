@@ -18,6 +18,7 @@ internal sealed partial class SourceBreakpointManager : IDisposable
     private readonly Dictionary<(nint ModuleIdentity, uint MethodToken, int MethodVersion,
         uint OldIlOffset), uint> _hotReloadRemaps = [];
     private readonly DebugSymbolLocator _symbolLocator = new();
+    private IReadOnlyList<string> _hotReloadCapabilities = [];
     private int _nextBreakpointId;
     private int _nextModuleId;
     private bool _enableHotReload;
@@ -38,6 +39,22 @@ internal sealed partial class SourceBreakpointManager : IDisposable
         _notifyChanged = notifyChanged;
         _definitions = new Dictionary<string, List<SourceBreakpointDefinition>>(
             OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal);
+    }
+
+    /// <summary>
+    /// Sets the exact target-runtime capability set before modules are loaded.
+    /// </summary>
+    /// <param name="runtimeVersion">The CoreCLR product version, when available.</param>
+    internal void SetRuntimeVersion(Version? runtimeVersion)
+    {
+        ObjectDisposedException.ThrowIf(_disposed != 0, this);
+        if (_modules.Count != 0)
+        {
+            throw new InvalidOperationException(
+                "Debugger runtime capabilities cannot change after modules have loaded.");
+        }
+
+        _hotReloadCapabilities = HotReloadRuntimeCapabilities.Get(runtimeVersion);
     }
 
     /// <summary>
@@ -158,7 +175,10 @@ internal sealed partial class SourceBreakpointManager : IDisposable
             IsOptimized = isOptimized,
             OptimizationDiagnostic = optimizationDiagnostic,
             IsHotReloadEnabled = isHotReloadEnabled,
-            HotReloadDiagnostic = hotReloadDiagnostic
+            HotReloadDiagnostic = hotReloadDiagnostic,
+            HotReloadCapabilities = isHotReloadEnabled == true
+                ? _hotReloadCapabilities
+                : []
         };
         if (!_modules.TryAdd(identity, loadedModule))
         {

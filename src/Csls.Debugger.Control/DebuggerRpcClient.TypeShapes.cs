@@ -81,4 +81,7 @@ namespace Csls.Debugger.Control;
 [GenerateShapeFor<IReadOnlyList<DebugStepTargetInfo>>]
 [GenerateShapeFor<IReadOnlyList<DebugThreadInfo>>]
 [GenerateShapeFor<IReadOnlyList<DebugVariableInfo>>]
+[GenerateShapeFor<IReadOnlyList<int>>]
+[GenerateShapeFor<IReadOnlyList<string>>]
+[GenerateShapeFor<IReadOnlyList<uint>>]
 public sealed partial class DebuggerRpcClient;

@@ -74,7 +74,9 @@ public sealed class DebuggerRpcHotReloadTests
             DebugHotReloadActiveStatement activeStatement,
             byte[] metadataDelta,
             byte[] ilDelta,
-            byte[] pdbDelta) = await HotReloadTestCompilation.EmitActiveMethodAsync(
+            byte[] pdbDelta,
+            int[] updatedTypes,
+            int[] updatedMethods) = await HotReloadTestCompilation.EmitActiveMethodAsync(
                 testDirectory,
                 cancellationToken).ConfigureAwait(false);
         DebuggerWorkerTestSession worker = await DebuggerWorkerTestSession
@@ -103,6 +105,8 @@ public sealed class DebuggerRpcHotReloadTests
             cancellationToken).ConfigureAwait(false)).Modules.Single(item =>
                 DebuggerTestPath.AreEquivalent(item.Path, programPath));
         Assert.IsTrue(module.IsHotReloadEnabled, module.HotReloadDiagnostic);
+        Assert.Contains("Baseline", module.HotReloadCapabilities);
+        Assert.Contains("AddFieldRva", module.HotReloadCapabilities);
         _ = await client.SetSourceBreakpointsAsync(
             new DebugSourceBreakpointSetRequest(sourcePath, []),
             cancellationToken).ConfigureAwait(false);
@@ -119,6 +123,9 @@ public sealed class DebuggerRpcHotReloadTests
                 metadataDelta,
                 ilDelta,
                 pdbDelta,
+                updatedTypes,
+                ["Baseline"],
+                updatedMethods,
                 [activeStatement]),
             cancellationToken).ConfigureAwait(false);
 
@@ -151,7 +158,9 @@ public sealed class DebuggerRpcHotReloadTests
             int updatedValueLine,
             byte[] metadataDelta,
             byte[] ilDelta,
-            byte[] pdbDelta) = await HotReloadTestCompilation.EmitAsync(
+            byte[] pdbDelta,
+            int[] updatedTypes,
+            int[] updatedMethods) = await HotReloadTestCompilation.EmitAsync(
                 testDirectory,
                 cancellationToken).ConfigureAwait(false);
         string continuePath = Path.Join(testDirectory, "continue.signal");
@@ -187,6 +196,8 @@ public sealed class DebuggerRpcHotReloadTests
         DebugModuleInfo module = modules.Modules.Single(item =>
             DebuggerTestPath.AreEquivalent(item.Path, programPath));
         Assert.IsTrue(module.IsHotReloadEnabled, module.HotReloadDiagnostic);
+        Assert.Contains("Baseline", module.HotReloadCapabilities);
+        Assert.Contains("AddFieldRva", module.HotReloadCapabilities);
         Assert.AreEqual(0, module.HotReloadGeneration);
 
         await File.WriteAllTextAsync(
@@ -202,12 +213,16 @@ public sealed class DebuggerRpcHotReloadTests
                 metadataDelta,
                 ilDelta,
                 pdbDelta,
+                updatedTypes,
+                ["Baseline"],
+                updatedMethods,
                 []),
             cancellationToken).ConfigureAwait(false);
         Assert.AreEqual(module.Id, applied.ModuleId);
         Assert.AreEqual(1, applied.ModuleGeneration);
         Assert.AreEqual(stopped.StopGeneration + 1, applied.StopGeneration);
         Assert.IsNotEmpty(applied.UpdatedMethods);
+        Assert.IsNotEmpty(applied.UpdatedTypes);
         DebugSessionSnapshot afterApply = await client.GetSessionAsync(cancellationToken)
             .ConfigureAwait(false);
         Assert.AreEqual(DebugSessionState.Stopped, afterApply.State);

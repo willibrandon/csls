@@ -9,6 +9,7 @@ namespace Csls.Debugger.Contracts;
 /// <param name="SymbolKind">The validated loaded symbol format.</param>
 /// <param name="SymbolPath">The associated Portable PDB path when available.</param>
 /// <param name="IsHotReloadEnabled">Whether CoreCLR accepted Edit and Continue policy.</param>
+/// <param name="HotReloadCapabilities">The exact compiler capability names supported by the target runtime.</param>
 /// <param name="HotReloadGeneration">The number of compiler delta generations applied to the module.</param>
 /// <param name="HotReloadDiagnostic">The bounded Hot Reload policy diagnostic when one exists.</param>
 /// <param name="IsOptimized">Whether the runtime permits optimized JIT code, when known.</param>
@@ -22,6 +23,7 @@ public sealed record DebugModuleInfo(
     DebugModuleSymbolKind SymbolKind,
     string? SymbolPath,
     bool? IsHotReloadEnabled,
+    IReadOnlyList<string> HotReloadCapabilities,
     int HotReloadGeneration,
     string? HotReloadDiagnostic,
     bool? IsOptimized,

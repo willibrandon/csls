@@ -49,6 +49,7 @@ namespace Csls.Mcp.Worker;
 [JsonSerializable(typeof(IReadOnlyList<McpDebugInstructionBreakpoint>))]
 [JsonSerializable(typeof(IReadOnlyList<McpDebugExceptionBreakpoint>))]
 [JsonSerializable(typeof(IReadOnlyList<McpDebugSessionInfo>))]
+[JsonSerializable(typeof(IReadOnlyList<int>))]
 [JsonSerializable(typeof(IReadOnlyList<string>))]
 [JsonSerializable(typeof(IReadOnlyDictionary<string, string?>))]
 [JsonSerializable(typeof(CallToolResult))]

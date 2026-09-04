@@ -115,6 +115,9 @@ public sealed partial class McpDebuggerLifecycleTests
             ["metadataDeltaBase64"] = delta,
             ["ilDeltaBase64"] = delta,
             ["pdbDeltaBase64"] = delta,
+            ["updatedTypes"] = Array.Empty<int>(),
+            ["requiredCapabilities"] = Array.Empty<string>(),
+            ["updatedMethods"] = Array.Empty<int>(),
             ["activeStatements"] = Array.Empty<object>()
         };
 }
