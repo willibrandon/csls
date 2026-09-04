@@ -28,14 +28,18 @@ source pane follows the selected managed frame; the stack pane shows managed
 callers; and the variables pane reads arguments and lexically active locals from
 the current stop generation. A bounded auxiliary pane cycles through retained target
 output, managed modules with symbol policy, authoritative breakpoints, and the current
-managed exception.
+managed exception. Watches evaluate without target-code execution in the selected frame.
+F1 opens a searchable command palette for watch, execution, restart, terminate, and
+detach operations.
 
 The execution keys are:
 
 | Key | Operation |
 | --- | --- |
-| F2 | Cycle output, modules, breakpoints, and exception views |
+| F1 | Open the debugger command palette |
+| F2 | Cycle output, modules, breakpoints, watches, and exception views |
 | F5 | Continue |
+| Shift+F5 | Terminate the target |
 | F6 | Pause |
 | F9 | Toggle a source breakpoint at the source cursor |
 | F10 | Step over |

@@ -136,12 +136,31 @@ public sealed class DebuggerTerminalTests
                     await automator.KeyAsync(
                         Hex1bKey.F2,
                         TestContext.CancellationToken).ConfigureAwait(false);
+                    await automator.WaitUntilTextAsync("No watches configured.")
+                        .ConfigureAwait(false);
+                    await automator.KeyAsync(
+                        Hex1bKey.F2,
+                        TestContext.CancellationToken).ConfigureAwait(false);
                     await automator.WaitUntilTextAsync("No current managed exception.")
                         .ConfigureAwait(false);
                     await automator.KeyAsync(
                         Hex1bKey.F2,
                         TestContext.CancellationToken).ConfigureAwait(false);
                     await automator.WaitUntilTextAsync("Target Output").ConfigureAwait(false);
+                    await automator.KeyAsync(
+                        Hex1bKey.F1,
+                        TestContext.CancellationToken).ConfigureAwait(false);
+                    await automator.WaitUntilTextAsync("Debugger commands").ConfigureAwait(false);
+                    await automator.TypeAsync(
+                        "add watch",
+                        TestContext.CancellationToken).ConfigureAwait(false);
+                    await automator.EnterAsync(TestContext.CancellationToken).ConfigureAwait(false);
+                    await automator.WaitUntilTextAsync("Watch expression").ConfigureAwait(false);
+                    await automator.TypeAsync(
+                        "number",
+                        TestContext.CancellationToken).ConfigureAwait(false);
+                    await automator.EnterAsync(TestContext.CancellationToken).ConfigureAwait(false);
+                    await automator.WaitUntilTextAsync("number = 42").ConfigureAwait(false);
                     await automator.KeyAsync(
                         Hex1bKey.F9,
                         TestContext.CancellationToken).ConfigureAwait(false);
@@ -159,8 +178,19 @@ public sealed class DebuggerTerminalTests
                     await automator.KeyAsync(
                         Hex1bKey.F6,
                         TestContext.CancellationToken).ConfigureAwait(false);
+                    await automator.WaitUntilTextAsync("number = 42").ConfigureAwait(false);
+                    await automator.KeyAsync(
+                        Hex1bKey.F2,
+                        TestContext.CancellationToken).ConfigureAwait(false);
+                    await automator.KeyAsync(
+                        Hex1bKey.F2,
+                        TestContext.CancellationToken).ConfigureAwait(false);
                     await automator.WaitUntilTextAsync("out> ready").ConfigureAwait(false);
                     await automator.WaitUntilTextAsync("localNumber = 43").ConfigureAwait(false);
+                    await automator.Shift().KeyAsync(
+                        Hex1bKey.F5,
+                        TestContext.CancellationToken).ConfigureAwait(false);
+                    await automator.WaitUntilTextAsync("Terminated target.").ConfigureAwait(false);
                     await automator.Ctrl().KeyAsync(
                         Hex1bKey.C,
                         TestContext.CancellationToken).ConfigureAwait(false);

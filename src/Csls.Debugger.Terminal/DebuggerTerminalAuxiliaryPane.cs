@@ -21,6 +21,11 @@ internal enum DebuggerTerminalAuxiliaryPane
     Breakpoints,
 
     /// <summary>
+    /// Shows side-effect-free expressions evaluated in the selected frame.
+    /// </summary>
+    Watches,
+
+    /// <summary>
     /// Shows the managed exception responsible for the current stop.
     /// </summary>
     Exception

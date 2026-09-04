@@ -10,11 +10,15 @@ namespace Csls.Debugger.Terminal;
 internal sealed class DebuggerTerminalAuxiliaryState
 {
     private const int MaximumItems = 200;
+    private const int MaximumExpressionLength = 4096;
+    private const int MaximumWatchCount = 64;
     private readonly DebuggerRpcClient _client;
+    private readonly List<string> _watchExpressions = [];
     private IReadOnlyList<string> _breakpointLines = ["No breakpoints configured."];
     private IReadOnlyList<string> _exceptionLines = ["No current managed exception."];
     private IReadOnlyList<string> _moduleLines = ["No managed modules loaded."];
     private IReadOnlyList<string> _outputLines = ["No target output."];
+    private IReadOnlyList<string> _watchLines = ["No watches configured."];
 
     /// <summary>
     /// Creates auxiliary state backed by the private debugger RPC client.
@@ -55,6 +59,7 @@ internal sealed class DebuggerTerminalAuxiliaryState
         DebuggerTerminalAuxiliaryPane.Output => "Target Output",
         DebuggerTerminalAuxiliaryPane.Modules => "Modules",
         DebuggerTerminalAuxiliaryPane.Breakpoints => "Breakpoints",
+        DebuggerTerminalAuxiliaryPane.Watches => "Watches",
         DebuggerTerminalAuxiliaryPane.Exception => "Exception",
         _ => throw new InvalidOperationException($"Unknown auxiliary pane {Pane}.")
     };
@@ -67,6 +72,7 @@ internal sealed class DebuggerTerminalAuxiliaryState
         DebuggerTerminalAuxiliaryPane.Output => _outputLines,
         DebuggerTerminalAuxiliaryPane.Modules => _moduleLines,
         DebuggerTerminalAuxiliaryPane.Breakpoints => _breakpointLines,
+        DebuggerTerminalAuxiliaryPane.Watches => _watchLines,
         DebuggerTerminalAuxiliaryPane.Exception => _exceptionLines,
         _ => throw new InvalidOperationException($"Unknown auxiliary pane {Pane}.")
     };
@@ -168,6 +174,85 @@ internal sealed class DebuggerTerminalAuxiliaryState
     }
 
     /// <summary>
+    /// Adds one unique bounded watch and evaluates the complete set in the selected frame.
+    /// </summary>
+    /// <param name="frameId">The generation-bound selected managed frame.</param>
+    /// <param name="expression">The side-effect-free expression to add.</param>
+    /// <param name="cancellationToken">Cancels evaluation.</param>
+    internal async Task AddWatchAsync(
+        int frameId,
+        string expression,
+        CancellationToken cancellationToken)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(frameId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(expression);
+        string normalized = expression.Trim();
+        if (normalized.Length > MaximumExpressionLength)
+        {
+            throw new ArgumentException(
+                $"Watch expressions cannot exceed {MaximumExpressionLength} characters.",
+                nameof(expression));
+        }
+
+        if (!_watchExpressions.Contains(normalized, StringComparer.Ordinal))
+        {
+            if (_watchExpressions.Count == MaximumWatchCount)
+            {
+                throw new InvalidOperationException(
+                    $"The terminal supports at most {MaximumWatchCount} watches.");
+            }
+
+            _watchExpressions.Add(normalized);
+        }
+
+        Pane = DebuggerTerminalAuxiliaryPane.Watches;
+        await LoadWatchesAsync(frameId, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Removes every configured watch expression.
+    /// </summary>
+    internal void ClearWatches()
+    {
+        _watchExpressions.Clear();
+        _watchLines = ["No watches configured."];
+        Pane = DebuggerTerminalAuxiliaryPane.Watches;
+    }
+
+    /// <summary>
+    /// Evaluates every watch independently in the selected stopped frame.
+    /// </summary>
+    /// <param name="frameId">The generation-bound selected managed frame.</param>
+    /// <param name="cancellationToken">Cancels evaluation.</param>
+    internal async Task LoadWatchesAsync(int frameId, CancellationToken cancellationToken)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(frameId);
+        if (_watchExpressions.Count == 0)
+        {
+            _watchLines = ["No watches configured."];
+            return;
+        }
+
+        var lines = new List<string>(_watchExpressions.Count);
+        foreach (string expression in _watchExpressions)
+        {
+            try
+            {
+                DebugEvaluateResult result = await _client.EvaluateAsync(
+                    new DebugEvaluateRequest(frameId, expression),
+                    cancellationToken).ConfigureAwait(false);
+                lines.Add($"{expression} = {result.Result}  {result.Type}");
+            }
+            catch (StreamJsonRpc.RemoteInvocationException exception)
+            {
+                lines.Add($"! {expression}: {exception.Message}");
+            }
+        }
+
+        _watchLines = lines;
+    }
+
+    /// <summary>
     /// Advances to the next auxiliary debugger pane.
     /// </summary>
     internal void Cycle()
@@ -176,7 +261,8 @@ internal sealed class DebuggerTerminalAuxiliaryState
         {
             DebuggerTerminalAuxiliaryPane.Output => DebuggerTerminalAuxiliaryPane.Modules,
             DebuggerTerminalAuxiliaryPane.Modules => DebuggerTerminalAuxiliaryPane.Breakpoints,
-            DebuggerTerminalAuxiliaryPane.Breakpoints => DebuggerTerminalAuxiliaryPane.Exception,
+            DebuggerTerminalAuxiliaryPane.Breakpoints => DebuggerTerminalAuxiliaryPane.Watches,
+            DebuggerTerminalAuxiliaryPane.Watches => DebuggerTerminalAuxiliaryPane.Exception,
             DebuggerTerminalAuxiliaryPane.Exception => DebuggerTerminalAuxiliaryPane.Output,
             _ => throw new InvalidOperationException($"Unknown auxiliary pane {Pane}.")
         };
@@ -189,6 +275,9 @@ internal sealed class DebuggerTerminalAuxiliaryState
     {
         _exceptionLines = ["No current managed exception."];
         ExceptionSummary = null;
+        _watchLines = _watchExpressions.Count == 0
+            ? ["No watches configured."]
+            : ["Target is running."];
     }
 
     private static string FormatModule(DebugModuleInfo module) => string.Create(

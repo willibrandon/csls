@@ -23,12 +23,16 @@ csls debugger tui launch /absolute/path/to/App.dll \
 are passed directly to the target. The terminal opens after the initial source
 breakpoint stops and shows source, managed threads and stack, arguments, and active
 locals. Its bounded auxiliary pane cycles through retained target output, managed
-modules with symbol policy, authoritative breakpoints, and the current exception.
+modules with symbol policy, authoritative breakpoints, side-effect-free watches, and
+the current exception. F1 opens a searchable command palette for watch, execution,
+restart, terminate, and detach operations.
 
 | Key | Operation |
 | --- | --- |
-| F2 | Cycle output, modules, breakpoints, and exception views |
+| F1 | Open the debugger command palette |
+| F2 | Cycle output, modules, breakpoints, watches, and exception views |
 | F5 | Continue |
+| Shift+F5 | Terminate the target |
 | F6 | Pause |
 | F9 | Toggle a source breakpoint at the source cursor |
 | F10 | Step over |

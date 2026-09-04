@@ -284,6 +284,7 @@ internal sealed partial class DebuggerTerminalState
         await LoadSourceAsync(frame, cancellationToken).ConfigureAwait(false);
         VariableLines = await LoadVariablesAsync(frame.Id, cancellationToken)
             .ConfigureAwait(false);
+        await _auxiliary.LoadWatchesAsync(frame.Id, cancellationToken).ConfigureAwait(false);
     }
 
     private async Task<IReadOnlyList<string>> LoadVariablesAsync(
