@@ -514,7 +514,7 @@ internal sealed class ManagedObjectExpander
                 frameId,
                 ManagedValueView.Default);
             return new DebugVariableInfo(
-                name,
+                display.Name ?? name,
                 display.Value,
                 display.Type,
                 references.VariablesReference,

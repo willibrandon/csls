@@ -14,7 +14,10 @@ internal sealed partial class CorDebugDebuggee
     private const int MaximumRuntimeTypeDepth = 64;
     private const int MaximumRuntimeTypeArgumentCount = 256;
 
-    private ManagedValueDisplay FormatRuntimeValue(nint value)
+    private ManagedValueDisplay FormatRuntimeValue(nint value) =>
+        FormatRuntimeValue(value, debuggerDisplayDepth: 0);
+
+    private ManagedValueDisplay FormatRuntimeValue(nint value, int debuggerDisplayDepth)
     {
         nint inspectedValue = 0;
         nint value2 = 0;
@@ -37,6 +40,18 @@ internal sealed partial class CorDebugDebuggee
             }
 
             string type = FormatRuntimeType(exactType, depth: 0, out uint elementType);
+            if (elementType is 0x11 or 0x12 &&
+                hasInspectedValue &&
+                _debuggerDisplayFormatter.TryFormat(
+                    inspectedValue,
+                    exactType,
+                    type,
+                    debuggerDisplayDepth,
+                    out ManagedValueDisplay debuggerDisplay))
+            {
+                return debuggerDisplay;
+            }
+
             if (elementType == 0x11 &&
                 hasInspectedValue &&
                 TryFormatEnumValue(inspectedValue, exactType, out string enumDisplay))

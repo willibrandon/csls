@@ -7,13 +7,15 @@ namespace Csls.Debugger;
 /// </summary>
 internal sealed partial class CorDebugDebuggee :
     IDebuggeeProcess,
-    IManagedObjectExpansionServices
+    IManagedObjectExpansionServices,
+    IManagedDebuggerDisplayServices
 {
     private readonly DebuggerSessionActor _actor;
     private readonly SourceBreakpointManager _sourceBreakpoints;
     private readonly FunctionBreakpointManager _functionBreakpoints;
     private readonly InstructionBreakpointManager _instructionBreakpoints;
     private readonly ManagedObjectExpander _objectExpander;
+    private readonly ManagedDebuggerDisplayFormatter _debuggerDisplayFormatter;
     private readonly CorDebugManagedCallback _managedCallback;
     private readonly CorDebugRuntimeStartupRegistration _registration;
     private readonly DbgShimStandardStreams? _standardStreams;
@@ -79,6 +81,7 @@ internal sealed partial class CorDebugDebuggee :
         _functionBreakpoints = functionBreakpoints;
         _instructionBreakpoints = instructionBreakpoints;
         _objectExpander = new ManagedObjectExpander(this);
+        _debuggerDisplayFormatter = new ManagedDebuggerDisplayFormatter(this);
         _managedCallback = managedCallback;
         _registration = registration;
         _standardStreams = standardStreams;

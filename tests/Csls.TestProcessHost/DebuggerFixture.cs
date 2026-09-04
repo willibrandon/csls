@@ -27,6 +27,9 @@ internal static class DebuggerFixture
         var localObject = new DebuggerFixtureValue(number, localText, path + ".evaluation");
         var localList = new DebuggerFixtureList(number);
         var localBrowsable = new DebuggerBrowsableFixture();
+        var localDisplay = new DebuggerDisplayFixture();
+        var localDisplays = new DebuggerDisplayContainerFixture();
+        DebuggerDisplayFixture[] localDisplayArray = [new()];
         int? localNullable = number + 3;
         int? localEmptyNullable = null;
         (int Number, string Text) localTuple = (number, text);
@@ -86,6 +89,9 @@ internal static class DebuggerFixture
         GC.KeepAlive(localObject);
         GC.KeepAlive(localList);
         GC.KeepAlive(localBrowsable);
+        GC.KeepAlive(localDisplay);
+        GC.KeepAlive(localDisplays);
+        GC.KeepAlive(localDisplayArray);
         GC.KeepAlive(localNullable);
         GC.KeepAlive(localEmptyNullable);
         GC.KeepAlive(localTuple);

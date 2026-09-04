@@ -30,6 +30,13 @@ internal sealed partial class CorDebugDebuggee
     ManagedValueDisplay IManagedObjectExpansionServices.FormatRuntimeValue(nint value) =>
         FormatRuntimeValue(value);
 
+    ManagedValueDisplay IManagedDebuggerDisplayServices.FormatRuntimeValue(
+        nint value,
+        int debuggerDisplayDepth) => FormatRuntimeValue(value, debuggerDisplayDepth);
+
+    PEReader IManagedDebuggerDisplayServices.OpenRuntimeModule(nint module) =>
+        OpenRuntimeModule(module);
+
     ManagedValueReferences IManagedObjectExpansionServices.RetainValue(
         nint value,
         DebugStopGeneration generation,

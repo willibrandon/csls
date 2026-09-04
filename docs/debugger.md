@@ -292,6 +292,18 @@ or cyclic root-hidden values remain visible. Objects affected by these transform
 a virtual Raw View containing every physical field with its source expression when
 one is available.
 
+Type- and assembly-level `DebuggerDisplayAttribute` metadata controls the displayed
+value, child name, and type. csls selects the most-derived applicable attribute, honors
+inherited attributes, and supports assembly targets expressed through `Target` or
+`TargetTypeName`. Embedded expressions may traverse bounded instance-field paths;
+escaped braces and the `nq` string format are supported. Child display names do not
+change `evaluateName`, and root locals and arguments retain their source names.
+
+Automatic debugger presentation never runs target code. A template that refers to a
+property, method, unknown field, malformed expression, or cyclic value falls back to
+the ordinary exact-type display. The value remains expandable through its physical
+runtime fields.
+
 DAP `setVariable` and `setExpression` assign named locals, arguments, instance fields,
 and managed array elements. Exact primitives, checked contextual integral literals,
 language-valid built-in numeric widening, explicit built-in primitive conversions,

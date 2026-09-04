@@ -1,23 +1,28 @@
+using System.Diagnostics;
+
 namespace Csls.Debugger.Fixtures.CSharp;
 
 /// <summary>
 /// Provides a stable C# receiver for debugger function-evaluation tests.
 /// </summary>
+[DebuggerDisplay("csharp={_number}", Type = "csharp-display")]
 internal sealed class DebuggerFixtureValue
 {
+    private readonly int _number;
+
     /// <summary>
     /// Initializes the C# debugger receiver.
     /// </summary>
     /// <param name="number">The value returned by the debugger-visible method.</param>
     internal DebuggerFixtureValue(int number)
     {
-        Number = number;
+        _number = number;
     }
 
     /// <summary>
     /// Gets the value returned by the debugger-visible method.
     /// </summary>
-    internal int Number { get; }
+    internal int Number => _number;
 
     /// <summary>
     /// Computes a stable result by executing target code.

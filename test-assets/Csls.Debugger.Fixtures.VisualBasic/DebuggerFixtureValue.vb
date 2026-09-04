@@ -1,20 +1,29 @@
+Imports System.Diagnostics
+
 Namespace Global.Csls.Debugger.Fixtures.VisualBasic
     ''' <summary>
     ''' Provides a stable Visual Basic receiver for debugger function-evaluation tests.
     ''' </summary>
+    <DebuggerDisplay("visual-basic={Me._number}", Type:="visual-basic-display")>
     Friend NotInheritable Class DebuggerFixtureValue
+        Private ReadOnly _number As Integer
+
         ''' <summary>
         ''' Initializes the Visual Basic debugger receiver.
         ''' </summary>
         ''' <param name="number">The value returned by the debugger-visible method.</param>
         Friend Sub New(number As Integer)
-            Me.Number = number
+            _number = number
         End Sub
 
         ''' <summary>
         ''' Gets the value returned by the debugger-visible method.
         ''' </summary>
         Friend ReadOnly Property Number As Integer
+            Get
+                Return _number
+            End Get
+        End Property
 
         ''' <summary>
         ''' Computes a stable result by executing target code.

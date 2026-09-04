@@ -58,7 +58,7 @@ internal sealed partial class CorDebugDebuggee
                     evaluateName,
                     frameId);
                 result.Add(new DebugVariableInfo(
-                    name,
+                    display.Name ?? name,
                     display.Value,
                     display.Type,
                     references.VariablesReference,

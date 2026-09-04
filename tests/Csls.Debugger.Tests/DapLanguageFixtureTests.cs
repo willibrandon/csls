@@ -189,6 +189,32 @@ public sealed partial class DapSessionTests
                 "long",
                 convertedEvaluation.GetProperty("type").GetString(),
                 $"Unexpected {project} {configuration} conversion type.");
+            JsonElement displayedValue = await ReadEvaluationAsync(
+                client,
+                frameId,
+                "value",
+                success: true,
+                TestContext.CancellationToken).ConfigureAwait(false);
+            string expectedDisplay = sourceExtension switch
+            {
+                "cs" => "csharp=41",
+                "vb" => "visual-basic=41",
+                _ => "fsharp=41"
+            };
+            string expectedDisplayType = sourceExtension switch
+            {
+                "cs" => "csharp-display",
+                "vb" => "visual-basic-display",
+                _ => "fsharp-display"
+            };
+            Assert.AreEqual(
+                expectedDisplay,
+                displayedValue.GetProperty("result").GetString(),
+                $"Unexpected {project} {configuration} debugger display value.");
+            Assert.AreEqual(
+                expectedDisplayType,
+                displayedValue.GetProperty("type").GetString(),
+                $"Unexpected {project} {configuration} debugger display type.");
             JsonElement[] rootCompletions = await ReadCompletionsAsync(
                 client,
                 frameId,
@@ -298,12 +324,18 @@ public sealed partial class DapSessionTests
                     constructionExpression,
                     success: true,
                     TestContext.CancellationToken).ConfigureAwait(false);
+                string expectedConstructedDisplay = sourceExtension switch
+                {
+                    "cs" => "csharp=7",
+                    "vb" => "visual-basic=7",
+                    _ => "fsharp=7"
+                };
                 Assert.AreEqual(
-                    $"{{{constructedType}}}",
+                    expectedConstructedDisplay,
                     constructed.GetProperty("result").GetString(),
                     $"Unexpected {project} constructed value.");
                 Assert.AreEqual(
-                    constructedType,
+                    expectedDisplayType,
                     constructed.GetProperty("type").GetString(),
                     $"Unexpected {project} constructed type.");
                 Assert.IsGreaterThan(
