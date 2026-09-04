@@ -243,17 +243,19 @@ internal static class HotReloadDeltaValidator
                 $"{MaximumUpdatedTokenCount} updated metadata tokens.");
         }
 
-        var seen = new HashSet<uint>();
-        foreach (int token in compilerTokens)
+        HashSet<uint> seen =
+        [
+            .. compilerTokens.Select(static token => unchecked((uint)token))
+        ];
+        if (seen.Count != compilerTokens.Count ||
+            compilerTokens.Any(token =>
+                (token & unchecked((int)0xff000000)) != expectedTokenKind ||
+                (token & 0x00ffffff) == 0))
         {
-            if ((token & unchecked((int)0xff000000)) != expectedTokenKind ||
-                (token & 0x00ffffff) == 0 || !seen.Add(checked((uint)token)))
-            {
-                throw new ArgumentException(
-                    "Hot Reload updated metadata tokens must be unique definitions " +
-                    "of the expected kind.",
-                    parameterName);
-            }
+            throw new ArgumentException(
+                "Hot Reload updated metadata tokens must be unique definitions " +
+                "of the expected kind.",
+                parameterName);
         }
 
         if (!seen.SetEquals(discoveredTokens))

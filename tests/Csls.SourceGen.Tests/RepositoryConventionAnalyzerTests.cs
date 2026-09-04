@@ -323,6 +323,69 @@ public sealed class RepositoryConventionAnalyzerTests
     }
 
     /// <summary>
+    /// Verifies a terminal validation branch inside a sequence loop is rejected for CodeQL parity.
+    /// </summary>
+    [TestMethod]
+    public async Task ReportsImplicitSequenceFilterInsideForEach()
+    {
+        const string Source = """
+            using System;
+            using System.Collections.Generic;
+
+            internal static class TokenValidator
+            {
+                internal static void Validate(IReadOnlyList<int> tokens)
+                {
+                    foreach (int token in tokens)
+                    {
+                        if (token < 0)
+                        {
+                            throw new ArgumentOutOfRangeException(nameof(tokens));
+                        }
+                    }
+                }
+            }
+            """;
+
+        ImmutableArray<Diagnostic> diagnostics = await AnalyzeAsync(
+            Source,
+            new CodeQlMissedWhereAnalyzer()).ConfigureAwait(false);
+
+        Diagnostic diagnostic = Assert.ContainsSingle(diagnostics);
+        Assert.AreEqual(CodeQlMissedWhereAnalyzer.DiagnosticId, diagnostic.Id);
+        Assert.Contains("token", diagnostic.GetMessage(CultureInfo.InvariantCulture));
+    }
+
+    /// <summary>
+    /// Verifies explicit sequence filtering satisfies the local CodeQL parity rule.
+    /// </summary>
+    [TestMethod]
+    public async Task AcceptsExplicitWhereBeforeForEach()
+    {
+        const string Source = """
+            using System.Collections.Generic;
+            using System.Linq;
+
+            internal static class TokenConsumer
+            {
+                internal static void Consume(IReadOnlyList<int> tokens)
+                {
+                    foreach (int token in tokens.Where(static value => value >= 0))
+                    {
+                        _ = token;
+                    }
+                }
+            }
+            """;
+
+        ImmutableArray<Diagnostic> diagnostics = await AnalyzeAsync(
+            Source,
+            new CodeQlMissedWhereAnalyzer()).ConfigureAwait(false);
+
+        Assert.IsEmpty(diagnostics);
+    }
+
+    /// <summary>
     /// Verifies disposable collections require an exception-safe using lifetime.
     /// </summary>
     [TestMethod]
