@@ -115,7 +115,11 @@ public sealed partial class DebuggerRpcTests
             cancellationToken).ConfigureAwait(false);
         DebugScopeInfo locals = scopes.Single(static scope => scope.Name == "Locals");
         IReadOnlyList<DebugVariableInfo> variables = await client.GetVariablesAsync(
-            new DebugVariablesRequest(locals.VariablesReference, 0, 0),
+            new DebugVariablesRequest(
+                locals.VariablesReference,
+                0,
+                0,
+                AllowTargetCodeExecution: false),
             cancellationToken).ConfigureAwait(false);
         DebugVariableInfo embeddedNumber = variables.Single(
             static variable => variable.Name == "embeddedNumber");

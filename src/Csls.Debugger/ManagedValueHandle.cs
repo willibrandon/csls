@@ -23,6 +23,11 @@ internal sealed class ManagedValueHandle
     internal int? FrameId { get; init; }
 
     /// <summary>
+    /// Gets or initializes the managed thread suitable for target-code presentation.
+    /// </summary>
+    internal int? ThreadId { get; init; }
+
+    /// <summary>
     /// Gets or initializes the owned ICorDebugValue pointer.
     /// </summary>
     internal required nint Pointer { get; init; }
@@ -36,6 +41,11 @@ internal sealed class ManagedValueHandle
     /// Gets or initializes the presentation view used to expand the value.
     /// </summary>
     internal ManagedValueView View { get; init; }
+
+    /// <summary>
+    /// Gets or sets the retained original object exposed by a successful proxy expansion.
+    /// </summary>
+    internal int ProxyRawValueReference { get; set; }
 
     /// <summary>
     /// Gets or initializes the opaque stopped-state memory handle.

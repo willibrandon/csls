@@ -173,16 +173,20 @@ public sealed partial class DebuggerSession
     /// <param name="variablesReference">The generation-bound variable-container handle.</param>
     /// <param name="start">The zero-based first variable to return.</param>
     /// <param name="count">The maximum count, or zero for all remaining values.</param>
+    /// <param name="allowTargetCodeExecution">Whether debugger proxy construction is authorized.</param>
     /// <param name="cancellationToken">Cancels queueing variable enumeration.</param>
     /// <returns>The requested immediate variable page.</returns>
     public async Task<IReadOnlyList<DebugVariableInfo>> GetVariablesAsync(
         int variablesReference,
         int start,
         int count,
+        bool allowTargetCodeExecution,
         CancellationToken cancellationToken)
     {
         ObjectDisposedException.ThrowIf(_disposed != 0, this);
         IReadOnlyList<DebugVariableInfo>? result = null;
+        Task<ManagedFunctionEvaluationResult>? proxyEvaluation = null;
+        CorDebugDebuggee? evaluationDebuggee = null;
         await _actor.InvokeAsync(
             token =>
             {
@@ -194,9 +198,50 @@ public sealed partial class DebuggerSession
                         $"Managed variables are unavailable while the debugger session is {_state}.");
                 }
 
+                if (allowTargetCodeExecution &&
+                    managedDebuggee.TryBeginDebuggerTypeProxyEvaluation(
+                        variablesReference,
+                        _stopGeneration,
+                        out proxyEvaluation))
+                {
+                    evaluationDebuggee = managedDebuggee;
+                    _state = DebugSessionState.Running;
+                }
+                else
+                {
+                    result = managedDebuggee.GetVariables(
+                        variablesReference,
+                        _stopGeneration,
+                        start,
+                        count);
+                }
+
+                return ValueTask.CompletedTask;
+            },
+            cancellationToken).ConfigureAwait(false);
+        if (proxyEvaluation is null)
+        {
+            return result!;
+        }
+
+        ManagedFunctionEvaluationResult proxy = await WaitForFunctionEvaluationAsync(
+            evaluationDebuggee!,
+            proxyEvaluation,
+            cancellationToken).ConfigureAwait(false);
+        await _actor.InvokeAsync(
+            token =>
+            {
+                _ = token;
+                CorDebugDebuggee managedDebuggee = GetStoppedManagedDebuggee();
+                if (proxy.Generation != _stopGeneration)
+                {
+                    throw new InvalidOperationException(
+                        "The debugger type proxy belongs to a retired stop generation.");
+                }
+
                 result = managedDebuggee.GetVariables(
-                    variablesReference,
-                    _stopGeneration,
+                    proxy.RuntimeValueReference,
+                    proxy.Generation,
                     start,
                     count);
                 return ValueTask.CompletedTask;

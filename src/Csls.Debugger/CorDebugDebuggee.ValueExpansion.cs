@@ -50,6 +50,24 @@ internal sealed partial class CorDebugDebuggee
                 }
             }
 
+            ManagedDebuggerTypeProxyRawView? proxyRawView = null;
+            if (handle.ProxyRawValueReference > 0)
+            {
+                if (!_values.TryGetValue(
+                    handle.ProxyRawValueReference,
+                    out ManagedValueHandle? rawHandle))
+                {
+                    throw new InvalidOperationException(
+                        "The debugger type proxy no longer owns its original value.");
+                }
+
+                ValidateGeneration(rawHandle.Id, rawHandle.Generation, generation);
+                proxyRawView = new ManagedDebuggerTypeProxyRawView(
+                    rawHandle.Pointer,
+                    rawHandle.Id,
+                    rawHandle.MemoryReference);
+            }
+
             return ExpandObject(
                 value,
                 handle.EvaluateName,
@@ -58,7 +76,8 @@ internal sealed partial class CorDebugDebuggee
                 start,
                 count,
                 handle.View,
-                handle.TupleCustomTypeInfo);
+                handle.TupleCustomTypeInfo,
+                proxyRawView);
         }
         finally
         {

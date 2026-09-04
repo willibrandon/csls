@@ -31,6 +31,20 @@ internal static class DebuggerFixture
         var localBrowsable = new DebuggerBrowsableFixture();
         var localDisplay = new DebuggerDisplayFixture();
         var localDisplays = new DebuggerDisplayContainerFixture();
+        var localProxy = new DebuggerTypeProxyFixture();
+        var localGenericProxy = new GenericDebuggerTypeProxyFixture<int>(49);
+        var localInheritedProxy = new InheritedDebuggerTypeProxyFixture();
+        var localAssemblyProxy = new AssemblyDebuggerTypeProxyFixture();
+        var localAssemblyProxyProjection = new AssemblyDebuggerTypeProxyFixtureProxy(
+            localAssemblyProxy);
+        var localAssemblyNamedProxy = new AssemblyNamedDebuggerTypeProxyFixture();
+        var localAssemblyNamedProxyProjection =
+            new AssemblyNamedDebuggerTypeProxyFixtureProxy(localAssemblyNamedProxy);
+        var localArityMismatchProxy = new ArityMismatchDebuggerTypeProxyFixture<int>(51);
+        var localArityMismatchProxyProjection =
+            new ArityMismatchDebuggerTypeProxyFixtureProxy<int, string>(
+                localArityMismatchProxy);
+        var localThrowingProxy = new ThrowingDebuggerTypeProxyFixture();
         DebuggerDisplayFixture[] localDisplayArray = [new()];
         int? localNullable = number + 3;
         int? localEmptyNullable = null;
@@ -110,6 +124,16 @@ internal static class DebuggerFixture
         GC.KeepAlive(localBrowsable);
         GC.KeepAlive(localDisplay);
         GC.KeepAlive(localDisplays);
+        GC.KeepAlive(localProxy);
+        GC.KeepAlive(localGenericProxy);
+        GC.KeepAlive(localInheritedProxy);
+        GC.KeepAlive(localAssemblyProxy);
+        GC.KeepAlive(localAssemblyProxyProjection);
+        GC.KeepAlive(localAssemblyNamedProxy);
+        GC.KeepAlive(localAssemblyNamedProxyProjection);
+        GC.KeepAlive(localArityMismatchProxy);
+        GC.KeepAlive(localArityMismatchProxyProjection);
+        GC.KeepAlive(localThrowingProxy);
         GC.KeepAlive(localDisplayArray);
         GC.KeepAlive(localNullable);
         GC.KeepAlive(localEmptyNullable);

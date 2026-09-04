@@ -89,6 +89,11 @@ public sealed partial class McpDebuggerLifecycleTests
             secondStopped.GetProperty("debugSession").GetString()!,
             durationSeconds: 60,
             cancellationToken).ConfigureAwait(false);
+        secondStopped = await AssertAuthorizedDebuggerTypeProxyAsync(
+            mcp.Client,
+            secondStopped,
+            sourcePath,
+            cancellationToken).ConfigureAwait(false);
         secondStopped = await AssertAuthorizedExpressionExecutionAsync(
             mcp.Client,
             secondStopped,

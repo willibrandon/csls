@@ -126,14 +126,22 @@ public sealed partial class DebuggerRpcTests
         Assert.HasCount(2, scopes);
         DebugScopeInfo arguments = scopes.Single(static scope => scope.Name == "Arguments");
         IReadOnlyList<DebugVariableInfo> variables = await client.GetVariablesAsync(
-            new DebugVariablesRequest(arguments.VariablesReference, 0, 0),
+            new DebugVariablesRequest(
+                arguments.VariablesReference,
+                0,
+                0,
+                AllowTargetCodeExecution: false),
             cancellationToken).ConfigureAwait(false);
         DebugVariableInfo number = variables.Single(static variable => variable.Name == "number");
         Assert.AreEqual("42", number.Value);
         Assert.AreEqual("int", number.Type);
         DebugScopeInfo locals = scopes.Single(static scope => scope.Name == "Locals");
         IReadOnlyList<DebugVariableInfo> localVariables = await client.GetVariablesAsync(
-            new DebugVariablesRequest(locals.VariablesReference, 0, 0),
+            new DebugVariablesRequest(
+                locals.VariablesReference,
+                0,
+                0,
+                AllowTargetCodeExecution: false),
             cancellationToken).ConfigureAwait(false);
         DebugVariableInfo localNumber = localVariables.Single(
             static variable => variable.Name == "localNumber");

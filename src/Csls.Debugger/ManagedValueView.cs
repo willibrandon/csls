@@ -11,6 +11,11 @@ internal enum ManagedValueView
     Default,
 
     /// <summary>
+    /// Applies ordinary presentation metadata while suppressing another proxy construction.
+    /// </summary>
+    ProxyBypassed,
+
+    /// <summary>
     /// Exposes the target's physical runtime fields without presentation metadata.
     /// </summary>
     Raw

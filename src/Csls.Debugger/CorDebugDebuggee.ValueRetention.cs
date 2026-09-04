@@ -26,6 +26,7 @@ internal sealed partial class CorDebugDebuggee
             generation,
             evaluateName,
             frameId,
+            GetValueThreadId(frameId),
             view,
             tupleCustomTypeInfo);
         return new ManagedValueReferences(handle.Id, handle.MemoryReference);
@@ -33,8 +34,10 @@ internal sealed partial class CorDebugDebuggee
 
     private (int RuntimeValueReference, ManagedValueReferences References)
         RetainFunctionEvaluationValue(
-            nint value,
-            DebugStopGeneration generation)
+        nint value,
+        DebugStopGeneration generation,
+        int threadId,
+        ManagedValueView view = ManagedValueView.Default)
     {
         bool expandable = IsExpandable(value);
         ManagedValueHandle handle = RetainRuntimeValue(
@@ -42,7 +45,8 @@ internal sealed partial class CorDebugDebuggee
             generation,
             evaluateName: null,
             frameId: null,
-            ManagedValueView.Default,
+            threadId,
+            view,
             tupleCustomTypeInfo: null);
         return (
             handle.Id,
@@ -56,6 +60,7 @@ internal sealed partial class CorDebugDebuggee
         DebugStopGeneration generation,
         string? evaluateName,
         int? frameId,
+        int? threadId,
         ManagedValueView view,
         ManagedTupleCustomTypeInfo? tupleCustomTypeInfo)
     {
@@ -100,6 +105,7 @@ internal sealed partial class CorDebugDebuggee
             Id = id,
             Generation = generation,
             FrameId = frameId,
+            ThreadId = threadId,
             Pointer = value,
             Identity = identity,
             View = view,
@@ -117,6 +123,10 @@ internal sealed partial class CorDebugDebuggee
 
         return handle;
     }
+
+    private int? GetValueThreadId(int? frameId) => frameId is int id
+        ? _frames.Values.FirstOrDefault(frame => frame.Id == id)?.ThreadId
+        : null;
 
     private static unsafe ulong TryGetArrayAddress(nint value)
     {

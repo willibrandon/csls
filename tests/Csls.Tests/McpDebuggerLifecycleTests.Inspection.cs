@@ -79,6 +79,21 @@ public sealed partial class McpDebuggerLifecycleTests
         Assert.AreEqual(
             "localNumber",
             localNumber.GetProperty("evaluateName").GetString());
+        JsonElement localProxy = variables.GetProperty("variables").EnumerateArray().Single(
+            item => item.GetProperty("name").GetString() == "localProxy");
+        await AssertToolErrorAsync(
+            client,
+            "debug_variables_get_presented",
+            new Dictionary<string, object?>
+            {
+                ["debugSession"] = debugSession,
+                ["stopGeneration"] = generation,
+                ["variablesReference"] = localProxy
+                    .GetProperty("variablesReference")
+                    .GetInt32()
+            },
+            "debugger_control_denied",
+            cancellationToken).ConfigureAwait(false);
         JsonElement evaluation = await CallAsync(
             client,
             "debug_evaluate",

@@ -16,7 +16,8 @@ internal sealed partial class CorDebugDebuggee
         int start,
         int count,
         ManagedValueView view,
-        ManagedTupleCustomTypeInfo? tupleCustomTypeInfo) => _objectExpander.Expand(
+        ManagedTupleCustomTypeInfo? tupleCustomTypeInfo,
+        ManagedDebuggerTypeProxyRawView? proxyRawView) => _objectExpander.Expand(
             value,
             parentEvaluateName,
             frameId,
@@ -24,7 +25,8 @@ internal sealed partial class CorDebugDebuggee
             start,
             count,
             view,
-            tupleCustomTypeInfo);
+            tupleCustomTypeInfo,
+            proxyRawView);
 
     PEReader IManagedObjectExpansionServices.OpenRuntimeModule(nint module) =>
         OpenRuntimeModule(module);

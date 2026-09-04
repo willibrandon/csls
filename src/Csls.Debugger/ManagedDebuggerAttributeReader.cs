@@ -11,6 +11,8 @@ internal static class ManagedDebuggerAttributeReader
         "System.Diagnostics.DebuggerBrowsableAttribute";
     private const string DebuggerDisplayAttribute =
         "System.Diagnostics.DebuggerDisplayAttribute";
+    private const string DebuggerTypeProxyAttribute =
+        "System.Diagnostics.DebuggerTypeProxyAttribute";
 
     /// <summary>
     /// Gets the validated debugger browsing policy for one managed field.
@@ -112,6 +114,51 @@ internal static class ManagedDebuggerAttributeReader
         }
     }
 
+    /// <summary>
+    /// Gets the first debugger type proxy declared by one runtime type.
+    /// </summary>
+    /// <param name="metadata">The declaring module metadata.</param>
+    /// <param name="type">The runtime type definition.</param>
+    /// <returns>The validated proxy metadata, or null when none is usable.</returns>
+    internal static ManagedDebuggerTypeProxyAttribute? GetDeclaredTypeProxy(
+        MetadataReader metadata,
+        TypeDefinition type)
+    {
+        try
+        {
+            return FindTypeProxy(metadata, type.GetCustomAttributes(), targetTypeName: null);
+        }
+        catch (BadImageFormatException)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Gets the first assembly-level debugger type proxy targeting one runtime type.
+    /// </summary>
+    /// <param name="metadata">The declaring assembly metadata.</param>
+    /// <param name="targetTypeName">The reflection-style full target type name.</param>
+    /// <returns>The validated proxy metadata, or null when none is applicable.</returns>
+    internal static ManagedDebuggerTypeProxyAttribute? GetAssemblyTypeProxy(
+        MetadataReader metadata,
+        string targetTypeName)
+    {
+        try
+        {
+            return metadata.IsAssembly
+                ? FindTypeProxy(
+                    metadata,
+                    metadata.GetAssemblyDefinition().GetCustomAttributes(),
+                    targetTypeName)
+                : null;
+        }
+        catch (BadImageFormatException)
+        {
+            return null;
+        }
+    }
+
     private static ManagedDebuggerBrowsableState ReadBrowsableState(
         MetadataReader metadata,
         CustomAttribute attribute)
@@ -174,6 +221,89 @@ internal static class ManagedDebuggerAttributeReader
         }
 
         return null;
+    }
+
+    private static ManagedDebuggerTypeProxyAttribute? FindTypeProxy(
+        MetadataReader metadata,
+        CustomAttributeHandleCollection attributes,
+        string? targetTypeName)
+    {
+        foreach (CustomAttribute attribute in attributes.Select(
+            handle => metadata.GetCustomAttribute(handle)))
+        {
+            if (!string.Equals(
+                GetAttributeTypeName(metadata, attribute),
+                DebuggerTypeProxyAttribute,
+                StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            (string? ProxyTypeName, string? TargetTypeName)? proxy =
+                ReadTypeProxy(metadata, attribute);
+            if (proxy is null ||
+                targetTypeName is not null &&
+                !MatchesTargetType(proxy.Value.TargetTypeName, targetTypeName))
+            {
+                continue;
+            }
+
+            return new ManagedDebuggerTypeProxyAttribute(proxy.Value.ProxyTypeName!);
+        }
+
+        return null;
+    }
+
+    private static (string? ProxyTypeName, string? TargetTypeName)? ReadTypeProxy(
+        MetadataReader metadata,
+        CustomAttribute attribute)
+    {
+        try
+        {
+            BlobReader value = metadata.GetBlobReader(attribute.Value);
+            if (value.ReadUInt16() != 1)
+            {
+                return null;
+            }
+
+            string? proxyTypeName = NullIfEmpty(value.ReadSerializedString());
+            string? targetTypeName = null;
+            int namedCount = value.ReadUInt16();
+            for (int index = 0; index < namedCount; index++)
+            {
+                byte kind = value.ReadByte();
+                byte valueType = value.ReadByte();
+                if (kind is not (0x53 or 0x54) || valueType is not (0x0e or 0x50))
+                {
+                    return null;
+                }
+
+                string? propertyName = value.ReadSerializedString();
+                string? propertyValue = value.ReadSerializedString();
+                if (propertyName is null)
+                {
+                    return null;
+                }
+
+                if ((string.Equals(propertyName, "Target", StringComparison.Ordinal) &&
+                        valueType == 0x50) ||
+                    (string.Equals(
+                        propertyName,
+                        "TargetTypeName",
+                        StringComparison.Ordinal) && valueType == 0x0e))
+                {
+                    targetTypeName = propertyValue;
+                }
+            }
+
+            return value.RemainingBytes == 0 && proxyTypeName is not null
+                ? (proxyTypeName, NullIfEmpty(targetTypeName))
+                : null;
+        }
+        catch (BadImageFormatException)
+        {
+            return null;
+        }
     }
 
     private static ManagedDebuggerDisplayMetadata? ReadDisplay(

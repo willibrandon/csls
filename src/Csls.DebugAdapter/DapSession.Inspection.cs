@@ -128,6 +128,7 @@ internal sealed partial class DapSession
             return;
         }
 
+        DebugStopGeneration initialGeneration = _engineSession.StopGeneration;
         try
         {
             JsonElement arguments = request.Arguments;
@@ -142,6 +143,7 @@ internal sealed partial class DapSession
                     variablesReference,
                     start,
                     count,
+                    allowTargetCodeExecution: true,
                     cancellationToken)
                 .ConfigureAwait(false);
             await _writer.WriteResponseAsync(
@@ -190,6 +192,11 @@ internal sealed partial class DapSession
         {
             await WriteRequestFailureAsync(request, exception.Message, cancellationToken)
                 .ConfigureAwait(false);
+        }
+
+        if (_engineSession.StopGeneration != initialGeneration)
+        {
+            await WriteStackVariablesInvalidatedAsync(_lifetime.Token).ConfigureAwait(false);
         }
     }
 }

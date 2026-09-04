@@ -25,6 +25,7 @@ public sealed partial class McpDebuggerLifecycleTests
         "debug_stack_get",
         "debug_scopes_get",
         "debug_variables_get",
+        "debug_variables_get_presented",
         "debug_evaluate",
         "debug_watches_get",
         "debug_execute_expression",
@@ -102,6 +103,7 @@ public sealed partial class McpDebuggerLifecycleTests
         AssertAnnotations(tools, "debug_stack_get", true, false, true, false);
         AssertAnnotations(tools, "debug_scopes_get", true, false, true, false);
         AssertAnnotations(tools, "debug_variables_get", true, false, true, false);
+        AssertAnnotations(tools, "debug_variables_get_presented", false, true, false, true);
         AssertAnnotations(tools, "debug_evaluate", true, false, true, false);
         AssertAnnotations(tools, "debug_watches_get", true, false, true, false);
         AssertAnnotations(tools, "debug_execute_expression", false, true, false, true);

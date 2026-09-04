@@ -9,6 +9,46 @@ namespace Csls.Mcp.Worker;
 internal sealed partial class CslsMcpDebuggerExecutionTools
 {
     /// <summary>
+    /// Gets debugger-presented variables whose proxy construction may execute target code.
+    /// </summary>
+    /// <param name="debugSession">The exact opaque debugger-session identifier.</param>
+    /// <param name="stopGeneration">The exact current stopped generation.</param>
+    /// <param name="variablesReference">The generation-bound variable container.</param>
+    /// <param name="cancellationToken">Cancels proxy construction and variable expansion.</param>
+    /// <param name="start">The zero-based first variable to return.</param>
+    /// <param name="count">The maximum number of variables to return.</param>
+    /// <returns>The presented variables and replacement stopped generation.</returns>
+    [McpServerTool(
+        Name = "debug_variables_get_presented",
+        Title = "Get debugger-presented .NET variables",
+        Destructive = true,
+        Idempotent = false,
+        OpenWorld = true,
+        ReadOnly = false,
+        UseStructuredContent = true,
+        OutputSchemaType = typeof(McpDebugVariablesResult))]
+    [Description("Get debugger-presented child variables, including DebuggerTypeProxy views. Requires an active debug_agent_control_set grant and the exact stopGeneration because proxy constructors may execute arbitrary target code.")]
+    public Task<ModelContextProtocol.Protocol.CallToolResult> GetPresentedVariablesAsync(
+        [Description("Opaque identifier returned by a debugger lifecycle tool.")]
+        string debugSession,
+        [Description("Exact current positive stop generation.")]
+        long stopGeneration,
+        [Description("Positive generation-bound variable container identifier.")]
+        int variablesReference,
+        CancellationToken cancellationToken,
+        [Description("Zero-based first variable.")]
+        int start = 0,
+        [Description("Maximum variables from 0 through 256; zero requests all remaining within the engine bound.")]
+        int count = 0) =>
+        McpDebuggerToolResult.RunAsync(() => _broker.GetPresentedVariablesAsync(
+            debugSession,
+            stopGeneration,
+            variablesReference,
+            start,
+            count,
+            cancellationToken));
+
+    /// <summary>
     /// Executes target code for an expression in one current-generation managed frame.
     /// </summary>
     [McpServerTool(

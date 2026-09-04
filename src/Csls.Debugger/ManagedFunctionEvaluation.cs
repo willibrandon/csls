@@ -61,6 +61,11 @@ internal sealed class ManagedFunctionEvaluation
     internal required IReadOnlyDictionary<int, int> ThreadStates { get; init; }
 
     /// <summary>
+    /// Gets or initializes presentation state when this evaluation constructs a debugger proxy.
+    /// </summary>
+    internal ManagedDebuggerTypeProxyEvaluation? DebuggerTypeProxy { get; init; }
+
+    /// <summary>
     /// Gets the asynchronous completion delivered by the matching runtime callback.
     /// </summary>
     internal TaskCompletionSource<ManagedFunctionEvaluationResult> Completion { get; } =

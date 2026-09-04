@@ -99,7 +99,11 @@ internal sealed partial class McpDebuggerSessionBroker
                 session.Id,
                 stopGeneration,
                 await client.GetVariablesAsync(
-                    new DebugVariablesRequest(variablesReference, start, count),
+                    new DebugVariablesRequest(
+                        variablesReference,
+                        start,
+                        count,
+                        AllowTargetCodeExecution: false),
                     token).ConfigureAwait(false)),
             cancellationToken);
     }

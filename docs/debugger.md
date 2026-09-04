@@ -301,6 +301,17 @@ or cyclic root-hidden values remain visible. Objects affected by these transform
 a virtual Raw View containing every physical field with its source expression when
 one is available.
 
+`DebuggerTypeProxyAttribute` may select a proxy on a type or through an assembly-level
+`Target` or `TargetTypeName`. Inherited declarations apply to the exact runtime type,
+and open generic proxies close over that type's runtime arguments when their arities
+match. The debugger invokes the proxy's single one-argument instance constructor,
+including a non-public constructor, through the guarded evaluator. Successful
+construction exposes public proxy fields with `DebuggerBrowsableAttribute` transforms
+and appends a virtual Raw View of the original object. Malformed declarations,
+unavailable constructors, generic arity mismatches, and constructor exceptions preserve
+ordinary expansion. Because a proxy constructor is arbitrary target code, construction
+advances the stop generation and invalidates earlier stack and variable handles.
+
 Member-, type-, and assembly-level `DebuggerDisplayAttribute` metadata controls the
 displayed value, child name, and type. A field attribute takes precedence for that row
 and evaluates against the containing object. Otherwise, csls selects the most-derived
@@ -311,7 +322,7 @@ supported. Child display names do not change `evaluateName`, and root locals and
 arguments retain their source names. Omitted or serialized-null components preserve
 the ordinary column; an explicitly empty component clears that column.
 
-Automatic debugger presentation never runs target code. A template that refers to a
+`DebuggerDisplayAttribute` presentation never runs target code. A template that refers to a
 property, method, unknown field, malformed expression, or cyclic value falls back to
 the ordinary exact-type display. The value remains expandable through its physical
 runtime fields.
@@ -443,7 +454,14 @@ worker does not advertise tools that it cannot run.
   agent-control grant are both active.
 - `debug_threads_get`, `debug_stack_get`, `debug_scopes_get`, and
   `debug_variables_get` inspect one exact stopped generation. Frame and variable
-  handles expire as soon as execution resumes.
+  handles expire as soon as execution resumes. `debug_variables_get` never constructs
+  a debugger proxy and therefore remains read-only.
+- `debug_variables_get_presented` expands debugger-presented children, including
+  `DebuggerTypeProxyAttribute` views. It requires an active agent-control grant and
+  the exact `stopGeneration`; proxy construction advances the generation and publishes
+  session and variable-resource invalidation. The tool is destructive, non-idempotent,
+  and open-world because a proxy constructor may have arbitrary target or external
+  side effects.
 - `debug_evaluate` evaluates the same source-language-aware, side-effect-free
   expression subset as DAP in an explicit current-generation frame. It is
   read-only and does not require an agent-control grant. `debug_watches_get`

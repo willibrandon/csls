@@ -18,6 +18,7 @@ internal sealed partial class CorDebugDebuggee :
     private readonly ManagedTuplePresenter _tuplePresenter;
     private readonly ManagedObjectExpander _objectExpander;
     private readonly ManagedDebuggerDisplayFormatter _debuggerDisplayFormatter;
+    private readonly ManagedDebuggerTypeProxyResolver _debuggerTypeProxyResolver;
     private readonly CorDebugManagedCallback _managedCallback;
     private readonly CorDebugRuntimeStartupRegistration _registration;
     private readonly DbgShimStandardStreams? _standardStreams;
@@ -89,6 +90,7 @@ internal sealed partial class CorDebugDebuggee :
             FormatTupleElementType);
         _objectExpander = new ManagedObjectExpander(this, _tuplePresenter);
         _debuggerDisplayFormatter = new ManagedDebuggerDisplayFormatter(this);
+        _debuggerTypeProxyResolver = new ManagedDebuggerTypeProxyResolver(sourceBreakpoints);
         _managedCallback = managedCallback;
         _registration = registration;
         _standardStreams = standardStreams;

@@ -108,16 +108,30 @@ public sealed partial class DebuggerControlService :
     }
 
     /// <inheritdoc />
-    public Task<IReadOnlyList<DebugVariableInfo>> GetVariablesAsync(
+    public async Task<IReadOnlyList<DebugVariableInfo>> GetVariablesAsync(
         DebugVariablesRequest request,
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(request);
-        return _session.GetVariablesAsync(
-            request.VariablesReference,
-            request.Start,
-            request.Count,
-            cancellationToken);
+        DebugStopGeneration initialGeneration = _session.StopGeneration;
+        try
+        {
+            return await _session.GetVariablesAsync(
+                request.VariablesReference,
+                request.Start,
+                request.Count,
+                request.AllowTargetCodeExecution,
+                cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            bool generationChanged = _session.StopGeneration != initialGeneration;
+            SynchronizeEvaluationState(initialGeneration);
+            if (generationChanged)
+            {
+                NotifyResourceChanged(DebuggerResourceChangeKind.Variables);
+            }
+        }
     }
 
     /// <inheritdoc />

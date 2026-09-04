@@ -418,6 +418,16 @@ tool never grant this authorization. Private `debugger/executeExpression` RPC an
 MCP `debug_execute_expression` are distinct mutation paths; the MCP path additionally
 requires the selected session's agent-control grant and exact stop generation.
 
+Debugger type-proxy construction uses the same guarded CoreCLR evaluation lifecycle.
+Type- and assembly-level declarations are decoded from metadata, inherited declarations
+bind against the exact runtime type, and open generic proxy definitions close over its
+runtime arguments only when arity matches. A successful construction presents the
+proxy's public members and retains the original object as Raw View in the replacement
+generation. Metadata, resolution, constructor, or target exceptions preserve ordinary
+expansion. DAP and the terminal may request debugger presentation directly. MCP keeps
+`debug_variables_get` side-effect-free and exposes proxy construction only through the
+separate controlled `debug_variables_get_presented` mutation tool.
+
 Explicit construction is another root operation in the versioned expression plan.
 C#, Visual Basic, and F# type syntax resolves to exactly one loaded runtime type and
 binds one instance constructor by metadata signature. Non-generic construction uses
@@ -554,9 +564,12 @@ threads, frames, source, breakpoints, variables, watches, modules, exceptions,
 output, and a command palette without embedding engine logic.
 
 MCP uses private debugger RPC rather than translating through DAP. Pure expression
-evaluation is the read-only `debug_evaluate` inspection tool. Operations that can
-execute target code or assign values use separate mutation tools so their MCP
-annotations and authorization remain truthful. Other mutation tools include
+evaluation is the read-only `debug_evaluate` inspection tool, and physical variable
+expansion is the read-only `debug_variables_get` tool. Operations that can execute
+target code or assign values use separate mutation tools so their MCP annotations and
+authorization remain truthful. `debug_variables_get_presented` is the controlled path
+for proxy-backed presentation because constructing a proxy may execute arbitrary target
+code. Other mutation tools include
 `debug_session_start`, `debug_session_attach`, breakpoint replacement,
 `debug_execution_control`, `debug_hot_reload`, and `debug_session_end`.
 Inspection is exposed as subscribable resources beneath
@@ -571,6 +584,11 @@ that returns a value may mutate process state. It is open-world because arbitrar
 target code may perform file, network, process, or other externally visible work.
 Cancellation reaches the supervised CoreCLR evaluation and does not authorize a
 more forceful abort than the engine's cooperative safety policy.
+
+`debug_variables_get_presented` has the same destructive, non-idempotent, and
+open-world annotations. It requires the selected session's active control grant and
+exact stop generation, returns the replacement generation, and publishes authoritative
+session and variable invalidation when proxy construction executes.
 
 ### MCP debugger contract
 

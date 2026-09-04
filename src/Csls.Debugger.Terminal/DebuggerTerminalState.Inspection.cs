@@ -299,7 +299,11 @@ internal sealed partial class DebuggerTerminalState
         {
             lines.Add($"[{scope.Name}]");
             IReadOnlyList<DebugVariableInfo> variables = await _client.GetVariablesAsync(
-                new DebugVariablesRequest(scope.VariablesReference, 0, 200),
+                new DebugVariablesRequest(
+                    scope.VariablesReference,
+                    0,
+                    200,
+                    AllowTargetCodeExecution: true),
                 cancellationToken).ConfigureAwait(false);
             lines.AddRange(variables.Select(static variable =>
                 $"{variable.Name} = {variable.Value}  {variable.Type}"));

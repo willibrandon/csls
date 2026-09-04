@@ -83,20 +83,23 @@ internal sealed partial class DapSession
         targetCodeExecuted |= _engineSession.StopGeneration != initialGeneration;
         if (targetCodeExecuted)
         {
-            await _writer.WriteEventAsync(
-                "invalidated",
-                static writer =>
-                {
-                    writer.WriteStartObject();
-                    writer.WriteStartArray("areas");
-                    writer.WriteStringValue("stacks");
-                    writer.WriteStringValue("variables");
-                    writer.WriteEndArray();
-                    writer.WriteEndObject();
-                },
-                _lifetime.Token).ConfigureAwait(false);
+            await WriteStackVariablesInvalidatedAsync(_lifetime.Token).ConfigureAwait(false);
         }
     }
+
+    private ValueTask WriteStackVariablesInvalidatedAsync(
+        CancellationToken cancellationToken) => _writer.WriteEventAsync(
+            "invalidated",
+            static writer =>
+            {
+                writer.WriteStartObject();
+                writer.WriteStartArray("areas");
+                writer.WriteStringValue("stacks");
+                writer.WriteStringValue("variables");
+                writer.WriteEndArray();
+                writer.WriteEndObject();
+            },
+            cancellationToken);
 
     private void SignalCancelableResponseReady()
     {

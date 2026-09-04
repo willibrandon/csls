@@ -6,4 +6,9 @@ namespace Csls.Debugger.Contracts;
 /// <param name="VariablesReference">The generation-bound container handle.</param>
 /// <param name="Start">The zero-based first variable.</param>
 /// <param name="Count">The maximum count, or zero for all remaining variables.</param>
-public sealed record DebugVariablesRequest(int VariablesReference, int Start, int Count);
+/// <param name="AllowTargetCodeExecution">Whether debugger proxy construction is authorized.</param>
+public sealed record DebugVariablesRequest(
+    int VariablesReference,
+    int Start,
+    int Count,
+    bool AllowTargetCodeExecution);

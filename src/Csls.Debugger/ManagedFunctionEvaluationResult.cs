@@ -8,7 +8,9 @@ namespace Csls.Debugger;
 /// <param name="Result">The debugger-facing evaluation result.</param>
 /// <param name="RuntimeValueReference">The internal generation-owned runtime value handle.</param>
 /// <param name="Generation">The stop generation produced by target execution.</param>
+/// <param name="DebuggerTypeProxyApplied">Whether the retained value is a constructed proxy.</param>
 internal sealed record ManagedFunctionEvaluationResult(
     DebugEvaluateResult Result,
     int RuntimeValueReference,
-    DebugStopGeneration Generation);
+    DebugStopGeneration Generation,
+    bool DebuggerTypeProxyApplied = false);

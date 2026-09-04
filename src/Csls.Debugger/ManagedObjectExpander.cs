@@ -44,6 +44,7 @@ internal sealed class ManagedObjectExpander
     /// <param name="count">The maximum count, or zero for every remaining child.</param>
     /// <param name="view">The presentation view applied to the expansion.</param>
     /// <param name="tupleCustomTypeInfo">The optional tuple-name transforms.</param>
+    /// <param name="proxyRawView">The original object exposed after proxy fields.</param>
     /// <returns>The requested logical field page.</returns>
     internal List<DebugVariableInfo> Expand(
         nint value,
@@ -53,9 +54,11 @@ internal sealed class ManagedObjectExpander
         int start,
         int count,
         ManagedValueView view,
-        ManagedTupleCustomTypeInfo? tupleCustomTypeInfo)
+        ManagedTupleCustomTypeInfo? tupleCustomTypeInfo,
+        ManagedDebuggerTypeProxyRawView? proxyRawView)
     {
-        if (view == ManagedValueView.Default &&
+        if (proxyRawView is null &&
+            view != ManagedValueView.Raw &&
             _tuplePresenter.TryExpand(
                 value,
                 parentEvaluateName,
@@ -90,7 +93,13 @@ internal sealed class ManagedObjectExpander
             path,
             nestingDepth: 0,
             view,
-            includeRawView: true);
+            includeRawView: proxyRawView is null,
+            proxyFieldsOnly: proxyRawView is not null);
+        if (proxyRawView is not null && !IsVariablePageFull(result, count))
+        {
+            AppendProxyRawView(result, proxyRawView, start, count, state);
+        }
+
         return result;
     }
 
@@ -106,7 +115,8 @@ internal sealed class ManagedObjectExpander
         HashSet<ulong> path,
         int nestingDepth,
         ManagedValueView view,
-        bool includeRawView)
+        bool includeRawView,
+        bool proxyFieldsOnly)
     {
         nint instance = 0;
         nint value2 = 0;
@@ -150,7 +160,8 @@ internal sealed class ManagedObjectExpander
                         state,
                         path,
                         nestingDepth,
-                        view);
+                        view,
+                        proxyFieldsOnly);
                     if (IsVariablePageFull(result, count))
                     {
                         return;
@@ -191,7 +202,7 @@ internal sealed class ManagedObjectExpander
             }
 
             if (includeRawView &&
-                view == ManagedValueView.Default &&
+                view != ManagedValueView.Raw &&
                 state.WasTransformed &&
                 !IsVariablePageFull(result, count))
             {
@@ -239,7 +250,8 @@ internal sealed class ManagedObjectExpander
         ManagedObjectExpansionState state,
         HashSet<ulong> path,
         int nestingDepth,
-        ManagedValueView view)
+        ManagedValueView view,
+        bool proxyFieldsOnly)
     {
         TypeDefinitionHandle typeHandle = MetadataTokens.TypeDefinitionHandle(
             checked((int)(typeToken & 0x00FFFFFF)));
@@ -248,6 +260,13 @@ internal sealed class ManagedObjectExpander
         {
             FieldDefinition field = metadata.GetFieldDefinition(fieldHandle);
             if ((field.Attributes & FieldAttributes.Static) != 0)
+            {
+                continue;
+            }
+
+            if (proxyFieldsOnly &&
+                (field.Attributes & FieldAttributes.FieldAccessMask) !=
+                    FieldAttributes.Public)
             {
                 continue;
             }
@@ -438,7 +457,8 @@ internal sealed class ManagedObjectExpander
                 path,
                 nestingDepth + 1,
                 ManagedValueView.Default,
-                includeRawView: false);
+                includeRawView: false,
+                proxyFieldsOnly: false);
             if (addedToPath)
             {
                 _ = path.Remove(address);
@@ -506,6 +526,33 @@ internal sealed class ManagedObjectExpander
                 display.Type,
                 references.VariablesReference,
                 references.MemoryReference,
+                EvaluateName: null,
+                DebugVariablePresentationKind.Virtual));
+        }
+
+        state.VisibleIndex++;
+    }
+
+    private void AppendProxyRawView(
+        List<DebugVariableInfo> result,
+        ManagedDebuggerTypeProxyRawView rawView,
+        int start,
+        int count,
+        ManagedObjectExpansionState state)
+    {
+        EnsureExpandableValueLimit(state.VisibleIndex, additionalCount: 1);
+        if (state.VisibleIndex >= start && !IsVariablePageFull(result, count))
+        {
+            ManagedValueDisplay display = _services.FormatRuntimeValue(
+                rawView.Pointer,
+                debuggerDisplayDepth: 0,
+                tupleCustomTypeInfo: null);
+            result.Add(new DebugVariableInfo(
+                "Raw View",
+                display.Value,
+                display.Type,
+                rawView.VariablesReference,
+                rawView.MemoryReference,
                 EvaluateName: null,
                 DebugVariablePresentationKind.Virtual));
         }
