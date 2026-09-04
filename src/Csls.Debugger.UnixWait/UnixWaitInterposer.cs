@@ -8,12 +8,14 @@ namespace Csls.Debugger.UnixWait;
 /// </summary>
 internal static partial class UnixWaitInterposer
 {
+    private const int NoHang = 1;
     private const int StoppedSignal = 0x7f;
     private static readonly Lock s_waitGate = new();
+    private static readonly ManualResetEventSlim s_waitStatusReady = new();
     private static int s_processId;
     private static int s_exitCode;
     private static int s_hasExitCode;
-    private static nint s_waitProcess;
+    private static int s_waitStatus;
 
     /// <summary>
     /// Initializes the interposer before the debugger creates its first child process.
@@ -34,9 +36,14 @@ internal static partial class UnixWaitInterposer
         CallConvs = [typeof(CallConvCdecl)])]
     internal static void Track(int processId)
     {
-        Volatile.Write(ref s_hasExitCode, 0);
-        Volatile.Write(ref s_exitCode, 0);
-        Volatile.Write(ref s_processId, processId);
+        lock (s_waitGate)
+        {
+            s_waitStatusReady.Reset();
+            Volatile.Write(ref s_hasExitCode, 0);
+            Volatile.Write(ref s_exitCode, 0);
+            Volatile.Write(ref s_waitStatus, 0);
+            Volatile.Write(ref s_processId, processId);
+        }
     }
 
     /// <summary>
@@ -85,49 +92,57 @@ internal static partial class UnixWaitInterposer
             return WaitProcessCore(processId, status, options);
         }
 
+        if ((options & NoHang) == 0)
+        {
+            s_waitStatusReady.Wait();
+        }
+
         lock (s_waitGate)
         {
-            return WaitProcessCore(processId, status, options);
+            if (Volatile.Read(ref s_hasExitCode) == 0)
+            {
+                return 0;
+            }
+
+            if (status is not null)
+            {
+                *status = Volatile.Read(ref s_waitStatus);
+            }
+
+            return processId;
         }
     }
 
+    /// <summary>
+    /// Reaps the selected child for the debugger's sole managed exit monitor.
+    /// </summary>
+    /// <param name="processId">The exact debugger-owned child process identifier.</param>
+    /// <param name="status">Receives the native wait status.</param>
+    /// <param name="options">The native wait options.</param>
+    /// <returns>The result returned by libc waitpid.</returns>
+    [UnmanagedCallersOnly(
+        EntryPoint = "csls_waitpid_wait",
+        CallConvs = [typeof(CallConvCdecl)])]
+    internal static unsafe int WaitTrackedProcess(int processId, int* status, int options) =>
+        WaitProcessCore(processId, status, options);
+
     private static unsafe int WaitProcessCore(int processId, int* status, int options)
     {
-        nint waitProcess = Interlocked.CompareExchange(ref s_waitProcess, 0, 0);
-        if (waitProcess == 0)
-        {
-            ReadOnlySpan<byte> symbol = "waitpid\0"u8;
-            fixed (byte* symbolPointer = symbol)
-            {
-                waitProcess = ResolveNext(new nint(-1), symbolPointer);
-            }
-
-            if (waitProcess == 0)
-            {
-                Environment.FailFast("The csls debugger could not resolve libc waitpid.");
-            }
-
-            nint previous = Interlocked.CompareExchange(
-                ref s_waitProcess,
-                waitProcess,
-                0);
-            if (previous != 0)
-            {
-                waitProcess = previous;
-            }
-        }
-
-        var waitProcessFunction =
-            (delegate* unmanaged[Cdecl]<int, int*, int, int>)waitProcess;
-        int result = waitProcessFunction(processId, status, options);
+        int result = WaitProcessNative(processId, status, options);
         int error = Marshal.GetLastPInvokeError();
         if (result > 0 && status is not null && result == Volatile.Read(ref s_processId))
         {
             int exitCode = DecodeStatus(*status);
             if (exitCode >= 0)
             {
-                Volatile.Write(ref s_exitCode, exitCode);
-                Volatile.Write(ref s_hasExitCode, 1);
+                lock (s_waitGate)
+                {
+                    Volatile.Write(ref s_waitStatus, *status);
+                    Volatile.Write(ref s_exitCode, exitCode);
+                    Volatile.Write(ref s_hasExitCode, 1);
+                }
+
+                s_waitStatusReady.Set();
             }
         }
 
@@ -146,7 +161,10 @@ internal static partial class UnixWaitInterposer
         return terminationSignal == StoppedSignal ? -1 : 128 + terminationSignal;
     }
 
-    [LibraryImport("libdl", EntryPoint = "dlsym")]
+    [LibraryImport("libc", EntryPoint = "waitpid", SetLastError = true)]
     [DefaultDllImportSearchPaths(DllImportSearchPath.SafeDirectories)]
-    private static unsafe partial nint ResolveNext(nint handle, byte* symbol);
+    private static unsafe partial int WaitProcessNative(
+        int processId,
+        int* status,
+        int options);
 }

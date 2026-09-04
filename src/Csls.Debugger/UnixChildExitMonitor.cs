@@ -108,7 +108,10 @@ internal sealed partial class UnixChildExitMonitor
         return terminationSignal == 0x7f ? 1 : 128 + terminationSignal;
     }
 
-    [LibraryImport("libc", EntryPoint = "waitpid", SetLastError = true)]
+    [LibraryImport(
+        "Csls.Debugger.UnixWait",
+        EntryPoint = "csls_waitpid_wait",
+        SetLastError = true)]
     [DefaultDllImportSearchPaths(DllImportSearchPath.SafeDirectories)]
     private static partial int WaitProcess(int processId, out int status, int options);
 }

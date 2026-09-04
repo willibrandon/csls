@@ -179,13 +179,12 @@ closes every local child endpoint immediately after launch. Target output theref
 reaches bounded debugger output handling and can never share the adapter's protocol
 stdout. On Unix, the launcher
 starts the supervised worker with an adjacent NativeAOT `waitpid` interposer loaded
-before CoreCLR initializes. A dedicated blocking waiter selects the direct child
-before runtime activation and completes a nonblocking identity preflight before
-the suspended target resumes. Every `waitpid` for the selected child shares one
-interposer gate, so a competing CoreCLR poller cannot return `ECHILD` before the
-winner publishes the exact process or signal exit code. If the poller reaps the
-child first, the blocking waiter recovers that retained status after `ECHILD`
-without changing libc behavior.
+before CoreCLR initializes. A dedicated blocking waiter selects and solely reaps
+the direct child before runtime activation and completes a nonblocking identity
+preflight before the suspended target resumes. The interposed CoreCLR exit poller
+observes a non-reaping `WNOHANG` view until the owner publishes the exact native
+wait status, then receives that same terminal status. This avoids the `ECHILD`
+publication race without blocking the runtime poller or fabricating an exit code.
 Missing or unloadable interposer assets prevent the worker from starting.
 
 ICorDebug projections are generated from the current public IDL and checked into
