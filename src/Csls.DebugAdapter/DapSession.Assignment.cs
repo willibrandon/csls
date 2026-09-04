@@ -37,9 +37,9 @@ internal sealed partial class DapSession
                 value,
                 _engineSession.StopGeneration,
                 cancellationToken).ConfigureAwait(false);
+            SignalCancelableResponseReady();
             await WriteAssignmentResponseAsync(request, result.Variable, cancellationToken)
                 .ConfigureAwait(false);
-            SignalCancelableResponseReady();
             variableInvalidation = true;
             targetCodeExecuted = result.TargetCodeExecuted;
         }
@@ -47,15 +47,15 @@ internal sealed partial class DapSession
             exception is ArgumentException or InvalidOperationException or
             IOException or UnauthorizedAccessException or BadImageFormatException)
         {
+            SignalCancelableResponseReady();
             await WriteRequestFailureAsync(request, exception.Message, cancellationToken)
                 .ConfigureAwait(false);
-            SignalCancelableResponseReady();
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
+            SignalCancelableResponseReady();
             await WriteRequestFailureAsync(request, "cancelled", _lifetime.Token)
                 .ConfigureAwait(false);
-            SignalCancelableResponseReady();
         }
 
         targetCodeExecuted |= _engineSession.StopGeneration != requestGeneration;
@@ -96,9 +96,9 @@ internal sealed partial class DapSession
                 value,
                 _engineSession.StopGeneration,
                 cancellationToken).ConfigureAwait(false);
+            SignalCancelableResponseReady();
             await WriteAssignmentResponseAsync(request, result.Variable, cancellationToken)
                 .ConfigureAwait(false);
-            SignalCancelableResponseReady();
             variableInvalidation = true;
             targetCodeExecuted = result.TargetCodeExecuted;
         }
@@ -106,15 +106,15 @@ internal sealed partial class DapSession
             exception is ArgumentException or InvalidOperationException or
             IOException or UnauthorizedAccessException or BadImageFormatException)
         {
+            SignalCancelableResponseReady();
             await WriteRequestFailureAsync(request, exception.Message, cancellationToken)
                 .ConfigureAwait(false);
-            SignalCancelableResponseReady();
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
+            SignalCancelableResponseReady();
             await WriteRequestFailureAsync(request, "cancelled", _lifetime.Token)
                 .ConfigureAwait(false);
-            SignalCancelableResponseReady();
         }
 
         targetCodeExecuted |= _engineSession.StopGeneration != requestGeneration;

@@ -71,6 +71,11 @@ internal sealed partial class DebuggerTerminalState : IAsyncDisposable
         try
         {
             _auxiliary.Cycle();
+            if (_auxiliary.Pane == DebuggerTerminalAuxiliaryPane.Output)
+            {
+                await _auxiliary.RefreshOutputAsync(_cancellationToken).ConfigureAwait(false);
+            }
+
             _app?.Invalidate();
         }
         finally

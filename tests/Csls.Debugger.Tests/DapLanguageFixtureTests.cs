@@ -9,7 +9,6 @@ namespace Csls.Debugger.Tests;
 /// </summary>
 public sealed partial class DapSessionTests
 {
-    private static readonly string[] s_configurations = ["Debug", "Release"];
     private static readonly string[] s_projects =
     [
         "Csls.Debugger.Fixtures.CSharp",
@@ -18,26 +17,34 @@ public sealed partial class DapSessionTests
     ];
 
     /// <summary>
-    /// Binds, inspects, and invokes C#, Visual Basic, and F# executables.
+    /// Binds, inspects, and invokes Debug C#, Visual Basic, and F# executables.
     /// </summary>
     [TestMethod]
     [Timeout(120000, CooperativeCancellation = true)]
-    public async Task PortablePdbLanguagesBindInDebugAndRelease()
+    public Task PortablePdbLanguagesBindInDebug() =>
+        AssertPortablePdbLanguagesAsync("Debug");
+
+    /// <summary>
+    /// Binds and inspects Release C#, Visual Basic, and F# executables.
+    /// </summary>
+    [TestMethod]
+    [Timeout(120000, CooperativeCancellation = true)]
+    public Task PortablePdbLanguagesBindInRelease() =>
+        AssertPortablePdbLanguagesAsync("Release");
+
+    private async Task AssertPortablePdbLanguagesAsync(string configuration)
     {
         string artifactsPath = Path.Join(
             Path.GetTempPath(),
             $"csls-debugger-language-{Guid.NewGuid():N}");
         try
         {
-            foreach (string configuration in s_configurations)
+            await BuildFixturesAsync(configuration, artifactsPath).ConfigureAwait(false);
+            foreach (string project in s_projects)
             {
-                await BuildFixturesAsync(configuration, artifactsPath).ConfigureAwait(false);
-                foreach (string project in s_projects)
-                {
-                    string program = GetFixtureProgram(project, configuration, artifactsPath);
-                    await AssertFixtureStopsAsync(project, configuration, program)
-                        .ConfigureAwait(false);
-                }
+                string program = GetFixtureProgram(project, configuration, artifactsPath);
+                await AssertFixtureStopsAsync(project, configuration, program)
+                    .ConfigureAwait(false);
             }
         }
         finally
