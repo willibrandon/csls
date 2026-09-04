@@ -829,13 +829,140 @@ jobs:
           --filter "FullyQualifiedName~Csls.Tests.EmacsLanguageServerTests|FullyQualifiedName~Csls.Tests.FreshLanguageServerTests|FullyQualifiedName~Csls.Tests.HelixLanguageServerTests|FullyQualifiedName~Csls.Tests.NeovimLanguageServerTests|FullyQualifiedName~Csls.Tests.UpstreamParityTests"
           --minimum-expected-tests 7
 
+  zed-test-assets:
+    name: Zed test assets
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    needs: graphical-prerequisite-app
+    outputs:
+      zed-path: ${{ steps.provision-zed.outputs.zed-path }}
+      csharp-extension-path: ${{ steps.provision-zed.outputs.csharp-extension-path }}
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 10.x
+
+      - name: Restore graphical prerequisite app
+        uses: actions/cache/restore@v6
+        with:
+          path: artifacts/file-apps/install-graphical
+          key: graphical-prerequisite-app-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/Install-GraphicalEditorTestPrerequisites.cs', 'scripts/Support/AptPackageCache.cs', 'scripts/ScriptSupport.cs') }}
+          fail-on-cache-miss: true
+
+      - name: Restore Zed tools
+        id: zed-tools-cache
+        uses: actions/cache/restore@v6
+        with:
+          path: |
+            artifacts/tools/tree-sitter
+            artifacts/tools/wasi-sdk
+            artifacts/tools/zed
+            artifacts/tools/zed-csharp-extension
+          key: zed-tools-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/Provision-Zed.cs', 'scripts/Provision-WasiSdk.cs', 'scripts/ScriptSupport.cs') }}-current
+          restore-keys: |
+            zed-tools-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/Provision-Zed.cs', 'scripts/Provision-WasiSdk.cs', 'scripts/ScriptSupport.cs') }}-
+            zed-tools-${{ runner.os }}-${{ runner.arch }}-
+
+      - name: Restore built Zed extension
+        id: zed-extension-cache
+        uses: actions/cache/restore@v6
+        with:
+          path: |
+            artifacts/editors/zed/csls
+            artifacts/zed-extension/grammar-source
+          key: zed-extension-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('editors/zed/**', 'scripts/Build-ZedExtension.cs', 'scripts/Provision-WasiSdk.cs', 'scripts/ScriptSupport.cs', 'tests/Csls.Tests/ZedHighlightQueryTests.cs') }}
+
+      - name: Resolve graphical prerequisite cache
+        id: zed-graphical-cache-key
+        run: >-
+          artifacts/file-apps/install-graphical/Install-GraphicalEditorTestPrerequisites
+          --write-portable-cache-key
+
+      - name: Restore graphical prerequisites
+        id: zed-graphical-cache
+        uses: actions/cache/restore@v6
+        with:
+          path: artifacts/tools/graphical-editor-prerequisites
+          key: zed-graphical-${{ runner.os }}-${{ runner.arch }}-${{ steps.zed-graphical-cache-key.outputs.key }}-${{ hashFiles('scripts/Install-GraphicalEditorTestPrerequisites.cs', 'scripts/ScriptSupport.cs') }}
+
+      - name: Install graphical editor test prerequisites
+        run: >-
+          artifacts/file-apps/install-graphical/Install-GraphicalEditorTestPrerequisites
+          --portable-packages
+
+      - name: Save graphical prerequisites
+        if: steps.zed-graphical-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: artifacts/tools/graphical-editor-prerequisites
+          key: zed-graphical-${{ runner.os }}-${{ runner.arch }}-${{ steps.zed-graphical-cache-key.outputs.key }}-${{ hashFiles('scripts/Install-GraphicalEditorTestPrerequisites.cs', 'scripts/ScriptSupport.cs') }}
+
+      - name: Provision Zed
+        id: provision-zed
+        run: dotnet run --file scripts/Provision-Zed.cs
+
+      - name: Provision WASI SDK
+        run: dotnet run --file scripts/Provision-WasiSdk.cs
+
+      - name: Save Zed tools
+        if: steps.zed-tools-cache.outputs.cache-matched-key != format('zed-tools-{0}-{1}-{2}-{3}', runner.os, runner.arch, hashFiles('scripts/Provision-Zed.cs', 'scripts/Provision-WasiSdk.cs', 'scripts/ScriptSupport.cs'), steps.provision-zed.outputs.cache-key)
+        uses: actions/cache/save@v6
+        with:
+          path: |
+            artifacts/tools/tree-sitter
+            artifacts/tools/wasi-sdk
+            artifacts/tools/zed
+            artifacts/tools/zed-csharp-extension
+          key: zed-tools-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/Provision-Zed.cs', 'scripts/Provision-WasiSdk.cs', 'scripts/ScriptSupport.cs') }}-${{ steps.provision-zed.outputs.cache-key }}
+
+      - name: Build csls Zed extension
+        if: steps.zed-extension-cache.outputs.cache-hit != 'true'
+        run: dotnet run --file scripts/Build-ZedExtension.cs
+
+      - name: Save built Zed extension
+        if: steps.zed-extension-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: |
+            artifacts/editors/zed/csls
+            artifacts/zed-extension/grammar-source
+          key: zed-extension-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('editors/zed/**', 'scripts/Build-ZedExtension.cs', 'scripts/Provision-WasiSdk.cs', 'scripts/ScriptSupport.cs', 'tests/Csls.Tests/ZedHighlightQueryTests.cs') }}
+
+      - name: Pack Zed test assets
+        env:
+          CSLS_ZED_INSTALLATION: tools/${{ steps.provision-zed.outputs.zed-installation }}
+          CSLS_ZED_CSHARP_INSTALLATION: tools/${{ steps.provision-zed.outputs.csharp-extension-path }}
+        run: >-
+          tar --create --file artifacts/zed-test-assets.tar --directory artifacts
+          "$CSLS_ZED_INSTALLATION" "$CSLS_ZED_CSHARP_INSTALLATION"
+          tools/tree-sitter editors/zed/csls zed-extension/grammar-source
+
+      - name: Share Zed test assets
+        uses: actions/upload-artifact@v7
+        with:
+          name: zed-test-assets-${{ github.run_attempt }}
+          path: artifacts/zed-test-assets.tar
+          compression-level: 6
+          if-no-files-found: error
+
   zed-tests:
     name: Zed tests (${{ matrix.group }})
     runs-on: ubuntu-latest
     timeout-minutes: 5
     needs:
       - graphical-prerequisite-app
+      - zed-test-assets
       - test-binaries
+    env:
+      CSLS_ZED_PATH: ${{ github.workspace }}/artifacts/tools/${{ needs.zed-test-assets.outputs.zed-path }}
+      CSLS_ZED_CSHARP_EXTENSION_PATH: ${{ github.workspace }}/artifacts/tools/${{ needs.zed-test-assets.outputs.csharp-extension-path }}
     strategy:
       fail-fast: false
       matrix:
@@ -873,33 +1000,21 @@ jobs:
       - name: Extract test binaries
         run: tar --extract --file artifacts/test-binaries.tar --directory artifacts
 
+      - name: Download Zed test assets
+        uses: actions/download-artifact@v8
+        with:
+          name: zed-test-assets-${{ github.run_attempt }}
+          path: artifacts
+
+      - name: Extract Zed test assets
+        run: tar --extract --file artifacts/zed-test-assets.tar --directory artifacts
+
       - name: Restore graphical prerequisite app
         uses: actions/cache/restore@v6
         with:
           path: artifacts/file-apps/install-graphical
           key: graphical-prerequisite-app-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/Install-GraphicalEditorTestPrerequisites.cs', 'scripts/Support/AptPackageCache.cs', 'scripts/ScriptSupport.cs') }}
           fail-on-cache-miss: true
-
-      - name: Restore Zed tools
-        id: zed-tools-cache
-        uses: actions/cache/restore@v6
-        with:
-          path: |
-            artifacts/tools/tree-sitter
-            artifacts/tools/wasi-sdk
-            artifacts/tools/zed
-            artifacts/tools/zed-csharp-extension
-          key: zed-tools-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/Provision-Zed.cs', 'scripts/Provision-WasiSdk.cs', 'scripts/ScriptSupport.cs') }}
-          restore-keys: zed-tools-${{ runner.os }}-${{ runner.arch }}-
-
-      - name: Restore built Zed extension
-        id: zed-extension-cache
-        uses: actions/cache/restore@v6
-        with:
-          path: |
-            artifacts/editors/zed/csls
-            artifacts/zed-extension/grammar-source
-          key: zed-extension-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('editors/zed/**', 'scripts/Build-ZedExtension.cs', 'scripts/Provision-WasiSdk.cs', 'scripts/ScriptSupport.cs', 'tests/Csls.Tests/ZedHighlightQueryTests.cs') }}
 
       - name: Resolve graphical prerequisite cache
         id: zed-graphical-cache-key
@@ -908,7 +1023,6 @@ jobs:
           --write-portable-cache-key
 
       - name: Restore graphical prerequisites
-        id: zed-graphical-cache
         uses: actions/cache/restore@v6
         with:
           path: artifacts/tools/graphical-editor-prerequisites
@@ -918,43 +1032,6 @@ jobs:
         run: >-
           artifacts/file-apps/install-graphical/Install-GraphicalEditorTestPrerequisites
           --portable-packages
-
-      - name: Save graphical prerequisites
-        if: steps.zed-graphical-cache.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v6
-        with:
-          path: artifacts/tools/graphical-editor-prerequisites
-          key: zed-graphical-${{ runner.os }}-${{ runner.arch }}-${{ steps.zed-graphical-cache-key.outputs.key }}-${{ hashFiles('scripts/Install-GraphicalEditorTestPrerequisites.cs', 'scripts/ScriptSupport.cs') }}
-
-      - name: Provision Zed
-        run: dotnet run --file scripts/Provision-Zed.cs
-
-      - name: Provision WASI SDK
-        run: dotnet run --file scripts/Provision-WasiSdk.cs
-
-      - name: Save Zed tools
-        if: steps.zed-tools-cache.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v6
-        with:
-          path: |
-            artifacts/tools/tree-sitter
-            artifacts/tools/wasi-sdk
-            artifacts/tools/zed
-            artifacts/tools/zed-csharp-extension
-          key: zed-tools-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/Provision-Zed.cs', 'scripts/Provision-WasiSdk.cs', 'scripts/ScriptSupport.cs') }}
-
-      - name: Build csls Zed extension
-        if: steps.zed-extension-cache.outputs.cache-hit != 'true'
-        run: dotnet run --file scripts/Build-ZedExtension.cs
-
-      - name: Save built Zed extension
-        if: steps.zed-extension-cache.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v6
-        with:
-          path: |
-            artifacts/editors/zed/csls
-            artifacts/zed-extension/grammar-source
-          key: zed-extension-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('editors/zed/**', 'scripts/Build-ZedExtension.cs', 'scripts/Provision-WasiSdk.cs', 'scripts/ScriptSupport.cs', 'tests/Csls.Tests/ZedHighlightQueryTests.cs') }}
 
       - name: Run Zed tests
         run: >-
