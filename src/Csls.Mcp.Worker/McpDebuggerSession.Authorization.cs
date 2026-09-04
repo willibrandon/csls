@@ -55,6 +55,7 @@ internal sealed partial class McpDebuggerSession
         InvokeAsync(
             (client, token) =>
             {
+                RequireMutableTarget();
                 RequireAgentControl();
                 return operation(client, token);
             },
@@ -109,6 +110,16 @@ internal sealed partial class McpDebuggerSession
             throw new McpDebuggerException(
                 "debugger_control_denied",
                 $"Debugger session {Id} has no active agent-control grant.");
+        }
+    }
+
+    private void RequireMutableTarget()
+    {
+        if (Kind == McpDebuggerSessionKind.Dump)
+        {
+            throw new McpDebuggerException(
+                "debugger_not_supported",
+                $"Debugger session {Id} is a read-only process-dump session.");
         }
     }
 

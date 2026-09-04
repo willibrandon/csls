@@ -33,6 +33,11 @@ internal static class DebuggerControlMethodRegistry
             DebuggerControlMethods.Attach,
             new Func<DebugAttachRequest, CancellationToken, Task<DebugSessionSnapshot>>(
                 target.AttachAsync));
+        AddParameterObjectMethod(
+            rpc,
+            DebuggerControlMethods.OpenDump,
+            new Func<DebugDumpOpenRequest, CancellationToken, Task<DebugSessionSnapshot>>(
+                target.OpenDumpAsync));
         rpc.AddLocalRpcMethod(
             DebuggerControlMethods.Restart,
             new Func<CancellationToken, Task<DebugSessionSnapshot>>(target.RestartAsync));

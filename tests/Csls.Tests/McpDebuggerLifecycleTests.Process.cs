@@ -26,6 +26,12 @@ public sealed partial class McpDebuggerLifecycleTests
                 "bin",
                 "Csls.Debugger.Worker",
                 "debug",
-                "csls-debugger-worker.dll")).ConfigureAwait(false);
+                "csls-debugger-worker.dll"),
+            Path.Join(
+                artifactsRoot,
+                "bin",
+                "Csls.Debugger.Dump.Worker",
+                "debug",
+                "csls-debugger-dump-worker.dll")).ConfigureAwait(false);
     }
 }

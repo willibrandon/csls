@@ -33,6 +33,8 @@
     <PackageVersion Include="Microsoft.CodeAnalysis.Scripting.Common" Version="$(RoslynVersion)" />
     <PackageVersion Include="Microsoft.CodeAnalysis.Workspaces.Common" Version="$(RoslynVersion)" />
     <PackageVersion Include="Microsoft.Diagnostics.DbgShim" Version="10.0.731102" />
+    <PackageVersion Include="Microsoft.Diagnostics.NETCore.Client" Version="0.2.661903" />
+    <PackageVersion Include="Microsoft.Diagnostics.Runtime" Version="4.0.732401" />
     <PackageVersion Include="Microsoft.DiaSymReader" Version="2.2.11" />
     <PackageVersion Include="Microsoft.DiaSymReader.Native" Version="18.8.4-beta1.26356.2" />
     <PackageVersion Include="Microsoft.Extensions.Hosting" Version="10.0.11" />

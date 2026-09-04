@@ -34,6 +34,17 @@ public sealed partial class DebuggerControlService
     }
 
     /// <inheritdoc />
+    public Task<DebugSessionSnapshot> OpenDumpAsync(
+        DebugDumpOpenRequest request,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        cancellationToken.ThrowIfCancellationRequested();
+        throw new NotSupportedException(
+            "The live debugger worker cannot open process dumps.");
+    }
+
+    /// <inheritdoc />
     public async Task<DebugSessionSnapshot> RestartAsync(
         CancellationToken cancellationToken)
     {

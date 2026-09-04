@@ -24,6 +24,7 @@
 
   <ItemGroup>
     <PackageReference Include="Hex1b" />
+    <PackageReference Include="Microsoft.Diagnostics.NETCore.Client" />
     <PackageReference Include="ModelContextProtocol" />
     <PackageReference Include="StreamJsonRpc" />
   </ItemGroup>
@@ -39,6 +40,8 @@
     <ProjectReference Include="../../src/Csls.Debugger.Terminal/Csls.Debugger.Terminal.csproj"
                       ReferenceOutputAssembly="false" />
     <ProjectReference Include="../../src/Csls.Debugger.Worker/Csls.Debugger.Worker.csproj"
+                      ReferenceOutputAssembly="false" />
+    <ProjectReference Include="../../src/Csls.Debugger.Dump.Worker/Csls.Debugger.Dump.Worker.csproj"
                       ReferenceOutputAssembly="false" />
     <ProjectReference Include="../../src/Csls.Control/Csls.Control.csproj" />
     <ProjectReference Include="../../src/Csls.Control.Contracts/Csls.Control.Contracts.csproj" />

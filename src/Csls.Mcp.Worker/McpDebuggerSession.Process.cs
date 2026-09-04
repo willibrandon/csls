@@ -45,7 +45,11 @@ internal sealed partial class McpDebuggerSession
         }
 
         startInfo.ArgumentList.Add("control");
-        DebuggerWorkerEnvironment.Configure(startInfo, workerPath);
+        if (kind is not McpDebuggerSessionKind.Dump)
+        {
+            DebuggerWorkerEnvironment.Configure(startInfo, workerPath);
+        }
+
         Process process = Process.Start(startInfo)
             ?? throw new InvalidOperationException("The debugger worker did not start.");
         ValueTask<string> diagnostics = new(

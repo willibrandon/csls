@@ -13,7 +13,7 @@ internal sealed class McpDebugSessionInfo : IMcpDebugSessionResult
     public required string DebugSession { get; init; }
 
     /// <summary>
-    /// Gets whether the session launched or attached to its target.
+    /// Gets whether the session launched, attached to, or opened its target.
     /// </summary>
     public required string Mode { get; init; }
 
@@ -83,7 +83,14 @@ internal sealed class McpDebugSessionInfo : IMcpDebugSessionResult
         return new McpDebugSessionInfo
         {
             DebugSession = debugSession,
-            Mode = kind == McpDebuggerSessionKind.Launch ? "launch" : "attach",
+            Mode = kind switch
+            {
+                McpDebuggerSessionKind.Launch => "launch",
+                McpDebuggerSessionKind.Attach => "attach",
+                McpDebuggerSessionKind.Dump => "dump",
+                _ => throw new InvalidDataException(
+                    $"Unknown debugger session kind {kind}.")
+            },
             State = snapshot.State switch
             {
                 DebugSessionState.Created => "created",

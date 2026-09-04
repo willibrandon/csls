@@ -9,6 +9,7 @@ internal sealed partial class McpDebuggerSessionBroker : IAsyncDisposable
 {
     private const int MaximumOwnedSessions = 8;
     private readonly Lock _gate = new();
+    private readonly string? _dumpWorkerPath;
     private readonly string? _workerPath;
     private readonly Dictionary<string, McpDebuggerSession> _sessions =
         new(StringComparer.Ordinal);
@@ -23,20 +24,34 @@ internal sealed partial class McpDebuggerSessionBroker : IAsyncDisposable
     internal event Action<McpDebuggerResourceChange>? ResourceChanged;
 
     /// <summary>
-    /// Creates a debugger broker for one installed worker executable.
+    /// Creates a debugger broker for the installed live and dump workers.
     /// </summary>
     /// <param name="workerPath">The optional absolute debugger worker path.</param>
-    internal McpDebuggerSessionBroker(string? workerPath)
+    /// <param name="dumpWorkerPath">The optional absolute dump worker path.</param>
+    internal McpDebuggerSessionBroker(string? workerPath, string? dumpWorkerPath = null)
     {
         _workerPath = string.IsNullOrWhiteSpace(workerPath)
             ? null
             : Path.GetFullPath(workerPath);
+        _dumpWorkerPath = string.IsNullOrWhiteSpace(dumpWorkerPath)
+            ? null
+            : Path.GetFullPath(dumpWorkerPath);
     }
 
     /// <summary>
     /// Gets whether this installation can advertise debugger lifecycle tools.
     /// </summary>
-    internal bool IsAvailable => _workerPath is not null;
+    internal bool IsAvailable => HasLiveWorker || HasDumpWorker;
+
+    /// <summary>
+    /// Gets whether this installation can start or attach live targets.
+    /// </summary>
+    internal bool HasLiveWorker => _workerPath is not null;
+
+    /// <summary>
+    /// Gets whether this installation can inspect managed process dumps.
+    /// </summary>
+    internal bool HasDumpWorker => _dumpWorkerPath is not null;
 
     /// <summary>
     /// Tests whether this connection currently owns an exact debugger session.
@@ -71,6 +86,9 @@ internal sealed partial class McpDebuggerSessionBroker : IAsyncDisposable
         ArgumentNullException.ThrowIfNull(request);
         return StartAsync(
             McpDebuggerSessionKind.Launch,
+            _workerPath ?? throw new McpDebuggerException(
+                "debugger_unavailable",
+                "This MCP installation has no live debugger worker."),
             async (session, token) =>
             {
                 if (initialSourcePath is not null)
@@ -102,6 +120,9 @@ internal sealed partial class McpDebuggerSessionBroker : IAsyncDisposable
         ArgumentNullException.ThrowIfNull(request);
         return StartAsync(
             McpDebuggerSessionKind.Attach,
+            _workerPath ?? throw new McpDebuggerException(
+                "debugger_unavailable",
+                "This MCP installation has no live debugger worker."),
             async (session, token) =>
             {
                 DebugSessionSnapshot snapshot = await session.Client.AttachAsync(request, token)
@@ -110,6 +131,27 @@ internal sealed partial class McpDebuggerSessionBroker : IAsyncDisposable
                     ? await session.Client.PauseAsync(token).ConfigureAwait(false)
                     : snapshot;
             },
+            cancellationToken);
+    }
+
+    /// <summary>
+    /// Opens one managed process dump through a newly supervised read-only worker.
+    /// </summary>
+    /// <param name="request">The validated dump-open request.</param>
+    /// <param name="cancellationToken">The MCP request cancellation token.</param>
+    /// <returns>The activated debugger-session projection.</returns>
+    internal Task<McpDebugSessionInfo> OpenDumpAsync(
+        DebugDumpOpenRequest request,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        return StartAsync(
+            McpDebuggerSessionKind.Dump,
+            _dumpWorkerPath ?? throw new McpDebuggerException(
+                "debugger_unavailable",
+                "This MCP installation has no process-dump debugger worker."),
+            async (session, token) => await session.Client.OpenDumpAsync(request, token)
+                .ConfigureAwait(false),
             cancellationToken);
     }
 

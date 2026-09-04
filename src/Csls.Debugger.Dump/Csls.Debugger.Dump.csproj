@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <AssemblyName>Csls.Debugger.Dump</AssemblyName>
+    <RootNamespace>Csls.Debugger.Dump</RootNamespace>
+    <Description>Read-only managed process-dump inspection for the csls debugger.</Description>
+    <PublishAot>false</PublishAot>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Diagnostics.Runtime" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../Csls.Debugger.Contracts/Csls.Debugger.Contracts.csproj" />
+  </ItemGroup>
+</Project>

@@ -148,6 +148,10 @@ internal sealed partial class McpDebuggerSession : IAsyncDisposable
                 ? await InvokeAsync(
                     static (client, token) => client.TerminateAsync(token),
                     cancellationToken).ConfigureAwait(false)
+                : Kind == McpDebuggerSessionKind.Dump
+                    ? await InvokeAsync(
+                        static (client, token) => client.DetachAsync(token),
+                        cancellationToken).ConfigureAwait(false)
                 : terminateAttachedTarget
                     ? await InvokeControlledAsync(
                         static (client, token) => client.TerminateAsync(token),

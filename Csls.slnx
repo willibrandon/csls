@@ -28,6 +28,8 @@
     <Project Path="src/Csls.Debugger/Csls.Debugger.csproj" />
     <Project Path="src/Csls.Debugger.Control/Csls.Debugger.Control.csproj" />
     <Project Path="src/Csls.Debugger.Contracts/Csls.Debugger.Contracts.csproj" />
+    <Project Path="src/Csls.Debugger.Dump/Csls.Debugger.Dump.csproj" />
+    <Project Path="src/Csls.Debugger.Dump.Worker/Csls.Debugger.Dump.Worker.csproj" />
     <Project Path="src/Csls.Debugger.Evaluation/Csls.Debugger.Evaluation.csproj" />
     <Project Path="src/Csls.Debugger.Evaluator.FSharp/Csls.Debugger.Evaluator.FSharp.fsproj" />
     <Project Path="src/Csls.Debugger.Evaluator.Worker/Csls.Debugger.Evaluator.Worker.csproj" />

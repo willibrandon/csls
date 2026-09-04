@@ -37,6 +37,13 @@ internal sealed partial class McpDebuggerSessionBroker
         }
 
         McpDebuggerSession session = Resolve(debugSession);
+        if (enabled && session.Kind == McpDebuggerSessionKind.Dump)
+        {
+            throw new McpDebuggerException(
+                "debugger_not_supported",
+                $"Debugger session {debugSession} is a read-only process-dump session.");
+        }
+
         return session.InvokeAsync(
             async (client, token) =>
             {

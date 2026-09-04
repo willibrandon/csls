@@ -10,6 +10,7 @@ internal sealed partial class McpDebuggerSessionBroker
 {
     private async Task<McpDebugSessionInfo> StartAsync(
         McpDebuggerSessionKind kind,
+        string workerPath,
         Func<McpDebuggerSession, CancellationToken, Task<DebugSessionSnapshot>> activation,
         CancellationToken cancellationToken)
     {
@@ -31,9 +32,7 @@ internal sealed partial class McpDebuggerSessionBroker
 
             string id = Guid.NewGuid().ToString("N");
             McpDebuggerSessionLease lease = await McpDebuggerSession.StartAsync(
-                _workerPath ?? throw new McpDebuggerException(
-                    "debugger_unavailable",
-                    "This MCP installation has no debugger worker."),
+                workerPath,
                 id,
                 kind,
                 cancellationToken).ConfigureAwait(false);

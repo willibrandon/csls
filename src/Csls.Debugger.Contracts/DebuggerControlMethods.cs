@@ -26,6 +26,11 @@ public static class DebuggerControlMethods
     public const string Attach = "debugger/attach";
 
     /// <summary>
+    /// Opens a managed process dump for read-only inspection.
+    /// </summary>
+    public const string OpenDump = "debugger/openDump";
+
+    /// <summary>
     /// Restarts the current debugger target with its activation request.
     /// </summary>
     public const string Restart = "debugger/restart";

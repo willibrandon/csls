@@ -13,5 +13,10 @@ internal enum McpDebuggerSessionKind
     /// <summary>
     /// The debugger attached to an independently owned target process.
     /// </summary>
-    Attach
+    Attach,
+
+    /// <summary>
+    /// The debugger opened an immutable managed process dump.
+    /// </summary>
+    Dump
 }

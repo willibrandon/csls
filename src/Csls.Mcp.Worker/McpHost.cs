@@ -24,7 +24,10 @@ internal static class McpHost
         var broker = new McpSessionBroker();
         await using ConfiguredAsyncDisposable brokerCleanup = broker.ConfigureAwait(false);
         string? debuggerWorkerPath = McpDebuggerWorkerLocator.TryResolve();
-        var debuggerBroker = new McpDebuggerSessionBroker(debuggerWorkerPath);
+        string? debuggerDumpWorkerPath = McpDebuggerDumpWorkerLocator.TryResolve();
+        var debuggerBroker = new McpDebuggerSessionBroker(
+            debuggerWorkerPath,
+            debuggerDumpWorkerPath);
         await using ConfiguredAsyncDisposable debuggerBrokerCleanup =
             debuggerBroker.ConfigureAwait(false);
         var tools = new CslsMcpTools(broker);
@@ -81,10 +84,21 @@ internal static class McpHost
         if (debuggerBroker.IsAvailable)
         {
             var debuggerSubscriptions = new McpDebuggerSubscriptions(debuggerBroker);
-            mcpBuilder
-                .WithTools(
+            if (debuggerBroker.HasLiveWorker)
+            {
+                mcpBuilder.WithTools(
                     new CslsMcpDebuggerLifecycleTools(debuggerBroker),
-                    serializerOptions)
+                    serializerOptions);
+            }
+
+            if (debuggerBroker.HasDumpWorker)
+            {
+                mcpBuilder.WithTools(
+                    new CslsMcpDebuggerDumpTools(debuggerBroker),
+                    serializerOptions);
+            }
+
+            mcpBuilder
                 .WithTools(
                     new CslsMcpDebuggerAuthorizationTools(debuggerBroker),
                     serializerOptions)

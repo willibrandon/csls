@@ -33,6 +33,16 @@ public partial interface IDebuggerControlTarget
         CancellationToken cancellationToken);
 
     /// <summary>
+    /// Opens a managed process dump for read-only inspection.
+    /// </summary>
+    /// <param name="request">The selected dump and managed runtime.</param>
+    /// <param name="cancellationToken">Cancels dump activation.</param>
+    /// <returns>The stopped read-only snapshot.</returns>
+    Task<DebugSessionSnapshot> OpenDumpAsync(
+        DebugDumpOpenRequest request,
+        CancellationToken cancellationToken);
+
+    /// <summary>
     /// Restarts the current target with its original activation request.
     /// </summary>
     /// <param name="cancellationToken">Cancels target shutdown or activation.</param>
