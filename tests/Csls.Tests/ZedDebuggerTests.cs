@@ -100,7 +100,9 @@ public sealed class ZedDebuggerTests
             ProcessExitObservation? serverExit = null;
             try
             {
-                await FocusZedAsync(display.DisplayName).ConfigureAwait(false);
+                await FocusZedAsync(
+                    display.DisplayName,
+                    zed).ConfigureAwait(false);
                 ControlSessionInfo session = await ControlSessionWaiter.WaitForRunningAsync(
                     workspacePath,
                     TimeSpan.FromSeconds(60),
@@ -138,6 +140,11 @@ public sealed class ZedDebuggerTests
                 string diagnostics = string.Concat(
                     await output.ConfigureAwait(false),
                     await error.ConfigureAwait(false));
+                if (zed.ExitCode != 0 && !string.IsNullOrWhiteSpace(diagnostics))
+                {
+                    TestContext.WriteLine(diagnostics);
+                }
+
                 if (serverExit is ProcessExitObservation observation)
                 {
                     await ProcessExitWaiter.WaitAsync(
@@ -181,21 +188,48 @@ public sealed class ZedDebuggerTests
             string.Concat(await output.ConfigureAwait(false), await error.ConfigureAwait(false)));
     }
 
-    private async Task FocusZedAsync(string displayName)
+    private async Task FocusZedAsync(
+        string displayName,
+        Process zed)
     {
-        for (int attempt = 0; attempt < 100; attempt++)
+        using var timeoutSource = CancellationTokenSource.CreateLinkedTokenSource(
+            TestContext.CancellationToken);
+        timeoutSource.CancelAfter(TimeSpan.FromSeconds(30));
+        using var timer = new PeriodicTimer(TimeSpan.FromMilliseconds(100));
+        try
         {
-            if (X11Input.TryFocusWindow(displayName, "Program.cs"))
+            while (await timer.WaitForNextTickAsync(timeoutSource.Token).ConfigureAwait(false))
             {
+                if (X11Input.TryFocusWindow(displayName, "Program.cs"))
+                {
+                    return;
+                }
+
+                if (zed.HasExited)
+                {
+                    Assert.Fail(
+                        $"Zed exited with code {zed.ExitCode} before opening the debugger " +
+                        "fixture source window.");
+                }
+            }
+        }
+        catch (OperationCanceledException) when (!TestContext.CancellationToken.IsCancellationRequested)
+        {
+            try
+            {
+                X11Input.FocusWindow(displayName, "Program.cs");
                 return;
             }
-
-            await Task.Delay(
-                TimeSpan.FromMilliseconds(100),
-                TestContext.CancellationToken).ConfigureAwait(false);
+            catch (InvalidOperationException exception)
+            {
+                throw new TimeoutException(
+                    "Zed did not open the debugger fixture source window within 30 seconds. " +
+                    exception.Message,
+                    exception);
+            }
         }
 
-        Assert.Fail("Zed did not open the debugger fixture source window.");
+        throw new InvalidOperationException("The Zed window polling loop ended unexpectedly.");
     }
 
     private async Task WaitForFileAsync(string path)
