@@ -15,6 +15,47 @@ public sealed partial class DebuggerSession
         Task<ManagedFunctionEvaluationResult> completion,
         CancellationToken cancellationToken)
     {
+        CancellationToken sessionCancellation = _lifetime.Token;
+        try
+        {
+            return await WaitForFunctionEvaluationCoreAsync(debuggee, completion, cancellationToken)
+                .WaitAsync(CancellationToken.None)
+                .ConfigureAwait(false);
+        }
+        finally
+        {
+            await SynchronizeFunctionEvaluationCompletionAsync(sessionCancellation).ConfigureAwait(false);
+        }
+    }
+
+    /// <summary>
+    /// Waits for callback-owned state publication before exposing evaluation completion to callers.
+    /// </summary>
+    private async Task SynchronizeFunctionEvaluationCompletionAsync(CancellationToken sessionCancellation)
+    {
+        try
+        {
+            await _actor.InvokeAsync(
+                static _ => ValueTask.CompletedTask,
+                sessionCancellation).WaitAsync(sessionCancellation).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (sessionCancellation.IsCancellationRequested)
+        {
+            System.Diagnostics.Debug.Assert(Volatile.Read(ref _disposed) != 0);
+        }
+        catch (Exception exception) when (
+            Volatile.Read(ref _disposed) != 0 &&
+            exception is ObjectDisposedException or System.Threading.Channels.ChannelClosedException)
+        {
+            System.Diagnostics.Debug.Assert(sessionCancellation.IsCancellationRequested);
+        }
+    }
+
+    private async Task<ManagedFunctionEvaluationResult> WaitForFunctionEvaluationCoreAsync(
+        CorDebugDebuggee debuggee,
+        Task<ManagedFunctionEvaluationResult> completion,
+        CancellationToken cancellationToken)
+    {
         bool canceled = false;
         bool timedOut = false;
         try

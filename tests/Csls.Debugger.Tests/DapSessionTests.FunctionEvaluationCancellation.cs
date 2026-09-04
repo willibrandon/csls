@@ -28,11 +28,13 @@ public sealed partial class DapSessionTests
         string waitPath = Path.Join(
             Path.GetTempPath(),
             $"csls-debugger-function-evaluation-cancel-{Guid.NewGuid():N}.signal");
+        DapTestClient? diagnosticClient = null;
         try
         {
             DapTestClient client = await DapTestClient
                 .CreateAsync(TestContext.CancellationToken)
                 .ConfigureAwait(false);
+            diagnosticClient = client;
             await using ConfiguredAsyncDisposable clientDisposal = client.ConfigureAwait(false);
             _ = await client.SendRequestAsync(
                 "initialize",
@@ -96,7 +98,9 @@ public sealed partial class DapSessionTests
                     writer.WriteEndObject();
                 },
                 TestContext.CancellationToken).ConfigureAwait(false);
-            await WaitForSignalAsync(waitPath + ".evaluation").ConfigureAwait(false);
+            await client.WaitForTargetSignalAsync(
+                waitPath + ".evaluation", cancelableEvaluationSequence, TestContext.CancellationToken)
+                .ConfigureAwait(false);
             int concurrentEvaluationSequence = await client.SendRequestAsync(
                 "evaluate",
                 writer =>
@@ -152,6 +156,11 @@ public sealed partial class DapSessionTests
                     .ConfigureAwait(false));
             Assert.AreEqual(string.Empty, client.Diagnostics.ToString());
         }
+        catch
+        {
+            WriteTargetCodeFailureDiagnostics(diagnosticClient);
+            throw;
+        }
         finally
         {
             File.Delete(waitPath);
@@ -179,11 +188,13 @@ public sealed partial class DapSessionTests
         string waitPath = Path.Join(
             Path.GetTempPath(),
             $"csls-debugger-assignment-evaluation-cancel-{Guid.NewGuid():N}.signal");
+        DapTestClient? diagnosticClient = null;
         try
         {
             DapTestClient client = await DapTestClient
                 .CreateAsync(TestContext.CancellationToken)
                 .ConfigureAwait(false);
+            diagnosticClient = client;
             await using ConfiguredAsyncDisposable clientDisposal = client.ConfigureAwait(false);
             _ = await client.SendRequestAsync(
                 "initialize",
@@ -247,7 +258,9 @@ public sealed partial class DapSessionTests
                     writer.WriteEndObject();
                 },
                 TestContext.CancellationToken).ConfigureAwait(false);
-            await WaitForSignalAsync(waitPath + ".evaluation").ConfigureAwait(false);
+            await client.WaitForTargetSignalAsync(
+                waitPath + ".evaluation", cancelableAssignmentSequence, TestContext.CancellationToken)
+                .ConfigureAwait(false);
             int concurrentAssignmentSequence = await client.SendRequestAsync(
                 "evaluate",
                 writer =>
@@ -303,10 +316,24 @@ public sealed partial class DapSessionTests
                     .ConfigureAwait(false));
             Assert.AreEqual(string.Empty, client.Diagnostics.ToString());
         }
+        catch
+        {
+            WriteTargetCodeFailureDiagnostics(diagnosticClient);
+            throw;
+        }
         finally
         {
             File.Delete(waitPath);
             File.Delete(waitPath + ".evaluation");
+        }
+    }
+
+    private void WriteTargetCodeFailureDiagnostics(DapTestClient? client)
+    {
+        if (client is not null)
+        {
+            TestContext.WriteLine($"Adapter diagnostics: {client.Diagnostics}");
+            TestContext.WriteLine($"Recent protocol messages:{Environment.NewLine}{client.ProtocolTranscript}");
         }
     }
 }

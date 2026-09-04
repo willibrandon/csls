@@ -15,6 +15,8 @@ internal sealed partial class DapTestClient : IAsyncDisposable
     private const int MaximumTranscriptPayloadBytes = 4096;
     private readonly Lock _transcriptGate = new();
     private readonly Queue<string> _transcript = new();
+    private readonly Queue<JsonDocument> _bufferedMessages = new();
+    private Task<JsonDocument>? _pendingMessage;
     private ValueTask _diagnostics = ValueTask.CompletedTask;
     private Process? _process;
     private int _sequence;
@@ -154,6 +156,22 @@ internal sealed partial class DapTestClient : IAsyncDisposable
     /// <param name="cancellationToken">Cancels the pipe read.</param>
     /// <returns>An owned JSON document containing the message.</returns>
     internal async Task<JsonDocument> ReadMessageAsync(CancellationToken cancellationToken)
+    {
+        if (_bufferedMessages.TryDequeue(out JsonDocument? buffered))
+        {
+            return buffered;
+        }
+
+        JsonDocument message = await GetPendingMessageAsync(cancellationToken)
+            .WaitAsync(cancellationToken).ConfigureAwait(false);
+        _pendingMessage = null;
+        return message;
+    }
+
+    private Task<JsonDocument> GetPendingMessageAsync(CancellationToken cancellationToken) =>
+        _pendingMessage ??= ReadProtocolMessageAsync(cancellationToken);
+
+    private async Task<JsonDocument> ReadProtocolMessageAsync(CancellationToken cancellationToken)
     {
         Process process = _process ?? throw new InvalidOperationException(
             "The DAP test client has not been initialized.");

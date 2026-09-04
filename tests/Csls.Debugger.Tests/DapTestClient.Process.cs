@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
+using System.Text.Json;
 
 namespace Csls.Debugger.Tests;
 
@@ -53,7 +54,29 @@ internal sealed partial class DapTestClient
 
             await process.WaitForExitAsync(CancellationToken.None).ConfigureAwait(false);
             await _diagnostics.ConfigureAwait(false);
+            if (_pendingMessage is Task<JsonDocument> pendingMessage)
+            {
+                try
+                {
+                    using JsonDocument message = await pendingMessage
+                        .WaitAsync(CancellationToken.None).ConfigureAwait(false);
+                }
+                catch (Exception exception) when (
+                    exception is OperationCanceledException or IOException or
+                    JsonException or ObjectDisposedException)
+                {
+                    Debug.Assert(process.HasExited);
+                }
+
+                _pendingMessage = null;
+            }
+
             process.Dispose();
+        }
+
+        while (_bufferedMessages.TryDequeue(out JsonDocument? message))
+        {
+            message.Dispose();
         }
 
         Diagnostics.Dispose();
