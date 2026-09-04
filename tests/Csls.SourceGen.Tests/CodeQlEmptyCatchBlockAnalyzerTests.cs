@@ -72,7 +72,7 @@ public sealed class CodeQlEmptyCatchBlockAnalyzerTests(TestContext testContext)
                 }
             }
             """;
-        string sourcePath = Path.Combine(Path.GetTempPath(), $"csls-empty-catch-{Guid.NewGuid():N}.cs");
+        string sourcePath = Path.Join(Path.GetTempPath(), $"csls-empty-catch-{Guid.NewGuid():N}.cs");
         try
         {
             await File.WriteAllTextAsync(sourcePath, source, testContext.CancellationToken).ConfigureAwait(false);

@@ -312,7 +312,7 @@ public sealed class CodeQlLocalDisposableAnalyzerTests(TestContext testContext)
 
     private async Task<ImmutableArray<Diagnostic>> AnalyzeAsync(string source)
     {
-        string sourcePath = Path.Combine(Path.GetTempPath(), $"csls-disposable-local-{Guid.NewGuid():N}.cs");
+        string sourcePath = Path.Join(Path.GetTempPath(), $"csls-disposable-local-{Guid.NewGuid():N}.cs");
         try
         {
             await File.WriteAllTextAsync(sourcePath, source, testContext.CancellationToken).ConfigureAwait(false);
