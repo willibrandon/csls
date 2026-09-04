@@ -14,3 +14,4 @@ CSLS0012 | CodeQuality | Error | By-reference method state is encapsulated after
 CSLS0013 | CodeQuality | Error | Complex Boolean conditions use named decisions
 CSLS0014 | CodeQuality | Error | Deconstructed collection aliases are not mutation-only
 CSLS0015 | CodeQuality | Error | Nullable out variables are proved before dereferencing
+CSLS0016 | CodeQuality | Error | Redundant nested implicit upcasts are removed

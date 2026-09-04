@@ -12,7 +12,10 @@ internal sealed class ClosedGenericDebuggerTypeProxyFixtureProxy<T>
     /// <param name="target">The original runtime target.</param>
     internal ClosedGenericDebuggerTypeProxyFixtureProxy(
         ClosedGenericDebuggerTypeProxyFixture target) =>
-        Value = (T)(object)target._rawValue;
+        Value = target._rawValue is T value
+            ? value
+            : throw new InvalidOperationException(
+                "The debugger proxy attribute supplied an incompatible type argument.");
 
     /// <summary>
     /// Gets the projected value with its attribute-supplied runtime type.
