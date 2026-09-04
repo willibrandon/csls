@@ -107,4 +107,5 @@ csls exposes target-selected state only through the resource templates below.
 | `plan_dotnet_breakpoints` | Plan .NET breakpoints from source and debugger evidence without changing the target. |
 | `refactor_csharp` | Plan and apply a C# refactoring through csls with version preconditions and verification. |
 | `review_csharp` | Review C# code using csls semantic evidence and actionable findings. |
+| `triage_dotnet_dump` | Triage one explicit read-only .NET process-dump session from bounded evidence. |
 | `troubleshoot_csls` | Troubleshoot a csls or editor integration symptom from session state, queues, logs, and workspace evidence. |

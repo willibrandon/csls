@@ -199,8 +199,10 @@ breakpoint-binding events; it does not poll the target or expose legacy
 subscription RPCs.
 
 The `diagnose_dotnet_debugger_failure`, `plan_dotnet_breakpoints`, and
-`explain_dotnet_debugger_state` prompts use explicit session identity and
-read-first evidence. None embeds execution control or breakpoint mutation.
+`explain_dotnet_debugger_state` prompts use explicit live-session identity and
+read-first evidence. `triage_dotnet_dump` uses only the bounded evidence exposed by
+an already-opened read-only dump session. None embeds execution control or
+breakpoint mutation.
 
 Each lifecycle result returns an opaque `debugSession` identifier and current
 `stopGeneration`. Later operations use that explicit identity; a language

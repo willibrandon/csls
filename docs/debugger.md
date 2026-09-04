@@ -446,11 +446,13 @@ grant, revoke, and expiry transitions also publish the exact session resource so
 subscribed clients do not cache stale authorization state. The path is event-driven
 and does not poll the debug target. Legacy resource subscription RPCs are not exposed.
 
-Three read-first prompts are advertised with the debugger worker:
+Four read-first prompts are advertised with the debugger worker:
 `diagnose_dotnet_debugger_failure`, `plan_dotnet_breakpoints`, and
-`explain_dotnet_debugger_state`. They require an explicit `debugSession`, ground
-their guidance in bounded debugger evidence, and explicitly prohibit hidden
-execution or breakpoint mutations.
+`explain_dotnet_debugger_state` for live debugging, plus `triage_dotnet_dump` for
+an already-opened read-only dump session. They require an explicit `debugSession`,
+ground their guidance in bounded debugger evidence, and explicitly prohibit hidden
+execution or breakpoint mutations. Dump triage is limited to the session snapshot,
+managed threads, managed stacks, and modules that dump inspection currently exposes.
 
 Stack, variable, and module pages accept only non-negative offsets and at most
 256 entries per call. Source results include `nextStart` until their complete

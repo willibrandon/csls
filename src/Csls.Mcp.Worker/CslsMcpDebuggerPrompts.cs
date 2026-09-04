@@ -55,4 +55,24 @@ internal sealed class CslsMcpDebuggerPrompts
         $"Explain the current state of debugSession {debugSession}. Read its exact current " +
         "stopGeneration, stopped thread, stack, scopes, variables, exception when applicable, " +
         "modules, and recent output. Clearly separate observed facts from inference. Do not mutate.";
+
+    /// <summary>
+    /// Creates a managed process-dump triage prompt.
+    /// </summary>
+    [McpServerPrompt(Name = "triage_dotnet_dump")]
+    [Description("Triage one explicit read-only .NET process-dump session from bounded evidence.")]
+    public static string TriageDump(
+        [Description("Opaque debugger-session identifier returned by debug_dump_open.")]
+        string debugSession,
+        [Description("Failure, symptom, or question the dump should explain.")]
+        string question) =>
+        $"Triage the managed process dump in debugSession {debugSession} to answer: {question}. " +
+        "First read debug_session_get and verify that mode is dump. Preserve its exact " +
+        "stopGeneration while reading debug_threads_get, bounded debug_stack_get pages for " +
+        "relevant threads, and bounded debug_modules_get pages. Correlate repeated and blocked " +
+        "stacks, runtime infrastructure, application modules, and missing evidence. Clearly " +
+        "separate observed facts from inference, rank likely causes, and identify the next " +
+        "artifact needed when the dump cannot prove the cause. This session is read-only: do not " +
+        "grant control, open another dump, execute expressions, resume, step, set breakpoints, or " +
+        "claim that unavailable locals, exceptions, memory, source, or disassembly were inspected.";
 }

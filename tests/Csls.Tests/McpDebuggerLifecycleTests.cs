@@ -191,6 +191,7 @@ public sealed partial class McpDebuggerLifecycleTests
         Assert.Contains("diagnose_dotnet_debugger_failure", promptNames);
         Assert.Contains("plan_dotnet_breakpoints", promptNames);
         Assert.Contains("explain_dotnet_debugger_state", promptNames);
+        Assert.Contains("triage_dotnet_dump", promptNames);
     }
 
     /// <summary>

@@ -114,7 +114,9 @@ csls does not poll the target. Legacy subscription RPCs are not exposed.
 
 The prompts `diagnose_dotnet_debugger_failure`, `plan_dotnet_breakpoints`, and
 `explain_dotnet_debugger_state` gather bounded read-first evidence for one explicit
-session. They contain no hidden execution or breakpoint changes.
+live session. `triage_dotnet_dump` uses only the session snapshot, managed threads,
+managed stacks, and modules exposed by an already-opened read-only dump session.
+The prompts contain no hidden execution or breakpoint changes.
 
 For every tool schema, resource URI, prompt, annotation, and shared transport convention,
 see the generated [MCP reference](../mcp-reference/).
