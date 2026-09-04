@@ -95,21 +95,17 @@ static async Task BuildDocumentationInputsAsync(
     string repositoryRoot,
     CancellationToken cancellationToken)
 {
-    string[] projects =
-    [
-        "src/Csls.App/Csls.App.csproj",
-        "src/Csls.Debugger.Worker/Csls.Debugger.Worker.csproj",
-        "src/Csls.Mcp.Worker/Csls.Mcp.Worker.csproj",
-        "src/Csls.Server/Csls.Server.csproj"
-    ];
-    foreach (string project in projects)
-    {
-        _ = await RunProcessAsync(
-            ResolveDotNetHost(),
-            ["build", project, "--configuration", "Debug", "--nologo"],
-            repositoryRoot,
-            cancellationToken).ConfigureAwait(false);
-    }
+    _ = await RunProcessAsync(
+        ResolveDotNetHost(),
+        [
+            "build",
+            "scripts/DocumentationInputs.slnx",
+            "--configuration",
+            "Debug",
+            "--nologo"
+        ],
+        repositoryRoot,
+        cancellationToken).ConfigureAwait(false);
 }
 
 static async Task<string> GenerateCliReferenceAsync(
