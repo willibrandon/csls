@@ -38,6 +38,7 @@ public sealed partial class DapSessionTests
                     "Value",
                     "_attributedProperty",
                     "_attributedValue",
+                    "Static members",
                     "Raw View"
                 ],
                 proxyFields.Select(field => field.GetProperty("name").GetString()).ToArray(),
@@ -72,7 +73,38 @@ public sealed partial class DapSessionTests
                 propertyArray.Select(element => element.GetProperty("value").GetString())
                     .ToArray());
 
-            JsonElement rawView = proxyFields[12];
+            JsonElement staticView = proxyFields[12];
+            Assert.AreEqual(
+                "virtual",
+                staticView.GetProperty("presentationHint").GetProperty("kind").GetString());
+            JsonElement[] staticMembers = await ReadVariablesAsync(
+                client,
+                staticView.GetProperty("variablesReference").GetInt32()).ConfigureAwait(false);
+            Assert.AreSequenceEqual(
+                [
+                    "StaticProperty",
+                    "[0]",
+                    "[1]",
+                    "ThrowingStatic",
+                    "s_attributedStatic",
+                    "s_staticField",
+                    "[0]",
+                    "[1]"
+                ],
+                staticMembers.Select(field => field.GetProperty("name").GetString()).ToArray());
+            Assert.AreSequenceEqual(
+                ["63", "64", "65"],
+                staticMembers.Take(3)
+                    .Select(field => field.GetProperty("value").GetString()).ToArray());
+            Assert.StartsWith(
+                "<error: System.InvalidOperationException:",
+                staticMembers[3].GetProperty("value").GetString());
+            Assert.AreSequenceEqual(
+                ["66", "60", "61", "62"],
+                staticMembers.Skip(4)
+                    .Select(field => field.GetProperty("value").GetString()).ToArray());
+
+            JsonElement rawView = proxyFields[13];
             Assert.AreEqual(
                 "virtual",
                 rawView.GetProperty("presentationHint").GetProperty("kind").GetString());
@@ -130,16 +162,18 @@ public sealed partial class DapSessionTests
             Assert.AreSequenceEqual(
                 ["_attributedProperty", "_attributedValue"],
                 sixthPage.Select(field => field.GetProperty("name").GetString()).ToArray());
-            JsonElement rawPage = Assert.ContainsSingle(await ReadProxyLocalPageAsync(
+            JsonElement[] finalPage = await ReadProxyLocalPageAsync(
                 client,
                 "localProxy",
                 start: 12,
-                count: 2).ConfigureAwait(false));
-            Assert.AreEqual("Raw View", rawPage.GetProperty("name").GetString());
+                count: 2).ConfigureAwait(false);
+            Assert.AreSequenceEqual(
+                ["Static members", "Raw View"],
+                finalPage.Select(field => field.GetProperty("name").GetString()).ToArray());
             Assert.IsEmpty(await ReadProxyLocalPageAsync(
                 client,
                 "localProxy",
-                start: 13,
+                start: 14,
                 count: 2).ConfigureAwait(false));
 
             await DisconnectStoppedSessionAsync(client).ConfigureAwait(false);

@@ -79,6 +79,7 @@ public sealed partial class McpDebuggerLifecycleTests
                 "Value",
                 "_attributedProperty",
                 "_attributedValue",
+                "Static members",
                 "Raw View"
             ],
             presented.GetProperty("variables").EnumerateArray()
@@ -102,6 +103,31 @@ public sealed partial class McpDebuggerLifecycleTests
         Assert.AreEqual("42", proxyMembers[9].GetProperty("value").GetString());
         Assert.AreEqual("47", proxyMembers[10].GetProperty("value").GetString());
         Assert.AreEqual("46", proxyMembers[11].GetProperty("value").GetString());
+        JsonElement staticMembers = await CallAsync(
+            client,
+            "debug_variables_get",
+            new Dictionary<string, object?>
+            {
+                ["debugSession"] = debugSession,
+                ["stopGeneration"] = presented.GetProperty("stopGeneration").GetInt64(),
+                ["variablesReference"] =
+                    proxyMembers[12].GetProperty("variablesReference").GetInt32()
+            },
+            cancellationToken).ConfigureAwait(false);
+        Assert.AreSequenceEqual(
+            [
+                "StaticProperty",
+                "[0]",
+                "[1]",
+                "ThrowingStatic",
+                "s_attributedStatic",
+                "s_staticField",
+                "[0]",
+                "[1]"
+            ],
+            staticMembers.GetProperty("variables").EnumerateArray()
+                .Select(item => item.GetProperty("name").GetString())
+                .ToArray());
         JsonElement current = await CallAsync(
             client,
             "debug_session_get",

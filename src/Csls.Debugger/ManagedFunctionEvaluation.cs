@@ -36,6 +36,11 @@ internal sealed class ManagedFunctionEvaluation
     internal required bool ConstructsObject { get; set; }
 
     /// <summary>
+    /// Gets or sets whether the current call omits the retained receiver argument.
+    /// </summary>
+    internal bool SuppressReceiver { get; set; }
+
+    /// <summary>
     /// Gets whether the final CoreCLR operation materializes a string value.
     /// </summary>
     internal required bool MaterializesString { get; init; }

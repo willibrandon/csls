@@ -428,8 +428,10 @@ A successful construction presents public and protected proxy fields plus non-pu
 fields intentionally surfaced through `DebuggerBrowsableAttribute`. Visible non-indexed
 instance property getters execute serially inside the same bounded operation; strong
 runtime handles preserve expandable heap results until one final generation is published.
-Fields and properties share ordinal member ordering, and root-hidden properties flatten
-their bounded children at the property's ordered position. The original object remains
+Fields and properties share ordinal member ordering, and root-hidden members flatten
+their bounded children at the member's ordered position. Accessible or explicitly
+attributed static fields and guarded property getters appear in one synthetic Static
+members container with the same ordering and browsing rules. The original object remains
 available as Raw View in the replacement generation. Metadata, resolution, constructor,
 or target exceptions preserve ordinary
 expansion. DAP and the terminal may request debugger presentation directly. MCP keeps

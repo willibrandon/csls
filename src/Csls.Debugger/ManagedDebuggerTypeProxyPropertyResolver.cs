@@ -152,7 +152,7 @@ internal sealed class ManagedDebuggerTypeProxyPropertyResolver
                 metadata,
                 property.GetCustomAttributes(),
                 out ManagedDebuggerBrowsableState browsingState);
-            if ((getter.Attributes & (MethodAttributes.Static | MethodAttributes.Abstract)) != 0 ||
+            if ((getter.Attributes & MethodAttributes.Abstract) != 0 ||
                 signature.Header.IsGeneric ||
                 signature.ParameterTypes.Length != 0 ||
                 browsingState == ManagedDebuggerBrowsableState.Never ||
@@ -178,6 +178,7 @@ internal sealed class ManagedDebuggerTypeProxyPropertyResolver
                 name,
                 signature.ReturnType,
                 browsingState,
+                (getter.Attributes & MethodAttributes.Static) != 0,
                 GetModuleFunction(
                     module,
                     checked((uint)MetadataTokens.GetToken(getterHandle)))));

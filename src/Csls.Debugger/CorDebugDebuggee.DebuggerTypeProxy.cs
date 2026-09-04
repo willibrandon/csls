@@ -382,7 +382,9 @@ internal sealed partial class CorDebugDebuggee
         context.PropertyResults.Add(new ManagedDebuggerTypeProxyPropertyResult(
             property.Name,
             property.BrowsingState,
+            property.IsStatic,
             display,
+            value == 0 || isException,
             handle));
         context.CurrentProperty = null;
     }
@@ -410,6 +412,7 @@ internal sealed partial class CorDebugDebuggee
             active.Pointer = nextEvaluation;
             active.Function = nextFunction;
             active.ConstructsObject = false;
+            active.SuppressReceiver = property.IsStatic;
             active.Arguments = [];
             active.MethodCallScheduled = false;
             context.CurrentProperty = property;
@@ -473,9 +476,31 @@ internal sealed partial class CorDebugDebuggee
                 active,
                 generation,
                 ManagedValueView.Raw).Id;
-            proxy.ProxyProperties = MaterializeDebuggerTypeProxyProperties(
+            List<ManagedDebuggerTypeProxyPropertyPresentation> properties =
+                MaterializeDebuggerTypeProxyProperties(
                 context,
                 generation);
+            proxy.ProxyProperties = properties.Where(static property => !property.IsStatic)
+                .ToArray();
+            List<DebugVariableInfo> staticMembers = MaterializeDebuggerTypeProxyStaticMembers(
+                active,
+                proxyValue,
+                generation,
+                properties);
+            if (staticMembers.Count > 0)
+            {
+                ManagedValueHandle staticHandle = RetainRuntimeValue(
+                    proxyValue,
+                    generation,
+                    evaluateName: null,
+                    frameId: null,
+                    context.ThreadId,
+                    ManagedValueView.ProxyStatics,
+                    tupleCustomTypeInfo: null);
+                staticHandle.SyntheticVariables = staticMembers;
+                proxy.ProxyStaticValueReference = staticHandle.Id;
+            }
+
             ManagedValueDisplay display = FormatRuntimeValue(proxyValue);
             ManagedValueReferences references = IsExpandable(proxyValue)
                 ? new ManagedValueReferences(proxy.Id, proxy.MemoryReference)
@@ -496,6 +521,42 @@ internal sealed partial class CorDebugDebuggee
             if (proxyValue != 0)
             {
                 _ = ComAbi.Release(proxyValue);
+            }
+        }
+    }
+
+    private unsafe List<DebugVariableInfo> MaterializeDebuggerTypeProxyStaticMembers(
+        ManagedFunctionEvaluation active,
+        nint proxyValue,
+        DebugStopGeneration generation,
+        IReadOnlyList<ManagedDebuggerTypeProxyPropertyPresentation> properties)
+    {
+        nint frame = 0;
+        try
+        {
+            nint* frameAddress = &frame;
+            int result = new ICorDebugThreadAbi(active.Thread).GetActiveFrame(
+                (nint)frameAddress);
+            if (result < 0)
+            {
+                frame = 0;
+            }
+            else
+            {
+                frame = Volatile.Read(ref *frameAddress);
+            }
+
+            return _objectExpander.MaterializeDebuggerTypeProxyStaticMembers(
+                proxyValue,
+                frame,
+                generation,
+                properties);
+        }
+        finally
+        {
+            if (frame != 0)
+            {
+                _ = ComAbi.Release(frame);
             }
         }
     }
@@ -536,9 +597,10 @@ internal sealed partial class CorDebugDebuggee
                     }
                 }
 
-                result.Add(new ManagedDebuggerTypeProxyPropertyPresentation(
-                    property.Name,
-                    rootHiddenVariables ??
+                IReadOnlyList<DebugVariableInfo> variables = property.BrowsingState ==
+                    ManagedDebuggerBrowsableState.RootHidden && !property.IsError
+                    ? rootHiddenVariables ?? []
+                    :
                     [
                         new DebugVariableInfo(
                             property.Name,
@@ -547,9 +609,13 @@ internal sealed partial class CorDebugDebuggee
                             references.VariablesReference,
                             references.MemoryReference,
                             EvaluateName: null)
-                    ]));
+                    ];
+                result.Add(new ManagedDebuggerTypeProxyPropertyPresentation(
+                    property.Name,
+                    property.IsStatic,
+                    variables));
                 visiblePropertyCount = checked(
-                    visiblePropertyCount + (rootHiddenVariables?.Count ?? 1));
+                    visiblePropertyCount + variables.Count);
                 if (visiblePropertyCount > MaximumExpandableValueCount)
                 {
                     throw new InvalidOperationException(
@@ -622,6 +688,7 @@ internal sealed partial class CorDebugDebuggee
                 ManagedValueView.Default,
                 tupleCustomTypeInfo: null,
                 proxyRawView: null,
+                proxyStaticView: null,
                 proxyProperties: null);
             return true;
         }

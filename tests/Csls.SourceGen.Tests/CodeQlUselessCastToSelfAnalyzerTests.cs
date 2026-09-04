@@ -7,21 +7,21 @@ using System.Globalization;
 namespace Csls.SourceGen.Tests;
 
 /// <summary>
-/// Verifies the local guard for CodeQL useless-upcast findings.
+/// Verifies the local guard for CodeQL useless-cast-to-self findings.
 /// </summary>
 [TestClass]
-public sealed class CodeQlUselessUpcastAnalyzerTests
+public sealed class CodeQlUselessCastToSelfAnalyzerTests
 {
     /// <summary>
-    /// Verifies an implicit reference conversion nested inside another cast is rejected.
+    /// Verifies an explicit cast to the operand's existing type is rejected.
     /// </summary>
     [TestMethod]
-    public async Task ReportsRedundantNestedUpcast()
+    public async Task ReportsIdentityCast()
     {
         const string Source = """
             internal static class Projection
             {
-                internal static T Convert<T>(int[] values) => (T)(object)values;
+                internal static string Convert(string value) => (string)value;
             }
             """;
 
@@ -29,24 +29,22 @@ public sealed class CodeQlUselessUpcastAnalyzerTests
             .ConfigureAwait(false);
 
         Diagnostic diagnostic = Assert.ContainsSingle(diagnostics);
-        Assert.AreEqual(CodeQlUselessUpcastAnalyzer.DiagnosticId, diagnostic.Id);
+        Assert.AreEqual(CodeQlUselessCastToSelfAnalyzer.DiagnosticId, diagnostic.Id);
         Assert.Contains(
-            "object",
+            "string",
             diagnostic.GetMessage(CultureInfo.InvariantCulture));
     }
 
     /// <summary>
-    /// Verifies the direct generic conversion does not trigger the rule.
+    /// Verifies a cast that changes the operand type remains accepted.
     /// </summary>
     [TestMethod]
-    public async Task AcceptsPatternValidatedGenericConversion()
+    public async Task AcceptsTypeChangingCast()
     {
         const string Source = """
             internal static class Projection
             {
-                internal static T Convert<T>(int[] values) => values is T value
-                    ? value
-                    : throw new System.InvalidOperationException();
+                internal static object Convert(string value) => (object)value;
             }
             """;
 
@@ -54,33 +52,6 @@ public sealed class CodeQlUselessUpcastAnalyzerTests
             .ConfigureAwait(false);
 
         Assert.IsEmpty(diagnostics);
-    }
-
-    /// <summary>
-    /// Verifies an explicit null upcast in a typed declaration is rejected.
-    /// </summary>
-    [TestMethod]
-    public async Task ReportsRedundantNullUpcast()
-    {
-        const string Source = """
-            internal static class Projection
-            {
-                internal static string? Convert()
-                {
-                    string? value = (string?)null;
-                    return value;
-                }
-            }
-            """;
-
-        ImmutableArray<Diagnostic> diagnostics = await AnalyzeAsync(Source)
-            .ConfigureAwait(false);
-
-        Diagnostic diagnostic = Assert.ContainsSingle(diagnostics);
-        Assert.AreEqual(CodeQlUselessUpcastAnalyzer.DiagnosticId, diagnostic.Id);
-        Assert.Contains(
-            "string",
-            diagnostic.GetMessage(CultureInfo.InvariantCulture));
     }
 
     private static async Task<ImmutableArray<Diagnostic>> AnalyzeAsync(string source)
@@ -104,7 +75,7 @@ public sealed class CodeQlUselessUpcastAnalyzerTests
             references,
             new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
         ImmutableArray<DiagnosticAnalyzer> analyzers =
-            [new CodeQlUselessUpcastAnalyzer()];
+            [new CodeQlUselessCastToSelfAnalyzer()];
 
         return await compilation
             .WithAnalyzers(analyzers)

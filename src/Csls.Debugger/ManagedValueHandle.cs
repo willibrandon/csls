@@ -57,6 +57,16 @@ internal sealed class ManagedValueHandle
     }
 
     /// <summary>
+    /// Gets or sets the retained synthetic static-member container for this proxy.
+    /// </summary>
+    internal int ProxyStaticValueReference { get; set; }
+
+    /// <summary>
+    /// Gets or sets immutable rows owned by a synthetic variable container.
+    /// </summary>
+    internal IReadOnlyList<DebugVariableInfo>? SyntheticVariables { get; set; }
+
+    /// <summary>
     /// Gets or initializes the opaque stopped-state memory handle.
     /// </summary>
     internal string? MemoryReference { get; init; }

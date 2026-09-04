@@ -86,7 +86,7 @@ internal sealed partial class CorDebugDebuggee
         var temporaryArguments = new List<nint>();
         try
         {
-            int receiverCount = evaluation.Receiver == 0 ? 0 : 1;
+            int receiverCount = evaluation.Receiver == 0 || evaluation.SuppressReceiver ? 0 : 1;
             nint[] arguments = new nint[checked(evaluation.Arguments.Length + receiverCount)];
             if (receiverCount != 0)
             {

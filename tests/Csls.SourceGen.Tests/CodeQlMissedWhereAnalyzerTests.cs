@@ -2,73 +2,37 @@ using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.Diagnostics;
 using System.Collections.Immutable;
-using System.Globalization;
 
 namespace Csls.SourceGen.Tests;
 
 /// <summary>
-/// Verifies the local guard for CodeQL useless-upcast findings.
+/// Verifies the local guard for CodeQL missed-Where findings.
 /// </summary>
 [TestClass]
-public sealed class CodeQlUselessUpcastAnalyzerTests
+public sealed class CodeQlMissedWhereAnalyzerTests
 {
     /// <summary>
-    /// Verifies an implicit reference conversion nested inside another cast is rejected.
+    /// Verifies a loop that conditionally returns from its only branch is rejected.
     /// </summary>
     [TestMethod]
-    public async Task ReportsRedundantNestedUpcast()
+    public async Task ReportsConditionalReturnFilter()
     {
         const string Source = """
+            using System.Collections.Generic;
+
             internal static class Projection
             {
-                internal static T Convert<T>(int[] values) => (T)(object)values;
-            }
-            """;
-
-        ImmutableArray<Diagnostic> diagnostics = await AnalyzeAsync(Source)
-            .ConfigureAwait(false);
-
-        Diagnostic diagnostic = Assert.ContainsSingle(diagnostics);
-        Assert.AreEqual(CodeQlUselessUpcastAnalyzer.DiagnosticId, diagnostic.Id);
-        Assert.Contains(
-            "object",
-            diagnostic.GetMessage(CultureInfo.InvariantCulture));
-    }
-
-    /// <summary>
-    /// Verifies the direct generic conversion does not trigger the rule.
-    /// </summary>
-    [TestMethod]
-    public async Task AcceptsPatternValidatedGenericConversion()
-    {
-        const string Source = """
-            internal static class Projection
-            {
-                internal static T Convert<T>(int[] values) => values is T value
-                    ? value
-                    : throw new System.InvalidOperationException();
-            }
-            """;
-
-        ImmutableArray<Diagnostic> diagnostics = await AnalyzeAsync(Source)
-            .ConfigureAwait(false);
-
-        Assert.IsEmpty(diagnostics);
-    }
-
-    /// <summary>
-    /// Verifies an explicit null upcast in a typed declaration is rejected.
-    /// </summary>
-    [TestMethod]
-    public async Task ReportsRedundantNullUpcast()
-    {
-        const string Source = """
-            internal static class Projection
-            {
-                internal static string? Convert()
+                internal static bool ContainsPositive(IEnumerable<int> values)
                 {
-                    string? value = (string?)null;
-                    return value;
+                    foreach (int value in values)
+                    {
+                        if (value > 0)
+                        {
+                            return true;
+                        }
+                    }
+
+                    return false;
                 }
             }
             """;
@@ -77,10 +41,37 @@ public sealed class CodeQlUselessUpcastAnalyzerTests
             .ConfigureAwait(false);
 
         Diagnostic diagnostic = Assert.ContainsSingle(diagnostics);
-        Assert.AreEqual(CodeQlUselessUpcastAnalyzer.DiagnosticId, diagnostic.Id);
-        Assert.Contains(
-            "string",
-            diagnostic.GetMessage(CultureInfo.InvariantCulture));
+        Assert.AreEqual(CodeQlMissedWhereAnalyzer.DiagnosticId, diagnostic.Id);
+    }
+
+    /// <summary>
+    /// Verifies explicit sequence filtering remains accepted.
+    /// </summary>
+    [TestMethod]
+    public async Task AcceptsExplicitWhereFilter()
+    {
+        const string Source = """
+            using System.Collections.Generic;
+            using System.Linq;
+
+            internal static class Projection
+            {
+                internal static bool ContainsPositive(IEnumerable<int> values)
+                {
+                    foreach (int value in values.Where(static value => value > 0))
+                    {
+                        return true;
+                    }
+
+                    return false;
+                }
+            }
+            """;
+
+        ImmutableArray<Diagnostic> diagnostics = await AnalyzeAsync(Source)
+            .ConfigureAwait(false);
+
+        Assert.IsEmpty(diagnostics);
     }
 
     private static async Task<ImmutableArray<Diagnostic>> AnalyzeAsync(string source)
@@ -103,8 +94,7 @@ public sealed class CodeQlUselessUpcastAnalyzerTests
             [syntaxTree],
             references,
             new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
-        ImmutableArray<DiagnosticAnalyzer> analyzers =
-            [new CodeQlUselessUpcastAnalyzer()];
+        ImmutableArray<DiagnosticAnalyzer> analyzers = [new CodeQlMissedWhereAnalyzer()];
 
         return await compilation
             .WithAnalyzers(analyzers)

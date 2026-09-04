@@ -42,6 +42,7 @@ internal sealed class ManagedDebuggerTypeProxyExpander
     /// <param name="start">The zero-based first logical child.</param>
     /// <param name="count">The maximum count, or zero for every remaining child.</param>
     /// <param name="rawView">The original object exposed after proxy members.</param>
+    /// <param name="staticView">The optional synthetic static-member container.</param>
     /// <param name="properties">The evaluated property presentations.</param>
     /// <returns>The requested ordered proxy-member page.</returns>
     internal List<DebugVariableInfo> Expand(
@@ -52,6 +53,7 @@ internal sealed class ManagedDebuggerTypeProxyExpander
         int start,
         int count,
         ManagedDebuggerTypeProxyRawView rawView,
+        ManagedDebuggerTypeProxyStaticView? staticView,
         IReadOnlyList<ManagedDebuggerTypeProxyPropertyPresentation> properties)
     {
         List<ManagedDebuggerTypeProxyFieldBinding> fields = ResolveFields(value);
@@ -65,16 +67,17 @@ internal sealed class ManagedDebuggerTypeProxyExpander
                 ManagedDebuggerTypeProxyFieldBinding? Field,
                 ManagedDebuggerTypeProxyPropertyPresentation? Property)>(
                     fields.Count + properties.Count);
-            members.AddRange(fields.Select(static field => (
-                field.Name,
-                field.InheritanceLevel,
-                (ManagedDebuggerTypeProxyFieldBinding?)field,
-                (ManagedDebuggerTypeProxyPropertyPresentation?)null)));
-            members.AddRange(properties.Select(static property => (
-                property.Name,
-                InheritanceLevel: 0,
-                (ManagedDebuggerTypeProxyFieldBinding?)null,
-                (ManagedDebuggerTypeProxyPropertyPresentation?)property)));
+            foreach (ManagedDebuggerTypeProxyFieldBinding field in fields.Where(
+                static field => !field.IsStatic))
+            {
+                members.Add((field.Name, field.InheritanceLevel, field, null));
+            }
+
+            foreach (ManagedDebuggerTypeProxyPropertyPresentation property in properties.Where(
+                static property => !property.IsStatic))
+            {
+                members.Add((property.Name, InheritanceLevel: 0, null, property));
+            }
             members.Sort(static (left, right) =>
             {
                 int nameComparison = string.Compare(
@@ -101,26 +104,14 @@ internal sealed class ManagedDebuggerTypeProxyExpander
                 else if (field is not null &&
                     field.BrowsingState == ManagedDebuggerBrowsableState.RootHidden)
                 {
-                    if (!TryAppendRootHiddenField(
+                    _ = TryAppendRootHiddenField(
                         result,
                         instance,
                         field,
                         generation,
                         start,
                         count,
-                        state))
-                    {
-                        AppendField(
-                            result,
-                            instance,
-                            field,
-                            parentEvaluateName,
-                            frameId,
-                            generation,
-                            start,
-                            count,
-                            state);
-                    }
+                        state);
                 }
                 else if (field is not null)
                 {
@@ -142,6 +133,11 @@ internal sealed class ManagedDebuggerTypeProxyExpander
                 }
             }
 
+            if (staticView is not null)
+            {
+                AppendStaticView(result, value, staticView, start, count, state);
+            }
+
             AppendRawView(result, rawView, start, count, state);
             return result;
         }
@@ -154,6 +150,186 @@ internal sealed class ManagedDebuggerTypeProxyExpander
 
             ReleaseFields(fields);
         }
+    }
+
+    /// <summary>
+    /// Materializes the ordered members of the proxy's synthetic static container.
+    /// </summary>
+    /// <param name="value">The retained, dereferenced proxy value.</param>
+    /// <param name="frame">The optional active frame used for context-local statics.</param>
+    /// <param name="generation">The owning stop generation.</param>
+    /// <param name="properties">The evaluated static property presentations.</param>
+    /// <returns>The bounded static member rows.</returns>
+    internal List<DebugVariableInfo> MaterializeStaticMembers(
+        nint value,
+        nint frame,
+        DebugStopGeneration generation,
+        IReadOnlyList<ManagedDebuggerTypeProxyPropertyPresentation> properties)
+    {
+        List<ManagedDebuggerTypeProxyFieldBinding> fields = ResolveFields(value);
+        nint instance = 0;
+        try
+        {
+            instance = ComAbi.QueryInterface(value, ICorDebugObjectValueAbi.InterfaceId);
+            var members = new List<(
+                string Name,
+                int InheritanceLevel,
+                ManagedDebuggerTypeProxyFieldBinding? Field,
+                ManagedDebuggerTypeProxyPropertyPresentation? Property)>(
+                    fields.Count + properties.Count);
+            foreach (ManagedDebuggerTypeProxyFieldBinding field in fields.Where(
+                static field => field.IsStatic))
+            {
+                members.Add((field.Name, field.InheritanceLevel, field, null));
+            }
+
+            foreach (ManagedDebuggerTypeProxyPropertyPresentation property in properties.Where(
+                static property => property.IsStatic))
+            {
+                members.Add((property.Name, InheritanceLevel: 0, null, property));
+            }
+            members.Sort(static (left, right) =>
+            {
+                int nameComparison = string.Compare(
+                    left.Name,
+                    right.Name,
+                    StringComparison.Ordinal);
+                return nameComparison != 0
+                    ? nameComparison
+                    : right.InheritanceLevel.CompareTo(left.InheritanceLevel);
+            });
+
+            var result = new List<DebugVariableInfo>();
+            var state = new ManagedObjectExpansionState();
+            foreach ((
+                _,
+                _,
+                ManagedDebuggerTypeProxyFieldBinding? field,
+                ManagedDebuggerTypeProxyPropertyPresentation? property) in members)
+            {
+                if (property is not null)
+                {
+                    AppendProperty(result, property, start: 0, count: 0, state);
+                }
+                else if (field is not null &&
+                    field.BrowsingState == ManagedDebuggerBrowsableState.RootHidden)
+                {
+                    TryMaterializeStaticField(
+                        result,
+                        instance,
+                        frame,
+                        field,
+                        generation,
+                        state,
+                        rootHidden: true);
+                }
+                else if (field is not null)
+                {
+                    TryMaterializeStaticField(
+                        result,
+                        instance,
+                        frame,
+                        field,
+                        generation,
+                        state,
+                        rootHidden: false);
+                }
+            }
+
+            return result;
+        }
+        finally
+        {
+            if (instance != 0)
+            {
+                _ = ComAbi.Release(instance);
+            }
+
+            ReleaseFields(fields);
+        }
+    }
+
+    private void TryMaterializeStaticField(
+        List<DebugVariableInfo> result,
+        nint instance,
+        nint frame,
+        ManagedDebuggerTypeProxyFieldBinding field,
+        DebugStopGeneration generation,
+        ManagedObjectExpansionState state,
+        bool rootHidden)
+    {
+        int initialResultCount = result.Count;
+        int initialVisibleIndex = state.VisibleIndex;
+        try
+        {
+            if (rootHidden)
+            {
+                _ = TryAppendRootHiddenStaticField(
+                    result,
+                    frame,
+                    field,
+                    generation,
+                    state);
+            }
+            else
+            {
+                AppendStaticField(
+                    result,
+                    instance,
+                    frame,
+                    field,
+                    generation,
+                    state);
+            }
+        }
+        catch (Exception exception) when (
+            exception is ArgumentException or InvalidOperationException or IOException or
+            UnauthorizedAccessException or BadImageFormatException or OverflowException)
+        {
+            if (result.Count > initialResultCount)
+            {
+                result.RemoveRange(initialResultCount, result.Count - initialResultCount);
+            }
+
+            state.VisibleIndex = initialVisibleIndex;
+            EnsureExpandableValueLimit(state.VisibleIndex, additionalCount: 1);
+            result.Add(new DebugVariableInfo(
+                field.Name,
+                $"<error: {exception.Message}>",
+                string.Empty,
+                VariablesReference: 0,
+                MemoryReference: null,
+                EvaluateName: null));
+            state.VisibleIndex++;
+        }
+    }
+
+    private void AppendStaticView(
+        List<DebugVariableInfo> result,
+        nint value,
+        ManagedDebuggerTypeProxyStaticView staticView,
+        int start,
+        int count,
+        ManagedObjectExpansionState state)
+    {
+        EnsureExpandableValueLimit(state.VisibleIndex, additionalCount: 1);
+        if (state.VisibleIndex >= start && !IsPageFull(result, count))
+        {
+            ManagedValueDisplay display = _services.FormatRuntimeValue(
+                value,
+                debuggerDisplayDepth: 0,
+                tupleCustomTypeInfo: null);
+            result.Add(new DebugVariableInfo(
+                "Static members",
+                string.Empty,
+                display.Type,
+                staticView.VariablesReference,
+                MemoryReference: null,
+                EvaluateName: null,
+                DebugVariablePresentationKind.Virtual));
+        }
+
+        state.VisibleIndex++;
     }
 
     private static void AppendProperty(
@@ -304,6 +480,7 @@ internal sealed class ManagedDebuggerTypeProxyExpander
                 ManagedValueView.Default,
                 tupleCustomTypeInfo: null,
                 proxyRawView: null,
+                proxyStaticView: null,
                 proxyProperties: null);
             EnsureExpandableValueLimit(state.VisibleIndex, children.Count);
             int first = Math.Clamp(start - state.VisibleIndex, 0, children.Count);
@@ -311,6 +488,142 @@ internal sealed class ManagedDebuggerTypeProxyExpander
                 ? children.Count - first
                 : Math.Min(count - result.Count, children.Count - first);
             result.AddRange(children.GetRange(first, take));
+            state.VisibleIndex += children.Count;
+            return true;
+        }
+        finally
+        {
+            if (objectValue != 0)
+            {
+                _ = ComAbi.Release(objectValue);
+            }
+
+            if (array != 0)
+            {
+                _ = ComAbi.Release(array);
+            }
+
+            if (inspectedValue != 0)
+            {
+                _ = ComAbi.Release(inspectedValue);
+            }
+
+            if (fieldValue != 0)
+            {
+                _ = ComAbi.Release(fieldValue);
+            }
+        }
+    }
+
+    private void AppendStaticField(
+        List<DebugVariableInfo> result,
+        nint instance,
+        nint frame,
+        ManagedDebuggerTypeProxyFieldBinding field,
+        DebugStopGeneration generation,
+        ManagedObjectExpansionState state)
+    {
+        EnsureExpandableValueLimit(state.VisibleIndex, additionalCount: 1);
+        nint fieldValue = GetStaticFieldValue(field, frame);
+        try
+        {
+            ManagedValueDisplay display = _services.FormatRuntimeValue(
+                fieldValue,
+                debuggerDisplayDepth: 0,
+                field.TupleCustomTypeInfo);
+            if (field.MemberDisplay is ManagedDebuggerDisplayAttribute memberDisplay)
+            {
+                display = _services.ApplyMemberDisplay(
+                    instance,
+                    display,
+                    debuggerDisplayDepth: 0,
+                    memberDisplay);
+            }
+
+            ManagedValueReferences references = _services.RetainValue(
+                fieldValue,
+                generation,
+                evaluateName: null,
+                frameId: null,
+                ManagedValueView.Default,
+                field.TupleCustomTypeInfo);
+            result.Add(new DebugVariableInfo(
+                display.Name ?? field.Name,
+                display.Value,
+                display.Type,
+                references.VariablesReference,
+                references.MemoryReference,
+                EvaluateName: null));
+            state.VisibleIndex++;
+        }
+        finally
+        {
+            _ = ComAbi.Release(fieldValue);
+        }
+    }
+
+    private bool TryAppendRootHiddenStaticField(
+        List<DebugVariableInfo> result,
+        nint frame,
+        ManagedDebuggerTypeProxyFieldBinding field,
+        DebugStopGeneration generation,
+        ManagedObjectExpansionState state)
+    {
+        nint fieldValue = 0;
+        nint inspectedValue = 0;
+        nint array = 0;
+        nint objectValue = 0;
+        try
+        {
+            fieldValue = GetStaticFieldValue(field, frame);
+            if (!_services.TryDereferenceValue(fieldValue, out inspectedValue))
+            {
+                return false;
+            }
+
+            if (ComAbi.TryQueryInterface(
+                inspectedValue,
+                ICorDebugArrayValueAbi.InterfaceId,
+                out array))
+            {
+                int elementCount = checked((int)GetArrayElementCount(
+                    new ICorDebugArrayValueAbi(array)));
+                EnsureExpandableValueLimit(state.VisibleIndex, elementCount);
+                result.AddRange(_services.ExpandArray(
+                    array,
+                    parentEvaluateName: null,
+                    frameId: null,
+                    generation,
+                    tupleCustomTypeInfo: null,
+                    start: 0,
+                    count: 0));
+                state.VisibleIndex += elementCount;
+                return true;
+            }
+
+            if (!ComAbi.TryQueryInterface(
+                inspectedValue,
+                ICorDebugObjectValueAbi.InterfaceId,
+                out objectValue))
+            {
+                return false;
+            }
+
+            List<DebugVariableInfo> children = _objectExpander.Expand(
+                inspectedValue,
+                parentEvaluateName: null,
+                frameId: null,
+                generation,
+                start: 0,
+                count: checked(
+                    MaximumExpandableValueCount - state.VisibleIndex + 1),
+                ManagedValueView.Default,
+                tupleCustomTypeInfo: null,
+                proxyRawView: null,
+                proxyStaticView: null,
+                proxyProperties: null);
+            EnsureExpandableValueLimit(state.VisibleIndex, children.Count);
+            result.AddRange(children);
             state.VisibleIndex += children.Count;
             return true;
         }
@@ -400,7 +713,13 @@ internal sealed class ManagedDebuggerTypeProxyExpander
                             checked((int)(typeToken & 0x00FFFFFF))));
                     foreach (FieldDefinitionHandle fieldHandle in type.GetFields())
                     {
-                        AddField(result, metadata, fieldHandle, depth, runtimeClass);
+                        AddField(
+                            result,
+                            metadata,
+                            fieldHandle,
+                            depth,
+                            runtimeClass,
+                            currentType);
                     }
 
                     nint* baseTypeAddress = &baseType;
@@ -463,10 +782,12 @@ internal sealed class ManagedDebuggerTypeProxyExpander
         MetadataReader metadata,
         FieldDefinitionHandle fieldHandle,
         int inheritanceLevel,
-        nint runtimeClass)
+        nint runtimeClass,
+        nint runtimeType)
     {
         FieldDefinition field = metadata.GetFieldDefinition(fieldHandle);
-        if ((field.Attributes & FieldAttributes.Static) != 0)
+        bool isStatic = (field.Attributes & FieldAttributes.Static) != 0;
+        if (isStatic && (field.Attributes & FieldAttributes.Literal) != 0)
         {
             return;
         }
@@ -489,6 +810,11 @@ internal sealed class ManagedDebuggerTypeProxyExpander
         }
 
         _ = ComAbi.AddRef(runtimeClass);
+        if (isStatic)
+        {
+            _ = ComAbi.AddRef(runtimeType);
+        }
+
         result.Add(new ManagedDebuggerTypeProxyFieldBinding(
             metadata.GetString(field.Name),
             checked((uint)MetadataTokens.GetToken(fieldHandle)),
@@ -498,7 +824,9 @@ internal sealed class ManagedDebuggerTypeProxyExpander
                 field.GetCustomAttributes()),
             ManagedDebuggerAttributeReader.GetMemberDisplay(metadata, field),
             inheritanceLevel,
-            runtimeClass));
+            isStatic,
+            runtimeClass,
+            isStatic ? runtimeType : 0));
     }
 
     private static bool IsVisibleField(FieldAttributes attributes)
@@ -583,6 +911,23 @@ internal sealed class ManagedDebuggerTypeProxyExpander
         return RequirePointer(
             Volatile.Read(ref *fieldValueAddress),
             "ICorDebugObjectValue.GetFieldValue");
+    }
+
+    private static unsafe nint GetStaticFieldValue(
+        ManagedDebuggerTypeProxyFieldBinding field,
+        nint frame)
+    {
+        nint fieldValue = 0;
+        nint* fieldValueAddress = &fieldValue;
+        CorDebugHResult.ThrowIfFailed(
+            new ICorDebugTypeAbi(field.DeclaringType).GetStaticFieldValue(
+                field.FieldToken,
+                frame,
+                (nint)fieldValueAddress),
+            "ICorDebugType.GetStaticFieldValue");
+        return RequirePointer(
+            Volatile.Read(ref *fieldValueAddress),
+            "ICorDebugType.GetStaticFieldValue");
     }
 
     private static nint RequirePointer(nint pointer, string operation) => pointer != 0

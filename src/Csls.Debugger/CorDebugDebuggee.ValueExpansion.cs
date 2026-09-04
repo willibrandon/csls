@@ -23,6 +23,18 @@ internal sealed partial class CorDebugDebuggee
         }
 
         ValidateGeneration(variablesReference, handle.Generation, generation);
+        if (handle.SyntheticVariables is IReadOnlyList<DebugVariableInfo> syntheticVariables)
+        {
+            if (start >= syntheticVariables.Count)
+            {
+                return [];
+            }
+
+            int available = syntheticVariables.Count - start;
+            int take = count == 0 ? available : Math.Min(count, available);
+            return [.. syntheticVariables.Skip(start).Take(take)];
+        }
+
         nint value = TryDereferenceAndUnboxValue(handle.Pointer, out nint inspectedValue)
             ? inspectedValue
             : throw new InvalidOperationException("A null managed value cannot be expanded.");
@@ -51,6 +63,7 @@ internal sealed partial class CorDebugDebuggee
             }
 
             ManagedDebuggerTypeProxyRawView? proxyRawView = null;
+            ManagedDebuggerTypeProxyStaticView? proxyStaticView = null;
             IReadOnlyList<ManagedDebuggerTypeProxyPropertyPresentation>? proxyProperties = null;
             if (handle.ProxyRawValueReference > 0)
             {
@@ -70,6 +83,20 @@ internal sealed partial class CorDebugDebuggee
                 proxyProperties = handle.ProxyProperties;
             }
 
+            if (handle.ProxyStaticValueReference > 0)
+            {
+                if (!_values.TryGetValue(
+                    handle.ProxyStaticValueReference,
+                    out ManagedValueHandle? staticHandle))
+                {
+                    throw new InvalidOperationException(
+                        "The debugger type proxy no longer owns its static members.");
+                }
+
+                ValidateGeneration(staticHandle.Id, staticHandle.Generation, generation);
+                proxyStaticView = new ManagedDebuggerTypeProxyStaticView(staticHandle.Id);
+            }
+
             return ExpandObject(
                 value,
                 handle.EvaluateName,
@@ -80,6 +107,7 @@ internal sealed partial class CorDebugDebuggee
                 handle.View,
                 handle.TupleCustomTypeInfo,
                 proxyRawView,
+                proxyStaticView,
                 proxyProperties);
         }
         finally

@@ -17,6 +17,7 @@ internal class DebuggerTypeProxyFixtureProxy
         Items = [target._rawValue + 2, target._rawValue + 3];
         ProtectedValue = target._rawValue + 4;
         _attributedValue = target._rawValue + 5;
+        _rootHiddenScalar = target._rawValue + 9;
         HiddenValue = target._rawValue + 6;
         _privateValue = target._rawValue + 4;
     }
@@ -77,6 +78,53 @@ internal class DebuggerTypeProxyFixtureProxy
     private int[] RootHiddenValues => [Value + 6, Value + 7];
 
     /// <summary>
+    /// Gets a scalar root-hidden property that contributes no debugger rows.
+    /// </summary>
+    [DebuggerBrowsable(DebuggerBrowsableState.RootHidden)]
+    private int RootHiddenScalar => Value + 8;
+
+    /// <summary>
+    /// Stores a scalar root-hidden field that contributes no debugger rows.
+    /// </summary>
+    [DebuggerBrowsable(DebuggerBrowsableState.RootHidden)]
+    private readonly int _rootHiddenScalar;
+
+    /// <summary>
+    /// Gets a static proxy field shown through the synthetic static container.
+    /// </summary>
+    public static readonly int s_staticField = CreateStaticValue(60);
+
+    /// <summary>
+    /// Gets static field children flattened inside the synthetic static container.
+    /// </summary>
+    [DebuggerBrowsable(DebuggerBrowsableState.RootHidden)]
+    private static readonly int[] s_staticFieldItems = [61, 62];
+
+    /// <summary>
+    /// Gets a static proxy property evaluated under the guarded target-code policy.
+    /// </summary>
+    public static int StaticProperty =>
+        s_staticField + s_staticFieldItems.Length + s_attributedStatic - 65;
+
+    /// <summary>
+    /// Gets static property children flattened inside the synthetic static container.
+    /// </summary>
+    [DebuggerBrowsable(DebuggerBrowsableState.RootHidden)]
+    private static int[] StaticPropertyItems => [64, 65];
+
+    /// <summary>
+    /// Gets a static property whose target exception remains isolated to its debugger row.
+    /// </summary>
+    public static int ThrowingStatic => throw new InvalidOperationException(
+        "Expected static debugger proxy getter failure.");
+
+    /// <summary>
+    /// Gets an attributed private static field shown in the static container.
+    /// </summary>
+    [DebuggerBrowsable(DebuggerBrowsableState.Collapsed)]
+    private static readonly int s_attributedStatic = CreateStaticValue(66);
+
+    /// <summary>
     /// Gets a property whose target exception remains isolated to its debugger row.
     /// </summary>
     public int ThrowingValue => throw new InvalidOperationException(
@@ -97,4 +145,6 @@ internal class DebuggerTypeProxyFixtureProxy
     public int this[int index] => Value + index;
 
     private readonly int _privateValue;
+
+    private static int CreateStaticValue(int value) => value;
 }

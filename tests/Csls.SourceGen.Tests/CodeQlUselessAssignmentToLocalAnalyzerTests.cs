@@ -71,6 +71,88 @@ public sealed class CodeQlUselessAssignmentToLocalAnalyzerTests
         Assert.IsEmpty(diagnostics);
     }
 
+    /// <summary>
+    /// Verifies an unread declaration assignment is rejected while preserving its initializer.
+    /// </summary>
+    [TestMethod]
+    public async Task ReportsUnreadDeclarationAssignment()
+    {
+        const string Source = """
+            internal static class Projection
+            {
+                internal static int Read()
+                {
+                    bool success = TryRead(out int value);
+                    return value;
+                }
+
+                private static bool TryRead(out int value)
+                {
+                    value = 1;
+                    return true;
+                }
+            }
+            """;
+
+        ImmutableArray<Diagnostic> diagnostics = await AnalyzeAsync(Source)
+            .ConfigureAwait(false);
+
+        Diagnostic diagnostic = Assert.ContainsSingle(diagnostics);
+        Assert.AreEqual(
+            CodeQlUselessAssignmentToLocalAnalyzer.DiagnosticId,
+            diagnostic.Id);
+        Assert.Contains(
+            "success",
+            diagnostic.GetMessage(CultureInfo.InvariantCulture));
+    }
+
+    /// <summary>
+    /// Verifies a declaration assignment read later remains accepted.
+    /// </summary>
+    [TestMethod]
+    public async Task AcceptsObservedDeclarationAssignment()
+    {
+        const string Source = """
+            internal static class Projection
+            {
+                internal static bool Read()
+                {
+                    bool success = TryRead();
+                    return success;
+                }
+
+                private static bool TryRead() => true;
+            }
+            """;
+
+        ImmutableArray<Diagnostic> diagnostics = await AnalyzeAsync(Source)
+            .ConfigureAwait(false);
+
+        Assert.IsEmpty(diagnostics);
+    }
+
+    /// <summary>
+    /// Verifies a using declaration remains accepted because disposal observes its value.
+    /// </summary>
+    [TestMethod]
+    public async Task AcceptsUsingDeclarationLifetime()
+    {
+        const string Source = """
+            internal static class Projection
+            {
+                internal static void Read()
+                {
+                    using var stream = new System.IO.MemoryStream();
+                }
+            }
+            """;
+
+        ImmutableArray<Diagnostic> diagnostics = await AnalyzeAsync(Source)
+            .ConfigureAwait(false);
+
+        Assert.IsEmpty(diagnostics);
+    }
+
     private static async Task<ImmutableArray<Diagnostic>> AnalyzeAsync(string source)
     {
         var parseOptions = new CSharpParseOptions(

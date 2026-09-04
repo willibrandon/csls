@@ -4,17 +4,18 @@ using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Diagnostics;
 using System;
 using System.Collections.Immutable;
+using System.Linq;
 
 namespace Csls.SourceGen;
 
 /// <summary>
-/// Prevents final constant writes to locals that are never observed.
+/// Prevents local writes that are never observed.
 /// </summary>
 [DiagnosticAnalyzer(LanguageNames.CSharp)]
 public sealed class CodeQlUselessAssignmentToLocalAnalyzer : DiagnosticAnalyzer
 {
     /// <summary>
-    /// Identifies a side-effect-free local assignment whose value does not flow to a read.
+    /// Identifies a local assignment whose value does not flow to a read.
     /// </summary>
     public const string DiagnosticId = "CSLS0018";
 
@@ -43,6 +44,9 @@ public sealed class CodeQlUselessAssignmentToLocalAnalyzer : DiagnosticAnalyzer
         context.RegisterSyntaxNodeAction(
             AnalyzeAssignment,
             SyntaxKind.SimpleAssignmentExpression);
+        context.RegisterSyntaxNodeAction(
+            AnalyzeVariable,
+            SyntaxKind.VariableDeclarator);
     }
 
     private static void AnalyzeAssignment(SyntaxNodeAnalysisContext context)
@@ -74,14 +78,55 @@ public sealed class CodeQlUselessAssignmentToLocalAnalyzer : DiagnosticAnalyzer
 
     private static bool FlowsOut(DataFlowAnalysis flow, ILocalSymbol local)
     {
-        foreach (ISymbol symbol in flow.DataFlowsOut)
+        foreach (ISymbol symbol in flow.DataFlowsOut.Where(symbol =>
+            SymbolEqualityComparer.Default.Equals(symbol, local)))
         {
-            if (SymbolEqualityComparer.Default.Equals(symbol, local))
-            {
-                return true;
-            }
+            return true;
         }
 
         return false;
+    }
+
+    private static void AnalyzeVariable(SyntaxNodeAnalysisContext context)
+    {
+        var declarator = (VariableDeclaratorSyntax)context.Node;
+        if (declarator.Initializer is null ||
+            declarator.Parent?.Parent is LocalDeclarationStatementSyntax
+            { UsingKeyword.RawKind: not 0 } ||
+            context.SemanticModel.GetDeclaredSymbol(
+                declarator,
+                context.CancellationToken) is not ILocalSymbol local ||
+            FindExecutableScope(declarator) is not SyntaxNode scope ||
+            scope.DescendantNodes()
+                .OfType<IdentifierNameSyntax>()
+                .Any(identifier => SymbolEqualityComparer.Default.Equals(
+                    context.SemanticModel.GetSymbolInfo(
+                        identifier,
+                        context.CancellationToken).Symbol,
+                    local)))
+        {
+            return;
+        }
+
+        context.ReportDiagnostic(Diagnostic.Create(
+            s_rule,
+            declarator.GetLocation(),
+            local.Name));
+    }
+
+    private static SyntaxNode? FindExecutableScope(SyntaxNode node)
+    {
+        for (SyntaxNode? current = node.Parent; current is not null; current = current.Parent)
+        {
+            if (current is AnonymousFunctionExpressionSyntax or
+                LocalFunctionStatementSyntax or
+                AccessorDeclarationSyntax or
+                BaseMethodDeclarationSyntax)
+            {
+                return current;
+            }
+        }
+
+        return null;
     }
 }

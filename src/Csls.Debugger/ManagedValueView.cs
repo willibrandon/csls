@@ -16,6 +16,11 @@ internal enum ManagedValueView
     ProxyBypassed,
 
     /// <summary>
+    /// Exposes eagerly materialized static members of a constructed debugger proxy.
+    /// </summary>
+    ProxyStatics,
+
+    /// <summary>
     /// Exposes the target's physical runtime fields without presentation metadata.
     /// </summary>
     Raw

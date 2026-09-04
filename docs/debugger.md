@@ -312,8 +312,9 @@ construction exposes public and protected proxy fields plus explicitly attribute
 non-public fields, and evaluates visible non-indexed proxy property getters serially
 under the guarded target-execution policy. `DebuggerBrowsableAttribute` transforms
 apply to both member kinds, including root-hidden property flattening. Fields and
-properties share Roslyn-compatible ordinal ordering, and a virtual Raw View preserves
-the original object.
+properties share Roslyn-compatible ordinal ordering. Static proxy fields and guarded
+property getters use the same rules inside a virtual Static members container, and a
+virtual Raw View preserves the original object.
 Malformed declarations,
 unavailable constructors, generic arity mismatches, and constructor exceptions preserve
 ordinary expansion. Because a proxy constructor is arbitrary target code, construction

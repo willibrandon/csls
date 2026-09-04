@@ -8,6 +8,7 @@ namespace Csls.Debugger;
 internal sealed class ManagedDebuggerTypeProxyFieldBinding
 {
     private nint _declaringClass;
+    private nint _declaringType;
 
     /// <summary>
     /// Creates an owned debugger proxy field binding.
@@ -18,7 +19,9 @@ internal sealed class ManagedDebuggerTypeProxyFieldBinding
     /// <param name="tupleCustomTypeInfo">The optional tuple-name transforms.</param>
     /// <param name="memberDisplay">The optional member display template.</param>
     /// <param name="inheritanceLevel">The zero-based distance from the runtime type.</param>
+    /// <param name="isStatic">Whether the field is static.</param>
     /// <param name="declaringClass">The owned ICorDebugClass pointer.</param>
+    /// <param name="declaringType">The optional owned ICorDebugType pointer.</param>
     internal ManagedDebuggerTypeProxyFieldBinding(
         string name,
         uint fieldToken,
@@ -26,19 +29,28 @@ internal sealed class ManagedDebuggerTypeProxyFieldBinding
         ManagedTupleCustomTypeInfo? tupleCustomTypeInfo,
         ManagedDebuggerDisplayAttribute? memberDisplay,
         int inheritanceLevel,
-        nint declaringClass)
+        bool isStatic,
+        nint declaringClass,
+        nint declaringType)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(name);
         ArgumentOutOfRangeException.ThrowIfZero(fieldToken);
         ArgumentOutOfRangeException.ThrowIfNegative(inheritanceLevel);
         ArgumentOutOfRangeException.ThrowIfZero(declaringClass);
+        if (isStatic)
+        {
+            ArgumentOutOfRangeException.ThrowIfZero(declaringType);
+        }
+
         Name = name;
         FieldToken = fieldToken;
         BrowsingState = browsingState;
         TupleCustomTypeInfo = tupleCustomTypeInfo;
         MemberDisplay = memberDisplay;
         InheritanceLevel = inheritanceLevel;
+        IsStatic = isStatic;
         _declaringClass = declaringClass;
+        _declaringType = declaringType;
     }
 
     /// <summary>
@@ -72,12 +84,25 @@ internal sealed class ManagedDebuggerTypeProxyFieldBinding
     internal int InheritanceLevel { get; }
 
     /// <summary>
+    /// Gets whether the field is static.
+    /// </summary>
+    internal bool IsStatic { get; }
+
+    /// <summary>
     /// Gets the retained ICorDebugClass pointer while the binding remains owned.
     /// </summary>
     internal nint DeclaringClass => _declaringClass != 0
         ? _declaringClass
         : throw new InvalidOperationException(
             $"Proxy field '{Name}' no longer owns its declaring class.");
+
+    /// <summary>
+    /// Gets the retained ICorDebugType pointer for a static field.
+    /// </summary>
+    internal nint DeclaringType => IsStatic && _declaringType != 0
+        ? _declaringType
+        : throw new InvalidOperationException(
+            $"Static proxy field '{Name}' no longer owns its declaring type.");
 
     /// <summary>
     /// Releases the retained declaring class.
@@ -88,6 +113,12 @@ internal sealed class ManagedDebuggerTypeProxyFieldBinding
         if (declaringClass != 0)
         {
             _ = ComAbi.Release(declaringClass);
+        }
+
+        nint declaringType = Interlocked.Exchange(ref _declaringType, 0);
+        if (declaringType != 0)
+        {
+            _ = ComAbi.Release(declaringType);
         }
     }
 }

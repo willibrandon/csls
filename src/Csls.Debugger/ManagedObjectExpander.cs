@@ -47,6 +47,7 @@ internal sealed class ManagedObjectExpander
     /// <param name="view">The presentation view applied to the expansion.</param>
     /// <param name="tupleCustomTypeInfo">The optional tuple-name transforms.</param>
     /// <param name="proxyRawView">The original object exposed after proxy fields.</param>
+    /// <param name="proxyStaticView">The optional synthetic static-member container.</param>
     /// <param name="proxyProperties">The evaluated proxy property rows.</param>
     /// <returns>The requested logical field page.</returns>
     internal List<DebugVariableInfo> Expand(
@@ -59,6 +60,7 @@ internal sealed class ManagedObjectExpander
         ManagedValueView view,
         ManagedTupleCustomTypeInfo? tupleCustomTypeInfo,
         ManagedDebuggerTypeProxyRawView? proxyRawView,
+        ManagedDebuggerTypeProxyStaticView? proxyStaticView,
         IReadOnlyList<ManagedDebuggerTypeProxyPropertyPresentation>? proxyProperties)
     {
         if (proxyRawView is not null)
@@ -71,6 +73,7 @@ internal sealed class ManagedObjectExpander
                 start,
                 count,
                 proxyRawView,
+                proxyStaticView,
                 proxyProperties ?? []);
         }
 
@@ -112,6 +115,21 @@ internal sealed class ManagedObjectExpander
             includeRawView: true);
         return result;
     }
+
+    /// <summary>
+    /// Materializes the proxy's synthetic static-member container.
+    /// </summary>
+    /// <param name="value">The retained, dereferenced proxy value.</param>
+    /// <param name="frame">The optional active frame used for context-local statics.</param>
+    /// <param name="generation">The owning stop generation.</param>
+    /// <param name="properties">The evaluated proxy property presentations.</param>
+    /// <returns>The bounded ordered static member rows.</returns>
+    internal List<DebugVariableInfo> MaterializeDebuggerTypeProxyStaticMembers(
+        nint value,
+        nint frame,
+        DebugStopGeneration generation,
+        IReadOnlyList<ManagedDebuggerTypeProxyPropertyPresentation> properties) =>
+        _proxyExpander.MaterializeStaticMembers(value, frame, generation, properties);
 
     private unsafe void AppendObjectFields(
         List<DebugVariableInfo> result,
@@ -273,11 +291,14 @@ internal sealed class ManagedObjectExpander
 
             ManagedDebuggerBrowsableState declaredBrowsingState =
                 ManagedDebuggerBrowsableState.Collapsed;
-            bool hasBrowsingState = view != ManagedValueView.Raw &&
-                ManagedDebuggerAttributeReader.TryGetBrowsableState(
+            if (view != ManagedValueView.Raw)
+            {
+                _ = ManagedDebuggerAttributeReader.TryGetBrowsableState(
                     metadata,
                     field.GetCustomAttributes(),
                     out declaredBrowsingState);
+            }
+
             ManagedDebuggerBrowsableState browsingState = view == ManagedValueView.Raw
                 ? ManagedDebuggerBrowsableState.Collapsed
                 : declaredBrowsingState;

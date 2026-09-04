@@ -15,11 +15,13 @@ internal sealed class ManagedDebuggerTypeProxyPropertyBinding
     /// <param name="name">The debugger-facing property name.</param>
     /// <param name="declaredType">The metadata return-type display.</param>
     /// <param name="browsingState">The declared debugger browsing policy.</param>
+    /// <param name="isStatic">Whether the getter is static.</param>
     /// <param name="function">The owned ICorDebugFunction pointer.</param>
     internal ManagedDebuggerTypeProxyPropertyBinding(
         string name,
         string declaredType,
         ManagedDebuggerBrowsableState browsingState,
+        bool isStatic,
         nint function)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(name);
@@ -28,6 +30,7 @@ internal sealed class ManagedDebuggerTypeProxyPropertyBinding
         Name = name;
         DeclaredType = declaredType;
         BrowsingState = browsingState;
+        IsStatic = isStatic;
         _function = function;
     }
 
@@ -45,6 +48,11 @@ internal sealed class ManagedDebuggerTypeProxyPropertyBinding
     /// Gets the debugger browsing policy declared on the property.
     /// </summary>
     internal ManagedDebuggerBrowsableState BrowsingState { get; }
+
+    /// <summary>
+    /// Gets whether the getter is static.
+    /// </summary>
+    internal bool IsStatic { get; }
 
     /// <summary>
     /// Transfers the owned ICorDebugFunction pointer to an active evaluation.

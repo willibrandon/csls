@@ -46,11 +46,24 @@ public sealed class CodeQlUselessUpcastAnalyzer : DiagnosticAnalyzer
     private static void AnalyzeCast(SyntaxNodeAnalysisContext context)
     {
         var cast = (CastExpressionSyntax)context.Node;
+        if (context.SemanticModel.GetTypeInfo(cast.Type, context.CancellationToken).Type
+                is not ITypeSymbol targetType)
+        {
+            return;
+        }
+
+        if (IsRedundantNullUpcast(cast, targetType, context))
+        {
+            context.ReportDiagnostic(Diagnostic.Create(
+                s_rule,
+                cast.GetLocation(),
+                targetType.ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat)));
+            return;
+        }
+
         if (cast.Parent is not CastExpressionSyntax ||
             context.SemanticModel.GetTypeInfo(cast.Expression, context.CancellationToken).Type
-                is not ITypeSymbol sourceType ||
-            context.SemanticModel.GetTypeInfo(cast.Type, context.CancellationToken).Type
-                is not ITypeSymbol targetType)
+                is not ITypeSymbol sourceType)
         {
             return;
         }
@@ -67,5 +80,23 @@ public sealed class CodeQlUselessUpcastAnalyzer : DiagnosticAnalyzer
             s_rule,
             cast.GetLocation(),
             targetType.ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat)));
+    }
+
+    private static bool IsRedundantNullUpcast(
+        CastExpressionSyntax cast,
+        ITypeSymbol targetType,
+        SyntaxNodeAnalysisContext context)
+    {
+        if (!cast.Expression.IsKind(SyntaxKind.NullLiteralExpression) ||
+            cast.Parent is not EqualsValueClauseSyntax equalsValue ||
+            equalsValue.Parent is not VariableDeclaratorSyntax declarator ||
+            context.SemanticModel.GetDeclaredSymbol(
+                declarator,
+                context.CancellationToken) is not ILocalSymbol local)
+        {
+            return false;
+        }
+
+        return SymbolEqualityComparer.Default.Equals(local.Type, targetType);
     }
 }
