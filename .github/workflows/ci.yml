@@ -308,8 +308,11 @@ jobs:
           src/Csls.Debugger.Evaluator.FSharp/Csls.Debugger.Evaluator.FSharp.fsproj
           --no-restore
 
-      - name: Verify formatting
-        run: dotnet format Csls.slnx --verify-no-changes --no-restore
+      - name: Verify whitespace formatting
+        run: dotnet format Csls.slnx whitespace --verify-no-changes --no-restore
+
+      - name: Verify code-style formatting
+        run: dotnet format Csls.slnx style --verify-no-changes --no-restore
 
   file-apps:
     name: File apps (${{ matrix.group }}/${{ matrix.count }})
