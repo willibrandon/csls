@@ -304,7 +304,9 @@ one is available.
 `DebuggerTypeProxyAttribute` may select a proxy on a type or through an assembly-level
 `Target` or `TargetTypeName`. Inherited declarations apply to the exact runtime type,
 and open generic proxies close over that type's runtime arguments when their arities
-match. The debugger invokes the proxy's single one-argument instance constructor,
+match. Explicitly constructed proxy identities recursively resolve loaded generic and
+array arguments, including framework types reached through validated type forwarders.
+The debugger invokes the proxy's single one-argument instance constructor,
 including a non-public constructor, through the guarded evaluator. Successful
 construction exposes public proxy fields with `DebuggerBrowsableAttribute` transforms
 and appends a virtual Raw View of the original object. Malformed declarations,

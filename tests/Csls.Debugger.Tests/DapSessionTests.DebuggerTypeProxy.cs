@@ -45,6 +45,28 @@ public sealed partial class DapSessionTests
             Assert.AreEqual("_rawValue", rawField.GetProperty("name").GetString());
             Assert.AreEqual("41", rawField.GetProperty("value").GetString());
 
+            JsonElement[] firstPage = await ReadProxyLocalPageAsync(
+                client,
+                "localProxy",
+                start: 0,
+                count: 2).ConfigureAwait(false);
+            Assert.AreSequenceEqual(
+                ["Value", "[0]"],
+                firstPage.Select(field => field.GetProperty("name").GetString()).ToArray());
+            JsonElement[] secondPage = await ReadProxyLocalPageAsync(
+                client,
+                "localProxy",
+                start: 2,
+                count: 2).ConfigureAwait(false);
+            Assert.AreSequenceEqual(
+                ["[1]", "Raw View"],
+                secondPage.Select(field => field.GetProperty("name").GetString()).ToArray());
+            Assert.IsEmpty(await ReadProxyLocalPageAsync(
+                client,
+                "localProxy",
+                start: 4,
+                count: 2).ConfigureAwait(false));
+
             await DisconnectStoppedSessionAsync(client).ConfigureAwait(false);
             Assert.AreEqual(
                 0,
@@ -80,6 +102,19 @@ public sealed partial class DapSessionTests
                 generic.Select(field => field.GetProperty("name").GetString()).ToArray());
             Assert.AreEqual("49", generic[0].GetProperty("value").GetString());
             Assert.AreEqual("int", generic[0].GetProperty("type").GetString());
+
+            JsonElement[] closedGeneric = await ReadProxyLocalAsync(
+                client,
+                "localClosedGenericProxy").ConfigureAwait(false);
+            Assert.AreSequenceEqual(
+                ["Value", "Raw View"],
+                closedGeneric.Select(field => field.GetProperty("name").GetString()).ToArray());
+            Assert.AreEqual("int[]", closedGeneric[0].GetProperty("type").GetString());
+            JsonElement element = Assert.ContainsSingle(await ReadVariablesAsync(
+                client,
+                closedGeneric[0].GetProperty("variablesReference").GetInt32())
+                .ConfigureAwait(false));
+            Assert.AreEqual("52", element.GetProperty("value").GetString());
 
             JsonElement[] inherited = await ReadProxyLocalAsync(client, "localInheritedProxy")
                 .ConfigureAwait(false);
@@ -151,6 +186,39 @@ public sealed partial class DapSessionTests
         JsonElement[] fields = await ReadVariablesAsync(
             client,
             local.GetProperty("variablesReference").GetInt32()).ConfigureAwait(false);
+        using JsonDocument invalidated = await client
+            .ReadMessageAsync(TestContext.CancellationToken)
+            .ConfigureAwait(false);
+        AssertEvent(invalidated.RootElement, "invalidated");
+        return fields;
+    }
+
+    private async Task<JsonElement[]> ReadProxyLocalPageAsync(
+        DapTestClient client,
+        string localName,
+        int start,
+        int count)
+    {
+        JsonElement frame = await GetFixtureFrameAsync(client).ConfigureAwait(false);
+        int scopesSequence = await client.SendRequestAsync(
+            "scopes",
+            writer => WriteFrameArguments(writer, frame.GetProperty("id").GetInt32()),
+            TestContext.CancellationToken).ConfigureAwait(false);
+        using JsonDocument scopes = await client
+            .ReadMessageAsync(TestContext.CancellationToken)
+            .ConfigureAwait(false);
+        AssertResponse(scopes.RootElement, scopesSequence, "scopes", success: true);
+        JsonElement locals = scopes.RootElement.GetProperty("body").GetProperty("scopes")
+            .EnumerateArray().Single(scope => scope.GetProperty("name").GetString() == "Locals");
+        JsonElement local = (await ReadVariablesAsync(
+            client,
+            locals.GetProperty("variablesReference").GetInt32()).ConfigureAwait(false))
+            .Single(variable => variable.GetProperty("name").GetString() == localName);
+        JsonElement[] fields = await ReadVariablesAsync(
+            client,
+            local.GetProperty("variablesReference").GetInt32(),
+            start,
+            count).ConfigureAwait(false);
         using JsonDocument invalidated = await client
             .ReadMessageAsync(TestContext.CancellationToken)
             .ConfigureAwait(false);

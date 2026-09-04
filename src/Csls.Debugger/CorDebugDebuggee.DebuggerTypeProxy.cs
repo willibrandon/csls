@@ -32,11 +32,13 @@ internal sealed partial class CorDebugDebuggee
 
         ValidateGeneration(variablesReference, handle.Generation, generation);
         nint inspectedValue = 0;
+        nint thread = 0;
         ManagedDebuggerTypeProxyBinding? binding = null;
         try
         {
+            thread = GetThread(threadId);
             if (!TryDereferenceAndUnboxValue(handle.Pointer, out inspectedValue) ||
-                !_debuggerTypeProxyResolver.TryResolve(inspectedValue, out binding))
+                !_debuggerTypeProxyResolver.TryResolve(inspectedValue, thread, out binding))
             {
                 return false;
             }
@@ -46,6 +48,11 @@ internal sealed partial class CorDebugDebuggee
             if (inspectedValue != 0)
             {
                 _ = ComAbi.Release(inspectedValue);
+            }
+
+            if (thread != 0)
+            {
+                _ = ComAbi.Release(thread);
             }
         }
 

@@ -421,7 +421,10 @@ requires the selected session's agent-control grant and exact stop generation.
 Debugger type-proxy construction uses the same guarded CoreCLR evaluation lifecycle.
 Type- and assembly-level declarations are decoded from metadata, inherited declarations
 bind against the exact runtime type, and open generic proxy definitions close over its
-runtime arguments only when arity matches. A successful construction presents the
+runtime arguments only when arity matches. Explicitly constructed proxy identities
+recursively materialize loaded generic and array arguments; framework facade identities
+follow exact, validated metadata type forwarders rather than assembly-name guesses.
+A successful construction presents the
 proxy's public members and retains the original object as Raw View in the replacement
 generation. Metadata, resolution, constructor, or target exceptions preserve ordinary
 expansion. DAP and the terminal may request debugger presentation directly. MCP keeps
