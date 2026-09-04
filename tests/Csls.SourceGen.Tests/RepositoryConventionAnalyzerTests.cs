@@ -322,6 +322,162 @@ public sealed class RepositoryConventionAnalyzerTests
         Assert.IsEmpty(diagnostics);
     }
 
+    /// <summary>
+    /// Verifies disposable collections require an exception-safe using lifetime.
+    /// </summary>
+    [TestMethod]
+    public async Task ReportsDisposableCollectionWithoutUsingDeclaration()
+    {
+        const string Source = """
+            using System;
+            using System.IO;
+
+            namespace Csls.Debugger;
+
+            internal sealed class DisposableCollection<T> : IDisposable
+                where T : class, IDisposable
+            {
+                public void Dispose()
+                {
+                }
+            }
+
+            internal static class Reader
+            {
+                internal static void ReadAll()
+                {
+                    var collection = new DisposableCollection<MemoryStream>();
+                    collection.Dispose();
+                }
+            }
+            """;
+
+        ImmutableArray<Diagnostic> diagnostics = await AnalyzeAsync(
+            Source,
+            new CodeQlDisposeOnThrowAnalyzer()).ConfigureAwait(false);
+
+        Diagnostic diagnostic = Assert.ContainsSingle(diagnostics);
+        Assert.AreEqual(CodeQlDisposeOnThrowAnalyzer.DiagnosticId, diagnostic.Id);
+    }
+
+    /// <summary>
+    /// Verifies a using declaration supplies the disposable collection lifetime.
+    /// </summary>
+    [TestMethod]
+    public async Task AcceptsDisposableCollectionUsingDeclaration()
+    {
+        const string Source = """
+            using System;
+            using System.IO;
+
+            namespace Csls.Debugger;
+
+            internal sealed class DisposableCollection<T> : IDisposable
+                where T : class, IDisposable
+            {
+                public void Dispose()
+                {
+                }
+            }
+
+            internal static class Reader
+            {
+                internal static void ReadAll()
+                {
+                    using var collection = new DisposableCollection<MemoryStream>();
+                }
+            }
+            """;
+
+        ImmutableArray<Diagnostic> diagnostics = await AnalyzeAsync(
+            Source,
+            new CodeQlDisposeOnThrowAnalyzer()).ConfigureAwait(false);
+
+        Assert.IsEmpty(diagnostics);
+    }
+
+    /// <summary>
+    /// Verifies transferred local disposables retain an explicit using scope.
+    /// </summary>
+    [TestMethod]
+    public async Task ReportsUnscopedDisposableTransferredToCollection()
+    {
+        const string Source = """
+            using System;
+            using System.Collections.Generic;
+            using System.IO;
+
+            namespace Csls.Debugger;
+
+            internal sealed class DisposableCollection<T> : IDisposable
+                where T : class, IDisposable
+            {
+                internal T Acquire(Func<T> factory) => factory();
+
+                public void Dispose()
+                {
+                }
+            }
+
+            internal static class Reader
+            {
+                internal static void ReadAll()
+                {
+                    using var collection = new DisposableCollection<MemoryStream>();
+                    var stream = new MemoryStream();
+                    _ = collection.Acquire(() => stream);
+                }
+            }
+            """;
+
+        ImmutableArray<Diagnostic> diagnostics = await AnalyzeAsync(
+            Source,
+            new CodeQlLocalDisposableAnalyzer()).ConfigureAwait(false);
+
+        Diagnostic diagnostic = Assert.ContainsSingle(diagnostics);
+        Assert.AreEqual(CodeQlLocalDisposableAnalyzer.DiagnosticId, diagnostic.Id);
+    }
+
+    /// <summary>
+    /// Verifies scoped local disposables may transfer into collection ownership.
+    /// </summary>
+    [TestMethod]
+    public async Task AcceptsScopedDisposableTransferredToCollection()
+    {
+        const string Source = """
+            using System;
+            using System.IO;
+
+            namespace Csls.Debugger;
+
+            internal sealed class DisposableCollection<T> : IDisposable
+                where T : class, IDisposable
+            {
+                internal T Acquire(Func<T> factory) => factory();
+
+                public void Dispose()
+                {
+                }
+            }
+
+            internal static class Reader
+            {
+                internal static void ReadAll()
+                {
+                    using var collection = new DisposableCollection<MemoryStream>();
+                    using var stream = new MemoryStream();
+                    _ = collection.Acquire(() => stream);
+                }
+            }
+            """;
+
+        ImmutableArray<Diagnostic> diagnostics = await AnalyzeAsync(
+            Source,
+            new CodeQlLocalDisposableAnalyzer()).ConfigureAwait(false);
+
+        Assert.IsEmpty(diagnostics);
+    }
+
     private static async Task<ImmutableArray<Diagnostic>> AnalyzeAsync(
         string source,
         OutputKind outputKind = OutputKind.DynamicallyLinkedLibrary)

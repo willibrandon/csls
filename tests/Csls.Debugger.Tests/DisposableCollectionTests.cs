@@ -12,11 +12,9 @@ public sealed class DisposableCollectionTests
     [TestMethod]
     public void DisposeReleasesEveryAcquiredResource()
     {
-        var first = new MemoryStream();
-        var second = new MemoryStream();
-        var collection = new DisposableCollection<MemoryStream>();
-        Assert.AreSame(first, collection.Acquire(() => first));
-        Assert.AreSame(second, collection.Acquire(() => second));
+        using var collection = new DisposableCollection<MemoryStream>();
+        using MemoryStream first = collection.Acquire(static () => new MemoryStream());
+        using MemoryStream second = collection.Acquire(static () => new MemoryStream());
 
         collection.Dispose();
 
