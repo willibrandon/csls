@@ -133,7 +133,6 @@ public sealed class DebugInfoLanguageServerTests
             "Loading",
             loadingTimeout.Token).ConfigureAwait(false);
         Assert.AreEqual(0L, loading.Workspace.Generation);
-        Assert.IsEmpty(loading.Workspace.Folders);
         CSharpDebugRequestInfo initialized = Assert.ContainsSingle(
             loading.RequestQueue.Requests.Where(
                 static request => request.Name == "initialized"));

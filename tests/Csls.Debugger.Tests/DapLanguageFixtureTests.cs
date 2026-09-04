@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Text.Json;
 
@@ -34,74 +33,12 @@ public sealed partial class DapSessionTests
 
     private async Task AssertPortablePdbLanguagesAsync(string configuration)
     {
-        string artifactsPath = Path.Join(
-            Path.GetTempPath(),
-            $"csls-debugger-language-{Guid.NewGuid():N}");
-        try
+        foreach (string project in s_projects)
         {
-            await BuildFixturesAsync(configuration, artifactsPath).ConfigureAwait(false);
-            foreach (string project in s_projects)
-            {
-                string program = GetFixtureProgram(project, configuration, artifactsPath);
-                await AssertFixtureStopsAsync(project, configuration, program)
-                    .ConfigureAwait(false);
-            }
+            string program = LanguageFixtures.GetProgramPath(project, configuration);
+            await AssertFixtureStopsAsync(project, configuration, program)
+                .ConfigureAwait(false);
         }
-        finally
-        {
-            await DebuggerTestDirectoryReleaseWaiter.DeleteAsync(
-                artifactsPath,
-                TimeSpan.FromSeconds(10)).ConfigureAwait(false);
-        }
-    }
-
-    private async Task BuildFixturesAsync(
-        string configuration,
-        string artifactsPath)
-    {
-        string repositoryRoot = FindRepositoryRoot();
-        var startInfo = new ProcessStartInfo
-        {
-            FileName = ResolveDotNetHost(),
-            WorkingDirectory = repositoryRoot,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            UseShellExecute = false
-        };
-        startInfo.ArgumentList.Add("build");
-        startInfo.ArgumentList.Add(Path.Join(
-            "test-assets",
-            "Csls.Debugger.LanguageFixtures.slnx"));
-        startInfo.ArgumentList.Add("--configuration");
-        startInfo.ArgumentList.Add(configuration);
-        startInfo.ArgumentList.Add($"--property:ArtifactsPath={artifactsPath}");
-        startInfo.ArgumentList.Add("--nologo");
-        startInfo.ArgumentList.Add("--disable-build-servers");
-        (int exitCode, string output, string error) = await DebuggerTestProcess.RunAsync(
-            startInfo,
-            TestContext.CancellationToken).ConfigureAwait(false);
-        string diagnostic = string.Concat(
-            output,
-            error);
-        Assert.AreEqual(
-            0,
-            exitCode,
-            $"Fixture build failed for {configuration}:{Environment.NewLine}{diagnostic}");
-    }
-
-    private static string GetFixtureProgram(
-        string project,
-        string configuration,
-        string artifactsPath)
-    {
-        string program = Path.Join(
-            artifactsPath,
-            "bin",
-            project,
-            configuration == "Debug" ? "debug" : "release",
-            $"{project}.dll");
-        Assert.IsTrue(File.Exists(program), $"Fixture output was not found at {program}.");
-        return program;
     }
 
     private async Task AssertFixtureStopsAsync(
@@ -570,12 +507,6 @@ public sealed partial class DapSessionTests
         Assert.AreEqual(
             0,
             await client.WaitForExitAsync(TestContext.CancellationToken).ConfigureAwait(false));
-    }
-
-    private static string ResolveDotNetHost()
-    {
-        string? configured = Environment.GetEnvironmentVariable("DOTNET_HOST_PATH");
-        return string.IsNullOrWhiteSpace(configured) ? "dotnet" : configured;
     }
 
 }

@@ -15,31 +15,17 @@ public sealed partial class DapSessionTests
     [Timeout(60000, CooperativeCancellation = true)]
     public async Task SuppressJitOptimizationsChangesReleaseModulePolicy()
     {
-        string artifactsPath = Path.Join(
-            Path.GetTempPath(),
-            $"csls-debugger-jit-{Guid.NewGuid():N}");
-        try
-        {
-            string programPath = await BuildJitFixtureAsync(
-                artifactsPath,
-                "Release").ConfigureAwait(false);
-            await AssertModuleOptimizationAsync(
-                programPath,
-                isSuppressed: false,
-                enableHotReload: false)
-                .ConfigureAwait(false);
-            await AssertModuleOptimizationAsync(
-                programPath,
-                isSuppressed: true,
-                enableHotReload: false)
-                .ConfigureAwait(false);
-        }
-        finally
-        {
-            await DebuggerTestDirectoryReleaseWaiter.DeleteAsync(
-                artifactsPath,
-                TimeSpan.FromSeconds(10)).ConfigureAwait(false);
-        }
+        string programPath = GetJitFixture("Release");
+        await AssertModuleOptimizationAsync(
+            programPath,
+            isSuppressed: false,
+            enableHotReload: false)
+            .ConfigureAwait(false);
+        await AssertModuleOptimizationAsync(
+            programPath,
+            isSuppressed: true,
+            enableHotReload: false)
+            .ConfigureAwait(false);
     }
 
     /// <summary>
@@ -49,25 +35,11 @@ public sealed partial class DapSessionTests
     [Timeout(60000, CooperativeCancellation = true)]
     public async Task EnableHotReloadChangesModulePolicy()
     {
-        string artifactsPath = Path.Join(
-            Path.GetTempPath(),
-            $"csls-debugger-hotreload-policy-{Guid.NewGuid():N}");
-        try
-        {
-            string programPath = await BuildJitFixtureAsync(
-                artifactsPath,
-                "Debug").ConfigureAwait(false);
-            await AssertModuleOptimizationAsync(
-                programPath,
-                isSuppressed: true,
-                enableHotReload: true).ConfigureAwait(false);
-        }
-        finally
-        {
-            await DebuggerTestDirectoryReleaseWaiter.DeleteAsync(
-                artifactsPath,
-                TimeSpan.FromSeconds(10)).ConfigureAwait(false);
-        }
+        string programPath = GetJitFixture("Debug");
+        await AssertModuleOptimizationAsync(
+            programPath,
+            isSuppressed: true,
+            enableHotReload: true).ConfigureAwait(false);
     }
 
     private async Task AssertModuleOptimizationAsync(

@@ -18,9 +18,10 @@ public sealed partial class DapSessionTests
         string artifactsPath = Path.Join(
             Path.GetTempPath(),
             $"csls-debugger-tiered-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(artifactsPath);
         try
         {
-            string programPath = await BuildJitFixtureAsync(artifactsPath).ConfigureAwait(false);
+            string programPath = GetJitFixture();
             string sourcePath = Path.Join(
                 FindRepositoryRoot(),
                 "test-assets",
