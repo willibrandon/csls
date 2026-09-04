@@ -96,6 +96,11 @@ internal sealed partial class DebuggerTerminalState
     /// <returns>A task that completes after the target resumes.</returns>
     internal async Task ContinueAsync()
     {
+        if (!await RequireStoppedStateAsync("continue").ConfigureAwait(false))
+        {
+            return;
+        }
+
         await StopRunObservationAsync().ConfigureAwait(false);
         await _mutationGate.WaitAsync(_cancellationToken).ConfigureAwait(false);
         try
@@ -156,6 +161,11 @@ internal sealed partial class DebuggerTerminalState
     /// <returns>A task that completes after the target resumes.</returns>
     internal async Task StepAsync(DebugStepKind kind)
     {
+        if (!await RequireStoppedStateAsync("step").ConfigureAwait(false))
+        {
+            return;
+        }
+
         await StopRunObservationAsync().ConfigureAwait(false);
         await _mutationGate.WaitAsync(_cancellationToken).ConfigureAwait(false);
         try
@@ -242,6 +252,24 @@ internal sealed partial class DebuggerTerminalState
             StatusMessage = terminate ? "Terminated target." : "Detached from target.";
             ClearInspection();
             PublishViewSnapshot();
+        }
+        finally
+        {
+            _ = _mutationGate.Release();
+        }
+    }
+
+    /// <summary>
+    /// Rejects stopped-only commands without canceling observation of a running target.
+    /// </summary>
+    /// <param name="operation">The operation displayed when the target is not stopped.</param>
+    /// <returns>Whether the command may replace the current run observer.</returns>
+    private async Task<bool> RequireStoppedStateAsync(string operation)
+    {
+        await _mutationGate.WaitAsync(_cancellationToken).ConfigureAwait(false);
+        try
+        {
+            return RequireState(DebugSessionState.Stopped, operation);
         }
         finally
         {
