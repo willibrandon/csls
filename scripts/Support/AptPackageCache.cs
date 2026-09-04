@@ -224,22 +224,21 @@ internal static class AptPackageCache
 
         startInfo.Environment["DEBIAN_FRONTEND"] = "noninteractive";
         startInfo.Environment["LC_ALL"] = "C";
+        await Console.Error.WriteLineAsync($"Starting {executable} {string.Join(' ', arguments)}")
+            .ConfigureAwait(false);
         using Process process = Process.Start(startInfo)
             ?? throw new InvalidOperationException($"Failed to start {executable}.");
-        Task<string> outputTask = process.StandardOutput.ReadToEndAsync();
-        Task<string> errorTask = process.StandardError.ReadToEndAsync();
-        await process.WaitForExitAsync().ConfigureAwait(false);
+        Task<string> outputTask = ProcessOutputCapture.ReadAsync(
+            process.StandardOutput.BaseStream, process.StandardOutput.CurrentEncoding, writeOutput ? Console.Error : null);
+        Task<string> errorTask = ProcessOutputCapture.ReadAsync(
+            process.StandardError.BaseStream, process.StandardError.CurrentEncoding, Console.Error);
+        await Task.WhenAll(outputTask, errorTask, process.WaitForExitAsync()).ConfigureAwait(false);
         string output = await outputTask.ConfigureAwait(false);
-        string error = await errorTask.ConfigureAwait(false);
-        if (writeOutput)
-        {
-            await Console.Out.WriteAsync(output).ConfigureAwait(false);
-        }
-
-        await Console.Error.WriteAsync(error).ConfigureAwait(false);
+        _ = await errorTask.ConfigureAwait(false);
         if (process.ExitCode != 0)
         {
-            throw new InvalidOperationException($"{executable} failed with exit code {process.ExitCode}: {output}");
+            string detail = writeOutput ? string.Empty : $": {output}";
+            throw new InvalidOperationException($"{executable} failed with exit code {process.ExitCode}{detail}");
         }
 
         return output;

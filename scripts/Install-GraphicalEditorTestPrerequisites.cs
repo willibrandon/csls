@@ -7,6 +7,7 @@
 #:package SharpCompress
 #:include ScriptSupport.cs
 #:include Support/AptPackageCache.cs
+#:include Support/ProcessOutputCapture.cs
 
 using Csls.Support;
 using System.Diagnostics;
@@ -759,11 +760,10 @@ static async Task<bool> TryRunPrivilegedAsync(
         string.Equals(Environment.UserName, "root", StringComparison.Ordinal)
             ? (executablePath, arguments)
             : ("sudo", ["--non-interactive", executablePath, .. arguments]);
-    (int exitCode, string output, string error) = await RunAsync(
+    (int exitCode, _, _) = await RunAsync(
         actualExecutablePath,
-        actualArguments).ConfigureAwait(false);
-    await Console.Out.WriteAsync(output).ConfigureAwait(false);
-    await Console.Error.WriteAsync(error).ConfigureAwait(false);
+        actualArguments,
+        streamOutput: true).ConfigureAwait(false);
     return exitCode == 0;
 }
 
@@ -772,12 +772,11 @@ static async Task RunCheckedAsync(
     IReadOnlyList<string> arguments,
     string? workingDirectory = null)
 {
-    (int exitCode, string output, string error) = await RunAsync(
+    (int exitCode, _, _) = await RunAsync(
         executablePath,
         arguments,
-        workingDirectory).ConfigureAwait(false);
-    await Console.Out.WriteAsync(output).ConfigureAwait(false);
-    await Console.Error.WriteAsync(error).ConfigureAwait(false);
+        workingDirectory,
+        streamOutput: true).ConfigureAwait(false);
     if (exitCode != 0)
     {
         throw new InvalidOperationException(
@@ -844,7 +843,8 @@ static async Task<string> SelectMatchingPackageAsync(string packageNamePattern)
 static async Task<(int ExitCode, string Output, string Error)> RunAsync(
     string executablePath,
     IReadOnlyList<string> arguments,
-    string? workingDirectory = null)
+    string? workingDirectory = null,
+    bool streamOutput = false)
 {
     var startInfo = new ProcessStartInfo
     {
@@ -860,11 +860,19 @@ static async Task<(int ExitCode, string Output, string Error)> RunAsync(
         startInfo.ArgumentList.Add(argument);
     }
 
+    if (streamOutput)
+    {
+        await Console.Error.WriteLineAsync($"Starting {executablePath} {string.Join(' ', arguments)}")
+            .ConfigureAwait(false);
+    }
+
     using Process process = Process.Start(startInfo)
         ?? throw new InvalidOperationException($"The process did not start: {executablePath}");
-    Task<string> standardOutputTask = process.StandardOutput.ReadToEndAsync();
-    Task<string> standardErrorTask = process.StandardError.ReadToEndAsync();
-    await process.WaitForExitAsync().ConfigureAwait(false);
+    Task<string> standardOutputTask = ProcessOutputCapture.ReadAsync(
+        process.StandardOutput.BaseStream, process.StandardOutput.CurrentEncoding, streamOutput ? Console.Error : null);
+    Task<string> standardErrorTask = ProcessOutputCapture.ReadAsync(
+        process.StandardError.BaseStream, process.StandardError.CurrentEncoding, streamOutput ? Console.Error : null);
+    await Task.WhenAll(standardOutputTask, standardErrorTask, process.WaitForExitAsync()).ConfigureAwait(false);
     string output = await standardOutputTask.ConfigureAwait(false);
     string error = await standardErrorTask.ConfigureAwait(false);
     return (process.ExitCode, output, error);

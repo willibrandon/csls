@@ -1,6 +1,7 @@
 using Csls.TestProcessHost;
 using System.Diagnostics;
 using System.Globalization;
+using System.Text;
 
 if (args is ["--debugger-fixture", string fixturePath])
 {
@@ -139,8 +140,19 @@ if (args is ["--print-environment-and-exit", string printedVariable, string exit
 
 if (args is ["--print-environment", string environmentVariable])
 {
+    Console.OutputEncoding = new UTF8Encoding(false);
     await Console.Out.WriteAsync(
         Environment.GetEnvironmentVariable(environmentVariable) ?? string.Empty).ConfigureAwait(false);
+    return 0;
+}
+
+if (args is ["--print-environment-and-wait-for-file", string progressVariable, string progressReleasePath])
+{
+    Console.OutputEncoding = new UTF8Encoding(false);
+    await Console.Out.WriteAsync(
+        Environment.GetEnvironmentVariable(progressVariable) ?? string.Empty).ConfigureAwait(false);
+    await Console.Out.FlushAsync().ConfigureAwait(false);
+    await WaitForFileAsync(progressReleasePath).ConfigureAwait(false);
     return 0;
 }
 

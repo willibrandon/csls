@@ -496,7 +496,7 @@ jobs:
         uses: actions/cache/restore@v6
         with:
           path: artifacts/file-apps/install-graphical
-          key: graphical-prerequisite-app-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/Install-GraphicalEditorTestPrerequisites.cs', 'scripts/Support/AptPackageCache.cs', 'scripts/ScriptSupport.cs') }}
+          key: graphical-prerequisite-app-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/Install-GraphicalEditorTestPrerequisites.cs', 'scripts/Support/AptPackageCache.cs', 'scripts/Support/ProcessOutputCapture.cs', 'scripts/ScriptSupport.cs') }}
 
       - name: Publish graphical prerequisite app
         if: steps.graphical-prerequisite-app-cache.outputs.cache-hit != 'true'
@@ -509,7 +509,7 @@ jobs:
         uses: actions/cache/save@v6
         with:
           path: artifacts/file-apps/install-graphical
-          key: graphical-prerequisite-app-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/Install-GraphicalEditorTestPrerequisites.cs', 'scripts/Support/AptPackageCache.cs', 'scripts/ScriptSupport.cs') }}
+          key: graphical-prerequisite-app-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/Install-GraphicalEditorTestPrerequisites.cs', 'scripts/Support/AptPackageCache.cs', 'scripts/Support/ProcessOutputCapture.cs', 'scripts/ScriptSupport.cs') }}
 
   browser-prerequisite-packages:
     name: Browser prerequisite packages (${{ matrix.browser }})
@@ -536,7 +536,7 @@ jobs:
         uses: actions/cache/restore@v6
         with:
           path: artifacts/file-apps/install-graphical
-          key: graphical-prerequisite-app-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/Install-GraphicalEditorTestPrerequisites.cs', 'scripts/Support/AptPackageCache.cs', 'scripts/ScriptSupport.cs') }}
+          key: graphical-prerequisite-app-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/Install-GraphicalEditorTestPrerequisites.cs', 'scripts/Support/AptPackageCache.cs', 'scripts/Support/ProcessOutputCapture.cs', 'scripts/ScriptSupport.cs') }}
           fail-on-cache-miss: true
 
       - name: Resolve current browser packages
@@ -853,7 +853,7 @@ jobs:
         uses: actions/cache/restore@v6
         with:
           path: artifacts/file-apps/install-graphical
-          key: graphical-prerequisite-app-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/Install-GraphicalEditorTestPrerequisites.cs', 'scripts/Support/AptPackageCache.cs', 'scripts/ScriptSupport.cs') }}
+          key: graphical-prerequisite-app-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/Install-GraphicalEditorTestPrerequisites.cs', 'scripts/Support/AptPackageCache.cs', 'scripts/Support/ProcessOutputCapture.cs', 'scripts/ScriptSupport.cs') }}
           fail-on-cache-miss: true
 
       - name: Restore Zed tools
@@ -1013,7 +1013,7 @@ jobs:
         uses: actions/cache/restore@v6
         with:
           path: artifacts/file-apps/install-graphical
-          key: graphical-prerequisite-app-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/Install-GraphicalEditorTestPrerequisites.cs', 'scripts/Support/AptPackageCache.cs', 'scripts/ScriptSupport.cs') }}
+          key: graphical-prerequisite-app-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/Install-GraphicalEditorTestPrerequisites.cs', 'scripts/Support/AptPackageCache.cs', 'scripts/Support/ProcessOutputCapture.cs', 'scripts/ScriptSupport.cs') }}
           fail-on-cache-miss: true
 
       - name: Resolve graphical prerequisite cache
@@ -1167,7 +1167,7 @@ jobs:
         uses: actions/cache/restore@v6
         with:
           path: artifacts/file-apps/install-graphical
-          key: graphical-prerequisite-app-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/Install-GraphicalEditorTestPrerequisites.cs', 'scripts/Support/AptPackageCache.cs', 'scripts/ScriptSupport.cs') }}
+          key: graphical-prerequisite-app-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/Install-GraphicalEditorTestPrerequisites.cs', 'scripts/Support/AptPackageCache.cs', 'scripts/Support/ProcessOutputCapture.cs', 'scripts/ScriptSupport.cs') }}
           fail-on-cache-miss: true
 
       - name: Download browser packages
