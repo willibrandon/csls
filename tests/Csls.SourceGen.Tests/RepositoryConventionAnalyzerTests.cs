@@ -541,6 +541,61 @@ public sealed class RepositoryConventionAnalyzerTests
         Assert.IsEmpty(diagnostics);
     }
 
+    /// <summary>
+    /// Verifies conditional throw expressions cannot form a simplifiable Boolean expression.
+    /// </summary>
+    [TestMethod]
+    public async Task ReportsBooleanConditionalWithThrowExpression()
+    {
+        const string Source = """
+            using System;
+
+            internal static class Display
+            {
+                internal static bool Open(bool fail) => fail
+                    ? throw new InvalidOperationException()
+                    : false;
+            }
+            """;
+
+        ImmutableArray<Diagnostic> diagnostics = await AnalyzeAsync(
+            Source,
+            new CodeQlSimplifiableBooleanExpressionAnalyzer()).ConfigureAwait(false);
+
+        Diagnostic diagnostic = Assert.ContainsSingle(diagnostics);
+        Assert.AreEqual(CodeQlSimplifiableBooleanExpressionAnalyzer.DiagnosticId, diagnostic.Id);
+    }
+
+    /// <summary>
+    /// Verifies explicit statement control flow satisfies the local CodeQL parity rule.
+    /// </summary>
+    [TestMethod]
+    public async Task AcceptsStatementControlFlowForBooleanFailure()
+    {
+        const string Source = """
+            using System;
+
+            internal static class Display
+            {
+                internal static bool Open(bool fail)
+                {
+                    if (fail)
+                    {
+                        throw new InvalidOperationException();
+                    }
+
+                    return false;
+                }
+            }
+            """;
+
+        ImmutableArray<Diagnostic> diagnostics = await AnalyzeAsync(
+            Source,
+            new CodeQlSimplifiableBooleanExpressionAnalyzer()).ConfigureAwait(false);
+
+        Assert.IsEmpty(diagnostics);
+    }
+
     private static async Task<ImmutableArray<Diagnostic>> AnalyzeAsync(
         string source,
         OutputKind outputKind = OutputKind.DynamicallyLinkedLibrary)

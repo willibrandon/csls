@@ -8,3 +8,4 @@ CSLS0006 | Reliability | Error | Metadata reader providers use structured owners
 CSLS0007 | Reliability | Error | Disposable collections use exception-safe lifetimes
 CSLS0008 | Reliability | Error | Transferred disposable locals retain explicit scopes
 CSLS0009 | CodeQuality | Error | Sequence filters are expressed before iteration
+CSLS0010 | CodeQuality | Error | Boolean conditional throws use statement control flow

@@ -69,10 +69,13 @@ internal static partial class X11Input
         if (display == 0)
         {
             observedTitles = [];
-            return failWhenDisplayUnavailable
-                ? throw new InvalidOperationException(
-                    $"The X display is unavailable: {displayName}")
-                : false;
+            if (failWhenDisplayUnavailable)
+            {
+                throw new InvalidOperationException(
+                    $"The X display is unavailable: {displayName}");
+            }
+
+            return false;
         }
 
         observedTitles = [];
