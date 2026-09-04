@@ -3,9 +3,12 @@
 #:property LangVersion=14.0
 #:property Nullable=enable
 #:property TreatWarningsAsErrors=true
+#:property RootNamespace=Csls
 #:package SharpCompress
 #:include ScriptSupport.cs
+#:include Support/AptPackageCache.cs
 
+using Csls.Support;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
@@ -22,7 +25,9 @@ if (args.Length == 1 && args[0] is "--help" or "-h" or "-?")
         "[--with-web-browsers] [--web-only] " +
         "[--web-browser <chromium|firefox|webkit>] " +
         "[--without-clipboard] [--without-tree-sitter] [--without-vulkan] " +
-        "[--portable-packages] [--write-portable-cache-key]")
+        "[--portable-packages] [--write-portable-cache-key] " +
+        "[--package-cache <path>] [--download-only] [--write-package-cache-key] " +
+        "[--refresh-package-index]")
         .ConfigureAwait(false);
     return 0;
 }
@@ -34,6 +39,10 @@ bool installVulkan = true;
 bool webOnly = false;
 bool portablePackages = false;
 bool writePortableCacheKey = false;
+string? packageCachePath = null;
+bool downloadOnly = false;
+bool writePackageCacheKey = false;
+bool refreshPackageIndex = false;
 bool hasInvalidArguments = false;
 for (int index = 0; index < args.Length; index++)
 {
@@ -87,11 +96,43 @@ for (int index = 0; index < args.Length; index++)
         continue;
     }
 
+    if (string.Equals(args[index], "--package-cache", StringComparison.Ordinal) &&
+        index + 1 < args.Length && !args[index + 1].StartsWith('-'))
+    {
+        packageCachePath = Path.GetFullPath(args[++index]);
+        continue;
+    }
+
+    if (string.Equals(args[index], "--download-only", StringComparison.Ordinal))
+    {
+        downloadOnly = true;
+        continue;
+    }
+
+    if (string.Equals(args[index], "--write-package-cache-key", StringComparison.Ordinal))
+    {
+        writePackageCacheKey = true;
+        continue;
+    }
+
+    if (string.Equals(args[index], "--refresh-package-index", StringComparison.Ordinal))
+    {
+        refreshPackageIndex = true;
+        continue;
+    }
+
     hasInvalidArguments = true;
     break;
 }
 
 if (webOnly && webBrowsers.Count == 0)
+{
+    hasInvalidArguments = true;
+}
+
+if ((packageCachePath is not null || downloadOnly || writePackageCacheKey || refreshPackageIndex) &&
+    (!webOnly || portablePackages || writePortableCacheKey ||
+        (downloadOnly && (packageCachePath is null || writePackageCacheKey))))
 {
     hasInvalidArguments = true;
 }
@@ -103,7 +144,9 @@ if (hasInvalidArguments)
         "[--with-web-browsers] [--web-only] " +
         "[--web-browser <chromium|firefox|webkit>] " +
         "[--without-clipboard] [--without-tree-sitter] [--without-vulkan] " +
-        "[--portable-packages] [--write-portable-cache-key]")
+        "[--portable-packages] [--write-portable-cache-key] " +
+        "[--package-cache <path>] [--download-only] [--write-package-cache-key] " +
+        "[--refresh-package-index]")
         .ConfigureAwait(false);
     return 2;
 }
@@ -128,6 +171,29 @@ try
     {
         await WritePortableCacheKeyAsync(installClipboard, installVulkan)
             .ConfigureAwait(false);
+        return 0;
+    }
+
+    if (refreshPackageIndex)
+    {
+        await RunPrivilegedAsync("apt-get", ["update", "--error-on=any"])
+            .ConfigureAwait(false);
+    }
+
+    if (writePackageCacheKey || packageCachePath is not null)
+    {
+        IReadOnlyList<string> packages = await ResolveWebBrowserPackagesAsync(webBrowsers)
+            .ConfigureAwait(false);
+        if (writePackageCacheKey)
+        {
+            await AptPackageCache.WriteCacheKeyAsync(packages).ConfigureAwait(false);
+        }
+        else if (packageCachePath is not null)
+        {
+            await AptPackageCache.ProvisionAsync(packages, packageCachePath, downloadOnly)
+                .ConfigureAwait(false);
+        }
+
         return 0;
     }
 

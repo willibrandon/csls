@@ -54,3 +54,13 @@ supports `--help`.
 
 `ScriptSupport.cs` contains shared download, checksum, archive, process, and path
 helpers used by the provisioning apps.
+
+Browser test jobs prepare their APT archives separately from test execution.
+`Install-GraphicalEditorTestPrerequisites.cs --web-only --web-browser webkit
+--refresh-package-index --write-package-cache-key` writes a dependency-plan cache
+key to `GITHUB_OUTPUT`. Use `--package-cache <directory> --download-only` to
+populate that cache without installing packages. Omit `--download-only` to install
+through APT, checking cached archives against the current package metadata first.
+`--refresh-package-index` updates authenticated indexes before resolving packages.
+Changed or missing dependencies are acquired normally; cached packages never
+select older versions. These cache options require `--web-only`.

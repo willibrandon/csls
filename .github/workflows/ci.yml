@@ -405,7 +405,7 @@ jobs:
         uses: actions/cache/restore@v6
         with:
           path: ~/.local/share/dotnet/runfile
-          key: file-app-builds-${{ matrix.group }}-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/*.cs', '.editorconfig', 'Directory.Build.*', 'Directory.Packages.props', 'NuGet.Config') }}
+          key: file-app-builds-${{ matrix.group }}-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/**/*.cs', '.editorconfig', 'Directory.Build.*', 'Directory.Packages.props', 'NuGet.Config') }}
 
       - name: Restore file app packages
         run: |
@@ -423,7 +423,7 @@ jobs:
         uses: actions/cache/save@v6
         with:
           path: ~/.local/share/dotnet/runfile
-          key: file-app-builds-${{ matrix.group }}-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/*.cs', '.editorconfig', 'Directory.Build.*', 'Directory.Packages.props', 'NuGet.Config') }}
+          key: file-app-builds-${{ matrix.group }}-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/**/*.cs', '.editorconfig', 'Directory.Build.*', 'Directory.Packages.props', 'NuGet.Config') }}
 
   file-apps-complete:
     name: File apps
@@ -496,7 +496,7 @@ jobs:
         uses: actions/cache/restore@v6
         with:
           path: artifacts/file-apps/install-graphical
-          key: graphical-prerequisite-app-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/Install-GraphicalEditorTestPrerequisites.cs', 'scripts/ScriptSupport.cs') }}
+          key: graphical-prerequisite-app-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/Install-GraphicalEditorTestPrerequisites.cs', 'scripts/Support/AptPackageCache.cs', 'scripts/ScriptSupport.cs') }}
 
       - name: Publish graphical prerequisite app
         if: steps.graphical-prerequisite-app-cache.outputs.cache-hit != 'true'
@@ -509,7 +509,70 @@ jobs:
         uses: actions/cache/save@v6
         with:
           path: artifacts/file-apps/install-graphical
-          key: graphical-prerequisite-app-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/Install-GraphicalEditorTestPrerequisites.cs', 'scripts/ScriptSupport.cs') }}
+          key: graphical-prerequisite-app-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/Install-GraphicalEditorTestPrerequisites.cs', 'scripts/Support/AptPackageCache.cs', 'scripts/ScriptSupport.cs') }}
+
+  browser-prerequisite-packages:
+    name: Browser prerequisite packages (${{ matrix.browser }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    needs: graphical-prerequisite-app
+    strategy:
+      fail-fast: false
+      matrix:
+        browser: [chromium, firefox, webkit]
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 10.x
+
+      - name: Restore graphical prerequisite app
+        uses: actions/cache/restore@v6
+        with:
+          path: artifacts/file-apps/install-graphical
+          key: graphical-prerequisite-app-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/Install-GraphicalEditorTestPrerequisites.cs', 'scripts/Support/AptPackageCache.cs', 'scripts/ScriptSupport.cs') }}
+          fail-on-cache-miss: true
+
+      - name: Resolve current browser packages
+        id: browser-packages
+        run: >-
+          artifacts/file-apps/install-graphical/Install-GraphicalEditorTestPrerequisites
+          --web-only --web-browser ${{ matrix.browser }}
+          --refresh-package-index --write-package-cache-key
+
+      - name: Restore browser packages
+        id: browser-packages-cache
+        uses: actions/cache/restore@v6
+        with:
+          path: artifacts/browser-packages
+          key: browser-packages-${{ matrix.browser }}-${{ steps.browser-packages.outputs.key }}-${{ hashFiles('scripts/Install-GraphicalEditorTestPrerequisites.cs', 'scripts/Support/AptPackageCache.cs') }}
+
+      - name: Download and verify browser packages
+        run: >-
+          artifacts/file-apps/install-graphical/Install-GraphicalEditorTestPrerequisites
+          --web-only --web-browser ${{ matrix.browser }}
+          --package-cache artifacts/browser-packages --download-only
+
+      - name: Save browser packages
+        if: steps.browser-packages-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: artifacts/browser-packages
+          key: browser-packages-${{ matrix.browser }}-${{ steps.browser-packages.outputs.key }}-${{ hashFiles('scripts/Install-GraphicalEditorTestPrerequisites.cs', 'scripts/Support/AptPackageCache.cs') }}
+
+      - name: Upload browser packages
+        uses: actions/upload-artifact@v7
+        with:
+          name: browser-packages-${{ matrix.browser }}-${{ github.run_attempt }}
+          path: artifacts/browser-packages
+          if-no-files-found: error
+          retention-days: 1
 
   workspace-project-tests:
     name: Workspace project tests (${{ matrix.group }})
@@ -814,7 +877,7 @@ jobs:
         uses: actions/cache/restore@v6
         with:
           path: artifacts/file-apps/install-graphical
-          key: graphical-prerequisite-app-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/Install-GraphicalEditorTestPrerequisites.cs', 'scripts/ScriptSupport.cs') }}
+          key: graphical-prerequisite-app-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/Install-GraphicalEditorTestPrerequisites.cs', 'scripts/Support/AptPackageCache.cs', 'scripts/ScriptSupport.cs') }}
           fail-on-cache-miss: true
 
       - name: Restore Zed tools
@@ -917,8 +980,10 @@ jobs:
     name: VS Code tests (${{ matrix.group }})
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    if: ${{ !cancelled() && needs.graphical-prerequisite-app.result == 'success' && needs.test-binaries.result == 'success' && needs.vscode-web-extension.result == 'success' }}
     needs:
       - graphical-prerequisite-app
+      - browser-prerequisite-packages
       - test-binaries
       - vscode-web-extension
     env:
@@ -959,7 +1024,8 @@ jobs:
             cache_key: web-chromium
             save_cache: true
             filter: FullyQualifiedName=Csls.Tests.VsCodeWebLanguageServerTests.ChromiumProvidesCSharpLanguageFeatures
-            graphical_arguments: --web-only --web-browser chromium
+            graphical_arguments: --web-only --web-browser chromium --refresh-package-index --package-cache artifacts/browser-packages
+            browser: chromium
             remote: false
             web: true
             vscode_arguments: -- --web-only --web-browser chromium
@@ -970,7 +1036,8 @@ jobs:
             cache_key: web-firefox
             save_cache: true
             filter: FullyQualifiedName=Csls.Tests.VsCodeWebLanguageServerTests.FirefoxProvidesCSharpLanguageFeatures
-            graphical_arguments: --web-only --web-browser firefox
+            graphical_arguments: --web-only --web-browser firefox --refresh-package-index --package-cache artifacts/browser-packages
+            browser: firefox
             remote: false
             web: true
             vscode_arguments: -- --web-only --web-browser firefox
@@ -981,7 +1048,8 @@ jobs:
             cache_key: web-webkit
             save_cache: true
             filter: FullyQualifiedName=Csls.Tests.VsCodeWebLanguageServerTests.WebKitProvidesCSharpLanguageFeatures
-            graphical_arguments: --web-only --web-browser webkit
+            graphical_arguments: --web-only --web-browser webkit --refresh-package-index --package-cache artifacts/browser-packages
+            browser: webkit
             remote: false
             web: true
             vscode_arguments: -- --web-only --web-browser webkit
@@ -1022,8 +1090,15 @@ jobs:
         uses: actions/cache/restore@v6
         with:
           path: artifacts/file-apps/install-graphical
-          key: graphical-prerequisite-app-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/Install-GraphicalEditorTestPrerequisites.cs', 'scripts/ScriptSupport.cs') }}
+          key: graphical-prerequisite-app-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/Install-GraphicalEditorTestPrerequisites.cs', 'scripts/Support/AptPackageCache.cs', 'scripts/ScriptSupport.cs') }}
           fail-on-cache-miss: true
+
+      - name: Download browser packages
+        if: matrix.web
+        uses: actions/download-artifact@v8
+        with:
+          name: browser-packages-${{ matrix.browser }}-${{ github.run_attempt }}
+          path: artifacts/browser-packages
 
       - name: Restore VS Code web extension
         if: matrix.web
