@@ -469,7 +469,9 @@ instance-field paths, including inherited and nested fields. Escaped braces and 
 `nq` string format are applied in the debugger host. Display names affect child rows;
 root locals, arguments, and watch expressions retain their source identity. Malformed
 templates, missing fields, cycles, properties, and methods fall back to the ordinary
-exact-type presentation. Automatic presentation never executes target code.
+exact-type presentation. Omitted and serialized-null components preserve their ordinary
+column, while explicitly empty components clear it. Automatic presentation never
+executes target code.
 
 Object fields are discovered from the exact `ICorDebugType` hierarchy. Each declaring
 runtime class supplies its own loaded module image and metadata tokens, including when

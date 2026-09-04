@@ -40,35 +40,22 @@ internal sealed partial class CorDebugDebuggee
             }
 
             string type = FormatRuntimeType(exactType, depth: 0, out uint elementType);
-            if (elementType is 0x11 or 0x12 &&
-                hasInspectedValue &&
-                _debuggerDisplayFormatter.TryFormat(
-                    inspectedValue,
-                    exactType,
-                    type,
-                    debuggerDisplayDepth,
-                    out ManagedValueDisplay debuggerDisplay))
-            {
-                return debuggerDisplay;
-            }
-
+            ManagedValueDisplay ordinary;
             if (elementType == 0x11 &&
                 hasInspectedValue &&
                 TryFormatEnumValue(inspectedValue, exactType, out string enumDisplay))
             {
-                return new ManagedValueDisplay(enumDisplay, type);
+                ordinary = new ManagedValueDisplay(enumDisplay, type);
             }
-
-            if (elementType == 0x11 &&
+            else if (elementType == 0x11 &&
                 hasInspectedValue &&
                 string.Equals(type, "decimal", StringComparison.Ordinal))
             {
-                return new ManagedValueDisplay(
+                ordinary = new ManagedValueDisplay(
                     FormatDecimalValue(inspectedValue, exactType),
                     type);
             }
-
-            if (elementType == 0x11 &&
+            else if (elementType == 0x11 &&
                 hasInspectedValue &&
                 TryFormatKnownFrameworkValue(
                     inspectedValue,
@@ -76,24 +63,36 @@ internal sealed partial class CorDebugDebuggee
                     type,
                     out string frameworkDisplay))
             {
-                return new ManagedValueDisplay(frameworkDisplay, type);
+                ordinary = new ManagedValueDisplay(frameworkDisplay, type);
             }
-
-            if (elementType == 0x11 && IsNullableType(exactType) && hasInspectedValue)
+            else if (elementType == 0x11 && IsNullableType(exactType) && hasInspectedValue)
             {
-                return new ManagedValueDisplay(
+                ordinary = new ManagedValueDisplay(
                     FormatNullableValue(inspectedValue, exactType),
                     type);
             }
-
-            string display = elementType switch
+            else
             {
-                0x11 => $"{{{type}}}",
-                0x12 when hasInspectedValue => $"{{{type}}}",
-                0x14 or 0x1d when hasInspectedValue => FormatArrayValue(inspectedValue, type),
-                _ => immediate.Value
-            };
-            return new ManagedValueDisplay(display, type);
+                string display = elementType switch
+                {
+                    0x11 => $"{{{type}}}",
+                    0x12 when hasInspectedValue => $"{{{type}}}",
+                    0x14 or 0x1d when hasInspectedValue => FormatArrayValue(inspectedValue, type),
+                    _ => immediate.Value
+                };
+                ordinary = new ManagedValueDisplay(display, type);
+            }
+
+            return elementType is 0x11 or 0x12 &&
+                hasInspectedValue &&
+                _debuggerDisplayFormatter.TryFormat(
+                    inspectedValue,
+                    exactType,
+                    ordinary,
+                    debuggerDisplayDepth,
+                    out ManagedValueDisplay debuggerDisplay)
+                    ? debuggerDisplay
+                    : ordinary;
         }
         finally
         {

@@ -167,6 +167,24 @@ public sealed partial class DapSessionTests
                     .GetProperty("value")
                     .GetString());
 
+            JsonElement empty = FindByEvaluateName(children, "localDisplays._empty");
+            Assert.AreEqual(string.Empty, empty.GetProperty("name").GetString());
+            Assert.AreEqual(string.Empty, empty.GetProperty("value").GetString());
+            Assert.AreEqual(string.Empty, empty.GetProperty("type").GetString());
+            JsonElement nullDisplay = FindByEvaluateName(children, "localDisplays._null");
+            Assert.AreEqual("_null", nullDisplay.GetProperty("name").GetString());
+            Assert.AreEqual(
+                "{Csls.TestProcessHost.NullDebuggerDisplayFixture}",
+                nullDisplay.GetProperty("value").GetString());
+            Assert.AreEqual(
+                "Csls.TestProcessHost.NullDebuggerDisplayFixture",
+                nullDisplay.GetProperty("type").GetString());
+            Assert.AreEqual(
+                "first",
+                FindByEvaluateName(children, "localDisplays._multiple")
+                    .GetProperty("value")
+                    .GetString());
+
             await ResumeAndReleaseFixtureAsync(client, waitPath).ConfigureAwait(false);
             Assert.AreEqual(string.Empty, client.Diagnostics.ToString());
         }

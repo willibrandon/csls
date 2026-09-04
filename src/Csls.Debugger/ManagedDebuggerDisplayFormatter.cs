@@ -30,14 +30,14 @@ internal sealed class ManagedDebuggerDisplayFormatter
     /// </summary>
     /// <param name="value">The dereferenced and unboxed runtime value.</param>
     /// <param name="exactType">The exact runtime type of the value.</param>
-    /// <param name="defaultType">The ordinary exact-type display.</param>
+    /// <param name="defaultDisplay">The ordinary exact runtime presentation.</param>
     /// <param name="depth">The current debugger-display recursion depth.</param>
     /// <param name="display">Receives the transformed presentation.</param>
     /// <returns>True when a complete safe value template was rendered.</returns>
     internal bool TryFormat(
         nint value,
         nint exactType,
-        string defaultType,
+        ManagedValueDisplay defaultDisplay,
         int depth,
         out ManagedValueDisplay display)
     {
@@ -77,7 +77,7 @@ internal sealed class ManagedDebuggerDisplayFormatter
                         return TryApply(
                             value,
                             currentType,
-                            defaultType,
+                            defaultDisplay,
                             depth,
                             attribute,
                             out display);
@@ -116,7 +116,7 @@ internal sealed class ManagedDebuggerDisplayFormatter
     private bool TryApply(
         nint value,
         nint attributeTargetType,
-        string defaultType,
+        ManagedValueDisplay defaultDisplay,
         int depth,
         ManagedDebuggerDisplayAttribute attribute,
         out ManagedValueDisplay display)
@@ -127,7 +127,9 @@ internal sealed class ManagedDebuggerDisplayFormatter
             attributeTargetType,
             expression,
             depth);
-        if (!ManagedDebuggerDisplayTemplate.TryRender(attribute.Value, Resolve, out string text))
+        string text = defaultDisplay.Value;
+        if (attribute.Value is not null &&
+            !ManagedDebuggerDisplayTemplate.TryRender(attribute.Value, Resolve, out text))
         {
             return false;
         }
@@ -142,7 +144,7 @@ internal sealed class ManagedDebuggerDisplayFormatter
             name = renderedName;
         }
 
-        string type = defaultType;
+        string type = defaultDisplay.Type;
         if (attribute.Type is not null &&
             ManagedDebuggerDisplayTemplate.TryRender(attribute.Type, Resolve, out string renderedType))
         {

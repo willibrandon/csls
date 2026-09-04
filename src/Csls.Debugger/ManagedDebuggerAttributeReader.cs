@@ -168,7 +168,7 @@ internal static class ManagedDebuggerAttributeReader
                 return null;
             }
 
-            string displayValue = value.ReadSerializedString() ?? string.Empty;
+            string? displayValue = value.ReadSerializedString();
             string? name = null;
             string? type = null;
             string? targetTypeName = null;
@@ -211,8 +211,8 @@ internal static class ManagedDebuggerAttributeReader
             return value.RemainingBytes == 0
                 ? new ManagedDebuggerDisplayMetadata(
                     displayValue,
-                    NullIfEmpty(name),
-                    NullIfEmpty(type),
+                    name,
+                    type,
                     NullIfEmpty(targetTypeName))
                 : null;
         }

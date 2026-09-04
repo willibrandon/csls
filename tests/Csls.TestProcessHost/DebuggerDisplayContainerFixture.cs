@@ -59,4 +59,19 @@ internal sealed class DebuggerDisplayContainerFixture
     /// Stores a value with a cyclic display expression.
     /// </summary>
     internal readonly CyclicDebuggerDisplayFixture _cyclic = new();
+
+    /// <summary>
+    /// Stores a value whose display components are explicitly empty.
+    /// </summary>
+    internal readonly EmptyDebuggerDisplayFixture _empty = new();
+
+    /// <summary>
+    /// Stores a value whose display components are serialized null values.
+    /// </summary>
+    internal readonly NullDebuggerDisplayFixture _null = new();
+
+    /// <summary>
+    /// Stores a value with multiple attributes whose first display must win.
+    /// </summary>
+    internal readonly MultipleDebuggerDisplayFixture _multiple = new();
 }
