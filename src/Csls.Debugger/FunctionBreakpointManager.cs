@@ -97,10 +97,11 @@ internal sealed partial class FunctionBreakpointManager : IDisposable
     /// <summary>
     /// Releases runtime bindings after failed target activation.
     /// </summary>
-    internal void ResetRuntimeBindings()
+    /// <param name="runtimeAvailable">Whether runtime breakpoints may be deactivated.</param>
+    internal void ResetRuntimeBindings(bool runtimeAvailable = true)
     {
         ObjectDisposedException.ThrowIf(_disposed != 0, this);
-        ReleaseBindings();
+        ReleaseBindings(runtimeAvailable);
         ReleaseModules();
         foreach (FunctionBreakpointDefinition definition in _definitions)
         {

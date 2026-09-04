@@ -23,9 +23,9 @@ internal sealed class ManagedValueHandle
     internal int? FrameId { get; init; }
 
     /// <summary>
-    /// Gets or initializes the managed thread suitable for target-code presentation.
+    /// Gets or sets the managed thread inherited from the value's inspection context.
     /// </summary>
-    internal int? ThreadId { get; init; }
+    internal int? ThreadId { get; set; }
 
     /// <summary>
     /// Gets or initializes the owned ICorDebugValue pointer.

@@ -165,7 +165,7 @@ internal sealed partial class CorDebugDebuggee
         step.WaitsForResume = true;
     }
 
-    private void ReleaseAsyncStep()
+    private void ReleaseAsyncStep(bool runtimeAvailable = true)
     {
         ManagedAsyncStep? step = Interlocked.Exchange(ref _asyncStep, null);
         if (step is null)
@@ -173,14 +173,18 @@ internal sealed partial class CorDebugDebuggee
             return;
         }
 
-        ReleaseAsyncBreakpoint(step);
-        ReleaseStateMachineHandle(step.StateMachineHandle);
+        ReleaseAsyncBreakpoint(step, runtimeAvailable);
+        ReleaseStateMachineHandle(step.StateMachineHandle, runtimeAvailable);
         _ = ComAbi.Release(step.Module);
     }
 
-    private static void ReleaseAsyncBreakpoint(ManagedAsyncStep step)
+    private static void ReleaseAsyncBreakpoint(ManagedAsyncStep step, bool runtimeAvailable = true)
     {
-        _ = new ICorDebugBreakpointAbi(step.Breakpoint).Activate(bActive: 0);
+        if (runtimeAvailable)
+        {
+            _ = new ICorDebugBreakpointAbi(step.Breakpoint).Activate(bActive: 0);
+        }
+
         _ = ComAbi.Release(step.Identity);
         _ = ComAbi.Release(step.Breakpoint);
     }
@@ -330,14 +334,18 @@ internal sealed partial class CorDebugDebuggee
         }
     }
 
-    private static void ReleaseStateMachineHandle(nint handle)
+    private static void ReleaseStateMachineHandle(nint handle, bool runtimeAvailable = true)
     {
         if (handle == 0)
         {
             return;
         }
 
-        _ = new ICorDebugHandleValueAbi(handle).Dispose();
+        if (runtimeAvailable)
+        {
+            _ = new ICorDebugHandleValueAbi(handle).Dispose();
+        }
+
         _ = ComAbi.Release(handle);
     }
 }

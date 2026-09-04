@@ -153,11 +153,11 @@ internal sealed partial class FunctionBreakpointManager
         return string.IsNullOrEmpty(@namespace) ? name : $"{@namespace}.{name}";
     }
 
-    private void ReleaseBindings()
+    private void ReleaseBindings(bool runtimeAvailable = true)
     {
         foreach (FunctionBreakpointBinding binding in _bindings.Values)
         {
-            ReleaseBinding(binding);
+            ReleaseBinding(binding, runtimeAvailable);
         }
 
         _bindings.Clear();
@@ -167,9 +167,15 @@ internal sealed partial class FunctionBreakpointManager
         }
     }
 
-    private static void ReleaseBinding(FunctionBreakpointBinding binding)
+    private static void ReleaseBinding(
+        FunctionBreakpointBinding binding,
+        bool runtimeAvailable = true)
     {
-        _ = new ICorDebugBreakpointAbi(binding.Breakpoint).Activate(bActive: 0);
+        if (runtimeAvailable)
+        {
+            _ = new ICorDebugBreakpointAbi(binding.Breakpoint).Activate(bActive: 0);
+        }
+
         _ = ComAbi.Release(binding.Identity);
         _ = ComAbi.Release(binding.Breakpoint);
     }

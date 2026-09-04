@@ -174,6 +174,15 @@ internal sealed partial class CorDebugDebuggee
 
             if (ComAbi.TryQueryInterface(
                 dereferenced,
+                ICorDebugStringValueAbi.InterfaceId,
+                out nint text))
+            {
+                _ = ComAbi.Release(text);
+                return false;
+            }
+
+            if (ComAbi.TryQueryInterface(
+                dereferenced,
                 ICorDebugArrayValueAbi.InterfaceId,
                 out nint array))
             {

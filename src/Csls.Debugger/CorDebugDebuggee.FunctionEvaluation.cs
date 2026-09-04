@@ -43,6 +43,7 @@ internal sealed partial class CorDebugDebuggee
         DebugExpressionPlan plan,
         DebugStopGeneration generation)
     {
+        _managedCallback.ThrowIfRuntimeFailed();
         if (_activeFunctionEvaluation is not null)
         {
             throw new InvalidOperationException(
@@ -197,7 +198,9 @@ internal sealed partial class CorDebugDebuggee
             }
             for (int index = 0; index < suppliedArguments.Length; index++)
             {
-                if (suppliedArguments[index].Display.VariablesReference > 0)
+                if (suppliedArguments[index] is
+                    { RuntimeValueReference: > 0 } argument &&
+                    (!argument.HasScalar || argument.Scalar is string))
                 {
                     runtimeArguments[index] = CreateFunctionEvaluationHandle(
                         GetRuntimeValue(suppliedArguments[index]));
@@ -231,10 +234,7 @@ internal sealed partial class CorDebugDebuggee
             setupPhase = "starting the CoreCLR evaluation";
             ScheduleNextFunctionEvaluationStage(active);
             callScheduled = true;
-            ClearFrameHandles();
-            CorDebugHResult.ThrowIfFailed(
-                new ICorDebugControllerAbi(_debugProcess).Continue(fIsOutOfBand: 0),
-                "ICorDebugController.Continue");
+            Continue();
             return active.Completion.Task.WaitAsync(CancellationToken.None);
         }
         catch (Exception exception) when (exception is not OperationCanceledException)
@@ -255,7 +255,10 @@ internal sealed partial class CorDebugDebuggee
                     _activeFunctionEvaluation = null;
                     try
                     {
-                        RestoreThreadStates(active);
+                        if (RuntimeFailure is null)
+                        {
+                            RestoreThreadStates(active);
+                        }
                     }
                     catch (Exception restoreException) when (
                         restoreException is InvalidOperationException or IOException)
@@ -279,6 +282,7 @@ internal sealed partial class CorDebugDebuggee
                 }
             }
 
+            _managedCallback.ThrowIfRuntimeFailed();
             throw new InvalidOperationException(
                 $"Managed function evaluation failed while {setupPhase}: {failure.Message}",
                 failure);
@@ -352,6 +356,11 @@ internal sealed partial class CorDebugDebuggee
                 active,
                 isException,
                 resultGeneration);
+        }
+
+        if (active.ResultsView is not null)
+        {
+            return CompleteResultsViewEvaluation(active, isException, resultGeneration);
         }
 
         Exception? stageFailure = null;
@@ -465,7 +474,10 @@ internal sealed partial class CorDebugDebuggee
 
                 try
                 {
-                    RestoreThreadStates(active);
+                    if (RuntimeFailure is null)
+                    {
+                        RestoreThreadStates(active);
+                    }
                 }
                 catch (Exception exception) when (
                     exception is InvalidOperationException or IOException)
@@ -485,6 +497,7 @@ internal sealed partial class CorDebugDebuggee
             }
         }
 
+        failure = RuntimeFailure ?? failure;
         if (failure is OperationCanceledException canceled)
         {
             _ = active.Completion.TrySetCanceled(canceled.CancellationToken);
@@ -538,7 +551,8 @@ internal sealed partial class CorDebugDebuggee
     /// Fails and releases an evaluation whose target is being torn down.
     /// </summary>
     /// <param name="exception">The terminal evaluation failure.</param>
-    internal void FailFunctionEvaluation(Exception exception)
+    /// <param name="runtimeAvailable">Whether the runtime permits strong-handle disposal.</param>
+    internal void FailFunctionEvaluation(Exception exception, bool runtimeAvailable = true)
     {
         ArgumentNullException.ThrowIfNull(exception);
         ManagedFunctionEvaluation? active = _activeFunctionEvaluation;
@@ -549,15 +563,15 @@ internal sealed partial class CorDebugDebuggee
 
         _activeFunctionEvaluation = null;
         _managedCallback.EndFunctionEvaluation();
-        ReleaseFunctionEvaluationResources(active);
+        ReleaseFunctionEvaluationResources(active, runtimeAvailable);
         _ = active.Completion.TrySetException(exception);
     }
 
     private nint GetRuntimeValue(ManagedExpressionValue value)
     {
-        if (value.Display.VariablesReference <= 0 ||
+        if (value.RuntimeValueReference <= 0 ||
             !_values.TryGetValue(
-                value.Display.VariablesReference,
+                value.RuntimeValueReference,
                 out ManagedValueHandle? handle))
         {
             throw new InvalidOperationException(

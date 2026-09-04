@@ -13,6 +13,7 @@ internal sealed partial class CorDebugDebuggee
     /// <returns>True when this operation stopped a previously running target.</returns>
     internal unsafe bool PrepareForDetach()
     {
+        _managedCallback.ThrowIfRuntimeFailed();
         _managedCallback.BeginDetach();
         var controller = new ICorDebugControllerAbi(_debugProcess);
         int isRunning = 0;
@@ -39,6 +40,7 @@ internal sealed partial class CorDebugDebuggee
     /// <param name="resume">Whether preparation stopped a previously running target.</param>
     internal void CancelDetach(bool resume)
     {
+        _managedCallback.ThrowIfRuntimeFailed();
         _managedCallback.CancelDetach();
         if (resume && Volatile.Read(ref _debugProcess) != 0)
         {
@@ -51,6 +53,7 @@ internal sealed partial class CorDebugDebuggee
     /// </summary>
     internal void Pause()
     {
+        _managedCallback.ThrowIfRuntimeFailed();
         ClearFrameHandles();
         CorDebugHResult.ThrowIfFailed(
             new ICorDebugControllerAbi(_debugProcess).Stop(dwTimeoutIgnored: 0),
@@ -62,6 +65,7 @@ internal sealed partial class CorDebugDebuggee
     /// </summary>
     internal void Continue()
     {
+        _managedCallback.ThrowIfRuntimeFailed();
         ClearFrameHandles();
         CorDebugHResult.ThrowIfFailed(
             new ICorDebugControllerAbi(_debugProcess).Continue(fIsOutOfBand: 0),

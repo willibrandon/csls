@@ -359,18 +359,32 @@ public sealed partial class DapSessionTests
             local.GetProperty("variablesReference").GetInt32()).ConfigureAwait(false);
     }
 
-    private async Task<DapTestClient> StartProxyFixtureAsync(string waitPath)
+    private Task<DapTestClient> StartProxyFixtureAsync(
+        string waitPath,
+        bool isolateResultsViewAssembly = false) => StartPresentationFixtureAsync(
+            waitPath,
+            "DebuggerFixture.cs",
+            "Console.Write(announcement);",
+            isolateResultsViewAssembly
+                ? "--debugger-results-view-context-fixture" : "--debugger-fixture");
+
+    private async Task<DapTestClient> StartPresentationFixtureAsync(
+        string waitPath,
+        string sourceFileName,
+        string breakpointText,
+        string fixtureCommand,
+        string? fixtureAssemblyPath = null)
     {
         string sourcePath = Path.Join(
             FindRepositoryRoot(),
             "tests",
             "Csls.TestProcessHost",
-            "DebuggerFixture.cs");
+            sourceFileName);
         int breakpointLine = FindSourceLine(
             await File.ReadAllLinesAsync(
                 sourcePath,
                 TestContext.CancellationToken).ConfigureAwait(false),
-            "Console.Write(announcement);");
+            breakpointText);
         DapTestClient client = await DapTestClient
             .CreateAsync(TestContext.CancellationToken)
             .ConfigureAwait(false);
@@ -381,12 +395,14 @@ public sealed partial class DapSessionTests
         using JsonDocument initialize = await client
             .ReadMessageAsync(TestContext.CancellationToken)
             .ConfigureAwait(false);
+        string[] fixtureArguments = fixtureAssemblyPath is null
+            ? [fixtureCommand, waitPath] : [fixtureCommand, waitPath, fixtureAssemblyPath];
         int launchSequence = await client.SendRequestAsync(
             "launch",
             writer => WriteLaunchArguments(
                 writer,
                 ResolveTestProcessHost(),
-                ["--debugger-fixture", waitPath],
+                fixtureArguments,
                 wait: true,
                 noDebug: false,
                 suppressJitOptimizations: true),

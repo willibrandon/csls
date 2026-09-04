@@ -23,6 +23,29 @@ internal sealed partial class CorDebugDebuggee
         }
 
         ValidateGeneration(variablesReference, handle.Generation, generation);
+        if (handle.View == ManagedValueView.ResultsView)
+        {
+            throw new InvalidOperationException(
+                "Expanding Results View executes target code and requires explicit " +
+                "target-code authorization.");
+        }
+
+        List<DebugVariableInfo> result = ExpandRetainedValue(handle, generation, start, count);
+        foreach (ManagedValueHandle child in result.Select(variable =>
+            _values.GetValueOrDefault(variable.VariablesReference)).OfType<ManagedValueHandle>())
+        {
+            child.ThreadId ??= handle.ThreadId;
+        }
+
+        return result;
+    }
+
+    private List<DebugVariableInfo> ExpandRetainedValue(
+        ManagedValueHandle handle,
+        DebugStopGeneration generation,
+        int start,
+        int count)
+    {
         if (handle.SyntheticVariables is IReadOnlyList<DebugVariableInfo> syntheticVariables)
         {
             if (start >= syntheticVariables.Count)
@@ -108,7 +131,8 @@ internal sealed partial class CorDebugDebuggee
                 handle.TupleCustomTypeInfo,
                 proxyRawView,
                 proxyStaticView,
-                proxyProperties);
+                proxyProperties,
+                handle.ThreadId);
         }
         finally
         {

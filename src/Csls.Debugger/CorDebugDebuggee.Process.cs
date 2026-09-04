@@ -11,6 +11,27 @@ internal sealed partial class CorDebugDebuggee
     /// <inheritdoc />
     public async Task<int> WaitForExitAsync(CancellationToken cancellationToken)
     {
+        using var observation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        Task<int> exit = WaitForOperatingSystemExitAsync(observation.Token);
+        Task<CorDebugRuntimeException> failure =
+            _managedCallback.WaitForRuntimeFailureAsync(observation.Token);
+        try
+        {
+            _ = await Task.WhenAny(exit, failure).ConfigureAwait(false);
+            _managedCallback.ThrowIfRuntimeFailed();
+            int exitCode = await exit.ConfigureAwait(false);
+            await _managedCallback.WaitForExitProcessAsync(observation.Token).ConfigureAwait(false);
+            _managedCallback.ThrowIfRuntimeFailed();
+            return exitCode;
+        }
+        finally
+        {
+            await observation.CancelAsync().ConfigureAwait(false);
+        }
+    }
+
+    private async Task<int> WaitForOperatingSystemExitAsync(CancellationToken cancellationToken)
+    {
         int exitCode;
         if (_unixExitMonitor is not null)
         {
@@ -24,7 +45,6 @@ internal sealed partial class CorDebugDebuggee
             exitCode = GetExitCode(_process);
         }
 
-        await _managedCallback.WaitForExitProcessAsync(cancellationToken).ConfigureAwait(false);
         return exitCode;
     }
 

@@ -154,8 +154,11 @@ internal sealed partial class DapSession
             return;
         }
 
-        bool endedWithoutClientRequest = _state == DapSessionState.Running;
-        _state = DapSessionState.Terminated;
+        bool runtimeFailed = _engineSession.State == DebugSessionState.Faulted;
+        bool endedWithoutClientRequest = _state == DapSessionState.Running || runtimeFailed;
+        _state = runtimeFailed
+            ? DapSessionState.Faulted
+            : DapSessionState.Terminated;
         if (IsProtocolClosed)
         {
             return;

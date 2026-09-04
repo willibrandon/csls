@@ -8,6 +8,7 @@ namespace Csls.Debugger;
 internal sealed class ManagedDebuggerTypeProxyPropertyBinding
 {
     private nint _function;
+    private nint _declaringType;
 
     /// <summary>
     /// Creates an owned proxy property getter binding.
@@ -17,21 +18,26 @@ internal sealed class ManagedDebuggerTypeProxyPropertyBinding
     /// <param name="browsingState">The declared debugger browsing policy.</param>
     /// <param name="isStatic">Whether the getter is static.</param>
     /// <param name="function">The owned ICorDebugFunction pointer.</param>
+    /// <param name="declaringType">The borrowed exact declaring type of the getter.</param>
     internal ManagedDebuggerTypeProxyPropertyBinding(
         string name,
         string declaredType,
         ManagedDebuggerBrowsableState browsingState,
         bool isStatic,
-        nint function)
+        nint function,
+        nint declaringType)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(name);
         ArgumentException.ThrowIfNullOrWhiteSpace(declaredType);
         ArgumentOutOfRangeException.ThrowIfZero(function);
+        ArgumentOutOfRangeException.ThrowIfZero(declaringType);
         Name = name;
         DeclaredType = declaredType;
         BrowsingState = browsingState;
         IsStatic = isStatic;
         _function = function;
+        _ = ComAbi.AddRef(declaringType);
+        _declaringType = declaringType;
     }
 
     /// <summary>
@@ -69,10 +75,22 @@ internal sealed class ManagedDebuggerTypeProxyPropertyBinding
     }
 
     /// <summary>
-    /// Releases the getter function when it was not transferred to an evaluation.
+    /// Retains the exact type arguments required by this property's declaring type.
+    /// </summary>
+    /// <returns>The owned declaring-type arguments for the active call.</returns>
+    internal nint[] RetainTypeArguments() => ManagedRuntimeTypeArguments.Retain(_declaringType);
+
+    /// <summary>
+    /// Releases the declaring type and getter function that have not been transferred.
     /// </summary>
     internal void Release()
     {
+        nint declaringType = Interlocked.Exchange(ref _declaringType, 0);
+        if (declaringType != 0)
+        {
+            _ = ComAbi.Release(declaringType);
+        }
+
         nint function = Interlocked.Exchange(ref _function, 0);
         if (function != 0)
         {

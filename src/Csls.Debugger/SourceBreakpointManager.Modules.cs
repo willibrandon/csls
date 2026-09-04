@@ -75,10 +75,11 @@ internal sealed partial class SourceBreakpointManager
     /// <summary>
     /// Releases runtime objects after a failed launch while retaining logical requests.
     /// </summary>
-    internal void ResetRuntimeBindings()
+    /// <param name="runtimeAvailable">Whether runtime breakpoints may be deactivated.</param>
+    internal void ResetRuntimeBindings(bool runtimeAvailable = true)
     {
         ObjectDisposedException.ThrowIf(_disposed != 0, this);
-        ReleaseRuntimeBindings();
+        ReleaseRuntimeBindings(runtimeAvailable);
         ClearSources();
         foreach (List<SourceBreakpointDefinition> definitions in _definitions.Values)
         {
@@ -113,11 +114,15 @@ internal sealed partial class SourceBreakpointManager
         }
     }
 
-    private void ReleaseRuntimeBindings()
+    private void ReleaseRuntimeBindings(bool runtimeAvailable = true)
     {
         foreach (SourceBreakpointBinding binding in _bindings.Values)
         {
-            _ = new ICorDebugBreakpointAbi(binding.Breakpoint).Activate(bActive: 0);
+            if (runtimeAvailable)
+            {
+                _ = new ICorDebugBreakpointAbi(binding.Breakpoint).Activate(bActive: 0);
+            }
+
             _ = ComAbi.Release(binding.Identity);
             _ = ComAbi.Release(binding.Breakpoint);
         }

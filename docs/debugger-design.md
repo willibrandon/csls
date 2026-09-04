@@ -85,6 +85,13 @@ Unexpected owner disconnection has deterministic behavior:
 - A dump session is closed.
 - Explicit ownership transfer supersedes these defaults.
 
+An unrecoverable CoreCLR `DebuggerError` disables normal runtime cleanup. The
+session faults, retires its stop-generation handles, and reports the original
+HRESULT and runtime error code. The debugger does not call disabled runtime
+services to continue, detach, or terminate. It terminates debugger-owned targets
+through the operating system; independently attached targets are left alone,
+without promising that their runtime can resume.
+
 The protocol-neutral target state machine is:
 
 ```text
@@ -438,6 +445,27 @@ expansion. DAP and the terminal may request debugger presentation directly. MCP 
 `debug_variables_get` side-effect-free and exposes proxy construction only through the
 separate controlled `debug_variables_get_presented` mutation tool.
 
+Results View is a lazy, generation-owned container. Discovery reads exact runtime
+interfaces without executing user code; `IEnumerable<T>` takes precedence over
+`IEnumerable`, starting at the most-derived type. Metadata signatures preserve
+type parameters, defining modules, array kinds, and ranks. Assembly references
+resolve through CoreCLR's existing loader binding, so isolated load contexts keep
+their type identities. Strings, arrays, successful proxies, and the original value
+under a successful proxy's Raw View do not add this container.
+
+Explicit expansion constructs the loaded runtime enumeration debug view and invokes
+its Items getter within one guarded evaluation. Value-type enumerables first obtain
+a runtime-boxed copy; nonempty nullable values use their contained enumerable.
+Strong handles retain the boxed or original enumerable and constructed view until completion. The final array
+owns paged children in the replacement generation; it does not invent source
+expressions for generated values. The runtime's empty-enumeration sentinel becomes
+a read-only Empty row. Other target exceptions report their type and stored message,
+and cooperative cancellation settles the evaluation before inspection resumes.
+DAP exposes a virtual row with `readOnly`, `hasSideEffects`, and `lazy` hints and
+accepts cancellation of its `variables` request. MCP read-only tools and resources
+can discover the row but cannot expand it, even when their connection holds a control
+grant. The separate presentation tool validates that grant and exact generation.
+
 Explicit construction is another root operation in the versioned expression plan.
 C#, Visual Basic, and F# type syntax resolves to exactly one loaded runtime type and
 binds one instance constructor by metadata signature. Non-generic construction uses
@@ -578,8 +606,8 @@ evaluation is the read-only `debug_evaluate` inspection tool, and physical varia
 expansion is the read-only `debug_variables_get` tool. Operations that can execute
 target code or assign values use separate mutation tools so their MCP annotations and
 authorization remain truthful. `debug_variables_get_presented` is the controlled path
-for proxy-backed presentation because constructing a proxy may execute arbitrary target
-code. Other mutation tools include
+for proxy and Results View presentation because constructors, getters, and enumeration
+may execute arbitrary target code. Other mutation tools include
 `debug_session_start`, `debug_session_attach`, breakpoint replacement,
 `debug_execution_control`, `debug_hot_reload`, and `debug_session_end`.
 Inspection is exposed as subscribable resources beneath
@@ -598,7 +626,7 @@ more forceful abort than the engine's cooperative safety policy.
 `debug_variables_get_presented` has the same destructive, non-idempotent, and
 open-world annotations. It requires the selected session's active control grant and
 exact stop generation, returns the replacement generation, and publishes authoritative
-session and variable invalidation when proxy construction executes.
+session and variable invalidation when proxy construction or enumeration executes.
 
 ### MCP debugger contract
 

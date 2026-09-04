@@ -23,5 +23,20 @@ internal enum ManagedValueView
     /// <summary>
     /// Exposes the target's physical runtime fields without presentation metadata.
     /// </summary>
-    Raw
+    Raw,
+
+    /// <summary>
+    /// Exposes a proxied target's physical fields while suppressing enumerable presentation.
+    /// </summary>
+    ProxyRaw,
+
+    /// <summary>
+    /// Requires explicit target execution to materialize an enumerable's elements.
+    /// </summary>
+    ResultsView,
+
+    /// <summary>
+    /// Exposes the retained result of an explicitly requested enumeration.
+    /// </summary>
+    ResultsMaterialized
 }

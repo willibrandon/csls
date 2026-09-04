@@ -118,20 +118,26 @@ internal sealed partial class InstructionBreakpointManager
         }
     }
 
-    private void ReleaseBindings()
+    private void ReleaseBindings(bool runtimeAvailable = true)
     {
         foreach (InstructionBreakpointBinding binding in _bindings.Values)
         {
-            ReleaseBinding(binding);
+            ReleaseBinding(binding, runtimeAvailable);
             binding.Definition.BindingCount--;
         }
 
         _bindings.Clear();
     }
 
-    private static void ReleaseBinding(InstructionBreakpointBinding binding)
+    private static void ReleaseBinding(
+        InstructionBreakpointBinding binding,
+        bool runtimeAvailable = true)
     {
-        _ = new ICorDebugBreakpointAbi(binding.Breakpoint).Activate(bActive: 0);
+        if (runtimeAvailable)
+        {
+            _ = new ICorDebugBreakpointAbi(binding.Breakpoint).Activate(bActive: 0);
+        }
+
         _ = ComAbi.Release(binding.Identity);
         _ = ComAbi.Release(binding.Breakpoint);
     }

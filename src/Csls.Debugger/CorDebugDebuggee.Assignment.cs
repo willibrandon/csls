@@ -75,7 +75,7 @@ internal sealed partial class CorDebugDebuggee
         {
             HasScalar: true,
             Scalar: string text,
-            Display.VariablesReference: <= 0
+            RuntimeValueReference: <= 0
         }
             ? new DebugExpressionPlan(
                 DebuggerEvaluatorProtocol.CurrentPlanVersion,
@@ -122,9 +122,12 @@ internal sealed partial class CorDebugDebuggee
                 "$result",
                 evaluation.Result.Result,
                 evaluation.Result.Type,
-                evaluation.RuntimeValueReference,
+                evaluation.Result.VariablesReference,
                 evaluation.Result.MemoryReference,
-                EvaluateName: null));
+                EvaluateName: null),
+            evaluation.RuntimeValueReference,
+            FormatRuntimeValuePair(
+                retained.Pointer, debuggerDisplayDepth: 0, retained.TupleCustomTypeInfo).Runtime);
         return SetExpressionCore(
             frame,
             target,
@@ -203,9 +206,14 @@ internal sealed partial class CorDebugDebuggee
                 $"Expression node {node.Kind} is not a writable managed value.")
         };
 
-    private static unsafe nint ResolveFrameAssignmentTarget(
+    private static nint ResolveFrameAssignmentTarget(
         ManagedFrameHandle frame,
-        string name)
+        string name) => ResolveFrameValue(frame, name, allowInstanceReceiver: false).Value;
+
+    private static (nint Value, ManagedTupleCustomTypeInfo? TupleCustomTypeInfo) ResolveFrameValue(
+        ManagedFrameHandle frame,
+        string name,
+        bool allowInstanceReceiver)
     {
         StringComparison comparison = frame.ExpressionLanguage ==
             DebugExpressionLanguage.VisualBasic
@@ -217,10 +225,10 @@ internal sealed partial class CorDebugDebuggee
         int? localIndex = FindVariableIndex(localNames, name, comparison);
         if (localIndex is not null)
         {
-            return GetFrameAssignmentTarget(
-                frame.Pointer,
-                ManagedScopeKind.Locals,
-                localIndex.Value);
+            return (
+                GetFrameAssignmentTarget(
+                    frame.Pointer, ManagedScopeKind.Locals, localIndex.Value),
+                localNames[localIndex.Value].TupleCustomTypeInfo);
         }
 
         IReadOnlyDictionary<int, ManagedSymbolVariable> argumentNames = GetVariableNames(
@@ -229,17 +237,18 @@ internal sealed partial class CorDebugDebuggee
         int? argumentIndex = FindVariableIndex(argumentNames, name, comparison);
         if (argumentIndex is not null)
         {
-            if (string.Equals(name, "this", comparison) ||
-                string.Equals(name, "Me", comparison))
+            if (!allowInstanceReceiver &&
+                (string.Equals(name, "this", comparison) ||
+                string.Equals(name, "Me", comparison)))
             {
                 throw new InvalidOperationException(
                     "The current instance receiver cannot be assigned.");
             }
 
-            return GetFrameAssignmentTarget(
-                frame.Pointer,
-                ManagedScopeKind.Arguments,
-                argumentIndex.Value);
+            return (
+                GetFrameAssignmentTarget(
+                    frame.Pointer, ManagedScopeKind.Arguments, argumentIndex.Value),
+                argumentNames[argumentIndex.Value].TupleCustomTypeInfo);
         }
 
         throw new InvalidOperationException(

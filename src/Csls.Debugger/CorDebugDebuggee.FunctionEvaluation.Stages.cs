@@ -113,17 +113,25 @@ internal sealed partial class CorDebugDebuggee
                     nint argumentListAddress = arguments.Length == 0
                         ? (nint)(&emptyArgument)
                         : (nint)argumentsAddress;
-                    if (evaluation.ConstructsObject && evaluation.TypeArguments.Length != 0)
+                    if (evaluation.TypeArguments.Length != 0)
                     {
                         evaluation2 = ComAbi.QueryInterface(
                             evaluation.Pointer,
                             ICorDebugEval2Abi.InterfaceId);
-                        callResult = new ICorDebugEval2Abi(evaluation2).NewParameterizedObject(
-                            evaluation.Function,
-                            checked((uint)evaluation.TypeArguments.Length),
-                            (nint)typeArgumentsAddress,
-                            checked((uint)arguments.Length),
-                            argumentListAddress);
+                        var api = new ICorDebugEval2Abi(evaluation2);
+                        callResult = evaluation.ConstructsObject
+                            ? api.NewParameterizedObject(
+                                evaluation.Function,
+                                checked((uint)evaluation.TypeArguments.Length),
+                                (nint)typeArgumentsAddress,
+                                checked((uint)arguments.Length),
+                                argumentListAddress)
+                            : api.CallParameterizedFunction(
+                                evaluation.Function,
+                                checked((uint)evaluation.TypeArguments.Length),
+                                (nint)typeArgumentsAddress,
+                                checked((uint)arguments.Length),
+                                argumentListAddress);
                     }
                     else
                     {
@@ -150,8 +158,10 @@ internal sealed partial class CorDebugDebuggee
 
             ThrowIfFunctionEvaluationUnavailable(
                 callResult,
-                evaluation.ConstructsObject && evaluation.TypeArguments.Length != 0
-                    ? "ICorDebugEval2.NewParameterizedObject"
+                evaluation.TypeArguments.Length != 0
+                    ? evaluation.ConstructsObject
+                        ? "ICorDebugEval2.NewParameterizedObject"
+                        : "ICorDebugEval2.CallParameterizedFunction"
                     : evaluation.ConstructsObject
                     ? "ICorDebugEval.NewObject"
                     : "ICorDebugEval.CallFunction");
@@ -204,18 +214,10 @@ internal sealed partial class CorDebugDebuggee
             completedEvaluation = 0;
 
             ScheduleNextFunctionEvaluationStage(active);
-            int continueResult = new ICorDebugControllerAbi(_debugProcess)
-                .Continue(fIsOutOfBand: 0);
-            if (continueResult < 0)
-            {
-                _functionEvaluationDisabledReason =
-                    "The debugger could not resume the target after scheduling managed " +
-                    "function evaluation. The target's evaluation state is uncertain; this " +
-                    "debugger session must be disconnected.";
-                CorDebugHResult.ThrowIfFailed(
-                    continueResult,
-                    "ICorDebugController.Continue");
-            }
+            ContinueFunctionEvaluation(
+                "The debugger could not resume the target after scheduling managed " +
+                "function evaluation. The target's evaluation state is uncertain; this " +
+                "debugger session must be disconnected.");
         }
         finally
         {
@@ -241,19 +243,42 @@ internal sealed partial class CorDebugDebuggee
         }
     }
 
-    private static void ReleaseFunctionEvaluationResources(
-        ManagedFunctionEvaluation evaluation)
+    private void ContinueFunctionEvaluation(string unsafeStateReason)
+    {
+        try
+        {
+            Continue();
+        }
+        catch
+        {
+            _functionEvaluationDisabledReason = unsafeStateReason;
+            _managedCallback.ThrowIfRuntimeFailed();
+            throw;
+        }
+    }
+
+    private void ReleaseFunctionEvaluationResources(
+        ManagedFunctionEvaluation evaluation,
+        bool runtimeAvailable = true)
     {
         if (evaluation.DebuggerTypeProxy is ManagedDebuggerTypeProxyEvaluation proxy)
         {
-            ReleaseDebuggerTypeProxyPropertyResources(proxy);
+            ReleaseDebuggerTypeProxyPropertyResources(proxy, runtimeAvailable);
         }
 
-        ReleaseFunctionEvaluationHandle(evaluation.Receiver);
-        foreach (nint argument in evaluation.RuntimeArguments)
+        nint retainedEnumerable = evaluation.ResultsView?.RetainedEnumerableValue ?? 0;
+        if (evaluation.Receiver != retainedEnumerable)
         {
-            ReleaseFunctionEvaluationHandle(argument);
+            ReleaseFunctionEvaluationHandle(evaluation.Receiver, runtimeAvailable);
         }
+
+        foreach (nint argument in evaluation.RuntimeArguments.Where(
+            argument => argument != retainedEnumerable))
+        {
+            ReleaseFunctionEvaluationHandle(argument, runtimeAvailable);
+        }
+
+        evaluation.ResultsView?.Release();
 
         if (evaluation.Function != 0)
         {

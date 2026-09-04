@@ -39,6 +39,10 @@ public sealed partial class DebuggerSession
         {
             await AbortFunctionEvaluationForShutdownAsync(activeManagedDebuggee)
                 .ConfigureAwait(false);
+            if (activeManagedDebuggee.RuntimeFailure is not null && _debuggeeLifetime is not null)
+            {
+                await _debuggeeLifetime.WaitAsync(CancellationToken.None).ConfigureAwait(false);
+            }
         }
 
         if (_debuggee is not null &&
@@ -87,6 +91,19 @@ public sealed partial class DebuggerSession
     private async Task AbortFunctionEvaluationForShutdownAsync(
         CorDebugDebuggee debuggee)
     {
+        if (debuggee.RuntimeFailure is CorDebugRuntimeException failure)
+        {
+            await _actor.InvokeAsync(
+                token =>
+                {
+                    _ = token;
+                    debuggee.AbandonFailedRuntime(failure);
+                    return ValueTask.CompletedTask;
+                },
+                CancellationToken.None).ConfigureAwait(false);
+            return;
+        }
+
         Task? completion = null;
         try
         {
@@ -159,7 +176,21 @@ public sealed partial class DebuggerSession
                 value,
                 token),
             cancellationToken);
-        int exitCode = await debuggee.WaitForExitAsync(cancellationToken).ConfigureAwait(false);
+        int exitCode;
+        try
+        {
+            exitCode = await debuggee.WaitForExitAsync(cancellationToken).ConfigureAwait(false);
+        }
+        catch (CorDebugRuntimeException failure) when (debuggee is CorDebugDebuggee managedDebuggee)
+        {
+            await HandleRuntimeFailureAsync(
+                managedDebuggee,
+                failure,
+                standardOutput,
+                standardError).ConfigureAwait(false);
+            return;
+        }
+
         await Task.WhenAll(standardOutput, standardError).ConfigureAwait(false);
         await _actor.InvokeAsync(
             async token =>

@@ -295,12 +295,13 @@ internal sealed partial class CorDebugDebuggee
             return referenceType ? 1 : -1;
         }
 
-        if (string.Equals(normalizedType, argument.Display.Type, StringComparison.Ordinal))
+        if (string.Equals(normalizedType, argument.Type, StringComparison.Ordinal))
         {
             return 4;
         }
 
-        return argument.Display.VariablesReference > 0 && referenceType ? 1 : -1;
+        return argument.RuntimeValueReference > 0 && referenceType &&
+            (!argument.HasScalar || argument.Scalar is string) ? 1 : -1;
     }
 
     private static unsafe nint GetRuntimeTypeClass(nint type)

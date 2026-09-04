@@ -49,6 +49,7 @@ internal sealed class ManagedObjectExpander
     /// <param name="proxyRawView">The original object exposed after proxy fields.</param>
     /// <param name="proxyStaticView">The optional synthetic static-member container.</param>
     /// <param name="proxyProperties">The evaluated proxy property rows.</param>
+    /// <param name="threadId">The inherited evaluation thread when available.</param>
     /// <returns>The requested logical field page.</returns>
     internal List<DebugVariableInfo> Expand(
         nint value,
@@ -61,7 +62,8 @@ internal sealed class ManagedObjectExpander
         ManagedTupleCustomTypeInfo? tupleCustomTypeInfo,
         ManagedDebuggerTypeProxyRawView? proxyRawView,
         ManagedDebuggerTypeProxyStaticView? proxyStaticView,
-        IReadOnlyList<ManagedDebuggerTypeProxyPropertyPresentation>? proxyProperties)
+        IReadOnlyList<ManagedDebuggerTypeProxyPropertyPresentation>? proxyProperties,
+        int? threadId = null)
     {
         if (proxyRawView is not null)
         {
@@ -77,7 +79,7 @@ internal sealed class ManagedObjectExpander
                 proxyProperties ?? []);
         }
 
-        if (view != ManagedValueView.Raw &&
+        if (view is not ManagedValueView.Raw and not ManagedValueView.ProxyRaw &&
             _tuplePresenter.TryExpand(
                 value,
                 parentEvaluateName,
@@ -113,6 +115,32 @@ internal sealed class ManagedObjectExpander
             nestingDepth: 0,
             view,
             includeRawView: true);
+        if (!IsVariablePageFull(result, count))
+        {
+            int resultsReference = _services.TryRetainResultsView(
+                value,
+                generation,
+                parentEvaluateName,
+                frameId,
+                threadId,
+                view);
+            if (resultsReference != 0)
+            {
+                EnsureExpandableValueLimit(state.VisibleIndex, additionalCount: 1);
+                if (state.VisibleIndex >= start)
+                {
+                    result.Add(new DebugVariableInfo(
+                        "Results View",
+                        "Expanding the Results View will enumerate the IEnumerable",
+                        string.Empty,
+                        resultsReference,
+                        MemoryReference: null,
+                        EvaluateName: null,
+                        DebugVariablePresentationKind.ResultsView));
+                }
+            }
+        }
+
         return result;
     }
 
@@ -228,7 +256,7 @@ internal sealed class ManagedObjectExpander
             }
 
             if (includeRawView &&
-                view != ManagedValueView.Raw &&
+                view is not ManagedValueView.Raw and not ManagedValueView.ProxyRaw &&
                 state.WasTransformed &&
                 !IsVariablePageFull(result, count))
             {
@@ -291,7 +319,7 @@ internal sealed class ManagedObjectExpander
 
             ManagedDebuggerBrowsableState declaredBrowsingState =
                 ManagedDebuggerBrowsableState.Collapsed;
-            if (view != ManagedValueView.Raw)
+            if (view is not ManagedValueView.Raw and not ManagedValueView.ProxyRaw)
             {
                 _ = ManagedDebuggerAttributeReader.TryGetBrowsableState(
                     metadata,
@@ -299,7 +327,8 @@ internal sealed class ManagedObjectExpander
                     out declaredBrowsingState);
             }
 
-            ManagedDebuggerBrowsableState browsingState = view == ManagedValueView.Raw
+            ManagedDebuggerBrowsableState browsingState = view is
+                ManagedValueView.Raw or ManagedValueView.ProxyRaw
                 ? ManagedDebuggerBrowsableState.Collapsed
                 : declaredBrowsingState;
             if (browsingState == ManagedDebuggerBrowsableState.Never)

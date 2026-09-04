@@ -10,7 +10,8 @@ internal sealed partial class CorDebugDebuggee
     private static async Task ReleaseRuntimeAsync(
         DebuggerSessionActor actor,
         nint corDebug,
-        nint debugProcess)
+        nint debugProcess,
+        CorDebugManagedCallback? managedCallback)
     {
         if (corDebug == 0 && debugProcess == 0)
         {
@@ -21,7 +22,10 @@ internal sealed partial class CorDebugDebuggee
             cancellationToken =>
             {
                 _ = cancellationToken;
-                ReleaseRuntimeReferences(corDebug, debugProcess);
+                ReleaseRuntimeReferences(
+                    corDebug,
+                    debugProcess,
+                    runtimeAvailable: managedCallback?.RuntimeFailure is null);
 
                 return ValueTask.CompletedTask;
             },
@@ -31,7 +35,8 @@ internal sealed partial class CorDebugDebuggee
     private static async Task DetachRuntimeAsync(
         DebuggerSessionActor actor,
         nint corDebug,
-        nint debugProcess)
+        nint debugProcess,
+        CorDebugManagedCallback? managedCallback)
     {
         if (corDebug == 0 && debugProcess == 0)
         {
@@ -42,13 +47,16 @@ internal sealed partial class CorDebugDebuggee
             cancellationToken =>
             {
                 _ = cancellationToken;
-                DetachRuntimeReferences(corDebug, debugProcess);
+                DetachRuntimeReferences(corDebug, debugProcess, managedCallback);
                 return ValueTask.CompletedTask;
             },
             CancellationToken.None).ConfigureAwait(false);
     }
 
-    private static void ReleaseRuntimeReferences(nint corDebug, nint debugProcess)
+    private static void ReleaseRuntimeReferences(
+        nint corDebug,
+        nint debugProcess,
+        bool runtimeAvailable = true)
     {
         if (debugProcess != 0)
         {
@@ -57,25 +65,37 @@ internal sealed partial class CorDebugDebuggee
 
         if (corDebug != 0)
         {
-            _ = new ICorDebugAbi(corDebug).Terminate();
+            if (runtimeAvailable)
+            {
+                _ = new ICorDebugAbi(corDebug).Terminate();
+            }
+
             _ = ComAbi.Release(corDebug);
         }
     }
 
-    private static void DetachRuntimeReferences(nint corDebug, nint debugProcess)
+    private static void DetachRuntimeReferences(
+        nint corDebug,
+        nint debugProcess,
+        CorDebugManagedCallback? managedCallback)
     {
         try
         {
-            if (debugProcess != 0)
+            if (debugProcess != 0 && managedCallback?.RuntimeFailure is null)
             {
+                int result = new ICorDebugControllerAbi(debugProcess).Detach();
+                managedCallback?.ThrowIfRuntimeFailed();
                 CorDebugHResult.ThrowIfFailed(
-                    new ICorDebugControllerAbi(debugProcess).Detach(),
+                    result,
                     "ICorDebugController.Detach");
             }
         }
         finally
         {
-            ReleaseRuntimeReferences(corDebug, debugProcess);
+            ReleaseRuntimeReferences(
+                corDebug,
+                debugProcess,
+                runtimeAvailable: managedCallback?.RuntimeFailure is null);
         }
     }
 

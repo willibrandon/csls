@@ -107,7 +107,9 @@ public sealed partial class DebuggerControlService
         DebugSessionSnapshot current = GetSnapshot();
         UpdateSnapshot(new DebugSessionSnapshot
         {
-            State = DebugSessionState.Terminated,
+            State = _session.State == DebugSessionState.Faulted
+                ? DebugSessionState.Faulted
+                : DebugSessionState.Terminated,
             ProcessName = current.ProcessName,
             ProcessId = current.ProcessId,
             StopGeneration = current.StopGeneration,

@@ -60,6 +60,24 @@ internal interface IManagedObjectExpansionServices
         ManagedTupleCustomTypeInfo? tupleCustomTypeInfo);
 
     /// <summary>
+    /// Retains a lazy enumerable view without executing target code.
+    /// </summary>
+    /// <param name="value">The retained, dereferenced runtime value.</param>
+    /// <param name="generation">The owning stop generation.</param>
+    /// <param name="evaluateName">The original expression when available.</param>
+    /// <param name="frameId">The owning frame when available.</param>
+    /// <param name="threadId">The inherited evaluation thread when available.</param>
+    /// <param name="view">The enclosing presentation mode.</param>
+    /// <returns>The lazy container reference, or zero when ineligible.</returns>
+    int TryRetainResultsView(
+        nint value,
+        DebugStopGeneration generation,
+        string? evaluateName,
+        int? frameId,
+        int? threadId,
+        ManagedValueView view);
+
+    /// <summary>
     /// Dereferences one runtime value while retaining the resulting interface.
     /// </summary>
     /// <param name="value">The retained ICorDebugValue pointer.</param>

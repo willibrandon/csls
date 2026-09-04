@@ -20,7 +20,8 @@ internal sealed partial class CorDebugDebuggee
             out nint generic))
         {
             _ = ComAbi.Release(generic);
-            ManagedValueDisplay destinationDisplay = FormatRuntimeValue(destination);
+            ManagedValueDisplay destinationDisplay = FormatRuntimeValuePair(
+                destination, debuggerDisplayDepth: 0, tupleCustomTypeInfo: null).Runtime;
             source = ManagedPrimitiveConversionEvaluator.ConvertForAssignment(
                 source,
                 destinationDisplay.Type,
@@ -30,7 +31,7 @@ internal sealed partial class CorDebugDebuggee
             if (scalar is null || scalar is string ||
                 !string.Equals(
                     destinationDisplay.Type,
-                    source.Display.Type,
+                    source.Type,
                     StringComparison.Ordinal))
             {
                 throw new InvalidOperationException(
@@ -75,21 +76,22 @@ internal sealed partial class CorDebugDebuggee
             return;
         }
 
-        if (source.Display.VariablesReference <= 0)
+        if (source.RuntimeValueReference <= 0)
         {
             throw new InvalidOperationException(
                 "Reference assignment requires null or an existing runtime reference; " +
                 "materializing a new target object is not supported yet.");
         }
 
-        ManagedValueDisplay destinationDisplay = FormatRuntimeValue(destination);
+        ManagedValueDisplay destinationDisplay = FormatRuntimeValuePair(
+            destination, debuggerDisplayDepth: 0, tupleCustomTypeInfo: null).Runtime;
         if (!string.Equals(
             destinationDisplay.Type,
-            source.Display.Type,
+            source.Type,
             StringComparison.Ordinal))
         {
             throw new InvalidOperationException(
-                $"Reference assignment from '{source.Display.Type}' to " +
+                $"Reference assignment from '{source.Type}' to " +
                 $"'{destinationDisplay.Type}' requires a conversion that is not supported.");
         }
 

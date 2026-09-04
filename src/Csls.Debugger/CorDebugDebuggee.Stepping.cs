@@ -21,6 +21,7 @@ internal sealed partial class CorDebugDebuggee
         int? targetId,
         DebugStopGeneration generation)
     {
+        _managedCallback.ThrowIfRuntimeFailed();
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(threadId);
         if (_activeStepper != 0)
         {
@@ -48,14 +49,12 @@ internal sealed partial class CorDebugDebuggee
             }
 
             StartRuntimeStep(thread, kind, target);
-            ClearFrameHandles();
-            CorDebugHResult.ThrowIfFailed(
-                new ICorDebugControllerAbi(_debugProcess).Continue(fIsOutOfBand: 0),
-                "ICorDebugController.Continue");
+            Continue();
         }
         catch
         {
-            CancelStep();
+            CancelStep(runtimeAvailable: RuntimeFailure is null);
+            _managedCallback.ThrowIfRuntimeFailed();
             throw;
         }
         finally
@@ -102,11 +101,12 @@ internal sealed partial class CorDebugDebuggee
     /// <summary>
     /// Deactivates and releases an interrupted source step.
     /// </summary>
-    internal void CancelStep()
+    /// <param name="runtimeAvailable">Whether the runtime permits breakpoint and handle disposal.</param>
+    internal void CancelStep(bool runtimeAvailable = true)
     {
-        ReleaseAsyncStep();
-        ReleaseTargetBreakpoint();
-        ReleaseActiveStepper(deactivate: true);
+        ReleaseAsyncStep(runtimeAvailable);
+        ReleaseTargetBreakpoint(runtimeAvailable);
+        ReleaseActiveStepper(deactivate: runtimeAvailable);
     }
 
     private void StartRuntimeStep(
@@ -129,7 +129,7 @@ internal sealed partial class CorDebugDebuggee
         }
         finally
         {
-            ReleaseUnusedStepper(stepper);
+            ReleaseUnusedStepper(stepper, runtimeAvailable: RuntimeFailure is null);
         }
     }
 

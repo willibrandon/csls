@@ -143,9 +143,9 @@ internal sealed partial class CorDebugDebuggee
             }
 
             ManagedTupleCustomTypeInfo? tupleCustomTypeInfo =
-                receiver.Display.VariablesReference > 0 &&
+                receiver.RuntimeValueReference > 0 &&
                 _values.TryGetValue(
-                    receiver.Display.VariablesReference,
+                    receiver.RuntimeValueReference,
                     out ManagedValueHandle? retained)
                     ? retained.TupleCustomTypeInfo
                     : null;

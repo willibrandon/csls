@@ -16,9 +16,9 @@ internal sealed class ManagedFunctionEvaluation
     internal required nint Function { get; set; }
 
     /// <summary>
-    /// Gets or initializes owned ICorDebugType pointers for object construction.
+    /// Gets or sets owned ICorDebugType arguments for the active constructor or getter.
     /// </summary>
-    internal required nint[] TypeArguments { get; init; }
+    internal required nint[] TypeArguments { get; set; }
 
     /// <summary>
     /// Gets or initializes the owned ICorDebugThread pointer selected for evaluation.
@@ -69,6 +69,11 @@ internal sealed class ManagedFunctionEvaluation
     /// Gets or initializes presentation state when this evaluation constructs a debugger proxy.
     /// </summary>
     internal ManagedDebuggerTypeProxyEvaluation? DebuggerTypeProxy { get; init; }
+
+    /// <summary>
+    /// Gets or initializes state for explicitly requested enumerable presentation.
+    /// </summary>
+    internal ManagedResultsViewEvaluation? ResultsView { get; init; }
 
     /// <summary>
     /// Gets the asynchronous completion delivered by the matching runtime callback.

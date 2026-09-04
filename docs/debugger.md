@@ -60,6 +60,12 @@ csls debugger tui attach 12345
 The debugger pauses the process before opening the terminal. Closing an attach
 session detaches and leaves the target running.
 
+If CoreCLR reports an unrecoverable debugging error, the session faults and
+invalidates its inspection handles. The error includes the original HRESULT and
+runtime error code. Normal detachment is no longer available: debugger-owned
+targets are terminated through the operating system, while independently attached
+targets are left alone and may not be able to resume.
+
 ## Editor integration
 
 The VS Code and Zed extensions invoke the standard Debug Adapter Protocol host
@@ -320,6 +326,18 @@ unavailable constructors, generic arity mismatches, and constructor exceptions p
 ordinary expansion. Because a proxy constructor is arbitrary target code, construction
 advances the stop generation and invalidates earlier stack and variable handles.
 
+Enumerable objects expose a lazy Results View when the target has loaded the
+runtime's enumeration debug view. Listing this row does not enumerate the object.
+Expanding it executes the target's enumeration through the guarded evaluator,
+returns ordered elements, and advances the stop generation. The row warns about
+enumeration and carries DAP read-only, side-effect, and lazy presentation hints.
+Generic enumerable interfaces take precedence over non-generic interfaces, with
+the most-derived implementation selected first. Arrays and strings use their own
+views; successful debugger proxies and their Raw View suppress Results View.
+Empty enumeration displays an Empty message. Enumeration exceptions are reported
+without preventing subsequent inspection, and cancellation uses the same bounded
+cooperative abort policy as other target-code evaluation.
+
 Member-, type-, and assembly-level `DebuggerDisplayAttribute` metadata controls the
 displayed value, child name, and type. A field attribute takes precedence for that row
 and evaluates against the containing object. Otherwise, csls selects the most-derived
@@ -463,13 +481,13 @@ worker does not advertise tools that it cannot run.
 - `debug_threads_get`, `debug_stack_get`, `debug_scopes_get`, and
   `debug_variables_get` inspect one exact stopped generation. Frame and variable
   handles expire as soon as execution resumes. `debug_variables_get` never constructs
-  a debugger proxy and therefore remains read-only.
+  a debugger proxy or enumerates a Results View and therefore remains read-only.
 - `debug_variables_get_presented` expands debugger-presented children, including
-  `DebuggerTypeProxyAttribute` views. It requires an active agent-control grant and
-  the exact `stopGeneration`; proxy construction advances the generation and publishes
-  session and variable-resource invalidation. The tool is destructive, non-idempotent,
-  and open-world because a proxy constructor may have arbitrary target or external
-  side effects.
+  `DebuggerTypeProxyAttribute` and Results View. It requires an active agent-control
+  grant and the exact `stopGeneration`; proxy construction or enumeration advances
+  the generation and publishes session and variable-resource invalidation. The tool
+  is destructive, non-idempotent, and open-world because proxy construction and
+  enumeration may have arbitrary target or external side effects.
 - `debug_evaluate` evaluates the same source-language-aware, side-effect-free
   expression subset as DAP in an explicit current-generation frame. It is
   read-only and does not require an agent-control grant. `debug_watches_get`

@@ -84,11 +84,13 @@ public sealed partial class McpDebuggerLifecycleTests
             mcp.Client,
             second.GetProperty("debugSession").GetString()!,
             cancellationToken).ConfigureAwait(false);
-        secondStopped = await GrantAgentControlAsync(
-            mcp.Client,
-            secondStopped.GetProperty("debugSession").GetString()!,
-            durationSeconds: 60,
-            cancellationToken).ConfigureAwait(false);
+        (JsonElement resultsViewStopped, string resultsViewResourceUri) =
+            await AssertAuthorizedResultsViewAsync(
+                mcp.Client,
+                secondStopped,
+                sourcePath,
+                cancellationToken).ConfigureAwait(false);
+        secondStopped = resultsViewStopped;
         secondStopped = await AssertAuthorizedDebuggerTypeProxyAsync(
             mcp.Client,
             secondStopped,
@@ -124,11 +126,7 @@ public sealed partial class McpDebuggerLifecycleTests
         string diagnostics = await mcp.DisconnectAsync(
             TimeSpan.FromSeconds(20),
             cancellationToken).ConfigureAwait(false);
-        Assert.DoesNotContain("fail:", diagnostics, StringComparison.OrdinalIgnoreCase);
-        Assert.DoesNotContain(
-            "Unhandled exception",
-            diagnostics,
-            StringComparison.OrdinalIgnoreCase);
+        AssertExpectedResultsViewDiagnostics(diagnostics, resultsViewResourceUri);
         await ProcessExitWaiter.WaitAsync(secondExit, TimeSpan.FromSeconds(10), cancellationToken)
             .ConfigureAwait(false);
     }

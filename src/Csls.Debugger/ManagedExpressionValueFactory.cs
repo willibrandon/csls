@@ -13,12 +13,17 @@ internal static class ManagedExpressionValueFactory
     /// Wraps one runtime variable and decodes its scalar representation when possible.
     /// </summary>
     /// <param name="variable">The runtime-backed debugger variable.</param>
+    /// <param name="runtimeValueReference">The internal retained identity independent of expansion handles.</param>
+    /// <param name="runtimeValue">The semantic value and type before presentation transforms.</param>
     /// <returns>The expression value.</returns>
-    internal static ManagedExpressionValue FromVariable(DebugVariableInfo variable)
+    internal static ManagedExpressionValue FromVariable(
+        DebugVariableInfo variable,
+        int runtimeValueReference,
+        ManagedValueDisplay runtimeValue)
     {
         ArgumentNullException.ThrowIfNull(variable);
-        bool hasScalar = TryParse(variable.Type, variable.Value, out object? scalar);
-        return new ManagedExpressionValue(variable, scalar, hasScalar);
+        bool hasScalar = TryParse(runtimeValue.Type, runtimeValue.Value, out object? scalar);
+        return new ManagedExpressionValue(variable, scalar, hasScalar, runtimeValue.Type, runtimeValueReference);
     }
 
     /// <summary>
@@ -95,7 +100,8 @@ internal static class ManagedExpressionValueFactory
                 MemoryReference: null,
                 EvaluateName: null),
             value,
-            HasScalar: true);
+            HasScalar: true,
+            Type: typeName);
     }
 
     /// <summary>
@@ -109,7 +115,7 @@ internal static class ManagedExpressionValueFactory
         return value.HasScalar
             ? value.Scalar
             : throw new InvalidOperationException(
-                $"Type '{value.Display.Type}' cannot participate in safe primitive evaluation.");
+                $"Type '{value.Type}' cannot participate in safe primitive evaluation.");
     }
 
     /// <summary>
@@ -121,7 +127,7 @@ internal static class ManagedExpressionValueFactory
         RequireScalar(value) is bool boolean
             ? boolean
             : throw new InvalidOperationException(
-                $"Type '{value.Display.Type}' is not Boolean.");
+                $"Type '{value.Type}' is not Boolean.");
 
     /// <summary>
     /// Gets one CLR array index from an evaluated integral operand.
@@ -144,7 +150,7 @@ internal static class ManagedExpressionValueFactory
                 long number => checked((int)number),
                 ulong number => checked((int)number),
                 _ => throw new InvalidOperationException(
-                    $"Type '{value.Display.Type}' is not a supported CLR array index.")
+                    $"Type '{value.Type}' is not a supported CLR array index.")
             };
         }
         catch (OverflowException exception)

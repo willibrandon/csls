@@ -9,12 +9,12 @@ namespace Csls.Mcp.Worker;
 internal sealed partial class CslsMcpDebuggerExecutionTools
 {
     /// <summary>
-    /// Gets debugger-presented variables whose proxy construction may execute target code.
+    /// Gets debugger-presented variables whose proxies or enumeration may execute target code.
     /// </summary>
     /// <param name="debugSession">The exact opaque debugger-session identifier.</param>
     /// <param name="stopGeneration">The exact current stopped generation.</param>
     /// <param name="variablesReference">The generation-bound variable container.</param>
-    /// <param name="cancellationToken">Cancels proxy construction and variable expansion.</param>
+    /// <param name="cancellationToken">Cancels target-code presentation and variable expansion.</param>
     /// <param name="start">The zero-based first variable to return.</param>
     /// <param name="count">The maximum number of variables to return.</param>
     /// <returns>The presented variables and replacement stopped generation.</returns>
@@ -27,7 +27,7 @@ internal sealed partial class CslsMcpDebuggerExecutionTools
         ReadOnly = false,
         UseStructuredContent = true,
         OutputSchemaType = typeof(McpDebugVariablesResult))]
-    [Description("Get debugger-presented child variables, including DebuggerTypeProxy views. Requires an active debug_agent_control_set grant and the exact stopGeneration because proxy constructors may execute arbitrary target code.")]
+    [Description("Get debugger-presented child variables, including DebuggerTypeProxy and Results View. Requires an active debug_agent_control_set grant and the exact stopGeneration because constructors, getters, and enumerable expansion may execute arbitrary target code. Listing a Results View row does not enumerate it; expanding that row does.")]
     public Task<ModelContextProtocol.Protocol.CallToolResult> GetPresentedVariablesAsync(
         [Description("Opaque identifier returned by a debugger lifecycle tool.")]
         string debugSession,

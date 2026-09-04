@@ -141,7 +141,7 @@ internal sealed partial class CorDebugDebuggee
         return Volatile.Read(ref *address);
     }
 
-    private void ReleaseTargetBreakpoint()
+    private void ReleaseTargetBreakpoint(bool runtimeAvailable = true)
     {
         ManagedTargetBreakpoint? target = Interlocked.Exchange(ref _targetBreakpoint, null);
         if (target is null)
@@ -149,7 +149,11 @@ internal sealed partial class CorDebugDebuggee
             return;
         }
 
-        _ = new ICorDebugBreakpointAbi(target.Pointer).Activate(bActive: 0);
+        if (runtimeAvailable)
+        {
+            _ = new ICorDebugBreakpointAbi(target.Pointer).Activate(bActive: 0);
+        }
+
         _ = ComAbi.Release(target.Pointer);
         _ = ComAbi.Release(target.Identity);
     }

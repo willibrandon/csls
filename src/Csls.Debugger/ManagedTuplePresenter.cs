@@ -253,7 +253,7 @@ internal sealed class ManagedTuplePresenter
     /// <param name="customTypeInfo">The optional tuple-name transforms.</param>
     /// <param name="elementName">The authored or ItemN element name.</param>
     /// <param name="comparison">The source-language name comparison.</param>
-    /// <param name="elementValue">Receives the retained physical field value.</param>
+    /// <param name="element">Receives the retained physical field value and its nested tuple metadata.</param>
     /// <returns>True when exactly one logical element matches.</returns>
     internal bool TryGetElementValue(
         nint value,
@@ -261,7 +261,7 @@ internal sealed class ManagedTuplePresenter
         ManagedTupleCustomTypeInfo? customTypeInfo,
         string elementName,
         StringComparison comparison,
-        out nint elementValue)
+        out (nint Value, ManagedTupleCustomTypeInfo? CustomTypeInfo) element)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(elementName);
         if (!_typeShape.TryCreateProjection(
@@ -269,7 +269,7 @@ internal sealed class ManagedTuplePresenter
             customTypeInfo,
             out ManagedTupleTypeProjection projection))
         {
-            elementValue = 0;
+            element = default;
             return false;
         }
 
@@ -277,7 +277,9 @@ internal sealed class ManagedTuplePresenter
         {
             if (string.Equals($"Item{index + 1}", elementName, comparison))
             {
-                elementValue = GetLogicalElementValue(value, exactType, index);
+                element = (
+                    GetLogicalElementValue(value, exactType, index),
+                    projection.ElementCustomTypeInfo[index]);
                 return true;
             }
         }
@@ -292,7 +294,7 @@ internal sealed class ManagedTuplePresenter
 
             if (matchingIndex is not null)
             {
-                elementValue = 0;
+                element = default;
                 return false;
             }
 
@@ -301,14 +303,13 @@ internal sealed class ManagedTuplePresenter
 
         if (matchingIndex is null)
         {
-            elementValue = 0;
+            element = default;
             return false;
         }
 
-        elementValue = GetLogicalElementValue(
-            value,
-            exactType,
-            matchingIndex.Value);
+        element = (
+            GetLogicalElementValue(value, exactType, matchingIndex.Value),
+            projection.ElementCustomTypeInfo[matchingIndex.Value]);
         return true;
     }
 

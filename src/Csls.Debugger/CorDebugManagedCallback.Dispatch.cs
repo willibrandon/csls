@@ -1,4 +1,5 @@
 using Csls.Debugger.Interop;
+using System.Runtime.CompilerServices;
 
 namespace Csls.Debugger;
 
@@ -7,7 +8,11 @@ namespace Csls.Debugger;
 /// </summary>
 internal sealed partial class CorDebugManagedCallback
 {
-    private static int QueueContinue(nint self, nint controller, bool createsProcess) =>
+    private static int QueueContinue(
+        nint self,
+        nint controller,
+        bool createsProcess,
+        [CallerMemberName] string callbackName = "") =>
         QueueCallback(
             self,
             controller,
@@ -17,7 +22,8 @@ internal sealed partial class CorDebugManagedCallback
             createsProcess,
             exitsProcess: false,
             continueAfterCallback: true,
-            callbackOperation: null);
+            callbackOperation: null,
+            callbackName);
 
     private static int QueueCallback(
         nint self,
@@ -28,7 +34,8 @@ internal sealed partial class CorDebugManagedCallback
         bool createsProcess,
         bool exitsProcess,
         bool continueAfterCallback,
-        CorDebugCallbackOperation? callbackOperation)
+        CorDebugCallbackOperation? callbackOperation,
+        [CallerMemberName] string callbackName = "")
     {
         if (controller == 0)
         {
@@ -36,6 +43,11 @@ internal sealed partial class CorDebugManagedCallback
         }
 
         CorDebugManagedCallback target = GetTarget(self);
+        if (target.RuntimeFailure is not null)
+        {
+            return SuccessHResult;
+        }
+
         _ = ComAbi.AddRef(controller);
         if (thread != 0)
         {
@@ -65,7 +77,8 @@ internal sealed partial class CorDebugManagedCallback
                 nint currentAuxiliary = Interlocked.Exchange(ref ownedAuxiliary, 0);
                 try
                 {
-                    bool detaching = Volatile.Read(ref target._detaching) != 0;
+                    bool detaching = Volatile.Read(ref target._detaching) != 0 ||
+                        target.RuntimeFailure is not null;
                     bool shouldContinue = continueAfterCallback && !detaching;
                     if (!detaching)
                     {
@@ -89,10 +102,15 @@ internal sealed partial class CorDebugManagedCallback
                             }
 
                             shouldContinue = continueAfterCallback;
+                            await target.ReportCallbackFailureAsync(
+                                callbackName,
+                                exception,
+                                actorCancellationToken).ConfigureAwait(false);
                         }
                     }
 
-                    if (shouldContinue && Volatile.Read(ref target._detaching) == 0)
+                    if (shouldContinue && Volatile.Read(ref target._detaching) == 0 &&
+                        target.RuntimeFailure is null)
                     {
                         int result = new ICorDebugControllerAbi(currentController)
                             .Continue(fIsOutOfBand: 0);
@@ -159,7 +177,8 @@ internal sealed partial class CorDebugManagedCallback
                 }
             },
             createsProcess,
-            exitsProcess);
+            exitsProcess,
+            callbackName);
         return SuccessHResult;
     }
 
@@ -167,7 +186,8 @@ internal sealed partial class CorDebugManagedCallback
         Task operation,
         Action releaseUnclaimed,
         bool createsProcess,
-        bool exitsProcess)
+        bool exitsProcess,
+        string callbackName)
     {
         try
         {
@@ -185,6 +205,11 @@ internal sealed partial class CorDebugManagedCallback
             {
                 _ = _exitProcessCompletion.TrySetException(exception);
             }
+
+            await ReportCallbackFailureAsync(
+                callbackName,
+                exception,
+                CancellationToken.None).ConfigureAwait(false);
         }
     }
 

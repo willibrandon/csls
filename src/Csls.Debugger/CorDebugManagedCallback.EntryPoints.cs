@@ -202,9 +202,9 @@ internal sealed partial class CorDebugManagedCallback
     [UnmanagedCallersOnly(CallConvs = [typeof(CallConvStdcall)])]
     private static int DebuggerError(nint self, nint process, int error, uint errorCode)
     {
-        _ = error;
-        _ = errorCode;
-        return QueueContinue(self, process, createsProcess: false);
+        _ = process;
+        GetTarget(self).RecordRuntimeFailure(error, errorCode);
+        return SuccessHResult;
     }
 
     [UnmanagedCallersOnly(CallConvs = [typeof(CallConvStdcall)])]

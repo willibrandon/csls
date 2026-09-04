@@ -41,6 +41,7 @@ public sealed partial class DebuggerSession
             _debuggee = await CorDebugDebuggee.AttachAsync(
                 options.ProcessId,
                 _actor,
+                _observer,
                 _sourceBreakpoints,
                 _functionBreakpoints,
                 _instructionBreakpoints,
@@ -53,6 +54,11 @@ public sealed partial class DebuggerSession
             await _actor.InvokeAsync(
                 token => CompleteLaunchCoreAsync(_debuggee, token),
                 cancellationToken).ConfigureAwait(false);
+        }
+        catch (CorDebugRuntimeException)
+        {
+            await ResetFailedManagedLaunchAsync(runtimeAvailable: false).ConfigureAwait(false);
+            throw;
         }
         catch
         {

@@ -22,7 +22,7 @@ internal static class ManagedPrimitiveConversionEvaluator
     {
         ArgumentNullException.ThrowIfNull(value);
         string target = NormalizeTypeName(destinationType, language);
-        string source = NormalizeTypeName(value.Display.Type, language);
+        string source = NormalizeTypeName(value.Type, language);
         if (string.Equals(source, target, StringComparison.Ordinal))
         {
             return value;
@@ -66,7 +66,7 @@ internal static class ManagedPrimitiveConversionEvaluator
     {
         ArgumentNullException.ThrowIfNull(value);
         string target = NormalizeTypeName(destinationType, language);
-        string source = NormalizeTypeName(value.Display.Type, language);
+        string source = NormalizeTypeName(value.Type, language);
         if (string.Equals(source, target, StringComparison.Ordinal))
         {
             return value;
@@ -78,7 +78,7 @@ internal static class ManagedPrimitiveConversionEvaluator
             !contextualIntegralLiteral && !IsImplicitNumericConversion(source, target, language))
         {
             throw new InvalidOperationException(
-                $"Assignment from '{value.Display.Type}' to '{destinationType}' requires " +
+                $"Assignment from '{value.Type}' to '{destinationType}' requires " +
                 "an explicit supported conversion.");
         }
 

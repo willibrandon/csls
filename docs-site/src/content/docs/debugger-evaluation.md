@@ -48,7 +48,8 @@ plan that could execute target code.
 DAP evaluation can explicitly call a qualified instance method or loaded-type static
 method when CoreCLR permits function evaluation at the selected frame. Explicit C#
 `new T(...)`, Visual Basic `New T(...)`, and F# `new T(...)` expressions can construct a
-loaded non-generic runtime type.
+loaded non-generic or closed generic runtime type, including nested generic and
+array type arguments.
 
 The binder searches exact metadata signatures, including inherited instance methods in
 another module. Arguments can be CLR primitives, `null`, current-generation object and
@@ -81,10 +82,10 @@ an existing runtime reference with the same displayed type. Direct writes do not
 target code, so they preserve the generation and publish variable invalidation for
 aliased editor views.
 
-Constructing a replacement object or string, boxing, reference conversions, and
-user-defined conversions are not accepted by direct assignment. Use an explicit,
-authorized function evaluation only where its mutation and generation-change semantics
-are appropriate.
+String, call, and construction expressions can also supply an assignment value through
+explicitly authorized target execution. The debugger then reacquires the destination
+frame, applies the assignment, and returns the new generation. Boxing, complete
+reference conversions, and user-defined conversions remain unsupported.
 
 ## Completion
 
@@ -117,6 +118,32 @@ a field from the default view, `Collapsed` preserves ordinary expansion, and
 cyclic, and depth-limited root-hidden values remain directly inspectable. A virtual
 Raw View exposes every physical field without presentation transforms.
 
+`DebuggerDisplayAttribute` formats value, name, and type columns from bounded
+instance-field paths without target execution. Type, member, and assembly declarations
+are supported. Display labels and type overrides affect presentation; expressions and
+assignments bind actual source names and runtime types. Tuples retain authored element
+names where symbol metadata supplies them, with logical paging and a physical Raw View.
+
+`DebuggerTypeProxyAttribute` constructs the selected proxy through guarded function
+evaluation. Its visible fields and non-indexed properties share ordinal ordering,
+root-hidden members flatten into the view, and Static members groups accessible
+static values. Raw View preserves the original object. Proxy constructors and property
+getters can run arbitrary target code and advance the stop generation.
+
+Enumerable objects expose a lazy Results View when the target has loaded the runtime's
+enumeration debug view. Listing the row does not run enumeration. Expanding it runs the
+selected `IEnumerable<T>` or `IEnumerable` implementation through guarded evaluation,
+materializes the enumeration before returning the requested element page, and
+invalidates old handles. Page size does not limit target enumeration. The row displays an
+execution warning and carries lazy and side-effect presentation hints. Empty results
+display an Empty message; target exceptions retain a usable stopped session. Arrays,
+strings, and successful debugger proxies use their existing presentations.
+
+MCP `debug_variables_get` remains read-only, including after a control grant. Use
+`debug_variables_get_presented` with an active `debug_agent_control_set` grant and the
+exact generation to construct proxies or expand Results View. This tool returns the
+replacement generation after execution.
+
 ## Memory and disassembly
 
 Managed arrays expose an opaque memory reference for their owning generation.
@@ -130,8 +157,7 @@ source mappings. This is architecture-independent managed IL, not native machine
 
 ## Current evaluator boundaries
 
-Generic object construction, object and collection initializers, properties, user-defined
-operators and conversions, `DebuggerDisplay` and `DebuggerTypeProxy`, LINQ results
-views, object IDs, and automatic `ToString` calls are not advertised. These features
-require complete binding, lifetime, recursion, and side-effect policies; csls does not
-execute them implicitly.
+Object and collection initializers, general property expressions, user-defined operators
+and conversions, object IDs, and automatic `ToString` calls are not advertised.
+Debugger proxy properties and Results View use the explicit presentation policy
+described above; ordinary expression inspection remains side-effect-free.

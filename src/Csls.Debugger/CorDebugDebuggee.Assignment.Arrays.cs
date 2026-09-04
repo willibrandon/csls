@@ -8,7 +8,7 @@ namespace Csls.Debugger;
 /// </summary>
 internal sealed partial class CorDebugDebuggee
 {
-    private unsafe nint ResolveArrayAssignmentTarget(
+    private nint ResolveArrayAssignmentTarget(
         ManagedFrameHandle frame,
         DebugExpressionPlan plan,
         DebugExpressionNode node,
@@ -19,6 +19,14 @@ internal sealed partial class CorDebugDebuggee
             plan,
             node.Children[0],
             generation);
+        int[] indexes = EvaluateArrayIndexes(frame, plan, node, generation);
+        return ResolveArrayElementValue(receiver, indexes);
+    }
+
+    private unsafe nint ResolveArrayElementValue(
+        ManagedExpressionValue receiver,
+        int[] indexes)
+    {
         nint runtimeValue = GetRuntimeValue(receiver);
         nint dereferenced = 0;
         nint array = 0;
@@ -31,41 +39,43 @@ internal sealed partial class CorDebugDebuggee
                 ICorDebugArrayValueAbi.InterfaceId);
             var api = new ICorDebugArrayValueAbi(array);
             uint rank = GetArrayRank(api);
-            if (node.Children.Count - 1 != rank)
+            if (indexes.Length != rank)
             {
                 throw new InvalidOperationException(
-                    $"The assignment supplies {node.Children.Count - 1} array index(es), " +
+                    $"The expression supplies {indexes.Length} array index(es), " +
                     $"but the runtime array rank is {rank}.");
             }
 
-            uint[] indexes = new uint[checked((int)rank)];
-            for (int index = 0; index < indexes.Length; index++)
+            uint[] dimensions = GetArrayDimensions(api, rank);
+            int[] bases = GetArrayBases(api, rank);
+            uint position = 0;
+            for (int index = 0; index < dimensions.Length; index++)
             {
-                int sourceIndex = ManagedExpressionValueFactory.RequireArrayIndex(EvaluateNode(
-                    frame,
-                    plan,
-                    node.Children[index + 1],
-                    generation));
-                indexes[index] = checked((uint)sourceIndex);
+                int sourceIndex = indexes[index];
+                long offset = (long)sourceIndex - bases[index];
+                if (offset < 0 || offset >= dimensions[index])
+                {
+                    throw new InvalidOperationException(
+                        $"Array index {sourceIndex} is outside dimension {index}'s bounds.");
+                }
+
+                position = checked(position * dimensions[index] + (uint)offset);
             }
 
             nint* elementAddress = &element;
-            fixed (uint* indexesAddress = indexes)
-            {
-                CorDebugHResult.ThrowIfFailed(
-                    api.GetElement(rank, (nint)indexesAddress, (nint)elementAddress),
-                    "ICorDebugArrayValue.GetElement");
-            }
+            CorDebugHResult.ThrowIfFailed(
+                api.GetElementAtPosition(position, (nint)elementAddress),
+                "ICorDebugArrayValue.GetElementAtPosition");
 
             element = RequirePointer(
                 Volatile.Read(ref *elementAddress),
-                "ICorDebugArrayValue.GetElement");
+                "ICorDebugArrayValue.GetElementAtPosition");
             return element;
         }
         catch (OverflowException exception)
         {
             throw new InvalidOperationException(
-                "Managed array assignment indexes must be non-negative UInt32 values.",
+                "The managed array index exceeds the supported element range.",
                 exception);
         }
         finally

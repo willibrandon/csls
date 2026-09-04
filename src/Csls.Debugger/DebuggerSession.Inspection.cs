@@ -173,7 +173,7 @@ public sealed partial class DebuggerSession
     /// <param name="variablesReference">The generation-bound variable-container handle.</param>
     /// <param name="start">The zero-based first variable to return.</param>
     /// <param name="count">The maximum count, or zero for all remaining values.</param>
-    /// <param name="allowTargetCodeExecution">Whether debugger proxy construction is authorized.</param>
+    /// <param name="allowTargetCodeExecution">Whether target-code presentation is authorized.</param>
     /// <param name="cancellationToken">Cancels queueing variable enumeration.</param>
     /// <returns>The requested immediate variable page.</returns>
     public async Task<IReadOnlyList<DebugVariableInfo>> GetVariablesAsync(
@@ -199,10 +199,14 @@ public sealed partial class DebuggerSession
                 }
 
                 if (allowTargetCodeExecution &&
-                    managedDebuggee.TryBeginDebuggerTypeProxyEvaluation(
+                    (managedDebuggee.TryBeginDebuggerTypeProxyEvaluation(
                         variablesReference,
                         _stopGeneration,
-                        out proxyEvaluation))
+                        out proxyEvaluation) ||
+                    managedDebuggee.TryBeginResultsViewEvaluation(
+                        variablesReference,
+                        _stopGeneration,
+                        out proxyEvaluation)))
                 {
                     evaluationDebuggee = managedDebuggee;
                     _state = DebugSessionState.Running;
@@ -236,7 +240,7 @@ public sealed partial class DebuggerSession
                 if (proxy.Generation != _stopGeneration)
                 {
                     throw new InvalidOperationException(
-                        "The debugger type proxy belongs to a retired stop generation.");
+                        "The debugger presentation belongs to a retired stop generation.");
                 }
 
                 result = managedDebuggee.GetVariables(

@@ -12,7 +12,7 @@ namespace Csls.Debugger;
 /// </summary>
 internal sealed partial class CorDebugDebuggee
 {
-    private unsafe nint ResolveFieldAssignmentTarget(
+    private nint ResolveFieldAssignmentTarget(
         ManagedFrameHandle frame,
         DebugExpressionPlan plan,
         DebugExpressionNode node,
@@ -23,6 +23,14 @@ internal sealed partial class CorDebugDebuggee
             plan,
             node.Children[0],
             generation);
+        return ResolveInstanceFieldValue(receiver, node.Text!, plan.Language).Value;
+    }
+
+    private unsafe (nint Value, ManagedTupleCustomTypeInfo? TupleCustomTypeInfo) ResolveInstanceFieldValue(
+        ManagedExpressionValue receiver,
+        string name,
+        DebugExpressionLanguage language)
+    {
         nint runtimeValue = GetRuntimeValue(receiver);
         nint dereferenced = 0;
         nint instance = 0;
@@ -45,24 +53,18 @@ internal sealed partial class CorDebugDebuggee
                 Volatile.Read(ref *exactTypeAddress),
                 "ICorDebugValue2.GetExactType");
 
-            StringComparison comparison = plan.Language ==
+            StringComparison comparison = language ==
                 DebugExpressionLanguage.VisualBasic
                     ? StringComparison.OrdinalIgnoreCase
                     : StringComparison.Ordinal;
-            ManagedTupleCustomTypeInfo? tupleCustomTypeInfo =
-                receiver.Display.VariablesReference > 0 &&
-                _values.TryGetValue(
-                    receiver.Display.VariablesReference,
-                    out ManagedValueHandle? retained)
-                    ? retained.TupleCustomTypeInfo
-                    : null;
+            ManagedTupleCustomTypeInfo? tupleCustomTypeInfo = GetExpressionTupleCustomTypeInfo(receiver);
             if (_tuplePresenter.TryGetElementValue(
                 dereferenced,
                 currentType,
                 tupleCustomTypeInfo,
-                node.Text!,
+                name,
                 comparison,
-                out nint tupleElement))
+                out (nint Value, ManagedTupleCustomTypeInfo? CustomTypeInfo) tupleElement))
             {
                 return tupleElement;
             }
@@ -86,17 +88,22 @@ internal sealed partial class CorDebugDebuggee
                             FileMode.Open,
                             FileAccess.Read,
                             FileShare.Read | FileShare.Delete));
+                    MetadataReader metadata = peReader.GetMetadataReader();
                     uint? fieldToken = TryResolveDeclaredInstanceField(
-                        peReader.GetMetadataReader(),
+                        metadata,
                         typeToken,
-                        node.Text!,
-                        plan.Language);
+                        name,
+                        language);
                     if (fieldToken is uint resolvedFieldToken)
                     {
-                        return GetObjectFieldValue(
-                            instance,
-                            runtimeClass,
-                            resolvedFieldToken);
+                        FieldDefinition field = metadata.GetFieldDefinition(
+                            MetadataTokens.FieldDefinitionHandle(
+                                checked((int)(resolvedFieldToken & 0x00FFFFFF))));
+                        ManagedTupleCustomTypeInfo? fieldTupleInfo = ManagedTupleElementNameReader.ReadAttribute(
+                            metadata, field.GetCustomAttributes());
+                        return (
+                            GetObjectFieldValue(instance, runtimeClass, resolvedFieldToken),
+                            fieldTupleInfo);
                     }
 
                     nint* baseTypeAddress = &baseType;
@@ -157,7 +164,7 @@ internal sealed partial class CorDebugDebuggee
         }
 
         throw new InvalidOperationException(
-            $"Instance field '{node.Text}' is unavailable on the runtime type hierarchy.");
+            $"Instance field '{name}' is unavailable on the runtime type hierarchy.");
     }
 
     private static uint? TryResolveDeclaredInstanceField(

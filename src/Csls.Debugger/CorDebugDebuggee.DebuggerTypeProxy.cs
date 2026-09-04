@@ -20,6 +20,7 @@ internal sealed partial class CorDebugDebuggee
         DebugStopGeneration generation,
         out Task<ManagedFunctionEvaluationResult>? completion)
     {
+        _managedCallback.ThrowIfRuntimeFailed();
         completion = null;
         if (_activeFunctionEvaluation is not null ||
             _functionEvaluationDisabledReason is not null ||
@@ -63,6 +64,7 @@ internal sealed partial class CorDebugDebuggee
         }
         catch (Exception exception) when (
             _functionEvaluationDisabledReason is null &&
+            RuntimeFailure is null &&
             exception is ArgumentException or InvalidOperationException or IOException or
             UnauthorizedAccessException or BadImageFormatException)
         {
@@ -89,7 +91,8 @@ internal sealed partial class CorDebugDebuggee
             thread = GetThread(threadId);
             evaluation = CreateEvaluation(thread);
             targetHandle = CreateFunctionEvaluationHandle(handle.Pointer);
-            ManagedValueDisplay display = FormatRuntimeValue(handle.Pointer);
+            (ManagedValueDisplay runtimeValue, ManagedValueDisplay display) = FormatRuntimeValuePair(
+                handle.Pointer, debuggerDisplayDepth: 0, handle.TupleCustomTypeInfo);
             ManagedExpressionValue[] arguments =
             [
                 new ManagedExpressionValue(
@@ -101,7 +104,9 @@ internal sealed partial class CorDebugDebuggee
                         handle.MemoryReference,
                         handle.EvaluateName),
                     Scalar: null,
-                    HasScalar: false)
+                    HasScalar: false,
+                    Type: runtimeValue.Type,
+                    RuntimeValueReference: handle.Id)
             ];
             var threadStates = new Dictionary<int, int>();
             var active = new ManagedFunctionEvaluation
@@ -133,10 +138,7 @@ internal sealed partial class CorDebugDebuggee
             callbackEvaluationActive = true;
             ScheduleNextFunctionEvaluationStage(active);
             callScheduled = true;
-            ClearFrameHandles();
-            CorDebugHResult.ThrowIfFailed(
-                new ICorDebugControllerAbi(_debugProcess).Continue(fIsOutOfBand: 0),
-                "ICorDebugController.Continue");
+            Continue();
             return active.Completion.Task.WaitAsync(CancellationToken.None);
         }
         catch (Exception exception) when (exception is not OperationCanceledException)
@@ -154,7 +156,10 @@ internal sealed partial class CorDebugDebuggee
                 _activeFunctionEvaluation = null;
                 try
                 {
-                    RestoreThreadStates(active);
+                    if (RuntimeFailure is null)
+                    {
+                        RestoreThreadStates(active);
+                    }
                 }
                 finally
                 {
@@ -167,6 +172,7 @@ internal sealed partial class CorDebugDebuggee
                 _managedCallback.EndFunctionEvaluation();
             }
 
+            _managedCallback.ThrowIfRuntimeFailed();
             if (callScheduled)
             {
                 throw new InvalidOperationException(
@@ -297,7 +303,7 @@ internal sealed partial class CorDebugDebuggee
 
             if (!continues)
             {
-                CompleteDebuggerTypeProxyOperation(active, result, failure);
+                CompletePresentationOperation(active, result, failure);
             }
         }
 
@@ -403,12 +409,21 @@ internal sealed partial class CorDebugDebuggee
             context.Properties[context.NextPropertyIndex++];
         nint nextEvaluation = 0;
         nint nextFunction = 0;
+        nint[] nextTypeArguments = [];
         nint completedEvaluation = active.Pointer;
         nint completedFunction = active.Function;
         try
         {
             nextEvaluation = CreateEvaluation(active.Thread);
+            nextTypeArguments = property.RetainTypeArguments();
             nextFunction = property.DetachFunction();
+            foreach (nint typeArgument in active.TypeArguments)
+            {
+                ReleaseFunctionEvaluationPointer(typeArgument);
+            }
+
+            active.TypeArguments = nextTypeArguments;
+            nextTypeArguments = [];
             active.Pointer = nextEvaluation;
             active.Function = nextFunction;
             active.ConstructsObject = false;
@@ -421,23 +436,20 @@ internal sealed partial class CorDebugDebuggee
             _ = ComAbi.Release(completedEvaluation);
             _ = ComAbi.Release(completedFunction);
             ScheduleNextFunctionEvaluationStage(active);
-            int continueResult = new ICorDebugControllerAbi(_debugProcess)
-                .Continue(fIsOutOfBand: 0);
-            if (continueResult < 0)
-            {
-                _functionEvaluationDisabledReason =
-                    "The debugger could not resume the target while evaluating a debugger " +
-                    "proxy property. The target's evaluation state is uncertain; this " +
-                    "debugger session must be disconnected.";
-                CorDebugHResult.ThrowIfFailed(
-                    continueResult,
-                    "ICorDebugController.Continue");
-            }
+            ContinueFunctionEvaluation(
+                "The debugger could not resume the target while evaluating a debugger " +
+                "proxy property. The target's evaluation state is uncertain; this " +
+                "debugger session must be disconnected.");
 
             return true;
         }
         finally
         {
+            foreach (nint typeArgument in nextTypeArguments)
+            {
+                ReleaseFunctionEvaluationPointer(typeArgument);
+            }
+
             if (nextFunction != 0)
             {
                 _ = ComAbi.Release(nextFunction);
@@ -475,7 +487,7 @@ internal sealed partial class CorDebugDebuggee
             proxy.ProxyRawValueReference = RetainDebuggerTypeProxyOriginal(
                 active,
                 generation,
-                ManagedValueView.Raw).Id;
+                ManagedValueView.ProxyRaw).Id;
             List<ManagedDebuggerTypeProxyPropertyPresentation> properties =
                 MaterializeDebuggerTypeProxyProperties(
                 context,
@@ -691,7 +703,7 @@ internal sealed partial class CorDebugDebuggee
         }
     }
 
-    private void CompleteDebuggerTypeProxyOperation(
+    private void CompletePresentationOperation(
         ManagedFunctionEvaluation active,
         ManagedFunctionEvaluationResult? result,
         Exception? failure)
@@ -699,13 +711,16 @@ internal sealed partial class CorDebugDebuggee
         _activeFunctionEvaluation = null;
         try
         {
-            RestoreThreadStates(active);
+            if (RuntimeFailure is null)
+            {
+                RestoreThreadStates(active);
+            }
         }
         catch (Exception exception) when (
             exception is InvalidOperationException or IOException)
         {
             const string Reason =
-                "Debugger type-proxy presentation completed, but the debugger could not " +
+                "Debugger presentation completed, but the debugger could not " +
                 "restore thread state safely. This debugger session must be disconnected.";
             failure = new InvalidOperationException(Reason, exception);
             _functionEvaluationDisabledReason = Reason;
@@ -716,6 +731,7 @@ internal sealed partial class CorDebugDebuggee
             ReleaseFunctionEvaluationResources(active);
         }
 
+        failure = RuntimeFailure ?? failure;
         if (failure is OperationCanceledException canceled)
         {
             _ = active.Completion.TrySetCanceled(canceled.CancellationToken);
@@ -730,8 +746,9 @@ internal sealed partial class CorDebugDebuggee
         }
     }
 
-    private static void ReleaseDebuggerTypeProxyPropertyResources(
-        ManagedDebuggerTypeProxyEvaluation context)
+    private void ReleaseDebuggerTypeProxyPropertyResources(
+        ManagedDebuggerTypeProxyEvaluation context,
+        bool runtimeAvailable = true)
     {
         foreach (ManagedDebuggerTypeProxyPropertyBinding property in context.Properties)
         {
@@ -740,7 +757,7 @@ internal sealed partial class CorDebugDebuggee
 
         foreach (ManagedDebuggerTypeProxyPropertyResult property in context.PropertyResults)
         {
-            ReleaseFunctionEvaluationHandle(property.DetachHandle());
+            ReleaseFunctionEvaluationHandle(property.DetachHandle(), runtimeAvailable);
         }
     }
 

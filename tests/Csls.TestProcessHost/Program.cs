@@ -12,6 +12,33 @@ if (args is ["--debugger-fixture", string fixturePath])
         (ArgumentNumber: 42, ArgumentText: "argument"));
 }
 
+if (args is ["--debugger-results-view-context-fixture", string resultsViewContextPath])
+{
+    return DebuggerFixture.WaitForSignal(
+        resultsViewContextPath,
+        "ready",
+        42,
+        "answer",
+        (ArgumentNumber: 42, ArgumentText: "argument"),
+        isolateResultsViewAssembly: true);
+}
+
+if (args is ["--debugger-results-view-unavailable-fixture", string unavailableResultsViewPath])
+{
+    return ResultsViewAvailabilityDebuggerFixture.WaitForSignal(unavailableResultsViewPath, "ready");
+}
+
+if (args is ["--debugger-results-view-spoof-fixture", string spoofedResultsViewPath, string exceptionAssemblyPath])
+{
+    return DebuggerFixture.WaitForSignal(
+        spoofedResultsViewPath,
+        "ready",
+        42,
+        "answer",
+        (ArgumentNumber: 42, ArgumentText: "argument"),
+        resultsViewExceptionAssemblyPath: exceptionAssemblyPath);
+}
+
 if (args is ["--debugger-step-fixture", string stepFixturePath])
 {
     return DebuggerStepFixture.Run(stepFixturePath);

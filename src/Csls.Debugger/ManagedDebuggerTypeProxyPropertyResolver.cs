@@ -64,6 +64,7 @@ internal sealed class ManagedDebuggerTypeProxyPropertyResolver
                         result,
                         names,
                         module,
+                        currentType,
                         peReader.GetMetadataReader(),
                         typeToken);
 
@@ -130,6 +131,7 @@ internal sealed class ManagedDebuggerTypeProxyPropertyResolver
         List<ManagedDebuggerTypeProxyPropertyBinding> result,
         HashSet<string> names,
         nint module,
+        nint declaringType,
         MetadataReader metadata,
         uint typeToken)
     {
@@ -181,7 +183,8 @@ internal sealed class ManagedDebuggerTypeProxyPropertyResolver
                 (getter.Attributes & MethodAttributes.Static) != 0,
                 GetModuleFunction(
                     module,
-                    checked((uint)MetadataTokens.GetToken(getterHandle)))));
+                    checked((uint)MetadataTokens.GetToken(getterHandle))),
+                declaringType));
         }
     }
 

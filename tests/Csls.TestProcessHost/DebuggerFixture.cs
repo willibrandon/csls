@@ -13,13 +13,17 @@ internal static class DebuggerFixture
     /// <param name="number">The numeric argument retained in the frame.</param>
     /// <param name="text">The string argument retained in the frame.</param>
     /// <param name="tupleArgument">The named tuple argument retained in the frame.</param>
+    /// <param name="isolateResultsViewAssembly">Whether to create an enumerable in a separate assembly context.</param>
+    /// <param name="resultsViewExceptionAssemblyPath">The optional file-backed hostile exception assembly.</param>
     /// <returns>Zero when the retained local values remain intact.</returns>
     internal static int WaitForSignal(
         string path,
         string announcement,
         int number,
         string text,
-        (int ArgumentNumber, string ArgumentText) tupleArgument)
+        (int ArgumentNumber, string ArgumentText) tupleArgument,
+        bool isolateResultsViewAssembly = false,
+        string? resultsViewExceptionAssemblyPath = null)
     {
         int localNumber = number + 1;
         long localLong = number + 2L;
@@ -31,6 +35,8 @@ internal static class DebuggerFixture
         var localBrowsable = new DebuggerBrowsableFixture();
         var localDisplay = new DebuggerDisplayFixture();
         var localDisplays = new DebuggerDisplayContainerFixture();
+        var localStringIdentity = new StringIdentityFixture();
+        localStringIdentity.SetValues("first\nvalue", "second\tvalue");
         var localProxy = new DebuggerTypeProxyFixture();
         var localProxyProjection = new DebuggerTypeProxyFixtureProxyDerived(localProxy);
         var localGenericProxy = new GenericDebuggerTypeProxyFixture<int>(49);
@@ -47,6 +53,31 @@ internal static class DebuggerFixture
             new ArityMismatchDebuggerTypeProxyFixtureProxy<int, string>(
                 localArityMismatchProxy);
         var localThrowingProxy = new ThrowingDebuggerTypeProxyFixture();
+        var localResultsView = new ResultsViewFixture<int>([71, 72, 73]);
+        var localResultsViewNonGeneric = new ResultsViewNonGenericFixture();
+        var localResultsViewInherited = new ResultsViewInheritedFixture();
+        var localResultsViewRectangular = new ResultsViewRectangularFixture();
+        object? localResultsViewDefaultContext = isolateResultsViewAssembly
+            ? ResultsViewLoadContextFixture.CreateEnumerable() : null;
+        object? localResultsViewIsolatedContext = isolateResultsViewAssembly
+            ? ResultsViewLoadContextFixture.CreateIsolatedEnumerable() : null;
+        var localResultsViewMultiple = new ResultsViewMultipleFixture();
+        var localResultsViewStruct = new ResultsViewStructFixture();
+        ResultsViewStructFixture? localResultsViewNullableStruct = new ResultsViewStructFixture();
+        object localResultsViewBoxedStruct = new ResultsViewStructFixture();
+        var localResultsViewEmpty = new ResultsViewFixture<int>([]);
+        var localResultsViewThrowing = new ResultsViewFixture<int>([], throws: true);
+        var localResultsViewBlocking = new ResultsViewBlockingFixture(path + ".results-view-started");
+        var localResultsViewProxied = new ResultsViewProxiedFixture();
+        var localResultsViewProjection = new ResultsViewFixtureProxy(localResultsViewProxied);
+        var localResultsViewPattern = new ResultsViewPatternFixture();
+        var localResultsViewRaw = new ResultsViewRawFixture();
+        var localResultsViewFailedProxy = new ResultsViewFailedProxyFixture();
+        ResultsViewSpoofedExceptionFixture? localResultsViewSpoofedException =
+            resultsViewExceptionAssemblyPath is null
+                ? null : new ResultsViewSpoofedExceptionFixture(resultsViewExceptionAssemblyPath);
+        ResultsViewFixture<int>? localResultsViewNull = null;
+        int localResultsViewWarmup = Enumerable.Range(0, 1).Sum();
         DebuggerDisplayFixture[] localDisplayArray = [new()];
         int? localNullable = number + 3;
         int? localEmptyNullable = null;
@@ -126,6 +157,7 @@ internal static class DebuggerFixture
         GC.KeepAlive(localBrowsable);
         GC.KeepAlive(localDisplay);
         GC.KeepAlive(localDisplays);
+        GC.KeepAlive(localStringIdentity);
         GC.KeepAlive(localProxy);
         GC.KeepAlive(localProxyProjection);
         GC.KeepAlive(localGenericProxy);
@@ -138,6 +170,27 @@ internal static class DebuggerFixture
         GC.KeepAlive(localArityMismatchProxy);
         GC.KeepAlive(localArityMismatchProxyProjection);
         GC.KeepAlive(localThrowingProxy);
+        GC.KeepAlive(localResultsView);
+        GC.KeepAlive(localResultsViewNonGeneric);
+        GC.KeepAlive(localResultsViewInherited);
+        GC.KeepAlive(localResultsViewRectangular);
+        GC.KeepAlive(localResultsViewDefaultContext);
+        GC.KeepAlive(localResultsViewIsolatedContext);
+        GC.KeepAlive(localResultsViewMultiple);
+        GC.KeepAlive(localResultsViewStruct);
+        GC.KeepAlive(localResultsViewNullableStruct);
+        GC.KeepAlive(localResultsViewBoxedStruct);
+        GC.KeepAlive(localResultsViewEmpty);
+        GC.KeepAlive(localResultsViewThrowing);
+        GC.KeepAlive(localResultsViewBlocking);
+        GC.KeepAlive(localResultsViewProxied);
+        GC.KeepAlive(localResultsViewProjection);
+        GC.KeepAlive(localResultsViewPattern);
+        GC.KeepAlive(localResultsViewRaw);
+        GC.KeepAlive(localResultsViewFailedProxy);
+        GC.KeepAlive(localResultsViewSpoofedException);
+        GC.KeepAlive(localResultsViewNull);
+        GC.KeepAlive(localResultsViewWarmup);
         GC.KeepAlive(localDisplayArray);
         GC.KeepAlive(localNullable);
         GC.KeepAlive(localEmptyNullable);

@@ -27,7 +27,7 @@ internal static class ManagedPrimitiveOperatorEvaluator
                 "bool");
         }
 
-        ManagedNumericValue numeric = GetNumeric(value, operand.Display.Type);
+        ManagedNumericValue numeric = GetNumeric(value, operand.Type);
         object result = operation switch
         {
             DebugExpressionOperator.UnaryPlus => numeric.Value,
@@ -58,7 +58,7 @@ internal static class ManagedPrimitiveOperatorEvaluator
         object? rightValue = ManagedExpressionValueFactory.RequireScalar(right);
         if (operation is DebugExpressionOperator.Equal or DebugExpressionOperator.NotEqual)
         {
-            bool equal = Equal(leftValue, rightValue, left.Display.Type, right.Display.Type);
+            bool equal = Equal(leftValue, rightValue, left.Type, right.Type);
             return ManagedExpressionValueFactory.FromScalar(
                 operation == DebugExpressionOperator.Equal ? equal : !equal,
                 "bool");
@@ -84,8 +84,8 @@ internal static class ManagedPrimitiveOperatorEvaluator
             return ManagedExpressionValueFactory.FromScalar(result, "bool");
         }
 
-        ManagedNumericValue leftNumeric = GetNumeric(leftValue, left.Display.Type);
-        ManagedNumericValue rightNumeric = GetNumeric(rightValue, right.Display.Type);
+        ManagedNumericValue leftNumeric = GetNumeric(leftValue, left.Type);
+        ManagedNumericValue rightNumeric = GetNumeric(rightValue, right.Type);
         ManagedNumericKind kind = Promote(leftNumeric.Kind, rightNumeric.Kind);
         if (operation is DebugExpressionOperator.LessThan or
             DebugExpressionOperator.LessThanOrEqual or

@@ -99,14 +99,17 @@ internal sealed partial class CorDebugDebuggee
             cRangeCount: 1);
     }
 
-    private static void ReleaseUnusedStepper(nint stepper)
+    private static void ReleaseUnusedStepper(nint stepper, bool runtimeAvailable)
     {
         if (stepper == 0)
         {
             return;
         }
 
-        _ = new ICorDebugStepperAbi(stepper).Deactivate();
+        if (runtimeAvailable)
+        {
+            _ = new ICorDebugStepperAbi(stepper).Deactivate();
+        }
         _ = ComAbi.Release(stepper);
     }
 }

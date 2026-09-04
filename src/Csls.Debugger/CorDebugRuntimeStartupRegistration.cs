@@ -187,10 +187,13 @@ internal sealed class CorDebugRuntimeStartupRegistration : IDisposable
                 "ICorDebug.SetManagedHandler");
             nint nativeProcess = 0;
             nint* processAddress = &nativeProcess;
-            CorDebugHResult.ThrowIfFailed(
-                api.DebugActiveProcess(_processId, win32Attach: 0, (nint)processAddress),
-                "ICorDebug.DebugActiveProcess");
+            int attachResult = api.DebugActiveProcess(
+                _processId,
+                win32Attach: 0,
+                (nint)processAddress);
             attachedProcess = Volatile.Read(ref *processAddress);
+            _managedCallback.ThrowIfRuntimeFailed();
+            CorDebugHResult.ThrowIfFailed(attachResult, "ICorDebug.DebugActiveProcess");
             if (attachedProcess == 0)
             {
                 throw new InvalidOperationException(

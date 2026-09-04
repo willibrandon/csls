@@ -1,3 +1,5 @@
+using Csls.Debugger.Contracts;
+
 namespace Csls.Debugger;
 
 /// <summary>
@@ -65,6 +67,7 @@ public sealed partial class DebuggerSession
             _debuggee = await CorDebugDebuggee.LaunchAsync(
                 options,
                 _actor,
+                _observer,
                 _sourceBreakpoints,
                 _functionBreakpoints,
                 _instructionBreakpoints,
@@ -77,6 +80,11 @@ public sealed partial class DebuggerSession
             await _actor.InvokeAsync(
                 token => CompleteLaunchCoreAsync(_debuggee, token),
                 cancellationToken).ConfigureAwait(false);
+        }
+        catch (CorDebugRuntimeException)
+        {
+            await ResetFailedManagedLaunchAsync(runtimeAvailable: false).ConfigureAwait(false);
+            throw;
         }
         catch
         {
@@ -101,7 +109,7 @@ public sealed partial class DebuggerSession
         return BeginLaunchCoreAsync(cancellationToken);
     }
 
-    private async Task ResetFailedManagedLaunchAsync()
+    private async Task ResetFailedManagedLaunchAsync(bool runtimeAvailable = true)
     {
         if (_debuggee is not null)
         {
@@ -112,9 +120,14 @@ public sealed partial class DebuggerSession
         await _actor.InvokeAsync(
             token =>
             {
-                _sourceBreakpoints.ResetRuntimeBindings();
-                _functionBreakpoints.ResetRuntimeBindings();
-                _instructionBreakpoints.ResetRuntimeBindings();
+                _sourceBreakpoints.ResetRuntimeBindings(runtimeAvailable);
+                _functionBreakpoints.ResetRuntimeBindings(runtimeAvailable);
+                _instructionBreakpoints.ResetRuntimeBindings(runtimeAvailable);
+                if (!runtimeAvailable)
+                {
+                    _state = DebugSessionState.Faulted;
+                }
+
                 return ResetFailedLaunchCoreAsync(token);
             },
             CancellationToken.None).ConfigureAwait(false);

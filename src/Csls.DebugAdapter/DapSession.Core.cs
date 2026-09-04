@@ -130,7 +130,7 @@ internal sealed partial class DapSession : IDebuggerSessionObserver, IAsyncDispo
         }
         catch (OperationCanceledException) when (linked.IsCancellationRequested)
         {
-            return 0;
+            return _state == DapSessionState.Faulted ? 1 : 0;
         }
         catch (InvalidDataException exception)
         {
@@ -226,5 +226,5 @@ internal sealed partial class DapSession : IDebuggerSessionObserver, IAsyncDispo
     }
 
     private static bool IsCancelableTargetCodeRequest(string command) =>
-        command is "evaluate" or "setVariable" or "setExpression";
+        command is "evaluate" or "setVariable" or "setExpression" or "variables";
 }

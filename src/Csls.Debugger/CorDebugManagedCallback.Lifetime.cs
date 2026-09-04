@@ -46,7 +46,7 @@ internal sealed partial class CorDebugManagedCallback
     }
 
     /// <summary>
-    /// Waits until CoreCLR delivers the terminal process callback on the engine actor.
+    /// Waits until CoreCLR delivers its terminal callback or disables debugging services.
     /// </summary>
     /// <param name="cancellationToken">Cancels waiting for callback delivery.</param>
     /// <returns>A task that completes after the callback relinquishes its process pointer.</returns>

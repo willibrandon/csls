@@ -19,7 +19,8 @@ internal sealed partial class CorDebugDebuggee
         ManagedTupleCustomTypeInfo? tupleCustomTypeInfo,
         ManagedDebuggerTypeProxyRawView? proxyRawView,
         ManagedDebuggerTypeProxyStaticView? proxyStaticView,
-        IReadOnlyList<ManagedDebuggerTypeProxyPropertyPresentation>? proxyProperties) =>
+        IReadOnlyList<ManagedDebuggerTypeProxyPropertyPresentation>? proxyProperties,
+        int? threadId = null) =>
         _objectExpander.Expand(
             value,
             parentEvaluateName,
@@ -31,7 +32,8 @@ internal sealed partial class CorDebugDebuggee
             tupleCustomTypeInfo,
             proxyRawView,
             proxyStaticView,
-            proxyProperties);
+            proxyProperties,
+            threadId);
 
     PEReader IManagedObjectExpansionServices.OpenRuntimeModule(nint module) =>
         OpenRuntimeModule(module);

@@ -13,7 +13,7 @@ internal sealed partial class CorDebugDebuggee
         nint runtimeArgument,
         List<nint> temporaryArguments)
     {
-        if (argument.Display.VariablesReference > 0 ||
+        if (!argument.HasScalar && argument.RuntimeValueReference > 0 ||
             argument.HasScalar && argument.Scalar is string)
         {
             return runtimeArgument != 0
@@ -23,7 +23,7 @@ internal sealed partial class CorDebugDebuggee
         }
 
         object? scalar = ManagedExpressionValueFactory.RequireScalar(argument);
-        uint elementType = GetFunctionArgumentElementType(argument.Display.Type, scalar);
+        uint elementType = GetFunctionArgumentElementType(argument.Type, scalar);
         nint value = 0;
         nint* valueAddress = &value;
         CorDebugHResult.ThrowIfFailed(
@@ -39,7 +39,7 @@ internal sealed partial class CorDebugDebuggee
         {
             if (scalar is not null)
             {
-                SetManagedPrimitiveValue(value, argument.Display.Type, scalar);
+                SetManagedPrimitiveValue(value, argument.Type, scalar);
             }
 
             temporaryArguments.Add(value);
@@ -159,8 +159,9 @@ internal sealed partial class CorDebugDebuggee
             new ICorDebugGenericValueAbi(generic).SetValue((nint)value),
             "ICorDebugGenericValue.SetValue");
 
-    private static unsafe nint CreateFunctionEvaluationHandle(nint value)
+    private unsafe nint CreateFunctionEvaluationHandle(nint value)
     {
+        _managedCallback.ThrowIfRuntimeFailed();
         nint dereferenced = 0;
         nint heapValue = 0;
         nint handle = 0;
@@ -205,14 +206,18 @@ internal sealed partial class CorDebugDebuggee
         }
     }
 
-    private static void ReleaseFunctionEvaluationHandle(nint handle)
+    private void ReleaseFunctionEvaluationHandle(nint handle, bool runtimeAvailable = true)
     {
         if (handle == 0)
         {
             return;
         }
 
-        _ = new ICorDebugHandleValueAbi(handle).Dispose();
+        if (runtimeAvailable && RuntimeFailure is null)
+        {
+            _ = new ICorDebugHandleValueAbi(handle).Dispose();
+        }
+
         _ = ComAbi.Release(handle);
     }
 }

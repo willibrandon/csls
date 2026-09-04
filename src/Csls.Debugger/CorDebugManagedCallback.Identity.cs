@@ -23,6 +23,7 @@ internal sealed partial class CorDebugManagedCallback : IDisposable
     private static readonly nint s_callback3Vtable = CreateCallback3Vtable();
     private static readonly nint s_callback4Vtable = CreateCallback4Vtable();
     private readonly DebuggerSessionActor _actor;
+    private readonly IDebuggerSessionObserver _observer;
     private readonly SourceBreakpointManager _sourceBreakpoints;
     private readonly FunctionBreakpointManager _functionBreakpoints;
     private readonly InstructionBreakpointManager _instructionBreakpoints;
@@ -46,6 +47,7 @@ internal sealed partial class CorDebugManagedCallback : IDisposable
     /// Creates one callback object with an independently reference-counted native identity.
     /// </summary>
     /// <param name="actor">The engine actor that owns callback continuation.</param>
+    /// <param name="observer">Receives debugger diagnostics through the session output channel.</param>
     /// <param name="sourceBreakpoints">The source-breakpoint binding owner.</param>
     /// <param name="functionBreakpoints">The function-breakpoint binding owner.</param>
     /// <param name="instructionBreakpoints">The managed-IL breakpoint binding owner.</param>
@@ -56,6 +58,7 @@ internal sealed partial class CorDebugManagedCallback : IDisposable
     /// <param name="evaluationCompleted">The ordered function-evaluation completion callback.</param>
     internal unsafe CorDebugManagedCallback(
         DebuggerSessionActor actor,
+        IDebuggerSessionObserver observer,
         SourceBreakpointManager sourceBreakpoints,
         FunctionBreakpointManager functionBreakpoints,
         InstructionBreakpointManager instructionBreakpoints,
@@ -67,6 +70,7 @@ internal sealed partial class CorDebugManagedCallback : IDisposable
         Func<nint, bool, CancellationToken, ValueTask<bool>> evaluationCompleted)
     {
         ArgumentNullException.ThrowIfNull(actor);
+        ArgumentNullException.ThrowIfNull(observer);
         ArgumentNullException.ThrowIfNull(sourceBreakpoints);
         ArgumentNullException.ThrowIfNull(functionBreakpoints);
         ArgumentNullException.ThrowIfNull(instructionBreakpoints);
@@ -76,6 +80,7 @@ internal sealed partial class CorDebugManagedCallback : IDisposable
         ArgumentNullException.ThrowIfNull(exceptionRaised);
         ArgumentNullException.ThrowIfNull(evaluationCompleted);
         _actor = actor;
+        _observer = observer;
         _sourceBreakpoints = sourceBreakpoints;
         _functionBreakpoints = functionBreakpoints;
         _instructionBreakpoints = instructionBreakpoints;

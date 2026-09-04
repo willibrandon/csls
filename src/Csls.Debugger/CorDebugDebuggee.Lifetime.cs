@@ -10,6 +10,7 @@ internal sealed partial class CorDebugDebuggee
     /// <inheritdoc />
     public void Detach()
     {
+        _managedCallback.ThrowIfRuntimeFailed();
         if (Volatile.Read(ref _detached) != 0)
         {
             return;
@@ -26,7 +27,8 @@ internal sealed partial class CorDebugDebuggee
 
         _ = Interlocked.Exchange(ref _corDebug, 0);
         _ = Interlocked.Exchange(ref _debugProcess, 0);
-        ReleaseRuntimeReferences(corDebug, debugProcess);
+        ReleaseRuntimeReferences(
+            corDebug, debugProcess, runtimeAvailable: RuntimeFailure is null);
         Volatile.Write(ref _detached, 1);
     }
 
@@ -53,6 +55,24 @@ internal sealed partial class CorDebugDebuggee
 
     private async ValueTask DisposeCoreAsync()
     {
+        if (RuntimeFailure is CorDebugRuntimeException failure)
+        {
+            if (_ownsProcess)
+            {
+                await TerminateProcessAsync(_process, _unixExitMonitor, CancellationToken.None)
+                    .ConfigureAwait(false);
+            }
+
+            await _actor.InvokeAsync(
+                token =>
+                {
+                    _ = token;
+                    AbandonFailedRuntime(failure);
+                    return ValueTask.CompletedTask;
+                },
+                CancellationToken.None).ConfigureAwait(false);
+        }
+
         if (Volatile.Read(ref _detached) == 0)
         {
             if (_ownsProcess)
@@ -68,6 +88,12 @@ internal sealed partial class CorDebugDebuggee
                     token =>
                     {
                         _ = token;
+                        if (RuntimeFailure is CorDebugRuntimeException runtimeFailure)
+                        {
+                            AbandonFailedRuntime(runtimeFailure);
+                            return ValueTask.CompletedTask;
+                        }
+
                         _ = PrepareForDetach();
                         Detach();
                         return ValueTask.CompletedTask;
@@ -82,11 +108,13 @@ internal sealed partial class CorDebugDebuggee
             cancellationToken =>
             {
                 _ = cancellationToken;
-                FailFunctionEvaluation(new OperationCanceledException(
-                    "The debugger target ended during managed function evaluation."));
+                FailFunctionEvaluation(RuntimeFailure ?? (Exception)new OperationCanceledException(
+                    "The debugger target ended during managed function evaluation."),
+                    runtimeAvailable: RuntimeFailure is null);
                 ClearFrameHandles();
-                CancelStep();
-                ReleaseRuntimeReferences(corDebug, debugProcess);
+                CancelStep(runtimeAvailable: RuntimeFailure is null);
+                ReleaseRuntimeReferences(
+                    corDebug, debugProcess, runtimeAvailable: RuntimeFailure is null);
                 return ValueTask.CompletedTask;
             },
             CancellationToken.None).ConfigureAwait(false);

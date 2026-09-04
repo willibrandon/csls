@@ -61,10 +61,10 @@ internal sealed partial class CorDebugDebuggee
         DebugExpressionNode node,
         DebugStopGeneration generation) => node.Kind switch
         {
-            DebugExpressionNodeKind.Identifier => ManagedExpressionValueFactory.FromVariable(
-                ResolveRoot(frame, node.Text!, generation)),
-            DebugExpressionNodeKind.This => ManagedExpressionValueFactory.FromVariable(
-                ResolveRoot(frame, "this", generation)),
+            DebugExpressionNodeKind.Identifier => EvaluateRuntimeRoot(
+                frame, node.Text!, generation),
+            DebugExpressionNodeKind.This => EvaluateRuntimeRoot(
+                frame, "this", generation),
             DebugExpressionNodeKind.Literal => ManagedExpressionValueFactory.FromLiteral(node),
             DebugExpressionNodeKind.Conversion =>
                 ManagedPrimitiveConversionEvaluator.EvaluateExplicit(
@@ -109,28 +109,19 @@ internal sealed partial class CorDebugDebuggee
             plan,
             node.Children[0],
             generation);
-        if (receiver.Display.VariablesReference == 0)
+        (nint value, ManagedTupleCustomTypeInfo? tupleCustomTypeInfo) = ResolveInstanceFieldValue(
+            receiver, node.Text!, plan.Language);
+        try
         {
-            throw new InvalidOperationException(
-                $"'{receiver.Display.EvaluateName ?? receiver.Display.Name}' has no " +
-                "expandable children.");
+            return RetainExpressionValue(
+                node.Text!,
+                ManagedExpressionName.CreateMember(receiver.Display.EvaluateName, node.Text!),
+                value, frame.Id, generation, tupleCustomTypeInfo);
         }
-
-        StringComparison comparison = plan.Language == DebugExpressionLanguage.VisualBasic
-            ? StringComparison.OrdinalIgnoreCase
-            : StringComparison.Ordinal;
-        DebugVariableInfo? member = GetVariables(
-            receiver.Display.VariablesReference,
-            generation,
-            start: 0,
-            count: 0).FirstOrDefault(candidate => string.Equals(
-                candidate.Name,
-                node.Text,
-                comparison));
-        return member is null
-            ? throw new InvalidOperationException(
-                $"The expression member '{node.Text}' is unavailable.")
-            : ManagedExpressionValueFactory.FromVariable(member);
+        finally
+        {
+            ReleaseFunctionEvaluationPointer(value);
+        }
     }
 
     private ManagedExpressionValue EvaluateElement(
@@ -144,36 +135,22 @@ internal sealed partial class CorDebugDebuggee
             plan,
             node.Children[0],
             generation);
-        if (receiver.Display.VariablesReference == 0)
-        {
-            throw new InvalidOperationException(
-                $"'{receiver.Display.EvaluateName ?? receiver.Display.Name}' is not an " +
-                "expandable array.");
-        }
-
-        int[] indexes = new int[node.Children.Count - 1];
-        for (int index = 0; index < indexes.Length; index++)
-        {
-            indexes[index] = ManagedExpressionValueFactory.RequireArrayIndex(EvaluateNode(
-                frame,
-                plan,
-                node.Children[index + 1],
-                generation));
-        }
-
+        int[] indexes = EvaluateArrayIndexes(frame, plan, node, generation);
         string name = $"[{string.Join(',', indexes)}]";
-        DebugVariableInfo? element = GetVariables(
-            receiver.Display.VariablesReference,
-            generation,
-            start: 0,
-            count: 0).FirstOrDefault(candidate => string.Equals(
-                candidate.Name,
-                name,
-                StringComparison.Ordinal));
-        return element is null
-            ? throw new InvalidOperationException(
-                $"The expression array index '{name}' is unavailable.")
-            : ManagedExpressionValueFactory.FromVariable(element);
+        string? evaluateName = receiver.Display.EvaluateName is string parent
+            ? string.Concat(parent, name)
+            : null;
+        nint value = ResolveArrayElementValue(receiver, indexes);
+        try
+        {
+            return RetainExpressionValue(
+                name, evaluateName, value, frame.Id, generation,
+                GetExpressionTupleCustomTypeInfo(receiver));
+        }
+        finally
+        {
+            ReleaseFunctionEvaluationPointer(value);
+        }
     }
 
     private ManagedExpressionValue EvaluateBinary(
@@ -233,41 +210,4 @@ internal sealed partial class CorDebugDebuggee
             generation);
     }
 
-    private DebugVariableInfo ResolveRoot(
-        ManagedFrameHandle frame,
-        string rootName,
-        DebugStopGeneration generation)
-    {
-        StringComparison comparison = frame.ExpressionLanguage ==
-            DebugExpressionLanguage.VisualBasic
-                ? StringComparison.OrdinalIgnoreCase
-                : StringComparison.Ordinal;
-        DebugVariableInfo? local = EnumerateValues(
-            frame,
-            ManagedScopeKind.Locals,
-            GetVariableNames(frame, ManagedScopeKind.Locals),
-            generation,
-            start: 0,
-            count: 0).FirstOrDefault(candidate => string.Equals(
-                candidate.Name,
-                rootName,
-                comparison));
-        if (local is not null)
-        {
-            return local;
-        }
-
-        DebugVariableInfo? argument = EnumerateValues(
-            frame,
-            ManagedScopeKind.Arguments,
-            GetVariableNames(frame, ManagedScopeKind.Arguments),
-            generation,
-            start: 0,
-            count: 0).FirstOrDefault(candidate => string.Equals(
-                candidate.Name,
-                rootName,
-                comparison));
-        return argument ?? throw new InvalidOperationException(
-            $"The expression root '{rootName}' is unavailable in the selected frame.");
-    }
 }

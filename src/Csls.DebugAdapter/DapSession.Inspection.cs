@@ -146,6 +146,7 @@ internal sealed partial class DapSession
                     allowTargetCodeExecution: true,
                     cancellationToken)
                 .ConfigureAwait(false);
+            SignalCancelableResponseReady();
             await _writer.WriteResponseAsync(
                 request,
                 success: true,
@@ -171,10 +172,30 @@ internal sealed partial class DapSession
                             writer.WriteString("evaluateName", variable.EvaluateName);
                         }
 
-                        if (variable.PresentationKind == DebugVariablePresentationKind.Virtual)
+                        if (variable.PresentationKind != DebugVariablePresentationKind.Normal)
                         {
                             writer.WriteStartObject("presentationHint");
-                            writer.WriteString("kind", "virtual");
+                            if (variable.PresentationKind is DebugVariablePresentationKind.Virtual or
+                                DebugVariablePresentationKind.ResultsView)
+                            {
+                                writer.WriteString("kind", "virtual");
+                            }
+
+                            if (variable.PresentationKind is DebugVariablePresentationKind.ResultsView or
+                                DebugVariablePresentationKind.ReadOnlyString)
+                            {
+                                writer.WriteStartArray("attributes");
+                                writer.WriteStringValue("readOnly");
+                                writer.WriteStringValue(variable.PresentationKind ==
+                                    DebugVariablePresentationKind.ResultsView ? "hasSideEffects" : "rawString");
+                                writer.WriteEndArray();
+                            }
+
+                            if (variable.PresentationKind == DebugVariablePresentationKind.ResultsView)
+                            {
+                                writer.WriteBoolean("lazy", true);
+                            }
+
                             writer.WriteEndObject();
                         }
 
@@ -188,10 +209,17 @@ internal sealed partial class DapSession
         }
         catch (Exception exception) when (
             exception is ArgumentException or InvalidOperationException or
-            IOException or UnauthorizedAccessException or BadImageFormatException)
+            IOException or UnauthorizedAccessException or BadImageFormatException or TimeoutException)
         {
+            SignalCancelableResponseReady();
             await WriteRequestFailureAsync(request, exception.Message, cancellationToken)
                 .ConfigureAwait(false);
+        }
+
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            SignalCancelableResponseReady();
+            await WriteRequestFailureAsync(request, "cancelled", _lifetime.Token).ConfigureAwait(false);
         }
 
         if (_engineSession.StopGeneration != initialGeneration)

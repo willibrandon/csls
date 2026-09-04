@@ -13,6 +13,7 @@ internal sealed partial class CorDebugDebuggee
     /// </summary>
     /// <param name="processId">The operating-system process identifier.</param>
     /// <param name="actor">The session actor that owns runtime calls and callbacks.</param>
+    /// <param name="observer">Receives debugger diagnostics through the session output channel.</param>
     /// <param name="sourceBreakpoints">The session source-breakpoint owner.</param>
     /// <param name="functionBreakpoints">The session function-breakpoint owner.</param>
     /// <param name="instructionBreakpoints">The session managed-IL breakpoint owner.</param>
@@ -26,6 +27,7 @@ internal sealed partial class CorDebugDebuggee
     internal static async Task<CorDebugDebuggee> AttachAsync(
         int processId,
         DebuggerSessionActor actor,
+        IDebuggerSessionObserver observer,
         SourceBreakpointManager sourceBreakpoints,
         FunctionBreakpointManager functionBreakpoints,
         InstructionBreakpointManager instructionBreakpoints,
@@ -39,6 +41,7 @@ internal sealed partial class CorDebugDebuggee
     {
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(processId);
         ArgumentNullException.ThrowIfNull(actor);
+        ArgumentNullException.ThrowIfNull(observer);
         ArgumentNullException.ThrowIfNull(sourceBreakpoints);
         ArgumentNullException.ThrowIfNull(functionBreakpoints);
         ArgumentNullException.ThrowIfNull(instructionBreakpoints);
@@ -77,6 +80,7 @@ internal sealed partial class CorDebugDebuggee
             managedCallbackOwner.Acquire(() =>
                 new CorDebugManagedCallback(
                 actor,
+                observer,
                 sourceBreakpoints,
                 functionBreakpoints,
                 instructionBreakpoints,
@@ -112,6 +116,7 @@ internal sealed partial class CorDebugDebuggee
             debugProcess = activation.Process;
             await managedCallback.WaitForCreateProcessAsync(cancellationToken)
                 .ConfigureAwait(false);
+            managedCallback.ThrowIfRuntimeFailed();
 
             var result = new CorDebugDebuggee(
                 actor,
@@ -140,7 +145,12 @@ internal sealed partial class CorDebugDebuggee
 
             if (corDebug != 0 || debugProcess != 0)
             {
-                await DetachRuntimeAsync(actor, corDebug, debugProcess).ConfigureAwait(false);
+                await DetachRuntimeAsync(
+                    actor,
+                    corDebug,
+                    debugProcess,
+                    managedCallbackOwner.Value)
+                    .ConfigureAwait(false);
             }
         }
     }

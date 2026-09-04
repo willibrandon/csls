@@ -102,10 +102,11 @@ internal sealed partial class InstructionBreakpointManager : IDisposable
     /// <summary>
     /// Releases runtime objects after failed target activation.
     /// </summary>
-    internal void ResetRuntimeBindings()
+    /// <param name="runtimeAvailable">Whether runtime breakpoints may be deactivated.</param>
+    internal void ResetRuntimeBindings(bool runtimeAvailable = true)
     {
         ObjectDisposedException.ThrowIf(_disposed != 0, this);
-        ReleaseBindings();
+        ReleaseBindings(runtimeAvailable);
         ReleaseModules();
         foreach (InstructionBreakpointDefinition definition in _definitions)
         {

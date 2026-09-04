@@ -33,6 +33,12 @@ internal sealed partial class CorDebugDebuggee
     private ManagedValueDisplay FormatRuntimeValue(
         nint value,
         int debuggerDisplayDepth,
+        ManagedTupleCustomTypeInfo? tupleCustomTypeInfo) => FormatRuntimeValuePair(
+            value, debuggerDisplayDepth, tupleCustomTypeInfo).Presentation;
+
+    private (ManagedValueDisplay Runtime, ManagedValueDisplay Presentation) FormatRuntimeValuePair(
+        nint value,
+        int debuggerDisplayDepth,
         ManagedTupleCustomTypeInfo? tupleCustomTypeInfo)
     {
         nint inspectedValue = 0;
@@ -123,7 +129,7 @@ internal sealed partial class CorDebugDebuggee
                 ordinary = new ManagedValueDisplay(display, type);
             }
 
-            return elementType is 0x11 or 0x12 &&
+            ManagedValueDisplay presentation = elementType is 0x11 or 0x12 &&
                 hasInspectedValue &&
                 _debuggerDisplayFormatter.TryFormat(
                     inspectedValue,
@@ -133,6 +139,7 @@ internal sealed partial class CorDebugDebuggee
                     out ManagedValueDisplay debuggerDisplay)
                     ? debuggerDisplay
                     : ordinary;
+            return (ordinary, presentation);
         }
         finally
         {
