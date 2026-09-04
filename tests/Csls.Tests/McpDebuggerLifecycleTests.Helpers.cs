@@ -1,3 +1,4 @@
+using ModelContextProtocol;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
 using System.Runtime.CompilerServices;
@@ -178,11 +179,13 @@ public sealed partial class McpDebuggerLifecycleTests
         McpClient client,
         string tool,
         Dictionary<string, object?> arguments,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        IProgress<ProgressNotificationValue>? progress = null)
     {
         CallToolResult result = await client.CallToolAsync(
             tool,
             arguments,
+            progress: progress,
             cancellationToken: cancellationToken).ConfigureAwait(false);
         string diagnostic = result.Content.OfType<TextContentBlock>()
             .FirstOrDefault()?.Text ?? "No textual MCP result was returned.";

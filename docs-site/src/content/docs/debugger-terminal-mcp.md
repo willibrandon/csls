@@ -57,6 +57,11 @@ a breakpoint before launch. Use `debug_session_attach` with one positive `proces
 for an existing target. `debug_sessions_list`, `debug_session_get`, restart, and end
 operate only on sessions owned by the current MCP connection.
 
+Use `debug_dump_open` with one absolute existing dump path to create a read-only dump
+session. Clients that supply an MCP progress token receive monotonic validation,
+runtime-indexing, and completion updates. Cancellation reaches worker activation and
+dump opening rather than merely abandoning the MCP response.
+
 Disconnect deterministically terminates launched process trees, detaches attached
 processes, and shuts down the isolated workers.
 

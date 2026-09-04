@@ -1,4 +1,6 @@
 using Microsoft.Diagnostics.NETCore.Client;
+using ModelContextProtocol;
+using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Text.Json;
@@ -46,11 +48,41 @@ public sealed partial class McpDebuggerLifecycleTests
             McpProcessSession mcp = await StartMcpAsync(TestContext.CancellationToken)
                 .ConfigureAwait(false);
             await using ConfiguredAsyncDisposable mcpCleanup = mcp.ConfigureAwait(false);
+            var progressValues = new ConcurrentQueue<ProgressNotificationValue>();
+            var progressReceived = new TaskCompletionSource(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+            var progress = new Progress<ProgressNotificationValue>(value =>
+            {
+                progressValues.Enqueue(value);
+                if (value.Progress >= 1)
+                {
+                    progressReceived.TrySetResult();
+                }
+            });
             JsonElement opened = await CallAsync(
                 mcp.Client,
                 "debug_dump_open",
                 new Dictionary<string, object?> { ["dumpPath"] = dumpPath },
+                TestContext.CancellationToken,
+                progress).ConfigureAwait(false);
+            await progressReceived.Task.WaitAsync(
+                TimeSpan.FromSeconds(10),
                 TestContext.CancellationToken).ConfigureAwait(false);
+            ProgressNotificationValue[] reportedProgress = [.. progressValues];
+            Assert.IsGreaterThanOrEqualTo(2, reportedProgress.Length);
+            Assert.Contains(
+                (Progress: 0F, Total: 2F),
+                reportedProgress.Select(static value =>
+                    (Progress: value.Progress, Total: value.Total ?? -1F)));
+            Assert.Contains(
+                (Progress: 1F, Total: 2F, HasMessage: true),
+                reportedProgress.Select(static value =>
+                    (
+                        Progress: value.Progress,
+                        Total: value.Total ?? -1F,
+                        HasMessage: value.Message?.Contains(
+                            "indexing dump state",
+                            StringComparison.Ordinal) == true)));
             string debugSession = opened.GetProperty("debugSession").GetString()
                 ?? throw new InvalidDataException("MCP returned no dump-session identifier.");
             Assert.AreEqual("dump", opened.GetProperty("mode").GetString());

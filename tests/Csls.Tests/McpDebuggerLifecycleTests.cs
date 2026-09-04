@@ -130,6 +130,11 @@ public sealed partial class McpDebuggerLifecycleTests
             .ProtocolTool.InputSchema.GetProperty("properties");
         Assert.IsFalse(attachProperties.TryGetProperty("agentControl", out _));
         Assert.IsTrue(attachProperties.TryGetProperty("sourceFileMap", out _));
+        JsonElement dumpProperties = tools.Single(
+            static tool => tool.Name == "debug_dump_open")
+            .ProtocolTool.InputSchema.GetProperty("properties");
+        Assert.IsTrue(dumpProperties.TryGetProperty("dumpPath", out _));
+        Assert.IsFalse(dumpProperties.TryGetProperty("progress", out _));
         JsonElement authorizationSchema = tools.Single(
             static tool => tool.Name == "debug_agent_control_set")
             .ProtocolTool.InputSchema;

@@ -1,4 +1,5 @@
 using Csls.Debugger.Contracts;
+using ModelContextProtocol;
 using ModelContextProtocol.Server;
 using System.ComponentModel;
 
@@ -26,6 +27,7 @@ internal sealed class CslsMcpDebuggerDumpTools
     /// Opens one managed process dump as an explicit read-only debugger session.
     /// </summary>
     /// <param name="dumpPath">The absolute existing process-dump path.</param>
+    /// <param name="progress">Reports bounded dump activation progress to the requesting client.</param>
     /// <param name="cancellationToken">The MCP request cancellation token.</param>
     /// <param name="runtimeIndex">The zero-based runtime index for multi-runtime dumps.</param>
     /// <param name="dacPath">An optional absolute matching DAC path.</param>
@@ -43,6 +45,7 @@ internal sealed class CslsMcpDebuggerDumpTools
     public Task<ModelContextProtocol.Protocol.CallToolResult> OpenAsync(
         [Description("Absolute existing managed process-dump path.")]
         string dumpPath,
+        IProgress<ProgressNotificationValue> progress,
         CancellationToken cancellationToken,
         [Description("Zero-based managed runtime index for a dump containing multiple runtimes.")]
         int runtimeIndex = 0,
@@ -51,13 +54,32 @@ internal sealed class CslsMcpDebuggerDumpTools
     {
         return McpDebuggerToolResult.RunAsync(async () =>
         {
+            progress.Report(new ProgressNotificationValue
+            {
+                Progress = 0,
+                Total = 2,
+                Message = "Validating managed process dump."
+            });
             Validate(dumpPath, runtimeIndex, dacPath);
-            return await _broker.OpenDumpAsync(
+            progress.Report(new ProgressNotificationValue
+            {
+                Progress = 1,
+                Total = 2,
+                Message = "Opening managed runtime and indexing dump state."
+            });
+            McpDebugSessionInfo session = await _broker.OpenDumpAsync(
                 new DebugDumpOpenRequest(
                     Path.GetFullPath(dumpPath),
                     runtimeIndex,
                     dacPath is null ? null : Path.GetFullPath(dacPath)),
                 cancellationToken).ConfigureAwait(false);
+            progress.Report(new ProgressNotificationValue
+            {
+                Progress = 2,
+                Total = 2,
+                Message = "Managed process dump is ready."
+            });
+            return session;
         });
     }
 
