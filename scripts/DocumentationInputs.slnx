@@ -1,6 +1,0 @@
-<Solution>
-  <Project Path="../src/Csls.App/Csls.App.csproj" />
-  <Project Path="../src/Csls.Debugger.Worker/Csls.Debugger.Worker.csproj" />
-  <Project Path="../src/Csls.Mcp.Worker/Csls.Mcp.Worker.csproj" />
-  <Project Path="../src/Csls.Server/Csls.Server.csproj" />
-</Solution>

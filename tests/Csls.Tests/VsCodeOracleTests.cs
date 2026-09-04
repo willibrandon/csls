@@ -185,7 +185,7 @@ public sealed class VsCodeOracleTests
         string? displayName)
     {
         string profilePath = Path.Join(fixturePath, profile);
-        string userDataPath = Path.Join(profilePath, "u");
+        string userDataPath = Path.Join(profilePath, "user-data");
         string extensionsPath = Path.Join(profilePath, "extensions");
         string outputPath = Path.Join(profilePath, "observation.json");
         Directory.CreateDirectory(Path.Join(userDataPath, "User"));
@@ -311,6 +311,7 @@ public sealed class VsCodeOracleTests
         startInfo.Environment["CSLS_VSCODE_SUITE"] = "oracle-suite.cjs";
         startInfo.Environment["CSLS_VSCODE_USER_DATA_PATH"] = userDataPath;
         startInfo.Environment["CSLS_VSCODE_WORKSPACE_PATH"] = workspacePath;
+        startInfo.Environment["VSCODE_PORTABLE"] = Path.GetDirectoryName(userDataPath)!;
         if (displayName is not null)
         {
             startInfo.Environment["DISPLAY"] = displayName;

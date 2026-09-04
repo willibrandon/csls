@@ -64,7 +64,7 @@ public sealed class VsCodeLanguageServerTests
         string fixturePath = Path.Join(Path.GetTempPath(), $"cv-shutdown-{runId}");
         string workspacePath = Path.Join(fixturePath, "workspace");
         string testProjectPath = Path.Join(workspacePath, "Tests");
-        string userDataPath = Path.Join(fixturePath, "u");
+        string userDataPath = Path.Join(fixturePath, "user-data");
         string extensionsPath = Path.Join(fixturePath, "extensions");
         string remoteDataPath = Path.Join(fixturePath, "remote");
         Directory.CreateDirectory(testProjectPath);
@@ -220,7 +220,7 @@ public sealed class VsCodeLanguageServerTests
         Directory.CreateDirectory(fixturePath);
         try
         {
-            string userDataPath = Path.Join(fixturePath, "u");
+            string userDataPath = Path.Join(fixturePath, "user-data");
             string extensionsPath = Path.Join(fixturePath, "extensions");
             string remoteDataPath = Path.Join(fixturePath, "remote");
             Directory.CreateDirectory(userDataPath);
@@ -297,7 +297,7 @@ public sealed class VsCodeLanguageServerTests
         try
         {
             string workspacePath = Path.Join(fixturePath, "workspace");
-            string userDataPath = Path.Join(fixturePath, "u");
+            string userDataPath = Path.Join(fixturePath, "user-data");
             string extensionsPath = Path.Join(fixturePath, "extensions");
             string remoteDataPath = Path.Join(fixturePath, "remote");
             Directory.CreateDirectory(workspacePath);
@@ -774,6 +774,7 @@ public sealed class VsCodeLanguageServerTests
         startInfo.Environment["CSLS_VSCODE_RUNTIME_EXTENSION_PATH"] = runtimeExtensionPath;
         startInfo.Environment["CSLS_VSCODE_USER_DATA_PATH"] = userDataPath;
         startInfo.Environment["CSLS_VSCODE_WORKSPACE_PATH"] = workspacePath;
+        startInfo.Environment["VSCODE_PORTABLE"] = Path.GetDirectoryName(userDataPath)!;
         startInfo.Environment[ControlEndpoint.SocketDirectoryEnvironmentVariable] =
             socketDirectory;
         startInfo.Environment["CSLS_DEBUGGER_WORKER_PATH"] =

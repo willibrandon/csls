@@ -95,17 +95,52 @@ static async Task BuildDocumentationInputsAsync(
     string repositoryRoot,
     CancellationToken cancellationToken)
 {
-    _ = await RunProcessAsync(
-        ResolveDotNetHost(),
-        [
-            "build",
-            "scripts/DocumentationInputs.slnx",
-            "--configuration",
-            "Debug",
-            "--nologo"
-        ],
+    string solutionDirectory = Path.Join(
         repositoryRoot,
+        "artifacts",
+        "obj",
+        "documentation");
+    Directory.CreateDirectory(solutionDirectory);
+    string solutionPath = Path.Join(solutionDirectory, "DocumentationInputs.slnx");
+    string[] projectPaths =
+    [
+        "src/Csls.App/Csls.App.csproj",
+        "src/Csls.Debugger.Worker/Csls.Debugger.Worker.csproj",
+        "src/Csls.Mcp.Worker/Csls.Mcp.Worker.csproj",
+        "src/Csls.Server/Csls.Server.csproj"
+    ];
+    var solution = new XDocument(
+        new XElement(
+            "Solution",
+            projectPaths.Select(projectPath => new XElement(
+                "Project",
+                new XAttribute(
+                    "Path",
+                    Path.GetRelativePath(
+                        solutionDirectory,
+                        Path.Join(repositoryRoot, projectPath)))))));
+    await File.WriteAllTextAsync(
+        solutionPath,
+        solution + Environment.NewLine,
         cancellationToken).ConfigureAwait(false);
+    try
+    {
+        _ = await RunProcessAsync(
+            ResolveDotNetHost(),
+            [
+                "build",
+                solutionPath,
+                "--configuration",
+                "Debug",
+                "--nologo"
+            ],
+            repositoryRoot,
+            cancellationToken).ConfigureAwait(false);
+    }
+    finally
+    {
+        File.Delete(solutionPath);
+    }
 }
 
 static async Task<string> GenerateCliReferenceAsync(
