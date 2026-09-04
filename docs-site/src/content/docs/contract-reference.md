@@ -257,6 +257,7 @@ These public wire-contract types are generated from the compiled assemblies and 
 | `Csls.Debugger.Contracts.DebugCompletionItemKind` | Identifies the debugger-facing category of one expression completion. |
 | `Csls.Debugger.Contracts.DebugDisassembly` | Contains an exact-count managed-IL disassembly response. |
 | `Csls.Debugger.Contracts.DebugDisassemblyRequest` | Selects a bounded managed-IL instruction range from a stopped frame. |
+| `Csls.Debugger.Contracts.DebugDumpOpenRequest` | Selects a managed process dump and one runtime for read-only inspection. |
 | `Csls.Debugger.Contracts.DebugEvaluateRequest` | Selects a stopped managed frame and expression for evaluation. |
 | `Csls.Debugger.Contracts.DebugEvaluateResult` | Describes one expression result from a stopped managed frame. |
 | `Csls.Debugger.Contracts.DebugExceptionBreakMode` | Identifies the managed exception stage that caused a debugger stop. |
