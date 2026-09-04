@@ -53,7 +53,9 @@ public sealed partial class DapSessionTests
             JsonElement direct = await SetInstructionBreakpointAsync(
                 client,
                 targetAddress,
-                offset: 0).ConfigureAwait(false);
+                offset: 0,
+                condition: "answer == 42",
+                hitCondition: "3").ConfigureAwait(false);
             Assert.IsTrue(direct.GetProperty("verified").GetBoolean());
             Assert.AreEqual(
                 targetAddress,
@@ -65,7 +67,9 @@ public sealed partial class DapSessionTests
             JsonElement breakpoint = await SetInstructionBreakpointAsync(
                 client,
                 frameReference,
-                relativeOffset).ConfigureAwait(false);
+                relativeOffset,
+                condition: "answer == 42",
+                hitCondition: "3").ConfigureAwait(false);
             Assert.IsTrue(breakpoint.GetProperty("verified").GetBoolean());
             Assert.AreEqual(
                 frameReference,

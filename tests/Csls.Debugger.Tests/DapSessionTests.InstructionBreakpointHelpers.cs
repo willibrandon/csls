@@ -10,11 +10,18 @@ public sealed partial class DapSessionTests
     private async Task<JsonElement> SetInstructionBreakpointAsync(
         DapTestClient client,
         string instructionReference,
-        long offset)
+        long offset,
+        string condition,
+        string hitCondition)
     {
         int sequence = await client.SendRequestAsync(
             "setInstructionBreakpoints",
-            writer => WriteInstructionBreakpoints(writer, instructionReference, offset),
+            writer => WriteInstructionBreakpoints(
+                writer,
+                instructionReference,
+                offset,
+                condition,
+                hitCondition),
             TestContext.CancellationToken).ConfigureAwait(false);
         using JsonDocument response = await client
             .ReadMessageAsync(TestContext.CancellationToken).ConfigureAwait(false);
@@ -58,6 +65,13 @@ public sealed partial class DapSessionTests
                     body.GetProperty("reason").GetString());
                 threadId = body.GetProperty("threadId").GetInt32();
             }
+            else if (root.GetProperty("event").GetString() == "output" &&
+                root.GetProperty("body").GetProperty("category").GetString() == "console")
+            {
+                Assert.Fail(
+                    "The instruction breakpoint produced debugger console output: " +
+                    root.GetProperty("body").GetProperty("output").GetString());
+            }
         }
 
         return threadId.Value;
@@ -83,15 +97,17 @@ public sealed partial class DapSessionTests
     private static void WriteInstructionBreakpoints(
         Utf8JsonWriter writer,
         string instructionReference,
-        long offset)
+        long offset,
+        string condition,
+        string hitCondition)
     {
         writer.WriteStartObject();
         writer.WriteStartArray("breakpoints");
         writer.WriteStartObject();
         writer.WriteString("instructionReference", instructionReference);
         writer.WriteNumber("offset", offset);
-        writer.WriteString("condition", "localNumber == 43");
-        writer.WriteString("hitCondition", "3");
+        writer.WriteString("condition", condition);
+        writer.WriteString("hitCondition", hitCondition);
         writer.WriteEndObject();
         writer.WriteEndArray();
         writer.WriteEndObject();

@@ -201,7 +201,9 @@ public sealed partial class DapSessionTests
         JsonElement instructionBreakpoint = await SetInstructionBreakpointAsync(
             client,
             instructionReference,
-            offset: 0).ConfigureAwait(false);
+            offset: 0,
+            condition: "answer >= 42",
+            hitCondition: "3").ConfigureAwait(false);
         Assert.IsTrue(instructionBreakpoint.GetProperty("verified").GetBoolean());
         await ClearInstructionBreakpointsAsync(client).ConfigureAwait(false);
 
