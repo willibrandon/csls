@@ -21,7 +21,9 @@ public sealed class DebuggerTerminalTests
     /// Navigates real debugger state and keeps execution controls responsive.
     /// </summary>
     [TestMethod]
+    [DoNotParallelize]
     [OSCondition(ConditionMode.Include, OperatingSystems.Linux)]
+    [TestCategory("DebuggerTerminal")]
     [Timeout(60000, CooperativeCancellation = true)]
     public async Task TerminalNavigatesStoppedStateAndKeepsExecutionControlsResponsive()
     {

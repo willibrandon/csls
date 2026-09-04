@@ -10,23 +10,27 @@ namespace Csls.Debugger;
 internal sealed class DebuggeeProcess : IDebuggeeProcess
 {
     private readonly Process _process;
+    private readonly int _id;
+    private readonly string _name;
     private int _detached;
     private int _disposed;
 
-    private DebuggeeProcess(Process process)
+    private DebuggeeProcess(Process process, string name)
     {
         _process = process;
+        _id = process.Id;
+        _name = name;
     }
 
     /// <summary>
     /// Gets the operating-system process identifier.
     /// </summary>
-    public int Id => _process.Id;
+    public int Id => _id;
 
     /// <summary>
     /// Gets the display name of the launched program.
     /// </summary>
-    public string Name => _process.ProcessName;
+    public string Name => _name;
 
     /// <inheritdoc />
     public bool OwnsProcess => true;
@@ -101,7 +105,7 @@ internal sealed class DebuggeeProcess : IDebuggeeProcess
                     $"The operating system did not start '{options.Program}'.");
             }
 
-            return new DebuggeeProcess(process);
+            return new DebuggeeProcess(process, GetProcessName(executable));
         }
         catch
         {
@@ -202,5 +206,11 @@ internal sealed class DebuggeeProcess : IDebuggeeProcess
             await writeAsync(new string(buffer, 0, count), cancellationToken)
                 .ConfigureAwait(false);
         }
+    }
+
+    private static string GetProcessName(string executable)
+    {
+        string name = Path.GetFileNameWithoutExtension(executable);
+        return string.IsNullOrWhiteSpace(name) ? executable : name;
     }
 }

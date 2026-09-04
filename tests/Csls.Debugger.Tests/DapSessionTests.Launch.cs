@@ -130,7 +130,13 @@ public sealed partial class DapSessionTests
             .ReadMessageAsync(TestContext.CancellationToken)
             .ConfigureAwait(false);
         AssertEvent(process.RootElement, "process");
-        Assert.IsGreaterThan(0, process.RootElement.GetProperty("body").GetProperty("systemProcessId").GetInt32());
+        JsonElement processBody = process.RootElement.GetProperty("body");
+        Assert.IsGreaterThan(0, processBody.GetProperty("systemProcessId").GetInt32());
+        string runtimeHost = Environment.GetEnvironmentVariable("CSLS_RUNTIME_HOST_PATH") ??
+            "dotnet";
+        Assert.AreEqual(
+            Path.GetFileNameWithoutExtension(runtimeHost),
+            processBody.GetProperty("name").GetString());
 
         using JsonDocument output = await client
             .ReadMessageAsync(TestContext.CancellationToken)

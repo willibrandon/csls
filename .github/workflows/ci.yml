@@ -567,7 +567,7 @@ jobs:
         run: >-
           dotnet test --test-modules artifacts/bin/Csls.Tests/debug/Csls.Tests.dll
           --root-directory .
-          --filter "FullyQualifiedName!~LanguageServerTests&FullyQualifiedName!~McpDebuggerLifecycleTests&TestCategory!=VsCodeHost&TestCategory!=VsCodeOracle&TestCategory!=ZedHost&TestCategory!=LegacyBuildHost&FullyQualifiedName!~Csls.Tests.UpstreamParityTests&FullyQualifiedName!~Csls.Tests.ZedHighlightQueryTests"
+          --filter "FullyQualifiedName!~LanguageServerTests&FullyQualifiedName!~McpDebuggerLifecycleTests&TestCategory!=DebuggerTerminal&TestCategory!=VsCodeHost&TestCategory!=VsCodeOracle&TestCategory!=ZedHost&TestCategory!=LegacyBuildHost&FullyQualifiedName!~Csls.Tests.UpstreamParityTests&FullyQualifiedName!~Csls.Tests.ZedHighlightQueryTests"
           --minimum-expected-tests 62
           && dotnet test
           --test-modules artifacts/bin/Csls.SourceGen.Tests/debug/Csls.SourceGen.Tests.dll
@@ -606,6 +606,39 @@ jobs:
           --root-directory .
           --filter "FullyQualifiedName~Csls.Tests.McpDebuggerLifecycleTests"
           --minimum-expected-tests 3
+
+  debugger-terminal-tests:
+    name: Debugger terminal tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    needs: test-binaries
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 10.x
+
+      - name: Download test binaries
+        uses: actions/download-artifact@v8
+        with:
+          name: test-binaries-${{ github.run_attempt }}
+          path: artifacts
+
+      - name: Extract test binaries
+        run: tar --extract --file artifacts/test-binaries.tar --directory artifacts
+
+      - name: Run debugger terminal tests
+        run: >-
+          dotnet test --test-modules artifacts/bin/Csls.Tests/debug/Csls.Tests.dll
+          --root-directory .
+          --filter "TestCategory=DebuggerTerminal"
+          --minimum-expected-tests 1
 
   terminal-editor-tests:
     name: Terminal editor tests
