@@ -115,11 +115,11 @@ internal sealed class CorDebugRuntimeStartupRegistration : IDisposable
         var context = GCHandle.FromIntPtr(parameter);
         if (context.Target is CorDebugRuntimeStartupRegistration registration)
         {
-            registration.QueueRuntimeStartup(corDebug, hresult);
+            registration.CompleteRuntimeStartupFromCallback(corDebug, hresult);
         }
     }
 
-    private void QueueRuntimeStartup(nint callbackObject, int callbackResult)
+    private void CompleteRuntimeStartupFromCallback(nint callbackObject, int callbackResult)
     {
         nint ownedCallbackObject = callbackObject;
         Task operation = _actor.InvokeAsync(
@@ -133,33 +133,29 @@ internal sealed class CorDebugRuntimeStartupRegistration : IDisposable
                 return ValueTask.CompletedTask;
             },
             CancellationToken.None);
-        _ = ObserveRuntimeStartupAsync(
-            operation,
-            () =>
-            {
-                nint currentCallbackObject = Interlocked.Exchange(
-                    ref ownedCallbackObject,
-                    0);
-                if (currentCallbackObject != 0)
-                {
-                    _ = ComAbi.Release(currentCallbackObject);
-                }
-            });
-    }
+        _ = ((IAsyncResult)operation).AsyncWaitHandle.WaitOne();
+        if (operation.IsCompletedSuccessfully)
+        {
+            return;
+        }
 
-    private async Task ObserveRuntimeStartupAsync(Task operation, Action releaseUnclaimed)
-    {
-        try
+        nint unclaimedCallbackObject = Interlocked.Exchange(
+            ref ownedCallbackObject,
+            0);
+        if (unclaimedCallbackObject != 0)
         {
-            await operation.WaitAsync(CancellationToken.None).ConfigureAwait(false);
+            _ = ComAbi.Release(unclaimedCallbackObject);
         }
-        catch (Exception exception) when (
-            exception is ArgumentException or InvalidOperationException or OverflowException or
-                OperationCanceledException or System.Threading.Channels.ChannelClosedException)
+
+        if (operation.IsCanceled)
         {
-            releaseUnclaimed();
-            _ = _completion.TrySetException(exception);
+            _ = _completion.TrySetCanceled();
+            return;
         }
+
+        AggregateException failure = operation.Exception
+            ?? new AggregateException("Runtime startup failed without an exception.");
+        _ = _completion.TrySetException(failure.InnerExceptions);
     }
 
     private unsafe void CompleteRuntimeStartup(nint callbackObject, int callbackResult)

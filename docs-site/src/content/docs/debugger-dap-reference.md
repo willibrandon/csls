@@ -95,7 +95,7 @@ This page is generated from the shipping DAP dispatcher, initialize response, an
 | `symbolOptions` | `object` | No |  | Controls identity-validated Portable PDB discovery and caching. |
 | `justMyCode` | `boolean` | No | `true` | Restrict source stepping to symbol-bearing unoptimized user modules. |
 | `enableStepFiltering` | `boolean` | No | `true` | Skip properties, CLR operators, and debugger step-filter attributes during source stepping. |
-| `suppressJITOptimizations` | `boolean` | No | `false` | Request unoptimized JIT code for symbol-bearing modules during launch. |
+| `suppressJITOptimizations` | `boolean` | No | `false` | Request unoptimized JIT code for loaded managed modules during launch. |
 
 ## Attach configuration
 

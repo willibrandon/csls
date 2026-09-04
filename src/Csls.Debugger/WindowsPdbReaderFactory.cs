@@ -80,15 +80,10 @@ internal static class WindowsPdbReaderFactory
                 StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
         }
 
-        foreach (string directory in directories.Distinct(StringComparer.OrdinalIgnoreCase))
-        {
-            if (File.Exists(Path.Join(directory, Arm64LibraryName)))
-            {
-                return directory;
-            }
-        }
-
-        throw new DllNotFoundException(
-            $"The ARM64 Windows PDB reader '{Arm64LibraryName}' was not found in the native dependency search path.");
+        return directories
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Where(directory => File.Exists(Path.Join(directory, Arm64LibraryName)))
+            .FirstOrDefault() ?? throw new DllNotFoundException(
+                $"The ARM64 Windows PDB reader '{Arm64LibraryName}' was not found in the native dependency search path.");
     }
 }
