@@ -73,7 +73,8 @@ internal sealed partial class CorDebugDebuggee
 
             string display = elementType switch
             {
-                0x11 or 0x12 => $"{{{type}}}",
+                0x11 => $"{{{type}}}",
+                0x12 when hasInspectedValue => $"{{{type}}}",
                 0x14 or 0x1d when hasInspectedValue => FormatArrayValue(inspectedValue, type),
                 _ => immediate.Value
             };

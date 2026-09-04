@@ -451,6 +451,16 @@ collections, spans, ref structs, pointers, function pointers, closures, hoisted
 locals, async state machines, object IDs, and lazy paging. Attribute evaluation is
 cycle-limited and depth-limited.
 
+`DebuggerBrowsableAttribute` is decoded from the declaring module metadata without
+loading target assemblies. `Never` members are omitted, `Collapsed` members retain
+ordinary expansion, and expandable `RootHidden` fields contribute their immediate
+children to the containing page. Null, scalar, cyclic, or depth-limited root-hidden
+fields remain visible rather than silently losing state. A virtual Raw View retains
+the same generation-owned runtime value and exposes its physical fields without
+presentation transforms. Root-hidden traversal uses stopped managed object addresses
+for cycle identity, caps recursive depth, and applies paging before reading child
+values.
+
 Object fields are discovered from the exact `ICorDebugType` hierarchy. Each declaring
 runtime class supplies its own loaded module image and metadata tokens, including when
 a base class belongs to another assembly. One pagination cursor spans the complete

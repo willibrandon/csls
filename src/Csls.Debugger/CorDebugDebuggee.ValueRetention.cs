@@ -12,7 +12,8 @@ internal sealed partial class CorDebugDebuggee
         nint value,
         DebugStopGeneration generation,
         string? evaluateName,
-        int? frameId)
+        int? frameId,
+        ManagedValueView view = ManagedValueView.Default)
     {
         if (!IsExpandable(value))
         {
@@ -23,7 +24,8 @@ internal sealed partial class CorDebugDebuggee
             value,
             generation,
             evaluateName,
-            frameId);
+            frameId,
+            view);
         return new ManagedValueReferences(handle.Id, handle.MemoryReference);
     }
 
@@ -37,7 +39,8 @@ internal sealed partial class CorDebugDebuggee
             value,
             generation,
             evaluateName: null,
-            frameId: null);
+            frameId: null,
+            ManagedValueView.Default);
         return (
             handle.Id,
             expandable
@@ -49,7 +52,8 @@ internal sealed partial class CorDebugDebuggee
         nint value,
         DebugStopGeneration generation,
         string? evaluateName,
-        int? frameId)
+        int? frameId,
+        ManagedValueView view)
     {
         nint identity;
         try
@@ -63,10 +67,11 @@ internal sealed partial class CorDebugDebuggee
                 $"required COM identity: {exception.Message}",
                 exception);
         }
-        (nint Identity, int? FrameId, string? EvaluateName) key = (
+        (nint Identity, int? FrameId, string? EvaluateName, ManagedValueView View) key = (
             identity,
             frameId,
-            evaluateName);
+            evaluateName,
+            view);
         if (_valueIdentities.TryGetValue(key, out ManagedValueHandle? existing))
         {
             _ = ComAbi.Release(identity);
@@ -93,6 +98,7 @@ internal sealed partial class CorDebugDebuggee
             FrameId = frameId,
             Pointer = value,
             Identity = identity,
+            View = view,
             MemoryReference = memoryReference,
             MemoryAddress = memoryAddress,
             EvaluateName = evaluateName

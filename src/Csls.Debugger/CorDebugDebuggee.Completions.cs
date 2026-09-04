@@ -361,7 +361,7 @@ internal sealed partial class CorDebugDebuggee
             {
                 string name = metadata.GetString(field.Name);
                 if ((field.Attributes & FieldAttributes.Static) != 0 ||
-                    !IsSimpleIdentifier(name) ||
+                    !ManagedExpressionName.IsSimpleIdentifier(name) ||
                     !MatchesCompletionPrefix(name, prefix, language))
                 {
                     continue;
@@ -388,7 +388,7 @@ internal sealed partial class CorDebugDebuggee
             bool methodIsStatic = (method.Attributes & MethodAttributes.Static) != 0;
             if (methodIsStatic != staticMembers ||
                 (method.Attributes & (MethodAttributes.Abstract | MethodAttributes.SpecialName)) != 0 ||
-                !IsSimpleIdentifier(name) ||
+                !ManagedExpressionName.IsSimpleIdentifier(name) ||
                 !MatchesCompletionPrefix(name, prefix, language))
             {
                 continue;

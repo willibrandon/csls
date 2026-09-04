@@ -16,13 +16,8 @@ internal sealed partial class CorDebugDebuggee
         int start,
         int count)
     {
-        uint elementCount = 0;
-        uint* elementCountAddress = &elementCount;
         var api = new ICorDebugArrayValueAbi(array);
-        CorDebugHResult.ThrowIfFailed(
-            api.GetCount((nint)elementCountAddress),
-            "ICorDebugArrayValue.GetCount");
-        elementCount = Volatile.Read(ref *elementCountAddress);
+        uint elementCount = GetArrayElementCount(api);
         if (elementCount > MaximumExpandableValueCount)
         {
             throw new InvalidOperationException(
@@ -77,6 +72,16 @@ internal sealed partial class CorDebugDebuggee
         }
 
         return result;
+    }
+
+    private static unsafe uint GetArrayElementCount(ICorDebugArrayValueAbi array)
+    {
+        uint count = 0;
+        uint* countAddress = &count;
+        CorDebugHResult.ThrowIfFailed(
+            array.GetCount((nint)countAddress),
+            "ICorDebugArrayValue.GetCount");
+        return Volatile.Read(ref *countAddress);
     }
 
     private static unsafe uint GetArrayRank(ICorDebugArrayValueAbi array)

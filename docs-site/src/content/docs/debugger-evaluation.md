@@ -111,6 +111,12 @@ Strings and characters deterministically escape quotes, backslashes, NUL, standa
 controls, remaining control code points, and unpaired UTF-16 surrogates while preserving
 valid Unicode scalar pairs. Presentation does not execute implicit target formatting.
 
+Object expansion honors `DebuggerBrowsableAttribute` on runtime fields. `Never` hides
+a field from the default view, `Collapsed` preserves ordinary expansion, and
+`RootHidden` flattens expandable children into the containing page. Null, scalar,
+cyclic, and depth-limited root-hidden values remain directly inspectable. A virtual
+Raw View exposes every physical field without presentation transforms.
+
 ## Memory and disassembly
 
 Managed arrays expose an opaque memory reference for their owning generation.
@@ -125,7 +131,7 @@ source mappings. This is architecture-independent managed IL, not native machine
 ## Current evaluator boundaries
 
 Generic object construction, object and collection initializers, properties, user-defined
-operators and conversions, debugger display/proxy attributes, LINQ results views,
-object IDs, and automatic `ToString` calls are not advertised. These features require
-complete binding, lifetime, recursion, and side-effect policies; csls does not emulate
-them partially or execute them implicitly.
+operators and conversions, `DebuggerDisplay` and `DebuggerTypeProxy`, LINQ results
+views, object IDs, and automatic `ToString` calls are not advertised. These features
+require complete binding, lifetime, recursion, and side-effect policies; csls does not
+execute them implicitly.

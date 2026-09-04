@@ -53,7 +53,8 @@ internal sealed partial class CorDebugDebuggee
                 handle.FrameId,
                 generation,
                 start,
-                count);
+                count,
+                handle.View);
         }
         finally
         {

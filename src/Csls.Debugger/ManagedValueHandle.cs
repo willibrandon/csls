@@ -33,6 +33,11 @@ internal sealed class ManagedValueHandle
     internal required nint Identity { get; init; }
 
     /// <summary>
+    /// Gets or initializes the presentation view used to expand the value.
+    /// </summary>
+    internal ManagedValueView View { get; init; }
+
+    /// <summary>
     /// Gets or initializes the opaque stopped-state memory handle.
     /// </summary>
     internal string? MemoryReference { get; init; }

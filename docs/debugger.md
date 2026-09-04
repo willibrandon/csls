@@ -285,6 +285,13 @@ properties, user-defined operators, and implicit `ToString` execution are
 also rejected. Variables include `evaluateName` only when csls can provide a valid
 source expression for the value.
 
+Object expansion honors `DebuggerBrowsableAttribute` on runtime fields. Fields marked
+`Never` are omitted from the default view, `Collapsed` fields remain ordinary members,
+and expandable `RootHidden` fields contribute their children directly. Null, scalar,
+or cyclic root-hidden values remain visible. Objects affected by these transforms add
+a virtual Raw View containing every physical field with its source expression when
+one is available.
+
 DAP `setVariable` and `setExpression` assign named locals, arguments, instance fields,
 and managed array elements. Exact primitives, checked contextual integral literals,
 language-valid built-in numeric widening, explicit built-in primitive conversions,

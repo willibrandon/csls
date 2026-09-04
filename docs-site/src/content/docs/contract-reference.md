@@ -323,6 +323,7 @@ These public wire-contract types are generated from the compiled assemblies and 
 | `Csls.Debugger.Contracts.DebugSymbolOptions` | Configures trusted locations used to resolve matching debugger symbols. |
 | `Csls.Debugger.Contracts.DebugThreadInfo` | Describes one managed thread visible at a debugger stop. |
 | `Csls.Debugger.Contracts.DebugVariableInfo` | Describes one debugger variable and its immediate formatted value. |
+| `Csls.Debugger.Contracts.DebugVariablePresentationKind` | Identifies how a debugger client should present one variable entry. |
 | `Csls.Debugger.Contracts.DebugVariablesRequest` | Selects a bounded page from one current-generation variable container. |
 | `Csls.Debugger.Contracts.DebuggerControlMethods` | Names the versioned private debugger control methods. |
 | `Csls.Debugger.Contracts.DebuggerControlNotifications` | Defines private debugger-control notification method names. |

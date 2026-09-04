@@ -9,10 +9,12 @@ namespace Csls.Debugger.Contracts;
 /// <param name="VariablesReference">The child-container handle, or zero when not expandable.</param>
 /// <param name="MemoryReference">The opaque stopped-state memory handle, or null when unavailable.</param>
 /// <param name="EvaluateName">The source expression that retrieves the value, or null when unavailable.</param>
+/// <param name="PresentationKind">The client presentation category for the variable.</param>
 public sealed record DebugVariableInfo(
     string Name,
     string Value,
     string Type,
     int VariablesReference,
     string? MemoryReference,
-    string? EvaluateName);
+    string? EvaluateName,
+    DebugVariablePresentationKind PresentationKind = DebugVariablePresentationKind.Normal);

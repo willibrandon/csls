@@ -5,12 +5,15 @@ namespace Csls.Debugger;
 /// <summary>
 /// Owns one launched or attached CoreCLR process and its COM debugger resources.
 /// </summary>
-internal sealed partial class CorDebugDebuggee : IDebuggeeProcess
+internal sealed partial class CorDebugDebuggee :
+    IDebuggeeProcess,
+    IManagedObjectExpansionServices
 {
     private readonly DebuggerSessionActor _actor;
     private readonly SourceBreakpointManager _sourceBreakpoints;
     private readonly FunctionBreakpointManager _functionBreakpoints;
     private readonly InstructionBreakpointManager _instructionBreakpoints;
+    private readonly ManagedObjectExpander _objectExpander;
     private readonly CorDebugManagedCallback _managedCallback;
     private readonly CorDebugRuntimeStartupRegistration _registration;
     private readonly DbgShimStandardStreams? _standardStreams;
@@ -26,7 +29,11 @@ internal sealed partial class CorDebugDebuggee : IDebuggeeProcess
     private readonly Dictionary<int, ManagedGotoTargetHandle> _gotoTargets = [];
     private readonly Dictionary<(int FrameId, ManagedScopeKind Kind), ManagedScopeHandle> _scopes = [];
     private readonly Dictionary<int, ManagedValueHandle> _values = [];
-    private readonly Dictionary<(nint Identity, int? FrameId, string? EvaluateName),
+    private readonly Dictionary<(
+        nint Identity,
+        int? FrameId,
+        string? EvaluateName,
+        ManagedValueView View),
         ManagedValueHandle> _valueIdentities = [];
     private readonly Dictionary<string, ManagedValueHandle> _memoryValues =
         new(StringComparer.Ordinal);
@@ -71,6 +78,7 @@ internal sealed partial class CorDebugDebuggee : IDebuggeeProcess
         _sourceBreakpoints = sourceBreakpoints;
         _functionBreakpoints = functionBreakpoints;
         _instructionBreakpoints = instructionBreakpoints;
+        _objectExpander = new ManagedObjectExpander(this);
         _managedCallback = managedCallback;
         _registration = registration;
         _standardStreams = standardStreams;

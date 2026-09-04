@@ -169,6 +169,13 @@ internal sealed partial class DapSession
                             writer.WriteString("evaluateName", variable.EvaluateName);
                         }
 
+                        if (variable.PresentationKind == DebugVariablePresentationKind.Virtual)
+                        {
+                            writer.WriteStartObject("presentationHint");
+                            writer.WriteString("kind", "virtual");
+                            writer.WriteEndObject();
+                        }
+
                         writer.WriteEndObject();
                     }
 
