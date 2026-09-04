@@ -26,7 +26,11 @@ internal static partial class X11Input
         ArgumentException.ThrowIfNullOrWhiteSpace(titleText);
         lock (s_interopLock)
         {
-            if (!TryFocusWindowCore(displayName, titleText, out List<string> observedTitles))
+            if (!TryFocusWindowCore(
+                displayName,
+                titleText,
+                failWhenDisplayUnavailable: true,
+                out List<string> observedTitles))
             {
                 throw new InvalidOperationException(
                     $"No X window title contains '{titleText}'. Observed: " +
@@ -47,19 +51,28 @@ internal static partial class X11Input
         ArgumentException.ThrowIfNullOrWhiteSpace(titleText);
         lock (s_interopLock)
         {
-            return TryFocusWindowCore(displayName, titleText, out _);
+            return TryFocusWindowCore(
+                displayName,
+                titleText,
+                failWhenDisplayUnavailable: false,
+                out _);
         }
     }
 
     private static bool TryFocusWindowCore(
         string displayName,
         string titleText,
+        bool failWhenDisplayUnavailable,
         out List<string> observedTitles)
     {
         nint display = OpenDisplay(displayName);
         if (display == 0)
         {
-            throw new InvalidOperationException($"The X display is unavailable: {displayName}");
+            observedTitles = [];
+            return failWhenDisplayUnavailable
+                ? throw new InvalidOperationException(
+                    $"The X display is unavailable: {displayName}")
+                : false;
         }
 
         observedTitles = [];
