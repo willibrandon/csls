@@ -201,9 +201,11 @@ internal sealed class RequestActivityState
     /// <summary>
     /// Retires a canceled request that has not started executing.
     /// </summary>
+    /// <param name="completeRequest">Completes the public request before retirement is signaled.</param>
     /// <returns>True when this call retired the queued request.</returns>
-    internal bool CompleteQueuedCancellation()
+    internal bool CompleteQueuedCancellation(Action completeRequest)
     {
+        ArgumentNullException.ThrowIfNull(completeRequest);
         DateTimeOffset completedAt = _timeProvider.GetUtcNow();
         long completedTimestamp = _timeProvider.GetTimestamp();
         lock (_gate)
@@ -213,6 +215,7 @@ internal sealed class RequestActivityState
                 return false;
             }
 
+            completeRequest();
             CompleteCore(
                 RequestExecutionStatus.Canceled,
                 exception: null,
