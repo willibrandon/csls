@@ -18,7 +18,8 @@ internal sealed partial class DebuggerTerminalState : IAsyncDisposable
     private Hex1bApp? _app;
     private CancellationTokenSource? _runObservationCancellation;
     private Task? _runObservationTask;
-    private TaskCompletionSource _sessionChanged = CreateSessionChangedSource();
+    private DebuggerResourceChangeKind _pendingResourceChanges;
+    private TaskCompletionSource _resourceChanged = CreateResourceChangedSource();
 
     private DebuggerTerminalState(
         DebuggerRpcClient client,
@@ -176,12 +177,6 @@ internal sealed partial class DebuggerTerminalState : IAsyncDisposable
     {
         while (true)
         {
-            Task sessionChanged;
-            lock (_notificationGate)
-            {
-                sessionChanged = _sessionChanged.Task;
-            }
-
             DebugSessionSnapshot snapshot = await _client.GetSessionAsync(cancellationToken)
                 .ConfigureAwait(false);
             if (snapshot.State is DebugSessionState.Stopped or
@@ -210,7 +205,21 @@ internal sealed partial class DebuggerTerminalState : IAsyncDisposable
                 }
             }
 
-            await sessionChanged.WaitAsync(cancellationToken).ConfigureAwait(false);
+            DebuggerResourceChangeKind changes = await WaitForResourceChangesAsync(
+                cancellationToken).ConfigureAwait(false);
+            if ((changes & DebuggerResourceChangeKind.Output) != 0)
+            {
+                await _mutationGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+                try
+                {
+                    await _auxiliary.RefreshOutputAsync(cancellationToken).ConfigureAwait(false);
+                    _app?.Invalidate();
+                }
+                finally
+                {
+                    _ = _mutationGate.Release();
+                }
+            }
         }
     }
 
@@ -219,21 +228,45 @@ internal sealed partial class DebuggerTerminalState : IAsyncDisposable
         DebuggerResourceChangeEventArgs change)
     {
         _ = sender;
-        if ((change.Kind & DebuggerResourceChangeKind.Session) == 0)
-        {
-            return;
-        }
-
         TaskCompletionSource changed;
         lock (_notificationGate)
         {
-            changed = _sessionChanged;
-            _sessionChanged = CreateSessionChangedSource();
+            _pendingResourceChanges |= change.Kind;
+            changed = _resourceChanged;
         }
 
         changed.TrySetResult();
     }
 
-    private static TaskCompletionSource CreateSessionChangedSource() =>
+    private async Task<DebuggerResourceChangeKind> WaitForResourceChangesAsync(
+        CancellationToken cancellationToken)
+    {
+        Task signal;
+        lock (_notificationGate)
+        {
+            if (_pendingResourceChanges != 0)
+            {
+                return TakePendingResourceChanges();
+            }
+
+            signal = _resourceChanged.Task;
+        }
+
+        await signal.WaitAsync(cancellationToken).ConfigureAwait(false);
+        lock (_notificationGate)
+        {
+            return TakePendingResourceChanges();
+        }
+    }
+
+    private DebuggerResourceChangeKind TakePendingResourceChanges()
+    {
+        DebuggerResourceChangeKind changes = _pendingResourceChanges;
+        _pendingResourceChanges = 0;
+        _resourceChanged = CreateResourceChangedSource();
+        return changes;
+    }
+
+    private static TaskCompletionSource CreateResourceChangedSource() =>
         new(TaskCreationOptions.RunContinuationsAsynchronously);
 }

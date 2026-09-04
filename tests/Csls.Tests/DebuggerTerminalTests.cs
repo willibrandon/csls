@@ -176,15 +176,16 @@ public sealed class DebuggerTerminalTests
                         TestContext.CancellationToken).ConfigureAwait(false);
                     await automator.WaitUntilTextAsync("Target is running.").ConfigureAwait(false);
                     await automator.KeyAsync(
+                        Hex1bKey.F2,
+                        TestContext.CancellationToken).ConfigureAwait(false);
+                    await automator.KeyAsync(
+                        Hex1bKey.F2,
+                        TestContext.CancellationToken).ConfigureAwait(false);
+                    await automator.WaitUntilTextAsync("out> ready").ConfigureAwait(false);
+                    await automator.KeyAsync(
                         Hex1bKey.F6,
                         TestContext.CancellationToken).ConfigureAwait(false);
                     await automator.WaitUntilTextAsync("number = 42").ConfigureAwait(false);
-                    await automator.KeyAsync(
-                        Hex1bKey.F2,
-                        TestContext.CancellationToken).ConfigureAwait(false);
-                    await automator.KeyAsync(
-                        Hex1bKey.F2,
-                        TestContext.CancellationToken).ConfigureAwait(false);
                     await automator.WaitUntilTextAsync("out> ready").ConfigureAwait(false);
                     await automator.WaitUntilTextAsync("localNumber = 43").ConfigureAwait(false);
                     await automator.Shift().KeyAsync(

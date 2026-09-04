@@ -12,6 +12,8 @@ namespace Csls.Workspaces;
 /// </summary>
 internal static partial class DotNetWorkspaceRestorer
 {
+    private const int MinimumConcurrentRestoreProcesses = 8;
+    private const int MaximumConcurrentRestoreProcesses = 16;
     private const int MaximumRetainedOutputCharacters = 32 * 1024;
     private const int ReadBufferCharacters = 4 * 1024;
 
@@ -40,7 +42,12 @@ internal static partial class DotNetWorkspaceRestorer
             new ParallelOptions
             {
                 CancellationToken = cancellationToken,
-                MaxDegreeOfParallelism = Environment.ProcessorCount
+                MaxDegreeOfParallelism = Math.Min(
+                    entryPoints.Count,
+                    Math.Clamp(
+                        Environment.ProcessorCount,
+                        MinimumConcurrentRestoreProcesses / 2,
+                        MaximumConcurrentRestoreProcesses / 2) * 2)
             },
             async (entryPoint, restoreCancellationToken) =>
                 await RestoreEntryPointAsync(

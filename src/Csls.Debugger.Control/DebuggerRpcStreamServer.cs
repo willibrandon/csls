@@ -81,7 +81,6 @@ public static class DebuggerRpcStreamServer
                     notificationTask)
             {
                 await notificationTask.ConfigureAwait(false);
-                throw new IOException("The debugger notification stream ended unexpectedly.");
             }
 
             await rpcCompletion.ConfigureAwait(false);

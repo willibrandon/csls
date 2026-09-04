@@ -87,37 +87,11 @@ internal sealed class DebuggerTerminalAuxiliaryState
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(snapshot);
-        DebugOutputPage output = await _client.GetOutputAsync(
-            new DebugOutputRequest(0, MaximumItems),
-            cancellationToken).ConfigureAwait(false);
+        await RefreshOutputAsync(cancellationToken).ConfigureAwait(false);
         DebugModulePage modules = await _client.GetModulesAsync(
             new DebugModulesRequest(0, MaximumItems),
             cancellationToken).ConfigureAwait(false);
         await RefreshBreakpointsAsync(cancellationToken).ConfigureAwait(false);
-
-        List<string> outputLines =
-        [
-            .. output.Entries.SelectMany(static entry => entry.Output
-                .Replace("\r\n", "\n", StringComparison.Ordinal)
-                .Replace('\r', '\n')
-                .Split('\n', StringSplitOptions.RemoveEmptyEntries)
-                .Select(line => $"{FormatOutputCategory(entry.Category)} {line}"))
-        ];
-        if (output.DroppedBeforeStart > 0)
-        {
-            outputLines.Insert(
-                0,
-                string.Create(
-                    CultureInfo.InvariantCulture,
-                    $"… {output.DroppedBeforeStart} older output segments were dropped"));
-        }
-
-        if (output.HasMore)
-        {
-            outputLines.Add("… more retained output is available");
-        }
-
-        _outputLines = outputLines.Count == 0 ? ["No target output."] : outputLines;
 
         List<string> moduleLines = [.. modules.Modules.Select(FormatModule)];
         if (modules.TotalModules > modules.Modules.Count)
@@ -153,6 +127,40 @@ internal sealed class DebuggerTerminalAuxiliaryState
                 $"Description: {exception.Description}"
             ];
         }
+    }
+
+    /// <summary>
+    /// Reloads retained target output while the target is stopped or running.
+    /// </summary>
+    /// <param name="cancellationToken">Cancels private RPC inspection.</param>
+    internal async Task RefreshOutputAsync(CancellationToken cancellationToken)
+    {
+        DebugOutputPage output = await _client.GetOutputAsync(
+            new DebugOutputRequest(0, MaximumItems),
+            cancellationToken).ConfigureAwait(false);
+        List<string> outputLines =
+        [
+            .. output.Entries.SelectMany(static entry => entry.Output
+                .Replace("\r\n", "\n", StringComparison.Ordinal)
+                .Replace('\r', '\n')
+                .Split('\n', StringSplitOptions.RemoveEmptyEntries)
+                .Select(line => $"{FormatOutputCategory(entry.Category)} {line}"))
+        ];
+        if (output.DroppedBeforeStart > 0)
+        {
+            outputLines.Insert(
+                0,
+                string.Create(
+                    CultureInfo.InvariantCulture,
+                    $"… {output.DroppedBeforeStart} older output segments were dropped"));
+        }
+
+        if (output.HasMore)
+        {
+            outputLines.Add("… more retained output is available");
+        }
+
+        _outputLines = outputLines.Count == 0 ? ["No target output."] : outputLines;
     }
 
     /// <summary>

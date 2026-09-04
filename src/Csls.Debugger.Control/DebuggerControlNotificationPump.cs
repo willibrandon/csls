@@ -45,9 +45,16 @@ internal sealed class DebuggerControlNotificationPump : IDisposable
                     ref _pendingKinds,
                     0)
             };
-            await _rpc.NotifyAsync(
-                DebuggerControlNotifications.ResourceChanged,
-                change).ConfigureAwait(false);
+            try
+            {
+                await _rpc.NotifyAsync(
+                    DebuggerControlNotifications.ResourceChanged,
+                    change).ConfigureAwait(false);
+            }
+            catch (ConnectionLostException)
+            {
+                return;
+            }
         }
     }
 
