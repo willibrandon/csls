@@ -153,6 +153,67 @@ public sealed class CodeQlUselessAssignmentToLocalAnalyzerTests
         Assert.IsEmpty(diagnostics);
     }
 
+    /// <summary>
+    /// Verifies an unused foreach iteration value is rejected.
+    /// </summary>
+    [TestMethod]
+    public async Task ReportsUnreadForEachIterationValue()
+    {
+        const string Source = """
+            internal static class Projection
+            {
+                internal static bool Any(int[] values)
+                {
+                    foreach (int value in values)
+                    {
+                        return true;
+                    }
+
+                    return false;
+                }
+            }
+            """;
+
+        ImmutableArray<Diagnostic> diagnostics = await AnalyzeAsync(Source)
+            .ConfigureAwait(false);
+
+        Diagnostic diagnostic = Assert.ContainsSingle(diagnostics);
+        Assert.AreEqual(
+            CodeQlUselessAssignmentToLocalAnalyzer.DiagnosticId,
+            diagnostic.Id);
+        Assert.Contains(
+            "value",
+            diagnostic.GetMessage(CultureInfo.InvariantCulture));
+    }
+
+    /// <summary>
+    /// Verifies an observed foreach iteration value remains accepted.
+    /// </summary>
+    [TestMethod]
+    public async Task AcceptsObservedForEachIterationValue()
+    {
+        const string Source = """
+            internal static class Projection
+            {
+                internal static int Sum(int[] values)
+                {
+                    int result = 0;
+                    foreach (int value in values)
+                    {
+                        result += value;
+                    }
+
+                    return result;
+                }
+            }
+            """;
+
+        ImmutableArray<Diagnostic> diagnostics = await AnalyzeAsync(Source)
+            .ConfigureAwait(false);
+
+        Assert.IsEmpty(diagnostics);
+    }
+
     private static async Task<ImmutableArray<Diagnostic>> AnalyzeAsync(string source)
     {
         var parseOptions = new CSharpParseOptions(

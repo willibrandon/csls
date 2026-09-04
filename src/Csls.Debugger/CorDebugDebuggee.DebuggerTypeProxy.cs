@@ -537,14 +537,7 @@ internal sealed partial class CorDebugDebuggee
             nint* frameAddress = &frame;
             int result = new ICorDebugThreadAbi(active.Thread).GetActiveFrame(
                 (nint)frameAddress);
-            if (result < 0)
-            {
-                frame = 0;
-            }
-            else
-            {
-                frame = Volatile.Read(ref *frameAddress);
-            }
+            frame = result < 0 ? 0 : Volatile.Read(ref *frameAddress);
 
             return _objectExpander.MaterializeDebuggerTypeProxyStaticMembers(
                 proxyValue,

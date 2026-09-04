@@ -47,6 +47,9 @@ public sealed class CodeQlUselessAssignmentToLocalAnalyzer : DiagnosticAnalyzer
         context.RegisterSyntaxNodeAction(
             AnalyzeVariable,
             SyntaxKind.VariableDeclarator);
+        context.RegisterSyntaxNodeAction(
+            AnalyzeForEach,
+            SyntaxKind.ForEachStatement);
     }
 
     private static void AnalyzeAssignment(SyntaxNodeAnalysisContext context)
@@ -77,14 +80,31 @@ public sealed class CodeQlUselessAssignmentToLocalAnalyzer : DiagnosticAnalyzer
     }
 
     private static bool FlowsOut(DataFlowAnalysis flow, ILocalSymbol local)
+        => flow.DataFlowsOut.Any(symbol =>
+            SymbolEqualityComparer.Default.Equals(symbol, local));
+
+    private static void AnalyzeForEach(SyntaxNodeAnalysisContext context)
     {
-        foreach (ISymbol symbol in flow.DataFlowsOut.Where(symbol =>
-            SymbolEqualityComparer.Default.Equals(symbol, local)))
+        var statement = (ForEachStatementSyntax)context.Node;
+        if (statement.Identifier.ValueText == "_" ||
+            context.SemanticModel.GetDeclaredSymbol(
+                statement,
+                context.CancellationToken) is not ILocalSymbol local ||
+            statement.Statement.DescendantNodesAndSelf()
+                .OfType<IdentifierNameSyntax>()
+                .Any(identifier => SymbolEqualityComparer.Default.Equals(
+                    context.SemanticModel.GetSymbolInfo(
+                        identifier,
+                        context.CancellationToken).Symbol,
+                    local)))
         {
-            return true;
+            return;
         }
 
-        return false;
+        context.ReportDiagnostic(Diagnostic.Create(
+            s_rule,
+            statement.Identifier.GetLocation(),
+            local.Name));
     }
 
     private static void AnalyzeVariable(SyntaxNodeAnalysisContext context)

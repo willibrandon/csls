@@ -18,3 +18,4 @@ CSLS0016 | CodeQuality | Error | Redundant nested implicit upcasts are removed
 CSLS0017 | CodeQuality | Error | Repeated null tests after exiting guards are removed
 CSLS0018 | CodeQuality | Error | Writes to unread locals are removed
 CSLS0019 | CodeQuality | Error | Explicit casts to the operand's existing type are removed
+CSLS0020 | CodeQuality | Error | Same-target conditional assignments use a conditional expression
