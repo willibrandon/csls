@@ -284,9 +284,11 @@ the client's stack and variable handles because target code may allocate, collec
 or mutate state. If cooperative abort cannot restore a trustworthy stop, the
 session faults and must be disconnected. Explicit C# `new T(...)`, Visual Basic
 `New T(...)`, and F# `new T(...)` expressions use the guarded path for loaded
-non-generic runtime types and bind the constructor by metadata signature. Generic
-construction and object or collection initializers remain rejected until their full
-binding and materialization semantics are available. Unsupported value-type arguments,
+runtime types and bind the constructor by metadata signature. Closed generic
+construction resolves nested generic, array, and nullable arguments to exact
+`ICorDebugType` values and executes through CoreCLR's parameterized-object API.
+Generic arity mismatches, unresolved or ambiguous types, and object or collection
+initializers fail before target execution. Unsupported value-type arguments,
 overload sets that exact metadata parameter identities cannot select uniquely,
 properties, user-defined operators, and implicit `ToString` execution are
 also rejected. Variables include `evaluateName` only when csls can provide a valid

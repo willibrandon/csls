@@ -9,6 +9,7 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <Compile Include="DebuggerGenericFixture.fs" />
     <Compile Include="DebuggerFixtureValue.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>

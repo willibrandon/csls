@@ -22,6 +22,10 @@ internal static class Program
 
         int answer = int.Parse(arguments[1], CultureInfo.InvariantCulture);
         var value = new DebuggerFixtureValue(answer);
+        var genericValue = new DebuggerGenericFixture<int>(answer);
+        var nestedGenericValue = new DebuggerGenericFixture<List<int>>([]);
+        var arrayGenericValue = new DebuggerGenericFixture<int[]>([]);
+        var nullableGenericValue = new DebuggerGenericFixture<int?>(answer);
         if (arguments.Length >= 5)
         {
             File.WriteAllText(arguments[3], "started");
@@ -41,6 +45,10 @@ internal static class Program
         }
 
         GC.KeepAlive(value);
+        GC.KeepAlive(genericValue);
+        GC.KeepAlive(nestedGenericValue);
+        GC.KeepAlive(arrayGenericValue);
+        GC.KeepAlive(nullableGenericValue);
         return answer - 42;
     }
 

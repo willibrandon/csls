@@ -14,6 +14,12 @@ open System.Threading
 let main arguments =
     let mutable answer = Int32.Parse(arguments[1], CultureInfo.InvariantCulture)
     let value = DebuggerFixtureValue(answer)
+    let genericValue = DebuggerGenericFixture<int>(answer)
+    let nestedGenericValue =
+        DebuggerGenericFixture<System.Collections.Generic.List<int>>(
+            System.Collections.Generic.List<int>())
+    let arrayGenericValue = DebuggerGenericFixture<int[]>([||])
+    let nullableGenericValue = DebuggerGenericFixture<Nullable<int>>(Nullable(answer))
     let numbers = [| answer; answer + 1 |]
     answer <- answer + 1
     Console.Write(arguments[2])
@@ -22,4 +28,8 @@ let main arguments =
         Thread.Sleep(1)
 
     GC.KeepAlive(value)
+    GC.KeepAlive(genericValue)
+    GC.KeepAlive(nestedGenericValue)
+    GC.KeepAlive(arrayGenericValue)
+    GC.KeepAlive(nullableGenericValue)
     answer + numbers[0] - 83

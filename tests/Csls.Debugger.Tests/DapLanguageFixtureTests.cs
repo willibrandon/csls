@@ -289,6 +289,57 @@ public sealed partial class DapSessionTests
                     stoppedThreadId,
                     sourcePath,
                     breakpointLine).ConfigureAwait(false);
+                string genericType =
+                    $"Csls.Debugger.Fixtures.{project["Csls.Debugger.Fixtures.".Length..]}.DebuggerGenericFixture";
+                string genericConstructionExpression = sourceExtension switch
+                {
+                    "cs" => $"new {genericType}<int>(17)",
+                    "vb" => $"New {genericType}(Of Integer)(17)",
+                    _ => $"new {genericType}<int>(17)"
+                };
+                JsonElement genericConstructed = await ReadEvaluationAsync(
+                    client,
+                    frameId,
+                    genericConstructionExpression,
+                    success: true,
+                    TestContext.CancellationToken).ConfigureAwait(false);
+                Assert.AreEqual(
+                    "generic=17",
+                    genericConstructed.GetProperty("result").GetString(),
+                    $"Unexpected {project} generic constructed value.");
+                string expectedGenericType = sourceExtension switch
+                {
+                    "cs" => "csharp-generic",
+                    "vb" => "visual-basic-generic",
+                    _ => "fsharp-generic"
+                };
+                Assert.AreEqual(
+                    expectedGenericType,
+                    genericConstructed.GetProperty("type").GetString(),
+                    $"Unexpected {project} generic constructed type.");
+                Assert.IsGreaterThan(
+                    0,
+                    genericConstructed.GetProperty("variablesReference").GetInt32(),
+                    $"The {project} generic constructed value is not expandable.");
+                using JsonDocument genericConstructionInvalidated = await client
+                    .ReadMessageAsync(TestContext.CancellationToken)
+                    .ConfigureAwait(false);
+                AssertEvent(genericConstructionInvalidated.RootElement, "invalidated");
+
+                await AssertCompoundGenericConstructionAsync(
+                    client,
+                    stoppedThreadId,
+                    sourcePath,
+                    breakpointLine,
+                    genericType,
+                    sourceExtension,
+                    expectedGenericType).ConfigureAwait(false);
+
+                frameId = await AssertStoppedFrameAsync(
+                    client,
+                    stoppedThreadId,
+                    sourcePath,
+                    breakpointLine).ConfigureAwait(false);
                 JsonElement assigned = await ReadSetExpressionAsync(
                     client,
                     frameId,
@@ -438,9 +489,11 @@ public sealed partial class DapSessionTests
             if (root.TryGetProperty("event", out JsonElement eventName) &&
                 eventName.GetString() == "stopped")
             {
+                string? reason = root.GetProperty("body").GetProperty("reason").GetString();
                 Assert.AreEqual(
                     "breakpoint",
-                    root.GetProperty("body").GetProperty("reason").GetString());
+                    reason,
+                    root.GetRawText());
                 return root.GetProperty("body").GetProperty("threadId").GetInt32();
             }
         }

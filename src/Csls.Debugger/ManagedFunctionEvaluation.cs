@@ -16,6 +16,11 @@ internal sealed class ManagedFunctionEvaluation
     internal required nint Function { get; init; }
 
     /// <summary>
+    /// Gets or initializes owned ICorDebugType pointers for object construction.
+    /// </summary>
+    internal required nint[] TypeArguments { get; init; }
+
+    /// <summary>
     /// Gets or initializes the owned ICorDebugThread pointer selected for evaluation.
     /// </summary>
     internal required nint Thread { get; init; }

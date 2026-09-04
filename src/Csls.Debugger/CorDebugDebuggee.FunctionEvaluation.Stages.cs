@@ -103,23 +103,56 @@ internal sealed partial class CorDebugDebuggee
             }
 
             int callResult;
-            fixed (nint* argumentsAddress = arguments)
+            nint evaluation2 = 0;
+            try
             {
-                var api = new ICorDebugEvalAbi(evaluation.Pointer);
-                callResult = evaluation.ConstructsObject
-                    ? api.NewObject(
-                        evaluation.Function,
-                        checked((uint)arguments.Length),
-                        (nint)argumentsAddress)
-                    : api.CallFunction(
-                        evaluation.Function,
-                        checked((uint)arguments.Length),
-                        (nint)argumentsAddress);
+                nint emptyArgument = 0;
+                fixed (nint* argumentsAddress = arguments)
+                fixed (nint* typeArgumentsAddress = evaluation.TypeArguments)
+                {
+                    nint argumentListAddress = arguments.Length == 0
+                        ? (nint)(&emptyArgument)
+                        : (nint)argumentsAddress;
+                    if (evaluation.ConstructsObject && evaluation.TypeArguments.Length != 0)
+                    {
+                        evaluation2 = ComAbi.QueryInterface(
+                            evaluation.Pointer,
+                            ICorDebugEval2Abi.InterfaceId);
+                        callResult = new ICorDebugEval2Abi(evaluation2).NewParameterizedObject(
+                            evaluation.Function,
+                            checked((uint)evaluation.TypeArguments.Length),
+                            (nint)typeArgumentsAddress,
+                            checked((uint)arguments.Length),
+                            argumentListAddress);
+                    }
+                    else
+                    {
+                        var api = new ICorDebugEvalAbi(evaluation.Pointer);
+                        callResult = evaluation.ConstructsObject
+                            ? api.NewObject(
+                                evaluation.Function,
+                                checked((uint)arguments.Length),
+                                argumentListAddress)
+                            : api.CallFunction(
+                                evaluation.Function,
+                                checked((uint)arguments.Length),
+                                argumentListAddress);
+                    }
+                }
+            }
+            finally
+            {
+                if (evaluation2 != 0)
+                {
+                    _ = ComAbi.Release(evaluation2);
+                }
             }
 
             ThrowIfFunctionEvaluationUnavailable(
                 callResult,
-                evaluation.ConstructsObject
+                evaluation.ConstructsObject && evaluation.TypeArguments.Length != 0
+                    ? "ICorDebugEval2.NewParameterizedObject"
+                    : evaluation.ConstructsObject
                     ? "ICorDebugEval.NewObject"
                     : "ICorDebugEval.CallFunction");
             evaluation.PendingStringArgumentIndex = -1;
@@ -220,6 +253,12 @@ internal sealed partial class CorDebugDebuggee
         if (evaluation.Function != 0)
         {
             _ = ComAbi.Release(evaluation.Function);
+        }
+
+        foreach (nint typeArgument in evaluation.TypeArguments.Where(
+            static typeArgument => typeArgument != 0))
+        {
+            _ = ComAbi.Release(typeArgument);
         }
 
         if (evaluation.Thread != 0)

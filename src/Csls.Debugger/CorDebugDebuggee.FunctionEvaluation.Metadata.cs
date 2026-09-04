@@ -5,6 +5,7 @@ using System.Reflection;
 using System.Reflection.Metadata;
 using System.Reflection.Metadata.Ecma335;
 using System.Reflection.PortableExecutable;
+using System.Text;
 
 namespace Csls.Debugger;
 
@@ -123,7 +124,8 @@ internal sealed partial class CorDebugDebuggee
         string methodName,
         DebugExpressionLanguage language,
         ManagedExpressionValue[] arguments,
-        bool staticMethod)
+        bool staticMethod,
+        IReadOnlyList<string>? declaringTypeArguments = null)
     {
         EntityHandle entity = MetadataTokens.EntityHandle(checked((int)typeToken));
         if (entity.Kind != HandleKind.TypeDefinition)
@@ -158,7 +160,10 @@ internal sealed partial class CorDebugDebuggee
                 continue;
             }
 
-            int score = ScoreParameters(signature.ParameterTypes, arguments);
+            int score = ScoreParameters(
+                signature.ParameterTypes,
+                arguments,
+                declaringTypeArguments);
             if (score >= 0)
             {
                 matches.Add((methodHandle, score));
@@ -188,12 +193,21 @@ internal sealed partial class CorDebugDebuggee
 
     private static int ScoreParameters(
         ImmutableArray<string> parameterTypes,
-        ManagedExpressionValue[] arguments)
+        ManagedExpressionValue[] arguments,
+        IReadOnlyList<string>? declaringTypeArguments)
     {
         int score = 0;
         for (int index = 0; index < arguments.Length; index++)
         {
-            int parameterScore = ScoreParameter(parameterTypes[index], arguments[index]);
+            string? parameterType = SubstituteDeclaringTypeArguments(
+                parameterTypes[index],
+                declaringTypeArguments);
+            if (parameterType is null)
+            {
+                return -1;
+            }
+
+            int parameterScore = ScoreParameter(parameterType, arguments[index]);
             if (parameterScore < 0)
             {
                 return -1;
@@ -203,6 +217,54 @@ internal sealed partial class CorDebugDebuggee
         }
 
         return score;
+    }
+
+    private static string? SubstituteDeclaringTypeArguments(
+        string parameterType,
+        IReadOnlyList<string>? declaringTypeArguments)
+    {
+        const string marker = "type-parameter:";
+        int markerIndex = parameterType.IndexOf(marker, StringComparison.Ordinal);
+        if (markerIndex < 0)
+        {
+            return parameterType;
+        }
+
+        if (declaringTypeArguments is null)
+        {
+            return null;
+        }
+
+        var result = new StringBuilder(parameterType.Length);
+        int consumed = 0;
+        while (markerIndex >= 0)
+        {
+            _ = result.Append(parameterType, consumed, markerIndex - consumed);
+            int numberStart = markerIndex + marker.Length;
+            int numberEnd = numberStart;
+            while (numberEnd < parameterType.Length &&
+                char.IsAsciiDigit(parameterType[numberEnd]))
+            {
+                numberEnd++;
+            }
+
+            if (numberEnd == numberStart || !int.TryParse(
+                parameterType.AsSpan(numberStart, numberEnd - numberStart),
+                System.Globalization.NumberStyles.None,
+                System.Globalization.CultureInfo.InvariantCulture,
+                out int argumentIndex) ||
+                argumentIndex >= declaringTypeArguments.Count)
+            {
+                return null;
+            }
+
+            _ = result.Append(declaringTypeArguments[argumentIndex]);
+            consumed = numberEnd;
+            markerIndex = parameterType.IndexOf(marker, consumed, StringComparison.Ordinal);
+        }
+
+        _ = result.Append(parameterType, consumed, parameterType.Length - consumed);
+        return result.ToString();
     }
 
     private static int ScoreParameter(string parameterType, ManagedExpressionValue argument)

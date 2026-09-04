@@ -23,10 +23,16 @@ public sealed partial class DapSessionTests
         testDirectory = DebuggerTestPath.Canonicalize(testDirectory);
         try
         {
+            int breakpointLine = FindSourceLine(
+                await File.ReadAllLinesAsync(
+                    SymbolFixtures.SourcePath,
+                    TestContext.CancellationToken).ConfigureAwait(false),
+                "answer++;");
             await ExerciseSourceLinkAsync(
                 SymbolFixtures.ValidSourceLinkProgramPath,
                 testDirectory,
-                server)
+                server,
+                breakpointLine)
                 .ConfigureAwait(false);
         }
         finally
@@ -40,7 +46,8 @@ public sealed partial class DapSessionTests
     private async Task ExerciseSourceLinkAsync(
         string programPath,
         string testDirectory,
-        SourceLinkTestServer server)
+        SourceLinkTestServer server,
+        int breakpointLine)
     {
         const string documentPath = "/_/SourceLink/Program.cs";
         DapTestClient client = await DapTestClient
@@ -69,7 +76,7 @@ public sealed partial class DapSessionTests
         AssertEvent(initialized.RootElement, "initialized");
         int breakpointSequence = await client.SendRequestAsync(
             "setBreakpoints",
-            writer => WriteSourceBreakpointArguments(writer, documentPath, 23),
+            writer => WriteSourceBreakpointArguments(writer, documentPath, breakpointLine),
             TestContext.CancellationToken).ConfigureAwait(false);
         using JsonDocument breakpoint = await client
             .ReadMessageAsync(TestContext.CancellationToken)

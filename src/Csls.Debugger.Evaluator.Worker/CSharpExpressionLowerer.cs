@@ -83,13 +83,10 @@ internal static class CSharpExpressionLowerer
     private static DebugExpressionNode LowerObjectCreation(
         ObjectCreationExpressionSyntax creation)
     {
-        if (creation.Initializer is not null ||
-            creation.Type.DescendantNodesAndSelf().Any(static node =>
-                node is GenericNameSyntax))
+        if (creation.Initializer is not null)
         {
             throw new NotSupportedException(
-                "C# object construction currently requires a non-generic loaded type " +
-                "without an object or collection initializer.");
+                "C# object construction does not support object or collection initializers.");
         }
 
         string typeName = creation.Type.ToString();

@@ -140,9 +140,30 @@ module FSharpExpressionLowerer =
             identifier.LongIdent
             |> List.map (fun part -> part.idText)
             |> String.concat "."
+        | SynType.App(typeName = typeName; typeArgs = typeArguments; isPostfix = false) ->
+            let arguments =
+                typeArguments
+                |> List.map lowerTypeName
+                |> String.concat ","
+            $"{lowerTypeName typeName}<{arguments}>"
+        | SynType.LongIdentApp(
+            typeName = typeName;
+            longDotId = identifier;
+            typeArgs = typeArguments) ->
+            let suffix =
+                identifier.LongIdent
+                |> List.map (fun part -> part.idText)
+                |> String.concat "."
+            let arguments =
+                typeArguments
+                |> List.map lowerTypeName
+                |> String.concat ","
+            $"{lowerTypeName typeName}.{suffix}<{arguments}>"
+        | SynType.Array(rank = rank; elementType = elementType) ->
+            $"{lowerTypeName elementType}[{String(',', rank - 1)}]"
         | SynType.Paren(innerType = inner) -> lowerTypeName inner
         | _ ->
-            raise (unsupported "construction of a generic or compound runtime type")
+            raise (unsupported "construction of this compound runtime type")
 
     let rec private lower (expression: SynExpr) =
         match expression with

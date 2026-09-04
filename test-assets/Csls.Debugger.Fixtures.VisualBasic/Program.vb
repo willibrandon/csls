@@ -15,6 +15,10 @@ Friend Module Program
     Friend Function Main(arguments As String()) As Integer
         Dim answer As Integer = Integer.Parse(arguments(1), CultureInfo.InvariantCulture)
         Dim value = New DebuggerFixtureValue(answer)
+        Dim genericValue = New DebuggerGenericFixture(Of Integer)(answer)
+        Dim nestedGenericValue = New DebuggerGenericFixture(Of List(Of Integer))(New List(Of Integer)())
+        Dim arrayGenericValue = New DebuggerGenericFixture(Of Integer())(Array.Empty(Of Integer)())
+        Dim nullableGenericValue = New DebuggerGenericFixture(Of Integer?)(answer)
         answer += 1
         Console.Write(arguments(2))
         Console.Out.Flush()
@@ -23,6 +27,10 @@ Friend Module Program
         End While
 
         GC.KeepAlive(value)
+        GC.KeepAlive(genericValue)
+        GC.KeepAlive(nestedGenericValue)
+        GC.KeepAlive(arrayGenericValue)
+        GC.KeepAlive(nullableGenericValue)
         Return answer - 42
     End Function
 End Module

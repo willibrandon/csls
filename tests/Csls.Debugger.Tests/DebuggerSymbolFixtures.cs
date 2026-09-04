@@ -162,6 +162,9 @@ internal sealed class DebuggerSymbolFixtures : IAsyncDisposable
         File.Copy(
             Path.Join(sourceDirectory, "DebuggerFixtureValue.cs"),
             Path.Join(projectDirectory, "DebuggerFixtureValue.cs"));
+        File.Copy(
+            Path.Join(sourceDirectory, "DebuggerGenericFixture.cs"),
+            Path.Join(projectDirectory, "DebuggerGenericFixture.cs"));
         await File.WriteAllTextAsync(
             Path.Join(projectDirectory, "sourcelink.json"),
             JsonSerializer.Serialize(new
@@ -232,7 +235,12 @@ internal sealed class DebuggerSymbolFixtures : IAsyncDisposable
                         "Compile",
                         new XAttribute(
                             "Include",
-                            Path.Join(sourceDirectory, "DebuggerFixtureValue.cs"))))));
+                            Path.Join(sourceDirectory, "DebuggerFixtureValue.cs"))),
+                    new XElement(
+                        "Compile",
+                        new XAttribute(
+                            "Include",
+                            Path.Join(sourceDirectory, "DebuggerGenericFixture.cs"))))));
         await File.WriteAllTextAsync(
             Path.Join(projectDirectory, $"{projectName}.csproj"),
             project.ToString(),

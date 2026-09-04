@@ -112,7 +112,7 @@ internal sealed partial class CorDebugDebuggee
             if (++scannedTypeCount > MaximumFunctionEvaluationTypeScanCount)
             {
                 throw new InvalidOperationException(
-                    $"Static method binding exceeds the loaded-type scan limit of " +
+                    $"Managed function evaluation exceeds the loaded-type scan limit of " +
                     $"{MaximumFunctionEvaluationTypeScanCount}.");
             }
 
@@ -120,7 +120,11 @@ internal sealed partial class CorDebugDebuggee
             string candidateName = simpleName
                 ? metadata.GetString(type.Name)
                 : GetFunctionEvaluationTypeName(metadata, typeHandle);
-            if (string.Equals(candidateName, typeName, comparison))
+            if (string.Equals(candidateName, typeName, comparison) ||
+                !simpleName && string.Equals(
+                    candidateName.Replace('+', '.'),
+                    typeName.Replace('+', '.'),
+                    comparison))
             {
                 matches.Add((
                     module,

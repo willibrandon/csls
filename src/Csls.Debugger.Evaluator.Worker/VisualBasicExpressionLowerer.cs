@@ -78,13 +78,11 @@ internal static class VisualBasicExpressionLowerer
     private static DebugExpressionNode LowerObjectCreation(
         ObjectCreationExpressionSyntax creation)
     {
-        if (creation.Initializer is not null ||
-            creation.Type.DescendantNodesAndSelf().Any(static node =>
-                node is GenericNameSyntax))
+        if (creation.Initializer is not null)
         {
             throw new NotSupportedException(
-                "Visual Basic object construction currently requires a non-generic loaded " +
-                "type without an object or collection initializer.");
+                "Visual Basic object construction does not support object or collection " +
+                "initializers.");
         }
 
         return Node(

@@ -419,11 +419,16 @@ MCP `debug_execute_expression` are distinct mutation paths; the MCP path additio
 requires the selected session's agent-control grant and exact stop generation.
 
 Explicit construction is another root operation in the versioned expression plan.
-C#, Visual Basic, and F# non-generic type syntax resolves to exactly one loaded runtime
-type, binds one instance constructor by metadata signature, and executes through
-`ICorDebugEval.NewObject` under the same authorization, timeout, cancellation, thread,
-and stop-generation rules as method calls. Initializers and generic construction are
-not approximated when their complete semantics are unavailable.
+C#, Visual Basic, and F# type syntax resolves to exactly one loaded runtime type and
+binds one instance constructor by metadata signature. Non-generic construction uses
+`ICorDebugEval.NewObject`; closed generic construction recursively materializes exact
+generic, array, and nullable `ICorDebugType` arguments and uses
+`ICorDebugEval2.NewParameterizedObject`. Both paths use the same authorization,
+timeout, cancellation, thread, and stop-generation rules as method calls. The ABI
+bridge supplies a non-null sentinel for empty argument lists because CoreCLR validates
+that pointer even when the count is zero. Generic arity mismatches, missing or
+ambiguous types, and initializers fail before target execution rather than being
+approximated.
 
 Assignment resolves a writable local, argument, instance field, or managed array
 element from compiler-lowered source syntax. Explicit built-in conversions, checked

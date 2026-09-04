@@ -138,6 +138,7 @@ internal sealed partial class CorDebugDebuggee
         nint thread = 0;
         nint evaluation = 0;
         nint receiverHandle = 0;
+        nint[] constructionTypeArguments = [];
         nint[] runtimeArguments = new nint[argumentCount];
         bool argumentHandlesTransferred = false;
         bool callbackEvaluationActive = false;
@@ -158,15 +159,24 @@ internal sealed partial class CorDebugDebuggee
                 }
             }
 
+            setupPhase = "selecting the CoreCLR evaluation thread";
+            thread = GetThread(frame.ThreadId);
             setupPhase = "resolving the runtime method";
-            function = materializesString
-                ? 0
-                : constructsObject
-                ? ResolveConstructor(
+            if (constructsObject)
+            {
+                ManagedConstructorBinding constructor = ResolveConstructor(
                     operation.Text!,
                     plan.Language,
-                    suppliedArguments)
-                : receiverValue == 0
+                    suppliedArguments,
+                    thread);
+                function = constructor.Function;
+                constructionTypeArguments = constructor.TypeArguments;
+            }
+            else
+            {
+                function = materializesString
+                    ? 0
+                    : receiverValue == 0
                 ? ResolveStaticFunction(
                     operation.Children[0],
                     operation.Text!,
@@ -177,8 +187,9 @@ internal sealed partial class CorDebugDebuggee
                     operation.Text!,
                     plan.Language,
                     suppliedArguments);
+            }
+
             setupPhase = "creating the CoreCLR evaluation";
-            thread = GetThread(frame.ThreadId);
             evaluation = CreateEvaluation(thread);
             if (receiverValue != 0)
             {
@@ -198,6 +209,7 @@ internal sealed partial class CorDebugDebuggee
             {
                 Pointer = evaluation,
                 Function = function,
+                TypeArguments = constructionTypeArguments,
                 Thread = thread,
                 Receiver = receiverHandle,
                 ConstructsObject = constructsObject,
@@ -281,6 +293,10 @@ internal sealed partial class CorDebugDebuggee
                 }
 
                 ReleaseFunctionEvaluationHandle(receiverHandle);
+                foreach (nint typeArgument in constructionTypeArguments)
+                {
+                    ReleaseFunctionEvaluationPointer(typeArgument);
+                }
             }
 
             if (evaluation != 0)
