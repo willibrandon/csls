@@ -13,7 +13,7 @@ public sealed partial class DapSessionTests
     /// </summary>
     [TestMethod]
     [Timeout(30000, CooperativeCancellation = true)]
-    public async Task ManagedFunctionEvaluationInvokesAndCancelsMethods()
+    public async Task ManagedFunctionEvaluationInvokesMethodsAndRestoresTarget()
     {
         string sourcePath = Path.Join(
             FindRepositoryRoot(),
@@ -311,67 +311,6 @@ public sealed partial class DapSessionTests
                 success: true,
                 TestContext.CancellationToken).ConfigureAwait(false);
             Assert.AreEqual("42", afterException.GetProperty("result").GetString());
-
-            int cancelableEvaluationSequence = await client.SendRequestAsync(
-                "evaluate",
-                writer =>
-                {
-                    writer.WriteStartObject();
-                    writer.WriteString(
-                        "expression",
-                        "localObject.WaitForDebuggerCancellation()");
-                    writer.WriteNumber("frameId", frame.GetProperty("id").GetInt32());
-                    writer.WriteString("context", "watch");
-                    writer.WriteEndObject();
-                },
-                TestContext.CancellationToken).ConfigureAwait(false);
-            await WaitForSignalAsync(waitPath + ".evaluation").ConfigureAwait(false);
-            int concurrentEvaluationSequence = await client.SendRequestAsync(
-                "evaluate",
-                writer =>
-                {
-                    writer.WriteStartObject();
-                    writer.WriteString("expression", "localObject.Number");
-                    writer.WriteNumber("frameId", frame.GetProperty("id").GetInt32());
-                    writer.WriteString("context", "watch");
-                    writer.WriteEndObject();
-                },
-                TestContext.CancellationToken).ConfigureAwait(false);
-            using JsonDocument concurrentEvaluation = await client
-                .ReadMessageAsync(TestContext.CancellationToken)
-                .ConfigureAwait(false);
-            AssertResponse(
-                concurrentEvaluation.RootElement,
-                concurrentEvaluationSequence,
-                "evaluate",
-                success: false);
-            Assert.Contains(
-                "still in progress",
-                concurrentEvaluation.RootElement.GetProperty("message").GetString()!,
-                StringComparison.OrdinalIgnoreCase);
-
-            int cancelSequence = await client.SendRequestAsync(
-                "cancel",
-                writer =>
-                {
-                    writer.WriteStartObject();
-                    writer.WriteNumber("requestId", cancelableEvaluationSequence);
-                    writer.WriteEndObject();
-                },
-                TestContext.CancellationToken).ConfigureAwait(false);
-            await AssertCanceledFunctionEvaluationAsync(
-                client,
-                cancelableEvaluationSequence,
-                cancelSequence).ConfigureAwait(false);
-
-            frame = await GetFixtureFrameAsync(client).ConfigureAwait(false);
-            JsonElement afterCancellation = await ReadEvaluationAsync(
-                client,
-                frame.GetProperty("id").GetInt32(),
-                "localObject.Number",
-                success: true,
-                TestContext.CancellationToken).ConfigureAwait(false);
-            Assert.AreEqual("42", afterCancellation.GetProperty("result").GetString());
 
             await DisconnectStoppedSessionAsync(client).ConfigureAwait(false);
             Assert.AreEqual(

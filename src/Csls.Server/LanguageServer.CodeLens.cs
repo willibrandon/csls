@@ -7,12 +7,15 @@ public sealed partial class LanguageServer
     private readonly CancellationTokenSource _codeLensRefreshSource = new();
     private readonly Dictionary<long, Task> _codeLensRefreshTasks = [];
     private long _codeLensRefreshOrdinal;
+    private int _codeLensRefreshStopState;
 
     private void QueueCodeLensRefresh()
     {
         lock (_codeLensRefreshGate)
         {
-            if (!_supportsCodeLensRefresh || Volatile.Read(ref _disposeState) != 0)
+            if (!_supportsCodeLensRefresh ||
+                Volatile.Read(ref _codeLensRefreshStopState) != 0 ||
+                LifecycleState is not ServerLifecycleState.Running)
             {
                 return;
             }
@@ -39,13 +42,23 @@ public sealed partial class LanguageServer
                 return;
             }
 
+            cancellationToken.ThrowIfCancellationRequested();
+            if (LifecycleState is not ServerLifecycleState.Running)
+            {
+                return;
+            }
+
             await _client.RefreshCodeLensesAsync(cancellationToken).ConfigureAwait(false);
         }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        catch (OperationCanceledException) when (IsCodeLensRefreshStopping(cancellationToken))
         {
             return;
         }
-        catch (ObjectDisposedException) when (Volatile.Read(ref _disposeState) != 0)
+        catch (ObjectDisposedException) when (IsCodeLensRefreshStopping(cancellationToken))
+        {
+            return;
+        }
+        catch (InvalidOperationException) when (IsCodeLensRefreshStopping(cancellationToken))
         {
             return;
         }
@@ -64,8 +77,7 @@ public sealed partial class LanguageServer
 
     private async Task StopCodeLensRefreshAsync()
     {
-        _ = Interlocked.Increment(ref _codeLensRefreshOrdinal);
-        await _codeLensRefreshSource.CancelAsync().ConfigureAwait(false);
+        BeginCodeLensRefreshStop();
         Task[] tasks;
         lock (_codeLensRefreshGate)
         {
@@ -75,4 +87,21 @@ public sealed partial class LanguageServer
         await Task.WhenAll(tasks).ConfigureAwait(false);
         _codeLensRefreshSource.Dispose();
     }
+
+    private void BeginCodeLensRefreshStop()
+    {
+        if (Interlocked.Exchange(ref _codeLensRefreshStopState, 1) != 0)
+        {
+            return;
+        }
+
+        _ = Interlocked.Increment(ref _codeLensRefreshOrdinal);
+        _codeLensRefreshSource.Cancel();
+    }
+
+    private bool IsCodeLensRefreshStopping(CancellationToken cancellationToken) =>
+        cancellationToken.IsCancellationRequested ||
+        Volatile.Read(ref _codeLensRefreshStopState) != 0 ||
+        LifecycleState is not ServerLifecycleState.Running ||
+        Volatile.Read(ref _disposeState) != 0;
 }

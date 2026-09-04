@@ -46,6 +46,7 @@ internal sealed class LspTestClient
             SingleReader = true,
             SingleWriter = false
         });
+    private int _codeLensRefreshRequestCount;
     private readonly Channel<WorkspaceDiagnosticProgressParams> _workspaceDiagnosticProgress =
         Channel.CreateUnbounded<WorkspaceDiagnosticProgressParams>(
             new UnboundedChannelOptions
@@ -317,8 +318,15 @@ internal sealed class LspTestClient
                 "The code-lens refresh request could not be observed.");
         }
 
+        _ = Interlocked.Increment(ref _codeLensRefreshRequestCount);
         return Task.CompletedTask;
     }
+
+    /// <summary>
+    /// Gets the number of code-lens refresh requests received over the real transport.
+    /// </summary>
+    internal int CodeLensRefreshRequestCount =>
+        Volatile.Read(ref _codeLensRefreshRequestCount);
 
     /// <summary>
     /// Waits for the next server request to refresh code lenses.
