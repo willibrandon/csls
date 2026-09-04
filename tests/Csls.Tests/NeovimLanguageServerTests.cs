@@ -415,6 +415,7 @@ public sealed class NeovimLanguageServerTests
             })
             vim.lsp.config('csls', {
               cmd = { {{ToLuaString(dotnetPath)}}, {{ToLuaString(launcherPath)}}, 'lsp' },
+              exit_timeout = 5000,
               filetypes = { 'cs' },
               root_dir = function(_, on_dir)
                 on_dir(vim.fn.getcwd())
@@ -518,6 +519,7 @@ public sealed class NeovimLanguageServerTests
             vim.lsp.config('csls', {
               cmd = { {{ToLuaString(dotnetPath)}}, {{ToLuaString(launcherPath)}}, 'lsp' },
               capabilities = capabilities,
+              exit_timeout = 5000,
               filetypes = { 'cs' },
               root_dir = function(_, on_dir)
                 on_dir(vim.fn.getcwd())
