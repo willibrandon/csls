@@ -107,7 +107,8 @@ internal sealed partial class CorDebugDebuggee
                 new CorDebugRuntimeStartupRegistration(
                     processId,
                     actor,
-                    managedCallback));
+                    managedCallback,
+                    sourceBreakpoints));
             CorDebugRuntimeStartupRegistration registration = registrationOwner.Value
                 ?? throw new InvalidOperationException(
                     "The runtime-startup registration was not created.");

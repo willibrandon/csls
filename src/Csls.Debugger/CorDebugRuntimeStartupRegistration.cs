@@ -14,6 +14,7 @@ internal sealed class CorDebugRuntimeStartupRegistration : IDisposable
     private readonly uint _processId;
     private readonly DebuggerSessionActor _actor;
     private readonly CorDebugManagedCallback _managedCallback;
+    private readonly SourceBreakpointManager _sourceBreakpoints;
     private readonly Lock _registrationGate = new();
     private readonly GCHandle _context;
     private DbgShimRegistrationHandle? _unregisterHandle;
@@ -25,17 +26,21 @@ internal sealed class CorDebugRuntimeStartupRegistration : IDisposable
     /// <param name="processId">The operating-system target identifier to attach.</param>
     /// <param name="actor">The engine actor that owns runtime activation.</param>
     /// <param name="managedCallback">The callback object installed before attach.</param>
+    /// <param name="sourceBreakpoints">The manager configured before module callbacks run.</param>
     internal CorDebugRuntimeStartupRegistration(
         uint processId,
         DebuggerSessionActor actor,
-        CorDebugManagedCallback managedCallback)
+        CorDebugManagedCallback managedCallback,
+        SourceBreakpointManager sourceBreakpoints)
     {
         ArgumentOutOfRangeException.ThrowIfZero(processId);
         ArgumentNullException.ThrowIfNull(actor);
         ArgumentNullException.ThrowIfNull(managedCallback);
+        ArgumentNullException.ThrowIfNull(sourceBreakpoints);
         _processId = processId;
         _actor = actor;
         _managedCallback = managedCallback;
+        _sourceBreakpoints = sourceBreakpoints;
         _context = GCHandle.Alloc(this, GCHandleType.Normal);
     }
 
@@ -192,6 +197,8 @@ internal sealed class CorDebugRuntimeStartupRegistration : IDisposable
                     "ICorDebug.DebugActiveProcess succeeded without returning a process.");
             }
 
+            _sourceBreakpoints.SetRuntimeVersion(
+                CorDebugRuntimeVersionReader.TryRead(attachedProcess));
             var result = new CorDebugActivationResult(corDebug, attachedProcess);
             if (!_completion.TrySetResult(result))
             {

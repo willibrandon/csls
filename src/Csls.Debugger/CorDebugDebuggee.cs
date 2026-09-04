@@ -104,8 +104,6 @@ internal sealed partial class CorDebugDebuggee :
         _ownsRuntimeLease = ownsRuntimeLease ? 1 : 0;
         _corDebug = activation.CorDebug;
         _debugProcess = activation.Process;
-        _sourceBreakpoints.SetRuntimeVersion(
-            CorDebugRuntimeVersionReader.TryRead(_debugProcess));
         _ = managedCallbackOwner.Detach();
         _ = registrationOwner.Detach();
         if (standardStreamsOwner is not null)
