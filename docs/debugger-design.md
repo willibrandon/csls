@@ -181,9 +181,11 @@ stdout. On Unix, the launcher
 starts the supervised worker with an adjacent NativeAOT `waitpid` interposer loaded
 before CoreCLR initializes. A dedicated blocking waiter selects the direct child
 before runtime activation and completes a nonblocking identity preflight before
-the suspended target resumes. If CoreCLR's polling transport reaps that child
-first, the interposer retains its exact process or signal exit code without
-changing libc behavior; the blocking waiter recovers that status after `ECHILD`.
+the suspended target resumes. Every `waitpid` for the selected child shares one
+interposer gate, so a competing CoreCLR poller cannot return `ECHILD` before the
+winner publishes the exact process or signal exit code. If the poller reaps the
+child first, the blocking waiter recovers that retained status after `ECHILD`
+without changing libc behavior.
 Missing or unloadable interposer assets prevent the worker from starting.
 
 ICorDebug projections are generated from the current public IDL and checked into
@@ -194,8 +196,10 @@ parameter width, and ownership annotations. CI regenerates to a temporary tree a
 fails on drift.
 
 The engine actor owns every ICorDebug reference. Acquired references are released
-deterministically in reverse ownership order. A callback AddRefs only objects that
-must survive callback return, enqueues the callback record, and returns promptly.
+deterministically in reverse ownership order. The runtime-startup callback waits
+for the actor to finish `DebugActiveProcess` because dbgshim releases the target's
+startup barrier when that callback returns. Managed callbacks AddRef only objects
+that must survive callback return, enqueue callback records, and return promptly.
 The actor drains queued callbacks and balances the runtime stop counter before
 calling Continue. Shutdown disables new work, aborts eligible evaluation, detaches
 or terminates, drains callbacks, releases COM, unregisters startup, closes resume

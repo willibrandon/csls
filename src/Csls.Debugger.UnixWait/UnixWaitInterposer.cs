@@ -9,6 +9,7 @@ namespace Csls.Debugger.UnixWait;
 internal static partial class UnixWaitInterposer
 {
     private const int StoppedSignal = 0x7f;
+    private static readonly Lock s_waitGate = new();
     private static int s_processId;
     private static int s_exitCode;
     private static int s_hasExitCode;
@@ -49,14 +50,22 @@ internal static partial class UnixWaitInterposer
         CallConvs = [typeof(CallConvCdecl)])]
     internal static unsafe int TryGetExitCode(int processId, int* exitCode)
     {
-        if (exitCode is null || Volatile.Read(ref s_processId) != processId ||
-            Volatile.Read(ref s_hasExitCode) == 0)
+        if (exitCode is null)
         {
             return 0;
         }
 
-        *exitCode = Volatile.Read(ref s_exitCode);
-        return 1;
+        lock (s_waitGate)
+        {
+            if (Volatile.Read(ref s_processId) != processId ||
+                Volatile.Read(ref s_hasExitCode) == 0)
+            {
+                return 0;
+            }
+
+            *exitCode = Volatile.Read(ref s_exitCode);
+            return 1;
+        }
     }
 
     /// <summary>
@@ -70,6 +79,19 @@ internal static partial class UnixWaitInterposer
         EntryPoint = "waitpid",
         CallConvs = [typeof(CallConvCdecl)])]
     internal static unsafe int WaitProcess(int processId, int* status, int options)
+    {
+        if (processId != Volatile.Read(ref s_processId))
+        {
+            return WaitProcessCore(processId, status, options);
+        }
+
+        lock (s_waitGate)
+        {
+            return WaitProcessCore(processId, status, options);
+        }
+    }
+
+    private static unsafe int WaitProcessCore(int processId, int* status, int options)
     {
         nint waitProcess = Interlocked.CompareExchange(ref s_waitProcess, 0, 0);
         if (waitProcess == 0)
