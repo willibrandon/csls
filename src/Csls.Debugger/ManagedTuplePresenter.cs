@@ -80,14 +80,10 @@ internal sealed class ManagedTuplePresenter
             value,
             exactType,
             cardinality,
-            static (fieldValue, _, _, state) =>
-            {
-                (ManagedTuplePresenter presenter, List<string> values, int depth) = state;
-                values.Add(presenter._services.FormatRuntimeValue(
-                    fieldValue,
-                    depth + 1).Value);
-            },
-            (this, elements, debuggerDisplayDepth));
+            (fieldValue, _, _, _) => elements.Add(_services.FormatRuntimeValue(
+                fieldValue,
+                debuggerDisplayDepth + 1).Value),
+            state: 0);
         display = $"({string.Join(", ", elements)})";
         return true;
     }
