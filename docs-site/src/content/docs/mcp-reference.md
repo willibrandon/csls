@@ -42,6 +42,7 @@ This page is generated through the official MCP client from the complete csls MC
 | `debug_threads_get` | Read only | `debugSession` required | `stopGeneration` required | Get managed threads for one explicit debugger session and current stopGeneration. |
 | `debug_variable_set` | Destructive | `debugSession` required | `stopGeneration` required, `variablesReference` required, `name` required, `value` required | Set one child of a current-generation variable container using a side-effect-free value expression. Requires an active debug_agent_control_set grant and the exact stopGeneration. |
 | `debug_variables_get` | Read only | `debugSession` required | `stopGeneration` required, `variablesReference` required, `start`, `count` | Get a bounded child page from one variable container in the current stopGeneration. |
+| `debug_watches_get` | Read only | `debugSession` required | `stopGeneration` required, `frameId` required, `expressions` required | Evaluate one through 64 independent side-effect-free watches without executing target code. |
 | `get_code_actions` | Read only | Exactly one of `workspace`, `session`, or `socket` | `documentPath` required, `startLine` required, `startCharacter` required, `endLine` required, `endCharacter` required, `kind` required | Get concrete Roslyn code actions for a zero-based UTF-16 source range. |
 | `get_completion` | Read only | Exactly one of `workspace`, `session`, or `socket` | `documentPath` required, `line` required, `character` required | Get bounded C# completion candidates and exact commit edits at a zero-based UTF-16 position. |
 | `get_declaration` | Read only | Exactly one of `workspace`, `session`, or `socket` | `documentPath` required, `line` required, `character` required | Find source declarations for the C# symbol at a zero-based UTF-16 document position. |
@@ -88,6 +89,7 @@ csls exposes target-selected state only through the resource templates below.
 | `csls://debug/stack/{debugSession}/{stopGeneration}/{threadId}{?startFrame,levels}` | csls debugger stack | Bounded managed stack page for one thread and stopped generation. |
 | `csls://debug/threads/{debugSession}/{stopGeneration}` | csls debugger threads | Managed threads for one explicit debugger stopped generation. |
 | `csls://debug/variables/{debugSession}/{stopGeneration}/{variablesReference}{?start,count}` | csls debugger variables | Bounded variables for one container and stopped generation. |
+| `csls://debug/watches/{debugSession}/{stopGeneration}/{frameId}{?expression}` | csls debugger watch | One independently evaluated watch for a frame and stopped generation. |
 | `csls://diagnostic/{?workspace,session,socket,path}` | csls document diagnostics | Current compiler and analyzer diagnostics for one selected loaded C# document. |
 | `csls://document/{?workspace,session,socket,path}` | csls document | One loaded C# document selected by target and absolute source file path. |
 | `csls://project/{?workspace,session,socket,path}` | csls project | One loaded Roslyn project selected by target and absolute project file path. |

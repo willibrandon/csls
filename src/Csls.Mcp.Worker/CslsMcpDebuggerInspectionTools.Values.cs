@@ -97,4 +97,34 @@ internal sealed partial class CslsMcpDebuggerInspectionTools
             frameId,
             expression,
             cancellationToken));
+
+    /// <summary>
+    /// Evaluates an ordered set of independent side-effect-free watch expressions.
+    /// </summary>
+    [McpServerTool(
+        Name = "debug_watches_get",
+        Title = "Get .NET debugger watches",
+        Destructive = false,
+        Idempotent = true,
+        OpenWorld = false,
+        ReadOnly = true,
+        UseStructuredContent = true,
+        OutputSchemaType = typeof(McpDebugWatchesResult))]
+    [Description("Evaluate one through 64 independent side-effect-free watches without executing target code.")]
+    public Task<ModelContextProtocol.Protocol.CallToolResult> GetWatchesAsync(
+        [Description("Opaque identifier returned by a debugger lifecycle tool.")]
+        string debugSession,
+        [Description("Current positive stop generation.")]
+        long stopGeneration,
+        [Description("Positive generation-bound frame identifier.")]
+        int frameId,
+        [Description("One through 64 source expressions, each no longer than 4096 UTF-16 code units.")]
+        IReadOnlyList<string> expressions,
+        CancellationToken cancellationToken) =>
+        McpDebuggerToolResult.RunAsync(() => _broker.GetWatchesAsync(
+            debugSession,
+            stopGeneration,
+            frameId,
+            expressions,
+            cancellationToken));
 }

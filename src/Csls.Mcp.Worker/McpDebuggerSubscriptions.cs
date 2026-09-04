@@ -134,7 +134,8 @@ internal sealed class McpDebuggerSubscriptions
         }
 
         return change.Kind.HasFlag(DebuggerResourceChangeKind.Variables) &&
-            path.StartsWith("/variables/", StringComparison.Ordinal);
+            (path.StartsWith("/variables/", StringComparison.Ordinal) ||
+                path.StartsWith("/watches/", StringComparison.Ordinal));
     }
 
     private static bool TryGetSession(string value, out string session)
@@ -160,7 +161,7 @@ internal sealed class McpDebuggerSubscriptions
 
     private static bool IsResourceGroup(string value) => value is
         "session" or "output" or "breakpoints" or "threads" or "stack" or "scopes" or
-        "variables" or "modules" or "exception" or "source" or "memory" or
+        "variables" or "watches" or "modules" or "exception" or "source" or "memory" or
         "disassembly";
 
     private static Task SendAcknowledgementAsync(

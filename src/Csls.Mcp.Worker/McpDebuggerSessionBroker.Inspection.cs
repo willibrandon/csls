@@ -1,4 +1,5 @@
 using Csls.Debugger.Contracts;
+using StreamJsonRpc;
 
 namespace Csls.Mcp.Worker;
 
@@ -8,6 +9,8 @@ namespace Csls.Mcp.Worker;
 internal sealed partial class McpDebuggerSessionBroker
 {
     private const int MaximumPageSize = 256;
+    private const int MaximumWatchCount = 64;
+    private const int MaximumExpressionLength = 4096;
 
     /// <summary>
     /// Gets managed threads for the selected stop generation.
@@ -123,6 +126,66 @@ internal sealed partial class McpDebuggerSessionBroker
                 await client.EvaluateAsync(
                     new DebugEvaluateRequest(frameId, expression),
                     token).ConfigureAwait(false)),
+            cancellationToken);
+    }
+
+    /// <summary>
+    /// Evaluates a bounded ordered watch set without letting one invalid expression hide the rest.
+    /// </summary>
+    /// <param name="debugSession">The exact debugger-session identifier.</param>
+    /// <param name="stopGeneration">The exact current stopped generation.</param>
+    /// <param name="frameId">The generation-bound managed frame handle.</param>
+    /// <param name="expressions">The ordered side-effect-free expressions.</param>
+    /// <param name="cancellationToken">Cancels evaluation.</param>
+    /// <returns>The ordered current-generation watch results.</returns>
+    internal Task<McpDebugWatchesResult> GetWatchesAsync(
+        string debugSession,
+        long stopGeneration,
+        int frameId,
+        IReadOnlyList<string> expressions,
+        CancellationToken cancellationToken)
+    {
+        ValidatePositive(frameId, nameof(frameId));
+        ArgumentNullException.ThrowIfNull(expressions);
+        if (expressions.Count is 0 or > MaximumWatchCount)
+        {
+            throw InvalidRequest(
+                $"expressions must contain between one and {MaximumWatchCount} items.");
+        }
+
+        foreach (string expression in expressions)
+        {
+            ValidateExpression(expression);
+        }
+
+        return InvokeStoppedAsync(
+            debugSession,
+            stopGeneration,
+            async (session, client, token) =>
+            {
+                List<McpDebugWatchValue> watches = new(expressions.Count);
+                foreach (string expression in expressions)
+                {
+                    try
+                    {
+                        DebugEvaluateResult evaluation = await client.EvaluateAsync(
+                            new DebugEvaluateRequest(frameId, expression),
+                            token).ConfigureAwait(false);
+                        watches.Add(new McpDebugWatchValue(expression, evaluation, Error: null));
+                    }
+                    catch (RemoteInvocationException exception)
+                    {
+                        watches.Add(new McpDebugWatchValue(
+                            expression,
+                            Evaluation: null,
+                            new McpDebuggerError(
+                                "debugger_evaluation_failed",
+                                exception.Message)));
+                    }
+                }
+
+                return new McpDebugWatchesResult(session.Id, stopGeneration, watches);
+            },
             cancellationToken);
     }
 

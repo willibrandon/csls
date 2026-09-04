@@ -57,5 +57,11 @@ internal sealed partial class McpDebuggerSessionBroker
         {
             throw InvalidRequest("expression must not be empty.");
         }
+
+        if (expression.Length > MaximumExpressionLength)
+        {
+            throw InvalidRequest(
+                $"expression must not exceed {MaximumExpressionLength} UTF-16 code units.");
+        }
     }
 }

@@ -58,6 +58,17 @@ public sealed partial class McpDebuggerLifecycleTests
             variables.GetProperty("variables").EnumerateArray()
                 .Select(static variable => variable.GetProperty("name").GetString()));
 
+        JsonElement watches = await ReadAsync(
+            client,
+            $"csls://debug/watches/{debugSession}/{generation}/{frameId}?expression=localNumber",
+            cancellationToken).ConfigureAwait(false);
+        JsonElement watch = Assert.ContainsSingle(
+            watches.GetProperty("watches").EnumerateArray());
+        Assert.AreEqual("localNumber", watch.GetProperty("expression").GetString());
+        Assert.AreEqual(
+            "43",
+            watch.GetProperty("evaluation").GetProperty("result").GetString());
+
         JsonElement modules = await ReadAsync(
             client,
             $"csls://debug/modules/{debugSession}",

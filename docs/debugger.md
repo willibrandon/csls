@@ -378,7 +378,9 @@ worker does not advertise tools that it cannot run.
   handles expire as soon as execution resumes.
 - `debug_evaluate` evaluates the same source-language-aware, side-effect-free
   expression subset as DAP in an explicit current-generation frame. It is
-  read-only and does not require an agent-control grant.
+  read-only and does not require an agent-control grant. `debug_watches_get`
+  evaluates up to 64 watches in order and preserves an independent stable error
+  for each failed expression so one invalid watch does not hide valid values.
 - `debug_execute_expression` executes an explicitly qualified instance or loaded-type
   static method with supported bounded arguments in an explicit current-generation
   frame. It requires
@@ -427,6 +429,7 @@ clients that compose resources into their context:
 - `csls://debug/stack/{debugSession}/{stopGeneration}/{threadId}{?startFrame,levels}`
 - `csls://debug/scopes/{debugSession}/{stopGeneration}/{frameId}`
 - `csls://debug/variables/{debugSession}/{stopGeneration}/{variablesReference}{?start,count}`
+- `csls://debug/watches/{debugSession}/{stopGeneration}/{frameId}{?expression}`
 - `csls://debug/modules/{debugSession}{?startModule,moduleCount}`
 - `csls://debug/exception/{debugSession}/{stopGeneration}/{threadId}`
 - `csls://debug/source/{debugSession}/{stopGeneration}/{sourceReference}{?start,count}`

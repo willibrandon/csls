@@ -61,4 +61,30 @@ internal sealed partial class CslsMcpDebuggerResources
                     ParseInt(count, 0, nameof(count)),
                     cancellationToken).ConfigureAwait(false),
                 McpJsonSerializerContext.Default.McpDebugVariablesResult));
+
+    /// <summary>
+    /// Reads one side-effect-free watch expression for a generation-bound frame.
+    /// </summary>
+    [McpServerResource(
+        UriTemplate = "csls://debug/watches/{debugSession}/{stopGeneration}/{frameId}{?expression}",
+        Name = "csls debugger watch",
+        MimeType = "application/json")]
+    [Description("One independently evaluated watch for a frame and stopped generation.")]
+    public Task<TextResourceContents> GetWatchAsync(
+        RequestContext<ReadResourceRequestParams> requestContext,
+        string debugSession,
+        string stopGeneration,
+        string frameId,
+        string expression,
+        CancellationToken cancellationToken) =>
+        ReadAsync(
+            requestContext.Params.Uri,
+            async () => JsonSerializer.Serialize(
+                await _broker.GetWatchesAsync(
+                    debugSession,
+                    Parse(stopGeneration, 0, nameof(stopGeneration)),
+                    ParseInt(frameId, 0, nameof(frameId)),
+                    [expression],
+                    cancellationToken).ConfigureAwait(false),
+                McpJsonSerializerContext.Default.McpDebugWatchesResult));
 }

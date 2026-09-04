@@ -132,17 +132,25 @@ public sealed partial class McpDebuggerLifecycleTests
             threadId,
             sourcePath,
             cancellationToken).ConfigureAwait(false);
-        JsonElement assignment = await CallAsync(
+        int frameId = frame.GetProperty("id").GetInt32();
+        string watchResource =
+            $"csls://debug/watches/{debugSession}/{constructionGeneration}/{frameId}" +
+            "?expression=localObject.Number";
+        JsonElement assignment = await AssertResourceSubscriptionAsync(
             client,
-            "debug_expression_set",
-            new Dictionary<string, object?>
-            {
-                ["debugSession"] = debugSession,
-                ["stopGeneration"] = constructionGeneration,
-                ["frameId"] = frame.GetProperty("id").GetInt32(),
-                ["expression"] = "localObject.Number",
-                ["value"] = "50"
-            },
+            watchResource,
+            () => CallAsync(
+                client,
+                "debug_expression_set",
+                new Dictionary<string, object?>
+                {
+                    ["debugSession"] = debugSession,
+                    ["stopGeneration"] = constructionGeneration,
+                    ["frameId"] = frameId,
+                    ["expression"] = "localObject.Number",
+                    ["value"] = "50"
+                },
+                cancellationToken),
             cancellationToken).ConfigureAwait(false);
         Assert.AreEqual(
             constructionGeneration,

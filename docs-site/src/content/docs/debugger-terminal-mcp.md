@@ -69,7 +69,8 @@ Observation never grants target control. Read-only tools include:
 - `debug_modules_get`, `debug_breakpoints_get`, and `debug_exception_get`;
 - `debug_source_get`, `debug_memory_read`, and `debug_disassemble`;
 - `debug_step_targets_get`, `debug_goto_targets_get`, and `debug_output_get`; and
-- the side-effect-free `debug_evaluate` operation.
+- the side-effect-free `debug_evaluate` operation and bounded, independently
+  failing `debug_watches_get` watch sets.
 
 Execution, breakpoint replacement, direct assignment, function evaluation, restart,
 and attached-target termination require an active agent-control grant. Use

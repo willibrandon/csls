@@ -157,9 +157,11 @@ its bundled debugger worker is available:
 - `debug_session_end` terminates launched targets and detaches attached targets.
   Terminating an attached target additionally requires both
   `terminateAttachedTarget: true` and an active agent-control grant.
-- `debug_threads_get`, `debug_stack_get`, `debug_scopes_get`, and
-  `debug_variables_get` inspect one exact stopped generation. Returned frame and
-  variable handles expire when execution resumes.
+- `debug_threads_get`, `debug_stack_get`, `debug_scopes_get`,
+  `debug_variables_get`, `debug_evaluate`, and `debug_watches_get` inspect one
+  exact stopped generation. Watch sets report each invalid expression without
+  hiding valid values. Returned frame and variable handles expire when execution
+  resumes.
 - `debug_modules_get` returns a bounded managed-module page and validated symbol
   status.
 - `debug_breakpoints_get` reads every authoritative source, function, managed-IL,
@@ -186,9 +188,9 @@ its bundled debugger worker is available:
 
 Clients can also read the same selected state through `csls://debug/` resource
 templates for session state, output, breakpoints, threads, stacks, scopes,
-variables, modules, exceptions, source, memory, and managed-IL disassembly. Every
-stopped-state URI carries the exact `stopGeneration`, and bounded collections
-expose their cursor or paging inputs in the URI template.
+variables, watches, modules, exceptions, source, memory, and managed-IL
+disassembly. Every stopped-state URI carries the exact `stopGeneration`, and
+bounded collections expose their cursor or paging inputs in the URI template.
 
 Current MCP clients can subscribe to exact debugger URIs through
 `subscriptions/listen`. csls grants only resources belonging to the connection

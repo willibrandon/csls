@@ -20,6 +20,8 @@ namespace Csls.Mcp.Worker;
 [JsonSerializable(typeof(McpDebugScopesResult))]
 [JsonSerializable(typeof(McpDebugVariablesResult))]
 [JsonSerializable(typeof(McpDebugEvaluationResult))]
+[JsonSerializable(typeof(McpDebugWatchValue))]
+[JsonSerializable(typeof(McpDebugWatchesResult))]
 [JsonSerializable(typeof(McpDebugAssignmentResult))]
 [JsonSerializable(typeof(McpDebugModulesResult))]
 [JsonSerializable(typeof(McpDebugSourceBreakpoint))]

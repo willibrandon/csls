@@ -94,6 +94,50 @@ public sealed partial class McpDebuggerLifecycleTests
         Assert.AreEqual(
             "42",
             evaluation.GetProperty("evaluation").GetProperty("result").GetString());
+        JsonElement watches = await CallAsync(
+            client,
+            "debug_watches_get",
+            new Dictionary<string, object?>
+            {
+                ["debugSession"] = debugSession,
+                ["stopGeneration"] = generation,
+                ["frameId"] = frame.GetProperty("id").GetInt32(),
+                ["expressions"] = s_watchExpressions
+            },
+            cancellationToken).ConfigureAwait(false);
+        JsonElement[] watchValues = [.. watches.GetProperty("watches").EnumerateArray()];
+        Assert.HasCount(2, watchValues);
+        Assert.AreEqual(
+            "43",
+            watchValues[0].GetProperty("evaluation").GetProperty("result").GetString());
+        Assert.AreEqual(
+            "debugger_evaluation_failed",
+            watchValues[1].GetProperty("error").GetProperty("code").GetString());
+        Assert.IsFalse(watchValues[1].TryGetProperty("evaluation", out _));
+        await AssertToolErrorAsync(
+            client,
+            "debug_watches_get",
+            new Dictionary<string, object?>
+            {
+                ["debugSession"] = debugSession,
+                ["stopGeneration"] = generation,
+                ["frameId"] = frame.GetProperty("id").GetInt32(),
+                ["expressions"] = Enumerable.Repeat("localNumber", 65).ToArray()
+            },
+            "debugger_request_invalid",
+            cancellationToken).ConfigureAwait(false);
+        await AssertToolErrorAsync(
+            client,
+            "debug_watches_get",
+            new Dictionary<string, object?>
+            {
+                ["debugSession"] = debugSession,
+                ["stopGeneration"] = generation,
+                ["frameId"] = frame.GetProperty("id").GetInt32(),
+                ["expressions"] = new[] { new string('x', 4097) }
+            },
+            "debugger_request_invalid",
+            cancellationToken).ConfigureAwait(false);
         JsonElement convertedEvaluation = await CallAsync(
             client,
             "debug_evaluate",
@@ -210,6 +254,18 @@ public sealed partial class McpDebuggerLifecycleTests
             {
                 ["debugSession"] = debugSession,
                 ["stopGeneration"] = generation + 1
+            },
+            "debugger_stale_generation",
+            cancellationToken).ConfigureAwait(false);
+        await AssertToolErrorAsync(
+            client,
+            "debug_watches_get",
+            new Dictionary<string, object?>
+            {
+                ["debugSession"] = debugSession,
+                ["stopGeneration"] = generation + 1,
+                ["frameId"] = frame.GetProperty("id").GetInt32(),
+                ["expressions"] = s_singleWatchExpression
             },
             "debugger_stale_generation",
             cancellationToken).ConfigureAwait(false);

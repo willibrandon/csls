@@ -25,6 +25,7 @@ public sealed partial class McpDebuggerLifecycleTests
         "debug_scopes_get",
         "debug_variables_get",
         "debug_evaluate",
+        "debug_watches_get",
         "debug_execute_expression",
         "debug_variable_set",
         "debug_expression_set",
@@ -48,6 +49,12 @@ public sealed partial class McpDebuggerLifecycleTests
         "debugSession",
         "enabled"
     ];
+    private static readonly string[] s_watchExpressions =
+    [
+        "localNumber",
+        "localObject.NextNumber()"
+    ];
+    private static readonly string[] s_singleWatchExpression = ["localNumber"];
 
     /// <summary>
     /// Gets the active MSTest context and its framework-managed cancellation token.
@@ -93,6 +100,7 @@ public sealed partial class McpDebuggerLifecycleTests
         AssertAnnotations(tools, "debug_scopes_get", true, false, true, false);
         AssertAnnotations(tools, "debug_variables_get", true, false, true, false);
         AssertAnnotations(tools, "debug_evaluate", true, false, true, false);
+        AssertAnnotations(tools, "debug_watches_get", true, false, true, false);
         AssertAnnotations(tools, "debug_execute_expression", false, true, false, true);
         AssertAnnotations(tools, "debug_variable_set", false, true, false, true);
         AssertAnnotations(tools, "debug_expression_set", false, true, false, true);
@@ -157,6 +165,9 @@ public sealed partial class McpDebuggerLifecycleTests
             templateUris);
         Assert.Contains(
             "csls://debug/variables/{debugSession}/{stopGeneration}/{variablesReference}{?start,count}",
+            templateUris);
+        Assert.Contains(
+            "csls://debug/watches/{debugSession}/{stopGeneration}/{frameId}{?expression}",
             templateUris);
         Assert.Contains(
             "csls://debug/modules/{debugSession}{?startModule,moduleCount}",
