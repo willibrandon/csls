@@ -353,7 +353,7 @@ public sealed class RepositoryConventionAnalyzerTests
     }
 
     /// <summary>
-    /// Verifies initialization-only non-public fields require readonly semantics.
+    /// Verifies initialization-only fields require readonly semantics.
     /// </summary>
     [TestMethod]
     public async Task ReportsInitializationOnlyFieldWithoutReadonlyModifier()
@@ -362,6 +362,28 @@ public sealed class RepositoryConventionAnalyzerTests
             internal sealed class Fixture
             {
                 internal int Value = 42;
+            }
+            """;
+
+        ImmutableArray<Diagnostic> diagnostics = await AnalyzeAsync(
+            Source,
+            new CodeQlMissedReadonlyModifierAnalyzer()).ConfigureAwait(false);
+
+        Diagnostic diagnostic = Assert.ContainsSingle(diagnostics);
+        Assert.AreEqual(CodeQlMissedReadonlyModifierAnalyzer.DiagnosticId, diagnostic.Id);
+        Assert.Contains("Value", diagnostic.GetMessage(CultureInfo.InvariantCulture));
+    }
+
+    /// <summary>
+    /// Verifies public initialization-only fields receive the same readonly enforcement.
+    /// </summary>
+    [TestMethod]
+    public async Task ReportsPublicInitializationOnlyFieldWithoutReadonlyModifier()
+    {
+        const string Source = """
+            public sealed class Fixture
+            {
+                public int Value = 42;
             }
             """;
 
@@ -414,6 +436,66 @@ public sealed class RepositoryConventionAnalyzerTests
         ImmutableArray<Diagnostic> diagnostics = await AnalyzeAsync(
             Source,
             new CodeQlMissedReadonlyModifierAnalyzer()).ConfigureAwait(false);
+
+        Assert.IsEmpty(diagnostics);
+    }
+
+    /// <summary>
+    /// Verifies nullable out variables cannot be force-dereferenced after their guard.
+    /// </summary>
+    [TestMethod]
+    public async Task ReportsNullableOutVariableDereferencedAfterGuard()
+    {
+        const string Source = """
+            #nullable enable
+            using System.Collections.Generic;
+
+            internal static class Reader
+            {
+                internal static int Read(IReadOnlyDictionary<int, string> values)
+                {
+                    bool found = values.TryGetValue(1, out string? value);
+                    return found ? value!.Length : 0;
+                }
+            }
+            """;
+
+        ImmutableArray<Diagnostic> diagnostics = await AnalyzeAsync(
+            Source,
+            new CodeQlDereferencedValueMayBeNullAnalyzer()).ConfigureAwait(false);
+
+        Diagnostic diagnostic = Assert.ContainsSingle(diagnostics);
+        Assert.AreEqual(CodeQlDereferencedValueMayBeNullAnalyzer.DiagnosticId, diagnostic.Id);
+        Assert.Contains("value", diagnostic.GetMessage(CultureInfo.InvariantCulture));
+    }
+
+    /// <summary>
+    /// Verifies nullable out variables may be used inside their explicit declaring guard.
+    /// </summary>
+    [TestMethod]
+    public async Task AcceptsNullableOutVariableInsideDeclaringGuard()
+    {
+        const string Source = """
+            #nullable enable
+            using System.Collections.Generic;
+
+            internal static class Reader
+            {
+                internal static int Read(IReadOnlyDictionary<int, string> values)
+                {
+                    if (values.TryGetValue(1, out string? value) && value is not null)
+                    {
+                        return value!.Length;
+                    }
+
+                    return 0;
+                }
+            }
+            """;
+
+        ImmutableArray<Diagnostic> diagnostics = await AnalyzeAsync(
+            Source,
+            new CodeQlDereferencedValueMayBeNullAnalyzer()).ConfigureAwait(false);
 
         Assert.IsEmpty(diagnostics);
     }

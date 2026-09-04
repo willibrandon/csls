@@ -79,8 +79,6 @@ public sealed class CodeQlMissedReadonlyModifierAnalyzer : DiagnosticAnalyzer
             field.IsReadOnly ||
             field.IsVolatile ||
             field.ContainingType.TypeKind != TypeKind.Class ||
-            field.DeclaredAccessibility is not (
-                Accessibility.Private or Accessibility.Internal) ||
             field.Locations.FirstOrDefault(static location => location.IsInSource) is not
                 Location location)
         {

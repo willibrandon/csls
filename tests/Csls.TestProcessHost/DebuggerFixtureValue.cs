@@ -32,7 +32,7 @@ internal sealed class DebuggerFixtureValue
     /// <summary>
     /// Gets the named tuple field used for declared-field metadata tests.
     /// </summary>
-    public (int Code, string Label) Pair;
+    public readonly (int Code, string Label) Pair;
 
     /// <summary>
     /// Gets the file used to prove that target-code evaluation began.

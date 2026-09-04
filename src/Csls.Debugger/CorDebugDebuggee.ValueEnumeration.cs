@@ -56,21 +56,23 @@ internal sealed partial class CorDebugDebuggee
                 {
                     if (index >= start && (count == 0 || result.Count < count))
                     {
-                        bool hasSourceName = names.TryGetValue(
+                        _ = names.TryGetValue(
                             index,
-                            out ManagedSymbolVariable? sourceVariable) &&
-                            !string.IsNullOrEmpty(sourceVariable.Name);
+                            out ManagedSymbolVariable? sourceVariable);
+                        string? sourceName = sourceVariable?.Name;
                         ManagedTupleCustomTypeInfo? tupleCustomTypeInfo =
                             sourceVariable?.TupleCustomTypeInfo;
                         ManagedValueDisplay display = FormatRuntimeValue(
                             value,
                             tupleCustomTypeInfo);
-                        string name = hasSourceName
-                                ? sourceVariable!.Name
+                        string name = !string.IsNullOrEmpty(sourceName)
+                                ? sourceName
                                 : kind == ManagedScopeKind.Arguments
                                     ? $"argument {index}"
                                     : $"local {index}";
-                        string? evaluateName = hasSourceName ? sourceVariable!.Name : null;
+                        string? evaluateName = string.IsNullOrEmpty(sourceName)
+                            ? null
+                            : sourceName;
                         ManagedValueReferences references = RetainValue(
                             value,
                             generation,
