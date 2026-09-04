@@ -225,19 +225,13 @@ internal sealed class DebuggerTerminalAuxiliaryState
 
     private static string FormatBreakpointState(bool verified) => verified ? "●" : "○";
 
-    private static string FormatUserCode(bool? isUserCode) => isUserCode switch
-    {
-        true => "user",
-        false => "framework",
-        null => "classification unknown"
-    };
+    private static string FormatUserCode(bool? isUserCode) => !isUserCode.HasValue
+        ? "classification unknown"
+        : isUserCode.GetValueOrDefault() ? "user" : "framework";
 
-    private static string FormatOptimization(bool? isOptimized) => isOptimized switch
-    {
-        true => "optimized",
-        false => "unoptimized",
-        null => "optimization unknown"
-    };
+    private static string FormatOptimization(bool? isOptimized) => !isOptimized.HasValue
+        ? "optimization unknown"
+        : isOptimized.GetValueOrDefault() ? "optimized" : "unoptimized";
 
     private static string FormatBreakpointOptions(string? condition, string? hitCondition) =>
         (condition is null ? string.Empty : $"  when {condition}") +
