@@ -43,6 +43,11 @@ internal sealed class ManagedValueHandle
     internal ManagedValueView View { get; init; }
 
     /// <summary>
+    /// Gets or initializes the optional materialized snapshot that owns this value.
+    /// </summary>
+    internal ManagedResultsViewLifetime? Lifetime { get; init; }
+
+    /// <summary>
     /// Gets or sets the retained original object exposed by a successful proxy expansion.
     /// </summary>
     internal int ProxyRawValueReference { get; set; }
@@ -80,6 +85,11 @@ internal sealed class ManagedValueHandle
     /// Gets or initializes the canonical source expression for child values.
     /// </summary>
     internal string? EvaluateName { get; init; }
+
+    /// <summary>
+    /// Gets or initializes the exact physical storage represented by this retained value.
+    /// </summary>
+    internal ManagedValueOrigin? Origin { get; init; }
 
     /// <summary>
     /// Gets or initializes tuple-name transforms for the exact declared type use.

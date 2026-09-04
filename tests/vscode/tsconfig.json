@@ -6,7 +6,7 @@
     "forceConsistentCasingInFileNames": true,
     "lib": [
       "ES2025",
-      "WebWorker"
+      "DOM"
     ],
     "module": "NodeNext",
     "moduleResolution": "NodeNext",
@@ -26,6 +26,7 @@
     "useUnknownInCatchVariables": true
   },
   "include": [
+    "results-view-suite.ts",
     "semantic-highlighting-suite.ts",
     "startup-suite.ts",
     "suite.ts",

@@ -26,7 +26,10 @@ internal sealed partial class CorDebugDebuggee
         return ResolveInstanceFieldValue(receiver, node.Text!, plan.Language).Value;
     }
 
-    private unsafe (nint Value, ManagedTupleCustomTypeInfo? TupleCustomTypeInfo) ResolveInstanceFieldValue(
+    private unsafe (
+        nint Value,
+        ManagedTupleCustomTypeInfo? TupleCustomTypeInfo,
+        ManagedValueOrigin? Origin) ResolveInstanceFieldValue(
         ManagedExpressionValue receiver,
         string name,
         DebugExpressionLanguage language)
@@ -58,13 +61,15 @@ internal sealed partial class CorDebugDebuggee
                     ? StringComparison.OrdinalIgnoreCase
                     : StringComparison.Ordinal;
             ManagedTupleCustomTypeInfo? tupleCustomTypeInfo = GetExpressionTupleCustomTypeInfo(receiver);
+            ManagedValueOrigin? origin = GetValueOrigin(receiver);
             if (_tuplePresenter.TryGetElementValue(
                 dereferenced,
                 currentType,
                 tupleCustomTypeInfo,
                 name,
                 comparison,
-                out (nint Value, ManagedTupleCustomTypeInfo? CustomTypeInfo) tupleElement))
+                out (nint Value, ManagedTupleCustomTypeInfo? CustomTypeInfo, ManagedValueOrigin? Origin) tupleElement,
+                origin))
             {
                 return tupleElement;
             }
@@ -101,9 +106,12 @@ internal sealed partial class CorDebugDebuggee
                                 checked((int)(resolvedFieldToken & 0x00FFFFFF))));
                         ManagedTupleCustomTypeInfo? fieldTupleInfo = ManagedTupleElementNameReader.ReadAttribute(
                             metadata, field.GetCustomAttributes());
+                        ManagedValueOrigin? fieldOrigin = CreateFieldValueOrigin(
+                            origin, runtimeClass, resolvedFieldToken);
                         return (
                             GetObjectFieldValue(instance, runtimeClass, resolvedFieldToken),
-                            fieldTupleInfo);
+                            fieldTupleInfo,
+                            fieldOrigin);
                     }
 
                     nint* baseTypeAddress = &baseType;

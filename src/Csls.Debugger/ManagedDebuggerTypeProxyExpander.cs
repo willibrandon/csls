@@ -44,6 +44,7 @@ internal sealed class ManagedDebuggerTypeProxyExpander
     /// <param name="rawView">The original object exposed after proxy members.</param>
     /// <param name="staticView">The optional synthetic static-member container.</param>
     /// <param name="properties">The evaluated property presentations.</param>
+    /// <param name="filter">The semantic child category selected before pagination.</param>
     /// <returns>The requested ordered proxy-member page.</returns>
     internal List<DebugVariableInfo> Expand(
         nint value,
@@ -54,7 +55,8 @@ internal sealed class ManagedDebuggerTypeProxyExpander
         int count,
         ManagedDebuggerTypeProxyRawView rawView,
         ManagedDebuggerTypeProxyStaticView? staticView,
-        IReadOnlyList<ManagedDebuggerTypeProxyPropertyPresentation> properties)
+        IReadOnlyList<ManagedDebuggerTypeProxyPropertyPresentation> properties,
+        DebugVariableFilter filter)
     {
         List<ManagedDebuggerTypeProxyFieldBinding> fields = ResolveFields(value);
         nint instance = 0;
@@ -90,7 +92,7 @@ internal sealed class ManagedDebuggerTypeProxyExpander
             });
 
             var result = new List<DebugVariableInfo>();
-            var state = new ManagedObjectExpansionState();
+            var state = new ManagedObjectExpansionState { Filter = filter };
             foreach ((
                 _,
                 _,
@@ -312,6 +314,11 @@ internal sealed class ManagedDebuggerTypeProxyExpander
         int count,
         ManagedObjectExpansionState state)
     {
+        if (!state.Includes(isIndexed: false))
+        {
+            return;
+        }
+
         EnsureExpandableValueLimit(state.VisibleIndex, additionalCount: 1);
         if (state.VisibleIndex >= start && !IsPageFull(result, count))
         {
@@ -339,9 +346,14 @@ internal sealed class ManagedDebuggerTypeProxyExpander
         int count,
         ManagedObjectExpansionState state)
     {
-        EnsureExpandableValueLimit(state.VisibleIndex, property.Variables.Count);
         foreach (DebugVariableInfo variable in property.Variables)
         {
+            if (!state.Includes(variable.IsIndexed))
+            {
+                continue;
+            }
+
+            EnsureExpandableValueLimit(state.VisibleIndex, additionalCount: 1);
             if (state.VisibleIndex >= start && !IsPageFull(result, count))
             {
                 result.Add(variable);
@@ -366,6 +378,11 @@ internal sealed class ManagedDebuggerTypeProxyExpander
         int count,
         ManagedObjectExpansionState state)
     {
+        if (!state.Includes(isIndexed: false))
+        {
+            return;
+        }
+
         EnsureExpandableValueLimit(state.VisibleIndex, additionalCount: 1);
         if (state.VisibleIndex >= start && !IsPageFull(result, count))
         {
@@ -444,6 +461,11 @@ internal sealed class ManagedDebuggerTypeProxyExpander
                 ICorDebugArrayValueAbi.InterfaceId,
                 out array))
             {
+                if (!state.Includes(isIndexed: true))
+                {
+                    return true;
+                }
+
                 int elementCount = checked((int)GetArrayElementCount(
                     new ICorDebugArrayValueAbi(array)));
                 EnsureExpandableValueLimit(state.VisibleIndex, elementCount);
@@ -481,7 +503,8 @@ internal sealed class ManagedDebuggerTypeProxyExpander
                 tupleCustomTypeInfo: null,
                 proxyRawView: null,
                 proxyStaticView: null,
-                proxyProperties: null);
+                proxyProperties: null,
+                filter: state.Filter);
             EnsureExpandableValueLimit(state.VisibleIndex, children.Count);
             int first = Math.Clamp(start - state.VisibleIndex, 0, children.Count);
             int take = count == 0
@@ -658,6 +681,11 @@ internal sealed class ManagedDebuggerTypeProxyExpander
         int count,
         ManagedObjectExpansionState state)
     {
+        if (!state.Includes(isIndexed: false))
+        {
+            return;
+        }
+
         EnsureExpandableValueLimit(state.VisibleIndex, additionalCount: 1);
         if (state.VisibleIndex >= start && !IsPageFull(result, count))
         {

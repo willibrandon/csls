@@ -121,7 +121,8 @@ public sealed partial class DebuggerControlService :
                 request.Start,
                 request.Count,
                 request.AllowTargetCodeExecution,
-                cancellationToken).ConfigureAwait(false);
+                cancellationToken,
+                request.Filter).ConfigureAwait(false);
         }
         finally
         {

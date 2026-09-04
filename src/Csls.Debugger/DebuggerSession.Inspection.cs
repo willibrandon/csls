@@ -140,7 +140,7 @@ public sealed partial class DebuggerSession
     /// <summary>
     /// Gets runtime-backed scopes for a frame in the current stop generation.
     /// </summary>
-    /// <param name="frameId">The generation-bound managed frame handle.</param>
+    /// <param name="frameId">The logical managed frame identifier for the visible stop.</param>
     /// <param name="cancellationToken">Cancels queueing scope creation.</param>
     /// <returns>The frame's available variable scopes.</returns>
     public async Task<IReadOnlyList<DebugScopeInfo>> GetScopesAsync(
@@ -175,17 +175,27 @@ public sealed partial class DebuggerSession
     /// <param name="count">The maximum count, or zero for all remaining values.</param>
     /// <param name="allowTargetCodeExecution">Whether target-code presentation is authorized.</param>
     /// <param name="cancellationToken">Cancels queueing variable enumeration.</param>
+    /// <param name="filter">The child category to select before applying pagination.</param>
     /// <returns>The requested immediate variable page.</returns>
     public async Task<IReadOnlyList<DebugVariableInfo>> GetVariablesAsync(
         int variablesReference,
         int start,
         int count,
         bool allowTargetCodeExecution,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        DebugVariableFilter filter = DebugVariableFilter.All)
     {
         ObjectDisposedException.ThrowIf(_disposed != 0, this);
+        ArgumentOutOfRangeException.ThrowIfNegative(start);
+        ArgumentOutOfRangeException.ThrowIfNegative(count);
+        if (!Enum.IsDefined(filter))
+        {
+            throw new ArgumentOutOfRangeException(nameof(filter));
+        }
+
         IReadOnlyList<DebugVariableInfo>? result = null;
         Task<ManagedFunctionEvaluationResult>? proxyEvaluation = null;
+        bool resultsViewEvaluation = false;
         CorDebugDebuggee? evaluationDebuggee = null;
         await _actor.InvokeAsync(
             token =>
@@ -203,10 +213,10 @@ public sealed partial class DebuggerSession
                         variablesReference,
                         _stopGeneration,
                         out proxyEvaluation) ||
-                    managedDebuggee.TryBeginResultsViewEvaluation(
+                    (resultsViewEvaluation = managedDebuggee.TryBeginResultsViewEvaluation(
                         variablesReference,
                         _stopGeneration,
-                        out proxyEvaluation)))
+                        out proxyEvaluation))))
                 {
                     evaluationDebuggee = managedDebuggee;
                     _state = DebugSessionState.Running;
@@ -217,7 +227,8 @@ public sealed partial class DebuggerSession
                         variablesReference,
                         _stopGeneration,
                         start,
-                        count);
+                        count,
+                        filter);
                 }
 
                 return ValueTask.CompletedTask;
@@ -243,11 +254,14 @@ public sealed partial class DebuggerSession
                         "The debugger presentation belongs to a retired stop generation.");
                 }
 
-                result = managedDebuggee.GetVariables(
-                    proxy.RuntimeValueReference,
-                    proxy.Generation,
-                    start,
-                    count);
+                result = resultsViewEvaluation
+                    ? [managedDebuggee.GetResultsViewSnapshot(proxy.RuntimeValueReference, proxy.Generation)]
+                    : managedDebuggee.GetVariables(
+                        proxy.RuntimeValueReference,
+                        proxy.Generation,
+                        start,
+                        count,
+                        filter);
                 return ValueTask.CompletedTask;
             },
             cancellationToken).ConfigureAwait(false);

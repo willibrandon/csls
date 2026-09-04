@@ -11,7 +11,7 @@ internal sealed partial class CorDebugDebuggee
     /// <summary>
     /// Assigns a side-effect-free value plan to one writable source expression.
     /// </summary>
-    /// <param name="frameId">The generation-bound managed frame.</param>
+    /// <param name="frameId">The logical managed frame identifier for the visible stop.</param>
     /// <param name="target">The compiler-lowered writable target.</param>
     /// <param name="value">The compiler-lowered value expression.</param>
     /// <param name="targetExpression">The canonical source target expression.</param>
@@ -55,7 +55,7 @@ internal sealed partial class CorDebugDebuggee
     /// <summary>
     /// Creates a string-materialization plan when safe evaluation produced no runtime reference.
     /// </summary>
-    /// <param name="frameId">The generation-bound managed frame.</param>
+    /// <param name="frameId">The logical managed frame identifier for the visible stop.</param>
     /// <param name="value">The compiler-lowered value expression.</param>
     /// <param name="generation">The current stopped generation.</param>
     /// <returns>A literal string plan to materialize, or null when direct assignment is sufficient.</returns>
@@ -92,7 +92,7 @@ internal sealed partial class CorDebugDebuggee
     /// <summary>
     /// Assigns a retained function-evaluation result to a freshly reacquired target.
     /// </summary>
-    /// <param name="frameId">The replacement generation-bound managed frame.</param>
+    /// <param name="frameId">The logical managed frame reacquired in the replacement generation.</param>
     /// <param name="target">The compiler-lowered writable target.</param>
     /// <param name="evaluation">The retained target-code result.</param>
     /// <param name="targetExpression">The canonical source target expression.</param>
@@ -115,6 +115,7 @@ internal sealed partial class CorDebugDebuggee
                 "The assignment evaluation did not produce a retained runtime value.");
         }
 
+        ValidateValueLifetime(retained);
         ManagedFrameHandle frame = GetFrame(frameId, evaluation.Generation);
         ManagedExpressionPlanValidator.Validate(target, frame.ExpressionLanguage);
         ManagedExpressionValue source = ManagedExpressionValueFactory.FromVariable(
@@ -156,6 +157,7 @@ internal sealed partial class CorDebugDebuggee
             generation);
         try
         {
+            RetireResultsViewSnapshot();
             AssignManagedValue(
                 destination,
                 source,
@@ -210,7 +212,10 @@ internal sealed partial class CorDebugDebuggee
         ManagedFrameHandle frame,
         string name) => ResolveFrameValue(frame, name, allowInstanceReceiver: false).Value;
 
-    private static (nint Value, ManagedTupleCustomTypeInfo? TupleCustomTypeInfo) ResolveFrameValue(
+    private static (
+        nint Value,
+        ManagedTupleCustomTypeInfo? TupleCustomTypeInfo,
+        ManagedValueOrigin? Origin) ResolveFrameValue(
         ManagedFrameHandle frame,
         string name,
         bool allowInstanceReceiver)
@@ -228,7 +233,8 @@ internal sealed partial class CorDebugDebuggee
             return (
                 GetFrameAssignmentTarget(
                     frame.Pointer, ManagedScopeKind.Locals, localIndex.Value),
-                localNames[localIndex.Value].TupleCustomTypeInfo);
+                localNames[localIndex.Value].TupleCustomTypeInfo,
+                frame.CreateValueOrigin(ManagedScopeKind.Locals, localIndex.Value));
         }
 
         IReadOnlyDictionary<int, ManagedSymbolVariable> argumentNames = GetVariableNames(
@@ -248,7 +254,8 @@ internal sealed partial class CorDebugDebuggee
             return (
                 GetFrameAssignmentTarget(
                     frame.Pointer, ManagedScopeKind.Arguments, argumentIndex.Value),
-                argumentNames[argumentIndex.Value].TupleCustomTypeInfo);
+                argumentNames[argumentIndex.Value].TupleCustomTypeInfo,
+                frame.CreateValueOrigin(ManagedScopeKind.Arguments, argumentIndex.Value));
         }
 
         throw new InvalidOperationException(

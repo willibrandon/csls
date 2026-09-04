@@ -42,24 +42,36 @@ internal sealed partial class CorDebugDebuggee
     /// <param name="generation">The current debugger stop generation.</param>
     /// <param name="start">The zero-based first value to return.</param>
     /// <param name="count">The maximum count, or zero for all remaining values.</param>
+    /// <param name="filter">The child category to select before applying pagination.</param>
     /// <returns>The requested immediate variable page.</returns>
     internal IReadOnlyList<DebugVariableInfo> GetVariables(
         int variablesReference,
         DebugStopGeneration generation,
         int start,
-        int count)
+        int count,
+        DebugVariableFilter filter = DebugVariableFilter.All)
     {
         ArgumentOutOfRangeException.ThrowIfNegative(start);
         ArgumentOutOfRangeException.ThrowIfNegative(count);
+        if (!Enum.IsDefined(filter))
+        {
+            throw new ArgumentOutOfRangeException(nameof(filter));
+        }
+
         ManagedScopeHandle? scope = _scopes.Values.FirstOrDefault(
             candidate => candidate.Id == variablesReference);
         if (scope is null)
         {
-            return ExpandValue(variablesReference, generation, start, count);
+            return ExpandValue(variablesReference, generation, start, count, filter);
         }
 
         ValidateGeneration(variablesReference, scope.Generation, generation);
         ManagedFrameHandle frame = GetFrame(scope.FrameId, generation);
+        if (filter == DebugVariableFilter.Indexed)
+        {
+            return [];
+        }
+
         IReadOnlyDictionary<int, ManagedSymbolVariable> names = GetVariableNames(
             frame,
             scope.Kind);

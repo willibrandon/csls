@@ -116,6 +116,31 @@ public sealed partial class DapSessionTests
                 s_pagedDebuggerBrowsableNames,
                 page.Select(variable => variable.GetProperty("name").GetString()).ToArray());
 
+            JsonElement[] indexed = await ReadVariablesPageAsync(
+                client, defaultReference, start: 0, count: 0, filter: "indexed").ConfigureAwait(false);
+            Assert.AreSequenceEqual(
+                ["[0]", "[1]"],
+                indexed.Select(variable => variable.GetProperty("name").GetString()).ToArray());
+            Assert.AreSequenceEqual(
+                ["49", "50"],
+                indexed.Select(variable => variable.GetProperty("value").GetString()).ToArray());
+            JsonElement indexedPage = Assert.ContainsSingle(await ReadVariablesPageAsync(
+                client, defaultReference, start: 1, count: 1, filter: "indexed").ConfigureAwait(false));
+            Assert.AreEqual("[1]", indexedPage.GetProperty("name").GetString());
+            Assert.AreEqual("50", indexedPage.GetProperty("value").GetString());
+            JsonElement[] named = await ReadVariablesPageAsync(
+                client, defaultReference, start: 0, count: 0, filter: "named").ConfigureAwait(false);
+            Assert.AreSequenceEqual(
+                ["_visible", "_collapsed", "_nested", "_scalarRoot", "_self", "_missing", "Raw View"],
+                named.Select(variable => variable.GetProperty("name").GetString()).ToArray());
+            JsonElement[] namedPage = await ReadVariablesPageAsync(
+                client, defaultReference, start: 1, count: 2, filter: "named").ConfigureAwait(false);
+            Assert.AreSequenceEqual(
+                ["_collapsed", "_nested"],
+                namedPage.Select(variable => variable.GetProperty("name").GetString()).ToArray());
+            Assert.IsEmpty(await ReadVariablesPageAsync(
+                client, rawReference, start: 0, count: 0, filter: "indexed").ConfigureAwait(false));
+
             await ResumeAndReleaseFixtureAsync(client, waitPath).ConfigureAwait(false);
             Assert.AreEqual(string.Empty, client.Diagnostics.ToString());
         }
@@ -129,7 +154,8 @@ public sealed partial class DapSessionTests
         DapTestClient client,
         int variablesReference,
         int start,
-        int count)
+        int count,
+        string? filter = null)
     {
         int sequence = await client.SendRequestAsync(
             "variables",
@@ -139,6 +165,11 @@ public sealed partial class DapSessionTests
                 writer.WriteNumber("variablesReference", variablesReference);
                 writer.WriteNumber("start", start);
                 writer.WriteNumber("count", count);
+                if (filter is not null)
+                {
+                    writer.WriteString("filter", filter);
+                }
+
                 writer.WriteEndObject();
             },
             TestContext.CancellationToken).ConfigureAwait(false);

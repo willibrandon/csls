@@ -4,12 +4,12 @@ using Csls.Debugger.Interop;
 namespace Csls.Debugger;
 
 /// <summary>
-/// Enumerates managed threads and generation-bound stack frames.
+/// Enumerates logical managed frames with generation-bound native bindings.
 /// </summary>
 internal sealed partial class CorDebugDebuggee
 {
     /// <summary>
-    /// Enumerates a page of managed frames and retains generation-bound frame handles.
+    /// Enumerates managed frames and retains native bindings for the current generation.
     /// </summary>
     /// <param name="threadId">The runtime thread identifier.</param>
     /// <param name="generation">The current debugger stop generation.</param>
@@ -137,15 +137,12 @@ internal sealed partial class CorDebugDebuggee
     /// </summary>
     internal void DiscardBreakpointInspection() => ClearFrameHandles();
 
-    private void ClearFrameHandles()
+    private void ClearFrameHandles(bool preserveFrameIdentity = false)
     {
-        foreach (ManagedFrameHandle frame in _frames.Values)
-        {
-            _ = ComAbi.Release(frame.Pointer);
-        }
-
-        _frames.Clear();
+        RetireResultsViewSnapshot();
+        _frames.Clear(preserveFrameIdentity);
         _instructionFrames.Clear();
+        _instructionAddressFrames.Clear();
         _stepTargets.Clear();
         _gotoTargets.Clear();
         _scopes.Clear();
@@ -182,9 +179,18 @@ internal sealed partial class CorDebugDebuggee
 
     private ManagedFrameHandle GetFrame(int frameId, DebugStopGeneration generation)
     {
-        ManagedFrameHandle frame = _frames.Values.FirstOrDefault(
-            candidate => candidate.Id == frameId)
-            ?? throw new InvalidOperationException($"Frame {frameId} is stale or unknown.");
+        if (!_frames.TryGetCurrent(frameId, out ManagedFrameHandle? frame))
+        {
+            ManagedFrameIdentity identity = _frames.GetIdentity(frameId);
+            _ = GetStackTrace(identity.ThreadId, generation, startFrame: 0, levels: 0);
+            if (!_frames.TryGetCurrent(frameId, out frame))
+            {
+                _frames.RetireIdentity(frameId);
+                throw new InvalidOperationException(
+                    $"Frame {frameId} no longer identifies the same physical managed activation.");
+            }
+        }
+
         if (frame.Generation != generation)
         {
             throw new InvalidOperationException(

@@ -1074,7 +1074,7 @@ jobs:
           - group: desktop
             cache_key: desktop
             save_cache: true
-            filter: FullyQualifiedName=Csls.Tests.VsCodeLanguageServerTests.VsCodeDesktopHostProvidesCSharpLanguageFeatures|FullyQualifiedName=Csls.Tests.VsCodeLanguageServerTests.VsCodeHostEnablesSemanticHighlightingWithoutThemeOptIn|FullyQualifiedName=Csls.Tests.VsCodeLanguageServerTests.VsCodeHostStopsAutomaticTestDiscoveryProcessesOnShutdown|TestCategory=VsCodeOracle
+            filter: FullyQualifiedName=Csls.Tests.VsCodeLanguageServerTests.VsCodeDesktopHostProvidesCSharpLanguageFeatures|FullyQualifiedName=Csls.Tests.VsCodeLanguageServerTests.VsCodeHostEnablesSemanticHighlightingWithoutThemeOptIn|FullyQualifiedName=Csls.Tests.VsCodeLanguageServerTests.VsCodeHostStopsAutomaticTestDiscoveryProcessesOnShutdown|FullyQualifiedName=Csls.Tests.VsCodeLanguageServerTests.VsCodeVariablesViewResolvesAndPagesResultsView|TestCategory=VsCodeOracle
             graphical_arguments: --without-clipboard --without-tree-sitter --without-vulkan
             remote: false
             web: false

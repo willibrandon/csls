@@ -110,8 +110,15 @@ internal sealed partial class CorDebugDebuggee
                 CultureInfo.InvariantCulture,
                 out ulong virtualAddress))
         {
-            int frameId = checked((int)(virtualAddress >> 32));
-            ManagedFrameHandle frame = GetFrame(frameId, generation);
+            ulong ownerId = virtualAddress >> 32;
+            if (ownerId == 0 || ownerId > int.MaxValue ||
+                !_instructionAddressFrames.TryGetValue((int)ownerId, out ManagedFrameHandle? frame))
+            {
+                throw new InvalidOperationException(
+                    $"Instruction reference '{reference}' is stale or unknown.");
+            }
+
+            ValidateGeneration(frame.InstructionAddressId, frame.Generation, generation);
             return new ManagedInstructionReferenceHandle
             {
                 Frame = frame,

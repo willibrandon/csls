@@ -61,8 +61,10 @@ Only the selected managed thread runs during a call. One function evaluation can
 active at a time and has a five-second deadline. Cancellation and timeout call
 `ICorDebugEval.Abort`, await the completion callback, and never escalate to
 `RudeAbort`. A returned value, target exception, or cooperative abort advances the stop
-generation because target code may allocate, collect, or mutate state. If cooperative
-abort cannot restore a trustworthy stop, the session faults.
+generation because target code may allocate, collect, or mutate state. The same stopped
+physical frame keeps its logical identifier while csls reacquires native bindings and
+refreshes variable views. Resuming or stepping the application retires frame identifiers.
+If cooperative abort cannot restore a trustworthy stop, the session faults.
 
 MCP separates these semantics into `debug_execute_expression`, which requires
 an active time-bounded grant from `debug_agent_control_set` and the exact current
@@ -78,7 +80,7 @@ managed array element. The right-hand side uses the side-effect-free evaluator.
 
 Supported values are exact primitives, checked contextual integral literals,
 language-valid built-in numeric widening, explicit primitive conversions, `null`, and
-an existing runtime reference with the same displayed type. Direct writes do not run
+an existing runtime reference with the same runtime type. Direct writes do not run
 target code, so they preserve the generation and publish variable invalidation for
 aliased editor views.
 
@@ -133,8 +135,12 @@ getters can run arbitrary target code and advance the stop generation.
 Enumerable objects expose a lazy Results View when the target has loaded the runtime's
 enumeration debug view. Listing the row does not run enumeration. Expanding it runs the
 selected `IEnumerable<T>` or `IEnumerable` implementation through guarded evaluation,
-materializes the enumeration before returning the requested element page, and
-invalidates old handles. Page size does not limit target enumeration. The row displays an
+materializes the enumeration into a non-lazy snapshot, and invalidates generation-owned
+scope, variable, and memory handles. Unchanged physical frames retain their logical identifiers.
+Pages, refreshed scopes, and expression inspection of the same receiver reuse that
+snapshot. Target execution or a direct debugger assignment retires the snapshot
+and its child and memory handles.
+Page size does not limit target enumeration. The row displays an
 execution warning and carries lazy and side-effect presentation hints. Empty results
 display an Empty message; target exceptions retain a usable stopped session. Arrays,
 strings, and successful debugger proxies use their existing presentations.
@@ -142,7 +148,10 @@ strings, and successful debugger proxies use their existing presentations.
 MCP `debug_variables_get` remains read-only, including after a control grant. Use
 `debug_variables_get_presented` with an active `debug_agent_control_set` grant and the
 exact generation to construct proxies or expand Results View. This tool returns the
-replacement generation after execution.
+replacement generation after execution. Resolving Results View returns one replacement
+variable with the snapshot reference and child counts. Use that reference and generation
+with `debug_variables_get` or the variables resource to read snapshot pages without
+another control grant or target execution.
 
 ## Memory and disassembly
 

@@ -78,7 +78,8 @@ internal sealed partial class CorDebugDebuggee
                             generation,
                             evaluateName,
                             frame.Id,
-                            tupleCustomTypeInfo: tupleCustomTypeInfo);
+                            tupleCustomTypeInfo: tupleCustomTypeInfo,
+                            origin: frame.CreateValueOrigin(kind, index));
                         result.Add(new DebugVariableInfo(
                             name,
                             display.Value,

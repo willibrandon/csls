@@ -12,12 +12,12 @@ internal sealed partial class CorDebugDebuggee
         string name,
         DebugStopGeneration generation)
     {
-        (nint value, ManagedTupleCustomTypeInfo? tupleCustomTypeInfo) = ResolveFrameValue(
+        (nint value, ManagedTupleCustomTypeInfo? tupleCustomTypeInfo, ManagedValueOrigin? origin) = ResolveFrameValue(
             frame, name, allowInstanceReceiver: true);
         try
         {
             return RetainExpressionValue(
-                name, name, value, frame.Id, generation, tupleCustomTypeInfo);
+                name, name, value, frame.Id, generation, tupleCustomTypeInfo, origin);
         }
         finally
         {
@@ -31,12 +31,14 @@ internal sealed partial class CorDebugDebuggee
         nint value,
         int frameId,
         DebugStopGeneration generation,
-        ManagedTupleCustomTypeInfo? tupleCustomTypeInfo)
+        ManagedTupleCustomTypeInfo? tupleCustomTypeInfo,
+        ManagedValueOrigin? origin)
     {
         (ManagedValueDisplay runtimeValue, ManagedValueDisplay formatted) = FormatRuntimeValuePair(
             value, debuggerDisplayDepth: 0, tupleCustomTypeInfo);
         ManagedValueReferences references = RetainValue(
-            value, generation, evaluateName, frameId, tupleCustomTypeInfo: tupleCustomTypeInfo);
+            value, generation, evaluateName, frameId,
+            tupleCustomTypeInfo: tupleCustomTypeInfo, origin: origin);
         ManagedExpressionValue expression = ManagedExpressionValueFactory.FromVariable(
             new DebugVariableInfo(
                 name, formatted.Value, formatted.Type,
@@ -55,15 +57,28 @@ internal sealed partial class CorDebugDebuggee
             frameId,
             GetValueThreadId(frameId),
             ManagedValueView.Default,
-            tupleCustomTypeInfo);
+            tupleCustomTypeInfo,
+            origin);
         return expression with { RuntimeValueReference = retained.Id };
     }
 
     private ManagedTupleCustomTypeInfo? GetExpressionTupleCustomTypeInfo(
-        ManagedExpressionValue value) =>
-        _values.TryGetValue(value.RuntimeValueReference, out ManagedValueHandle? retained)
-            ? retained.TupleCustomTypeInfo
-            : null;
+        ManagedExpressionValue value)
+    {
+        if (value.RuntimeValueReference <= 0)
+        {
+            return null;
+        }
+
+        if (!_values.TryGetValue(value.RuntimeValueReference, out ManagedValueHandle? retained))
+        {
+            throw new InvalidOperationException(
+                $"Variable reference {value.RuntimeValueReference} is stale or unknown.");
+        }
+
+        ValidateValueLifetime(retained);
+        return retained.TupleCustomTypeInfo;
+    }
 
     private int[] EvaluateArrayIndexes(
         ManagedFrameHandle frame,

@@ -247,7 +247,7 @@ internal sealed partial class CorDebugDebuggee
     {
         try
         {
-            Continue();
+            ContinueForFunctionEvaluation();
         }
         catch
         {
@@ -278,6 +278,9 @@ internal sealed partial class CorDebugDebuggee
             ReleaseFunctionEvaluationHandle(argument, runtimeAvailable);
         }
 
+        ReleaseFunctionEvaluationHandle(
+            evaluation.ResultsView?.DetachReceiverIdentity()?.DetachHeapHandle() ?? 0,
+            runtimeAvailable);
         evaluation.ResultsView?.Release();
 
         if (evaluation.Function != 0)

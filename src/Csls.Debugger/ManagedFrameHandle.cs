@@ -4,7 +4,7 @@ using System.Reflection.PortableExecutable;
 namespace Csls.Debugger;
 
 /// <summary>
-/// Retains one runtime frame pointer and its stop-generation identity.
+/// Retains a current-generation native binding for one logical application-level stopped frame.
 /// </summary>
 internal sealed class ManagedFrameHandle
 {
@@ -32,6 +32,16 @@ internal sealed class ManagedFrameHandle
     /// Gets or initializes the zero-based position in the managed stack.
     /// </summary>
     internal required int FrameIndex { get; init; }
+
+    /// <summary>
+    /// Gets or initializes the physical frame stack-range start.
+    /// </summary>
+    internal required ulong StackStart { get; init; }
+
+    /// <summary>
+    /// Gets or initializes the physical frame stack-range end.
+    /// </summary>
+    internal required ulong StackEnd { get; init; }
 
     /// <summary>
     /// Gets or initializes the method-definition metadata token when available.
@@ -84,9 +94,26 @@ internal sealed class ManagedFrameHandle
     internal required string InstructionReference { get; init; }
 
     /// <summary>
+    /// Gets or initializes the monotonic owner of numeric IL addresses for this native binding.
+    /// </summary>
+    internal required int InstructionAddressId { get; init; }
+
+    /// <summary>
     /// Gets or initializes the source-language evaluator grammar.
     /// </summary>
     internal required DebugExpressionLanguage ExpressionLanguage { get; init; }
+
+    /// <summary>
+    /// Identifies one exact slot when this frame has a resolved runtime module and method.
+    /// </summary>
+    /// <param name="kind">The argument or local collection containing the slot.</param>
+    /// <param name="index">The physical zero-based slot index.</param>
+    /// <returns>The exact physical origin, or null when its stack range, module, or method is unavailable.</returns>
+    internal ManagedValueOrigin? CreateValueOrigin(ManagedScopeKind kind, int index) =>
+        ModuleId is int moduleId && MethodToken != 0 && StackStart != 0 && StackEnd != 0
+            ? new ManagedFrameValueOrigin(
+                ThreadId, StackStart, StackEnd, moduleId, MethodToken, kind, index)
+            : null;
 
     /// <summary>
     /// Opens an owned PE reader over the file or immutable in-memory module image.

@@ -7,6 +7,13 @@ namespace Csls.Debugger.Tests;
 /// </summary>
 public sealed partial class DapSessionTests
 {
+    private static void WriteVariablePagingInitializeArguments(Utf8JsonWriter writer)
+    {
+        writer.WriteStartObject();
+        writer.WriteBoolean("supportsVariablePaging", true);
+        writer.WriteEndObject();
+    }
+
     private async Task<JsonElement[]> ReadVariablesAsync(
         DapTestClient client,
         int variablesReference,

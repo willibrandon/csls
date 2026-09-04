@@ -11,7 +11,7 @@ namespace Csls.Debugger;
 /// </summary>
 internal sealed partial class CorDebugDebuggee
 {
-    private unsafe nint GetResultsViewTarget(nint value)
+    private unsafe nint GetResultsViewTarget(nint value, ref ManagedValueOrigin? origin)
     {
         nint value2 = ComAbi.QueryInterface(value, ICorDebugValue2Abi.InterfaceId);
         nint type = 0;
@@ -22,7 +22,9 @@ internal sealed partial class CorDebugDebuggee
                 new ICorDebugValue2Abi(value2).GetExactType((nint)typeAddress),
                 "ICorDebugValue2.GetExactType");
             type = RequirePointer(Volatile.Read(ref *typeAddress), "ICorDebugValue2.GetExactType");
-            return IsNullableType(type) ? RetainNullableResultsViewTarget(value, type) : Retain(value);
+            return IsNullableType(type)
+                ? RetainNullableResultsViewTarget(value, type, ref origin)
+                : Retain(value);
         }
         finally
         {
@@ -31,7 +33,8 @@ internal sealed partial class CorDebugDebuggee
         }
     }
 
-    private nint RetainNullableResultsViewTarget(nint value, nint type)
+    private nint RetainNullableResultsViewTarget(
+        nint value, nint type, ref ManagedValueOrigin? origin)
     {
         nint instance = 0;
         nint runtimeClass = 0;
@@ -57,6 +60,8 @@ internal sealed partial class CorDebugDebuggee
                 }
                 else if (name == "value")
                 {
+                    origin = CreateFieldValueOrigin(
+                        origin, runtimeClass, checked((uint)MetadataTokens.GetToken(field)));
                     containedValue = GetObjectFieldValue(instance, runtimeClass,
                         checked((uint)MetadataTokens.GetToken(field)));
                 }

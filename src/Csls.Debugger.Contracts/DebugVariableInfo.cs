@@ -10,6 +10,9 @@ namespace Csls.Debugger.Contracts;
 /// <param name="MemoryReference">The opaque stopped-state memory handle, or null when unavailable.</param>
 /// <param name="EvaluateName">The source expression that retrieves the value, or null when unavailable.</param>
 /// <param name="PresentationKind">The client presentation category for the variable.</param>
+/// <param name="NamedVariables">The known number of named children, or null when unavailable.</param>
+/// <param name="IndexedVariables">The known number of indexed children, or null when unavailable.</param>
+/// <param name="IsIndexed">Whether this entry is an indexed child rather than a named member.</param>
 public sealed record DebugVariableInfo(
     string Name,
     string Value,
@@ -17,4 +20,7 @@ public sealed record DebugVariableInfo(
     int VariablesReference,
     string? MemoryReference,
     string? EvaluateName,
-    DebugVariablePresentationKind PresentationKind = DebugVariablePresentationKind.Normal);
+    DebugVariablePresentationKind PresentationKind = DebugVariablePresentationKind.Normal,
+    int? NamedVariables = null,
+    int? IndexedVariables = null,
+    bool IsIndexed = false);

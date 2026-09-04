@@ -138,13 +138,15 @@ internal sealed partial class DapSession
                 "variables");
             int start = GetOptionalNonNegativeInteger(arguments, "start", "variables");
             int count = GetOptionalNonNegativeInteger(arguments, "count", "variables");
+            DebugVariableFilter filter = GetVariableFilter(arguments);
             IReadOnlyList<DebugVariableInfo> variables = await _engineSession
                 .GetVariablesAsync(
                     variablesReference,
-                    start,
-                    count,
+                    _clientSupportsVariablePaging ? start : 0,
+                    _clientSupportsVariablePaging ? count : 0,
                     allowTargetCodeExecution: true,
-                    cancellationToken)
+                    cancellationToken,
+                    filter)
                 .ConfigureAwait(false);
             SignalCancelableResponseReady();
             await _writer.WriteResponseAsync(
@@ -162,6 +164,18 @@ internal sealed partial class DapSession
                         writer.WriteString("value", variable.Value);
                         writer.WriteString("type", variable.Type);
                         writer.WriteNumber("variablesReference", variable.VariablesReference);
+                        if (_clientSupportsVariablePaging)
+                        {
+                            if (variable.NamedVariables is int namedVariables)
+                            {
+                                writer.WriteNumber("namedVariables", namedVariables);
+                            }
+
+                            if (variable.IndexedVariables is int indexedVariables)
+                            {
+                                writer.WriteNumber("indexedVariables", indexedVariables);
+                            }
+                        }
                         if (variable.MemoryReference is not null)
                         {
                             writer.WriteString("memoryReference", variable.MemoryReference);
@@ -176,18 +190,23 @@ internal sealed partial class DapSession
                         {
                             writer.WriteStartObject("presentationHint");
                             if (variable.PresentationKind is DebugVariablePresentationKind.Virtual or
-                                DebugVariablePresentationKind.ResultsView)
+                                DebugVariablePresentationKind.ResultsView or
+                                DebugVariablePresentationKind.ResultsSnapshot)
                             {
                                 writer.WriteString("kind", "virtual");
                             }
 
                             if (variable.PresentationKind is DebugVariablePresentationKind.ResultsView or
+                                DebugVariablePresentationKind.ResultsSnapshot or
                                 DebugVariablePresentationKind.ReadOnlyString)
                             {
                                 writer.WriteStartArray("attributes");
                                 writer.WriteStringValue("readOnly");
-                                writer.WriteStringValue(variable.PresentationKind ==
-                                    DebugVariablePresentationKind.ResultsView ? "hasSideEffects" : "rawString");
+                                if (variable.PresentationKind != DebugVariablePresentationKind.ResultsSnapshot)
+                                {
+                                    writer.WriteStringValue(variable.PresentationKind ==
+                                        DebugVariablePresentationKind.ResultsView ? "hasSideEffects" : "rawString");
+                                }
                                 writer.WriteEndArray();
                             }
 
@@ -226,5 +245,25 @@ internal sealed partial class DapSession
         {
             await WriteStackVariablesInvalidatedAsync(_lifetime.Token).ConfigureAwait(false);
         }
+    }
+
+    private static DebugVariableFilter GetVariableFilter(JsonElement arguments)
+    {
+        if (!arguments.TryGetProperty("filter", out JsonElement filter))
+        {
+            return DebugVariableFilter.All;
+        }
+
+        if (filter.ValueKind == JsonValueKind.String)
+        {
+            return filter.GetString() switch
+            {
+                "named" => DebugVariableFilter.Named,
+                "indexed" => DebugVariableFilter.Indexed,
+                _ => throw new ArgumentException("The variables filter must be 'named' or 'indexed'.")
+            };
+        }
+
+        throw new ArgumentException("The variables filter must be 'named' or 'indexed'.");
     }
 }

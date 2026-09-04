@@ -29,6 +29,7 @@ internal sealed partial class DapSession : IDebuggerSessionObserver, IAsyncDispo
     private bool _terminateDebuggeeByDefault = true;
     private bool _clientLinesStartAtOne = true;
     private bool _clientColumnsStartAtOne = true;
+    private bool _clientSupportsVariablePaging;
     private int? _stoppedThreadId;
     private bool _deferGotoStoppedEvent;
     private (string Reason, int? ThreadId, DebugStopGeneration Generation,

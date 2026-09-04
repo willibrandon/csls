@@ -34,7 +34,7 @@ internal sealed partial class CorDebugDebuggee
     /// <summary>
     /// Starts one managed-method evaluation and resumes only its selected managed thread.
     /// </summary>
-    /// <param name="frameId">The generation-bound managed frame handle.</param>
+    /// <param name="frameId">The logical managed frame identifier for the visible stop.</param>
     /// <param name="plan">The validated invocation expression.</param>
     /// <param name="generation">The stop generation that owns the frame.</param>
     /// <returns>The result completed by the matching CoreCLR evaluation callback.</returns>
@@ -234,7 +234,7 @@ internal sealed partial class CorDebugDebuggee
             setupPhase = "starting the CoreCLR evaluation";
             ScheduleNextFunctionEvaluationStage(active);
             callScheduled = true;
-            Continue();
+            ContinueForFunctionEvaluation();
             return active.Completion.Task.WaitAsync(CancellationToken.None);
         }
         catch (Exception exception) when (exception is not OperationCanceledException)
@@ -389,7 +389,7 @@ internal sealed partial class CorDebugDebuggee
         bool handlesCleared = false;
         try
         {
-            ClearFrameHandles();
+            ClearFrameHandles(preserveFrameIdentity: true);
             handlesCleared = true;
             if (failure is null)
             {
@@ -469,7 +469,7 @@ internal sealed partial class CorDebugDebuggee
 
                 if (!handlesCleared)
                 {
-                    ClearFrameHandles();
+                    ClearFrameHandles(preserveFrameIdentity: true);
                 }
 
                 try
@@ -579,6 +579,7 @@ internal sealed partial class CorDebugDebuggee
                 "identify a runtime object that can receive a method call.");
         }
 
+        ValidateValueLifetime(handle);
         return handle.Pointer;
     }
 

@@ -11,6 +11,7 @@ internal sealed class ManagedResultsViewEvaluation
     private nint _constructor;
     private nint[] _constructorTypeArguments;
     private nint _retainedEnumerableValue;
+    private ManagedResultsViewReceiverIdentity? _receiverIdentity;
 
     /// <summary>
     /// Creates Results View presentation state for the remaining getter stage.
@@ -20,12 +21,14 @@ internal sealed class ManagedResultsViewEvaluation
     /// <param name="retainedEnumerableValue">The owned unboxed struct receiver, or zero.</param>
     /// <param name="constructor">The owned constructor deferred until receiver boxing, or zero.</param>
     /// <param name="constructorTypeArguments">The owned constructor arguments deferred until boxing.</param>
+    /// <param name="receiverIdentity">The independently owned identity captured before execution.</param>
     internal ManagedResultsViewEvaluation(
         nint itemsGetter,
         ManagedExpressionValue enumerableArgument,
         nint retainedEnumerableValue,
         nint constructor,
-        nint[] constructorTypeArguments)
+        nint[] constructorTypeArguments,
+        ManagedResultsViewReceiverIdentity receiverIdentity)
     {
         ArgumentOutOfRangeException.ThrowIfZero(itemsGetter);
         _itemsGetter = itemsGetter;
@@ -33,7 +36,20 @@ internal sealed class ManagedResultsViewEvaluation
         _retainedEnumerableValue = retainedEnumerableValue;
         _constructor = constructor;
         _constructorTypeArguments = constructorTypeArguments;
+        _receiverIdentity = receiverIdentity;
     }
+
+    /// <summary>
+    /// Gets the lifetime shared by the completed snapshot and all of its descendants.
+    /// </summary>
+    internal ManagedResultsViewLifetime Lifetime { get; } = new();
+
+    /// <summary>
+    /// Transfers the original receiver identity to completion or runtime-aware cleanup.
+    /// </summary>
+    /// <returns>The owned identity, or null after transfer.</returns>
+    internal ManagedResultsViewReceiverIdentity? DetachReceiverIdentity() =>
+        Interlocked.Exchange(ref _receiverIdentity, null);
 
     /// <summary>
     /// Gets the original enumerable argument used after optional receiver boxing.

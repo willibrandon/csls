@@ -143,12 +143,7 @@ internal sealed partial class CorDebugDebuggee
             }
 
             ManagedTupleCustomTypeInfo? tupleCustomTypeInfo =
-                receiver.RuntimeValueReference > 0 &&
-                _values.TryGetValue(
-                    receiver.RuntimeValueReference,
-                    out ManagedValueHandle? retained)
-                    ? retained.TupleCustomTypeInfo
-                    : null;
+                GetExpressionTupleCustomTypeInfo(receiver);
             foreach (string tupleName in _tuplePresenter.GetCompletionNames(
                 currentType,
                 tupleCustomTypeInfo))

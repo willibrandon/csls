@@ -232,6 +232,9 @@ workers exit.
 ## Client behavior
 
 Clients should use only capabilities returned by `initialize`. Unknown or
-unavailable operations return an unsuccessful protocol response. Handles for
-frames, scopes, variables, and memory are valid only for the stop generation in
-which the adapter returned them.
+unavailable operations return an unsuccessful protocol response. Scope, variable,
+and memory handles are valid only for the stop generation in which they were returned.
+Logical frame identifiers survive debugger-owned evaluation when the same physical
+frame remains stopped; its native binding is reacquired before inspection. Resuming
+or stepping the application retires those frame identifiers. MCP requests always
+require the exact current stop generation, including after internal evaluation.

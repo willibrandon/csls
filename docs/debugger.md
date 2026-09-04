@@ -285,9 +285,13 @@ Function evaluation runs only the selected managed thread while the other manage
 threads remain stopped. One call may run at a time and has a five-second deadline.
 DAP advertises request cancellation; cancellation and deadline expiry use
 `ICorDebugEval.Abort`, wait for CoreCLR's completion callback, and never escalate
-to `RudeAbort`. A call result, thrown exception, or cooperative abort invalidates
-the client's stack and variable handles because target code may allocate, collect,
-or mutate state. If cooperative abort cannot restore a trustworthy stop, the
+to `RudeAbort`. A call result, thrown exception, or cooperative abort advances the
+stop generation and refreshes stack and variable views because target code may
+allocate, collect, or mutate state. Unchanged physical frames keep their logical
+identifiers; csls reacquires their native bindings before inspection. Scope, variable,
+and memory handles retire, and MCP still requires the exact replacement generation.
+Application execution or stepping retires frame identifiers too.
+If cooperative abort cannot restore a trustworthy stop, the
 session faults and must be disconnected. Explicit C# `new T(...)`, Visual Basic
 `New T(...)`, and F# `new T(...)` expressions use the guarded path for loaded
 runtime types and bind the constructor by metadata signature. Closed generic
@@ -324,12 +328,19 @@ virtual Raw View preserves the original object.
 Malformed declarations,
 unavailable constructors, generic arity mismatches, and constructor exceptions preserve
 ordinary expansion. Because a proxy constructor is arbitrary target code, construction
-advances the stop generation and invalidates earlier stack and variable handles.
+advances the stop generation, replaces native frame bindings, and invalidates earlier
+scope and variable handles. The same stopped physical frame keeps its logical identifier.
 
 Enumerable objects expose a lazy Results View when the target has loaded the
 runtime's enumeration debug view. Listing this row does not enumerate the object.
 Expanding it executes the target's enumeration through the guarded evaluator,
-returns ordered elements, and advances the stop generation. The row warns about
+advances the stop generation, and resolves the lazy row to one non-lazy snapshot
+with its own variable reference. Reading ordered elements or subsequent pages from
+that snapshot does not execute target code again. Named and indexed filters apply
+before paging, and capable DAP clients receive the corresponding child counts.
+Refreshing scopes or inspecting the same receiver through an expression reuses the
+snapshot. The snapshot and its child and memory handles retire at the next target
+execution or direct debugger assignment. The row warns about
 enumeration and carries DAP read-only, side-effect, and lazy presentation hints.
 Generic enumerable interfaces take precedence over non-generic interfaces, with
 the most-derived implementation selected first. Arrays and strings use their own
@@ -356,7 +367,7 @@ runtime fields.
 DAP `setVariable` and `setExpression` assign named locals, arguments, instance fields,
 and managed array elements. Exact primitives, checked contextual integral literals,
 language-valid built-in numeric widening, explicit built-in primitive conversions,
-null, and retained runtime references of the same displayed type use a direct write and
+null, and retained runtime references of the same runtime type use a direct write and
 preserve the current stop generation. Literal and side-effect-free computed strings are
 materialized with `ICorDebugEval2.NewStringWithLength`; explicitly qualified method-call
 and object-construction results use the same guarded function-evaluation lifecycle as
@@ -479,14 +490,20 @@ worker does not advertise tools that it cannot run.
   target unless `terminateAttachedTarget` and the session's explicit
   agent-control grant are both active.
 - `debug_threads_get`, `debug_stack_get`, `debug_scopes_get`, and
-  `debug_variables_get` inspect one exact stopped generation. Frame and variable
-  handles expire as soon as execution resumes. `debug_variables_get` never constructs
-  a debugger proxy or enumerates a Results View and therefore remains read-only.
+  `debug_variables_get` inspect one exact stopped generation. Scope, variable, and
+  memory handles expire when execution resumes. Logical frame identifiers survive
+  debugger-owned evaluation only while the same physical frame remains stopped;
+  inspection still requires the replacement generation. Application execution retires
+  those identifiers. `debug_variables_get` never constructs a debugger proxy or
+  enumerates a Results View and therefore remains read-only.
 - `debug_variables_get_presented` expands debugger-presented children, including
   `DebuggerTypeProxyAttribute` and Results View. It requires an active agent-control
   grant and the exact `stopGeneration`; proxy construction or enumeration advances
-  the generation and publishes session and variable-resource invalidation. The tool
-  is destructive, non-idempotent, and open-world because proxy construction and
+  the generation and publishes session and variable-resource invalidation. Resolving
+  a lazy Results View returns one non-lazy snapshot variable with its own handle
+  and child counts. Ordinary variable tools and resources read that snapshot at the
+  replacement generation without executing target code or requiring a control grant.
+  The tool is destructive, non-idempotent, and open-world because proxy construction and
   enumeration may have arbitrary target or external side effects.
 - `debug_evaluate` evaluates the same source-language-aware, side-effect-free
   expression subset as DAP in an explicit current-generation frame. It is
@@ -497,9 +514,11 @@ worker does not advertise tools that it cannot run.
   static method with supported bounded arguments in an explicit current-generation
   frame. It requires
   an active agent-control grant and the exact `stopGeneration`; successful, exceptional,
-  and cooperatively cancelled execution invalidates old frame and variable handles
-  and advances the stop generation. The tool is marked destructive, non-idempotent,
-  and open-world because the target method may mutate local or external state.
+  and cooperatively cancelled execution advances the stop generation and retires
+  native frame bindings and scope, variable, and memory handles. Unchanged physical
+  frames keep their logical identifiers, usable only with the replacement generation.
+  The tool is marked destructive, non-idempotent, and open-world because the target
+  method may mutate local or external state.
 - `debug_variable_set` and `debug_expression_set` assign a local, argument, instance
   field, or managed array element. Both require an active agent-control grant and the
   exact `stopGeneration`. Direct values retain that generation; strings, method results,

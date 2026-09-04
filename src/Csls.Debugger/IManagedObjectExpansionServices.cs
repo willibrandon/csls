@@ -50,6 +50,8 @@ internal interface IManagedObjectExpansionServices
     /// <param name="frameId">The optional generation-owned frame identifier.</param>
     /// <param name="view">The presentation view used for later expansion.</param>
     /// <param name="tupleCustomTypeInfo">The optional tuple-name transforms.</param>
+    /// <param name="origin">The physical source storage before any presentation transformations.</param>
+    /// <param name="lifetime">The containing snapshot's optional retirement state.</param>
     /// <returns>The retained expansion and memory references.</returns>
     ManagedValueReferences RetainValue(
         nint value,
@@ -57,7 +59,9 @@ internal interface IManagedObjectExpansionServices
         string? evaluateName,
         int? frameId,
         ManagedValueView view,
-        ManagedTupleCustomTypeInfo? tupleCustomTypeInfo);
+        ManagedTupleCustomTypeInfo? tupleCustomTypeInfo,
+        ManagedValueOrigin? origin = null,
+        ManagedResultsViewLifetime? lifetime = null);
 
     /// <summary>
     /// Retains a lazy enumerable view without executing target code.
@@ -68,14 +72,35 @@ internal interface IManagedObjectExpansionServices
     /// <param name="frameId">The owning frame when available.</param>
     /// <param name="threadId">The inherited evaluation thread when available.</param>
     /// <param name="view">The enclosing presentation mode.</param>
-    /// <returns>The lazy container reference, or zero when ineligible.</returns>
-    int TryRetainResultsView(
+    /// <param name="origin">The original receiver's physical storage before unboxing.</param>
+    /// <param name="lifetime">The containing snapshot's optional retirement state.</param>
+    /// <returns>The retained lazy view or completed snapshot, or null when ineligible.</returns>
+    DebugVariableInfo? TryRetainResultsView(
         nint value,
         DebugStopGeneration generation,
         string? evaluateName,
         int? frameId,
         int? threadId,
-        ManagedValueView view);
+        ManagedValueView view,
+        ManagedValueOrigin? origin,
+        ManagedResultsViewLifetime? lifetime);
+
+    /// <summary>
+    /// Identifies a field's physical storage within an exact runtime owner.
+    /// </summary>
+    /// <param name="parent">The original containing value's storage.</param>
+    /// <param name="declaringClass">The loaded class declaring the field.</param>
+    /// <param name="fieldToken">The exact metadata field token.</param>
+    /// <returns>The field origin, or null when the owner is not identifiable.</returns>
+    ManagedValueOrigin? CreateFieldValueOrigin(
+        ManagedValueOrigin? parent, nint declaringClass, uint fieldToken);
+
+    /// <summary>
+    /// Selects the physical heap or storage origin for a retained container's children.
+    /// </summary>
+    /// <param name="variablesReference">The retained container reference.</param>
+    /// <returns>The physical origin, or null for an unlocated value.</returns>
+    ManagedValueOrigin? GetValueOrigin(int variablesReference);
 
     /// <summary>
     /// Dereferences one runtime value while retaining the resulting interface.
@@ -95,6 +120,8 @@ internal interface IManagedObjectExpansionServices
     /// <param name="tupleCustomTypeInfo">The optional tuple-name transforms.</param>
     /// <param name="start">The zero-based first logical element.</param>
     /// <param name="count">The maximum count, or zero for every remaining element.</param>
+    /// <param name="origin">The physical storage of the array owner.</param>
+    /// <param name="lifetime">The containing snapshot's optional retirement state.</param>
     /// <returns>The requested array element page.</returns>
     List<DebugVariableInfo> ExpandArray(
         nint array,
@@ -103,5 +130,7 @@ internal interface IManagedObjectExpansionServices
         DebugStopGeneration generation,
         ManagedTupleCustomTypeInfo? tupleCustomTypeInfo,
         int start,
-        int count);
+        int count,
+        ManagedValueOrigin? origin = null,
+        ManagedResultsViewLifetime? lifetime = null);
 }

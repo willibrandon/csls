@@ -8,29 +8,31 @@ namespace Csls.Debugger;
 /// </summary>
 internal sealed partial class CorDebugDebuggee
 {
-    int IManagedObjectExpansionServices.TryRetainResultsView(
+    DebugVariableInfo? IManagedObjectExpansionServices.TryRetainResultsView(
         nint value,
         DebugStopGeneration generation,
         string? evaluateName,
         int? frameId,
         int? threadId,
-        ManagedValueView view)
+        ManagedValueView view,
+        ManagedValueOrigin? origin,
+        ManagedResultsViewLifetime? lifetime)
     {
         if (view is not (ManagedValueView.Default or ManagedValueView.Raw or
             ManagedValueView.ProxyBypassed) ||
             (threadId ?? GetValueThreadId(frameId)) is not int selectedThread)
         {
-            return 0;
+            return null;
         }
 
         nint thread = GetThread(selectedThread);
         nint candidate = 0;
         try
         {
-            candidate = GetResultsViewTarget(value);
+            candidate = GetResultsViewTarget(value, ref origin);
             if (candidate == 0)
             {
-                return 0;
+                return null;
             }
 
             if (view == ManagedValueView.Default &&
@@ -45,19 +47,34 @@ internal sealed partial class CorDebugDebuggee
                     ReleaseFunctionEvaluationPointer(typeArgument);
                 }
 
-                return 0;
+                return null;
             }
 
-            return _resultsViewResolver.CanResolve(candidate, thread)
-                ? RetainRuntimeValue(
+            if (!_resultsViewResolver.CanResolve(candidate, thread))
+            {
+                return null;
+            }
+
+            if (_resultsViewSnapshot is ManagedResultsViewSnapshot snapshot &&
+                snapshot.Generation == generation && !snapshot.Lifetime.IsRetired &&
+                MatchesResultsViewReceiver(candidate, origin, snapshot.Receiver))
+            {
+                return GetResultsViewSnapshot(snapshot.VariablesReference, generation);
+            }
+
+            ManagedValueHandle retained = RetainRuntimeValue(
                     candidate,
                     generation,
                     evaluateName,
                     frameId,
                     selectedThread,
                     ManagedValueView.ResultsView,
-                    tupleCustomTypeInfo: null).Id
-                : 0;
+                    tupleCustomTypeInfo: null,
+                    origin,
+                    lifetime);
+            return new DebugVariableInfo(
+                "Results View", "Expanding the Results View will enumerate the IEnumerable",
+                string.Empty, retained.Id, null, null, DebugVariablePresentationKind.ResultsView);
         }
         finally
         {
@@ -87,6 +104,7 @@ internal sealed partial class CorDebugDebuggee
         }
 
         ValidateGeneration(variablesReference, handle.Generation, generation);
+        ValidateValueLifetime(handle);
         if (_activeFunctionEvaluation is not null)
         {
             throw new InvalidOperationException("Only one managed function evaluation may run at a time.");
@@ -138,8 +156,10 @@ internal sealed partial class CorDebugDebuggee
         nint[] constructorTypeArguments = [];
         bool callbackActive = false;
         bool callScheduled = false;
+        using var receiverOwner = new DisposableOwner<ManagedResultsViewReceiverIdentity>();
         try
         {
+            receiverOwner.Acquire(() => CaptureResultsViewReceiver(handle));
             thread = GetThread(threadId);
             evaluation = CreateEvaluation(thread);
             retainedEnumerable = RetainResultsViewStructReceiver(handle.Pointer);
@@ -182,9 +202,11 @@ internal sealed partial class CorDebugDebuggee
                 ThreadStates = threadStates,
                 ResultsView = new ManagedResultsViewEvaluation(
                     itemsGetter, enumerableArgument, retainedEnumerable,
-                    constructor, constructorTypeArguments)
+                    constructor, constructorTypeArguments, receiverOwner.Value ??
+                        throw new InvalidOperationException("The enumerable receiver was not retained."))
             };
             _activeFunctionEvaluation = active;
+            _ = receiverOwner.Detach();
             evaluation = 0;
             function = 0;
             thread = 0;
@@ -199,7 +221,7 @@ internal sealed partial class CorDebugDebuggee
             callbackActive = true;
             ScheduleNextFunctionEvaluationStage(active);
             callScheduled = true;
-            Continue();
+            ContinueForFunctionEvaluation();
             return active.Completion.Task.WaitAsync(CancellationToken.None);
         }
         catch (Exception exception) when (exception is not OperationCanceledException)
@@ -272,7 +294,7 @@ internal sealed partial class CorDebugDebuggee
         bool continues = false;
         try
         {
-            ClearFrameHandles();
+            ClearFrameHandles(preserveFrameIdentity: true);
             if (active.AbortRequested)
             {
                 throw new OperationCanceledException("Results View enumeration was canceled cooperatively.");
@@ -291,7 +313,8 @@ internal sealed partial class CorDebugDebuggee
                     if (context.ConstructorCompleted &&
                         _resultsViewResolver.IsEmptyEnumerationException(exceptionValue, active.Function))
                     {
-                        result = RetainResultsViewResult(value, generation, active.ThreadId, empty: true);
+                        result = RetainResultsViewResult(
+                            value, generation, active.ThreadId, empty: true, context.Lifetime);
                     }
                     else
                     {
@@ -318,7 +341,8 @@ internal sealed partial class CorDebugDebuggee
             }
             else
             {
-                result = RetainResultsViewResult(value, generation, active.ThreadId, empty: false);
+                result = RetainResultsViewResult(
+                    value, generation, active.ThreadId, empty: false, context.Lifetime);
             }
         }
         catch (Exception exception) when (
@@ -373,7 +397,8 @@ internal sealed partial class CorDebugDebuggee
         nint value,
         DebugStopGeneration generation,
         int threadId,
-        bool empty)
+        bool empty,
+        ManagedResultsViewLifetime lifetime)
     {
         ManagedValueHandle handle = RetainRuntimeValue(
             value,
@@ -382,7 +407,8 @@ internal sealed partial class CorDebugDebuggee
             frameId: null,
             threadId,
             ManagedValueView.ResultsMaterialized,
-            tupleCustomTypeInfo: null);
+            tupleCustomTypeInfo: null,
+            lifetime: lifetime);
         if (empty)
         {
             handle.SyntheticVariables =
@@ -396,6 +422,60 @@ internal sealed partial class CorDebugDebuggee
             new DebugEvaluateResult(string.Empty, string.Empty, handle.Id, null, TargetCodeExecuted: true),
             handle.Id,
             generation);
+    }
+
+    /// <summary>
+    /// Describes a retained enumerable snapshot without re-executing target code.
+    /// </summary>
+    /// <param name="variablesReference">The retained materialized Results View handle.</param>
+    /// <param name="generation">The current stop generation.</param>
+    /// <returns>The non-lazy replacement variable and its exact child counts.</returns>
+    internal DebugVariableInfo GetResultsViewSnapshot(
+        int variablesReference,
+        DebugStopGeneration generation)
+    {
+        if (!_values.TryGetValue(variablesReference, out ManagedValueHandle? handle) ||
+            handle.View != ManagedValueView.ResultsMaterialized)
+        {
+            throw new InvalidOperationException(
+                "The Results View snapshot is stale or unknown.");
+        }
+
+        ValidateGeneration(variablesReference, handle.Generation, generation);
+        ValidateValueLifetime(handle);
+        if (handle.SyntheticVariables is IReadOnlyList<DebugVariableInfo> syntheticVariables)
+        {
+            return new DebugVariableInfo(
+                "Results View", string.Empty, string.Empty, handle.Id, null, null,
+                DebugVariablePresentationKind.ResultsSnapshot,
+                NamedVariables: syntheticVariables.Count,
+                IndexedVariables: 0);
+        }
+
+        nint value = DereferenceValue(handle.Pointer);
+        nint array = 0;
+        try
+        {
+            array = ComAbi.QueryInterface(value, ICorDebugArrayValueAbi.InterfaceId);
+            uint elementCount = GetArrayElementCount(new ICorDebugArrayValueAbi(array));
+            if (elementCount > MaximumExpandableValueCount)
+            {
+                throw new InvalidOperationException(
+                    $"The array exceeds the debugger element limit of {MaximumExpandableValueCount}.");
+            }
+
+            ManagedValueDisplay display = FormatRuntimeValue(value);
+            return new DebugVariableInfo(
+                "Results View", display.Value, display.Type, handle.Id, null, null,
+                DebugVariablePresentationKind.ResultsSnapshot,
+                NamedVariables: 0,
+                IndexedVariables: checked((int)elementCount));
+        }
+        finally
+        {
+            ReleaseFunctionEvaluationPointer(array);
+            _ = ComAbi.Release(value);
+        }
     }
 
     private string FormatResultsViewException(nint exception, DebugStopGeneration generation)

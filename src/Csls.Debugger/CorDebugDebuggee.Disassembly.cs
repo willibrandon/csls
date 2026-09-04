@@ -99,7 +99,7 @@ internal sealed partial class CorDebugDebuggee
                     metadata,
                     sources,
                     request.ResolveSymbols)
-                : CreateInvalidInstruction(frame.Id, byteOffset, selected - first));
+                : CreateInvalidInstruction(frame.InstructionAddressId, byteOffset, selected - first));
         }
 
         return new DebugDisassembly(result);
@@ -128,7 +128,7 @@ internal sealed partial class CorDebugDebuggee
                     ? _sourceBreakpoints.GetSourceInfo(frame.ModulePath, sourcePath)
                     : null;
         return new DebugInstructionInfo(
-            CreateVirtualAddress(frame.Id, instruction.Offset),
+            CreateVirtualAddress(frame.InstructionAddressId, instruction.Offset),
             instruction.Bytes,
             string.IsNullOrEmpty(operand)
                 ? instruction.Name
@@ -141,7 +141,7 @@ internal sealed partial class CorDebugDebuggee
     }
 
     private static DebugInstructionInfo CreateInvalidInstruction(
-        int frameId,
+        int instructionAddressId,
         long byteOffset,
         long relativeIndex)
     {
@@ -152,7 +152,7 @@ internal sealed partial class CorDebugDebuggee
                 ? uint.MaxValue
                 : checked((uint)candidate);
         return new DebugInstructionInfo(
-            CreateVirtualAddress(frameId, offset),
+            CreateVirtualAddress(instructionAddressId, offset),
             ReadOnlyMemory<byte>.Empty,
             "<invalid IL address>",
             Symbol: null,
@@ -185,9 +185,9 @@ internal sealed partial class CorDebugDebuggee
             .Select(static pair => pair.Value)
             .FirstOrDefault();
 
-    private static ulong CreateVirtualAddress(int frameId, int ilOffset) =>
-        CreateVirtualAddress(frameId, checked((uint)ilOffset));
+    private static ulong CreateVirtualAddress(int instructionAddressId, int ilOffset) =>
+        CreateVirtualAddress(instructionAddressId, checked((uint)ilOffset));
 
-    private static ulong CreateVirtualAddress(int frameId, uint ilOffset) =>
-        ((ulong)checked((uint)frameId) << 32) | ilOffset;
+    private static ulong CreateVirtualAddress(int instructionAddressId, uint ilOffset) =>
+        ((ulong)checked((uint)instructionAddressId) << 32) | ilOffset;
 }

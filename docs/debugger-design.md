@@ -104,15 +104,25 @@ following the target's running and terminal states. Private RPC and MCP do not
 inherit those DAP-only transitions.
 
 Every transition occurs on the engine actor. Each stop increments a 64-bit stop
-generation. Thread, frame, scope, variable, memory, and evaluation references
-encode or carry that generation. A reference from an older generation produces a
-typed stale-reference error; it is never resolved against new target state.
+generation. MCP inspection requests require that exact generation;
+an older generation produces a typed stale-reference error. Native frame bindings,
+scope, variable, memory, and evaluation references belong to that generation.
+
+Logical frame identifiers last for the application's visible stopped interval.
+Debugger-owned function evaluation preserves an identifier only when the thread,
+physical stack range, loaded module, and method identify the same frame. A frame
+registry stores that pointer-free identity and reacquires its native binding before
+inspection. This lets editors refresh scopes before fetching a replacement stack.
+Application execution, stepping, instruction-pointer changes, Hot Reload, detach,
+and faults retire logical frame identifiers. A missing or changed physical frame
+is never substituted with a frame that merely has the same name or stack index.
 
 Manual pause uses `ICorDebugController.Stop`; managed stacks use the current
 `ICorDebugThread3`/`ICorDebugStackWalk` contract rather than the legacy active-chain
 view, which omits managed callers across native transitions. Frame COM references
-are retained only for their stop generation, assigned monotonically increasing
-session-local handles, and released before execution resumes. Stack paging bounds
+are retained only for their stop generation and released before execution resumes.
+Logical frame identifiers are allocated monotonically and never reassigned to a
+different physical frame. Stack paging bounds
 returned work without misreporting the complete managed-frame count.
 
 Scopes are split into receiver/arguments and lexically active locals. Parameter
@@ -122,8 +132,8 @@ string formatting reads ICorDebug values without target code execution. Scope
 and variable handles carry the same stop generation as their frame. Expandable
 values retain canonical COM identities so repeated requests reuse stable handles;
 array indexing and metadata-backed instance-field enumeration apply DAP paging
-before reading child values. All retained handles are invalidated and released
-before every continue.
+before reading child values. Native bindings and generation-owned value handles
+are invalidated and released before every continue, including internal evaluation.
 
 Only pointer-like values expose DAP memory navigation; the initial managed
 backend limits this to non-null arrays, matching the Microsoft adapter's rule
@@ -420,7 +430,8 @@ evaluation callback arrives. Threads created during the call are suspended too.
 Normal completion, exception completion, and cooperative abort restore the exact
 prior thread debug states and advance the stop generation before the client can
 inspect again. DAP publishes stack and variable invalidation after its evaluation
-response. The private `debugger/evaluate` operation and the read-only MCP evaluation
+response; unchanged physical frames keep their logical identifiers while all native
+bindings are reacquired. The private `debugger/evaluate` operation and the read-only MCP evaluation
 tool never grant this authorization. Private `debugger/executeExpression` RPC and
 MCP `debug_execute_expression` are distinct mutation paths; the MCP path additionally
 requires the selected session's agent-control grant and exact stop generation.
@@ -456,9 +467,15 @@ under a successful proxy's Raw View do not add this container.
 Explicit expansion constructs the loaded runtime enumeration debug view and invokes
 its Items getter within one guarded evaluation. Value-type enumerables first obtain
 a runtime-boxed copy; nonempty nullable values use their contained enumerable.
-Strong handles retain the boxed or original enumerable and constructed view until completion. The final array
-owns paged children in the replacement generation; it does not invent source
-expressions for generated values. The runtime's empty-enumeration sentinel becomes
+Strong handles retain the boxed or original enumerable and constructed view until completion.
+Successful resolution returns one non-lazy snapshot row with exact named and indexed
+child counts. The final array owns paged children in the replacement generation;
+filters select the child category before paging, and generated values have no invented
+source expressions. A separate strong handle preserves the original heap receiver's
+identity across collection; value-type storage uses exact frame, field, and element
+origins. Refreshed scopes and expression inspection reuse the same completed snapshot.
+Another target execution or a direct assignment retires the snapshot and all of its
+descendant value and memory references. The runtime's empty-enumeration sentinel becomes
 a read-only Empty row. Other target exceptions report their type and stored message,
 and cooperative cancellation settles the evaluation before inspection resumes.
 DAP exposes a virtual row with `readOnly`, `hasSideEffects`, and `lazy` hints and
@@ -481,7 +498,7 @@ approximated.
 Assignment resolves a writable local, argument, instance field, or managed array
 element from compiler-lowered source syntax. Explicit built-in conversions, checked
 contextual integral literals, and language-valid numeric widening write directly
-through `ICorDebugGenericValue`; null and retained references of the same displayed
+through `ICorDebugGenericValue`; null and retained references of the same actual
 runtime type write through `ICorDebugReferenceValue`. Direct writes preserve the stop
 generation and invalidate variable views only.
 
@@ -755,6 +772,7 @@ documented.
 | --- | --- |
 | NativeAOT host plus managed evaluator worker | ICorDebug and protocol ownership benefit from a small native host; compiler services are not reliably NativeAOT-compatible |
 | One engine actor | ICorDebug callbacks are serialized stops and COM ownership must remain deterministic |
+| Logical frames survive internal evaluation | Editors can refresh the same stopped frame while native bindings and value references are replaced; MCP still requires the exact current generation |
 | Per-frame language provider | Mixed-language stacks and future .NET languages cannot be modeled by a C# session flag |
 | Direct Portable PDB reader | It is public, cross-platform, efficient, and avoids unnecessary native symbol dependencies |
 | Private RPC for TUI and MCP | DAP is an editor protocol and cannot express session ownership or agent authorization precisely |

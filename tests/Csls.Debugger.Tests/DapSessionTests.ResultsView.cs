@@ -259,6 +259,13 @@ public sealed partial class DapSessionTests
                 start: fields.Length,
                 count: 1).ConfigureAwait(false));
             await AssertEnumerationCountAsync(client, "localResultsView", 0).ConfigureAwait(false);
+            JsonElement snapshot = await ResolveResultsViewSnapshotAsync(
+                client, finalRow.GetProperty("variablesReference").GetInt32()).ConfigureAwait(false);
+            int snapshotReference = snapshot.GetProperty("variablesReference").GetInt32();
+            Assert.AreEqual(3, snapshot.GetProperty("indexedVariables").GetInt32());
+            Assert.AreEqual(0, snapshot.GetProperty("namedVariables").GetInt32());
+            JsonElement snapshotFrame = await GetFixtureFrameAsync(client).ConfigureAwait(false);
+            int snapshotFrameId = snapshotFrame.GetProperty("id").GetInt32();
 
             (int Start, int Count, string[] Names, string[] Values)[] pages =
             [
@@ -269,22 +276,33 @@ public sealed partial class DapSessionTests
             ];
             for (int index = 0; index < pages.Length; index++)
             {
-                JsonElement row = await ReadResultsViewRowAsync(client, "localResultsView")
-                    .ConfigureAwait(false);
-                JsonElement[] items = await ExpandResultsViewAsync(
+                JsonElement[] items = await ReadResultsViewSnapshotPageAsync(
                     client,
-                    row.GetProperty("variablesReference").GetInt32(),
+                    snapshotReference,
                     pages[index].Start,
-                    pages[index].Count).ConfigureAwait(false);
+                    pages[index].Count,
+                    filter: "indexed").ConfigureAwait(false);
                 Assert.AreSequenceEqual(
                     pages[index].Names,
                     items.Select(item => item.GetProperty("name").GetString()).ToArray());
                 Assert.AreSequenceEqual(
                     pages[index].Values,
                     items.Select(item => item.GetProperty("value").GetString()).ToArray());
-                await AssertEnumerationCountAsync(client, "localResultsView", index + 1)
-                    .ConfigureAwait(false);
+                JsonElement counter = await ReadEvaluationAsync(
+                    client, snapshotFrameId, "localResultsView._enumerationCount", success: true,
+                    TestContext.CancellationToken).ConfigureAwait(false);
+                Assert.AreEqual("1", counter.GetProperty("result").GetString());
             }
+
+            Assert.IsEmpty(await ReadResultsViewSnapshotPageAsync(
+                client, snapshotReference, 0, 0, filter: "named").ConfigureAwait(false));
+            JsonElement[] all = await ReadResultsViewSnapshotPageAsync(
+                client, snapshotReference, 0, 0).ConfigureAwait(false);
+            Assert.AreSequenceEqual(
+                ["71", "72", "73"],
+                all.Select(item => item.GetProperty("value").GetString()).ToArray());
+            await AssertEnumerationCountAsync(client, "localResultsView", 1)
+                .ConfigureAwait(false);
 
             await FinishResultsViewSessionAsync(client).ConfigureAwait(false);
         }
@@ -310,9 +328,14 @@ public sealed partial class DapSessionTests
                 .ConfigureAwait(false);
             await AssertEnumerationCountAsync(client, "localResultsViewEmpty", 0)
                 .ConfigureAwait(false);
-            JsonElement empty = Assert.ContainsSingle(await ExpandResultsViewAsync(
+            JsonElement snapshot = await ResolveResultsViewSnapshotAsync(
                 client,
-                row.GetProperty("variablesReference").GetInt32()).ConfigureAwait(false));
+                row.GetProperty("variablesReference").GetInt32()).ConfigureAwait(false);
+            int snapshotReference = snapshot.GetProperty("variablesReference").GetInt32();
+            Assert.AreEqual(0, snapshot.GetProperty("indexedVariables").GetInt32());
+            Assert.AreEqual(1, snapshot.GetProperty("namedVariables").GetInt32());
+            JsonElement empty = Assert.ContainsSingle(await ReadResultsViewSnapshotPageAsync(
+                client, snapshotReference, 0, 1, filter: "named").ConfigureAwait(false));
             Assert.AreEqual("Empty", empty.GetProperty("name").GetString());
             Assert.AreEqual("\"Enumeration yielded no results\"", empty.GetProperty("value").GetString());
             Assert.AreEqual("string", empty.GetProperty("type").GetString());
@@ -324,14 +347,11 @@ public sealed partial class DapSessionTests
                     .EnumerateArray().Select(attribute => attribute.GetString()).ToArray());
             await AssertEnumerationCountAsync(client, "localResultsViewEmpty", 1)
                 .ConfigureAwait(false);
-            JsonElement nextRow = await ReadResultsViewRowAsync(client, "localResultsViewEmpty")
-                .ConfigureAwait(false);
-            Assert.IsEmpty(await ExpandResultsViewAsync(
-                client,
-                nextRow.GetProperty("variablesReference").GetInt32(),
-                start: 1,
-                count: 1).ConfigureAwait(false));
-            await AssertEnumerationCountAsync(client, "localResultsViewEmpty", 2)
+            Assert.IsEmpty(await ReadResultsViewSnapshotPageAsync(
+                client, snapshotReference, 1, 1, filter: "named").ConfigureAwait(false));
+            Assert.IsEmpty(await ReadResultsViewSnapshotPageAsync(
+                client, snapshotReference, 0, 0, filter: "indexed").ConfigureAwait(false));
+            await AssertEnumerationCountAsync(client, "localResultsViewEmpty", 1)
                 .ConfigureAwait(false);
             await FinishResultsViewSessionAsync(client).ConfigureAwait(false);
         }
@@ -487,6 +507,201 @@ public sealed partial class DapSessionTests
         }
     }
 
+    /// <summary>
+    /// Emits snapshot counts and applies paging only when the real client negotiates them.
+    /// </summary>
+    /// <param name="supportsVariablePaging">Whether the client advertises variable paging support.</param>
+    [TestMethod]
+    [DataRow(true)]
+    [DataRow(false)]
+    [Timeout(30000, CooperativeCancellation = true)]
+    public async Task ResultsViewSnapshotHonorsPagingNegotiation(bool supportsVariablePaging)
+    {
+        string waitPath = CreateResultsViewSignalPath();
+        try
+        {
+            DapTestClient client = await StartProxyFixtureAsync(
+                waitPath, supportsVariablePaging: supportsVariablePaging).ConfigureAwait(false);
+            await using ConfiguredAsyncDisposable disposal = client.ConfigureAwait(false);
+            JsonElement row = await ReadResultsViewRowAsync(client, "localResultsView")
+                .ConfigureAwait(false);
+            JsonElement snapshot = await ResolveResultsViewSnapshotAsync(
+                client, row.GetProperty("variablesReference").GetInt32(), supportsVariablePaging)
+                .ConfigureAwait(false);
+            JsonElement[] page = await ReadResultsViewSnapshotPageAsync(
+                client, snapshot.GetProperty("variablesReference").GetInt32(), 1, 1)
+                .ConfigureAwait(false);
+            string[] expectedNames = supportsVariablePaging ? ["[1]"] : ["[0]", "[1]", "[2]"];
+            string[] expectedValues = supportsVariablePaging ? ["72"] : ["71", "72", "73"];
+            Assert.AreSequenceEqual(
+                expectedNames, page.Select(item => item.GetProperty("name").GetString()).ToArray());
+            Assert.AreSequenceEqual(
+                expectedValues, page.Select(item => item.GetProperty("value").GetString()).ToArray());
+            await AssertEnumerationCountAsync(client, "localResultsView", 1).ConfigureAwait(false);
+            await FinishResultsViewSessionAsync(client).ConfigureAwait(false);
+        }
+        finally
+        {
+            File.Delete(waitPath);
+        }
+    }
+
+    /// <summary>
+    /// Retires snapshots and their descendants after execution while allowing a fresh enumeration.
+    /// </summary>
+    [TestMethod]
+    [Timeout(30000, CooperativeCancellation = true)]
+    public async Task ResultsViewSnapshotRetiresAfterAnotherEnumeration()
+    {
+        string waitPath = CreateResultsViewSignalPath();
+        try
+        {
+            DapTestClient client = await StartProxyFixtureAsync(waitPath).ConfigureAwait(false);
+            await using ConfiguredAsyncDisposable disposal = client.ConfigureAwait(false);
+            JsonElement row = await ReadResultsViewRowAsync(client, "localResultsViewInherited")
+                .ConfigureAwait(false);
+            JsonElement snapshot = await ResolveResultsViewSnapshotAsync(
+                client, row.GetProperty("variablesReference").GetInt32()).ConfigureAwait(false);
+            int snapshotReference = snapshot.GetProperty("variablesReference").GetInt32();
+            JsonElement[] children = await ReadResultsViewSnapshotPageAsync(
+                client, snapshotReference, 0, 0).ConfigureAwait(false);
+            Assert.HasCount(2, children);
+            int childReference = children[0].GetProperty("variablesReference").GetInt32();
+            Assert.IsGreaterThan(0, childReference);
+            JsonElement otherRow = await ReadResultsViewRowAsync(client, "localResultsView")
+                .ConfigureAwait(false);
+            JsonElement[] otherItems = await ExpandResultsViewAsync(
+                client, otherRow.GetProperty("variablesReference").GetInt32()).ConfigureAwait(false);
+            Assert.AreSequenceEqual(
+                ["71", "72", "73"],
+                otherItems.Select(item => item.GetProperty("value").GetString()).ToArray());
+            int[] staleReferences = [snapshotReference, childReference];
+            foreach (int staleReference in staleReferences)
+            {
+                int sequence = await client.SendRequestAsync(
+                    "variables", writer => WriteResultsViewReference(writer, staleReference),
+                    TestContext.CancellationToken).ConfigureAwait(false);
+                using JsonDocument response = await client.ReadMessageAsync(TestContext.CancellationToken)
+                    .ConfigureAwait(false);
+                AssertResponse(response.RootElement, sequence, "variables", success: false);
+                string? message = response.RootElement.GetProperty("message").GetString();
+                Assert.IsNotNull(message);
+                Assert.Contains("stale", message, StringComparison.OrdinalIgnoreCase);
+            }
+
+            await AssertEnumerationCountAsync(client, "localResultsViewInherited", 1)
+                .ConfigureAwait(false);
+            JsonElement freshRow = await ReadResultsViewRowAsync(client, "localResultsViewInherited")
+                .ConfigureAwait(false);
+            JsonElement[] freshItems = await ExpandResultsViewAsync(
+                client, freshRow.GetProperty("variablesReference").GetInt32()).ConfigureAwait(false);
+            Assert.HasCount(2, freshItems);
+            await AssertEnumerationCountAsync(client, "localResultsViewInherited", 2)
+                .ConfigureAwait(false);
+            await FinishResultsViewSessionAsync(client).ConfigureAwait(false);
+        }
+        finally
+        {
+            File.Delete(waitPath);
+        }
+    }
+
+    /// <summary>
+    /// Rejects malformed lazy-variable filters before target execution or handle invalidation.
+    /// </summary>
+    /// <param name="filterJson">The unsupported filter encoded as a real JSON value.</param>
+    [TestMethod]
+    [DataRow("\"all\"")]
+    [DataRow("\"\"")]
+    [DataRow("null")]
+    [DataRow("1")]
+    [Timeout(30000, CooperativeCancellation = true)]
+    public async Task ResultsViewRejectsMalformedFilterWithoutExecuting(string filterJson)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(filterJson);
+        string waitPath = CreateResultsViewSignalPath();
+        try
+        {
+            DapTestClient client = await StartProxyFixtureAsync(waitPath).ConfigureAwait(false);
+            await using ConfiguredAsyncDisposable disposal = client.ConfigureAwait(false);
+            JsonElement row = await ReadResultsViewRowAsync(client, "localResultsView")
+                .ConfigureAwait(false);
+            int lazyReference = row.GetProperty("variablesReference").GetInt32();
+            JsonElement frame = await GetFixtureFrameAsync(client).ConfigureAwait(false);
+            int frameId = frame.GetProperty("id").GetInt32();
+            using var filter = JsonDocument.Parse(filterJson);
+            int sequence = await client.SendRequestAsync(
+                "variables",
+                writer =>
+                {
+                    writer.WriteStartObject();
+                    writer.WriteNumber("variablesReference", lazyReference);
+                    writer.WritePropertyName("filter");
+                    filter.RootElement.WriteTo(writer);
+                    writer.WriteEndObject();
+                },
+                TestContext.CancellationToken).ConfigureAwait(false);
+            using JsonDocument response = await client.ReadMessageAsync(TestContext.CancellationToken)
+                .ConfigureAwait(false);
+            AssertResponse(response.RootElement, sequence, "variables", success: false);
+            Assert.AreEqual("The variables filter must be 'named' or 'indexed'.",
+                response.RootElement.GetProperty("message").GetString());
+            JsonElement counter = await ReadEvaluationAsync(
+                client, frameId, "localResultsView._enumerationCount", success: true,
+                TestContext.CancellationToken).ConfigureAwait(false);
+            Assert.AreEqual("0", counter.GetProperty("result").GetString());
+            JsonElement[] items = await ExpandResultsViewAsync(client, lazyReference)
+                .ConfigureAwait(false);
+            Assert.AreSequenceEqual(
+                ["71", "72", "73"],
+                items.Select(item => item.GetProperty("value").GetString()).ToArray());
+            await AssertEnumerationCountAsync(client, "localResultsView", 1).ConfigureAwait(false);
+            await FinishResultsViewSessionAsync(client).ConfigureAwait(false);
+        }
+        finally
+        {
+            File.Delete(waitPath);
+        }
+    }
+
+    /// <summary>
+    /// Resolves one complete lazy replacement independently of child paging and filter arguments.
+    /// </summary>
+    /// <param name="filter">The valid child category supplied while resolving the lazy row.</param>
+    /// <param name="start">The nonzero child offset that must not slice the replacement row.</param>
+    [TestMethod]
+    [DataRow("named", 1)]
+    [DataRow("indexed", 4)]
+    [Timeout(30000, CooperativeCancellation = true)]
+    public async Task ResultsViewLazyResolutionIgnoresChildPagingAndFilter(string filter, int start)
+    {
+        string waitPath = CreateResultsViewSignalPath();
+        try
+        {
+            DapTestClient client = await StartProxyFixtureAsync(waitPath).ConfigureAwait(false);
+            await using ConfiguredAsyncDisposable disposal = client.ConfigureAwait(false);
+            JsonElement row = await ReadResultsViewRowAsync(client, "localResultsView")
+                .ConfigureAwait(false);
+            await AssertEnumerationCountAsync(client, "localResultsView", 0).ConfigureAwait(false);
+            JsonElement snapshot = await ResolveResultsViewSnapshotAsync(
+                client, row.GetProperty("variablesReference").GetInt32(),
+                start: start, count: 1, filter: filter).ConfigureAwait(false);
+            Assert.AreEqual(3, snapshot.GetProperty("indexedVariables").GetInt32());
+            Assert.AreEqual(0, snapshot.GetProperty("namedVariables").GetInt32());
+            JsonElement first = Assert.ContainsSingle(await ReadResultsViewSnapshotPageAsync(
+                client, snapshot.GetProperty("variablesReference").GetInt32(),
+                0, 1, filter: "indexed").ConfigureAwait(false));
+            Assert.AreEqual("[0]", first.GetProperty("name").GetString());
+            Assert.AreEqual("71", first.GetProperty("value").GetString());
+            await AssertEnumerationCountAsync(client, "localResultsView", 1).ConfigureAwait(false);
+            await FinishResultsViewSessionAsync(client).ConfigureAwait(false);
+        }
+        finally
+        {
+            File.Delete(waitPath);
+        }
+    }
+
     private static string CreateResultsViewSignalPath() => Path.Join(
         Path.GetTempPath(), $"csls-debugger-results-view-{Guid.NewGuid():N}.signal");
 
@@ -569,10 +784,77 @@ public sealed partial class DapSessionTests
         int? start = null,
         int? count = null)
     {
-        JsonElement[] items = await ReadVariablesAsync(client, reference, start, count)
+        JsonElement snapshot = await ResolveResultsViewSnapshotAsync(client, reference)
             .ConfigureAwait(false);
+        return await ReadVariablesAsync(
+            client, snapshot.GetProperty("variablesReference").GetInt32(), start, count)
+            .ConfigureAwait(false);
+    }
+
+    private async Task<JsonElement> ResolveResultsViewSnapshotAsync(
+        DapTestClient client,
+        int lazyReference,
+        bool supportsVariablePaging = true,
+        int start = 0,
+        int count = 0,
+        string? filter = null)
+    {
+        JsonElement snapshot = Assert.ContainsSingle(await ReadResultsViewSnapshotPageAsync(
+            client, lazyReference, start, count, filter).ConfigureAwait(false));
+        Assert.AreEqual("Results View", snapshot.GetProperty("name").GetString());
+        Assert.IsGreaterThan(0, snapshot.GetProperty("variablesReference").GetInt32());
+        Assert.AreNotEqual(lazyReference, snapshot.GetProperty("variablesReference").GetInt32());
+        Assert.IsFalse(snapshot.TryGetProperty("evaluateName", out _));
+        JsonElement hint = snapshot.GetProperty("presentationHint");
+        Assert.AreEqual("virtual", hint.GetProperty("kind").GetString());
+        Assert.IsFalse(hint.TryGetProperty("lazy", out JsonElement lazy) && lazy.GetBoolean());
+        Assert.AreSequenceEqual(
+            ["readOnly"],
+            hint.GetProperty("attributes").EnumerateArray()
+                .Select(attribute => attribute.GetString()).ToArray());
+        if (supportsVariablePaging)
+        {
+            Assert.IsGreaterThanOrEqualTo(0, snapshot.GetProperty("indexedVariables").GetInt32());
+            Assert.IsGreaterThanOrEqualTo(0, snapshot.GetProperty("namedVariables").GetInt32());
+        }
+        else
+        {
+            Assert.IsFalse(snapshot.TryGetProperty("indexedVariables", out _));
+            Assert.IsFalse(snapshot.TryGetProperty("namedVariables", out _));
+        }
+
         await ReadResultsViewInvalidationAsync(client).ConfigureAwait(false);
-        return items;
+        return snapshot;
+    }
+
+    private async Task<JsonElement[]> ReadResultsViewSnapshotPageAsync(
+        DapTestClient client,
+        int snapshotReference,
+        int start,
+        int count,
+        string? filter = null)
+    {
+        int sequence = await client.SendRequestAsync(
+            "variables",
+            writer =>
+            {
+                writer.WriteStartObject();
+                writer.WriteNumber("variablesReference", snapshotReference);
+                writer.WriteNumber("start", start);
+                writer.WriteNumber("count", count);
+                if (filter is not null)
+                {
+                    writer.WriteString("filter", filter);
+                }
+
+                writer.WriteEndObject();
+            },
+            TestContext.CancellationToken).ConfigureAwait(false);
+        using JsonDocument response = await client.ReadMessageAsync(TestContext.CancellationToken)
+            .ConfigureAwait(false);
+        AssertResponse(response.RootElement, sequence, "variables", success: true);
+        return [.. response.RootElement.GetProperty("body").GetProperty("variables")
+            .EnumerateArray().Select(variable => variable.Clone())];
     }
 
     private async Task ReadResultsViewInvalidationAsync(DapTestClient client)

@@ -20,7 +20,10 @@ internal sealed partial class CorDebugDebuggee
         ManagedDebuggerTypeProxyRawView? proxyRawView,
         ManagedDebuggerTypeProxyStaticView? proxyStaticView,
         IReadOnlyList<ManagedDebuggerTypeProxyPropertyPresentation>? proxyProperties,
-        int? threadId = null) =>
+        int? threadId = null,
+        DebugVariableFilter filter = DebugVariableFilter.All,
+        ManagedValueOrigin? origin = null,
+        ManagedResultsViewLifetime? lifetime = null) =>
         _objectExpander.Expand(
             value,
             parentEvaluateName,
@@ -33,7 +36,10 @@ internal sealed partial class CorDebugDebuggee
             proxyRawView,
             proxyStaticView,
             proxyProperties,
-            threadId);
+            threadId,
+            filter,
+            origin,
+            lifetime);
 
     PEReader IManagedObjectExpansionServices.OpenRuntimeModule(nint module) =>
         OpenRuntimeModule(module);
@@ -73,13 +79,26 @@ internal sealed partial class CorDebugDebuggee
         string? evaluateName,
         int? frameId,
         ManagedValueView view,
-        ManagedTupleCustomTypeInfo? tupleCustomTypeInfo) => RetainValue(
+        ManagedTupleCustomTypeInfo? tupleCustomTypeInfo,
+        ManagedValueOrigin? origin,
+        ManagedResultsViewLifetime? lifetime) => RetainValue(
             value,
             generation,
             evaluateName,
             frameId,
             view,
-            tupleCustomTypeInfo);
+            tupleCustomTypeInfo,
+            origin,
+            lifetime);
+
+    ManagedValueOrigin? IManagedObjectExpansionServices.CreateFieldValueOrigin(
+        ManagedValueOrigin? parent, nint declaringClass, uint fieldToken) =>
+        CreateFieldValueOrigin(parent, declaringClass, fieldToken);
+
+    ManagedValueOrigin? IManagedObjectExpansionServices.GetValueOrigin(int variablesReference) =>
+        GetValueOrigin(_values.TryGetValue(variablesReference, out ManagedValueHandle? handle)
+            ? handle
+            : throw new InvalidOperationException("The variable reference is stale or unknown."));
 
     bool IManagedObjectExpansionServices.TryDereferenceValue(
         nint value,
@@ -92,12 +111,16 @@ internal sealed partial class CorDebugDebuggee
         DebugStopGeneration generation,
         ManagedTupleCustomTypeInfo? tupleCustomTypeInfo,
         int start,
-        int count) => ExpandArray(
+        int count,
+        ManagedValueOrigin? origin,
+        ManagedResultsViewLifetime? lifetime) => ExpandArray(
             array,
             parentEvaluateName,
             frameId,
             generation,
             tupleCustomTypeInfo,
             start,
-            count);
+            count,
+            origin,
+            lifetime);
 }

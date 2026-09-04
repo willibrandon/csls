@@ -20,10 +20,10 @@ internal sealed partial class CorDebugDebuggee
             node.Children[0],
             generation);
         int[] indexes = EvaluateArrayIndexes(frame, plan, node, generation);
-        return ResolveArrayElementValue(receiver, indexes);
+        return ResolveArrayElementValue(receiver, indexes).Value;
     }
 
-    private unsafe nint ResolveArrayElementValue(
+    private unsafe (nint Value, ManagedValueOrigin? Origin) ResolveArrayElementValue(
         ManagedExpressionValue receiver,
         int[] indexes)
     {
@@ -62,6 +62,10 @@ internal sealed partial class CorDebugDebuggee
                 position = checked(position * dimensions[index] + (uint)offset);
             }
 
+            ManagedValueOrigin? parentOrigin = GetValueOrigin(receiver);
+            ManagedValueOrigin? origin = parentOrigin is null
+                ? null
+                : new ManagedArrayElementValueOrigin(parentOrigin, checked((int)position));
             nint* elementAddress = &element;
             CorDebugHResult.ThrowIfFailed(
                 api.GetElementAtPosition(position, (nint)elementAddress),
@@ -70,7 +74,7 @@ internal sealed partial class CorDebugDebuggee
             element = RequirePointer(
                 Volatile.Read(ref *elementAddress),
                 "ICorDebugArrayValue.GetElementAtPosition");
-            return element;
+            return (element, origin);
         }
         catch (OverflowException exception)
         {

@@ -14,7 +14,8 @@ internal sealed partial class CorDebugDebuggee
         int variablesReference,
         DebugStopGeneration generation,
         int start,
-        int count)
+        int count,
+        DebugVariableFilter filter)
     {
         if (!_values.TryGetValue(variablesReference, out ManagedValueHandle? handle))
         {
@@ -23,6 +24,7 @@ internal sealed partial class CorDebugDebuggee
         }
 
         ValidateGeneration(variablesReference, handle.Generation, generation);
+        ValidateValueLifetime(handle);
         if (handle.View == ManagedValueView.ResultsView)
         {
             throw new InvalidOperationException(
@@ -30,7 +32,7 @@ internal sealed partial class CorDebugDebuggee
                 "target-code authorization.");
         }
 
-        List<DebugVariableInfo> result = ExpandRetainedValue(handle, generation, start, count);
+        List<DebugVariableInfo> result = ExpandRetainedValue(handle, generation, start, count, filter);
         foreach (ManagedValueHandle child in result.Select(variable =>
             _values.GetValueOrDefault(variable.VariablesReference)).OfType<ManagedValueHandle>())
         {
@@ -44,18 +46,16 @@ internal sealed partial class CorDebugDebuggee
         ManagedValueHandle handle,
         DebugStopGeneration generation,
         int start,
-        int count)
+        int count,
+        DebugVariableFilter filter)
     {
         if (handle.SyntheticVariables is IReadOnlyList<DebugVariableInfo> syntheticVariables)
         {
-            if (start >= syntheticVariables.Count)
-            {
-                return [];
-            }
-
-            int available = syntheticVariables.Count - start;
-            int take = count == 0 ? available : Math.Min(count, available);
-            return [.. syntheticVariables.Skip(start).Take(take)];
+            var state = new ManagedObjectExpansionState { Filter = filter };
+            IEnumerable<DebugVariableInfo> variables = syntheticVariables
+                .Where(variable => state.Includes(variable.IsIndexed))
+                .Skip(start);
+            return count == 0 ? [.. variables] : [.. variables.Take(count)];
         }
 
         nint value = TryDereferenceAndUnboxValue(handle.Pointer, out nint inspectedValue)
@@ -70,6 +70,11 @@ internal sealed partial class CorDebugDebuggee
             {
                 try
                 {
+                    if (filter == DebugVariableFilter.Named)
+                    {
+                        return [];
+                    }
+
                     return ExpandArray(
                         array,
                         handle.EvaluateName,
@@ -77,7 +82,9 @@ internal sealed partial class CorDebugDebuggee
                         generation,
                         handle.TupleCustomTypeInfo,
                         start,
-                        count);
+                        count,
+                        GetValueOrigin(handle),
+                        handle.Lifetime);
                 }
                 finally
                 {
@@ -99,6 +106,7 @@ internal sealed partial class CorDebugDebuggee
                 }
 
                 ValidateGeneration(rawHandle.Id, rawHandle.Generation, generation);
+                ValidateValueLifetime(rawHandle);
                 proxyRawView = new ManagedDebuggerTypeProxyRawView(
                     rawHandle.Pointer,
                     rawHandle.Id,
@@ -117,6 +125,7 @@ internal sealed partial class CorDebugDebuggee
                 }
 
                 ValidateGeneration(staticHandle.Id, staticHandle.Generation, generation);
+                ValidateValueLifetime(staticHandle);
                 proxyStaticView = new ManagedDebuggerTypeProxyStaticView(staticHandle.Id);
             }
 
@@ -132,7 +141,10 @@ internal sealed partial class CorDebugDebuggee
                 proxyRawView,
                 proxyStaticView,
                 proxyProperties,
-                handle.ThreadId);
+                handle.ThreadId,
+                filter,
+                GetValueOrigin(handle),
+                handle.Lifetime);
         }
         finally
         {

@@ -39,6 +39,7 @@ internal sealed partial class CorDebugDebuggee
             }
 
             ValidateGeneration(variablesReference, value.Generation, generation);
+            ValidateValueLifetime(value);
             frameId = value.FrameId ?? throw new InvalidOperationException(
                 "The selected value has no source frame in which an assignment can be " +
                 "evaluated.");

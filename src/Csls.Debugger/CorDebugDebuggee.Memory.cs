@@ -40,6 +40,7 @@ internal sealed partial class CorDebugDebuggee
         }
 
         ValidateGeneration(handle.Id, handle.Generation, generation);
+        ValidateValueLifetime(handle);
         ulong address = AddOffset(handle.MemoryAddress, offset);
         if (count == 0)
         {

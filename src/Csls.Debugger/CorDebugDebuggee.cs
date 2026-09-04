@@ -29,9 +29,10 @@ internal sealed partial class CorDebugDebuggee :
     private readonly Process _process;
     private readonly UnixChildExitMonitor? _unixExitMonitor;
     private readonly bool _ownsProcess;
-    private readonly Dictionary<(int ThreadId, int FrameIndex), ManagedFrameHandle> _frames = [];
+    private readonly ManagedStoppedFrameRegistry _frames = new();
     private readonly Dictionary<string, ManagedInstructionReferenceHandle> _instructionFrames =
         new(StringComparer.Ordinal);
+    private readonly Dictionary<int, ManagedFrameHandle> _instructionAddressFrames = [];
     private readonly Dictionary<int, ManagedStepTargetHandle> _stepTargets = [];
     private readonly Dictionary<int, ManagedGotoTargetHandle> _gotoTargets = [];
     private readonly Dictionary<(int FrameId, ManagedScopeKind Kind), ManagedScopeHandle> _scopes = [];
@@ -40,11 +41,14 @@ internal sealed partial class CorDebugDebuggee :
         nint Identity,
         int? FrameId,
         string? EvaluateName,
-        ManagedValueView View),
+        ManagedValueView View,
+        ManagedValueOrigin? Origin,
+        ManagedResultsViewLifetime? Lifetime),
         ManagedValueHandle> _valueIdentities = [];
     private readonly Dictionary<string, ManagedValueHandle> _memoryValues =
         new(StringComparer.Ordinal);
     private ManagedFunctionEvaluation? _activeFunctionEvaluation;
+    private ManagedResultsViewSnapshot? _resultsViewSnapshot;
     private string? _functionEvaluationDisabledReason;
     private nint _corDebug;
     private nint _debugProcess;
@@ -52,7 +56,7 @@ internal sealed partial class CorDebugDebuggee :
     private nint _activeStepperIdentity;
     private ManagedAsyncStep? _asyncStep;
     private ManagedTargetBreakpoint? _targetBreakpoint;
-    private int _nextFrameId;
+    private int _nextInstructionAddressId;
     private int _nextStepTargetId;
     private int _nextGotoTargetId;
     private int _nextVariablesReference;

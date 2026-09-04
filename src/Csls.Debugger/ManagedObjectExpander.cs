@@ -50,6 +50,9 @@ internal sealed class ManagedObjectExpander
     /// <param name="proxyStaticView">The optional synthetic static-member container.</param>
     /// <param name="proxyProperties">The evaluated proxy property rows.</param>
     /// <param name="threadId">The inherited evaluation thread when available.</param>
+    /// <param name="filter">The semantic child category selected before pagination.</param>
+    /// <param name="origin">The physical storage of the original receiver.</param>
+    /// <param name="lifetime">The containing snapshot's optional retirement state.</param>
     /// <returns>The requested logical field page.</returns>
     internal List<DebugVariableInfo> Expand(
         nint value,
@@ -63,7 +66,10 @@ internal sealed class ManagedObjectExpander
         ManagedDebuggerTypeProxyRawView? proxyRawView,
         ManagedDebuggerTypeProxyStaticView? proxyStaticView,
         IReadOnlyList<ManagedDebuggerTypeProxyPropertyPresentation>? proxyProperties,
-        int? threadId = null)
+        int? threadId = null,
+        DebugVariableFilter filter = DebugVariableFilter.All,
+        ManagedValueOrigin? origin = null,
+        ManagedResultsViewLifetime? lifetime = null)
     {
         if (proxyRawView is not null)
         {
@@ -76,7 +82,8 @@ internal sealed class ManagedObjectExpander
                 count,
                 proxyRawView,
                 proxyStaticView,
-                proxyProperties ?? []);
+                proxyProperties ?? [],
+                filter);
         }
 
         if (view is not ManagedValueView.Raw and not ManagedValueView.ProxyRaw &&
@@ -88,9 +95,11 @@ internal sealed class ManagedObjectExpander
                 tupleCustomTypeInfo,
                 start,
                 count,
-                out List<DebugVariableInfo> tupleResult))
+                out List<DebugVariableInfo> tupleResult,
+                origin,
+                lifetime))
         {
-            return tupleResult;
+            return filter == DebugVariableFilter.Indexed ? [] : tupleResult;
         }
 
         var path = new HashSet<ulong>();
@@ -101,7 +110,7 @@ internal sealed class ManagedObjectExpander
         }
 
         var result = new List<DebugVariableInfo>();
-        var state = new ManagedObjectExpansionState();
+        var state = new ManagedObjectExpansionState { Filter = filter, Lifetime = lifetime };
         AppendObjectFields(
             result,
             value,
@@ -114,29 +123,25 @@ internal sealed class ManagedObjectExpander
             path,
             nestingDepth: 0,
             view,
-            includeRawView: true);
-        if (!IsVariablePageFull(result, count))
+            includeRawView: true,
+            origin);
+        if (state.Includes(isIndexed: false) && !IsVariablePageFull(result, count))
         {
-            int resultsReference = _services.TryRetainResultsView(
+            DebugVariableInfo? resultsView = _services.TryRetainResultsView(
                 value,
                 generation,
                 parentEvaluateName,
                 frameId,
                 threadId,
-                view);
-            if (resultsReference != 0)
+                view,
+                origin,
+                lifetime);
+            if (resultsView is not null)
             {
                 EnsureExpandableValueLimit(state.VisibleIndex, additionalCount: 1);
                 if (state.VisibleIndex >= start)
                 {
-                    result.Add(new DebugVariableInfo(
-                        "Results View",
-                        "Expanding the Results View will enumerate the IEnumerable",
-                        string.Empty,
-                        resultsReference,
-                        MemoryReference: null,
-                        EvaluateName: null,
-                        DebugVariablePresentationKind.ResultsView));
+                    result.Add(resultsView);
                 }
             }
         }
@@ -171,7 +176,8 @@ internal sealed class ManagedObjectExpander
         HashSet<ulong> path,
         int nestingDepth,
         ManagedValueView view,
-        bool includeRawView)
+        bool includeRawView,
+        ManagedValueOrigin? origin)
     {
         nint instance = 0;
         nint value2 = 0;
@@ -215,7 +221,8 @@ internal sealed class ManagedObjectExpander
                         state,
                         path,
                         nestingDepth,
-                        view);
+                        view,
+                        origin);
                     if (IsVariablePageFull(result, count))
                     {
                         return;
@@ -268,7 +275,8 @@ internal sealed class ManagedObjectExpander
                     generation,
                     start,
                     count,
-                    state);
+                    state,
+                    origin);
             }
         }
         finally
@@ -304,7 +312,8 @@ internal sealed class ManagedObjectExpander
         ManagedObjectExpansionState state,
         HashSet<ulong> path,
         int nestingDepth,
-        ManagedValueView view)
+        ManagedValueView view,
+        ManagedValueOrigin? origin)
     {
         TypeDefinitionHandle typeHandle = MetadataTokens.TypeDefinitionHandle(
             checked((int)(typeToken & 0x00FFFFFF)));
@@ -354,7 +363,8 @@ internal sealed class ManagedObjectExpander
                     count,
                     state,
                     path,
-                    nestingDepth))
+                    nestingDepth,
+                    origin))
                 {
                     AppendField(
                         result,
@@ -368,7 +378,8 @@ internal sealed class ManagedObjectExpander
                         generation,
                         start,
                         count,
-                        state);
+                        state,
+                        origin);
                 }
             }
             else
@@ -385,7 +396,8 @@ internal sealed class ManagedObjectExpander
                     generation,
                     start,
                     count,
-                    state);
+                    state,
+                    origin);
             }
 
             state.PhysicalFieldCount++;
@@ -414,8 +426,14 @@ internal sealed class ManagedObjectExpander
         DebugStopGeneration generation,
         int start,
         int count,
-        ManagedObjectExpansionState state)
+        ManagedObjectExpansionState state,
+        ManagedValueOrigin? origin)
     {
+        if (!state.Includes(isIndexed: false))
+        {
+            return;
+        }
+
         EnsureExpandableValueLimit(state.VisibleIndex, additionalCount: 1);
         if (state.VisibleIndex >= start && !IsVariablePageFull(result, count))
         {
@@ -427,7 +445,9 @@ internal sealed class ManagedObjectExpander
                 field,
                 parentEvaluateName,
                 frameId,
-                generation));
+                generation,
+                origin,
+                state.Lifetime));
         }
 
         state.VisibleIndex++;
@@ -445,7 +465,8 @@ internal sealed class ManagedObjectExpander
         int count,
         ManagedObjectExpansionState state,
         HashSet<ulong> path,
-        int nestingDepth)
+        int nestingDepth,
+        ManagedValueOrigin? origin)
     {
         nint fieldValue = 0;
         nint inspectedValue = 0;
@@ -464,11 +485,26 @@ internal sealed class ManagedObjectExpander
                 return false;
             }
 
+            ManagedValueOrigin? fieldOrigin = _services.CreateFieldValueOrigin(
+                origin, declaringClass, checked((uint)MetadataTokens.GetToken(fieldHandle)));
+            ManagedValueReferences fieldReferences = _services.RetainValue(
+                fieldValue, generation, evaluateName, frameId, ManagedValueView.Default,
+                tupleCustomTypeInfo: null, fieldOrigin, state.Lifetime);
+            if (fieldReferences.VariablesReference > 0)
+            {
+                fieldOrigin = _services.GetValueOrigin(fieldReferences.VariablesReference);
+            }
+
             if (ComAbi.TryQueryInterface(
                 inspectedValue,
                 ICorDebugArrayValueAbi.InterfaceId,
                 out array))
             {
+                if (!state.Includes(isIndexed: true))
+                {
+                    return true;
+                }
+
                 int elementCount = checked((int)GetArrayElementCount(
                     new ICorDebugArrayValueAbi(array)));
                 EnsureExpandableValueLimit(state.VisibleIndex, elementCount);
@@ -481,7 +517,9 @@ internal sealed class ManagedObjectExpander
                     generation,
                     null,
                     localStart,
-                    localCount));
+                    localCount,
+                    fieldOrigin,
+                    state.Lifetime));
                 state.VisibleIndex += elementCount;
                 return true;
             }
@@ -514,7 +552,8 @@ internal sealed class ManagedObjectExpander
                 path,
                 nestingDepth + 1,
                 ManagedValueView.Default,
-                includeRawView: false);
+                includeRawView: false,
+                fieldOrigin);
             if (addedToPath)
             {
                 _ = path.Remove(address);
@@ -560,8 +599,14 @@ internal sealed class ManagedObjectExpander
         DebugStopGeneration generation,
         int start,
         int count,
-        ManagedObjectExpansionState state)
+        ManagedObjectExpansionState state,
+        ManagedValueOrigin? origin)
     {
+        if (!state.Includes(isIndexed: false))
+        {
+            return;
+        }
+
         EnsureExpandableValueLimit(state.VisibleIndex, additionalCount: 1);
         if (state.VisibleIndex >= start && !IsVariablePageFull(result, count))
         {
@@ -575,7 +620,9 @@ internal sealed class ManagedObjectExpander
                 parentEvaluateName,
                 frameId,
                 ManagedValueView.Raw,
-                tupleCustomTypeInfo: null);
+                tupleCustomTypeInfo: null,
+                origin,
+                state.Lifetime);
             result.Add(new DebugVariableInfo(
                 "Raw View",
                 display.Value,
@@ -596,6 +643,11 @@ internal sealed class ManagedObjectExpander
         int count,
         ManagedObjectExpansionState state)
     {
+        if (!state.Includes(isIndexed: false))
+        {
+            return;
+        }
+
         EnsureExpandableValueLimit(state.VisibleIndex, additionalCount: 1);
         if (state.VisibleIndex >= start && !IsVariablePageFull(result, count))
         {
@@ -624,7 +676,9 @@ internal sealed class ManagedObjectExpander
         FieldDefinition field,
         string? parentEvaluateName,
         int? frameId,
-        DebugStopGeneration generation)
+        DebugStopGeneration generation,
+        ManagedValueOrigin? origin,
+        ManagedResultsViewLifetime? lifetime)
     {
         nint fieldValue = GetObjectFieldValue(
             instance,
@@ -661,7 +715,10 @@ internal sealed class ManagedObjectExpander
                 evaluateName,
                 frameId,
                 ManagedValueView.Default,
-                tupleCustomTypeInfo);
+                tupleCustomTypeInfo,
+                _services.CreateFieldValueOrigin(
+                    origin, declaringClass, checked((uint)MetadataTokens.GetToken(fieldHandle))),
+                lifetime);
             return new DebugVariableInfo(
                 display.Name ?? name,
                 display.Value,

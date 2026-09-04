@@ -77,7 +77,7 @@ public sealed partial class DapSessionTests
             .ConfigureAwait(false);
         _ = await client.SendRequestAsync(
             "initialize",
-            WriteEmptyObject,
+            WriteVariablePagingInitializeArguments,
             TestContext.CancellationToken).ConfigureAwait(false);
         using JsonDocument initialize = await client
             .ReadMessageAsync(TestContext.CancellationToken)

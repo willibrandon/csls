@@ -47,6 +47,16 @@ public sealed class VsCodeLanguageServerTests
             localSuite: "dist/semantic-highlighting-suite.cjs");
 
     /// <summary>
+    /// Resolves lazy Results View in the real Variables view and pages its retained snapshot.
+    /// </summary>
+    [TestMethod]
+    [TestCategory("VsCodeHost")]
+    public Task VsCodeVariablesViewResolvesAndPagesResultsView() =>
+        RunVsCodeHostAsync(
+            remote: false,
+            localSuite: "dist/results-view-suite.cjs");
+
+    /// <summary>
     /// Stops automatic test discovery and every process it started when VS Code shuts down.
     /// </summary>
     [TestMethod]

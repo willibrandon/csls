@@ -31,7 +31,7 @@ This page is generated from the shipping DAP dispatcher, initialize response, an
 | `gotoTargets` | List runtime-approved destinations in the active managed method. |
 | `goto` | Move to one previously approved destination. |
 | `restart` | Restart a launch or detach and reattach an attach session. |
-| `stackTrace` | Page generation-bound managed stack frames. |
+| `stackTrace` | Page managed stack frames with logical identifiers for the visible stop. |
 | `scopes` | List argument and local scopes for one frame. |
 | `variables` | Page values retained by one generation-bound variable reference. |
 | `evaluate` | Evaluate a source-language expression in one managed frame. |
@@ -70,7 +70,6 @@ This page is generated from the shipping DAP dispatcher, initialize response, an
 | `supportsSetExpression` |
 | `supportsSetVariable` |
 | `supportsStepInTargetsRequest` |
-| `supportsVariablePaging` |
 
 ## Exception filters
 

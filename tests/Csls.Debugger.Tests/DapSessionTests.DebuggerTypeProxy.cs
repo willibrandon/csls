@@ -103,6 +103,17 @@ public sealed partial class DapSessionTests
                 ["66", "60", "61", "62"],
                 staticMembers.Skip(4)
                     .Select(field => field.GetProperty("value").GetString()).ToArray());
+            int staticReference = staticView.GetProperty("variablesReference").GetInt32();
+            JsonElement[] indexedStatics = await ReadVariablesPageAsync(
+                client, staticReference, start: 1, count: 2, filter: "indexed").ConfigureAwait(false);
+            Assert.AreSequenceEqual(
+                ["65", "61"],
+                indexedStatics.Select(field => field.GetProperty("value").GetString()).ToArray());
+            JsonElement[] namedStatics = await ReadVariablesPageAsync(
+                client, staticReference, start: 0, count: 0, filter: "named").ConfigureAwait(false);
+            Assert.AreSequenceEqual(
+                ["StaticProperty", "ThrowingStatic", "s_attributedStatic", "s_staticField"],
+                namedStatics.Select(field => field.GetProperty("name").GetString()).ToArray());
 
             JsonElement rawView = proxyFields[13];
             Assert.AreEqual(
@@ -175,6 +186,16 @@ public sealed partial class DapSessionTests
                 "localProxy",
                 start: 14,
                 count: 2).ConfigureAwait(false));
+            JsonElement[] indexedProxy = await ReadProxyLocalPageAsync(
+                client, "localProxy", start: 1, count: 2, filter: "indexed").ConfigureAwait(false);
+            Assert.AreSequenceEqual(
+                ["44", "48"],
+                indexedProxy.Select(field => field.GetProperty("value").GetString()).ToArray());
+            JsonElement[] namedProxy = await ReadProxyLocalPageAsync(
+                client, "localProxy", start: 2, count: 2, filter: "named").ConfigureAwait(false);
+            Assert.AreSequenceEqual(
+                ["ComputedValue", "ProtectedValue"],
+                namedProxy.Select(field => field.GetProperty("name").GetString()).ToArray());
 
             await DisconnectStoppedSessionAsync(client).ConfigureAwait(false);
             Assert.AreEqual(
@@ -306,7 +327,8 @@ public sealed partial class DapSessionTests
         DapTestClient client,
         string localName,
         int start,
-        int count)
+        int count,
+        string? filter = null)
     {
         JsonElement frame = await GetFixtureFrameAsync(client).ConfigureAwait(false);
         int scopesSequence = await client.SendRequestAsync(
@@ -323,11 +345,12 @@ public sealed partial class DapSessionTests
             client,
             locals.GetProperty("variablesReference").GetInt32()).ConfigureAwait(false))
             .Single(variable => variable.GetProperty("name").GetString() == localName);
-        JsonElement[] fields = await ReadVariablesAsync(
+        JsonElement[] fields = await ReadVariablesPageAsync(
             client,
             local.GetProperty("variablesReference").GetInt32(),
             start,
-            count).ConfigureAwait(false);
+            count,
+            filter).ConfigureAwait(false);
         using JsonDocument invalidated = await client
             .ReadMessageAsync(TestContext.CancellationToken)
             .ConfigureAwait(false);
@@ -361,19 +384,22 @@ public sealed partial class DapSessionTests
 
     private Task<DapTestClient> StartProxyFixtureAsync(
         string waitPath,
-        bool isolateResultsViewAssembly = false) => StartPresentationFixtureAsync(
+        bool isolateResultsViewAssembly = false,
+        bool supportsVariablePaging = true) => StartPresentationFixtureAsync(
             waitPath,
             "DebuggerFixture.cs",
             "Console.Write(announcement);",
             isolateResultsViewAssembly
-                ? "--debugger-results-view-context-fixture" : "--debugger-fixture");
+                ? "--debugger-results-view-context-fixture" : "--debugger-fixture",
+            supportsVariablePaging: supportsVariablePaging);
 
     private async Task<DapTestClient> StartPresentationFixtureAsync(
         string waitPath,
         string sourceFileName,
         string breakpointText,
         string fixtureCommand,
-        string? fixtureAssemblyPath = null)
+        string? fixtureAssemblyPath = null,
+        bool supportsVariablePaging = true)
     {
         string sourcePath = Path.Join(
             FindRepositoryRoot(),
@@ -390,7 +416,12 @@ public sealed partial class DapSessionTests
             .ConfigureAwait(false);
         _ = await client.SendRequestAsync(
             "initialize",
-            WriteEmptyObject,
+            writer =>
+            {
+                writer.WriteStartObject();
+                writer.WriteBoolean("supportsVariablePaging", supportsVariablePaging);
+                writer.WriteEndObject();
+            },
             TestContext.CancellationToken).ConfigureAwait(false);
         using JsonDocument initialize = await client
             .ReadMessageAsync(TestContext.CancellationToken)

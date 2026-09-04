@@ -27,6 +27,12 @@ public enum DebugVariablePresentationKind
     ResultsView,
 
     /// <summary>
+    /// Presents a read-only virtual snapshot whose expansion does not execute target code.
+    /// </summary>
+    [JsonStringEnumMemberName("resultsSnapshot")]
+    ResultsSnapshot,
+
+    /// <summary>
     /// Presents a read-only debugger-generated string message.
     /// </summary>
     [JsonStringEnumMemberName("readOnlyString")]

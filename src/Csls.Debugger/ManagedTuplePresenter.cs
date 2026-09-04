@@ -120,7 +120,7 @@ internal sealed class ManagedTuplePresenter
             value,
             exactType,
             projection,
-            (fieldValue, _, _, fieldCustomTypeInfo, _) => elements.Add(
+            (fieldValue, _, _, fieldCustomTypeInfo, _, _) => elements.Add(
                 _services.FormatRuntimeValue(
                     fieldValue,
                     debuggerDisplayDepth + 1,
@@ -141,6 +141,8 @@ internal sealed class ManagedTuplePresenter
     /// <param name="start">The zero-based first logical child.</param>
     /// <param name="count">The maximum count, or zero for every remaining child.</param>
     /// <param name="result">Receives the tuple page.</param>
+    /// <param name="origin">The exact physical storage of the tuple value.</param>
+    /// <param name="lifetime">The optional materialized snapshot owning retained descendants.</param>
     /// <returns>True when the runtime value has a compatible tuple shape.</returns>
     internal bool TryExpand(
         nint value,
@@ -150,7 +152,9 @@ internal sealed class ManagedTuplePresenter
         ManagedTupleCustomTypeInfo? customTypeInfo,
         int start,
         int count,
-        out List<DebugVariableInfo> result)
+        out List<DebugVariableInfo> result,
+        ManagedValueOrigin? origin = null,
+        ManagedResultsViewLifetime? lifetime = null)
     {
         nint exactType = 0;
         try
@@ -170,7 +174,7 @@ internal sealed class ManagedTuplePresenter
                 value,
                 exactType,
                 projection,
-                static (fieldValue, logicalIndex, evaluateName, fieldCustomTypeInfo, state) =>
+                static (fieldValue, logicalIndex, evaluateName, fieldCustomTypeInfo, fieldOrigin, state) =>
                 {
                     (ManagedTuplePresenter presenter,
                         ManagedTupleTypeProjection tupleProjection,
@@ -178,7 +182,8 @@ internal sealed class ManagedTuplePresenter
                         int? frame,
                         DebugStopGeneration stop,
                         int first,
-                        int maximum) = state;
+                        int maximum,
+                        ManagedResultsViewLifetime? snapshotLifetime) = state;
                     if (logicalIndex < first ||
                         (maximum > 0 && values.Count >= maximum))
                     {
@@ -195,7 +200,9 @@ internal sealed class ManagedTuplePresenter
                         evaluateName,
                         frame,
                         ManagedValueView.Default,
-                        fieldCustomTypeInfo);
+                        fieldCustomTypeInfo,
+                        fieldOrigin,
+                        snapshotLifetime);
                     string logicalName = tupleProjection.ElementNames[logicalIndex];
                     values.Add(new DebugVariableInfo(
                         fieldDisplay.Name ?? logicalName,
@@ -205,8 +212,9 @@ internal sealed class ManagedTuplePresenter
                         references.MemoryReference,
                         evaluateName));
                 },
-                (this, projection, result, frameId, generation, start, count),
-                parentEvaluateName);
+                (this, projection, result, frameId, generation, start, count, lifetime),
+                parentEvaluateName,
+                origin);
 
             int cardinality = projection.ElementNames.Count;
             if ((cardinality > TupleRestPosition - 1 || projection.HasAuthoredElementNames) &&
@@ -223,7 +231,9 @@ internal sealed class ManagedTuplePresenter
                     parentEvaluateName,
                     frameId,
                     ManagedValueView.Raw,
-                    customTypeInfo);
+                    customTypeInfo,
+                    origin,
+                    lifetime);
                 result.Add(new DebugVariableInfo(
                     "Raw View",
                     rawDisplay.Value,
@@ -253,7 +263,8 @@ internal sealed class ManagedTuplePresenter
     /// <param name="customTypeInfo">The optional tuple-name transforms.</param>
     /// <param name="elementName">The authored or ItemN element name.</param>
     /// <param name="comparison">The source-language name comparison.</param>
-    /// <param name="element">Receives the retained physical field value and its nested tuple metadata.</param>
+    /// <param name="element">Receives the retained physical field value, nested tuple metadata, and origin.</param>
+    /// <param name="origin">The exact physical storage of the tuple value.</param>
     /// <returns>True when exactly one logical element matches.</returns>
     internal bool TryGetElementValue(
         nint value,
@@ -261,7 +272,8 @@ internal sealed class ManagedTuplePresenter
         ManagedTupleCustomTypeInfo? customTypeInfo,
         string elementName,
         StringComparison comparison,
-        out (nint Value, ManagedTupleCustomTypeInfo? CustomTypeInfo) element)
+        out (nint Value, ManagedTupleCustomTypeInfo? CustomTypeInfo, ManagedValueOrigin? Origin) element,
+        ManagedValueOrigin? origin = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(elementName);
         if (!_typeShape.TryCreateProjection(
@@ -277,9 +289,12 @@ internal sealed class ManagedTuplePresenter
         {
             if (string.Equals($"Item{index + 1}", elementName, comparison))
             {
+                (nint fieldValue, ManagedValueOrigin? fieldOrigin) = GetLogicalElementValue(
+                    value, exactType, index, origin);
                 element = (
-                    GetLogicalElementValue(value, exactType, index),
-                    projection.ElementCustomTypeInfo[index]);
+                    fieldValue,
+                    projection.ElementCustomTypeInfo[index],
+                    fieldOrigin);
                 return true;
             }
         }
@@ -307,9 +322,12 @@ internal sealed class ManagedTuplePresenter
             return false;
         }
 
+        (nint matchingValue, ManagedValueOrigin? matchingOrigin) = GetLogicalElementValue(
+            value, exactType, matchingIndex.Value, origin);
         element = (
-            GetLogicalElementValue(value, exactType, matchingIndex.Value),
-            projection.ElementCustomTypeInfo[matchingIndex.Value]);
+            matchingValue,
+            projection.ElementCustomTypeInfo[matchingIndex.Value],
+            matchingOrigin);
         return true;
     }
 
@@ -352,14 +370,16 @@ internal sealed class ManagedTuplePresenter
         nint value,
         nint exactType,
         ManagedTupleTypeProjection projection,
-        Action<nint, int, string?, ManagedTupleCustomTypeInfo?, TState> visitor,
+        Action<nint, int, string?, ManagedTupleCustomTypeInfo?, ManagedValueOrigin?, TState> visitor,
         TState state,
-        string? parentEvaluateName = null)
+        string? parentEvaluateName = null,
+        ManagedValueOrigin? origin = null)
     {
         ManagedTupleTraversalState traversal = new(
             Retain(value),
             Retain(exactType),
-            parentEvaluateName);
+            parentEvaluateName,
+            origin);
         try
         {
             int remaining = projection.ElementNames.Count;
@@ -370,10 +390,11 @@ internal sealed class ManagedTuplePresenter
                 for (int fieldIndex = 0; fieldIndex < fieldCount; fieldIndex++)
                 {
                     string physicalName = $"Item{fieldIndex + 1}";
-                    nint fieldValue = GetFieldValue(
+                    (nint fieldValue, ManagedValueOrigin? fieldOrigin) = GetFieldValue(
                         traversal.CurrentValue,
                         traversal.CurrentType,
-                        physicalName);
+                        physicalName,
+                        traversal.Origin);
                     try
                     {
                         visitor(
@@ -383,6 +404,7 @@ internal sealed class ManagedTuplePresenter
                                 traversal.LayerEvaluateName,
                                 physicalName),
                             projection.ElementCustomTypeInfo[logicalIndex],
+                            fieldOrigin,
                             state);
                     }
                     finally
@@ -419,12 +441,17 @@ internal sealed class ManagedTuplePresenter
         }
     }
 
-    private nint GetLogicalElementValue(nint value, nint exactType, int logicalIndex)
+    private (nint Value, ManagedValueOrigin? Origin) GetLogicalElementValue(
+        nint value,
+        nint exactType,
+        int logicalIndex,
+        ManagedValueOrigin? origin)
     {
         ManagedTupleTraversalState traversal = new(
             Retain(value),
             Retain(exactType),
-            layerEvaluateName: null);
+            layerEvaluateName: null,
+            origin);
         try
         {
             int remainingIndex = logicalIndex;
@@ -435,7 +462,8 @@ internal sealed class ManagedTuplePresenter
                     return GetFieldValue(
                         traversal.CurrentValue,
                         traversal.CurrentType,
-                        $"Item{remainingIndex + 1}");
+                        $"Item{remainingIndex + 1}",
+                        traversal.Origin);
                 }
 
                 remainingIndex -= TupleRestPosition - 1;
@@ -461,10 +489,11 @@ internal sealed class ManagedTuplePresenter
 
     private void MoveToRest(ManagedTupleTraversalState traversal)
     {
-        nint restValue = GetFieldValue(
+        (nint restValue, ManagedValueOrigin? restOrigin) = GetFieldValue(
             traversal.CurrentValue,
             traversal.CurrentType,
-            "Rest");
+            "Rest",
+            traversal.Origin);
         nint restType = 0;
         try
         {
@@ -478,6 +507,7 @@ internal sealed class ManagedTuplePresenter
             traversal.LayerEvaluateName = ManagedExpressionName.CreateMember(
                 traversal.LayerEvaluateName,
                 "Rest");
+            traversal.Origin = restOrigin;
         }
         finally
         {
@@ -493,7 +523,11 @@ internal sealed class ManagedTuplePresenter
         }
     }
 
-    private nint GetFieldValue(nint value, nint type, string fieldName)
+    private (nint Value, ManagedValueOrigin? Origin) GetFieldValue(
+        nint value,
+        nint type,
+        string fieldName,
+        ManagedValueOrigin? origin)
     {
         nint instance = 0;
         nint runtimeClass = 0;
@@ -518,10 +552,12 @@ internal sealed class ManagedTuplePresenter
                         fieldName,
                         StringComparison.Ordinal))
                 {
-                    return GetObjectFieldValue(
-                        instance,
-                        runtimeClass,
-                        checked((uint)MetadataTokens.GetToken(fieldHandle)));
+                    uint fieldToken = checked((uint)MetadataTokens.GetToken(fieldHandle));
+                    ManagedValueOrigin? fieldOrigin = _services.CreateFieldValueOrigin(
+                        origin, runtimeClass, fieldToken);
+                    return (
+                        GetObjectFieldValue(instance, runtimeClass, fieldToken),
+                        fieldOrigin);
                 }
             }
 

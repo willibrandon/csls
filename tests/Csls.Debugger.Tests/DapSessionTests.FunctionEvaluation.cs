@@ -303,7 +303,6 @@ public sealed partial class DapSessionTests
                 .ConfigureAwait(false);
             AssertEvent(exceptionInvalidated.RootElement, "invalidated");
 
-            frame = await GetFixtureFrameAsync(client).ConfigureAwait(false);
             JsonElement afterException = await ReadEvaluationAsync(
                 client,
                 frame.GetProperty("id").GetInt32(),
@@ -313,10 +312,10 @@ public sealed partial class DapSessionTests
             Assert.AreEqual("42", afterException.GetProperty("result").GetString());
 
             frame = await GetFixtureFrameAsync(client).ConfigureAwait(false);
-            int retiredAssignmentFrameId = frame.GetProperty("id").GetInt32();
+            int assignmentFrameId = frame.GetProperty("id").GetInt32();
             JsonElement assignedString = await ReadSetExpressionAsync(
                 client,
-                retiredAssignmentFrameId,
+                assignmentFrameId,
                 "localObject.Text",
                 "\"changed\"",
                 success: true,
@@ -325,13 +324,16 @@ public sealed partial class DapSessionTests
             Assert.AreEqual(
                 "\"changed\"",
                 assignedString.GetProperty("value").GetString());
-            _ = await ReadEvaluationAsync(
+            JsonElement assignedStringThroughOriginalFrame = await ReadEvaluationAsync(
                 client,
-                retiredAssignmentFrameId,
+                assignmentFrameId,
                 "localObject.Text",
-                success: false,
+                success: true,
                 TestContext.CancellationToken).ConfigureAwait(false);
+            Assert.AreEqual("\"changed\"", assignedStringThroughOriginalFrame.GetProperty("result").GetString());
+            Assert.AreEqual("string", assignedStringThroughOriginalFrame.GetProperty("type").GetString());
             frame = await GetFixtureFrameAsync(client).ConfigureAwait(false);
+            Assert.AreEqual(assignmentFrameId, frame.GetProperty("id").GetInt32());
             JsonElement assignedStringValue = await ReadEvaluationAsync(
                 client,
                 frame.GetProperty("id").GetInt32(),
@@ -385,10 +387,10 @@ public sealed partial class DapSessionTests
                 TestContext.CancellationToken).ConfigureAwait(false);
             Assert.AreEqual("\"built\"", assignedObjectText.GetProperty("result").GetString());
 
-            int retiredFailedAssignmentFrameId = frame.GetProperty("id").GetInt32();
+            int failedAssignmentFrameId = frame.GetProperty("id").GetInt32();
             JsonElement failedAssignment = await ReadSetExpressionAsync(
                 client,
-                retiredFailedAssignmentFrameId,
+                failedAssignmentFrameId,
                 "localNumber",
                 "localObject.ThrowForDebugger()",
                 success: false,
@@ -398,13 +400,16 @@ public sealed partial class DapSessionTests
                 "threw",
                 failedAssignment.GetProperty("message").GetString()!,
                 StringComparison.OrdinalIgnoreCase);
-            _ = await ReadEvaluationAsync(
+            JsonElement valueThroughOriginalFrame = await ReadEvaluationAsync(
                 client,
-                retiredFailedAssignmentFrameId,
+                failedAssignmentFrameId,
                 "localNumber",
-                success: false,
+                success: true,
                 TestContext.CancellationToken).ConfigureAwait(false);
+            Assert.AreEqual("50", valueThroughOriginalFrame.GetProperty("result").GetString());
+            Assert.AreEqual("int", valueThroughOriginalFrame.GetProperty("type").GetString());
             frame = await GetFixtureFrameAsync(client).ConfigureAwait(false);
+            Assert.AreEqual(failedAssignmentFrameId, frame.GetProperty("id").GetInt32());
             JsonElement valueAfterFailedAssignment = await ReadEvaluationAsync(
                 client,
                 frame.GetProperty("id").GetInt32(),

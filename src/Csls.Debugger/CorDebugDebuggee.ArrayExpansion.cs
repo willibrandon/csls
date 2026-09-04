@@ -15,7 +15,9 @@ internal sealed partial class CorDebugDebuggee
         DebugStopGeneration generation,
         ManagedTupleCustomTypeInfo? tupleCustomTypeInfo,
         int start,
-        int count)
+        int count,
+        ManagedValueOrigin? origin = null,
+        ManagedResultsViewLifetime? lifetime = null)
     {
         var api = new ICorDebugArrayValueAbi(array);
         uint elementCount = GetArrayElementCount(api);
@@ -25,13 +27,18 @@ internal sealed partial class CorDebugDebuggee
                 $"The array exceeds the debugger element limit of {MaximumExpandableValueCount}.");
         }
 
+        int available = checked((int)elementCount);
+        if (start >= available)
+        {
+            return [];
+        }
+
         uint rank = GetArrayRank(api);
         uint[] dimensions = GetArrayDimensions(api, rank);
         int[] bases = GetArrayBases(api, rank);
-        int end = count == 0
-            ? checked((int)elementCount)
-            : Math.Min(checked((int)elementCount), checked(start + count));
-        var result = new List<DebugVariableInfo>(Math.Max(0, end - start));
+        int take = count == 0 ? available - start : Math.Min(count, available - start);
+        int end = start + take;
+        var result = new List<DebugVariableInfo>(take);
         for (int index = start; index < end; index++)
         {
             nint element = 0;
@@ -60,14 +67,17 @@ internal sealed partial class CorDebugDebuggee
                     generation,
                     evaluateName,
                     frameId,
-                    tupleCustomTypeInfo: tupleCustomTypeInfo);
+                    tupleCustomTypeInfo: tupleCustomTypeInfo,
+                    origin: origin is null ? null : new ManagedArrayElementValueOrigin(origin, index),
+                    lifetime: lifetime);
                 result.Add(new DebugVariableInfo(
                     display.Name ?? name,
                     display.Value,
                     display.Type,
                     references.VariablesReference,
                     references.MemoryReference,
-                    evaluateName));
+                    evaluateName,
+                    IsIndexed: true));
             }
             finally
             {

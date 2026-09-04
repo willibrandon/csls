@@ -63,10 +63,14 @@ internal sealed partial class CorDebugDebuggee
     /// <summary>
     /// Resumes all managed threads from the current debugger stop.
     /// </summary>
-    internal void Continue()
+    internal void Continue() => ContinueCore(preserveFrameIdentity: false);
+
+    private void ContinueForFunctionEvaluation() => ContinueCore(preserveFrameIdentity: true);
+
+    private void ContinueCore(bool preserveFrameIdentity)
     {
         _managedCallback.ThrowIfRuntimeFailed();
-        ClearFrameHandles();
+        ClearFrameHandles(preserveFrameIdentity);
         CorDebugHResult.ThrowIfFailed(
             new ICorDebugControllerAbi(_debugProcess).Continue(fIsOutOfBand: 0),
             "ICorDebugController.Continue");

@@ -14,7 +14,9 @@ internal sealed partial class CorDebugDebuggee
         string? evaluateName,
         int? frameId,
         ManagedValueView view = ManagedValueView.Default,
-        ManagedTupleCustomTypeInfo? tupleCustomTypeInfo = null)
+        ManagedTupleCustomTypeInfo? tupleCustomTypeInfo = null,
+        ManagedValueOrigin? origin = null,
+        ManagedResultsViewLifetime? lifetime = null)
     {
         if (!IsExpandable(value))
         {
@@ -28,7 +30,9 @@ internal sealed partial class CorDebugDebuggee
             frameId,
             GetValueThreadId(frameId),
             view,
-            tupleCustomTypeInfo);
+            tupleCustomTypeInfo,
+            origin,
+            lifetime);
         return new ManagedValueReferences(handle.Id, handle.MemoryReference);
     }
 
@@ -62,8 +66,15 @@ internal sealed partial class CorDebugDebuggee
         int? frameId,
         int? threadId,
         ManagedValueView view,
-        ManagedTupleCustomTypeInfo? tupleCustomTypeInfo)
+        ManagedTupleCustomTypeInfo? tupleCustomTypeInfo,
+        ManagedValueOrigin? origin = null,
+        ManagedResultsViewLifetime? lifetime = null)
     {
+        if (lifetime?.IsRetired == true)
+        {
+            throw new InvalidOperationException("The Results View snapshot is stale.");
+        }
+
         nint identity;
         try
         {
@@ -76,11 +87,14 @@ internal sealed partial class CorDebugDebuggee
                 $"required COM identity: {exception.Message}",
                 exception);
         }
-        (nint Identity, int? FrameId, string? EvaluateName, ManagedValueView View) key = (
+        (nint Identity, int? FrameId, string? EvaluateName, ManagedValueView View,
+            ManagedValueOrigin? Origin, ManagedResultsViewLifetime? Lifetime) key = (
             identity,
             frameId,
             evaluateName,
-            view);
+            view,
+            origin,
+            lifetime);
         if (_valueIdentities.TryGetValue(key, out ManagedValueHandle? existing))
         {
             _ = ComAbi.Release(identity);
@@ -109,6 +123,8 @@ internal sealed partial class CorDebugDebuggee
             Pointer = value,
             Identity = identity,
             View = view,
+            Origin = origin,
+            Lifetime = lifetime,
             MemoryReference = memoryReference,
             MemoryAddress = memoryAddress,
             EvaluateName = evaluateName,

@@ -109,14 +109,14 @@ internal sealed partial class CorDebugDebuggee
             plan,
             node.Children[0],
             generation);
-        (nint value, ManagedTupleCustomTypeInfo? tupleCustomTypeInfo) = ResolveInstanceFieldValue(
+        (nint value, ManagedTupleCustomTypeInfo? tupleCustomTypeInfo, ManagedValueOrigin? origin) = ResolveInstanceFieldValue(
             receiver, node.Text!, plan.Language);
         try
         {
             return RetainExpressionValue(
                 node.Text!,
                 ManagedExpressionName.CreateMember(receiver.Display.EvaluateName, node.Text!),
-                value, frame.Id, generation, tupleCustomTypeInfo);
+                value, frame.Id, generation, tupleCustomTypeInfo, origin);
         }
         finally
         {
@@ -140,12 +140,12 @@ internal sealed partial class CorDebugDebuggee
         string? evaluateName = receiver.Display.EvaluateName is string parent
             ? string.Concat(parent, name)
             : null;
-        nint value = ResolveArrayElementValue(receiver, indexes);
+        (nint value, ManagedValueOrigin? origin) = ResolveArrayElementValue(receiver, indexes);
         try
         {
             return RetainExpressionValue(
                 name, evaluateName, value, frame.Id, generation,
-                GetExpressionTupleCustomTypeInfo(receiver));
+                GetExpressionTupleCustomTypeInfo(receiver), origin);
         }
         finally
         {

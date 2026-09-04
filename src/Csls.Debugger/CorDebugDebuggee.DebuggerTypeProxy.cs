@@ -32,6 +32,7 @@ internal sealed partial class CorDebugDebuggee
         }
 
         ValidateGeneration(variablesReference, handle.Generation, generation);
+        ValidateValueLifetime(handle);
         nint inspectedValue = 0;
         nint thread = 0;
         ManagedDebuggerTypeProxyBinding? binding = null;
@@ -138,7 +139,7 @@ internal sealed partial class CorDebugDebuggee
             callbackEvaluationActive = true;
             ScheduleNextFunctionEvaluationStage(active);
             callScheduled = true;
-            Continue();
+            ContinueForFunctionEvaluation();
             return active.Completion.Task.WaitAsync(CancellationToken.None);
         }
         catch (Exception exception) when (exception is not OperationCanceledException)
@@ -221,7 +222,7 @@ internal sealed partial class CorDebugDebuggee
         bool continues = false;
         try
         {
-            ClearFrameHandles();
+            ClearFrameHandles(preserveFrameIdentity: true);
             if (active.AbortRequested)
             {
                 failure = new OperationCanceledException(
@@ -708,6 +709,8 @@ internal sealed partial class CorDebugDebuggee
         ManagedFunctionEvaluationResult? result,
         Exception? failure)
     {
+        ManagedResultsViewEvaluation? resultsView = active.ResultsView;
+        ManagedResultsViewReceiverIdentity? receiver = resultsView?.DetachReceiverIdentity();
         _activeFunctionEvaluation = null;
         try
         {
@@ -732,6 +735,27 @@ internal sealed partial class CorDebugDebuggee
         }
 
         failure = RuntimeFailure ?? failure;
+        if (failure is null && resultsView is not null)
+        {
+            if (result is null || receiver is null)
+            {
+                failure = new InvalidOperationException(
+                    "The completed Results View did not retain its receiver and snapshot.");
+            }
+            else
+            {
+                _resultsViewSnapshot = new ManagedResultsViewSnapshot(
+                    receiver, result.Generation, result.RuntimeValueReference, resultsView.Lifetime);
+                receiver = null;
+            }
+        }
+
+        if (failure is not null)
+        {
+            resultsView?.Lifetime.Retire();
+        }
+
+        ReleaseFunctionEvaluationHandle(receiver?.DetachHeapHandle() ?? 0);
         if (failure is OperationCanceledException canceled)
         {
             _ = active.Completion.TrySetCanceled(canceled.CancellationToken);

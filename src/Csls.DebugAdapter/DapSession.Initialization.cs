@@ -1,4 +1,5 @@
 using Csls.DebugAdapter.Protocol;
+using System.Text.Json;
 
 namespace Csls.DebugAdapter;
 
@@ -18,6 +19,9 @@ internal sealed partial class DapSession
         }
 
         ConfigureCoordinateSystem(request.Arguments);
+        _clientSupportsVariablePaging = request.Arguments.ValueKind == JsonValueKind.Object &&
+            request.Arguments.TryGetProperty("supportsVariablePaging", out JsonElement paging) &&
+            paging.ValueKind == JsonValueKind.True;
         _state = DapSessionState.Initialized;
         await _writer.WriteResponseAsync(
             request,
@@ -57,7 +61,6 @@ internal sealed partial class DapSession
                     defaultValue: true);
                 writer.WriteEndArray();
                 writer.WriteBoolean("supportsExceptionInfoRequest", true);
-                writer.WriteBoolean("supportsVariablePaging", true);
                 writer.WriteBoolean("supportsEvaluateForHovers", true);
                 writer.WriteBoolean("supportsCompletionsRequest", true);
                 writer.WriteBoolean("supportsSetVariable", true);
