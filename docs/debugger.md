@@ -309,8 +309,10 @@ array arguments, including framework types reached through validated type forwar
 The debugger invokes the proxy's single one-argument instance constructor,
 including a non-public constructor, through the guarded evaluator. Successful
 construction exposes public and protected proxy fields plus explicitly attributed
-non-public fields with `DebuggerBrowsableAttribute` transforms
-and appends a virtual Raw View of the original object. Malformed declarations,
+non-public fields, and evaluates visible non-indexed proxy property getters serially
+under the guarded target-execution policy. `DebuggerBrowsableAttribute` transforms
+apply to both member kinds, and a virtual Raw View preserves the original object.
+Malformed declarations,
 unavailable constructors, generic arity mismatches, and constructor exceptions preserve
 ordinary expansion. Because a proxy constructor is arbitrary target code, construction
 advances the stop generation and invalidates earlier stack and variable handles.

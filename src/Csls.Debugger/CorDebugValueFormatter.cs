@@ -17,6 +17,84 @@ internal static class CorDebugValueFormatter
     /// <returns>The immediate value and element-type display.</returns>
     internal static ManagedValueDisplay Format(nint value) => Format(value, depth: 0);
 
+    /// <summary>
+    /// Tries to format a CoreLib primitive represented as a value-class evaluation result.
+    /// </summary>
+    /// <param name="value">The borrowed value-class ICorDebugValue pointer.</param>
+    /// <param name="metadataTypeName">The exact CoreLib metadata type name.</param>
+    /// <param name="display">Receives the debugger primitive display.</param>
+    /// <returns>True when the value is a recognized primitive value class.</returns>
+    internal static unsafe bool TryFormatPrimitiveValueClass(
+        nint value,
+        string metadataTypeName,
+        out ManagedValueDisplay display)
+    {
+        (uint ElementType, string TypeName) primitive = metadataTypeName switch
+        {
+            "System.Boolean" => (0x02, "bool"),
+            "System.Char" => (0x03, "char"),
+            "System.SByte" => (0x04, "sbyte"),
+            "System.Byte" => (0x05, "byte"),
+            "System.Int16" => (0x06, "short"),
+            "System.UInt16" => (0x07, "ushort"),
+            "System.Int32" => (0x08, "int"),
+            "System.UInt32" => (0x09, "uint"),
+            "System.Int64" => (0x0a, "long"),
+            "System.UInt64" => (0x0b, "ulong"),
+            "System.Single" => (0x0c, "float"),
+            "System.Double" => (0x0d, "double"),
+            "System.IntPtr" => (0x18, "nint"),
+            "System.UIntPtr" => (0x19, "nuint"),
+            _ => default
+        };
+        if (primitive.ElementType == 0)
+        {
+            display = default;
+            return false;
+        }
+
+        if (!ComAbi.TryQueryInterface(
+            value,
+            ICorDebugGenericValueAbi.InterfaceId,
+            out nint generic))
+        {
+            display = default;
+            return false;
+        }
+
+        try
+        {
+            uint size = 0;
+            uint* sizeAddress = &size;
+            CorDebugHResult.ThrowIfFailed(
+                new ICorDebugValueAbi(value).GetSize((nint)sizeAddress),
+                "ICorDebugValue.GetSize");
+            size = Volatile.Read(ref *sizeAddress);
+            if (size == 0 || size > 16)
+            {
+                display = default;
+                return false;
+            }
+
+            byte[] bytes = GC.AllocateUninitializedArray<byte>(checked((int)size));
+            fixed (byte* bytesAddress = bytes)
+            {
+                CorDebugHResult.ThrowIfFailed(
+                    new ICorDebugGenericValueAbi(generic).GetValue((nint)bytesAddress),
+                    "ICorDebugGenericValue.GetValue");
+            }
+
+            display = new ManagedValueDisplay(
+                FormatPrimitive(primitive.ElementType, bytes),
+                primitive.TypeName);
+            return true;
+        }
+        finally
+        {
+            _ = ComAbi.Release(generic);
+        }
+    }
+
     private static unsafe ManagedValueDisplay Format(nint value, int depth)
     {
         const int maximumReferenceDepth = 8;

@@ -346,6 +346,14 @@ internal sealed partial class CorDebugDebuggee
             return false;
         }
 
+        if (active.DebuggerTypeProxy is not null)
+        {
+            return CompleteDebuggerTypeProxyEvaluation(
+                active,
+                isException,
+                resultGeneration);
+        }
+
         Exception? stageFailure = null;
         if (!active.MethodCallScheduled && !active.AbortRequested && !isException)
         {

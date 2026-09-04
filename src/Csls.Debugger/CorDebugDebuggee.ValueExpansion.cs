@@ -51,6 +51,7 @@ internal sealed partial class CorDebugDebuggee
             }
 
             ManagedDebuggerTypeProxyRawView? proxyRawView = null;
+            IReadOnlyList<ManagedDebuggerTypeProxyPropertyPresentation>? proxyProperties = null;
             if (handle.ProxyRawValueReference > 0)
             {
                 if (!_values.TryGetValue(
@@ -66,6 +67,7 @@ internal sealed partial class CorDebugDebuggee
                     rawHandle.Pointer,
                     rawHandle.Id,
                     rawHandle.MemoryReference);
+                proxyProperties = handle.ProxyProperties;
             }
 
             return ExpandObject(
@@ -77,7 +79,8 @@ internal sealed partial class CorDebugDebuggee
                 count,
                 handle.View,
                 handle.TupleCustomTypeInfo,
-                proxyRawView);
+                proxyRawView,
+                proxyProperties);
         }
         finally
         {

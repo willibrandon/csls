@@ -66,10 +66,34 @@ public sealed partial class McpDebuggerLifecycleTests
             cancellationToken).ConfigureAwait(false);
         Assert.IsGreaterThan(generation, presented.GetProperty("stopGeneration").GetInt64());
         Assert.AreSequenceEqual(
-            ["Value", "[0]", "[1]", "Raw View"],
+            [
+                "Value",
+                "[0]",
+                "[1]",
+                "ProtectedValue",
+                "_attributedValue",
+                "ArrayValue",
+                "BoxedValue",
+                "ComputedValue",
+                "ThrowingValue",
+                "_attributedProperty",
+                "Raw View"
+            ],
             presented.GetProperty("variables").EnumerateArray()
                 .Select(item => item.GetProperty("name").GetString())
                 .ToArray());
+        JsonElement[] proxyMembers =
+        [
+            .. presented.GetProperty("variables").EnumerateArray()
+        ];
+        Assert.AreEqual("42", proxyMembers[0].GetProperty("value").GetString());
+        Assert.AreEqual("{int[2]}", proxyMembers[5].GetProperty("value").GetString());
+        Assert.AreEqual("55", proxyMembers[6].GetProperty("value").GetString());
+        Assert.AreEqual("52", proxyMembers[7].GetProperty("value").GetString());
+        Assert.StartsWith(
+            "<error: System.InvalidOperationException:",
+            proxyMembers[8].GetProperty("value").GetString());
+        Assert.AreEqual("47", proxyMembers[9].GetProperty("value").GetString());
         JsonElement current = await CallAsync(
             client,
             "debug_session_get",

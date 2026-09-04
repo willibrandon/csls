@@ -63,6 +63,15 @@ internal sealed partial class CorDebugDebuggee
             ManagedValueDisplay ordinary;
             if (elementType == 0x11 &&
                 hasInspectedValue &&
+                CorDebugValueFormatter.TryFormatPrimitiveValueClass(
+                    inspectedValue,
+                    type,
+                    out ManagedValueDisplay primitiveDisplay))
+            {
+                ordinary = primitiveDisplay;
+            }
+            else if (elementType == 0x11 &&
+                hasInspectedValue &&
                 TryFormatEnumValue(inspectedValue, exactType, out string enumDisplay))
             {
                 ordinary = new ManagedValueDisplay(enumDisplay, type);

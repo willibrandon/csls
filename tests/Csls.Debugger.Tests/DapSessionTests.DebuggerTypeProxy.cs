@@ -25,7 +25,19 @@ public sealed partial class DapSessionTests
             JsonElement[] proxyFields = await ReadProxyLocalAsync(client, "localProxy")
                 .ConfigureAwait(false);
             Assert.AreSequenceEqual(
-                ["Value", "[0]", "[1]", "ProtectedValue", "_attributedValue", "Raw View"],
+                [
+                    "Value",
+                    "[0]",
+                    "[1]",
+                    "ProtectedValue",
+                    "_attributedValue",
+                    "ArrayValue",
+                    "BoxedValue",
+                    "ComputedValue",
+                    "ThrowingValue",
+                    "_attributedProperty",
+                    "Raw View"
+                ],
                 proxyFields.Select(field => field.GetProperty("name").GetString()).ToArray(),
                 client.Diagnostics.ToString());
             Assert.AreEqual("42", proxyFields[0].GetProperty("value").GetString());
@@ -33,6 +45,13 @@ public sealed partial class DapSessionTests
             Assert.AreEqual("44", proxyFields[2].GetProperty("value").GetString());
             Assert.AreEqual("45", proxyFields[3].GetProperty("value").GetString());
             Assert.AreEqual("46", proxyFields[4].GetProperty("value").GetString());
+            Assert.AreEqual("{int[2]}", proxyFields[5].GetProperty("value").GetString());
+            Assert.AreEqual("55", proxyFields[6].GetProperty("value").GetString());
+            Assert.AreEqual("52", proxyFields[7].GetProperty("value").GetString());
+            Assert.StartsWith(
+                "<error: System.InvalidOperationException:",
+                proxyFields[8].GetProperty("value").GetString());
+            Assert.AreEqual("47", proxyFields[9].GetProperty("value").GetString());
             Assert.DoesNotContain(
                 "_privateValue",
                 proxyFields.Select(field => field.GetProperty("name").GetString()));
@@ -40,7 +59,16 @@ public sealed partial class DapSessionTests
                 "HiddenValue",
                 proxyFields.Select(field => field.GetProperty("name").GetString()));
 
-            JsonElement rawView = proxyFields[5];
+            JsonElement[] propertyArray = await ReadVariablesAsync(
+                client,
+                proxyFields[5].GetProperty("variablesReference").GetInt32())
+                .ConfigureAwait(false);
+            Assert.AreSequenceEqual(
+                ["43", "44"],
+                propertyArray.Select(element => element.GetProperty("value").GetString())
+                    .ToArray());
+
+            JsonElement rawView = proxyFields[10];
             Assert.AreEqual(
                 "virtual",
                 rawView.GetProperty("presentationHint").GetProperty("kind").GetString());
@@ -72,12 +100,34 @@ public sealed partial class DapSessionTests
                 start: 4,
                 count: 2).ConfigureAwait(false);
             Assert.AreSequenceEqual(
-                ["_attributedValue", "Raw View"],
+                ["_attributedValue", "ArrayValue"],
                 thirdPage.Select(field => field.GetProperty("name").GetString()).ToArray());
-            Assert.IsEmpty(await ReadProxyLocalPageAsync(
+            JsonElement[] fourthPage = await ReadProxyLocalPageAsync(
                 client,
                 "localProxy",
                 start: 6,
+                count: 2).ConfigureAwait(false);
+            Assert.AreSequenceEqual(
+                ["BoxedValue", "ComputedValue"],
+                fourthPage.Select(field => field.GetProperty("name").GetString()).ToArray());
+            JsonElement[] fifthPage = await ReadProxyLocalPageAsync(
+                client,
+                "localProxy",
+                start: 8,
+                count: 2).ConfigureAwait(false);
+            Assert.AreSequenceEqual(
+                ["ThrowingValue", "_attributedProperty"],
+                fifthPage.Select(field => field.GetProperty("name").GetString()).ToArray());
+            JsonElement rawPage = Assert.ContainsSingle(await ReadProxyLocalPageAsync(
+                client,
+                "localProxy",
+                start: 10,
+                count: 2).ConfigureAwait(false));
+            Assert.AreEqual("Raw View", rawPage.GetProperty("name").GetString());
+            Assert.IsEmpty(await ReadProxyLocalPageAsync(
+                client,
+                "localProxy",
+                start: 11,
                 count: 2).ConfigureAwait(false));
 
             await DisconnectStoppedSessionAsync(client).ConfigureAwait(false);

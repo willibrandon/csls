@@ -45,6 +45,7 @@ internal sealed class ManagedObjectExpander
     /// <param name="view">The presentation view applied to the expansion.</param>
     /// <param name="tupleCustomTypeInfo">The optional tuple-name transforms.</param>
     /// <param name="proxyRawView">The original object exposed after proxy fields.</param>
+    /// <param name="proxyProperties">The evaluated proxy property rows.</param>
     /// <returns>The requested logical field page.</returns>
     internal List<DebugVariableInfo> Expand(
         nint value,
@@ -55,7 +56,8 @@ internal sealed class ManagedObjectExpander
         int count,
         ManagedValueView view,
         ManagedTupleCustomTypeInfo? tupleCustomTypeInfo,
-        ManagedDebuggerTypeProxyRawView? proxyRawView)
+        ManagedDebuggerTypeProxyRawView? proxyRawView,
+        IReadOnlyList<ManagedDebuggerTypeProxyPropertyPresentation>? proxyProperties)
     {
         if (proxyRawView is null &&
             view != ManagedValueView.Raw &&
@@ -95,12 +97,40 @@ internal sealed class ManagedObjectExpander
             view,
             includeRawView: proxyRawView is null,
             proxyFieldsOnly: proxyRawView is not null);
+        if (proxyProperties is not null && !IsVariablePageFull(result, count))
+        {
+            AppendProxyProperties(result, proxyProperties, start, count, state);
+        }
+
         if (proxyRawView is not null && !IsVariablePageFull(result, count))
         {
             AppendProxyRawView(result, proxyRawView, start, count, state);
         }
 
         return result;
+    }
+
+    private static void AppendProxyProperties(
+        List<DebugVariableInfo> result,
+        IReadOnlyList<ManagedDebuggerTypeProxyPropertyPresentation> properties,
+        int start,
+        int count,
+        ManagedObjectExpansionState state)
+    {
+        foreach (ManagedDebuggerTypeProxyPropertyPresentation property in properties)
+        {
+            EnsureExpandableValueLimit(state.VisibleIndex, additionalCount: 1);
+            if (state.VisibleIndex >= start && !IsVariablePageFull(result, count))
+            {
+                result.Add(property.Variable);
+            }
+
+            state.VisibleIndex++;
+            if (IsVariablePageFull(result, count))
+            {
+                return;
+            }
+        }
     }
 
     private unsafe void AppendObjectFields(

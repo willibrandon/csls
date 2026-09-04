@@ -48,6 +48,15 @@ internal sealed class ManagedValueHandle
     internal int ProxyRawValueReference { get; set; }
 
     /// <summary>
+    /// Gets or sets evaluated debugger proxy properties published with this value.
+    /// </summary>
+    internal IReadOnlyList<ManagedDebuggerTypeProxyPropertyPresentation>? ProxyProperties
+    {
+        get;
+        set;
+    }
+
+    /// <summary>
     /// Gets or initializes the opaque stopped-state memory handle.
     /// </summary>
     internal string? MemoryReference { get; init; }

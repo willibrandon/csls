@@ -244,6 +244,11 @@ internal sealed partial class CorDebugDebuggee
     private static void ReleaseFunctionEvaluationResources(
         ManagedFunctionEvaluation evaluation)
     {
+        if (evaluation.DebuggerTypeProxy is ManagedDebuggerTypeProxyEvaluation proxy)
+        {
+            ReleaseDebuggerTypeProxyPropertyResources(proxy);
+        }
+
         ReleaseFunctionEvaluationHandle(evaluation.Receiver);
         foreach (nint argument in evaluation.RuntimeArguments)
         {

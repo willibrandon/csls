@@ -11,9 +11,9 @@ internal sealed class ManagedFunctionEvaluation
     internal required nint Pointer { get; set; }
 
     /// <summary>
-    /// Gets or initializes the owned ICorDebugFunction pointer for the final call.
+    /// Gets or sets the owned ICorDebugFunction pointer for the active call.
     /// </summary>
-    internal required nint Function { get; init; }
+    internal required nint Function { get; set; }
 
     /// <summary>
     /// Gets or initializes owned ICorDebugType pointers for object construction.
@@ -26,14 +26,14 @@ internal sealed class ManagedFunctionEvaluation
     internal required nint Thread { get; init; }
 
     /// <summary>
-    /// Gets or initializes the owned strong-handle receiver passed to the final call.
+    /// Gets or sets the owned strong-handle receiver passed to the active call.
     /// </summary>
-    internal required nint Receiver { get; init; }
+    internal required nint Receiver { get; set; }
 
     /// <summary>
-    /// Gets whether the final CoreCLR operation constructs a new managed object.
+    /// Gets or sets whether the active CoreCLR operation constructs a new managed object.
     /// </summary>
-    internal required bool ConstructsObject { get; init; }
+    internal required bool ConstructsObject { get; set; }
 
     /// <summary>
     /// Gets whether the final CoreCLR operation materializes a string value.
@@ -41,9 +41,9 @@ internal sealed class ManagedFunctionEvaluation
     internal required bool MaterializesString { get; init; }
 
     /// <summary>
-    /// Gets or initializes the bound debugger values for user-supplied arguments.
+    /// Gets or sets the bound debugger values for the active call.
     /// </summary>
-    internal required ManagedExpressionValue[] Arguments { get; init; }
+    internal required ManagedExpressionValue[] Arguments { get; set; }
 
     /// <summary>
     /// Gets or initializes owned strong handles for runtime and materialized arguments.
