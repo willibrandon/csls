@@ -247,6 +247,15 @@ jobs:
           --results-directory artifacts/test-results
           --minimum-expected-tests 70
           --no-ansi
+          --report-trx
+
+      - name: Preserve debugger failure results
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: debugger-test-results-${{ matrix.rid }}-${{ github.run_attempt }}
+          path: artifacts/test-results
+          if-no-files-found: warn
 
   native-aot-size:
     name: Native AOT size (${{ matrix.command }})

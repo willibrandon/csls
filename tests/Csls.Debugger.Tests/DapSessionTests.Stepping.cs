@@ -290,6 +290,13 @@ public sealed partial class DapSessionTests
             }
 
             string? eventName = root.GetProperty("event").GetString();
+            if (eventName is "exited" or "terminated")
+            {
+                Assert.Fail(
+                    $"The target ended before completing '{command}' on thread {threadId}. " +
+                    $"Recent protocol messages:{Environment.NewLine}{client.ProtocolTranscript}");
+            }
+
             if (eventName == "continued")
             {
                 Assert.IsTrue(

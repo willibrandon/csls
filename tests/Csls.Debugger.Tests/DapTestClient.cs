@@ -11,6 +11,10 @@ namespace Csls.Debugger.Tests;
 /// </summary>
 internal sealed partial class DapTestClient : IAsyncDisposable
 {
+    private const int MaximumTranscriptMessages = 24;
+    private const int MaximumTranscriptPayloadBytes = 4096;
+    private readonly Lock _transcriptGate = new();
+    private readonly Queue<string> _transcript = new();
     private ValueTask _diagnostics = ValueTask.CompletedTask;
     private Process? _process;
     private int _sequence;
@@ -48,6 +52,20 @@ internal sealed partial class DapTestClient : IAsyncDisposable
     /// Gets diagnostics emitted outside the DAP protocol stream.
     /// </summary>
     internal StringWriter Diagnostics { get; }
+
+    /// <summary>
+    /// Gets the bounded recent protocol exchange for a failed debugger operation.
+    /// </summary>
+    internal string ProtocolTranscript
+    {
+        get
+        {
+            lock (_transcriptGate)
+            {
+                return string.Join(Environment.NewLine, _transcript);
+            }
+        }
+    }
 
     /// <summary>
     /// Gets the operating-system identifier of the csls adapter launcher process.
@@ -93,6 +111,7 @@ internal sealed partial class DapTestClient : IAsyncDisposable
             .WriteAsync(payload.WrittenMemory, cancellationToken)
             .ConfigureAwait(false);
         await process.StandardInput.BaseStream.FlushAsync(cancellationToken).ConfigureAwait(false);
+        RecordMessage("request", payload.WrittenSpan);
         return sequence;
     }
 
@@ -152,7 +171,8 @@ internal sealed partial class DapTestClient : IAsyncDisposable
                 throw new EndOfStreamException(
                     "The DAP response stream ended in a header. " +
                     $"Adapter exit code: {(process.HasExited ? process.ExitCode : null)}. " +
-                    $"Adapter diagnostics: {Diagnostics}");
+                    $"Adapter diagnostics: {Diagnostics}. " +
+                    $"Recent protocol messages:{Environment.NewLine}{ProtocolTranscript}");
             }
 
             header.Add(oneByte[0]);
@@ -172,7 +192,26 @@ internal sealed partial class DapTestClient : IAsyncDisposable
         byte[] payload = GC.AllocateUninitializedArray<byte>(payloadLength);
         await process.StandardOutput.BaseStream.ReadExactlyAsync(payload, cancellationToken)
             .ConfigureAwait(false);
+        RecordMessage("received", payload);
         return JsonDocument.Parse(payload);
+    }
+
+    private void RecordMessage(string direction, ReadOnlySpan<byte> payload)
+    {
+        string text = Encoding.UTF8.GetString(
+            payload[..Math.Min(payload.Length, MaximumTranscriptPayloadBytes)]);
+        string truncation = payload.Length > MaximumTranscriptPayloadBytes
+            ? " [truncated]"
+            : string.Empty;
+        lock (_transcriptGate)
+        {
+            if (_transcript.Count == MaximumTranscriptMessages)
+            {
+                _ = _transcript.Dequeue();
+            }
+
+            _transcript.Enqueue($"{direction}: {text}{truncation}");
+        }
     }
 
     private async Task CaptureAdapterExitAsync(Process process)
