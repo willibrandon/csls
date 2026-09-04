@@ -36,6 +36,116 @@ internal sealed partial class CorDebugDebuggee
                 "Assignment values cannot execute target code.");
         }
 
+        ManagedExpressionValue source = EvaluateNode(
+            frame,
+            value,
+            value.Root,
+            generation);
+        return SetExpressionCore(
+            frame,
+            target,
+            source,
+            targetExpression,
+            resultName,
+            generation,
+            value.Language,
+            value.Root.Kind == DebugExpressionNodeKind.Literal);
+    }
+
+    /// <summary>
+    /// Creates a string-materialization plan when safe evaluation produced no runtime reference.
+    /// </summary>
+    /// <param name="frameId">The generation-bound managed frame.</param>
+    /// <param name="value">The compiler-lowered value expression.</param>
+    /// <param name="generation">The current stopped generation.</param>
+    /// <returns>A literal string plan to materialize, or null when direct assignment is sufficient.</returns>
+    internal DebugExpressionPlan? CreateStringMaterializationPlan(
+        int frameId,
+        DebugExpressionPlan value,
+        DebugStopGeneration generation)
+    {
+        ManagedFrameHandle frame = GetFrame(frameId, generation);
+        ManagedExpressionPlanValidator.Validate(value, frame.ExpressionLanguage);
+        ManagedExpressionValue source = EvaluateNode(
+            frame,
+            value,
+            value.Root,
+            generation);
+        return source is
+        {
+            HasScalar: true,
+            Scalar: string text,
+            Display.VariablesReference: <= 0
+        }
+            ? new DebugExpressionPlan(
+                DebuggerEvaluatorProtocol.CurrentPlanVersion,
+                value.Language,
+                new DebugExpressionNode(
+                    DebugExpressionNodeKind.Literal,
+                    DebugExpressionOperator.None,
+                    text,
+                    "string",
+                    []))
+            : null;
+    }
+
+    /// <summary>
+    /// Assigns a retained function-evaluation result to a freshly reacquired target.
+    /// </summary>
+    /// <param name="frameId">The replacement generation-bound managed frame.</param>
+    /// <param name="target">The compiler-lowered writable target.</param>
+    /// <param name="evaluation">The retained target-code result.</param>
+    /// <param name="targetExpression">The canonical source target expression.</param>
+    /// <param name="resultName">The debugger-facing result name.</param>
+    /// <returns>The written value and its current expansion handles.</returns>
+    internal DebugVariableInfo SetExpressionFromEvaluation(
+        int frameId,
+        DebugExpressionPlan target,
+        ManagedFunctionEvaluationResult evaluation,
+        string targetExpression,
+        string resultName)
+    {
+        if (evaluation.RuntimeValueReference <= 0 ||
+            !_values.TryGetValue(
+                evaluation.RuntimeValueReference,
+                out ManagedValueHandle? retained) ||
+            retained.Generation != evaluation.Generation)
+        {
+            throw new InvalidOperationException(
+                "The assignment evaluation did not produce a retained runtime value.");
+        }
+
+        ManagedFrameHandle frame = GetFrame(frameId, evaluation.Generation);
+        ManagedExpressionPlanValidator.Validate(target, frame.ExpressionLanguage);
+        ManagedExpressionValue source = ManagedExpressionValueFactory.FromVariable(
+            new DebugVariableInfo(
+                "$result",
+                evaluation.Result.Result,
+                evaluation.Result.Type,
+                evaluation.RuntimeValueReference,
+                evaluation.Result.MemoryReference,
+                EvaluateName: null));
+        return SetExpressionCore(
+            frame,
+            target,
+            source,
+            targetExpression,
+            resultName,
+            evaluation.Generation,
+            target.Language,
+            sourceIsContextualLiteral: false);
+    }
+
+    private DebugVariableInfo SetExpressionCore(
+        ManagedFrameHandle frame,
+        DebugExpressionPlan target,
+        ManagedExpressionValue source,
+        string targetExpression,
+        string resultName,
+        DebugStopGeneration generation,
+        DebugExpressionLanguage language,
+        bool sourceIsContextualLiteral)
+    {
         nint destination = ResolveAssignmentTarget(
             frame,
             target,
@@ -43,16 +153,11 @@ internal sealed partial class CorDebugDebuggee
             generation);
         try
         {
-            ManagedExpressionValue source = EvaluateNode(
-                frame,
-                value,
-                value.Root,
-                generation);
             AssignManagedValue(
                 destination,
                 source,
-                value.Language,
-                value.Root.Kind == DebugExpressionNodeKind.Literal);
+                language,
+                sourceIsContextualLiteral);
             ManagedValueDisplay display = FormatRuntimeValue(destination);
             ManagedValueReferences references = RetainValue(
                 destination,

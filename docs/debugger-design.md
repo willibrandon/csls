@@ -425,19 +425,25 @@ type, binds one instance constructor by metadata signature, and executes through
 and stop-generation rules as method calls. Initializers and generic construction are
 not approximated when their complete semantics are unavailable.
 
-Direct assignment is a separate mutation path. DAP `setVariable`/`setExpression` and
-private/MCP equivalents require an exact stopped generation and resolve a writable
-local, argument, instance field, or managed array element from compiler-lowered source
-syntax. The right-hand side passes through the side-effect-free evaluator. Explicit
-built-in conversions are compiler-lowered into the versioned IR; direct assignment also
-accepts checked contextual integral literals and language-valid built-in numeric
-widening. Converted CLR primitives write through `ICorDebugGenericValue`; null and
-retained references with the same displayed runtime type write through
-`ICorDebugReferenceValue`. These writes do not resume the target, allocate, or collect,
-so the stop generation and frame handles remain valid; variable resources are
-invalidated for aliased client views. Object/string construction, boxing, reference
-conversions, and user-defined conversions use the guarded evaluator only after that
-materialization path is implemented.
+Assignment resolves a writable local, argument, instance field, or managed array
+element from compiler-lowered source syntax. Explicit built-in conversions, checked
+contextual integral literals, and language-valid numeric widening write directly
+through `ICorDebugGenericValue`; null and retained references of the same displayed
+runtime type write through `ICorDebugReferenceValue`. Direct writes preserve the stop
+generation and invalidate variable views only.
+
+Values that require target allocation or execution use the guarded evaluator. Strings
+are allocated with `ICorDebugEval2.NewStringWithLength`; explicitly qualified calls and
+object construction reuse the ordinary function-evaluation binder. The result is held
+by an internal generation-owned runtime handle even when it has no public child
+container. Because evaluation retires all earlier COM values, assignment records the
+thread, frame position, method token, module identity, name, and source language before
+resuming. It then reacquires that frame in the replacement generation, proves the
+identity still matches, resolves the writable target again, and performs the write.
+DAP invalidates stacks and variables, while private RPC and MCP return the resulting
+generation and synchronize the authoritative session resource before publishing value
+invalidation. Boxing, reference conversions, and user-defined conversions remain
+unsupported until their complete type-safe materialization rules are implemented.
 
 Expansion understands debugger display/proxy/browsable attributes, raw and results
 views, root-hidden members, tuples, dynamic flags, nullable values, arrays,

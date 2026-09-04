@@ -129,16 +129,16 @@ public sealed partial class DumpDebuggerControlService
         UnsupportedAsync<DebugEvaluateResult>(request, "expression execution", cancellationToken);
 
     /// <inheritdoc />
-    public Task<DebugVariableInfo> SetVariableAsync(
+    public Task<DebugAssignmentResult> SetVariableAsync(
         DebugSetVariableRequest request,
         CancellationToken cancellationToken) =>
-        UnsupportedAsync<DebugVariableInfo>(request, "variable assignment", cancellationToken);
+        UnsupportedAsync<DebugAssignmentResult>(request, "variable assignment", cancellationToken);
 
     /// <inheritdoc />
-    public Task<DebugVariableInfo> SetExpressionAsync(
+    public Task<DebugAssignmentResult> SetExpressionAsync(
         DebugSetExpressionRequest request,
         CancellationToken cancellationToken) =>
-        UnsupportedAsync<DebugVariableInfo>(request, "expression assignment", cancellationToken);
+        UnsupportedAsync<DebugAssignmentResult>(request, "expression assignment", cancellationToken);
 
     /// <inheritdoc />
     public Task<DebugMemoryReadResult> ReadMemoryAsync(

@@ -8,6 +8,9 @@ namespace Csls.Debugger.Tests;
 /// </summary>
 public sealed partial class DapSessionTests
 {
+    private static readonly string[] s_variableInvalidationAreas = ["variables"];
+    private static readonly string[] s_targetCodeInvalidationAreas = ["stacks", "variables"];
+
     /// <summary>
     /// Pauses a live managed target, enumerates real runtime threads, and resumes execution.
     /// </summary>
@@ -553,7 +556,7 @@ public sealed partial class DapSessionTests
                 "\"answer\"",
                 assignedReference.GetProperty("value").GetString());
 
-            JsonElement unsupportedString = await ReadSetExpressionAsync(
+            JsonElement unsafeStringMaterialization = await ReadSetExpressionAsync(
                 client,
                 fixtureFrameId,
                 "localObject.Text",
@@ -561,8 +564,8 @@ public sealed partial class DapSessionTests
                 success: false,
                 TestContext.CancellationToken).ConfigureAwait(false);
             Assert.Contains(
-                "existing runtime reference",
-                unsupportedString.GetProperty("message").GetString()!,
+                "garbage-collection-unsafe point",
+                unsafeStringMaterialization.GetProperty("message").GetString()!,
                 StringComparison.Ordinal);
 
             JsonElement assignedNull = await ReadSetExpressionAsync(
@@ -800,7 +803,10 @@ public sealed partial class DapSessionTests
             : response.RootElement).Clone();
         if (success)
         {
-            await AssertVariableInvalidationAsync(client, cancellationToken)
+            await AssertAssignmentInvalidationAsync(
+                client,
+                targetCodeExecuted: false,
+                cancellationToken)
                 .ConfigureAwait(false);
         }
 
@@ -840,7 +846,8 @@ public sealed partial class DapSessionTests
         string expression,
         string value,
         bool success,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool targetCodeExecuted = false)
     {
         int sequence = await client.SendRequestAsync(
             "setExpression",
@@ -859,17 +866,21 @@ public sealed partial class DapSessionTests
         JsonElement result = (success
             ? response.RootElement.GetProperty("body")
             : response.RootElement).Clone();
-        if (success)
+        if (success || targetCodeExecuted)
         {
-            await AssertVariableInvalidationAsync(client, cancellationToken)
+            await AssertAssignmentInvalidationAsync(
+                client,
+                targetCodeExecuted,
+                cancellationToken)
                 .ConfigureAwait(false);
         }
 
         return result;
     }
 
-    private static async Task AssertVariableInvalidationAsync(
+    private static async Task AssertAssignmentInvalidationAsync(
         DapTestClient client,
+        bool targetCodeExecuted,
         CancellationToken cancellationToken)
     {
         using JsonDocument invalidated = await client.ReadMessageAsync(cancellationToken)
@@ -880,8 +891,11 @@ public sealed partial class DapSessionTests
             .GetProperty("areas")
             .EnumerateArray()
             .Select(static area => area.GetString()!)];
-        Assert.HasCount(1, areas);
-        Assert.AreEqual("variables", areas[0]);
+        Assert.AreSequenceEqual(
+            targetCodeExecuted
+                ? s_targetCodeInvalidationAreas
+                : s_variableInvalidationAreas,
+            areas);
     }
 
 }

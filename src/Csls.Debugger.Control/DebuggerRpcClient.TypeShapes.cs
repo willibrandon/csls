@@ -10,6 +10,7 @@ namespace Csls.Debugger.Control;
 [GenerateShapeFor<int>]
 [GenerateShapeFor<CommonErrorData>]
 [GenerateShapeFor<DebugAttachRequest>]
+[GenerateShapeFor<DebugAssignmentResult>]
 [GenerateShapeFor<DebugBreakpointSnapshot>]
 [GenerateShapeFor<DebugExceptionBreakpointRequest>]
 [GenerateShapeFor<DebugExceptionBreakpointSetRequest>]

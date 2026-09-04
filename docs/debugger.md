@@ -281,21 +281,20 @@ non-generic runtime types and bind the constructor by metadata signature. Generi
 construction and object or collection initializers remain rejected until their full
 binding and materialization semantics are available. Unsupported value-type arguments,
 overload sets that exact metadata parameter identities cannot select uniquely,
-assignments, properties, user-defined operators, and implicit `ToString` execution are
+properties, user-defined operators, and implicit `ToString` execution are
 also rejected. Variables include `evaluateName` only when csls can provide a valid
 source expression for the value.
 
-DAP `setVariable` and `setExpression` apply direct stopped-state writes without
-executing target code. Writable targets are named locals, arguments, instance fields,
-and managed array elements. The assigned value uses the selected frame's same
-side-effect-free C#, Visual Basic, F#, or portable CLR evaluator. Exact primitives,
-checked contextual integral literals, language-valid built-in numeric widening,
-explicit built-in primitive conversions, null, and existing runtime references of the
-same displayed type are supported. Direct writes preserve the stop generation because
-they cannot run target code or trigger collection, and DAP publishes variable
-invalidation so aliased views refresh. Constructing a replacement object or string,
-boxing, reference conversions, and user-defined conversions remain unsupported until
-they can use the guarded function-evaluation lifecycle.
+DAP `setVariable` and `setExpression` assign named locals, arguments, instance fields,
+and managed array elements. Exact primitives, checked contextual integral literals,
+language-valid built-in numeric widening, explicit built-in primitive conversions,
+null, and retained runtime references of the same displayed type use a direct write and
+preserve the current stop generation. Literal and side-effect-free computed strings are
+materialized with `ICorDebugEval2.NewStringWithLength`; explicitly qualified method-call
+and object-construction results use the same guarded function-evaluation lifecycle as
+DAP `evaluate`. These paths reacquire and validate the selected frame before writing,
+return the replacement stop generation, and invalidate both stacks and variables.
+Boxing, reference conversions, and user-defined conversions remain unsupported.
 
 Assemblies loaded from PE and Portable PDB byte arrays receive the same source
 breakpoint, stack, local-name, stepping, goto, disassembly, and managed-IL
@@ -426,10 +425,12 @@ worker does not advertise tools that it cannot run.
   and cooperatively cancelled execution invalidates old frame and variable handles
   and advances the stop generation. The tool is marked destructive, non-idempotent,
   and open-world because the target method may mutate local or external state.
-- `debug_variable_set` and `debug_expression_set` directly assign a local, argument,
-  instance field, or managed array element using a side-effect-free value expression.
-  Both require an active agent-control grant and the exact `stopGeneration`, return the updated
-  value at that unchanged generation, and publish variable-resource invalidation.
+- `debug_variable_set` and `debug_expression_set` assign a local, argument, instance
+  field, or managed array element. Both require an active agent-control grant and the
+  exact `stopGeneration`. Direct values retain that generation; strings, method results,
+  and constructed objects may execute the guarded materialization path and return a
+  newer generation. The result reports `targetCodeExecuted`, and subscriptions refresh
+  both session and variable resources when execution advanced the stop.
 - `debug_modules_get` returns a bounded module page and validated symbol status.
 - `debug_breakpoints_get` reads every authoritative source, function, managed-IL,
   and managed-exception breakpoint without granting target control. Conditions

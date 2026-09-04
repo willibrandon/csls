@@ -155,6 +155,7 @@ public sealed partial class McpDebuggerLifecycleTests
         Assert.AreEqual(
             constructionGeneration,
             assignment.GetProperty("stopGeneration").GetInt64());
+        Assert.IsFalse(assignment.GetProperty("targetCodeExecuted").GetBoolean());
         Assert.AreEqual(
             "50",
             assignment.GetProperty("variable").GetProperty("value").GetString());
@@ -195,10 +196,66 @@ public sealed partial class McpDebuggerLifecycleTests
                 ["name"] = "localNumber",
                 ["value"] = "(int)(byte)51"
             },
-            cancellationToken).ConfigureAwait(false);
+                cancellationToken).ConfigureAwait(false);
+        Assert.AreEqual(
+            constructionGeneration,
+            variableAssignment.GetProperty("stopGeneration").GetInt64());
+        Assert.IsFalse(variableAssignment.GetProperty("targetCodeExecuted").GetBoolean());
         Assert.AreEqual(
             "51",
             variableAssignment.GetProperty("variable").GetProperty("value").GetString());
+
+        frame = await GetSourceFrameAsync(
+            client,
+            debugSession,
+            constructionGeneration,
+            threadId,
+            sourcePath,
+            cancellationToken).ConfigureAwait(false);
+        JsonElement stringAssignment = await AssertResourceSubscriptionAsync(
+            client,
+            watchResource,
+            () => CallAsync(
+                client,
+                "debug_expression_set",
+                new Dictionary<string, object?>
+                {
+                    ["debugSession"] = debugSession,
+                    ["stopGeneration"] = constructionGeneration,
+                    ["frameId"] = frame.GetProperty("id").GetInt32(),
+                    ["expression"] = "localObject.Text",
+                    ["value"] = "\"mcp-assigned\""
+                },
+                cancellationToken),
+            cancellationToken).ConfigureAwait(false);
+        Assert.IsTrue(stringAssignment.GetProperty("targetCodeExecuted").GetBoolean());
+        long assignmentGeneration = stringAssignment.GetProperty("stopGeneration").GetInt64();
+        Assert.IsGreaterThan(constructionGeneration, assignmentGeneration);
+        Assert.AreEqual(
+            "\"mcp-assigned\"",
+            stringAssignment.GetProperty("variable").GetProperty("value").GetString());
+
+        frame = await GetSourceFrameAsync(
+            client,
+            debugSession,
+            assignmentGeneration,
+            threadId,
+            sourcePath,
+            cancellationToken).ConfigureAwait(false);
+        JsonElement assignedText = await CallAsync(
+            client,
+            "debug_evaluate",
+            new Dictionary<string, object?>
+            {
+                ["debugSession"] = debugSession,
+                ["stopGeneration"] = assignmentGeneration,
+                ["frameId"] = frame.GetProperty("id").GetInt32(),
+                ["expression"] = "localObject.Text"
+            },
+            cancellationToken).ConfigureAwait(false);
+        Assert.AreEqual(
+            "\"mcp-assigned\"",
+            assignedText.GetProperty("evaluation").GetProperty("result").GetString());
 
         await AssertToolErrorAsync(
             client,
@@ -230,7 +287,7 @@ public sealed partial class McpDebuggerLifecycleTests
             cancellationToken).ConfigureAwait(false);
         Assert.AreEqual("stopped", current.GetProperty("state").GetString());
         Assert.AreEqual(
-            constructionGeneration,
+            assignmentGeneration,
             current.GetProperty("stopGeneration").GetInt64());
         return await AssertExpressionCancellationAsync(
             client,
@@ -294,6 +351,88 @@ public sealed partial class McpDebuggerLifecycleTests
         Assert.IsGreaterThan(
             generation,
             current.GetProperty("stopGeneration").GetInt64());
+        long evaluationGeneration = current.GetProperty("stopGeneration").GetInt64();
+        int threadId = current.GetProperty("stoppedThreadId").GetInt32();
+        frame = await GetSourceFrameAsync(
+            client,
+            debugSession,
+            evaluationGeneration,
+            threadId,
+            sourcePath,
+            cancellationToken).ConfigureAwait(false);
+        int frameId = frame.GetProperty("id").GetInt32();
+        string watchResource =
+            $"csls://debug/watches/{debugSession}/{evaluationGeneration}/{frameId}" +
+            "?expression=localNumber";
+        File.Delete(cancellationSignalPath);
+        current = await AssertResourceSubscriptionAsync(
+            client,
+            watchResource,
+            async () =>
+            {
+                using var assignmentCancellation =
+                    CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+                Task<ModelContextProtocol.Protocol.CallToolResult> assignment = client
+                    .CallToolAsync(
+                        "debug_expression_set",
+                        new Dictionary<string, object?>
+                        {
+                            ["debugSession"] = debugSession,
+                            ["stopGeneration"] = evaluationGeneration,
+                            ["frameId"] = frameId,
+                            ["expression"] = "localNumber",
+                            ["value"] = "localObject.WaitForDebuggerCancellation()"
+                        },
+                        cancellationToken: assignmentCancellation.Token)
+                    .AsTask();
+                await FileTextWaiter.WaitAsync(
+                    cancellationSignalPath,
+                    "started",
+                    TimeSpan.FromSeconds(10),
+                    cancellationToken).ConfigureAwait(false);
+                await assignmentCancellation.CancelAsync().ConfigureAwait(false);
+                OperationCanceledException? assignmentCanceled = null;
+                try
+                {
+                    _ = await assignment.ConfigureAwait(false);
+                }
+                catch (OperationCanceledException exception)
+                {
+                    assignmentCanceled = exception;
+                }
+
+                Assert.IsNotNull(assignmentCanceled);
+                return await CallAsync(
+                    client,
+                    "debug_session_get",
+                    new Dictionary<string, object?> { ["debugSession"] = debugSession },
+                    cancellationToken).ConfigureAwait(false);
+            },
+            cancellationToken).ConfigureAwait(false);
+        Assert.AreEqual("stopped", current.GetProperty("state").GetString());
+        long assignmentGeneration = current.GetProperty("stopGeneration").GetInt64();
+        Assert.IsGreaterThan(evaluationGeneration, assignmentGeneration);
+        frame = await GetSourceFrameAsync(
+            client,
+            debugSession,
+            assignmentGeneration,
+            threadId,
+            sourcePath,
+            cancellationToken).ConfigureAwait(false);
+        JsonElement valueAfterCancellation = await CallAsync(
+            client,
+            "debug_evaluate",
+            new Dictionary<string, object?>
+            {
+                ["debugSession"] = debugSession,
+                ["stopGeneration"] = assignmentGeneration,
+                ["frameId"] = frame.GetProperty("id").GetInt32(),
+                ["expression"] = "localNumber"
+            },
+            cancellationToken).ConfigureAwait(false);
+        Assert.AreEqual(
+            "51",
+            valueAfterCancellation.GetProperty("evaluation").GetProperty("result").GetString());
         return current;
     }
 

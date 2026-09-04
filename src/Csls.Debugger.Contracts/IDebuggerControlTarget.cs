@@ -171,22 +171,22 @@ public partial interface IDebuggerControlTarget
         CancellationToken cancellationToken);
 
     /// <summary>
-    /// Assigns one immediate variable-container child without executing target code.
+    /// Assigns one immediate variable-container child with guarded runtime materialization.
     /// </summary>
     /// <param name="request">The exact generation, container child, and value expression.</param>
     /// <param name="cancellationToken">Cancels compilation or queued runtime access.</param>
-    /// <returns>The updated immediate variable.</returns>
-    Task<DebugVariableInfo> SetVariableAsync(
+    /// <returns>The updated value and stopped generation that owns it.</returns>
+    Task<DebugAssignmentResult> SetVariableAsync(
         DebugSetVariableRequest request,
         CancellationToken cancellationToken);
 
     /// <summary>
-    /// Assigns one writable source expression without executing target code.
+    /// Assigns one writable source expression with guarded runtime materialization.
     /// </summary>
     /// <param name="request">The exact generation, frame, target, and value expression.</param>
     /// <param name="cancellationToken">Cancels compilation or queued runtime access.</param>
-    /// <returns>The updated immediate variable.</returns>
-    Task<DebugVariableInfo> SetExpressionAsync(
+    /// <returns>The updated value and stopped generation that owns it.</returns>
+    Task<DebugAssignmentResult> SetExpressionAsync(
         DebugSetExpressionRequest request,
         CancellationToken cancellationToken);
 

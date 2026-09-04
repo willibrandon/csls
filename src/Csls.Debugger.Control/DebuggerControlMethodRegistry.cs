@@ -129,12 +129,12 @@ internal static class DebuggerControlMethodRegistry
         AddParameterObjectMethod(
             rpc,
             DebuggerControlMethods.SetVariable,
-            new Func<DebugSetVariableRequest, CancellationToken, Task<DebugVariableInfo>>(
+            new Func<DebugSetVariableRequest, CancellationToken, Task<DebugAssignmentResult>>(
                 target.SetVariableAsync));
         AddParameterObjectMethod(
             rpc,
             DebuggerControlMethods.SetExpression,
-            new Func<DebugSetExpressionRequest, CancellationToken, Task<DebugVariableInfo>>(
+            new Func<DebugSetExpressionRequest, CancellationToken, Task<DebugAssignmentResult>>(
                 target.SetExpressionAsync));
         AddParameterObjectMethod(
             rpc,

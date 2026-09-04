@@ -4,12 +4,12 @@ using System.ComponentModel;
 namespace Csls.Mcp.Worker;
 
 /// <summary>
-/// Exposes explicitly authorized direct managed-value assignment.
+/// Exposes explicitly authorized managed assignment with guarded value materialization.
 /// </summary>
 internal sealed partial class CslsMcpDebuggerExecutionTools
 {
     /// <summary>
-    /// Assigns one immediate variable-container child without executing target code.
+    /// Assigns one immediate variable-container child and materializes runtime values when required.
     /// </summary>
     [McpServerTool(
         Name = "debug_variable_set",
@@ -20,7 +20,7 @@ internal sealed partial class CslsMcpDebuggerExecutionTools
         ReadOnly = false,
         UseStructuredContent = true,
         OutputSchemaType = typeof(McpDebugAssignmentResult))]
-    [Description("Set one child of a current-generation variable container using a side-effect-free value expression. Requires an active debug_agent_control_set grant and the exact stopGeneration.")]
+    [Description("Set one child of a current-generation variable container. String, call, and construction results may resume the target to materialize the value and return a newer stopGeneration. Requires an active debug_agent_control_set grant and the exact stopGeneration.")]
     public Task<ModelContextProtocol.Protocol.CallToolResult> SetVariableAsync(
         [Description("Opaque identifier returned by a debugger lifecycle tool.")]
         string debugSession,
@@ -30,7 +30,7 @@ internal sealed partial class CslsMcpDebuggerExecutionTools
         int variablesReference,
         [Description("Immediate variable, field, or array-element name in the parent container.")]
         string name,
-        [Description("Side-effect-free value expression in the selected frame language.")]
+        [Description("Value expression in the selected frame language; calls and construction may execute target code.")]
         string value,
         CancellationToken cancellationToken) =>
         McpDebuggerToolResult.RunAsync(() => _broker.SetVariableAsync(
@@ -42,7 +42,7 @@ internal sealed partial class CslsMcpDebuggerExecutionTools
             cancellationToken));
 
     /// <summary>
-    /// Assigns one writable source expression without executing target code.
+    /// Assigns one writable source expression and materializes runtime values when required.
     /// </summary>
     [McpServerTool(
         Name = "debug_expression_set",
@@ -53,7 +53,7 @@ internal sealed partial class CslsMcpDebuggerExecutionTools
         ReadOnly = false,
         UseStructuredContent = true,
         OutputSchemaType = typeof(McpDebugAssignmentResult))]
-    [Description("Set a writable local, argument, instance field, or array element using a side-effect-free value expression. Requires an active debug_agent_control_set grant and the exact stopGeneration.")]
+    [Description("Set a writable local, argument, instance field, or array element. String, call, and construction results may resume the target to materialize the value and return a newer stopGeneration. Requires an active debug_agent_control_set grant and the exact stopGeneration.")]
     public Task<ModelContextProtocol.Protocol.CallToolResult> SetExpressionAsync(
         [Description("Opaque identifier returned by a debugger lifecycle tool.")]
         string debugSession,
@@ -63,7 +63,7 @@ internal sealed partial class CslsMcpDebuggerExecutionTools
         int frameId,
         [Description("Writable local, argument, instance-field, or array-element expression.")]
         string expression,
-        [Description("Side-effect-free value expression in the selected frame language.")]
+        [Description("Value expression in the selected frame language; calls and construction may execute target code.")]
         string value,
         CancellationToken cancellationToken) =>
         McpDebuggerToolResult.RunAsync(() => _broker.SetExpressionAsync(

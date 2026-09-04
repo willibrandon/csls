@@ -1,5 +1,3 @@
-using Csls.Debugger.Contracts;
-
 namespace Csls.Debugger;
 
 /// <summary>
@@ -33,6 +31,11 @@ internal sealed class ManagedFunctionEvaluation
     internal required bool ConstructsObject { get; init; }
 
     /// <summary>
+    /// Gets whether the final CoreCLR operation materializes a string value.
+    /// </summary>
+    internal required bool MaterializesString { get; init; }
+
+    /// <summary>
     /// Gets or initializes the bound debugger values for user-supplied arguments.
     /// </summary>
     internal required ManagedExpressionValue[] Arguments { get; init; }
@@ -55,7 +58,7 @@ internal sealed class ManagedFunctionEvaluation
     /// <summary>
     /// Gets the asynchronous completion delivered by the matching runtime callback.
     /// </summary>
-    internal TaskCompletionSource<DebugEvaluateResult> Completion { get; } =
+    internal TaskCompletionSource<ManagedFunctionEvaluationResult> Completion { get; } =
         new(TaskCreationOptions.RunContinuationsAsynchronously);
 
     /// <summary>

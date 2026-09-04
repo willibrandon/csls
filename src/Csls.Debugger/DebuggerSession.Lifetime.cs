@@ -87,7 +87,7 @@ public sealed partial class DebuggerSession
     private async Task AbortFunctionEvaluationForShutdownAsync(
         CorDebugDebuggee debuggee)
     {
-        Task<DebugEvaluateResult>? completion = null;
+        Task? completion = null;
         try
         {
             await _actor.InvokeAsync(
@@ -117,7 +117,7 @@ public sealed partial class DebuggerSession
 
         try
         {
-            _ = await completion.WaitAsync(
+            await completion.WaitAsync(
                 s_functionEvaluationAbortGrace,
                 CancellationToken.None).ConfigureAwait(false);
         }

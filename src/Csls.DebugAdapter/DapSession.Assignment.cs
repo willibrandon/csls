@@ -19,6 +19,9 @@ internal sealed partial class DapSession
             return;
         }
 
+        DebugStopGeneration requestGeneration = _engineSession.StopGeneration;
+        bool variableInvalidation = false;
+        bool targetCodeExecuted = false;
         try
         {
             JsonElement arguments = request.Arguments;
@@ -28,15 +31,17 @@ internal sealed partial class DapSession
                 "setVariable");
             string name = GetRequiredNonEmptyString(arguments, "name", "setVariable");
             string value = GetRequiredNonEmptyString(arguments, "value", "setVariable");
-            DebugVariableInfo result = await _engineSession.SetVariableAsync(
+            DebugAssignmentResult result = await _engineSession.SetVariableAsync(
                 variablesReference,
                 name,
                 value,
                 _engineSession.StopGeneration,
                 cancellationToken).ConfigureAwait(false);
-            await WriteAssignmentResponseAsync(request, result, cancellationToken)
+            await WriteAssignmentResponseAsync(request, result.Variable, cancellationToken)
                 .ConfigureAwait(false);
-            await WriteVariableInvalidationAsync(cancellationToken).ConfigureAwait(false);
+            SignalCancelableResponseReady();
+            variableInvalidation = true;
+            targetCodeExecuted = result.TargetCodeExecuted;
         }
         catch (Exception exception) when (
             exception is ArgumentException or InvalidOperationException or
@@ -44,6 +49,21 @@ internal sealed partial class DapSession
         {
             await WriteRequestFailureAsync(request, exception.Message, cancellationToken)
                 .ConfigureAwait(false);
+            SignalCancelableResponseReady();
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            await WriteRequestFailureAsync(request, "cancelled", _lifetime.Token)
+                .ConfigureAwait(false);
+            SignalCancelableResponseReady();
+        }
+
+        targetCodeExecuted |= _engineSession.StopGeneration != requestGeneration;
+        if (variableInvalidation || targetCodeExecuted)
+        {
+            await WriteAssignmentInvalidationAsync(
+                targetCodeExecuted,
+                _lifetime.Token).ConfigureAwait(false);
         }
     }
 
@@ -57,6 +77,9 @@ internal sealed partial class DapSession
             return;
         }
 
+        DebugStopGeneration requestGeneration = _engineSession.StopGeneration;
+        bool variableInvalidation = false;
+        bool targetCodeExecuted = false;
         try
         {
             JsonElement arguments = request.Arguments;
@@ -67,15 +90,17 @@ internal sealed partial class DapSession
             string value = GetRequiredNonEmptyString(arguments, "value", "setExpression");
             int frameId = await GetEvaluationFrameIdAsync(arguments, cancellationToken)
                 .ConfigureAwait(false);
-            DebugVariableInfo result = await _engineSession.SetExpressionAsync(
+            DebugAssignmentResult result = await _engineSession.SetExpressionAsync(
                 frameId,
                 expression,
                 value,
                 _engineSession.StopGeneration,
                 cancellationToken).ConfigureAwait(false);
-            await WriteAssignmentResponseAsync(request, result, cancellationToken)
+            await WriteAssignmentResponseAsync(request, result.Variable, cancellationToken)
                 .ConfigureAwait(false);
-            await WriteVariableInvalidationAsync(cancellationToken).ConfigureAwait(false);
+            SignalCancelableResponseReady();
+            variableInvalidation = true;
+            targetCodeExecuted = result.TargetCodeExecuted;
         }
         catch (Exception exception) when (
             exception is ArgumentException or InvalidOperationException or
@@ -83,6 +108,21 @@ internal sealed partial class DapSession
         {
             await WriteRequestFailureAsync(request, exception.Message, cancellationToken)
                 .ConfigureAwait(false);
+            SignalCancelableResponseReady();
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            await WriteRequestFailureAsync(request, "cancelled", _lifetime.Token)
+                .ConfigureAwait(false);
+            SignalCancelableResponseReady();
+        }
+
+        targetCodeExecuted |= _engineSession.StopGeneration != requestGeneration;
+        if (variableInvalidation || targetCodeExecuted)
+        {
+            await WriteAssignmentInvalidationAsync(
+                targetCodeExecuted,
+                _lifetime.Token).ConfigureAwait(false);
         }
     }
 
@@ -109,13 +149,20 @@ internal sealed partial class DapSession
             },
             cancellationToken);
 
-    private ValueTask WriteVariableInvalidationAsync(CancellationToken cancellationToken) =>
+    private ValueTask WriteAssignmentInvalidationAsync(
+        bool targetCodeExecuted,
+        CancellationToken cancellationToken) =>
         _writer.WriteEventAsync(
             "invalidated",
-            static writer =>
+            writer =>
             {
                 writer.WriteStartObject();
                 writer.WriteStartArray("areas");
+                if (targetCodeExecuted)
+                {
+                    writer.WriteStringValue("stacks");
+                }
+
                 writer.WriteStringValue("variables");
                 writer.WriteEndArray();
                 writer.WriteEndObject();

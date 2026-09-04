@@ -28,7 +28,7 @@ internal sealed partial class CorDebugDebuggee
     /// <summary>
     /// Gets the active evaluation completion used by deterministic session shutdown.
     /// </summary>
-    internal Task<DebugEvaluateResult>? ActiveFunctionEvaluationCompletion =>
+    internal Task? ActiveFunctionEvaluationCompletion =>
         _activeFunctionEvaluation?.Completion.Task;
 
     /// <summary>
@@ -38,7 +38,7 @@ internal sealed partial class CorDebugDebuggee
     /// <param name="plan">The validated invocation expression.</param>
     /// <param name="generation">The stop generation that owns the frame.</param>
     /// <returns>The result completed by the matching CoreCLR evaluation callback.</returns>
-    internal Task<DebugEvaluateResult> BeginFunctionEvaluationAsync(
+    internal Task<ManagedFunctionEvaluationResult> BeginFunctionEvaluationAsync(
         int frameId,
         DebugExpressionPlan plan,
         DebugStopGeneration generation)
@@ -57,16 +57,25 @@ internal sealed partial class CorDebugDebuggee
         ManagedFrameHandle frame = GetFrame(frameId, generation);
         ManagedExpressionPlanValidator.Validate(plan, frame.ExpressionLanguage);
         DebugExpressionNode operation = plan.Root;
+        bool materializesString = operation is
+        {
+            Kind: DebugExpressionNodeKind.Literal,
+            TypeName: "string"
+        };
         if (operation.Kind is not DebugExpressionNodeKind.Invocation and
-            not DebugExpressionNodeKind.ObjectCreation)
+            not DebugExpressionNodeKind.ObjectCreation &&
+            !materializesString)
         {
             throw new InvalidDataException(
-                "Target-code evaluation requires an invocation or object-creation root.");
+                "Target-code evaluation requires an invocation, object-creation, or " +
+                "string-materialization root.");
         }
 
         bool constructsObject = operation.Kind == DebugExpressionNodeKind.ObjectCreation;
         int argumentOffset = constructsObject ? 0 : 1;
-        int argumentCount = operation.Children.Count - argumentOffset;
+        int argumentCount = materializesString
+            ? 1
+            : operation.Children.Count - argumentOffset;
         if (argumentCount > MaximumFunctionEvaluationArgumentCount)
         {
             throw new NotSupportedException(
@@ -78,32 +87,40 @@ internal sealed partial class CorDebugDebuggee
         var suppliedArguments = new ManagedExpressionValue[argumentCount];
         try
         {
-            try
+            if (materializesString)
             {
-                if (!constructsObject)
+                suppliedArguments[0] = ManagedExpressionValueFactory.FromLiteral(operation);
+            }
+            else
+            {
+                try
                 {
-                    receiver = EvaluateNode(
+                    if (!constructsObject)
+                    {
+                        receiver = EvaluateNode(
+                            frame,
+                            plan,
+                            operation.Children[0],
+                            generation);
+                    }
+                }
+                catch (InvalidOperationException exception) when (TryGetQualifiedTypeName(
+                    operation.Children[0],
+                    out _))
+                {
+                    System.Diagnostics.Debug.WriteLine(
+                        $"The invocation receiver will be bound as a static type: " +
+                        exception.Message);
+                }
+
+                for (int index = 0; index < suppliedArguments.Length; index++)
+                {
+                    suppliedArguments[index] = EvaluateNode(
                         frame,
                         plan,
-                        operation.Children[0],
+                        operation.Children[index + argumentOffset],
                         generation);
                 }
-            }
-            catch (InvalidOperationException exception) when (TryGetQualifiedTypeName(
-                operation.Children[0],
-                out _))
-            {
-                System.Diagnostics.Debug.WriteLine(
-                    $"The invocation receiver will be bound as a static type: {exception.Message}");
-            }
-
-            for (int index = 0; index < suppliedArguments.Length; index++)
-            {
-                suppliedArguments[index] = EvaluateNode(
-                    frame,
-                    plan,
-                    operation.Children[index + argumentOffset],
-                    generation);
             }
         }
         catch (Exception exception) when (exception is not OperationCanceledException)
@@ -142,7 +159,9 @@ internal sealed partial class CorDebugDebuggee
             }
 
             setupPhase = "resolving the runtime method";
-            function = constructsObject
+            function = materializesString
+                ? 0
+                : constructsObject
                 ? ResolveConstructor(
                     operation.Text!,
                     plan.Language,
@@ -182,6 +201,7 @@ internal sealed partial class CorDebugDebuggee
                 Thread = thread,
                 Receiver = receiverHandle,
                 ConstructsObject = constructsObject,
+                MaterializesString = materializesString,
                 Arguments = suppliedArguments,
                 RuntimeArguments = runtimeArguments,
                 ThreadId = frame.ThreadId,
@@ -273,10 +293,7 @@ internal sealed partial class CorDebugDebuggee
                 _ = ComAbi.Release(thread);
             }
 
-            if (function != 0)
-            {
-                _ = ComAbi.Release(function);
-            }
+            ReleaseFunctionEvaluationPointer(function);
 
             if (objectValue != 0)
             {
@@ -333,7 +350,7 @@ internal sealed partial class CorDebugDebuggee
         }
 
         _activeFunctionEvaluation = null;
-        DebugEvaluateResult? result = null;
+        ManagedFunctionEvaluationResult? result = null;
         Exception? failure = stageFailure;
         nint value = 0;
         bool handlesCleared = false;
@@ -355,12 +372,15 @@ internal sealed partial class CorDebugDebuggee
                 }
                 else if (value == 0)
                 {
-                    result = new DebugEvaluateResult(
-                        string.Empty,
-                        "void",
-                        VariablesReference: 0,
-                        MemoryReference: null,
-                        TargetCodeExecuted: true);
+                    result = new ManagedFunctionEvaluationResult(
+                        new DebugEvaluateResult(
+                            string.Empty,
+                            "void",
+                            VariablesReference: 0,
+                            MemoryReference: null,
+                            TargetCodeExecuted: true),
+                        RuntimeValueReference: 0,
+                        resultGeneration);
                 }
                 else
                 {
@@ -372,17 +392,19 @@ internal sealed partial class CorDebugDebuggee
                     }
                     else
                     {
-                        ManagedValueReferences references = RetainValue(
+                        (int runtimeValueReference, ManagedValueReferences references) =
+                            RetainFunctionEvaluationValue(
                             value,
-                            resultGeneration,
-                            evaluateName: null,
-                            frameId: null);
-                        result = new DebugEvaluateResult(
-                            display.Value,
-                            display.Type,
-                            references.VariablesReference,
-                            references.MemoryReference,
-                            TargetCodeExecuted: true);
+                            resultGeneration);
+                        result = new ManagedFunctionEvaluationResult(
+                            new DebugEvaluateResult(
+                                display.Value,
+                                display.Type,
+                                references.VariablesReference,
+                                references.MemoryReference,
+                                TargetCodeExecuted: true),
+                            runtimeValueReference,
+                            resultGeneration);
                     }
                 }
             }
@@ -542,6 +564,14 @@ internal sealed partial class CorDebugDebuggee
         return RequirePointer(
             Volatile.Read(ref *evaluationAddress),
             "ICorDebugThread.CreateEval");
+    }
+
+    private static void ReleaseFunctionEvaluationPointer(nint pointer)
+    {
+        if (pointer != 0)
+        {
+            _ = ComAbi.Release(pointer);
+        }
     }
 
     private static void ThrowIfFunctionEvaluationUnavailable(int hresult, string operation)

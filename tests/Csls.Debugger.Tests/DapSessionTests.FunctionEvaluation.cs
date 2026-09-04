@@ -312,6 +312,109 @@ public sealed partial class DapSessionTests
                 TestContext.CancellationToken).ConfigureAwait(false);
             Assert.AreEqual("42", afterException.GetProperty("result").GetString());
 
+            frame = await GetFixtureFrameAsync(client).ConfigureAwait(false);
+            int retiredAssignmentFrameId = frame.GetProperty("id").GetInt32();
+            JsonElement assignedString = await ReadSetExpressionAsync(
+                client,
+                retiredAssignmentFrameId,
+                "localObject.Text",
+                "\"changed\"",
+                success: true,
+                TestContext.CancellationToken,
+                targetCodeExecuted: true).ConfigureAwait(false);
+            Assert.AreEqual(
+                "\"changed\"",
+                assignedString.GetProperty("value").GetString());
+            _ = await ReadEvaluationAsync(
+                client,
+                retiredAssignmentFrameId,
+                "localObject.Text",
+                success: false,
+                TestContext.CancellationToken).ConfigureAwait(false);
+            frame = await GetFixtureFrameAsync(client).ConfigureAwait(false);
+            JsonElement assignedStringValue = await ReadEvaluationAsync(
+                client,
+                frame.GetProperty("id").GetInt32(),
+                "localObject.Text",
+                success: true,
+                TestContext.CancellationToken).ConfigureAwait(false);
+            Assert.AreEqual(
+                "\"changed\"",
+                assignedStringValue.GetProperty("result").GetString());
+
+            JsonElement assignedCallResult = await ReadSetExpressionAsync(
+                client,
+                frame.GetProperty("id").GetInt32(),
+                "localNumber",
+                "localObject.AddForDebugger(8)",
+                success: true,
+                TestContext.CancellationToken,
+                targetCodeExecuted: true).ConfigureAwait(false);
+            Assert.AreEqual("50", assignedCallResult.GetProperty("value").GetString());
+            Assert.AreEqual("int", assignedCallResult.GetProperty("type").GetString());
+
+            frame = await GetFixtureFrameAsync(client).ConfigureAwait(false);
+            JsonElement assignedConstruction = await ReadSetExpressionAsync(
+                client,
+                frame.GetProperty("id").GetInt32(),
+                "localObject",
+                "new Csls.TestProcessHost.DebuggerFixtureValue(7, \"built\", \"unused\")",
+                success: true,
+                TestContext.CancellationToken,
+                targetCodeExecuted: true).ConfigureAwait(false);
+            Assert.AreEqual(
+                "Csls.TestProcessHost.DebuggerFixtureValue",
+                assignedConstruction.GetProperty("type").GetString());
+            Assert.IsGreaterThan(
+                0,
+                assignedConstruction.GetProperty("variablesReference").GetInt32());
+
+            frame = await GetFixtureFrameAsync(client).ConfigureAwait(false);
+            JsonElement assignedObjectNumber = await ReadEvaluationAsync(
+                client,
+                frame.GetProperty("id").GetInt32(),
+                "localObject.Number",
+                success: true,
+                TestContext.CancellationToken).ConfigureAwait(false);
+            Assert.AreEqual("7", assignedObjectNumber.GetProperty("result").GetString());
+            JsonElement assignedObjectText = await ReadEvaluationAsync(
+                client,
+                frame.GetProperty("id").GetInt32(),
+                "localObject.Text",
+                success: true,
+                TestContext.CancellationToken).ConfigureAwait(false);
+            Assert.AreEqual("\"built\"", assignedObjectText.GetProperty("result").GetString());
+
+            int retiredFailedAssignmentFrameId = frame.GetProperty("id").GetInt32();
+            JsonElement failedAssignment = await ReadSetExpressionAsync(
+                client,
+                retiredFailedAssignmentFrameId,
+                "localNumber",
+                "localObject.ThrowForDebugger()",
+                success: false,
+                TestContext.CancellationToken,
+                targetCodeExecuted: true).ConfigureAwait(false);
+            Assert.Contains(
+                "threw",
+                failedAssignment.GetProperty("message").GetString()!,
+                StringComparison.OrdinalIgnoreCase);
+            _ = await ReadEvaluationAsync(
+                client,
+                retiredFailedAssignmentFrameId,
+                "localNumber",
+                success: false,
+                TestContext.CancellationToken).ConfigureAwait(false);
+            frame = await GetFixtureFrameAsync(client).ConfigureAwait(false);
+            JsonElement valueAfterFailedAssignment = await ReadEvaluationAsync(
+                client,
+                frame.GetProperty("id").GetInt32(),
+                "localNumber",
+                success: true,
+                TestContext.CancellationToken).ConfigureAwait(false);
+            Assert.AreEqual(
+                "50",
+                valueAfterFailedAssignment.GetProperty("result").GetString());
+
             await DisconnectStoppedSessionAsync(client).ConfigureAwait(false);
             Assert.AreEqual(
                 0,
@@ -326,10 +429,11 @@ public sealed partial class DapSessionTests
         }
     }
 
-    private async Task AssertCanceledFunctionEvaluationAsync(
+    private async Task AssertCanceledTargetCodeOperationAsync(
         DapTestClient client,
-        int evaluationSequence,
-        int cancelSequence)
+        int operationSequence,
+        int cancelSequence,
+        string command)
     {
         bool evaluationReceived = false;
         bool cancelReceived = false;
@@ -353,9 +457,9 @@ public sealed partial class DapSessionTests
                 AssertResponse(root, cancelSequence, "cancel", success: true);
                 cancelReceived = true;
             }
-            else if (requestSequence == evaluationSequence)
+            else if (requestSequence == operationSequence)
             {
-                AssertResponse(root, evaluationSequence, "evaluate", success: false);
+                AssertResponse(root, operationSequence, command, success: false);
                 Assert.Contains(
                     "cancelled",
                     root.GetProperty("message").GetString()!,

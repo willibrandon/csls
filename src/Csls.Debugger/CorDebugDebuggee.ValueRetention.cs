@@ -19,6 +19,38 @@ internal sealed partial class CorDebugDebuggee
             return default;
         }
 
+        ManagedValueHandle handle = RetainRuntimeValue(
+            value,
+            generation,
+            evaluateName,
+            frameId);
+        return new ManagedValueReferences(handle.Id, handle.MemoryReference);
+    }
+
+    private (int RuntimeValueReference, ManagedValueReferences References)
+        RetainFunctionEvaluationValue(
+            nint value,
+            DebugStopGeneration generation)
+    {
+        bool expandable = IsExpandable(value);
+        ManagedValueHandle handle = RetainRuntimeValue(
+            value,
+            generation,
+            evaluateName: null,
+            frameId: null);
+        return (
+            handle.Id,
+            expandable
+                ? new ManagedValueReferences(handle.Id, handle.MemoryReference)
+                : default);
+    }
+
+    private ManagedValueHandle RetainRuntimeValue(
+        nint value,
+        DebugStopGeneration generation,
+        string? evaluateName,
+        int? frameId)
+    {
         nint identity;
         try
         {
@@ -38,14 +70,14 @@ internal sealed partial class CorDebugDebuggee
         if (_valueIdentities.TryGetValue(key, out ManagedValueHandle? existing))
         {
             _ = ComAbi.Release(identity);
-            return new ManagedValueReferences(existing.Id, existing.MemoryReference);
+            return existing;
         }
 
         if (_values.Count >= MaximumExpandableValueCount)
         {
             _ = ComAbi.Release(identity);
             throw new InvalidOperationException(
-                $"The stop exceeds the expandable-value limit of {MaximumExpandableValueCount}.");
+                $"The stop exceeds the retained-value limit of {MaximumExpandableValueCount}.");
         }
 
         _ = ComAbi.AddRef(value);
@@ -72,7 +104,7 @@ internal sealed partial class CorDebugDebuggee
             _memoryValues.Add(memoryReference, handle);
         }
 
-        return new ManagedValueReferences(handle.Id, memoryReference);
+        return handle;
     }
 
     private static unsafe ulong TryGetArrayAddress(nint value)

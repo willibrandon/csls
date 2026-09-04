@@ -14,9 +14,9 @@ internal sealed partial class McpDebuggerSessionBroker
     /// <param name="stopGeneration">The exact current stopped generation.</param>
     /// <param name="variablesReference">The generation-bound parent container.</param>
     /// <param name="name">The immediate child name.</param>
-    /// <param name="value">The side-effect-free source-language value expression.</param>
+    /// <param name="value">The source-language value expression to assign.</param>
     /// <param name="cancellationToken">Cancels compilation or queued runtime access.</param>
-    /// <returns>The updated value at the unchanged stop generation.</returns>
+    /// <returns>The updated value and stopped generation that owns it.</returns>
     internal Task<McpDebugAssignmentResult> SetVariableAsync(
         string debugSession,
         long stopGeneration,
@@ -32,16 +32,21 @@ internal sealed partial class McpDebuggerSessionBroker
         return InvokeControlledStoppedAsync(
             session,
             stopGeneration,
-            async (selectedSession, client, token) => new McpDebugAssignmentResult(
-                selectedSession.Id,
-                stopGeneration,
-                await client.SetVariableAsync(
+            async (selectedSession, client, token) =>
+            {
+                DebugAssignmentResult assignment = await client.SetVariableAsync(
                     new DebugSetVariableRequest(
                         stopGeneration,
                         variablesReference,
                         name,
                         value),
-                    token).ConfigureAwait(false)),
+                    token).ConfigureAwait(false);
+                return new McpDebugAssignmentResult(
+                    selectedSession.Id,
+                    assignment.StopGeneration,
+                    assignment.TargetCodeExecuted,
+                    assignment.Variable);
+            },
             cancellationToken);
     }
 
@@ -52,9 +57,9 @@ internal sealed partial class McpDebuggerSessionBroker
     /// <param name="stopGeneration">The exact current stopped generation.</param>
     /// <param name="frameId">The generation-bound managed frame.</param>
     /// <param name="expression">The writable source expression.</param>
-    /// <param name="value">The side-effect-free source-language value expression.</param>
+    /// <param name="value">The source-language value expression to assign.</param>
     /// <param name="cancellationToken">Cancels compilation or queued runtime access.</param>
-    /// <returns>The updated value at the unchanged stop generation.</returns>
+    /// <returns>The updated value and stopped generation that owns it.</returns>
     internal Task<McpDebugAssignmentResult> SetExpressionAsync(
         string debugSession,
         long stopGeneration,
@@ -70,16 +75,21 @@ internal sealed partial class McpDebuggerSessionBroker
         return InvokeControlledStoppedAsync(
             session,
             stopGeneration,
-            async (selectedSession, client, token) => new McpDebugAssignmentResult(
-                selectedSession.Id,
-                stopGeneration,
-                await client.SetExpressionAsync(
+            async (selectedSession, client, token) =>
+            {
+                DebugAssignmentResult assignment = await client.SetExpressionAsync(
                     new DebugSetExpressionRequest(
                         stopGeneration,
                         frameId,
                         expression,
                         value),
-                    token).ConfigureAwait(false)),
+                    token).ConfigureAwait(false);
+                return new McpDebugAssignmentResult(
+                    selectedSession.Id,
+                    assignment.StopGeneration,
+                    assignment.TargetCodeExecuted,
+                    assignment.Variable);
+            },
             cancellationToken);
     }
 }

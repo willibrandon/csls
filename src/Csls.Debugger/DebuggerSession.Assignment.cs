@@ -8,15 +8,15 @@ namespace Csls.Debugger;
 public sealed partial class DebuggerSession
 {
     /// <summary>
-    /// Assigns a side-effect-free expression to one child of a variable container.
+    /// Assigns an expression to one child and safely materializes runtime values when required.
     /// </summary>
     /// <param name="variablesReference">The generation-bound parent container.</param>
     /// <param name="name">The immediate child name.</param>
     /// <param name="value">The source-language value expression.</param>
     /// <param name="generation">The exact stopped generation authorizing the write.</param>
     /// <param name="cancellationToken">Cancels compilation or queued runtime access.</param>
-    /// <returns>The updated immediate variable.</returns>
-    public async Task<DebugVariableInfo> SetVariableAsync(
+    /// <returns>The assignment result and stopped generation that owns it.</returns>
+    public async Task<DebugAssignmentResult> SetVariableAsync(
         int variablesReference,
         string name,
         string value,
@@ -55,15 +55,15 @@ public sealed partial class DebuggerSession
     }
 
     /// <summary>
-    /// Assigns a side-effect-free expression to one writable source expression.
+    /// Assigns a value to one writable source expression with guarded runtime materialization.
     /// </summary>
     /// <param name="frameId">The generation-bound managed frame.</param>
     /// <param name="expression">The writable source expression.</param>
     /// <param name="value">The source-language value expression.</param>
     /// <param name="generation">The exact stopped generation authorizing the write.</param>
     /// <param name="cancellationToken">Cancels compilation or queued runtime access.</param>
-    /// <returns>The updated immediate variable.</returns>
-    public async Task<DebugVariableInfo> SetExpressionAsync(
+    /// <returns>The assignment result and stopped generation that owns it.</returns>
+    public async Task<DebugAssignmentResult> SetExpressionAsync(
         int frameId,
         string expression,
         string value,
@@ -95,7 +95,7 @@ public sealed partial class DebuggerSession
             cancellationToken).ConfigureAwait(false);
     }
 
-    private async Task<DebugVariableInfo> SetExpressionCoreAsync(
+    private async Task<DebugAssignmentResult> SetExpressionCoreAsync(
         int frameId,
         string targetExpression,
         string valueExpression,
@@ -113,22 +113,89 @@ public sealed partial class DebuggerSession
             valueExpression,
             cancellationToken).ConfigureAwait(false);
         DebugVariableInfo? result = null;
+        Task<ManagedFunctionEvaluationResult>? functionEvaluation = null;
+        CorDebugDebuggee? evaluationDebuggee = null;
+        ManagedFrameSelection? frameSelection = null;
         await _actor.InvokeAsync(
             token =>
             {
                 _ = token;
                 CorDebugDebuggee debuggee = GetAssignmentDebuggee(generation);
-                result = debuggee.SetExpression(
-                    frameId,
-                    target,
-                    value,
-                    targetExpression,
-                    resultName,
-                    generation);
+                DebugExpressionPlan? executionPlan = value.Root.Kind is
+                    DebugExpressionNodeKind.Invocation or
+                    DebugExpressionNodeKind.ObjectCreation
+                        ? value
+                        : debuggee.CreateStringMaterializationPlan(
+                            frameId,
+                            value,
+                            generation);
+                if (executionPlan is null)
+                {
+                    result = debuggee.SetExpression(
+                        frameId,
+                        target,
+                        value,
+                        targetExpression,
+                        resultName,
+                        generation);
+                }
+                else
+                {
+                    evaluationDebuggee = debuggee;
+                    frameSelection = debuggee.CaptureFrameSelection(frameId, generation);
+                    try
+                    {
+                        functionEvaluation = debuggee.BeginFunctionEvaluationAsync(
+                            frameId,
+                            executionPlan,
+                            generation);
+                        _state = DebugSessionState.Running;
+                    }
+                    catch (Exception exception) when (
+                        debuggee.FunctionEvaluationSafetyFailure is string reason)
+                    {
+                        _stopGeneration = _stopGeneration.Next();
+                        _state = DebugSessionState.Faulted;
+                        throw new InvalidOperationException(reason, exception);
+                    }
+                }
+
                 return ValueTask.CompletedTask;
             },
             cancellationToken).ConfigureAwait(false);
-        return result!;
+        if (functionEvaluation is null)
+        {
+            return new DebugAssignmentResult(
+                generation.Value,
+                TargetCodeExecuted: false,
+                result!);
+        }
+
+        ManagedFunctionEvaluationResult evaluation = await WaitForFunctionEvaluationAsync(
+            evaluationDebuggee!,
+            functionEvaluation,
+            cancellationToken).ConfigureAwait(false);
+        await _actor.InvokeAsync(
+            token =>
+            {
+                _ = token;
+                CorDebugDebuggee debuggee = GetAssignmentDebuggee(evaluation.Generation);
+                int replacementFrameId = debuggee.ReacquireFrame(
+                    frameSelection!,
+                    evaluation.Generation);
+                result = debuggee.SetExpressionFromEvaluation(
+                    replacementFrameId,
+                    target,
+                    evaluation,
+                    targetExpression,
+                    resultName);
+                return ValueTask.CompletedTask;
+            },
+            cancellationToken).ConfigureAwait(false);
+        return new DebugAssignmentResult(
+            evaluation.Generation.Value,
+            TargetCodeExecuted: true,
+            result!);
     }
 
     private CorDebugDebuggee GetAssignmentDebuggee(DebugStopGeneration generation)

@@ -37,7 +37,7 @@ internal sealed partial class DapSession
                     expression,
                     allowTargetCodeExecution: true,
                     cancellationToken).ConfigureAwait(false);
-                SignalEvaluationResponseReady();
+                SignalCancelableResponseReady();
                 await _writer.WriteResponseAsync(
                     request,
                     success: true,
@@ -62,13 +62,13 @@ internal sealed partial class DapSession
                 exception is ArgumentException or InvalidOperationException or
                 IOException or UnauthorizedAccessException or BadImageFormatException)
             {
-                SignalEvaluationResponseReady();
+                SignalCancelableResponseReady();
                 await WriteRequestFailureAsync(request, exception.Message, cancellationToken)
                     .ConfigureAwait(false);
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
-                SignalEvaluationResponseReady();
+                SignalCancelableResponseReady();
                 await WriteRequestFailureAsync(
                     request,
                     "cancelled",
@@ -77,7 +77,7 @@ internal sealed partial class DapSession
         }
         finally
         {
-            _ = _evaluationResponseCompletion?.TrySetResult();
+            _ = _cancelableResponseCompletion?.TrySetResult();
         }
 
         targetCodeExecuted |= _engineSession.StopGeneration != initialGeneration;
@@ -98,9 +98,9 @@ internal sealed partial class DapSession
         }
     }
 
-    private void SignalEvaluationResponseReady()
+    private void SignalCancelableResponseReady()
     {
-        _ = _evaluationResponseCompletion?.TrySetResult();
+        _ = _cancelableResponseCompletion?.TrySetResult();
     }
 
     private async Task<int> GetEvaluationFrameIdAsync(

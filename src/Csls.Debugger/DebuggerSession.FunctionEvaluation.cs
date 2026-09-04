@@ -10,9 +10,9 @@ public sealed partial class DebuggerSession
     private static readonly TimeSpan s_functionEvaluationDeadline = TimeSpan.FromSeconds(5);
     private static readonly TimeSpan s_functionEvaluationAbortGrace = TimeSpan.FromSeconds(5);
 
-    private async Task<DebugEvaluateResult> WaitForFunctionEvaluationAsync(
+    private async Task<ManagedFunctionEvaluationResult> WaitForFunctionEvaluationAsync(
         CorDebugDebuggee debuggee,
-        Task<DebugEvaluateResult> completion,
+        Task<ManagedFunctionEvaluationResult> completion,
         CancellationToken cancellationToken)
     {
         bool canceled = false;
@@ -53,7 +53,7 @@ public sealed partial class DebuggerSession
 
     private async Task AbortAndSettleFunctionEvaluationAsync(
         CorDebugDebuggee debuggee,
-        Task<DebugEvaluateResult> completion)
+        Task<ManagedFunctionEvaluationResult> completion)
     {
         Exception? abortFailure = null;
         try

@@ -10,6 +10,42 @@ internal sealed partial class CorDebugDebuggee
     private unsafe void ScheduleNextFunctionEvaluationStage(
         ManagedFunctionEvaluation evaluation)
     {
+        if (evaluation.MaterializesString)
+        {
+            if (evaluation.MethodCallScheduled ||
+                evaluation.Arguments is not [{ HasScalar: true, Scalar: string text }])
+            {
+                throw new InvalidOperationException(
+                    "The managed string-materialization evaluation is invalid.");
+            }
+
+            nint evaluation2 = 0;
+            try
+            {
+                evaluation2 = ComAbi.QueryInterface(
+                    evaluation.Pointer,
+                    ICorDebugEval2Abi.InterfaceId);
+                fixed (char* textAddress = text)
+                {
+                    ThrowIfFunctionEvaluationUnavailable(
+                        new ICorDebugEval2Abi(evaluation2).NewStringWithLength(
+                            (nint)textAddress,
+                            checked((uint)text.Length)),
+                        "ICorDebugEval2.NewStringWithLength");
+                }
+
+                evaluation.MethodCallScheduled = true;
+                return;
+            }
+            finally
+            {
+                if (evaluation2 != 0)
+                {
+                    _ = ComAbi.Release(evaluation2);
+                }
+            }
+        }
+
         for (int index = 0; index < evaluation.Arguments.Length; index++)
         {
             ManagedExpressionValue argument = evaluation.Arguments[index];

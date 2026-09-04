@@ -345,6 +345,35 @@ public sealed partial class DapSessionTests
                     "44",
                     afterInvocation.GetProperty("result").GetString(),
                     $"Unexpected {project} result after assignment.");
+
+                JsonElement assignedCallResult = await ReadSetExpressionAsync(
+                    client,
+                    frameId,
+                    "answer",
+                    "value.AddNumber(8)",
+                    success: true,
+                    TestContext.CancellationToken,
+                    targetCodeExecuted: true).ConfigureAwait(false);
+                Assert.AreEqual(
+                    "49",
+                    assignedCallResult.GetProperty("value").GetString(),
+                    $"Unexpected {project} call-result assignment.");
+
+                frameId = await AssertStoppedFrameAsync(
+                    client,
+                    stoppedThreadId,
+                    sourcePath,
+                    breakpointLine).ConfigureAwait(false);
+                JsonElement afterCallAssignment = await ReadEvaluationAsync(
+                    client,
+                    frameId,
+                    "answer + 1",
+                    success: true,
+                    TestContext.CancellationToken).ConfigureAwait(false);
+                Assert.AreEqual(
+                    "50",
+                    afterCallAssignment.GetProperty("result").GetString(),
+                    $"Unexpected {project} result after call-result assignment.");
             }
 
             await DisconnectAsync(client).ConfigureAwait(false);

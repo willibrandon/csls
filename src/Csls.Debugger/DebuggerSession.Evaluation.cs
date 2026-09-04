@@ -42,7 +42,7 @@ public sealed partial class DebuggerSession
             cancellationToken).ConfigureAwait(false);
 
         DebugEvaluateResult? result = null;
-        Task<DebugEvaluateResult>? functionEvaluation = null;
+        Task<ManagedFunctionEvaluationResult>? functionEvaluation = null;
         CorDebugDebuggee? evaluationDebuggee = null;
         await _actor.InvokeAsync(
             token =>
@@ -84,12 +84,16 @@ public sealed partial class DebuggerSession
                 return ValueTask.CompletedTask;
             },
             cancellationToken).ConfigureAwait(false);
-        return functionEvaluation is null
-            ? result!
-            : await WaitForFunctionEvaluationAsync(
-                evaluationDebuggee!,
-                functionEvaluation,
-                cancellationToken).ConfigureAwait(false);
+        if (functionEvaluation is null)
+        {
+            return result!;
+        }
+
+        ManagedFunctionEvaluationResult evaluated = await WaitForFunctionEvaluationAsync(
+            evaluationDebuggee!,
+            functionEvaluation,
+            cancellationToken).ConfigureAwait(false);
+        return evaluated.Result;
     }
 
     private Task<DebugExpressionPlan> CompileExpressionAsync(
