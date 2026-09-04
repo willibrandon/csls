@@ -13,6 +13,11 @@ if (args is ["--debugger-fixture", string fixturePath])
         (ArgumentNumber: 42, ArgumentText: "argument"));
 }
 
+if (args is ["--debugger-reference-assignment-fixture", string referenceAssignmentPath])
+{
+    return ReferenceAssignmentFixture.Run(referenceAssignmentPath);
+}
+
 if (args is ["--debugger-results-view-context-fixture", string resultsViewContextPath])
 {
     return DebuggerFixture.WaitForSignal(
@@ -140,13 +145,20 @@ if (args is ["--print-environment-and-exit", string printedVariable, string exit
 
 if (args is ["--print-environment", string environmentVariable])
 {
-    Console.OutputEncoding = new UTF8Encoding(false);
     await Console.Out.WriteAsync(
         Environment.GetEnvironmentVariable(environmentVariable) ?? string.Empty).ConfigureAwait(false);
     return 0;
 }
 
-if (args is ["--print-environment-and-wait-for-file", string progressVariable, string progressReleasePath])
+if (args is ["--print-utf8-environment", string utf8Variable])
+{
+    Console.OutputEncoding = new UTF8Encoding(false);
+    await Console.Out.WriteAsync(
+        Environment.GetEnvironmentVariable(utf8Variable) ?? string.Empty).ConfigureAwait(false);
+    return 0;
+}
+
+if (args is ["--print-utf8-environment-and-wait-for-file", string progressVariable, string progressReleasePath])
 {
     Console.OutputEncoding = new UTF8Encoding(false);
     await Console.Out.WriteAsync(

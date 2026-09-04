@@ -9,13 +9,13 @@ using System.Linq;
 namespace Csls.SourceGen;
 
 /// <summary>
-/// Prevents unscoped local disposables transferred into repository ownership helpers.
+/// Prevents disposable locals from crossing unprotected ownership-transfer operations.
 /// </summary>
 [DiagnosticAnalyzer(LanguageNames.CSharp)]
 public sealed class CodeQlLocalDisposableAnalyzer : DiagnosticAnalyzer
 {
     /// <summary>
-    /// Identifies a transferred disposable local that requires a using declaration.
+    /// Identifies a disposable local whose ownership transfer is not exception-safe.
     /// </summary>
     public const string DiagnosticId = "CSLS0008";
 
@@ -24,8 +24,8 @@ public sealed class CodeQlLocalDisposableAnalyzer : DiagnosticAnalyzer
 
     private static readonly DiagnosticDescriptor s_rule = new(
         DiagnosticId,
-        "Scope transferred local disposables",
-        "Disposable local '{0}' must be declared with using before ownership transfer",
+        "Protect disposable local ownership",
+        "Disposable local '{0}' requires exception-safe cleanup before ownership transfer",
         "Reliability",
         DiagnosticSeverity.Error,
         isEnabledByDefault: true,
@@ -45,6 +45,32 @@ public sealed class CodeQlLocalDisposableAnalyzer : DiagnosticAnalyzer
         context.ConfigureGeneratedCodeAnalysis(GeneratedCodeAnalysisFlags.None);
         context.EnableConcurrentExecution();
         context.RegisterSyntaxNodeAction(AnalyzeInvocation, SyntaxKind.InvocationExpression);
+        context.RegisterSyntaxNodeAction(AnalyzeDeclaration, SyntaxKind.LocalDeclarationStatement);
+    }
+
+    private static void AnalyzeDeclaration(SyntaxNodeAnalysisContext context)
+    {
+        var declaration = (LocalDeclarationStatementSyntax)context.Node;
+        if (!declaration.UsingKeyword.IsKind(SyntaxKind.None) ||
+            declaration.Parent is not BlockSyntax block)
+        {
+            return;
+        }
+
+        foreach (VariableDeclaratorSyntax variable in declaration.Declaration.Variables)
+        {
+            if (variable.Initializer?.Value is not
+                    (ObjectCreationExpressionSyntax or ImplicitObjectCreationExpressionSyntax) ||
+                context.SemanticModel.GetDeclaredSymbol(variable, context.CancellationToken) is not
+                    ILocalSymbol local ||
+                !DisposableLocalOwnership.HasUnprotectedTransfer(
+                    local, variable, declaration, block, context))
+            {
+                continue;
+            }
+
+            context.ReportDiagnostic(Diagnostic.Create(s_rule, variable.GetLocation(), local.Name));
+        }
     }
 
     private static void AnalyzeInvocation(SyntaxNodeAnalysisContext context)

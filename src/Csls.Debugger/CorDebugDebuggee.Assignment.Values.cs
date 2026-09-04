@@ -68,6 +68,7 @@ internal sealed partial class CorDebugDebuggee
         nint destinationReference,
         ManagedExpressionValue source)
     {
+        ManagedReferenceAssignmentValidator.ValidateDestination(destination);
         if (source.HasScalar && source.Scalar is null)
         {
             CorDebugHResult.ThrowIfFailed(
@@ -83,19 +84,17 @@ internal sealed partial class CorDebugDebuggee
                 "materializing a new target object is not supported yet.");
         }
 
-        ManagedValueDisplay destinationDisplay = FormatRuntimeValuePair(
-            destination, debuggerDisplayDepth: 0, tupleCustomTypeInfo: null).Runtime;
-        if (!string.Equals(
-            destinationDisplay.Type,
-            source.Type,
-            StringComparison.Ordinal))
+        nint sourceValue = GetRuntimeValue(source);
+        if (!ManagedReferenceAssignmentValidator.HaveSameRuntimeType(destination, sourceValue))
         {
+            ManagedValueDisplay destinationDisplay = FormatRuntimeValuePair(
+                destination, debuggerDisplayDepth: 0, tupleCustomTypeInfo: null).Runtime;
             throw new InvalidOperationException(
                 $"Reference assignment from '{source.Type}' to " +
-                $"'{destinationDisplay.Type}' requires a conversion that is not supported.");
+                $"'{destinationDisplay.Type}' requires identical loaded runtime types; " +
+                "type names alone do not establish assignment compatibility.");
         }
 
-        nint sourceValue = GetRuntimeValue(source);
         nint sourceReference = 0;
         try
         {

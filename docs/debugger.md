@@ -376,6 +376,11 @@ DAP `evaluate`. These paths reacquire and validate the selected frame before wri
 return the replacement stop generation, and invalidate both stacks and variables.
 Boxing, reference conversions, and user-defined conversions remain unsupported.
 
+Reference writes compare loaded runtime type identity, including generic arguments
+and assembly load context. Type names alone do not establish compatibility. Direct
+writes to managed by-reference and native pointer locations are rejected before
+changing target storage, including when assigning null.
+
 Assemblies loaded from PE and Portable PDB byte arrays receive the same source
 breakpoint, stack, local-name, stepping, goto, disassembly, and managed-IL
 breakpoint behavior as file-backed assemblies. During launch, csls consumes the

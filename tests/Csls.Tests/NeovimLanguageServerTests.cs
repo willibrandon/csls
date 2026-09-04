@@ -1,6 +1,7 @@
 using Csls.Control;
 using Hex1b;
 using Hex1b.Automation;
+using System.Runtime.CompilerServices;
 using System.Text.Json;
 
 namespace Csls.Tests;
@@ -108,6 +109,7 @@ public sealed class NeovimLanguageServerTests
                 fixturePath,
                 width: 120,
                 height: 40);
+            await using ConfiguredAsyncDisposable workloadDisposal = workload.ConfigureAwait(false);
             Hex1bTerminal terminal = Hex1bTerminal.CreateBuilder()
                 .WithWorkload(workload)
                 .WithHeadless()
@@ -160,7 +162,6 @@ public sealed class NeovimLanguageServerTests
             finally
             {
                 await terminal.DisposeAsync().ConfigureAwait(false);
-                await workload.DisposeAsync().ConfigureAwait(false);
                 if (serverExit is ProcessExitObservation observation)
                 {
                     await ProcessExitWaiter.WaitAsync(
@@ -274,6 +275,7 @@ public sealed class NeovimLanguageServerTests
                 fixturePath,
                 width: 120,
                 height: 40);
+            await using ConfiguredAsyncDisposable workloadDisposal = workload.ConfigureAwait(false);
             Hex1bTerminal terminal = Hex1bTerminal.CreateBuilder()
                 .WithWorkload(workload)
                 .WithHeadless()
@@ -319,7 +321,6 @@ public sealed class NeovimLanguageServerTests
             finally
             {
                 await terminal.DisposeAsync().ConfigureAwait(false);
-                await workload.DisposeAsync().ConfigureAwait(false);
                 if (serverExit is ProcessExitObservation observation)
                 {
                     await ProcessExitWaiter.WaitAsync(

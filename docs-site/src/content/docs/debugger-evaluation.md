@@ -87,6 +87,10 @@ an existing runtime reference with the same runtime type. Direct writes do not r
 target code, so they preserve the generation and publish variable invalidation for
 aliased editor views.
 
+Reference compatibility uses loaded runtime type identity, including generic arguments
+and assembly load context. Matching type names alone do not permit a write. Direct
+writes to managed by-reference and native pointer locations are rejected.
+
 String, call, and construction expressions can also supply an assignment value through
 explicitly authorized target execution. The debugger then reacquires the destination
 frame, applies the assignment, and returns the new generation. Boxing, complete

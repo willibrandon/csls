@@ -27,14 +27,14 @@ public sealed class ProcessOutputCaptureTests
     {
         string expected = fullUtf8ByteBuffer ? new string('\u03A9', 2048) : "ready";
         string releasePath = Path.Join(Path.GetTempPath(), $"csls-output-{Guid.NewGuid():N}.signal");
-        (NamedPipeServerStream pipeReader, NamedPipeClientStream pipeWriter) =
-            await CreateProgressPipeAsync().ConfigureAwait(false);
-        using (pipeReader)
-        using (pipeWriter)
+        string pipeName = $"csls-progress-{Guid.NewGuid():N}";
+        using NamedPipeServerStream pipeReader = CreateProgressReader(pipeName);
+        using NamedPipeClientStream pipeWriter = CreateProgressWriter(pipeName);
+        await ConnectProgressPipeAsync(pipeReader, pipeWriter).ConfigureAwait(false);
         using (var progressReader = new StreamReader(pipeReader, Encoding.UTF8))
         using (var progressWriter = new StreamWriter(pipeWriter, new UTF8Encoding(false)))
         using (Process child = StartChild(
-            "--print-environment-and-wait-for-file", "CSLS_CAPTURE_OUTPUT", expected, releasePath))
+            "--print-utf8-environment-and-wait-for-file", "CSLS_CAPTURE_OUTPUT", expected, releasePath))
         {
             try
             {
@@ -103,10 +103,10 @@ public sealed class ProcessOutputCaptureTests
     public async Task ForwardingPreservesExactOutput(int size)
     {
         string expected = CreateOutput(size);
-        (NamedPipeServerStream pipeReader, NamedPipeClientStream pipeWriter) =
-            await CreateProgressPipeAsync().ConfigureAwait(false);
-        using (pipeReader)
-        using (pipeWriter)
+        string pipeName = $"csls-progress-{Guid.NewGuid():N}";
+        using NamedPipeServerStream pipeReader = CreateProgressReader(pipeName);
+        using NamedPipeClientStream pipeWriter = CreateProgressWriter(pipeName);
+        await ConnectProgressPipeAsync(pipeReader, pipeWriter).ConfigureAwait(false);
         using (var progressReader = new StreamReader(pipeReader, Encoding.UTF8))
         using (var progressWriter = new StreamWriter(pipeWriter, new UTF8Encoding(false)))
         using (Process child = StartOutputChild(expected))
@@ -139,10 +139,10 @@ public sealed class ProcessOutputCaptureTests
     [Timeout(30000, CooperativeCancellation = true)]
     public async Task FailedProgressDestinationStillDrainsChild(bool disposeWriter)
     {
-        (NamedPipeServerStream pipeReader, NamedPipeClientStream pipeWriter) =
-            await CreateProgressPipeAsync().ConfigureAwait(false);
-        using (pipeReader)
-        using (pipeWriter)
+        string pipeName = $"csls-progress-{Guid.NewGuid():N}";
+        using NamedPipeServerStream pipeReader = CreateProgressReader(pipeName);
+        using NamedPipeClientStream pipeWriter = CreateProgressWriter(pipeName);
+        await ConnectProgressPipeAsync(pipeReader, pipeWriter).ConfigureAwait(false);
         using (var progressWriter = new StreamWriter(pipeWriter, new UTF8Encoding(false)))
         using (Process child = StartOutputChild(CreateOutput(12288)))
         {
@@ -256,31 +256,24 @@ public sealed class ProcessOutputCaptureTests
         }
     }
 
-    private async Task<(NamedPipeServerStream Reader, NamedPipeClientStream Writer)> CreateProgressPipeAsync()
-    {
-        string pipeName = $"csls-progress-{Guid.NewGuid():N}";
-        var reader = new NamedPipeServerStream(
+    private static NamedPipeServerStream CreateProgressReader(string pipeName) =>
+        new(
             pipeName, PipeDirection.In, 1, PipeTransmissionMode.Byte,
             PipeOptions.Asynchronous | PipeOptions.CurrentUserOnly);
-        var writer = new NamedPipeClientStream(
+
+    private static NamedPipeClientStream CreateProgressWriter(string pipeName) =>
+        new(
             ".", pipeName, PipeDirection.Out, PipeOptions.Asynchronous | PipeOptions.CurrentUserOnly);
-        try
-        {
-            Task connection = reader.WaitForConnectionAsync(TestContext.CancellationToken);
-            await writer.ConnectAsync(TestContext.CancellationToken).ConfigureAwait(false);
-            await connection.ConfigureAwait(false);
-            return (reader, writer);
-        }
-        catch
-        {
-            await writer.DisposeAsync().ConfigureAwait(false);
-            await reader.DisposeAsync().ConfigureAwait(false);
-            throw;
-        }
+
+    private async Task ConnectProgressPipeAsync(NamedPipeServerStream reader, NamedPipeClientStream writer)
+    {
+        await Task.WhenAll(
+            reader.WaitForConnectionAsync(TestContext.CancellationToken),
+            writer.ConnectAsync(TestContext.CancellationToken)).ConfigureAwait(false);
     }
 
     private static Process StartOutputChild(string output) => StartChild(
-        "--print-environment", "CSLS_CAPTURE_OUTPUT", output);
+        "--print-utf8-environment", "CSLS_CAPTURE_OUTPUT", output);
 
     private static Process StartChild(
         string mode, string argument, string? output = null, string? releasePath = null)
@@ -322,6 +315,8 @@ public sealed class ProcessOutputCaptureTests
             }
             catch (InvalidOperationException) when (child.HasExited)
             {
+                await child.WaitForExitAsync(CancellationToken.None).ConfigureAwait(false);
+                return;
             }
         }
 

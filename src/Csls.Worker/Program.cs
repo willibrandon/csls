@@ -66,6 +66,7 @@ catch (OperationCanceledException) when (
     applicationLifetime.ApplicationStopping.IsCancellationRequested)
 {
     // The Generic Host translates SIGINT and SIGTERM into application stopping.
+    return 0;
 }
 finally
 {
