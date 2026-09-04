@@ -9,3 +9,5 @@ CSLS0007 | Reliability | Error | Disposable collections use exception-safe lifet
 CSLS0008 | Reliability | Error | Transferred disposable locals retain explicit scopes
 CSLS0009 | CodeQuality | Error | Sequence filters are expressed before iteration
 CSLS0010 | CodeQuality | Error | Boolean conditional throws use statement control flow
+CSLS0011 | CodeQuality | Error | Initialization-only fields use the readonly modifier
+CSLS0012 | CodeQuality | Error | By-reference method state is encapsulated after two parameters

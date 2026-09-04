@@ -258,6 +258,182 @@ public sealed class RepositoryConventionAnalyzerTests
     }
 
     /// <summary>
+    /// Verifies custom-attribute metadata is projected before iteration.
+    /// </summary>
+    [TestMethod]
+    public async Task ReportsCustomAttributeMappingInsideForEach()
+    {
+        const string Source = """
+            using System.Reflection.Metadata;
+
+            internal static class Reader
+            {
+                internal static void ReadAll(
+                    MetadataReader metadata,
+                    CustomAttributeHandleCollection handles)
+                {
+                    foreach (CustomAttributeHandle handle in handles)
+                    {
+                        CustomAttribute attribute = metadata.GetCustomAttribute(handle);
+                        _ = attribute;
+                    }
+                }
+            }
+            """;
+
+        ImmutableArray<Diagnostic> diagnostics = await AnalyzeAsync(
+            Source,
+            new CodeQlMissedSelectAnalyzer()).ConfigureAwait(false);
+
+        Diagnostic diagnostic = Assert.ContainsSingle(diagnostics);
+        Assert.AreEqual(CodeQlMissedSelectAnalyzer.DiagnosticId, diagnostic.Id);
+    }
+
+    /// <summary>
+    /// Verifies initialization-only non-public fields require readonly semantics.
+    /// </summary>
+    [TestMethod]
+    public async Task ReportsInitializationOnlyFieldWithoutReadonlyModifier()
+    {
+        const string Source = """
+            internal sealed class Fixture
+            {
+                internal int Value = 42;
+            }
+            """;
+
+        ImmutableArray<Diagnostic> diagnostics = await AnalyzeAsync(
+            Source,
+            new CodeQlMissedReadonlyModifierAnalyzer()).ConfigureAwait(false);
+
+        Diagnostic diagnostic = Assert.ContainsSingle(diagnostics);
+        Assert.AreEqual(CodeQlMissedReadonlyModifierAnalyzer.DiagnosticId, diagnostic.Id);
+        Assert.Contains("Value", diagnostic.GetMessage(CultureInfo.InvariantCulture));
+    }
+
+    /// <summary>
+    /// Verifies fields mutated after initialization remain writable.
+    /// </summary>
+    [TestMethod]
+    public async Task AcceptsFieldMutatedOutsideConstructor()
+    {
+        const string Source = """
+            internal sealed class Fixture
+            {
+                internal int Value;
+
+                internal void Update() => Value = 42;
+            }
+            """;
+
+        ImmutableArray<Diagnostic> diagnostics = await AnalyzeAsync(
+            Source,
+            new CodeQlMissedReadonlyModifierAnalyzer()).ConfigureAwait(false);
+
+        Assert.IsEmpty(diagnostics);
+    }
+
+    /// <summary>
+    /// Verifies lazy coalescing assignment preserves intentional field mutability.
+    /// </summary>
+    [TestMethod]
+    public async Task AcceptsFieldMutatedByCoalescingAssignment()
+    {
+        const string Source = """
+            internal sealed class Fixture
+            {
+                private object? _value;
+
+                internal object GetValue() => _value ??= new object();
+            }
+            """;
+
+        ImmutableArray<Diagnostic> diagnostics = await AnalyzeAsync(
+            Source,
+            new CodeQlMissedReadonlyModifierAnalyzer()).ConfigureAwait(false);
+
+        Assert.IsEmpty(diagnostics);
+    }
+
+    /// <summary>
+    /// Verifies methods with more than two by-reference parameters are rejected.
+    /// </summary>
+    [TestMethod]
+    public async Task ReportsMethodWithThreeByReferenceParameters()
+    {
+        const string Source = """
+            internal static class Reader
+            {
+                internal static void Read(ref int first, ref int second, out int third)
+                {
+                    third = first + second;
+                }
+            }
+            """;
+
+        ImmutableArray<Diagnostic> diagnostics = await AnalyzeAsync(
+            Source,
+            new CodeQlTooManyRefParametersAnalyzer()).ConfigureAwait(false);
+
+        Diagnostic diagnostic = Assert.ContainsSingle(diagnostics);
+        Assert.AreEqual(CodeQlTooManyRefParametersAnalyzer.DiagnosticId, diagnostic.Id);
+        Assert.Contains("3", diagnostic.GetMessage(CultureInfo.InvariantCulture));
+    }
+
+    /// <summary>
+    /// Verifies two by-reference parameters remain within the local CodeQL limit.
+    /// </summary>
+    [TestMethod]
+    public async Task AcceptsMethodWithTwoByReferenceParameters()
+    {
+        const string Source = """
+            internal static class Reader
+            {
+                internal static void Read(ref int first, out int second)
+                {
+                    second = first;
+                }
+            }
+            """;
+
+        ImmutableArray<Diagnostic> diagnostics = await AnalyzeAsync(
+            Source,
+            new CodeQlTooManyRefParametersAnalyzer()).ConfigureAwait(false);
+
+        Assert.IsEmpty(diagnostics);
+    }
+
+    /// <summary>
+    /// Verifies externally imposed interface signatures are not rewritten locally.
+    /// </summary>
+    [TestMethod]
+    public async Task AcceptsInterfaceImplementationWithThreeByReferenceParameters()
+    {
+        const string Source = """
+            internal interface IReader
+            {
+                void Read(out int first, out int second, out int third);
+            }
+
+            internal sealed class Reader : IReader
+            {
+                public void Read(out int first, out int second, out int third)
+                {
+                    first = 1;
+                    second = 2;
+                    third = 3;
+                }
+            }
+            """;
+
+        ImmutableArray<Diagnostic> diagnostics = await AnalyzeAsync(
+            Source,
+            new CodeQlTooManyRefParametersAnalyzer()).ConfigureAwait(false);
+
+        Assert.IsEmpty(diagnostics);
+    }
+
+    /// <summary>
     /// Verifies metadata providers are not manually disposed by a finally loop.
     /// </summary>
     [TestMethod]

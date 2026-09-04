@@ -86,6 +86,8 @@ public sealed class CodeQlMissedSelectAnalyzer : DiagnosticAnalyzer
         return method.Name == "Read" &&
                 typeName == "Csls.Debugger.PortablePdbSourceDocumentReader" ||
             method.Name == "FromMetadataImage" &&
-                typeName == "System.Reflection.Metadata.MetadataReaderProvider";
+                typeName == "System.Reflection.Metadata.MetadataReaderProvider" ||
+            method.Name == "GetCustomAttribute" &&
+                typeName == "System.Reflection.Metadata.MetadataReader";
     }
 }

@@ -55,7 +55,7 @@ internal sealed class ManagedObjectExpander
         }
 
         var result = new List<DebugVariableInfo>();
-        int visibleIndex = 0;
+        var state = new ManagedObjectExpansionState();
         AppendObjectFields(
             result,
             value,
@@ -64,7 +64,7 @@ internal sealed class ManagedObjectExpander
             generation,
             start,
             count,
-            ref visibleIndex,
+            state,
             path,
             nestingDepth: 0,
             view,
@@ -80,7 +80,7 @@ internal sealed class ManagedObjectExpander
         DebugStopGeneration generation,
         int start,
         int count,
-        ref int visibleIndex,
+        ManagedObjectExpansionState state,
         HashSet<ulong> path,
         int nestingDepth,
         ManagedValueView view,
@@ -101,8 +101,6 @@ internal sealed class ManagedObjectExpander
                 Volatile.Read(ref *exactTypeAddress),
                 "ICorDebugValue2.GetExactType");
 
-            int fieldIndex = 0;
-            bool transformed = false;
             for (int depth = 0;
                 currentType != 0 && depth < MaximumTypeHierarchyDepth;
                 depth++)
@@ -127,12 +125,10 @@ internal sealed class ManagedObjectExpander
                         generation,
                         start,
                         count,
-                        ref fieldIndex,
-                        ref visibleIndex,
+                        state,
                         path,
                         nestingDepth,
-                        view,
-                        ref transformed);
+                        view);
                     if (IsVariablePageFull(result, count))
                     {
                         return;
@@ -174,7 +170,7 @@ internal sealed class ManagedObjectExpander
 
             if (includeRawView &&
                 view == ManagedValueView.Default &&
-                transformed &&
+                state.WasTransformed &&
                 !IsVariablePageFull(result, count))
             {
                 AppendRawView(
@@ -185,7 +181,7 @@ internal sealed class ManagedObjectExpander
                     generation,
                     start,
                     count,
-                    ref visibleIndex);
+                    state);
             }
         }
         finally
@@ -218,12 +214,10 @@ internal sealed class ManagedObjectExpander
         DebugStopGeneration generation,
         int start,
         int count,
-        ref int fieldIndex,
-        ref int visibleIndex,
+        ManagedObjectExpansionState state,
         HashSet<ulong> path,
         int nestingDepth,
-        ManagedValueView view,
-        ref bool transformed)
+        ManagedValueView view)
     {
         TypeDefinitionHandle typeHandle = MetadataTokens.TypeDefinitionHandle(
             checked((int)(typeToken & 0x00FFFFFF)));
@@ -241,11 +235,11 @@ internal sealed class ManagedObjectExpander
                 : ManagedDebuggerAttributeReader.GetBrowsableState(metadata, field);
             if (browsingState == ManagedDebuggerBrowsableState.Never)
             {
-                transformed = true;
+                state.WasTransformed = true;
             }
             else if (browsingState == ManagedDebuggerBrowsableState.RootHidden)
             {
-                transformed = true;
+                state.WasTransformed = true;
                 string name = metadata.GetString(field.Name);
                 string? evaluateName = ManagedExpressionName.CreateMember(
                     parentEvaluateName,
@@ -260,7 +254,7 @@ internal sealed class ManagedObjectExpander
                     generation,
                     start,
                     count,
-                    ref visibleIndex,
+                    state,
                     path,
                     nestingDepth))
                 {
@@ -276,7 +270,7 @@ internal sealed class ManagedObjectExpander
                         generation,
                         start,
                         count,
-                        ref visibleIndex);
+                        state);
                 }
             }
             else
@@ -293,16 +287,16 @@ internal sealed class ManagedObjectExpander
                     generation,
                     start,
                     count,
-                    ref visibleIndex);
+                    state);
             }
 
-            fieldIndex++;
+            state.PhysicalFieldCount++;
             if (IsVariablePageFull(result, count))
             {
                 return;
             }
 
-            if (fieldIndex > MaximumExpandableValueCount)
+            if (state.PhysicalFieldCount > MaximumExpandableValueCount)
             {
                 throw new InvalidOperationException(
                     $"The object exceeds the field limit of {MaximumExpandableValueCount}.");
@@ -322,10 +316,10 @@ internal sealed class ManagedObjectExpander
         DebugStopGeneration generation,
         int start,
         int count,
-        ref int visibleIndex)
+        ManagedObjectExpansionState state)
     {
-        EnsureExpandableValueLimit(visibleIndex, additionalCount: 1);
-        if (visibleIndex >= start && !IsVariablePageFull(result, count))
+        EnsureExpandableValueLimit(state.VisibleIndex, additionalCount: 1);
+        if (state.VisibleIndex >= start && !IsVariablePageFull(result, count))
         {
             result.Add(ReadInstanceField(
                 instance,
@@ -338,7 +332,7 @@ internal sealed class ManagedObjectExpander
                 generation));
         }
 
-        visibleIndex++;
+        state.VisibleIndex++;
     }
 
     private bool TryAppendRootHiddenField(
@@ -351,7 +345,7 @@ internal sealed class ManagedObjectExpander
         DebugStopGeneration generation,
         int start,
         int count,
-        ref int visibleIndex,
+        ManagedObjectExpansionState state,
         HashSet<ulong> path,
         int nestingDepth)
     {
@@ -379,8 +373,8 @@ internal sealed class ManagedObjectExpander
             {
                 int elementCount = checked((int)GetArrayElementCount(
                     new ICorDebugArrayValueAbi(array)));
-                EnsureExpandableValueLimit(visibleIndex, elementCount);
-                int localStart = Math.Clamp(start - visibleIndex, 0, elementCount);
+                EnsureExpandableValueLimit(state.VisibleIndex, elementCount);
+                int localStart = Math.Clamp(start - state.VisibleIndex, 0, elementCount);
                 int localCount = count == 0 ? 0 : count - result.Count;
                 result.AddRange(_services.ExpandArray(
                     array,
@@ -389,7 +383,7 @@ internal sealed class ManagedObjectExpander
                     generation,
                     localStart,
                     localCount));
-                visibleIndex += elementCount;
+                state.VisibleIndex += elementCount;
                 return true;
             }
 
@@ -417,7 +411,7 @@ internal sealed class ManagedObjectExpander
                 generation,
                 start,
                 count,
-                ref visibleIndex,
+                state,
                 path,
                 nestingDepth + 1,
                 ManagedValueView.Default,
@@ -467,10 +461,10 @@ internal sealed class ManagedObjectExpander
         DebugStopGeneration generation,
         int start,
         int count,
-        ref int visibleIndex)
+        ManagedObjectExpansionState state)
     {
-        EnsureExpandableValueLimit(visibleIndex, additionalCount: 1);
-        if (visibleIndex >= start && !IsVariablePageFull(result, count))
+        EnsureExpandableValueLimit(state.VisibleIndex, additionalCount: 1);
+        if (state.VisibleIndex >= start && !IsVariablePageFull(result, count))
         {
             ManagedValueDisplay display = _services.FormatRuntimeValue(value);
             ManagedValueReferences references = _services.RetainValue(
@@ -489,7 +483,7 @@ internal sealed class ManagedObjectExpander
                 DebugVariablePresentationKind.Virtual));
         }
 
-        visibleIndex++;
+        state.VisibleIndex++;
     }
 
     private DebugVariableInfo ReadInstanceField(

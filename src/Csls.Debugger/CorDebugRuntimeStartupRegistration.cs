@@ -15,7 +15,7 @@ internal sealed class CorDebugRuntimeStartupRegistration : IDisposable
     private readonly DebuggerSessionActor _actor;
     private readonly CorDebugManagedCallback _managedCallback;
     private readonly Lock _registrationGate = new();
-    private GCHandle _context;
+    private readonly GCHandle _context;
     private DbgShimRegistrationHandle? _unregisterHandle;
     private int _disposed;
 

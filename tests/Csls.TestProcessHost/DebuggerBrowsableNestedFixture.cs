@@ -8,5 +8,5 @@ internal sealed class DebuggerBrowsableNestedFixture
     /// <summary>
     /// Stores the nested value exposed at the containing object's root.
     /// </summary>
-    internal int _nested = 51;
+    internal readonly int _nested = 51;
 }

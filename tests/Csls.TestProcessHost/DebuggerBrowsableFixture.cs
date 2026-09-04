@@ -15,47 +15,47 @@ internal sealed class DebuggerBrowsableFixture
     /// <summary>
     /// Stores an ordinary field shown in the default and raw debugger views.
     /// </summary>
-    internal int _visible = 46;
+    internal readonly int _visible = 46;
 
     /// <summary>
     /// Stores a field hidden from the default debugger view.
     /// </summary>
     [DebuggerBrowsable(DebuggerBrowsableState.Never)]
-    internal int _hidden = 47;
+    internal readonly int _hidden = 47;
 
     /// <summary>
     /// Stores an explicitly collapsed field shown as an ordinary member.
     /// </summary>
     [DebuggerBrowsable(DebuggerBrowsableState.Collapsed)]
-    internal int _collapsed = 48;
+    internal readonly int _collapsed = 48;
 
     /// <summary>
     /// Stores children flattened into the default debugger view.
     /// </summary>
     [DebuggerBrowsable(DebuggerBrowsableState.RootHidden)]
-    internal int[] _rootItems = [49, 50];
+    internal readonly int[] _rootItems = [49, 50];
 
     /// <summary>
     /// Stores an object whose fields are flattened into the default view.
     /// </summary>
     [DebuggerBrowsable(DebuggerBrowsableState.RootHidden)]
-    internal DebuggerBrowsableNestedFixture _rootObject = new();
+    internal readonly DebuggerBrowsableNestedFixture _rootObject = new();
 
     /// <summary>
     /// Stores a non-expandable root-hidden value that remains directly inspectable.
     /// </summary>
     [DebuggerBrowsable(DebuggerBrowsableState.RootHidden)]
-    internal int _scalarRoot = 52;
+    internal readonly int _scalarRoot = 52;
 
     /// <summary>
     /// Stores a root-hidden cycle that remains bounded and directly inspectable.
     /// </summary>
     [DebuggerBrowsable(DebuggerBrowsableState.RootHidden)]
-    internal DebuggerBrowsableFixture _self;
+    internal readonly DebuggerBrowsableFixture _self;
 
     /// <summary>
     /// Stores a null root-hidden value that remains directly inspectable.
     /// </summary>
     [DebuggerBrowsable(DebuggerBrowsableState.RootHidden)]
-    internal DebuggerBrowsableNestedFixture? _missing = null;
+    internal readonly DebuggerBrowsableNestedFixture? _missing = null;
 }

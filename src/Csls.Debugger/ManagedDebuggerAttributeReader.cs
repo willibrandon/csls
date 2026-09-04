@@ -22,9 +22,10 @@ internal static class ManagedDebuggerAttributeReader
     {
         try
         {
-            foreach (CustomAttributeHandle handle in field.GetCustomAttributes())
+            foreach (CustomAttribute attribute in field
+                .GetCustomAttributes()
+                .Select(handle => metadata.GetCustomAttribute(handle)))
             {
-                CustomAttribute attribute = metadata.GetCustomAttribute(handle);
                 if (!string.Equals(
                     GetAttributeTypeName(metadata, attribute),
                     DebuggerBrowsableAttribute,

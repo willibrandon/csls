@@ -186,11 +186,11 @@ internal sealed partial class CorDebugDebuggee
         MetadataReader metadata,
         TypeDefinitionHandle typeHandle)
     {
-        foreach (CustomAttributeHandle attributeHandle in metadata
+        foreach (CustomAttribute attribute in metadata
             .GetTypeDefinition(typeHandle)
-            .GetCustomAttributes())
+            .GetCustomAttributes()
+            .Select(metadata.GetCustomAttribute))
         {
-            CustomAttribute attribute = metadata.GetCustomAttribute(attributeHandle);
             EntityHandle declaringType = attribute.Constructor.Kind switch
             {
                 HandleKind.MemberReference => metadata
