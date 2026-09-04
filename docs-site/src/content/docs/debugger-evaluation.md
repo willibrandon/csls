@@ -4,8 +4,11 @@ description: Inspect managed values, evaluate expressions, call target code, and
 ---
 
 Every stopped-state result belongs to a monotonically increasing stop generation.
-Frames, scopes, variables, memory references, and execution targets from an earlier
-generation are rejected instead of being resolved against new runtime state.
+Native frame bindings, scopes, variables, memory references, and execution targets
+from an earlier generation are rejected. Logical frame identifiers can survive
+debugger-owned evaluation when the same physical frame remains stopped; csls reacquires
+their native bindings. Application execution retires those identifiers, and MCP
+inspection always requires the exact current generation.
 
 ## Threads, stacks, scopes, and variables
 

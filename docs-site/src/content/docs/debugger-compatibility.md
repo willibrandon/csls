@@ -16,6 +16,8 @@ description: Understand supported .NET targets, platforms, language behavior, se
 | Other clients | Any DAP client that negotiates and uses the capabilities returned by `initialize`. |
 | Dumps | Read-only MCP sessions for bounded managed thread, stack, and module inspection. |
 | Hot Reload | Compiler-produced C# and Visual Basic updates on explicitly enabled launch modules. F# debugging is supported, but F# compiler delta emission is not yet claimed. |
+| Evaluation | Side-effect-free inspection, plus explicit method calls and construction of loaded non-generic or closed generic types through guarded target execution. |
+| Presentation | Bounded `DebuggerDisplay` and `DebuggerBrowsable` support, guarded `DebuggerTypeProxy` expansion, Raw View, and lazy enumerable Results View snapshots. |
 
 Source-language behavior depends on the PDB language identity. C#, Visual Basic, and F#
 receive compiler-parsed expressions and language-appropriate completion matching. Other
@@ -26,6 +28,9 @@ The target and debugger must have the same architecture. A container or remote t
 runs the debugger in that target environment; csls does not provide a cross-architecture
 proxy or network listener.
 
+See [evaluation and inspection](../debugger-evaluation/) for expression boundaries,
+presentation behavior, and the separate MCP authorization required to execute target code.
+
 ## Process and protocol security
 
 - Programs are executed directly without a command shell.
@@ -33,7 +38,9 @@ proxy or network listener.
 - Runtime native libraries are resolved from the installed package layout rather than an arbitrary target directory.
 - The product records no telemetry.
 - A launch is owned and its process tree is terminated on disconnect; attach is non-owning and detaches by default.
-- Frames, values, memory, and execution destinations are opaque and stop-generation-bound.
+- Scope, value, memory, instruction, and execution-target handles are opaque and stop-generation-bound.
+- Logical frame identifiers survive debugger-owned evaluation only for the same physical frame;
+  application execution retires them. MCP inspection still requires the exact current `stopGeneration`.
 - Function evaluation is serialized, deadline-limited, cooperatively aborted, and never escalated with `RudeAbort`.
 - MCP observation is separate from explicit, per-session mutation and execution authorization.
 
@@ -58,8 +65,9 @@ does not advertise:
 - native machine-code disassembly or mixed native debugging;
 - reverse execution, step back, or arbitrary instruction-pointer changes;
 - arbitrary memory writes;
-- generic object construction, initializers, or implicit property and `ToString` calls;
-- debugger display/proxy attributes, results views, or object IDs.
+- object and collection initializers, general property expressions, user-defined operators
+  and conversions, or implicit `ToString` calls;
+- object IDs.
 
 Unsupported requests return a protocol error. csls does not download or fall back to a
 proprietary debugger for them.
@@ -104,5 +112,8 @@ For attach failures, confirm that the process runs CoreCLR and that operating-sy
 permissions allow the current user to debug it. For source failures, inspect module
 `symbolStatus` and follow the [symbols and source checklist](../debugger-symbols/). For
 stale-frame or stale-variable errors, refresh threads, stack, scopes, and variables from
-the newest stop instead of reusing handles from before continue, step, restart, or
-function evaluation.
+the newest stop instead of reusing handles from before continue, step, or restart.
+Debugger-owned function evaluation also invalidates scope, variable, memory, and
+execution-target handles, but unchanged physical frames keep their logical identifiers
+and can be used to refresh scopes without first requesting a new stack. MCP requests
+must use the replacement stop generation even when the frame identifier is unchanged.

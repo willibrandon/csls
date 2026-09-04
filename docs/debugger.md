@@ -211,8 +211,9 @@ stack source locations, argument names, and local names require matching managed
 symbols. Portable PDBs work on Windows, Linux, and macOS; identity-matched Windows
 PDBs work on Windows through Microsoft's public DiaSymReader component. Immediate
 primitive, string, field, object, and array inspection does not execute target
-code. Handles for frames, scopes, and variables are valid only for the stop at
-which they were returned.
+code. Scope and variable handles belong to the generation in which they were returned.
+Unchanged physical frames retain their logical identifiers across debugger-owned
+evaluation; application execution retires those identifiers too.
 
 DAP `evaluate` selects expression syntax from the selected frame's PDB language
 identity. C#, Visual Basic, and F# expressions are parsed in a lazy per-session

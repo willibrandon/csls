@@ -167,8 +167,8 @@ its bundled debugger worker is available:
 - `debug_threads_get`, `debug_stack_get`, `debug_scopes_get`,
   `debug_variables_get`, `debug_evaluate`, and `debug_watches_get` inspect one
   exact stopped generation. Watch sets report each invalid expression without
-  hiding valid values. Returned frame and variable handles expire when execution
-  resumes.
+  hiding valid values. Application execution retires frame and variable handles;
+  debugger-owned evaluation preserves only unchanged logical frame identifiers.
 - `debug_modules_get` returns a bounded managed-module page and validated symbol
   status.
 - `debug_breakpoints_get` reads every authoritative source, function, managed-IL,
