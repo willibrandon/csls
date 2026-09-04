@@ -68,6 +68,26 @@ internal static class ManagedDebuggerAttributeReader
     }
 
     /// <summary>
+    /// Gets the first debugger-display attribute declared by one managed field.
+    /// </summary>
+    /// <param name="metadata">The declaring module metadata.</param>
+    /// <param name="field">The field whose debugger display is inspected.</param>
+    /// <returns>The validated display metadata, or null when none is usable.</returns>
+    internal static ManagedDebuggerDisplayAttribute? GetMemberDisplay(
+        MetadataReader metadata,
+        FieldDefinition field)
+    {
+        try
+        {
+            return FindDisplay(metadata, field.GetCustomAttributes(), targetTypeName: null);
+        }
+        catch (BadImageFormatException)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
     /// Gets the first assembly-level debugger display targeting one runtime type.
     /// </summary>
     /// <param name="metadata">The declaring assembly metadata.</param>

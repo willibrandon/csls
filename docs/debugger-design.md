@@ -461,17 +461,19 @@ presentation transforms. Root-hidden traversal uses stopped managed object addre
 for cycle identity, caps recursive depth, and applies paging before reading child
 values.
 
-`DebuggerDisplayAttribute` is also decoded directly from the runtime type and assembly
-metadata. The first applicable attribute on the most-derived type wins, inherited
-attributes remain applicable, and assembly attributes may identify their target through
-`Target` or `TargetTypeName`. `Value`, `Name`, and `Type` templates resolve only bounded
-instance-field paths, including inherited and nested fields. Escaped braces and the
-`nq` string format are applied in the debugger host. Display names affect child rows;
-root locals, arguments, and watch expressions retain their source identity. Malformed
-templates, missing fields, cycles, properties, and methods fall back to the ordinary
-exact-type presentation. Omitted and serialized-null components preserve their ordinary
-column, while explicitly empty components clear it. Automatic presentation never
-executes target code.
+`DebuggerDisplayAttribute` is also decoded directly from runtime field, type, and
+assembly metadata. A field attribute takes precedence for that child row and resolves
+its templates against the containing object, matching the CLR debugger contract. When
+no member attribute applies, the first applicable attribute on the most-derived value
+type wins, inherited attributes remain applicable, and assembly attributes may identify
+their target through `Target` or `TargetTypeName`. `Value`, `Name`, and `Type` templates
+resolve only bounded instance-field paths, including inherited and nested fields.
+Escaped braces and the `nq` string format are applied in the debugger host. Display
+names affect child rows; root locals, arguments, and watch expressions retain their
+source identity. Malformed templates, missing fields, cycles, properties, and methods
+fall back to the ordinary presentation. Omitted and serialized-null components preserve
+their ordinary column, while explicitly empty components clear it. Automatic
+presentation never executes target code.
 
 Object fields are discovered from the exact `ICorDebugType` hierarchy. Each declaring
 runtime class supplies its own loaded module image and metadata tokens, including when

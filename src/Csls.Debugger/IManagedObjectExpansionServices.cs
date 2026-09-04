@@ -28,6 +28,20 @@ internal interface IManagedObjectExpansionServices
         ManagedTupleCustomTypeInfo? tupleCustomTypeInfo);
 
     /// <summary>
+    /// Applies one member display to a value using its containing runtime object.
+    /// </summary>
+    /// <param name="container">The retained containing object value.</param>
+    /// <param name="ordinaryDisplay">The field value's ordinary presentation.</param>
+    /// <param name="debuggerDisplayDepth">The current debugger-display recursion depth.</param>
+    /// <param name="attribute">The member display metadata to apply.</param>
+    /// <returns>The member presentation, or the ordinary presentation on safe fallback.</returns>
+    ManagedValueDisplay ApplyMemberDisplay(
+        nint container,
+        ManagedValueDisplay ordinaryDisplay,
+        int debuggerDisplayDepth,
+        ManagedDebuggerDisplayAttribute attribute);
+
+    /// <summary>
     /// Retains one expandable runtime value for the current stop generation.
     /// </summary>
     /// <param name="value">The retained ICorDebugValue pointer.</param>

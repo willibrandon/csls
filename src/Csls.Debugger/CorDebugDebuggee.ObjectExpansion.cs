@@ -37,6 +37,20 @@ internal sealed partial class CorDebugDebuggee
             debuggerDisplayDepth,
             tupleCustomTypeInfo);
 
+    ManagedValueDisplay IManagedObjectExpansionServices.ApplyMemberDisplay(
+        nint container,
+        ManagedValueDisplay ordinaryDisplay,
+        int debuggerDisplayDepth,
+        ManagedDebuggerDisplayAttribute attribute) =>
+        _debuggerDisplayFormatter.TryFormatMember(
+            container,
+            ordinaryDisplay,
+            debuggerDisplayDepth,
+            attribute,
+            out ManagedValueDisplay display)
+                ? display
+                : ordinaryDisplay;
+
     ManagedValueDisplay IManagedDebuggerDisplayServices.FormatRuntimeValue(
         nint value,
         int debuggerDisplayDepth) => FormatRuntimeValue(value, debuggerDisplayDepth);

@@ -67,6 +67,36 @@ public sealed partial class DapSessionTests
                 client,
                 container.GetProperty("variablesReference").GetInt32()).ConfigureAwait(false);
 
+            JsonElement member = FindByEvaluateName(children, "localDisplays._member");
+            Assert.AreEqual("member-73", member.GetProperty("name").GetString());
+            Assert.AreEqual("member=73", member.GetProperty("value").GetString());
+            Assert.AreEqual("member-display", member.GetProperty("type").GetString());
+            Assert.IsGreaterThan(0, member.GetProperty("variablesReference").GetInt32());
+
+            JsonElement memberPrimitive = FindByEvaluateName(
+                children,
+                "localDisplays._memberPrimitive");
+            Assert.AreEqual("member-number", memberPrimitive.GetProperty("name").GetString());
+            Assert.AreEqual("member-int=54", memberPrimitive.GetProperty("value").GetString());
+            Assert.AreEqual(
+                "member-int-type",
+                memberPrimitive.GetProperty("type").GetString());
+            Assert.AreEqual(
+                0,
+                memberPrimitive.GetProperty("variablesReference").GetInt32());
+
+            JsonElement unsafeMember = FindByEvaluateName(
+                children,
+                "localDisplays._unsafeMember");
+            Assert.AreEqual("_unsafeMember", unsafeMember.GetProperty("name").GetString());
+            Assert.AreEqual("74", unsafeMember.GetProperty("value").GetString());
+            Assert.AreEqual("int", unsafeMember.GetProperty("type").GetString());
+            Assert.AreEqual(
+                "0",
+                FindByEvaluateName(children, "localDisplays._memberDisplayAccessCount")
+                    .GetProperty("value")
+                    .GetString());
+
             JsonElement direct = FindByEvaluateName(children, "localDisplays._direct");
             Assert.AreEqual("child-54", direct.GetProperty("name").GetString());
             Assert.AreEqual(

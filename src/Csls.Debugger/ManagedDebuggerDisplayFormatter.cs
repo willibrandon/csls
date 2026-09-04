@@ -113,6 +113,64 @@ internal sealed class ManagedDebuggerDisplayFormatter
         }
     }
 
+    /// <summary>
+    /// Tries to apply a member display in the context of its containing object.
+    /// </summary>
+    /// <param name="container">The dereferenced containing runtime object.</param>
+    /// <param name="defaultDisplay">The ordinary field-value presentation.</param>
+    /// <param name="depth">The current debugger-display recursion depth.</param>
+    /// <param name="attribute">The member display metadata to apply.</param>
+    /// <param name="display">Receives the transformed field presentation.</param>
+    /// <returns>True when a complete safe value template was rendered.</returns>
+    internal bool TryFormatMember(
+        nint container,
+        ManagedValueDisplay defaultDisplay,
+        int depth,
+        ManagedDebuggerDisplayAttribute attribute,
+        out ManagedValueDisplay display)
+    {
+        ArgumentNullException.ThrowIfNull(attribute);
+        display = default;
+        if (depth >= MaximumDisplayDepth)
+        {
+            return false;
+        }
+
+        nint value2 = 0;
+        nint exactType = 0;
+        try
+        {
+            value2 = ComAbi.QueryInterface(container, ICorDebugValue2Abi.InterfaceId);
+            unsafe
+            {
+                nint* exactTypeAddress = &exactType;
+                CorDebugHResult.ThrowIfFailed(
+                    new ICorDebugValue2Abi(value2).GetExactType((nint)exactTypeAddress),
+                    "ICorDebugValue2.GetExactType");
+                exactType = RequirePointer(
+                    Volatile.Read(ref *exactTypeAddress),
+                    "ICorDebugValue2.GetExactType");
+            }
+
+            return TryApply(
+                container,
+                exactType,
+                defaultDisplay,
+                depth,
+                attribute,
+                out display);
+        }
+        catch (Exception exception) when (IsRecoverablePresentationFailure(exception))
+        {
+            return false;
+        }
+        finally
+        {
+            ReleaseIfPresent(exactType);
+            ReleaseIfPresent(value2);
+        }
+    }
+
     private bool TryApply(
         nint value,
         nint attributeTargetType,

@@ -1,3 +1,5 @@
+using System.Diagnostics;
+
 namespace Csls.TestProcessHost;
 
 /// <summary>
@@ -5,6 +7,44 @@ namespace Csls.TestProcessHost;
 /// </summary>
 internal sealed class DebuggerDisplayContainerFixture
 {
+    /// <summary>
+    /// Stores a value whose member display takes precedence over its type display.
+    /// </summary>
+    [DebuggerDisplay(
+        "member={_memberPrimitive}",
+        Name = "member-{_memberPrimitive}",
+        Type = "member-display")]
+    internal readonly DebuggerDisplayFixture _member = new();
+
+    /// <summary>
+    /// Stores a primitive whose member display replaces its ordinary presentation.
+    /// </summary>
+    [DebuggerDisplay(
+        "member-int={_direct._id}",
+        Name = "member-number",
+        Type = "member-int-type")]
+    internal readonly int _memberPrimitive = 73;
+
+    /// <summary>
+    /// Stores a member whose display would require target-code execution.
+    /// </summary>
+    [DebuggerDisplay("{Computed}", Name = "{Computed}", Type = "{Computed}")]
+    internal readonly int _unsafeMember = 74;
+
+    /// <summary>
+    /// Counts attempts to execute the unsafe member-display property.
+    /// </summary>
+    internal int _memberDisplayAccessCount;
+
+    private int Computed
+    {
+        get
+        {
+            _memberDisplayAccessCount++;
+            return 75;
+        }
+    }
+
     /// <summary>
     /// Stores a directly attributed display value.
     /// </summary>

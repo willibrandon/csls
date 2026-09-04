@@ -537,6 +537,17 @@ internal sealed class ManagedObjectExpander
                 fieldValue,
                 debuggerDisplayDepth: 0,
                 tupleCustomTypeInfo);
+            ManagedDebuggerDisplayAttribute? memberDisplay =
+                ManagedDebuggerAttributeReader.GetMemberDisplay(metadata, field);
+            if (memberDisplay is not null)
+            {
+                display = _services.ApplyMemberDisplay(
+                    instance,
+                    display,
+                    debuggerDisplayDepth: 0,
+                    memberDisplay);
+            }
+
             string name = metadata.GetString(field.Name);
             string? evaluateName = ManagedExpressionName.CreateMember(
                 parentEvaluateName,
