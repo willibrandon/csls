@@ -130,11 +130,20 @@ internal static class AptPackageCache
         string probePath = Directory.CreateTempSubdirectory("csls-browser-apt-plan-").FullName;
         try
         {
+            // Even --print-uris can mark an installed requested package as manual.
+            // Keep those planning writes separate from the host's package state.
+            string statePath = Path.Join(probePath, "extended_states");
+            if (File.Exists("/var/lib/apt/extended_states"))
+            {
+                File.Copy("/var/lib/apt/extended_states", statePath);
+            }
+
             string output = await RunAsync("apt-get",
             [
                 .. CreateInstallArguments(packages, probePath),
                 "--print-uris",
                 "--option", "Debug::NoLocking=true",
+                "--option", $"Dir::State::extended_states={statePath}",
                 "--option", "Acquire::ForceHash=SHA256"
             ]).ConfigureAwait(false);
             var archives = new Dictionary<string, (long Size, string Hash)>(StringComparer.Ordinal);
