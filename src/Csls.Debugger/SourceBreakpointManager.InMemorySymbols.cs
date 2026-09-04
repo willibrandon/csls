@@ -112,6 +112,7 @@ internal sealed partial class SourceBreakpointManager
     {
         RemoveModuleBindings(module.Identity);
         module.SymbolImage = symbolImage;
+        module.SymbolDeltas.Clear();
         module.SymbolKind = DebugModuleSymbolKind.InMemoryPortablePdb;
         module.SymbolPath = null;
         module.SymbolsInspected = true;

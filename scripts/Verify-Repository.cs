@@ -248,9 +248,10 @@ static void VerifyTrackedText(
         }
 
         if (trackedPath.StartsWith("src/", StringComparison.Ordinal) &&
-            text.Contains("InternalsVisibleTo", StringComparison.Ordinal))
+            !HasOnlyTestFriendAssemblies(text))
         {
-            failures.Add($"Production assemblies must not expose internals to another assembly: {trackedPath}");
+            failures.Add(
+                $"Production assemblies may expose internals only to test assemblies: {trackedPath}");
         }
 
         if (text.Contains(privateRazorSdkPath, StringComparison.Ordinal))
@@ -260,6 +261,37 @@ static void VerifyTrackedText(
                 trackedPath);
         }
     }
+}
+
+static bool HasOnlyTestFriendAssemblies(string text)
+{
+    const string marker = "InternalsVisibleTo";
+    int searchStart = 0;
+    while (text.IndexOf(marker, searchStart, StringComparison.Ordinal) is int markerStart &&
+        markerStart >= 0)
+    {
+        int quoteStart = text.IndexOf('"', markerStart + marker.Length);
+        if (quoteStart < 0)
+        {
+            return false;
+        }
+
+        int quoteEnd = text.IndexOf('"', quoteStart + 1);
+        if (quoteEnd < 0)
+        {
+            return false;
+        }
+
+        string assemblyName = text[(quoteStart + 1)..quoteEnd].Split(',', 2)[0];
+        if (!assemblyName.EndsWith(".Tests", StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        searchStart = quoteEnd + 1;
+    }
+
+    return true;
 }
 
 static void VerifyDependencies(string repositoryRoot, ICollection<string> failures)

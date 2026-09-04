@@ -64,6 +64,11 @@ internal sealed class ManagedFrameHandle
     internal byte[]? SymbolImage { get; init; }
 
     /// <summary>
+    /// Gets or initializes the Portable PDB deltas visible to this stopped frame.
+    /// </summary>
+    internal IReadOnlyList<byte[]> SymbolDeltas { get; init; } = [];
+
+    /// <summary>
     /// Gets or initializes the selected associated PDB path when symbols are external.
     /// </summary>
     internal string? SymbolPath { get; init; }
@@ -102,8 +107,8 @@ internal sealed class ManagedFrameHandle
     /// </summary>
     /// <returns>An owned symbol reader, or null when symbols are unavailable.</returns>
     internal DebugSymbolReader? OpenSymbols() => SymbolImage is not null
-        ? DebugSymbolReader.TryOpen(SymbolImage)
+        ? DebugSymbolReader.TryOpen(SymbolImage, SymbolDeltas)
         : ModulePath is null
             ? null
-            : DebugSymbolReader.TryOpen(ModulePath, SymbolPath);
+            : DebugSymbolReader.TryOpen(ModulePath, SymbolPath, SymbolDeltas);
 }

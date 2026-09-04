@@ -15,13 +15,17 @@ internal sealed class DebugSymbolReader : IDisposable
     private static readonly Guid s_asyncMethodSteppingInformation =
         new("54FD2AC5-E925-401A-9C2A-F94F171072F8");
     private readonly PortablePdbReader? _portable;
+    private readonly IReadOnlyList<PortablePdbReader> _portableDeltas = [];
     private readonly WindowsPdbReader? _windows;
 
-    private DebugSymbolReader(DisposableOwner<PortablePdbReader> owner)
+    private DebugSymbolReader(
+        DisposableOwner<PortablePdbReader> owner,
+        IReadOnlyList<PortablePdbReader>? deltas = null)
     {
         PortablePdbReader portable = owner.Value
             ?? throw new InvalidOperationException("No Portable PDB reader is owned.");
         _portable = portable;
+        _portableDeltas = deltas ?? [];
         StorageKind = portable.StorageKind;
         Path = portable.Path;
         _ = owner.Detach();
@@ -56,12 +60,35 @@ internal sealed class DebugSymbolReader : IDisposable
     internal static DebugSymbolReader? TryOpen(
         string modulePath,
         string? symbolPath = null)
+        => TryOpen(modulePath, symbolPath, []);
+
+    /// <summary>
+    /// Opens identity-matched base symbols and their ordered Portable PDB deltas.
+    /// </summary>
+    /// <param name="modulePath">The absolute managed PE path.</param>
+    /// <param name="symbolPath">An explicit associated PDB candidate, or null.</param>
+    /// <param name="deltaImages">The immutable Portable PDB deltas in generation order.</param>
+    /// <returns>An owned symbol reader, or null when matching symbols are unavailable.</returns>
+    internal static DebugSymbolReader? TryOpen(
+        string modulePath,
+        string? symbolPath,
+        IReadOnlyList<byte[]> deltaImages)
     {
+        ArgumentNullException.ThrowIfNull(deltaImages);
         using var portableOwner = new DisposableOwner<PortablePdbReader>();
         portableOwner.Acquire(() => TryOpenPortable(modulePath, symbolPath));
         if (portableOwner.Value is not null)
         {
-            return new DebugSymbolReader(portableOwner);
+            IReadOnlyList<PortablePdbReader> deltas = OpenPortableDeltas(
+                portableOwner.Value,
+                deltaImages);
+            return new DebugSymbolReader(portableOwner, deltas);
+        }
+
+        if (deltaImages.Count != 0)
+        {
+            throw new BadImageFormatException(
+                "Portable PDB deltas require identity-matched base Portable PDB symbols.");
         }
 
         if (!OperatingSystem.IsWindows())
@@ -91,7 +118,19 @@ internal sealed class DebugSymbolReader : IDisposable
     /// <param name="image">The complete immutable Portable PDB image.</param>
     /// <returns>An owned symbol reader, or null when the image is not a Portable PDB.</returns>
     internal static DebugSymbolReader? TryOpen(byte[] image)
+        => TryOpen(image, []);
+
+    /// <summary>
+    /// Opens runtime-supplied base symbols and their ordered Portable PDB deltas.
+    /// </summary>
+    /// <param name="image">The complete immutable base Portable PDB image.</param>
+    /// <param name="deltaImages">The immutable Portable PDB deltas in generation order.</param>
+    /// <returns>An owned symbol reader, or null when the base image is not a Portable PDB.</returns>
+    internal static DebugSymbolReader? TryOpen(
+        byte[] image,
+        IReadOnlyList<byte[]> deltaImages)
     {
+        ArgumentNullException.ThrowIfNull(deltaImages);
         using var owner = new DisposableOwner<PortablePdbReader>();
         owner.Acquire(() => PortablePdbReader.TryOpen(image));
         if (owner.Value is null)
@@ -99,7 +138,10 @@ internal sealed class DebugSymbolReader : IDisposable
             return null;
         }
 
-        return new DebugSymbolReader(owner);
+        IReadOnlyList<PortablePdbReader> deltas = OpenPortableDeltas(
+            owner.Value,
+            deltaImages);
+        return new DebugSymbolReader(owner, deltas);
     }
 
     /// <summary>
@@ -124,12 +166,43 @@ internal sealed class DebugSymbolReader : IDisposable
             return _windows.GetDocuments();
         }
 
-        PortablePdbReader portable = GetPortableReader();
-        return [.. portable.Metadata.Documents.Select(handle =>
-            PortablePdbSourceDocumentReader.Read(
-                portable.Metadata,
+        PortablePdbReader baseReader = GetPortableReader();
+        var documents = new SortedDictionary<int, ManagedSymbolDocument>();
+        int baseRow = 0;
+        foreach (DocumentHandle handle in baseReader.Metadata.Documents)
+        {
+            baseRow++;
+            documents[baseRow] = PortablePdbSourceDocumentReader.Read(
+                baseReader.Metadata,
                 handle,
-                portable.SourceLinkMappings))];
+                baseReader.SourceLinkMappings);
+        }
+
+        foreach (PortablePdbReader delta in _portableDeltas)
+        {
+            int relativeRow = 0;
+            foreach (EntityHandle handle in delta.Metadata.GetEditAndContinueMapEntries())
+            {
+                if (handle.Kind != HandleKind.Document)
+                {
+                    continue;
+                }
+
+                relativeRow++;
+                DocumentHandle localHandle = MetadataTokens.DocumentHandle(relativeRow);
+                IReadOnlyList<KeyValuePair<string, string>> sourceLinkMappings =
+                    delta.SourceLinkMappings.Count == 0
+                        ? baseReader.SourceLinkMappings
+                        : delta.SourceLinkMappings;
+                documents[MetadataTokens.GetRowNumber(handle)] =
+                    PortablePdbSourceDocumentReader.Read(
+                        delta.Metadata,
+                        localHandle,
+                        sourceLinkMappings);
+            }
+        }
+
+        return [.. documents.Values];
     }
 
     /// <summary>
@@ -144,12 +217,12 @@ internal sealed class DebugSymbolReader : IDisposable
             return _windows.GetSequencePoints(methodToken);
         }
 
-        MetadataReader reader = GetPortableReader().Metadata;
-        IEnumerable<(uint Token, MethodDebugInformation Info)> methods =
-            GetPortableMethods(reader, methodToken);
+        IEnumerable<(uint Token, PortablePdbReader Reader, MethodDebugInformation Info)> methods =
+            GetPortableMethods(methodToken);
         var result = new List<ManagedSequencePoint>();
-        foreach ((uint token, MethodDebugInformation method) in methods)
+        foreach ((uint token, PortablePdbReader portable, MethodDebugInformation method) in methods)
         {
+            MetadataReader reader = portable.Metadata;
             foreach (SequencePoint point in method.GetSequencePoints())
             {
                 DocumentHandle document = point.Document.IsNil
@@ -198,14 +271,15 @@ internal sealed class DebugSymbolReader : IDisposable
             return _windows.GetLocalNames(methodToken, ilOffset);
         }
 
-        MetadataReader reader = GetPortableReader().Metadata;
-        int rowNumber = checked((int)(methodToken & 0x00ffffff));
-        if (rowNumber == 0 || rowNumber > reader.MethodDebugInformation.Count)
+        if (!TryGetPortableMethod(
+            methodToken,
+            out PortablePdbReader? portable,
+            out MethodDefinitionHandle method))
         {
             return new Dictionary<int, string>();
         }
 
-        MethodDefinitionHandle method = MetadataTokens.MethodDefinitionHandle(rowNumber);
+        MetadataReader reader = portable.Metadata;
         var result = new Dictionary<int, string>();
         foreach (LocalScope scope in reader.GetLocalScopes(method).Select(reader.GetLocalScope))
         {
@@ -238,16 +312,18 @@ internal sealed class DebugSymbolReader : IDisposable
             return _windows.GetStateMachineKickoffMethod(methodToken);
         }
 
-        MetadataReader reader = GetPortableReader().Metadata;
-        int rowNumber = checked((int)(methodToken & 0x00ffffff));
-        if (rowNumber == 0 || rowNumber > reader.MethodDebugInformation.Count)
+        if (!TryGetPortableMethod(
+            methodToken,
+            out PortablePdbReader? portable,
+            out MethodDefinitionHandle method))
         {
             return null;
         }
 
+        MetadataReader reader = portable.Metadata;
         MethodDefinitionHandle kickoff = reader
             .GetMethodDebugInformation(
-                MetadataTokens.MethodDebugInformationHandle(rowNumber))
+                method.ToDebugInformationHandle())
             .GetStateMachineKickoffMethod();
         return kickoff.IsNil
             ? null
@@ -304,48 +380,84 @@ internal sealed class DebugSymbolReader : IDisposable
     public void Dispose()
     {
         _portable?.Dispose();
+        foreach (PortablePdbReader delta in _portableDeltas)
+        {
+            delta.Dispose();
+        }
+
         _windows?.Dispose();
     }
 
-    private static IEnumerable<(uint Token, MethodDebugInformation Info)>
-        GetPortableMethods(MetadataReader reader, uint? methodToken)
+    private IEnumerable<(uint Token, PortablePdbReader Reader, MethodDebugInformation Info)>
+        GetPortableMethods(uint? methodToken)
     {
         if (methodToken is uint selected)
         {
-            int rowNumber = checked((int)(selected & 0x00ffffff));
-            if (rowNumber > 0 && rowNumber <= reader.MethodDebugInformation.Count)
+            if (TryGetPortableMethod(
+                selected,
+                out PortablePdbReader? portable,
+                out MethodDefinitionHandle method))
             {
                 yield return (
                     selected,
-                    reader.GetMethodDebugInformation(
-                        MetadataTokens.MethodDebugInformationHandle(rowNumber)));
+                    portable,
+                    portable.Metadata.GetMethodDebugInformation(
+                        method.ToDebugInformationHandle()));
             }
 
             yield break;
         }
 
+        PortablePdbReader baseReader = GetPortableReader();
+        var methods = new Dictionary<uint, (PortablePdbReader Reader, MethodDefinitionHandle Handle)>();
         int row = 0;
-        foreach (MethodDebugInformationHandle handle in reader.MethodDebugInformation)
+        foreach (MethodDebugInformationHandle _ in baseReader.Metadata.MethodDebugInformation)
         {
             row++;
+            uint token = checked((uint)MetadataTokens.GetToken(
+                MetadataTokens.MethodDefinitionHandle(row)));
+            methods[token] = (baseReader, MetadataTokens.MethodDefinitionHandle(row));
+        }
+
+        foreach (PortablePdbReader delta in _portableDeltas)
+        {
+            int relativeRow = 0;
+            foreach (EntityHandle handle in delta.Metadata.GetEditAndContinueMapEntries())
+            {
+                if (handle.Kind != HandleKind.MethodDebugInformation)
+                {
+                    continue;
+                }
+
+                relativeRow++;
+                uint token = checked((uint)MetadataTokens.GetToken(
+                    ((MethodDebugInformationHandle)handle).ToDefinitionHandle()));
+                methods[token] = (delta, MetadataTokens.MethodDefinitionHandle(relativeRow));
+            }
+        }
+
+        foreach ((uint token, (PortablePdbReader portable, MethodDefinitionHandle handle)) in
+            methods.OrderBy(static pair => pair.Key))
+        {
             yield return (
-                checked((uint)MetadataTokens.GetToken(
-                    MetadataTokens.MethodDefinitionHandle(row))),
-                reader.GetMethodDebugInformation(handle));
+                token,
+                portable,
+                portable.Metadata.GetMethodDebugInformation(handle.ToDebugInformationHandle()));
         }
     }
 
     private List<ManagedAsyncAwaitPoint> GetPortableAsyncAwaitPoints(
         uint methodToken)
     {
-        MetadataReader reader = GetPortableReader().Metadata;
-        int rowNumber = checked((int)(methodToken & 0x00ffffff));
-        if (rowNumber == 0 || rowNumber > reader.MethodDebugInformation.Count)
+        if (!TryGetPortableMethod(
+            methodToken,
+            out PortablePdbReader? portable,
+            out MethodDefinitionHandle method))
         {
             return [];
         }
 
-        MethodDefinitionHandle method = MetadataTokens.MethodDefinitionHandle(rowNumber);
+        MetadataReader reader = portable.Metadata;
         foreach (CustomDebugInformationHandle handle in reader.GetCustomDebugInformation(method))
         {
             CustomDebugInformation information = reader.GetCustomDebugInformation(handle);
@@ -419,4 +531,99 @@ internal sealed class DebugSymbolReader : IDisposable
 
     private PortablePdbReader GetPortableReader() => _portable
         ?? throw new ObjectDisposedException(nameof(DebugSymbolReader));
+
+    private bool TryGetPortableMethod(
+        uint methodToken,
+        out PortablePdbReader portable,
+        out MethodDefinitionHandle method)
+    {
+        if ((methodToken & 0xff000000) != MethodDefinitionTokenKind)
+        {
+            portable = null!;
+            method = default;
+            return false;
+        }
+
+        foreach (PortablePdbReader delta in _portableDeltas.Reverse())
+        {
+            int relativeRow = 0;
+            foreach (EntityHandle handle in delta.Metadata.GetEditAndContinueMapEntries())
+            {
+                if (handle.Kind != HandleKind.MethodDebugInformation)
+                {
+                    continue;
+                }
+
+                relativeRow++;
+                uint candidate = checked((uint)MetadataTokens.GetToken(
+                    ((MethodDebugInformationHandle)handle).ToDefinitionHandle()));
+                if (candidate == methodToken)
+                {
+                    portable = delta;
+                    method = MetadataTokens.MethodDefinitionHandle(relativeRow);
+                    return true;
+                }
+            }
+        }
+
+        PortablePdbReader baseReader = GetPortableReader();
+        int rowNumber = checked((int)(methodToken & 0x00ffffff));
+        if (rowNumber == 0 || rowNumber > baseReader.Metadata.MethodDebugInformation.Count)
+        {
+            portable = null!;
+            method = default;
+            return false;
+        }
+
+        portable = baseReader;
+        method = MetadataTokens.MethodDefinitionHandle(rowNumber);
+        return true;
+    }
+
+    private static List<PortablePdbReader> OpenPortableDeltas(
+        PortablePdbReader baseReader,
+        IReadOnlyList<byte[]> deltaImages)
+    {
+        if (deltaImages.Count == 0)
+        {
+            return [];
+        }
+
+        var deltas = new List<PortablePdbReader>(deltaImages.Count);
+        var metadataReaders = new List<MetadataReader>(deltaImages.Count);
+        try
+        {
+            foreach (byte[] image in deltaImages)
+            {
+                PortablePdbReader delta = PortablePdbReader.TryOpen(image)
+                    ?? throw new BadImageFormatException(
+                        "A Hot Reload symbol generation is not a Portable PDB.");
+                deltas.Add(delta);
+                metadataReaders.Add(delta.Metadata);
+            }
+
+            _ = new MetadataAggregator(baseReader.Metadata, metadataReaders);
+            return deltas;
+        }
+        catch (ArgumentException exception)
+        {
+            foreach (PortablePdbReader delta in deltas)
+            {
+                delta.Dispose();
+            }
+
+            throw new BadImageFormatException(
+                "A Hot Reload symbol generation is not a valid minimal Portable PDB delta.",
+                exception);
+        }
+        catch
+        {
+            foreach (PortablePdbReader delta in deltas)
+            {
+                delta.Dispose();
+            }
+
+            throw;
+        }
+    }
 }

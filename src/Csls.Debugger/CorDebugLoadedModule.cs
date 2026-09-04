@@ -49,6 +49,11 @@ internal sealed class CorDebugLoadedModule
     internal byte[]? SymbolImage { get; set; }
 
     /// <summary>
+    /// Gets the validated Portable PDB deltas in Hot Reload generation order.
+    /// </summary>
+    internal List<byte[]> SymbolDeltas { get; } = [];
+
+    /// <summary>
     /// Gets whether CoreCLR reports that the module was loaded from memory.
     /// </summary>
     internal bool IsInMemory { get; init; }
@@ -106,4 +111,14 @@ internal sealed class CorDebugLoadedModule
                 FileAccess.Read,
                 FileShare.Read | FileShare.Delete))
             : null;
+
+    /// <summary>
+    /// Opens the base symbols and all applied Hot Reload symbol generations.
+    /// </summary>
+    /// <returns>An owned symbol reader, or null when symbols are unavailable.</returns>
+    internal DebugSymbolReader? OpenSymbols() => SymbolImage is not null
+        ? DebugSymbolReader.TryOpen(SymbolImage, SymbolDeltas)
+        : Path is null
+            ? null
+            : DebugSymbolReader.TryOpen(Path, SymbolPath, SymbolDeltas);
 }

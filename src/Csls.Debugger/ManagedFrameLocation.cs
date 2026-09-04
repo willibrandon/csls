@@ -48,6 +48,11 @@ internal sealed class ManagedFrameLocation
     internal byte[]? SymbolImage { get; init; }
 
     /// <summary>
+    /// Gets or initializes the Portable PDB deltas visible to this stopped frame.
+    /// </summary>
+    internal IReadOnlyList<byte[]> SymbolDeltas { get; init; } = [];
+
+    /// <summary>
     /// Gets or initializes the source-language evaluator grammar.
     /// </summary>
     internal DebugExpressionLanguage ExpressionLanguage { get; init; }

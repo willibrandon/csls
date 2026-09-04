@@ -21,11 +21,7 @@ internal sealed partial class SourceBreakpointManager
     }
 
     private static DebugSymbolReader? OpenSymbols(CorDebugLoadedModule module) =>
-        module.SymbolImage is not null
-            ? DebugSymbolReader.TryOpen(module.SymbolImage)
-            : module.Path is null
-                ? null
-                : DebugSymbolReader.TryOpen(module.Path, module.SymbolPath);
+        module.OpenSymbols();
 
     /// <summary>
     /// Gets the identity-validated associated PDB selected for one loaded module.

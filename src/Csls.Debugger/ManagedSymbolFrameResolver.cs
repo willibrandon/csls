@@ -98,11 +98,7 @@ internal static class ManagedSymbolFrameResolver
             displayName = ResolveMethodName(metadata, methodToken, fallbackName);
         }
 
-        using DebugSymbolReader? symbols = module.SymbolImage is not null
-            ? DebugSymbolReader.TryOpen(module.SymbolImage)
-            : module.Path is null
-                ? null
-                : DebugSymbolReader.TryOpen(module.Path, module.SymbolPath);
+        using DebugSymbolReader? symbols = module.OpenSymbols();
         if (symbols is null)
         {
             return Unknown(displayName, module);
@@ -140,6 +136,7 @@ internal static class ManagedSymbolFrameResolver
             ModuleId = module.Id,
             ModuleImage = module.ModuleImage,
             SymbolImage = module.SymbolImage,
+            SymbolDeltas = [.. module.SymbolDeltas],
             SourcePath = selected.SourcePath,
             Line = selected.StartLine,
             Column = selected.StartColumn,
@@ -192,6 +189,7 @@ internal static class ManagedSymbolFrameResolver
             ModuleId = module.Id,
             ModuleImage = module.ModuleImage,
             SymbolImage = module.SymbolImage,
+            SymbolDeltas = [.. module.SymbolDeltas],
             Line = 0,
             Column = 0
         };

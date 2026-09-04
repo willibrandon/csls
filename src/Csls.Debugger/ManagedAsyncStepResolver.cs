@@ -72,11 +72,7 @@ internal static class ManagedAsyncStepResolver
                 return false;
             }
 
-            using DebugSymbolReader? symbols = loadedModule.SymbolImage is not null
-                ? DebugSymbolReader.TryOpen(loadedModule.SymbolImage)
-                : loadedModule.Path is null
-                    ? null
-                    : DebugSymbolReader.TryOpen(loadedModule.Path, loadedModule.SymbolPath);
+            using DebugSymbolReader? symbols = loadedModule.OpenSymbols();
             if (symbols is null ||
                 !symbols.TryGetNextAsyncAwait(methodToken, ilOffset, out ManagedAsyncAwaitPoint point))
             {
