@@ -71,6 +71,12 @@ internal class DebuggerTypeProxyFixtureProxy
     private int _attributedProperty => Value + 5;
 
     /// <summary>
+    /// Gets projected children that appear directly in the proxy expansion.
+    /// </summary>
+    [DebuggerBrowsable(DebuggerBrowsableState.RootHidden)]
+    private int[] RootHiddenValues => [Value + 6, Value + 7];
+
+    /// <summary>
     /// Gets a property whose target exception remains isolated to its debugger row.
     /// </summary>
     public int ThrowingValue => throw new InvalidOperationException(

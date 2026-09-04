@@ -396,26 +396,20 @@ internal sealed partial class CorDebugDebuggee
                 }
                 else if (value == 0)
                 {
-                    result = active.DebuggerTypeProxy is not null
-                        ? CreateDebuggerTypeProxyFallback(active, resultGeneration)
-                        : new ManagedFunctionEvaluationResult(
-                            new DebugEvaluateResult(
-                                string.Empty,
-                                "void",
-                                VariablesReference: 0,
-                                MemoryReference: null,
-                                TargetCodeExecuted: true),
-                            RuntimeValueReference: 0,
-                            resultGeneration);
+                    result = new ManagedFunctionEvaluationResult(
+                        new DebugEvaluateResult(
+                            string.Empty,
+                            "void",
+                            VariablesReference: 0,
+                            MemoryReference: null,
+                            TargetCodeExecuted: true),
+                        RuntimeValueReference: 0,
+                        resultGeneration);
                 }
                 else
                 {
                     ManagedValueDisplay display = FormatRuntimeValue(value);
-                    if (isException && active.DebuggerTypeProxy is not null)
-                    {
-                        result = CreateDebuggerTypeProxyFallback(active, resultGeneration);
-                    }
-                    else if (isException)
+                    if (isException)
                     {
                         failure = new InvalidOperationException(
                             $"Managed function evaluation threw {display.Type}: {display.Value}");
@@ -427,18 +421,7 @@ internal sealed partial class CorDebugDebuggee
                             value,
                             resultGeneration,
                             active.ThreadId,
-                            active.DebuggerTypeProxy is null
-                                ? ManagedValueView.Default
-                                : ManagedValueView.ProxyBypassed);
-                        bool proxyApplied = active.DebuggerTypeProxy is not null;
-                        if (proxyApplied)
-                        {
-                            ManagedValueHandle proxy = _values[runtimeValueReference];
-                            proxy.ProxyRawValueReference = RetainDebuggerTypeProxyOriginal(
-                                active,
-                                resultGeneration,
-                                ManagedValueView.Raw).Id;
-                        }
+                            ManagedValueView.Default);
 
                         result = new ManagedFunctionEvaluationResult(
                             new DebugEvaluateResult(
@@ -449,7 +432,7 @@ internal sealed partial class CorDebugDebuggee
                                 TargetCodeExecuted: true),
                             runtimeValueReference,
                             resultGeneration,
-                            proxyApplied);
+                            DebuggerTypeProxyApplied: false);
                     }
                 }
             }
@@ -465,24 +448,6 @@ internal sealed partial class CorDebugDebuggee
                     $"Managed function evaluation failed while reading its result: " +
                     exception.Message,
                     exception);
-            if (failure is not OperationCanceledException &&
-                active.DebuggerTypeProxy is not null)
-            {
-                try
-                {
-                    result = CreateDebuggerTypeProxyFallback(active, resultGeneration);
-                    failure = null;
-                }
-                catch (Exception recoveryException) when (
-                    recoveryException is ArgumentException or InvalidOperationException or
-                    IOException or UnauthorizedAccessException or BadImageFormatException)
-                {
-                    failure = new InvalidOperationException(
-                        "Debugger type-proxy construction failed and the original value could " +
-                        $"not be recovered: {recoveryException.Message}",
-                        recoveryException);
-                }
-            }
         }
         finally
         {

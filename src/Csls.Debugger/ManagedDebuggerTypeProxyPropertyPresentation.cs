@@ -3,10 +3,10 @@ using Csls.Debugger.Contracts;
 namespace Csls.Debugger;
 
 /// <summary>
-/// Describes one final-generation proxy property row and its browsing policy.
+/// Describes the final-generation rows contributed by one debugger proxy property.
 /// </summary>
-/// <param name="Variable">The debugger-facing property variable.</param>
-/// <param name="BrowsingState">The declared debugger browsing policy.</param>
+/// <param name="Name">The metadata property name and ordinal sort key.</param>
+/// <param name="Variables">The ordinary property row or flattened root-hidden children.</param>
 internal sealed record ManagedDebuggerTypeProxyPropertyPresentation(
-    DebugVariableInfo Variable,
-    ManagedDebuggerBrowsableState BrowsingState);
+    string Name,
+    IReadOnlyList<DebugVariableInfo> Variables);

@@ -16,6 +16,7 @@ internal sealed class ManagedObjectExpander
     private const int MaximumExpandableValueCount = 64 * 1024;
     private const int MaximumTypeHierarchyDepth = 256;
     private readonly IManagedObjectExpansionServices _services;
+    private readonly ManagedDebuggerTypeProxyExpander _proxyExpander;
     private readonly ManagedTuplePresenter _tuplePresenter;
 
     /// <summary>
@@ -30,6 +31,7 @@ internal sealed class ManagedObjectExpander
         ArgumentNullException.ThrowIfNull(services);
         ArgumentNullException.ThrowIfNull(tuplePresenter);
         _services = services;
+        _proxyExpander = new ManagedDebuggerTypeProxyExpander(services, this);
         _tuplePresenter = tuplePresenter;
     }
 
@@ -59,8 +61,20 @@ internal sealed class ManagedObjectExpander
         ManagedDebuggerTypeProxyRawView? proxyRawView,
         IReadOnlyList<ManagedDebuggerTypeProxyPropertyPresentation>? proxyProperties)
     {
-        if (proxyRawView is null &&
-            view != ManagedValueView.Raw &&
+        if (proxyRawView is not null)
+        {
+            return _proxyExpander.Expand(
+                value,
+                parentEvaluateName,
+                frameId,
+                generation,
+                start,
+                count,
+                proxyRawView,
+                proxyProperties ?? []);
+        }
+
+        if (view != ManagedValueView.Raw &&
             _tuplePresenter.TryExpand(
                 value,
                 parentEvaluateName,
@@ -95,42 +109,8 @@ internal sealed class ManagedObjectExpander
             path,
             nestingDepth: 0,
             view,
-            includeRawView: proxyRawView is null,
-            proxyFieldsOnly: proxyRawView is not null);
-        if (proxyProperties is not null && !IsVariablePageFull(result, count))
-        {
-            AppendProxyProperties(result, proxyProperties, start, count, state);
-        }
-
-        if (proxyRawView is not null && !IsVariablePageFull(result, count))
-        {
-            AppendProxyRawView(result, proxyRawView, start, count, state);
-        }
-
+            includeRawView: true);
         return result;
-    }
-
-    private static void AppendProxyProperties(
-        List<DebugVariableInfo> result,
-        IReadOnlyList<ManagedDebuggerTypeProxyPropertyPresentation> properties,
-        int start,
-        int count,
-        ManagedObjectExpansionState state)
-    {
-        foreach (ManagedDebuggerTypeProxyPropertyPresentation property in properties)
-        {
-            EnsureExpandableValueLimit(state.VisibleIndex, additionalCount: 1);
-            if (state.VisibleIndex >= start && !IsVariablePageFull(result, count))
-            {
-                result.Add(property.Variable);
-            }
-
-            state.VisibleIndex++;
-            if (IsVariablePageFull(result, count))
-            {
-                return;
-            }
-        }
     }
 
     private unsafe void AppendObjectFields(
@@ -145,8 +125,7 @@ internal sealed class ManagedObjectExpander
         HashSet<ulong> path,
         int nestingDepth,
         ManagedValueView view,
-        bool includeRawView,
-        bool proxyFieldsOnly)
+        bool includeRawView)
     {
         nint instance = 0;
         nint value2 = 0;
@@ -190,8 +169,7 @@ internal sealed class ManagedObjectExpander
                         state,
                         path,
                         nestingDepth,
-                        view,
-                        proxyFieldsOnly);
+                        view);
                     if (IsVariablePageFull(result, count))
                     {
                         return;
@@ -280,8 +258,7 @@ internal sealed class ManagedObjectExpander
         ManagedObjectExpansionState state,
         HashSet<ulong> path,
         int nestingDepth,
-        ManagedValueView view,
-        bool proxyFieldsOnly)
+        ManagedValueView view)
     {
         TypeDefinitionHandle typeHandle = MetadataTokens.TypeDefinitionHandle(
             checked((int)(typeToken & 0x00FFFFFF)));
@@ -301,13 +278,6 @@ internal sealed class ManagedObjectExpander
                     metadata,
                     field.GetCustomAttributes(),
                     out declaredBrowsingState);
-            if (proxyFieldsOnly &&
-                !IsVisibleProxyField(field.Attributes) &&
-                !hasBrowsingState)
-            {
-                continue;
-            }
-
             ManagedDebuggerBrowsableState browsingState = view == ManagedValueView.Raw
                 ? ManagedDebuggerBrowsableState.Collapsed
                 : declaredBrowsingState;
@@ -494,8 +464,7 @@ internal sealed class ManagedObjectExpander
                 path,
                 nestingDepth + 1,
                 ManagedValueView.Default,
-                includeRawView: false,
-                proxyFieldsOnly: false);
+                includeRawView: false);
             if (addedToPath)
             {
                 _ = path.Remove(address);
@@ -660,14 +629,6 @@ internal sealed class ManagedObjectExpander
     private static bool IsVariablePageFull(
         List<DebugVariableInfo> result,
         int count) => count > 0 && result.Count >= count;
-
-    private static bool IsVisibleProxyField(FieldAttributes attributes)
-    {
-        FieldAttributes accessibility = attributes & FieldAttributes.FieldAccessMask;
-        return accessibility is FieldAttributes.Public or
-            FieldAttributes.Family or
-            FieldAttributes.FamORAssem;
-    }
 
     private static void EnsureExpandableValueLimit(int visibleIndex, int additionalCount)
     {

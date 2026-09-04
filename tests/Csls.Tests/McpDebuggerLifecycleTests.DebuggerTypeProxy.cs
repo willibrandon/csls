@@ -67,16 +67,18 @@ public sealed partial class McpDebuggerLifecycleTests
         Assert.IsGreaterThan(generation, presented.GetProperty("stopGeneration").GetInt64());
         Assert.AreSequenceEqual(
             [
-                "Value",
-                "[0]",
-                "[1]",
-                "ProtectedValue",
-                "_attributedValue",
                 "ArrayValue",
                 "BoxedValue",
                 "ComputedValue",
+                "[0]",
+                "[1]",
+                "ProtectedValue",
+                "[0]",
+                "[1]",
                 "ThrowingValue",
+                "Value",
                 "_attributedProperty",
+                "_attributedValue",
                 "Raw View"
             ],
             presented.GetProperty("variables").EnumerateArray()
@@ -86,14 +88,20 @@ public sealed partial class McpDebuggerLifecycleTests
         [
             .. presented.GetProperty("variables").EnumerateArray()
         ];
-        Assert.AreEqual("42", proxyMembers[0].GetProperty("value").GetString());
-        Assert.AreEqual("{int[2]}", proxyMembers[5].GetProperty("value").GetString());
-        Assert.AreEqual("55", proxyMembers[6].GetProperty("value").GetString());
-        Assert.AreEqual("52", proxyMembers[7].GetProperty("value").GetString());
+        Assert.AreEqual("{int[2]}", proxyMembers[0].GetProperty("value").GetString());
+        Assert.AreEqual("55", proxyMembers[1].GetProperty("value").GetString());
+        Assert.AreEqual("52", proxyMembers[2].GetProperty("value").GetString());
+        Assert.AreEqual("43", proxyMembers[3].GetProperty("value").GetString());
+        Assert.AreEqual("44", proxyMembers[4].GetProperty("value").GetString());
+        Assert.AreEqual("45", proxyMembers[5].GetProperty("value").GetString());
+        Assert.AreEqual("48", proxyMembers[6].GetProperty("value").GetString());
+        Assert.AreEqual("49", proxyMembers[7].GetProperty("value").GetString());
         Assert.StartsWith(
             "<error: System.InvalidOperationException:",
             proxyMembers[8].GetProperty("value").GetString());
-        Assert.AreEqual("47", proxyMembers[9].GetProperty("value").GetString());
+        Assert.AreEqual("42", proxyMembers[9].GetProperty("value").GetString());
+        Assert.AreEqual("47", proxyMembers[10].GetProperty("value").GetString());
+        Assert.AreEqual("46", proxyMembers[11].GetProperty("value").GetString());
         JsonElement current = await CallAsync(
             client,
             "debug_session_get",

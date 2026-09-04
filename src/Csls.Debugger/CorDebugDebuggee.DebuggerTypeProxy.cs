@@ -416,9 +416,7 @@ internal sealed partial class CorDebugDebuggee
             nextEvaluation = 0;
             nextFunction = 0;
             _ = ComAbi.Release(completedEvaluation);
-            completedEvaluation = 0;
             _ = ComAbi.Release(completedFunction);
-            completedFunction = 0;
             ScheduleNextFunctionEvaluationStage(active);
             int continueResult = new ICorDebugControllerAbi(_debugProcess)
                 .Continue(fIsOutOfBand: 0);
@@ -509,31 +507,55 @@ internal sealed partial class CorDebugDebuggee
     {
         var result = new List<ManagedDebuggerTypeProxyPropertyPresentation>(
             context.PropertyResults.Count);
+        int visiblePropertyCount = 0;
         foreach (ManagedDebuggerTypeProxyPropertyResult property in context.PropertyResults)
         {
             nint handle = property.DetachHandle();
             nint value = 0;
             ManagedValueReferences references = default;
+            IReadOnlyList<DebugVariableInfo>? rootHiddenVariables = null;
             try
             {
                 if (handle != 0 && TryDereferenceAndUnboxValue(handle, out value))
                 {
-                    references = RetainValue(
-                        value,
-                        generation,
-                        evaluateName: null,
-                        frameId: null);
+                    if (property.BrowsingState == ManagedDebuggerBrowsableState.RootHidden)
+                    {
+                        _ = TryExpandDebuggerTypeProxyRootHiddenProperty(
+                            value,
+                            generation,
+                            MaximumExpandableValueCount - visiblePropertyCount,
+                            out rootHiddenVariables);
+                    }
+                    else
+                    {
+                        references = RetainValue(
+                            value,
+                            generation,
+                            evaluateName: null,
+                            frameId: null);
+                    }
                 }
 
                 result.Add(new ManagedDebuggerTypeProxyPropertyPresentation(
-                    new DebugVariableInfo(
-                        property.Name,
-                        property.Display.Value,
-                        property.Display.Type,
-                        references.VariablesReference,
-                        references.MemoryReference,
-                        EvaluateName: null),
-                    property.BrowsingState));
+                    property.Name,
+                    rootHiddenVariables ??
+                    [
+                        new DebugVariableInfo(
+                            property.Name,
+                            property.Display.Value,
+                            property.Display.Type,
+                            references.VariablesReference,
+                            references.MemoryReference,
+                            EvaluateName: null)
+                    ]));
+                visiblePropertyCount = checked(
+                    visiblePropertyCount + (rootHiddenVariables?.Count ?? 1));
+                if (visiblePropertyCount > MaximumExpandableValueCount)
+                {
+                    throw new InvalidOperationException(
+                        $"Debugger proxy properties exceed the child limit of " +
+                        $"{MaximumExpandableValueCount}.");
+                }
             }
             finally
             {
@@ -547,6 +569,66 @@ internal sealed partial class CorDebugDebuggee
         }
 
         return result;
+    }
+
+    private bool TryExpandDebuggerTypeProxyRootHiddenProperty(
+        nint value,
+        DebugStopGeneration generation,
+        int maximumCount,
+        out IReadOnlyList<DebugVariableInfo>? variables)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegative(maximumCount);
+        variables = null;
+        if (ComAbi.TryQueryInterface(
+            value,
+            ICorDebugArrayValueAbi.InterfaceId,
+            out nint array))
+        {
+            try
+            {
+                variables = ExpandArray(
+                    array,
+                    parentEvaluateName: null,
+                    frameId: null,
+                    generation,
+                    tupleCustomTypeInfo: null,
+                    start: 0,
+                    count: checked(maximumCount + 1));
+                return true;
+            }
+            finally
+            {
+                _ = ComAbi.Release(array);
+            }
+        }
+
+        if (!ComAbi.TryQueryInterface(
+            value,
+            ICorDebugObjectValueAbi.InterfaceId,
+            out nint objectValue))
+        {
+            return false;
+        }
+
+        try
+        {
+            variables = ExpandObject(
+                value,
+                parentEvaluateName: null,
+                frameId: null,
+                generation,
+                start: 0,
+                count: checked(maximumCount + 1),
+                ManagedValueView.Default,
+                tupleCustomTypeInfo: null,
+                proxyRawView: null,
+                proxyProperties: null);
+            return true;
+        }
+        finally
+        {
+            _ = ComAbi.Release(objectValue);
+        }
     }
 
     private void CompleteDebuggerTypeProxyOperation(

@@ -428,8 +428,10 @@ A successful construction presents public and protected proxy fields plus non-pu
 fields intentionally surfaced through `DebuggerBrowsableAttribute`. Visible non-indexed
 instance property getters execute serially inside the same bounded operation; strong
 runtime handles preserve expandable heap results until one final generation is published.
-The original object remains available as Raw View in the replacement
-generation. Metadata, resolution, constructor, or target exceptions preserve ordinary
+Fields and properties share ordinal member ordering, and root-hidden properties flatten
+their bounded children at the property's ordered position. The original object remains
+available as Raw View in the replacement generation. Metadata, resolution, constructor,
+or target exceptions preserve ordinary
 expansion. DAP and the terminal may request debugger presentation directly. MCP keeps
 `debug_variables_get` side-effect-free and exposes proxy construction only through the
 separate controlled `debug_variables_get_presented` mutation tool.

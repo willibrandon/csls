@@ -311,7 +311,9 @@ including a non-public constructor, through the guarded evaluator. Successful
 construction exposes public and protected proxy fields plus explicitly attributed
 non-public fields, and evaluates visible non-indexed proxy property getters serially
 under the guarded target-execution policy. `DebuggerBrowsableAttribute` transforms
-apply to both member kinds, and a virtual Raw View preserves the original object.
+apply to both member kinds, including root-hidden property flattening. Fields and
+properties share Roslyn-compatible ordinal ordering, and a virtual Raw View preserves
+the original object.
 Malformed declarations,
 unavailable constructors, generic arity mismatches, and constructor exceptions preserve
 ordinary expansion. Because a proxy constructor is arbitrary target code, construction

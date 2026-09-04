@@ -15,3 +15,5 @@ CSLS0013 | CodeQuality | Error | Complex Boolean conditions use named decisions
 CSLS0014 | CodeQuality | Error | Deconstructed collection aliases are not mutation-only
 CSLS0015 | CodeQuality | Error | Nullable out variables are proved before dereferencing
 CSLS0016 | CodeQuality | Error | Redundant nested implicit upcasts are removed
+CSLS0017 | CodeQuality | Error | Repeated null tests after exiting guards are removed
+CSLS0018 | CodeQuality | Error | Final constant writes to unread locals are removed
