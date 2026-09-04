@@ -45,6 +45,28 @@ internal sealed partial class CorDebugDebuggee
                 Volatile.Read(ref *exactTypeAddress),
                 "ICorDebugValue2.GetExactType");
 
+            StringComparison comparison = plan.Language ==
+                DebugExpressionLanguage.VisualBasic
+                    ? StringComparison.OrdinalIgnoreCase
+                    : StringComparison.Ordinal;
+            ManagedTupleCustomTypeInfo? tupleCustomTypeInfo =
+                receiver.Display.VariablesReference > 0 &&
+                _values.TryGetValue(
+                    receiver.Display.VariablesReference,
+                    out ManagedValueHandle? retained)
+                    ? retained.TupleCustomTypeInfo
+                    : null;
+            if (_tuplePresenter.TryGetElementValue(
+                dereferenced,
+                currentType,
+                tupleCustomTypeInfo,
+                node.Text!,
+                comparison,
+                out nint tupleElement))
+            {
+                return tupleElement;
+            }
+
             for (int depth = 0;
                 currentType != 0 && depth < MaximumFunctionEvaluationHierarchyDepth;
                 depth++)

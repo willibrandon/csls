@@ -238,9 +238,12 @@ metadata. Generic types, arrays, tuples, and nullable value types therefore reta
 their concrete type arguments; arrays include their live dimensions and nullable
 values display either their contained value or `null` without target execution.
 Compatible `System.ValueTuple` values display their element values directly. Long
-tuples flatten their physical `Rest` storage into paged `Item8` and later children while
-preserving physical evaluate paths and an explicit Raw View. Malformed ValueTuple
-shapes remain ordinary structs.
+tuples flatten their physical `Rest` storage into one logical paged sequence while
+preserving physical evaluate paths and an explicit Raw View. Source-authored tuple
+names come from bounded PE and Portable PDB metadata and remain consistent across
+arguments, locals, fields, arrays, nested tuples, completion, evaluation, and
+assignment. Missing or malformed tuple-name metadata preserves positional `ItemN`
+presentation, and malformed ValueTuple shapes remain ordinary structs.
 Enums use their actual underlying runtime storage and metadata constants, including
 symbolic decomposition for `[Flags]`; unnamed values retain their numeric display.
 `decimal` values are reconstructed from their 96-bit integer, scale, and sign fields

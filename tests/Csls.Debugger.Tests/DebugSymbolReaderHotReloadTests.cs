@@ -159,9 +159,13 @@ public sealed class DebugSymbolReaderHotReloadTests
         ManagedSequencePoint basePoint = baseSymbols.GetSequencePoints(methodToken)
             .Single(point => point.StartLine == 6);
         Assert.AreEqual(SourcePath, basePoint.SourcePath);
-        Assert.Contains("original", baseSymbols.GetLocalNames(
-            methodToken,
-            checked((uint)basePoint.IlOffset)).Values);
+        Assert.Contains(
+            "original",
+            baseSymbols.GetLocalVariables(
+                    methodToken,
+                    checked((uint)basePoint.IlOffset))
+                .Values
+                .Select(static variable => variable.Name));
 
         using DebugSymbolReader generation1Symbols = DebugSymbolReader.TryOpen(
             pdbImage,
@@ -170,9 +174,13 @@ public sealed class DebugSymbolReaderHotReloadTests
         ManagedSequencePoint generation1Point = generation1Symbols.GetSequencePoints(methodToken)
             .Single(point => point.StartLine == 7);
         Assert.AreEqual(SourcePath, generation1Point.SourcePath);
-        Assert.Contains("replacement", generation1Symbols.GetLocalNames(
-            methodToken,
-            checked((uint)generation1Point.IlOffset)).Values);
+        Assert.Contains(
+            "replacement",
+            generation1Symbols.GetLocalVariables(
+                    methodToken,
+                    checked((uint)generation1Point.IlOffset))
+                .Values
+                .Select(static variable => variable.Name));
 
         using DebugSymbolReader generation2Symbols = DebugSymbolReader.TryOpen(
             pdbImage,
@@ -181,9 +189,13 @@ public sealed class DebugSymbolReaderHotReloadTests
         ManagedSequencePoint generation2Point = generation2Symbols.GetSequencePoints(methodToken)
             .Single(point => point.StartLine == 8);
         Assert.AreEqual(SourcePath, generation2Point.SourcePath);
-        Assert.Contains("finalValue", generation2Symbols.GetLocalNames(
-            methodToken,
-            checked((uint)generation2Point.IlOffset)).Values);
+        Assert.Contains(
+            "finalValue",
+            generation2Symbols.GetLocalVariables(
+                    methodToken,
+                    checked((uint)generation2Point.IlOffset))
+                .Values
+                .Select(static variable => variable.Name));
         ManagedSymbolDocument currentDocument = generation2Symbols.GetDocuments()
             .Single(document => document.Path == SourcePath);
         Assert.IsNotNull(currentDocument.Checksum);
@@ -222,6 +234,82 @@ public sealed class DebugSymbolReaderHotReloadTests
             "valid minimal Portable PDB delta",
             exception.Message,
             StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Reads compiler tuple transforms including nested and Rest storage segments.
+    /// </summary>
+    [TestMethod]
+    public void CompilerProducedTupleTransformsPreserveStorageShape()
+    {
+        CSharpCompilation compilation = CreateCompilation("""
+            using System;
+
+            internal static class Calculator
+            {
+                internal static int Value()
+                {
+                    (int One, int Two, int Three, int Four, int Five, int Six, int Seven,
+                        int Eight) eight = (1, 2, 3, 4, 5, 6, 7, 8);
+                    (int One, int Two, int Three, int Four, int Five, int Six, int Seven,
+                        int Eight, int Nine) nine = (1, 2, 3, 4, 5, 6, 7, 8, 9);
+                    ((int X, int Y) Point, string Label) nested = ((1, 2), "point");
+                    (int Left, int Right)[] array = [(1, 2)];
+                    GC.KeepAlive(eight);
+                    GC.KeepAlive(nine);
+                    GC.KeepAlive(nested);
+                    GC.KeepAlive(array);
+                    return eight.One + nine.Nine + nested.Point.X + array[0].Left;
+                }
+            }
+            """);
+        using var pe = new MemoryStream();
+        using var pdb = new MemoryStream();
+        EmitResult result = compilation.Emit(
+            pe,
+            pdb,
+            options: new EmitOptions(debugInformationFormat: DebugInformationFormat.PortablePdb),
+            cancellationToken: TestContext.CancellationToken);
+        Assert.IsTrue(result.Success, FormatDiagnostics(result.Diagnostics));
+
+        byte[] peImage = pe.ToArray();
+        using var peReader = new PEReader(new MemoryStream(peImage, writable: false));
+        uint methodToken = FindMethodToken(peReader.GetMetadataReader(), "Value");
+        using DebugSymbolReader symbols = DebugSymbolReader.TryOpen(pdb.ToArray())
+            ?? throw new AssertFailedException("The compiler Portable PDB was not readable.");
+        uint ilOffset = checked((uint)symbols.GetSequencePoints(methodToken).Max(
+            static point => point.IlOffset));
+        var locals = symbols
+            .GetLocalVariables(methodToken, ilOffset)
+            .Values
+            .ToDictionary(static variable => variable.Name, StringComparer.Ordinal);
+
+        AssertTupleTransforms(
+            locals["eight"],
+            ["One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", null]);
+        AssertTupleTransforms(
+            locals["nine"],
+            ["One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine", null, null]);
+        AssertTupleTransforms(locals["nested"], ["Point", "Label", "X", "Y"]);
+        AssertTupleTransforms(locals["array"], ["Left", "Right"]);
+    }
+
+    /// <summary>
+    /// Rejects malformed or unbounded Portable PDB tuple transforms.
+    /// </summary>
+    [TestMethod]
+    public void MalformedTupleTransformsAreIgnored()
+    {
+        Assert.IsNull(ManagedTupleElementNameReader.DecodePortablePdb([]));
+        Assert.IsNull(ManagedTupleElementNameReader.DecodePortablePdb([1]));
+        Assert.IsNull(ManagedTupleElementNameReader.DecodePortablePdb([0]));
+        Assert.IsNull(ManagedTupleElementNameReader.DecodePortablePdb([0xc3, 0x28, 0]));
+        Assert.IsNull(ManagedTupleElementNameReader.DecodePortablePdb(
+            new byte[(64 * 1024) + 1]));
+        Assert.IsNull(ManagedTupleElementNameReader.DecodePortablePdb(
+            [.. Enumerable.Repeat((byte)'a', (16 * 1024) + 1), 0]));
+        Assert.IsNull(ManagedTupleElementNameReader.DecodePortablePdb(
+            new byte[(4 * 1024 * 1024) + 1]));
     }
 
     private static CSharpCompilation CreateCompilation(string source) =>
@@ -319,6 +407,16 @@ public sealed class DebugSymbolReaderHotReloadTests
 
     private static string FormatDiagnostics(ImmutableArray<Diagnostic> diagnostics) =>
         string.Join(Environment.NewLine, diagnostics.Select(static diagnostic => diagnostic.ToString()));
+
+    private static void AssertTupleTransforms(
+        ManagedSymbolVariable variable,
+        IReadOnlyList<string?> expected)
+    {
+        ManagedTupleCustomTypeInfo info = variable.TupleCustomTypeInfo
+            ?? throw new AssertFailedException(
+                $"Local '{variable.Name}' did not retain tuple transforms.");
+        Assert.AreSequenceEqual(expected, info.TransformNames);
+    }
 
     private string GetSourceChecksum(CSharpCompilation compilation) =>
         Convert.ToHexString(compilation.SyntaxTrees.Single()

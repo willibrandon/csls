@@ -15,9 +15,25 @@ internal sealed partial class CorDebugDebuggee
     private const int MaximumRuntimeTypeArgumentCount = 256;
 
     private ManagedValueDisplay FormatRuntimeValue(nint value) =>
-        FormatRuntimeValue(value, debuggerDisplayDepth: 0);
+        FormatRuntimeValue(
+            value,
+            debuggerDisplayDepth: 0,
+            tupleCustomTypeInfo: null);
 
-    private ManagedValueDisplay FormatRuntimeValue(nint value, int debuggerDisplayDepth)
+    private ManagedValueDisplay FormatRuntimeValue(
+        nint value,
+        ManagedTupleCustomTypeInfo? tupleCustomTypeInfo) => FormatRuntimeValue(
+            value,
+            debuggerDisplayDepth: 0,
+            tupleCustomTypeInfo);
+
+    private ManagedValueDisplay FormatRuntimeValue(nint value, int debuggerDisplayDepth) =>
+        FormatRuntimeValue(value, debuggerDisplayDepth, tupleCustomTypeInfo: null);
+
+    private ManagedValueDisplay FormatRuntimeValue(
+        nint value,
+        int debuggerDisplayDepth,
+        ManagedTupleCustomTypeInfo? tupleCustomTypeInfo)
     {
         nint inspectedValue = 0;
         nint value2 = 0;
@@ -39,7 +55,11 @@ internal sealed partial class CorDebugDebuggee
                     "ICorDebugValue2.GetExactType");
             }
 
-            string type = FormatRuntimeType(exactType, depth: 0, out uint elementType);
+            string type = FormatRuntimeType(
+                exactType,
+                depth: 0,
+                tupleCustomTypeInfo,
+                out uint elementType);
             ManagedValueDisplay ordinary;
             if (elementType == 0x11 &&
                 hasInspectedValue &&
@@ -77,6 +97,7 @@ internal sealed partial class CorDebugDebuggee
                     inspectedValue,
                     exactType,
                     debuggerDisplayDepth,
+                    tupleCustomTypeInfo,
                     out string tupleDisplay))
             {
                 ordinary = new ManagedValueDisplay(tupleDisplay, type);
@@ -123,7 +144,11 @@ internal sealed partial class CorDebugDebuggee
         }
     }
 
-    private unsafe string FormatRuntimeType(nint type, int depth, out uint elementType)
+    private unsafe string FormatRuntimeType(
+        nint type,
+        int depth,
+        ManagedTupleCustomTypeInfo? tupleCustomTypeInfo,
+        out uint elementType)
     {
         if (depth >= MaximumRuntimeTypeDepth)
         {
@@ -154,21 +179,24 @@ internal sealed partial class CorDebugDebuggee
             0x0c => "float",
             0x0d => "double",
             0x0e => "string",
-            0x0f => $"{FormatFirstTypeParameter(api, depth)}*",
-            0x10 => $"{FormatFirstTypeParameter(api, depth)}&",
-            0x11 or 0x12 => FormatNamedRuntimeType(type, depth),
-            0x14 => FormatArrayType(api, depth),
+            0x0f => $"{FormatFirstTypeParameter(type, api, depth, tupleCustomTypeInfo)}*",
+            0x10 => $"{FormatFirstTypeParameter(type, api, depth, tupleCustomTypeInfo)}&",
+            0x11 or 0x12 => FormatNamedRuntimeType(type, depth, tupleCustomTypeInfo),
+            0x14 => FormatArrayType(type, api, depth, tupleCustomTypeInfo),
             0x16 => "typed-reference",
             0x18 => "nint",
             0x19 => "nuint",
             0x1b => "delegate*",
             0x1c => "object",
-            0x1d => $"{FormatFirstTypeParameter(api, depth)}[]",
+            0x1d => $"{FormatFirstTypeParameter(type, api, depth, tupleCustomTypeInfo)}[]",
             _ => $"element-type 0x{elementType:X2}"
         };
     }
 
-    private string FormatNamedRuntimeType(nint type, int depth)
+    private string FormatNamedRuntimeType(
+        nint type,
+        int depth,
+        ManagedTupleCustomTypeInfo? tupleCustomTypeInfo)
     {
         nint runtimeClass = 0;
         nint module = 0;
@@ -183,12 +211,19 @@ internal sealed partial class CorDebugDebuggee
                 checked((int)(typeToken & 0x00FFFFFF)));
             string name = GetMetadataTypeName(metadata, typeHandle);
             if (name.StartsWith("System.ValueTuple`", StringComparison.Ordinal) &&
-                _tuplePresenter.TryFormatType(type, depth, out string tupleType))
+                _tuplePresenter.TryFormatType(
+                    type,
+                    depth,
+                    tupleCustomTypeInfo,
+                    out string tupleType))
             {
                 return tupleType;
             }
 
-            List<string> arguments = FormatRuntimeTypeArguments(type, depth);
+            List<string> arguments = FormatRuntimeTypeArguments(
+                type,
+                depth,
+                tupleCustomTypeInfo);
             if (string.Equals(name, "System.Nullable`1", StringComparison.Ordinal) &&
                 arguments.Count == 1)
             {
@@ -219,10 +254,16 @@ internal sealed partial class CorDebugDebuggee
         }
     }
 
-    private string FormatTupleElementType(nint type, int depth) =>
-        FormatRuntimeType(type, depth, out _);
+    private string FormatTupleElementType(
+        nint type,
+        int depth,
+        ManagedTupleCustomTypeInfo? tupleCustomTypeInfo) =>
+        FormatRuntimeType(type, depth, tupleCustomTypeInfo, out _);
 
-    private unsafe List<string> FormatRuntimeTypeArguments(nint type, int depth)
+    private unsafe List<string> FormatRuntimeTypeArguments(
+        nint type,
+        int depth,
+        ManagedTupleCustomTypeInfo? tupleCustomTypeInfo)
     {
         nint enumerator = 0;
         try
@@ -254,7 +295,14 @@ internal sealed partial class CorDebugDebuggee
 
                 try
                 {
-                    result.Add(FormatRuntimeType(argument, depth + 1, out _));
+                    result.Add(FormatRuntimeType(
+                        argument,
+                        depth + 1,
+                        _tupleTypeShape.GetTypeArgumentCustomTypeInfo(
+                            type,
+                            tupleCustomTypeInfo,
+                            index),
+                        out _));
                 }
                 finally
                 {
@@ -278,7 +326,11 @@ internal sealed partial class CorDebugDebuggee
         }
     }
 
-    private unsafe string FormatFirstTypeParameter(ICorDebugTypeAbi type, int depth)
+    private unsafe string FormatFirstTypeParameter(
+        nint exactType,
+        ICorDebugTypeAbi type,
+        int depth,
+        ManagedTupleCustomTypeInfo? tupleCustomTypeInfo)
     {
         nint parameter = 0;
         try
@@ -290,7 +342,14 @@ internal sealed partial class CorDebugDebuggee
             parameter = RequirePointer(
                 Volatile.Read(ref *parameterAddress),
                 "ICorDebugType.GetFirstTypeParameter");
-            return FormatRuntimeType(parameter, depth + 1, out _);
+            return FormatRuntimeType(
+                parameter,
+                depth + 1,
+                _tupleTypeShape.GetTypeArgumentCustomTypeInfo(
+                    exactType,
+                    tupleCustomTypeInfo,
+                    argumentIndex: 0),
+                out _);
         }
         finally
         {
@@ -301,13 +360,18 @@ internal sealed partial class CorDebugDebuggee
         }
     }
 
-    private unsafe string FormatArrayType(ICorDebugTypeAbi type, int depth)
+    private unsafe string FormatArrayType(
+        nint exactType,
+        ICorDebugTypeAbi type,
+        int depth,
+        ManagedTupleCustomTypeInfo? tupleCustomTypeInfo)
     {
         uint rank = 0;
         uint* rankAddress = &rank;
         CorDebugHResult.ThrowIfFailed(type.GetRank((nint)rankAddress), "ICorDebugType.GetRank");
         rank = Volatile.Read(ref *rankAddress);
-        return $"{FormatFirstTypeParameter(type, depth)}[{new string(',', checked((int)rank - 1))}]";
+        return $"{FormatFirstTypeParameter(exactType, type, depth, tupleCustomTypeInfo)}" +
+            $"[{new string(',', checked((int)rank - 1))}]";
     }
 
     private static string FormatArrayValue(nint value, string type)

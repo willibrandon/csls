@@ -249,18 +249,22 @@ internal sealed class DebugSymbolReader : IDisposable
     }
 
     /// <summary>
-    /// Reads active local names for one method and IL instruction offset.
+    /// Reads active local symbols for one method and IL instruction offset.
     /// </summary>
     /// <param name="methodToken">The method-definition metadata token.</param>
     /// <param name="ilOffset">The current method-body IL offset.</param>
-    /// <returns>Local names keyed by runtime slot.</returns>
-    internal IReadOnlyDictionary<int, string> GetLocalNames(
+    /// <returns>Local source metadata keyed by runtime slot.</returns>
+    internal IReadOnlyDictionary<int, ManagedSymbolVariable> GetLocalVariables(
         uint methodToken,
         uint ilOffset)
     {
         if (_windows is not null)
         {
-            return _windows.GetLocalNames(methodToken, ilOffset);
+            return _windows.GetLocalNames(methodToken, ilOffset).ToDictionary(
+                static pair => pair.Key,
+                static pair => new ManagedSymbolVariable(
+                    pair.Value,
+                    TupleCustomTypeInfo: null));
         }
 
         if (!TryGetPortableMethod(
@@ -268,11 +272,11 @@ internal sealed class DebugSymbolReader : IDisposable
             out PortablePdbReader? portable,
             out MethodDefinitionHandle method))
         {
-            return new Dictionary<int, string>();
+            return new Dictionary<int, ManagedSymbolVariable>();
         }
 
         MetadataReader reader = portable.Metadata;
-        var result = new Dictionary<int, string>();
+        var result = new Dictionary<int, ManagedSymbolVariable>();
         foreach (LocalScope scope in reader.GetLocalScopes(method).Select(reader.GetLocalScope))
         {
             uint start = checked((uint)scope.StartOffset);
@@ -282,10 +286,12 @@ internal sealed class DebugSymbolReader : IDisposable
                 continue;
             }
 
-            foreach (LocalVariable variable in scope.GetLocalVariables()
-                .Select(reader.GetLocalVariable))
+            foreach (LocalVariableHandle variableHandle in scope.GetLocalVariables())
             {
-                result[variable.Index] = reader.GetString(variable.Name);
+                LocalVariable variable = reader.GetLocalVariable(variableHandle);
+                result[variable.Index] = new ManagedSymbolVariable(
+                    reader.GetString(variable.Name),
+                    ManagedTupleElementNameReader.ReadPortablePdb(reader, variableHandle));
             }
         }
 

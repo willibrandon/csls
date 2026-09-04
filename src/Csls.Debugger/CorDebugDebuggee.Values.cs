@@ -60,7 +60,9 @@ internal sealed partial class CorDebugDebuggee
 
         ValidateGeneration(variablesReference, scope.Generation, generation);
         ManagedFrameHandle frame = GetFrame(scope.FrameId, generation);
-        IReadOnlyDictionary<int, string> names = GetVariableNames(frame, scope.Kind);
+        IReadOnlyDictionary<int, ManagedSymbolVariable> names = GetVariableNames(
+            frame,
+            scope.Kind);
         return EnumerateValues(frame, scope.Kind, names, generation, start, count);
     }
 
@@ -85,7 +87,7 @@ internal sealed partial class CorDebugDebuggee
         return new DebugScopeInfo(name, scope.Id, Expensive: false);
     }
 
-    private static IReadOnlyDictionary<int, string> GetVariableNames(
+    private static IReadOnlyDictionary<int, ManagedSymbolVariable> GetVariableNames(
         ManagedFrameHandle frame,
         ManagedScopeKind kind)
     {
@@ -98,7 +100,7 @@ internal sealed partial class CorDebugDebuggee
         catch (Exception exception) when (
             exception is IOException or UnauthorizedAccessException or BadImageFormatException)
         {
-            return new Dictionary<int, string>();
+            return new Dictionary<int, ManagedSymbolVariable>();
         }
     }
 

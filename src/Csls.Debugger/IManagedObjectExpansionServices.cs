@@ -20,8 +20,12 @@ internal interface IManagedObjectExpansionServices
     /// </summary>
     /// <param name="value">The retained ICorDebugValue pointer.</param>
     /// <param name="debuggerDisplayDepth">The current debugger-display recursion depth.</param>
+    /// <param name="tupleCustomTypeInfo">The optional tuple-name transforms.</param>
     /// <returns>The formatted value and exact runtime type.</returns>
-    ManagedValueDisplay FormatRuntimeValue(nint value, int debuggerDisplayDepth);
+    ManagedValueDisplay FormatRuntimeValue(
+        nint value,
+        int debuggerDisplayDepth,
+        ManagedTupleCustomTypeInfo? tupleCustomTypeInfo);
 
     /// <summary>
     /// Retains one expandable runtime value for the current stop generation.
@@ -31,13 +35,15 @@ internal interface IManagedObjectExpansionServices
     /// <param name="evaluateName">The optional source expression for the value.</param>
     /// <param name="frameId">The optional generation-owned frame identifier.</param>
     /// <param name="view">The presentation view used for later expansion.</param>
+    /// <param name="tupleCustomTypeInfo">The optional tuple-name transforms.</param>
     /// <returns>The retained expansion and memory references.</returns>
     ManagedValueReferences RetainValue(
         nint value,
         DebugStopGeneration generation,
         string? evaluateName,
         int? frameId,
-        ManagedValueView view);
+        ManagedValueView view,
+        ManagedTupleCustomTypeInfo? tupleCustomTypeInfo);
 
     /// <summary>
     /// Dereferences one runtime value while retaining the resulting interface.
@@ -54,6 +60,7 @@ internal interface IManagedObjectExpansionServices
     /// <param name="parentEvaluateName">The optional source expression for the array.</param>
     /// <param name="frameId">The optional generation-owned frame identifier.</param>
     /// <param name="generation">The owning stop generation.</param>
+    /// <param name="tupleCustomTypeInfo">The optional tuple-name transforms.</param>
     /// <param name="start">The zero-based first logical element.</param>
     /// <param name="count">The maximum count, or zero for every remaining element.</param>
     /// <returns>The requested array element page.</returns>
@@ -62,6 +69,7 @@ internal interface IManagedObjectExpansionServices
         string? parentEvaluateName,
         int? frameId,
         DebugStopGeneration generation,
+        ManagedTupleCustomTypeInfo? tupleCustomTypeInfo,
         int start,
         int count);
 }

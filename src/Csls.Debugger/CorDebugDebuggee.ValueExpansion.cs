@@ -40,6 +40,7 @@ internal sealed partial class CorDebugDebuggee
                         handle.EvaluateName,
                         handle.FrameId,
                         generation,
+                        handle.TupleCustomTypeInfo,
                         start,
                         count);
                 }
@@ -56,7 +57,8 @@ internal sealed partial class CorDebugDebuggee
                 generation,
                 start,
                 count,
-                handle.View);
+                handle.View,
+                handle.TupleCustomTypeInfo);
         }
         finally
         {

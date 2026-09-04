@@ -4,7 +4,12 @@ using System.Globalization;
 
 if (args is ["--debugger-fixture", string fixturePath])
 {
-    return DebuggerFixture.WaitForSignal(fixturePath, "ready", 42, "answer");
+    return DebuggerFixture.WaitForSignal(
+        fixturePath,
+        "ready",
+        42,
+        "answer",
+        (ArgumentNumber: 42, ArgumentText: "argument"));
 }
 
 if (args is ["--debugger-step-fixture", string stepFixturePath])

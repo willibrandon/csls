@@ -142,6 +142,34 @@ internal sealed partial class CorDebugDebuggee
                     "ICorDebugValue2.GetExactType");
             }
 
+            ManagedTupleCustomTypeInfo? tupleCustomTypeInfo =
+                receiver.Display.VariablesReference > 0 &&
+                _values.TryGetValue(
+                    receiver.Display.VariablesReference,
+                    out ManagedValueHandle? retained)
+                    ? retained.TupleCustomTypeInfo
+                    : null;
+            foreach (string tupleName in _tuplePresenter.GetCompletionNames(
+                currentType,
+                tupleCustomTypeInfo))
+            {
+                if (candidates.Count >= MaximumCompletionCount ||
+                    !MatchesCompletionPrefix(tupleName, prefix, language))
+                {
+                    continue;
+                }
+
+                candidates.TryAdd(
+                    tupleName,
+                    new DebugCompletionInfo(
+                        tupleName,
+                        tupleName,
+                        "tuple element",
+                        DebugCompletionItemKind.Field,
+                        replacementStart,
+                        replacementLength));
+            }
+
             for (int depth = 0;
                 currentType != 0 && depth < MaximumFunctionEvaluationHierarchyDepth;
                 depth++)

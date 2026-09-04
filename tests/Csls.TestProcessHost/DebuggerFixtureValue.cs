@@ -15,6 +15,7 @@ internal sealed class DebuggerFixtureValue
     {
         Number = number;
         Text = text;
+        Pair = (number, text);
         EvaluationSignalPath = evaluationSignalPath;
     }
 
@@ -27,6 +28,11 @@ internal sealed class DebuggerFixtureValue
     /// Gets the textual field value.
     /// </summary>
     public string Text;
+
+    /// <summary>
+    /// Gets the named tuple field used for declared-field metadata tests.
+    /// </summary>
+    public (int Code, string Label) Pair;
 
     /// <summary>
     /// Gets the file used to prove that target-code evaluation began.

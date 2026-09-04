@@ -211,7 +211,7 @@ internal sealed partial class CorDebugDebuggee
             DebugExpressionLanguage.VisualBasic
                 ? StringComparison.OrdinalIgnoreCase
                 : StringComparison.Ordinal;
-        IReadOnlyDictionary<int, string> localNames = GetVariableNames(
+        IReadOnlyDictionary<int, ManagedSymbolVariable> localNames = GetVariableNames(
             frame,
             ManagedScopeKind.Locals);
         int? localIndex = FindVariableIndex(localNames, name, comparison);
@@ -223,7 +223,7 @@ internal sealed partial class CorDebugDebuggee
                 localIndex.Value);
         }
 
-        IReadOnlyDictionary<int, string> argumentNames = GetVariableNames(
+        IReadOnlyDictionary<int, ManagedSymbolVariable> argumentNames = GetVariableNames(
             frame,
             ManagedScopeKind.Arguments);
         int? argumentIndex = FindVariableIndex(argumentNames, name, comparison);
@@ -247,14 +247,14 @@ internal sealed partial class CorDebugDebuggee
     }
 
     private static int? FindVariableIndex(
-        IReadOnlyDictionary<int, string> names,
+        IReadOnlyDictionary<int, ManagedSymbolVariable> names,
         string name,
         StringComparison comparison)
     {
         int? result = null;
-        foreach ((int index, string candidate) in names)
+        foreach ((int index, ManagedSymbolVariable candidate) in names)
         {
-            if (!string.Equals(candidate, name, comparison))
+            if (!string.Equals(candidate.Name, name, comparison))
             {
                 continue;
             }

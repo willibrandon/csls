@@ -15,21 +15,27 @@ internal sealed partial class CorDebugDebuggee
         DebugStopGeneration generation,
         int start,
         int count,
-        ManagedValueView view) => _objectExpander.Expand(
+        ManagedValueView view,
+        ManagedTupleCustomTypeInfo? tupleCustomTypeInfo) => _objectExpander.Expand(
             value,
             parentEvaluateName,
             frameId,
             generation,
             start,
             count,
-            view);
+            view,
+            tupleCustomTypeInfo);
 
     PEReader IManagedObjectExpansionServices.OpenRuntimeModule(nint module) =>
         OpenRuntimeModule(module);
 
     ManagedValueDisplay IManagedObjectExpansionServices.FormatRuntimeValue(
         nint value,
-        int debuggerDisplayDepth) => FormatRuntimeValue(value, debuggerDisplayDepth);
+        int debuggerDisplayDepth,
+        ManagedTupleCustomTypeInfo? tupleCustomTypeInfo) => FormatRuntimeValue(
+            value,
+            debuggerDisplayDepth,
+            tupleCustomTypeInfo);
 
     ManagedValueDisplay IManagedDebuggerDisplayServices.FormatRuntimeValue(
         nint value,
@@ -43,12 +49,14 @@ internal sealed partial class CorDebugDebuggee
         DebugStopGeneration generation,
         string? evaluateName,
         int? frameId,
-        ManagedValueView view) => RetainValue(
+        ManagedValueView view,
+        ManagedTupleCustomTypeInfo? tupleCustomTypeInfo) => RetainValue(
             value,
             generation,
             evaluateName,
             frameId,
-            view);
+            view,
+            tupleCustomTypeInfo);
 
     bool IManagedObjectExpansionServices.TryDereferenceValue(
         nint value,
@@ -59,12 +67,14 @@ internal sealed partial class CorDebugDebuggee
         string? parentEvaluateName,
         int? frameId,
         DebugStopGeneration generation,
+        ManagedTupleCustomTypeInfo? tupleCustomTypeInfo,
         int start,
         int count) => ExpandArray(
             array,
             parentEvaluateName,
             frameId,
             generation,
+            tupleCustomTypeInfo,
             start,
             count);
 }

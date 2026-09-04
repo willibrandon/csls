@@ -51,4 +51,9 @@ internal sealed class ManagedValueHandle
     /// Gets or initializes the canonical source expression for child values.
     /// </summary>
     internal string? EvaluateName { get; init; }
+
+    /// <summary>
+    /// Gets or initializes tuple-name transforms for the exact declared type use.
+    /// </summary>
+    internal ManagedTupleCustomTypeInfo? TupleCustomTypeInfo { get; init; }
 }

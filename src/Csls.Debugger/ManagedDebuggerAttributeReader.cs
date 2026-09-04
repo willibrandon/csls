@@ -239,7 +239,13 @@ internal static class ManagedDebuggerAttributeReader
     private static string? NullIfEmpty(string? value) =>
         string.IsNullOrEmpty(value) ? null : value;
 
-    private static string? GetAttributeTypeName(
+    /// <summary>
+    /// Gets the metadata full name of one custom attribute type.
+    /// </summary>
+    /// <param name="metadata">The metadata containing the custom attribute.</param>
+    /// <param name="attribute">The custom attribute to identify.</param>
+    /// <returns>The full type name, or null for an unsupported constructor shape.</returns>
+    internal static string? GetAttributeTypeName(
         MetadataReader metadata,
         CustomAttribute attribute)
     {

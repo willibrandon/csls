@@ -12,24 +12,28 @@ namespace Csls.Debugger;
 /// </summary>
 internal sealed class ManagedTuplePresenter
 {
-    private const int MaximumTupleCardinality = 4 * 1024;
     private const int MaximumTupleDepth = 64;
     private const int TupleRestPosition = 8;
     private readonly IManagedObjectExpansionServices _services;
-    private readonly Func<nint, int, string> _formatType;
+    private readonly ManagedTupleTypeShape _typeShape;
+    private readonly Func<nint, int, ManagedTupleCustomTypeInfo?, string> _formatType;
 
     /// <summary>
     /// Creates tuple presentation over generation-owned runtime services.
     /// </summary>
     /// <param name="services">The runtime operations used to format and retain values.</param>
+    /// <param name="typeShape">The runtime tuple type and transform mapper.</param>
     /// <param name="formatType">The exact runtime type formatter for tuple elements.</param>
     internal ManagedTuplePresenter(
         IManagedObjectExpansionServices services,
-        Func<nint, int, string> formatType)
+        ManagedTupleTypeShape typeShape,
+        Func<nint, int, ManagedTupleCustomTypeInfo?, string> formatType)
     {
         ArgumentNullException.ThrowIfNull(services);
+        ArgumentNullException.ThrowIfNull(typeShape);
         ArgumentNullException.ThrowIfNull(formatType);
         _services = services;
+        _typeShape = typeShape;
         _formatType = formatType;
     }
 
@@ -38,20 +42,52 @@ internal sealed class ManagedTuplePresenter
     /// </summary>
     /// <param name="type">The exact ICorDebugType pointer.</param>
     /// <param name="depth">The current exact-type formatting depth.</param>
+    /// <param name="customTypeInfo">The optional tuple-name transforms.</param>
     /// <param name="display">Receives the tuple-syntax type display.</param>
     /// <returns>True when the runtime type is a compatible tuple with at least two elements.</returns>
-    internal bool TryFormatType(nint type, int depth, out string display)
+    internal bool TryFormatType(
+        nint type,
+        int depth,
+        ManagedTupleCustomTypeInfo? customTypeInfo,
+        out string display)
     {
-        if (!TryGetCardinality(type, recursionDepth: 0, out int cardinality) ||
-            cardinality <= 1)
+        if (!_typeShape.TryCreateProjection(
+            type,
+            customTypeInfo,
+            out ManagedTupleTypeProjection projection))
         {
             display = string.Empty;
             return false;
         }
 
-        List<string> elements = FormatTypeElements(type, depth, cardinality);
-        display = $"({string.Join(", ", elements)})";
-        return true;
+        IReadOnlyList<nint> elementTypes = ManagedTupleTypeShape.GetLogicalElementTypes(
+            type,
+            projection.ElementNames.Count);
+        try
+        {
+            string[] elements = new string[elementTypes.Count];
+            for (int index = 0; index < elementTypes.Count; index++)
+            {
+                string typeDisplay = _formatType(
+                    elementTypes[index],
+                    depth + 1,
+                    projection.ElementCustomTypeInfo[index]);
+                string logicalName = projection.ElementNames[index];
+                elements[index] = string.Equals(
+                    logicalName,
+                    $"Item{index + 1}",
+                    StringComparison.Ordinal)
+                        ? typeDisplay
+                        : $"{typeDisplay} {logicalName}";
+            }
+
+            display = $"({string.Join(", ", elements)})";
+            return true;
+        }
+        finally
+        {
+            ReleaseAll(elementTypes);
+        }
     }
 
     /// <summary>
@@ -60,29 +96,35 @@ internal sealed class ManagedTuplePresenter
     /// <param name="value">The dereferenced and unboxed ICorDebugValue pointer.</param>
     /// <param name="exactType">The exact ICorDebugType pointer.</param>
     /// <param name="debuggerDisplayDepth">The current debugger-display recursion depth.</param>
+    /// <param name="customTypeInfo">The optional tuple-name transforms.</param>
     /// <param name="display">Receives the tuple-syntax value display.</param>
     /// <returns>True when the runtime value has a compatible tuple shape.</returns>
     internal bool TryFormatValue(
         nint value,
         nint exactType,
         int debuggerDisplayDepth,
+        ManagedTupleCustomTypeInfo? customTypeInfo,
         out string display)
     {
-        if (!TryGetCardinality(exactType, recursionDepth: 0, out int cardinality) ||
-            cardinality <= 1)
+        if (!_typeShape.TryCreateProjection(
+            exactType,
+            customTypeInfo,
+            out ManagedTupleTypeProjection projection))
         {
             display = string.Empty;
             return false;
         }
 
-        var elements = new List<string>(cardinality);
+        List<string> elements = new(projection.ElementNames.Count);
         VisitValues(
             value,
             exactType,
-            cardinality,
-            (fieldValue, _, _, _) => elements.Add(_services.FormatRuntimeValue(
-                fieldValue,
-                debuggerDisplayDepth + 1).Value),
+            projection,
+            (fieldValue, _, _, fieldCustomTypeInfo, _) => elements.Add(
+                _services.FormatRuntimeValue(
+                    fieldValue,
+                    debuggerDisplayDepth + 1,
+                    fieldCustomTypeInfo).Value),
             state: 0);
         display = $"({string.Join(", ", elements)})";
         return true;
@@ -95,6 +137,7 @@ internal sealed class ManagedTuplePresenter
     /// <param name="parentEvaluateName">The optional source expression for the tuple.</param>
     /// <param name="frameId">The optional generation-owned frame identifier.</param>
     /// <param name="generation">The owning stop generation.</param>
+    /// <param name="customTypeInfo">The optional tuple-name transforms.</param>
     /// <param name="start">The zero-based first logical child.</param>
     /// <param name="count">The maximum count, or zero for every remaining child.</param>
     /// <param name="result">Receives the tuple page.</param>
@@ -104,6 +147,7 @@ internal sealed class ManagedTuplePresenter
         string? parentEvaluateName,
         int? frameId,
         DebugStopGeneration generation,
+        ManagedTupleCustomTypeInfo? customTypeInfo,
         int start,
         int count,
         out List<DebugVariableInfo> result)
@@ -112,8 +156,10 @@ internal sealed class ManagedTuplePresenter
         try
         {
             exactType = GetExactType(value);
-            if (!TryGetCardinality(exactType, recursionDepth: 0, out int cardinality) ||
-                cardinality <= 1)
+            if (!_typeShape.TryCreateProjection(
+                exactType,
+                customTypeInfo,
+                out ManagedTupleTypeProjection projection))
             {
                 result = [];
                 return false;
@@ -123,10 +169,11 @@ internal sealed class ManagedTuplePresenter
             VisitValues(
                 value,
                 exactType,
-                cardinality,
-                static (fieldValue, logicalIndex, evaluateName, state) =>
+                projection,
+                static (fieldValue, logicalIndex, evaluateName, fieldCustomTypeInfo, state) =>
                 {
                     (ManagedTuplePresenter presenter,
+                        ManagedTupleTypeProjection tupleProjection,
                         List<DebugVariableInfo> values,
                         int? frame,
                         DebugStopGeneration stop,
@@ -140,14 +187,16 @@ internal sealed class ManagedTuplePresenter
 
                     ManagedValueDisplay fieldDisplay = presenter._services.FormatRuntimeValue(
                         fieldValue,
-                        debuggerDisplayDepth: 0);
+                        debuggerDisplayDepth: 0,
+                        fieldCustomTypeInfo);
                     ManagedValueReferences references = presenter._services.RetainValue(
                         fieldValue,
                         stop,
                         evaluateName,
                         frame,
-                        ManagedValueView.Default);
-                    string logicalName = $"Item{logicalIndex + 1}";
+                        ManagedValueView.Default,
+                        fieldCustomTypeInfo);
+                    string logicalName = tupleProjection.ElementNames[logicalIndex];
                     values.Add(new DebugVariableInfo(
                         fieldDisplay.Name ?? logicalName,
                         fieldDisplay.Value,
@@ -156,22 +205,25 @@ internal sealed class ManagedTuplePresenter
                         references.MemoryReference,
                         evaluateName));
                 },
-                (this, result, frameId, generation, start, count),
+                (this, projection, result, frameId, generation, start, count),
                 parentEvaluateName);
 
-            if (cardinality > TupleRestPosition - 1 &&
+            int cardinality = projection.ElementNames.Count;
+            if ((cardinality > TupleRestPosition - 1 || projection.HasAuthoredElementNames) &&
                 cardinality >= start &&
                 (count == 0 || result.Count < count))
             {
                 ManagedValueDisplay rawDisplay = _services.FormatRuntimeValue(
                     value,
-                    debuggerDisplayDepth: 0);
+                    debuggerDisplayDepth: 0,
+                    customTypeInfo);
                 ManagedValueReferences rawReferences = _services.RetainValue(
                     value,
                     generation,
                     parentEvaluateName,
                     frameId,
-                    ManagedValueView.Raw);
+                    ManagedValueView.Raw,
+                    customTypeInfo);
                 result.Add(new DebugVariableInfo(
                     "Raw View",
                     rawDisplay.Value,
@@ -193,82 +245,143 @@ internal sealed class ManagedTuplePresenter
         }
     }
 
-    private List<string> FormatTypeElements(nint type, int depth, int cardinality)
+    /// <summary>
+    /// Resolves one authored or positional tuple element to its physical runtime field.
+    /// </summary>
+    /// <param name="value">The dereferenced and unboxed tuple value.</param>
+    /// <param name="exactType">The exact compatible tuple type.</param>
+    /// <param name="customTypeInfo">The optional tuple-name transforms.</param>
+    /// <param name="elementName">The authored or ItemN element name.</param>
+    /// <param name="comparison">The source-language name comparison.</param>
+    /// <param name="elementValue">Receives the retained physical field value.</param>
+    /// <returns>True when exactly one logical element matches.</returns>
+    internal bool TryGetElementValue(
+        nint value,
+        nint exactType,
+        ManagedTupleCustomTypeInfo? customTypeInfo,
+        string elementName,
+        StringComparison comparison,
+        out nint elementValue)
     {
-        var result = new List<string>(cardinality);
-        nint currentType = Retain(type);
-        try
+        ArgumentException.ThrowIfNullOrWhiteSpace(elementName);
+        if (!_typeShape.TryCreateProjection(
+            exactType,
+            customTypeInfo,
+            out ManagedTupleTypeProjection projection))
         {
-            int remaining = cardinality;
-            for (int tupleDepth = 0; tupleDepth < MaximumTupleDepth; tupleDepth++)
-            {
-                List<nint> arguments = EnumerateTypeArguments(currentType);
-                try
-                {
-                    int fieldCount = Math.Min(remaining, TupleRestPosition - 1);
-                    for (int index = 0; index < fieldCount; index++)
-                    {
-                        result.Add(_formatType(arguments[index], depth + 1));
-                    }
-
-                    remaining -= fieldCount;
-                    if (remaining == 0)
-                    {
-                        return result;
-                    }
-
-                    nint restType = Retain(arguments[TupleRestPosition - 1]);
-                    _ = ComAbi.Release(currentType);
-                    currentType = restType;
-                }
-                finally
-                {
-                    ReleaseAll(arguments);
-                }
-            }
-
-            throw new InvalidOperationException(
-                $"The tuple exceeds the supported nesting depth of {MaximumTupleDepth}.");
+            elementValue = 0;
+            return false;
         }
-        finally
+
+        for (int index = 0; index < projection.ElementNames.Count; index++)
         {
-            if (currentType != 0)
+            if (string.Equals($"Item{index + 1}", elementName, comparison))
             {
-                _ = ComAbi.Release(currentType);
+                elementValue = GetLogicalElementValue(value, exactType, index);
+                return true;
             }
         }
+
+        int? matchingIndex = null;
+        for (int index = 0; index < projection.ElementNames.Count; index++)
+        {
+            if (!string.Equals(projection.ElementNames[index], elementName, comparison))
+            {
+                continue;
+            }
+
+            if (matchingIndex is not null)
+            {
+                elementValue = 0;
+                return false;
+            }
+
+            matchingIndex = index;
+        }
+
+        if (matchingIndex is null)
+        {
+            elementValue = 0;
+            return false;
+        }
+
+        elementValue = GetLogicalElementValue(
+            value,
+            exactType,
+            matchingIndex.Value);
+        return true;
+    }
+
+    /// <summary>
+    /// Gets authored and positional completion names for one compatible tuple type.
+    /// </summary>
+    /// <param name="type">The exact compatible tuple type.</param>
+    /// <param name="customTypeInfo">The optional tuple-name transforms.</param>
+    /// <returns>The ordered distinct logical member names, or an empty list.</returns>
+    internal IReadOnlyList<string> GetCompletionNames(
+        nint type,
+        ManagedTupleCustomTypeInfo? customTypeInfo)
+    {
+        if (!_typeShape.TryCreateProjection(
+            type,
+            customTypeInfo,
+            out ManagedTupleTypeProjection projection))
+        {
+            return [];
+        }
+
+        List<string> result = new(projection.ElementNames.Count * 2);
+        for (int index = 0; index < projection.ElementNames.Count; index++)
+        {
+            result.Add(projection.ElementNames[index]);
+            string positionalName = $"Item{index + 1}";
+            if (!string.Equals(
+                projection.ElementNames[index],
+                positionalName,
+                StringComparison.Ordinal))
+            {
+                result.Add(positionalName);
+            }
+        }
+
+        return result;
     }
 
     private void VisitValues<TState>(
         nint value,
         nint exactType,
-        int cardinality,
-        Action<nint, int, string?, TState> visitor,
+        ManagedTupleTypeProjection projection,
+        Action<nint, int, string?, ManagedTupleCustomTypeInfo?, TState> visitor,
         TState state,
         string? parentEvaluateName = null)
     {
-        nint currentValue = Retain(value);
-        nint currentType = Retain(exactType);
+        ManagedTupleTraversalState traversal = new(
+            Retain(value),
+            Retain(exactType),
+            parentEvaluateName);
         try
         {
-            int remaining = cardinality;
+            int remaining = projection.ElementNames.Count;
             int logicalIndex = 0;
-            string? layerEvaluateName = parentEvaluateName;
             for (int tupleDepth = 0; tupleDepth < MaximumTupleDepth; tupleDepth++)
             {
                 int fieldCount = Math.Min(remaining, TupleRestPosition - 1);
                 for (int fieldIndex = 0; fieldIndex < fieldCount; fieldIndex++)
                 {
                     string physicalName = $"Item{fieldIndex + 1}";
-                    nint fieldValue = GetFieldValue(currentValue, currentType, physicalName);
+                    nint fieldValue = GetFieldValue(
+                        traversal.CurrentValue,
+                        traversal.CurrentType,
+                        physicalName);
                     try
                     {
                         visitor(
                             fieldValue,
                             logicalIndex,
                             ManagedExpressionName.CreateMember(
-                                layerEvaluateName,
+                                traversal.LayerEvaluateName,
                                 physicalName),
+                            projection.ElementCustomTypeInfo[logicalIndex],
                             state);
                     }
                     finally
@@ -285,33 +398,7 @@ internal sealed class ManagedTuplePresenter
                     return;
                 }
 
-                nint restValue = GetFieldValue(currentValue, currentType, "Rest");
-                nint restType = 0;
-                try
-                {
-                    restType = GetExactType(restValue);
-                    _ = ComAbi.Release(currentValue);
-                    currentValue = restValue;
-                    restValue = 0;
-                    _ = ComAbi.Release(currentType);
-                    currentType = restType;
-                    restType = 0;
-                    layerEvaluateName = ManagedExpressionName.CreateMember(
-                        layerEvaluateName,
-                        "Rest");
-                }
-                finally
-                {
-                    if (restType != 0)
-                    {
-                        _ = ComAbi.Release(restType);
-                    }
-
-                    if (restValue != 0)
-                    {
-                        _ = ComAbi.Release(restValue);
-                    }
-                }
+                MoveToRest(traversal);
             }
 
             throw new InvalidOperationException(
@@ -319,205 +406,88 @@ internal sealed class ManagedTuplePresenter
         }
         finally
         {
-            if (currentType != 0)
+            if (traversal.CurrentType != 0)
             {
-                _ = ComAbi.Release(currentType);
+                _ = ComAbi.Release(traversal.CurrentType);
             }
 
-            if (currentValue != 0)
+            if (traversal.CurrentValue != 0)
             {
-                _ = ComAbi.Release(currentValue);
+                _ = ComAbi.Release(traversal.CurrentValue);
             }
         }
     }
 
-    private bool TryGetCardinality(nint type, int recursionDepth, out int cardinality)
+    private nint GetLogicalElementValue(nint value, nint exactType, int logicalIndex)
     {
-        if (recursionDepth >= MaximumTupleDepth)
+        ManagedTupleTraversalState traversal = new(
+            Retain(value),
+            Retain(exactType),
+            layerEvaluateName: null);
+        try
         {
+            int remainingIndex = logicalIndex;
+            for (int tupleDepth = 0; tupleDepth < MaximumTupleDepth; tupleDepth++)
+            {
+                if (remainingIndex < TupleRestPosition - 1)
+                {
+                    return GetFieldValue(
+                        traversal.CurrentValue,
+                        traversal.CurrentType,
+                        $"Item{remainingIndex + 1}");
+                }
+
+                remainingIndex -= TupleRestPosition - 1;
+                MoveToRest(traversal);
+            }
+
             throw new InvalidOperationException(
                 $"The tuple exceeds the supported nesting depth of {MaximumTupleDepth}.");
         }
-
-        if (!TryGetTupleArity(type, out int arity))
-        {
-            cardinality = 0;
-            return false;
-        }
-
-        List<nint> arguments = EnumerateTypeArguments(type);
-        try
-        {
-            if (arguments.Count != arity)
-            {
-                cardinality = 0;
-                return false;
-            }
-
-            if (arity < TupleRestPosition)
-            {
-                cardinality = arity;
-                return true;
-            }
-
-            if (!TryGetCardinality(
-                arguments[TupleRestPosition - 1],
-                recursionDepth + 1,
-                out int restCardinality))
-            {
-                cardinality = 0;
-                return false;
-            }
-
-            cardinality = checked(TupleRestPosition - 1 + restCardinality);
-            if (cardinality > MaximumTupleCardinality)
-            {
-                throw new InvalidOperationException(
-                    $"The tuple exceeds the supported cardinality of " +
-                    $"{MaximumTupleCardinality}.");
-            }
-
-            return true;
-        }
         finally
         {
-            ReleaseAll(arguments);
-        }
-    }
-
-    private bool TryGetTupleArity(nint type, out int arity)
-    {
-        unsafe
-        {
-            uint elementType = 0;
-            uint* elementTypeAddress = &elementType;
-            CorDebugHResult.ThrowIfFailed(
-                new ICorDebugTypeAbi(type).GetType((nint)elementTypeAddress),
-                "ICorDebugType.GetType");
-            if (Volatile.Read(ref *elementTypeAddress) != 0x11)
+            if (traversal.CurrentType != 0)
             {
-                arity = 0;
-                return false;
-            }
-        }
-
-        nint runtimeClass = 0;
-        nint module = 0;
-        try
-        {
-            runtimeClass = GetRuntimeTypeClass(type);
-            module = GetClassModule(runtimeClass);
-            using PEReader peReader = _services.OpenRuntimeModule(module);
-            MetadataReader metadata = peReader.GetMetadataReader();
-            TypeDefinitionHandle handle = MetadataTokens.TypeDefinitionHandle(
-                checked((int)(GetClassToken(runtimeClass) & 0x00FFFFFF)));
-            TypeDefinition definition = metadata.GetTypeDefinition(handle);
-            if (!metadata.StringComparer.Equals(definition.Namespace, "System"))
-            {
-                arity = 0;
-                return false;
+                _ = ComAbi.Release(traversal.CurrentType);
             }
 
-            string name = metadata.GetString(definition.Name);
-            arity = name switch
+            if (traversal.CurrentValue != 0)
             {
-                "ValueTuple`1" => 1,
-                "ValueTuple`2" => 2,
-                "ValueTuple`3" => 3,
-                "ValueTuple`4" => 4,
-                "ValueTuple`5" => 5,
-                "ValueTuple`6" => 6,
-                "ValueTuple`7" => 7,
-                "ValueTuple`8" => 8,
-                _ => 0
-            };
-            return arity != 0 && HasExpectedFields(metadata, definition, arity);
-        }
-        finally
-        {
-            if (module != 0)
-            {
-                _ = ComAbi.Release(module);
-            }
-
-            if (runtimeClass != 0)
-            {
-                _ = ComAbi.Release(runtimeClass);
+                _ = ComAbi.Release(traversal.CurrentValue);
             }
         }
     }
 
-    private static bool HasExpectedFields(
-        MetadataReader metadata,
-        TypeDefinition definition,
-        int arity)
+    private void MoveToRest(ManagedTupleTraversalState traversal)
     {
-        var fields = new HashSet<string>(StringComparer.Ordinal);
-        foreach (FieldDefinition field in definition
-            .GetFields()
-            .Select(metadata.GetFieldDefinition)
-            .Where(field =>
-                (field.Attributes & FieldAttributes.Static) == 0 &&
-                (field.Attributes & FieldAttributes.FieldAccessMask) ==
-                    FieldAttributes.Public))
-        {
-            _ = fields.Add(metadata.GetString(field.Name));
-        }
-
-        int itemCount = Math.Min(arity, TupleRestPosition - 1);
-        for (int index = 1; index <= itemCount; index++)
-        {
-            if (!fields.Contains($"Item{index}"))
-            {
-                return false;
-            }
-        }
-
-        return arity < TupleRestPosition || fields.Contains("Rest");
-    }
-
-    private static unsafe List<nint> EnumerateTypeArguments(nint type)
-    {
-        nint enumerator = 0;
+        nint restValue = GetFieldValue(
+            traversal.CurrentValue,
+            traversal.CurrentType,
+            "Rest");
+        nint restType = 0;
         try
         {
-            nint* enumeratorAddress = &enumerator;
-            CorDebugHResult.ThrowIfFailed(
-                new ICorDebugTypeAbi(type).EnumerateTypeParameters((nint)enumeratorAddress),
-                "ICorDebugType.EnumerateTypeParameters");
-            enumerator = RequirePointer(
-                Volatile.Read(ref *enumeratorAddress),
-                "ICorDebugType.EnumerateTypeParameters");
-            var result = new List<nint>(TupleRestPosition);
-            var values = new ICorDebugTypeEnumAbi(enumerator);
-            for (int index = 0; index <= TupleRestPosition; index++)
-            {
-                nint argument = 0;
-                uint fetched = 0;
-                nint* argumentAddress = &argument;
-                uint* fetchedAddress = &fetched;
-                CorDebugHResult.ThrowIfFailed(
-                    values.Next(1, (nint)argumentAddress, (nint)fetchedAddress),
-                    "ICorDebugTypeEnum.Next");
-                argument = Volatile.Read(ref *argumentAddress);
-                fetched = Volatile.Read(ref *fetchedAddress);
-                if (fetched == 0)
-                {
-                    return result;
-                }
-
-                result.Add(RequirePointer(argument, "ICorDebugTypeEnum.Next"));
-            }
-
-            ReleaseAll(result);
-            throw new BadImageFormatException(
-                $"A ValueTuple type cannot have more than {TupleRestPosition} arguments.");
+            restType = GetExactType(restValue);
+            _ = ComAbi.Release(traversal.CurrentValue);
+            traversal.CurrentValue = restValue;
+            restValue = 0;
+            _ = ComAbi.Release(traversal.CurrentType);
+            traversal.CurrentType = restType;
+            restType = 0;
+            traversal.LayerEvaluateName = ManagedExpressionName.CreateMember(
+                traversal.LayerEvaluateName,
+                "Rest");
         }
         finally
         {
-            if (enumerator != 0)
+            if (restType != 0)
             {
-                _ = ComAbi.Release(enumerator);
+                _ = ComAbi.Release(restType);
+            }
+
+            if (restValue != 0)
+            {
+                _ = ComAbi.Release(restValue);
             }
         }
     }

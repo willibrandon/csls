@@ -13,7 +13,8 @@ internal sealed partial class CorDebugDebuggee
         DebugStopGeneration generation,
         string? evaluateName,
         int? frameId,
-        ManagedValueView view = ManagedValueView.Default)
+        ManagedValueView view = ManagedValueView.Default,
+        ManagedTupleCustomTypeInfo? tupleCustomTypeInfo = null)
     {
         if (!IsExpandable(value))
         {
@@ -25,7 +26,8 @@ internal sealed partial class CorDebugDebuggee
             generation,
             evaluateName,
             frameId,
-            view);
+            view,
+            tupleCustomTypeInfo);
         return new ManagedValueReferences(handle.Id, handle.MemoryReference);
     }
 
@@ -40,7 +42,8 @@ internal sealed partial class CorDebugDebuggee
             generation,
             evaluateName: null,
             frameId: null,
-            ManagedValueView.Default);
+            ManagedValueView.Default,
+            tupleCustomTypeInfo: null);
         return (
             handle.Id,
             expandable
@@ -53,7 +56,8 @@ internal sealed partial class CorDebugDebuggee
         DebugStopGeneration generation,
         string? evaluateName,
         int? frameId,
-        ManagedValueView view)
+        ManagedValueView view,
+        ManagedTupleCustomTypeInfo? tupleCustomTypeInfo)
     {
         nint identity;
         try
@@ -101,7 +105,8 @@ internal sealed partial class CorDebugDebuggee
             View = view,
             MemoryReference = memoryReference,
             MemoryAddress = memoryAddress,
-            EvaluateName = evaluateName
+            EvaluateName = evaluateName,
+            TupleCustomTypeInfo = tupleCustomTypeInfo
         };
         _values.Add(handle.Id, handle);
         _valueIdentities.Add(key, handle);

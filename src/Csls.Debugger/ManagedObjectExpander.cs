@@ -43,6 +43,7 @@ internal sealed class ManagedObjectExpander
     /// <param name="start">The zero-based first logical child.</param>
     /// <param name="count">The maximum count, or zero for every remaining child.</param>
     /// <param name="view">The presentation view applied to the expansion.</param>
+    /// <param name="tupleCustomTypeInfo">The optional tuple-name transforms.</param>
     /// <returns>The requested logical field page.</returns>
     internal List<DebugVariableInfo> Expand(
         nint value,
@@ -51,7 +52,8 @@ internal sealed class ManagedObjectExpander
         DebugStopGeneration generation,
         int start,
         int count,
-        ManagedValueView view)
+        ManagedValueView view,
+        ManagedTupleCustomTypeInfo? tupleCustomTypeInfo)
     {
         if (view == ManagedValueView.Default &&
             _tuplePresenter.TryExpand(
@@ -59,6 +61,7 @@ internal sealed class ManagedObjectExpander
                 parentEvaluateName,
                 frameId,
                 generation,
+                tupleCustomTypeInfo,
                 start,
                 count,
                 out List<DebugVariableInfo> tupleResult))
@@ -400,6 +403,7 @@ internal sealed class ManagedObjectExpander
                     evaluateName,
                     frameId,
                     generation,
+                    null,
                     localStart,
                     localCount));
                 state.VisibleIndex += elementCount;
@@ -487,13 +491,15 @@ internal sealed class ManagedObjectExpander
         {
             ManagedValueDisplay display = _services.FormatRuntimeValue(
                 value,
-                debuggerDisplayDepth: 0);
+                debuggerDisplayDepth: 0,
+                tupleCustomTypeInfo: null);
             ManagedValueReferences references = _services.RetainValue(
                 value,
                 generation,
                 parentEvaluateName,
                 frameId,
-                ManagedValueView.Raw);
+                ManagedValueView.Raw,
+                tupleCustomTypeInfo: null);
             result.Add(new DebugVariableInfo(
                 "Raw View",
                 display.Value,
@@ -523,9 +529,14 @@ internal sealed class ManagedObjectExpander
             checked((uint)MetadataTokens.GetToken(fieldHandle)));
         try
         {
+            ManagedTupleCustomTypeInfo? tupleCustomTypeInfo =
+                ManagedTupleElementNameReader.ReadAttribute(
+                    metadata,
+                    field.GetCustomAttributes());
             ManagedValueDisplay display = _services.FormatRuntimeValue(
                 fieldValue,
-                debuggerDisplayDepth: 0);
+                debuggerDisplayDepth: 0,
+                tupleCustomTypeInfo);
             string name = metadata.GetString(field.Name);
             string? evaluateName = ManagedExpressionName.CreateMember(
                 parentEvaluateName,
@@ -535,7 +546,8 @@ internal sealed class ManagedObjectExpander
                 generation,
                 evaluateName,
                 frameId,
-                ManagedValueView.Default);
+                ManagedValueView.Default,
+                tupleCustomTypeInfo);
             return new DebugVariableInfo(
                 display.Name ?? name,
                 display.Value,

@@ -12,12 +12,14 @@ internal static class DebuggerFixture
     /// <param name="announcement">The readiness text written before waiting.</param>
     /// <param name="number">The numeric argument retained in the frame.</param>
     /// <param name="text">The string argument retained in the frame.</param>
+    /// <param name="tupleArgument">The named tuple argument retained in the frame.</param>
     /// <returns>Zero when the retained local values remain intact.</returns>
     internal static int WaitForSignal(
         string path,
         string announcement,
         int number,
-        string text)
+        string text,
+        (int ArgumentNumber, string ArgumentText) tupleArgument)
     {
         int localNumber = number + 1;
         long localLong = number + 2L;
@@ -34,8 +36,19 @@ internal static class DebuggerFixture
         int? localEmptyNullable = null;
         (int Number, string Text) localTuple = (number, text);
         object localBoxedTuple = (10, "ten");
-        (int, int, int, int, int, int, int, int, int) localLongTuple =
+        (int One, int Two, int Three, int Four, int Five, int Six, int Seven,
+            int Eight, int Nine) localLongTuple =
             (1, 2, 3, 4, 5, 6, 7, 8, 9);
+        (int One, int Two, int Three, int Four, int Five, int Six, int Seven,
+            int Eight) localEightTuple =
+            (1, 2, 3, 4, 5, 6, 7, 8);
+        (int One, int Two, int Three, int Four, int Five, int Six, int Seven,
+            int Eight, int Nine, int Ten, int Eleven, int Twelve, int Thirteen,
+            int Fourteen, int Fifteen, int Sixteen) localSixteenTuple =
+            (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16);
+        ((int InnerNumber, string InnerText) Inner, int OuterNumber) localNestedTuple =
+            ((number, text), number + 1);
+        (int Number, string Text)[] localTupleArray = [(number, text)];
         ValueTuple<int> localSingleTuple = new(1);
         ValueTuple<int, int, int, int, int, int, int, int> localNonTuple = default;
         DebuggerFixtureMode localMode = DebuggerFixtureMode.Second;
@@ -88,6 +101,7 @@ internal static class DebuggerFixture
 
         GC.KeepAlive(path);
         GC.KeepAlive(text);
+        GC.KeepAlive(tupleArgument);
         GC.KeepAlive(localLong);
         GC.KeepAlive(localByte);
         GC.KeepAlive(localArray);
@@ -102,6 +116,10 @@ internal static class DebuggerFixture
         GC.KeepAlive(localTuple);
         GC.KeepAlive(localBoxedTuple);
         GC.KeepAlive(localLongTuple);
+        GC.KeepAlive(localEightTuple);
+        GC.KeepAlive(localSixteenTuple);
+        GC.KeepAlive(localNestedTuple);
+        GC.KeepAlive(localTupleArray);
         GC.KeepAlive(localSingleTuple);
         GC.KeepAlive(localNonTuple);
         GC.KeepAlive(localMode);

@@ -13,6 +13,7 @@ internal sealed partial class CorDebugDebuggee
         string? parentEvaluateName,
         int? frameId,
         DebugStopGeneration generation,
+        ManagedTupleCustomTypeInfo? tupleCustomTypeInfo,
         int start,
         int count)
     {
@@ -47,7 +48,9 @@ internal sealed partial class CorDebugDebuggee
 
             try
             {
-                ManagedValueDisplay display = FormatRuntimeValue(element);
+                ManagedValueDisplay display = FormatRuntimeValue(
+                    element,
+                    tupleCustomTypeInfo);
                 string name = FormatArrayIndex(index, dimensions, bases);
                 string? evaluateName = parentEvaluateName is null
                     ? null
@@ -56,7 +59,8 @@ internal sealed partial class CorDebugDebuggee
                     element,
                     generation,
                     evaluateName,
-                    frameId);
+                    frameId,
+                    tupleCustomTypeInfo: tupleCustomTypeInfo);
                 result.Add(new DebugVariableInfo(
                     display.Name ?? name,
                     display.Value,

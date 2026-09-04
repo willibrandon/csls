@@ -11,7 +11,7 @@ internal sealed partial class CorDebugDebuggee
     private unsafe List<DebugVariableInfo> EnumerateValues(
         ManagedFrameHandle frame,
         ManagedScopeKind kind,
-        IReadOnlyDictionary<int, string> names,
+        IReadOnlyDictionary<int, ManagedSymbolVariable> names,
         DebugStopGeneration generation,
         int start,
         int count)
@@ -56,20 +56,27 @@ internal sealed partial class CorDebugDebuggee
                 {
                     if (index >= start && (count == 0 || result.Count < count))
                     {
-                        ManagedValueDisplay display = FormatRuntimeValue(value);
-                        bool hasSourceName = names.TryGetValue(index, out string? sourceName) &&
-                            !string.IsNullOrEmpty(sourceName);
+                        bool hasSourceName = names.TryGetValue(
+                            index,
+                            out ManagedSymbolVariable? sourceVariable) &&
+                            !string.IsNullOrEmpty(sourceVariable.Name);
+                        ManagedTupleCustomTypeInfo? tupleCustomTypeInfo =
+                            sourceVariable?.TupleCustomTypeInfo;
+                        ManagedValueDisplay display = FormatRuntimeValue(
+                            value,
+                            tupleCustomTypeInfo);
                         string name = hasSourceName
-                                ? sourceName!
+                                ? sourceVariable!.Name
                                 : kind == ManagedScopeKind.Arguments
                                     ? $"argument {index}"
                                     : $"local {index}";
-                        string? evaluateName = hasSourceName ? sourceName : null;
+                        string? evaluateName = hasSourceName ? sourceVariable!.Name : null;
                         ManagedValueReferences references = RetainValue(
                             value,
                             generation,
                             evaluateName,
-                            frame.Id);
+                            frame.Id,
+                            tupleCustomTypeInfo: tupleCustomTypeInfo);
                         result.Add(new DebugVariableInfo(
                             name,
                             display.Value,
