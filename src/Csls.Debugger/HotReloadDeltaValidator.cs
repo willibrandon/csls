@@ -64,15 +64,16 @@ internal static class HotReloadDeltaValidator
             ?? throw new InvalidOperationException(
                 $"Module {module.Id} has no readable baseline metadata image.");
         MetadataReader baseMetadata = basePe.GetMetadataReader();
-        var providers = new List<MetadataReaderProvider>(module.MetadataDeltas.Count + 1);
+        using var providers = new DisposableCollection<MetadataReaderProvider>();
         var readers = new List<MetadataReader>(module.MetadataDeltas.Count + 1);
         try
         {
-            foreach (byte[] image in module.MetadataDeltas.Append(metadataDelta))
+            foreach (MetadataReaderProvider provider in module.MetadataDeltas
+                         .Append(metadataDelta)
+                         .Select(image => providers.Acquire(() =>
+                             MetadataReaderProvider.FromMetadataImage(
+                                 ImmutableCollectionsMarshal.AsImmutableArray(image)))))
             {
-                var provider = MetadataReaderProvider.FromMetadataImage(
-                    ImmutableCollectionsMarshal.AsImmutableArray(image));
-                providers.Add(provider);
                 readers.Add(provider.GetMetadataReader());
             }
 
@@ -116,13 +117,6 @@ internal static class HotReloadDeltaValidator
             throw new BadImageFormatException(
                 "The Hot Reload metadata is not a valid minimal delta chain.",
                 exception);
-        }
-        finally
-        {
-            foreach (MetadataReaderProvider provider in providers)
-            {
-                provider.Dispose();
-            }
         }
     }
 

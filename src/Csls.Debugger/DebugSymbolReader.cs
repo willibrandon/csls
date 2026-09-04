@@ -169,12 +169,12 @@ internal sealed class DebugSymbolReader : IDisposable
         PortablePdbReader baseReader = GetPortableReader();
         var documents = new SortedDictionary<string, ManagedSymbolDocument>(
             StringComparer.Ordinal);
-        foreach (DocumentHandle handle in baseReader.Metadata.Documents)
+        foreach (ManagedSymbolDocument document in baseReader.Metadata.Documents.Select(handle =>
+                     PortablePdbSourceDocumentReader.Read(
+                         baseReader.Metadata,
+                         handle,
+                         baseReader.SourceLinkMappings)))
         {
-            ManagedSymbolDocument document = PortablePdbSourceDocumentReader.Read(
-                baseReader.Metadata,
-                handle,
-                baseReader.SourceLinkMappings);
             documents[document.Path] = document;
         }
 
@@ -184,12 +184,12 @@ internal sealed class DebugSymbolReader : IDisposable
                 delta.SourceLinkMappings.Count == 0
                     ? baseReader.SourceLinkMappings
                     : delta.SourceLinkMappings;
-            foreach (DocumentHandle handle in delta.Metadata.Documents)
+            foreach (ManagedSymbolDocument document in delta.Metadata.Documents.Select(handle =>
+                         PortablePdbSourceDocumentReader.Read(
+                             delta.Metadata,
+                             handle,
+                             sourceLinkMappings)))
             {
-                ManagedSymbolDocument document = PortablePdbSourceDocumentReader.Read(
-                    delta.Metadata,
-                    handle,
-                    sourceLinkMappings);
                 documents[document.Path] = document;
             }
         }

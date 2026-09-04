@@ -187,8 +187,154 @@ public sealed class RepositoryConventionAnalyzerTests
         Assert.IsEmpty(diagnostics);
     }
 
+    /// <summary>
+    /// Verifies Portable PDB document mappings are projected before iteration.
+    /// </summary>
+    [TestMethod]
+    public async Task ReportsPortablePdbDocumentMappingInsideForEach()
+    {
+        const string Source = """
+            namespace Csls.Debugger;
+
+            internal sealed class DocumentHandle;
+            internal sealed class ManagedSymbolDocument;
+            internal static class PortablePdbSourceDocumentReader
+            {
+                internal static ManagedSymbolDocument Read(DocumentHandle handle) => new();
+            }
+
+            internal static class Reader
+            {
+                internal static void ReadAll(System.Collections.Generic.IEnumerable<DocumentHandle> handles)
+                {
+                    foreach (DocumentHandle handle in handles)
+                    {
+                        ManagedSymbolDocument document = PortablePdbSourceDocumentReader.Read(handle);
+                        _ = document;
+                    }
+                }
+            }
+            """;
+
+        ImmutableArray<Diagnostic> diagnostics = await AnalyzeAsync(
+            Source,
+            new CodeQlMissedSelectAnalyzer()).ConfigureAwait(false);
+
+        Diagnostic diagnostic = Assert.ContainsSingle(diagnostics);
+        Assert.AreEqual(CodeQlMissedSelectAnalyzer.DiagnosticId, diagnostic.Id);
+    }
+
+    /// <summary>
+    /// Verifies metadata-provider construction is projected before iteration.
+    /// </summary>
+    [TestMethod]
+    public async Task ReportsMetadataProviderMappingInsideForEach()
+    {
+        const string Source = """
+            using System.Collections.Generic;
+            using System.Collections.Immutable;
+            using System.Reflection.Metadata;
+
+            internal static class Reader
+            {
+                internal static void ReadAll(IEnumerable<byte[]> images)
+                {
+                    foreach (byte[] image in images)
+                    {
+                        MetadataReaderProvider provider = MetadataReaderProvider.FromMetadataImage(
+                            ImmutableArray.Create(image));
+                        _ = provider.GetMetadataReader();
+                    }
+                }
+            }
+            """;
+
+        ImmutableArray<Diagnostic> diagnostics = await AnalyzeAsync(
+            Source,
+            new CodeQlMissedSelectAnalyzer()).ConfigureAwait(false);
+
+        Diagnostic diagnostic = Assert.ContainsSingle(diagnostics);
+        Assert.AreEqual(CodeQlMissedSelectAnalyzer.DiagnosticId, diagnostic.Id);
+    }
+
+    /// <summary>
+    /// Verifies metadata providers are not manually disposed by a finally loop.
+    /// </summary>
+    [TestMethod]
+    public async Task ReportsMetadataProviderDisposeInsideFinallyForEach()
+    {
+        const string Source = """
+            using System.Collections.Generic;
+            using System.Reflection.Metadata;
+
+            internal static class Reader
+            {
+                internal static void DisposeAll(IReadOnlyList<MetadataReaderProvider> providers)
+                {
+                    try
+                    {
+                    }
+                    finally
+                    {
+                        foreach (MetadataReaderProvider provider in providers)
+                        {
+                            provider.Dispose();
+                        }
+                    }
+                }
+            }
+            """;
+
+        ImmutableArray<Diagnostic> diagnostics = await AnalyzeAsync(
+            Source,
+            new CodeQlMissedUsingStatementAnalyzer()).ConfigureAwait(false);
+
+        Diagnostic diagnostic = Assert.ContainsSingle(diagnostics);
+        Assert.AreEqual(CodeQlMissedUsingStatementAnalyzer.DiagnosticId, diagnostic.Id);
+    }
+
+    /// <summary>
+    /// Verifies ordinary metadata-provider iteration does not require disposal syntax.
+    /// </summary>
+    [TestMethod]
+    public async Task AcceptsMetadataProviderIterationOutsideFinally()
+    {
+        const string Source = """
+            using System.Collections.Generic;
+            using System.Reflection.Metadata;
+
+            internal static class Reader
+            {
+                internal static void ReadAll(IReadOnlyList<MetadataReaderProvider> providers)
+                {
+                    foreach (MetadataReaderProvider provider in providers)
+                    {
+                        _ = provider.GetMetadataReader();
+                    }
+                }
+            }
+            """;
+
+        ImmutableArray<Diagnostic> diagnostics = await AnalyzeAsync(
+            Source,
+            new CodeQlMissedUsingStatementAnalyzer()).ConfigureAwait(false);
+
+        Assert.IsEmpty(diagnostics);
+    }
+
     private static async Task<ImmutableArray<Diagnostic>> AnalyzeAsync(
         string source,
+        OutputKind outputKind = OutputKind.DynamicallyLinkedLibrary)
+    {
+        return await AnalyzeAsync(
+            source,
+            new RepositoryConventionAnalyzer(),
+            outputKind).ConfigureAwait(false);
+    }
+
+    private static async Task<ImmutableArray<Diagnostic>> AnalyzeAsync(
+        string source,
+        DiagnosticAnalyzer analyzer,
         OutputKind outputKind = OutputKind.DynamicallyLinkedLibrary)
     {
         var parseOptions = new CSharpParseOptions(
@@ -205,8 +351,7 @@ public sealed class RepositoryConventionAnalyzerTests
             [syntaxTree],
             references,
             new CSharpCompilationOptions(outputKind));
-        ImmutableArray<DiagnosticAnalyzer> analyzers =
-            [new RepositoryConventionAnalyzer()];
+        ImmutableArray<DiagnosticAnalyzer> analyzers = [analyzer];
 
         return await compilation
             .WithAnalyzers(analyzers)
