@@ -21,12 +21,16 @@ csls debugger tui launch /absolute/path/to/App.dll \
 
 `--runtime <path>` selects a particular compatible `dotnet` host. Arguments after `--`
 are passed directly to the target. The terminal opens after the initial source
-breakpoint stops and shows source, managed stack, arguments, and active locals.
+breakpoint stops and shows source, managed threads and stack, arguments, and active
+locals. Its bounded auxiliary pane cycles through retained target output, managed
+modules with symbol policy, authoritative breakpoints, and the current exception.
 
 | Key | Operation |
 | --- | --- |
+| F2 | Cycle output, modules, breakpoints, and exception views |
 | F5 | Continue |
 | F6 | Pause |
+| F9 | Toggle a source breakpoint at the source cursor |
 | F10 | Step over |
 | F11 | Step into |
 | F12 | Step out |

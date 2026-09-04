@@ -26,14 +26,18 @@ Arguments after `--` are passed to the target without interpretation.
 The terminal opens after the initial source breakpoint stops the process. Its
 source pane follows the selected managed frame; the stack pane shows managed
 callers; and the variables pane reads arguments and lexically active locals from
-the current stop generation.
+the current stop generation. A bounded auxiliary pane cycles through retained target
+output, managed modules with symbol policy, authoritative breakpoints, and the current
+managed exception.
 
 The execution keys are:
 
 | Key | Operation |
 | --- | --- |
+| F2 | Cycle output, modules, breakpoints, and exception views |
 | F5 | Continue |
 | F6 | Pause |
+| F9 | Toggle a source breakpoint at the source cursor |
 | F10 | Step over |
 | F11 | Step into |
 | F12 | Step out |

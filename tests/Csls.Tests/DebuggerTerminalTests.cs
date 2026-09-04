@@ -121,6 +121,28 @@ public sealed class DebuggerTerminalTests
                     await automator.WaitUntilTextAsync($"●    {breakpointLine}")
                         .ConfigureAwait(false);
                     await automator.KeyAsync(
+                        Hex1bKey.F2,
+                        TestContext.CancellationToken).ConfigureAwait(false);
+                    await automator.WaitUntilTextAsync("Modules").ConfigureAwait(false);
+                    await automator.WaitUntilTextAsync("csls-test-process-host")
+                        .ConfigureAwait(false);
+                    await automator.KeyAsync(
+                        Hex1bKey.F2,
+                        TestContext.CancellationToken).ConfigureAwait(false);
+                    await automator.WaitUntilTextAsync("Breakpoints").ConfigureAwait(false);
+                    await automator.WaitUntilTextAsync(
+                        $"{Path.GetFileName(sourcePath)}:{breakpointLine}")
+                        .ConfigureAwait(false);
+                    await automator.KeyAsync(
+                        Hex1bKey.F2,
+                        TestContext.CancellationToken).ConfigureAwait(false);
+                    await automator.WaitUntilTextAsync("No current managed exception.")
+                        .ConfigureAwait(false);
+                    await automator.KeyAsync(
+                        Hex1bKey.F2,
+                        TestContext.CancellationToken).ConfigureAwait(false);
+                    await automator.WaitUntilTextAsync("Target Output").ConfigureAwait(false);
+                    await automator.KeyAsync(
                         Hex1bKey.F9,
                         TestContext.CancellationToken).ConfigureAwait(false);
                     await automator.WaitUntilTextAsync(

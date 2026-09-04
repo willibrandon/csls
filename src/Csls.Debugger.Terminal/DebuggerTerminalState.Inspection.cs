@@ -51,22 +51,6 @@ internal sealed partial class DebuggerTerminalState
     internal IReadOnlyList<string> VariableLines { get; private set; } = [];
 
     /// <summary>
-    /// Gets the retained target-output display rows.
-    /// </summary>
-    internal IReadOnlyList<string> OutputLines { get; private set; } =
-        ["No target output."];
-
-    /// <summary>
-    /// Gets the current managed-module and symbol summary.
-    /// </summary>
-    internal string ModuleSummary { get; private set; } = "0 modules";
-
-    /// <summary>
-    /// Gets the current exception summary when the target stopped for an exception.
-    /// </summary>
-    internal string? ExceptionSummary { get; private set; }
-
-    /// <summary>
     /// Selects a managed thread and loads its stack and first authored frame.
     /// </summary>
     /// <param name="index">The zero-based thread row.</param>
@@ -160,11 +144,9 @@ internal sealed partial class DebuggerTerminalState
             }
 
             int line = checked(_sourceFirstLine + SourceFocusedIndex);
-            DebugBreakpointSnapshot snapshot = await _client.GetBreakpointsAsync(
-                _cancellationToken).ConfigureAwait(false);
             List<DebugSourceBreakpointInfo> existing =
             [
-                .. snapshot.SourceBreakpoints.Where(
+                .. _auxiliary.Breakpoints.SourceBreakpoints.Where(
                     item => SourcePathsEqual(item.SourcePath, sourcePath))
             ];
             bool remove = existing.Any(item => item.Line == line);
@@ -191,6 +173,7 @@ internal sealed partial class DebuggerTerminalState
                     ? $"Set breakpoint at {Path.GetFileName(sourcePath)}:{selected.Line}."
                     : selected?.Message ??
                         $"Breakpoint at {Path.GetFileName(sourcePath)}:{line} is pending.";
+            await _auxiliary.RefreshBreakpointsAsync(_cancellationToken).ConfigureAwait(false);
             await LoadSourceAsync(_selectedFrame!, _cancellationToken).ConfigureAwait(false);
             _app?.Invalidate();
         }
@@ -203,6 +186,7 @@ internal sealed partial class DebuggerTerminalState
     private async Task LoadStoppedStateAsync(CancellationToken cancellationToken)
     {
         StatusMessage = null;
+        await _auxiliary.LoadAsync(Snapshot, cancellationToken).ConfigureAwait(false);
         _threads = await _client.GetThreadsAsync(cancellationToken).ConfigureAwait(false);
         ThreadLines = _threads.Select(static thread => string.Create(
             CultureInfo.InvariantCulture,
@@ -219,9 +203,6 @@ internal sealed partial class DebuggerTerminalState
             ? Math.Max(0, _threads.ToList().FindIndex(thread => thread.Id == stoppedThreadId))
             : 0;
         await LoadPreferredThreadAsync(stoppedIndex, cancellationToken).ConfigureAwait(false);
-        await LoadOutputAsync(cancellationToken).ConfigureAwait(false);
-        await LoadModuleSummaryAsync(cancellationToken).ConfigureAwait(false);
-        await LoadExceptionSummaryAsync(cancellationToken).ConfigureAwait(false);
         _app?.Invalidate();
     }
 
@@ -364,11 +345,9 @@ internal sealed partial class DebuggerTerminalState
             frame.Line - _sourceFirstLine,
             0,
             Math.Max(0, last - _sourceFirstLine));
-        DebugBreakpointSnapshot breakpoints = await _client.GetBreakpointsAsync(
-            cancellationToken).ConfigureAwait(false);
         HashSet<int> breakpointLines =
         [
-            .. breakpoints.SourceBreakpoints
+            .. _auxiliary.Breakpoints.SourceBreakpoints
                 .Where(item => frame.Source.Path is not null &&
                     SourcePathsEqual(item.SourcePath, frame.Source.Path))
                 .Select(static item => item.Line)
@@ -379,50 +358,6 @@ internal sealed partial class DebuggerTerminalState
                 $"{(breakpointLines.Contains(line) ? '●' : ' ')} {line,5}  " +
                 $"{_sourceTextLines[line - 1]}"))
             .ToArray();
-    }
-
-    private async Task LoadOutputAsync(CancellationToken cancellationToken)
-    {
-        DebugOutputPage output = await _client.GetOutputAsync(
-            new DebugOutputRequest(0, 200),
-            cancellationToken).ConfigureAwait(false);
-        OutputLines = output.Entries.SelectMany(static entry => entry.Output
-            .Replace("\r\n", "\n", StringComparison.Ordinal)
-            .Replace('\r', '\n')
-            .Split('\n', StringSplitOptions.RemoveEmptyEntries)
-            .Select(line => $"{FormatOutputCategory(entry.Category)} {line}"))
-            .ToArray();
-        if (OutputLines.Count == 0)
-        {
-            OutputLines = ["No target output."];
-        }
-    }
-
-    private async Task LoadModuleSummaryAsync(CancellationToken cancellationToken)
-    {
-        DebugModulePage modules = await _client.GetModulesAsync(
-            new DebugModulesRequest(0, 200),
-            cancellationToken).ConfigureAwait(false);
-        int symbols = modules.Modules.Count(static module =>
-            module.SymbolKind != DebugModuleSymbolKind.None);
-        ModuleSummary = string.Create(
-            CultureInfo.InvariantCulture,
-            $"{modules.TotalModules} modules, {symbols} with symbols");
-    }
-
-    private async Task LoadExceptionSummaryAsync(CancellationToken cancellationToken)
-    {
-        ExceptionSummary = null;
-        if (!string.Equals(Snapshot.StopReason, "exception", StringComparison.OrdinalIgnoreCase) ||
-            Snapshot.StoppedThreadId is not int threadId)
-        {
-            return;
-        }
-
-        DebugExceptionInfo exception = await _client.GetExceptionInfoAsync(
-            new DebugExceptionInfoRequest(threadId),
-            cancellationToken).ConfigureAwait(false);
-        ExceptionSummary = $"{exception.ExceptionId}: {exception.Description}";
     }
 
     private void SetUnavailableSource(string message)
@@ -447,7 +382,7 @@ internal sealed partial class DebuggerTerminalState
         StackLines = [];
         SelectedStackFrameIndex = 0;
         VariableLines = [];
-        ExceptionSummary = null;
+        _auxiliary.ClearStoppedState();
     }
 
     private static string FormatStackFrame(DebugStackFrameInfo frame) =>
@@ -456,13 +391,6 @@ internal sealed partial class DebuggerTerminalState
             : string.Create(
                 CultureInfo.InvariantCulture,
                 $"{frame.Name}  {frame.Source.Name}:{frame.Line}");
-
-    private static string FormatOutputCategory(DebugOutputCategory category) => category switch
-    {
-        DebugOutputCategory.StandardOutput => "out>",
-        DebugOutputCategory.StandardError => "err>",
-        _ => "dbg>"
-    };
 
     private static bool SourcePathsEqual(string left, string right) =>
         string.Equals(

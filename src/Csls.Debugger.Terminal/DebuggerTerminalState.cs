@@ -11,6 +11,7 @@ namespace Csls.Debugger.Terminal;
 internal sealed partial class DebuggerTerminalState : IAsyncDisposable
 {
     private readonly DebuggerRpcClient _client;
+    private readonly DebuggerTerminalAuxiliaryState _auxiliary;
     private readonly CancellationToken _cancellationToken;
     private readonly Lock _notificationGate = new();
     private readonly SemaphoreSlim _mutationGate = new(1, 1);
@@ -24,6 +25,7 @@ internal sealed partial class DebuggerTerminalState : IAsyncDisposable
         CancellationToken cancellationToken)
     {
         _client = client;
+        _auxiliary = new DebuggerTerminalAuxiliaryState(client);
         _cancellationToken = cancellationToken;
         _client.ResourceChanged += OnResourceChanged;
     }
@@ -38,6 +40,43 @@ internal sealed partial class DebuggerTerminalState : IAsyncDisposable
     /// Gets the latest non-fatal interactive operation diagnostic.
     /// </summary>
     internal string? StatusMessage { get; private set; }
+
+    /// <summary>
+    /// Gets the selected auxiliary debugger pane title.
+    /// </summary>
+    internal string AuxiliaryTitle => _auxiliary.Title;
+
+    /// <summary>
+    /// Gets the bounded rows in the selected auxiliary debugger pane.
+    /// </summary>
+    internal IReadOnlyList<string> AuxiliaryLines => _auxiliary.Lines;
+
+    /// <summary>
+    /// Gets the managed-module and symbol summary shown in the header.
+    /// </summary>
+    internal string ModuleSummary => _auxiliary.ModuleSummary;
+
+    /// <summary>
+    /// Gets the current managed-exception summary shown in the header.
+    /// </summary>
+    internal string? ExceptionSummary => _auxiliary.ExceptionSummary;
+
+    /// <summary>
+    /// Advances to the next auxiliary debugger pane.
+    /// </summary>
+    internal async Task CycleAuxiliaryPaneAsync()
+    {
+        await _mutationGate.WaitAsync(_cancellationToken).ConfigureAwait(false);
+        try
+        {
+            _auxiliary.Cycle();
+            _app?.Invalidate();
+        }
+        finally
+        {
+            _ = _mutationGate.Release();
+        }
+    }
 
     /// <summary>
     /// Creates state and waits until the target reaches its initial stop.

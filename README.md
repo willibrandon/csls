@@ -48,7 +48,8 @@ after the target has terminated. Managed data breakpoints, Hot Reload, generic o
 construction, and debugger visualizer attributes remain unadvertised until their
 complete runtime semantics are available. Run
 `csls debugger tui launch` or `csls debugger tui attach` for the interactive
-Hex1b source, stack, arguments, and locals workflow.
+Hex1b source, thread, stack, arguments, locals, module, breakpoint, exception,
+and output workflow.
 
 Read the [csls documentation](https://willibrandon.github.io/csls/) for editor,
 CLI, MCP, and development guidance.

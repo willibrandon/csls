@@ -63,17 +63,20 @@ internal static class DebuggerTerminalView
                                     .Title("Arguments and Locals")
                                     .Fill(),
                                 details.Border(nested =>
-                                    [nested.List(state.OutputLines).Fill()])
-                                    .Title("Target Output")
+                                    [nested.List(state.AuxiliaryLines).Fill()])
+                                    .Title(state.AuxiliaryTitle)
                                     .FixedHeight(6)
                             ]).Fill()
                         ],
                         leftWidth: 64).Fill(),
                     vertical.InfoBar(
-                        "F5 Continue  F6 Pause  F9 Breakpoint  F10 Over  F11 Into  " +
+                        "F2 Details  F5 Continue  F6 Pause  F9 Breakpoint  F10 Over  F11 Into  " +
                         "F12 Out  Tab Panes  Ctrl+C Exit")
                 ]).InputBindings(bindings =>
                 {
+                    bindings.Key(Hex1bKey.F2).Action(
+                        _ => state.CycleAuxiliaryPaneAsync(),
+                        "Cycle output, module, breakpoint, and exception views");
                     bindings.Key(Hex1bKey.F5).Action(
                         _ => state.ContinueAsync(),
                         "Continue target");
