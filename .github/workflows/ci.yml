@@ -42,17 +42,18 @@ jobs:
         with:
           path: |
             artifacts/bin/Csls.*/debug
+            !artifacts/bin/Csls.Debugger.Tests/debug
             !artifacts/bin/Csls.SourceGen.Tests/debug
-          key: test-binaries-v2-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.editorconfig', 'global.json', 'src/**', 'tests/**', 'benchmarks/**', 'build/**', 'Directory.Build.*', 'Directory.Packages.props', 'NuGet.Config') }}
-          restore-keys: test-binaries-v2-${{ runner.os }}-${{ runner.arch }}-
+          key: test-binaries-v3-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.editorconfig', 'src/**', 'tests/**', 'test-assets/**', 'benchmarks/**', 'build/**', 'Directory.Build.*', 'Directory.Packages.props', 'NuGet.Config') }}
+          restore-keys: test-binaries-v3-${{ runner.os }}-${{ runner.arch }}-
 
       - name: Restore source generator test binaries
         id: source-generator-test-binaries-cache
         uses: actions/cache@v6
         with:
           path: artifacts/bin/Csls.SourceGen.Tests/debug
-          key: source-generator-test-binaries-v2-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.editorconfig', 'global.json', 'src/**', 'tests/**', 'benchmarks/**', 'build/**', 'Directory.Build.*', 'Directory.Packages.props', 'NuGet.Config') }}
-          restore-keys: source-generator-test-binaries-v2-${{ runner.os }}-${{ runner.arch }}-
+          key: source-generator-test-binaries-v3-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.editorconfig', 'src/**', 'tests/**', 'test-assets/**', 'benchmarks/**', 'build/**', 'Directory.Build.*', 'Directory.Packages.props', 'NuGet.Config') }}
+          restore-keys: source-generator-test-binaries-v3-${{ runner.os }}-${{ runner.arch }}-
 
       - name: Restore test build intermediates
         uses: actions/cache@v6
@@ -63,14 +64,13 @@ jobs:
             artifacts/obj/Csls.*/*.json
             artifacts/obj/Csls.*/*.props
             artifacts/obj/Csls.*/*.targets
-          key: test-build-intermediates-v2-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.editorconfig', 'global.json', 'src/**', 'tests/**', 'benchmarks/**', 'build/**', 'Directory.Build.*', 'Directory.Packages.props', 'NuGet.Config') }}
-          restore-keys: test-build-intermediates-v2-${{ runner.os }}-${{ runner.arch }}-
+          key: test-build-intermediates-v3-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.editorconfig', 'src/**', 'tests/**', 'test-assets/**', 'benchmarks/**', 'build/**', 'Directory.Build.*', 'Directory.Packages.props', 'NuGet.Config') }}
+          restore-keys: test-build-intermediates-v3-${{ runner.os }}-${{ runner.arch }}-
 
       - name: Build test binaries
         if: steps.test-binaries-cache.outputs.cache-hit != 'true' || steps.source-generator-test-binaries-cache.outputs.cache-hit != 'true'
         run: |
           dotnet build tests/Csls.Tests/Csls.Tests.csproj
-          dotnet build tests/Csls.Debugger.Tests/Csls.Debugger.Tests.csproj --property:CslsIncludeAllDebuggerNativeAssets=true
           dotnet build tests/Csls.SourceGen.Tests/Csls.SourceGen.Tests.csproj
 
       - name: Pack test binaries
@@ -81,6 +81,55 @@ jobs:
         with:
           name: test-binaries-${{ github.run_attempt }}
           path: artifacts/test-binaries.tar
+          compression-level: 6
+          if-no-files-found: error
+
+  debugger-test-binaries:
+    name: Debugger test binaries
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 10.x
+
+      - name: Restore debugger test build
+        id: debugger-test-build-cache
+        uses: actions/cache@v6
+        with:
+          path: |
+            artifacts/bin/Csls.*/debug
+            artifacts/obj/Csls.*/debug
+            artifacts/obj/Csls.*/*.cache
+            artifacts/obj/Csls.*/*.json
+            artifacts/obj/Csls.*/*.props
+            artifacts/obj/Csls.*/*.targets
+          key: debugger-test-build-v1-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.editorconfig', 'src/**', 'tests/Csls.Debugger.Tests/**', 'tests/Csls.TestProcessHost/**', 'test-assets/Csls.Debugger.Fixtures.*/**', 'build/**', 'Directory.Build.*', 'Directory.Packages.props', 'NuGet.Config') }}
+          restore-keys: debugger-test-build-v1-${{ runner.os }}-${{ runner.arch }}-
+
+      - name: Build debugger test binaries
+        if: steps.debugger-test-build-cache.outputs.cache-hit != 'true'
+        run: >-
+          dotnet build tests/Csls.Debugger.Tests/Csls.Debugger.Tests.csproj
+          --property:CslsIncludeAllDebuggerNativeAssets=true
+
+      - name: Pack debugger test binaries
+        run: >-
+          tar --create --file artifacts/debugger-test-binaries.tar
+          --directory artifacts bin
+
+      - name: Share debugger test binaries
+        uses: actions/upload-artifact@v7
+        with:
+          name: debugger-test-binaries-${{ github.run_attempt }}
+          path: artifacts/debugger-test-binaries.tar
           compression-level: 6
           if-no-files-found: error
 
@@ -134,7 +183,7 @@ jobs:
     timeout-minutes: 5
     needs:
       - debugger-unix-wait
-      - test-binaries
+      - debugger-test-binaries
     strategy:
       fail-fast: false
       matrix:
@@ -173,11 +222,13 @@ jobs:
       - name: Download test binaries
         uses: actions/download-artifact@v8
         with:
-          name: test-binaries-${{ github.run_attempt }}
+          name: debugger-test-binaries-${{ github.run_attempt }}
           path: artifacts
 
       - name: Extract test binaries
-        run: tar --extract --file artifacts/test-binaries.tar --directory artifacts
+        run: >-
+          tar --extract --file artifacts/debugger-test-binaries.tar
+          --directory artifacts
 
       - name: Restore Unix wait interposer
         if: matrix.unix_wait
