@@ -191,6 +191,16 @@ public partial interface IDebuggerControlTarget
         CancellationToken cancellationToken);
 
     /// <summary>
+    /// Applies one compiler-produced Hot Reload update to an enabled managed module.
+    /// </summary>
+    /// <param name="request">The exact stopped and module generation with compiler deltas.</param>
+    /// <param name="cancellationToken">Cancels validation before target mutation begins.</param>
+    /// <returns>The committed module generation and replacement stopped generation.</returns>
+    Task<DebugHotReloadResult> ApplyHotReloadAsync(
+        DebugHotReloadRequest request,
+        CancellationToken cancellationToken);
+
+    /// <summary>
     /// Reads a bounded target-memory range through a stopped-state handle.
     /// </summary>
     /// <param name="request">The selected memory handle and relative range.</param>

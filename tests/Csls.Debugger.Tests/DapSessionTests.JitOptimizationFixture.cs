@@ -8,7 +8,9 @@ namespace Csls.Debugger.Tests;
 /// </summary>
 public sealed partial class DapSessionTests
 {
-    private async Task<string> BuildJitFixtureAsync(string artifactsPath)
+    private async Task<string> BuildJitFixtureAsync(
+        string artifactsPath,
+        string configuration = "Release")
     {
         string repositoryRoot = FindRepositoryRoot();
         var startInfo = new ProcessStartInfo
@@ -25,7 +27,7 @@ public sealed partial class DapSessionTests
             "Csls.Debugger.Fixtures.CSharp",
             "Csls.Debugger.Fixtures.CSharp.csproj"));
         startInfo.ArgumentList.Add("--configuration");
-        startInfo.ArgumentList.Add("Release");
+        startInfo.ArgumentList.Add(configuration);
         startInfo.ArgumentList.Add($"--property:ArtifactsPath={artifactsPath}");
         startInfo.ArgumentList.Add("--nologo");
         startInfo.ArgumentList.Add("--disable-build-servers");
@@ -50,7 +52,8 @@ public sealed partial class DapSessionTests
         Utf8JsonWriter writer,
         string programPath,
         string waitPath,
-        bool suppressJitOptimizations)
+        bool suppressJitOptimizations,
+        bool enableHotReload)
     {
         writer.WriteStartObject();
         writer.WriteString("program", programPath);
@@ -60,6 +63,7 @@ public sealed partial class DapSessionTests
         writer.WriteStringValue("ready");
         writer.WriteEndArray();
         writer.WriteBoolean("suppressJITOptimizations", suppressJitOptimizations);
+        writer.WriteBoolean("enableHotReload", enableHotReload);
         writer.WriteEndObject();
     }
 }

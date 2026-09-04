@@ -35,6 +35,7 @@ internal sealed class CslsMcpDebuggerLifecycleTools
     /// <param name="initialSourcePath">The optional initial source breakpoint path.</param>
     /// <param name="initialLine">The optional one-based initial breakpoint line.</param>
     /// <param name="suppressJitOptimizations">Whether CoreCLR should emit debuggable code for loaded managed modules.</param>
+    /// <param name="enableHotReload">Whether CoreCLR should prepare loaded modules for Hot Reload.</param>
     /// <param name="justMyCode">Whether source stepping excludes non-user code.</param>
     /// <param name="enableStepFiltering">Whether stepping skips properties and operators.</param>
     /// <returns>The new explicit debugger-session identity and initial state.</returns>
@@ -68,6 +69,8 @@ internal sealed class CslsMcpDebuggerLifecycleTools
         int? initialLine = null,
         [Description("Ask CoreCLR to suppress JIT optimizations for loaded managed modules.")]
         bool suppressJitOptimizations = false,
+        [Description("Prepare loaded modules for compiler-driven Hot Reload.")]
+        bool enableHotReload = false,
         [Description("Classify and step only user code by default.")]
         bool justMyCode = true,
         [Description("Skip managed properties and operators while stepping by default.")]
@@ -96,6 +99,7 @@ internal sealed class CslsMcpDebuggerLifecycleTools
                     SourceFileMap = sourceFileMap ??
                         new Dictionary<string, string>(StringComparer.Ordinal),
                     SuppressJitOptimizations = suppressJitOptimizations,
+                    EnableHotReload = enableHotReload,
                     JustMyCode = justMyCode,
                     EnableStepFiltering = enableStepFiltering
                 },

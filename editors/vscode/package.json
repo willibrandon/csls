@@ -427,6 +427,11 @@
                 "type": "boolean",
                 "default": false,
                 "description": "Request unoptimized JIT code for loaded managed modules during launch."
+              },
+              "enableHotReload": {
+                "type": "boolean",
+                "default": false,
+                "description": "Enable CoreCLR Edit and Continue policy for compiler-driven Hot Reload updates during launch."
               }
             }
           },

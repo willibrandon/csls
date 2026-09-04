@@ -27,6 +27,7 @@ internal sealed partial class SourceBreakpointManager
                 return;
             }
 
+            RemoveHotReloadRemaps(identity);
             var affectedBreakpointIds = new HashSet<int>();
             foreach ((nint breakpointIdentity, SourceBreakpointBinding binding) in
                 _bindings.ToArray())
@@ -129,6 +130,7 @@ internal sealed partial class SourceBreakpointManager
         }
 
         _modules.Clear();
+        _hotReloadRemaps.Clear();
         _steppingPolicyActivated = false;
     }
 

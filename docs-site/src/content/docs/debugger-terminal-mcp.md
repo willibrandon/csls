@@ -101,6 +101,24 @@ Direct assignments are destructive but do not execute target code or advance the
 generation. Tool annotations describe the actual semantics instead of treating every
 debugger request as read-only.
 
+## Hot Reload
+
+Start a launch session with `enableHotReload: true` when a compiler service will
+produce C# or Visual Basic updates. Grant control explicitly, inspect the target with
+`debug_modules_get`, and call `debug_hot_reload` with the exact `debugSession`, current
+`stopGeneration`, module `id`, and module `hotReloadGeneration`. The update consists of
+matched base64 metadata, managed IL, and minimal Portable PDB deltas plus an explicit
+`activeStatements` array. Pass an empty array when no updated method is active; never
+infer or fabricate compiler mappings.
+
+Each active statement identifies the old method-definition token, positive Edit and
+Continue method version, old managed IL offset, and the updated zero-based source span.
+The debugger validates the entire generation before mutation, applies it through
+CoreCLR, rebinds source, function, and managed-IL instruction breakpoints, remaps exact
+active methods, and returns the new module and stop generations. Re-read stopped state
+with the returned generation. `debug_hot_reload` is destructive, non-idempotent,
+open-world, and requires an active `debug_agent_control_set` grant.
+
 ## Bounded results and stable errors
 
 Stack, variable, and module pages accept non-negative offsets and at most 256 items.

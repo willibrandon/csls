@@ -314,11 +314,22 @@ internal sealed partial class CorDebugManagedCallback
         nint newFunction,
         uint oldIlOffset)
     {
-        _ = thread;
-        _ = oldFunction;
-        _ = newFunction;
-        _ = oldIlOffset;
-        return QueueContinue(self, appDomain, createsProcess: false);
+        return QueueCallback(
+            self,
+            appDomain,
+            thread,
+            oldFunction,
+            newFunction,
+            createsProcess: false,
+            exitsProcess: false,
+            continueAfterCallback: true,
+            (target, ownedThread, ownedOldFunction, ownedNewFunction, cancellationToken) =>
+                target.HandleFunctionRemapOpportunityAsync(
+                    ownedThread,
+                    ownedOldFunction,
+                    ownedNewFunction,
+                    oldIlOffset,
+                    cancellationToken));
     }
 
     [UnmanagedCallersOnly(CallConvs = [typeof(CallConvStdcall)])]

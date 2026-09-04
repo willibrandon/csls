@@ -283,7 +283,9 @@ internal sealed class DebuggerTerminalAuxiliaryState
     private static string FormatModule(DebugModuleInfo module) => string.Create(
         CultureInfo.InvariantCulture,
         $"{module.Id,4}  {module.Name}  {module.SymbolKind}  " +
-        $"{FormatUserCode(module.IsUserCode)}  {FormatOptimization(module.IsOptimized)}");
+        $"{FormatUserCode(module.IsUserCode)}  {FormatOptimization(module.IsOptimized)}  " +
+        $"Hot Reload {module.HotReloadGeneration}" +
+        $"{(module.IsHotReloadEnabled == true ? " enabled" : string.Empty)}");
 
     private static string FormatSourceBreakpoint(DebugSourceBreakpointInfo breakpoint) =>
         $"{FormatBreakpointState(breakpoint.Verified)} #{breakpoint.Id} source " +

@@ -15,6 +15,7 @@ description: Understand supported .NET targets, platforms, language behavior, se
 | Editors | VS Code and Zed through the same standard-input/output DAP host. |
 | Other clients | Any DAP client that negotiates and uses the capabilities returned by `initialize`. |
 | Dumps | Read-only MCP sessions for bounded managed thread, stack, and module inspection. |
+| Hot Reload | Compiler-produced C# and Visual Basic updates on explicitly enabled launch modules. F# debugging is supported, but F# compiler delta emission is not yet claimed. |
 
 Source-language behavior depends on the PDB language identity. C#, Visual Basic, and F#
 receive compiler-parsed expressions and language-appropriate completion matching. Other
@@ -58,11 +59,18 @@ does not advertise:
 - reverse execution, step back, or arbitrary instruction-pointer changes;
 - arbitrary memory writes;
 - generic object construction, initializers, or implicit property and `ToString` calls;
-- debugger display/proxy attributes, results views, or object IDs;
-- Hot Reload metadata, IL, and PDB delta application.
+- debugger display/proxy attributes, results views, or object IDs.
 
 Unsupported requests return a protocol error. csls does not download or fall back to a
 proprietary debugger for them.
+
+Hot Reload is launch-only and requires `enableHotReload: true`, a runtime module that
+accepts Edit and Continue policy, and one compiler-produced metadata, IL, and minimal
+Portable PDB generation. The compiler must reject rude edits and provide exact active
+statement mappings. DAP has no standard apply-update request; the authorized MCP
+workflow applies C# and Visual Basic updates. Ordinary F# debugging remains supported,
+but F# Hot Reload is not advertised until its compiler service exposes complete delta
+emission and active-statement mapping.
 
 ## Migration from another `coreclr` adapter
 

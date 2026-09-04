@@ -96,6 +96,7 @@ This page is generated from the shipping DAP dispatcher, initialize response, an
 | `justMyCode` | `boolean` | No | `true` | Restrict source stepping to symbol-bearing unoptimized user modules. |
 | `enableStepFiltering` | `boolean` | No | `true` | Skip properties, CLR operators, and debugger step-filter attributes during source stepping. |
 | `suppressJITOptimizations` | `boolean` | No | `false` | Request unoptimized JIT code for loaded managed modules during launch. |
+| `enableHotReload` | `boolean` | No | `false` | Enable CoreCLR Edit and Continue policy for compiler-driven Hot Reload updates during launch. |
 
 ## Attach configuration
 

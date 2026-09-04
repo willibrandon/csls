@@ -65,6 +65,13 @@ module is loading. The `modules` response reports `isOptimized` when the runtime
 can determine it and appends a diagnostic to `symbolStatus` when a request could
 not be honored.
 
+Set `enableHotReload` to `true` for a launch that will receive compiler-produced
+Hot Reload updates. The default is `false`, and the setting is launch-only because
+CoreCLR requires its Edit and Continue policy during module load. The `modules`
+response reports `isHotReloadEnabled`, `hotReloadGeneration`, and any bounded
+failure diagnostic. DAP has no standard request for applying an update; authorized
+MCP clients use `debug_hot_reload` with compiler-produced C# or Visual Basic deltas.
+
 `justMyCode` defaults to `true` for launch and attach. The first source step
 classifies modules with validated symbols and unoptimized JIT policy as user
 code, then enables CoreCLR JMC stepping. Modules loaded later receive the same

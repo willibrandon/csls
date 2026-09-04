@@ -109,10 +109,16 @@ The launch and attach requests accept these source-stepping policies:
 | `justMyCode` | `true` | Treat symbol-bearing, unoptimized modules as user code and skip other modules during source stepping. |
 | `enableStepFiltering` | `true` | Skip property accessors, CLR operators, and members marked with debugger step-filter attributes. |
 | `suppressJITOptimizations` | `false` | For launch only, request unoptimized JIT code for modules with validated symbols. |
+| `enableHotReload` | `false` | For launch only, prepare symbol-bearing modules for compiler-driven Hot Reload. |
 
 CoreCLR accepts JIT optimization suppression only during module load, so it is not an
 attach option. The `modules` response reports the effective policy instead of assuming
 the request succeeded.
+
+CoreCLR also accepts the Edit and Continue policy only while a module is loading.
+Set `enableHotReload` on a launch when a compiler service will produce Hot Reload
+updates. Module inspection reports `isHotReloadEnabled`, `hotReloadGeneration`, and a
+bounded `symbolStatus` diagnostic rather than assuming the runtime accepted the policy.
 
 ## Restart and ownership
 

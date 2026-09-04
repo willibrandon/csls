@@ -138,6 +138,11 @@ internal static class DebuggerControlMethodRegistry
                 target.SetExpressionAsync));
         AddParameterObjectMethod(
             rpc,
+            DebuggerControlMethods.ApplyHotReload,
+            new Func<DebugHotReloadRequest, CancellationToken, Task<DebugHotReloadResult>>(
+                target.ApplyHotReloadAsync));
+        AddParameterObjectMethod(
+            rpc,
             DebuggerControlMethods.GetModules,
             new Func<DebugModulesRequest, CancellationToken, Task<DebugModulePage>>(
                 target.GetModulesAsync));

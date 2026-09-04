@@ -68,6 +68,13 @@ internal sealed partial class DapSession
                         writer.WriteBoolean("isOptimized", isOptimized);
                     }
 
+                    if (module.IsHotReloadEnabled is bool isHotReloadEnabled)
+                    {
+                        writer.WriteBoolean("isHotReloadEnabled", isHotReloadEnabled);
+                    }
+
+                    writer.WriteNumber("hotReloadGeneration", module.HotReloadGeneration);
+
                     if (module.IsUserCode is bool isUserCode)
                     {
                         writer.WriteBoolean("isUserCode", isUserCode);
@@ -103,6 +110,9 @@ internal sealed partial class DapSession
             module.OptimizationDiagnostic is null
                 ? null
                 : $" {module.OptimizationDiagnostic}",
+            module.HotReloadDiagnostic is null
+                ? null
+                : $" {module.HotReloadDiagnostic}",
             module.JustMyCodeDiagnostic is null
                 ? null
                 : $" {module.JustMyCodeDiagnostic}");

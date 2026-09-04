@@ -15,9 +15,12 @@ internal sealed partial class SourceBreakpointManager : IDisposable
     private readonly Dictionary<string, List<SourceBreakpointDefinition>> _definitions;
     private readonly Dictionary<nint, SourceBreakpointBinding> _bindings = [];
     private readonly Dictionary<nint, CorDebugLoadedModule> _modules = [];
+    private readonly Dictionary<(nint ModuleIdentity, uint MethodToken, int MethodVersion,
+        uint OldIlOffset), uint> _hotReloadRemaps = [];
     private readonly DebugSymbolLocator _symbolLocator = new();
     private int _nextBreakpointId;
     private int _nextModuleId;
+    private bool _enableHotReload;
     private bool _suppressJitOptimizations;
     private bool _justMyCode = true;
     private bool _enableStepFiltering = true;
@@ -129,9 +132,11 @@ internal sealed partial class SourceBreakpointManager : IDisposable
         string? modulePath = GetModulePath(reportedName);
         bool isInMemory = IsInMemoryModule(module);
         bool isDynamic = IsDynamicModule(module);
-        (bool? isOptimized, string? optimizationDiagnostic) = ConfigureJitPolicy(
-            module,
-            isDynamic);
+        (
+            bool? isOptimized,
+            string? optimizationDiagnostic,
+            bool? isHotReloadEnabled,
+            string? hotReloadDiagnostic) = ConfigureJitPolicy(module, isDynamic);
         DebugSymbolResolution? symbols = modulePath is null
             ? null
             : await _symbolLocator.ResolveAsync(modulePath, cancellationToken)
@@ -151,7 +156,9 @@ internal sealed partial class SourceBreakpointManager : IDisposable
             IsDynamic = isDynamic,
             ModuleImage = isInMemory ? CorDebugModuleImageReader.TryRead(module) : null,
             IsOptimized = isOptimized,
-            OptimizationDiagnostic = optimizationDiagnostic
+            OptimizationDiagnostic = optimizationDiagnostic,
+            IsHotReloadEnabled = isHotReloadEnabled,
+            HotReloadDiagnostic = hotReloadDiagnostic
         };
         if (!_modules.TryAdd(identity, loadedModule))
         {

@@ -92,7 +92,7 @@ public sealed class DebugSymbolReaderHotReloadTests
             hasPortableDebugInformation: true);
 
         CSharpCompilation compilation1 = CreateCompilation(source1);
-        (EmitDifferenceResult result1, byte[] pdbDelta1) = EmitUpdate(
+        (EmitDifferenceResult result1, byte[] metadataDelta1, byte[] ilDelta1, byte[] pdbDelta1) = EmitUpdate(
             compilation0,
             compilation1,
             baseline,
@@ -102,12 +102,39 @@ public sealed class DebugSymbolReaderHotReloadTests
             ?? throw new AssertFailedException("The first compiler delta did not produce a baseline.");
 
         CSharpCompilation compilation2 = CreateCompilation(source2);
-        (EmitDifferenceResult result2, byte[] pdbDelta2) = EmitUpdate(
+        (EmitDifferenceResult result2, byte[] metadataDelta2, byte[] ilDelta2, byte[] pdbDelta2) = EmitUpdate(
             compilation1,
             compilation2,
             generation1Baseline,
             TestContext.CancellationToken);
         Assert.IsTrue(result2.Success, FormatDiagnostics(result2.Diagnostics));
+
+        var loadedModule = new CorDebugLoadedModule
+        {
+            Id = 1,
+            Path = null,
+            Pointer = 1,
+            Identity = 1,
+            ModuleImage = peImage,
+            SymbolImage = pdbImage
+        };
+        IReadOnlyList<uint> generation1Methods = HotReloadDeltaValidator.Validate(
+            loadedModule,
+            metadataDelta1,
+            ilDelta1,
+            pdbDelta1,
+            []).UpdatedMethods;
+        Assert.Contains(methodToken, generation1Methods);
+        loadedModule.MetadataDeltas.Add(metadataDelta1);
+        loadedModule.SymbolDeltas.Add(pdbDelta1);
+        loadedModule.HotReloadGeneration = 1;
+        IReadOnlyList<uint> generation2Methods = HotReloadDeltaValidator.Validate(
+            loadedModule,
+            metadataDelta2,
+            ilDelta2,
+            pdbDelta2,
+            []).UpdatedMethods;
+        Assert.Contains(methodToken, generation2Methods);
 
         using DebugSymbolReader baseSymbols = DebugSymbolReader.TryOpen(pdbImage)
             ?? throw new AssertFailedException("The baseline Portable PDB was not readable.");
@@ -143,9 +170,9 @@ public sealed class DebugSymbolReaderHotReloadTests
             .Single(document => document.Path == SourcePath);
         Assert.IsNotNull(currentDocument.Checksum);
         Assert.AreEqual("SHA256", currentDocument.Checksum.Algorithm);
-        string baselineChecksum = GetSourceChecksum(compilation0);
+        string currentChecksum = GetSourceChecksum(compilation2);
         Assert.AreEqual(
-            baselineChecksum,
+            currentChecksum,
             currentDocument.Checksum.Value);
     }
 
@@ -204,7 +231,11 @@ public sealed class DebugSymbolReaderHotReloadTests
             .Select(static path => MetadataReference.CreateFromFile(path))];
     }
 
-    private static (EmitDifferenceResult Result, byte[] PdbDelta) EmitUpdate(
+    private static (
+        EmitDifferenceResult Result,
+        byte[] MetadataDelta,
+        byte[] IlDelta,
+        byte[] PdbDelta) EmitUpdate(
         CSharpCompilation oldCompilation,
         CSharpCompilation newCompilation,
         EmitBaseline baseline,
@@ -227,7 +258,11 @@ public sealed class DebugSymbolReaderHotReloadTests
             ilDelta,
             pdbDelta,
             cancellationToken);
-        return (result, pdbDelta.ToArray());
+        return (
+            result,
+            metadataDelta.ToArray(),
+            ilDelta.ToArray(),
+            pdbDelta.ToArray());
     }
 
     private static IMethodSymbol FindMethod(CSharpCompilation compilation) =>

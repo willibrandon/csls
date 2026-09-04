@@ -9,6 +9,8 @@ internal sealed partial class CorDebugDebuggee : IDebuggeeProcess
 {
     private readonly DebuggerSessionActor _actor;
     private readonly SourceBreakpointManager _sourceBreakpoints;
+    private readonly FunctionBreakpointManager _functionBreakpoints;
+    private readonly InstructionBreakpointManager _instructionBreakpoints;
     private readonly CorDebugManagedCallback _managedCallback;
     private readonly CorDebugRuntimeStartupRegistration _registration;
     private readonly DbgShimStandardStreams? _standardStreams;
@@ -47,6 +49,8 @@ internal sealed partial class CorDebugDebuggee : IDebuggeeProcess
     private CorDebugDebuggee(
         DebuggerSessionActor actor,
         SourceBreakpointManager sourceBreakpoints,
+        FunctionBreakpointManager functionBreakpoints,
+        InstructionBreakpointManager instructionBreakpoints,
         DisposableOwner<CorDebugManagedCallback> managedCallbackOwner,
         DisposableOwner<CorDebugRuntimeStartupRegistration> registrationOwner,
         DbgShimStandardStreamsOwner? standardStreamsOwner,
@@ -65,6 +69,8 @@ internal sealed partial class CorDebugDebuggee : IDebuggeeProcess
             ?? throw new InvalidOperationException("No debuggee process is owned.");
         _actor = actor;
         _sourceBreakpoints = sourceBreakpoints;
+        _functionBreakpoints = functionBreakpoints;
+        _instructionBreakpoints = instructionBreakpoints;
         _managedCallback = managedCallback;
         _registration = registration;
         _standardStreams = standardStreams;

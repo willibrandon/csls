@@ -44,9 +44,11 @@ tool and debugger resource after bursts or target termination.
 Current MCP subscriptions deliver debugger resource invalidations from engine
 events without polling.
 Read-only MCP dump sessions inspect bounded managed thread, stack, and module evidence
-after the target has terminated. Managed data breakpoints, Hot Reload, generic object
-construction, and debugger visualizer attributes remain unadvertised until their
-complete runtime semantics are available. Run
+after the target has terminated. Authorized MCP clients can apply compiler-produced
+C# and Visual Basic Hot Reload generations to explicitly enabled launch modules,
+including exact on-stack remapping and breakpoint rebinding. Managed data breakpoints,
+generic object construction, and debugger visualizer attributes remain unadvertised
+until their complete runtime semantics are available. Run
 `csls debugger tui launch` or `csls debugger tui attach` for the interactive
 Hex1b source, thread, stack, arguments, locals, watch, module, breakpoint, exception,
 output, and command-palette workflow.

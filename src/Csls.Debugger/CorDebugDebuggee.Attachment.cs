@@ -115,6 +115,8 @@ internal sealed partial class CorDebugDebuggee
             var result = new CorDebugDebuggee(
                 actor,
                 sourceBreakpoints,
+                functionBreakpoints,
+                instructionBreakpoints,
                 managedCallbackOwner,
                 registrationOwner,
                 standardStreamsOwner: null,

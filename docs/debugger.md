@@ -113,6 +113,29 @@ The DAP `modules` response reports `isOptimized` when CoreCLR exposes the state;
 if the runtime rejects the policy or cannot report it, `symbolStatus` includes a
 bounded diagnostic instead of claiming that suppression succeeded.
 
+Set `enableHotReload` to `true` on a launch request to prepare symbol-bearing
+modules for compiler-driven Hot Reload. This option is disabled by default and
+is launch-only because CoreCLR accepts the required Edit and Continue policy
+during module load. The DAP `modules` response reports the runtime decision as
+`isHotReloadEnabled`, the committed `hotReloadGeneration`, and any bounded
+failure diagnostic in `symbolStatus`.
+
+The compiler owns language-specific edit analysis. It must reject rude edits
+and supply one matched metadata, IL, and minimal Portable PDB delta generation.
+When an updated method is active, it must also supply the old method token,
+method version, and IL offset together with the updated zero-based source span.
+The debugger validates module identity, generation ordering, payload bounds,
+Portable PDB continuity, and every active-statement mapping before applying the
+generation atomically. It then overlays the current document checksums, rebinds
+source, function, and managed-IL instruction breakpoints, remaps active methods
+to exact compiler-selected instructions, and invalidates stopped-state handles.
+
+C# and Visual Basic compiler services provide this delta workflow. Ordinary F#
+debugging remains first-class, but F# Hot Reload is not claimed until its
+compiler service exposes complete delta emission and active-statement mapping.
+DAP has no standard apply-update request, so `enableHotReload` prepares the
+runtime while the authorized MCP workflow applies compiler updates.
+
 Source, function, instruction, and temporary stepping breakpoints are installed
 against managed IL. CoreCLR projects those breakpoints into code that is already
 JIT-compiled and into code produced by later tiered compilations, so promotion

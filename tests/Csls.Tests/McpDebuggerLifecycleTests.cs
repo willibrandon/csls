@@ -30,6 +30,7 @@ public sealed partial class McpDebuggerLifecycleTests
         "debug_execute_expression",
         "debug_variable_set",
         "debug_expression_set",
+        "debug_hot_reload",
         "debug_modules_get",
         "debug_breakpoints_get",
         "debug_source_breakpoints_set",
@@ -106,6 +107,7 @@ public sealed partial class McpDebuggerLifecycleTests
         AssertAnnotations(tools, "debug_execute_expression", false, true, false, true);
         AssertAnnotations(tools, "debug_variable_set", false, true, false, true);
         AssertAnnotations(tools, "debug_expression_set", false, true, false, true);
+        AssertAnnotations(tools, "debug_hot_reload", false, true, false, true);
         AssertAnnotations(tools, "debug_modules_get", true, false, true, false);
         AssertAnnotations(tools, "debug_breakpoints_get", true, false, true, false);
         AssertAnnotations(tools, "debug_source_breakpoints_set", false, true, true, true);
@@ -125,6 +127,7 @@ public sealed partial class McpDebuggerLifecycleTests
             .ProtocolTool.InputSchema.GetProperty("properties");
         Assert.IsFalse(startProperties.TryGetProperty("agentControl", out _));
         Assert.IsTrue(startProperties.TryGetProperty("sourceFileMap", out _));
+        Assert.IsTrue(startProperties.TryGetProperty("enableHotReload", out _));
         JsonElement attachProperties = tools.Single(
             static tool => tool.Name == "debug_session_attach")
             .ProtocolTool.InputSchema.GetProperty("properties");

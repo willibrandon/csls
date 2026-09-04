@@ -136,6 +136,11 @@ public static class DebuggerControlMethods
     public const string SetExpression = "debugger/setExpression";
 
     /// <summary>
+    /// Applies compiler-produced Hot Reload deltas to one managed module.
+    /// </summary>
+    public const string ApplyHotReload = "debugger/applyHotReload";
+
+    /// <summary>
     /// Gets a bounded page of managed modules.
     /// </summary>
     public const string GetModules = "debugger/getModules";

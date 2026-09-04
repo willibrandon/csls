@@ -167,38 +167,30 @@ internal sealed class DebugSymbolReader : IDisposable
         }
 
         PortablePdbReader baseReader = GetPortableReader();
-        var documents = new SortedDictionary<int, ManagedSymbolDocument>();
-        int baseRow = 0;
+        var documents = new SortedDictionary<string, ManagedSymbolDocument>(
+            StringComparer.Ordinal);
         foreach (DocumentHandle handle in baseReader.Metadata.Documents)
         {
-            baseRow++;
-            documents[baseRow] = PortablePdbSourceDocumentReader.Read(
+            ManagedSymbolDocument document = PortablePdbSourceDocumentReader.Read(
                 baseReader.Metadata,
                 handle,
                 baseReader.SourceLinkMappings);
+            documents[document.Path] = document;
         }
 
         foreach (PortablePdbReader delta in _portableDeltas)
         {
-            int relativeRow = 0;
-            foreach (EntityHandle handle in delta.Metadata.GetEditAndContinueMapEntries())
+            IReadOnlyList<KeyValuePair<string, string>> sourceLinkMappings =
+                delta.SourceLinkMappings.Count == 0
+                    ? baseReader.SourceLinkMappings
+                    : delta.SourceLinkMappings;
+            foreach (DocumentHandle handle in delta.Metadata.Documents)
             {
-                if (handle.Kind != HandleKind.Document)
-                {
-                    continue;
-                }
-
-                relativeRow++;
-                DocumentHandle localHandle = MetadataTokens.DocumentHandle(relativeRow);
-                IReadOnlyList<KeyValuePair<string, string>> sourceLinkMappings =
-                    delta.SourceLinkMappings.Count == 0
-                        ? baseReader.SourceLinkMappings
-                        : delta.SourceLinkMappings;
-                documents[MetadataTokens.GetRowNumber(handle)] =
-                    PortablePdbSourceDocumentReader.Read(
-                        delta.Metadata,
-                        localHandle,
-                        sourceLinkMappings);
+                ManagedSymbolDocument document = PortablePdbSourceDocumentReader.Read(
+                    delta.Metadata,
+                    handle,
+                    sourceLinkMappings);
+                documents[document.Path] = document;
             }
         }
 

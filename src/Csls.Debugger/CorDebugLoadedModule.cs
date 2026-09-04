@@ -54,6 +54,26 @@ internal sealed class CorDebugLoadedModule
     internal List<byte[]> SymbolDeltas { get; } = [];
 
     /// <summary>
+    /// Gets the validated ECMA-335 metadata deltas in Hot Reload generation order.
+    /// </summary>
+    internal List<byte[]> MetadataDeltas { get; } = [];
+
+    /// <summary>
+    /// Gets or sets the number of Hot Reload generations committed to this module.
+    /// </summary>
+    internal int HotReloadGeneration { get; set; }
+
+    /// <summary>
+    /// Gets whether CoreCLR accepted Edit and Continue JIT policy for this module.
+    /// </summary>
+    internal bool? IsHotReloadEnabled { get; init; }
+
+    /// <summary>
+    /// Gets the bounded Hot Reload policy diagnostic when one exists.
+    /// </summary>
+    internal string? HotReloadDiagnostic { get; init; }
+
+    /// <summary>
     /// Gets whether CoreCLR reports that the module was loaded from memory.
     /// </summary>
     internal bool IsInMemory { get; init; }

@@ -10,6 +10,9 @@ namespace Csls.Mcp.Worker;
 /// <param name="Path">The absolute module path when available.</param>
 /// <param name="SymbolKind">The validated symbol-format name.</param>
 /// <param name="SymbolPath">The associated Portable PDB path when available.</param>
+/// <param name="IsHotReloadEnabled">Whether CoreCLR accepted Edit and Continue policy.</param>
+/// <param name="HotReloadGeneration">The number of applied compiler delta generations.</param>
+/// <param name="HotReloadDiagnostic">The bounded Hot Reload policy diagnostic.</param>
 /// <param name="IsOptimized">Whether optimized JIT code is permitted, when known.</param>
 /// <param name="OptimizationDiagnostic">The bounded JIT-policy diagnostic.</param>
 /// <param name="IsUserCode">Whether the module is classified as user code.</param>
@@ -20,6 +23,9 @@ internal sealed record McpDebugModuleInfo(
     string? Path,
     string SymbolKind,
     string? SymbolPath,
+    bool? IsHotReloadEnabled,
+    int HotReloadGeneration,
+    string? HotReloadDiagnostic,
     bool? IsOptimized,
     string? OptimizationDiagnostic,
     bool? IsUserCode,
@@ -43,6 +49,9 @@ internal sealed record McpDebugModuleInfo(
                 $"Unknown debugger module symbol kind {module.SymbolKind}.")
         },
         module.SymbolPath,
+        module.IsHotReloadEnabled,
+        module.HotReloadGeneration,
+        module.HotReloadDiagnostic,
         module.IsOptimized,
         module.OptimizationDiagnostic,
         module.IsUserCode,

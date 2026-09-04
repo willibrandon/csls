@@ -20,10 +20,18 @@ public sealed partial class DapSessionTests
             $"csls-debugger-jit-{Guid.NewGuid():N}");
         try
         {
-            string programPath = await BuildJitFixtureAsync(artifactsPath).ConfigureAwait(false);
-            await AssertModuleOptimizationAsync(programPath, isSuppressed: false)
+            string programPath = await BuildJitFixtureAsync(
+                artifactsPath,
+                "Release").ConfigureAwait(false);
+            await AssertModuleOptimizationAsync(
+                programPath,
+                isSuppressed: false,
+                enableHotReload: false)
                 .ConfigureAwait(false);
-            await AssertModuleOptimizationAsync(programPath, isSuppressed: true)
+            await AssertModuleOptimizationAsync(
+                programPath,
+                isSuppressed: true,
+                enableHotReload: false)
                 .ConfigureAwait(false);
         }
         finally
@@ -34,7 +42,38 @@ public sealed partial class DapSessionTests
         }
     }
 
-    private async Task AssertModuleOptimizationAsync(string programPath, bool isSuppressed)
+    /// <summary>
+    /// Reports effective Edit and Continue policy from the real module-load callback.
+    /// </summary>
+    [TestMethod]
+    [Timeout(60000, CooperativeCancellation = true)]
+    public async Task EnableHotReloadChangesModulePolicy()
+    {
+        string artifactsPath = Path.Join(
+            Path.GetTempPath(),
+            $"csls-debugger-hotreload-policy-{Guid.NewGuid():N}");
+        try
+        {
+            string programPath = await BuildJitFixtureAsync(
+                artifactsPath,
+                "Debug").ConfigureAwait(false);
+            await AssertModuleOptimizationAsync(
+                programPath,
+                isSuppressed: true,
+                enableHotReload: true).ConfigureAwait(false);
+        }
+        finally
+        {
+            await DebuggerTestDirectoryReleaseWaiter.DeleteAsync(
+                artifactsPath,
+                TimeSpan.FromSeconds(10)).ConfigureAwait(false);
+        }
+    }
+
+    private async Task AssertModuleOptimizationAsync(
+        string programPath,
+        bool isSuppressed,
+        bool enableHotReload)
     {
         string waitPath = Path.Join(
             Path.GetTempPath(),
@@ -45,7 +84,12 @@ public sealed partial class DapSessionTests
                 .CreateAsync(TestContext.CancellationToken)
                 .ConfigureAwait(false);
             await using ConfiguredAsyncDisposable disposal = client.ConfigureAwait(false);
-            await PrepareJitLaunchAsync(client, programPath, waitPath, isSuppressed)
+            await PrepareJitLaunchAsync(
+                client,
+                programPath,
+                waitPath,
+                isSuppressed,
+                enableHotReload)
                 .ConfigureAwait(false);
             int sequence = await client.SendRequestAsync(
                 "modules",
@@ -64,6 +108,11 @@ public sealed partial class DapSessionTests
             JsonElement module = modules[0];
             Assert.AreEqual(isSuppressed, !module.GetProperty("isOptimized").GetBoolean());
             Assert.AreEqual(
+                enableHotReload,
+                module.GetProperty("isHotReloadEnabled").GetBoolean(),
+                response.RootElement.ToString());
+            Assert.AreEqual(0, module.GetProperty("hotReloadGeneration").GetInt32());
+            Assert.AreEqual(
                 isSuppressed,
                 module.GetProperty("isUserCode").GetBoolean());
             Assert.AreEqual("Symbols loaded.", module.GetProperty("symbolStatus").GetString());
@@ -80,7 +129,8 @@ public sealed partial class DapSessionTests
         DapTestClient client,
         string programPath,
         string waitPath,
-        bool suppressJitOptimizations)
+        bool suppressJitOptimizations,
+        bool enableHotReload)
     {
         int initializeSequence = await client.SendRequestAsync(
             "initialize",
@@ -96,7 +146,8 @@ public sealed partial class DapSessionTests
                 writer,
                 programPath,
                 waitPath,
-                suppressJitOptimizations),
+                suppressJitOptimizations,
+                enableHotReload),
             TestContext.CancellationToken).ConfigureAwait(false);
         using JsonDocument initialized = await client
             .ReadMessageAsync(TestContext.CancellationToken)

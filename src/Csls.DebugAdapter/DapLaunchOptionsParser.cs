@@ -72,6 +72,10 @@ internal static class DapLaunchOptionsParser
                     arguments,
                     "suppressJITOptimizations",
                     defaultValue: false),
+                EnableHotReload = DapBooleanOptionParser.Get(
+                    arguments,
+                    "enableHotReload",
+                    defaultValue: false),
                 JustMyCode = DapBooleanOptionParser.Get(
                     arguments,
                     "justMyCode",

@@ -54,6 +54,11 @@ public sealed class DebugLaunchRequest
     public bool SuppressJitOptimizations { get; init; }
 
     /// <summary>
+    /// Gets whether loaded modules are prepared for compiler-driven Hot Reload.
+    /// </summary>
+    public bool EnableHotReload { get; init; }
+
+    /// <summary>
     /// Gets whether source stepping excludes non-user managed code.
     /// </summary>
     public bool JustMyCode { get; init; } = true;

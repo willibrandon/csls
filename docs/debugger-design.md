@@ -241,7 +241,7 @@ fault the session. Invalid sequencing receives a stable machine-readable error.
 Launch configuration uses established .NET names: `program`, `cwd`, `args`,
 `env`, `envFile`, `stopAtEntry`, `console`, `sourceFileMap`, `justMyCode`,
 `requireExactSource`, `enableStepFiltering`, `suppressJITOptimizations`,
-`symbolOptions`, `expressionEvaluationOptions`, `terminateChildProcesses`,
+`enableHotReload`, `symbolOptions`, `expressionEvaluationOptions`, `terminateChildProcesses`,
 `processId`, and `pipeTransport`. Editors and the CLI resolve projects, launch
 profiles, and tests to a concrete program before invoking DAP. The adapter does not
 run builds or interpret arbitrary shell text.
@@ -471,11 +471,16 @@ String and character presentation is protocol-safe before serialization: quotes,
 backslashes, NUL, standard controls, remaining control code points, and unpaired UTF-16
 surrogates receive deterministic literal escapes; valid surrogate pairs remain readable.
 
-C# and Visual Basic Hot Reload use compiler-produced metadata, IL, and PDB deltas.
-The engine validates rude edits, applies deltas, advances module generations, and
-rebinds breakpoints and active statements. F# has ordinary first-class debugging,
-but Hot Reload remains unadvertised until its compiler supports the necessary EnC
-contract.
+C# and Visual Basic Hot Reload use compiler-produced metadata, IL, and minimal
+Portable PDB deltas. The compiler rejects rude edits and supplies exact active
+statement mappings. The engine validates payload bounds, module identity,
+generation ordering, PDB continuity, updated method identity, and those mappings
+before applying a generation. It overlays current document checksums, rebinds
+source, function, and managed-IL instruction breakpoints, advances module and stop
+generations, and uses `ICorDebugILFrame2.RemapFunction` only for an exact
+compiler-provided old method/version/IL mapping. F# has ordinary first-class
+debugging, but Hot Reload remains unadvertised until its compiler exposes complete
+delta emission and active-statement mapping.
 
 ## Dumps, editors, terminal, and MCP
 

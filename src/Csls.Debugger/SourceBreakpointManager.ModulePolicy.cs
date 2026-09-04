@@ -9,15 +9,18 @@ namespace Csls.Debugger;
 internal sealed partial class SourceBreakpointManager
 {
     private const uint DisableJitOptimization = 0x3;
+    private const uint EnableEditAndContinue = 0x7;
 
     /// <summary>
     /// Configures runtime policy that must be applied during subsequent module-load callbacks.
     /// </summary>
     /// <param name="suppressJitOptimizations">Whether loaded managed modules request unoptimized code.</param>
+    /// <param name="enableHotReload">Whether loaded modules request Edit and Continue support.</param>
     /// <param name="justMyCode">Whether source stepping excludes non-user managed code.</param>
     /// <param name="enableStepFiltering">Whether stepping skips properties and operators.</param>
     internal void SetRuntimeOptions(
         bool suppressJitOptimizations,
+        bool enableHotReload,
         bool justMyCode,
         bool enableStepFiltering)
     {
@@ -29,6 +32,7 @@ internal sealed partial class SourceBreakpointManager
         }
 
         _suppressJitOptimizations = suppressJitOptimizations;
+        _enableHotReload = enableHotReload;
         _justMyCode = justMyCode;
         _enableStepFiltering = enableStepFiltering;
     }
@@ -78,34 +82,59 @@ internal sealed partial class SourceBreakpointManager
         module.SymbolsInspected = true;
     }
 
-    private unsafe (bool? IsOptimized, string? Diagnostic) ConfigureJitPolicy(
+    private unsafe (
+        bool? IsOptimized,
+        string? OptimizationDiagnostic,
+        bool? IsHotReloadEnabled,
+        string? HotReloadDiagnostic) ConfigureJitPolicy(
         nint module,
         bool isDynamic)
     {
         if (!ComAbi.TryQueryInterface(module, ICorDebugModule2Abi.InterfaceId, out nint module2))
         {
-            return (null, "The runtime does not expose module JIT policy.");
+            const string diagnostic = "The runtime does not expose module JIT policy.";
+            return (null, diagnostic, null, diagnostic);
         }
 
         try
         {
             var api = new ICorDebugModule2Abi(module2);
             int setResult = 0;
-            if (_suppressJitOptimizations && !isDynamic)
+            if (!isDynamic)
             {
-                setResult = api.SetJITCompilerFlags(DisableJitOptimization);
+                if (_enableHotReload)
+                {
+                    setResult = api.SetJITCompilerFlags(EnableEditAndContinue);
+                }
+                else if (_suppressJitOptimizations)
+                {
+                    setResult = api.SetJITCompilerFlags(DisableJitOptimization);
+                }
             }
 
             uint flags = 0;
             int getResult = api.GetJITCompilerFlags((nint)(&flags));
-            string? diagnostic = setResult < 0
+            string? optimizationDiagnostic = setResult < 0
                 ? $"JIT optimization suppression failed with HRESULT 0x{setResult:X8}."
                 : getResult < 0
                     ? $"JIT optimization state is unavailable (HRESULT 0x{getResult:X8})."
                     : null;
+            string? hotReloadDiagnostic = _enableHotReload switch
+            {
+                true when isDynamic => "Dynamic modules cannot be prepared for Hot Reload.",
+                true when setResult < 0 =>
+                    $"Hot Reload enablement failed with HRESULT 0x{setResult:X8}.",
+                true when getResult < 0 =>
+                    $"Hot Reload state is unavailable (HRESULT 0x{getResult:X8}).",
+                true when (flags & EnableEditAndContinue) != EnableEditAndContinue =>
+                    "CoreCLR did not enable Hot Reload for this module.",
+                _ => null
+            };
             return (
                 getResult < 0 ? null : (flags & DisableJitOptimization) != DisableJitOptimization,
-                diagnostic);
+                optimizationDiagnostic,
+                getResult < 0 ? null : (flags & EnableEditAndContinue) == EnableEditAndContinue,
+                hotReloadDiagnostic);
         }
         finally
         {

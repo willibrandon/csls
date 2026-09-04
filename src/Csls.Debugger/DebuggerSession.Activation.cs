@@ -71,6 +71,7 @@ public sealed partial class DebuggerSession
             options.SymbolOptions);
         _sourceBreakpoints.SetRuntimeOptions(
             suppressJitOptimizations: false,
+            enableHotReload: false,
             options.JustMyCode,
             options.EnableStepFiltering);
         return BeginLaunchCoreAsync(cancellationToken);

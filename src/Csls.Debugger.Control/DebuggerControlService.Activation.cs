@@ -80,6 +80,7 @@ public sealed partial class DebuggerControlService
         SourceLinkOptions = request.SourceLinkOptions,
         SymbolOptions = request.SymbolOptions,
         SuppressJitOptimizations = request.SuppressJitOptimizations,
+        EnableHotReload = request.EnableHotReload,
         JustMyCode = request.JustMyCode,
         EnableStepFiltering = request.EnableStepFiltering
     };

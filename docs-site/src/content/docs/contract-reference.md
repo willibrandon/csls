@@ -278,6 +278,9 @@ These public wire-contract types are generated from the compiled assemblies and 
 | `Csls.Debugger.Contracts.DebugGotoRequest` | Selects a managed thread and runtime-approved instruction-pointer destination. |
 | `Csls.Debugger.Contracts.DebugGotoTargetInfo` | Describes one runtime-approved destination for moving the current instruction pointer. |
 | `Csls.Debugger.Contracts.DebugGotoTargetsRequest` | Selects a current frame and source position for safe instruction-pointer destinations. |
+| `Csls.Debugger.Contracts.DebugHotReloadActiveStatement` | Maps one active old method instruction to its updated source span. |
+| `Csls.Debugger.Contracts.DebugHotReloadRequest` | Carries one compiler-produced managed Hot Reload module update. |
+| `Csls.Debugger.Contracts.DebugHotReloadResult` | Describes one successfully applied managed Hot Reload module update. |
 | `Csls.Debugger.Contracts.DebugInstructionBreakpointInfo` | Describes the current binding state of one managed-IL instruction breakpoint. |
 | `Csls.Debugger.Contracts.DebugInstructionBreakpointRequest` | Describes one requested managed-IL instruction breakpoint. |
 | `Csls.Debugger.Contracts.DebugInstructionBreakpointSetRequest` | Replaces every managed-IL instruction breakpoint in one debugger session. |

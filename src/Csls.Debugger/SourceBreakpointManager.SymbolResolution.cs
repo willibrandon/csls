@@ -52,6 +52,11 @@ internal sealed partial class SourceBreakpointManager
     private CorDebugLoadedModule? FindModule(string modulePath) => _modules.Values.FirstOrDefault(
         candidate => candidate.Path is not null && PathsEqual(candidate.Path, modulePath));
 
-    private CorDebugLoadedModule? FindModule(int moduleId) => _modules.Values.FirstOrDefault(
+    /// <summary>
+    /// Resolves a session-local module identifier to its retained runtime module.
+    /// </summary>
+    /// <param name="moduleId">The positive session-local module identifier.</param>
+    /// <returns>The retained module, or null when it is no longer loaded.</returns>
+    internal CorDebugLoadedModule? FindModule(int moduleId) => _modules.Values.FirstOrDefault(
         candidate => candidate.Id == moduleId);
 }
