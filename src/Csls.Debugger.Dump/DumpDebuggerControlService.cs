@@ -45,8 +45,9 @@ public sealed partial class DumpDebuggerControlService :
         finally
         {
             _ = _operationGate.Release();
-            _operationGate.Dispose();
         }
+
+        _operationGate.Dispose();
     }
 
     private async Task<T> InvokeAsync<T>(

@@ -11,11 +11,11 @@ public sealed partial class DumpDebuggerControlService
     /// <inheritdoc />
     public Task<IReadOnlyList<DebugThreadInfo>> GetThreadsAsync(
         CancellationToken cancellationToken) =>
-        InvokeAsync(
+        InvokeAsync<IReadOnlyList<DebugThreadInfo>>(
             () =>
             {
                 RequireOpen();
-                return (IReadOnlyList<DebugThreadInfo>)[.. _threads.Select(CreateThreadInfo)];
+                return [.. _threads.Select(CreateThreadInfo)];
             },
             cancellationToken);
 
@@ -68,11 +68,13 @@ public sealed partial class DumpDebuggerControlService
                     $"The dump thread exceeds the stack-frame limit of {MaximumFrames}.");
             }
 
-            var materialized = new List<DumpStackFrame>(runtimeFrames.Length);
-            foreach (ClrStackFrame runtimeFrame in runtimeFrames)
+            DumpStackFrame[] materialized =
+            [
+                .. runtimeFrames.Select(runtimeFrame =>
+                    new DumpStackFrame(_nextFrameId++, runtimeFrame))
+            ];
+            foreach (DumpStackFrame frame in materialized)
             {
-                var frame = new DumpStackFrame(_nextFrameId++, runtimeFrame);
-                materialized.Add(frame);
                 _framesById.Add(frame.Id, frame);
             }
 

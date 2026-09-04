@@ -82,34 +82,30 @@ public sealed partial class DumpDebuggerControlService
         }
 
         string? dacPath = ValidateDacPath(request.DacPath);
-        DataTarget? dataTarget = null;
-        ClrRuntime? runtime = null;
+        _dataTarget = DataTarget.LoadDump(
+            dumpPath,
+            new DataTargetOptions
+            {
+                SymbolPaths = [],
+                TraceSymbolRequests = false,
+                VerifyDacOnWindows = true,
+                UseLockFreeMemoryMapReader = Environment.Is64BitProcess
+            });
         try
         {
-            dataTarget = DataTarget.LoadDump(
-                dumpPath,
-                new DataTargetOptions
-                {
-                    SymbolPaths = [],
-                    TraceSymbolRequests = false,
-                    VerifyDacOnWindows = true,
-                    UseLockFreeMemoryMapReader = Environment.Is64BitProcess
-                });
-            if (request.RuntimeIndex >= dataTarget.ClrVersions.Length)
+            if (request.RuntimeIndex >= _dataTarget.ClrVersions.Length)
             {
                 throw new ArgumentOutOfRangeException(
                     nameof(request),
-                    $"The dump contains {dataTarget.ClrVersions.Length} managed runtime(s).");
+                    $"The dump contains {_dataTarget.ClrVersions.Length} managed runtime(s).");
             }
 
-            ClrInfo runtimeInfo = dataTarget.ClrVersions[request.RuntimeIndex];
-            runtime = dacPath is null
+            ClrInfo runtimeInfo = _dataTarget.ClrVersions[request.RuntimeIndex];
+            _runtime = dacPath is null
                 ? runtimeInfo.CreateRuntime()
                 : runtimeInfo.CreateRuntime(dacPath, ignoreMismatch: false);
-            IReadOnlyList<DumpThread> threads = CreateThreads(runtime);
-            IReadOnlyList<DebugModuleInfo> modules = CreateModules(runtime);
-            _dataTarget = dataTarget;
-            _runtime = runtime;
+            IReadOnlyList<DumpThread> threads = CreateThreads(_runtime);
+            IReadOnlyList<DebugModuleInfo> modules = CreateModules(_runtime);
             _threads = threads;
             _modules = modules;
             int? stoppedThreadId = threads.Count == 0 ? null : threads[0].Id;
@@ -117,21 +113,19 @@ public sealed partial class DumpDebuggerControlService
             {
                 State = DebugSessionState.Stopped,
                 ProcessName = Path.GetFileName(dumpPath),
-                ProcessId = dataTarget.DataReader.ProcessId > 0
-                    ? dataTarget.DataReader.ProcessId
+                ProcessId = _dataTarget.DataReader.ProcessId > 0
+                    ? _dataTarget.DataReader.ProcessId
                     : null,
                 StopReason = "dump",
                 StoppedThreadId = stoppedThreadId,
                 StopGeneration = 1
             };
-            dataTarget = null;
-            runtime = null;
             return _snapshot;
         }
-        finally
+        catch
         {
-            runtime?.Dispose();
-            dataTarget?.Dispose();
+            DisposeTarget();
+            throw;
         }
     }
 
