@@ -23,7 +23,9 @@ internal sealed partial class CorDebugDebuggee
         }
 
         ValidateGeneration(variablesReference, handle.Generation, generation);
-        nint value = DereferenceValue(handle.Pointer);
+        nint value = TryDereferenceAndUnboxValue(handle.Pointer, out nint inspectedValue)
+            ? inspectedValue
+            : throw new InvalidOperationException("A null managed value cannot be expanded.");
         try
         {
             if (ComAbi.TryQueryInterface(
@@ -62,7 +64,7 @@ internal sealed partial class CorDebugDebuggee
         }
     }
 
-    private static unsafe nint DereferenceValue(nint value)
+    private static nint DereferenceValue(nint value)
     {
         return TryDereferenceValue(value, out nint result)
             ? result

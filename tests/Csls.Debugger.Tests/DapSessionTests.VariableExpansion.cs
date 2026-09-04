@@ -9,7 +9,9 @@ public sealed partial class DapSessionTests
 {
     private async Task<JsonElement[]> ReadVariablesAsync(
         DapTestClient client,
-        int variablesReference)
+        int variablesReference,
+        int? start = null,
+        int? count = null)
     {
         int sequence = await client.SendRequestAsync(
             "variables",
@@ -17,6 +19,16 @@ public sealed partial class DapSessionTests
             {
                 writer.WriteStartObject();
                 writer.WriteNumber("variablesReference", variablesReference);
+                if (start is not null)
+                {
+                    writer.WriteNumber("start", start.Value);
+                }
+
+                if (count is not null)
+                {
+                    writer.WriteNumber("count", count.Value);
+                }
+
                 writer.WriteEndObject();
             },
             TestContext.CancellationToken).ConfigureAwait(false);

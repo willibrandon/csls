@@ -33,6 +33,11 @@ internal static class DebuggerFixture
         int? localNullable = number + 3;
         int? localEmptyNullable = null;
         (int Number, string Text) localTuple = (number, text);
+        object localBoxedTuple = (10, "ten");
+        (int, int, int, int, int, int, int, int, int) localLongTuple =
+            (1, 2, 3, 4, 5, 6, 7, 8, 9);
+        ValueTuple<int> localSingleTuple = new(1);
+        ValueTuple<int, int, int, int, int, int, int, int> localNonTuple = default;
         DebuggerFixtureMode localMode = DebuggerFixtureMode.Second;
         var localUnknownMode = (DebuggerFixtureMode)7;
         DebuggerFixtureOptions localOptions = DebuggerFixtureOptions.Read |
@@ -95,6 +100,10 @@ internal static class DebuggerFixture
         GC.KeepAlive(localNullable);
         GC.KeepAlive(localEmptyNullable);
         GC.KeepAlive(localTuple);
+        GC.KeepAlive(localBoxedTuple);
+        GC.KeepAlive(localLongTuple);
+        GC.KeepAlive(localSingleTuple);
+        GC.KeepAlive(localNonTuple);
         GC.KeepAlive(localMode);
         GC.KeepAlive(localUnknownMode);
         GC.KeepAlive(localOptions);

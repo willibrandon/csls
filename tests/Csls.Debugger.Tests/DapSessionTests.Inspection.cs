@@ -10,6 +10,8 @@ public sealed partial class DapSessionTests
 {
     private static readonly string[] s_variableInvalidationAreas = ["variables"];
     private static readonly string[] s_targetCodeInvalidationAreas = ["stacks", "variables"];
+    private static readonly string[] s_rawTupleFieldNames =
+        ["Item1", "Item2", "Item3", "Item4", "Item5", "Item6", "Item7", "Rest"];
 
     /// <summary>
     /// Pauses a live managed target, enumerates real runtime threads, and resumes execution.
@@ -313,7 +315,7 @@ public sealed partial class DapSessionTests
             Assert.AreEqual("null", localEmptyNullable.GetProperty("value").GetString());
             Assert.AreEqual("int?", localEmptyNullable.GetProperty("type").GetString());
             JsonElement localTuple = localsByName["localTuple"];
-            Assert.AreEqual("{(int, string)}", localTuple.GetProperty("value").GetString());
+            Assert.AreEqual("(42, \"answer\")", localTuple.GetProperty("value").GetString());
             Assert.AreEqual("(int, string)", localTuple.GetProperty("type").GetString());
             int tupleReference = localTuple.GetProperty("variablesReference").GetInt32();
             Assert.IsGreaterThan(0, tupleReference);
@@ -326,6 +328,70 @@ public sealed partial class DapSessionTests
             Assert.AreEqual(
                 "\"answer\"",
                 tupleFields["Item2"].GetProperty("value").GetString());
+            JsonElement localBoxedTuple = localsByName["localBoxedTuple"];
+            Assert.AreEqual(
+                "(10, \"ten\")",
+                localBoxedTuple.GetProperty("value").GetString());
+            Assert.AreEqual(
+                "(int, string)",
+                localBoxedTuple.GetProperty("type").GetString());
+            Assert.IsGreaterThan(
+                0,
+                localBoxedTuple.GetProperty("variablesReference").GetInt32());
+            JsonElement localLongTuple = localsByName["localLongTuple"];
+            Assert.AreEqual(
+                "(1, 2, 3, 4, 5, 6, 7, 8, 9)",
+                localLongTuple.GetProperty("value").GetString());
+            Assert.AreEqual(
+                "(int, int, int, int, int, int, int, int, int)",
+                localLongTuple.GetProperty("type").GetString());
+            int longTupleReference = localLongTuple
+                .GetProperty("variablesReference")
+                .GetInt32();
+            JsonElement[] longTuplePage = await ReadVariablesAsync(
+                client,
+                longTupleReference,
+                start: 7,
+                count: 2).ConfigureAwait(false);
+            Assert.HasCount(2, longTuplePage);
+            Assert.AreEqual("Item8", longTuplePage[0].GetProperty("name").GetString());
+            Assert.AreEqual("8", longTuplePage[0].GetProperty("value").GetString());
+            Assert.AreEqual(
+                "localLongTuple.Rest.Item1",
+                longTuplePage[0].GetProperty("evaluateName").GetString());
+            Assert.AreEqual("Item9", longTuplePage[1].GetProperty("name").GetString());
+            Assert.AreEqual("9", longTuplePage[1].GetProperty("value").GetString());
+            Assert.AreEqual(
+                "localLongTuple.Rest.Item2",
+                longTuplePage[1].GetProperty("evaluateName").GetString());
+            JsonElement[] longTupleChildren = await ReadVariablesAsync(
+                client,
+                longTupleReference).ConfigureAwait(false);
+            Assert.HasCount(10, longTupleChildren);
+            JsonElement rawTuple = longTupleChildren[^1];
+            Assert.AreEqual("Raw View", rawTuple.GetProperty("name").GetString());
+            int rawTupleReference = rawTuple.GetProperty("variablesReference").GetInt32();
+            Assert.IsGreaterThan(0, rawTupleReference);
+            string[] rawTupleFieldNames =
+            [
+                .. (await ReadVariablesAsync(client, rawTupleReference).ConfigureAwait(false))
+                    .Select(field => field.GetProperty("name").GetString()!)
+            ];
+            Assert.AreSequenceEqual(s_rawTupleFieldNames, rawTupleFieldNames);
+            JsonElement localSingleTuple = localsByName["localSingleTuple"];
+            Assert.AreEqual(
+                "{System.ValueTuple<int>}",
+                localSingleTuple.GetProperty("value").GetString());
+            Assert.AreEqual(
+                "System.ValueTuple<int>",
+                localSingleTuple.GetProperty("type").GetString());
+            JsonElement localNonTuple = localsByName["localNonTuple"];
+            Assert.AreEqual(
+                "{System.ValueTuple<int, int, int, int, int, int, int, int>}",
+                localNonTuple.GetProperty("value").GetString());
+            Assert.AreEqual(
+                "System.ValueTuple<int, int, int, int, int, int, int, int>",
+                localNonTuple.GetProperty("type").GetString());
             JsonElement localMode = localsByName["localMode"];
             Assert.AreEqual("Second", localMode.GetProperty("value").GetString());
             Assert.AreEqual(

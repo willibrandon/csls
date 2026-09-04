@@ -27,8 +27,9 @@ internal sealed partial class CorDebugDebuggee
     PEReader IManagedObjectExpansionServices.OpenRuntimeModule(nint module) =>
         OpenRuntimeModule(module);
 
-    ManagedValueDisplay IManagedObjectExpansionServices.FormatRuntimeValue(nint value) =>
-        FormatRuntimeValue(value);
+    ManagedValueDisplay IManagedObjectExpansionServices.FormatRuntimeValue(
+        nint value,
+        int debuggerDisplayDepth) => FormatRuntimeValue(value, debuggerDisplayDepth);
 
     ManagedValueDisplay IManagedDebuggerDisplayServices.FormatRuntimeValue(
         nint value,

@@ -19,8 +19,9 @@ internal interface IManagedObjectExpansionServices
     /// Formats one runtime value without implicit target-code execution.
     /// </summary>
     /// <param name="value">The retained ICorDebugValue pointer.</param>
+    /// <param name="debuggerDisplayDepth">The current debugger-display recursion depth.</param>
     /// <returns>The formatted value and exact runtime type.</returns>
-    ManagedValueDisplay FormatRuntimeValue(nint value);
+    ManagedValueDisplay FormatRuntimeValue(nint value, int debuggerDisplayDepth);
 
     /// <summary>
     /// Retains one expandable runtime value for the current stop generation.

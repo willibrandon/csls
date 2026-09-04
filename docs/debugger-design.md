@@ -484,6 +484,14 @@ loaded declaring module's metadata. It preserves generic arguments, array rank a
 live dimensions, tuple shape, and nullable underlying types. Nullable state and its
 contained value are read directly from the runtime value; presentation must not invoke
 `ToString`, properties, operators, or any other target code.
+
+Tuple presentation accepts only recursively compatible `System.ValueTuple` storage.
+Values and exact types are flattened across the eighth `Rest` argument without target
+execution. Expansion exposes logical `Item8` and later rows with their physical
+`Rest.Item1` evaluate paths, applies paging to the logical sequence, and retains a
+generation-owned Raw View for the transformed storage layout. Arity-one and malformed
+arity-eight ValueTuple values remain ordinary structs.
+
 Enum presentation follows the same rule: the engine reads `value__`, matches metadata
 constants using the exact underlying width, decomposes `[Flags]` deterministically,
 and preserves the numeric representation when no symbolic name exists.

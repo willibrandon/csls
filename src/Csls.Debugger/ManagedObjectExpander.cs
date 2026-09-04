@@ -16,15 +16,21 @@ internal sealed class ManagedObjectExpander
     private const int MaximumExpandableValueCount = 64 * 1024;
     private const int MaximumTypeHierarchyDepth = 256;
     private readonly IManagedObjectExpansionServices _services;
+    private readonly ManagedTuplePresenter _tuplePresenter;
 
     /// <summary>
     /// Creates an object expander over one generation-owned runtime service.
     /// </summary>
     /// <param name="services">The runtime operations used to inspect and retain values.</param>
-    internal ManagedObjectExpander(IManagedObjectExpansionServices services)
+    /// <param name="tuplePresenter">The owned tuple-specific presentation component.</param>
+    internal ManagedObjectExpander(
+        IManagedObjectExpansionServices services,
+        ManagedTuplePresenter tuplePresenter)
     {
         ArgumentNullException.ThrowIfNull(services);
+        ArgumentNullException.ThrowIfNull(tuplePresenter);
         _services = services;
+        _tuplePresenter = tuplePresenter;
     }
 
     /// <summary>
@@ -47,6 +53,19 @@ internal sealed class ManagedObjectExpander
         int count,
         ManagedValueView view)
     {
+        if (view == ManagedValueView.Default &&
+            _tuplePresenter.TryExpand(
+                value,
+                parentEvaluateName,
+                frameId,
+                generation,
+                start,
+                count,
+                out List<DebugVariableInfo> tupleResult))
+        {
+            return tupleResult;
+        }
+
         var path = new HashSet<ulong>();
         ulong address = TryGetManagedValueAddress(value);
         if (address != 0)
@@ -466,7 +485,9 @@ internal sealed class ManagedObjectExpander
         EnsureExpandableValueLimit(state.VisibleIndex, additionalCount: 1);
         if (state.VisibleIndex >= start && !IsVariablePageFull(result, count))
         {
-            ManagedValueDisplay display = _services.FormatRuntimeValue(value);
+            ManagedValueDisplay display = _services.FormatRuntimeValue(
+                value,
+                debuggerDisplayDepth: 0);
             ManagedValueReferences references = _services.RetainValue(
                 value,
                 generation,
@@ -502,7 +523,9 @@ internal sealed class ManagedObjectExpander
             checked((uint)MetadataTokens.GetToken(fieldHandle)));
         try
         {
-            ManagedValueDisplay display = _services.FormatRuntimeValue(fieldValue);
+            ManagedValueDisplay display = _services.FormatRuntimeValue(
+                fieldValue,
+                debuggerDisplayDepth: 0);
             string name = metadata.GetString(field.Name);
             string? evaluateName = ManagedExpressionName.CreateMember(
                 parentEvaluateName,

@@ -152,7 +152,7 @@ internal sealed partial class CorDebugDebuggee
         nint dereferenced = 0;
         try
         {
-            if (!TryDereferenceValue(value, out dereferenced))
+            if (!TryDereferenceAndUnboxValue(value, out dereferenced))
             {
                 return false;
             }

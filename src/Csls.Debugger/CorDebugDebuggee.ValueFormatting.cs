@@ -71,6 +71,16 @@ internal sealed partial class CorDebugDebuggee
                     FormatNullableValue(inspectedValue, exactType),
                     type);
             }
+            else if (elementType == 0x11 &&
+                hasInspectedValue &&
+                _tuplePresenter.TryFormatValue(
+                    inspectedValue,
+                    exactType,
+                    debuggerDisplayDepth,
+                    out string tupleDisplay))
+            {
+                ordinary = new ManagedValueDisplay(tupleDisplay, type);
+            }
             else
             {
                 string display = elementType switch
@@ -172,17 +182,17 @@ internal sealed partial class CorDebugDebuggee
             TypeDefinitionHandle typeHandle = MetadataTokens.TypeDefinitionHandle(
                 checked((int)(typeToken & 0x00FFFFFF)));
             string name = GetMetadataTypeName(metadata, typeHandle);
+            if (name.StartsWith("System.ValueTuple`", StringComparison.Ordinal) &&
+                _tuplePresenter.TryFormatType(type, depth, out string tupleType))
+            {
+                return tupleType;
+            }
+
             List<string> arguments = FormatRuntimeTypeArguments(type, depth);
             if (string.Equals(name, "System.Nullable`1", StringComparison.Ordinal) &&
                 arguments.Count == 1)
             {
                 return $"{arguments[0]}?";
-            }
-
-            if (name.StartsWith("System.ValueTuple`", StringComparison.Ordinal) &&
-                arguments.Count > 0)
-            {
-                return $"({string.Join(", ", arguments)})";
             }
 
             string displayName = RemoveGenericArity(name);
@@ -208,6 +218,9 @@ internal sealed partial class CorDebugDebuggee
             }
         }
     }
+
+    private string FormatTupleElementType(nint type, int depth) =>
+        FormatRuntimeType(type, depth, out _);
 
     private unsafe List<string> FormatRuntimeTypeArguments(nint type, int depth)
     {

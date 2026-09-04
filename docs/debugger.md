@@ -237,6 +237,10 @@ Immediate value presentation uses the exact CoreCLR type plus the declaring modu
 metadata. Generic types, arrays, tuples, and nullable value types therefore retain
 their concrete type arguments; arrays include their live dimensions and nullable
 values display either their contained value or `null` without target execution.
+Compatible `System.ValueTuple` values display their element values directly. Long
+tuples flatten their physical `Rest` storage into paged `Item8` and later children while
+preserving physical evaluate paths and an explicit Raw View. Malformed ValueTuple
+shapes remain ordinary structs.
 Enums use their actual underlying runtime storage and metadata constants, including
 symbolic decomposition for `[Flags]`; unnamed values retain their numeric display.
 `decimal` values are reconstructed from their 96-bit integer, scale, and sign fields
