@@ -424,8 +424,9 @@ bind against the exact runtime type, and open generic proxy definitions close ov
 runtime arguments only when arity matches. Explicitly constructed proxy identities
 recursively materialize loaded generic and array arguments; framework facade identities
 follow exact, validated metadata type forwarders rather than assembly-name guesses.
-A successful construction presents the
-proxy's public members and retains the original object as Raw View in the replacement
+A successful construction presents public and protected proxy fields plus non-public
+fields intentionally surfaced through `DebuggerBrowsableAttribute`, and retains the
+original object as Raw View in the replacement
 generation. Metadata, resolution, constructor, or target exceptions preserve ordinary
 expansion. DAP and the terminal may request debugger presentation directly. MCP keeps
 `debug_variables_get` side-effect-free and exposes proxy construction only through the

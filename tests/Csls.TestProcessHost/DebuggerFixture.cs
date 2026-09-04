@@ -32,6 +32,7 @@ internal static class DebuggerFixture
         var localDisplay = new DebuggerDisplayFixture();
         var localDisplays = new DebuggerDisplayContainerFixture();
         var localProxy = new DebuggerTypeProxyFixture();
+        var localProxyProjection = new DebuggerTypeProxyFixtureProxyDerived(localProxy);
         var localGenericProxy = new GenericDebuggerTypeProxyFixture<int>(49);
         var localClosedGenericProxy = new ClosedGenericDebuggerTypeProxyFixture();
         var localInheritedProxy = new InheritedDebuggerTypeProxyFixture();
@@ -126,6 +127,7 @@ internal static class DebuggerFixture
         GC.KeepAlive(localDisplay);
         GC.KeepAlive(localDisplays);
         GC.KeepAlive(localProxy);
+        GC.KeepAlive(localProxyProjection);
         GC.KeepAlive(localGenericProxy);
         GC.KeepAlive(localClosedGenericProxy);
         GC.KeepAlive(localInheritedProxy);

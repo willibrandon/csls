@@ -22,13 +22,30 @@ internal static class ManagedDebuggerAttributeReader
     /// <returns>The validated browsing policy, or the normal collapsed policy.</returns>
     internal static ManagedDebuggerBrowsableState GetBrowsableState(
         MetadataReader metadata,
-        FieldDefinition field)
+        FieldDefinition field) => TryGetBrowsableState(
+            metadata,
+            field.GetCustomAttributes(),
+            out ManagedDebuggerBrowsableState state)
+        ? state
+        : ManagedDebuggerBrowsableState.Collapsed;
+
+    /// <summary>
+    /// Tries to read one valid debugger browsing policy from a metadata attribute set.
+    /// </summary>
+    /// <param name="metadata">The metadata containing the custom attributes.</param>
+    /// <param name="attributes">The custom attributes to inspect.</param>
+    /// <param name="state">Receives the validated browsing policy.</param>
+    /// <returns>True when a valid debugger browsing policy was declared.</returns>
+    internal static bool TryGetBrowsableState(
+        MetadataReader metadata,
+        CustomAttributeHandleCollection attributes,
+        out ManagedDebuggerBrowsableState state)
     {
+        state = ManagedDebuggerBrowsableState.Collapsed;
         try
         {
-            foreach (CustomAttribute attribute in field
-                .GetCustomAttributes()
-                .Select(handle => metadata.GetCustomAttribute(handle)))
+            foreach (CustomAttribute attribute in attributes.Select(
+                handle => metadata.GetCustomAttribute(handle)))
             {
                 if (!string.Equals(
                     GetAttributeTypeName(metadata, attribute),
@@ -38,15 +55,22 @@ internal static class ManagedDebuggerAttributeReader
                     continue;
                 }
 
-                return ReadBrowsableState(metadata, attribute);
+                ManagedDebuggerBrowsableState? candidate = ReadBrowsableState(
+                    metadata,
+                    attribute);
+                if (candidate is ManagedDebuggerBrowsableState validState)
+                {
+                    state = validState;
+                    return true;
+                }
             }
         }
         catch (BadImageFormatException)
         {
-            return ManagedDebuggerBrowsableState.Collapsed;
+            return false;
         }
 
-        return ManagedDebuggerBrowsableState.Collapsed;
+        return false;
     }
 
     /// <summary>
@@ -159,7 +183,7 @@ internal static class ManagedDebuggerAttributeReader
         }
     }
 
-    private static ManagedDebuggerBrowsableState ReadBrowsableState(
+    private static ManagedDebuggerBrowsableState? ReadBrowsableState(
         MetadataReader metadata,
         CustomAttribute attribute)
     {
@@ -168,25 +192,26 @@ internal static class ManagedDebuggerAttributeReader
             BlobReader value = metadata.GetBlobReader(attribute.Value);
             if (value.RemainingBytes != 8 || value.ReadUInt16() != 1)
             {
-                return ManagedDebuggerBrowsableState.Collapsed;
+                return null;
             }
 
             int state = value.ReadInt32();
             if (value.ReadUInt16() != 0 || value.RemainingBytes != 0)
             {
-                return ManagedDebuggerBrowsableState.Collapsed;
+                return null;
             }
 
             return state switch
             {
                 0 => ManagedDebuggerBrowsableState.Never,
+                2 => ManagedDebuggerBrowsableState.Collapsed,
                 3 => ManagedDebuggerBrowsableState.RootHidden,
-                _ => ManagedDebuggerBrowsableState.Collapsed
+                _ => null
             };
         }
         catch (BadImageFormatException)
         {
-            return ManagedDebuggerBrowsableState.Collapsed;
+            return null;
         }
     }
 

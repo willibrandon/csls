@@ -264,16 +264,23 @@ internal sealed class ManagedObjectExpander
                 continue;
             }
 
+            ManagedDebuggerBrowsableState declaredBrowsingState =
+                ManagedDebuggerBrowsableState.Collapsed;
+            bool hasBrowsingState = view != ManagedValueView.Raw &&
+                ManagedDebuggerAttributeReader.TryGetBrowsableState(
+                    metadata,
+                    field.GetCustomAttributes(),
+                    out declaredBrowsingState);
             if (proxyFieldsOnly &&
-                (field.Attributes & FieldAttributes.FieldAccessMask) !=
-                    FieldAttributes.Public)
+                !IsVisibleProxyField(field.Attributes) &&
+                !hasBrowsingState)
             {
                 continue;
             }
 
             ManagedDebuggerBrowsableState browsingState = view == ManagedValueView.Raw
                 ? ManagedDebuggerBrowsableState.Collapsed
-                : ManagedDebuggerAttributeReader.GetBrowsableState(metadata, field);
+                : declaredBrowsingState;
             if (browsingState == ManagedDebuggerBrowsableState.Never)
             {
                 state.WasTransformed = true;
@@ -623,6 +630,14 @@ internal sealed class ManagedObjectExpander
     private static bool IsVariablePageFull(
         List<DebugVariableInfo> result,
         int count) => count > 0 && result.Count >= count;
+
+    private static bool IsVisibleProxyField(FieldAttributes attributes)
+    {
+        FieldAttributes accessibility = attributes & FieldAttributes.FieldAccessMask;
+        return accessibility is FieldAttributes.Public or
+            FieldAttributes.Family or
+            FieldAttributes.FamORAssem;
+    }
 
     private static void EnsureExpandableValueLimit(int visibleIndex, int additionalCount)
     {

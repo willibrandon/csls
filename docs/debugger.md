@@ -308,7 +308,8 @@ match. Explicitly constructed proxy identities recursively resolve loaded generi
 array arguments, including framework types reached through validated type forwarders.
 The debugger invokes the proxy's single one-argument instance constructor,
 including a non-public constructor, through the guarded evaluator. Successful
-construction exposes public proxy fields with `DebuggerBrowsableAttribute` transforms
+construction exposes public and protected proxy fields plus explicitly attributed
+non-public fields with `DebuggerBrowsableAttribute` transforms
 and appends a virtual Raw View of the original object. Malformed declarations,
 unavailable constructors, generic arity mismatches, and constructor exceptions preserve
 ordinary expansion. Because a proxy constructor is arbitrary target code, construction
