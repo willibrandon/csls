@@ -53,6 +53,13 @@ interface VariablesExchange {
   readonly variables: readonly Variable[];
 }
 
+interface ScopesResponse {
+  readonly request_seq: number;
+  readonly body: {
+    readonly scopes: readonly { readonly name: string; readonly variablesReference: number }[];
+  };
+}
+
 /** Observes actual VS Code requests without issuing or replacing adapter operations. */
 class VariablesObserver {
   readonly requests = new Map<number, VariablesRequest>();
@@ -114,6 +121,51 @@ class VariablesObserver {
 
   assertNoFailures(): void {
     assert.deepEqual(this.failures, [], "The real Variables view must not request stale handles.");
+  }
+
+  async waitForRefreshedSnapshot(
+    resolution: VariablesExchange,
+    snapshot: Variable,
+    expandedScopes: readonly string[],
+  ): Promise<void> {
+    // Invalidation refreshes the old tree and separately refocuses the refreshed
+    // stack. Only the latter projection belongs to the replacement tree input.
+    let scopes: ScopesResponse | undefined;
+    await waitUntil(() => {
+      this.assertNoFailures();
+      const stackIndex = this.inspectionMessages.findIndex((message) =>
+        isMessage(message, "response", "stackTrace") && message["success"] === true &&
+        Number(message["request_seq"]) > resolution.request.seq);
+      if (stackIndex < 0) {
+        return false;
+      }
+
+      const request = this.inspectionMessages.slice(stackIndex + 1)
+        .find((message) => isMessage(message, "request", "scopes"));
+      const response = request === undefined ? undefined : this.inspectionMessages.find((message) =>
+        isMessage(message, "response", "scopes") && message["success"] === true &&
+        message["request_seq"] === request["seq"]);
+      scopes = response as unknown as ScopesResponse | undefined;
+      return scopes !== undefined;
+    }, () => "The invalidated stack did not produce its replacement Variables-view scopes.");
+    assert(scopes !== undefined);
+    const refreshedScopes = scopes;
+    assert(expandedScopes.includes("Locals"), "The test's locals must remain expanded across refresh.");
+    const projections = await Promise.all(expandedScopes.map(async (name) => {
+      const scope = refreshedScopes.body.scopes.find((candidate) => candidate.name === name);
+      assert(scope !== undefined, `The refreshed frame must retain its ${name} scope.`);
+      return this.waitFor((exchange) => exchange.request.seq > refreshedScopes.request_seq &&
+        exchange.request.arguments.variablesReference === scope.variablesReference,
+      `The Variables view did not load the refreshed ${name} scope.`);
+    }));
+    const locals = projections[expandedScopes.indexOf("Locals")]!;
+    assert.deepEqual(locals.variables.map((variable) => variable.name), ["values"]);
+    const enumerable = locals.variables[0]!;
+    const projection = await this.waitFor((exchange) => exchange.request.seq > locals.request.seq &&
+      exchange.request.arguments.variablesReference === enumerable.variablesReference,
+    "The rebuilt Variables view did not rediscover its materialized Results View.");
+    assert.deepEqual(projection.variables, [snapshot],
+      "The replacement tree input must retain the same nonlazy Results View snapshot.");
   }
 
   private captureInspectionMessage(message: unknown, type: "request" | "response"): void {
@@ -207,6 +259,7 @@ export async function run(): Promise<void> {
     assert.deepEqual(discovery.variables.map((variable) => variable.name), ["Results View"]);
     const lazy = discovery.variables[0]!;
     assert.equal(lazy.presentationHint?.lazy, true);
+    const expandedScopes = await ui.expandedScopeNames();
     await ui.resolveResultsView();
     const resolution = await observer.waitFor(
       (exchange) => exchange.request.arguments.variablesReference === lazy.variablesReference,
@@ -220,6 +273,20 @@ export async function run(): Promise<void> {
     assert.notEqual(snapshot.variablesReference, lazy.variablesReference);
     assert.equal(snapshot.indexedVariables, 205);
     assert.equal(snapshot.namedVariables, 0);
+
+    // Wait for the replacement stack's real projection, not the earlier lazy
+    // response. The awaited read-only reply follows its queued response handlers
+    // and their microtasks; the browser frame then commits the refreshed tree.
+    await observer.waitForRefreshedSnapshot(resolution, snapshot, expandedScopes);
+    const activeFrame = vscode.debug.activeStackItem;
+    assert(activeFrame instanceof vscode.DebugStackFrame);
+    assert(session !== undefined);
+    const threads = await session.customRequest("threads") as {
+      readonly threads: readonly { readonly id: number; readonly name: string }[];
+    };
+    assert(threads.threads.some((thread) => thread.id === activeFrame.threadId && thread.id > 0),
+      "The protocol dispatch barrier must retain the stopped target's focused thread.");
+    await ui.waitForRenderedProjection(timeoutMilliseconds);
 
     // The resolved row must survive invalidation. Expanding it builds VS Code's
     // real virtual chunks, whose expansion must use the adopted snapshot handle.

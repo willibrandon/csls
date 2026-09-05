@@ -100,8 +100,9 @@ destination storage, with array indices evaluated before the write.
 Ref-like copies and member writes into register-backed structs are rejected. Whole
 register-backed values use the runtime's write operation and report its restrictions.
 Validation failures preserve existing Results View snapshots; an attempted runtime
-write retires them, including when the runtime reports a write failure. Editors and
-MCP clients are notified to refresh affected variable views after a write attempt.
+write retires them, including when the runtime reports a write failure. DAP clients
+that advertise `supportsInvalidatedEvent` receive variable refresh events after a
+write attempt. MCP resource subscriptions receive change notifications.
 
 String, call, and construction expressions can also supply an assignment value through
 explicitly authorized target execution. The debugger then reacquires the destination

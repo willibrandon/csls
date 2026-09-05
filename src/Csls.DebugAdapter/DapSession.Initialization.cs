@@ -22,6 +22,9 @@ internal sealed partial class DapSession
         _clientSupportsVariablePaging = request.Arguments.ValueKind == JsonValueKind.Object &&
             request.Arguments.TryGetProperty("supportsVariablePaging", out JsonElement paging) &&
             paging.ValueKind == JsonValueKind.True;
+        _clientSupportsInvalidatedEvent = request.Arguments.ValueKind == JsonValueKind.Object &&
+            request.Arguments.TryGetProperty("supportsInvalidatedEvent", out JsonElement invalidated) &&
+            invalidated.ValueKind == JsonValueKind.True;
         _state = DapSessionState.Initialized;
         await _writer.WriteResponseAsync(
             request,
@@ -65,7 +68,6 @@ internal sealed partial class DapSession
                 writer.WriteBoolean("supportsCompletionsRequest", true);
                 writer.WriteBoolean("supportsSetVariable", true);
                 writer.WriteBoolean("supportsSetExpression", true);
-                writer.WriteBoolean("supportsInvalidatedEvent", true);
                 writer.WriteBoolean("supportsCancelRequest", true);
                 writer.WriteBoolean("supportsReadMemoryRequest", true);
                 writer.WriteBoolean("supportsDisassembleRequest", true);

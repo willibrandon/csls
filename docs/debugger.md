@@ -393,9 +393,10 @@ Ref-like struct copies and individual field writes into register-backed structs 
 rejected. Whole register-backed values use the runtime's original value home and
 report its write restrictions. Validation failures occur before snapshot retirement;
 an attempted runtime write retires existing Results View snapshots even if the native
-write reports an error. DAP and MCP variable invalidation follows the attempted write
-even when no assignment result can be returned; the stop generation remains unchanged
-unless target code ran.
+write reports an error. DAP variable invalidation is sent to clients that advertise
+`supportsInvalidatedEvent`; MCP resource subscriptions receive change notifications.
+These notifications follow the attempted write even when no assignment result can be
+returned. The stop generation remains unchanged unless target code ran.
 
 Assemblies loaded from PE and Portable PDB byte arrays receive the same source
 breakpoint, stack, local-name, stepping, goto, disassembly, and managed-IL

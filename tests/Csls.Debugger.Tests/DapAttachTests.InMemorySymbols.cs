@@ -162,16 +162,16 @@ public sealed partial class DapAttachTests
             "pause",
             WriteEmptyObject,
             TestContext.CancellationToken).ConfigureAwait(false);
+        JsonDocument pause = await client
+            .ReadMessageAsync(TestContext.CancellationToken)
+            .ConfigureAwait(false);
+        AssertResponse(pause.RootElement, pauseSequence, "pause");
         JsonDocument stopped = await client
             .ReadMessageAsync(TestContext.CancellationToken)
             .ConfigureAwait(false);
         AssertEvent(stopped.RootElement, "stopped");
         int threadId = stopped.RootElement.GetProperty("body")
             .GetProperty("threadId").GetInt32();
-        JsonDocument pause = await client
-            .ReadMessageAsync(TestContext.CancellationToken)
-            .ConfigureAwait(false);
-        AssertResponse(pause.RootElement, pauseSequence, "pause");
         return (threadId, stopped, pause);
     }
 

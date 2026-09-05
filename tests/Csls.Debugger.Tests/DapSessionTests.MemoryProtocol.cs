@@ -31,14 +31,17 @@ public sealed partial class DapSessionTests
             "pause",
             WriteEmptyObject,
             TestContext.CancellationToken).ConfigureAwait(false);
-        using JsonDocument stopped = await client
-            .ReadMessageAsync(TestContext.CancellationToken)
-            .ConfigureAwait(false);
-        AssertEvent(stopped.RootElement, "stopped");
-        using JsonDocument response = await client
-            .ReadMessageAsync(TestContext.CancellationToken)
+        using JsonDocument response = await ReadExecutionControlMessageAsync(client)
             .ConfigureAwait(false);
         AssertResponse(response.RootElement, sequence, "pause", success: true);
+        using JsonDocument stopped = await ReadExecutionControlMessageAsync(client)
+            .ConfigureAwait(false);
+        AssertEvent(stopped.RootElement, "stopped");
+        Assert.AreEqual("pause", stopped.RootElement.GetProperty("body").GetProperty("reason").GetString());
+        Assert.IsTrue(stopped.RootElement.GetProperty("body").GetProperty("allThreadsStopped").GetBoolean());
+        Assert.IsGreaterThan(
+            response.RootElement.GetProperty("seq").GetInt32(),
+            stopped.RootElement.GetProperty("seq").GetInt32());
     }
 
     private async Task ContinueAndPauseAsync(DapTestClient client)
@@ -47,12 +50,10 @@ public sealed partial class DapSessionTests
             "continue",
             WriteEmptyObject,
             TestContext.CancellationToken).ConfigureAwait(false);
-        using JsonDocument continued = await client
-            .ReadMessageAsync(TestContext.CancellationToken)
+        using JsonDocument continued = await ReadExecutionControlMessageAsync(client)
             .ConfigureAwait(false);
         AssertEvent(continued.RootElement, "continued");
-        using JsonDocument response = await client
-            .ReadMessageAsync(TestContext.CancellationToken)
+        using JsonDocument response = await ReadExecutionControlMessageAsync(client)
             .ConfigureAwait(false);
         AssertResponse(response.RootElement, sequence, "continue", success: true);
         await PauseFixtureAsync(client).ConfigureAwait(false);
@@ -64,29 +65,45 @@ public sealed partial class DapSessionTests
             "continue",
             WriteEmptyObject,
             TestContext.CancellationToken).ConfigureAwait(false);
-        using JsonDocument continued = await client
-            .ReadMessageAsync(TestContext.CancellationToken)
+        using JsonDocument continued = await ReadExecutionControlMessageAsync(client)
             .ConfigureAwait(false);
         AssertEvent(continued.RootElement, "continued");
-        using JsonDocument response = await client
-            .ReadMessageAsync(TestContext.CancellationToken)
+        using JsonDocument response = await ReadExecutionControlMessageAsync(client)
             .ConfigureAwait(false);
         AssertResponse(response.RootElement, sequence, "continue", success: true);
         await File.WriteAllTextAsync(
             waitPath,
             string.Empty,
             TestContext.CancellationToken).ConfigureAwait(false);
-        using JsonDocument exited = await client
-            .ReadMessageAsync(TestContext.CancellationToken)
+        using JsonDocument exited = await ReadExecutionControlMessageAsync(client)
             .ConfigureAwait(false);
         AssertEvent(exited.RootElement, "exited");
-        using JsonDocument terminated = await client
-            .ReadMessageAsync(TestContext.CancellationToken)
+        using JsonDocument terminated = await ReadExecutionControlMessageAsync(client)
             .ConfigureAwait(false);
         AssertEvent(terminated.RootElement, "terminated");
         Assert.AreEqual(
             0,
             await client.WaitForExitAsync(TestContext.CancellationToken).ConfigureAwait(false));
+    }
+
+    private async Task<JsonDocument> ReadExecutionControlMessageAsync(DapTestClient client)
+    {
+        while (true)
+        {
+            JsonDocument message = await client.ReadMessageAsync(TestContext.CancellationToken)
+                .ConfigureAwait(false);
+            JsonElement root = message.RootElement;
+            if (root.GetProperty("type").GetString() != "event" ||
+                root.GetProperty("event").GetString() != "output")
+            {
+                return message;
+            }
+
+            using (message)
+            {
+                TestContext.WriteLine($"Output during execution control: {root.GetRawText()}");
+            }
+        }
     }
 
     private static void WriteMemoryArguments(

@@ -119,7 +119,12 @@ is never substituted with a frame that merely has the same name or stack index.
 
 Manual pause uses `ICorDebugController.Stop`; managed stacks use the current
 `ICorDebugThread3`/`ICorDebugStackWalk` contract rather than the legacy active-chain
-view, which omits managed callers across native transitions. Frame COM references
+view, which omits managed callers across native transitions. DAP acknowledges a
+successful pause before publishing its corresponding stopped event. Target output
+may arrive between these protocol messages. Stop publication and target exit share
+serialization: an exit supersedes an unpublished pause or go-to stop. An external
+exit also closes an idle paused adapter session. Protocol sequence numbers are
+allocated inside the write gate, in transport order. Frame COM references
 are retained only for their stop generation and released before execution resumes.
 Logical frame identifiers are allocated monotonically and never reassigned to a
 different physical frame. Stack paging bounds
@@ -505,6 +510,9 @@ advances immediately before snapshot retirement and each native write attempt.
 Adapters compare it independently of successful responses and stop generations, so
 failed writes and post-write formatting failures still notify clients to refresh.
 Rejected validation leaves both the revision and existing snapshots unchanged.
+DAP clients request invalidation events through the `supportsInvalidatedEvent`
+initialize argument. This is a client capability, not a server capability; clients
+that omit it or set it to false receive assignment responses without those events.
 
 Whole-value struct copies require existing unboxed values with identical loaded
 runtime type IDs and equal bounded sizes. The engine captures at most 1 MiB before

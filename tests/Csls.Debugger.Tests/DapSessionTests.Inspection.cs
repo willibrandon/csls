@@ -93,6 +93,10 @@ public sealed partial class DapSessionTests
                 "pause",
                 WriteEmptyObject,
                 TestContext.CancellationToken).ConfigureAwait(false);
+            using JsonDocument pause = await client
+                .ReadMessageAsync(TestContext.CancellationToken)
+                .ConfigureAwait(false);
+            AssertResponse(pause.RootElement, pauseSequence, "pause", success: true);
             using JsonDocument stopped = await client
                 .ReadMessageAsync(TestContext.CancellationToken)
                 .ConfigureAwait(false);
@@ -102,10 +106,6 @@ public sealed partial class DapSessionTests
                 stopped.RootElement.GetProperty("body").GetProperty("reason").GetString());
             Assert.IsTrue(
                 stopped.RootElement.GetProperty("body").GetProperty("allThreadsStopped").GetBoolean());
-            using JsonDocument pause = await client
-                .ReadMessageAsync(TestContext.CancellationToken)
-                .ConfigureAwait(false);
-            AssertResponse(pause.RootElement, pauseSequence, "pause", success: true);
 
             int threadsSequence = await client.SendRequestAsync(
                 "threads",
@@ -755,14 +755,14 @@ public sealed partial class DapSessionTests
                 "pause",
                 WriteEmptyObject,
                 TestContext.CancellationToken).ConfigureAwait(false);
-            using JsonDocument secondStopped = await client
-                .ReadMessageAsync(TestContext.CancellationToken)
-                .ConfigureAwait(false);
-            AssertEvent(secondStopped.RootElement, "stopped");
             using JsonDocument secondPause = await client
                 .ReadMessageAsync(TestContext.CancellationToken)
                 .ConfigureAwait(false);
             AssertResponse(secondPause.RootElement, secondPauseSequence, "pause", success: true);
+            using JsonDocument secondStopped = await client
+                .ReadMessageAsync(TestContext.CancellationToken)
+                .ConfigureAwait(false);
+            AssertEvent(secondStopped.RootElement, "stopped");
 
             int staleVariablesSequence = await client.SendRequestAsync(
                 "variables",

@@ -88,7 +88,7 @@ internal sealed partial class DapSession
     }
 
     private ValueTask WriteStackVariablesInvalidatedAsync(
-        CancellationToken cancellationToken) => _writer.WriteEventAsync(
+        CancellationToken cancellationToken) => _clientSupportsInvalidatedEvent ? _writer.WriteEventAsync(
             "invalidated",
             static writer =>
             {
@@ -99,7 +99,7 @@ internal sealed partial class DapSession
                 writer.WriteEndArray();
                 writer.WriteEndObject();
             },
-            cancellationToken);
+            cancellationToken) : ValueTask.CompletedTask;
 
     private void SignalCancelableResponseReady()
     {

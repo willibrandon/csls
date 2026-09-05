@@ -45,6 +45,27 @@ export class ResultsViewUi {
     await this.row(/^Results View, value /).locator(".lazy-button").click();
   }
 
+  async expandedScopeNames(): Promise<readonly string[]> {
+    return this.tree.locator('[role="treeitem"][aria-level="1"][aria-expanded="true"]')
+      .evaluateAll((rows) => rows.map((row) => row.getAttribute("aria-label") ?? "")
+        .filter((name) => name.startsWith("Scope ")).map((name) => name.slice("Scope ".length)));
+  }
+
+  async waitForRenderedProjection(timeout: number): Promise<void> {
+    // The caller first awaits the refreshed projection and a protocol dispatch
+    // barrier. Observe the subsequent renderer commit before using its rows.
+    await this.tree.evaluate((_tree, deadlineMilliseconds) => new Promise<void>((resolve, reject) => {
+      const frame = requestAnimationFrame(() => {
+        clearTimeout(deadline);
+        resolve();
+      });
+      const deadline = setTimeout(() => {
+        cancelAnimationFrame(frame);
+        reject(new Error("The Variables view did not commit the refreshed projection."));
+      }, deadlineMilliseconds);
+    }), timeout);
+  }
+
   async expandSnapshot(): Promise<void> {
     const row = this.row(/^Results View, value /);
     await row.locator(".expression:not(.lazy)").waitFor({ state: "visible" });

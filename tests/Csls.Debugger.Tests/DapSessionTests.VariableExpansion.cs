@@ -11,6 +11,7 @@ public sealed partial class DapSessionTests
     {
         writer.WriteStartObject();
         writer.WriteBoolean("supportsVariablePaging", true);
+        writer.WriteBoolean("supportsInvalidatedEvent", true);
         writer.WriteEndObject();
     }
 

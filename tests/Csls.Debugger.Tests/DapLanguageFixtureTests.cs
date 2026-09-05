@@ -418,9 +418,7 @@ public sealed partial class DapSessionTests
         string waitPath,
         bool suppressJitOptimizations = false)
     {
-        int initializeSequence = await client.SendRequestAsync(
-            "initialize",
-            WriteEmptyObject,
+        int initializeSequence = await client.SendInitializeRequestAsync(
             TestContext.CancellationToken).ConfigureAwait(false);
         using JsonDocument initialize = await client
             .ReadMessageAsync(TestContext.CancellationToken)

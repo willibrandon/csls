@@ -154,7 +154,7 @@ internal sealed partial class DapSession
     private ValueTask WriteAssignmentInvalidationAsync(
         bool targetCodeExecuted,
         CancellationToken cancellationToken) =>
-        _writer.WriteEventAsync(
+        _clientSupportsInvalidatedEvent ? _writer.WriteEventAsync(
             "invalidated",
             writer =>
             {
@@ -169,5 +169,5 @@ internal sealed partial class DapSession
                 writer.WriteEndArray();
                 writer.WriteEndObject();
             },
-            cancellationToken);
+            cancellationToken) : ValueTask.CompletedTask;
 }

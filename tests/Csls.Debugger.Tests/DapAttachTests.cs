@@ -84,6 +84,10 @@ public sealed partial class DapAttachTests
                 "pause",
                 WriteEmptyObject,
                 TestContext.CancellationToken).ConfigureAwait(false);
+            using JsonDocument pause = await client
+                .ReadMessageAsync(TestContext.CancellationToken)
+                .ConfigureAwait(false);
+            AssertResponse(pause.RootElement, pauseSequence, "pause");
             using JsonDocument stopped = await client
                 .ReadMessageAsync(TestContext.CancellationToken)
                 .ConfigureAwait(false);
@@ -91,10 +95,6 @@ public sealed partial class DapAttachTests
             Assert.AreEqual(
                 "pause",
                 stopped.RootElement.GetProperty("body").GetProperty("reason").GetString());
-            using JsonDocument pause = await client
-                .ReadMessageAsync(TestContext.CancellationToken)
-                .ConfigureAwait(false);
-            AssertResponse(pause.RootElement, pauseSequence, "pause");
 
             int disconnectSequence = await client.SendRequestAsync(
                 "disconnect",

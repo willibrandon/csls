@@ -385,13 +385,15 @@ public sealed partial class DapSessionTests
     private Task<DapTestClient> StartProxyFixtureAsync(
         string waitPath,
         bool isolateResultsViewAssembly = false,
-        bool supportsVariablePaging = true) => StartPresentationFixtureAsync(
+        bool supportsVariablePaging = true,
+        bool? supportsInvalidatedEvent = true) => StartPresentationFixtureAsync(
             waitPath,
             "DebuggerFixture.cs",
             "Console.Write(announcement);",
             isolateResultsViewAssembly
                 ? "--debugger-results-view-context-fixture" : "--debugger-fixture",
-            supportsVariablePaging: supportsVariablePaging);
+            supportsVariablePaging: supportsVariablePaging,
+            supportsInvalidatedEvent: supportsInvalidatedEvent);
 
     private async Task<DapTestClient> StartPresentationFixtureAsync(
         string waitPath,
@@ -399,7 +401,8 @@ public sealed partial class DapSessionTests
         string breakpointText,
         string fixtureCommand,
         string? fixtureAssemblyPath = null,
-        bool supportsVariablePaging = true)
+        bool supportsVariablePaging = true,
+        bool? supportsInvalidatedEvent = true)
     {
         string sourcePath = Path.Join(
             FindRepositoryRoot(),
@@ -414,18 +417,17 @@ public sealed partial class DapSessionTests
         DapTestClient client = await DapTestClient
             .CreateAsync(TestContext.CancellationToken)
             .ConfigureAwait(false);
-        _ = await client.SendRequestAsync(
-            "initialize",
-            writer =>
-            {
-                writer.WriteStartObject();
-                writer.WriteBoolean("supportsVariablePaging", supportsVariablePaging);
-                writer.WriteEndObject();
-            },
-            TestContext.CancellationToken).ConfigureAwait(false);
+        int initializeSequence = await client.SendInitializeRequestAsync(
+            TestContext.CancellationToken,
+            supportsInvalidatedEvent,
+            writer => writer.WriteBoolean("supportsVariablePaging", supportsVariablePaging))
+            .ConfigureAwait(false);
         using JsonDocument initialize = await client
             .ReadMessageAsync(TestContext.CancellationToken)
             .ConfigureAwait(false);
+        AssertResponse(initialize.RootElement, initializeSequence, "initialize", success: true);
+        Assert.IsFalse(initialize.RootElement.GetProperty("body")
+            .TryGetProperty("supportsInvalidatedEvent", out _));
         string[] fixtureArguments = fixtureAssemblyPath is null
             ? [fixtureCommand, waitPath] : [fixtureCommand, waitPath, fixtureAssemblyPath];
         int launchSequence = await client.SendRequestAsync(

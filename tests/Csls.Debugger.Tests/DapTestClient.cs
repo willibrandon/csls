@@ -20,6 +20,7 @@ internal sealed partial class DapTestClient : IAsyncDisposable
     private ValueTask _diagnostics = ValueTask.CompletedTask;
     private Process? _process;
     private int _sequence;
+    private int _receivedSequence;
     private int _disposed;
 
     /// <summary>
@@ -168,6 +169,23 @@ internal sealed partial class DapTestClient : IAsyncDisposable
         return message;
     }
 
+    /// <summary>
+    /// Observes the next complete real protocol message without consuming its owned frame.
+    /// </summary>
+    /// <param name="cancellationToken">Cancels observation of the pipe read.</param>
+    /// <returns>An independent copy of the next message's JSON value.</returns>
+    internal async Task<JsonElement> PeekMessageAsync(CancellationToken cancellationToken)
+    {
+        if (_bufferedMessages.Count > 0)
+        {
+            return _bufferedMessages.Peek().RootElement.Clone();
+        }
+
+        JsonDocument message = await GetPendingMessageAsync(cancellationToken)
+            .WaitAsync(cancellationToken).ConfigureAwait(false);
+        return message.RootElement.Clone();
+    }
+
     private Task<JsonDocument> GetPendingMessageAsync(CancellationToken cancellationToken) =>
         _pendingMessage ??= ReadProtocolMessageAsync(cancellationToken);
 
@@ -211,7 +229,20 @@ internal sealed partial class DapTestClient : IAsyncDisposable
         await process.StandardOutput.BaseStream.ReadExactlyAsync(payload, cancellationToken)
             .ConfigureAwait(false);
         RecordMessage("received", payload);
-        return JsonDocument.Parse(payload);
+        var message = JsonDocument.Parse(payload);
+        try
+        {
+            int sequence = message.RootElement.GetProperty("seq").GetInt32();
+            Assert.IsGreaterThan(_receivedSequence, sequence,
+                "DAP sequence numbers must increase in transport order.");
+            _receivedSequence = sequence;
+            return message;
+        }
+        catch
+        {
+            message.Dispose();
+            throw;
+        }
     }
 
     private void RecordMessage(string direction, ReadOnlySpan<byte> payload)

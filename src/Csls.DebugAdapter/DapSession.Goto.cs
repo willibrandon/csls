@@ -57,7 +57,7 @@ internal sealed partial class DapSession
             var arguments = new DebugGotoRequest(
                 GetRequiredInteger(request.Arguments, "threadId", "goto"),
                 GetRequiredInteger(request.Arguments, "targetId", "goto"));
-            _deferGotoStoppedEvent = true;
+            _deferredStoppedReason = "goto";
             await _engineSession.GotoAsync(arguments, cancellationToken).ConfigureAwait(false);
             await _writer.WriteResponseAsync(
                 request,
@@ -65,7 +65,7 @@ internal sealed partial class DapSession
                 message: null,
                 writeBody: null,
                 cancellationToken).ConfigureAwait(false);
-            await FlushDeferredGotoStopAsync(cancellationToken).ConfigureAwait(false);
+            await FlushDeferredStopAsync(cancellationToken).ConfigureAwait(false);
         }
         catch (Exception exception) when (
             exception is ArgumentException or InvalidOperationException or OverflowException)
@@ -75,7 +75,7 @@ internal sealed partial class DapSession
         }
         finally
         {
-            _deferGotoStoppedEvent = false;
+            _deferredStoppedReason = null;
             _deferredStop = null;
         }
     }
@@ -147,19 +147,5 @@ internal sealed partial class DapSession
 
         writer.WriteEndArray();
         writer.WriteEndObject();
-    }
-
-    private async ValueTask FlushDeferredGotoStopAsync(CancellationToken cancellationToken)
-    {
-        if (_deferredStop is not { } stop)
-        {
-            throw new InvalidOperationException("The debugger did not publish the goto stop.");
-        }
-
-        await WriteStoppedEventAsync(
-            stop.Reason,
-            stop.ThreadId,
-            stop.Exception,
-            cancellationToken).ConfigureAwait(false);
     }
 }

@@ -103,20 +103,20 @@ internal sealed class DapMessageWriter : IAsyncDisposable
         Action<Utf8JsonWriter> writeMessage,
         CancellationToken cancellationToken)
     {
-        ArrayBufferWriter<byte> payload = new();
-        using (Utf8JsonWriter writer = new(payload))
-        {
-            writeMessage(writer);
-        }
-
-        string headerText = string.Create(
-            CultureInfo.InvariantCulture,
-            $"Content-Length: {payload.WrittenCount}\r\n\r\n");
-        byte[] header = Encoding.ASCII.GetBytes(headerText);
-
         await _writeGate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
+            ArrayBufferWriter<byte> payload = new();
+            using (Utf8JsonWriter writer = new(payload))
+            {
+                writeMessage(writer);
+            }
+
+            string headerText = string.Create(
+                CultureInfo.InvariantCulture,
+                $"Content-Length: {payload.WrittenCount}\r\n\r\n");
+            byte[] header = Encoding.ASCII.GetBytes(headerText);
+
             await _output.WriteAsync(header, cancellationToken).ConfigureAwait(false);
             await _output.WriteAsync(payload.WrittenMemory, cancellationToken).ConfigureAwait(false);
             await _output.FlushAsync(cancellationToken).ConfigureAwait(false);

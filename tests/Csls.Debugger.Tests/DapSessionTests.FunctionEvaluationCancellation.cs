@@ -36,9 +36,7 @@ public sealed partial class DapSessionTests
                 .ConfigureAwait(false);
             diagnosticClient = client;
             await using ConfiguredAsyncDisposable clientDisposal = client.ConfigureAwait(false);
-            _ = await client.SendRequestAsync(
-                "initialize",
-                WriteEmptyObject,
+            _ = await client.SendInitializeRequestAsync(
                 TestContext.CancellationToken).ConfigureAwait(false);
             using JsonDocument initialize = await client
                 .ReadMessageAsync(TestContext.CancellationToken)
@@ -196,9 +194,7 @@ public sealed partial class DapSessionTests
                 .ConfigureAwait(false);
             diagnosticClient = client;
             await using ConfiguredAsyncDisposable clientDisposal = client.ConfigureAwait(false);
-            _ = await client.SendRequestAsync(
-                "initialize",
-                WriteEmptyObject,
+            _ = await client.SendInitializeRequestAsync(
                 TestContext.CancellationToken).ConfigureAwait(false);
             using JsonDocument initialize = await client
                 .ReadMessageAsync(TestContext.CancellationToken)

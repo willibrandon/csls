@@ -34,9 +34,7 @@ public sealed partial class DapSessionTests
                 .CreateAsync(TestContext.CancellationToken)
                 .ConfigureAwait(false);
             await using ConfiguredAsyncDisposable clientDisposal = client.ConfigureAwait(false);
-            _ = await client.SendRequestAsync(
-                "initialize",
-                WriteEmptyObject,
+            _ = await client.SendInitializeRequestAsync(
                 TestContext.CancellationToken).ConfigureAwait(false);
             using JsonDocument initialize = await client
                 .ReadMessageAsync(TestContext.CancellationToken)

@@ -14,6 +14,7 @@ internal sealed partial class DapSession : IDebuggerSessionObserver, IAsyncDispo
     private readonly DapMessageWriter _writer;
     private readonly Func<string, Task> _writeErrorAsync;
     private readonly CancellationTokenSource _lifetime = new();
+    private readonly SemaphoreSlim _stopEventGate = new(1, 1);
     private readonly DebuggerSession _engineSession;
     private DapSessionState _state = DapSessionState.Created;
     private Request? _pendingTargetRequest;
@@ -30,8 +31,10 @@ internal sealed partial class DapSession : IDebuggerSessionObserver, IAsyncDispo
     private bool _clientLinesStartAtOne = true;
     private bool _clientColumnsStartAtOne = true;
     private bool _clientSupportsVariablePaging;
+    private bool _clientSupportsInvalidatedEvent;
+    private bool _targetExited;
     private int? _stoppedThreadId;
-    private bool _deferGotoStoppedEvent;
+    private string? _deferredStoppedReason;
     private (string Reason, int? ThreadId, DebugStopGeneration Generation,
         DebugExceptionInfo? Exception)? _deferredStop;
     private Task? _cancelableRequest;
@@ -154,6 +157,7 @@ internal sealed partial class DapSession : IDebuggerSessionObserver, IAsyncDispo
         _cancelableRequestCancellation = null;
         _lifetime.Dispose();
         await _writer.DisposeAsync().ConfigureAwait(false);
+        _stopEventGate.Dispose();
     }
 
     private void ClearPendingTarget()

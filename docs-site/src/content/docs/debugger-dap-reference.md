@@ -61,7 +61,6 @@ This page is generated from the shipping DAP dispatcher, initialize response, an
 | `supportsGotoTargetsRequest` |
 | `supportsHitConditionalBreakpoints` |
 | `supportsInstructionBreakpoints` |
-| `supportsInvalidatedEvent` |
 | `supportsLoadedSourcesRequest` |
 | `supportsLogPoints` |
 | `supportsModulesRequest` |

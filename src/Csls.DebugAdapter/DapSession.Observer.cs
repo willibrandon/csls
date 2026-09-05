@@ -20,6 +20,16 @@ internal sealed partial class DapSession
             return;
         }
 
+        await _stopEventGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            _targetExited = false;
+        }
+        finally
+        {
+            _stopEventGate.Release();
+        }
+
         if (_isRestarting)
         {
             await CompleteRestartAsync(name, processId, cancellationToken)
@@ -74,16 +84,22 @@ internal sealed partial class DapSession
             return;
         }
 
-        _state = DapSessionState.Stopped;
-        _stoppedThreadId = threadId ?? _stoppedThreadId;
-        if (_deferGotoStoppedEvent && string.Equals(reason, "goto", StringComparison.Ordinal))
-        {
-            _deferredStop = (reason, threadId, generation, exception);
-            return;
-        }
-
+        await _stopEventGate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
+            if (_targetExited)
+            {
+                return;
+            }
+
+            _state = DapSessionState.Stopped;
+            _stoppedThreadId = threadId ?? _stoppedThreadId;
+            if (string.Equals(reason, _deferredStoppedReason, StringComparison.Ordinal))
+            {
+                _deferredStop = (reason, threadId, generation, exception);
+                return;
+            }
+
             await WriteStoppedEventAsync(reason, threadId, exception, cancellationToken)
                 .ConfigureAwait(false);
         }
@@ -91,6 +107,40 @@ internal sealed partial class DapSession
             IsExpectedClosedTransportException(transportException))
         {
             return;
+        }
+        finally
+        {
+            _stopEventGate.Release();
+        }
+    }
+
+    private async ValueTask FlushDeferredStopAsync(CancellationToken cancellationToken)
+    {
+        await _stopEventGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            // Exit may win the actor race after pause/goto completes but before
+            // its request continuation publishes the deferred stop.
+            if (_targetExited)
+            {
+                return;
+            }
+
+            if (_deferredStop is not { } stop)
+            {
+                throw new InvalidOperationException(
+                    $"The debugger did not publish the {_deferredStoppedReason} stop.");
+            }
+
+            await WriteStoppedEventAsync(
+                stop.Reason,
+                stop.ThreadId,
+                stop.Exception,
+                cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            _stopEventGate.Release();
         }
     }
 
@@ -128,8 +178,10 @@ internal sealed partial class DapSession
             return;
         }
 
+        await _stopEventGate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
+            _targetExited = true;
             await _writer.WriteEventAsync(
                 "exited",
                 writer =>
@@ -144,6 +196,10 @@ internal sealed partial class DapSession
         {
             return;
         }
+        finally
+        {
+            _stopEventGate.Release();
+        }
     }
 
     /// <inheritdoc />
@@ -154,18 +210,23 @@ internal sealed partial class DapSession
             return;
         }
 
-        bool runtimeFailed = _engineSession.State == DebugSessionState.Faulted;
-        bool endedWithoutClientRequest = _state == DapSessionState.Running || runtimeFailed;
-        _state = runtimeFailed
-            ? DapSessionState.Faulted
-            : DapSessionState.Terminated;
-        if (IsProtocolClosed)
-        {
-            return;
-        }
-
+        bool endedWithoutClientRequest;
+        await _stopEventGate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
+            _targetExited = true;
+            bool runtimeFailed = _engineSession.State == DebugSessionState.Faulted;
+            endedWithoutClientRequest = runtimeFailed ||
+                (_state is DapSessionState.Running or DapSessionState.Stopped &&
+                    _deferredStoppedReason is null);
+            _state = runtimeFailed
+                ? DapSessionState.Faulted
+                : DapSessionState.Terminated;
+            if (IsProtocolClosed)
+            {
+                return;
+            }
+
             await _writer.WriteEventAsync(
                 "terminated",
                 writeBody: null,
@@ -174,6 +235,10 @@ internal sealed partial class DapSession
         catch (Exception exception) when (IsExpectedClosedTransportException(exception))
         {
             return;
+        }
+        finally
+        {
+            _stopEventGate.Release();
         }
 
         if (endedWithoutClientRequest)

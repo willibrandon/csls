@@ -380,6 +380,7 @@ public sealed partial class DapSessionTests
             {
                 JsonElement body = root.GetProperty("body");
                 Assert.AreEqual("pause", body.GetProperty("reason").GetString());
+                Assert.IsTrue(responseReceived, "The pause response must precede its stopped event.");
                 threadId = body.GetProperty("threadId").GetInt32();
             }
         }

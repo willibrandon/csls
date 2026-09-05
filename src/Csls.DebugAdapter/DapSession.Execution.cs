@@ -25,6 +25,7 @@ internal sealed partial class DapSession
                 request.Arguments,
                 "threadId",
                 request.Command);
+            _deferredStoppedReason = "pause";
             await _engineSession.PauseAsync(cancellationToken).ConfigureAwait(false);
             await _writer.WriteResponseAsync(
                 request,
@@ -32,6 +33,7 @@ internal sealed partial class DapSession
                 message: null,
                 writeBody: null,
                 cancellationToken).ConfigureAwait(false);
+            await FlushDeferredStopAsync(cancellationToken).ConfigureAwait(false);
         }
         catch (Exception exception) when (
             exception is ArgumentException or InvalidOperationException)
@@ -42,6 +44,11 @@ internal sealed partial class DapSession
                 exception.Message,
                 writeBody: null,
                 cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            _deferredStoppedReason = null;
+            _deferredStop = null;
         }
     }
 

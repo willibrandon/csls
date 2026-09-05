@@ -86,7 +86,7 @@ public sealed partial class DapSessionTests
         Assert.IsTrue(capabilities.GetProperty("supportsCompletionsRequest").GetBoolean());
         Assert.IsTrue(capabilities.GetProperty("supportsSetVariable").GetBoolean());
         Assert.IsTrue(capabilities.GetProperty("supportsSetExpression").GetBoolean());
-        Assert.IsTrue(capabilities.GetProperty("supportsInvalidatedEvent").GetBoolean());
+        Assert.IsFalse(capabilities.TryGetProperty("supportsInvalidatedEvent", out _));
         Assert.IsTrue(capabilities.GetProperty("supportsCancelRequest").GetBoolean());
         Assert.IsTrue(capabilities.GetProperty("supportsReadMemoryRequest").GetBoolean());
         Assert.IsTrue(capabilities.GetProperty("supportsDisassembleRequest").GetBoolean());
@@ -94,7 +94,7 @@ public sealed partial class DapSessionTests
         Assert.IsTrue(capabilities.GetProperty("supportsStepInTargetsRequest").GetBoolean());
         Assert.IsTrue(capabilities.GetProperty("supportsGotoTargetsRequest").GetBoolean());
         Assert.IsTrue(capabilities.GetProperty("supportsRestartRequest").GetBoolean());
-        Assert.HasCount(23, capabilities.EnumerateObject().ToArray());
+        Assert.HasCount(22, capabilities.EnumerateObject().ToArray());
 
         string processHost = ResolveTestProcessHost();
         int launchSequence = await client.SendRequestAsync(
