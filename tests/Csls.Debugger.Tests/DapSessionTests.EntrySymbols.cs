@@ -84,7 +84,7 @@ public sealed partial class DapSessionTests
                 .ConfigureAwait(false);
             (_, string? path, int line) = await ReadSourceFrameAsync(
                 client, threadId, source, TestContext.CancellationToken).ConfigureAwait(false);
-            Assert.AreEqual(source, path);
+            Assert.IsTrue(DebuggerTestPath.AreEquivalent(source, path), $"Expected source '{source}', received '{path}'.");
             Assert.AreEqual(expectedLine, line);
             await ContinueEntryToExitAsync(client, threadId, "entry-result").ConfigureAwait(false);
         }

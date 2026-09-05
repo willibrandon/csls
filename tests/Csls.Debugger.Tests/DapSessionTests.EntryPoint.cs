@@ -40,7 +40,7 @@ public sealed partial class DapSessionTests
                 .ConfigureAwait(false);
             (string name, string? path, int line) = await ReadSourceFrameAsync(
                 client, threadId, source, TestContext.CancellationToken).ConfigureAwait(false);
-            Assert.AreEqual(source, path);
+            Assert.IsTrue(DebuggerTestPath.AreEquivalent(source, path), $"Expected source '{source}', received '{path}'.");
             Assert.AreEqual(expectedLine, line);
             Assert.Contains("main", name, StringComparison.OrdinalIgnoreCase);
             await ContinueEntryToExitAsync(client, threadId, "entry-result").ConfigureAwait(false);
@@ -67,19 +67,17 @@ public sealed partial class DapSessionTests
         int expectedLine = FindSourceLine(await File.ReadAllLinesAsync(source, TestContext.CancellationToken)
             .ConfigureAwait(false), "if (args is [\"--unix-wait-status-fixture\"");
         string program = useAppHost
-            ? ResolveEntryAppHost()
+            ? SymbolFixtures.EntryAppHostPath
             : ResolveTestProcessHost();
+        Assert.IsTrue(File.Exists(program), $"The entry fixture was not built: {program}");
         (int threadId, _) = await LaunchAtEntryAsync(client, program,
             ["--print-environment", "CSLS_DEBUGGER_ENTRY_VALUE"]).ConfigureAwait(false);
         (_, string? path, int line) = await ReadSourceFrameAsync(
             client, threadId, source, TestContext.CancellationToken).ConfigureAwait(false);
-        Assert.AreEqual(source, path);
+        Assert.IsTrue(DebuggerTestPath.AreEquivalent(source, path), $"Expected source '{source}', received '{path}'.");
         Assert.AreEqual(expectedLine, line);
         await ContinueEntryToExitAsync(client, threadId, "entry-result").ConfigureAwait(false);
     }
-
-    private static string ResolveEntryAppHost() => Path.ChangeExtension(
-        ResolveTestProcessHost(), OperatingSystem.IsWindows() ? ".exe" : null);
 
     private async Task<(int ThreadId, int ProcessId)> LaunchAtEntryAsync(
         DapTestClient client, string program, string[] arguments)

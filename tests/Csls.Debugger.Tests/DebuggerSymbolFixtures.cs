@@ -18,6 +18,9 @@ internal sealed class DebuggerSymbolFixtures : IAsyncDisposable
     {
         _fixtureDirectory = fixtureDirectory;
         SourcePath = sourcePath;
+        EntryAppHostPath = Path.ChangeExtension(
+            GetProgramPath(fixtureDirectory, "EntryAppHost"),
+            OperatingSystem.IsWindows() ? ".exe" : null);
         SymbolFreeProgramPath = GetProgramPath(fixtureDirectory, "SymbolFreeFixture");
         ValidSourceLinkProgramPath = GetProgramPath(fixtureDirectory, "SourceLinkValid");
         CancellationSourceLinkProgramPath = GetProgramPath(fixtureDirectory, "SourceLinkCancellation");
@@ -38,6 +41,11 @@ internal sealed class DebuggerSymbolFixtures : IAsyncDisposable
     /// Gets the original source path recorded by the Windows PDB fixture.
     /// </summary>
     internal string SourcePath { get; }
+
+    /// <summary>
+    /// Gets the async entry fixture's executable built for the current operating system and architecture.
+    /// </summary>
+    internal string EntryAppHostPath { get; }
 
     /// <summary>
     /// Gets the executable compiled with symbol generation disabled.
@@ -141,6 +149,8 @@ internal sealed class DebuggerSymbolFixtures : IAsyncDisposable
                 fixtures.MismatchedSourceLinkServer.SourceLinkPattern,
                 cancellationToken).ConfigureAwait(false);
             bool includeWindowsPdb = fixtures.WindowsPdbProgramPath is not null;
+            await WriteEntryAppHostProjectAsync(repositoryRoot, fixtureDirectory, cancellationToken)
+                .ConfigureAwait(false);
             _ = await WriteEntrySymbolProjectAsync(
                 sourceDirectory, fixtureDirectory, windowsPdb: false, cancellationToken).ConfigureAwait(false);
             _ = includeWindowsPdb
@@ -283,14 +293,45 @@ internal sealed class DebuggerSymbolFixtures : IAsyncDisposable
             $"{projectName}.dll");
     }
 
+    private static Task WriteEntryAppHostProjectAsync(
+        string repositoryRoot,
+        string fixtureDirectory,
+        CancellationToken cancellationToken)
+    {
+        string projectDirectory = Path.Join(fixtureDirectory, "EntryAppHost");
+        Directory.CreateDirectory(projectDirectory);
+        var project = new XDocument(
+            new XElement(
+                "Project",
+                new XAttribute("Sdk", "Microsoft.NET.Sdk"),
+                new XElement(
+                    "PropertyGroup",
+                    new XElement("AssemblyName", "EntryAppHost"),
+                    new XElement("AllowUnsafeBlocks", "true"),
+                    new XElement("EnableDefaultCompileItems", "false"),
+                    new XElement("ImplicitUsings", "enable"),
+                    new XElement("Nullable", "enable"),
+                    new XElement("OutputType", "Exe"),
+                    new XElement("UseAppHost", "true"),
+                    new XElement("TargetFramework", "net10.0")),
+                new XElement(
+                    "ItemGroup",
+                    new XElement(
+                        "Compile",
+                        new XAttribute("Include", Path.Join(
+                            repositoryRoot, "tests", "Csls.TestProcessHost", "*.cs"))))));
+        return File.WriteAllTextAsync(
+            Path.Join(projectDirectory, "EntryAppHost.csproj"), project.ToString(), cancellationToken);
+    }
+
     private static async Task<string> WriteSolutionAsync(
         string fixtureDirectory,
         bool includeWindowsPdb,
         CancellationToken cancellationToken)
     {
         string[] projectNames = includeWindowsPdb
-            ? ["SourceLinkValid", "SourceLinkImplicit", "SourceLinkMismatched", "SourceLinkCancellation", "SymbolFreeFixture", "WindowsPdbFixture"]
-            : ["SourceLinkValid", "SourceLinkImplicit", "SourceLinkMismatched", "SourceLinkCancellation", "SymbolFreeFixture"];
+            ? ["SourceLinkValid", "SourceLinkImplicit", "SourceLinkMismatched", "SourceLinkCancellation", "SymbolFreeFixture", "WindowsPdbFixture", "EntryAppHost"]
+            : ["SourceLinkValid", "SourceLinkImplicit", "SourceLinkMismatched", "SourceLinkCancellation", "SymbolFreeFixture", "EntryAppHost"];
         var solution = new XDocument(
             new XElement(
                 "Solution",
