@@ -169,9 +169,9 @@ internal sealed partial class DapSession
         writer.WriteString("path", breakpoint.SourcePath);
         writer.WriteEndObject();
         writer.WriteNumber("line", ToClientLine(breakpoint.Line));
-        if (breakpoint.Column is not null)
+        if (breakpoint.Column is int column)
         {
-            writer.WriteNumber("column", ToClientColumn(breakpoint.Column.Value));
+            writer.WriteNumber("column", ToClientColumn(column));
         }
 
         if (breakpoint.Message is not null)

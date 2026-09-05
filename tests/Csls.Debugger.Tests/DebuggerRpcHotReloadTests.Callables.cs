@@ -58,9 +58,9 @@ public sealed partial class DebuggerRpcHotReloadTests
                     .ConfigureAwait(false);
                 Assert.AreEqual(index + 1, applied.ModuleGeneration);
                 Assert.HasCount(3, applied.UpdatedMethods);
-                Assert.IsNotNull(stopped.StoppedThreadId);
+                int threadId = stopped.StoppedThreadId ?? throw new AssertFailedException("The stopped caller has no thread identifier.");
                 DebugStackFrameInfo frame = (await client.GetStackAsync(new DebugStackRequest(
-                    stopped.StoppedThreadId.Value, 0, 16), TestContext.CancellationToken).ConfigureAwait(false)).StackFrames[0];
+                    threadId, 0, 16), TestContext.CancellationToken).ConfigureAwait(false)).StackFrames[0];
                 Assert.AreEqual("Program.Main", frame.Name);
                 Assert.AreEqual(line, frame.Line);
                 string expression = kind switch
@@ -77,7 +77,7 @@ public sealed partial class DebuggerRpcHotReloadTests
                 Assert.IsGreaterThan(applied.StopGeneration, evaluated.StopGeneration);
                 Assert.AreEqual(DebugSessionState.Stopped, evaluated.State);
                 DebugStackFrameInfo retained = (await client.GetStackAsync(new DebugStackRequest(
-                    stopped.StoppedThreadId.Value, 0, 16), TestContext.CancellationToken).ConfigureAwait(false)).StackFrames[0];
+                    threadId, 0, 16), TestContext.CancellationToken).ConfigureAwait(false)).StackFrames[0];
                 Assert.AreEqual(frame.Id, retained.Id);
                 Assert.AreEqual(line, retained.Line);
                 if (kind == "instance")

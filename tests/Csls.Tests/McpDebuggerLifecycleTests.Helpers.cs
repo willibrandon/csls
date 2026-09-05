@@ -195,7 +195,7 @@ public sealed partial class McpDebuggerLifecycleTests
             .FirstOrDefault()?.Text ?? "No textual MCP result was returned.";
         Assert.IsNull(result.IsError, $"{tool}: {diagnostic}");
         Assert.IsTrue(result.StructuredContent.HasValue, tool);
-        JsonElement structuredContent = result.StructuredContent.Value;
+        JsonElement structuredContent = McpAssertions.GetStructuredContent(result);
         if (structuredContent.ValueKind == JsonValueKind.Object &&
             structuredContent.TryGetProperty("debugSession", out JsonElement debugSession))
         {

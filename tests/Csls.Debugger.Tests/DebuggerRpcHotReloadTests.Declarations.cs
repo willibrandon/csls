@@ -67,8 +67,7 @@ public sealed partial class DebuggerRpcHotReloadTests
             .ConfigureAwait(false);
         Assert.IsGreaterThan(methodStop.StopGeneration, stopped.StopGeneration);
         Assert.AreEqual("breakpoint", stopped.StopReason);
-        Assert.IsNotNull(stopped.StoppedThreadId);
-        int threadId = stopped.StoppedThreadId.Value;
+        int threadId = stopped.StoppedThreadId ?? throw new AssertFailedException("The breakpoint stop has no thread identifier.");
         DebugStackTrace stack = await client.GetStackAsync(new DebugStackRequest(threadId, 0, 16), cancellationToken)
             .ConfigureAwait(false);
         DebugStackFrameInfo frame = Assert.ContainsSingle(stack.StackFrames.Where(candidate =>
@@ -176,9 +175,9 @@ public sealed partial class DebuggerRpcHotReloadTests
                 Assert.AreEqual(stopped.StopGeneration + 1, applied.StopGeneration);
                 if (index > 0)
                 {
-                    Assert.IsNotNull(stopped.StoppedThreadId);
+                    int threadId = stopped.StoppedThreadId ?? throw new AssertFailedException("The active method has no stopped thread identifier.");
                     DebugStackTrace oldStack = await client.GetStackAsync(
-                        new DebugStackRequest(stopped.StoppedThreadId.Value, 0, 16), TestContext.CancellationToken)
+                        new DebugStackRequest(threadId, 0, 16), TestContext.CancellationToken)
                         .ConfigureAwait(false);
                     DebugStackFrameInfo oldFrame = Assert.ContainsSingle(oldStack.StackFrames.Where(
                         static frame => frame.Name == "Program.Value"));

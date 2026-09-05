@@ -21,3 +21,4 @@ CSLS0019 | CodeQuality | Error | Explicit casts to the operand's existing type a
 CSLS0020 | CodeQuality | Error | Same-target conditional assignments use a conditional expression
 CSLS0021 | Reliability | Error | Catch blocks explicitly recover from or propagate exceptions
 CSLS0022 | Reliability | Error | Path composition preserves preceding components with Path.Join
+CSLS0023 | CodeQuality | Error | Nullable properties are captured before unwrapping

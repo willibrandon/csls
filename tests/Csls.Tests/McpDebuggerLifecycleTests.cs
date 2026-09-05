@@ -143,9 +143,10 @@ public sealed partial class McpDebuggerLifecycleTests
         JsonElement authorizationSchema = tools.Single(
             static tool => tool.Name == "debug_agent_control_set")
             .ProtocolTool.InputSchema;
-        JsonElement authorizationOutputProperties = tools.Single(
+        JsonElement authorizationOutputSchema = tools.Single(
             static tool => tool.Name == "debug_agent_control_set")
-            .ProtocolTool.OutputSchema!.Value.GetProperty("properties");
+            .ProtocolTool.OutputSchema ?? throw new AssertFailedException("The agent control tool has no output schema.");
+        JsonElement authorizationOutputProperties = authorizationOutputSchema.GetProperty("properties");
         Assert.IsTrue(
             authorizationOutputProperties.TryGetProperty(
                 "agentControlExpiresAtUtc",

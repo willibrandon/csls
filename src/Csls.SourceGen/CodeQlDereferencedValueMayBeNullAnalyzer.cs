@@ -9,7 +9,7 @@ using System.Linq;
 namespace Csls.SourceGen;
 
 /// <summary>
-/// Prevents nullable out variables from being force-dereferenced outside their guard.
+/// Requires explicit nullable capture and flow proof before dereferencing values.
 /// </summary>
 [DiagnosticAnalyzer(LanguageNames.CSharp)]
 public sealed class CodeQlDereferencedValueMayBeNullAnalyzer : DiagnosticAnalyzer
@@ -18,6 +18,20 @@ public sealed class CodeQlDereferencedValueMayBeNullAnalyzer : DiagnosticAnalyze
     /// Identifies a nullable out variable dereference that requires explicit flow proof.
     /// </summary>
     public const string DiagnosticId = "CSLS0015";
+
+    /// <summary>
+    /// Identifies nullable properties that must be captured before extracting their value.
+    /// </summary>
+    public const string NullablePropertyDiagnosticId = "CSLS0023";
+
+    private static readonly DiagnosticDescriptor s_nullablePropertyRule = new(
+        NullablePropertyDiagnosticId,
+        "Capture nullable properties before unwrapping",
+        "Capture nullable property '{0}' with a pattern or null-coalescing throw before unwrapping it",
+        "CodeQuality",
+        DiagnosticSeverity.Error,
+        isEnabledByDefault: true,
+        description: "Nullable property values require an explicit single-read capture instead of assertion-only proof.");
 
     private static readonly DiagnosticDescriptor s_rule = new(
         DiagnosticId,
@@ -29,7 +43,7 @@ public sealed class CodeQlDereferencedValueMayBeNullAnalyzer : DiagnosticAnalyze
         description: "Nullable out variables must not introduce CodeQL cs/dereferenced-value-may-be-null findings.");
 
     /// <inheritdoc />
-    public override ImmutableArray<DiagnosticDescriptor> SupportedDiagnostics => [s_rule];
+    public override ImmutableArray<DiagnosticDescriptor> SupportedDiagnostics => [s_rule, s_nullablePropertyRule];
 
     /// <inheritdoc />
     public override void Initialize(AnalysisContext context)
@@ -44,6 +58,29 @@ public sealed class CodeQlDereferencedValueMayBeNullAnalyzer : DiagnosticAnalyze
         context.RegisterSyntaxNodeAction(
             AnalyzeSuppression,
             SyntaxKind.SuppressNullableWarningExpression);
+        context.RegisterSyntaxNodeAction(AnalyzeNullableProperty, SyntaxKind.SimpleMemberAccessExpression);
+    }
+
+    private static void AnalyzeNullableProperty(SyntaxNodeAnalysisContext context)
+    {
+        var access = (MemberAccessExpressionSyntax)context.Node;
+        if (access.Name.Identifier.ValueText != "Value" ||
+            context.SemanticModel.GetSymbolInfo(access, context.CancellationToken).Symbol is not IPropertySymbol value ||
+            value.ContainingType.OriginalDefinition.SpecialType != SpecialType.System_Nullable_T)
+        {
+            return;
+        }
+
+        ExpressionSyntax receiver = access.Expression;
+        while (receiver is ParenthesizedExpressionSyntax parenthesized)
+        {
+            receiver = parenthesized.Expression;
+        }
+
+        if (context.SemanticModel.GetSymbolInfo(receiver, context.CancellationToken).Symbol is IPropertySymbol property)
+        {
+            context.ReportDiagnostic(Diagnostic.Create(s_nullablePropertyRule, access.GetLocation(), property.Name));
+        }
     }
 
     private static void AnalyzeSuppression(SyntaxNodeAnalysisContext context)

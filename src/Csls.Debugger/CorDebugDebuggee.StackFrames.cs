@@ -139,8 +139,8 @@ internal sealed partial class CorDebugDebuggee
                 });
         }
 
-        DebugSourceInfo? source = location.ModuleId is not null && location.SourcePath is not null
-            ? _sourceBreakpoints.GetSourceInfo(location.ModuleId.Value, location.SourcePath)
+        DebugSourceInfo? source = location.ModuleId is int sourceModuleId && location.SourcePath is not null
+            ? _sourceBreakpoints.GetSourceInfo(sourceModuleId, location.SourcePath)
             : null;
         return new DebugStackFrameInfo(
             existing.Id,

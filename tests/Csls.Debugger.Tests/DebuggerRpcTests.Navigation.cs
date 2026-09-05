@@ -28,8 +28,9 @@ public sealed partial class DebuggerRpcTests
         DebugGotoTargetInfo target = gotoTargets[0];
         Assert.AreEqual(localLine, target.Line);
         Assert.IsFalse(string.IsNullOrWhiteSpace(target.InstructionReference));
+        int threadId = stopped.StoppedThreadId ?? throw new AssertFailedException("The goto stop has no thread identifier.");
         DebugSessionSnapshot moved = await client.GotoAsync(
-            new DebugGotoRequest(stopped.StoppedThreadId!.Value, target.Id),
+            new DebugGotoRequest(threadId, target.Id),
             cancellationToken).ConfigureAwait(false);
         Assert.AreEqual(DebugSessionState.Stopped, moved.State);
         Assert.AreEqual("goto", moved.StopReason);
