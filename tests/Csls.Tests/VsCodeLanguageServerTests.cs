@@ -570,6 +570,7 @@ public sealed class VsCodeLanguageServerTests
         using var startupCancellation = CancellationTokenSource.CreateLinkedTokenSource(
             TestContext.CancellationToken);
         bool completed = false;
+        Exception? runFailure = null;
         try
         {
             Task runnerExitTask = runner.WaitForExitAsync(TestContext.CancellationToken);
@@ -594,6 +595,11 @@ public sealed class VsCodeLanguageServerTests
                 .ConfigureAwait(false);
             completed = true;
         }
+        catch (Exception exception)
+        {
+            runFailure = exception;
+            throw;
+        }
         finally
         {
             await startupCancellation.CancelAsync().ConfigureAwait(false);
@@ -615,10 +621,18 @@ public sealed class VsCodeLanguageServerTests
             }
             if (serverExit is ProcessExitObservation observation)
             {
-                await ProcessExitWaiter.WaitAsync(
-                    observation,
-                    TimeSpan.FromSeconds(10),
-                    TestContext.CancellationToken).ConfigureAwait(false);
+                try
+                {
+                    await ProcessExitWaiter.WaitAsync(
+                        observation,
+                        TimeSpan.FromSeconds(10),
+                        TestContext.CancellationToken).ConfigureAwait(false);
+                }
+                catch (Exception cleanupFailure) when (runFailure is not null)
+                {
+                    TestContext.WriteLine(
+                        $"The language-server process also failed to exit during cleanup:{Environment.NewLine}{cleanupFailure}");
+                }
             }
         }
 

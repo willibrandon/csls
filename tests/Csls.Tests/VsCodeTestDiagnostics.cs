@@ -17,7 +17,8 @@ internal static class VsCodeTestDiagnostics
         foreach (string dataPath in dataPaths.Where(Directory.Exists))
         {
             foreach (string path in Directory.EnumerateFiles(dataPath, "*.log", SearchOption.AllDirectories)
-                .Where(path => Path.GetFileName(path) is "exthost.log" or "remoteexthost.log" ||
+                .Where(path => Path.GetFileName(path) is "exthost.log" or "remoteexthost.log" or
+                    "renderer.log" or "main.log" or "sharedprocess.log" ||
                     Path.GetFileName(path).EndsWith("csls Integration Tests.log", StringComparison.Ordinal) ||
                     path.Contains("willibrandon.csls", StringComparison.OrdinalIgnoreCase))
                 .Order(StringComparer.Ordinal))

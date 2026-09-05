@@ -558,16 +558,16 @@ async function assertReferenceCodeLens(document: vscode.TextDocument): Promise<v
 }
 
 async function assertConfigurableInlayHints(document: vscode.TextDocument): Promise<void> {
-  await replaceDocumentText(
-    document,
-    "class Example { static void Print(string message) {} void Run() { Print(\"hello\"); var count = 1; } }\n",
-  );
+  await step("Edit inlay-hint source", () => withTimeout(
+    replaceDocumentText(
+      document,
+      "class Example { static void Print(string message) {} void Run() { Print(\"hello\"); var count = 1; } }\n",
+    ),
+    languageFeatureTimeoutMilliseconds,
+    "VS Code did not apply the inlay-hint source edit.",
+  ));
   const configuration = vscode.workspace.getConfiguration("csls", document.uri);
-  await configuration.update(
-    "inlayHints.enableInlayHintsForTypes",
-    true,
-    vscode.ConfigurationTarget.Global,
-  );
+  await updateHintConfiguration(configuration, "inlayHints.enableInlayHintsForTypes", true);
   await waitUntil(
     () => vscode.workspace
       .getConfiguration("csls", document.uri)
@@ -578,11 +578,7 @@ async function assertConfigurableInlayHints(document: vscode.TextDocument): Prom
     (await getInlayHintLabels(document)).includes("int"),
   "csls did not apply the updated type-hint configuration in VS Code.");
 
-  await vscode.workspace.getConfiguration("csls", document.uri).update(
-    "inlayHints.enableInlayHintsForParameters",
-    true,
-    vscode.ConfigurationTarget.Global,
-  );
+  await updateHintConfiguration(configuration, "inlayHints.enableInlayHintsForParameters", true);
   await waitUntil(
     () => vscode.workspace
       .getConfiguration("csls", document.uri)
@@ -596,23 +592,28 @@ async function assertConfigurableInlayHints(document: vscode.TextDocument): Prom
         observedLabels = await getInlayHintLabels(document);
         return observedLabels.includes("message:") && observedLabels.includes("int");
       }, "csls did not apply the updated inlay-hint configuration in VS Code.");
-    } catch {
+    } catch (cause) {
       throw new Error(
         `csls did not return the configured inlay hints in VS Code. Received: ${JSON.stringify(observedLabels)}.`,
+        { cause },
       );
     }
   } finally {
-    await configuration.update(
-      "inlayHints.enableInlayHintsForParameters",
-      false,
-      vscode.ConfigurationTarget.Global,
-    );
-    await configuration.update(
-      "inlayHints.enableInlayHintsForTypes",
-      false,
-      vscode.ConfigurationTarget.Global,
-    );
+    await updateHintConfiguration(configuration, "inlayHints.enableInlayHintsForParameters", false);
+    await updateHintConfiguration(configuration, "inlayHints.enableInlayHintsForTypes", false);
   }
+}
+
+async function updateHintConfiguration(
+  configuration: vscode.WorkspaceConfiguration,
+  key: string,
+  enabled: boolean,
+): Promise<void> {
+  await step(`Set ${key}=${enabled}`, () => withTimeout(
+    configuration.update(key, enabled, vscode.ConfigurationTarget.Global),
+    languageFeatureTimeoutMilliseconds,
+    `VS Code did not finish saving ${key}=${enabled}.`,
+  ));
 }
 
 async function getInlayHintLabels(document: vscode.TextDocument): Promise<string[]> {

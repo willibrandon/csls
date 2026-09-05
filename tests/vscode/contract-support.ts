@@ -33,7 +33,11 @@ export async function waitUntil(
 ): Promise<void> {
   const deadline = Date.now() + languageFeatureTimeoutMilliseconds;
   while (Date.now() < deadline) {
-    if (await condition()) {
+    if (await withTimeout(
+      Promise.resolve(condition()),
+      Math.max(1, deadline - Date.now()),
+      message,
+    )) {
       return;
     }
 
