@@ -300,6 +300,89 @@ public sealed class CodeQlLocalDisposableAnalyzerTests(TestContext testContext)
         Assert.IsEmpty(diagnostics);
     }
 
+    /// <summary>
+    /// Verifies configured disposal aliases do not conceal a library resource's ownership.
+    /// </summary>
+    /// <param name="declaration">The constructed library resource declaration.</param>
+    /// <param name="cleanupType">The explicit or inferred configured cleanup type.</param>
+    [TestMethod]
+    [DataRow("var stream = new FileStream(path, FileMode.CreateNew);", "ConfiguredAsyncDisposable")]
+    [DataRow("FileStream stream = new(path, FileMode.CreateNew);", "var")]
+    [DataRow("var stream = new MemoryStream();", "var")]
+    public async Task ReportsLibraryResourceWithConfiguredDisposalAlias(string declaration, string cleanupType)
+    {
+        string source = $$"""
+            using System.IO;
+            using System.Runtime.CompilerServices;
+            using System.Threading.Tasks;
+            internal static class Streams
+            {
+                internal static async Task WriteAsync(string path)
+                {
+                    {{declaration}}
+                    await using {{cleanupType}} cleanup = stream.ConfigureAwait(false);
+                    await stream.WriteAsync(new byte[] { 1 });
+                }
+            }
+            """;
+
+        ImmutableArray<Diagnostic> diagnostics = await AnalyzeAsync(source).ConfigureAwait(false);
+
+        AssertReportsLocal(diagnostics, "stream");
+    }
+
+    /// <summary>
+    /// Verifies a directly scoped library resource has visible exception-safe cleanup.
+    /// </summary>
+    [TestMethod]
+    public async Task AcceptsDirectlyScopedLibraryResource()
+    {
+        const string Source = """
+            using System.IO;
+            using System.Threading.Tasks;
+            internal static class Streams
+            {
+                internal static async Task WriteAsync(string path)
+                {
+                    using var stream = new FileStream(path, FileMode.CreateNew);
+                    await stream.WriteAsync(new byte[] { 1 }).ConfigureAwait(false);
+                    await stream.FlushAsync().ConfigureAwait(false);
+                }
+            }
+            """;
+
+        ImmutableArray<Diagnostic> diagnostics = await AnalyzeAsync(Source).ConfigureAwait(false);
+
+        Assert.IsEmpty(diagnostics);
+    }
+
+    /// <summary>
+    /// Verifies application-owned asynchronous disposal can remain in a configured scope.
+    /// </summary>
+    [TestMethod]
+    public async Task AcceptsConfiguredApplicationResource()
+    {
+        const string Source = """
+            using System;
+            using System.Threading.Tasks;
+            internal sealed class AsyncResource : IAsyncDisposable
+            {
+                public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+
+                internal static async Task UseAsync()
+                {
+                    var resource = new AsyncResource();
+                    await using var cleanup = resource.ConfigureAwait(false);
+                    await Task.Yield();
+                }
+            }
+            """;
+
+        ImmutableArray<Diagnostic> diagnostics = await AnalyzeAsync(Source).ConfigureAwait(false);
+
+        Assert.IsEmpty(diagnostics);
+    }
+
     private static void AssertReportsLocal(ImmutableArray<Diagnostic> diagnostics, string name)
     {
         Diagnostic diagnostic = Assert.ContainsSingle(diagnostics);

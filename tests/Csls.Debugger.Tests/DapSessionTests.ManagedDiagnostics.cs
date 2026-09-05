@@ -41,7 +41,9 @@ public sealed partial class DapSessionTests
             {
                 await DebuggerManagedStackCapture.CaptureAsync(client.HostProcessId, path, cancellation.Token)
                     .ConfigureAwait(false);
-                byte[] trace = await File.ReadAllBytesAsync(path, TestContext.CancellationToken).ConfigureAwait(false);
+                using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.None);
+                byte[] trace = new byte[checked((int)stream.Length)];
+                await stream.ReadExactlyAsync(trace, TestContext.CancellationToken).ConfigureAwait(false);
                 Assert.IsTrue(trace.AsSpan().StartsWith("Nettrace"u8));
                 Assert.IsGreaterThanOrEqualTo(0, trace.AsSpan().IndexOf(Encoding.Unicode.GetBytes("csls, Version=")));
             }

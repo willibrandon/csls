@@ -9,13 +9,13 @@ using System.Linq;
 namespace Csls.SourceGen;
 
 /// <summary>
-/// Prevents disposable locals from crossing unprotected ownership-transfer operations.
+/// Requires explicit cleanup for disposable locals and exception-safe ownership transfers.
 /// </summary>
 [DiagnosticAnalyzer(LanguageNames.CSharp)]
 public sealed class CodeQlLocalDisposableAnalyzer : DiagnosticAnalyzer
 {
     /// <summary>
-    /// Identifies a disposable local whose ownership transfer is not exception-safe.
+    /// Identifies a disposable local whose cleanup is indirect or whose transfer is unprotected.
     /// </summary>
     public const string DiagnosticId = "CSLS0008";
 
@@ -25,7 +25,7 @@ public sealed class CodeQlLocalDisposableAnalyzer : DiagnosticAnalyzer
     private static readonly DiagnosticDescriptor s_rule = new(
         DiagnosticId,
         "Protect disposable local ownership",
-        "Disposable local '{0}' requires exception-safe cleanup before ownership transfer",
+        "Disposable local '{0}' requires explicit, exception-safe cleanup or ownership transfer",
         "Reliability",
         DiagnosticSeverity.Error,
         isEnabledByDefault: true,
@@ -63,14 +63,48 @@ public sealed class CodeQlLocalDisposableAnalyzer : DiagnosticAnalyzer
                     (ObjectCreationExpressionSyntax or ImplicitObjectCreationExpressionSyntax) ||
                 context.SemanticModel.GetDeclaredSymbol(variable, context.CancellationToken) is not
                     ILocalSymbol local ||
-                !DisposableLocalOwnership.HasUnprotectedTransfer(
-                    local, variable, declaration, block, context))
+                !(DisposableLocalOwnership.HasUnprotectedTransfer(
+                    local, variable, declaration, block, context) ||
+                    HasConfiguredLibraryDisposal(local, block, context)))
             {
                 continue;
             }
 
             context.ReportDiagnostic(Diagnostic.Create(s_rule, variable.GetLocation(), local.Name));
         }
+    }
+
+    private static bool HasConfiguredLibraryDisposal(
+        ILocalSymbol local,
+        BlockSyntax block,
+        SyntaxNodeAnalysisContext context)
+    {
+        if (!local.Type.DeclaringSyntaxReferences.IsEmpty ||
+            local.Type.ContainingAssembly.Name.StartsWith("Csls.", StringComparison.Ordinal) ||
+            !local.Type.AllInterfaces.Any(static type => type.ToDisplayString() == "System.IDisposable"))
+        {
+            return false;
+        }
+
+        return block.DescendantNodes(static node =>
+                node is not (AnonymousFunctionExpressionSyntax or LocalFunctionStatementSyntax))
+            .OfType<LocalDeclarationStatementSyntax>()
+            .Where(static statement => !statement.AwaitKeyword.IsKind(SyntaxKind.None))
+            .SelectMany(static statement => statement.Declaration.Variables)
+            .Any(variable => variable.Initializer?.Value is InvocationExpressionSyntax
+            {
+                Expression: MemberAccessExpressionSyntax { Expression: IdentifierNameSyntax receiver }
+            } invocation &&
+                SymbolEqualityComparer.Default.Equals(local,
+                    context.SemanticModel.GetSymbolInfo(receiver, context.CancellationToken).Symbol) &&
+                context.SemanticModel.GetSymbolInfo(invocation, context.CancellationToken).Symbol is IMethodSymbol
+                {
+                    Name: "ConfigureAwait",
+                    ReturnType: { } returnType,
+                    ContainingType: { } containingType
+                } &&
+                returnType.ToDisplayString() == "System.Runtime.CompilerServices.ConfiguredAsyncDisposable" &&
+                containingType.ToDisplayString() == "System.Threading.Tasks.TaskAsyncEnumerableExtensions");
     }
 
     private static void AnalyzeInvocation(SyntaxNodeAnalysisContext context)

@@ -1,5 +1,3 @@
-using System.Runtime.CompilerServices;
-
 namespace Csls.Tests;
 
 /// <summary>
@@ -25,9 +23,8 @@ internal static class VsCodeTestDiagnostics
             {
                 try
                 {
-                    var stream = new FileStream(path, FileMode.Open, FileAccess.Read,
+                    using var stream = new FileStream(path, FileMode.Open, FileAccess.Read,
                         FileShare.ReadWrite | FileShare.Delete);
-                    await using ConfiguredAsyncDisposable disposal = stream.ConfigureAwait(false);
                     _ = stream.Seek(Math.Max(0, stream.Length - 65536), SeekOrigin.Begin);
                     using var reader = new StreamReader(stream, leaveOpen: true);
                     string text = await reader.ReadToEndAsync(CancellationToken.None).ConfigureAwait(false);

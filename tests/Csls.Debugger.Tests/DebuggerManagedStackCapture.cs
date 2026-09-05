@@ -1,6 +1,5 @@
 using Microsoft.Diagnostics.NETCore.Client;
 using System.Diagnostics.Tracing;
-using System.Runtime.CompilerServices;
 
 namespace Csls.Debugger.Tests;
 
@@ -25,12 +24,12 @@ internal static class DebuggerManagedStackCapture
         using EventPipeSession session = await client.StartEventPipeSessionAsync(
             new EventPipeProvider("Microsoft-DotNETCore-SampleProfiler", EventLevel.Informational),
             requestRundown: true, circularBufferMB: 4, token: cancellationToken).ConfigureAwait(false);
-        var output = new FileStream(path, FileMode.CreateNew, FileAccess.Write, FileShare.Read,
+        using var output = new FileStream(path, FileMode.CreateNew, FileAccess.Write, FileShare.Read,
             bufferSize: 65536, FileOptions.Asynchronous);
-        await using ConfiguredAsyncDisposable outputDisposal = output.ConfigureAwait(false);
         await Task.WhenAll(
             CopyTraceAsync(session.EventStream, output, cancellationToken),
             StopAfterSamplingAsync(session, cancellationToken)).ConfigureAwait(false);
+        await output.FlushAsync(cancellationToken).ConfigureAwait(false);
     }
 
     private static async Task StopAfterSamplingAsync(EventPipeSession session, CancellationToken cancellationToken)
