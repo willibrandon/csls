@@ -4,8 +4,7 @@ description: Configure launch, attach, restart, and remote .NET debugging with c
 ---
 
 The csls debugger ships with the `csls` tool. It uses the public CoreCLR debugging
-contracts bundled for the installed platform and does not download a debugger when a
-session starts.
+contracts bundled for the installed platform.
 
 ## Check the installation
 
@@ -16,18 +15,17 @@ csls debugger doctor
 ```
 
 The command verifies the platform runtime shim and every native entry point required
-for launch and attach. A failure normally means that the tool package does not match
-the current operating system or architecture, or that the installation is incomplete.
+for launch and attach. Use the tool package that matches the current operating system
+and architecture.
 
 ## Build before launch
 
-csls launches one concrete managed executable or assembly. It deliberately does not
-run `dotnet build`, interpret a launch profile, select a test, or pass arguments through
-a command shell. Build the target first and use an absolute `program` path.
+csls launches one concrete managed executable or assembly. Build the target first
+and use an absolute `program` path.
 
 When `program` is a managed `.dll`, csls uses the configured `runtimeHost` or the
 compatible `dotnet` host resolved from the environment. A platform executable is
-started directly. Arguments are passed as an array without shell interpretation.
+started directly. Arguments are passed directly as an array.
 
 ## VS Code launch
 
@@ -58,8 +56,11 @@ string value adds or replaces that variable; a `null` value removes it from the 
 environment. `runtimeHost` may identify an existing absolute host executable when the
 normal `dotnet` resolution is unsuitable.
 
-Set `noDebug` to `true` to use the same direct process launcher without attaching
-CoreCLR.
+Set `noDebug` to `true` to run the target as an ordinary process.
+
+Set `stopAtEntry` to `true` to stop at the first executable entry-point statement.
+The default is `false`. Continue from that stop to run the application with its
+configured breakpoints. Restart applies the launch configuration's entry-stop setting.
 
 ## VS Code attach
 
@@ -75,9 +76,8 @@ Attach selects one already-running process by operating-system identifier:
 ```
 
 The process must run CoreCLR, be accessible to the current user, and match the
-debugger host architecture. Attach never takes ownership of the target. Disconnecting
-detaches and lets it continue unless a client explicitly requests termination through
-an operation that the adapter advertises and authorizes.
+debugger host architecture. Disconnecting detaches and leaves the process running.
+Clients can explicitly request termination through an advertised, authorized operation.
 
 ## Zed launch and attach
 
@@ -97,50 +97,49 @@ The Zed extension registers the `csls` adapter. Put a launch entry in `debug.jso
 ```
 
 For attach, use `"request": "attach"` and a positive `"processId"`. Zed starts the
-configured csls binary with `debugger dap`; the extension does not discover or install
-a second debugger.
+configured csls binary with `debugger dap`.
 
 ## Runtime behavior options
 
-The launch and attach requests accept these source-stepping policies:
+Configure source stepping and module policy with these options:
 
 | Property | Default | Behavior |
 | --- | --- | --- |
 | `justMyCode` | `true` | Treat symbol-bearing, unoptimized modules as user code and skip other modules during source stepping. |
 | `enableStepFiltering` | `true` | Skip property accessors, CLR operators, and members marked with debugger step-filter attributes. |
-| `suppressJITOptimizations` | `false` | For launch only, request unoptimized JIT code for modules with validated symbols. |
-| `enableHotReload` | `false` | For launch only, prepare symbol-bearing modules for compiler-driven Hot Reload. |
+| `suppressJITOptimizations` | `false` | During launch, request unoptimized JIT code for modules with validated symbols. |
+| `enableHotReload` | `false` | During launch, prepare symbol-bearing modules for compiler-driven Hot Reload. |
 
-CoreCLR accepts JIT optimization suppression only during module load, so it is not an
-attach option. The `modules` response reports the effective policy instead of assuming
-the request succeeded.
+With `suppressJITOptimizations: true`, csls requests unoptimized JIT code during module load.
+The `modules` response reports the effective policy through `isOptimized` and
+`symbolStatus`.
 
-CoreCLR also accepts the Edit and Continue policy only while a module is loading.
-Set `enableHotReload` on a launch when a compiler service will produce Hot Reload
+CoreCLR applies the Edit and Continue policy during module load.
+Set `enableHotReload` on a launch to receive compiler-produced Hot Reload
 updates. Module inspection reports `isHotReloadEnabled`, `hotReloadGeneration`, and a
-bounded `symbolStatus` diagnostic rather than assuming the runtime accepted the policy.
+bounded `symbolStatus` diagnostic.
 
 ## Restart and ownership
 
 The standard DAP `restart` request accepts the latest nested launch or attach
-configuration. Logical breakpoints survive restart, while every frame, variable,
-memory, instruction, and execution-target handle is invalidated. Stop generations
-remain monotonic so an old identifier can never resolve against the replacement target.
+configuration. Logical breakpoints survive restart. Refresh frames, variables,
+memory, instructions, and execution targets after restarting. Each replacement
+target uses a newer stop generation.
 
 A restarted launch terminates the debugger-owned process tree and creates a new one. A
-restarted attach detaches and reattaches without terminating the independent process.
-If the editor or adapter exits unexpectedly, csls terminates a launched process tree
-but only detaches from an attached process.
+restarted attach detaches and reattaches to the independently running process.
+If the editor or adapter exits unexpectedly, csls terminates launched process trees
+and detaches from attached processes.
 
 ## Remote and container targets
 
 Run `csls debugger dap` in the environment where the target runs and transport its
-standard streams through the editor's existing SSH, container, or remote channel. The
-debugger does not expose a TCP listener. Paths in the DAP configuration are paths in the
+standard streams through the editor's existing SSH, container, or remote channel.
+Paths in the DAP configuration are paths in the
 target environment; use `sourceFileMap` when build-time source paths differ from editor
 paths.
 
 Continue with [breakpoints and stepping](../debugger-breakpoints/) or configure
 [symbols and source retrieval](../debugger-symbols/).
-The generated [DAP reference](../debugger-dap-reference/) lists every implemented
-request, advertised capability, and editor configuration property.
+The generated [DAP reference](../debugger-dap-reference/) lists supported
+requests, advertised capabilities, and editor configuration properties.

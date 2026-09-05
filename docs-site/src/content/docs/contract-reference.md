@@ -65,7 +65,7 @@ These public wire-contract types are generated from the compiled assemblies and 
 | `Csls.Protocol.DidChangeWatchedFilesParams` | Describes file-system changes observed by the LSP client. |
 | `Csls.Protocol.DidChangeWatchedFilesRegistrationOptions` | Configures dynamically registered workspace file-system watchers. |
 | `Csls.Protocol.DidChangeWorkspaceFoldersParams` | Contains one ordered workspace-folder change notification. |
-| `Csls.Protocol.DidCloseTextDocumentParams` | Reports that a client no longer owns an open text document overlay. |
+| `Csls.Protocol.DidCloseTextDocumentParams` | Reports that a client has closed a text document overlay. |
 | `Csls.Protocol.DidOpenTextDocumentParams` | Contains the document opened by the client. |
 | `Csls.Protocol.DidSaveTextDocumentParams` | Reports that an opened text document was persisted by the client. |
 | `Csls.Protocol.DocumentDiagnosticParams` | Requests current diagnostics for one versioned workspace document. |
@@ -152,7 +152,7 @@ These public wire-contract types are generated from the compiled assemblies and 
 | `Csls.Protocol.SemanticTokensLegend` | Describes the token types and modifier bit positions used by semantic-token results. |
 | `Csls.Protocol.SemanticTokensOptions` | Advertises the server semantic-token legend and supported request forms. |
 | `Csls.Protocol.SemanticTokensParams` | Identifies a document whose complete semantic tokens are requested. |
-| `Csls.Protocol.ServerCapabilities` | Advertises only the LSP capabilities implemented by the running server. |
+| `Csls.Protocol.ServerCapabilities` | Advertises the running server's LSP capabilities. |
 | `Csls.Protocol.ServerInfo` | Describes the language server implementation and version. |
 | `Csls.Protocol.SignatureHelp` | Carries overload labels and the client's current callable argument state. |
 | `Csls.Protocol.SignatureHelpContext` | Describes the client state that triggered a signature help request. |
@@ -188,7 +188,7 @@ These public wire-contract types are generated from the compiled assemblies and 
 | `Csls.Protocol.WorkspaceDiagnosticProgressParams` | Carries one workspace diagnostic partial result through an LSP progress notification. |
 | `Csls.Protocol.WorkspaceDiagnosticReport` | Returns bounded document diagnostic results for one loaded workspace snapshot. |
 | `Csls.Protocol.WorkspaceDocumentChange` | Represents one ordered text edit or filesystem resource operation in a workspace edit. |
-| `Csls.Protocol.WorkspaceDocumentChangeJsonConverter` | Converts the mixed LSP workspace document-change array without reflection metadata. |
+| `Csls.Protocol.WorkspaceDocumentChangeJsonConverter` | Converts the mixed LSP workspace document-change array using registered JSON type metadata. |
 | `Csls.Protocol.WorkspaceDocumentDiagnosticReport` | Returns one complete or unchanged document result from a workspace diagnostic pull. |
 | `Csls.Protocol.WorkspaceEdit` | Carries version-aware text edits spanning one or more workspace documents. |
 | `Csls.Protocol.WorkspaceFolder` | Identifies a client workspace folder and its display name. |

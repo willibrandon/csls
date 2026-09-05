@@ -14,15 +14,14 @@ and control types from the assemblies and their XML documentation.
 
 The server uses standard `Content-Length` header framing over its inherited streams.
 `LspMethodRegistry` registers supported requests and notifications explicitly. The
-initialize result advertises only handlers that are active in the current build.
+initialize result advertises the supported capabilities.
 Inbound header blocks are limited to 8 KiB and declared JSON payloads are limited to
 16 MiB. The worker rejects either limit before StreamJsonRpc allocates the payload.
 
 Payloads use System.Text.Json with source-generated metadata from `Csls.Protocol`
 and `Csls.Rpc`. Document URIs, discriminated LSP response shapes, and protocol enums
 therefore have one shared serializer configuration on both sides of the connection.
-No transport code writes diagnostic text to standard output; logs go to standard
-error so the JSON-RPC stream stays valid.
+Standard output carries JSON-RPC frames. Logs go to standard error.
 
 The server registers client callbacks only when negotiation requires them. These
 include configuration pulls, progress, capability registration, diagnostics, edit
@@ -40,8 +39,8 @@ Every language operation declares one scheduler mode:
 
 The queue has fixed capacity and preserves mutation order. Each accepted request has
 a stable correlation identifier, receive ordinal, cancellation token, phase, and
-workspace generation. The dashboard and CLI expose this state without changing the
-editor protocol.
+workspace generation. The dashboard and CLI expose this state through the control
+connection.
 
 `$/csharp/debugInfo` bypasses normal scheduling. It reports workspace phase, folder
 counts, current requests, queue counters, and cumulative timings even when a normal
@@ -52,7 +51,6 @@ diagnosis.
 
 Each server worker creates one Unix domain socket under `.csls/sockets` in the
 current user profile. .NET provides this socket family on Windows, Linux, and macOS.
-csls does not open a TCP listener.
 
 On Unix, the directory is restricted to its owner and rejected if it is a symbolic
 link. The bound socket is readable and writable only by that owner. Windows applies
@@ -65,13 +63,13 @@ Connection admission is bounded, and each connection registers only the methods 
 `IControlRpcTarget`.
 
 Method names include the control protocol version, for example
-`csls/control/v1/session/get`. Responses use source-generated JSON contracts. A
-future incompatible shape requires a new version instead of changing an existing
-method in place.
+`csls/control/v1/session/get`. Responses use source-generated JSON contracts.
+Each protocol version defines its request and response shapes.
 
 Connections negotiate a 120-second inactivity limit and a shorter keepalive
-interval. A complete message or an active request resets the limit, so a restore or
-reload is never interrupted while a raw idle or partial connection is closed. Set
+interval. A complete message or an active request resets the limit. Restore and
+reload requests keep their connections active. Idle and partial connections close
+when the limit expires. Set
 `CSLS_CONTROL_IDLE_TIMEOUT_SECONDS` to an integer from 1 through 120 to shorten the
 limit for a worker process.
 
@@ -81,8 +79,8 @@ so cancellation behaves the same in managed and Native AOT tool packages.
 
 ## Ownership and shutdown
 
-An attached CLI or MCP connection never owns the editor's server. Closing its
-control connection leaves the server running. MCP workspace selectors and doctor
+The editor owns its language-server process. Closing an attached CLI or MCP
+control connection leaves that server running. MCP workspace selectors and doctor
 sessions own any transient worker they start and complete the normal LSP shutdown
 handshake when finished.
 

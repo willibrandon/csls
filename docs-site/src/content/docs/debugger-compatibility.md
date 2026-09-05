@@ -1,6 +1,6 @@
 ---
 title: Debugger compatibility and security
-description: Understand supported .NET targets, platforms, language behavior, security boundaries, and known limits.
+description: Choose .NET targets, platforms, and clients, and understand debugger security.
 ---
 
 ## Support matrix
@@ -14,9 +14,9 @@ description: Understand supported .NET targets, platforms, language behavior, se
 | macOS | x64 and ARM64 NativeAOT packages. Portable PDBs. |
 | Editors | VS Code and Zed through the same standard-input/output DAP host. |
 | Other clients | Any DAP client that negotiates and uses the capabilities returned by `initialize`. |
-| Terminal | A single-session source, threads, stack, variables, and auxiliary view; no sessions browser. |
+| Terminal | Source, threads, stack, variables, and auxiliary views for the selected debug session. |
 | Dumps | Read-only MCP sessions for bounded managed thread, stack, and module inspection. |
-| Hot Reload | Compiler-produced C# and Visual Basic updates on explicitly enabled launch modules. F# debugging is supported, but F# compiler delta emission is not yet claimed. |
+| Hot Reload | Compiler-produced C# and Visual Basic updates on explicitly enabled launch modules. |
 | Evaluation | Side-effect-free inspection, plus explicit method calls and construction of loaded non-generic or closed generic types through guarded target execution. |
 | Presentation | Bounded `DebuggerDisplay` and `DebuggerBrowsable` support, guarded `DebuggerTypeProxy` expansion, Raw View, and lazy enumerable Results View snapshots. |
 
@@ -26,23 +26,21 @@ languages retain runtime stacks, metadata names, Portable PDB source mapping, lo
 fields, arrays, stepping, and the portable side-effect-free expression subset.
 
 The target and debugger must have the same architecture. A container or remote target
-runs the debugger in that target environment; csls does not provide a cross-architecture
-proxy or network listener.
+runs the debugger in that target environment and carries DAP over the editor's connection.
 
-See [evaluation and inspection](../debugger-evaluation/) for expression boundaries,
+See [evaluation and inspection](../debugger-evaluation/) for supported expressions,
 presentation behavior, and the separate MCP authorization required to execute target code.
 
 ## Process and protocol security
 
-- Programs are executed directly without a command shell.
-- DAP and MCP standard output contains protocol frames only; diagnostics use standard error.
-- Runtime native libraries are resolved from the installed package layout rather than an arbitrary target directory.
-- The product records no telemetry.
-- A launch is owned and its process tree is terminated on disconnect; attach is non-owning and detaches by default.
+- Programs are executed directly with an argument array.
+- DAP and MCP messages use standard output. Diagnostics use standard error.
+- Runtime native libraries are resolved from the installed package layout.
+- Disconnecting terminates a launched process tree. Disconnecting an attached session detaches and leaves its target running.
 - Scope, value, memory, instruction, and execution-target handles are opaque and stop-generation-bound.
-- Logical frame identifiers survive debugger-owned evaluation only for the same physical frame;
-  application execution retires them. MCP inspection still requires the exact current `stopGeneration`.
-- Function evaluation is serialized, deadline-limited, cooperatively aborted, and never escalated with `RudeAbort`.
+- Unchanged physical frames retain their logical identifiers across debugger-owned evaluation.
+  Refresh frame identifiers after application execution. MCP inspection uses the current `stopGeneration`.
+- Function evaluation is serialized, deadline-limited, and cooperatively aborted.
 - MCP observation is separate from explicit, per-session mutation and execution authorization.
 
 ## Untrusted symbols and source
@@ -52,34 +50,16 @@ untrusted. Readers enforce input, recursion, allocation, page, redirect, and res
 limits. Symbol and source identities are verified before content is cached or shown.
 Temporary files use owner-scoped locations and atomic publication.
 
-Symbol-server URLs are anonymous bases. Source Link sends no debugger-managed cookies
-or credentials. HTTPS cannot downgrade, redirects cannot escape the configured
-authority, and private-network access requires a specific opt-in rule.
+Symbol-server URLs are anonymous bases. Source Link uses anonymous requests with
+bounded redirects within the configured authority and preserves HTTPS transport.
+Private-network access requires a specific opt-in rule.
 
-## Capabilities not advertised
+## Hot Reload configuration
 
-Clients must use the capabilities returned by DAP `initialize`. The debugger currently
-does not advertise:
-
-- managed data breakpoints, because public portable CoreCLR storage breakpoints return
-  `E_NOTIMPL`;
-- native machine-code disassembly or mixed native debugging;
-- reverse execution, step back, or arbitrary instruction-pointer changes;
-- arbitrary memory writes;
-- object and collection initializers, general property expressions, user-defined operators
-  and conversions, or implicit `ToString` calls;
-- object IDs.
-
-Unsupported requests return a protocol error. csls does not download or fall back to a
-proprietary debugger for them.
-
-Hot Reload is launch-only and requires `enableHotReload: true`, a runtime module that
-accepts Edit and Continue policy, and one compiler-produced metadata, IL, and minimal
-Portable PDB generation. The compiler must reject rude edits and provide exact active
-statement mappings. DAP has no standard apply-update request; the authorized MCP
-workflow applies C# and Visual Basic updates. Ordinary F# debugging remains supported,
-but F# Hot Reload is not advertised until its compiler service exposes complete delta
-emission and active-statement mapping.
+For Hot Reload, launch with `enableHotReload: true` and a runtime module that accepts
+Edit and Continue policy. Supply one compiler-validated metadata, IL, and minimal
+Portable PDB generation with exact active statement mappings. The authorized MCP
+`debug_hot_reload` workflow applies C# and Visual Basic updates.
 
 ## Migration from another `coreclr` adapter
 
@@ -88,18 +68,11 @@ configurations use familiar `program`, `cwd`, `args`, `env`, and `processId` pro
 Keep paths absolute. Move project building, launch-profile expansion, and test selection
 to the editor task that starts debugging.
 
-`envFile`, `console`, `requireExactSource`, `expressionEvaluationOptions`,
-`terminateChildProcesses`, and `pipeTransport` have no implemented behavior.
-`stopAtEntry: true` is rejected; set a source breakpoint for an initial stop instead.
-DAP `attach` requires `processId` and does not open dumps through `dumpPath`.
-The read-only dump workflow is available through MCP `debug_dump_open`.
-
 Replace adapter-specific remote transports with an invocation of `csls debugger dap` in
 the target environment. Replace proprietary debugger path/download settings with the
-installed csls tool and validate it using `csls debugger doctor`. Keep only options
+installed csls tool and validate it using `csls debugger doctor`. Configure the options
 documented in the [DAP reference](../debugger-dap-reference/) and
-[symbols](../debugger-symbols/). An unrecognized JSON property can be ignored by
-the parser; its acceptance does not establish support for that behavior.
+[symbols](../debugger-symbols/).
 
 ## Startup troubleshooting
 
@@ -113,15 +86,15 @@ dotnet --info
 
 Then verify that the `csls` executable selected by the editor is the intended install,
 the target path is absolute and exists in the adapter's environment, and the target
-architecture matches the tool package. Editor output should show diagnostics from
-standard error without any non-protocol standard output.
+architecture matches the tool package. The adapter writes diagnostics to standard
+error and DAP frames to standard output.
 
 For attach failures, confirm that the process runs CoreCLR and that operating-system
 permissions allow the current user to debug it. For source failures, inspect module
 `symbolStatus` and follow the [symbols and source checklist](../debugger-symbols/). For
 stale-frame or stale-variable errors, refresh threads, stack, scopes, and variables from
-the newest stop instead of reusing handles from before continue, step, or restart.
+the newest stop.
 Debugger-owned function evaluation also invalidates scope, variable, memory, and
-execution-target handles, but unchanged physical frames keep their logical identifiers
-and can be used to refresh scopes without first requesting a new stack. MCP requests
-must use the replacement stop generation even when the frame identifier is unchanged.
+execution-target handles. Unchanged physical frames keep their logical identifiers
+for refreshing scopes. MCP requests use the replacement stop generation with those
+frame identifiers.

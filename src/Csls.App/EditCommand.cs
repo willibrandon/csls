@@ -88,7 +88,7 @@ internal static class EditCommand
         });
         var formatTabsOption = new Option<bool>("--tabs")
         {
-            Description = "Use tabs instead of spaces for indentation."
+            Description = "Use tabs for indentation."
         };
         Option<int?> formatSessionOption = CreateSessionOption();
         Option<string?> formatWorkspaceOption = CreateWorkspaceOption();

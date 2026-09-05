@@ -4,8 +4,7 @@ description: Configure Portable PDB, Windows PDB, Source Link, source mapping, a
 ---
 
 Source breakpoints, source stack locations, local names, and source stepping require
-symbols whose identity matches the loaded module. csls never accepts a PDB based only on
-its filename.
+symbols whose identity matches the loaded module.
 
 ## Supported symbol forms
 
@@ -17,7 +16,7 @@ DiaSymReader component for x86, x64, and ARM64.
 In-memory PE and Portable PDB snapshots receive the same breakpoints, stacks, locals,
 stepping, goto, disassembly, and instruction-breakpoint behavior as files on disk. The
 debugger consumes runtime symbol updates during launch and recovers available snapshots
-during attach without creating temporary module or PDB files.
+during attach directly from memory.
 
 ## Source mapping
 
@@ -34,8 +33,7 @@ Use `sourceFileMap` when a PDB records paths from another build machine:
 
 Both keys and values are absolute paths. Mapping understands POSIX paths, Windows drive
 letters, and UNC paths regardless of the adapter host. The most specific matching prefix
-wins. A mapped source is still accepted only when its content matches the checksum in
-the PDB.
+wins. The debugger validates mapped source content against the checksum in the PDB.
 
 ## Symbol search and caching
 
@@ -74,8 +72,7 @@ Windows and `~/.dotnet/symbolcache` on Linux and macOS.
 
 Source Link retrieval is lazy, session-cached, bounded, and checksum-validated. Public
 HTTPS endpoints are enabled by default. HTTP, localhost, and private-network hosts
-require an exact enabled URL rule; a catch-all rule does not grant private-network
-access.
+require an exact enabled URL rule.
 
 ```json
 {
@@ -86,9 +83,9 @@ access.
 }
 ```
 
-Rules are matched against the Source Link URL pattern. The debugger sends no managed
-credentials or cookies, limits redirects and response sizes, rejects cross-authority
-redirects and HTTPS downgrade, and discards content whose PDB checksum does not match.
+Rules are matched against the Source Link URL pattern. The debugger uses anonymous
+requests, bounds redirects and response sizes, and validates source checksums.
+Redirects stay within the configured authority and preserve HTTPS transport.
 
 ## Diagnosing missing source
 
@@ -99,8 +96,8 @@ server or cache policy. Confirm that:
 1. the target module and PDB come from the same build;
 2. the recorded document maps to an existing absolute path;
 3. the source content matches the PDB checksum;
-4. any symbol server is an anonymous base URL without a query or fragment; and
+4. each anonymous symbol-server URL consists of a scheme, authority, and base path; and
 5. the debugger process can read the module, cache, and mapped source as its current user.
 
-An unavailable remote store does not abort target launch. It leaves the affected module
-without source symbols and records the bounded diagnostic.
+Remote-store failures appear in the affected module's `symbolStatus`. Target launch
+continues with the symbols resolved from the other configured sources.

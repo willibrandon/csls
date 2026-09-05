@@ -25,7 +25,7 @@ internal static class AgentCommand
     {
         var pathOption = new Option<string?>("--path")
         {
-            Description = "Write the skill file to this path instead of ./SKILL.md.",
+            Description = "Write the skill file to this path.",
             HelpName = "path"
         };
         var forceOption = new Option<bool>("--force")
@@ -34,7 +34,7 @@ internal static class AgentCommand
         };
         var stdoutOption = new Option<bool>("--stdout")
         {
-            Description = "Write the skill content to standard output instead of a file."
+            Description = "Write the skill content to standard output."
         };
         var jsonOption = new Option<bool>("--json")
         {

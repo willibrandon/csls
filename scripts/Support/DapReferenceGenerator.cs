@@ -127,7 +127,7 @@ internal static class DapReferenceGenerator
         var page = new StringBuilder(
             "---\ntitle: Debug Adapter Protocol reference\ndescription: Generated csls DAP requests, capabilities, and target configuration.\n---\n\n" +
             "This page is generated from the shipping DAP dispatcher, initialize response, and " +
-            "editor configuration schema. Unknown requests return an unsuccessful DAP response.\n\n" +
+            "editor configuration schema.\n\n" +
             "## Requests\n\n" +
             "| Request | Purpose |\n" +
             "| --- | --- |\n");

@@ -255,7 +255,7 @@ Options:
   -?, -h, --help  Show help and usage information
 
 Commands:
-  launch <program> <arguments>  Launch a managed target and stop at an initial source breakpoint.
+  launch <program> <arguments>  Launch a managed target and stop at entry or an initial source breakpoint.
   attach <process-id>           Attach to and pause a running CoreCLR process.
 ```
 
@@ -778,7 +778,7 @@ Arguments:
 
 Options:
   --tab-size <number>  Indentation width from 1 through 32. [default: 4]
-  --tabs               Use tabs instead of spaces for indentation.
+  --tabs               Use tabs for indentation.
   --session <pid>      Language-server process identifier; inferred when exactly one session is live.
   --workspace <path>   Select this workspace or start a transient session when none is live.
   --apply              Explicitly apply the one-use plan after all preconditions pass.
@@ -822,9 +822,9 @@ Usage:
   csls agent init [options]
 
 Options:
-  --path <path>   Write the skill file to this path instead of ./SKILL.md.
+  --path <path>   Write the skill file to this path.
   --force         Replace an existing skill file.
-  --stdout        Write the skill content to standard output instead of a file.
+  --stdout        Write the skill content to standard output.
   --json          Write the versioned machine-readable response envelope.
   -?, -h, --help  Show help and usage information
 ```
@@ -833,7 +833,7 @@ Options:
 
 ```text
 Description:
-  Launch a managed target and stop at an initial source breakpoint.
+  Launch a managed target and stop at entry or an initial source breakpoint.
 
 Usage:
   csls debugger tui launch <program> [<arguments>...] [options]
@@ -843,8 +843,9 @@ Arguments:
   <arguments>  Arguments passed to the managed target.
 
 Options:
-  --source <path> (REQUIRED)       Source document containing the initial breakpoint.
-  --line <number> (REQUIRED)       One-based line for the initial source breakpoint.
+  --source <path>                  Source document containing the initial breakpoint.
+  --line <number>                  One-based line for the initial source breakpoint.
+  --stop-at-entry                  Stop at the first executable entry-point statement.
   --cwd <path>                     Target working directory. [default: .]
   --runtime <path>                 Optional dotnet host path used to run a managed assembly.
   --source-file-map <build=local>  Map an absolute PDB build-path prefix to an absolute local source prefix.

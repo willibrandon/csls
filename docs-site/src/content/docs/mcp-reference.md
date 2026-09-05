@@ -3,7 +3,7 @@ title: MCP reference
 description: Generated multi-workspace tools, resource templates, and prompts from csls-mcp.
 ---
 
-This page is generated through the official MCP client from the complete csls MCP installation. Start `csls-mcp` without arguments. Language-service operations select exactly one `workspace`, `session`, or `socket`; debugger operations use their explicit `debugSession`. Target selectors are shown separately from operation-specific inputs.
+This page is generated through the official MCP client from the complete csls MCP installation. Run `csls-mcp` to start the server. Language-service operations select exactly one `workspace`, `session`, or `socket`; debugger operations use their explicit `debugSession`. Target selectors are shown separately from operation-specific inputs.
 
 ## Tools
 
@@ -12,10 +12,10 @@ This page is generated through the official MCP client from the complete csls MC
 | `apply_edit_plan` | Destructive | Exactly one of `workspace`, `session`, or `socket` | `planId` required | Apply one previewed csls edit plan after generation, version, and SHA-256 checks pass. |
 | `cancel_request` | Destructive | Exactly one of `workspace`, `session`, or `socket` | `correlationId` required | Cancel one queued or running request in one selected csls session. |
 | `clear_caches` | Destructive | Exactly one of `workspace`, `session`, or `socket` | None | Clear retained result caches for one explicitly selected csls session. |
-| `debug_agent_control_set` | Mutating | `debugSession` required | `enabled` required, `durationSeconds` | Grant or revoke time-bounded target-changing authority for one explicit debugSession. Grants are connection-local and never inherited. |
+| `debug_agent_control_set` | Mutating | `debugSession` required | `enabled` required, `durationSeconds` | Grant or revoke time-bounded target-changing authority for one explicit debugSession. Each grant is scoped to its MCP connection and session. |
 | `debug_breakpoints_get` | Read only | `debugSession` required | None | Get every authoritative breakpoint and exception policy for one explicit debugger session. |
 | `debug_disassemble` | Read only | `debugSession` required | `stopGeneration` required, `instructionReference` required, `instructionCount` required, `byteOffset`, `instructionOffset`, `resolveSymbols` | Disassemble up to 256 managed-IL instructions from a generation-bound location. |
-| `debug_evaluate` | Read only | `debugSession` required | `stopGeneration` required, `frameId` required, `expression` required | Evaluate a source-language-aware side-effect-free expression without executing target code. |
+| `debug_evaluate` | Read only | `debugSession` required | `stopGeneration` required, `frameId` required, `expression` required | Evaluate a source-language-aware, side-effect-free expression against stopped target state. |
 | `debug_exception_breakpoints_set` | Destructive | `debugSession` required | `stopGeneration` required, `breakpoints` required | Replace the managed-exception policy at an exact stopped generation. Requires an active debug_agent_control_set grant. |
 | `debug_exception_get` | Read only | `debugSession` required | `stopGeneration` required, `threadId` required | Get the managed exception responsible for one thread's exact stopped generation. |
 | `debug_execute_expression` | Destructive | `debugSession` required | `stopGeneration` required, `frameId` required, `expression` required | Execute an explicitly qualified instance or loaded-type static method in the target. Requires an active debug_agent_control_set grant and the exact stopGeneration; the method may have arbitrary side effects. |
@@ -32,9 +32,9 @@ This page is generated through the official MCP client from the complete csls MC
 | `debug_scopes_get` | Read only | `debugSession` required | `stopGeneration` required, `frameId` required | Get arguments, locals, and other scopes for one frame in the current stopGeneration. |
 | `debug_session_attach` | Destructive | None | `processId` required, `pause`, `sourceFileMap` | Attach an isolated debugger worker to one explicit managed process and return its debugSession identifier. |
 | `debug_session_end` | Destructive | `debugSession` required | `terminateAttachedTarget` | End one explicit debugger session. Launched targets terminate; attached targets detach unless terminateAttachedTarget is explicitly requested. |
-| `debug_session_get` | Read only | `debugSession` required | None | Get current state for exactly one debugSession; no active target is inferred. |
+| `debug_session_get` | Read only | `debugSession` required | None | Get current state for the debugger session selected by debugSession. |
 | `debug_session_restart` | Destructive | `debugSession` required | `stopGeneration` required | Restart one stopped debugger target with its original launch or attach request. Requires an active debug_agent_control_set grant and the exact stopGeneration. |
-| `debug_session_start` | Destructive | None | `program` required, `workingDirectory` required, `arguments`, `environment`, `runtimeHostPath`, `sourceFileMap`, `initialSourcePath`, `initialLine`, `suppressJitOptimizations`, `enableHotReload`, `justMyCode`, `enableStepFiltering` | Launch one managed .NET target in an isolated debugger worker and return its explicit debugSession identifier. |
+| `debug_session_start` | Destructive | None | `program` required, `workingDirectory` required, `arguments`, `environment`, `runtimeHostPath`, `sourceFileMap`, `initialSourcePath`, `initialLine`, `suppressJitOptimizations`, `enableHotReload`, `justMyCode`, `enableStepFiltering`, `stopAtEntry` | Launch one managed .NET target in an isolated debugger worker and return its explicit debugSession identifier. |
 | `debug_sessions_list` | Read only | None | None | List only the explicit debugger sessions owned by this MCP connection. |
 | `debug_source_breakpoints_set` | Destructive | `debugSession` required | `stopGeneration` required, `sourcePath` required, `breakpoints` required | Replace all source breakpoints for one absolute document at an exact stopped generation. Requires an active debug_agent_control_set grant. |
 | `debug_source_get` | Read only | `debugSession` required | `stopGeneration` required, `sourceReference` required, `start`, `count` | Get a bounded source-text page from one generation-bound source reference. |
@@ -43,8 +43,8 @@ This page is generated through the official MCP client from the complete csls MC
 | `debug_threads_get` | Read only | `debugSession` required | `stopGeneration` required | Get managed threads for one explicit debugger session and current stopGeneration. |
 | `debug_variable_set` | Destructive | `debugSession` required | `stopGeneration` required, `variablesReference` required, `name` required, `value` required | Set one child of a current-generation variable container. String, call, and construction results may resume the target to materialize the value and return a newer stopGeneration. Requires an active debug_agent_control_set grant and the exact stopGeneration. |
 | `debug_variables_get` | Read only | `debugSession` required | `stopGeneration` required, `variablesReference` required, `start`, `count` | Get a bounded child page from one variable container in the current stopGeneration. |
-| `debug_variables_get_presented` | Destructive | `debugSession` required | `stopGeneration` required, `variablesReference` required, `start`, `count` | Get debugger-presented child variables, including DebuggerTypeProxy and Results View. Requires an active debug_agent_control_set grant and the exact stopGeneration because constructors, getters, and enumerable expansion may execute arbitrary target code. Listing a Results View row does not enumerate it. Resolving that lazy row returns one non-lazy snapshot variable; use its variablesReference and the replacement stopGeneration with debug_variables_get or a variables resource to read pages without further execution. |
-| `debug_watches_get` | Read only | `debugSession` required | `stopGeneration` required, `frameId` required, `expressions` required | Evaluate one through 64 independent side-effect-free watches without executing target code. |
+| `debug_variables_get_presented` | Destructive | `debugSession` required | `stopGeneration` required, `variablesReference` required, `start`, `count` | Get debugger-presented child variables, including DebuggerTypeProxy and Results View. Requires an active debug_agent_control_set grant and the exact stopGeneration because constructors, getters, and enumerable expansion may execute arbitrary target code. Expanding the lazy Results View row enumerates the target and returns one snapshot variable. Use its variablesReference and the replacement stopGeneration with debug_variables_get or a variables resource for read-only snapshot paging. |
+| `debug_watches_get` | Read only | `debugSession` required | `stopGeneration` required, `frameId` required, `expressions` required | Evaluate one through 64 independent, side-effect-free watches against stopped target state. |
 | `get_code_actions` | Read only | Exactly one of `workspace`, `session`, or `socket` | `documentPath` required, `startLine` required, `startCharacter` required, `endLine` required, `endCharacter` required, `kind` required | Get concrete Roslyn code actions for a zero-based UTF-16 source range. |
 | `get_completion` | Read only | Exactly one of `workspace`, `session`, or `socket` | `documentPath` required, `line` required, `character` required | Get bounded C# completion candidates and exact commit edits at a zero-based UTF-16 position. |
 | `get_declaration` | Read only | Exactly one of `workspace`, `session`, or `socket` | `documentPath` required, `line` required, `character` required | Find source declarations for the C# symbol at a zero-based UTF-16 document position. |
@@ -59,11 +59,11 @@ This page is generated through the official MCP client from the complete csls MC
 | `get_session` | Read only | Exactly one of `workspace`, `session`, or `socket` | None | Get lifecycle, workspace generation, roots, and process details for the selected csls session. |
 | `get_signature_help` | Read only | Exactly one of `workspace`, `session`, or `socket` | `documentPath` required, `line` required, `character` required | Get overload-aware C# signature help at a zero-based UTF-16 document position. |
 | `get_type_definition` | Read only | Exactly one of `workspace`, `session`, or `socket` | `documentPath` required, `line` required, `character` required | Find source definitions for the type of the C# symbol at a zero-based UTF-16 position. |
-| `get_workspace_state` | Read only | Exactly one of `workspace`, `session`, or `socket` | None | Get a compact workspace health overview. Follow the returned resource link only when complete project, document, request, cache, log, or diagnostic details are needed. |
+| `get_workspace_state` | Read only | Exactly one of `workspace`, `session`, or `socket` | None | Get a compact workspace health overview. Follow the returned resource link for complete project, document, request, cache, log, and diagnostic details. |
 | `list_requests` | Read only | Exactly one of `workspace`, `session`, or `socket` | None | List bounded queued and running requests for one selected csls session. |
 | `list_sessions` | Read only | None | None | List responsive csls sessions and their process, socket, lifecycle, and workspace identities. |
-| `preview_formatting` | Read only | Exactly one of `workspace`, `session`, or `socket` | `documentPath` required, `tabSize` required, `insertSpaces` required | Preview complete-document Roslyn formatting edits without applying them. |
-| `preview_rename` | Read only | Exactly one of `workspace`, `session`, or `socket` | `documentPath` required, `line` required, `character` required, `newName` required | Preview a semantic C# rename as version-aware workspace edits without applying it. |
+| `preview_formatting` | Read only | Exactly one of `workspace`, `session`, or `socket` | `documentPath` required, `tabSize` required, `insertSpaces` required | Preview complete-document Roslyn formatting edits. |
+| `preview_rename` | Read only | Exactly one of `workspace`, `session`, or `socket` | `documentPath` required, `line` required, `character` required, `newName` required | Preview a semantic C# rename as version-aware workspace edits. |
 | `reload_workspace` | Mutating | Exactly one of `workspace`, `session`, or `socket` | None | Atomically reload every root in one selected workspace while preserving unsaved overlays. |
 | `restart_build_hosts` | Mutating | Exactly one of `workspace`, `session`, or `socket` | None | Recreate every Roslyn host in one selected workspace while preserving unsaved overlays. |
 | `restore_workspace` | Mutating | Exactly one of `workspace`, `session`, or `socket` | None | Run dotnet restore for every workspace entry point and atomically reload one selected Roslyn workspace. |
@@ -73,7 +73,7 @@ This page is generated through the official MCP client from the complete csls MC
 
 ## Resources
 
-csls exposes target-selected state only through the resource templates below.
+Use these resource templates to inspect the selected target's state.
 
 ## Resource templates
 
@@ -106,7 +106,7 @@ csls exposes target-selected state only through the resource templates below.
 | `diagnose_dotnet_debugger_failure` | Diagnose a .NET debugger failure from explicit session state and bounded evidence. |
 | `explain_dotnet_debugger_state` | Explain one explicit .NET debugger session from generation-consistent evidence. |
 | `explain_symbol` | Explain a C# symbol using csls hover, definition, reference, and project context. |
-| `plan_dotnet_breakpoints` | Plan .NET breakpoints from source and debugger evidence without changing the target. |
+| `plan_dotnet_breakpoints` | Plan .NET breakpoints using read-only source and debugger inspection. |
 | `refactor_csharp` | Plan and apply a C# refactoring through csls with version preconditions and verification. |
 | `review_csharp` | Review C# code using csls semantic evidence and actionable findings. |
 | `triage_dotnet_dump` | Triage one explicit read-only .NET process-dump session from bounded evidence. |

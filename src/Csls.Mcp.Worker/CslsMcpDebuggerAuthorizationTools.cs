@@ -38,7 +38,7 @@ internal sealed class CslsMcpDebuggerAuthorizationTools
         ReadOnly = false,
         UseStructuredContent = true,
         OutputSchemaType = typeof(McpDebugSessionInfo))]
-    [Description("Grant or revoke time-bounded target-changing authority for one explicit debugSession. Grants are connection-local and never inherited.")]
+    [Description("Grant or revoke time-bounded target-changing authority for one explicit debugSession. Each grant is scoped to its MCP connection and session.")]
     public Task<ModelContextProtocol.Protocol.CallToolResult> SetAsync(
         [Description("Opaque identifier returned by debug_session_start or debug_session_attach.")]
         string debugSession,

@@ -276,7 +276,7 @@ static string BuildMcpReference(
     var page = new StringBuilder(
         "---\ntitle: MCP reference\ndescription: Generated multi-workspace tools, resource templates, and prompts from csls-mcp.\n---\n\n" +
         "This page is generated through the official MCP client from the complete csls MCP " +
-        "installation. Start `csls-mcp` without arguments. Language-service operations select " +
+        "installation. Run `csls-mcp` to start the server. Language-service operations select " +
         "exactly one `workspace`, `session`, or `socket`; debugger operations use their explicit " +
         "`debugSession`. Target selectors are shown separately from operation-specific inputs.\n\n" +
         "## Tools\n\n" +
@@ -295,7 +295,7 @@ static string BuildMcpReference(
     if (resources.Count == 0)
     {
         page.AppendLine(
-            "csls exposes target-selected state only through the resource templates below.");
+            "Use these resource templates to inspect the selected target's state.");
     }
     else
     {

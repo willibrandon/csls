@@ -34,7 +34,7 @@ internal sealed class CslsMcpDebuggerPrompts
     /// Creates a breakpoint-planning prompt without applying mutations.
     /// </summary>
     [McpServerPrompt(Name = "plan_dotnet_breakpoints")]
-    [Description("Plan .NET breakpoints from source and debugger evidence without changing the target.")]
+    [Description("Plan .NET breakpoints using read-only source and debugger inspection.")]
     public static string PlanBreakpoints(
         [Description("Opaque debugger-session identifier.")]
         string debugSession,

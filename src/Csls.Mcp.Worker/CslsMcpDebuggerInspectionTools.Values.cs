@@ -80,7 +80,7 @@ internal sealed partial class CslsMcpDebuggerInspectionTools
         ReadOnly = true,
         UseStructuredContent = true,
         OutputSchemaType = typeof(McpDebugEvaluationResult))]
-    [Description("Evaluate a source-language-aware side-effect-free expression without executing target code.")]
+    [Description("Evaluate a source-language-aware, side-effect-free expression against stopped target state.")]
     public Task<ModelContextProtocol.Protocol.CallToolResult> EvaluateAsync(
         [Description("Opaque identifier returned by a debugger lifecycle tool.")]
         string debugSession,
@@ -110,7 +110,7 @@ internal sealed partial class CslsMcpDebuggerInspectionTools
         ReadOnly = true,
         UseStructuredContent = true,
         OutputSchemaType = typeof(McpDebugWatchesResult))]
-    [Description("Evaluate one through 64 independent side-effect-free watches without executing target code.")]
+    [Description("Evaluate one through 64 independent, side-effect-free watches against stopped target state.")]
     public Task<ModelContextProtocol.Protocol.CallToolResult> GetWatchesAsync(
         [Description("Opaque identifier returned by a debugger lifecycle tool.")]
         string debugSession,

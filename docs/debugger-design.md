@@ -331,7 +331,7 @@ An absent, incomplete, dump-inapplicable, or platform-inapplicable feature is no
 advertised. Unknown requests receive a normal unsuccessful response and do not
 fault the session. Invalid sequencing receives a stable machine-readable error.
 
-The adapter accepts launch options `program`, `cwd`, `args`, `env`, `noDebug`,
+The adapter accepts launch options `program`, `cwd`, `args`, `env`, `noDebug`, `stopAtEntry`,
 `runtimeHost`, `sourceFileMap`, `sourceLinkOptions`, `symbolOptions`, `justMyCode`,
 `enableStepFiltering`, `suppressJITOptimizations`, and `enableHotReload`. Live attach
 requires `processId` and accepts the same source, symbol, and stepping options.
@@ -339,13 +339,13 @@ Editors and the CLI resolve projects, launch profiles, and tests to a concrete
 program before invoking DAP. The adapter does not run builds or interpret
 arbitrary shell text.
 
-The required configuration additions are `envFile`, `stopAtEntry`, `console`,
-`requireExactSource`, `expressionEvaluationOptions`, `terminateChildProcesses`,
-and `pipeTransport`. These names specify intended .NET compatibility, not
-implemented options. In particular, `stopAtEntry: true` is explicitly rejected;
-the other additions have no implemented behavior. Completion requires request
-validation, runtime behavior, client schemas, documentation, and real-process
-tests for each option. Merely accepting a JSON property does not implement it.
+`stopAtEntry` defaults to `false`. Enabling it installs a session-owned one-shot
+breakpoint at the compiler-authored entry statement. Managed PE entry metadata,
+the PDB debug entry, and state-machine kickoff mappings identify that location.
+Executables built without symbols stop at entry IL offset zero. The actor retires
+the entry breakpoint before publishing the `entry` stop. Restart rearms entry
+stopping from the retained or replacement launch configuration. User breakpoints
+keep their independent identities and binding policies.
 
 DAP frame and variable IDs are compact session-local handles, not process pointers.
 Paging is applied before expensive expansion. Memory references are opaque,

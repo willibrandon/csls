@@ -3,7 +3,7 @@ title: Debug Adapter Protocol reference
 description: Generated csls DAP requests, capabilities, and target configuration.
 ---
 
-This page is generated from the shipping DAP dispatcher, initialize response, and editor configuration schema. Unknown requests return an unsuccessful DAP response.
+This page is generated from the shipping DAP dispatcher, initialize response, and editor configuration schema.
 
 ## Requests
 
@@ -84,8 +84,9 @@ This page is generated from the shipping DAP dispatcher, initialize response, an
 | --- | --- | --- | --- | --- |
 | `program` | `string` | Yes |  | Absolute path to the managed application assembly. |
 | `cwd` | `string` | No |  | Working directory for the application. |
-| `args` | `array` | No | `[]` | Arguments passed directly to the managed target without shell interpretation. |
-| `noDebug` | `boolean` | No | `false` | Launch the target without attaching CoreCLR. |
+| `args` | `array` | No | `[]` | Arguments passed directly to the managed target as literal values. |
+| `noDebug` | `boolean` | No | `false` | Run the target as an ordinary process. |
+| `stopAtEntry` | `boolean` | No | `false` | Stop at the first executable entry-point statement. |
 | `env` | `object` | No |  | Environment variables added to the target. A null value removes an inherited variable. |
 | `runtimeHost` | `string` | No |  | Absolute path to the compatible dotnet host used for a managed assembly. |
 | `sourceFileMap` | `object` | No |  | Maps absolute build-time source prefixes to absolute local source prefixes. |

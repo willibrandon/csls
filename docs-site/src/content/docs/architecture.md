@@ -4,8 +4,8 @@ description: Understand the csls process model, project boundaries, and workspac
 ---
 
 csls keeps distribution, compiler work, protocol contracts, and user interfaces in
-separate assemblies. The small launchers can use Native AOT while Roslyn and MSBuild
-remain in managed workers where dynamic project loading is available.
+separate assemblies. The launchers handle startup and process supervision. Roslyn
+and MSBuild run in managed workers that support dynamic project loading.
 
 ## Process model
 
@@ -33,11 +33,11 @@ transient sessions for workspaces that have no live editor session.
 The broker retains target connections for the MCP connection lifetime so edit
 plans, traces, and workspace generations stay affiliated with the selected
 language server. It admits at most 32 MCP-owned transient sessions and 256 total
-cached sessions; exceeding either limit rejects the new acquisition without
-evicting active state. A disconnected target is evicted independently and is not
-retried or retargeted during the failed operation. Disconnecting the MCP client
-cancels outstanding calls, stops owned transient workers, and only closes control
-connections to editor-owned workers.
+cached sessions. At capacity, existing sessions remain active and a new acquisition
+returns a capacity error. A disconnected target's cached connection is evicted
+independently. Disconnecting the MCP client cancels outstanding calls, stops its
+transient workers, and closes its control connections. Editor-owned workers continue
+serving their editors.
 
 ## Projects
 
@@ -60,9 +60,8 @@ connections to editor-owned workers.
 | `Csls.Mcp.Worker` | Official C# MCP SDK tools, resources, and prompts |
 | `Csls.SourceGen` | Repository structure and documentation analyzers |
 
-Project references point toward contracts and compiler services. The protocol and
-control contract projects do not depend on UI or process hosts. This keeps wire
-types reusable and prevents editor behavior from leaking into the workspace layer.
+Project references point toward contracts and compiler services. Protocol and
+control contracts supply shared wire types to the workspace, UI, and process hosts.
 
 ## Workspace state
 
@@ -74,7 +73,7 @@ publish their new generation, then release later work.
 Open documents are versioned overlays on the current solution. Reloads preserve
 those overlays for folders that remain active. Diagnostics, semantic tokens, and
 guarded edit plans record the generation and document version they were computed
-from, so stale results are not applied to newer source.
+from. Applying an edit validates those values against the current source.
 
 The request scheduler bounds queued work and separates concurrent reads, exclusive
 mutations, and background reads. Cancellation remains attached to the original
@@ -82,9 +81,9 @@ request correlation identifier from admission through Roslyn execution.
 
 ## Distribution boundary
 
-The launchers contain command parsing and process supervision only. Native AOT keeps
-tool startup small without forcing Roslyn, MSBuild, Razor, editor integration, or MCP
-reflection into the native image. Managed workers are bundled inside each runtime
+The launchers parse commands and supervise processes. Native AOT keeps
+tool startup small. Roslyn, MSBuild, Razor, editor integration, and MCP run in
+managed workers bundled inside each runtime
 package and are started with the selected .NET host.
 
 See [RPC and control](../rpc-and-control/) for the two wire protocols and

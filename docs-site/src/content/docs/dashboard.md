@@ -28,14 +28,13 @@ request traces.
 
 ![csls dashboard showing a live C# diagnostic](../../assets/screenshots/dashboard.svg)
 
-Click the screenshot for the full-size view. The capture comes from the real
-dashboard integration test and includes a Roslyn diagnostic from the connected
-workspace.
+Click the screenshot for the full-size view of the connected workspace and its
+Roslyn diagnostic.
 
 Use the arrow keys to select a view. Press <kbd>F2</kbd> for live requests,
 <kbd>F3</kbd> for traces, <kbd>F5</kbd> to refresh, and
 <kbd>Ctrl</kbd>+<kbd>C</kbd> to exit. Diagnostics are evaluated when their view
-is selected so normal attachment does not compile every loaded project.
+is selected.
 
 The Actions view can restore or reload a workspace, restart its Roslyn build
 hosts, and clear retained results. Every mutation opens a confirmation window.

@@ -27,8 +27,7 @@ modules with symbol policy, authoritative breakpoints, side-effect-free watches,
 the current exception. F1 opens a searchable command palette for watch, execution,
 restart, terminate, and detach operations.
 
-Each terminal instance opens one session. There is no sessions browser or
-in-window session switching.
+Each terminal instance operates on one explicitly launched or attached target.
 
 | Key | Operation |
 | --- | --- |
@@ -45,6 +44,14 @@ in-window session switching.
 
 Closing the terminal terminates a launched target process tree.
 
+To begin at the application's entry point, use:
+
+```console
+csls debugger tui launch /absolute/path/to/App.dll --stop-at-entry
+```
+
+Add `--source` and `--line` together to set an initial source breakpoint as well.
+
 ## Interactive terminal attach
 
 Attach to and pause one running CoreCLR process:
@@ -59,26 +66,29 @@ Closing the UI detaches and leaves the independently owned process running.
 
 The `csls-mcp` package supervises one isolated debugger worker per target. Every result
 contains an opaque `debugSession`; stopped-state operations also require the exact
-`stopGeneration`. The server never infers a debugger target from an editor, language
-workspace, or visible operating-system process.
+`stopGeneration`. Each request selects its debugger target explicitly.
 
 Start a launch with `debug_session_start`, providing absolute `program` and
 `workingDirectory` paths. An optional paired `initialSourcePath` and `initialLine` sets
 a breakpoint before launch. Use `debug_session_attach` with one positive `processId`
-for an existing target. `debug_sessions_list`, `debug_session_get`, restart, and end
-operate only on sessions owned by the current MCP connection.
+for an existing target. `debug_sessions_list` lists sessions owned by the current
+MCP connection. Use each session's identifier to inspect, restart, or end it.
+
+Set `stopAtEntry: true` on `debug_session_start` to inspect the target at its entry
+statement. Use the returned stop generation for argument and stack inspection.
+Grant agent control before continuing execution.
 
 Use `debug_dump_open` with one absolute existing dump path to create a read-only dump
 session. Clients that supply an MCP progress token receive monotonic validation,
 runtime-indexing, and completion updates. Cancellation reaches worker activation and
-dump opening rather than merely abandoning the MCP response.
+dump opening.
 
 Disconnect deterministically terminates launched process trees, detaches attached
 processes, and shuts down the isolated workers.
 
 ## Observation and control
 
-Observation never grants target control. Read-only tools include:
+Read-only tools inspect the selected session:
 
 - `debug_threads_get`, `debug_stack_get`, `debug_scopes_get`, and
   `debug_variables_get`;
@@ -96,23 +106,21 @@ The grant is scoped to the exact session and MCP connection, expires against mon
 elapsed time, can be revoked immediately with `enabled: false`, and is rechecked when a
 queued mutation begins. Session results expose `agentControlExpiresAtUtc` while the
 grant is active.
-Operations that act on a stop also require its exact generation. Another client cannot
-reuse the grant or commandeer the session.
+Operations that act on a stop also require its exact generation.
 
 `debug_execute_expression` is marked destructive, non-idempotent, and open-world.
-Direct assignments are destructive but do not execute target code or advance the
-generation. Tool annotations describe the actual semantics instead of treating every
-debugger request as read-only.
+Direct assignments write to stopped target storage and preserve the generation.
+Tool annotations identify each operation's effects.
 
 ## Hot Reload
 
-Start a launch session with `enableHotReload: true` when a compiler service will
-produce C# or Visual Basic updates. Grant control explicitly, inspect the target with
+Start a launch session with `enableHotReload: true` to receive compiler-produced
+C# or Visual Basic updates. Grant control explicitly, inspect the target with
 `debug_modules_get`, and call `debug_hot_reload` with the exact `debugSession`, current
 `stopGeneration`, module `id`, and module `hotReloadGeneration`. The update consists of
 matched base64 metadata, managed IL, and minimal Portable PDB deltas plus an explicit
-`activeStatements` array. Pass an empty array when no updated method is active; never
-infer or fabricate compiler mappings.
+`activeStatements` array. Use the compiler's exact mappings and pass an empty array
+when all updated methods are inactive.
 
 Each active statement identifies the old method-definition token, positive Edit and
 Continue method version, old managed IL offset, and the updated zero-based source span.
@@ -125,7 +133,7 @@ open-world, and requires an active `debug_agent_control_set` grant.
 ## Bounded results and stable errors
 
 Stack, variable, and module pages accept non-negative offsets and at most 256 items.
-Stack pages omit `totalFrames` until the end of the stack has been observed.
+Stack pages include an exact `totalFrames` once enumeration reaches the end.
 Continue with `startFrame` advanced by the returned count until a page is shorter
 than requested. Frame identities remain stable across overlapping pages at the
 same visible stop.
@@ -142,19 +150,17 @@ matching JSON text representation.
 
 `csls://debug/` resource templates expose the same connection-owned session, output,
 breakpoint, thread, stack, scope, variable, module, exception, source, memory, and
-disassembly projections. Stopped-state URIs include the exact generation so a saved URI
-cannot silently inspect a later stop.
+disassembly projections. Stopped-state URIs identify the exact generation being inspected.
 
-Clients using the current MCP protocol can listen to exact owned URIs through
+MCP clients can listen to exact owned URIs through
 `subscriptions/listen`. Resource update notifications come from engine state, output,
-breakpoint-binding events, and agent-control grant, revoke, and expiry transitions;
-csls does not poll the target. Legacy subscription RPCs are not exposed.
+breakpoint-binding events, and agent-control grant, revoke, and expiry transitions.
 
 The prompts `diagnose_dotnet_debugger_failure`, `plan_dotnet_breakpoints`, and
 `explain_dotnet_debugger_state` gather bounded read-first evidence for one explicit
-live session. `triage_dotnet_dump` uses only the session snapshot, managed threads,
-managed stacks, and modules exposed by an already-opened read-only dump session.
-The prompts contain no hidden execution or breakpoint changes.
+live session. `triage_dotnet_dump` inspects an open dump session's snapshot, managed
+threads, stacks, and modules.
+The prompts gather evidence through read-only operations.
 
 For every tool schema, resource URI, prompt, annotation, and shared transport convention,
 see the generated [MCP reference](../mcp-reference/).

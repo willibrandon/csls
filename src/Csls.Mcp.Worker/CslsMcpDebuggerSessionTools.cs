@@ -54,7 +54,7 @@ internal sealed class CslsMcpDebuggerSessionTools
         ReadOnly = true,
         UseStructuredContent = true,
         OutputSchemaType = typeof(McpDebugSessionInfo))]
-    [Description("Get current state for exactly one debugSession; no active target is inferred.")]
+    [Description("Get current state for the debugger session selected by debugSession.")]
     public Task<ModelContextProtocol.Protocol.CallToolResult> GetAsync(
         [Description("Opaque identifier returned by debug_session_start or debug_session_attach.")]
         string debugSession,

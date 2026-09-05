@@ -25,16 +25,14 @@ Open a file-based C# app directly or open its containing directory. csls uses
 the selected .NET SDK and honors `#:package`, `#:project`, `#:include`,
 `#:property`, and `#:sdk` directives.
 
-The `csls` and `csls-mcp` .NET tool packages are prepared for Windows, Linux,
-and macOS on x64 and Arm64. Linux musl and Windows x86 packages are also built
-and verified in CI.
+The `csls` and `csls-mcp` .NET tool packages support Windows, Linux,
+and macOS on x64 and Arm64, plus Linux musl and Windows x86.
 
 Install the separate MCP tool when an MCP client will use the language server:
 
 ```console
 dotnet tool install --global csls-mcp
-csls-mcp
 ```
 
-Register only `csls-mcp` with the MCP client. Select a `workspace`, `session`, or
+Configure the MCP client to run `csls-mcp`. Select a `workspace`, `session`, or
 `socket` in each target-dependent tool or resource call.

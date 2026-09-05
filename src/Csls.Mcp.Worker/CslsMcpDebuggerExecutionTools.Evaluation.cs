@@ -27,7 +27,7 @@ internal sealed partial class CslsMcpDebuggerExecutionTools
         ReadOnly = false,
         UseStructuredContent = true,
         OutputSchemaType = typeof(McpDebugVariablesResult))]
-    [Description("Get debugger-presented child variables, including DebuggerTypeProxy and Results View. Requires an active debug_agent_control_set grant and the exact stopGeneration because constructors, getters, and enumerable expansion may execute arbitrary target code. Listing a Results View row does not enumerate it. Resolving that lazy row returns one non-lazy snapshot variable; use its variablesReference and the replacement stopGeneration with debug_variables_get or a variables resource to read pages without further execution.")]
+    [Description("Get debugger-presented child variables, including DebuggerTypeProxy and Results View. Requires an active debug_agent_control_set grant and the exact stopGeneration because constructors, getters, and enumerable expansion may execute arbitrary target code. Expanding the lazy Results View row enumerates the target and returns one snapshot variable. Use its variablesReference and the replacement stopGeneration with debug_variables_get or a variables resource for read-only snapshot paging.")]
     public Task<ModelContextProtocol.Protocol.CallToolResult> GetPresentedVariablesAsync(
         [Description("Opaque identifier returned by a debugger lifecycle tool.")]
         string debugSession,
