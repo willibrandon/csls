@@ -45,6 +45,14 @@ internal static class VisualBasicExpressionLowerer
         CTypeExpressionSyntax conversion => ConversionNode(
             conversion.Type.ToString(),
             Lower(conversion.Expression)),
+        DirectCastExpressionSyntax conversion => TypeOperation(
+            DebugExpressionNodeKind.ReferenceCast, conversion.Type, conversion.Expression),
+        TryCastExpressionSyntax conversion => TypeOperation(
+            DebugExpressionNodeKind.TryCast, conversion.Type, conversion.Expression),
+        TypeOfExpressionSyntax typeTest => typeTest.IsKind(SyntaxKind.TypeOfIsNotExpression)
+            ? OperatorNode(DebugExpressionNodeKind.Unary, DebugExpressionOperator.LogicalNot,
+                TypeOperation(DebugExpressionNodeKind.TypeTest, typeTest.Type, typeTest.Expression))
+            : TypeOperation(DebugExpressionNodeKind.TypeTest, typeTest.Type, typeTest.Expression),
         PredefinedCastExpressionSyntax conversion => ConversionNode(
             conversion.Keyword.ValueText,
             Lower(conversion.Expression)),
@@ -180,6 +188,10 @@ internal static class VisualBasicExpressionLowerer
             Text: null,
             TypeName: null,
             children);
+
+    private static DebugExpressionNode TypeOperation(
+        DebugExpressionNodeKind kind, TypeSyntax type, ExpressionSyntax operand) => new(
+            kind, DebugExpressionOperator.None, Text: null, type.ToString(), [Lower(operand)]);
 
     private static DebugExpressionNode ConversionNode(
         string typeName,

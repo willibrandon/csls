@@ -22,7 +22,7 @@ internal static class ManagedPrimitiveConversionEvaluator
     {
         ArgumentNullException.ThrowIfNull(value);
         string target = NormalizeTypeName(destinationType, language);
-        string source = NormalizeTypeName(value.Type, language);
+        string source = NormalizeTypeName(value.Type, DebugExpressionLanguage.CSharp);
         if (string.Equals(source, target, StringComparison.Ordinal))
         {
             return value;
@@ -65,8 +65,14 @@ internal static class ManagedPrimitiveConversionEvaluator
         bool sourceIsContextualLiteral)
     {
         ArgumentNullException.ThrowIfNull(value);
-        string target = NormalizeTypeName(destinationType, language);
-        string source = NormalizeTypeName(value.Type, language);
+        string target = NormalizeTypeName(destinationType, DebugExpressionLanguage.CSharp);
+        string source = NormalizeTypeName(value.Type, DebugExpressionLanguage.CSharp);
+        if (value.DeclaredType is { IsReference: true } declared)
+        {
+            throw new InvalidOperationException(
+                $"Assignment from '{declared.DisplayName}' to '{destinationType}' requires an explicit unboxing conversion.");
+        }
+
         if (string.Equals(source, target, StringComparison.Ordinal))
         {
             return value;
@@ -191,7 +197,13 @@ internal static class ManagedPrimitiveConversionEvaluator
 
     private static string NormalizeTypeName(
         string typeName,
-        DebugExpressionLanguage language)
+        DebugExpressionLanguage language) => TryNormalizeTypeName(typeName, language)
+        ?? throw new NotSupportedException($"Built-in conversion type '{typeName}' is not supported.");
+
+    /// <summary>
+    /// Identifies a supported primitive conversion spelling without interpreting an arbitrary loaded type name.
+    /// </summary>
+    internal static string? TryNormalizeTypeName(string typeName, DebugExpressionLanguage language)
     {
         string type = typeName.Trim();
         if (type.StartsWith("global::", StringComparison.Ordinal))
@@ -199,31 +211,30 @@ internal static class ManagedPrimitiveConversionEvaluator
             type = type["global::".Length..];
         }
 
-        string key = type.ToUpperInvariant();
-        return key switch
+        if (ManagedRuntimeTypeAliases.TryNormalize(type, language, out _, out string debuggerName))
         {
-            "SYSTEM.BOOLEAN" or "BOOLEAN" or "BOOL" or "CBOOL" => "bool",
-            "SYSTEM.SBYTE" or "SBYTE" or "CSBYTE" => "sbyte",
-            "SYSTEM.BYTE" or "BYTE" or "CBYTE" => "byte",
-            "SYSTEM.INT16" or "INT16" or "SHORT" or "CSHORT" => "short",
-            "SYSTEM.UINT16" or "UINT16" or "USHORT" or "CUSHORT" => "ushort",
-            "SYSTEM.INT32" or "INT32" or "INTEGER" or "INT" or "CINT" => "int",
-            "SYSTEM.UINT32" or "UINT32" or "UINTEGER" or "UINT" or "CUINT" => "uint",
-            "SYSTEM.INT64" or "INT64" or "LONG" or "CLNG" => "long",
-            "SYSTEM.UINT64" or "UINT64" or "ULONG" or "CULNG" => "ulong",
-            "SYSTEM.INTPTR" or "INTPTR" or "NATIVEINT" or "NINT" => "nint",
-            "SYSTEM.UINTPTR" or "UINTPTR" or "UNATIVEINT" or "NUINT" => "nuint",
-            "SYSTEM.CHAR" or "CHAR" or "CCHAR" => "char",
-            "FLOAT32" or "SINGLE" or "SYSTEM.SINGLE" or "CSNG" => "float",
-            "FLOAT" when language == DebugExpressionLanguage.FSharp => "double",
-            "FLOAT" => "float",
-            "SYSTEM.DOUBLE" or "DOUBLE" or "CDBL" => "double",
-            "SYSTEM.DECIMAL" or "DECIMAL" or "CDEC" => "decimal",
-            "SYSTEM.STRING" or "STRING" or "CSTRING" => "string",
-            "SYSTEM.OBJECT" or "OBJECT" or "OBJ" or "COBJ" => "object",
-            _ => throw new NotSupportedException(
-                $"Built-in conversion type '{typeName}' is not supported.")
-        };
+            return debuggerName;
+        }
+
+        return language == DebugExpressionLanguage.VisualBasic ? type.ToUpperInvariant() switch
+        {
+            "CBOOL" => "bool",
+            "CSBYTE" => "sbyte",
+            "CBYTE" => "byte",
+            "CSHORT" => "short",
+            "CUSHORT" => "ushort",
+            "CINT" => "int",
+            "CUINT" => "uint",
+            "CLNG" => "long",
+            "CULNG" => "ulong",
+            "CCHAR" => "char",
+            "CSNG" => "float",
+            "CDBL" => "double",
+            "CDEC" => "decimal",
+            "CSTR" => "string",
+            "COBJ" => "object",
+            _ => null
+        } : null;
     }
 
     private static InvalidOperationException CannotConvert(string source, string target) => new(

@@ -47,6 +47,10 @@ internal static class CSharpExpressionLowerer
         CastExpressionSyntax conversion => ConversionNode(
             conversion.Type.ToString(),
             Lower(conversion.Expression)),
+        BinaryExpressionSyntax binary when binary.IsKind(SyntaxKind.IsExpression) ||
+            binary.IsKind(SyntaxKind.AsExpression) => new DebugExpressionNode(
+                binary.IsKind(SyntaxKind.IsExpression) ? DebugExpressionNodeKind.TypeTest : DebugExpressionNodeKind.TryCast,
+                DebugExpressionOperator.None, Text: null, binary.Right.ToString(), [Lower(binary.Left)]),
         MemberAccessExpressionSyntax member
             when member.IsKind(SyntaxKind.SimpleMemberAccessExpression) => Node(
                 DebugExpressionNodeKind.MemberAccess,

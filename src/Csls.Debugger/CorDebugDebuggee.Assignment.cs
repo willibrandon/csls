@@ -56,15 +56,19 @@ internal sealed partial class CorDebugDebuggee
     }
 
     /// <summary>
-    /// Creates a string-materialization plan when safe evaluation produced no runtime reference.
+    /// Validates string assignment before creating a materialization plan with the original source declaration.
     /// </summary>
     /// <param name="frameId">The logical managed frame identifier for the visible stop.</param>
+    /// <param name="target">The compiler-lowered writable destination.</param>
     /// <param name="value">The compiler-lowered value expression.</param>
+    /// <param name="targetExpression">The source destination expression.</param>
     /// <param name="generation">The current stopped generation.</param>
-    /// <returns>A literal string plan to materialize, or null when direct assignment is sufficient.</returns>
-    internal DebugExpressionPlan? CreateStringMaterializationPlan(
+    /// <returns>The validated string plan and declaration, or null when direct assignment is sufficient.</returns>
+    internal ManagedStringAssignmentPlan? CreateStringMaterializationPlan(
         int frameId,
+        DebugExpressionPlan target,
         DebugExpressionPlan value,
+        string targetExpression,
         DebugStopGeneration generation)
     {
         ManagedFrameHandle frame = GetFrame(frameId, generation);
@@ -74,22 +78,41 @@ internal sealed partial class CorDebugDebuggee
             value,
             value.Root,
             generation);
-        return source is
+        if (source is not
+            {
+                HasScalar: true,
+                Scalar: string text,
+                RuntimeValueReference: <= 0
+            })
         {
-            HasScalar: true,
-            Scalar: string text,
-            RuntimeValueReference: <= 0
+            return null;
         }
-            ? new DebugExpressionPlan(
-                DebuggerEvaluatorProtocol.CurrentPlanVersion,
-                value.Language,
-                new DebugExpressionNode(
-                    DebugExpressionNodeKind.Literal,
-                    DebugExpressionOperator.None,
-                    text,
-                    "string",
-                    []))
-            : null;
+
+        ManagedExpressionPlanValidator.Validate(target, frame.ExpressionLanguage);
+        nint thread = GetThread(frame.ThreadId);
+        try
+        {
+            source = source with
+            {
+                DeclaredType = source.DeclaredType ?? _boundTypes.BindName("string", DebugExpressionLanguage.CSharp, thread)
+            };
+        }
+        finally
+        {
+            _ = ComAbi.Release(thread);
+        }
+
+        using ManagedAssignmentTarget destination = ResolveAssignmentTarget(
+            frame, target, target.Root, generation, targetExpression);
+        if (destination.Origin is null)
+        {
+            throw new InvalidOperationException("The assignment has no recoverable physical storage.");
+        }
+
+        ValidateReferenceConversion(destination.Pointer, source, destination.DeclaredType, destination.StorageType, frame.ThreadId);
+        var plan = new DebugExpressionPlan(DebuggerEvaluatorProtocol.CurrentPlanVersion, value.Language,
+            new DebugExpressionNode(DebugExpressionNodeKind.Literal, DebugExpressionOperator.None, text, "string", []));
+        return new ManagedStringAssignmentPlan(plan, source.DeclaredType);
     }
 
     /// <summary>

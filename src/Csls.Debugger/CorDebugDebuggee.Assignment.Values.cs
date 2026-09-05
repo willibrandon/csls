@@ -178,10 +178,12 @@ internal sealed partial class CorDebugDebuggee
                     $"(loaded module {sourceType.ModuleId}) to '{target.DisplayName}' (loaded module {target.ModuleId}).");
             }
 
-            if (storageType is not null && source.RuntimeValueReference > 0 &&
-                !(source.HasScalar && source.Scalar is null))
+            bool hasActualReferenceType = source.RuntimeValueReference > 0 || source is { HasScalar: true, Scalar: string };
+            if (storageType is not null && hasActualReferenceType && !(source.HasScalar && source.Scalar is null))
             {
-                ManagedBoundType actual = _boundTypes.CaptureValue(GetRuntimeValue(source), thread);
+                ManagedBoundType actual = source.RuntimeValueReference > 0
+                    ? _boundTypes.CaptureValue(GetRuntimeValue(source), thread)
+                    : _boundTypes.BindName("string", DebugExpressionLanguage.CSharp, thread);
                 if (!_referenceConversions.IsRuntimeAssignable(actual, storageType, thread))
                 {
                     throw new InvalidOperationException(

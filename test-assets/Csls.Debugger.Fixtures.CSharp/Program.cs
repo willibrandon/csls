@@ -26,6 +26,11 @@ internal static class Program
         var nestedGenericValue = new DebuggerGenericFixture<List<int>>([]);
         var arrayGenericValue = new DebuggerGenericFixture<int[]>([]);
         var nullableGenericValue = new DebuggerGenericFixture<int?>(answer);
+        object referenceValue = value;
+        object? nullReference = arguments.Length > 100 ? value : null;
+        object boxedNumber = answer;
+        bool[] typeOracle = [referenceValue is DebuggerFixtureValue, referenceValue is string,
+            nullReference is object, boxedNumber is int];
         ValueTuple<int, int>[] pairs = [new(0, 142), new(151, 152)];
         if (arguments.Length >= 5)
         {
@@ -50,6 +55,10 @@ internal static class Program
         GC.KeepAlive(nestedGenericValue);
         GC.KeepAlive(arrayGenericValue);
         GC.KeepAlive(nullableGenericValue);
+        GC.KeepAlive(referenceValue);
+        GC.KeepAlive(nullReference);
+        GC.KeepAlive(boxedNumber);
+        GC.KeepAlive(typeOracle);
         GC.KeepAlive(pairs);
         return answer - 42;
     }

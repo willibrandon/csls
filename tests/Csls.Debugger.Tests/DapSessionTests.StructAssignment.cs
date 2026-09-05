@@ -260,7 +260,7 @@ public sealed partial class DapSessionTests
                 throw;
             }
 
-            Assert.AreEqual("Built-in conversion type 'System.Int128' is not supported.",
+            Assert.AreEqual("The type operation cannot convert this value to 'System.Int128' without supported value materialization.",
                 rejected.GetProperty("message").GetString());
             JsonElement unchanged = await ReadEvaluationAsync(
                 client, frameId, "localNumber", success: true, TestContext.CancellationToken)

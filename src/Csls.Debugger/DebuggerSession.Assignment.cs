@@ -116,19 +116,18 @@ public sealed partial class DebuggerSession
         Task<ManagedFunctionEvaluationResult>? functionEvaluation = null;
         CorDebugDebuggee? evaluationDebuggee = null;
         ManagedFrameSelection? frameSelection = null;
+        ManagedStringAssignmentPlan? stringAssignment = null;
         await _actor.InvokeAsync(
             token =>
             {
                 _ = token;
                 CorDebugDebuggee debuggee = GetAssignmentDebuggee(generation);
-                DebugExpressionPlan? executionPlan = value.Root.Kind is
+                bool isInvocation = value.Root.Kind is
                     DebugExpressionNodeKind.Invocation or
-                    DebugExpressionNodeKind.ObjectCreation
-                        ? value
-                        : debuggee.CreateStringMaterializationPlan(
-                            frameId,
-                            value,
-                            generation);
+                    DebugExpressionNodeKind.ObjectCreation;
+                stringAssignment = isInvocation ? null : debuggee.CreateStringMaterializationPlan(
+                    frameId, target, value, targetExpression, generation);
+                DebugExpressionPlan? executionPlan = isInvocation ? value : stringAssignment?.Plan;
                 if (executionPlan is null)
                 {
                     result = debuggee.SetExpression(
@@ -176,6 +175,11 @@ public sealed partial class DebuggerSession
             evaluationDebuggee!,
             functionEvaluation,
             cancellationToken).ConfigureAwait(false);
+        if (stringAssignment is not null)
+        {
+            evaluation = evaluation with { DeclaredType = stringAssignment.DeclaredType };
+        }
+
         await _actor.InvokeAsync(
             token =>
             {

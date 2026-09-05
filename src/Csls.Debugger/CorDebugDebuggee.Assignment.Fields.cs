@@ -75,7 +75,8 @@ internal sealed partial class CorDebugDebuggee
                     : StringComparison.Ordinal;
             ManagedTupleCustomTypeInfo? tupleCustomTypeInfo = GetExpressionTupleCustomTypeInfo(receiver);
             ManagedValueOrigin? origin = GetValueOrigin(receiver);
-            if (_tuplePresenter.TryGetElementValue(
+            bool selectedTypeReached = IsSelectedReceiverType(receiver, currentType);
+            if (selectedTypeReached && _tuplePresenter.TryGetElementValue(
                 dereferenced,
                 currentType,
                 tupleCustomTypeInfo,
@@ -110,11 +111,12 @@ internal sealed partial class CorDebugDebuggee
                     uint typeToken = GetClassToken(runtimeClass);
                     using PEReader peReader = OpenRuntimeModule(module);
                     MetadataReader metadata = peReader.GetMetadataReader();
-                    uint? fieldToken = TryResolveDeclaredInstanceField(
+                    selectedTypeReached = selectedTypeReached || IsSelectedReceiverType(receiver, currentType);
+                    uint? fieldToken = selectedTypeReached ? TryResolveDeclaredInstanceField(
                         metadata,
                         typeToken,
                         name,
-                        language);
+                        language) : null;
                     if (fieldToken is uint resolvedFieldToken)
                     {
                         FieldDefinition field = metadata.GetFieldDefinition(
@@ -191,6 +193,25 @@ internal sealed partial class CorDebugDebuggee
 
         throw new InvalidOperationException(
             $"Instance field '{name}' is unavailable on the runtime type hierarchy.");
+    }
+
+    private bool IsSelectedReceiverType(ManagedExpressionValue receiver, nint runtimeType)
+    {
+        if (receiver.ExplicitReceiverType is not { } selectedType)
+        {
+            return true;
+        }
+
+        nint thread = GetThread(_values[receiver.RuntimeValueReference].ThreadId
+            ?? throw new InvalidOperationException("The cast receiver has no stopped thread."));
+        try
+        {
+            return selectedType.IsSameType(_boundTypes.CaptureType(runtimeType, thread));
+        }
+        finally
+        {
+            _ = ComAbi.Release(thread);
+        }
     }
 
     private ManagedBoundType ResolveTupleElementType(ManagedExpressionValue receiver, nint exactType, int index)

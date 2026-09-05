@@ -19,6 +19,11 @@ Friend Module Program
         Dim nestedGenericValue = New DebuggerGenericFixture(Of List(Of Integer))(New List(Of Integer)())
         Dim arrayGenericValue = New DebuggerGenericFixture(Of Integer())(Array.Empty(Of Integer)())
         Dim nullableGenericValue = New DebuggerGenericFixture(Of Integer?)(answer)
+        Dim referenceValue As Object = value
+        Dim nullReference As Object = If(arguments.Length > 100, value, Nothing)
+        Dim boxedNumber As Object = answer
+        Dim typeOracle As Boolean() = {TypeOf referenceValue Is DebuggerFixtureValue,
+            TypeOf referenceValue Is String, TypeOf nullReference Is Object, TypeOf boxedNumber Is Integer}
         Dim pairs As ValueTuple(Of Integer, Integer)() = {
             New ValueTuple(Of Integer, Integer)(0, 142), New ValueTuple(Of Integer, Integer)(151, 152)}
         answer += 1
@@ -33,6 +38,10 @@ Friend Module Program
         GC.KeepAlive(nestedGenericValue)
         GC.KeepAlive(arrayGenericValue)
         GC.KeepAlive(nullableGenericValue)
+        GC.KeepAlive(referenceValue)
+        GC.KeepAlive(nullReference)
+        GC.KeepAlive(boxedNumber)
+        GC.KeepAlive(typeOracle)
         GC.KeepAlive(pairs)
         Return answer - 42
     End Function

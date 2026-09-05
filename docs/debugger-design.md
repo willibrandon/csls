@@ -665,6 +665,19 @@ Formatting and nullable receiver inspection use the same identity check. Tuple-n
 transforms on a constructed type propagate through fields declared as a direct type
 parameter, shared by object expansion, expression evaluation, and assignment.
 
+Reference type operations use explicit versioned IR nodes for tests, safe casts,
+reference casts, and upcasts. C#, Visual Basic, and F# lower their respective syntax
+into this contract. Target names are bounded to 4,096 characters; each operation
+has exactly one operand, no value text, and no operator. Runtime binding resolves
+closed identities through the loaded module catalog and verifies declared conversion
+eligibility separately from actual object compatibility. Ambiguous definitions fail
+instead of selecting a different load context. Null tests return false, safe casts
+return typed nulls on runtime mismatch, and failed direct casts report an evaluation
+error. Casting preserves object identity, declaration type, and any explicit class
+receiver selection independently from presentation. Field storage, nonvirtual method
+selection, and completion honor that class selection; virtual calls retain CoreCLR
+dispatch. Exact primitive unboxing reads existing values without target execution.
+
 Values that require target allocation or execution use the guarded evaluator. Strings
 are allocated with `ICorDebugEval2.NewStringWithLength`; explicitly qualified calls and
 object construction reuse the ordinary function-evaluation binder. The result is held
@@ -676,8 +689,12 @@ generation, proves the identity still matches, resolves the writable target agai
 and performs the write.
 DAP invalidates stacks and variables, while private RPC and MCP return the resulting
 generation and synchronize the authoritative session resource before publishing value
-invalidation. Implicit boxing, explicit reference casts, and user-defined conversions
-require additional type-safe binding and materialization rules and are not advertised.
+invalidation. Computed-string assignments validate their declaration and destination
+storage before allocation and carry that declaration into the replacement generation.
+The final write revalidates the destination. Runtime scalar formatting never authorizes
+implicit unboxing, and source-language primitive aliases remain separate from canonical
+runtime names. Implicit boxing, nullable safe casts, general struct unboxing, and
+user-defined conversions require additional binding and materialization rules.
 
 Expansion understands debugger display/proxy/browsable attributes, raw and results
 views, root-hidden members, tuples, dynamic flags, nullable values, arrays,

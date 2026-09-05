@@ -144,9 +144,11 @@ internal sealed partial class CorDebugDebuggee
 
             ManagedTupleCustomTypeInfo? tupleCustomTypeInfo =
                 GetExpressionTupleCustomTypeInfo(receiver);
-            foreach (string tupleName in _tuplePresenter.GetCompletionNames(
+            bool selectedTypeReached = IsSelectedReceiverType(receiver, currentType);
+            IEnumerable<string> tupleNames = selectedTypeReached ? _tuplePresenter.GetCompletionNames(
                 currentType,
-                tupleCustomTypeInfo))
+                tupleCustomTypeInfo) : [];
+            foreach (string tupleName in tupleNames)
             {
                 if (candidates.Count >= MaximumCompletionCount ||
                     !MatchesCompletionPrefix(tupleName, prefix, language))
@@ -184,15 +186,19 @@ internal sealed partial class CorDebugDebuggee
                             FileMode.Open,
                             FileAccess.Read,
                             FileShare.Read | FileShare.Delete));
-                    AddDeclaredMemberCompletions(
-                        peReader.GetMetadataReader(),
-                        typeToken,
-                        staticMembers: false,
-                        prefix,
-                        language,
-                        replacementStart,
-                        replacementLength,
-                        candidates);
+                    selectedTypeReached = selectedTypeReached || IsSelectedReceiverType(receiver, currentType);
+                    if (selectedTypeReached)
+                    {
+                        AddDeclaredMemberCompletions(
+                            peReader.GetMetadataReader(),
+                            typeToken,
+                            staticMembers: false,
+                            prefix,
+                            language,
+                            replacementStart,
+                            replacementLength,
+                            candidates);
+                    }
                     unsafe
                     {
                         nint* baseTypeAddress = &baseType;
@@ -258,37 +264,8 @@ internal sealed partial class CorDebugDebuggee
         int replacementLength,
         DebugExpressionLanguage language)
     {
-        StringComparison comparison = CompletionComparison(language);
-        bool simpleName = !typeName.Contains('.', StringComparison.Ordinal) &&
-            !typeName.Contains('+', StringComparison.Ordinal);
-        var matches = new List<(CorDebugLoadedModule Module, uint TypeToken)>();
-        int scannedTypeCount = 0;
-        foreach (CorDebugLoadedModule module in _sourceBreakpoints.GetRuntimeModules())
-        {
-            scannedTypeCount = AddFunctionEvaluationTypeMatches(
-                module,
-                typeName,
-                simpleName,
-                comparison,
-                matches,
-                scannedTypeCount);
-        }
-
-        if (matches.Count == 0)
-        {
-            throw new InvalidOperationException(
-                $"No loaded runtime type named '{typeName}' is available for completion.");
-        }
-
-        if (matches.Count > 1)
-        {
-            throw new InvalidOperationException(
-                $"Static type name '{typeName}' is ambiguous across loaded runtime modules. " +
-                "Use its fully qualified metadata name.");
-        }
-
         Dictionary<string, DebugCompletionInfo> candidates = CreateCompletionMap(language);
-        (CorDebugLoadedModule resolvedModule, uint typeToken) = matches[0];
+        (CorDebugLoadedModule resolvedModule, uint typeToken) = _typeNames.Resolve(typeName, language, "completion");
         using PEReader? peReader = resolvedModule.OpenPeReader();
         if (peReader is null)
         {

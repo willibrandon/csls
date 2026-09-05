@@ -63,5 +63,25 @@ public enum DebugExpressionNodeKind
     /// <summary>
     /// Produces the default value of a type supplied by the surrounding expression context.
     /// </summary>
-    DefaultLiteral
+    DefaultLiteral,
+
+    /// <summary>
+    /// Checks an existing value against a named runtime type without allocating or executing code.
+    /// </summary>
+    TypeTest,
+
+    /// <summary>
+    /// Converts an existing reference or produces a typed null when its runtime type is incompatible.
+    /// </summary>
+    TryCast,
+
+    /// <summary>
+    /// Applies an explicit reference cast without numeric or user-defined conversion.
+    /// </summary>
+    ReferenceCast,
+
+    /// <summary>
+    /// Applies a source-language upcast requiring an implicit reference conversion.
+    /// </summary>
+    ReferenceUpcast
 }

@@ -50,7 +50,7 @@ internal static class ManagedExpressionPlanValidator
 
         IReadOnlyList<DebugExpressionNode> children = node.Children ??
             throw new InvalidDataException("An expression node has no child collection.");
-        if (node.Text is { Length: > MaximumTextLength })
+        if (node.Text is { Length: > MaximumTextLength } || node.TypeName is { Length: > MaximumTextLength })
         {
             throw new InvalidDataException(
                 "The expression plan contains text beyond the safe evaluator limit.");
@@ -64,6 +64,10 @@ internal static class ManagedExpressionPlanValidator
             DebugExpressionNodeKind.Literal => 0,
             DebugExpressionNodeKind.MemberAccess or
             DebugExpressionNodeKind.Conversion or
+            DebugExpressionNodeKind.TypeTest or
+            DebugExpressionNodeKind.TryCast or
+            DebugExpressionNodeKind.ReferenceCast or
+            DebugExpressionNodeKind.ReferenceUpcast or
             DebugExpressionNodeKind.Unary => 1,
             DebugExpressionNodeKind.Binary => 2,
             DebugExpressionNodeKind.Conditional => 3,
@@ -93,11 +97,13 @@ internal static class ManagedExpressionPlanValidator
                 $"Expression node {node.Kind} requires a source name.");
         }
 
-        if (node.Kind == DebugExpressionNodeKind.Conversion &&
-            string.IsNullOrWhiteSpace(node.TypeName))
+        if (node.Kind is DebugExpressionNodeKind.Conversion or DebugExpressionNodeKind.TypeTest or DebugExpressionNodeKind.TryCast or
+            DebugExpressionNodeKind.ReferenceCast or DebugExpressionNodeKind.ReferenceUpcast)
         {
-            throw new InvalidDataException(
-                "A conversion expression requires a destination type.");
+            if (string.IsNullOrWhiteSpace(node.TypeName) || node.TypeName.Length > 4096 || node.Text is not null)
+            {
+                throw new InvalidDataException("A type operation requires a bounded type name and no value text.");
+            }
         }
 
         if (node.Kind == DebugExpressionNodeKind.DefaultLiteral &&

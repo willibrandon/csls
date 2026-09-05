@@ -58,11 +58,20 @@ public sealed class RepositoryDiagnosticLanguageServerTests
             capabilities.RootElement,
             TestContext.CancellationToken).ConfigureAwait(false);
         await lsp.CompleteInitializationAsync().ConfigureAwait(false);
-        ControlSessionInfo session = await ControlSessionWaiter.WaitForRunningAsync(
-            repositoryRoot,
-            TimeSpan.FromMinutes(3),
-            TestContext.CancellationToken,
-            expectedProcessId: lsp.ProcessId).ConfigureAwait(false);
+        ControlSessionInfo session;
+        try
+        {
+            session = await ControlSessionWaiter.WaitForRunningAsync(
+                repositoryRoot,
+                TimeSpan.FromMinutes(3),
+                TestContext.CancellationToken,
+                expectedProcessId: lsp.ProcessId).ConfigureAwait(false);
+        }
+        catch (TimeoutException)
+        {
+            await WriteStartupFailureDiagnosticsAsync(lsp).ConfigureAwait(false);
+            throw;
+        }
         var control = new ControlRpcClient(session.SocketPath);
         await using ConfiguredAsyncDisposable controlCleanup = control.ConfigureAwait(false);
         string requestContextPath = Path.Join(
@@ -171,5 +180,11 @@ public sealed class RepositoryDiagnosticLanguageServerTests
 
         Assert.DoesNotContain("warn:", standardError, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("fail:", standardError, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private async Task WriteStartupFailureDiagnosticsAsync(LspProcessSession lsp)
+    {
+        using var cleanupTimeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        TestContext.WriteLine(await lsp.ShutdownAsync(cleanupTimeout.Token).ConfigureAwait(false));
     }
 }

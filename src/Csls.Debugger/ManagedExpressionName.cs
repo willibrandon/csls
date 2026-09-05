@@ -9,6 +9,29 @@ namespace Csls.Debugger;
 internal static class ManagedExpressionName
 {
     /// <summary>
+    /// Preserves an explicit cast in the source path used to inspect or assign one of its members.
+    /// </summary>
+    internal static string? CreateTypeOperation(
+        string? operand, string typeName, DebugExpressionNodeKind kind, DebugExpressionLanguage language)
+    {
+        if (operand is null)
+        {
+            return null;
+        }
+
+        return language switch
+        {
+            DebugExpressionLanguage.CSharp => kind == DebugExpressionNodeKind.TryCast
+                ? $"({operand} as {typeName})" : $"(({typeName}){operand})",
+            DebugExpressionLanguage.VisualBasic => kind == DebugExpressionNodeKind.TryCast
+                ? $"TryCast({operand}, {typeName})" : $"DirectCast({operand}, {typeName})",
+            DebugExpressionLanguage.FSharp => kind == DebugExpressionNodeKind.ReferenceUpcast
+                ? $"({operand} :> {typeName})" : $"({operand} :?> {typeName})",
+            _ => null
+        };
+    }
+
+    /// <summary>
     /// Appends already evaluated array indices using the selected source-language grammar.
     /// </summary>
     /// <param name="parent">The parent source expression, or null when unavailable.</param>

@@ -42,6 +42,26 @@ internal static class ReferenceAssignmentFixture<TBase>
         IEnumerable<Exception> enumerableTarget = Array.Empty<Exception>();
         List<ArgumentException> enumerableSource = [new ArgumentException("covariant element")];
         List<Exception> invariantTarget = [new InvalidOperationException("original invariant")];
+        var hiddenDerived = new ReferenceCastDerived();
+        ReferenceCastBase hiddenBase = hiddenDerived;
+        object hiddenObject = hiddenDerived;
+        hiddenBase._value = 11;
+        hiddenDerived._value = 22;
+        int hiddenBaseOracle = ((ReferenceCastBase)hiddenDerived)._value;
+        int hiddenDerivedOracle = ((ReferenceCastDerived)hiddenBase)._value;
+        int hiddenBaseMethodOracle = ((ReferenceCastBase)hiddenDerived).GetValue();
+        int hiddenDerivedMethodOracle = ((ReferenceCastDerived)hiddenBase).GetValue();
+        int hiddenVirtualMethodOracle = ((ReferenceCastBase)hiddenDerived).GetVirtualValue();
+        Func<ArgumentException> derivedFactory = static () => new ArgumentException("delegate result");
+        Func<Exception> covariantFactory = File.Exists(path)
+            ? static () => new InvalidOperationException("completed delegate result")
+            : derivedFactory;
+        Action<object> objectAction = GC.KeepAlive;
+        Action<Exception> contravariantAction = File.Exists(path)
+            ? static exception => GC.KeepAlive(exception)
+            : objectAction;
+        bool covariantCastOracle = covariantFactory is Func<ArgumentException>;
+        bool contravariantCastOracle = contravariantAction is Action<string>;
         int result = DebuggerFixture.WaitForSignal(
             path, "ready", 42, "answer", (ArgumentNumber: 42, ArgumentText: "argument"));
         GC.KeepAlive(target);
@@ -61,6 +81,20 @@ internal static class ReferenceAssignmentFixture<TBase>
         GC.KeepAlive(enumerableTarget);
         GC.KeepAlive(enumerableSource);
         GC.KeepAlive(invariantTarget);
+        GC.KeepAlive(hiddenDerived);
+        GC.KeepAlive(hiddenBase);
+        GC.KeepAlive(hiddenObject);
+        GC.KeepAlive(hiddenBaseOracle);
+        GC.KeepAlive(hiddenDerivedOracle);
+        GC.KeepAlive(hiddenBaseMethodOracle);
+        GC.KeepAlive(hiddenDerivedMethodOracle);
+        GC.KeepAlive(hiddenVirtualMethodOracle);
+        GC.KeepAlive(derivedFactory);
+        GC.KeepAlive(covariantFactory);
+        GC.KeepAlive(objectAction);
+        GC.KeepAlive(contravariantAction);
+        GC.KeepAlive(covariantCastOracle);
+        GC.KeepAlive(contravariantCastOracle);
         GC.KeepAlive(genericTarget);
         GC.KeepAlive(genericSource);
         GC.KeepAlive(genericHolder);

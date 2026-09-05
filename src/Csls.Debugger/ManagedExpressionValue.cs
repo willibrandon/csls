@@ -12,6 +12,7 @@ namespace Csls.Debugger;
 /// <param name="RuntimeValueReference">The internal retained runtime identity, or zero for a computed value.</param>
 /// <param name="IsContextualDefault">Whether the value still requires a type from its expression context.</param>
 /// <param name="DeclaredType">The exact declared source type, including typed null values.</param>
+/// <param name="ExplicitReceiverType">The receiver declaration selected by an explicit cast for member binding.</param>
 internal sealed record ManagedExpressionValue(
     DebugVariableInfo Display,
     object? Scalar,
@@ -19,7 +20,8 @@ internal sealed record ManagedExpressionValue(
     string Type,
     int RuntimeValueReference = 0,
     bool IsContextualDefault = false,
-    ManagedBoundType? DeclaredType = null)
+    ManagedBoundType? DeclaredType = null,
+    ManagedBoundType? ExplicitReceiverType = null)
 {
     /// <summary>
     /// Converts the internal value to the protocol-neutral evaluation result.

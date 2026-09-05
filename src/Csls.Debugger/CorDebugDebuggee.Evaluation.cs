@@ -1,4 +1,5 @@
 using Csls.Debugger.Contracts;
+using Csls.Debugger.Interop;
 
 namespace Csls.Debugger;
 
@@ -67,11 +68,9 @@ internal sealed partial class CorDebugDebuggee
                 frame, "this", generation),
             DebugExpressionNodeKind.Literal => ManagedExpressionValueFactory.FromLiteral(node),
             DebugExpressionNodeKind.DefaultLiteral => ManagedExpressionValueFactory.FromContextualDefault(),
-            DebugExpressionNodeKind.Conversion =>
-                ManagedPrimitiveConversionEvaluator.EvaluateExplicit(
-                    EvaluateNode(frame, plan, node.Children[0], generation),
-                    node.TypeName!,
-                    plan.Language),
+            DebugExpressionNodeKind.Conversion or DebugExpressionNodeKind.ReferenceCast or
+                DebugExpressionNodeKind.ReferenceUpcast or DebugExpressionNodeKind.TypeTest or
+                DebugExpressionNodeKind.TryCast => EvaluateTypeOperation(frame, plan, node, generation),
             DebugExpressionNodeKind.MemberAccess => EvaluateMember(
                 frame,
                 plan,
@@ -98,6 +97,52 @@ internal sealed partial class CorDebugDebuggee
             _ => throw new InvalidDataException(
                 $"Expression node kind {node.Kind} is not supported.")
         };
+
+    private ManagedExpressionValue EvaluateTypeOperation(
+        ManagedFrameHandle frame, DebugExpressionPlan plan, DebugExpressionNode node, DebugStopGeneration generation)
+    {
+        ManagedExpressionValue operand = EvaluateNode(frame, plan, node.Children[0], generation);
+        if (operand.IsContextualDefault)
+        {
+            throw new InvalidOperationException("A default literal requires a destination type before a type operation.");
+        }
+
+        string? primitiveType = node.Kind == DebugExpressionNodeKind.Conversion
+            ? ManagedPrimitiveConversionEvaluator.TryNormalizeTypeName(node.TypeName!, plan.Language) : null;
+        if (primitiveType is not (null or "string" or "object") && operand.DeclaredType is not { IsReference: true })
+        {
+            return ManagedPrimitiveConversionEvaluator.EvaluateExplicit(operand, node.TypeName!, plan.Language);
+        }
+
+        nint thread = GetThread(frame.ThreadId);
+        try
+        {
+            string typeName = primitiveType ?? node.TypeName!;
+            DebugExpressionLanguage typeLanguage = primitiveType is null ? plan.Language : DebugExpressionLanguage.CSharp;
+            ManagedBoundType target = _boundTypes.BindName(typeName, typeLanguage, thread);
+            bool isNull = operand is { HasScalar: true, Scalar: null };
+            ManagedBoundType? declared = operand.DeclaredType ?? (isNull ? null
+                : _boundTypes.BindName(operand.Type, DebugExpressionLanguage.CSharp, thread));
+            ManagedBoundType? actual = isNull ? null : operand.RuntimeValueReference > 0
+                ? _boundTypes.CaptureValue(GetRuntimeValue(operand), thread)
+                : _boundTypes.BindName(operand.Type, DebugExpressionLanguage.CSharp, thread);
+            string displayName = ManagedRuntimeTypeNameParser.Parse(typeName, typeLanguage).DebuggerTypeName;
+            ManagedExpressionValue result = _referenceExpressions.Evaluate(
+                operand, declared, actual, target, displayName, node.Kind, thread);
+            return result.ExplicitReceiverType is null ? result : result with
+            {
+                Display = result.Display with
+                {
+                    EvaluateName = ManagedExpressionName.CreateTypeOperation(
+                        operand.Display.EvaluateName, primitiveType is null ? node.TypeName! : target.Name, node.Kind, plan.Language)
+                }
+            };
+        }
+        finally
+        {
+            _ = ComAbi.Release(thread);
+        }
+    }
 
     private ManagedExpressionValue EvaluateMember(
         ManagedFrameHandle frame,

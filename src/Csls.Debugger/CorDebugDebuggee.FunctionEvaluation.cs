@@ -176,7 +176,8 @@ internal sealed partial class CorDebugDebuggee
                     ? ResolveConstructor(operation.Text!, plan.Language, suppliedArguments, thread)
                     : receiverValue == 0
                         ? ResolveStaticFunction(operation.Children[0], operation.Text!, plan.Language, suppliedArguments, thread)
-                        : ResolveInstanceFunction(dereferencedReceiver, operation.Text!, plan.Language, suppliedArguments, thread);
+                        : ResolveInstanceFunction(dereferencedReceiver, operation.Text!, plan.Language, suppliedArguments, thread,
+                            receiver?.ExplicitReceiverType);
                 function = binding.Function;
                 callTypeArguments = binding.TypeArguments;
                 declaredResultType = binding.DeclaredResultType;

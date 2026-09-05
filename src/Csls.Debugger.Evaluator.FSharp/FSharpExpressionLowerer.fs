@@ -99,20 +99,20 @@ module FSharpExpressionLowerer =
 
     let private conversionType name =
         match name with
-        | "sbyte" -> Some "sbyte"
-        | "byte" -> Some "byte"
-        | "int16" -> Some "short"
-        | "uint16" -> Some "ushort"
-        | "int" -> Some "int"
-        | "uint32" -> Some "uint"
-        | "int64" -> Some "long"
-        | "uint64" -> Some "ulong"
-        | "nativeint" -> Some "nint"
-        | "unativeint" -> Some "nuint"
-        | "char" -> Some "char"
-        | "float32" -> Some "float"
-        | "float" -> Some "double"
-        | "decimal" -> Some "decimal"
+        | "sbyte" -> Some "System.SByte"
+        | "byte" -> Some "System.Byte"
+        | "int16" -> Some "System.Int16"
+        | "uint16" -> Some "System.UInt16"
+        | "int" -> Some "System.Int32"
+        | "uint32" -> Some "System.UInt32"
+        | "int64" -> Some "System.Int64"
+        | "uint64" -> Some "System.UInt64"
+        | "nativeint" -> Some "System.IntPtr"
+        | "unativeint" -> Some "System.UIntPtr"
+        | "char" -> Some "System.Char"
+        | "float32" -> Some "System.Single"
+        | "float" -> Some "System.Double"
+        | "decimal" -> Some "System.Decimal"
         | _ -> None
 
     let private conversionNode typeName operand =
@@ -172,6 +172,18 @@ module FSharpExpressionLowerer =
         | SynExpr.LongIdent(longDotId = identifier) ->
             lowerLongIdentifier identifier.LongIdent
         | SynExpr.Const(constant = constant) -> lowerConstant constant
+        | SynExpr.TypeTest(expr = operand; targetType = targetType) ->
+            DebugExpressionNode(
+                DebugExpressionNodeKind.TypeTest, DebugExpressionOperator.None,
+                noText, lowerTypeName targetType, [| lower operand |])
+        | SynExpr.Upcast(expr = operand; targetType = targetType) ->
+            DebugExpressionNode(
+                DebugExpressionNodeKind.ReferenceUpcast, DebugExpressionOperator.None,
+                noText, lowerTypeName targetType, [| lower operand |])
+        | SynExpr.Downcast(expr = operand; targetType = targetType) ->
+            DebugExpressionNode(
+                DebugExpressionNodeKind.ReferenceCast, DebugExpressionOperator.None,
+                noText, lowerTypeName targetType, [| lower operand |])
         | SynExpr.DotGet(expr = receiver; longDotId = members) ->
             members.LongIdent
             |> List.fold

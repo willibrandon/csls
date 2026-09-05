@@ -1,7 +1,4 @@
 using Csls.Debugger.Contracts;
-using System.Reflection.Metadata;
-using System.Reflection.Metadata.Ecma335;
-using System.Reflection.PortableExecutable;
 
 namespace Csls.Debugger;
 
@@ -10,8 +7,6 @@ namespace Csls.Debugger;
 /// </summary>
 internal sealed partial class CorDebugDebuggee
 {
-    private const int MaximumFunctionEvaluationTypeScanCount = 1_000_000;
-
     private ManagedFunctionBinding ResolveStaticFunction(
         DebugExpressionNode receiver,
         string methodName,
@@ -51,84 +46,7 @@ internal sealed partial class CorDebugDebuggee
     private (CorDebugLoadedModule Module, uint TypeToken) ResolveLoadedRuntimeType(
         string typeName,
         DebugExpressionLanguage language,
-        string operation)
-    {
-        StringComparison comparison = language == DebugExpressionLanguage.VisualBasic
-            ? StringComparison.OrdinalIgnoreCase
-            : StringComparison.Ordinal;
-        bool simpleName = !typeName.Contains('.', StringComparison.Ordinal) &&
-            !typeName.Contains('+', StringComparison.Ordinal);
-        var matches = new List<(CorDebugLoadedModule Module, uint TypeToken)>();
-        int scannedTypeCount = 0;
-        foreach (CorDebugLoadedModule module in _sourceBreakpoints.GetRuntimeModules())
-        {
-            scannedTypeCount = AddFunctionEvaluationTypeMatches(
-                module,
-                typeName,
-                simpleName,
-                comparison,
-                matches,
-                scannedTypeCount);
-        }
-
-        if (matches.Count == 0)
-        {
-            throw new InvalidOperationException(
-                $"No loaded runtime type named '{typeName}' is available for {operation}.");
-        }
-
-        if (matches.Count > 1)
-        {
-            throw new InvalidOperationException(
-                $"Runtime type name '{typeName}' is ambiguous across loaded modules for " +
-                $"{operation}. Use its fully qualified metadata name.");
-        }
-
-        return matches[0];
-    }
-
-    private static int AddFunctionEvaluationTypeMatches(
-        CorDebugLoadedModule module,
-        string typeName,
-        bool simpleName,
-        StringComparison comparison,
-        List<(CorDebugLoadedModule Module, uint TypeToken)> matches,
-        int scannedTypeCount)
-    {
-        using PEReader? peReader = module.OpenPeReader();
-        if (peReader is null || !peReader.HasMetadata)
-        {
-            return scannedTypeCount;
-        }
-
-        MetadataReader metadata = peReader.GetMetadataReader();
-        foreach (TypeDefinitionHandle typeHandle in metadata.TypeDefinitions)
-        {
-            if (++scannedTypeCount > MaximumFunctionEvaluationTypeScanCount)
-            {
-                throw new InvalidOperationException(
-                    $"Managed function evaluation exceeds the loaded-type scan limit of " +
-                    $"{MaximumFunctionEvaluationTypeScanCount}.");
-            }
-
-            TypeDefinition type = metadata.GetTypeDefinition(typeHandle);
-            string candidateName = simpleName
-                ? metadata.GetString(type.Name)
-                : GetFunctionEvaluationTypeName(metadata, typeHandle);
-            if (string.Equals(candidateName, typeName, comparison) ||
-                !simpleName && string.Equals(
-                    candidateName.Replace('+', '.'),
-                    typeName.Replace('+', '.'),
-                    comparison))
-            {
-                matches.Add((
-                    module,
-                    checked((uint)MetadataTokens.GetToken(typeHandle))));
-            }
-        }
-
-        return scannedTypeCount;
-    }
+        string operation) => _typeNames.Resolve(typeName, language, operation);
 
     private static bool TryGetQualifiedTypeName(
         DebugExpressionNode node,
@@ -154,19 +72,4 @@ internal sealed partial class CorDebugDebuggee
         return false;
     }
 
-    private static string GetFunctionEvaluationTypeName(
-        MetadataReader metadata,
-        TypeDefinitionHandle handle)
-    {
-        TypeDefinition type = metadata.GetTypeDefinition(handle);
-        string name = metadata.GetString(type.Name);
-        TypeDefinitionHandle declaringType = type.GetDeclaringType();
-        if (!declaringType.IsNil)
-        {
-            return $"{GetFunctionEvaluationTypeName(metadata, declaringType)}+{name}";
-        }
-
-        string @namespace = metadata.GetString(type.Namespace);
-        return string.IsNullOrEmpty(@namespace) ? name : $"{@namespace}.{name}";
-    }
 }

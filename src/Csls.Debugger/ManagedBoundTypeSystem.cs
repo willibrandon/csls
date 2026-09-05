@@ -1,3 +1,4 @@
+using Csls.Debugger.Contracts;
 using Csls.Debugger.Interop;
 using System.Reflection;
 using System.Reflection.Metadata;
@@ -15,16 +16,83 @@ internal sealed class ManagedBoundTypeSystem
     private readonly SourceBreakpointManager _modules;
     private readonly ManagedRuntimeTypeCatalog _catalog;
     private readonly ManagedCoreLibrary _coreLibrary;
+    private readonly ManagedLoadedTypeNameResolver _typeNames;
 
     /// <summary>
     /// Creates a type system scoped to one debuggee's loaded modules.
     /// </summary>
-    internal ManagedBoundTypeSystem(SourceBreakpointManager modules)
+    internal ManagedBoundTypeSystem(SourceBreakpointManager modules, ManagedLoadedTypeNameResolver typeNames)
     {
         ArgumentNullException.ThrowIfNull(modules);
+        ArgumentNullException.ThrowIfNull(typeNames);
         _modules = modules;
         _catalog = new ManagedRuntimeTypeCatalog(modules);
         _coreLibrary = new ManagedCoreLibrary(modules);
+        _typeNames = typeNames;
+    }
+
+    /// <summary>
+    /// Resolves a bounded source type name into an exact closed metadata identity without target execution.
+    /// </summary>
+    internal ManagedBoundType BindName(string name, DebugExpressionLanguage language, nint thread) =>
+        BindNamedType(ManagedRuntimeTypeNameParser.Parse(name, language), language, thread);
+
+    /// <summary>
+    /// Gets declaration flags used by source-language reference conversion eligibility checks.
+    /// </summary>
+    internal TypeAttributes GetAttributes(ManagedBoundType type)
+    {
+        if (type.IsArray)
+        {
+            return TypeAttributes.Sealed | TypeAttributes.Public;
+        }
+
+        using PEReader pe = OpenModule(GetModule(type));
+        return GetDefinition(pe.GetMetadataReader(), type.DefinitionToken).Attributes;
+    }
+
+    /// <summary>
+    /// Identifies one intrinsic declaration by its exact loaded core-library module and metadata name.
+    /// </summary>
+    internal bool IsCoreType(ManagedBoundType type, string name, nint thread) =>
+        type.ModuleId == _coreLibrary.GetModule(thread).Id && type.Name == name;
+
+    private ManagedBoundType BindNamedType(
+        ManagedRuntimeTypeReference reference, DebugExpressionLanguage language, nint thread)
+    {
+        CorDebugLoadedModule module;
+        uint token;
+        if (ManagedRuntimeTypeAliases.TryNormalize(reference.MetadataName, language, out _, out _))
+        {
+            module = _coreLibrary.GetModule(thread);
+            token = _coreLibrary.Resolve(new ManagedMetadataTypeSignature(
+                reference.MetadataName, null, null, [], [], IsValueType: false), thread).DefinitionToken;
+        }
+        else
+        {
+            (module, token) = _typeNames.Resolve(reference.MetadataName, language, "type expression");
+        }
+
+        using PEReader pe = OpenModule(module);
+        MetadataReader reader = pe.GetMetadataReader();
+        TypeDefinition definition = GetDefinition(reader, token);
+        if (definition.GetGenericParameters().Count != reference.TypeArguments.Count)
+        {
+            throw new InvalidOperationException($"Runtime type '{reference.DebuggerTypeName}' has incompatible generic arity.");
+        }
+
+        ManagedBoundType[] arguments = [.. reference.TypeArguments.Select(argument => BindNamedType(argument, language, thread))];
+        ManagedBoundType? parent = definition.BaseType.IsNil ? null : Bind(
+            DecodeType(new ManagedMetadataTypeSignatureProvider(module.Pointer), reader, definition.BaseType), arguments, [], thread);
+        bool isValueType = parent is not null &&
+            (IsCoreType(parent, "System.ValueType", thread) || IsCoreType(parent, "System.Enum", thread));
+        ManagedBoundType result = CreateDefinition(module, token, isValueType ? 0x11U : 0x12U, arguments, thread);
+        foreach (int rank in reference.ArrayRanks)
+        {
+            result = CreateArray(result, rank == 1 ? 0x1dU : 0x14U, rank);
+        }
+
+        return result;
     }
 
     /// <summary>

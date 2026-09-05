@@ -15,7 +15,8 @@ internal sealed partial class CorDebugDebuggee
         string methodName,
         DebugExpressionLanguage language,
         ManagedExpressionValue[] arguments,
-        nint thread)
+        nint thread,
+        ManagedBoundType? selectedReceiverType)
     {
         nint value2 = 0;
         nint currentType = 0;
@@ -30,6 +31,7 @@ internal sealed partial class CorDebugDebuggee
                 Volatile.Read(ref *exactTypeAddress),
                 "ICorDebugValue2.GetExactType");
 
+            bool selectedTypeReached = selectedReceiverType is null;
             for (int depth = 0;
                 currentType != 0 && depth < MaximumFunctionEvaluationHierarchyDepth;
                 depth++)
@@ -44,13 +46,15 @@ internal sealed partial class CorDebugDebuggee
                     uint typeToken = GetClassToken(runtimeClass);
                     CorDebugLoadedModule loadedModule = _sourceBreakpoints.FindModule(module)
                         ?? throw new InvalidOperationException("The method's runtime module is unavailable.");
-                    uint? methodToken = ManagedFunctionMethodResolver.Resolve(
+                    selectedTypeReached = selectedTypeReached || selectedReceiverType is null ||
+                        selectedReceiverType.IsSameType(_boundTypes.CaptureType(currentType, thread));
+                    uint? methodToken = selectedTypeReached ? ManagedFunctionMethodResolver.Resolve(
                         loadedModule,
                         typeToken,
                         methodName,
                         language,
                         arguments,
-                        staticMethod: false);
+                        staticMethod: false) : null;
                     if (methodToken is uint resolvedMethodToken)
                     {
                         ManagedBoundType declaringType = _boundTypes.CaptureType(currentType, thread);

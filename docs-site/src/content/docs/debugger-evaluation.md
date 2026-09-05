@@ -57,6 +57,21 @@ C# casts, Visual Basic `CType` and predefined conversions, and F# numeric conver
 functions lower to the same runtime operation. An unknown Portable PDB language receives
 the portable CLR subset for locals, arguments, fields, and indexes.
 
+Reference type tests and casts also run without target execution. C# supports `is`,
+`as`, and explicit casts; Visual Basic supports `TypeOf ... Is`, `TypeOf ... IsNot`,
+`TryCast`, and `DirectCast`; F# supports `:?`, `:>`, and `:?>`. For example,
+`error is System.ArgumentException` tests the current object, while
+`(error as System.ArgumentException)` returns a typed null when the object does
+not match. An invalid direct cast returns an evaluation error.
+
+Casts retain the same runtime object and preserve the expression's declared type,
+including typed nulls. Class casts select the named class's fields and methods,
+including hidden members, while virtual calls retain runtime dispatch. Reference
+compatibility uses loaded-module identities and closed generic arguments; ambiguous
+type names are rejected. Exact primitive unboxing reads an existing box without
+allocating or executing code. Nullable safe casts, general struct unboxing, and
+contextual resolution of ambiguous loaded type names remain unavailable.
+
 This path never calls a property, operator overload, conversion method, `ToString`, or
 other target code. The private `debugger/evaluate` RPC and MCP `debug_evaluate` reject a
 plan that could execute target code.
@@ -155,12 +170,17 @@ String, call, and construction expressions can also supply an assignment value t
 explicitly authorized target execution. The debugger then reacquires the destination
 frame, applies the assignment, and returns the new generation. Calls retain their declared
 return type, including closed containing-type parameters. A derived result does not
-authorize an implicit downcast. Implicit boxing, explicit reference casts, and user-defined
-conversions remain unsupported.
+authorize an implicit downcast. Cast declarations remain authoritative during assignment,
+and covariant arrays retain their actual element-storage restrictions. String assignment
+validates compatibility before allocation and preserves the source cast through the
+replacement generation. Assigning a boxed primitive to primitive storage requires an
+explicit exact unboxing conversion. Implicit boxing and user-defined conversions remain
+unsupported.
 
 ## Completion
 
 DAP completion comes from the exact stopped frame, not the editor's language workspace.
+An explicit class cast limits member completion to that class and its base classes.
 Root completion includes locals, arguments, and language-appropriate literals. Member
 completion first resolves a side-effect-free receiver, then walks its exact CoreCLR type
 hierarchy and loaded metadata. An explicitly qualified loaded type supplies supported
