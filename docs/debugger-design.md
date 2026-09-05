@@ -130,6 +130,11 @@ Logical frame identifiers are allocated monotonically and never reassigned to a
 different physical frame. Stack paging bounds
 returned work without misreporting the complete managed-frame count.
 
+Pause is idempotent for a live managed target that is already stopped, including
+when a breakpoint or step completes ahead of the queued pause. The actor preserves
+that stop's reason, exception, generation, and inspection handles without emitting
+another stopped event. Requests without a live managed target remain invalid.
+
 Scopes are split into receiver/arguments and lexically active locals. Parameter
 names come from ECMA-335 metadata; local slot names and lifetimes come from the
 current managed PDB scope at the frame's IL offset. Immediate primitive and
@@ -215,6 +220,8 @@ Linux exposes `waitpid` through an anonymous ELF export node so versioned libc
 imports bind to the interposer. macOS uses a Mach-O `__interpose` record to redirect
 native consumers. The sole owner calls libc `wait4`, a distinct entry point that
 cannot redirect back into the interposed `waitpid` view. The
+noncancelable macOS consumer delegates untracked waits to `__wait4_nocancel`,
+preserving the original caller's cancellation behavior. The
 Mach-O record is a small native data declaration linked into the NativeAOT library;
 child ownership, synchronization, and status decoding remain in C#. Its object is
 compiled with the SDK-selected target triple, and both platform binding inputs

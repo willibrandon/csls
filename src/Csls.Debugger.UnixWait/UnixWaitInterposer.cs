@@ -195,7 +195,7 @@ internal static partial class UnixWaitInterposer
         int options,
         nint resourceUsage);
 
-    [LibraryImport("libc", EntryPoint = "wait4$NOCANCEL", SetLastError = true)]
+    [LibraryImport("libc", EntryPoint = "__wait4_nocancel", SetLastError = true)]
     [DefaultDllImportSearchPaths(DllImportSearchPath.SafeDirectories)]
     private static unsafe partial int WaitNonCancelableProcessNative(
         int processId,

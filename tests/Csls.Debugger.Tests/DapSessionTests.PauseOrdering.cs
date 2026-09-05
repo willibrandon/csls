@@ -59,6 +59,14 @@ public sealed partial class DapSessionTests
             await PauseFixtureAsync(client).ConfigureAwait(false);
             JsonElement frame = await GetFixtureFrameAsync(client).ConfigureAwait(false);
             Assert.IsGreaterThan(0, frame.GetProperty("id").GetInt32());
+            int repeatedPauseSequence = await client.SendRequestAsync(
+                "pause", WriteEmptyObject, TestContext.CancellationToken).ConfigureAwait(false);
+            using JsonDocument repeatedPause = await ReadExecutionControlMessageAsync(client)
+                .ConfigureAwait(false);
+            AssertResponse(repeatedPause.RootElement, repeatedPauseSequence, "pause", success: true);
+            // The next inspection must keep its frame and must not encounter a duplicate stopped event.
+            JsonElement unchangedFrame = await GetFixtureFrameAsync(client).ConfigureAwait(false);
+            AssertSameLogicalFrame(frame, unchangedFrame);
             if (exitWhileStopped)
             {
                 int processId = process.RootElement.GetProperty("body")

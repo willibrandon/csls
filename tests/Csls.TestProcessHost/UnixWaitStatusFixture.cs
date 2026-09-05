@@ -1,4 +1,5 @@
 using System.ComponentModel;
+using System.Diagnostics;
 using System.Globalization;
 using System.Runtime.InteropServices;
 
@@ -9,6 +10,28 @@ namespace Csls.TestProcessHost;
 /// </summary>
 internal static partial class UnixWaitStatusFixture
 {
+    /// <summary>
+    /// Lets the real runtime reap an untracked child while the interposer is loaded.
+    /// </summary>
+    /// <param name="exitCode">The child's requested Unix exit code.</param>
+    /// <returns>The exit code observed by the runtime's own native consumer.</returns>
+    internal static async Task<int> RunUntrackedAsync(int exitCode)
+    {
+        Initialize();
+        string executable = Environment.ProcessPath
+            ?? throw new InvalidOperationException("The fixture has no executable path.");
+        ProcessStartInfo startInfo = new(executable);
+        startInfo.ArgumentList.Add(typeof(UnixWaitStatusFixture).Assembly.Location);
+        startInfo.ArgumentList.Add("--print-environment-and-exit");
+        startInfo.ArgumentList.Add("CSLS_UNIX_WAIT_EMPTY_VALUE");
+        startInfo.ArgumentList.Add(exitCode.ToString(CultureInfo.InvariantCulture));
+        startInfo.Environment.Remove("CSLS_UNIX_WAIT_EMPTY_VALUE");
+        using Process child = Process.Start(startInfo)
+            ?? throw new InvalidOperationException("The untracked child did not start.");
+        await child.WaitForExitAsync().ConfigureAwait(false);
+        return child.ExitCode;
+    }
+
     /// <summary>
     /// Reports the owner and runtime observations of one directly spawned child's exit.
     /// </summary>

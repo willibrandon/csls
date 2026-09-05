@@ -1,5 +1,6 @@
 using Csls.Debugger.Contracts;
 using Csls.Debugger.Control;
+using StreamJsonRpc;
 using System.Runtime.CompilerServices;
 
 namespace Csls.Debugger.Tests;
@@ -83,6 +84,8 @@ public sealed partial class DebuggerRpcTests
         DebugSessionSnapshot created = await client.GetSessionAsync(cancellationToken)
             .ConfigureAwait(false);
         Assert.AreEqual(DebugSessionState.Created, created.State);
+        _ = await Assert.ThrowsExactlyAsync<RemoteInvocationException>(
+            () => client.PauseAsync(cancellationToken)).ConfigureAwait(false);
         IReadOnlyList<DebugSourceBreakpointInfo> pending = await client
             .SetSourceBreakpointsAsync(
                 new DebugSourceBreakpointSetRequest(
@@ -120,6 +123,16 @@ public sealed partial class DebuggerRpcTests
         DebugStackFrameInfo frame = stack.StackFrames.Single(candidate =>
             DebuggerTestPath.AreEquivalent(candidate.Source?.Path, sourcePath) &&
             candidate.Line == breakpointLine);
+        DebugSessionSnapshot paused = await client.PauseAsync(cancellationToken)
+            .ConfigureAwait(false);
+        Assert.AreEqual(DebugSessionState.Stopped, paused.State);
+        Assert.AreEqual(stopped.StopGeneration, paused.StopGeneration);
+        Assert.AreEqual(stopped.StopReason, paused.StopReason);
+        Assert.AreEqual(stopped.StoppedThreadId, paused.StoppedThreadId);
+        Assert.AreEqual(stopped.ProcessId, paused.ProcessId);
+        Assert.AreEqual(stopped.ProcessName, paused.ProcessName);
+        Assert.IsNull(paused.Exception);
+        Assert.IsNull(paused.ExitCode);
         IReadOnlyList<DebugScopeInfo> scopes = await client.GetScopesAsync(
             new DebugScopesRequest(frame.Id),
             cancellationToken).ConfigureAwait(false);
@@ -178,6 +191,8 @@ public sealed partial class DebuggerRpcTests
         DebugSessionSnapshot terminated = await client.TerminateAsync(cancellationToken)
             .ConfigureAwait(false);
         Assert.AreEqual(DebugSessionState.Terminated, terminated.State);
+        _ = await Assert.ThrowsExactlyAsync<RemoteInvocationException>(
+            () => client.PauseAsync(cancellationToken)).ConfigureAwait(false);
     }
 
     private static async Task<DebugSessionSnapshot> WaitForStoppedAsync(

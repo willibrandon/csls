@@ -90,7 +90,7 @@ public partial interface IDebuggerControlTarget
         CancellationToken cancellationToken);
 
     /// <summary>
-    /// Pauses the target.
+    /// Stops a live managed target without replacing an existing stop or its inspection handles.
     /// </summary>
     /// <param name="cancellationToken">Cancels the request.</param>
     /// <returns>The stopped snapshot.</returns>

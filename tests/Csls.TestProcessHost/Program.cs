@@ -9,6 +9,12 @@ if (args is ["--unix-wait-status-fixture", string waitedExitCode])
         int.Parse(waitedExitCode, NumberStyles.Integer, CultureInfo.InvariantCulture));
 }
 
+if (args is ["--unix-wait-untracked-fixture", string untrackedExitCode])
+{
+    return await UnixWaitStatusFixture.RunUntrackedAsync(
+        int.Parse(untrackedExitCode, NumberStyles.Integer, CultureInfo.InvariantCulture)).ConfigureAwait(false);
+}
+
 if (args is ["--debugger-fixture", string fixturePath])
 {
     return DebuggerFixture.WaitForSignal(

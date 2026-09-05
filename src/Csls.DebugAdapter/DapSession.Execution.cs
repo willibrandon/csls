@@ -13,7 +13,7 @@ internal sealed partial class DapSession
         Request request,
         CancellationToken cancellationToken)
     {
-        if (_state != DapSessionState.Running)
+        if (_state is not (DapSessionState.Running or DapSessionState.Stopped))
         {
             await WriteStateFailureAsync(request, cancellationToken).ConfigureAwait(false);
             return;
@@ -21,19 +21,22 @@ internal sealed partial class DapSession
 
         try
         {
-            _stoppedThreadId = GetOptionalPositiveInteger(
+            _ = GetOptionalPositiveInteger(
                 request.Arguments,
                 "threadId",
                 request.Command);
             _deferredStoppedReason = "pause";
-            await _engineSession.PauseAsync(cancellationToken).ConfigureAwait(false);
+            bool stopped = await _engineSession.PauseAsync(cancellationToken).ConfigureAwait(false);
             await _writer.WriteResponseAsync(
                 request,
                 success: true,
                 message: null,
                 writeBody: null,
                 cancellationToken).ConfigureAwait(false);
-            await FlushDeferredStopAsync(cancellationToken).ConfigureAwait(false);
+            if (stopped)
+            {
+                await FlushDeferredStopAsync(cancellationToken).ConfigureAwait(false);
+            }
         }
         catch (Exception exception) when (
             exception is ArgumentException or InvalidOperationException)

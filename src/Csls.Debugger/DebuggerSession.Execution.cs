@@ -8,14 +8,18 @@ namespace Csls.Debugger;
 public sealed partial class DebuggerSession
 {
     /// <summary>
-    /// Pauses the managed target at a runtime-consistent inspection point.
+    /// Stops a live managed target or preserves its existing stopped state.
     /// </summary>
     /// <param name="cancellationToken">Cancels queueing the pause operation.</param>
-    /// <returns>A task that completes after the stopped notification is accepted.</returns>
-    public Task PauseAsync(CancellationToken cancellationToken)
+    /// <returns>True if this request published a new stop; false if the target was already stopped.</returns>
+    public async Task<bool> PauseAsync(CancellationToken cancellationToken)
     {
         ObjectDisposedException.ThrowIf(_disposed != 0, this);
-        return _actor.InvokeAsync(PauseCoreAsync, cancellationToken);
+        bool stopped = false;
+        await _actor.InvokeAsync(
+            async token => stopped = await PauseCoreAsync(token).ConfigureAwait(false),
+            cancellationToken).ConfigureAwait(false);
+        return stopped;
     }
 
     /// <summary>
@@ -49,13 +53,18 @@ public sealed partial class DebuggerSession
             cancellationToken);
     }
 
-    private async ValueTask PauseCoreAsync(CancellationToken cancellationToken)
+    private async ValueTask<bool> PauseCoreAsync(CancellationToken cancellationToken)
     {
-        if (_state != DebugSessionState.Running ||
+        if (_state is not (DebugSessionState.Running or DebugSessionState.Stopped) ||
             _debuggee is not CorDebugDebuggee managedDebuggee)
         {
             throw new InvalidOperationException(
                 $"A managed target cannot be paused while the debugger session is {_state}.");
+        }
+
+        if (_state == DebugSessionState.Stopped)
+        {
+            return false;
         }
 
         managedDebuggee.Pause();
@@ -63,6 +72,7 @@ public sealed partial class DebuggerSession
         int? threadId = threads.Count == 0 ? null : threads[0].Id;
         await EnterStoppedStateAsync("pause", threadId, cancellationToken)
             .ConfigureAwait(false);
+        return true;
     }
 
     private async ValueTask ContinueCoreAsync(CancellationToken cancellationToken)

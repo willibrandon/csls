@@ -89,11 +89,11 @@ internal sealed partial class McpDebuggerSessionBroker
         string? stepKind,
         int? targetId)
     {
-        if (current.State != DebugSessionState.Running)
+        if (current.State is not (DebugSessionState.Running or DebugSessionState.Stopped))
         {
             throw new McpDebuggerException(
                 "debugger_invalid_state",
-                $"pause requires a running target, not {current.State}.");
+                $"pause requires a live running or stopped target, not {current.State}.");
         }
 
         if (stopGeneration is not null || threadId is not null ||

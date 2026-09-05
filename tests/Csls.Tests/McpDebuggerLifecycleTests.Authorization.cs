@@ -90,6 +90,20 @@ public sealed partial class McpDebuggerLifecycleTests
             durationSeconds: 60,
             cancellationToken).ConfigureAwait(false);
         Assert.IsTrue(renewed.GetProperty("agentControl").GetBoolean());
+        JsonElement paused = await CallAsync(
+            client,
+            "debug_execution_control",
+            new Dictionary<string, object?>
+            {
+                ["debugSession"] = debugSession,
+                ["operation"] = "pause"
+            },
+            cancellationToken).ConfigureAwait(false);
+        Assert.AreEqual("stopped", paused.GetProperty("state").GetString());
+        Assert.AreEqual(renewed.GetProperty("stopGeneration").GetInt64(), paused.GetProperty("stopGeneration").GetInt64());
+        Assert.AreEqual(renewed.GetProperty("stopReason").GetString(), paused.GetProperty("stopReason").GetString());
+        Assert.AreEqual(renewed.GetProperty("stoppedThreadId").GetInt32(), paused.GetProperty("stoppedThreadId").GetInt32());
+        Assert.AreEqual(renewed.GetProperty("processId").GetInt32(), paused.GetProperty("processId").GetInt32());
         JsonElement revoked = await AssertResourceSubscriptionAsync(
             client,
             sessionResource,
@@ -105,6 +119,16 @@ public sealed partial class McpDebuggerLifecycleTests
             cancellationToken).ConfigureAwait(false);
         Assert.IsFalse(revoked.GetProperty("agentControl").GetBoolean());
         Assert.IsFalse(revoked.TryGetProperty("agentControlExpiresAtUtc", out _));
+        await AssertToolErrorAsync(
+            client,
+            "debug_execution_control",
+            new Dictionary<string, object?>
+            {
+                ["debugSession"] = debugSession,
+                ["operation"] = "pause"
+            },
+            "debugger_control_denied",
+            cancellationToken).ConfigureAwait(false);
     }
 
     private static async Task<JsonElement> WaitForAgentControlExpiryAsync(
