@@ -5,6 +5,7 @@ using Microsoft.CodeAnalysis.Diagnostics;
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Immutable;
+using System.Linq;
 
 namespace Csls.SourceGen;
 
@@ -74,14 +75,12 @@ public sealed class CodeQlFieldMasksBaseFieldAnalyzer : DiagnosticAnalyzer
     {
         for (INamedTypeSymbol? parent = field.ContainingType.BaseType; parent is not null; parent = parent.BaseType)
         {
-            foreach (IFieldSymbol inherited in parent.GetMembers(field.Name).OfType<IFieldSymbol>())
+            if (parent.GetMembers(field.Name).OfType<IFieldSymbol>().Any(inherited =>
+                !inherited.IsStatic && inherited.DeclaredAccessibility != Accessibility.Private &&
+                !explicitBaseAccesses.ContainsKey(inherited.OriginalDefinition)))
             {
-                if (!inherited.IsStatic && inherited.DeclaredAccessibility != Accessibility.Private &&
-                    !explicitBaseAccesses.ContainsKey(inherited.OriginalDefinition))
-                {
-                    context.ReportDiagnostic(Diagnostic.Create(s_rule, field.Locations[0], field.Name));
-                    return;
-                }
+                context.ReportDiagnostic(Diagnostic.Create(s_rule, field.Locations[0], field.Name));
+                return;
             }
         }
     }

@@ -1,15 +1,15 @@
 using Microsoft.CodeAnalysis;
-using Microsoft.CodeAnalysis.CSharp;
-using Microsoft.CodeAnalysis.Diagnostics;
 using System.Collections.Immutable;
+using System.Globalization;
 
 namespace Csls.SourceGen.Tests;
 
 /// <summary>
 /// Verifies the local guard for CodeQL missed-Where findings.
 /// </summary>
+/// <param name="testContext">The test cancellation context.</param>
 [TestClass]
-public sealed class CodeQlMissedWhereAnalyzerTests
+public sealed class CodeQlMissedWhereAnalyzerTests(TestContext testContext)
 {
     /// <summary>
     /// Verifies a loop that conditionally returns from its only branch is rejected.
@@ -74,31 +74,74 @@ public sealed class CodeQlMissedWhereAnalyzerTests
         Assert.IsEmpty(diagnostics);
     }
 
-    private static async Task<ImmutableArray<Diagnostic>> AnalyzeAsync(string source)
+    /// <summary>
+    /// Checks conditional member filtering after OfType against the equivalent explicit query.
+    /// </summary>
+    /// <param name="explicitFilter">Whether the sequence carries its own filter.</param>
+    [TestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
+    public async Task ChecksMemberFilteringAfterOfType(bool explicitFilter)
     {
-        var parseOptions = new CSharpParseOptions(
-            LanguageVersion.CSharp14,
-            DocumentationMode.Diagnose);
-        SyntaxTree syntaxTree = CSharpSyntaxTree.ParseText(
-            source,
-            parseOptions,
-            path: "Input.cs");
-        string trustedAssemblies = AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES") as string
-            ?? throw new InvalidOperationException(
-                "The runtime did not expose trusted platform assemblies.");
-        IEnumerable<MetadataReference> references = trustedAssemblies
-            .Split(Path.PathSeparator)
-            .Select(static path => MetadataReference.CreateFromFile(path));
-        var compilation = CSharpCompilation.Create(
-            "AnalyzerInput",
-            [syntaxTree],
-            references,
-            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
-        ImmutableArray<DiagnosticAnalyzer> analyzers = [new CodeQlMissedWhereAnalyzer()];
+        const string Predicate = "!inherited.IsStatic && inherited.DeclaredAccessibility != Accessibility.Private && " +
+            "!accesses.ContainsKey(inherited.OriginalDefinition)";
+        string filter = explicitFilter ? $".Where(inherited => {Predicate})" : string.Empty;
+        string body = explicitFilter ? "return true;" : $"if ({Predicate}) {{ return true; }}";
+        string source = $$"""
+            using System.Collections.Concurrent;
+            using System.Linq;
+            using Microsoft.CodeAnalysis;
 
-        return await compilation
-            .WithAnalyzers(analyzers)
-            .GetAnalyzerDiagnosticsAsync()
-            .ConfigureAwait(false);
+            internal static class MemberInspection
+            {
+                internal static bool Inspect(IFieldSymbol field, ConcurrentDictionary<ISymbol, byte> accesses)
+                {
+                    for (INamedTypeSymbol parent = field.ContainingType.BaseType; parent != null; parent = parent.BaseType)
+                    {
+                        foreach (IFieldSymbol inherited in parent.GetMembers(field.Name).OfType<IFieldSymbol>(){{filter}})
+                        {
+                            {{body}}
+                        }
+                    }
+                    return false;
+                }
+            }
+            """;
+        ImmutableArray<Diagnostic> diagnostics = await AnalyzeAsync(source).ConfigureAwait(false);
+        if (explicitFilter)
+        {
+            Assert.IsEmpty(diagnostics);
+        }
+        else
+        {
+            Diagnostic diagnostic = Assert.ContainsSingle(diagnostics);
+            Assert.AreEqual(CodeQlMissedWhereAnalyzer.DiagnosticId, diagnostic.Id);
+            Assert.AreEqual(DiagnosticSeverity.Error, diagnostic.Severity);
+            Assert.AreEqual(source.IndexOf("foreach", StringComparison.Ordinal), diagnostic.Location.SourceSpan.Start);
+            Assert.AreEqual("Loop variable 'inherited' implicitly filters its sequence; express the filter before iteration",
+                diagnostic.GetMessage(CultureInfo.InvariantCulture));
+        }
     }
+
+    /// <summary>
+    /// Checks the shipping field-masking analyzer for implicit sequence filters before remote analysis.
+    /// </summary>
+    [TestMethod]
+    public async Task ChecksProductionFieldMaskingAnalyzer()
+    {
+        DirectoryInfo? repository = new(AppContext.BaseDirectory);
+        while (repository is not null && !File.Exists(Path.Join(repository.FullName, "Csls.slnx")))
+        {
+            repository = repository.Parent;
+        }
+
+        Assert.IsNotNull(repository, "The analyzer regression requires the repository checkout.");
+        string path = Path.Join(repository.FullName, "src", "Csls.SourceGen", "CodeQlFieldMasksBaseFieldAnalyzer.cs");
+        string source = await File.ReadAllTextAsync(path, testContext.CancellationToken).ConfigureAwait(false);
+        ImmutableArray<Diagnostic> diagnostics = await AnalyzeAsync(source).ConfigureAwait(false);
+        Assert.IsEmpty(diagnostics);
+    }
+
+    private Task<ImmutableArray<Diagnostic>> AnalyzeAsync(string source) => CodeQlFileCompilation.AnalyzeAsync(
+        source, new CodeQlMissedWhereAnalyzer(), testContext.CancellationToken);
 }
