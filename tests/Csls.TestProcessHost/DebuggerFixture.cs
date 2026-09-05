@@ -15,6 +15,7 @@ internal static class DebuggerFixture
     /// <param name="tupleArgument">The named tuple argument retained in the frame.</param>
     /// <param name="isolateResultsViewAssembly">Whether to create an enumerable in a separate assembly context.</param>
     /// <param name="resultsViewExceptionAssemblyPath">The optional file-backed hostile exception assembly.</param>
+    /// <param name="blockForInspection">Whether to hold the inspected thread in an unreleased runtime wait.</param>
     /// <returns>Zero when the retained local values remain intact.</returns>
     internal static int WaitForSignal(
         string path,
@@ -23,7 +24,8 @@ internal static class DebuggerFixture
         string text,
         (int ArgumentNumber, string ArgumentText) tupleArgument,
         bool isolateResultsViewAssembly = false,
-        string? resultsViewExceptionAssemblyPath = null)
+        string? resultsViewExceptionAssemblyPath = null,
+        bool blockForInspection = false)
     {
         int localNumber = number + 1;
         long localLong = number + 2L;
@@ -148,6 +150,11 @@ internal static class DebuggerFixture
             TimeSpan.FromHours(-7));
         string localEscapedText = "a\0\a\b\f\v\\\"\u0001😀";
         char localEscapedCharacter = '\n';
+        if (blockForInspection)
+        {
+            DebuggerBlockingWait.Wait(announcement);
+        }
+
         Console.Write(announcement);
         Console.Out.Flush();
         while (!File.Exists(path))

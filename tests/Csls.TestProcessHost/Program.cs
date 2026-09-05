@@ -35,6 +35,17 @@ if (args is ["--debugger-fixture", string fixturePath])
         (ArgumentNumber: 42, ArgumentText: "argument"));
 }
 
+if (args is ["--debugger-unsafe-stop-fixture", string unsafeStopPath])
+{
+    return DebuggerFixture.WaitForSignal(
+        unsafeStopPath,
+        "ready",
+        42,
+        "answer",
+        (ArgumentNumber: 42, ArgumentText: "argument"),
+        blockForInspection: true);
+}
+
 if (args is ["--debugger-reference-assignment-fixture", string referenceAssignmentPath])
 {
     return ReferenceAssignmentFixture<Exception>.Run(

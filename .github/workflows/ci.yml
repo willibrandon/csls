@@ -181,7 +181,7 @@ jobs:
           if-no-files-found: error
 
   debugger-tests:
-    name: ${{ matrix.suite == 'stress' && format('Debugger stress ({0})', matrix.rid) || matrix.suite == 'evaluation' && format('Debugger evaluation ({0})', matrix.rid) || format('Debugger tests ({0})', matrix.rid) }}
+    name: ${{ matrix.suite == 'stress' && format('Debugger stress ({0})', matrix.rid) || matrix.suite == 'evaluation' && format('Debugger evaluation ({0})', matrix.rid) || matrix.suite == 'stack-progress' && format('Debugger stack progress ({0})', matrix.rid) || format('Debugger tests ({0})', matrix.rid) }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 5
     needs:
@@ -218,6 +218,12 @@ jobs:
           - os: macos-26
             rid: osx-arm64
             unix_wait: true
+          # Isolate progress inspection while retaining it in the full platform suite.
+          - os: macos-26
+            rid: osx-arm64
+            unix_wait: true
+            suite: stack-progress
+            filter: FullyQualifiedName~DebuggerStackProgressTests|FullyQualifiedName~PrivateRpcReportsStackProgress
 
     steps:
       - name: Check out repository
@@ -258,12 +264,13 @@ jobs:
           --root-directory .
           --results-directory artifacts/test-results
           --filter "${{ matrix.filter }}"
-          --minimum-expected-tests ${{ matrix.suite == 'stress' && 2 || 70 }}
+          --minimum-expected-tests ${{ matrix.suite == 'stress' && 2 || matrix.suite == 'stack-progress' && 13 || 70 }}
           --no-ansi
+          --output Detailed
           --report-trx
 
       - name: Preserve debugger test results
-        if: success() || failure()
+        if: always()
         uses: actions/upload-artifact@v7
         with:
           name: debugger-test-results-${{ matrix.rid }}-${{ matrix.suite }}-${{ github.run_attempt }}

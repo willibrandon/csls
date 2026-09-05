@@ -99,7 +99,7 @@ public sealed partial class DapSessionTests
             Path.GetTempPath(), $"csls-string-assignment-{Guid.NewGuid():N}.signal");
         try
         {
-            DapTestClient client = await StartStoppedFixtureAsync(waitPath).ConfigureAwait(false);
+            DapTestClient client = await StartStoppedFixtureAsync(waitPath, blockForInspection: true).ConfigureAwait(false);
             await using ConfiguredAsyncDisposable disposal = client.ConfigureAwait(false);
             JsonElement frame = await GetFixtureFrameAsync(client).ConfigureAwait(false);
             int frameId = frame.GetProperty("id").GetInt32();

@@ -70,7 +70,7 @@ public sealed partial class DapSessionTests
         }
     }
 
-    private async Task<DapTestClient> StartStoppedFixtureAsync(string waitPath)
+    private async Task<DapTestClient> StartStoppedFixtureAsync(string waitPath, bool blockForInspection = false)
     {
         DapTestClient client = await DapTestClient
             .CreateAsync(TestContext.CancellationToken)
@@ -89,7 +89,7 @@ public sealed partial class DapSessionTests
             writer => WriteLaunchArguments(
                 writer,
                 ResolveTestProcessHost(),
-                ["--debugger-fixture", waitPath],
+                [blockForInspection ? "--debugger-unsafe-stop-fixture" : "--debugger-fixture", waitPath],
                 wait: true,
                 noDebug: false),
             TestContext.CancellationToken).ConfigureAwait(false);
