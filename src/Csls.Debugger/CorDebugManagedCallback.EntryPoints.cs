@@ -109,6 +109,7 @@ internal sealed partial class CorDebugManagedCallback
     [UnmanagedCallersOnly(CallConvs = [typeof(CallConvStdcall)])]
     private static int ExitProcess(nint self, nint process)
     {
+        GetTarget(self).RetireProcess();
         return QueueCallback(
             self,
             process,

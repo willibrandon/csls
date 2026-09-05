@@ -15,7 +15,7 @@ internal sealed partial class CorDebugManagedCallback
         CancellationToken cancellationToken)
     {
         if (exception is OperationCanceledException ||
-            Volatile.Read(ref _detaching) != 0 ||
+            !CanDispatchCallbacks ||
             cancellationToken.IsCancellationRequested)
         {
             return;

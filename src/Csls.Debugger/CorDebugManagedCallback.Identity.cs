@@ -42,6 +42,7 @@ internal sealed partial class CorDebugManagedCallback : IDisposable
         new(TaskCreationOptions.RunContinuationsAsynchronously);
     private nint _instance;
     private int _detaching;
+    private int _processRetired;
     private int _functionEvaluationActive;
 
     /// <summary>

@@ -45,12 +45,13 @@ internal sealed partial class CorDebugDebuggee
             exitCode = GetExitCode(_process);
         }
 
+        _managedCallback.RetireProcess();
         return exitCode;
     }
 
     /// <inheritdoc />
     public Task TerminateAsync(CancellationToken cancellationToken) =>
-        TerminateProcessAsync(_process, _unixExitMonitor, cancellationToken);
+        TerminateProcessAsync(_process, _unixExitMonitor, _managedCallback, cancellationToken);
 
     private static int GetExitCode(Process process)
     {
@@ -68,6 +69,7 @@ internal sealed partial class CorDebugDebuggee
     private static async Task TerminateProcessAsync(
         Process process,
         UnixChildExitMonitor? unixExitMonitor,
+        CorDebugManagedCallback? managedCallback,
         CancellationToken cancellationToken)
     {
         if (unixExitMonitor is not null)
@@ -86,6 +88,7 @@ internal sealed partial class CorDebugDebuggee
                 }
             }
 
+            managedCallback?.RetireProcess();
             _ = await unixExitMonitor.WaitAsync(cancellationToken).ConfigureAwait(false);
             return;
         }
@@ -95,6 +98,7 @@ internal sealed partial class CorDebugDebuggee
             process.Kill(entireProcessTree: true);
         }
 
+        managedCallback?.RetireProcess();
         await process.WaitForExitAsync(cancellationToken).ConfigureAwait(false);
     }
 }

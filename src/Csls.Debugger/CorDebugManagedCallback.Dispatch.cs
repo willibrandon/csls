@@ -77,10 +77,15 @@ internal sealed partial class CorDebugManagedCallback
                 nint currentAuxiliary = Interlocked.Exchange(ref ownedAuxiliary, 0);
                 try
                 {
-                    bool detaching = Volatile.Read(ref target._detaching) != 0 ||
-                        target.RuntimeFailure is not null;
-                    bool shouldContinue = continueAfterCallback && !detaching;
-                    if (!detaching)
+                    bool dispatchCallbacks = target.CanDispatchCallbacks;
+                    bool shouldContinue = continueAfterCallback && dispatchCallbacks;
+                    if (createsProcess && !dispatchCallbacks)
+                    {
+                        _ = target._createProcessCompletion.TrySetException(new InvalidOperationException(
+                            "The target ended before its initial managed callback could resume it."));
+                    }
+
+                    if (dispatchCallbacks)
                     {
                         try
                         {
@@ -109,8 +114,7 @@ internal sealed partial class CorDebugManagedCallback
                         }
                     }
 
-                    if (shouldContinue && Volatile.Read(ref target._detaching) == 0 &&
-                        target.RuntimeFailure is null)
+                    if (shouldContinue && target.CanDispatchCallbacks)
                     {
                         int result = new ICorDebugControllerAbi(currentController)
                             .Continue(fIsOutOfBand: 0);

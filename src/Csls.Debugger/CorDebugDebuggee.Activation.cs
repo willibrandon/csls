@@ -173,7 +173,7 @@ internal sealed partial class CorDebugDebuggee
         {
             if (processOwner.Value is Process process)
             {
-                await TerminateProcessAsync(process, unixExitMonitor, CancellationToken.None)
+                await TerminateProcessAsync(process, unixExitMonitor, managedCallbackOwner.Value, CancellationToken.None)
                     .ConfigureAwait(false);
             }
 

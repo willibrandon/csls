@@ -93,7 +93,7 @@ public sealed partial class DapSessionTests
                 Assert.AreNotEqual(firstProcess, replacementProcess);
                 int disconnect = await client.SendRequestAsync("disconnect", WriteEmptyObject, TestContext.CancellationToken)
                     .ConfigureAwait(false);
-                await ReadUntilResponseAsync(client, disconnect, "disconnect").ConfigureAwait(false);
+                await ReadEnvironmentDisconnectAsync(client, disconnect).ConfigureAwait(false);
                 await AssertProcessExitedAsync(replacementProcess, TestContext.CancellationToken).ConfigureAwait(false);
             }
 
@@ -104,6 +104,43 @@ public sealed partial class DapSessionTests
         {
             File.Delete(environmentFile);
             directory.Delete();
+        }
+    }
+
+    private async Task ReadEnvironmentDisconnectAsync(DapTestClient client, int sequence)
+    {
+        bool exited = false;
+        bool terminated = false;
+        bool responded = false;
+        while (!exited || !terminated || !responded)
+        {
+            using JsonDocument message = await client.ReadMessageAsync(TestContext.CancellationToken).ConfigureAwait(false);
+            JsonElement root = message.RootElement;
+            if (root.GetProperty("type").GetString() == "response")
+            {
+                Assert.IsFalse(responded);
+                AssertResponse(root, sequence, "disconnect", success: true);
+                responded = true;
+                continue;
+            }
+
+            Assert.AreEqual("event", root.GetProperty("type").GetString(), root.ToString());
+            switch (root.GetProperty("event").GetString())
+            {
+                case "exited":
+                    Assert.IsFalse(exited);
+                    _ = root.GetProperty("body").GetProperty("exitCode").GetInt32();
+                    exited = true;
+                    break;
+                case "terminated":
+                    Assert.IsTrue(exited);
+                    Assert.IsFalse(terminated);
+                    terminated = true;
+                    break;
+                default:
+                    Assert.Fail($"Unexpected environment target shutdown message: {root}");
+                    break;
+            }
         }
     }
 

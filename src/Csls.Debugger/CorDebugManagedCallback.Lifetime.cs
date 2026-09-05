@@ -63,6 +63,16 @@ internal sealed partial class CorDebugManagedCallback
     /// </summary>
     internal void CancelDetach() => Volatile.Write(ref _detaching, 0);
 
+    /// <summary>
+    /// Retires runtime work while retaining terminal callback delivery and native reference release.
+    /// </summary>
+    internal void RetireProcess() => Volatile.Write(ref _processRetired, 1);
+
+    private bool CanDispatchCallbacks =>
+        Volatile.Read(ref _detaching) == 0 &&
+        Volatile.Read(ref _processRetired) == 0 &&
+        RuntimeFailure is null;
+
     /// <inheritdoc />
     public void Dispose()
     {
