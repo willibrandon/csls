@@ -530,6 +530,7 @@ public sealed class VsCodeLanguageServerTests
         ProcessExitObservation? serverExit = null;
         using var startupCancellation = CancellationTokenSource.CreateLinkedTokenSource(
             TestContext.CancellationToken);
+        bool completed = false;
         try
         {
             Task runnerExitTask = runner.WaitForExitAsync(TestContext.CancellationToken);
@@ -552,6 +553,7 @@ public sealed class VsCodeLanguageServerTests
             await runnerExitTask
                 .WaitAsync(runTimeout ?? TimeSpan.FromMinutes(2), TestContext.CancellationToken)
                 .ConfigureAwait(false);
+            completed = true;
         }
         finally
         {
@@ -567,6 +569,11 @@ public sealed class VsCodeLanguageServerTests
             string error = await errorTask.ConfigureAwait(false);
             TestContext.WriteLine(output);
             TestContext.WriteLine(error);
+            if (!completed || runner.ExitCode != 0)
+            {
+                await VsCodeTestDiagnostics.WriteAsync(TestContext, userDataPath, remoteDataPath)
+                    .ConfigureAwait(false);
+            }
             if (serverExit is ProcessExitObservation observation)
             {
                 await ProcessExitWaiter.WaitAsync(
