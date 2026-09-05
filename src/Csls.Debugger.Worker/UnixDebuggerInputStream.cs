@@ -128,10 +128,10 @@ internal sealed partial class UnixDebuggerInputStream : Stream
             return 0;
         }
 
-        CancellationTokenRegistration registration = cancellationToken.UnsafeRegister(
-            static state => ((UnixDebuggerInputStream)state!).WakeReader(), this);
         try
         {
+            using CancellationTokenRegistration registration = cancellationToken.UnsafeRegister(
+                static state => ((UnixDebuggerInputStream)state!).WakeReader(), this);
             UnixInputPollDescriptor[] descriptors =
             [
                 new() { _descriptor = (int)_input.DangerousGetHandle(), _events = Readable, _returnedEvents = 0 },
@@ -164,7 +164,7 @@ internal sealed partial class UnixDebuggerInputStream : Stream
         }
         finally
         {
-            registration.Dispose();
+            // The inner using scope settles the callback before draining its signal.
             if (Interlocked.Exchange(ref _wakePending, 0) != 0)
             {
                 byte signal = 0;
