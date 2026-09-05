@@ -1,4 +1,7 @@
 <Project>
+  <Import Project="$(MSBuildThisFileDirectory)build/Csls.FSharp.ReferenceAssembly.targets"
+          Condition="'$(MSBuildProjectExtension)' == '.fsproj'" />
+
   <Target Name="_CslsGenerateTestingPlatformConfiguration"
           BeforeTargets="AssignTargetPaths"
           Condition="'$(IsTestingPlatformApplication)' == 'true' and '$(TargetFramework)' != ''">
