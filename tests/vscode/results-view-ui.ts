@@ -41,6 +41,17 @@ export class ResultsViewUi {
     await this.row(/^Results View, value /).waitFor({ state: "visible" });
   }
 
+  async collapseEnumerable(): Promise<void> {
+    const row = this.row(/^values, value /);
+    await row.scrollIntoViewIfNeeded();
+    if (await row.getAttribute("aria-expanded") === "true") {
+      await row.locator(".monaco-tl-twistie").click();
+    }
+
+    assert.equal(await row.getAttribute("aria-expanded"), "false",
+      "The snapshot rediscovery check must start from a collapsed enumerable.");
+  }
+
   async resolveResultsView(): Promise<void> {
     await this.row(/^Results View, value /).locator(".lazy-button").click();
   }

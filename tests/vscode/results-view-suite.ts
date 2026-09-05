@@ -123,11 +123,10 @@ class VariablesObserver {
     assert.deepEqual(this.failures, [], "The real Variables view must not request stale handles.");
   }
 
-  async waitForRefreshedSnapshot(
+  async waitForRefreshedLocals(
     resolution: VariablesExchange,
-    snapshot: Variable,
     expandedScopes: readonly string[],
-  ): Promise<void> {
+  ): Promise<VariablesExchange> {
     // Invalidation refreshes the old tree and separately refocuses the refreshed
     // stack. Only the latter projection belongs to the replacement tree input.
     let scopes: ScopesResponse | undefined;
@@ -160,12 +159,7 @@ class VariablesObserver {
     }));
     const locals = projections[expandedScopes.indexOf("Locals")]!;
     assert.deepEqual(locals.variables.map((variable) => variable.name), ["values"]);
-    const enumerable = locals.variables[0]!;
-    const projection = await this.waitFor((exchange) => exchange.request.seq > locals.request.seq &&
-      exchange.request.arguments.variablesReference === enumerable.variablesReference,
-    "The rebuilt Variables view did not rediscover its materialized Results View.");
-    assert.deepEqual(projection.variables, [snapshot],
-      "The replacement tree input must retain the same nonlazy Results View snapshot.");
+    return locals;
   }
 
   private captureInspectionMessage(message: unknown, type: "request" | "response"): void {
@@ -278,7 +272,7 @@ export async function run(): Promise<void> {
     // Wait for the replacement stack's real projection, not the earlier lazy
     // response. The awaited read-only reply follows its queued response handlers
     // and their microtasks; the browser frame then commits the refreshed tree.
-    await observer.waitForRefreshedSnapshot(resolution, snapshot, expandedScopes);
+    const refreshedLocals = await observer.waitForRefreshedLocals(resolution, expandedScopes);
     const activeFrame = vscode.debug.activeStackItem;
     assert(activeFrame instanceof vscode.DebugStackFrame);
     assert(session !== undefined);
@@ -288,6 +282,19 @@ export async function run(): Promise<void> {
     assert(threads.threads.some((thread) => thread.id === activeFrame.threadId && thread.id > 0),
       "The protocol dispatch barrier must retain the stopped target's focused thread.");
     await ui.waitForRenderedProjection(timeoutMilliseconds);
+
+    // A stack refresh can restore the enumerable row collapsed. Exercise that
+    // state explicitly before asking the replacement tree for its children.
+    await ui.collapseEnumerable();
+    await ui.expandEnumerable();
+    const refreshedEnumerable = refreshedLocals.variables[0]!;
+    const projection = await observer.waitFor(
+      (exchange) => exchange.request.seq > refreshedLocals.request.seq &&
+        exchange.request.arguments.variablesReference === refreshedEnumerable.variablesReference,
+      "The rebuilt Variables view did not rediscover its materialized Results View.",
+    );
+    assert.deepEqual(projection.variables, [snapshot],
+      "The replacement tree input must retain the same nonlazy Results View snapshot.");
 
     // The resolved row must survive invalidation. Expanding it builds VS Code's
     // real virtual chunks, whose expansion must use the adopted snapshot handle.
