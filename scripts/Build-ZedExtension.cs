@@ -24,7 +24,7 @@ if (args.Length == 1 && args[0] is "--help" or "-h" or "-?")
     return 0;
 }
 
-string version = "1.0.0";
+string version = "0.1.0";
 string? outputPath = null;
 for (int argumentIndex = 0; argumentIndex < args.Length; argumentIndex += 2)
 {

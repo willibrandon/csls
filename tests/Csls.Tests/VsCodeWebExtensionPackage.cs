@@ -155,7 +155,7 @@ internal static class VsCodeWebExtensionPackage
         startInfo.ArgumentList.Add(Path.Join("scripts", "Build-VsCodeExtension.cs"));
         startInfo.ArgumentList.Add("--");
         startInfo.ArgumentList.Add("--version");
-        startInfo.ArgumentList.Add("1.0.0");
+        startInfo.ArgumentList.Add("0.1.0");
         startInfo.ArgumentList.Add("--target");
         startInfo.ArgumentList.Add("web");
         startInfo.ArgumentList.Add("--output");

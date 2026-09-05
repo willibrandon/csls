@@ -497,7 +497,7 @@ jobs:
         if: steps.vscode-web-extension-cache.outputs.cache-hit != 'true'
         run: >-
           dotnet run --file scripts/Build-VsCodeExtension.cs --
-          --version 1.0.0
+          --version 0.1.0
           --target web
           --output artifacts/vscode-web-test-extension/willibrandon.csls-web.vsix
 
