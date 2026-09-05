@@ -256,6 +256,8 @@ jobs:
       - name: Run debugger tests
         env:
           CSLS_REPOSITORY_ROOT: ${{ github.workspace }}
+        # Record active tests and process IDs before an idle run reaches the job limit.
+        # Avoid dump requests against targets that already have a debugger attached.
         run: >-
           dotnet test
           --test-modules artifacts/bin/Csls.Debugger.Tests/debug/Csls.Debugger.Tests.dll
@@ -266,6 +268,12 @@ jobs:
           --no-ansi
           --output Detailed
           --report-trx
+          --diagnostic
+          --diagnostic-synchronous-write
+          --diagnostic-output-directory artifacts/test-results
+          --hangdump
+          --hangdump-timeout 2m
+          --hangdump-type None
 
       - name: Preserve debugger test results
         if: always()
