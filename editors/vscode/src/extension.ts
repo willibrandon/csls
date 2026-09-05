@@ -105,14 +105,13 @@ export async function activate(context: vscode.ExtensionContext): Promise<CslsEx
 }
 
 export async function deactivate(): Promise<void> {
-  workspaceExperience?.dispose();
-  workspaceExperience = undefined;
-  if (client !== undefined) {
-    await client.stop();
+  try {
+    await Promise.all([workspaceExperience?.dispose(), client?.stop()]);
+  } finally {
+    workspaceExperience = undefined;
     client = undefined;
+    outputChannel = undefined;
   }
-
-  outputChannel = undefined;
 }
 
 async function acquireRuntime(): Promise<string> {

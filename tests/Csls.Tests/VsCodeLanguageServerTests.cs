@@ -37,6 +37,16 @@ public sealed class VsCodeLanguageServerTests
         RunVsCodeHostAsync(remote: false);
 
     /// <summary>
+    /// Reuses isolated discovery outputs and rebuilds them when test or referenced source changes.
+    /// </summary>
+    [TestMethod]
+    [TestCategory("VsCodeHost")]
+    public Task VsCodeHostReusesTestDiscoveryBuilds() =>
+        RunVsCodeHostAsync(
+            remote: false,
+            localSuite: "dist/test-discovery-suite.cjs");
+
+    /// <summary>
     /// Enables visible C# semantic highlighting when the active theme does not opt in.
     /// </summary>
     [TestMethod]
@@ -150,6 +160,7 @@ public sealed class VsCodeLanguageServerTests
                 TimeSpan.FromSeconds(5),
                 TestContext.CancellationToken).ConfigureAwait(false);
             blockedProcessId = null;
+            await AssertDiscoveryArtifactsRemovedAsync(testProjectPath).ConfigureAwait(false);
         }
         finally
         {
@@ -397,6 +408,7 @@ public sealed class VsCodeLanguageServerTests
                 expectWorkspaceRestore: true,
                 TestContext.CancellationToken).ConfigureAwait(false);
             Assert.IsFalse(Directory.Exists(Path.Join(repositoryRoot, "TestResults")));
+            await AssertDiscoveryArtifactsRemovedAsync(testProjectPath).ConfigureAwait(false);
         }
         finally
         {
@@ -469,6 +481,12 @@ public sealed class VsCodeLanguageServerTests
           <ItemGroup>
             <ProjectReference Include="../App/Fixture.csproj" />
           </ItemGroup>
+          <Target Name="ReportDiscoveryDirectory" BeforeTargets="Build" Condition="'$(UseArtifactsOutput)' == 'true'">
+            <WriteLinesToFile File="$(MSBuildProjectDirectory)/discovery-directory.txt" Lines="$(ArtifactsPath)" Overwrite="true" WriteOnlyWhenDifferent="true" />
+          </Target>
+          <Target Name="ReportDiscoveryTarget" AfterTargets="Build" Condition="'$(UseArtifactsOutput)' == 'true'">
+            <WriteLinesToFile File="$(MSBuildProjectDirectory)/discovery-target.txt" Lines="$(TargetPath)" Overwrite="true" WriteOnlyWhenDifferent="true" />
+          </Target>
         </Project>
         """;
 
@@ -478,10 +496,31 @@ public sealed class VsCodeLanguageServerTests
             <TargetFramework>net10.0</TargetFramework>
           </PropertyGroup>
           <Target Name="BlockAutomaticDiscovery" BeforeTargets="Build">
+            <WriteLinesToFile File="$(MSBuildProjectDirectory)/discovery-directory.txt" Lines="$(ArtifactsPath)" Overwrite="true" />
             <Exec Command="/bin/sh &quot;$(MSBuildProjectDirectory)/block-discovery.sh&quot; &quot;$(MSBuildProjectDirectory)/discovery.pid&quot; &quot;$(MSBuildProjectDirectory)/discovery-process-tree.txt&quot;" />
           </Target>
         </Project>
         """;
+
+    private async Task AssertDiscoveryArtifactsRemovedAsync(string testProjectPath)
+    {
+        string markerPath = Path.Join(testProjectPath, "discovery-directory.txt");
+        if (!File.Exists(markerPath))
+        {
+            return;
+        }
+
+        string artifactsPath = (await File.ReadAllTextAsync(
+            markerPath,
+            TestContext.CancellationToken).ConfigureAwait(false)).Trim();
+        Assert.IsTrue(Path.IsPathFullyQualified(artifactsPath));
+        string? discoveryPath = Path.GetDirectoryName(artifactsPath);
+        Assert.IsNotNull(discoveryPath);
+        Assert.StartsWith("csls-test-discovery-", Path.GetFileName(discoveryPath));
+        Assert.IsFalse(
+            Directory.Exists(discoveryPath),
+            $"The editor left its test discovery directory at {discoveryPath}.");
+    }
 
     private async Task RunVsCodeAsync(
         string repositoryRoot,

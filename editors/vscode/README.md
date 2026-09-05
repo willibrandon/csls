@@ -11,9 +11,13 @@ Roslyn worker. VS Code for the Web runs the matching csls server in a WebAssembl
 worker, so C# language features remain available in virtual workspaces without a
 local .NET installation.
 
-The Testing view discovers and runs Microsoft Testing Platform projects. Debugging
-launches the bundled `csls debugger dap` adapter directly; it never downloads or
-discovers another debugger. The adapter supports managed launch and attach, source
+The Testing view discovers and runs Microsoft Testing Platform projects. Discovery
+uses isolated temporary build outputs, reuses them for incremental refreshes, and
+rebuilds changed tests and project references. Closing the editor stops discovery
+and removes those outputs. Normal workspace build outputs remain separate.
+
+Debugging launches the bundled `csls debugger dap` adapter directly; it never
+downloads or discovers another debugger. The adapter supports managed launch and attach, source
 breakpoints, stepping, stacks, modules, arguments, locals, fields, and arrays.
 
 Disable the C# and C# Dev Kit extensions before enabling csls so only one C#
