@@ -1,3 +1,4 @@
+using System.Text;
 using System.Text.Json;
 
 namespace Csls.Debugger.Tests;
@@ -44,18 +45,31 @@ public sealed partial class DapSessionTests
             stopped.RootElement.GetProperty("seq").GetInt32());
     }
 
-    private async Task ContinueAndPauseAsync(DapTestClient client)
+    private async Task ContinueAndPauseAsync(DapTestClient client, string? expectedOutput = null)
     {
+        StringBuilder? output = expectedOutput is null ? null : new();
         int sequence = await client.SendRequestAsync(
             "continue",
             WriteEmptyObject,
             TestContext.CancellationToken).ConfigureAwait(false);
-        using JsonDocument continued = await ReadExecutionControlMessageAsync(client)
+        using JsonDocument continued = await ReadExecutionControlMessageAsync(client, output)
             .ConfigureAwait(false);
         AssertEvent(continued.RootElement, "continued");
-        using JsonDocument response = await ReadExecutionControlMessageAsync(client)
+        using JsonDocument response = await ReadExecutionControlMessageAsync(client, output)
             .ConfigureAwait(false);
         AssertResponse(response.RootElement, sequence, "continue", success: true);
+        if (expectedOutput is not null && output is not null)
+        {
+            while (output.Length < expectedOutput.Length)
+            {
+                using JsonDocument message = await client.ReadMessageAsync(TestContext.CancellationToken)
+                    .ConfigureAwait(false);
+                AppendFixtureOutput(message.RootElement, output);
+            }
+
+            Assert.AreEqual(expectedOutput, output.ToString());
+        }
+
         await PauseFixtureAsync(client).ConfigureAwait(false);
     }
 
@@ -86,7 +100,9 @@ public sealed partial class DapSessionTests
             await client.WaitForExitAsync(TestContext.CancellationToken).ConfigureAwait(false));
     }
 
-    private async Task<JsonDocument> ReadExecutionControlMessageAsync(DapTestClient client)
+    private async Task<JsonDocument> ReadExecutionControlMessageAsync(
+        DapTestClient client,
+        StringBuilder? output = null)
     {
         while (true)
         {
@@ -101,9 +117,22 @@ public sealed partial class DapSessionTests
 
             using (message)
             {
+                if (output is not null)
+                {
+                    AppendFixtureOutput(root, output);
+                }
+
                 TestContext.WriteLine($"Output during execution control: {root.GetRawText()}");
             }
         }
+    }
+
+    private static void AppendFixtureOutput(JsonElement message, StringBuilder output)
+    {
+        AssertEvent(message, "output");
+        JsonElement body = message.GetProperty("body");
+        Assert.AreEqual("stdout", body.GetProperty("category").GetString());
+        _ = output.Append(body.GetProperty("output").GetString());
     }
 
     private static void WriteMemoryArguments(

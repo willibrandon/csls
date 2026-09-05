@@ -132,7 +132,7 @@ public sealed partial class DapSessionTests
             await using ConfiguredAsyncDisposable disposal = client.ConfigureAwait(false);
             JsonElement frame = await GetFixtureFrameAsync(client).ConfigureAwait(false);
             int frameId = frame.GetProperty("id").GetInt32();
-            await ContinueAndPauseAsync(client).ConfigureAwait(false);
+            await ContinueAndPauseAsync(client, expectedOutput: "ready").ConfigureAwait(false);
             int scopesSequence = await client.SendRequestAsync(
                 "scopes", writer => WriteFrameArguments(writer, frameId), TestContext.CancellationToken)
                 .ConfigureAwait(false);

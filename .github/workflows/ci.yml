@@ -181,7 +181,7 @@ jobs:
           if-no-files-found: error
 
   debugger-tests:
-    name: ${{ matrix.suite == 'stress' && format('Debugger stress ({0})', matrix.rid) || format('Debugger tests ({0})', matrix.rid) }}
+    name: ${{ matrix.suite == 'stress' && format('Debugger stress ({0})', matrix.rid) || matrix.suite == 'evaluation' && format('Debugger evaluation ({0})', matrix.rid) || format('Debugger tests ({0})', matrix.rid) }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 5
     needs:
@@ -190,9 +190,16 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        suite: [standard, stress]
+        suite: [standard, evaluation, stress]
         rid: [linux-x64, linux-arm64, win-x64, win-arm64, osx-x64, osx-arm64]
         include:
+          # Complementary filters keep every non-stress test in exactly one job.
+          - suite: standard
+            filter: TestCategory!=DebuggerStress&FullyQualifiedName!~Assignment&FullyQualifiedName!~Evaluation&FullyQualifiedName!~ResultsView&FullyQualifiedName!~DebuggerTypeProxy
+          - suite: evaluation
+            filter: TestCategory!=DebuggerStress&(FullyQualifiedName~Assignment|FullyQualifiedName~Evaluation|FullyQualifiedName~ResultsView|FullyQualifiedName~DebuggerTypeProxy)
+          - suite: stress
+            filter: TestCategory=DebuggerStress
           - os: ubuntu-latest
             rid: linux-x64
             unix_wait: true
@@ -250,13 +257,13 @@ jobs:
           --test-modules artifacts/bin/Csls.Debugger.Tests/debug/Csls.Debugger.Tests.dll
           --root-directory .
           --results-directory artifacts/test-results
-          --filter "${{ matrix.suite == 'stress' && 'TestCategory=DebuggerStress' || 'TestCategory!=DebuggerStress' }}"
+          --filter "${{ matrix.filter }}"
           --minimum-expected-tests ${{ matrix.suite == 'stress' && 2 || 70 }}
           --no-ansi
           --report-trx
 
-      - name: Preserve debugger failure and stress results
-        if: failure() || (success() && matrix.suite == 'stress')
+      - name: Preserve debugger test results
+        if: success() || failure()
         uses: actions/upload-artifact@v7
         with:
           name: debugger-test-results-${{ matrix.rid }}-${{ matrix.suite }}-${{ github.run_attempt }}
