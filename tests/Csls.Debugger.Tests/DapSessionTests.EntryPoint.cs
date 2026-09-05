@@ -85,6 +85,7 @@ public sealed partial class DapSessionTests
             TestContext.WriteLine($"Adapter process: {client.HostProcessId}; target process: {client.TargetProcessId}.");
             TestContext.WriteLine($"Adapter diagnostics: {client.Diagnostics}");
             TestContext.WriteLine($"Recent protocol messages:{Environment.NewLine}{client.ProtocolTranscript}");
+            await DebuggerProcessDiagnostics.CaptureAsync(client.HostProcessId, TestContext).ConfigureAwait(false);
             throw;
         }
     }
