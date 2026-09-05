@@ -99,7 +99,8 @@ internal static class DebuggerProcessDiagnostics
         startInfo.ArgumentList.Add(path);
         testContext.WriteLine($"Sampling process {processId} into {path}.");
         (int exitCode, string output, string error) = await DebuggerTestProcess.RunAsync(
-            startInfo, cancellationToken).ConfigureAwait(false);
+            startInfo, cancellationToken,
+            line => testContext.WriteLine($"sample {processId}: {line}")).ConfigureAwait(false);
         testContext.WriteLine($"Native stack capture for {processId} exited with {exitCode}: {output}{error}");
         if (File.Exists(path))
         {

@@ -12,10 +12,12 @@ internal static class DebuggerTestProcess
     /// </summary>
     /// <param name="startInfo">The complete child-process start information.</param>
     /// <param name="cancellationToken">Cancels the process and terminates its complete tree.</param>
+    /// <param name="progress">Optionally observes diagnostic lines while the child is still running.</param>
     /// <returns>The exit code, standard output, and standard error.</returns>
     internal static async Task<(int ExitCode, string Output, string Error)> RunAsync(
         ProcessStartInfo startInfo,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        Action<string>? progress = null)
     {
         ArgumentNullException.ThrowIfNull(startInfo);
         startInfo.RedirectStandardOutput = true;
@@ -24,8 +26,8 @@ internal static class DebuggerTestProcess
         using Process process = Process.Start(startInfo)
             ?? throw new InvalidOperationException(
                 $"The debugger test process did not start: {startInfo.FileName}");
-        Task<string> output = process.StandardOutput.ReadToEndAsync(CancellationToken.None);
-        Task<string> error = process.StandardError.ReadToEndAsync(CancellationToken.None);
+        Task<string> output = ReadOutputAsync(process.StandardOutput, progress);
+        Task<string> error = ReadOutputAsync(process.StandardError, progress);
         try
         {
             await process.WaitForExitAsync(cancellationToken).ConfigureAwait(false);
@@ -55,5 +57,22 @@ internal static class DebuggerTestProcess
             process.ExitCode,
             await output.ConfigureAwait(false),
             await error.ConfigureAwait(false));
+    }
+
+    private static async Task<string> ReadOutputAsync(StreamReader reader, Action<string>? progress)
+    {
+        if (progress is null)
+        {
+            return await reader.ReadToEndAsync(CancellationToken.None).ConfigureAwait(false);
+        }
+
+        var result = new System.Text.StringBuilder();
+        while (await reader.ReadLineAsync(CancellationToken.None).ConfigureAwait(false) is string line)
+        {
+            result.AppendLine(line);
+            progress(line);
+        }
+
+        return result.ToString();
     }
 }
