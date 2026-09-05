@@ -21,6 +21,7 @@ let main arguments =
     let arrayGenericValue = DebuggerGenericFixture<int[]>([||])
     let nullableGenericValue = DebuggerGenericFixture<Nullable<int>>(Nullable(answer))
     let numbers = [| answer; answer + 1 |]
+    let pairs = [| ValueTuple<int, int>(0, 142); ValueTuple<int, int>(151, 152) |]
     answer <- answer + 1
     Console.Write(arguments[2])
     Console.Out.Flush()
@@ -32,4 +33,5 @@ let main arguments =
     GC.KeepAlive(nestedGenericValue)
     GC.KeepAlive(arrayGenericValue)
     GC.KeepAlive(nullableGenericValue)
+    GC.KeepAlive(pairs)
     answer + numbers[0] - 83

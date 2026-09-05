@@ -474,7 +474,7 @@ filters select the child category before paging, and generated values have no in
 source expressions. A separate strong handle preserves the original heap receiver's
 identity across collection; value-type storage uses exact frame, field, and element
 origins. Refreshed scopes and expression inspection reuse the same completed snapshot.
-Another target execution or a direct assignment retires the snapshot and all of its
+Another target execution or a prepared direct write retires the snapshot and all of its
 descendant value and memory references. The runtime's empty-enumeration sentinel becomes
 a read-only Empty row. Other target exceptions report their type and stored message,
 and cooperative cancellation settles the evaluation before inspection resumes.
@@ -500,7 +500,21 @@ element from compiler-lowered source syntax. Explicit built-in conversions, chec
 contextual integral literals, and language-valid numeric widening write directly
 through `ICorDebugGenericValue`; null and retained references of the same actual
 runtime type write through `ICorDebugReferenceValue`. Direct writes preserve the stop
-generation and invalidate variable views only.
+generation and invalidate variable views only. A session-owned mutation revision
+advances immediately before snapshot retirement and each native write attempt.
+Adapters compare it independently of successful responses and stop generations, so
+failed writes and post-write formatting failures still notify clients to refresh.
+Rejected validation leaves both the revision and existing snapshots unchanged.
+
+Whole-value struct copies require existing unboxed values with identical loaded
+runtime type IDs and equal bounded sizes. The engine captures at most 1 MiB before
+calling `ICorDebugGenericValue.SetValue` through the original runtime value home.
+This preserves nullable presence and uses CoreCLR's GC-aware copy for reference
+fields. Destination tuple metadata, physical storage origins, and evaluated array
+indices are captured before mutation and retained with the returned value. Heap
+origins retain the original object rather than the mutable reference slot used to
+reach it. Ref-like copies and field writes into register-backed structs are rejected;
+whole register-backed writes report the runtime's own restrictions.
 
 Values that require target allocation or execution use the guarded evaluator. Strings
 are allocated with `ICorDebugEval2.NewStringWithLength`; explicitly qualified calls and

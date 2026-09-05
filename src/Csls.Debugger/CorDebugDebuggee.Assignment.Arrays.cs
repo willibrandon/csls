@@ -8,7 +8,7 @@ namespace Csls.Debugger;
 /// </summary>
 internal sealed partial class CorDebugDebuggee
 {
-    private nint ResolveArrayAssignmentTarget(
+    private ManagedAssignmentTarget ResolveArrayAssignmentTarget(
         ManagedFrameHandle frame,
         DebugExpressionPlan plan,
         DebugExpressionNode node,
@@ -20,7 +20,11 @@ internal sealed partial class CorDebugDebuggee
             node.Children[0],
             generation);
         int[] indexes = EvaluateArrayIndexes(frame, plan, node, generation);
-        return ResolveArrayElementValue(receiver, indexes).Value;
+        string? evaluateName = ManagedExpressionName.CreateElement(
+            receiver.Display.EvaluateName, indexes, plan.Language);
+        ManagedTupleCustomTypeInfo? tupleCustomTypeInfo = GetExpressionTupleCustomTypeInfo(receiver);
+        (nint value, ManagedValueOrigin? origin) = ResolveArrayElementValue(receiver, indexes);
+        return ManagedAssignmentTarget.TakeOwnership((value, tupleCustomTypeInfo, origin), evaluateName);
     }
 
     private unsafe (nint Value, ManagedValueOrigin? Origin) ResolveArrayElementValue(

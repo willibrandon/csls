@@ -14,29 +14,25 @@ public sealed partial class DebuggerControlService
     {
         ArgumentNullException.ThrowIfNull(request);
         DebugStopGeneration initialGeneration = _session.StopGeneration;
-        DebugAssignmentResult result;
-        bool completed = false;
+        long initialMutationRevision = _session.VariableMutationRevision;
         try
         {
-            result = await _session.SetVariableAsync(
+            return await _session.SetVariableAsync(
                 request.VariablesReference,
                 request.Name,
                 request.Value,
                 new DebugStopGeneration(request.StopGeneration),
                 cancellationToken).ConfigureAwait(false);
-            completed = true;
         }
         finally
         {
             bool generationChanged = _session.StopGeneration != initialGeneration;
             SynchronizeEvaluationState(initialGeneration);
-            if (completed || generationChanged)
+            if (_session.VariableMutationRevision != initialMutationRevision || generationChanged)
             {
                 NotifyResourceChanged(DebuggerResourceChangeKind.Variables);
             }
         }
-
-        return result;
     }
 
     /// <inheritdoc />
@@ -46,28 +42,24 @@ public sealed partial class DebuggerControlService
     {
         ArgumentNullException.ThrowIfNull(request);
         DebugStopGeneration initialGeneration = _session.StopGeneration;
-        DebugAssignmentResult result;
-        bool completed = false;
+        long initialMutationRevision = _session.VariableMutationRevision;
         try
         {
-            result = await _session.SetExpressionAsync(
+            return await _session.SetExpressionAsync(
                 request.FrameId,
                 request.Expression,
                 request.Value,
                 new DebugStopGeneration(request.StopGeneration),
                 cancellationToken).ConfigureAwait(false);
-            completed = true;
         }
         finally
         {
             bool generationChanged = _session.StopGeneration != initialGeneration;
             SynchronizeEvaluationState(initialGeneration);
-            if (completed || generationChanged)
+            if (_session.VariableMutationRevision != initialMutationRevision || generationChanged)
             {
                 NotifyResourceChanged(DebuggerResourceChangeKind.Variables);
             }
         }
-
-        return result;
     }
 }

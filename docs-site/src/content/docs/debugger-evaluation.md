@@ -91,6 +91,18 @@ Reference compatibility uses loaded runtime type identity, including generic arg
 and assembly load context. Matching type names alone do not permit a write. Direct
 writes to managed by-reference and native pointer locations are rejected.
 
+An existing unboxed struct can be copied into a destination of the same loaded runtime
+type, including tuples and `Nullable<T>`. Copies preserve the entire value, including
+nullable presence and managed reference fields, and are limited to 1 MiB. Tuple names
+come from the destination declaration. Returned expandable values retain the original
+destination storage, with array indices evaluated before the write.
+
+Ref-like copies and member writes into register-backed structs are rejected. Whole
+register-backed values use the runtime's write operation and report its restrictions.
+Validation failures preserve existing Results View snapshots; an attempted runtime
+write retires them, including when the runtime reports a write failure. Editors and
+MCP clients are notified to refresh affected variable views after a write attempt.
+
 String, call, and construction expressions can also supply an assignment value through
 explicitly authorized target execution. The debugger then reacquires the destination
 frame, applies the assignment, and returns the new generation. Boxing, complete

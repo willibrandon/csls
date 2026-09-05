@@ -26,6 +26,7 @@ internal static class Program
         var nestedGenericValue = new DebuggerGenericFixture<List<int>>([]);
         var arrayGenericValue = new DebuggerGenericFixture<int[]>([]);
         var nullableGenericValue = new DebuggerGenericFixture<int?>(answer);
+        ValueTuple<int, int>[] pairs = [new(0, 142), new(151, 152)];
         if (arguments.Length >= 5)
         {
             File.WriteAllText(arguments[3], "started");
@@ -49,6 +50,7 @@ internal static class Program
         GC.KeepAlive(nestedGenericValue);
         GC.KeepAlive(arrayGenericValue);
         GC.KeepAlive(nullableGenericValue);
+        GC.KeepAlive(pairs);
         return answer - 42;
     }
 

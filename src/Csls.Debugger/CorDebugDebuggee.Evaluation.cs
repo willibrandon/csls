@@ -137,9 +137,8 @@ internal sealed partial class CorDebugDebuggee
             generation);
         int[] indexes = EvaluateArrayIndexes(frame, plan, node, generation);
         string name = $"[{string.Join(',', indexes)}]";
-        string? evaluateName = receiver.Display.EvaluateName is string parent
-            ? string.Concat(parent, name)
-            : null;
+        string? evaluateName = ManagedExpressionName.CreateElement(
+            receiver.Display.EvaluateName, indexes, plan.Language);
         (nint value, ManagedValueOrigin? origin) = ResolveArrayElementValue(receiver, indexes);
         try
         {

@@ -381,6 +381,22 @@ and assembly load context. Type names alone do not establish compatibility. Dire
 writes to managed by-reference and native pointer locations are rejected before
 changing target storage, including when assigning null.
 
+Existing unboxed structs can be copied to storage of the same loaded runtime type,
+including tuples and `Nullable<T>`. The debugger captures the entire source value
+before writing through CoreCLR's GC-aware value API, with a 1 MiB copy limit.
+Nullable copies preserve both presence and payload. Tuple names come from the
+destination declaration, and returned expandable values retain the destination's
+physical identity. Array indices are resolved before mutation, so an index that
+depends on the copied value does not redirect the returned result.
+
+Ref-like struct copies and individual field writes into register-backed structs are
+rejected. Whole register-backed values use the runtime's original value home and
+report its write restrictions. Validation failures occur before snapshot retirement;
+an attempted runtime write retires existing Results View snapshots even if the native
+write reports an error. DAP and MCP variable invalidation follows the attempted write
+even when no assignment result can be returned; the stop generation remains unchanged
+unless target code ran.
+
 Assemblies loaded from PE and Portable PDB byte arrays receive the same source
 breakpoint, stack, local-name, stepping, goto, disassembly, and managed-IL
 breakpoint behavior as file-backed assemblies. During launch, csls consumes the

@@ -4,7 +4,7 @@ using Csls.Debugger.Interop;
 namespace Csls.Debugger;
 
 /// <summary>
-/// Writes exact primitive and reference values through public ICorDebug contracts.
+/// Writes exact primitive, value-type, and reference values through public ICorDebug contracts.
 /// </summary>
 internal sealed partial class CorDebugDebuggee
 {
@@ -12,8 +12,25 @@ internal sealed partial class CorDebugDebuggee
         nint destination,
         ManagedExpressionValue source,
         DebugExpressionLanguage language,
-        bool sourceIsContextualLiteral)
+        bool sourceIsContextualLiteral,
+        ManagedVariableMutationState mutations)
     {
+        if (ManagedRuntimeValueIdentity.GetElementType(destination) == 0x11)
+        {
+            if (source.RuntimeValueReference <= 0)
+            {
+                throw new InvalidOperationException(
+                    "Whole-value assignment requires existing unboxed value types; " +
+                    "implicit boxing and unboxing are not supported.");
+            }
+
+            using var assignment = ManagedValueTypeAssignment.Prepare(
+                destination, GetRuntimeValue(source), OpenRuntimeModule);
+            BeginVariableMutation(mutations);
+            assignment.Write();
+            return;
+        }
+
         if (ComAbi.TryQueryInterface(
             destination,
             ICorDebugGenericValueAbi.InterfaceId,
@@ -39,6 +56,7 @@ internal sealed partial class CorDebugDebuggee
                     "non-null primitive assignment of the same type.");
             }
 
+            BeginVariableMutation(mutations);
             SetManagedPrimitiveValue(destination, destinationDisplay.Type, scalar);
             return;
         }
@@ -55,7 +73,7 @@ internal sealed partial class CorDebugDebuggee
 
         try
         {
-            AssignManagedReference(destination, destinationReference, source);
+            AssignManagedReference(destination, destinationReference, source, mutations);
         }
         finally
         {
@@ -66,11 +84,13 @@ internal sealed partial class CorDebugDebuggee
     private unsafe void AssignManagedReference(
         nint destination,
         nint destinationReference,
-        ManagedExpressionValue source)
+        ManagedExpressionValue source,
+        ManagedVariableMutationState mutations)
     {
         ManagedReferenceAssignmentValidator.ValidateDestination(destination);
-        if (source.HasScalar && source.Scalar is null)
+        if (source.HasScalar && source.Scalar is null && source.RuntimeValueReference <= 0)
         {
+            BeginVariableMutation(mutations);
             CorDebugHResult.ThrowIfFailed(
                 new ICorDebugReferenceValueAbi(destinationReference).SetValue(0),
                 "ICorDebugReferenceValue.SetValue");
@@ -85,7 +105,7 @@ internal sealed partial class CorDebugDebuggee
         }
 
         nint sourceValue = GetRuntimeValue(source);
-        if (!ManagedReferenceAssignmentValidator.HaveSameRuntimeType(destination, sourceValue))
+        if (!ManagedRuntimeValueIdentity.HaveSameRuntimeType(destination, sourceValue))
         {
             ManagedValueDisplay destinationDisplay = FormatRuntimeValuePair(
                 destination, debuggerDisplayDepth: 0, tupleCustomTypeInfo: null).Runtime;
@@ -107,6 +127,7 @@ internal sealed partial class CorDebugDebuggee
                 new ICorDebugReferenceValueAbi(sourceReference).GetValue(
                     (nint)addressPointer),
                 "ICorDebugReferenceValue.GetValue");
+            BeginVariableMutation(mutations);
             CorDebugHResult.ThrowIfFailed(
                 new ICorDebugReferenceValueAbi(destinationReference).SetValue(
                     Volatile.Read(ref *addressPointer)),
@@ -119,5 +140,11 @@ internal sealed partial class CorDebugDebuggee
                 _ = ComAbi.Release(sourceReference);
             }
         }
+    }
+
+    private void BeginVariableMutation(ManagedVariableMutationState mutations)
+    {
+        mutations.Advance();
+        RetireResultsViewSnapshot();
     }
 }

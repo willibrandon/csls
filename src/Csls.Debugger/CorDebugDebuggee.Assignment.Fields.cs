@@ -12,7 +12,7 @@ namespace Csls.Debugger;
 /// </summary>
 internal sealed partial class CorDebugDebuggee
 {
-    private nint ResolveFieldAssignmentTarget(
+    private ManagedAssignmentTarget ResolveFieldAssignmentTarget(
         ManagedFrameHandle frame,
         DebugExpressionPlan plan,
         DebugExpressionNode node,
@@ -23,7 +23,19 @@ internal sealed partial class CorDebugDebuggee
             plan,
             node.Children[0],
             generation);
-        return ResolveInstanceFieldValue(receiver, node.Text!, plan.Language).Value;
+        nint parent = DereferenceValue(GetRuntimeValue(receiver));
+        try
+        {
+            ManagedValueTypeAssignment.ValidateFieldParent(parent);
+        }
+        finally
+        {
+            _ = ComAbi.Release(parent);
+        }
+
+        string? evaluateName = ManagedExpressionName.CreateMember(receiver.Display.EvaluateName, node.Text!);
+        return ManagedAssignmentTarget.TakeOwnership(
+            ResolveInstanceFieldValue(receiver, node.Text!, plan.Language), evaluateName);
     }
 
     private unsafe (

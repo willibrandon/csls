@@ -59,7 +59,7 @@ internal sealed partial class DapSession
                 targetCodeExecuted = result.TargetCodeExecuted;
             }
             catch (Exception exception) when (
-                exception is ArgumentException or InvalidOperationException or
+                exception is ArgumentException or InvalidOperationException or NotSupportedException or
                 IOException or UnauthorizedAccessException or BadImageFormatException)
             {
                 SignalCancelableResponseReady();

@@ -13,6 +13,7 @@ public sealed partial class DebuggerSession : IAsyncDisposable
     private readonly DebuggerSessionActor _actor = new();
     private readonly SemaphoreSlim _lifecycleGate = new(1, 1);
     private readonly DebuggerEvaluatorSupervisor _evaluator = new();
+    private readonly ManagedVariableMutationState _variableMutations = new();
     private readonly SourceBreakpointManager _sourceBreakpoints;
     private readonly FunctionBreakpointManager _functionBreakpoints;
     private readonly InstructionBreakpointManager _instructionBreakpoints;
@@ -50,5 +51,10 @@ public sealed partial class DebuggerSession : IAsyncDisposable
     /// Gets the current stopped-state generation, or zero before the first debugger stop.
     /// </summary>
     public DebugStopGeneration StopGeneration => _stopGeneration;
+
+    /// <summary>
+    /// Gets the monotonic assignment-attempt revision, including failed writes that invalidate inspected values.
+    /// </summary>
+    public long VariableMutationRevision => _variableMutations.Revision;
 
 }

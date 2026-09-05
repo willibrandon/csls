@@ -1,3 +1,6 @@
+using Csls.Debugger.Contracts;
+using System.Globalization;
+
 namespace Csls.Debugger;
 
 /// <summary>
@@ -5,6 +8,34 @@ namespace Csls.Debugger;
 /// </summary>
 internal static class ManagedExpressionName
 {
+    /// <summary>
+    /// Appends already evaluated array indices using the selected source-language grammar.
+    /// </summary>
+    /// <param name="parent">The parent source expression, or null when unavailable.</param>
+    /// <param name="indices">The concrete source-language array indices.</param>
+    /// <param name="language">The owning frame's expression grammar, or null when unavailable.</param>
+    /// <returns>The re-evaluable element expression, or null when its grammar is unavailable.</returns>
+    internal static string? CreateElement(
+        string? parent,
+        IReadOnlyList<int> indices,
+        DebugExpressionLanguage? language)
+    {
+        if (parent is null || language is null)
+        {
+            return null;
+        }
+
+        string arguments = string.Join(',', indices.Select(static index =>
+            index.ToString(CultureInfo.InvariantCulture)));
+        return language switch
+        {
+            DebugExpressionLanguage.Common or DebugExpressionLanguage.CSharp => $"{parent}[{arguments}]",
+            DebugExpressionLanguage.VisualBasic => $"{parent}({arguments})",
+            DebugExpressionLanguage.FSharp => $"{parent}.[{arguments}]",
+            _ => null
+        };
+    }
+
     /// <summary>
     /// Appends a simple member identifier to an existing source expression.
     /// </summary>

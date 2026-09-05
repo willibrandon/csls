@@ -38,6 +38,9 @@ internal sealed partial class CorDebugDebuggee
         int[] bases = GetArrayBases(api, rank);
         int take = count == 0 ? available - start : Math.Min(count, available - start);
         int end = start + take;
+        DebugExpressionLanguage? language = parentEvaluateName is not null && frameId is int id
+            ? GetFrame(id, generation).ExpressionLanguage
+            : null;
         var result = new List<DebugVariableInfo>(take);
         for (int index = start; index < end; index++)
         {
@@ -58,10 +61,10 @@ internal sealed partial class CorDebugDebuggee
                 ManagedValueDisplay display = FormatRuntimeValue(
                     element,
                     tupleCustomTypeInfo);
-                string name = FormatArrayIndex(index, dimensions, bases);
-                string? evaluateName = parentEvaluateName is null
-                    ? null
-                    : string.Concat(parentEvaluateName, name);
+                int[] indices = GetArrayIndices(index, dimensions, bases);
+                string name = $"[{string.Join(',', indices)}]";
+                string? evaluateName = ManagedExpressionName.CreateElement(
+                    parentEvaluateName, indices, language);
                 ManagedValueReferences references = RetainValue(
                     element,
                     generation,
@@ -144,7 +147,7 @@ internal sealed partial class CorDebugDebuggee
         return bases;
     }
 
-    private static string FormatArrayIndex(int position, uint[] dimensions, int[] bases)
+    private static int[] GetArrayIndices(int position, uint[] dimensions, int[] bases)
     {
         int remainder = position;
         int[] indices = new int[dimensions.Length];
@@ -155,6 +158,6 @@ internal sealed partial class CorDebugDebuggee
             remainder /= length;
         }
 
-        return $"[{string.Join(',', indices)}]";
+        return indices;
     }
 }

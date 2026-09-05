@@ -17,6 +17,7 @@ internal sealed partial class CorDebugDebuggee
     /// <param name="targetExpression">The canonical source target expression.</param>
     /// <param name="resultName">The debugger-facing result name.</param>
     /// <param name="generation">The current stopped generation.</param>
+    /// <param name="mutations">The session-owned revision advanced before native mutation attempts.</param>
     /// <returns>The written value and its current expansion handles.</returns>
     internal DebugVariableInfo SetExpression(
         int frameId,
@@ -24,7 +25,8 @@ internal sealed partial class CorDebugDebuggee
         DebugExpressionPlan value,
         string targetExpression,
         string resultName,
-        DebugStopGeneration generation)
+        DebugStopGeneration generation,
+        ManagedVariableMutationState mutations)
     {
         ManagedFrameHandle frame = GetFrame(frameId, generation);
         ManagedExpressionPlanValidator.Validate(target, frame.ExpressionLanguage);
@@ -49,7 +51,8 @@ internal sealed partial class CorDebugDebuggee
             resultName,
             generation,
             value.Language,
-            value.Root.Kind == DebugExpressionNodeKind.Literal);
+            value.Root.Kind == DebugExpressionNodeKind.Literal,
+            mutations);
     }
 
     /// <summary>
@@ -97,13 +100,15 @@ internal sealed partial class CorDebugDebuggee
     /// <param name="evaluation">The retained target-code result.</param>
     /// <param name="targetExpression">The canonical source target expression.</param>
     /// <param name="resultName">The debugger-facing result name.</param>
+    /// <param name="mutations">The session-owned revision advanced before native mutation attempts.</param>
     /// <returns>The written value and its current expansion handles.</returns>
     internal DebugVariableInfo SetExpressionFromEvaluation(
         int frameId,
         DebugExpressionPlan target,
         ManagedFunctionEvaluationResult evaluation,
         string targetExpression,
-        string resultName)
+        string resultName,
+        ManagedVariableMutationState mutations)
     {
         if (evaluation.RuntimeValueReference <= 0 ||
             !_values.TryGetValue(
@@ -137,7 +142,8 @@ internal sealed partial class CorDebugDebuggee
             resultName,
             evaluation.Generation,
             target.Language,
-            sourceIsContextualLiteral: false);
+            sourceIsContextualLiteral: false,
+            mutations);
     }
 
     private DebugVariableInfo SetExpressionCore(
@@ -148,50 +154,49 @@ internal sealed partial class CorDebugDebuggee
         string resultName,
         DebugStopGeneration generation,
         DebugExpressionLanguage language,
-        bool sourceIsContextualLiteral)
+        bool sourceIsContextualLiteral,
+        ManagedVariableMutationState mutations)
     {
-        nint destination = ResolveAssignmentTarget(
+        using ManagedAssignmentTarget destination = ResolveAssignmentTarget(
             frame,
             target,
             target.Root,
-            generation);
-        try
-        {
-            RetireResultsViewSnapshot();
-            AssignManagedValue(
-                destination,
-                source,
-                language,
-                sourceIsContextualLiteral);
-            ManagedValueDisplay display = FormatRuntimeValue(destination);
-            ManagedValueReferences references = RetainValue(
-                destination,
-                generation,
-                targetExpression,
-                frame.Id);
-            return new DebugVariableInfo(
-                resultName,
-                display.Value,
-                display.Type,
-                references.VariablesReference,
-                references.MemoryReference,
-                targetExpression);
-        }
-        finally
-        {
-            _ = ComAbi.Release(destination);
-        }
+            generation,
+            targetExpression);
+        AssignManagedValue(
+            destination.Pointer,
+            source,
+            language,
+            sourceIsContextualLiteral,
+            mutations);
+        ManagedValueDisplay display = FormatRuntimeValue(destination.Pointer, destination.TupleCustomTypeInfo);
+        ManagedValueReferences references = RetainValue(
+            destination.Pointer,
+            generation,
+            destination.EvaluateName,
+            frame.Id,
+            tupleCustomTypeInfo: destination.TupleCustomTypeInfo,
+            origin: destination.Origin);
+        return new DebugVariableInfo(
+            resultName,
+            display.Value,
+            display.Type,
+            references.VariablesReference,
+            references.MemoryReference,
+            destination.EvaluateName);
     }
 
-    private nint ResolveAssignmentTarget(
+    private ManagedAssignmentTarget ResolveAssignmentTarget(
         ManagedFrameHandle frame,
         DebugExpressionPlan plan,
         DebugExpressionNode node,
-        DebugStopGeneration generation) => node.Kind switch
+        DebugStopGeneration generation,
+        string targetExpression) => node.Kind switch
         {
             DebugExpressionNodeKind.Identifier => ResolveFrameAssignmentTarget(
                 frame,
-                node.Text!),
+                node.Text!,
+                targetExpression),
             DebugExpressionNodeKind.MemberAccess => ResolveFieldAssignmentTarget(
                 frame,
                 plan,
@@ -208,9 +213,11 @@ internal sealed partial class CorDebugDebuggee
                 $"Expression node {node.Kind} is not a writable managed value.")
         };
 
-    private static nint ResolveFrameAssignmentTarget(
+    private static ManagedAssignmentTarget ResolveFrameAssignmentTarget(
         ManagedFrameHandle frame,
-        string name) => ResolveFrameValue(frame, name, allowInstanceReceiver: false).Value;
+        string name,
+        string evaluateName) => ManagedAssignmentTarget.TakeOwnership(
+            ResolveFrameValue(frame, name, allowInstanceReceiver: false), evaluateName);
 
     private static (
         nint Value,
@@ -230,11 +237,13 @@ internal sealed partial class CorDebugDebuggee
         int? localIndex = FindVariableIndex(localNames, name, comparison);
         if (localIndex is not null)
         {
+            ManagedValueOrigin? origin = frame.CreateValueOrigin(ManagedScopeKind.Locals, localIndex.Value);
+            ManagedTupleCustomTypeInfo? tupleCustomTypeInfo = localNames[localIndex.Value].TupleCustomTypeInfo;
             return (
                 GetFrameAssignmentTarget(
                     frame.Pointer, ManagedScopeKind.Locals, localIndex.Value),
-                localNames[localIndex.Value].TupleCustomTypeInfo,
-                frame.CreateValueOrigin(ManagedScopeKind.Locals, localIndex.Value));
+                tupleCustomTypeInfo,
+                origin);
         }
 
         IReadOnlyDictionary<int, ManagedSymbolVariable> argumentNames = GetVariableNames(
@@ -251,11 +260,13 @@ internal sealed partial class CorDebugDebuggee
                     "The current instance receiver cannot be assigned.");
             }
 
+            ManagedValueOrigin? origin = frame.CreateValueOrigin(ManagedScopeKind.Arguments, argumentIndex.Value);
+            ManagedTupleCustomTypeInfo? tupleCustomTypeInfo = argumentNames[argumentIndex.Value].TupleCustomTypeInfo;
             return (
                 GetFrameAssignmentTarget(
                     frame.Pointer, ManagedScopeKind.Arguments, argumentIndex.Value),
-                argumentNames[argumentIndex.Value].TupleCustomTypeInfo,
-                frame.CreateValueOrigin(ManagedScopeKind.Arguments, argumentIndex.Value));
+                tupleCustomTypeInfo,
+                origin);
         }
 
         throw new InvalidOperationException(

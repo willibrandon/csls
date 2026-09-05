@@ -30,6 +30,8 @@ internal static class DebuggerFixture
         byte localByte = 1;
         string localText = text + "!";
         int[] localArray = [41, 42, 43];
+        Span<int> localSpan = localArray.AsSpan(0, 2);
+        Span<int> localOtherSpan = localArray.AsSpan(0, 3);
         var localObject = new DebuggerFixtureValue(number, localText, path + ".evaluation");
         var localList = new DebuggerFixtureList(number);
         var localBrowsable = new DebuggerBrowsableFixture();
@@ -63,6 +65,11 @@ internal static class DebuggerFixture
             ? ResultsViewLoadContextFixture.CreateIsolatedEnumerable() : null;
         var localResultsViewMultiple = new ResultsViewMultipleFixture();
         var localResultsViewStruct = new ResultsViewStructFixture();
+        var localStructSource = new ResultsViewStructFixture();
+        ResultsViewStructFixture[] localStructArray = [new()];
+        ResultsViewStructFixture[] localOriginalStructArray = localStructArray;
+        ResultsViewStructFixture[] localOtherStructArray = [new()];
+        var localStructContainer = new System.Runtime.CompilerServices.StrongBox<ResultsViewStructFixture>(new());
         ResultsViewStructFixture? localResultsViewNullableStruct = new ResultsViewStructFixture();
         object localResultsViewBoxedStruct = new ResultsViewStructFixture();
         var localResultsViewEmpty = new ResultsViewFixture<int>([]);
@@ -81,6 +88,7 @@ internal static class DebuggerFixture
         DebuggerDisplayFixture[] localDisplayArray = [new()];
         int? localNullable = number + 3;
         int? localEmptyNullable = null;
+        uint? localEmptyUnsignedNullable = null;
         (int Number, string Text) localTuple = (number, text);
         object localBoxedTuple = (10, "ten");
         (int One, int Two, int Three, int Four, int Five, int Six, int Seven,
@@ -97,6 +105,7 @@ internal static class DebuggerFixture
             ((number, text), number + 1);
         (int Number, string Text)[] localTupleArray = [(number, text)];
         ValueTuple<int> localSingleTuple = new(1);
+        ValueTuple<uint> localUnsignedSingleTuple = new(17U);
         ValueTuple<int, int, int, int, int, int, int, int> localNonTuple = default;
         DebuggerFixtureMode localMode = DebuggerFixtureMode.Second;
         var localUnknownMode = (DebuggerFixtureMode)7;
@@ -152,6 +161,8 @@ internal static class DebuggerFixture
         GC.KeepAlive(localLong);
         GC.KeepAlive(localByte);
         GC.KeepAlive(localArray);
+        GC.KeepAlive(localSpan.Length);
+        GC.KeepAlive(localOtherSpan.Length);
         GC.KeepAlive(localObject);
         GC.KeepAlive(localList);
         GC.KeepAlive(localBrowsable);
@@ -178,6 +189,11 @@ internal static class DebuggerFixture
         GC.KeepAlive(localResultsViewIsolatedContext);
         GC.KeepAlive(localResultsViewMultiple);
         GC.KeepAlive(localResultsViewStruct);
+        GC.KeepAlive(localStructSource);
+        GC.KeepAlive(localStructArray);
+        GC.KeepAlive(localOriginalStructArray);
+        GC.KeepAlive(localOtherStructArray);
+        GC.KeepAlive(localStructContainer);
         GC.KeepAlive(localResultsViewNullableStruct);
         GC.KeepAlive(localResultsViewBoxedStruct);
         GC.KeepAlive(localResultsViewEmpty);
@@ -194,6 +210,7 @@ internal static class DebuggerFixture
         GC.KeepAlive(localDisplayArray);
         GC.KeepAlive(localNullable);
         GC.KeepAlive(localEmptyNullable);
+        GC.KeepAlive(localEmptyUnsignedNullable);
         GC.KeepAlive(localTuple);
         GC.KeepAlive(localBoxedTuple);
         GC.KeepAlive(localLongTuple);
@@ -202,6 +219,7 @@ internal static class DebuggerFixture
         GC.KeepAlive(localNestedTuple);
         GC.KeepAlive(localTupleArray);
         GC.KeepAlive(localSingleTuple);
+        GC.KeepAlive(localUnsignedSingleTuple);
         GC.KeepAlive(localNonTuple);
         GC.KeepAlive(localMode);
         GC.KeepAlive(localUnknownMode);

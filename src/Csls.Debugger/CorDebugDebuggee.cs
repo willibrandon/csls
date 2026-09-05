@@ -45,6 +45,10 @@ internal sealed partial class CorDebugDebuggee :
         ManagedValueOrigin? Origin,
         ManagedResultsViewLifetime? Lifetime),
         ManagedValueHandle> _valueIdentities = [];
+    private readonly Dictionary<(
+        ulong Address,
+        ManagedResultsViewLifetime? Lifetime),
+        ManagedHeapValueOrigin> _heapValueOrigins = [];
     private readonly Dictionary<string, ManagedValueHandle> _memoryValues =
         new(StringComparer.Ordinal);
     private ManagedFunctionEvaluation? _activeFunctionEvaluation;

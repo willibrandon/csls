@@ -19,6 +19,8 @@ Friend Module Program
         Dim nestedGenericValue = New DebuggerGenericFixture(Of List(Of Integer))(New List(Of Integer)())
         Dim arrayGenericValue = New DebuggerGenericFixture(Of Integer())(Array.Empty(Of Integer)())
         Dim nullableGenericValue = New DebuggerGenericFixture(Of Integer?)(answer)
+        Dim pairs As ValueTuple(Of Integer, Integer)() = {
+            New ValueTuple(Of Integer, Integer)(0, 142), New ValueTuple(Of Integer, Integer)(151, 152)}
         answer += 1
         Console.Write(arguments(2))
         Console.Out.Flush()
@@ -31,6 +33,7 @@ Friend Module Program
         GC.KeepAlive(nestedGenericValue)
         GC.KeepAlive(arrayGenericValue)
         GC.KeepAlive(nullableGenericValue)
+        GC.KeepAlive(pairs)
         Return answer - 42
     End Function
 End Module

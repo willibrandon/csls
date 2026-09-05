@@ -137,7 +137,8 @@ public sealed partial class DebuggerSession
                         value,
                         targetExpression,
                         resultName,
-                        generation);
+                        generation,
+                        _variableMutations);
                 }
                 else
                 {
@@ -188,7 +189,8 @@ public sealed partial class DebuggerSession
                     target,
                     evaluation,
                     targetExpression,
-                    resultName);
+                    resultName,
+                    _variableMutations);
                 return ValueTask.CompletedTask;
             },
             cancellationToken).ConfigureAwait(false);

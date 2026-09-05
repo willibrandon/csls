@@ -20,7 +20,7 @@ internal sealed partial class DapSession
         }
 
         DebugStopGeneration requestGeneration = _engineSession.StopGeneration;
-        bool variableInvalidation = false;
+        long requestMutationRevision = _engineSession.VariableMutationRevision;
         bool targetCodeExecuted = false;
         try
         {
@@ -37,14 +37,13 @@ internal sealed partial class DapSession
                 value,
                 _engineSession.StopGeneration,
                 cancellationToken).ConfigureAwait(false);
+            targetCodeExecuted = result.TargetCodeExecuted;
             SignalCancelableResponseReady();
             await WriteAssignmentResponseAsync(request, result.Variable, cancellationToken)
                 .ConfigureAwait(false);
-            variableInvalidation = true;
-            targetCodeExecuted = result.TargetCodeExecuted;
         }
         catch (Exception exception) when (
-            exception is ArgumentException or InvalidOperationException or
+            exception is ArgumentException or InvalidOperationException or NotSupportedException or
             IOException or UnauthorizedAccessException or BadImageFormatException)
         {
             SignalCancelableResponseReady();
@@ -57,13 +56,15 @@ internal sealed partial class DapSession
             await WriteRequestFailureAsync(request, "cancelled", _lifetime.Token)
                 .ConfigureAwait(false);
         }
-
-        targetCodeExecuted |= _engineSession.StopGeneration != requestGeneration;
-        if (variableInvalidation || targetCodeExecuted)
+        finally
         {
-            await WriteAssignmentInvalidationAsync(
-                targetCodeExecuted,
-                _lifetime.Token).ConfigureAwait(false);
+            targetCodeExecuted |= _engineSession.StopGeneration != requestGeneration;
+            if (_engineSession.VariableMutationRevision != requestMutationRevision || targetCodeExecuted)
+            {
+                await WriteAssignmentInvalidationAsync(
+                    targetCodeExecuted,
+                    _lifetime.Token).ConfigureAwait(false);
+            }
         }
     }
 
@@ -78,7 +79,7 @@ internal sealed partial class DapSession
         }
 
         DebugStopGeneration requestGeneration = _engineSession.StopGeneration;
-        bool variableInvalidation = false;
+        long requestMutationRevision = _engineSession.VariableMutationRevision;
         bool targetCodeExecuted = false;
         try
         {
@@ -96,14 +97,13 @@ internal sealed partial class DapSession
                 value,
                 _engineSession.StopGeneration,
                 cancellationToken).ConfigureAwait(false);
+            targetCodeExecuted = result.TargetCodeExecuted;
             SignalCancelableResponseReady();
             await WriteAssignmentResponseAsync(request, result.Variable, cancellationToken)
                 .ConfigureAwait(false);
-            variableInvalidation = true;
-            targetCodeExecuted = result.TargetCodeExecuted;
         }
         catch (Exception exception) when (
-            exception is ArgumentException or InvalidOperationException or
+            exception is ArgumentException or InvalidOperationException or NotSupportedException or
             IOException or UnauthorizedAccessException or BadImageFormatException)
         {
             SignalCancelableResponseReady();
@@ -116,13 +116,15 @@ internal sealed partial class DapSession
             await WriteRequestFailureAsync(request, "cancelled", _lifetime.Token)
                 .ConfigureAwait(false);
         }
-
-        targetCodeExecuted |= _engineSession.StopGeneration != requestGeneration;
-        if (variableInvalidation || targetCodeExecuted)
+        finally
         {
-            await WriteAssignmentInvalidationAsync(
-                targetCodeExecuted,
-                _lifetime.Token).ConfigureAwait(false);
+            targetCodeExecuted |= _engineSession.StopGeneration != requestGeneration;
+            if (_engineSession.VariableMutationRevision != requestMutationRevision || targetCodeExecuted)
+            {
+                await WriteAssignmentInvalidationAsync(
+                    targetCodeExecuted,
+                    _lifetime.Token).ConfigureAwait(false);
+            }
         }
     }
 

@@ -45,7 +45,8 @@ internal sealed partial class CorDebugDebuggee
                 references.VariablesReference, references.MemoryReference, evaluateName),
             runtimeValueReference: 0,
             runtimeValue);
-        if (expression.HasScalar && expression.Scalar is not string)
+        if (expression.HasScalar && expression.Scalar is not string &&
+            ManagedRuntimeValueIdentity.GetElementType(value) != 0x11)
         {
             return expression;
         }
