@@ -162,10 +162,9 @@ public sealed partial class DapSessionTests
                 frame.GetProperty("name").GetString(),
                 "Csls.TestProcessHost.DebuggerFixture.WaitForSignal",
                 StringComparison.Ordinal));
-            Assert.AreEqual(
-                Path.GetFullPath(sourcePath),
-                Path.GetFullPath(
-                    breakpointFrame.GetProperty("source").GetProperty("path").GetString()!));
+            string? frameSourcePath = breakpointFrame.GetProperty("source").GetProperty("path").GetString();
+            Assert.IsTrue(DebuggerTestPath.AreEquivalent(sourcePath, frameSourcePath),
+                $"Expected source '{sourcePath}', received '{frameSourcePath}'.");
             Assert.AreEqual(breakpointLine, breakpointFrame.GetProperty("line").GetInt32());
 
             await File.WriteAllTextAsync(

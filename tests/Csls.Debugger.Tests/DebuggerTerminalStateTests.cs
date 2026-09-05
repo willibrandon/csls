@@ -173,7 +173,8 @@ public sealed class DebuggerTerminalStateTests
         Assert.HasCount(2, changed.SourceBreakpoints);
         DebugSourceBreakpointInfo added = Assert.ContainsSingle(
             changed.SourceBreakpoints.Where(breakpoint => breakpoint.Line == sourceLine));
-        Assert.AreEqual(originalBreakpoint.SourcePath, added.SourcePath);
+        Assert.IsTrue(DebuggerTestPath.AreEquivalent(originalBreakpoint.SourcePath, added.SourcePath),
+            $"Expected source '{originalBreakpoint.SourcePath}', received '{added.SourcePath}'.");
         Assert.IsTrue(added.Verified);
 
         await state.ToggleSourceBreakpointAsync().ConfigureAwait(false);
