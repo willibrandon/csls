@@ -496,7 +496,7 @@ jobs:
         uses: actions/cache/restore@v6
         with:
           path: artifacts/file-apps/install-graphical
-          key: graphical-prerequisite-app-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/Install-GraphicalEditorTestPrerequisites.cs', 'scripts/Support/AptPackageCache.cs', 'scripts/Support/ProcessOutputCapture.cs', 'scripts/ScriptSupport.cs') }}
+          key: graphical-prerequisite-app-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/Install-GraphicalEditorTestPrerequisites.cs', 'scripts/Support/GraphicalPrerequisite*.cs', 'scripts/Support/AptPackageCache.cs', 'scripts/Support/ProcessOutputCapture.cs', 'scripts/ScriptSupport.cs', '.editorconfig', '.globalconfig', 'Directory.Build.*', 'Directory.Packages.props', 'NuGet.Config') }}
 
       - name: Publish graphical prerequisite app
         if: steps.graphical-prerequisite-app-cache.outputs.cache-hit != 'true'
@@ -509,7 +509,7 @@ jobs:
         uses: actions/cache/save@v6
         with:
           path: artifacts/file-apps/install-graphical
-          key: graphical-prerequisite-app-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/Install-GraphicalEditorTestPrerequisites.cs', 'scripts/Support/AptPackageCache.cs', 'scripts/Support/ProcessOutputCapture.cs', 'scripts/ScriptSupport.cs') }}
+          key: graphical-prerequisite-app-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/Install-GraphicalEditorTestPrerequisites.cs', 'scripts/Support/GraphicalPrerequisite*.cs', 'scripts/Support/AptPackageCache.cs', 'scripts/Support/ProcessOutputCapture.cs', 'scripts/ScriptSupport.cs', '.editorconfig', '.globalconfig', 'Directory.Build.*', 'Directory.Packages.props', 'NuGet.Config') }}
 
   browser-prerequisite-packages:
     name: Browser prerequisite packages (${{ matrix.browser }})
@@ -536,7 +536,7 @@ jobs:
         uses: actions/cache/restore@v6
         with:
           path: artifacts/file-apps/install-graphical
-          key: graphical-prerequisite-app-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/Install-GraphicalEditorTestPrerequisites.cs', 'scripts/Support/AptPackageCache.cs', 'scripts/Support/ProcessOutputCapture.cs', 'scripts/ScriptSupport.cs') }}
+          key: graphical-prerequisite-app-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/Install-GraphicalEditorTestPrerequisites.cs', 'scripts/Support/GraphicalPrerequisite*.cs', 'scripts/Support/AptPackageCache.cs', 'scripts/Support/ProcessOutputCapture.cs', 'scripts/ScriptSupport.cs', '.editorconfig', '.globalconfig', 'Directory.Build.*', 'Directory.Packages.props', 'NuGet.Config') }}
           fail-on-cache-miss: true
 
       - name: Resolve current browser packages
@@ -551,7 +551,7 @@ jobs:
         uses: actions/cache/restore@v6
         with:
           path: artifacts/browser-packages
-          key: browser-packages-${{ matrix.browser }}-${{ steps.browser-packages.outputs.key }}-${{ hashFiles('scripts/Install-GraphicalEditorTestPrerequisites.cs', 'scripts/Support/AptPackageCache.cs') }}
+          key: browser-packages-${{ matrix.browser }}-${{ steps.browser-packages.outputs.key }}-${{ hashFiles('scripts/Install-GraphicalEditorTestPrerequisites.cs', 'scripts/Support/GraphicalPrerequisite*.cs', 'scripts/Support/AptPackageCache.cs') }}
 
       - name: Download and verify browser packages
         run: >-
@@ -564,7 +564,7 @@ jobs:
         uses: actions/cache/save@v6
         with:
           path: artifacts/browser-packages
-          key: browser-packages-${{ matrix.browser }}-${{ steps.browser-packages.outputs.key }}-${{ hashFiles('scripts/Install-GraphicalEditorTestPrerequisites.cs', 'scripts/Support/AptPackageCache.cs') }}
+          key: browser-packages-${{ matrix.browser }}-${{ steps.browser-packages.outputs.key }}-${{ hashFiles('scripts/Install-GraphicalEditorTestPrerequisites.cs', 'scripts/Support/GraphicalPrerequisite*.cs', 'scripts/Support/AptPackageCache.cs') }}
 
       - name: Upload browser packages
         uses: actions/upload-artifact@v7
@@ -853,7 +853,7 @@ jobs:
         uses: actions/cache/restore@v6
         with:
           path: artifacts/file-apps/install-graphical
-          key: graphical-prerequisite-app-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/Install-GraphicalEditorTestPrerequisites.cs', 'scripts/Support/AptPackageCache.cs', 'scripts/Support/ProcessOutputCapture.cs', 'scripts/ScriptSupport.cs') }}
+          key: graphical-prerequisite-app-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/Install-GraphicalEditorTestPrerequisites.cs', 'scripts/Support/GraphicalPrerequisite*.cs', 'scripts/Support/AptPackageCache.cs', 'scripts/Support/ProcessOutputCapture.cs', 'scripts/ScriptSupport.cs', '.editorconfig', '.globalconfig', 'Directory.Build.*', 'Directory.Packages.props', 'NuGet.Config') }}
           fail-on-cache-miss: true
 
       - name: Restore Zed tools
@@ -890,7 +890,7 @@ jobs:
         uses: actions/cache/restore@v6
         with:
           path: artifacts/tools/graphical-editor-prerequisites
-          key: zed-graphical-${{ runner.os }}-${{ runner.arch }}-${{ steps.zed-graphical-cache-key.outputs.key }}-${{ hashFiles('scripts/Install-GraphicalEditorTestPrerequisites.cs', 'scripts/ScriptSupport.cs') }}
+          key: zed-graphical-${{ runner.os }}-${{ runner.arch }}-${{ steps.zed-graphical-cache-key.outputs.key }}-${{ hashFiles('scripts/Install-GraphicalEditorTestPrerequisites.cs', 'scripts/Support/GraphicalPrerequisite*.cs', 'scripts/ScriptSupport.cs') }}
 
       - name: Install graphical editor test prerequisites
         run: >-
@@ -902,7 +902,7 @@ jobs:
         uses: actions/cache/save@v6
         with:
           path: artifacts/tools/graphical-editor-prerequisites
-          key: zed-graphical-${{ runner.os }}-${{ runner.arch }}-${{ steps.zed-graphical-cache-key.outputs.key }}-${{ hashFiles('scripts/Install-GraphicalEditorTestPrerequisites.cs', 'scripts/ScriptSupport.cs') }}
+          key: zed-graphical-${{ runner.os }}-${{ runner.arch }}-${{ steps.zed-graphical-cache-key.outputs.key }}-${{ hashFiles('scripts/Install-GraphicalEditorTestPrerequisites.cs', 'scripts/Support/GraphicalPrerequisite*.cs', 'scripts/ScriptSupport.cs') }}
 
       - name: Provision Zed
         id: provision-zed
@@ -1013,7 +1013,7 @@ jobs:
         uses: actions/cache/restore@v6
         with:
           path: artifacts/file-apps/install-graphical
-          key: graphical-prerequisite-app-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/Install-GraphicalEditorTestPrerequisites.cs', 'scripts/Support/AptPackageCache.cs', 'scripts/Support/ProcessOutputCapture.cs', 'scripts/ScriptSupport.cs') }}
+          key: graphical-prerequisite-app-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/Install-GraphicalEditorTestPrerequisites.cs', 'scripts/Support/GraphicalPrerequisite*.cs', 'scripts/Support/AptPackageCache.cs', 'scripts/Support/ProcessOutputCapture.cs', 'scripts/ScriptSupport.cs', '.editorconfig', '.globalconfig', 'Directory.Build.*', 'Directory.Packages.props', 'NuGet.Config') }}
           fail-on-cache-miss: true
 
       - name: Resolve graphical prerequisite cache
@@ -1026,7 +1026,7 @@ jobs:
         uses: actions/cache/restore@v6
         with:
           path: artifacts/tools/graphical-editor-prerequisites
-          key: zed-graphical-${{ runner.os }}-${{ runner.arch }}-${{ steps.zed-graphical-cache-key.outputs.key }}-${{ hashFiles('scripts/Install-GraphicalEditorTestPrerequisites.cs', 'scripts/ScriptSupport.cs') }}
+          key: zed-graphical-${{ runner.os }}-${{ runner.arch }}-${{ steps.zed-graphical-cache-key.outputs.key }}-${{ hashFiles('scripts/Install-GraphicalEditorTestPrerequisites.cs', 'scripts/Support/GraphicalPrerequisite*.cs', 'scripts/ScriptSupport.cs') }}
 
       - name: Install graphical editor test prerequisites
         run: >-
@@ -1167,7 +1167,7 @@ jobs:
         uses: actions/cache/restore@v6
         with:
           path: artifacts/file-apps/install-graphical
-          key: graphical-prerequisite-app-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/Install-GraphicalEditorTestPrerequisites.cs', 'scripts/Support/AptPackageCache.cs', 'scripts/Support/ProcessOutputCapture.cs', 'scripts/ScriptSupport.cs') }}
+          key: graphical-prerequisite-app-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/Install-GraphicalEditorTestPrerequisites.cs', 'scripts/Support/GraphicalPrerequisite*.cs', 'scripts/Support/AptPackageCache.cs', 'scripts/Support/ProcessOutputCapture.cs', 'scripts/ScriptSupport.cs', '.editorconfig', '.globalconfig', 'Directory.Build.*', 'Directory.Packages.props', 'NuGet.Config') }}
           fail-on-cache-miss: true
 
       - name: Download browser packages
