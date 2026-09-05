@@ -57,7 +57,7 @@ internal sealed partial class DapSession
         }
         catch (Exception exception) when (
             exception is ArgumentException or InvalidOperationException or NotSupportedException or
-            IOException or UnauthorizedAccessException or BadImageFormatException)
+            IOException or UnauthorizedAccessException or BadImageFormatException or TimeoutException)
         {
             await WriteRequestFailureAsync(request, exception.Message, cancellationToken)
                 .ConfigureAwait(false);

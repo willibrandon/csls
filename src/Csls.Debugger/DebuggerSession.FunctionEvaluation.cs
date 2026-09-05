@@ -76,7 +76,7 @@ public sealed partial class DebuggerSession
         await AbortAndSettleFunctionEvaluationAsync(debuggee, completion)
             .WaitAsync(CancellationToken.None)
             .ConfigureAwait(false);
-        if (canceled)
+        if (canceled || cancellationToken.IsCancellationRequested)
         {
             throw new OperationCanceledException(cancellationToken);
         }

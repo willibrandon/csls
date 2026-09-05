@@ -134,6 +134,26 @@ internal sealed class DebuggerFixtureValue
     }
 
     /// <summary>
+    /// Exposes cooperative evaluation abort through files before completing the target's finally handler.
+    /// </summary>
+    /// <returns>This method exits through the debugger's cooperative abort.</returns>
+    internal int WaitForDebuggerAbortRelease()
+    {
+        try
+        {
+            return WaitForDebuggerCancellation();
+        }
+        finally
+        {
+            File.WriteAllText(EvaluationSignalPath + ".aborting", "aborting");
+            while (!File.Exists(EvaluationSignalPath + ".release"))
+            {
+                Thread.SpinWait(10_000);
+            }
+        }
+    }
+
+    /// <summary>
     /// Returns after the debugger test releases an evaluation through a real file boundary.
     /// </summary>
     /// <returns>The retained numeric value.</returns>

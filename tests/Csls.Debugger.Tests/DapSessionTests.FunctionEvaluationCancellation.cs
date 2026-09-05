@@ -9,6 +9,113 @@ namespace Csls.Debugger.Tests;
 public sealed partial class DapSessionTests
 {
     /// <summary>
+    /// Reports evaluation deadlines and cancellation during cooperative abort while preserving inspection and later target calls.
+    /// </summary>
+    /// <param name="command">The target-code request whose deadline expires.</param>
+    /// <param name="cancelDuringAbort">Whether to cancel explicitly after the deadline starts cooperative abort.</param>
+    [TestMethod]
+    [DataRow("evaluate", false)]
+    [DataRow("setExpression", false)]
+    [DataRow("setVariable", false)]
+    [DataRow("evaluate", true)]
+    [Timeout(30000, CooperativeCancellation = true)]
+    public async Task ManagedEvaluationDeadlinePreservesSession(string command, bool cancelDuringAbort)
+    {
+        string waitPath = CreateResultsViewSignalPath();
+        DapTestClient? diagnosticClient = null;
+        try
+        {
+            DapTestClient client = await StartProxyFixtureAsync(waitPath).ConfigureAwait(false);
+            diagnosticClient = client;
+            await using ConfiguredAsyncDisposable disposal = client.ConfigureAwait(false);
+            JsonElement frame = await GetFixtureFrameAsync(client).ConfigureAwait(false);
+            int frameId = frame.GetProperty("id").GetInt32();
+            (int localsReference, _) = await ReadLogicalFrameLocalsAsync(client, frameId).ConfigureAwait(false);
+            int sequence = await client.SendRequestAsync(command, writer =>
+            {
+                string call = cancelDuringAbort
+                    ? "localObject.WaitForDebuggerAbortRelease()"
+                    : "localObject.WaitForDebuggerCancellation()";
+                writer.WriteStartObject();
+                if (command == "setVariable")
+                {
+                    writer.WriteNumber("variablesReference", localsReference);
+                    writer.WriteString("name", "localNumber");
+                }
+                else
+                {
+                    writer.WriteNumber("frameId", frameId);
+                    writer.WriteString("expression", command == "evaluate" ? call : "localNumber");
+                }
+
+                if (command != "evaluate")
+                {
+                    writer.WriteString("value", call);
+                }
+
+                writer.WriteEndObject();
+            }, TestContext.CancellationToken).ConfigureAwait(false);
+            await client.WaitForTargetSignalAsync(waitPath + ".evaluation", sequence, TestContext.CancellationToken)
+                .ConfigureAwait(false);
+            int inspection = await client.SendRequestAsync("threads", WriteEmptyObject, TestContext.CancellationToken)
+                .ConfigureAwait(false);
+            if (cancelDuringAbort)
+            {
+                await client.WaitForTargetSignalAsync(waitPath + ".evaluation.aborting", sequence,
+                    TestContext.CancellationToken).ConfigureAwait(false);
+                int cancellation = await SendRequestCancellationAsync(client, sequence).ConfigureAwait(false);
+                using JsonDocument acknowledged = await client.ReadMessageAsync(TestContext.CancellationToken).ConfigureAwait(false);
+                AssertResponse(acknowledged.RootElement, cancellation, "cancel", success: true);
+                await File.WriteAllTextAsync(waitPath + ".evaluation.release", "release", TestContext.CancellationToken)
+                    .ConfigureAwait(false);
+            }
+
+            {
+                using JsonDocument response = await client.ReadMessageAsync(TestContext.CancellationToken).ConfigureAwait(false);
+                AssertResponse(response.RootElement, sequence, command, success: false);
+                Assert.Contains(cancelDuringAbort ? "cancelled" : "deadline", response.RootElement.GetProperty("message").GetString()!);
+                using JsonDocument invalidated = await client.ReadMessageAsync(TestContext.CancellationToken).ConfigureAwait(false);
+                AssertEvent(invalidated.RootElement, "invalidated");
+                Assert.AreSequenceEqual(["stacks", "variables"], invalidated.RootElement.GetProperty("body")
+                    .GetProperty("areas").EnumerateArray().Select(area => area.GetString()).ToArray());
+            }
+
+            using (JsonDocument response = await client.ReadMessageAsync(TestContext.CancellationToken).ConfigureAwait(false))
+            {
+                AssertResponse(response.RootElement, inspection, "threads", success: true);
+                Assert.IsNotEmpty(response.RootElement.GetProperty("body").GetProperty("threads").EnumerateArray());
+            }
+
+            JsonElement currentFrame = await GetFixtureFrameAsync(client).ConfigureAwait(false);
+            AssertSameLogicalFrame(frame, currentFrame);
+            JsonElement number = await ReadEvaluationAsync(client, frameId, "localNumber", success: true,
+                TestContext.CancellationToken).ConfigureAwait(false);
+            Assert.AreEqual("43", number.GetProperty("result").GetString());
+            JsonElement evaluated = await ReadEvaluationAsync(client, frameId, "localObject.AddForDebugger(2)",
+                success: true, TestContext.CancellationToken).ConfigureAwait(false);
+            Assert.AreEqual("44", evaluated.GetProperty("result").GetString());
+            using (JsonDocument invalidated = await client.ReadMessageAsync(TestContext.CancellationToken).ConfigureAwait(false))
+            {
+                AssertEvent(invalidated.RootElement, "invalidated");
+            }
+
+            await FinishResultsViewSessionAsync(client).ConfigureAwait(false);
+        }
+        catch
+        {
+            WriteTargetCodeFailureDiagnostics(diagnosticClient);
+            throw;
+        }
+        finally
+        {
+            File.Delete(waitPath);
+            File.Delete(waitPath + ".evaluation");
+            File.Delete(waitPath + ".evaluation.aborting");
+            File.Delete(waitPath + ".evaluation.release");
+        }
+    }
+
+    /// <summary>
     /// Cancels one running method evaluation and preserves the stopped target for later requests.
     /// </summary>
     [TestMethod]
