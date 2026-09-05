@@ -45,6 +45,8 @@ jobs:
         uses: github/codeql-action/analyze@v4
         with:
           output: artifacts/codeql-results
+          # Enforce the local SARIF while GitHub processes the uploaded result.
+          wait-for-processing: false
 
       - name: Enforce zero CodeQL findings
         run: dotnet run --file scripts/Verify-CodeQl.cs -- artifacts/codeql-results
