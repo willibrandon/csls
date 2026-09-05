@@ -42,16 +42,14 @@ internal static class ReferenceAssignmentFixture<TBase>
         IEnumerable<Exception> enumerableTarget = Array.Empty<Exception>();
         List<ArgumentException> enumerableSource = [new ArgumentException("covariant element")];
         List<Exception> invariantTarget = [new InvalidOperationException("original invariant")];
-        var hiddenDerived = new ReferenceCastDerived();
+        var hiddenDerived = new ReferenceCastDerived { _value = 22 };
         ReferenceCastBase hiddenBase = hiddenDerived;
         object hiddenObject = hiddenDerived;
-        hiddenBase._value = 11;
-        hiddenDerived._value = 22;
-        int hiddenBaseOracle = ((ReferenceCastBase)hiddenDerived)._value;
+        int hiddenBaseOracle = hiddenBase._value;
         int hiddenDerivedOracle = ((ReferenceCastDerived)hiddenBase)._value;
-        int hiddenBaseMethodOracle = ((ReferenceCastBase)hiddenDerived).GetValue();
+        int hiddenBaseMethodOracle = hiddenBase.GetValue();
         int hiddenDerivedMethodOracle = ((ReferenceCastDerived)hiddenBase).GetValue();
-        int hiddenVirtualMethodOracle = ((ReferenceCastBase)hiddenDerived).GetVirtualValue();
+        int hiddenVirtualMethodOracle = hiddenBase.GetVirtualValue();
         Func<ArgumentException> derivedFactory = static () => new ArgumentException("delegate result");
         Func<Exception> covariantFactory = File.Exists(path)
             ? static () => new InvalidOperationException("completed delegate result")

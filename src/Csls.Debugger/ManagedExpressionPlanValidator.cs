@@ -97,13 +97,11 @@ internal static class ManagedExpressionPlanValidator
                 $"Expression node {node.Kind} requires a source name.");
         }
 
-        if (node.Kind is DebugExpressionNodeKind.Conversion or DebugExpressionNodeKind.TypeTest or DebugExpressionNodeKind.TryCast or
-            DebugExpressionNodeKind.ReferenceCast or DebugExpressionNodeKind.ReferenceUpcast)
+        bool isTypeOperation = node.Kind is DebugExpressionNodeKind.Conversion or DebugExpressionNodeKind.TypeTest or
+            DebugExpressionNodeKind.TryCast or DebugExpressionNodeKind.ReferenceCast or DebugExpressionNodeKind.ReferenceUpcast;
+        if (isTypeOperation && (string.IsNullOrWhiteSpace(node.TypeName) || node.TypeName.Length > 4096 || node.Text is not null))
         {
-            if (string.IsNullOrWhiteSpace(node.TypeName) || node.TypeName.Length > 4096 || node.Text is not null)
-            {
-                throw new InvalidDataException("A type operation requires a bounded type name and no value text.");
-            }
+            throw new InvalidDataException("A type operation requires a bounded type name and no value text.");
         }
 
         if (node.Kind == DebugExpressionNodeKind.DefaultLiteral &&

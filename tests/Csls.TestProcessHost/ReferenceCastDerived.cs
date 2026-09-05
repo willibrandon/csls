@@ -11,6 +11,14 @@ internal sealed class ReferenceCastDerived : ReferenceCastBase
     internal new int _value;
 
     /// <summary>
+    /// Initializes the explicitly selected base field for debugger selection tests.
+    /// </summary>
+    internal ReferenceCastDerived()
+    {
+        base._value = 11;
+    }
+
+    /// <summary>
     /// Hides the base method and reads only derived-declaration storage.
     /// </summary>
     internal new int GetValue() => _value;

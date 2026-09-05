@@ -8,24 +8,24 @@ using System.Collections.Immutable;
 namespace Csls.SourceGen;
 
 /// <summary>
-/// Prevents redundant nested upcasts that CodeQL reports as useless conversions.
+/// Prevents redundant nested and class-receiver upcasts reported by CodeQL.
 /// </summary>
 [DiagnosticAnalyzer(LanguageNames.CSharp)]
 public sealed class CodeQlUselessUpcastAnalyzer : DiagnosticAnalyzer
 {
     /// <summary>
-    /// Identifies nested explicit casts whose inner conversion is already implicit.
+    /// Identifies explicit upcasts that should use a destination-typed value directly.
     /// </summary>
     public const string DiagnosticId = "CSLS0016";
 
     private static readonly DiagnosticDescriptor s_rule = new(
         DiagnosticId,
-        "Remove redundant nested upcast",
-        "Explicit conversion to '{0}' is implicit and redundant inside the outer cast",
+        "Remove redundant upcast",
+        "Explicit conversion to '{0}' is implicit; use a destination-typed value directly",
         "CodeQuality",
         DiagnosticSeverity.Error,
         isEnabledByDefault: true,
-        description: "Nested upcasts must not introduce CodeQL cs/useless-upcast findings.");
+        description: "Redundant upcasts must not introduce CodeQL cs/useless-upcast findings.");
 
     /// <inheritdoc />
     public override ImmutableArray<DiagnosticDescriptor> SupportedDiagnostics => [s_rule];
@@ -61,7 +61,16 @@ public sealed class CodeQlUselessUpcastAnalyzer : DiagnosticAnalyzer
             return;
         }
 
-        if (cast.Parent is not CastExpressionSyntax ||
+        SyntaxNode expression = cast;
+        while (expression.Parent is ParenthesizedExpressionSyntax parentheses)
+        {
+            expression = parentheses;
+        }
+
+        bool nested = expression.Parent is CastExpressionSyntax;
+        bool classReceiver = targetType.TypeKind == TypeKind.Class &&
+            expression.Parent is MemberAccessExpressionSyntax member && member.Expression == expression;
+        if ((!nested && !classReceiver) ||
             context.SemanticModel.GetTypeInfo(cast.Expression, context.CancellationToken).Type
                 is not ITypeSymbol sourceType)
         {
@@ -71,7 +80,7 @@ public sealed class CodeQlUselessUpcastAnalyzer : DiagnosticAnalyzer
         Conversion conversion = context.Compilation.ClassifyConversion(
             sourceType,
             targetType);
-        if (!conversion.IsImplicit || conversion.IsIdentity)
+        if (!conversion.IsImplicit || conversion.IsIdentity || classReceiver && !conversion.IsReference)
         {
             return;
         }
