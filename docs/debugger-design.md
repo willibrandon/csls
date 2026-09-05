@@ -127,8 +127,18 @@ exit also closes an idle paused adapter session. Protocol sequence numbers are
 allocated inside the write gate, in transport order. Frame COM references
 are retained only for their stop generation and released before execution resumes.
 Logical frame identifiers are allocated monotonically and never reassigned to a
-different physical frame. Stack paging bounds
-returned work without misreporting the complete managed-frame count.
+different physical frame. An actor-owned iterative stack walker releases skipped
+frames and stops as soon as the requested page is full. Requests check cancellation
+between native calls. Each response retains at most 4,096 frames; this response
+budget is independent of the stack depth. A walk has a separate limit of 1,048,576
+native positions, with an explicit error if that work budget is exhausted.
+The exact total is returned only when that request observes the end of the stack.
+DAP and MCP omit `totalFrames` for a full page whose remaining tail has not been counted;
+private RPC represents that unknown total as null. Clients continue until they
+receive a short page. An all-remaining request that exceeds the response budget
+fails with a paging diagnostic rather than silently truncating the stack.
+Frame reacquisition after evaluation uses the same walker and retains only the
+activation with the recorded physical range, loaded module, and method identity.
 
 Pause is idempotent for a live managed target that is already stopped, including
 when a breakpoint or step completes ahead of the queued pause. The actor preserves
@@ -630,10 +640,11 @@ Values that require target allocation or execution use the guarded evaluator. St
 are allocated with `ICorDebugEval2.NewStringWithLength`; explicitly qualified calls and
 object construction reuse the ordinary function-evaluation binder. The result is held
 by an internal generation-owned runtime handle even when it has no public child
-container. Because evaluation retires all earlier COM values, assignment records the
-thread, frame position, method token, module identity, name, and source language before
-resuming. It then reacquires that frame in the replacement generation, proves the
-identity still matches, resolves the writable target again, and performs the write.
+container. Before execution retires the earlier COM values, assignment records a
+logical frame identifier backed by its exact thread, physical stack range, loaded
+module, and method identity. It reacquires that activation in the replacement
+generation, proves the identity still matches, resolves the writable target again,
+and performs the write.
 DAP invalidates stacks and variables, while private RPC and MCP return the resulting
 generation and synchronize the authoritative session resource before publishing value
 invalidation. Implicit boxing, explicit reference casts, and user-defined conversions

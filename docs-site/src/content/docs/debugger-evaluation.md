@@ -17,6 +17,14 @@ supply argument and lexically active local names. Object expansion reads exact r
 types and walks the complete derived-to-base hierarchy, including base classes declared
 in another loaded assembly. Arrays are paged and retain their live rank and dimensions.
 
+Stack requests use `startFrame` and `levels` to inspect deep callers without
+loading every frame. DAP and private RPC return at most 4,096 frames per response;
+MCP pages contain at most 256. A full page may omit `totalFrames` because the
+remaining stack has not been counted. Continue requesting pages until one is
+shorter than requested. An exact total is supplied when enumeration reaches the
+end. Asking for all remaining frames beyond the response limit produces a paging
+error and leaves the stopped session usable.
+
 Hot Reload local declarations and symbols follow the executing method version. Older
 active frames keep their original local types, names, and source positions; newly
 entered frames use the replacement declarations and symbols.

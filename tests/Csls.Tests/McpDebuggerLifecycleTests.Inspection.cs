@@ -50,6 +50,19 @@ public sealed partial class McpDebuggerLifecycleTests
             source.TryGetProperty("path", out JsonElement path) &&
             string.Equals(path.GetString(), sourcePath, StringComparison.Ordinal));
         Assert.IsGreaterThan(0, stack.GetProperty("totalFrames").GetInt32());
+        JsonElement firstPage = await CallAsync(client, "debug_stack_get",
+            new Dictionary<string, object?>
+            {
+                ["debugSession"] = debugSession,
+                ["stopGeneration"] = generation,
+                ["threadId"] = stoppedThreadId,
+                ["levels"] = 1
+            }, cancellationToken).ConfigureAwait(false);
+        Assert.AreEqual(1, firstPage.GetProperty("stackFrames").GetArrayLength());
+        Assert.IsFalse(firstPage.TryGetProperty("totalFrames", out _));
+        Assert.AreEqual(generation, firstPage.GetProperty("stopGeneration").GetInt64());
+        Assert.AreEqual(stack.GetProperty("stackFrames")[0].GetProperty("id").GetInt32(),
+            firstPage.GetProperty("stackFrames")[0].GetProperty("id").GetInt32());
 
         JsonElement scopes = await CallAsync(
             client,

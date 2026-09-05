@@ -105,8 +105,8 @@ public sealed partial class DebuggerSession
     /// <param name="threadId">The managed thread identifier.</param>
     /// <param name="startFrame">The zero-based first frame to return.</param>
     /// <param name="levels">The maximum count, or zero for all remaining frames.</param>
-    /// <param name="cancellationToken">Cancels queueing stack enumeration.</param>
-    /// <returns>The selected frame page and complete stack count.</returns>
+    /// <param name="cancellationToken">Cancels queueing and native stack enumeration.</param>
+    /// <returns>The selected frame page and exact stack count when the end has been observed.</returns>
     public async Task<DebugStackTrace> GetStackTraceAsync(
         int threadId,
         int startFrame,
@@ -118,7 +118,6 @@ public sealed partial class DebuggerSession
         await _actor.InvokeAsync(
             token =>
             {
-                _ = token;
                 if (_state != DebugSessionState.Stopped ||
                     _debuggee is not CorDebugDebuggee managedDebuggee)
                 {
@@ -130,7 +129,8 @@ public sealed partial class DebuggerSession
                     threadId,
                     _stopGeneration,
                     startFrame,
-                    levels);
+                    levels,
+                    token);
                 return ValueTask.CompletedTask;
             },
             cancellationToken).ConfigureAwait(false);
@@ -141,7 +141,7 @@ public sealed partial class DebuggerSession
     /// Gets runtime-backed scopes for a frame in the current stop generation.
     /// </summary>
     /// <param name="frameId">The logical managed frame identifier for the visible stop.</param>
-    /// <param name="cancellationToken">Cancels queueing scope creation.</param>
+    /// <param name="cancellationToken">Cancels queueing scope creation and physical frame reacquisition.</param>
     /// <returns>The frame's available variable scopes.</returns>
     public async Task<IReadOnlyList<DebugScopeInfo>> GetScopesAsync(
         int frameId,
@@ -152,7 +152,6 @@ public sealed partial class DebuggerSession
         await _actor.InvokeAsync(
             token =>
             {
-                _ = token;
                 if (_state != DebugSessionState.Stopped ||
                     _debuggee is not CorDebugDebuggee managedDebuggee)
                 {
@@ -160,7 +159,7 @@ public sealed partial class DebuggerSession
                         $"Managed scopes are unavailable while the debugger session is {_state}.");
                 }
 
-                result = managedDebuggee.GetScopes(frameId, _stopGeneration);
+                result = managedDebuggee.GetScopes(frameId, _stopGeneration, token);
                 return ValueTask.CompletedTask;
             },
             cancellationToken).ConfigureAwait(false);

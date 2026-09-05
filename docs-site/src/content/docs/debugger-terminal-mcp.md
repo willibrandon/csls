@@ -122,6 +122,10 @@ open-world, and requires an active `debug_agent_control_set` grant.
 ## Bounded results and stable errors
 
 Stack, variable, and module pages accept non-negative offsets and at most 256 items.
+Stack pages omit `totalFrames` until the end of the stack has been observed.
+Continue with `startFrame` advanced by the returned count until a page is shorter
+than requested. Frame identities remain stable across overlapping pages at the
+same visible stop.
 Source, memory, disassembly, and output calls have their own explicit bounds. The newest
 1,024 stdout and stderr segments are retained; cursors identify gaps if older output
 was evicted.

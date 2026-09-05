@@ -18,14 +18,8 @@ internal sealed partial class CorDebugDebuggee
         DebugStopGeneration generation)
     {
         ManagedFrameHandle frame = GetFrame(frameId, generation);
-        return new ManagedFrameSelection(
-            frame.ThreadId,
-            frame.FrameIndex,
-            frame.MethodToken,
-            frame.ModuleId,
-            frame.ModulePath,
-            frame.Name,
-            frame.ExpressionLanguage);
+        _ = _frames.GetIdentity(frame.Id);
+        return new ManagedFrameSelection(frame.Id);
     }
 
     /// <summary>
@@ -33,34 +27,14 @@ internal sealed partial class CorDebugDebuggee
     /// </summary>
     /// <param name="selection">The pre-execution frame identity.</param>
     /// <param name="generation">The stop generation produced by target execution.</param>
+    /// <param name="cancellationToken">Cancels physical frame reacquisition.</param>
     /// <returns>The replacement generation-bound frame handle.</returns>
     internal int ReacquireFrame(
         ManagedFrameSelection selection,
-        DebugStopGeneration generation)
+        DebugStopGeneration generation,
+        CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(selection);
-        DebugStackTrace stack = GetStackTrace(
-            selection.ThreadId,
-            generation,
-            selection.FrameIndex,
-            levels: 1);
-        DebugStackFrameInfo frameInfo = stack.StackFrames.SingleOrDefault()
-            ?? throw new InvalidOperationException(
-                "The assignment frame returned or left the managed stack while its value " +
-                "was being materialized.");
-        ManagedFrameHandle frame = GetFrame(frameInfo.Id, generation);
-        bool sameModule = selection.ModuleId is not null && frame.ModuleId is not null
-            ? selection.ModuleId == frame.ModuleId
-            : string.Equals(selection.ModulePath, frame.ModulePath, StringComparison.Ordinal);
-        if (frame.MethodToken != selection.MethodToken ||
-            !sameModule ||
-            !string.Equals(frame.Name, selection.Name, StringComparison.Ordinal) ||
-            frame.ExpressionLanguage != selection.Language)
-        {
-            throw new InvalidOperationException(
-                "The assignment frame changed while its value was being materialized.");
-        }
-
-        return frame.Id;
+        return GetFrame(selection.FrameId, generation, cancellationToken).Id;
     }
 }

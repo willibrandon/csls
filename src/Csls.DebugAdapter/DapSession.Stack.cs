@@ -80,7 +80,10 @@ internal sealed partial class DapSession
         }
 
         writer.WriteEndArray();
-        writer.WriteNumber("totalFrames", stack.TotalFrames);
+        if (stack.TotalFrames is int totalFrames)
+        {
+            writer.WriteNumber("totalFrames", totalFrames);
+        }
         writer.WriteEndObject();
     }
 }

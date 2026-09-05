@@ -15,6 +15,16 @@ if (args is ["--unix-wait-untracked-fixture", string untrackedExitCode])
         int.Parse(untrackedExitCode, NumberStyles.Integer, CultureInfo.InvariantCulture)).ConfigureAwait(false);
 }
 
+if (args is ["--debugger-deep-stack-fixture", string stackDepth])
+{
+    return DebuggerDeepStackFixture.Run(int.Parse(stackDepth, CultureInfo.InvariantCulture));
+}
+
+if (args is ["--debugger-stack-overflow-fixture"])
+{
+    return DebuggerDeepStackFixture.RunOverflow();
+}
+
 if (args is ["--debugger-fixture", string fixturePath])
 {
     return DebuggerFixture.WaitForSignal(

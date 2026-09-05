@@ -55,7 +55,8 @@ public sealed partial class DebuggerSession
                 (frameId, language) = PrepareBreakpointFrame(
                     managedDebuggee,
                     threadId,
-                    generation);
+                    generation,
+                    cancellationToken);
                 DebugExpressionPlan plan = await GetBreakpointExpressionPlanAsync(
                     language,
                     condition,
@@ -102,7 +103,8 @@ public sealed partial class DebuggerSession
                     (frameId, language) = PrepareBreakpointFrame(
                         managedDebuggee,
                         threadId,
-                        generation);
+                        generation,
+                        cancellationToken);
                 }
 
                 string output = await EvaluateLogMessageAsync(
@@ -151,13 +153,15 @@ public sealed partial class DebuggerSession
     private static (int FrameId, DebugExpressionLanguage Language) PrepareBreakpointFrame(
         CorDebugDebuggee managedDebuggee,
         int threadId,
-        DebugStopGeneration generation)
+        DebugStopGeneration generation,
+        CancellationToken cancellationToken)
     {
         DebugStackTrace stack = managedDebuggee.GetStackTrace(
             threadId,
             generation,
             startFrame: 0,
-            levels: 1);
+            levels: 1,
+            cancellationToken);
         if (stack.StackFrames.Count == 0)
         {
             throw new InvalidOperationException(

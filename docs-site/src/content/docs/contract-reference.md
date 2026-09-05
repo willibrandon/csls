@@ -312,7 +312,7 @@ These public wire-contract types are generated from the compiled assemblies and 
 | `Csls.Debugger.Contracts.DebugSourceRequest` | Selects retrievable source content by its session-local reference. |
 | `Csls.Debugger.Contracts.DebugStackFrameInfo` | Describes one managed stack frame at a specific stop generation. |
 | `Csls.Debugger.Contracts.DebugStackRequest` | Selects a bounded page of frames from one managed thread. |
-| `Csls.Debugger.Contracts.DebugStackTrace` | Carries a paged managed stack and its complete frame count. |
+| `Csls.Debugger.Contracts.DebugStackTrace` | Carries a paged managed stack and its exact total when the stack end has been observed. |
 | `Csls.Debugger.Contracts.DebugStepKind` | Identifies a source-level managed stepping operation. |
 | `Csls.Debugger.Contracts.DebugStepRequest` | Selects one managed thread and source-level stepping operation. |
 | `Csls.Debugger.Contracts.DebugStepTargetInfo` | Describes one generation-bound call that can be selected for Step Into. |

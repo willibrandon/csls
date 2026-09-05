@@ -178,7 +178,7 @@ jobs:
           if-no-files-found: error
 
   debugger-tests:
-    name: Debugger tests (${{ matrix.rid }})
+    name: ${{ matrix.suite == 'stress' && format('Debugger stress ({0})', matrix.rid) || format('Debugger tests ({0})', matrix.rid) }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 5
     needs:
@@ -187,6 +187,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
+        suite: [standard, stress]
+        rid: [linux-x64, linux-arm64, win-x64, win-arm64, osx-x64, osx-arm64]
         include:
           - os: ubuntu-latest
             rid: linux-x64
@@ -245,15 +247,16 @@ jobs:
           --test-modules artifacts/bin/Csls.Debugger.Tests/debug/Csls.Debugger.Tests.dll
           --root-directory .
           --results-directory artifacts/test-results
-          --minimum-expected-tests 70
+          --filter "${{ matrix.suite == 'stress' && 'TestCategory=DebuggerStress' || 'TestCategory!=DebuggerStress' }}"
+          --minimum-expected-tests ${{ matrix.suite == 'stress' && 2 || 70 }}
           --no-ansi
           --report-trx
 
-      - name: Preserve debugger failure results
-        if: failure()
+      - name: Preserve debugger failure and stress results
+        if: failure() || (success() && matrix.suite == 'stress')
         uses: actions/upload-artifact@v7
         with:
-          name: debugger-test-results-${{ matrix.rid }}-${{ github.run_attempt }}
+          name: debugger-test-results-${{ matrix.rid }}-${{ matrix.suite }}-${{ github.run_attempt }}
           path: artifacts/test-results
           if-no-files-found: warn
 

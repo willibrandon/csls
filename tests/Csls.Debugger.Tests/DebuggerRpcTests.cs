@@ -120,6 +120,12 @@ public sealed partial class DebuggerRpcTests
         DebugStackTrace stack = await client.GetStackAsync(
             new DebugStackRequest(stoppedThreadId, 0, 64),
             cancellationToken).ConfigureAwait(false);
+        Assert.AreEqual(stack.StackFrames.Count, stack.TotalFrames);
+        DebugStackTrace firstPage = await client.GetStackAsync(
+            new DebugStackRequest(stoppedThreadId, 0, 1), cancellationToken).ConfigureAwait(false);
+        Assert.HasCount(1, firstPage.StackFrames);
+        Assert.IsNull(firstPage.TotalFrames);
+        Assert.AreEqual(stack.StackFrames[0].Id, firstPage.StackFrames[0].Id);
         DebugStackFrameInfo frame = stack.StackFrames.Single(candidate =>
             DebuggerTestPath.AreEquivalent(candidate.Source?.Path, sourcePath) &&
             candidate.Line == breakpointLine);

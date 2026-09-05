@@ -40,6 +40,14 @@ public sealed partial class McpDebuggerLifecycleTests
                     .GetProperty("path").GetString()),
             StringComparer.Ordinal);
 
+        JsonElement firstStackPage = await ReadAsync(client,
+            $"csls://debug/stack/{debugSession}/{generation}/{threadId}?levels=1", cancellationToken).ConfigureAwait(false);
+        Assert.AreEqual(1, firstStackPage.GetProperty("stackFrames").GetArrayLength());
+        Assert.IsFalse(firstStackPage.TryGetProperty("totalFrames", out _));
+        Assert.AreEqual(generation, firstStackPage.GetProperty("stopGeneration").GetInt64());
+        Assert.AreEqual(stack.GetProperty("stackFrames")[0].GetProperty("id").GetInt32(),
+            firstStackPage.GetProperty("stackFrames")[0].GetProperty("id").GetInt32());
+
         JsonElement scopes = await ReadAsync(
             client,
             $"csls://debug/scopes/{debugSession}/{generation}/{frameId}",

@@ -179,11 +179,11 @@ public sealed partial class DebuggerSession
         await _actor.InvokeAsync(
             token =>
             {
-                _ = token;
                 CorDebugDebuggee debuggee = GetAssignmentDebuggee(evaluation.Generation);
                 int replacementFrameId = debuggee.ReacquireFrame(
                     frameSelection!,
-                    evaluation.Generation);
+                    evaluation.Generation,
+                    token);
                 result = debuggee.SetExpressionFromEvaluation(
                     replacementFrameId,
                     target,

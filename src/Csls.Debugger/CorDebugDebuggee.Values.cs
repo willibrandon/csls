@@ -13,12 +13,14 @@ internal sealed partial class CorDebugDebuggee
     /// </summary>
     /// <param name="frameId">The session-local frame handle.</param>
     /// <param name="generation">The current debugger stop generation.</param>
+    /// <param name="cancellationToken">Cancels physical frame reacquisition.</param>
     /// <returns>The runtime-backed scopes available for the frame.</returns>
     internal IReadOnlyList<DebugScopeInfo> GetScopes(
         int frameId,
-        DebugStopGeneration generation)
+        DebugStopGeneration generation,
+        CancellationToken cancellationToken)
     {
-        ManagedFrameHandle frame = GetFrame(frameId, generation);
+        ManagedFrameHandle frame = GetFrame(frameId, generation, cancellationToken);
         if (!ComAbi.TryQueryInterface(
             frame.Pointer,
             ICorDebugILFrameAbi.InterfaceId,

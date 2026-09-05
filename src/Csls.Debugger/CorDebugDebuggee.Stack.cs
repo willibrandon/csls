@@ -15,121 +15,48 @@ internal sealed partial class CorDebugDebuggee
     /// <param name="generation">The current debugger stop generation.</param>
     /// <param name="startFrame">The zero-based first frame to return.</param>
     /// <param name="levels">The maximum count, or zero for all remaining frames.</param>
-    /// <returns>The selected stack page and complete frame count.</returns>
-    internal unsafe DebugStackTrace GetStackTrace(
+    /// <param name="cancellationToken">Cancels native stack enumeration.</param>
+    /// <returns>The selected stack page and exact total only when the walk reaches its end.</returns>
+    internal DebugStackTrace GetStackTrace(
         int threadId,
         DebugStopGeneration generation,
         int startFrame,
-        int levels)
+        int levels,
+        CancellationToken cancellationToken)
     {
-        const int maximumFrameCount = 4096;
+        const int maximumPageSize = 4096;
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(threadId);
         ArgumentOutOfRangeException.ThrowIfNegative(startFrame);
         ArgumentOutOfRangeException.ThrowIfNegative(levels);
-
-        const int endOfStackHResult = 0x00131324;
-        const int maximumWalkCount = 16 * 1024;
-        nint thread = 0;
-        nint thread3 = 0;
-        nint stackWalk = 0;
-        try
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(levels, maximumPageSize);
+        cancellationToken.ThrowIfCancellationRequested();
+        using var walker = ManagedStackWalker.Open(_debugProcess, threadId);
+        List<DebugStackFrameInfo> frames = [];
+        while (walker.TryTakeFrame(out nint frame, cancellationToken))
         {
-            nint* threadAddress = &thread;
-            CorDebugHResult.ThrowIfFailed(
-                new ICorDebugProcessAbi(_debugProcess).GetThread(
-                    checked((uint)threadId),
-                    (nint)threadAddress),
-                "ICorDebugProcess.GetThread");
-            thread = Volatile.Read(ref *threadAddress);
-            if (thread == 0)
+            if (walker.FrameIndex < startFrame)
             {
-                throw new InvalidOperationException($"Managed thread {threadId} no longer exists.");
+                _ = ComAbi.Release(frame);
+                continue;
             }
 
-            if (!ComAbi.TryQueryInterface(thread, ICorDebugThread3Abi.InterfaceId, out thread3))
+            if (frames.Count == maximumPageSize)
             {
+                _ = ComAbi.Release(frame);
                 throw new InvalidOperationException(
-                    "The target runtime does not expose ICorDebugThread3 stack walking.");
+                    $"The stack response exceeds the frame-page limit of {maximumPageSize}. " +
+                    "Request a bounded page with startFrame and levels.");
             }
 
-            nint* stackWalkAddress = &stackWalk;
-            CorDebugHResult.ThrowIfFailed(
-                new ICorDebugThread3Abi(thread3).CreateStackWalk((nint)stackWalkAddress),
-                "ICorDebugThread3.CreateStackWalk");
-            stackWalk = Volatile.Read(ref *stackWalkAddress);
-            if (stackWalk == 0)
+            // CreateStackFrame consumes this reference even when symbol resolution fails.
+            frames.Add(CreateStackFrame(threadId, walker.FrameIndex, generation, frame));
+            if (levels > 0 && frames.Count == levels)
             {
-                throw new InvalidOperationException(
-                    "ICorDebugThread3.CreateStackWalk returned no stack walker.");
-            }
-
-            List<DebugStackFrameInfo> frames = [];
-            int frameIndex = 0;
-            var walker = new ICorDebugStackWalkAbi(stackWalk);
-            for (int walkIndex = 0; walkIndex < maximumWalkCount; walkIndex++)
-            {
-                nint frame = 0;
-                nint* frameAddress = &frame;
-                int frameResult = walker.GetFrame((nint)frameAddress);
-                CorDebugHResult.ThrowIfFailed(frameResult, "ICorDebugStackWalk.GetFrame");
-                frame = Volatile.Read(ref *frameAddress);
-                if (frameResult == 0 && frame != 0)
-                {
-                    bool selected = frameIndex >= startFrame &&
-                        (levels == 0 || frames.Count < levels);
-                    if (selected)
-                    {
-                        frames.Add(CreateStackFrame(
-                            threadId,
-                            frameIndex,
-                            generation,
-                            frame));
-                        frame = 0;
-                    }
-
-                    frameIndex++;
-                }
-
-                if (frame != 0)
-                {
-                    _ = ComAbi.Release(frame);
-                }
-
-                if (frameIndex > maximumFrameCount)
-                {
-                    throw new InvalidOperationException(
-                        $"The target exceeds the managed-frame limit of {maximumFrameCount}.");
-                }
-
-                int nextResult = walker.Next();
-                if (nextResult == endOfStackHResult)
-                {
-                    return new DebugStackTrace(frames, frameIndex);
-                }
-
-                CorDebugHResult.ThrowIfFailed(nextResult, "ICorDebugStackWalk.Next");
-            }
-
-            throw new InvalidOperationException(
-                $"The target exceeds the stack-walk limit of {maximumWalkCount}.");
-        }
-        finally
-        {
-            if (stackWalk != 0)
-            {
-                _ = ComAbi.Release(stackWalk);
-            }
-
-            if (thread3 != 0)
-            {
-                _ = ComAbi.Release(thread3);
-            }
-
-            if (thread != 0)
-            {
-                _ = ComAbi.Release(thread);
+                return new DebugStackTrace(frames, TotalFrames: null);
             }
         }
+
+        return new DebugStackTrace(frames, walker.FrameIndex + 1);
     }
 
     /// <summary>
@@ -178,12 +105,15 @@ internal sealed partial class CorDebugDebuggee
         }
     }
 
-    private ManagedFrameHandle GetFrame(int frameId, DebugStopGeneration generation)
+    private ManagedFrameHandle GetFrame(
+        int frameId,
+        DebugStopGeneration generation,
+        CancellationToken cancellationToken = default)
     {
         if (!_frames.TryGetCurrent(frameId, out ManagedFrameHandle? frame))
         {
             ManagedFrameIdentity identity = _frames.GetIdentity(frameId);
-            _ = GetStackTrace(identity.ThreadId, generation, startFrame: 0, levels: 0);
+            RebindPhysicalFrame(frameId, identity, generation, cancellationToken);
             if (!_frames.TryGetCurrent(frameId, out frame))
             {
                 _frames.RetireIdentity(frameId);
