@@ -1,6 +1,10 @@
 using Csls.Debugger.Contracts;
 using PolyType;
+using StreamJsonRpc;
 using StreamJsonRpc.Protocol;
+
+// Progress proxies receive the existing connection; its implementation is never a wire payload.
+[assembly: TypeShapeExtension(typeof(JsonRpc), Kind = TypeShapeKind.None)]
 
 namespace Csls.Debugger.Control;
 
@@ -60,6 +64,7 @@ namespace Csls.Debugger.Control;
 [GenerateShapeFor<DebugStackFrameInfo>]
 [GenerateShapeFor<DebugStackRequest>]
 [GenerateShapeFor<DebugStackTrace>]
+[GenerateShapeFor<DebugStackWalkProgress>]
 [GenerateShapeFor<DebugStepRequest>]
 [GenerateShapeFor<DebugStepTargetInfo>]
 [GenerateShapeFor<DebugStepTargetsRequest>]

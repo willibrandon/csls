@@ -111,7 +111,7 @@ jobs:
             artifacts/obj/Csls.*/*.json
             artifacts/obj/Csls.*/*.props
             artifacts/obj/Csls.*/*.targets
-          key: debugger-test-build-v2-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.github/workflows/ci.yml', '.editorconfig', 'src/**', 'tests/Csls.Debugger.Tests/**', 'tests/Csls.TestProcessHost/**', 'test-assets/Csls.Debugger.Fixtures.*/**', 'build/**', 'Directory.Build.*', 'Directory.Packages.props', 'NuGet.Config') }}
+          key: debugger-test-build-v2-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.github/workflows/ci.yml', '.editorconfig', 'src/**', 'tests/Csls.Debugger.Tests/**', 'tests/Csls.Debugger.StackProbe/**', 'tests/Csls.TestProcessHost/**', 'test-assets/Csls.Debugger.Fixtures.*/**', 'build/**', 'Directory.Build.*', 'Directory.Packages.props', 'NuGet.Config') }}
           restore-keys: debugger-test-build-v2-${{ runner.os }}-${{ runner.arch }}-
 
       - name: Build debugger test binaries

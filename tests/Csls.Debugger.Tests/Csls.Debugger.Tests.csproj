@@ -30,5 +30,7 @@
                       ReferenceOutputAssembly="false" />
     <ProjectReference Include="../Csls.TestProcessHost/Csls.TestProcessHost.csproj"
                       ReferenceOutputAssembly="false" />
+    <ProjectReference Include="../Csls.Debugger.StackProbe/Csls.Debugger.StackProbe.csproj"
+                      ReferenceOutputAssembly="false" />
   </ItemGroup>
 </Project>

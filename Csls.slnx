@@ -60,6 +60,7 @@
     <Project Path="test-assets/Csls.CancellationProbeTransport/Csls.CancellationProbeTransport.csproj" />
     <Project Path="tests/Csls.CancellationProbeAnalyzer/Csls.CancellationProbeAnalyzer.csproj" />
     <Project Path="tests/Csls.Debugger.Tests/Csls.Debugger.Tests.csproj" />
+    <Project Path="tests/Csls.Debugger.StackProbe/Csls.Debugger.StackProbe.csproj" />
     <Project Path="tests/Csls.SourceGen.Tests/Csls.SourceGen.Tests.csproj" />
     <Project Path="tests/Csls.TestSourceGenerator/Csls.TestSourceGenerator.csproj" />
     <Project Path="tests/Csls.TestProcessHost/Csls.TestProcessHost.csproj" />

@@ -137,7 +137,8 @@ static async Task BuildDocumentationInputsAsync(
                 solutionPath,
                 "--configuration",
                 "Debug",
-                "--nologo"
+                "--nologo",
+                $"-bl:{Path.Join(repositoryRoot, "artifacts", "diagnostics", "documentation-inputs", "{}.binlog")}"
             ],
             repositoryRoot,
             cancellationToken).ConfigureAwait(false);
@@ -811,7 +812,7 @@ static async Task<string> RunProcessAsync(
     if (process.ExitCode != 0)
     {
         throw new InvalidOperationException(
-            $"{fileName} exited with code {process.ExitCode}: {error.Trim()}");
+            $"{fileName} exited with code {process.ExitCode}: {error.Trim()}\n{output.Trim()}");
     }
 
     return output;

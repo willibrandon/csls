@@ -95,7 +95,8 @@ public sealed partial class DebuggerControlService :
             request.ThreadId,
             request.StartFrame,
             request.Levels,
-            cancellationToken);
+            cancellationToken,
+            request.Progress);
     }
 
     /// <inheritdoc />

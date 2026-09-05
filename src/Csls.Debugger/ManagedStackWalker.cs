@@ -26,6 +26,11 @@ internal sealed class ManagedStackWalker : IDisposable
     internal int FrameIndex { get; private set; } = -1;
 
     /// <summary>
+    /// Gets the native interface references still owned by this walker.
+    /// </summary>
+    internal int OwnedInterfaceCount => (_thread == 0 ? 0 : 1) + (_thread3 == 0 ? 0 : 1) + (_walker == 0 ? 0 : 1);
+
+    /// <summary>
     /// Opens an actor-owned walk for one stopped runtime thread.
     /// </summary>
     /// <param name="process">The borrowed ICorDebugProcess pointer.</param>

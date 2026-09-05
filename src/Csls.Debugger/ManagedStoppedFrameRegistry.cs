@@ -24,6 +24,11 @@ internal sealed class ManagedStoppedFrameRegistry
     internal IReadOnlyCollection<ManagedFrameHandle> Values => _current.Values;
 
     /// <summary>
+    /// Gets the current number of owned native frame bindings.
+    /// </summary>
+    internal int Count => _current.Count;
+
+    /// <summary>
     /// Begins an inspection whose new bindings are retained only after successful completion.
     /// </summary>
     /// <returns>An actor-owned registration scope that rolls back unless committed.</returns>

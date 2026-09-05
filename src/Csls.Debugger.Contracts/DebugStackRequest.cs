@@ -6,4 +6,10 @@ namespace Csls.Debugger.Contracts;
 /// <param name="ThreadId">The session-local managed thread identifier.</param>
 /// <param name="StartFrame">The zero-based first frame.</param>
 /// <param name="Levels">The maximum frame count, or zero for all remaining frames.</param>
-public sealed record DebugStackRequest(int ThreadId, int StartFrame, int Levels);
+public sealed record DebugStackRequest(int ThreadId, int StartFrame, int Levels)
+{
+    /// <summary>
+    /// Gets the optional request-scoped progress receiver marshaled by private debugger RPC.
+    /// </summary>
+    public IProgress<DebugStackWalkProgress>? Progress { get; init; }
+}

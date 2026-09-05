@@ -106,12 +106,14 @@ public sealed partial class DebuggerSession
     /// <param name="startFrame">The zero-based first frame to return.</param>
     /// <param name="levels">The maximum count, or zero for all remaining frames.</param>
     /// <param name="cancellationToken">Cancels queueing and native stack enumeration.</param>
+    /// <param name="progress">Receives bounded progress synchronously on the debugger actor.</param>
     /// <returns>The selected frame page and exact stack count when the end has been observed.</returns>
     public async Task<DebugStackTrace> GetStackTraceAsync(
         int threadId,
         int startFrame,
         int levels,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        IProgress<DebugStackWalkProgress>? progress = null)
     {
         ObjectDisposedException.ThrowIf(_disposed != 0, this);
         DebugStackTrace? result = null;
@@ -130,7 +132,8 @@ public sealed partial class DebuggerSession
                     _stopGeneration,
                     startFrame,
                     levels,
-                    token);
+                    token,
+                    progress);
                 return ValueTask.CompletedTask;
             },
             cancellationToken).ConfigureAwait(false);

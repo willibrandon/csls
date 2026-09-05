@@ -148,6 +148,19 @@ Discarded identifiers are never reassigned. One registry owns frame, opaque
 instruction-reference, and virtual instruction-address indexes so they commit and
 retire together.
 
+Engine and private-RPC stack requests can supply a request-scoped progress receiver.
+Traversal reports after each batch of 256 managed frames, including offset skips,
+and reports a final snapshot after releasing the walk interfaces. Failed or
+canceled requests report after rolling back unpublished frame registrations.
+The snapshot distinguishes visited frames, selected frames, retained native frame
+bindings, and walker-owned interface references; these are ownership counts, not
+native heap sizes or operating-system handle counts. Progress never supplies an
+estimated stack total. In-process receivers run synchronously on the actor and
+must return promptly without reentering the session. Receiver failures fail the
+request and release unpublished registrations; a failed failure notification
+retains both exceptions. Cancellation received after a completed page has been
+reported does not discard that page.
+
 Pause is idempotent for a live managed target that is already stopped, including
 when a breakpoint or step completes ahead of the queued pause. The actor preserves
 that stop's reason, exception, generation, and inspection handles without emitting

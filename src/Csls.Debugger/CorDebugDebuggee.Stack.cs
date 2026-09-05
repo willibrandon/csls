@@ -16,13 +16,15 @@ internal sealed partial class CorDebugDebuggee
     /// <param name="startFrame">The zero-based first frame to return.</param>
     /// <param name="levels">The maximum count, or zero for all remaining frames.</param>
     /// <param name="cancellationToken">Cancels native stack enumeration.</param>
+    /// <param name="progress">Receives bounded synchronous traversal and ownership snapshots.</param>
     /// <returns>The selected stack page and exact total only when the walk reaches its end.</returns>
     internal DebugStackTrace GetStackTrace(
         int threadId,
         DebugStopGeneration generation,
         int startFrame,
         int levels,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        IProgress<DebugStackWalkProgress>? progress = null)
     {
         const int maximumPageSize = 4096;
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(threadId);
@@ -32,38 +34,70 @@ internal sealed partial class CorDebugDebuggee
         cancellationToken.ThrowIfCancellationRequested();
         using ManagedFrameRegistration registration = _frames.BeginRegistration();
         using var walker = ManagedStackWalker.Open(_debugProcess, threadId);
+        var observer = new ManagedStackWalkObserver(progress);
         List<DebugStackFrameInfo> frames = [];
-        while (walker.TryTakeFrame(out nint frame, cancellationToken))
+        int inspectedFrames = 0;
+        try
         {
-            if (walker.FrameIndex < startFrame)
+            int? totalFrames = null;
+            while (true)
             {
-                _ = ComAbi.Release(frame);
-                continue;
+                if (!walker.TryTakeFrame(out nint frame, cancellationToken))
+                {
+                    totalFrames = walker.FrameIndex + 1;
+                    break;
+                }
+
+                inspectedFrames++;
+                if (walker.FrameIndex < startFrame)
+                {
+                    _ = ComAbi.Release(frame);
+                }
+                else if (frames.Count == maximumPageSize)
+                {
+                    _ = ComAbi.Release(frame);
+                    throw new InvalidOperationException(
+                        $"The stack response exceeds the frame-page limit of {maximumPageSize}. " +
+                        "Request a bounded page with startFrame and levels.");
+                }
+                else
+                {
+                    // CreateStackFrame consumes this reference even when symbol resolution fails.
+                    frames.Add(CreateStackFrame(threadId, walker.FrameIndex, generation, frame));
+                }
+
+                if (inspectedFrames % 256 == 0)
+                {
+                    observer.Report(Snapshot(DebugStackWalkState.Walking));
+                }
+
+                cancellationToken.ThrowIfCancellationRequested();
+                if (levels > 0 && frames.Count == levels)
+                {
+                    break;
+                }
             }
 
-            if (frames.Count == maximumPageSize)
-            {
-                _ = ComAbi.Release(frame);
-                throw new InvalidOperationException(
-                    $"The stack response exceeds the frame-page limit of {maximumPageSize}. " +
-                    "Request a bounded page with startFrame and levels.");
-            }
-
-            // CreateStackFrame consumes this reference even when symbol resolution fails.
-            frames.Add(CreateStackFrame(threadId, walker.FrameIndex, generation, frame));
             cancellationToken.ThrowIfCancellationRequested();
-            if (levels > 0 && frames.Count == levels)
-            {
-                var page = new DebugStackTrace(frames, TotalFrames: null);
-                registration.Commit();
-                return page;
-            }
+            var result = new DebugStackTrace(frames, totalFrames);
+            walker.Dispose();
+            observer.Report(Snapshot(DebugStackWalkState.Completed));
+            registration.Commit();
+            return result;
+        }
+        catch (Exception failure)
+        {
+            walker.Dispose();
+            registration.Dispose();
+            DebugStackWalkState state = failure is OperationCanceledException && cancellationToken.IsCancellationRequested
+                ? DebugStackWalkState.Canceled
+                : DebugStackWalkState.Failed;
+            observer.ReportFailure(Snapshot(state), failure);
+            throw;
         }
 
-        cancellationToken.ThrowIfCancellationRequested();
-        var result = new DebugStackTrace(frames, walker.FrameIndex + 1);
-        registration.Commit();
-        return result;
+        DebugStackWalkProgress Snapshot(DebugStackWalkState state) =>
+            new(threadId, inspectedFrames, frames.Count, _frames.Count, walker.OwnedInterfaceCount, state);
     }
 
     /// <summary>
