@@ -80,13 +80,14 @@ public sealed partial class DapSessionTests
     }
 
     private async Task<(int ThreadId, int ProcessId)> LaunchAtEntryAsync(
-        DapTestClient client, string program, string[] arguments)
+        DapTestClient client, string program, string[] arguments, bool initializeClient = true)
     {
-        int initialize = await client.SendInitializeRequestAsync(TestContext.CancellationToken,
-            writeProperties: writer => writer.WriteBoolean("supportsVariablePaging", true)).ConfigureAwait(false);
-        using (JsonDocument response = await client.ReadMessageAsync(TestContext.CancellationToken)
-            .ConfigureAwait(false))
+        if (initializeClient)
         {
+            int initialize = await client.SendInitializeRequestAsync(TestContext.CancellationToken,
+                writeProperties: writer => writer.WriteBoolean("supportsVariablePaging", true)).ConfigureAwait(false);
+            using JsonDocument response = await client.ReadMessageAsync(TestContext.CancellationToken)
+                .ConfigureAwait(false);
             AssertResponse(response.RootElement, initialize, "initialize", success: true);
         }
 

@@ -1,5 +1,6 @@
 using Csls.Debugger.Interop;
 using System.Diagnostics;
+using System.Runtime.CompilerServices;
 
 namespace Csls.Debugger;
 
@@ -59,13 +60,15 @@ internal sealed partial class CorDebugDebuggee
         }
 
         DbgShimLibrary.VerifyPlatformSupport();
+        using CorDebugRuntimeActivationLease activationLease = await CorDebugRuntimeActivationLease
+            .AcquireAsync(cancellationToken).ConfigureAwait(false);
         using var processOwner = new DisposableOwner<Process>();
         using var managedCallbackOwner = new DisposableOwner<CorDebugManagedCallback>();
         using var registrationOwner =
             new DisposableOwner<CorDebugRuntimeStartupRegistration>();
+        Task<CorDebugActivationResult>? startup = null;
         nint corDebug = 0;
         nint debugProcess = 0;
-        bool ownsActivationGate = false;
         try
         {
             processOwner.Acquire(() => Process.GetProcessById(processId));
@@ -76,9 +79,6 @@ internal sealed partial class CorDebugDebuggee
                 throw new InvalidOperationException($"Process {processId} has already exited.");
             }
 
-            await CorDebugRuntimeActivationGate.WaitAsync(cancellationToken)
-                .ConfigureAwait(false);
-            ownsActivationGate = true;
             _ = DbgShimRuntimeDiscovery.GetSingleRuntimePath(checked((uint)processId));
             managedCallbackOwner.Acquire(() =>
                 new CorDebugManagedCallback(
@@ -104,6 +104,9 @@ internal sealed partial class CorDebugDebuggee
             CorDebugRuntimeStartupRegistration registration = registrationOwner.Value
                 ?? throw new InvalidOperationException(
                     "The runtime-startup registration was not created.");
+            startup = registration.WaitAsync(CancellationToken.None);
+            var processExit = new CorDebugStartupProcessObservation(process, unixExitMonitor: null, cancellationToken);
+            await using ConfiguredAsyncDisposable processExitScope = processExit.ConfigureAwait(false);
             CorDebugHResult.ThrowIfFailed(
                 DbgShimNativeMethods.RegisterForRuntimeStartup(
                     checked((uint)processId),
@@ -113,9 +116,8 @@ internal sealed partial class CorDebugDebuggee
                 "RegisterForRuntimeStartup");
             registration.SetUnregisterToken(unregisterToken);
 
-            CorDebugActivationResult activation = await registration
-                .WaitAsync(cancellationToken)
-                .ConfigureAwait(false);
+            CorDebugActivationResult activation = await WaitForRuntimeStartupAsync(
+                startup, processExit.Completion, process.Id, cancellationToken).ConfigureAwait(false);
             corDebug = activation.CorDebug;
             debugProcess = activation.Process;
             await managedCallback.WaitForCreateProcessAsync(cancellationToken)
@@ -136,27 +138,22 @@ internal sealed partial class CorDebugDebuggee
                 ownsProcess: false,
                 ownsRuntimeLease: true,
                 activation);
-            ownsActivationGate = false;
+            activationLease.Transfer();
             corDebug = 0;
             debugProcess = 0;
             return result;
         }
         finally
         {
-            if (ownsActivationGate)
+            if (await DrainRuntimeStartupAsync(registrationOwner.Value, startup).ConfigureAwait(false)
+                is CorDebugActivationResult abandoned)
             {
-                CorDebugRuntimeActivationGate.Release();
+                corDebug = abandoned.CorDebug;
+                debugProcess = abandoned.Process;
             }
 
-            if (corDebug != 0 || debugProcess != 0)
-            {
-                await DetachRuntimeAsync(
-                    actor,
-                    corDebug,
-                    debugProcess,
-                    managedCallbackOwner.Value)
-                    .ConfigureAwait(false);
-            }
+            await DetachRuntimeAsync(actor, corDebug, debugProcess, managedCallbackOwner.Value)
+                .ConfigureAwait(false);
         }
     }
 }

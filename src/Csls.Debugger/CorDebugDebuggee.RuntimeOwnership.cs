@@ -7,6 +7,50 @@ namespace Csls.Debugger;
 /// </summary>
 internal sealed partial class CorDebugDebuggee
 {
+    private static async Task<CorDebugActivationResult> WaitForRuntimeStartupAsync(
+        Task<CorDebugActivationResult> startup,
+        Task<int?> processExit,
+        int processId,
+        CancellationToken cancellationToken)
+    {
+        _ = await Task.WhenAny(startup, processExit).WaitAsync(cancellationToken).ConfigureAwait(false);
+        cancellationToken.ThrowIfCancellationRequested();
+        if (!startup.IsCompleted)
+        {
+            int? exitCode = await processExit.WaitAsync(cancellationToken).ConfigureAwait(false);
+            string message = exitCode is int code
+                ? FormattableString.Invariant($"Target process {processId} exited with code {code} before CoreCLR startup.")
+                : FormattableString.Invariant($"Target process {processId} exited before CoreCLR startup.");
+            throw new InvalidOperationException(message);
+        }
+
+        return await startup.WaitAsync(cancellationToken).ConfigureAwait(false);
+    }
+
+    private static async Task<CorDebugActivationResult?> DrainRuntimeStartupAsync(
+        CorDebugRuntimeStartupRegistration? registration,
+        Task<CorDebugActivationResult>? startup)
+    {
+        if (registration is null)
+        {
+            return null;
+        }
+
+        // Unregistration joins the native callback before ownership is inspected.
+        registration.Dispose();
+        if (startup is { IsCompletedSuccessfully: true })
+        {
+            return await startup.WaitAsync(CancellationToken.None).ConfigureAwait(false);
+        }
+
+        if (startup is { IsFaulted: true })
+        {
+            _ = startup.Exception;
+        }
+
+        return null;
+    }
+
     private static async Task ReleaseRuntimeAsync(
         DebuggerSessionActor actor,
         nint corDebug,
