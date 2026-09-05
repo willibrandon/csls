@@ -27,11 +27,13 @@ internal static class DebuggerProcessDiagnostics
         using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(10));
         try
         {
+            testContext.WriteLine($"Inspecting descendants of adapter process {hostProcessId}.");
             var startInfo = new ProcessStartInfo("/bin/ps");
             startInfo.ArgumentList.Add("-axo");
             startInfo.ArgumentList.Add("pid=,ppid=");
             (int exitCode, string output, string error) = await DebuggerTestProcess.RunAsync(
                 startInfo, cancellation.Token).ConfigureAwait(false);
+            testContext.WriteLine($"Process inspection completed with exit code {exitCode}.");
             if (exitCode != 0)
             {
                 testContext.WriteLine($"Process inspection exited with {exitCode}: {error}");
@@ -75,6 +77,7 @@ internal static class DebuggerProcessDiagnostics
             string directory = Path.Join(DebuggerTestEnvironment.FindRepositoryRoot(),
                 "artifacts", "test-results", $"native-stacks-{hostProcessId}-{Guid.NewGuid():N}");
             Directory.CreateDirectory(directory);
+            testContext.WriteLine($"Capturing owned process stacks: {string.Join(", ", processes)}.");
             await Task.WhenAll(processes.Select(processId => CaptureProcessAsync(
                 processId, directory, testContext, cancellation.Token))).ConfigureAwait(false);
         }
@@ -94,6 +97,7 @@ internal static class DebuggerProcessDiagnostics
         startInfo.ArgumentList.Add("1");
         startInfo.ArgumentList.Add("-file");
         startInfo.ArgumentList.Add(path);
+        testContext.WriteLine($"Sampling process {processId} into {path}.");
         (int exitCode, string output, string error) = await DebuggerTestProcess.RunAsync(
             startInfo, cancellationToken).ConfigureAwait(false);
         testContext.WriteLine($"Native stack capture for {processId} exited with {exitCode}: {output}{error}");
