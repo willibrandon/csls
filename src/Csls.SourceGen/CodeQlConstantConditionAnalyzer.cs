@@ -4,24 +4,25 @@ using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Diagnostics;
 using System;
 using System.Collections.Immutable;
+using System.Linq;
 
 namespace Csls.SourceGen;
 
 /// <summary>
-/// Prevents repeated null tests made constant by an earlier exiting guard.
+/// Prevents null tests made constant by guards or correlated conditional initializers.
 /// </summary>
 [DiagnosticAnalyzer(LanguageNames.CSharp)]
 public sealed class CodeQlConstantConditionAnalyzer : DiagnosticAnalyzer
 {
     /// <summary>
-    /// Identifies null tests whose result is fixed by an earlier guard clause.
+    /// Identifies null tests whose result is fixed by an earlier condition.
     /// </summary>
     public const string DiagnosticId = "CSLS0017";
 
     private static readonly DiagnosticDescriptor s_rule = new(
         DiagnosticId,
         "Remove constant null condition",
-        "Null test is always '{0}' after the earlier exiting guard",
+        "Null test is always '{0}' after the earlier condition",
         "CodeQuality",
         DiagnosticSeverity.Error,
         isEnabledByDefault: true,
@@ -53,6 +54,15 @@ public sealed class CodeQlConstantConditionAnalyzer : DiagnosticAnalyzer
             return;
         }
 
+        if (TryGetCorrelatedNullValue(context, pattern, body, current, testsNull, out bool correlatedValue))
+        {
+            context.ReportDiagnostic(Diagnostic.Create(
+                s_rule,
+                pattern.GetLocation(),
+                correlatedValue ? "true" : "false"));
+            return;
+        }
+
         foreach (StatementSyntax statement in body.Statements)
         {
             if (ReferenceEquals(statement, current))
@@ -80,6 +90,101 @@ public sealed class CodeQlConstantConditionAnalyzer : DiagnosticAnalyzer
             return;
         }
     }
+
+    private static bool TryGetCorrelatedNullValue(
+        SyntaxNodeAnalysisContext context,
+        IsPatternExpressionSyntax pattern,
+        BlockSyntax body,
+        StatementSyntax current,
+        bool testsNull,
+        out bool value)
+    {
+        value = false;
+        SyntaxNode operand = pattern;
+        while (operand.Parent is ParenthesizedExpressionSyntax parentheses)
+        {
+            operand = parentheses;
+        }
+
+        if (operand.Parent is not BinaryExpressionSyntax binary ||
+            binary.Right != operand ||
+            (!binary.IsKind(SyntaxKind.LogicalAndExpression) && !binary.IsKind(SyntaxKind.LogicalOrExpression)) ||
+            UnwrapParentheses(binary.Left) is not IsPatternExpressionSyntax guard ||
+            !TryGetNullTest(guard.Pattern, out bool guardTestsNull) ||
+            context.SemanticModel.GetSymbolInfo(guard.Expression, context.CancellationToken).Symbol is not ISymbol source ||
+            source is not (ILocalSymbol { RefKind: RefKind.None } or IParameterSymbol { RefKind: RefKind.None }) ||
+            context.SemanticModel.GetSymbolInfo(pattern.Expression, context.CancellationToken).Symbol is not
+                ILocalSymbol { RefKind: RefKind.None } local ||
+            local.DeclaringSyntaxReferences.FirstOrDefault()?.GetSyntax(context.CancellationToken) is not
+                VariableDeclaratorSyntax { Initializer.Value: ConditionalExpressionSyntax initializer } declarator ||
+            declarator.Parent?.Parent is not LocalDeclarationStatementSyntax declaration ||
+            declaration.Parent != body || declaration.Declaration.Variables.Count != 1 ||
+            UnwrapParentheses(initializer.Condition) is not IsPatternExpressionSyntax initialGuard ||
+            !TryGetNullTest(initialGuard.Pattern, out bool initialTestsNull) ||
+            !SymbolEqualityComparer.Default.Equals(source,
+                context.SemanticModel.GetSymbolInfo(initialGuard.Expression, context.CancellationToken).Symbol))
+        {
+            return false;
+        }
+
+        int declarationIndex = body.Statements.IndexOf(declaration);
+        int currentIndex = body.Statements.IndexOf(current);
+        if (currentIndex <= declarationIndex ||
+            !CorrelationIsUnchanged(context, body, body.Statements[declarationIndex + 1], current,
+                initializer, source, local))
+        {
+            return false;
+        }
+
+        bool sourceIsNull = binary.IsKind(SyntaxKind.LogicalAndExpression) ? guardTestsNull : !guardTestsNull;
+        ExpressionSyntax selected = UnwrapParentheses(
+            sourceIsNull == initialTestsNull ? initializer.WhenTrue : initializer.WhenFalse);
+        if (selected.IsKind(SyntaxKind.NullLiteralExpression))
+        {
+            value = testsNull;
+            return true;
+        }
+
+        if (selected is ObjectCreationExpressionSyntax or ImplicitObjectCreationExpressionSyntax &&
+            context.SemanticModel.GetTypeInfo(selected, context.CancellationToken).Type is
+            { IsReferenceType: true } createdType &&
+            context.Compilation.ClassifyCommonConversion(createdType, local.Type) is
+        { IsIdentity: true } or { IsReference: true })
+        {
+            value = !testsNull;
+            return true;
+        }
+
+        return false;
+    }
+
+    private static bool CorrelationIsUnchanged(
+        SyntaxNodeAnalysisContext context,
+        BlockSyntax body,
+        StatementSyntax first,
+        StatementSyntax last,
+        ConditionalExpressionSyntax initializer,
+        ISymbol source,
+        ILocalSymbol local)
+    {
+        DataFlowAnalysis? bodyFlow = context.SemanticModel.AnalyzeDataFlow(body);
+        DataFlowAnalysis? initialFlow = context.SemanticModel.AnalyzeDataFlow(initializer);
+        DataFlowAnalysis? subsequentFlow = context.SemanticModel.AnalyzeDataFlow(first, last);
+        if (bodyFlow is null || !bodyFlow.Succeeded ||
+            initialFlow is null || !initialFlow.Succeeded ||
+            subsequentFlow is null || !subsequentFlow.Succeeded)
+        {
+            return false;
+        }
+
+        return !bodyFlow.Captured.Any(symbol => IsCorrelatedSymbol(symbol, source, local)) &&
+            !bodyFlow.UnsafeAddressTaken.Any(symbol => IsCorrelatedSymbol(symbol, source, local)) &&
+            !initialFlow.WrittenInside.Any(symbol => IsCorrelatedSymbol(symbol, source, local)) &&
+            !subsequentFlow.WrittenInside.Any(symbol => IsCorrelatedSymbol(symbol, source, local));
+    }
+
+    private static bool IsCorrelatedSymbol(ISymbol symbol, ISymbol source, ILocalSymbol local) =>
+        SymbolEqualityComparer.Default.Equals(symbol, source) || SymbolEqualityComparer.Default.Equals(symbol, local);
 
     private static BlockSyntax? FindContainingMethodBody(SyntaxNode node)
     {

@@ -47,7 +47,7 @@ public sealed partial class DapSessionTests
 
     private async Task ContinueAndPauseAsync(DapTestClient client, string? expectedOutput = null)
     {
-        StringBuilder? output = expectedOutput is null ? null : new();
+        var output = new StringBuilder();
         int sequence = await client.SendRequestAsync(
             "continue",
             WriteEmptyObject,
@@ -58,7 +58,7 @@ public sealed partial class DapSessionTests
         using JsonDocument response = await ReadExecutionControlMessageAsync(client, output)
             .ConfigureAwait(false);
         AssertResponse(response.RootElement, sequence, "continue", success: true);
-        if (expectedOutput is not null && output is not null)
+        if (expectedOutput is not null)
         {
             while (output.Length < expectedOutput.Length)
             {
