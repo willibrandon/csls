@@ -84,7 +84,8 @@ internal static class DebuggerProcessDiagnostics
             {
                 CaptureProcessAsync(processId, directory, testContext, cancellation.Token),
                 CaptureManagedProcessAsync(processId, directory, testContext, cancellation.Token)
-            })).ConfigureAwait(false);
+            }).Append(DebuggerMacAuthorizationDiagnostics.CaptureAsync(testContext, cancellation.Token)))
+                .ConfigureAwait(false);
         }
         catch (Exception exception) when (exception is
             OperationCanceledException or IOException or UnauthorizedAccessException or Win32Exception)
