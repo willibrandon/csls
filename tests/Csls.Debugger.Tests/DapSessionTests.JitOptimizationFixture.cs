@@ -8,7 +8,7 @@ namespace Csls.Debugger.Tests;
 public sealed partial class DapSessionTests
 {
     private static string GetJitFixture(string configuration = "Release") =>
-        LanguageFixtures.GetProgramPath("Csls.Debugger.Fixtures.CSharp", configuration);
+        DebuggerLanguageFixtures.GetProgramPath("Csls.Debugger.Fixtures.CSharp", configuration);
 
     private static void WriteJitLaunchArguments(
         Utf8JsonWriter writer,

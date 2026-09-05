@@ -32,7 +32,7 @@ public sealed partial class DapSessionTests
         string dynamicDestination)
     {
         string project = $"Csls.Debugger.Fixtures.{language}";
-        string program = LanguageFixtures.GetProgramPath(project, "Debug");
+        string program = DebuggerLanguageFixtures.GetProgramPath(project, "Debug");
         string sourcePath = Path.Join(FindRepositoryRoot(), "test-assets", project, $"Program.{extension}");
         int breakpointLine = (await File.ReadAllLinesAsync(sourcePath, TestContext.CancellationToken)
             .ConfigureAwait(false))

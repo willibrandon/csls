@@ -28,7 +28,7 @@ public sealed partial class DapSessionTests
         {
             DapTestClient client = await DapTestClient.CreateAsync(TestContext.CancellationToken).ConfigureAwait(false);
             await using ConfiguredAsyncDisposable disposal = client.ConfigureAwait(false);
-            await InitializeAndLaunchAsync(client, LanguageFixtures.GetProgramPath(Project, "Debug"), waitPath,
+            await InitializeAndLaunchAsync(client, DebuggerLanguageFixtures.GetProgramPath(Project, "Debug"), waitPath,
                 suppressJitOptimizations: true).ConfigureAwait(false);
             int threadId = await ConfigureBreakpointAsync(client, sourcePath, line).ConfigureAwait(false);
             int frameId = await AssertStoppedFrameAsync(client, threadId, sourcePath, line).ConfigureAwait(false);

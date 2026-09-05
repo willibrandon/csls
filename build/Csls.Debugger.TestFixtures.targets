@@ -1,0 +1,22 @@
+<Project>
+  <ItemGroup>
+    <_CslsDebuggerLanguageFixture Include="$(MSBuildThisFileDirectory)../test-assets/Csls.Debugger.Fixtures.CSharp/Csls.Debugger.Fixtures.CSharp.csproj" />
+    <_CslsDebuggerLanguageFixture Include="$(MSBuildThisFileDirectory)../test-assets/Csls.Debugger.Fixtures.VisualBasic/Csls.Debugger.Fixtures.VisualBasic.vbproj" />
+    <_CslsDebuggerLanguageFixture Include="$(MSBuildThisFileDirectory)../test-assets/Csls.Debugger.Fixtures.FSharp/Csls.Debugger.Fixtures.FSharp.fsproj" />
+  </ItemGroup>
+
+  <Target Name="_BuildCslsDebuggerLanguageFixtures"
+          AfterTargets="Build"
+          Condition="'$(DesignTimeBuild)' != 'true' and '$(BuildProjectReferences)' != 'false'">
+    <MSBuild Projects="@(_CslsDebuggerLanguageFixture)"
+             Targets="Build"
+             Properties="Configuration=Debug"
+             RemoveProperties="CurrentSolutionConfigurationContents"
+             BuildInParallel="true" />
+    <MSBuild Projects="@(_CslsDebuggerLanguageFixture)"
+             Targets="Build"
+             Properties="Configuration=Release"
+             RemoveProperties="CurrentSolutionConfigurationContents"
+             BuildInParallel="true" />
+  </Target>
+</Project>

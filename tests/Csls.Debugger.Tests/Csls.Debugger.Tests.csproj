@@ -28,9 +28,15 @@
                       ReferenceOutputAssembly="false" />
     <ProjectReference Include="../../test-assets/Csls.Debugger.Fixtures.CSharp/Csls.Debugger.Fixtures.CSharp.csproj"
                       ReferenceOutputAssembly="false" />
+    <ProjectReference Include="../../test-assets/Csls.Debugger.Fixtures.VisualBasic/Csls.Debugger.Fixtures.VisualBasic.vbproj"
+                      ReferenceOutputAssembly="false" />
+    <ProjectReference Include="../../test-assets/Csls.Debugger.Fixtures.FSharp/Csls.Debugger.Fixtures.FSharp.fsproj"
+                      ReferenceOutputAssembly="false" />
     <ProjectReference Include="../Csls.TestProcessHost/Csls.TestProcessHost.csproj"
                       ReferenceOutputAssembly="false" />
     <ProjectReference Include="../Csls.Debugger.StackProbe/Csls.Debugger.StackProbe.csproj"
                       ReferenceOutputAssembly="false" />
   </ItemGroup>
+
+  <Import Project="../../build/Csls.Debugger.TestFixtures.targets" />
 </Project>

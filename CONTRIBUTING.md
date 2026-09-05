@@ -17,6 +17,10 @@ never use `--no-build`. Product tests exercise real processes, streams, sockets,
 files, workspaces, SDKs, and editor integrations. Mocking libraries and hand-written
 substitutes for production services are prohibited.
 
+Building the debugger test project also builds its portable C#, Visual Basic, and
+F# fixtures in Debug and Release. CI shares these outputs across platform jobs.
+Fixtures with live Source Link endpoints or Windows PDBs are built on the test host.
+
 `dotnet test` succeeds on a clean checkout without separately provisioned editor
 or parity-oracle fixtures. Tests for unavailable optional integrations are reported
 as skipped and include the exact provisioning command in their result message.

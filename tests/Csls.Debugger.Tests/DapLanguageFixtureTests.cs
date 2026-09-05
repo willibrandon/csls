@@ -35,7 +35,7 @@ public sealed partial class DapSessionTests
     {
         foreach (string project in s_projects)
         {
-            string program = LanguageFixtures.GetProgramPath(project, configuration);
+            string program = DebuggerLanguageFixtures.GetProgramPath(project, configuration);
             await AssertFixtureStopsAsync(project, configuration, program)
                 .ConfigureAwait(false);
         }
