@@ -280,13 +280,10 @@ static void AddObjectProperties(
 
     if (schema.TryGetProperty("required", out JsonElement requiredArray))
     {
-        foreach (JsonElement item in requiredArray.EnumerateArray())
+        foreach (string requiredName in requiredArray.EnumerateArray()
+            .Select(static item => item.GetString()).OfType<string>())
         {
-            string? requiredName = item.GetString();
-            if (requiredName is not null)
-            {
-                _ = required.Add(requiredName);
-            }
+            _ = required.Add(requiredName);
         }
     }
 }

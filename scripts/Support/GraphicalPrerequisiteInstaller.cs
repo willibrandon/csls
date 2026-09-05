@@ -469,8 +469,10 @@ internal static class GraphicalPrerequisiteInstaller
         string xclipPath = Path.Join(portableRoot, "bin", "xclip");
         string vulkanLibraryPath = Path.Join(portableRoot, "lib", "libvulkan_lvp.so");
         string vulkanManifestPath = Path.Join(portableRoot, "share", "lvp_icd.json");
-        if ((!installClipboard || File.Exists(xclipPath)) &&
-            (!installVulkan || File.Exists(vulkanLibraryPath) && File.Exists(vulkanManifestPath)))
+        bool clipboardReady = !installClipboard || File.Exists(xclipPath);
+        bool vulkanLibraryReady = !installVulkan || File.Exists(vulkanLibraryPath);
+        bool vulkanManifestReady = !installVulkan || File.Exists(vulkanManifestPath);
+        if (clipboardReady && vulkanLibraryReady && vulkanManifestReady)
         {
             return (
                 installClipboard ? xclipPath : null,
@@ -673,15 +675,11 @@ internal static class GraphicalPrerequisiteInstaller
 
     private static async Task<string> SelectPackageAsync(params string[] packageNames)
     {
-        foreach (string packageName in packageNames)
-        {
-            if (await PackageExistsAsync(packageName).ConfigureAwait(false))
-            {
-                return packageName;
-            }
-        }
-
-        throw new InvalidOperationException(
+        string? packageName = await packageNames.ToAsyncEnumerable()
+            .FirstOrDefaultAsync(static async (name, _) =>
+                await PackageExistsAsync(name).ConfigureAwait(false))
+            .ConfigureAwait(false);
+        return packageName ?? throw new InvalidOperationException(
             $"None of the required packages are available: {string.Join(", ", packageNames)}.");
     }
 
