@@ -12,6 +12,8 @@
   </ItemGroup>
 
   <ItemGroup>
+    <Compile Include="../../scripts/Support/ProcessOutputCapture.cs"
+             Link="Support/ProcessOutputCapture.cs" />
     <Compile Include="../../src/Csls.Workspaces.MSBuild/WindowsJobObjectBasicAccountingInformation.cs"
              Link="WindowsJobObjectBasicAccountingInformation.cs" />
     <Compile Include="../../src/Csls.Workspaces.MSBuild/WindowsJobObjectBasicLimitInformation.cs"
@@ -24,6 +26,7 @@
 
   <ItemGroup>
     <PackageReference Include="Hex1b" />
+    <PackageReference Include="Microsoft.Diagnostics.NETCore.Client" />
     <PackageReference Include="ModelContextProtocol" />
     <PackageReference Include="StreamJsonRpc" />
   </ItemGroup>
@@ -35,6 +38,13 @@
     <ProjectReference Include="../../src/Csls.App/Csls.App.csproj"
                       ReferenceOutputAssembly="false" />
     <ProjectReference Include="../../src/Csls.Cli.Worker/Csls.Cli.Worker.csproj"
+                      ReferenceOutputAssembly="false" />
+    <ProjectReference Include="../../src/Csls.Debugger.Terminal/Csls.Debugger.Terminal.csproj" />
+    <ProjectReference Include="../../src/Csls.Debugger.Evaluator.Worker/Csls.Debugger.Evaluator.Worker.csproj"
+                      ReferenceOutputAssembly="false" />
+    <ProjectReference Include="../../src/Csls.Debugger.Worker/Csls.Debugger.Worker.csproj"
+                      ReferenceOutputAssembly="false" />
+    <ProjectReference Include="../../src/Csls.Debugger.Dump.Worker/Csls.Debugger.Dump.Worker.csproj"
                       ReferenceOutputAssembly="false" />
     <ProjectReference Include="../../src/Csls.Control/Csls.Control.csproj" />
     <ProjectReference Include="../../src/Csls.Control.Contracts/Csls.Control.Contracts.csproj" />

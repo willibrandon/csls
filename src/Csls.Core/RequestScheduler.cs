@@ -367,10 +367,9 @@ public sealed class RequestScheduler : IAsyncDisposable
                         RequestActivityState,
                         TaskCompletionSource<T>))state!;
                 source.TrySetCanceled(token);
-                if (scheduler.CompleteQueuedCancellation(request))
-                {
-                    completion.TrySetCanceled(token);
-                }
+                scheduler.CompleteQueuedCancellation(
+                    request,
+                    () => completion.TrySetCanceled(token));
             },
             (admission, requestCancellationToken, this, request, completion));
 
@@ -609,15 +608,14 @@ public sealed class RequestScheduler : IAsyncDisposable
         }
     }
 
-    private bool CompleteQueuedCancellation(RequestActivityState request)
+    private void CompleteQueuedCancellation(
+        RequestActivityState request,
+        Action completeRequest)
     {
-        bool completed = request.CompleteQueuedCancellation();
-        if (completed)
+        if (request.CompleteQueuedCancellation(completeRequest))
         {
             _requests.TryRemove(request.CorrelationId, out _);
         }
-
-        return completed;
     }
 
     private void EnrollCurrentTrace(RequestActivityState request)

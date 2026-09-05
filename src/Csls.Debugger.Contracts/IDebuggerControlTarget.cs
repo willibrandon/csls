@@ -1,0 +1,246 @@
+namespace Csls.Debugger.Contracts;
+
+/// <summary>
+/// Defines the engine operations exposed through private debugger control RPC.
+/// </summary>
+public partial interface IDebuggerControlTarget
+{
+    /// <summary>
+    /// Gets the current debugger session snapshot.
+    /// </summary>
+    /// <param name="cancellationToken">Cancels the request.</param>
+    /// <returns>The current snapshot.</returns>
+    Task<DebugSessionSnapshot> GetSessionAsync(CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Launches a managed target.
+    /// </summary>
+    /// <param name="request">The concrete target launch.</param>
+    /// <param name="cancellationToken">Cancels runtime activation.</param>
+    /// <returns>The post-launch snapshot.</returns>
+    Task<DebugSessionSnapshot> LaunchAsync(
+        DebugLaunchRequest request,
+        CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Attaches to a running managed target.
+    /// </summary>
+    /// <param name="request">The selected process.</param>
+    /// <param name="cancellationToken">Cancels runtime attachment.</param>
+    /// <returns>The post-attachment snapshot.</returns>
+    Task<DebugSessionSnapshot> AttachAsync(
+        DebugAttachRequest request,
+        CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Opens a managed process dump for read-only inspection.
+    /// </summary>
+    /// <param name="request">The selected dump and managed runtime.</param>
+    /// <param name="cancellationToken">Cancels dump activation.</param>
+    /// <returns>The stopped read-only snapshot.</returns>
+    Task<DebugSessionSnapshot> OpenDumpAsync(
+        DebugDumpOpenRequest request,
+        CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Restarts the current target with its original activation request.
+    /// </summary>
+    /// <param name="cancellationToken">Cancels target shutdown or activation.</param>
+    /// <returns>The replacement target snapshot.</returns>
+    Task<DebugSessionSnapshot> RestartAsync(CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Replaces source breakpoints for one document.
+    /// </summary>
+    /// <param name="request">The complete replacement set.</param>
+    /// <param name="cancellationToken">Cancels breakpoint binding.</param>
+    /// <returns>The current ordered breakpoint states.</returns>
+    Task<IReadOnlyList<DebugSourceBreakpointInfo>> SetSourceBreakpointsAsync(
+        DebugSourceBreakpointSetRequest request,
+        CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Replaces every managed function breakpoint.
+    /// </summary>
+    /// <param name="request">The complete replacement set.</param>
+    /// <param name="cancellationToken">Cancels breakpoint binding.</param>
+    /// <returns>The current ordered breakpoint states.</returns>
+    Task<IReadOnlyList<DebugFunctionBreakpointInfo>> SetFunctionBreakpointsAsync(
+        DebugFunctionBreakpointSetRequest request,
+        CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Replaces the complete managed exception breakpoint policy.
+    /// </summary>
+    /// <param name="request">The complete replacement policy.</param>
+    /// <param name="cancellationToken">Cancels exception policy configuration.</param>
+    /// <returns>A task that completes after the policy is applied.</returns>
+    Task SetExceptionBreakpointsAsync(
+        DebugExceptionBreakpointSetRequest request,
+        CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Gets the managed exception responsible for the current stop.
+    /// </summary>
+    /// <param name="request">The selected managed thread.</param>
+    /// <param name="cancellationToken">Cancels exception inspection.</param>
+    /// <returns>The current managed exception details.</returns>
+    Task<DebugExceptionInfo> GetExceptionInfoAsync(
+        DebugExceptionInfoRequest request,
+        CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Stops a live managed target without replacing an existing stop or its inspection handles.
+    /// </summary>
+    /// <param name="cancellationToken">Cancels the request.</param>
+    /// <returns>The stopped snapshot.</returns>
+    Task<DebugSessionSnapshot> PauseAsync(CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Continues the target.
+    /// </summary>
+    /// <param name="cancellationToken">Cancels the request.</param>
+    /// <returns>The running snapshot.</returns>
+    Task<DebugSessionSnapshot> ContinueAsync(CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Steps one managed thread.
+    /// </summary>
+    /// <param name="request">The selected thread and step kind.</param>
+    /// <param name="cancellationToken">Cancels the request.</param>
+    /// <returns>The running snapshot.</returns>
+    Task<DebugSessionSnapshot> StepAsync(
+        DebugStepRequest request,
+        CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Gets current managed threads.
+    /// </summary>
+    /// <param name="cancellationToken">Cancels enumeration.</param>
+    /// <returns>The bounded current thread snapshot.</returns>
+    Task<IReadOnlyList<DebugThreadInfo>> GetThreadsAsync(CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Gets a current-generation managed stack page.
+    /// </summary>
+    /// <param name="request">The selected thread and page.</param>
+    /// <param name="cancellationToken">Cancels enumeration.</param>
+    /// <returns>The requested stack page.</returns>
+    Task<DebugStackTrace> GetStackAsync(
+        DebugStackRequest request,
+        CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Gets current-generation scopes for a frame.
+    /// </summary>
+    /// <param name="request">The selected frame.</param>
+    /// <param name="cancellationToken">Cancels enumeration.</param>
+    /// <returns>The current frame scopes.</returns>
+    Task<IReadOnlyList<DebugScopeInfo>> GetScopesAsync(
+        DebugScopesRequest request,
+        CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Gets a current-generation variable page.
+    /// </summary>
+    /// <param name="request">The selected container and page.</param>
+    /// <param name="cancellationToken">Cancels enumeration.</param>
+    /// <returns>The requested variable page.</returns>
+    Task<IReadOnlyList<DebugVariableInfo>> GetVariablesAsync(
+        DebugVariablesRequest request,
+        CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Evaluates an expression in a current-generation managed frame.
+    /// </summary>
+    /// <param name="request">The selected frame and expression.</param>
+    /// <param name="cancellationToken">Cancels evaluation.</param>
+    /// <returns>The current formatted expression result.</returns>
+    Task<DebugEvaluateResult> EvaluateAsync(
+        DebugEvaluateRequest request,
+        CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Executes an explicitly authorized expression in a current-generation managed frame.
+    /// </summary>
+    /// <param name="request">The selected frame and expression.</param>
+    /// <param name="cancellationToken">Cancels execution and requests cooperative target recovery.</param>
+    /// <returns>The current formatted expression result.</returns>
+    Task<DebugEvaluateResult> ExecuteExpressionAsync(
+        DebugExecuteExpressionRequest request,
+        CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Assigns one immediate variable-container child with guarded runtime materialization.
+    /// </summary>
+    /// <param name="request">The exact generation, container child, and value expression.</param>
+    /// <param name="cancellationToken">Cancels compilation or queued runtime access.</param>
+    /// <returns>The updated value and stopped generation that owns it.</returns>
+    Task<DebugAssignmentResult> SetVariableAsync(
+        DebugSetVariableRequest request,
+        CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Assigns one writable source expression with guarded runtime materialization.
+    /// </summary>
+    /// <param name="request">The exact generation, frame, target, and value expression.</param>
+    /// <param name="cancellationToken">Cancels compilation or queued runtime access.</param>
+    /// <returns>The updated value and stopped generation that owns it.</returns>
+    Task<DebugAssignmentResult> SetExpressionAsync(
+        DebugSetExpressionRequest request,
+        CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Applies one compiler-produced Hot Reload update to an enabled managed module.
+    /// </summary>
+    /// <param name="request">The exact stopped and module generation with compiler deltas.</param>
+    /// <param name="cancellationToken">Cancels validation before target mutation begins.</param>
+    /// <returns>The committed module generation and replacement stopped generation.</returns>
+    Task<DebugHotReloadResult> ApplyHotReloadAsync(
+        DebugHotReloadRequest request,
+        CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Reads a bounded target-memory range through a stopped-state handle.
+    /// </summary>
+    /// <param name="request">The selected memory handle and relative range.</param>
+    /// <param name="cancellationToken">Cancels memory inspection.</param>
+    /// <returns>The readable prefix and trailing unreadable byte count.</returns>
+    Task<DebugMemoryReadResult> ReadMemoryAsync(
+        DebugMemoryReadRequest request,
+        CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Disassembles a bounded managed-IL range through a stopped-state handle.
+    /// </summary>
+    /// <param name="request">The selected IL handle and instruction window.</param>
+    /// <param name="cancellationToken">Cancels disassembly.</param>
+    /// <returns>The exact-count managed-IL response.</returns>
+    Task<DebugDisassembly> DisassembleAsync(
+        DebugDisassemblyRequest request,
+        CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Gets source content by its session-local reference.
+    /// </summary>
+    /// <param name="request">The selected source reference.</param>
+    /// <param name="cancellationToken">Cancels source retrieval.</param>
+    /// <returns>The complete source text and media type.</returns>
+    Task<DebugSourceContent> GetSourceContentAsync(
+        DebugSourceRequest request,
+        CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Terminates the owned target.
+    /// </summary>
+    /// <param name="cancellationToken">Cancels waiting for termination.</param>
+    /// <returns>The terminal snapshot.</returns>
+    Task<DebugSessionSnapshot> TerminateAsync(CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Detaches without terminating the target.
+    /// </summary>
+    /// <param name="cancellationToken">Cancels waiting for detachment.</param>
+    /// <returns>The terminal snapshot.</returns>
+    Task<DebugSessionSnapshot> DetachAsync(CancellationToken cancellationToken);
+}

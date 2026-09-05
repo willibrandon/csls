@@ -1,0 +1,43 @@
+<Project Sdk="MSTest.Sdk">
+  <PropertyGroup>
+    <AssemblyName>Csls.Debugger.Tests</AssemblyName>
+    <RootNamespace>Csls.Debugger.Tests</RootNamespace>
+    <Description>Real protocol and process tests for the csls debugger.</Description>
+    <MSTestAnalysisMode>All</MSTestAnalysisMode>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Using Include="Microsoft.VisualStudio.TestTools.UnitTesting" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp" />
+    <PackageReference Include="Microsoft.Testing.Extensions.HangDump" PrivateAssets="All" />
+    <ProjectReference Include="../../src/Csls.DebugAdapter/Csls.DebugAdapter.csproj" />
+    <ProjectReference Include="../../src/Csls.Debugger.Control/Csls.Debugger.Control.csproj" />
+    <ProjectReference Include="../../src/Csls.Debugger.Terminal/Csls.Debugger.Terminal.csproj" />
+    <ProjectReference Include="../../src/Csls.Debugger/Csls.Debugger.csproj" />
+    <ProjectReference Include="../../src/Csls.App/Csls.App.csproj"
+                      ReferenceOutputAssembly="false" />
+    <ProjectReference Include="../../src/Csls.Debugger.Worker/Csls.Debugger.Worker.csproj"
+                      ReferenceOutputAssembly="false" />
+    <ProjectReference Include="../../src/Csls.Debugger.Evaluator.Worker/Csls.Debugger.Evaluator.Worker.csproj"
+                      ReferenceOutputAssembly="false" />
+    <ProjectReference Include="../../test-assets/Csls.Debugger.Fixtures.Embedded/Csls.Debugger.Fixtures.Embedded.csproj"
+                      ReferenceOutputAssembly="false" />
+    <ProjectReference Include="../../test-assets/Csls.Debugger.Fixtures.InMemory/Csls.Debugger.Fixtures.InMemory.csproj"
+                      ReferenceOutputAssembly="false" />
+    <ProjectReference Include="../../test-assets/Csls.Debugger.Fixtures.CSharp/Csls.Debugger.Fixtures.CSharp.csproj"
+                      ReferenceOutputAssembly="false" />
+    <ProjectReference Include="../../test-assets/Csls.Debugger.Fixtures.VisualBasic/Csls.Debugger.Fixtures.VisualBasic.vbproj"
+                      ReferenceOutputAssembly="false" />
+    <ProjectReference Include="../../test-assets/Csls.Debugger.Fixtures.FSharp/Csls.Debugger.Fixtures.FSharp.fsproj"
+                      ReferenceOutputAssembly="false" />
+    <ProjectReference Include="../Csls.TestProcessHost/Csls.TestProcessHost.csproj"
+                      ReferenceOutputAssembly="false" />
+    <ProjectReference Include="../Csls.Debugger.StackProbe/Csls.Debugger.StackProbe.csproj"
+                      ReferenceOutputAssembly="false" />
+  </ItemGroup>
+
+  <Import Project="../../build/Csls.Debugger.TestFixtures.targets" />
+</Project>

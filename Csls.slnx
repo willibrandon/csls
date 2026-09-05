@@ -24,6 +24,18 @@
     <Project Path="src/Csls.Control.Server/Csls.Control.Server.csproj" />
     <Project Path="src/Csls.Core/Csls.Core.csproj" />
     <Project Path="src/Csls.Dashboard/Csls.Dashboard.csproj" />
+    <Project Path="src/Csls.DebugAdapter/Csls.DebugAdapter.csproj" />
+    <Project Path="src/Csls.Debugger/Csls.Debugger.csproj" />
+    <Project Path="src/Csls.Debugger.Control/Csls.Debugger.Control.csproj" />
+    <Project Path="src/Csls.Debugger.Contracts/Csls.Debugger.Contracts.csproj" />
+    <Project Path="src/Csls.Debugger.Dump/Csls.Debugger.Dump.csproj" />
+    <Project Path="src/Csls.Debugger.Dump.Worker/Csls.Debugger.Dump.Worker.csproj" />
+    <Project Path="src/Csls.Debugger.Evaluation/Csls.Debugger.Evaluation.csproj" />
+    <Project Path="src/Csls.Debugger.Evaluator.FSharp/Csls.Debugger.Evaluator.FSharp.fsproj" />
+    <Project Path="src/Csls.Debugger.Evaluator.Worker/Csls.Debugger.Evaluator.Worker.csproj" />
+    <Project Path="src/Csls.Debugger.Terminal/Csls.Debugger.Terminal.csproj" />
+    <Project Path="src/Csls.Debugger.UnixWait/Csls.Debugger.UnixWait.csproj" />
+    <Project Path="src/Csls.Debugger.Worker/Csls.Debugger.Worker.csproj" />
     <Project Path="src/Csls.Mcp/Csls.Mcp.csproj" />
     <Project Path="src/Csls.Mcp.Worker/Csls.Mcp.Worker.csproj" />
     <Project Path="src/Csls.SourceGen/Csls.SourceGen.csproj" />
@@ -40,8 +52,15 @@
     <Project Path="benchmarks/Csls.EndToEndPerformance/Csls.EndToEndPerformance.csproj" />
   </Folder>
   <Folder Name="/tests/">
+    <Project Path="test-assets/Csls.Debugger.Fixtures.CSharp/Csls.Debugger.Fixtures.CSharp.csproj" />
+    <Project Path="test-assets/Csls.Debugger.Fixtures.Embedded/Csls.Debugger.Fixtures.Embedded.csproj" />
+    <Project Path="test-assets/Csls.Debugger.Fixtures.FSharp/Csls.Debugger.Fixtures.FSharp.fsproj" />
+    <Project Path="test-assets/Csls.Debugger.Fixtures.InMemory/Csls.Debugger.Fixtures.InMemory.csproj" />
+    <Project Path="test-assets/Csls.Debugger.Fixtures.VisualBasic/Csls.Debugger.Fixtures.VisualBasic.vbproj" />
     <Project Path="test-assets/Csls.CancellationProbeTransport/Csls.CancellationProbeTransport.csproj" />
     <Project Path="tests/Csls.CancellationProbeAnalyzer/Csls.CancellationProbeAnalyzer.csproj" />
+    <Project Path="tests/Csls.Debugger.Tests/Csls.Debugger.Tests.csproj" />
+    <Project Path="tests/Csls.Debugger.StackProbe/Csls.Debugger.StackProbe.csproj" />
     <Project Path="tests/Csls.SourceGen.Tests/Csls.SourceGen.Tests.csproj" />
     <Project Path="tests/Csls.TestSourceGenerator/Csls.TestSourceGenerator.csproj" />
     <Project Path="tests/Csls.TestProcessHost/Csls.TestProcessHost.csproj" />

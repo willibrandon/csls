@@ -1,6 +1,6 @@
 ---
 title: Contract reference
-description: Generated public LSP and control contract type index.
+description: Generated public LSP, control, and debugger RPC contract type index.
 ---
 
 These public wire-contract types are generated from the compiled assemblies and their XML documentation.
@@ -245,3 +245,95 @@ These public wire-contract types are generated from the compiled assemblies and 
 | `Csls.Control.Contracts.ControlWorkspaceOperationResult` | Describes one completed workspace operation returned through the control protocol. |
 | `Csls.Control.Contracts.ControlWorkspaceSymbolRequest` | Carries a bounded workspace declaration search pattern. |
 | `Csls.Control.Contracts.IControlRpcTarget` | Defines the explicitly registered methods implemented by a csls control session. |
+
+## Csls.Debugger.Contracts
+
+| Type | Description |
+| --- | --- |
+| `Csls.Debugger.Contracts.DebugAssignmentResult` | Describes one completed managed assignment and its resulting stop generation. |
+| `Csls.Debugger.Contracts.DebugAttachRequest` | Selects one running CoreCLR process for debugger attachment. |
+| `Csls.Debugger.Contracts.DebugBreakpointLocation` | Describes one executable source location reported by loaded symbols. |
+| `Csls.Debugger.Contracts.DebugBreakpointSnapshot` | Describes every authoritative breakpoint configured in one debugger session. |
+| `Csls.Debugger.Contracts.DebugCompletionInfo` | Describes one generation-bound debugger expression completion. |
+| `Csls.Debugger.Contracts.DebugCompletionItemKind` | Identifies the debugger-facing category of one expression completion. |
+| `Csls.Debugger.Contracts.DebugDisassembly` | Contains an exact-count managed-IL disassembly response. |
+| `Csls.Debugger.Contracts.DebugDisassemblyRequest` | Selects a bounded managed-IL instruction range from a stopped frame. |
+| `Csls.Debugger.Contracts.DebugDumpOpenRequest` | Selects a managed process dump and one runtime for read-only inspection. |
+| `Csls.Debugger.Contracts.DebugEvaluateRequest` | Selects a stopped managed frame and expression for evaluation. |
+| `Csls.Debugger.Contracts.DebugEvaluateResult` | Describes one expression result from a stopped managed frame. |
+| `Csls.Debugger.Contracts.DebugExceptionBreakMode` | Identifies the managed exception stage that caused a debugger stop. |
+| `Csls.Debugger.Contracts.DebugExceptionBreakpointRequest` | Describes one managed exception-stage and type filter. |
+| `Csls.Debugger.Contracts.DebugExceptionBreakpointSetRequest` | Replaces the complete managed exception breakpoint policy. |
+| `Csls.Debugger.Contracts.DebugExceptionInfo` | Describes the managed exception responsible for the current debugger stop. |
+| `Csls.Debugger.Contracts.DebugExceptionInfoRequest` | Selects the managed thread that caused the current exception stop. |
+| `Csls.Debugger.Contracts.DebugExecuteExpressionRequest` | Selects a stopped managed frame and expression for authorized target execution. |
+| `Csls.Debugger.Contracts.DebugExpressionCompileRequest` | Selects a source-language grammar and expression for evaluator binding. |
+| `Csls.Debugger.Contracts.DebugExpressionLanguage` | Identifies the source-language grammar used to bind a debugger expression. |
+| `Csls.Debugger.Contracts.DebugExpressionNode` | Carries one immutable operation in a language-neutral debugger expression tree. |
+| `Csls.Debugger.Contracts.DebugExpressionNodeKind` | Identifies one operation in a language-neutral debugger expression tree. |
+| `Csls.Debugger.Contracts.DebugExpressionOperator` | Identifies one language-neutral debugger expression operator. |
+| `Csls.Debugger.Contracts.DebugExpressionPlan` | Carries one versioned language-neutral debugger expression plan. |
+| `Csls.Debugger.Contracts.DebugFunctionBreakpointInfo` | Describes the current binding state of one managed function breakpoint. |
+| `Csls.Debugger.Contracts.DebugFunctionBreakpointRequest` | Describes one requested managed function breakpoint before runtime binding. |
+| `Csls.Debugger.Contracts.DebugFunctionBreakpointSetRequest` | Carries the complete replacement set of managed function breakpoints. |
+| `Csls.Debugger.Contracts.DebugGotoRequest` | Selects a managed thread and runtime-approved instruction-pointer destination. |
+| `Csls.Debugger.Contracts.DebugGotoTargetInfo` | Describes one runtime-approved destination for moving the current instruction pointer. |
+| `Csls.Debugger.Contracts.DebugGotoTargetsRequest` | Selects a current frame and source position for safe instruction-pointer destinations. |
+| `Csls.Debugger.Contracts.DebugHotReloadActiveStatement` | Maps one active old method instruction to its updated source span. |
+| `Csls.Debugger.Contracts.DebugHotReloadRequest` | Carries one compiler-produced managed Hot Reload module update. |
+| `Csls.Debugger.Contracts.DebugHotReloadResult` | Describes one successfully applied managed Hot Reload module update. |
+| `Csls.Debugger.Contracts.DebugInstructionBreakpointInfo` | Describes the current binding state of one managed-IL instruction breakpoint. |
+| `Csls.Debugger.Contracts.DebugInstructionBreakpointRequest` | Describes one requested managed-IL instruction breakpoint. |
+| `Csls.Debugger.Contracts.DebugInstructionBreakpointSetRequest` | Replaces every managed-IL instruction breakpoint in one debugger session. |
+| `Csls.Debugger.Contracts.DebugInstructionInfo` | Describes one managed IL instruction or an out-of-range placeholder. |
+| `Csls.Debugger.Contracts.DebugLaunchRequest` | Describes one debugger-owned managed target launch. |
+| `Csls.Debugger.Contracts.DebugMemoryReadRequest` | Selects a bounded memory range relative to an opaque stopped-state handle. |
+| `Csls.Debugger.Contracts.DebugMemoryReadResult` | Contains one bounded target-memory read and its first resolved address. |
+| `Csls.Debugger.Contracts.DebugModuleInfo` | Describes one managed module loaded in the debug target. |
+| `Csls.Debugger.Contracts.DebugModulePage` | Carries a page of loaded managed modules and the complete module count. |
+| `Csls.Debugger.Contracts.DebugModuleSymbolKind` | Identifies the validated symbol format loaded for a managed module. |
+| `Csls.Debugger.Contracts.DebugModulesRequest` | Selects a bounded page of managed modules. |
+| `Csls.Debugger.Contracts.DebugOutputCategory` | Identifies a debugger or target output channel. |
+| `Csls.Debugger.Contracts.DebugOutputEntry` | Describes one bounded target-output segment retained by debugger control. |
+| `Csls.Debugger.Contracts.DebugOutputPage` | Contains one bounded page from the retained debugger-output stream. |
+| `Csls.Debugger.Contracts.DebugOutputRequest` | Selects a bounded target-output page after a stable sequence cursor. |
+| `Csls.Debugger.Contracts.DebugScopeInfo` | Describes one debugger variable scope at a stopped frame. |
+| `Csls.Debugger.Contracts.DebugScopesRequest` | Selects the scopes owned by one current-generation frame. |
+| `Csls.Debugger.Contracts.DebugSessionSnapshot` | Describes the current observable state of one debugger target session. |
+| `Csls.Debugger.Contracts.DebugSessionState` | Identifies the lifecycle state of a debugger session. |
+| `Csls.Debugger.Contracts.DebugSetExpressionRequest` | Selects one writable source expression for an exact stopped-generation assignment. |
+| `Csls.Debugger.Contracts.DebugSetVariableRequest` | Selects one variable-container child for an exact stopped-generation assignment. |
+| `Csls.Debugger.Contracts.DebugSourceBreakpointInfo` | Describes the current binding state of one source breakpoint. |
+| `Csls.Debugger.Contracts.DebugSourceBreakpointRequest` | Describes one requested source breakpoint before runtime binding. |
+| `Csls.Debugger.Contracts.DebugSourceBreakpointSetRequest` | Replaces the complete source-breakpoint set for one document. |
+| `Csls.Debugger.Contracts.DebugSourceChecksum` | Describes a Portable PDB source-document checksum. |
+| `Csls.Debugger.Contracts.DebugSourceContent` | Carries source text resolved through a session-local source reference. |
+| `Csls.Debugger.Contracts.DebugSourceInfo` | Describes one source document represented by loaded debugger symbols. |
+| `Csls.Debugger.Contracts.DebugSourceRequest` | Selects retrievable source content by its session-local reference. |
+| `Csls.Debugger.Contracts.DebugStackFrameInfo` | Describes one managed stack frame at a specific stop generation. |
+| `Csls.Debugger.Contracts.DebugStackRequest` | Selects a bounded page of frames from one managed thread. |
+| `Csls.Debugger.Contracts.DebugStackTrace` | Carries a paged managed stack and its exact total when the stack end has been observed. |
+| `Csls.Debugger.Contracts.DebugStackWalkProgress` | Reports bounded traversal progress and debugger-owned native references for one stack inspection. |
+| `Csls.Debugger.Contracts.DebugStackWalkState` | Identifies the current or final state of one managed stack inspection. |
+| `Csls.Debugger.Contracts.DebugStepKind` | Identifies a source-level managed stepping operation. |
+| `Csls.Debugger.Contracts.DebugStepRequest` | Selects one managed thread and source-level stepping operation. |
+| `Csls.Debugger.Contracts.DebugStepTargetInfo` | Describes one generation-bound call that can be selected for Step Into. |
+| `Csls.Debugger.Contracts.DebugStepTargetsRequest` | Selects one generation-bound active frame for source-aware Step Into discovery. |
+| `Csls.Debugger.Contracts.DebugStopGeneration` | Identifies the target stop that owns debugger inspection handles. |
+| `Csls.Debugger.Contracts.DebugSymbolModuleFilterMode` | Selects whether symbol loading uses an exclusion or inclusion list. |
+| `Csls.Debugger.Contracts.DebugSymbolModuleFilterOptions` | Filters eager symbol lookup by managed module file name. |
+| `Csls.Debugger.Contracts.DebugSymbolOptions` | Configures trusted locations used to resolve matching debugger symbols. |
+| `Csls.Debugger.Contracts.DebugThreadInfo` | Describes one managed thread visible at a debugger stop. |
+| `Csls.Debugger.Contracts.DebugVariableFilter` | Selects immediate variable children by their container-defined indexing category. |
+| `Csls.Debugger.Contracts.DebugVariableInfo` | Describes one debugger variable and its immediate formatted value. |
+| `Csls.Debugger.Contracts.DebugVariablePresentationKind` | Identifies how a debugger client should present one variable entry. |
+| `Csls.Debugger.Contracts.DebugVariablesRequest` | Selects a bounded page from one current-generation variable container. |
+| `Csls.Debugger.Contracts.DebuggerControlMethods` | Names the versioned private debugger control methods. |
+| `Csls.Debugger.Contracts.DebuggerControlNotifications` | Defines private debugger-control notification method names. |
+| `Csls.Debugger.Contracts.DebuggerControlProtocol` | Defines the private debugger control protocol version. |
+| `Csls.Debugger.Contracts.DebuggerEvaluatorMethods` | Names the versioned private managed evaluator methods. |
+| `Csls.Debugger.Contracts.DebuggerEvaluatorProtocol` | Defines the private managed evaluator protocol version. |
+| `Csls.Debugger.Contracts.DebuggerResourceChangeEventArgs` | Signals that authoritative debugger resources should be read again. |
+| `Csls.Debugger.Contracts.DebuggerResourceChangeKind` | Identifies debugger resources invalidated by one engine notification. |
+| `Csls.Debugger.Contracts.IDebuggerControlTarget` | Defines read-only breakpoint inspection exposed through private debugger control RPC. |
+| `Csls.Debugger.Contracts.IDebuggerEvaluatorTarget` | Defines the operations exposed by one supervised managed evaluator worker. |

@@ -1,0 +1,11 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>csls-debugger-stack-probe</AssemblyName>
+    <RootNamespace>Csls.Debugger.StackProbe</RootNamespace>
+    <Description>Isolated real-engine client for stack cancellation and resource probes.</Description>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../src/Csls.Debugger.Control/Csls.Debugger.Control.csproj" />
+  </ItemGroup>
+</Project>

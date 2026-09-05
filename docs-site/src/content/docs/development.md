@@ -35,6 +35,26 @@ dotnet run --file scripts/Verify-ToolPackages.cs
 dotnet run --file scripts/Build-ReleaseAssets.cs -- --help
 ```
 
+Update the vendored Debug Adapter Protocol schema and all generated NativeAOT
+contracts together with:
+
+```console
+dotnet run --file scripts/Update-DapSchema.cs
+```
+
+Repository verification regenerates the contracts in memory and fails when any
+checked-in generated file has drifted from the schema.
+
+The same offline-generation rule applies to the public CoreCLR debugging ABI.
+Update from the official runtime source (or pass a local `cordebug.idl` checkout),
+then verify that every interface GUID, inherited vtable slot, scalar width, and
+calling convention remains reproducible:
+
+```console
+dotnet run --file scripts/Update-CorDebugIdl.cs
+dotnet run --file scripts/Generate-CorDebugInterop.cs -- --verify
+```
+
 The development container restores every file app and provisions its external
 test tools from compatible release channels, including Mono MSBuild for old project files.
 CI builds the supported runtime packages, verifies Visual Studio and Mono build

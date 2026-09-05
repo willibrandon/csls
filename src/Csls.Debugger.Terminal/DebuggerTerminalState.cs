@@ -1,0 +1,285 @@
+using Csls.Debugger.Contracts;
+using Csls.Debugger.Control;
+using Hex1b;
+using StreamJsonRpc;
+
+namespace Csls.Debugger.Terminal;
+
+/// <summary>
+/// Holds immutable debugger snapshots loaded exclusively through private control RPC.
+/// </summary>
+internal sealed partial class DebuggerTerminalState : IAsyncDisposable
+{
+    private readonly DebuggerRpcClient _client;
+    private readonly DebuggerTerminalAuxiliaryState _auxiliary;
+    private readonly CancellationToken _cancellationToken;
+    private readonly Lock _notificationGate = new();
+    private readonly SemaphoreSlim _mutationGate = new(1, 1);
+    private DebuggerTerminalRefresh? _viewRefresh;
+    private CancellationTokenSource? _runObservationCancellation;
+    private Task? _runObservationTask;
+    private DebuggerResourceChangeKind _pendingResourceChanges;
+    private TaskCompletionSource _resourceChanged = CreateResourceChangedSource();
+
+    private DebuggerTerminalState(
+        DebuggerRpcClient client,
+        CancellationToken cancellationToken)
+    {
+        _client = client;
+        _auxiliary = new DebuggerTerminalAuxiliaryState(client);
+        _cancellationToken = cancellationToken;
+        _client.ResourceChanged += OnResourceChanged;
+    }
+
+    /// <summary>
+    /// Gets the current debugger lifecycle snapshot.
+    /// </summary>
+    internal DebugSessionSnapshot Snapshot { get; private set; } =
+        new() { State = DebugSessionState.Created };
+
+    /// <summary>
+    /// Gets the latest non-fatal interactive operation diagnostic.
+    /// </summary>
+    internal string? StatusMessage { get; private set; }
+
+    /// <summary>
+    /// Gets the selected auxiliary debugger pane title.
+    /// </summary>
+    internal string AuxiliaryTitle => _auxiliary.Title;
+
+    /// <summary>
+    /// Gets the bounded rows in the selected auxiliary debugger pane.
+    /// </summary>
+    internal IReadOnlyList<string> AuxiliaryLines => _auxiliary.Lines;
+
+    /// <summary>
+    /// Gets the managed-module and symbol summary shown in the header.
+    /// </summary>
+    internal string ModuleSummary => _auxiliary.ModuleSummary;
+
+    /// <summary>
+    /// Gets the current managed-exception summary shown in the header.
+    /// </summary>
+    internal string? ExceptionSummary => _auxiliary.ExceptionSummary;
+
+    /// <summary>
+    /// Advances to the next auxiliary debugger pane.
+    /// </summary>
+    internal async Task CycleAuxiliaryPaneAsync()
+    {
+        await _mutationGate.WaitAsync(_cancellationToken).ConfigureAwait(false);
+        try
+        {
+            _auxiliary.Cycle();
+            if (_auxiliary.Pane == DebuggerTerminalAuxiliaryPane.Output)
+            {
+                await _auxiliary.RefreshOutputAsync(_cancellationToken).ConfigureAwait(false);
+            }
+
+            PublishViewSnapshot();
+        }
+        finally
+        {
+            _ = _mutationGate.Release();
+        }
+    }
+
+    /// <summary>
+    /// Creates state and waits until the target reaches its initial stop.
+    /// </summary>
+    /// <param name="client">The connected debugger RPC client.</param>
+    /// <param name="cancellationToken">The interactive session cancellation token.</param>
+    /// <returns>The fully loaded stopped-state snapshot.</returns>
+    internal static async Task<DebuggerTerminalState> CreateAsync(
+        DebuggerRpcClient client,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(client);
+        var state = new DebuggerTerminalState(client, cancellationToken);
+        await state.WaitForStopAndLoadAsync(cancellationToken).ConfigureAwait(false);
+        return state;
+    }
+
+    /// <summary>
+    /// Connects display publications to the terminal's existing application event queue.
+    /// </summary>
+    /// <param name="options">The options supplied by the terminal builder.</param>
+    internal void AttachWorkload(Hex1bAppOptions options)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+        if (options.WorkloadAdapter is not Hex1bAppWorkloadAdapter workload)
+        {
+            throw new InvalidOperationException("The debugger requires an application workload.");
+        }
+
+        _viewRefresh = new DebuggerTerminalRefresh(workload);
+    }
+
+    private void RequestViewRefresh() => _viewRefresh?.Request();
+
+    private void AcknowledgeViewRefresh() => _viewRefresh?.Acknowledge();
+
+    /// <summary>
+    /// Stops background observation and releases its owned cancellation state.
+    /// </summary>
+    public async ValueTask DisposeAsync()
+    {
+        _client.ResourceChanged -= OnResourceChanged;
+        await StopRunObservationAsync().ConfigureAwait(false);
+        _mutationGate.Dispose();
+    }
+
+    private void StartRunObservation()
+    {
+        _runObservationCancellation?.Dispose();
+        _runObservationCancellation = CancellationTokenSource.CreateLinkedTokenSource(
+            _cancellationToken);
+        _runObservationTask = ObserveRunAsync(_runObservationCancellation.Token);
+    }
+
+    private async Task StopRunObservationAsync()
+    {
+        CancellationTokenSource? cancellation = _runObservationCancellation;
+        Task? observation = _runObservationTask;
+        _runObservationCancellation = null;
+        _runObservationTask = null;
+        if (cancellation is null)
+        {
+            return;
+        }
+
+        await cancellation.CancelAsync().ConfigureAwait(false);
+        if (observation is not null)
+        {
+            await observation.ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
+        }
+
+        cancellation.Dispose();
+    }
+
+    private async Task ObserveRunAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            await WaitForStopAndLoadAsync(cancellationToken).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            return;
+        }
+        catch (Exception exception) when (exception is
+            IOException or
+            InvalidDataException or
+            InvalidOperationException or
+            ObjectDisposedException or
+            RemoteInvocationException)
+        {
+            await _mutationGate.WaitAsync(CancellationToken.None).ConfigureAwait(false);
+            try
+            {
+                PublishViewError(exception.Message);
+            }
+            finally
+            {
+                _ = _mutationGate.Release();
+            }
+        }
+    }
+
+    private async Task WaitForStopAndLoadAsync(CancellationToken cancellationToken)
+    {
+        while (true)
+        {
+            DebugSessionSnapshot snapshot = await _client.GetSessionAsync(cancellationToken)
+                .ConfigureAwait(false);
+            if (snapshot.State is DebugSessionState.Stopped or
+                DebugSessionState.Terminated or
+                DebugSessionState.Faulted)
+            {
+                await _mutationGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+                try
+                {
+                    Snapshot = snapshot;
+                    if (snapshot.State == DebugSessionState.Stopped)
+                    {
+                        await LoadStoppedStateAsync(cancellationToken).ConfigureAwait(false);
+                    }
+                    else
+                    {
+                        ClearInspection();
+                        PublishViewSnapshot();
+                    }
+
+                    return;
+                }
+                finally
+                {
+                    _ = _mutationGate.Release();
+                }
+            }
+
+            DebuggerResourceChangeKind changes = await WaitForResourceChangesAsync(
+                cancellationToken).ConfigureAwait(false);
+            if ((changes & DebuggerResourceChangeKind.Output) != 0)
+            {
+                await _mutationGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+                try
+                {
+                    await _auxiliary.RefreshOutputAsync(cancellationToken).ConfigureAwait(false);
+                    PublishViewSnapshot();
+                }
+                finally
+                {
+                    _ = _mutationGate.Release();
+                }
+            }
+        }
+    }
+
+    private void OnResourceChanged(
+        object? sender,
+        DebuggerResourceChangeEventArgs change)
+    {
+        _ = sender;
+        TaskCompletionSource changed;
+        lock (_notificationGate)
+        {
+            _pendingResourceChanges |= change.Kind;
+            changed = _resourceChanged;
+        }
+
+        changed.TrySetResult();
+    }
+
+    private async Task<DebuggerResourceChangeKind> WaitForResourceChangesAsync(
+        CancellationToken cancellationToken)
+    {
+        Task signal;
+        lock (_notificationGate)
+        {
+            if (_pendingResourceChanges != 0)
+            {
+                return TakePendingResourceChanges();
+            }
+
+            signal = _resourceChanged.Task;
+        }
+
+        await signal.WaitAsync(cancellationToken).ConfigureAwait(false);
+        lock (_notificationGate)
+        {
+            return TakePendingResourceChanges();
+        }
+    }
+
+    private DebuggerResourceChangeKind TakePendingResourceChanges()
+    {
+        DebuggerResourceChangeKind changes = _pendingResourceChanges;
+        _pendingResourceChanges = 0;
+        _resourceChanged = CreateResourceChangedSource();
+        return changes;
+    }
+
+    private static TaskCompletionSource CreateResourceChangedSource() =>
+        new(TaskCreationOptions.RunContinuationsAsynchronously);
+}

@@ -3,13 +3,18 @@
 #:property LangVersion=14.0
 #:property Nullable=enable
 #:property TreatWarningsAsErrors=true
+#:property RootNamespace=Csls
 #:package Microsoft.CodeAnalysis.CSharp
 #:package ModelContextProtocol
 #:package SharpCompress
 #:project ../src/Csls.Control.Contracts/Csls.Control.Contracts.csproj
 #:project ../src/Csls.Protocol/Csls.Protocol.csproj
 #:include ScriptSupport.cs
+#:include Support/DapReferenceGenerator.cs
+#:include Support/DocumentationText.cs
 
+using Csls.Support;
+using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using ModelContextProtocol.Client;
@@ -20,13 +25,14 @@ using System.Reflection.PortableExecutable;
 using System.Text;
 using System.Text.Json;
 using System.Xml.Linq;
+using static Csls.Support.DocumentationText;
 
 const string Usage = "Usage: dotnet run --file scripts/Generate-Docs.cs [--verify]";
 
 if (args.Length == 1 && args[0] is "--help" or "-h" or "-?")
 {
     await Console.Out.WriteLineAsync(
-        "Generates reference documentation from the built CLI, MCP server, and XML contracts.")
+        "Generates reference documentation from the built CLI, DAP, MCP server, and XML contracts.")
         .ConfigureAwait(false);
     await Console.Out.WriteLineAsync(Usage).ConfigureAwait(false);
     return 0;
@@ -49,6 +55,7 @@ try
     string cliReference = await GenerateCliReferenceAsync(
         repositoryRoot,
         cancellationToken).ConfigureAwait(false);
+    string dapReference = DapReferenceGenerator.Generate(repositoryRoot);
     string mcpReference = await GenerateMcpReferenceAsync(
         repositoryRoot,
         cancellationToken).ConfigureAwait(false);
@@ -57,6 +64,7 @@ try
     (string Path, string Content)[] outputs =
     [
         ("docs-site/src/content/docs/cli-reference.md", cliReference),
+        ("docs-site/src/content/docs/debugger-dap-reference.md", dapReference),
         ("docs-site/src/content/docs/mcp-reference.md", mcpReference),
         ("docs-site/src/content/docs/configuration-reference.md", configurationReference),
         ("docs-site/src/content/docs/contract-reference.md", contractReference)
@@ -92,11 +100,53 @@ static async Task BuildDocumentationInputsAsync(
     string repositoryRoot,
     CancellationToken cancellationToken)
 {
-    _ = await RunProcessAsync(
-        ResolveDotNetHost(),
-        ["build", "Csls.slnx", "--configuration", "Debug", "--nologo"],
+    string solutionDirectory = Path.Join(
         repositoryRoot,
+        "artifacts",
+        "obj",
+        "documentation");
+    Directory.CreateDirectory(solutionDirectory);
+    string solutionPath = Path.Join(solutionDirectory, "DocumentationInputs.slnx");
+    string[] projectPaths =
+    [
+        "src/Csls.App/Csls.App.csproj",
+        "src/Csls.Debugger.Worker/Csls.Debugger.Worker.csproj",
+        "src/Csls.Mcp.Worker/Csls.Mcp.Worker.csproj",
+        "src/Csls.Server/Csls.Server.csproj"
+    ];
+    var solution = new XDocument(
+        new XElement(
+            "Solution",
+            projectPaths.Select(projectPath => new XElement(
+                "Project",
+                new XAttribute(
+                    "Path",
+                    Path.GetRelativePath(
+                        solutionDirectory,
+                        Path.Join(repositoryRoot, projectPath)))))));
+    await File.WriteAllTextAsync(
+        solutionPath,
+        solution + Environment.NewLine,
         cancellationToken).ConfigureAwait(false);
+    try
+    {
+        _ = await RunProcessAsync(
+            ResolveDotNetHost(),
+            [
+                "build",
+                solutionPath,
+                "--configuration",
+                "Debug",
+                "--nologo",
+                $"-bl:{Path.Join(repositoryRoot, "artifacts", "diagnostics", "documentation-inputs", "{}.binlog")}"
+            ],
+            repositoryRoot,
+            cancellationToken).ConfigureAwait(false);
+    }
+    finally
+    {
+        File.Delete(solutionPath);
+    }
 }
 
 static async Task<string> GenerateCliReferenceAsync(
@@ -170,11 +220,20 @@ static async Task<string> GenerateMcpReferenceAsync(
         "debug",
         "csls-mcp-worker.dll");
     RequireFile(mcpWorkerPath);
+    string debuggerWorkerPath = Path.Join(
+        repositoryRoot,
+        "artifacts",
+        "bin",
+        "Csls.Debugger.Worker",
+        "debug",
+        "csls-debugger-worker.dll");
+    RequireFile(debuggerWorkerPath);
     Dictionary<string, string?> environment =
         StdioClientTransportOptions.GetDefaultEnvironmentVariables();
     environment["DOTNET_CLI_TELEMETRY_OPTOUT"] = "1";
     environment["DOTNET_CLI_WORKLOAD_UPDATE_NOTIFY_DISABLE"] = "true";
     environment["DOTNET_NOLOGO"] = "1";
+    environment["CSLS_DEBUGGER_WORKER_PATH"] = debuggerWorkerPath;
     var transport = new StdioClientTransport(
         new StdioClientTransportOptions
         {
@@ -216,10 +275,10 @@ static string BuildMcpReference(
 {
     var page = new StringBuilder(
         "---\ntitle: MCP reference\ndescription: Generated multi-workspace tools, resource templates, and prompts from csls-mcp.\n---\n\n" +
-        "This page is generated through the official MCP client from the bare csls MCP server. " +
-        "Start `csls-mcp` without arguments. Every target-dependent tool and resource requires " +
-        "exactly one of `workspace`, `session`, or `socket`. Target selectors are shown " +
-        "separately from operation-specific inputs.\n\n" +
+        "This page is generated through the official MCP client from the complete csls MCP " +
+        "installation. Start `csls-mcp` without arguments. Language-service operations select " +
+        "exactly one `workspace`, `session`, or `socket`; debugger operations use their explicit " +
+        "`debugSession`. Target selectors are shown separately from operation-specific inputs.\n\n" +
         "## Tools\n\n" +
         "| Tool | Behavior | Target | Operation inputs | Description |\n" +
         "| --- | --- | --- | --- | --- |\n");
@@ -387,10 +446,26 @@ static string GenerateContractReference(string repositoryRoot)
                 "bin",
                 "Csls.Control.Contracts",
                 "debug",
-                "Csls.Control.Contracts.xml"))
+                "Csls.Control.Contracts.xml")),
+        (
+            "Csls.Debugger.Contracts",
+            Path.Join(
+                repositoryRoot,
+                "artifacts",
+                "bin",
+                "Csls.Debugger.Contracts",
+                "debug",
+                "Csls.Debugger.Contracts.dll"),
+            Path.Join(
+                repositoryRoot,
+                "artifacts",
+                "bin",
+                "Csls.Debugger.Contracts",
+                "debug",
+                "Csls.Debugger.Contracts.xml"))
     ];
     var page = new StringBuilder(
-        "---\ntitle: Contract reference\ndescription: Generated public LSP and control contract type index.\n---\n\n" +
+        "---\ntitle: Contract reference\ndescription: Generated public LSP, control, and debugger RPC contract type index.\n---\n\n" +
         "These public wire-contract types are generated from the compiled assemblies and their XML documentation.\n");
     foreach ((string assemblyName, string assemblyPath, string xmlPath) in contracts)
     {
@@ -568,7 +643,21 @@ static string GetToolTarget(JsonElement schema)
     int selectorCount = selectors.Count(selector => properties.TryGetProperty(selector, out _));
     if (selectorCount == 0)
     {
-        return "None";
+        if (!properties.TryGetProperty("debugSession", out _))
+        {
+            return "None";
+        }
+
+        if (!schema.TryGetProperty("required", out JsonElement debuggerRequired) ||
+            debuggerRequired.ValueKind != JsonValueKind.Array ||
+            !debuggerRequired.EnumerateArray().Any(static property =>
+                string.Equals(property.GetString(), "debugSession", StringComparison.Ordinal)))
+        {
+            throw new InvalidDataException(
+                "An existing-session debugger tool does not require debugSession.");
+        }
+
+        return "`debugSession` required";
     }
 
     if (selectorCount != selectors.Length)
@@ -625,7 +714,7 @@ static string GetToolInputs(JsonElement schema, bool excludeTargetSelectors)
 }
 
 static bool IsTargetSelector(string name) =>
-    name is "workspace" or "session" or "socket";
+    name is "workspace" or "session" or "socket" or "debugSession";
 
 static string NormalizeHelp(string help, string repositoryRoot)
 {
@@ -673,38 +762,6 @@ static string FormatXmlReference(string? cref, string? langword)
     int memberSeparator = value.LastIndexOf('.');
     return memberSeparator < 0 ? value : value[(memberSeparator + 1)..];
 }
-
-static string NormalizeWhitespace(string value)
-{
-    var result = new StringBuilder(value.Length);
-    bool pendingSpace = false;
-    foreach (char character in value)
-    {
-        if (char.IsWhiteSpace(character))
-        {
-            pendingSpace = result.Length != 0;
-            continue;
-        }
-
-        if (pendingSpace)
-        {
-            result.Append(' ');
-            pendingSpace = false;
-        }
-
-        result.Append(character);
-    }
-
-    return result.ToString();
-}
-
-static string EscapeTableText(string? value) => string.IsNullOrWhiteSpace(value)
-    ? string.Empty
-    : NormalizeWhitespace(value)
-        .Replace("\\", "\\\\", StringComparison.Ordinal)
-        .Replace("|", "\\|", StringComparison.Ordinal);
-
-static string EnsureFinalNewLine(string value) => value.TrimEnd() + '\n';
 
 static void RequireFile(string path)
 {
@@ -755,7 +812,7 @@ static async Task<string> RunProcessAsync(
     if (process.ExitCode != 0)
     {
         throw new InvalidOperationException(
-            $"{fileName} exited with code {process.ExitCode}: {error.Trim()}");
+            $"{fileName} exited with code {process.ExitCode}: {error.Trim()}\n{output.Trim()}");
     }
 
     return output;

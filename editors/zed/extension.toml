@@ -11,6 +11,9 @@ name = "csls"
 languages = ["CSharp", "Razor"]
 language_ids = { CSharp = "csharp", Razor = "razor" }
 
+[debug_adapters.csls]
+schema_path = "debug_adapter_schemas/csls.json"
+
 [grammars.c_sharp]
 repository = "https://github.com/tree-sitter/tree-sitter-c-sharp"
 commit = "485f0bae0274ac9114797fc10db6f7034e4086e3"

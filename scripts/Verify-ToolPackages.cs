@@ -116,12 +116,20 @@ try
             "csls",
             "csls",
             "src/Csls.App/Csls.App.csproj",
-            ["workers/server/csls-worker", "workers/cli/csls-cli-worker"]),
+            [
+                "workers/server/csls-worker",
+                "workers/cli/csls-cli-worker",
+                "workers/debugger/csls-debugger-worker"
+            ]),
         (
             "csls-mcp",
             "csls-mcp",
             "src/Csls.Mcp/Csls.Mcp.csproj",
-            ["workers/mcp/csls-mcp-worker", "workers/server/csls-worker"])
+            [
+                "workers/mcp/csls-mcp-worker",
+                "workers/server/csls-worker",
+                "workers/debugger/csls-debugger-worker"
+            ])
     ];
 
     foreach ((string packageId, _, string project, _) in products)
@@ -392,6 +400,21 @@ static void ValidateImplementationPackage(
         RequireEntry(archive, $"{root}/{workerName}");
     }
 
+    if (!(native && runtimeIdentifier.StartsWith("win-", StringComparison.Ordinal)) &&
+        !(string.Equals(runtimeIdentifier, "any", StringComparison.Ordinal) &&
+            OperatingSystem.IsWindows()))
+    {
+        string interposerExtension =
+            runtimeIdentifier.StartsWith("osx-", StringComparison.Ordinal) ||
+            string.Equals(runtimeIdentifier, "any", StringComparison.Ordinal) &&
+            OperatingSystem.IsMacOS()
+                ? ".dylib"
+                : ".so";
+        RequireEntry(
+            archive,
+            $"{root}/workers/debugger/Csls.Debugger.UnixWait{interposerExtension}");
+    }
+
     XDocument settings = LoadXml(RequireEntry(
         archive,
         $"{root}/DotnetToolSettings.xml"));
@@ -461,6 +484,10 @@ static async Task VerifyInstalledToolAsync(
         environment).ConfigureAwait(false);
     if (string.Equals(commandName, "csls", StringComparison.Ordinal))
     {
+        await VerifyDebuggerRuntimeAsync(
+            commandPath,
+            repositoryRoot,
+            environment).ConfigureAwait(false);
         await VerifyAgentCommandsAsync(
             commandPath,
             repositoryRoot,
@@ -617,6 +644,10 @@ static async Task VerifyImplementationToolAsync(
         environment).ConfigureAwait(false);
     if (string.Equals(commandName, "csls", StringComparison.Ordinal))
     {
+        await VerifyDebuggerRuntimeAsync(
+            commandPath,
+            repositoryRoot,
+            environment).ConfigureAwait(false);
         await VerifyAgentCommandsAsync(
             commandPath,
             repositoryRoot,
@@ -632,6 +663,25 @@ static async Task VerifyImplementationToolAsync(
             commandPath,
             repositoryRoot,
             environment).ConfigureAwait(false);
+    }
+}
+
+static async Task VerifyDebuggerRuntimeAsync(
+    string commandPath,
+    string workingDirectory,
+    IReadOnlyDictionary<string, string> environment)
+{
+    string output = await RunCheckedAsync(
+        commandPath,
+        ["debugger", "doctor"],
+        workingDirectory,
+        environment).ConfigureAwait(false);
+    if (!output.Contains(
+            "native .NET runtime-debugging components are available",
+            StringComparison.Ordinal))
+    {
+        throw new InvalidDataException(
+            $"The installed debugger runtime probe returned unexpected output: {output.Trim()}");
     }
 }
 

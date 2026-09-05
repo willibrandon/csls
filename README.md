@@ -17,6 +17,42 @@ graphical editor clients.
 The complete 1.0 feature set is implemented, and no unimplemented LSP capability
 is advertised by the server.
 
+The bundled editor-independent .NET debugger launches or attaches to managed
+processes without downloading a proprietary debugger. VS Code and Zed use the
+same `csls debugger dap` engine for source breakpoints, pause and continue,
+source stepping, stacks, modules, arguments, locals, fields, arrays, function
+breakpoints, hit-count breakpoints, bounded array-memory inspection, symbolic
+managed-IL disassembly, and instruction breakpoints across C#, Visual Basic, F#,
+and other
+Portable-PDB-producing .NET languages. Managed exception filters accept exact
+and base type names. Matching Portable PDBs on every platform and Windows PDBs on
+Windows can be loaded from trusted local or HTTP symbol stores with identity
+validation and bounded caching. Source-aware
+Step Into can select a particular local managed
+call on a statement, and Go to Line exposes only destinations that CoreCLR certifies
+for safe continued execution. Launches can suppress JIT optimizations for loaded
+managed modules, and module inspection reports the effective runtime policy.
+The installed MCP server exposes explicit debugger lifecycle, execution, and
+bounded inspection tools through isolated supervised workers. Agents can inspect
+threads, stacks, scopes, variables, and modules; execution changes require an
+explicit per-session control grant and the current stop generation. The same
+contract supports deterministic source, function, instruction, and exception
+breakpoint replacement, generation-safe target restart, authoritative breakpoint
+inspection, plus bounded source, memory, managed-IL, exception, and execution-target
+inspection. Cursor-addressable stdout and stderr remain available through both a
+tool and debugger resource after bursts or target termination.
+Current MCP subscriptions deliver debugger resource invalidations from engine
+events without polling.
+Read-only MCP dump sessions inspect bounded managed thread, stack, and module evidence
+after the target has terminated. Authorized MCP clients can apply compiler-produced
+C# and Visual Basic Hot Reload generations to explicitly enabled launch modules,
+including exact on-stack remapping and breakpoint rebinding. Managed data breakpoints
+and debugger visualizer attributes remain unadvertised
+until their complete runtime semantics are available. Run
+`csls debugger tui launch` or `csls debugger tui attach` for the interactive
+Hex1b source, thread, stack, arguments, locals, watch, module, breakpoint, exception,
+output, and command-palette workflow.
+
 Read the [csls documentation](https://willibrandon.github.io/csls/) for editor,
 CLI, MCP, and development guidance.
 

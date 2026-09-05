@@ -316,6 +316,10 @@ public sealed class FileBasedAppLanguageServerTests
             TestContext.CancellationToken).ConfigureAwait(false);
         Assert.DoesNotContain("warn:", standardError, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("fail:", standardError, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain(
+            "Unable to locate repository",
+            standardError,
+            StringComparison.OrdinalIgnoreCase);
     }
 
     /// <summary>

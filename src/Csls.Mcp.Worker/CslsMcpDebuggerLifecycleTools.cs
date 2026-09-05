@@ -1,0 +1,152 @@
+using Csls.Debugger.Contracts;
+using ModelContextProtocol.Server;
+using System.ComponentModel;
+
+namespace Csls.Mcp.Worker;
+
+/// <summary>
+/// Exposes explicit debugger lifecycle operations through supervised workers.
+/// </summary>
+[McpServerToolType]
+internal sealed class CslsMcpDebuggerLifecycleTools
+{
+    private readonly McpDebuggerSessionBroker _broker;
+
+    /// <summary>
+    /// Creates lifecycle tools backed by the connection-owned debugger broker.
+    /// </summary>
+    /// <param name="broker">The shared debugger-session broker.</param>
+    public CslsMcpDebuggerLifecycleTools(McpDebuggerSessionBroker broker)
+    {
+        ArgumentNullException.ThrowIfNull(broker);
+        _broker = broker;
+    }
+
+    /// <summary>
+    /// Launches a managed target in a new explicitly identified debugger session.
+    /// </summary>
+    /// <param name="program">The absolute managed executable or assembly path.</param>
+    /// <param name="workingDirectory">The absolute target working directory.</param>
+    /// <param name="cancellationToken">The MCP request cancellation token.</param>
+    /// <param name="arguments">The ordered target arguments.</param>
+    /// <param name="environment">Target environment additions and removals.</param>
+    /// <param name="runtimeHostPath">The optional absolute managed runtime host path.</param>
+    /// <param name="sourceFileMap">Build-time source prefixes mapped to local source prefixes.</param>
+    /// <param name="initialSourcePath">The optional initial source breakpoint path.</param>
+    /// <param name="initialLine">The optional one-based initial breakpoint line.</param>
+    /// <param name="suppressJitOptimizations">Whether CoreCLR should emit debuggable code for loaded managed modules.</param>
+    /// <param name="enableHotReload">Whether CoreCLR should prepare loaded modules for Hot Reload.</param>
+    /// <param name="justMyCode">Whether source stepping excludes non-user code.</param>
+    /// <param name="enableStepFiltering">Whether stepping skips properties and operators.</param>
+    /// <returns>The new explicit debugger-session identity and initial state.</returns>
+    [McpServerTool(
+        Name = "debug_session_start",
+        Title = "Start .NET debugger session",
+        Destructive = true,
+        Idempotent = false,
+        OpenWorld = true,
+        ReadOnly = false,
+        UseStructuredContent = true,
+        OutputSchemaType = typeof(McpDebugSessionInfo))]
+    [Description("Launch one managed .NET target in an isolated debugger worker and return its explicit debugSession identifier.")]
+    public Task<ModelContextProtocol.Protocol.CallToolResult> StartAsync(
+        [Description("Absolute managed executable or assembly path.")]
+        string program,
+        [Description("Absolute target working directory.")]
+        string workingDirectory,
+        CancellationToken cancellationToken,
+        [Description("Ordered target arguments.")]
+        IReadOnlyList<string>? arguments = null,
+        [Description("Target environment additions; null values remove inherited variables.")]
+        IReadOnlyDictionary<string, string?>? environment = null,
+        [Description("Optional absolute dotnet or executable host path.")]
+        string? runtimeHostPath = null,
+        [Description("Build-time source path prefixes mapped to local source path prefixes.")]
+        IReadOnlyDictionary<string, string>? sourceFileMap = null,
+        [Description("Optional absolute source path for an initial breakpoint.")]
+        string? initialSourcePath = null,
+        [Description("Optional one-based line paired with initialSourcePath.")]
+        int? initialLine = null,
+        [Description("Ask CoreCLR to suppress JIT optimizations for loaded managed modules.")]
+        bool suppressJitOptimizations = false,
+        [Description("Prepare loaded modules for compiler-driven Hot Reload.")]
+        bool enableHotReload = false,
+        [Description("Classify and step only user code by default.")]
+        bool justMyCode = true,
+        [Description("Skip managed properties and operators while stepping by default.")]
+        bool enableStepFiltering = true)
+    {
+        return McpDebuggerToolResult.RunAsync(async () =>
+        {
+            McpDebuggerLaunchValidator.ValidateLaunch(
+                program,
+                workingDirectory,
+                runtimeHostPath,
+                sourceFileMap,
+                initialSourcePath,
+                initialLine);
+            return await _broker.LaunchAsync(
+                new DebugLaunchRequest
+                {
+                    Program = Path.GetFullPath(program),
+                    WorkingDirectory = Path.GetFullPath(workingDirectory),
+                    Arguments = arguments ?? [],
+                    Environment = environment ??
+                        new Dictionary<string, string?>(StringComparer.Ordinal),
+                    RuntimeHostPath = runtimeHostPath is null
+                        ? null
+                        : Path.GetFullPath(runtimeHostPath),
+                    SourceFileMap = sourceFileMap ??
+                        new Dictionary<string, string>(StringComparer.Ordinal),
+                    SuppressJitOptimizations = suppressJitOptimizations,
+                    EnableHotReload = enableHotReload,
+                    JustMyCode = justMyCode,
+                    EnableStepFiltering = enableStepFiltering
+                },
+                initialSourcePath is null ? null : Path.GetFullPath(initialSourcePath),
+                initialLine,
+                cancellationToken).ConfigureAwait(false);
+        });
+    }
+
+    /// <summary>
+    /// Attaches a new explicitly identified debugger session to a managed process.
+    /// </summary>
+    /// <param name="processId">The positive operating-system process identifier.</param>
+    /// <param name="cancellationToken">The MCP request cancellation token.</param>
+    /// <param name="pause">Whether attachment immediately pauses the target.</param>
+    /// <param name="sourceFileMap">Build-time source prefixes mapped to local source prefixes.</param>
+    /// <returns>The new explicit debugger-session identity and initial state.</returns>
+    [McpServerTool(
+        Name = "debug_session_attach",
+        Title = "Attach .NET debugger session",
+        Destructive = true,
+        Idempotent = false,
+        OpenWorld = true,
+        ReadOnly = false,
+        UseStructuredContent = true,
+        OutputSchemaType = typeof(McpDebugSessionInfo))]
+    [Description("Attach an isolated debugger worker to one explicit managed process and return its debugSession identifier.")]
+    public Task<ModelContextProtocol.Protocol.CallToolResult> AttachAsync(
+        [Description("Positive operating-system process identifier.")]
+        int processId,
+        CancellationToken cancellationToken,
+        [Description("Pause the target immediately after attachment.")]
+        bool pause = true,
+        [Description("Build-time source path prefixes mapped to local source path prefixes.")]
+        IReadOnlyDictionary<string, string>? sourceFileMap = null)
+    {
+        return McpDebuggerToolResult.RunAsync(async () =>
+        {
+            McpDebuggerLaunchValidator.ValidateAttach(processId, sourceFileMap);
+            return await _broker.AttachAsync(
+                new DebugAttachRequest(processId)
+                {
+                    SourceFileMap = sourceFileMap ??
+                        new Dictionary<string, string>(StringComparer.Ordinal)
+                },
+                pause,
+                cancellationToken).ConfigureAwait(false);
+        });
+    }
+}

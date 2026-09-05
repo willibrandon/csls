@@ -29,27 +29,29 @@
 
   <ItemGroup>
     <CslsSuppressionScanFile Include="$(MSBuildThisFileDirectory)**/*.cs"
-                             Exclude="$(MSBuildThisFileDirectory)**/bin/**;$(MSBuildThisFileDirectory)**/obj/**;$(MSBuildThisFileDirectory)artifacts/**" />
+                             Exclude="$(MSBuildThisFileDirectory)**/bin/**;$(MSBuildThisFileDirectory)**/obj/**;$(MSBuildThisFileDirectory)**/node_modules/**;$(MSBuildThisFileDirectory)artifacts/**" />
     <CslsSuppressionScanFile Include="$(MSBuildThisFileDirectory)**/*.props"
-                             Exclude="$(MSBuildThisFileDirectory)**/bin/**;$(MSBuildThisFileDirectory)**/obj/**;$(MSBuildThisFileDirectory)artifacts/**" />
+                             Exclude="$(MSBuildThisFileDirectory)**/bin/**;$(MSBuildThisFileDirectory)**/obj/**;$(MSBuildThisFileDirectory)**/node_modules/**;$(MSBuildThisFileDirectory)artifacts/**" />
     <CslsSuppressionScanFile Include="$(MSBuildThisFileDirectory)**/*.targets"
-                             Exclude="$(MSBuildThisFileDirectory)**/bin/**;$(MSBuildThisFileDirectory)**/obj/**;$(MSBuildThisFileDirectory)artifacts/**" />
+                             Exclude="$(MSBuildThisFileDirectory)**/bin/**;$(MSBuildThisFileDirectory)**/obj/**;$(MSBuildThisFileDirectory)**/node_modules/**;$(MSBuildThisFileDirectory)artifacts/**" />
     <CslsSuppressionScanFile Include="$(MSBuildThisFileDirectory)**/.editorconfig"
-                             Exclude="$(MSBuildThisFileDirectory)**/bin/**;$(MSBuildThisFileDirectory)**/obj/**;$(MSBuildThisFileDirectory)artifacts/**" />
+                             Exclude="$(MSBuildThisFileDirectory)**/bin/**;$(MSBuildThisFileDirectory)**/obj/**;$(MSBuildThisFileDirectory)**/node_modules/**;$(MSBuildThisFileDirectory)artifacts/**" />
     <CslsSuppressionScanFile Include="$(MSBuildThisFileDirectory)**/.globalconfig"
-                             Exclude="$(MSBuildThisFileDirectory)**/bin/**;$(MSBuildThisFileDirectory)**/obj/**;$(MSBuildThisFileDirectory)artifacts/**" />
+                             Exclude="$(MSBuildThisFileDirectory)**/bin/**;$(MSBuildThisFileDirectory)**/obj/**;$(MSBuildThisFileDirectory)**/node_modules/**;$(MSBuildThisFileDirectory)artifacts/**" />
     <CslsGlobalSuppressionsFile Include="$(MSBuildThisFileDirectory)**/GlobalSuppressions.cs"
-                                Exclude="$(MSBuildThisFileDirectory)**/bin/**;$(MSBuildThisFileDirectory)**/obj/**;$(MSBuildThisFileDirectory)artifacts/**" />
+                                Exclude="$(MSBuildThisFileDirectory)**/bin/**;$(MSBuildThisFileDirectory)**/obj/**;$(MSBuildThisFileDirectory)**/node_modules/**;$(MSBuildThisFileDirectory)artifacts/**" />
     <CslsSkippedTestScanFile Include="$(MSBuildThisFileDirectory)tests/**/*.cs"
-                             Exclude="$(MSBuildThisFileDirectory)**/bin/**;$(MSBuildThisFileDirectory)**/obj/**;$(MSBuildThisFileDirectory)artifacts/**" />
+                             Exclude="$(MSBuildThisFileDirectory)**/bin/**;$(MSBuildThisFileDirectory)**/obj/**;$(MSBuildThisFileDirectory)**/node_modules/**;$(MSBuildThisFileDirectory)artifacts/**" />
   </ItemGroup>
 
   <ItemGroup Condition="'$(MSBuildProjectName)' != 'Csls.SourceGen' and
+                        '$(MSBuildProjectName)' != 'Csls.Debugger.UnixWait' and
                         Exists('$(MSBuildThisFileDirectory)src/Csls.SourceGen/Csls.SourceGen.csproj')">
     <ProjectReference Include="$(MSBuildThisFileDirectory)src/Csls.SourceGen/Csls.SourceGen.csproj"
                       OutputItemType="Analyzer"
                       ReferenceOutputAssembly="false"
-                      PrivateAssets="All" />
+                      PrivateAssets="All"
+                      GlobalPropertiesToRemove="PublishAot;NativeLib;SelfContained;RuntimeIdentifier;PublishReadyToRun;PublishSingleFile" />
   </ItemGroup>
 
   <Target Name="CslsNormalizeSdkBaselineNoWarn" BeforeTargets="CslsValidateWarningPolicy">

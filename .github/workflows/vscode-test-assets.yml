@@ -1,0 +1,87 @@
+name: VS Code test assets
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+env:
+  DOTNET_CLI_TELEMETRY_OPTOUT: 1
+  DOTNET_NOLOGO: true
+  GITHUB_TOKEN: ${{ github.token }}
+
+jobs:
+  provision:
+    name: Prepare desktop and remote editors
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 10.x
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24.x
+          cache: npm
+          cache-dependency-path: |
+            editors/vscode/package-lock.json
+            tests/vscode/package-lock.json
+
+      - name: Restore VS Code tools
+        id: tools-cache
+        uses: actions/cache/restore@v6
+        with:
+          path: |
+            artifacts/tools/vscode
+            artifacts/tools/vscode-dotnet-runtime
+            artifacts/tools/vscode-csharp
+            artifacts/tools/vscode-csdevkit
+            artifacts/tools/vscode-server
+          key: vscode-tools-shared-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/Provision-VsCode.cs', 'scripts/Provision-VsCodeRemoteServer.cs', 'scripts/ScriptSupport.cs', 'tests/vscode/package-lock.json', 'editors/vscode/package-lock.json') }}
+          restore-keys: |
+            vscode-tools-desktop-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/Provision-VsCode.cs', 'scripts/Provision-VsCodeRemoteServer.cs', 'scripts/ScriptSupport.cs', 'tests/vscode/package-lock.json', 'editors/vscode/package-lock.json') }}
+
+      - name: Provision current VS Code and extensions
+        run: dotnet run --file scripts/Provision-VsCode.cs
+
+      - name: Provision current VS Code remote server
+        run: dotnet run --file scripts/Provision-VsCodeRemoteServer.cs
+
+      - name: Save VS Code tools
+        if: steps.tools-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: |
+            artifacts/tools/vscode
+            artifacts/tools/vscode-dotnet-runtime
+            artifacts/tools/vscode-csharp
+            artifacts/tools/vscode-csdevkit
+            artifacts/tools/vscode-server
+          key: vscode-tools-shared-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/Provision-VsCode.cs', 'scripts/Provision-VsCodeRemoteServer.cs', 'scripts/ScriptSupport.cs', 'tests/vscode/package-lock.json', 'editors/vscode/package-lock.json') }}
+
+      - name: Pack VS Code test assets
+        run: >-
+          tar --create --file artifacts/vscode-test-assets.tar
+          artifacts/tools/vscode artifacts/tools/vscode-dotnet-runtime
+          artifacts/tools/vscode-csharp artifacts/tools/vscode-csdevkit
+          artifacts/tools/vscode-server
+          tests/vscode/node_modules tests/vscode/dist
+          editors/vscode/node_modules editors/vscode/dist
+
+      - name: Share VS Code test assets
+        uses: actions/upload-artifact@v7
+        with:
+          name: vscode-test-assets-${{ github.run_attempt }}
+          path: artifacts/vscode-test-assets.tar
+          compression-level: 6
+          if-no-files-found: error

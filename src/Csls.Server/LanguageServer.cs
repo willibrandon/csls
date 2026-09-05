@@ -458,6 +458,7 @@ public sealed partial class LanguageServer : ILspRpcTarget, IAsyncDisposable
 
         Volatile.Write(ref _lifecycleState, (int)ServerLifecycleState.ShuttingDown);
         Volatile.Write(ref _workspacePhase, (int)ServerWorkspacePhase.ShuttingDown);
+        BeginCodeLensRefreshStop();
         _scheduler.BeginStop();
         return Task.FromResult<object?>(null);
     }
@@ -469,6 +470,7 @@ public sealed partial class LanguageServer : ILspRpcTarget, IAsyncDisposable
         Volatile.Write(ref _workspacePhase, (int)ServerWorkspacePhase.ShuttingDown);
         _workspaceReady.TrySetCanceled();
         _interactiveWorkspaceReady.TrySetCanceled();
+        BeginCodeLensRefreshStop();
         _scheduler.BeginStop();
         _exitRequested.TrySetResult();
         return Task.CompletedTask;

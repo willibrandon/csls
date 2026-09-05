@@ -9,9 +9,14 @@ namespace Csls.Tests;
 /// </summary>
 internal sealed class XDisplaySession : IAsyncDisposable
 {
+    private const int MaximumConcurrentDisplays = 6;
+    private static readonly SemaphoreSlim s_displaySlots = new(
+        MaximumConcurrentDisplays,
+        MaximumConcurrentDisplays);
     private readonly Process _process;
     private readonly FileStream _reservation;
     private readonly string _reservationPath;
+    private int _disposed;
 
     private XDisplaySession(
         Process process,
@@ -38,6 +43,21 @@ internal sealed class XDisplaySession : IAsyncDisposable
     internal static async Task<XDisplaySession> StartAsync(
         CancellationToken cancellationToken)
     {
+        await s_displaySlots.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            return await StartCoreAsync(cancellationToken).ConfigureAwait(false);
+        }
+        catch
+        {
+            _ = s_displaySlots.Release();
+            throw;
+        }
+    }
+
+    private static async Task<XDisplaySession> StartCoreAsync(
+        CancellationToken cancellationToken)
+    {
         FileStream reservation = ReserveDisplay(out int displayNumber, out string reservationPath);
         var startInfo = new ProcessStartInfo
         {
@@ -54,6 +74,7 @@ internal sealed class XDisplaySession : IAsyncDisposable
             "-screen",
             "0",
             "1280x800x24",
+            "-noreset",
             "-nolisten",
             "tcp",
             "-ac"
@@ -137,15 +158,27 @@ internal sealed class XDisplaySession : IAsyncDisposable
     /// <inheritdoc />
     public async ValueTask DisposeAsync()
     {
-        if (!_process.HasExited)
+        if (Interlocked.Exchange(ref _disposed, 1) != 0)
         {
-            _process.Kill(entireProcessTree: true);
+            return;
         }
 
-        await _process.WaitForExitAsync(CancellationToken.None).ConfigureAwait(false);
-        _process.Dispose();
-        await _reservation.DisposeAsync().ConfigureAwait(false);
-        File.Delete(_reservationPath);
+        try
+        {
+            if (!_process.HasExited)
+            {
+                _process.Kill(entireProcessTree: true);
+            }
+
+            await _process.WaitForExitAsync(CancellationToken.None).ConfigureAwait(false);
+            _process.Dispose();
+            await _reservation.DisposeAsync().ConfigureAwait(false);
+            File.Delete(_reservationPath);
+        }
+        finally
+        {
+            _ = s_displaySlots.Release();
+        }
     }
 
     private static FileStream ReserveDisplay(

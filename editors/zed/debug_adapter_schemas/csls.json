@@ -1,0 +1,187 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": ".NET (csls)",
+  "type": "object",
+  "required": [
+    "request"
+  ],
+  "properties": {
+    "request": {
+      "type": "string",
+      "enum": [
+        "launch",
+        "attach"
+      ]
+    },
+    "program": {
+      "type": "string",
+      "description": "Absolute path to the managed executable or assembly."
+    },
+    "cwd": {
+      "type": "string",
+      "description": "Working directory for the launched application."
+    },
+    "args": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "default": []
+    },
+    "env": {
+      "type": "object",
+      "additionalProperties": {
+        "type": [
+          "string",
+          "null"
+        ]
+      }
+    },
+    "noDebug": {
+      "type": "boolean",
+      "default": false,
+      "description": "Launch the target without activating CoreCLR debugging."
+    },
+    "runtimeHost": {
+      "type": "string",
+      "description": "Absolute path to the compatible dotnet host used for a managed assembly."
+    },
+    "processId": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Operating-system process identifier for attachment."
+    },
+    "sourceFileMap": {
+      "type": "object",
+      "description": "Maps absolute build-time source prefixes to absolute local source prefixes.",
+      "additionalProperties": {
+        "type": "string"
+      }
+    },
+    "sourceLinkOptions": {
+      "type": "object",
+      "description": "Controls Source Link URL patterns, including explicit private-network authorization.",
+      "additionalProperties": {
+        "type": "object",
+        "required": [
+          "enabled"
+        ],
+        "properties": {
+          "enabled": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "symbolOptions": {
+      "type": "object",
+      "description": "Controls identity-validated Portable PDB discovery and caching.",
+      "properties": {
+        "searchPaths": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": []
+        },
+        "searchMicrosoftSymbolServer": {
+          "type": "boolean",
+          "default": false
+        },
+        "searchNuGetOrgSymbolServer": {
+          "type": "boolean",
+          "default": false
+        },
+        "cachePath": {
+          "type": "string"
+        },
+        "moduleFilter": {
+          "type": "object",
+          "properties": {
+            "mode": {
+              "type": "string",
+              "enum": [
+                "loadAllButExcluded",
+                "loadOnlyIncluded"
+              ],
+              "default": "loadAllButExcluded"
+            },
+            "excludedModules": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "default": []
+            },
+            "includedModules": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "default": []
+            },
+            "includeSymbolsNextToModules": {
+              "type": "boolean",
+              "default": true
+            }
+          }
+        }
+      }
+    },
+    "stopAtEntry": {
+      "type": "boolean",
+      "default": false
+    },
+    "justMyCode": {
+      "type": "boolean",
+      "default": true,
+      "description": "Restrict source stepping to symbol-bearing unoptimized user modules."
+    },
+    "enableStepFiltering": {
+      "type": "boolean",
+      "default": true,
+      "description": "Skip properties, CLR operators, and debugger step-filter attributes during source stepping."
+    },
+    "suppressJITOptimizations": {
+      "type": "boolean",
+      "default": false,
+      "description": "Request unoptimized JIT code for loaded managed modules during launch."
+    },
+    "enableHotReload": {
+      "type": "boolean",
+      "default": false,
+      "description": "Enable CoreCLR Edit and Continue policy for compiler-driven Hot Reload updates during launch."
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "request": {
+            "const": "launch"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "program"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "request": {
+            "const": "attach"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "processId"
+        ]
+      }
+    }
+  ]
+}

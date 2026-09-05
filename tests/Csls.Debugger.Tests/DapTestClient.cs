@@ -1,0 +1,300 @@
+using System.Buffers;
+using System.Diagnostics;
+using System.Globalization;
+using System.Text;
+using System.Text.Json;
+
+namespace Csls.Debugger.Tests;
+
+/// <summary>
+/// Drives the production DAP session through real anonymous operating-system pipes.
+/// </summary>
+internal sealed partial class DapTestClient : IAsyncDisposable
+{
+    private const int MaximumTranscriptMessages = 24;
+    private const int MaximumTranscriptPayloadBytes = 4096;
+    private readonly Lock _transcriptGate = new();
+    private readonly Queue<string> _transcript = new();
+    private readonly Queue<JsonDocument> _bufferedMessages = new();
+    private Task<JsonDocument>? _pendingMessage;
+    private ValueTask _diagnostics = ValueTask.CompletedTask;
+    private Process? _process;
+    private int _sequence;
+    private int _receivedSequence;
+    private int _disposed;
+
+    /// <summary>
+    /// Creates and starts a production DAP session connected through an operating-system pipe.
+    /// </summary>
+    private DapTestClient()
+    {
+        Diagnostics = new StringWriter(CultureInfo.InvariantCulture);
+    }
+
+    /// <summary>
+    /// Connects the test client and starts a production DAP session.
+    /// </summary>
+    /// <param name="cancellationToken">Cancels connection establishment.</param>
+    /// <returns>The connected test client.</returns>
+    internal static async Task<DapTestClient> CreateAsync(CancellationToken cancellationToken)
+    {
+        var client = new DapTestClient();
+        try
+        {
+            await client.InitializeAsync(cancellationToken).ConfigureAwait(false);
+            return client;
+        }
+        catch
+        {
+            await client.DisposeAsync().ConfigureAwait(false);
+            throw;
+        }
+    }
+
+    /// <summary>
+    /// Gets diagnostics emitted outside the DAP protocol stream.
+    /// </summary>
+    internal StringWriter Diagnostics { get; }
+
+    /// <summary>
+    /// Gets the bounded recent protocol exchange for a failed debugger operation.
+    /// </summary>
+    internal string ProtocolTranscript
+    {
+        get
+        {
+            lock (_transcriptGate)
+            {
+                return string.Join(Environment.NewLine, _transcript);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Gets the operating-system identifier of the csls adapter launcher process.
+    /// </summary>
+    internal int HostProcessId => (_process ?? throw new InvalidOperationException(
+        "The DAP test client has not been initialized.")).Id;
+
+    /// <summary>
+    /// Gets the current target identifier reported by the adapter's process event.
+    /// </summary>
+    internal int? TargetProcessId { get; private set; }
+
+    /// <summary>
+    /// Sends one framed DAP request through the client-to-adapter pipe.
+    /// </summary>
+    /// <param name="command">The request command.</param>
+    /// <param name="writeArguments">An optional arguments-object writer.</param>
+    /// <param name="cancellationToken">Cancels the pipe write.</param>
+    /// <param name="minimumPayloadBytes">Pads the JSON with trailing whitespace for hostile payload-budget tests.</param>
+    /// <returns>The assigned request sequence number.</returns>
+    internal async Task<int> SendRequestAsync(
+        string command,
+        Action<Utf8JsonWriter>? writeArguments,
+        CancellationToken cancellationToken,
+        int minimumPayloadBytes = 0)
+    {
+        Process process = _process ?? throw new InvalidOperationException(
+            "The DAP test client has not been initialized.");
+        int sequence = Interlocked.Increment(ref _sequence);
+        ArrayBufferWriter<byte> payload = new();
+        using (Utf8JsonWriter writer = new(payload))
+        {
+            writer.WriteStartObject();
+            writer.WriteNumber("seq", sequence);
+            writer.WriteString("type", "request");
+            writer.WriteString("command", command);
+            if (writeArguments is not null)
+            {
+                writer.WritePropertyName("arguments");
+                writeArguments(writer);
+            }
+
+            writer.WriteEndObject();
+        }
+
+        int padding = minimumPayloadBytes - payload.WrittenCount;
+        if (padding > 0)
+        {
+            payload.GetSpan(padding)[..padding].Fill((byte)' ');
+            payload.Advance(padding);
+        }
+
+        byte[] header = Encoding.ASCII.GetBytes($"Content-Length: {payload.WrittenCount}\r\n\r\n");
+        await process.StandardInput.BaseStream
+            .WriteAsync(header, cancellationToken).ConfigureAwait(false);
+        await process.StandardInput.BaseStream
+            .WriteAsync(payload.WrittenMemory, cancellationToken)
+            .ConfigureAwait(false);
+        await process.StandardInput.BaseStream.FlushAsync(cancellationToken).ConfigureAwait(false);
+        RecordMessage("request", payload.WrittenSpan);
+        return sequence;
+    }
+
+    /// <summary>
+    /// Sends caller-provided protocol bytes, optionally as single-byte writes.
+    /// </summary>
+    /// <param name="frame">The exact bytes to send.</param>
+    /// <param name="fragment">Whether to write and flush one byte at a time.</param>
+    /// <param name="cancellationToken">Cancels the pipe write.</param>
+    /// <returns>A task that completes after the bytes are flushed.</returns>
+    internal async Task SendFrameAsync(
+        byte[] frame,
+        bool fragment,
+        CancellationToken cancellationToken)
+    {
+        Process process = _process ?? throw new InvalidOperationException(
+            "The DAP test client has not been initialized.");
+        if (fragment)
+        {
+            foreach (byte[] singleByte in frame.Select(static value => new[] { value }))
+            {
+                await process.StandardInput.BaseStream
+                    .WriteAsync(singleByte, cancellationToken)
+                    .ConfigureAwait(false);
+                await process.StandardInput.BaseStream.FlushAsync(cancellationToken)
+                    .ConfigureAwait(false);
+            }
+
+            return;
+        }
+
+        await process.StandardInput.BaseStream.WriteAsync(frame, cancellationToken)
+            .ConfigureAwait(false);
+        await process.StandardInput.BaseStream.FlushAsync(cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Reads one framed DAP response or event from the adapter-to-client pipe.
+    /// </summary>
+    /// <param name="cancellationToken">Cancels the pipe read.</param>
+    /// <returns>An owned JSON document containing the message.</returns>
+    internal async Task<JsonDocument> ReadMessageAsync(CancellationToken cancellationToken)
+    {
+        if (_bufferedMessages.TryDequeue(out JsonDocument? buffered))
+        {
+            return buffered;
+        }
+
+        JsonDocument message = await GetPendingMessageAsync(cancellationToken)
+            .WaitAsync(cancellationToken).ConfigureAwait(false);
+        _pendingMessage = null;
+        return message;
+    }
+
+    /// <summary>
+    /// Observes the next complete real protocol message without consuming its owned frame.
+    /// </summary>
+    /// <param name="cancellationToken">Cancels observation of the pipe read.</param>
+    /// <returns>An independent copy of the next message's JSON value.</returns>
+    internal async Task<JsonElement> PeekMessageAsync(CancellationToken cancellationToken)
+    {
+        if (_bufferedMessages.Count > 0)
+        {
+            return _bufferedMessages.Peek().RootElement.Clone();
+        }
+
+        JsonDocument message = await GetPendingMessageAsync(cancellationToken)
+            .WaitAsync(cancellationToken).ConfigureAwait(false);
+        return message.RootElement.Clone();
+    }
+
+    private Task<JsonDocument> GetPendingMessageAsync(CancellationToken cancellationToken) =>
+        _pendingMessage ??= ReadProtocolMessageAsync(cancellationToken);
+
+    private async Task<JsonDocument> ReadProtocolMessageAsync(CancellationToken cancellationToken)
+    {
+        Process process = _process ?? throw new InvalidOperationException(
+            "The DAP test client has not been initialized.");
+        List<byte> header = [];
+        byte[] oneByte = new byte[1];
+        while (header.Count < 8 * 1024)
+        {
+            int count = await process.StandardOutput.BaseStream
+                .ReadAsync(oneByte, cancellationToken)
+                .ConfigureAwait(false);
+            if (count == 0)
+            {
+                await CaptureAdapterExitAsync(process).ConfigureAwait(false);
+
+                throw new EndOfStreamException(
+                    "The DAP response stream ended in a header. " +
+                    $"Adapter exit code: {(process.HasExited ? process.ExitCode : null)}. " +
+                    $"Adapter diagnostics: {Diagnostics}. " +
+                    $"Recent protocol messages:{Environment.NewLine}{ProtocolTranscript}");
+            }
+
+            header.Add(oneByte[0]);
+            if (header.Count >= 4 &&
+                header[^4] == (byte)'\r' &&
+                header[^3] == (byte)'\n' &&
+                header[^2] == (byte)'\r' &&
+                header[^1] == (byte)'\n')
+            {
+                break;
+            }
+        }
+
+        string headerText = Encoding.ASCII.GetString([.. header]);
+        string lengthText = headerText["Content-Length: ".Length..^4];
+        int payloadLength = int.Parse(lengthText, CultureInfo.InvariantCulture);
+        byte[] payload = GC.AllocateUninitializedArray<byte>(payloadLength);
+        await process.StandardOutput.BaseStream.ReadExactlyAsync(payload, cancellationToken)
+            .ConfigureAwait(false);
+        RecordMessage("received", payload);
+        var message = JsonDocument.Parse(payload);
+        try
+        {
+            int sequence = message.RootElement.GetProperty("seq").GetInt32();
+            Assert.IsGreaterThan(_receivedSequence, sequence,
+                "DAP sequence numbers must increase in transport order.");
+            _receivedSequence = sequence;
+            if (message.RootElement.GetProperty("type").GetString() == "event" &&
+                message.RootElement.GetProperty("event").GetString() == "process")
+            {
+                TargetProcessId = message.RootElement.GetProperty("body").GetProperty("systemProcessId").GetInt32();
+            }
+
+            return message;
+        }
+        catch
+        {
+            message.Dispose();
+            throw;
+        }
+    }
+
+    private void RecordMessage(string direction, ReadOnlySpan<byte> payload)
+    {
+        string text = Encoding.UTF8.GetString(
+            payload[..Math.Min(payload.Length, MaximumTranscriptPayloadBytes)]);
+        string truncation = payload.Length > MaximumTranscriptPayloadBytes
+            ? " [truncated]"
+            : string.Empty;
+        lock (_transcriptGate)
+        {
+            if (_transcript.Count == MaximumTranscriptMessages)
+            {
+                _ = _transcript.Dequeue();
+            }
+
+            _transcript.Enqueue($"{direction}: {text}{truncation}");
+        }
+    }
+
+    private async Task CaptureAdapterExitAsync(Process process)
+    {
+        try
+        {
+            await process.WaitForExitAsync(CancellationToken.None)
+                .WaitAsync(TimeSpan.FromSeconds(2), CancellationToken.None)
+                .ConfigureAwait(false);
+            await _diagnostics.ConfigureAwait(false);
+        }
+        catch (TimeoutException)
+        {
+            Debug.Assert(!process.HasExited);
+        }
+    }
+}

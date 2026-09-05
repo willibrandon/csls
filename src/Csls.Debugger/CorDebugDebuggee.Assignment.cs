@@ -1,0 +1,469 @@
+using Csls.Debugger.Contracts;
+using Csls.Debugger.Interop;
+
+namespace Csls.Debugger;
+
+/// <summary>
+/// Applies generation-safe writes to managed locals, arguments, fields, and arrays.
+/// </summary>
+internal sealed partial class CorDebugDebuggee
+{
+    /// <summary>
+    /// Assigns a side-effect-free value plan to one writable source expression.
+    /// </summary>
+    /// <param name="frameId">The logical managed frame identifier for the visible stop.</param>
+    /// <param name="target">The compiler-lowered writable target.</param>
+    /// <param name="value">The compiler-lowered value expression.</param>
+    /// <param name="targetExpression">The canonical source target expression.</param>
+    /// <param name="resultName">The debugger-facing result name.</param>
+    /// <param name="generation">The current stopped generation.</param>
+    /// <param name="mutations">The session-owned revision advanced before native mutation attempts.</param>
+    /// <returns>The written value and its current expansion handles.</returns>
+    internal DebugVariableInfo SetExpression(
+        int frameId,
+        DebugExpressionPlan target,
+        DebugExpressionPlan value,
+        string targetExpression,
+        string resultName,
+        DebugStopGeneration generation,
+        ManagedVariableMutationState mutations)
+    {
+        ManagedFrameHandle frame = GetFrame(frameId, generation);
+        ManagedExpressionPlanValidator.Validate(target, frame.ExpressionLanguage);
+        ManagedExpressionPlanValidator.Validate(value, frame.ExpressionLanguage);
+        if (value.Root.Kind is DebugExpressionNodeKind.Invocation or
+            DebugExpressionNodeKind.ObjectCreation)
+        {
+            throw new InvalidOperationException(
+                "Assignment values cannot execute target code.");
+        }
+
+        ManagedExpressionValue source = EvaluateNode(
+            frame,
+            value,
+            value.Root,
+            generation);
+        return SetExpressionCore(
+            frame,
+            target,
+            source,
+            targetExpression,
+            resultName,
+            generation,
+            value.Language,
+            value.Root.Kind == DebugExpressionNodeKind.Literal,
+            mutations);
+    }
+
+    /// <summary>
+    /// Validates string assignment before creating a materialization plan with the original source declaration.
+    /// </summary>
+    /// <param name="frameId">The logical managed frame identifier for the visible stop.</param>
+    /// <param name="target">The compiler-lowered writable destination.</param>
+    /// <param name="value">The compiler-lowered value expression.</param>
+    /// <param name="targetExpression">The source destination expression.</param>
+    /// <param name="generation">The current stopped generation.</param>
+    /// <returns>The validated string plan and declaration, or null when direct assignment is sufficient.</returns>
+    internal ManagedStringAssignmentPlan? CreateStringMaterializationPlan(
+        int frameId,
+        DebugExpressionPlan target,
+        DebugExpressionPlan value,
+        string targetExpression,
+        DebugStopGeneration generation)
+    {
+        ManagedFrameHandle frame = GetFrame(frameId, generation);
+        ManagedExpressionPlanValidator.Validate(value, frame.ExpressionLanguage);
+        ManagedExpressionValue source = EvaluateNode(
+            frame,
+            value,
+            value.Root,
+            generation);
+        if (source is not
+            {
+                HasScalar: true,
+                Scalar: string text,
+                RuntimeValueReference: <= 0
+            })
+        {
+            return null;
+        }
+
+        ManagedExpressionPlanValidator.Validate(target, frame.ExpressionLanguage);
+        nint thread = GetThread(frame.ThreadId);
+        try
+        {
+            source = source with
+            {
+                DeclaredType = source.DeclaredType ?? _boundTypes.BindName("string", DebugExpressionLanguage.CSharp, thread)
+            };
+        }
+        finally
+        {
+            _ = ComAbi.Release(thread);
+        }
+
+        using ManagedAssignmentTarget destination = ResolveAssignmentTarget(
+            frame, target, target.Root, generation, targetExpression);
+        if (destination.Origin is null)
+        {
+            throw new InvalidOperationException("The assignment has no recoverable physical storage.");
+        }
+
+        ValidateReferenceConversion(destination.Pointer, source, destination.DeclaredType, destination.StorageType, frame.ThreadId);
+        var plan = new DebugExpressionPlan(DebuggerEvaluatorProtocol.CurrentPlanVersion, value.Language,
+            new DebugExpressionNode(DebugExpressionNodeKind.Literal, DebugExpressionOperator.None, text, "string", []));
+        return new ManagedStringAssignmentPlan(plan, source.DeclaredType);
+    }
+
+    /// <summary>
+    /// Assigns a retained function-evaluation result to a freshly reacquired target.
+    /// </summary>
+    /// <param name="frameId">The logical managed frame reacquired in the replacement generation.</param>
+    /// <param name="target">The compiler-lowered writable target.</param>
+    /// <param name="evaluation">The retained target-code result.</param>
+    /// <param name="targetExpression">The canonical source target expression.</param>
+    /// <param name="resultName">The debugger-facing result name.</param>
+    /// <param name="mutations">The session-owned revision advanced before native mutation attempts.</param>
+    /// <returns>The written value and its current expansion handles.</returns>
+    internal DebugVariableInfo SetExpressionFromEvaluation(
+        int frameId,
+        DebugExpressionPlan target,
+        ManagedFunctionEvaluationResult evaluation,
+        string targetExpression,
+        string resultName,
+        ManagedVariableMutationState mutations)
+    {
+        if (evaluation.RuntimeValueReference <= 0 ||
+            !_values.TryGetValue(
+                evaluation.RuntimeValueReference,
+                out ManagedValueHandle? retained) ||
+            retained.Generation != evaluation.Generation)
+        {
+            throw new InvalidOperationException(
+                "The assignment evaluation did not produce a retained runtime value.");
+        }
+
+        ValidateValueLifetime(retained);
+        ManagedFrameHandle frame = GetFrame(frameId, evaluation.Generation);
+        ManagedExpressionPlanValidator.Validate(target, frame.ExpressionLanguage);
+        ManagedExpressionValue source = ManagedExpressionValueFactory.FromVariable(
+            new DebugVariableInfo(
+                "$result",
+                evaluation.Result.Result,
+                evaluation.Result.Type,
+                evaluation.Result.VariablesReference,
+                evaluation.Result.MemoryReference,
+                EvaluateName: null),
+            evaluation.RuntimeValueReference,
+            FormatRuntimeValuePair(
+                retained.Pointer, debuggerDisplayDepth: 0, retained.TupleCustomTypeInfo).Runtime) with
+        {
+            DeclaredType = evaluation.DeclaredType
+        };
+        return SetExpressionCore(
+            frame,
+            target,
+            source,
+            targetExpression,
+            resultName,
+            evaluation.Generation,
+            target.Language,
+            sourceIsContextualLiteral: false,
+            mutations);
+    }
+
+    private DebugVariableInfo SetExpressionCore(
+        ManagedFrameHandle frame,
+        DebugExpressionPlan target,
+        ManagedExpressionValue source,
+        string targetExpression,
+        string resultName,
+        DebugStopGeneration generation,
+        DebugExpressionLanguage language,
+        bool sourceIsContextualLiteral,
+        ManagedVariableMutationState mutations)
+    {
+        using ManagedAssignmentTarget destination = ResolveAssignmentTarget(
+            frame,
+            target,
+            target.Root,
+            generation,
+            targetExpression);
+        if (destination.Origin is null)
+        {
+            throw new InvalidOperationException("The assignment has no recoverable physical storage.");
+        }
+
+        AssignManagedValue(
+            destination.Pointer,
+            source,
+            language,
+            sourceIsContextualLiteral,
+            mutations,
+            destination.DeclaredType,
+            destination.StorageType,
+            frame.ThreadId);
+        using var refreshed = ManagedAssignmentTarget.TakeOwnership(
+            (ReacquireAssignmentValue(frame, destination.Origin), destination.TupleCustomTypeInfo,
+                destination.Origin, destination.DeclaredType), destination.EvaluateName, destination.StorageType);
+        ManagedValueDisplay display = FormatRuntimeValue(refreshed.Pointer, refreshed.TupleCustomTypeInfo);
+        ManagedValueReferences references = RetainValue(
+            refreshed.Pointer,
+            generation,
+            destination.EvaluateName,
+            frame.Id,
+            tupleCustomTypeInfo: destination.TupleCustomTypeInfo,
+            origin: destination.Origin);
+        return new DebugVariableInfo(
+            resultName,
+            display.Value,
+            display.Type,
+            references.VariablesReference,
+            references.MemoryReference,
+            destination.EvaluateName);
+    }
+
+    private ManagedAssignmentTarget ResolveAssignmentTarget(
+        ManagedFrameHandle frame,
+        DebugExpressionPlan plan,
+        DebugExpressionNode node,
+        DebugStopGeneration generation,
+        string targetExpression) => node.Kind switch
+        {
+            DebugExpressionNodeKind.Identifier => ResolveFrameAssignmentTarget(
+                frame,
+                node.Text!,
+                targetExpression),
+            DebugExpressionNodeKind.MemberAccess => ResolveFieldAssignmentTarget(
+                frame,
+                plan,
+                node,
+                generation),
+            DebugExpressionNodeKind.ElementAccess => ResolveArrayAssignmentTarget(
+                frame,
+                plan,
+                node,
+                generation),
+            DebugExpressionNodeKind.This => throw new InvalidOperationException(
+                "The current instance receiver cannot be assigned."),
+            _ => throw new InvalidOperationException(
+                $"Expression node {node.Kind} is not a writable managed value.")
+        };
+
+    private ManagedAssignmentTarget ResolveFrameAssignmentTarget(
+        ManagedFrameHandle frame,
+        string name,
+        string evaluateName) => ManagedAssignmentTarget.TakeOwnership(
+            ResolveFrameValue(frame, name, allowInstanceReceiver: false), evaluateName);
+
+    private (
+        nint Value,
+        ManagedTupleCustomTypeInfo? TupleCustomTypeInfo,
+        ManagedValueOrigin? Origin,
+        ManagedBoundType? DeclaredType) ResolveFrameValue(
+        ManagedFrameHandle frame,
+        string name,
+        bool allowInstanceReceiver)
+    {
+        StringComparison comparison = frame.ExpressionLanguage ==
+            DebugExpressionLanguage.VisualBasic
+                ? StringComparison.OrdinalIgnoreCase
+                : StringComparison.Ordinal;
+        IReadOnlyDictionary<int, ManagedSymbolVariable> localNames = GetVariableNames(
+            frame,
+            ManagedScopeKind.Locals);
+        int? localIndex = FindVariableIndex(localNames, name, comparison);
+        if (localIndex is not null)
+        {
+            ManagedValueOrigin? origin = frame.CreateValueOrigin(ManagedScopeKind.Locals, localIndex.Value);
+            ManagedTupleCustomTypeInfo? tupleCustomTypeInfo = localNames[localIndex.Value].TupleCustomTypeInfo;
+            ManagedBoundType declaredType = ResolveFrameDeclaredType(frame, ManagedScopeKind.Locals, localIndex.Value);
+            return (
+                GetFrameAssignmentTarget(
+                    frame.Pointer, ManagedScopeKind.Locals, localIndex.Value),
+                tupleCustomTypeInfo,
+                origin,
+                declaredType);
+        }
+
+        IReadOnlyDictionary<int, ManagedSymbolVariable> argumentNames = GetVariableNames(
+            frame,
+            ManagedScopeKind.Arguments);
+        int? argumentIndex = FindVariableIndex(argumentNames, name, comparison);
+        if (argumentIndex is not null)
+        {
+            if (!allowInstanceReceiver &&
+                (string.Equals(name, "this", comparison) ||
+                string.Equals(name, "Me", comparison)))
+            {
+                throw new InvalidOperationException(
+                    "The current instance receiver cannot be assigned.");
+            }
+
+            ManagedValueOrigin? origin = frame.CreateValueOrigin(ManagedScopeKind.Arguments, argumentIndex.Value);
+            ManagedTupleCustomTypeInfo? tupleCustomTypeInfo = argumentNames[argumentIndex.Value].TupleCustomTypeInfo;
+            ManagedBoundType declaredType = ResolveFrameDeclaredType(frame, ManagedScopeKind.Arguments, argumentIndex.Value);
+            return (
+                GetFrameAssignmentTarget(
+                    frame.Pointer, ManagedScopeKind.Arguments, argumentIndex.Value),
+                tupleCustomTypeInfo,
+                origin,
+                declaredType);
+        }
+
+        throw new InvalidOperationException(
+            $"The assignment target '{name}' is unavailable in the selected frame.");
+    }
+
+    private ManagedBoundType ResolveFrameDeclaredType(ManagedFrameHandle frame, ManagedScopeKind scope, int index)
+    {
+        nint thread = GetThread(frame.ThreadId);
+        try
+        {
+            return _frameTypes.Resolve(frame, scope, index, thread);
+        }
+        finally
+        {
+            _ = ComAbi.Release(thread);
+        }
+    }
+
+    private unsafe nint ReacquireAssignmentValue(ManagedFrameHandle frame, ManagedValueOrigin? origin, int depth = 0)
+    {
+        if (depth >= 128)
+        {
+            throw new InvalidOperationException("The assignment storage path exceeds 128 levels.");
+        }
+
+        if (origin is ManagedFrameValueOrigin slot)
+        {
+            if (slot.ThreadId != frame.ThreadId || slot.StackStart != frame.StackStart ||
+                slot.StackEnd != frame.StackEnd || slot.ModuleId != frame.ModuleId || slot.MethodToken != frame.MethodToken)
+            {
+                throw new InvalidOperationException("The assignment slot no longer belongs to the selected frame.");
+            }
+
+            return GetFrameAssignmentTarget(frame.Pointer, slot.ScopeKind, slot.Index);
+        }
+
+        if (origin is ManagedHeapValueOrigin heap)
+        {
+            if (!_values.TryGetValue(heap.ValueReference, out ManagedValueHandle? owner))
+            {
+                throw new InvalidOperationException("The assignment receiver is stale.");
+            }
+
+            ValidateValueLifetime(owner);
+            nint handle = CreateFunctionEvaluationHandle(owner.Pointer);
+            try
+            {
+                return DereferenceValue(handle);
+            }
+            finally
+            {
+                ReleaseFunctionEvaluationHandle(handle);
+            }
+        }
+
+        ManagedValueOrigin parentOrigin = origin switch
+        {
+            ManagedFieldValueOrigin field => field.Parent,
+            ManagedArrayElementValueOrigin element => element.Parent,
+            _ => throw new InvalidOperationException("The assignment has no recoverable physical storage.")
+        };
+        nint parent = ReacquireAssignmentValue(frame, parentOrigin, depth + 1);
+        nint dereferenced = 0;
+        nint instance = 0;
+        nint runtimeClass = 0;
+        nint result = 0;
+        try
+        {
+            dereferenced = DereferenceValue(parent);
+            if (origin is ManagedFieldValueOrigin field)
+            {
+                CorDebugLoadedModule module = _sourceBreakpoints.FindModule(field.ModuleId)
+                    ?? throw new InvalidOperationException("The assignment field's module has unloaded.");
+                runtimeClass = GetModuleClass(module.Pointer, field.TypeToken);
+                instance = ComAbi.QueryInterface(dereferenced, ICorDebugObjectValueAbi.InterfaceId);
+                result = GetObjectFieldValue(instance, runtimeClass, field.FieldToken);
+            }
+            else if (origin is ManagedArrayElementValueOrigin element)
+            {
+                instance = ComAbi.QueryInterface(dereferenced, ICorDebugArrayValueAbi.InterfaceId);
+                nint* resultAddress = &result;
+                CorDebugHResult.ThrowIfFailed(new ICorDebugArrayValueAbi(instance).GetElementAtPosition(
+                    checked((uint)element.Index), (nint)resultAddress), "ICorDebugArrayValue.GetElementAtPosition");
+                result = RequirePointer(Volatile.Read(ref *resultAddress), "ICorDebugArrayValue.GetElementAtPosition");
+            }
+
+            return result;
+        }
+        catch
+        {
+            ReleaseFunctionEvaluationPointer(result);
+            throw;
+        }
+        finally
+        {
+            ReleaseFunctionEvaluationPointer(runtimeClass);
+            ReleaseFunctionEvaluationPointer(instance);
+            ReleaseFunctionEvaluationPointer(dereferenced);
+            ReleaseFunctionEvaluationPointer(parent);
+        }
+    }
+
+    private static int? FindVariableIndex(
+        IReadOnlyDictionary<int, ManagedSymbolVariable> names,
+        string name,
+        StringComparison comparison)
+    {
+        int? result = null;
+        foreach ((int index, ManagedSymbolVariable candidate) in names)
+        {
+            if (!string.Equals(candidate.Name, name, comparison))
+            {
+                continue;
+            }
+
+            if (result is not null)
+            {
+                throw new InvalidOperationException(
+                    $"Variable name '{name}' is ambiguous in the selected frame.");
+            }
+
+            result = index;
+        }
+
+        return result;
+    }
+
+    private static unsafe nint GetFrameAssignmentTarget(
+        nint frame,
+        ManagedScopeKind kind,
+        int index)
+    {
+        nint ilFrame = 0;
+        nint value = 0;
+        try
+        {
+            ilFrame = ComAbi.QueryInterface(frame, ICorDebugILFrameAbi.InterfaceId);
+            nint* valueAddress = &value;
+            var api = new ICorDebugILFrameAbi(ilFrame);
+            int result = kind == ManagedScopeKind.Arguments
+                ? api.GetArgument(checked((uint)index), (nint)valueAddress)
+                : api.GetLocalVariable(checked((uint)index), (nint)valueAddress);
+            CorDebugHResult.ThrowIfFailed(result, $"ICorDebugILFrame.Get{kind}");
+            value = RequirePointer(
+                Volatile.Read(ref *valueAddress),
+                $"ICorDebugILFrame.Get{kind}");
+            return value;
+        }
+        finally
+        {
+            if (ilFrame != 0)
+            {
+                _ = ComAbi.Release(ilFrame);
+            }
+        }
+    }
+}

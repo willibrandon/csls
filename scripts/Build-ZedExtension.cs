@@ -111,6 +111,9 @@ try
         Path.Join(extensionRoot, "languages"),
         Path.Join(packagePath, "languages"));
     CopyDirectory(
+        Path.Join(extensionRoot, "debug_adapter_schemas"),
+        Path.Join(packagePath, "debug_adapter_schemas"));
+    CopyDirectory(
         Path.Join(extensionRoot, "THIRD-PARTY-LICENSES"),
         Path.Join(packagePath, "THIRD-PARTY-LICENSES"));
     File.Copy(wasmPath, Path.Join(packagePath, "extension.wasm"));
@@ -371,6 +374,7 @@ static void VerifyPackage(string packagePath, string version)
     if (!manifest.Contains("id = \"csls\"", StringComparison.Ordinal) ||
         !manifest.Contains($"version = \"{version}\"", StringComparison.Ordinal) ||
         !File.Exists(Path.Join(packagePath, "extension.wasm")) ||
+        !File.Exists(Path.Join(packagePath, "debug_adapter_schemas", "csls.json")) ||
         !File.Exists(Path.Join(packagePath, "grammars", "c_sharp.wasm")) ||
         !File.Exists(Path.Join(packagePath, "grammars", "xml.wasm")) ||
         !File.Exists(Path.Join(

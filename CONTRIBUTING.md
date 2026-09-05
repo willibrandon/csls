@@ -17,6 +17,10 @@ never use `--no-build`. Product tests exercise real processes, streams, sockets,
 files, workspaces, SDKs, and editor integrations. Mocking libraries and hand-written
 substitutes for production services are prohibited.
 
+Building the debugger test project also builds its portable C#, Visual Basic, and
+F# fixtures in Debug and Release. CI shares these outputs across platform jobs.
+Fixtures with live Source Link endpoints or Windows PDBs are built on the test host.
+
 `dotnet test` succeeds on a clean checkout without separately provisioned editor
 or parity-oracle fixtures. Tests for unavailable optional integrations are reported
 as skipped and include the exact provisioning command in their result message.
@@ -28,12 +32,13 @@ an opening tag, one text line, and a closing tag.
 Repository automation is implemented only as .NET file-based C# apps under
 `scripts/`. Shell, PowerShell, batch, and command scripts are not used.
 
-The GitHub Actions matrix runs the complete suite on x64 and arm64 Windows,
-Linux, and macOS runners. It also validates the Windows x86, Linux musl x64,
-and Linux musl arm64 tool packages. Every Native AOT launcher is checked from
-its ILC size report by Dotsider, and CodeQL findings fail the analysis job. The
-development container installs every required editor oracle and build dependency
-through
+The GitHub Actions matrix runs the debugger engine and protocol suite on x64 and
+arm64 Windows, Linux, and macOS runners. Language-server, terminal-editor, and
+graphical-editor suites are sharded on Linux, while the release workflow also
+validates the Windows x86, Linux musl x64, and Linux musl arm64 tool packages.
+Every Native AOT launcher is checked from its ILC size report by Dotsider, and
+CodeQL findings fail the analysis job. The development container installs every
+required editor oracle and build dependency through
 `scripts/Initialize-DevContainer.cs`; its exported image is scanned by Picket.
 
 Provision the real editor and parity oracles locally with:

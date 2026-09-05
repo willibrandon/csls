@@ -94,7 +94,13 @@ try
         ?? throw new InvalidOperationException($"The output path has no parent: {outputPath}");
     Directory.CreateDirectory(outputDirectory);
     await RunNpmAsync(
-        ["ci", "--ignore-scripts"],
+        [
+            "ci",
+            "--ignore-scripts",
+            "--no-audit",
+            "--no-fund",
+            "--prefer-offline"
+        ],
         extensionSource).ConfigureAwait(false);
     await RunNpmAsync(
         ["run", "check"],
