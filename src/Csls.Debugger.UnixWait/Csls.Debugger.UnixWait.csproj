@@ -11,6 +11,48 @@
     <InvariantGlobalization>true</InvariantGlobalization>
   </PropertyGroup>
 
+  <PropertyGroup Condition="$(RuntimeIdentifier.StartsWith('osx-'))">
+    <DefineConstants>$(DefineConstants);CSLS_MACHO</DefineConstants>
+  </PropertyGroup>
+
+  <Target Name="_CompileCslsUnixWaitMachOInterpose"
+          DependsOnTargets="SetupOSSpecificProps"
+          Inputs="$(MSBuildProjectFullPath);$(MSBuildProjectDirectory)/UnixWaitInterpose.c"
+          Outputs="$(NativeIntermediateOutputPath)UnixWaitInterpose.o"
+          Condition="'$(_targetOS)' == 'osx'">
+    <MakeDir Directories="$(NativeIntermediateOutputPath)" />
+    <Exec Command="&quot;$(CppLinker)&quot; -c -std=c11 -Wall -Wextra -Werror -fvisibility=hidden --target=$(TargetTriple) &quot;$(MSBuildProjectDirectory)/UnixWaitInterpose.c&quot; -o &quot;$(NativeIntermediateOutputPath)UnixWaitInterpose.o&quot;" />
+    <ItemGroup>
+      <FileWrites Include="$(NativeIntermediateOutputPath)UnixWaitInterpose.o" />
+    </ItemGroup>
+  </Target>
+
+  <Target Name="_ConfigureCslsUnixWaitMachOInterpose"
+          BeforeTargets="LinkNative"
+          DependsOnTargets="_CompileCslsUnixWaitMachOInterpose"
+          Condition="'$(_targetOS)' == 'osx'">
+    <ItemGroup>
+      <NativeLibrary Include="$(NativeIntermediateOutputPath)UnixWaitInterpose.o" />
+      <LinkerArg Include="&quot;$(NativeIntermediateOutputPath)UnixWaitInterpose.o&quot;" />
+    </ItemGroup>
+  </Target>
+
+  <Target Name="_ConfigureCslsUnixWaitElfExports"
+          BeforeTargets="LinkNative"
+          Condition="'$(_targetOS)' == 'linux'">
+    <!-- ILC still generates its export roots, but its named version node cannot
+         interpose versioned libc imports. Use an anonymous ELF node at link time.
+         Register the script as a real native input so export edits relink. -->
+    <PropertyGroup>
+      <ExportsFile />
+      <_CslsUnixWaitElfExports>$([MSBuild]::NormalizePath('$(MSBuildProjectDirectory)', 'UnixWait.exports'))</_CslsUnixWaitElfExports>
+    </PropertyGroup>
+    <ItemGroup>
+      <NativeLibrary Include="$(_CslsUnixWaitElfExports)" />
+      <LinkerArg Include="&quot;$(_CslsUnixWaitElfExports)&quot;" />
+    </ItemGroup>
+  </Target>
+
   <Target Name="ValidateCslsUnixWaitPublish" BeforeTargets="Publish">
     <Error Condition="'$(PublishAot)' != 'true'"
            Text="Csls.Debugger.UnixWait must publish with PublishAot=true; current value is '$(PublishAot)'." />

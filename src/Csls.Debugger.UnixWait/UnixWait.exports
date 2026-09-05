@@ -1,0 +1,14 @@
+/* Keep waitpid unversioned so libc consumers bind to the preloaded interposer. */
+VERSION
+{
+    {
+        global:
+            DotNetRuntimeDebugHeader;
+            csls_waitpid_initialize;
+            csls_waitpid_track;
+            csls_waitpid_try_get_exit_code;
+            csls_waitpid_wait;
+            waitpid;
+        local: *;
+    };
+}

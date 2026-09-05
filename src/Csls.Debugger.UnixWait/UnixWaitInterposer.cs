@@ -76,20 +76,42 @@ internal static partial class UnixWaitInterposer
     }
 
     /// <summary>
-    /// Interposes waitpid and records status without changing libc behavior.
+    /// Preserves the tracked child's status for native waitpid consumers.
     /// </summary>
     /// <param name="processId">The child selection accepted by waitpid.</param>
     /// <param name="status">Receives the native wait status.</param>
     /// <param name="options">The native wait options.</param>
     /// <returns>The result returned by libc waitpid.</returns>
     [UnmanagedCallersOnly(
+#if CSLS_MACHO
+        EntryPoint = "csls_waitpid_interposed",
+#else
         EntryPoint = "waitpid",
+#endif
         CallConvs = [typeof(CallConvCdecl)])]
-    internal static unsafe int WaitProcess(int processId, int* status, int options)
+    internal static unsafe int WaitProcess(int processId, int* status, int options) =>
+        WaitProcessView(processId, status, options, nonCancelable: false);
+
+#if CSLS_MACHO
+    /// <summary>
+    /// Preserves retained status for macOS runtime consumers using noncancelable waits.
+    /// </summary>
+    /// <param name="processId">The native child selection.</param>
+    /// <param name="status">Receives the native wait status.</param>
+    /// <param name="options">The native wait options.</param>
+    /// <returns>The selected child's retained status or the native wait result.</returns>
+    [UnmanagedCallersOnly(
+        EntryPoint = "csls_waitpid_interposed_nocancel",
+        CallConvs = [typeof(CallConvCdecl)])]
+    internal static unsafe int WaitNonCancelableProcess(int processId, int* status, int options) =>
+        WaitProcessView(processId, status, options, nonCancelable: true);
+#endif
+
+    private static unsafe int WaitProcessView(int processId, int* status, int options, bool nonCancelable)
     {
         if (processId != Volatile.Read(ref s_processId))
         {
-            return WaitProcessCore(processId, status, options);
+            return WaitProcessCore(processId, status, options, nonCancelable);
         }
 
         if ((options & NoHang) == 0)
@@ -124,11 +146,13 @@ internal static partial class UnixWaitInterposer
         EntryPoint = "csls_waitpid_wait",
         CallConvs = [typeof(CallConvCdecl)])]
     internal static unsafe int WaitTrackedProcess(int processId, int* status, int options) =>
-        WaitProcessCore(processId, status, options);
+        WaitProcessCore(processId, status, options, nonCancelable: false);
 
-    private static unsafe int WaitProcessCore(int processId, int* status, int options)
+    private static unsafe int WaitProcessCore(int processId, int* status, int options, bool nonCancelable)
     {
-        int result = WaitProcessNative(processId, status, options);
+        int result = nonCancelable && OperatingSystem.IsMacOS()
+            ? WaitNonCancelableProcessNative(processId, status, options, nint.Zero)
+            : WaitProcessNative(processId, status, options, nint.Zero);
         int error = Marshal.GetLastPInvokeError();
         if (result > 0 && status is not null && result == Volatile.Read(ref s_processId))
         {
@@ -161,10 +185,21 @@ internal static partial class UnixWaitInterposer
         return terminationSignal == StoppedSignal ? -1 : 128 + terminationSignal;
     }
 
-    [LibraryImport("libc", EntryPoint = "waitpid", SetLastError = true)]
+    // A distinct libc entry point avoids dyld redirecting a dynamically resolved
+    // owner wait back into the interposed consumer view.
+    [LibraryImport("libc", EntryPoint = "wait4", SetLastError = true)]
     [DefaultDllImportSearchPaths(DllImportSearchPath.SafeDirectories)]
     private static unsafe partial int WaitProcessNative(
         int processId,
         int* status,
-        int options);
+        int options,
+        nint resourceUsage);
+
+    [LibraryImport("libc", EntryPoint = "wait4$NOCANCEL", SetLastError = true)]
+    [DefaultDllImportSearchPaths(DllImportSearchPath.SafeDirectories)]
+    private static unsafe partial int WaitNonCancelableProcessNative(
+        int processId,
+        int* status,
+        int options,
+        nint resourceUsage);
 }

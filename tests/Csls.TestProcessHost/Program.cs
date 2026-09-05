@@ -3,6 +3,12 @@ using System.Diagnostics;
 using System.Globalization;
 using System.Text;
 
+if (args is ["--unix-wait-status-fixture", string waitedExitCode])
+{
+    return UnixWaitStatusFixture.Run(
+        int.Parse(waitedExitCode, NumberStyles.Integer, CultureInfo.InvariantCulture));
+}
+
 if (args is ["--debugger-fixture", string fixturePath])
 {
     return DebuggerFixture.WaitForSignal(

@@ -211,6 +211,15 @@ wait status, then receives that same terminal status. This avoids the `ECHILD`
 publication race without blocking the runtime poller or fabricating an exit code.
 Missing or unloadable interposer assets prevent the worker from starting.
 
+Linux exposes `waitpid` through an anonymous ELF export node so versioned libc
+imports bind to the interposer. macOS uses a Mach-O `__interpose` record to redirect
+native consumers. The sole owner calls libc `wait4`, a distinct entry point that
+cannot redirect back into the interposed `waitpid` view. The
+Mach-O record is a small native data declaration linked into the NativeAOT library;
+child ownership, synchronization, and status decoding remain in C#. Its object is
+compiled with the SDK-selected target triple, and both platform binding inputs
+participate in incremental native linking.
+
 ICorDebug projections are generated from the current public IDL and checked into
 the repository for offline builds. Source-generated COM and `LibraryImport` are
 used where supported; ABI-sensitive interfaces use generated unmanaged vtables.
