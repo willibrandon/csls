@@ -98,7 +98,7 @@ internal sealed partial class CorDebugDebuggee :
             this,
             _tupleTypeShape,
             FormatTupleElementType);
-        _objectExpander = new ManagedObjectExpander(this, _tuplePresenter);
+        _objectExpander = new ManagedObjectExpander(this, _tuplePresenter, _tupleTypeShape);
         _debuggerDisplayFormatter = new ManagedDebuggerDisplayFormatter(this);
         _debuggerTypeProxyResolver = new ManagedDebuggerTypeProxyResolver(sourceBreakpoints);
         _debuggerTypeProxyPropertyResolver =

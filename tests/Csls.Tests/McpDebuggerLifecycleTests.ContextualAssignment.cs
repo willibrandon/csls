@@ -5,31 +5,34 @@ using System.Text.Json;
 namespace Csls.Tests;
 
 /// <summary>
-/// Verifies authorized default assignment through the real MCP broker and debugger worker.
+/// Verifies authorized contextual assignment through the real MCP broker and debugger worker.
 /// </summary>
 public sealed partial class McpDebuggerLifecycleTests
 {
     /// <summary>
-    /// Requires control authorization and publishes a generation-preserving change for a contextual default.
+    /// Requires control authorization and publishes a generation-preserving change for a contextual literal.
     /// </summary>
     /// <param name="setVariable">Whether to assign through the named locals container.</param>
+    /// <param name="nullable">Whether to clear a nullable with null instead of a tuple with default.</param>
     [TestMethod]
-    [DataRow(false)]
-    [DataRow(true)]
+    [DataRow(false, false)]
+    [DataRow(true, false)]
+    [DataRow(false, true)]
+    [DataRow(true, true)]
     [Timeout(60000, CooperativeCancellation = true)]
     [OSCondition(ConditionMode.Exclude, OperatingSystems.Windows)]
-    public async Task McpDefaultAssignmentPreservesGenerationAndRequiresControl(bool setVariable)
+    public async Task McpContextualAssignmentPreservesGenerationAndRequiresControl(bool setVariable, bool nullable)
     {
         string repositoryRoot = EditorToolResolver.FindRepositoryRoot();
         string sourcePath = Path.Join(repositoryRoot, "tests", "Csls.TestProcessHost", "DebuggerFixture.cs");
         int line = (await File.ReadAllLinesAsync(sourcePath, TestContext.CancellationToken).ConfigureAwait(false))
             .Select(static (text, index) => (Text: text, Line: index + 1))
             .Single(static candidate => candidate.Text.Contains("Console.Write(announcement);", StringComparison.Ordinal)).Line;
-        DirectoryInfo directory = Directory.CreateTempSubdirectory("csls-mcp-default-assignment-");
+        DirectoryInfo directory = Directory.CreateTempSubdirectory("csls-mcp-contextual-assignment-");
         try
         {
-            await ExerciseMcpDefaultAssignmentAsync(repositoryRoot, sourcePath, line, directory.FullName,
-                setVariable, TestContext.CancellationToken).ConfigureAwait(false);
+            await ExerciseMcpContextualAssignmentAsync(repositoryRoot, sourcePath, line, directory.FullName,
+                setVariable, nullable, TestContext.CancellationToken).ConfigureAwait(false);
         }
         finally
         {
@@ -37,8 +40,8 @@ public sealed partial class McpDebuggerLifecycleTests
         }
     }
 
-    private static async Task ExerciseMcpDefaultAssignmentAsync(
-        string repositoryRoot, string sourcePath, int line, string directory, bool setVariable,
+    private static async Task ExerciseMcpContextualAssignmentAsync(
+        string repositoryRoot, string sourcePath, int line, string directory, bool setVariable, bool nullable,
         CancellationToken cancellationToken)
     {
         McpProcessSession mcp = await StartMcpAsync(cancellationToken).ConfigureAwait(false);
@@ -58,28 +61,32 @@ public sealed partial class McpDebuggerLifecycleTests
         int localsReference = await GetMcpStructAssignmentLocalsAsync(
             client, session, generation, frameId, cancellationToken).ConfigureAwait(false);
         string tool = setVariable ? "debug_variable_set" : "debug_expression_set";
+        string destination = nullable ? "localNullable" : "localTuple";
+        string expectedType = nullable ? "int?" : "(int Number, string Text)";
+        string expectedValue = nullable ? "null" : "(0, null)";
         var arguments = new Dictionary<string, object?>
         {
             ["debugSession"] = session,
             ["stopGeneration"] = generation,
-            ["value"] = "default"
+            ["value"] = nullable ? "null" : "default"
         };
         if (setVariable)
         {
             arguments["variablesReference"] = localsReference;
-            arguments["name"] = "localTuple";
+            arguments["name"] = destination;
         }
         else
         {
             arguments["frameId"] = frameId;
-            arguments["expression"] = "localTuple";
+            arguments["expression"] = destination;
         }
 
         await AssertToolErrorAsync(client, tool, arguments, "debugger_control_denied", cancellationToken)
             .ConfigureAwait(false);
         JsonElement original = await EvaluateMcpStructAssignmentAsync(
-            client, session, generation, frameId, "localTuple", cancellationToken).ConfigureAwait(false);
-        Assert.AreEqual("(42, \"answer\")", original.GetProperty("result").GetString());
+            client, session, generation, frameId, destination, cancellationToken).ConfigureAwait(false);
+        Assert.AreEqual(nullable ? "45" : "(42, \"answer\")", original.GetProperty("result").GetString());
+        Assert.AreEqual(expectedType, original.GetProperty("type").GetString());
         JsonElement granted = await GrantAgentControlAsync(client, session, durationSeconds: 60, cancellationToken)
             .ConfigureAwait(false);
         Assert.AreEqual(generation, granted.GetProperty("stopGeneration").GetInt64());
@@ -90,30 +97,45 @@ public sealed partial class McpDebuggerLifecycleTests
         Assert.AreEqual(generation, assigned.GetProperty("stopGeneration").GetInt64());
         Assert.IsFalse(assigned.GetProperty("targetCodeExecuted").GetBoolean());
         JsonElement variable = assigned.GetProperty("variable");
-        Assert.AreEqual("localTuple", variable.GetProperty("evaluateName").GetString());
-        Assert.AreEqual("(int Number, string Text)", variable.GetProperty("type").GetString());
-        Assert.AreEqual("(0, null)", variable.GetProperty("value").GetString());
+        Assert.AreEqual(destination, variable.GetProperty("evaluateName").GetString());
+        Assert.AreEqual(expectedType, variable.GetProperty("type").GetString());
+        Assert.AreEqual(expectedValue, variable.GetProperty("value").GetString());
         JsonElement fields = await ReadMcpStructAssignmentVariablesAsync(client, session, generation,
             variable.GetProperty("variablesReference").GetInt32(), cancellationToken).ConfigureAwait(false);
-        JsonElement number = Assert.ContainsSingle(fields.GetProperty("variables").EnumerateArray()
-            .Where(field => field.GetProperty("name").GetString() == "Number"));
-        JsonElement text = Assert.ContainsSingle(fields.GetProperty("variables").EnumerateArray()
-            .Where(field => field.GetProperty("name").GetString() == "Text"));
-        Assert.AreEqual("0", number.GetProperty("value").GetString());
-        Assert.AreEqual("localTuple.Item1", number.GetProperty("evaluateName").GetString());
-        Assert.AreEqual("null", text.GetProperty("value").GetString());
-        Assert.AreEqual("localTuple.Item2", text.GetProperty("evaluateName").GetString());
+        if (nullable)
+        {
+            JsonElement presence = Assert.ContainsSingle(fields.GetProperty("variables").EnumerateArray()
+                .Where(field => field.GetProperty("name").GetString() == "hasValue"));
+            JsonElement payload = Assert.ContainsSingle(fields.GetProperty("variables").EnumerateArray()
+                .Where(field => field.GetProperty("name").GetString() == "value"));
+            Assert.AreEqual("false", presence.GetProperty("value").GetString());
+            Assert.AreEqual("bool", presence.GetProperty("type").GetString());
+            Assert.AreEqual("0", payload.GetProperty("value").GetString());
+            Assert.AreEqual("int", payload.GetProperty("type").GetString());
+        }
+        else
+        {
+            JsonElement number = Assert.ContainsSingle(fields.GetProperty("variables").EnumerateArray()
+                .Where(field => field.GetProperty("name").GetString() == "Number"));
+            JsonElement text = Assert.ContainsSingle(fields.GetProperty("variables").EnumerateArray()
+                .Where(field => field.GetProperty("name").GetString() == "Text"));
+            Assert.AreEqual("0", number.GetProperty("value").GetString());
+            Assert.AreEqual("localTuple.Item1", number.GetProperty("evaluateName").GetString());
+            Assert.AreEqual("null", text.GetProperty("value").GetString());
+            Assert.AreEqual("localTuple.Item2", text.GetProperty("evaluateName").GetString());
+        }
+
         JsonElement revoked = await CallAsync(client, "debug_agent_control_set",
             new Dictionary<string, object?> { ["debugSession"] = session, ["enabled"] = false }, cancellationToken)
             .ConfigureAwait(false);
         Assert.IsFalse(revoked.GetProperty("agentControl").GetBoolean());
-        arguments["value"] = "tupleArgument";
+        arguments["value"] = nullable ? "45" : "tupleArgument";
         await AssertToolErrorAsync(client, tool, arguments, "debugger_control_denied", cancellationToken)
             .ConfigureAwait(false);
         JsonElement refreshed = await EvaluateMcpStructAssignmentAsync(
-            client, session, generation, frameId, "localTuple", cancellationToken).ConfigureAwait(false);
-        Assert.AreEqual("(0, null)", refreshed.GetProperty("result").GetString());
-        Assert.AreEqual("(int Number, string Text)", refreshed.GetProperty("type").GetString());
+            client, session, generation, frameId, destination, cancellationToken).ConfigureAwait(false);
+        Assert.AreEqual(expectedValue, refreshed.GetProperty("result").GetString());
+        Assert.AreEqual(expectedType, refreshed.GetProperty("type").GetString());
         await AssertMcpStructAssignmentIntegerAsync(client, session, generation, frameId,
             "localNumber", "43", cancellationToken).ConfigureAwait(false);
         string diagnostics = await mcp.DisconnectAsync(TimeSpan.FromSeconds(20), cancellationToken).ConfigureAwait(false);

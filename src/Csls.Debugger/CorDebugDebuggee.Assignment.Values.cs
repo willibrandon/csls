@@ -25,6 +25,14 @@ internal sealed partial class CorDebugDebuggee
 
         if (ManagedRuntimeValueIdentity.GetElementType(destination) == 0x11)
         {
+            if (language == DebugExpressionLanguage.CSharp && sourceIsContextualLiteral &&
+                source is { HasScalar: true, Scalar: null, RuntimeValueReference: <= 0 } &&
+                ManagedNullableTypeIdentity.IsNullable(destination, OpenRuntimeModule))
+            {
+                AssignManagedDefault(destination, mutations);
+                return;
+            }
+
             if (source.RuntimeValueReference <= 0)
             {
                 throw new InvalidOperationException(

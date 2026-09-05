@@ -105,6 +105,14 @@ without copying references from another scope. These writes preserve the stop
 generation and destination tuple names. C# `null` remains distinct from Visual
 Basic's `Nothing` conversion to non-nullable value types.
 
+A C# `null` literal, including `(null)`, clears nullable value-type storage without
+executing target code. The write clears both presence and payload, including managed
+reference fields, and preserves the stop generation. Reference-typed null expressions
+do not receive this conversion. Nullable recognition uses loaded runtime identity;
+user-defined lookalike types retain their ordinary type display and assignment rules.
+Tuple element names also remain available through direct generic fields, including
+the contained value of a nullable tuple.
+
 Ref-like copies and member writes into register-backed structs are rejected. Whole
 register-backed values use the runtime's write operation and report its restrictions.
 Validation failures preserve existing Results View snapshots; an attempted runtime

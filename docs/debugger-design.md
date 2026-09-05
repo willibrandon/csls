@@ -537,6 +537,16 @@ Default initialization does not copy references from another storage lifetime, s
 it can clear ref-like values while whole-value ref-like copies remain rejected.
 Managed interior pointers and native pointer destinations remain unwritable.
 
+C# null-literal assignment to nullable storage uses the same complete default
+payload and GC-aware setter. It requires an untyped literal and an original
+value-type destination. Recognition verifies the exact top-level `System.Nullable<T>`
+definition with one generic parameter in the same loaded module as its intrinsic
+`System.ValueType` base. Canonical COM module identity anchors this check; display
+names, assembly names, and matching field layouts do not authorize conversion.
+Formatting and nullable receiver inspection use the same identity check. Tuple-name
+transforms on a constructed type propagate through fields declared as a direct type
+parameter, shared by object expansion, expression evaluation, and assignment.
+
 Values that require target allocation or execution use the guarded evaluator. Strings
 are allocated with `ICorDebugEval2.NewStringWithLength`; explicitly qualified calls and
 object construction reuse the ordinary function-evaluation binder. The result is held

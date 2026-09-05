@@ -397,6 +397,14 @@ These writes preserve the stop generation and destination tuple names. C# `null`
 does not acquire Visual Basic's conversion to non-nullable value types, and a C#
 `default` expression without a destination type reports that the type context is missing.
 
+C# `null`, including `(null)`, clears genuine nullable value-type storage through
+the same direct write. Both the presence flag and the complete payload are reset,
+including managed reference fields. Typed reference-null expressions do not receive
+this conversion. Nullable recognition verifies the loaded runtime type and its
+CoreLib base module; a user-defined type named `System.Nullable<T>` remains an
+ordinary type. Tuple element names survive expansion through direct generic fields,
+including a nullable's contained value.
+
 Ref-like struct copies and individual field writes into register-backed structs are
 rejected. Whole register-backed values use the runtime's original value home and
 report its write restrictions. Validation failures occur before snapshot retirement;

@@ -241,7 +241,7 @@ internal sealed partial class CorDebugDebuggee
                 depth,
                 tupleCustomTypeInfo);
             if (string.Equals(name, "System.Nullable`1", StringComparison.Ordinal) &&
-                arguments.Count == 1)
+                arguments.Count == 1 && IsNullableType(type))
             {
                 return $"{arguments[0]}?";
             }
@@ -413,35 +413,7 @@ internal sealed partial class CorDebugDebuggee
         }
     }
 
-    private unsafe bool IsNullableType(nint type)
-    {
-        nint runtimeClass = 0;
-        nint module = 0;
-        try
-        {
-            runtimeClass = GetRuntimeTypeClass(type);
-            module = GetClassModule(runtimeClass);
-            using PEReader peReader = OpenRuntimeModule(module);
-            MetadataReader metadata = peReader.GetMetadataReader();
-            TypeDefinitionHandle handle = MetadataTokens.TypeDefinitionHandle(
-                checked((int)(GetClassToken(runtimeClass) & 0x00FFFFFF)));
-            TypeDefinition definition = metadata.GetTypeDefinition(handle);
-            return metadata.StringComparer.Equals(definition.Namespace, "System") &&
-                metadata.StringComparer.Equals(definition.Name, "Nullable`1");
-        }
-        finally
-        {
-            if (module != 0)
-            {
-                _ = ComAbi.Release(module);
-            }
-
-            if (runtimeClass != 0)
-            {
-                _ = ComAbi.Release(runtimeClass);
-            }
-        }
-    }
+    private bool IsNullableType(nint type) => ManagedNullableTypeIdentity.IsNullableType(type, OpenRuntimeModule);
 
     private string FormatNullableValue(nint value, nint type)
     {

@@ -18,6 +18,16 @@ if (args is ["--debugger-reference-assignment-fixture", string referenceAssignme
     return ReferenceAssignmentFixture.Run(referenceAssignmentPath);
 }
 
+if (args is ["--debugger-nullable-assignment-fixture", string nullableAssignmentPath])
+{
+    return NullableAssignmentDebuggerFixture.Run(nullableAssignmentPath);
+}
+
+if (args is ["--debugger-nullable-assignment-fixture", string hostileNullablePath, string nullableAssemblyPath])
+{
+    return NullableAssignmentDebuggerFixture.Run(hostileNullablePath, nullableAssemblyPath);
+}
+
 if (args is ["--debugger-results-view-context-fixture", string resultsViewContextPath])
 {
     return DebuggerFixture.WaitForSignal(

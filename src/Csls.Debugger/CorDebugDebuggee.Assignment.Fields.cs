@@ -116,8 +116,8 @@ internal sealed partial class CorDebugDebuggee
                         FieldDefinition field = metadata.GetFieldDefinition(
                             MetadataTokens.FieldDefinitionHandle(
                                 checked((int)(resolvedFieldToken & 0x00FFFFFF))));
-                        ManagedTupleCustomTypeInfo? fieldTupleInfo = ManagedTupleElementNameReader.ReadAttribute(
-                            metadata, field.GetCustomAttributes());
+                        ManagedTupleCustomTypeInfo? fieldTupleInfo = _tupleTypeShape.GetFieldCustomTypeInfo(
+                            currentType, metadata, field, depth == 0 ? tupleCustomTypeInfo : null);
                         ManagedValueOrigin? fieldOrigin = CreateFieldValueOrigin(
                             origin, runtimeClass, resolvedFieldToken);
                         return (

@@ -18,21 +18,26 @@ internal sealed class ManagedObjectExpander
     private readonly IManagedObjectExpansionServices _services;
     private readonly ManagedDebuggerTypeProxyExpander _proxyExpander;
     private readonly ManagedTuplePresenter _tuplePresenter;
+    private readonly ManagedTupleTypeShape _tupleTypeShape;
 
     /// <summary>
     /// Creates an object expander over one generation-owned runtime service.
     /// </summary>
     /// <param name="services">The runtime operations used to inspect and retain values.</param>
     /// <param name="tuplePresenter">The owned tuple-specific presentation component.</param>
+    /// <param name="tupleTypeShape">The shared mapper for generic tuple-name substitutions.</param>
     internal ManagedObjectExpander(
         IManagedObjectExpansionServices services,
-        ManagedTuplePresenter tuplePresenter)
+        ManagedTuplePresenter tuplePresenter,
+        ManagedTupleTypeShape tupleTypeShape)
     {
         ArgumentNullException.ThrowIfNull(services);
         ArgumentNullException.ThrowIfNull(tuplePresenter);
+        ArgumentNullException.ThrowIfNull(tupleTypeShape);
         _services = services;
         _proxyExpander = new ManagedDebuggerTypeProxyExpander(services, this);
         _tuplePresenter = tuplePresenter;
+        _tupleTypeShape = tupleTypeShape;
     }
 
     /// <summary>
@@ -124,7 +129,8 @@ internal sealed class ManagedObjectExpander
             nestingDepth: 0,
             view,
             includeRawView: true,
-            origin);
+            origin,
+            tupleCustomTypeInfo);
         if (state.Includes(isIndexed: false) && !IsVariablePageFull(result, count))
         {
             DebugVariableInfo? resultsView = _services.TryRetainResultsView(
@@ -177,7 +183,8 @@ internal sealed class ManagedObjectExpander
         int nestingDepth,
         ManagedValueView view,
         bool includeRawView,
-        ManagedValueOrigin? origin)
+        ManagedValueOrigin? origin,
+        ManagedTupleCustomTypeInfo? tupleCustomTypeInfo)
     {
         nint instance = 0;
         nint value2 = 0;
@@ -211,6 +218,7 @@ internal sealed class ManagedObjectExpander
                         result,
                         instance,
                         runtimeClass,
+                        currentType,
                         peReader.GetMetadataReader(),
                         typeToken,
                         parentEvaluateName,
@@ -222,7 +230,8 @@ internal sealed class ManagedObjectExpander
                         path,
                         nestingDepth,
                         view,
-                        origin);
+                        origin,
+                        depth == 0 ? tupleCustomTypeInfo : null);
                     if (IsVariablePageFull(result, count))
                     {
                         return;
@@ -276,7 +285,8 @@ internal sealed class ManagedObjectExpander
                     start,
                     count,
                     state,
-                    origin);
+                    origin,
+                    tupleCustomTypeInfo);
             }
         }
         finally
@@ -302,6 +312,7 @@ internal sealed class ManagedObjectExpander
         List<DebugVariableInfo> result,
         nint instance,
         nint declaringClass,
+        nint declaringType,
         MetadataReader metadata,
         uint typeToken,
         string? parentEvaluateName,
@@ -313,7 +324,8 @@ internal sealed class ManagedObjectExpander
         HashSet<ulong> path,
         int nestingDepth,
         ManagedValueView view,
-        ManagedValueOrigin? origin)
+        ManagedValueOrigin? origin,
+        ManagedTupleCustomTypeInfo? tupleCustomTypeInfo)
     {
         TypeDefinitionHandle typeHandle = MetadataTokens.TypeDefinitionHandle(
             checked((int)(typeToken & 0x00FFFFFF)));
@@ -326,6 +338,8 @@ internal sealed class ManagedObjectExpander
                 continue;
             }
 
+            ManagedTupleCustomTypeInfo? fieldTupleInfo = _tupleTypeShape.GetFieldCustomTypeInfo(
+                declaringType, metadata, field, tupleCustomTypeInfo);
             ManagedDebuggerBrowsableState declaredBrowsingState =
                 ManagedDebuggerBrowsableState.Collapsed;
             if (view is not ManagedValueView.Raw and not ManagedValueView.ProxyRaw)
@@ -364,7 +378,8 @@ internal sealed class ManagedObjectExpander
                     state,
                     path,
                     nestingDepth,
-                    origin))
+                    origin,
+                    fieldTupleInfo))
                 {
                     AppendField(
                         result,
@@ -379,7 +394,8 @@ internal sealed class ManagedObjectExpander
                         start,
                         count,
                         state,
-                        origin);
+                        origin,
+                        fieldTupleInfo);
                 }
             }
             else
@@ -397,7 +413,8 @@ internal sealed class ManagedObjectExpander
                     start,
                     count,
                     state,
-                    origin);
+                    origin,
+                    fieldTupleInfo);
             }
 
             state.PhysicalFieldCount++;
@@ -427,7 +444,8 @@ internal sealed class ManagedObjectExpander
         int start,
         int count,
         ManagedObjectExpansionState state,
-        ManagedValueOrigin? origin)
+        ManagedValueOrigin? origin,
+        ManagedTupleCustomTypeInfo? tupleCustomTypeInfo)
     {
         if (!state.Includes(isIndexed: false))
         {
@@ -447,7 +465,8 @@ internal sealed class ManagedObjectExpander
                 frameId,
                 generation,
                 origin,
-                state.Lifetime));
+                state.Lifetime,
+                tupleCustomTypeInfo));
         }
 
         state.VisibleIndex++;
@@ -466,7 +485,8 @@ internal sealed class ManagedObjectExpander
         ManagedObjectExpansionState state,
         HashSet<ulong> path,
         int nestingDepth,
-        ManagedValueOrigin? origin)
+        ManagedValueOrigin? origin,
+        ManagedTupleCustomTypeInfo? tupleCustomTypeInfo)
     {
         nint fieldValue = 0;
         nint inspectedValue = 0;
@@ -489,7 +509,7 @@ internal sealed class ManagedObjectExpander
                 origin, declaringClass, checked((uint)MetadataTokens.GetToken(fieldHandle)));
             ManagedValueReferences fieldReferences = _services.RetainValue(
                 fieldValue, generation, evaluateName, frameId, ManagedValueView.Default,
-                tupleCustomTypeInfo: null, fieldOrigin, state.Lifetime);
+                tupleCustomTypeInfo, fieldOrigin, state.Lifetime);
             if (fieldReferences.VariablesReference > 0)
             {
                 fieldOrigin = _services.GetValueOrigin(fieldReferences.VariablesReference);
@@ -515,7 +535,7 @@ internal sealed class ManagedObjectExpander
                     evaluateName,
                     frameId,
                     generation,
-                    null,
+                    tupleCustomTypeInfo,
                     localStart,
                     localCount,
                     fieldOrigin,
@@ -553,7 +573,8 @@ internal sealed class ManagedObjectExpander
                 nestingDepth + 1,
                 ManagedValueView.Default,
                 includeRawView: false,
-                fieldOrigin);
+                fieldOrigin,
+                tupleCustomTypeInfo);
             if (addedToPath)
             {
                 _ = path.Remove(address);
@@ -600,7 +621,8 @@ internal sealed class ManagedObjectExpander
         int start,
         int count,
         ManagedObjectExpansionState state,
-        ManagedValueOrigin? origin)
+        ManagedValueOrigin? origin,
+        ManagedTupleCustomTypeInfo? tupleCustomTypeInfo)
     {
         if (!state.Includes(isIndexed: false))
         {
@@ -613,14 +635,14 @@ internal sealed class ManagedObjectExpander
             ManagedValueDisplay display = _services.FormatRuntimeValue(
                 value,
                 debuggerDisplayDepth: 0,
-                tupleCustomTypeInfo: null);
+                tupleCustomTypeInfo);
             ManagedValueReferences references = _services.RetainValue(
                 value,
                 generation,
                 parentEvaluateName,
                 frameId,
                 ManagedValueView.Raw,
-                tupleCustomTypeInfo: null,
+                tupleCustomTypeInfo,
                 origin,
                 state.Lifetime);
             result.Add(new DebugVariableInfo(
@@ -678,7 +700,8 @@ internal sealed class ManagedObjectExpander
         int? frameId,
         DebugStopGeneration generation,
         ManagedValueOrigin? origin,
-        ManagedResultsViewLifetime? lifetime)
+        ManagedResultsViewLifetime? lifetime,
+        ManagedTupleCustomTypeInfo? tupleCustomTypeInfo)
     {
         nint fieldValue = GetObjectFieldValue(
             instance,
@@ -686,10 +709,6 @@ internal sealed class ManagedObjectExpander
             checked((uint)MetadataTokens.GetToken(fieldHandle)));
         try
         {
-            ManagedTupleCustomTypeInfo? tupleCustomTypeInfo =
-                ManagedTupleElementNameReader.ReadAttribute(
-                    metadata,
-                    field.GetCustomAttributes());
             ManagedValueDisplay display = _services.FormatRuntimeValue(
                 fieldValue,
                 debuggerDisplayDepth: 0,

@@ -191,6 +191,37 @@ internal sealed class ManagedTupleTypeShape
     }
 
     /// <summary>
+    /// Projects declaration names onto a field whose complete signature is a containing type parameter.
+    /// </summary>
+    /// <param name="type">The exact runtime type declaring the field.</param>
+    /// <param name="metadata">The declaring module's metadata.</param>
+    /// <param name="field">The field whose authored or substituted tuple names are requested.</param>
+    /// <param name="customTypeInfo">The optional transforms for the complete containing type.</param>
+    /// <returns>Authored field names or transforms for its direct generic parameter.</returns>
+    internal ManagedTupleCustomTypeInfo? GetFieldCustomTypeInfo(
+        nint type, MetadataReader metadata, FieldDefinition field, ManagedTupleCustomTypeInfo? customTypeInfo)
+    {
+        ManagedTupleCustomTypeInfo? declared = ManagedTupleElementNameReader.ReadAttribute(
+            metadata, field.GetCustomAttributes());
+        if (declared is not null || customTypeInfo is null)
+        {
+            return declared;
+        }
+
+        BlobReader signature = metadata.GetBlobReader(field.Signature);
+        if (signature.ReadSignatureHeader().Kind != SignatureKind.Field ||
+            signature.ReadSignatureTypeCode() != SignatureTypeCode.GenericTypeParameter)
+        {
+            return null;
+        }
+
+        int index = signature.ReadCompressedInteger();
+        return signature.RemainingBytes == 0
+            ? GetTypeArgumentCustomTypeInfo(type, customTypeInfo, index)
+            : null;
+    }
+
+    /// <summary>
     /// Gets the logical cardinality of one compatible runtime tuple type.
     /// </summary>
     /// <param name="type">The exact ICorDebugType pointer.</param>
