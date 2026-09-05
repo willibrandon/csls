@@ -79,7 +79,8 @@ jobs:
       - name: Share test binaries
         uses: actions/upload-artifact@v7
         with:
-          name: test-binaries-${{ github.run_attempt }}
+          name: test-binaries
+          overwrite: true
           path: artifacts/test-binaries.tar
           compression-level: 6
           if-no-files-found: error
@@ -135,7 +136,8 @@ jobs:
       - name: Share debugger test binaries
         uses: actions/upload-artifact@v7
         with:
-          name: debugger-test-binaries-${{ github.run_attempt }}
+          name: debugger-test-binaries
+          overwrite: true
           path: artifacts/debugger-test-binaries.tar
           compression-level: 6
           if-no-files-found: error
@@ -180,7 +182,8 @@ jobs:
       - name: Share Unix wait interposer
         uses: actions/upload-artifact@v7
         with:
-          name: debugger-unix-wait-${{ matrix.rid }}-${{ github.run_attempt }}
+          name: debugger-unix-wait-${{ matrix.rid }}
+          overwrite: true
           path: artifacts/debugger-unix-wait/${{ matrix.rid }}/Csls.Debugger.UnixWait.*
           if-no-files-found: error
 
@@ -238,7 +241,7 @@ jobs:
       - name: Download test binaries
         uses: actions/download-artifact@v8
         with:
-          name: debugger-test-binaries-${{ github.run_attempt }}
+          name: debugger-test-binaries
           path: artifacts
 
       - name: Extract test binaries
@@ -250,7 +253,7 @@ jobs:
         if: matrix.unix_wait
         uses: actions/download-artifact@v8
         with:
-          name: debugger-unix-wait-${{ matrix.rid }}-${{ github.run_attempt }}
+          name: debugger-unix-wait-${{ matrix.rid }}
           path: artifacts/bin/Csls.Debugger.Worker/debug
 
       - name: Run debugger tests
@@ -595,7 +598,8 @@ jobs:
       - name: Upload browser packages
         uses: actions/upload-artifact@v7
         with:
-          name: browser-packages-${{ matrix.browser }}-${{ github.run_attempt }}
+          name: browser-packages-${{ matrix.browser }}
+          overwrite: true
           path: artifacts/browser-packages
           if-no-files-found: error
           retention-days: 1
@@ -628,7 +632,7 @@ jobs:
       - name: Download test binaries
         uses: actions/download-artifact@v8
         with:
-          name: test-binaries-${{ github.run_attempt }}
+          name: test-binaries
           path: artifacts
 
       - name: Extract test binaries
@@ -675,7 +679,7 @@ jobs:
       - name: Download test binaries
         uses: actions/download-artifact@v8
         with:
-          name: test-binaries-${{ github.run_attempt }}
+          name: test-binaries
           path: artifacts
 
       - name: Extract test binaries
@@ -709,7 +713,7 @@ jobs:
       - name: Download test binaries
         uses: actions/download-artifact@v8
         with:
-          name: test-binaries-${{ github.run_attempt }}
+          name: test-binaries
           path: artifacts
 
       - name: Extract test binaries
@@ -746,7 +750,7 @@ jobs:
       - name: Download test binaries
         uses: actions/download-artifact@v8
         with:
-          name: test-binaries-${{ github.run_attempt }}
+          name: test-binaries
           path: artifacts
 
       - name: Extract test binaries
@@ -779,7 +783,7 @@ jobs:
       - name: Download test binaries
         uses: actions/download-artifact@v8
         with:
-          name: test-binaries-${{ github.run_attempt }}
+          name: test-binaries
           path: artifacts
 
       - name: Extract test binaries
@@ -812,7 +816,7 @@ jobs:
       - name: Download test binaries
         uses: actions/download-artifact@v8
         with:
-          name: test-binaries-${{ github.run_attempt }}
+          name: test-binaries
           path: artifacts
 
       - name: Extract test binaries
@@ -973,7 +977,8 @@ jobs:
       - name: Share Zed test assets
         uses: actions/upload-artifact@v7
         with:
-          name: zed-test-assets-${{ github.run_attempt }}
+          name: zed-test-assets
+          overwrite: true
           path: artifacts/zed-test-assets.tar
           compression-level: 6
           if-no-files-found: error
@@ -1020,7 +1025,7 @@ jobs:
       - name: Download test binaries
         uses: actions/download-artifact@v8
         with:
-          name: test-binaries-${{ github.run_attempt }}
+          name: test-binaries
           path: artifacts
 
       - name: Extract test binaries
@@ -1029,7 +1034,7 @@ jobs:
       - name: Download Zed test assets
         uses: actions/download-artifact@v8
         with:
-          name: zed-test-assets-${{ github.run_attempt }}
+          name: zed-test-assets
           path: artifacts
 
       - name: Extract Zed test assets
@@ -1171,7 +1176,7 @@ jobs:
       - name: Download test binaries
         uses: actions/download-artifact@v8
         with:
-          name: test-binaries-${{ github.run_attempt }}
+          name: test-binaries
           path: artifacts
 
       - name: Extract test binaries
@@ -1188,7 +1193,7 @@ jobs:
         if: matrix.web
         uses: actions/download-artifact@v8
         with:
-          name: browser-packages-${{ matrix.browser }}-${{ github.run_attempt }}
+          name: browser-packages-${{ matrix.browser }}
           path: artifacts/browser-packages
 
       - name: Restore VS Code web extension
@@ -1217,7 +1222,7 @@ jobs:
         if: ${{ !matrix.web }}
         uses: actions/download-artifact@v8
         with:
-          name: vscode-test-assets-${{ github.run_attempt }}
+          name: vscode-test-assets
           path: artifacts
 
       - name: Extract VS Code test assets
@@ -1276,7 +1281,7 @@ jobs:
       - name: Download test binaries
         uses: actions/download-artifact@v8
         with:
-          name: test-binaries-${{ github.run_attempt }}
+          name: test-binaries
           path: artifacts
 
       - name: Extract test binaries

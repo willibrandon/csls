@@ -81,7 +81,8 @@ jobs:
       - name: Share VS Code test assets
         uses: actions/upload-artifact@v7
         with:
-          name: vscode-test-assets-${{ github.run_attempt }}
+          name: vscode-test-assets
+          overwrite: true
           path: artifacts/vscode-test-assets.tar
           compression-level: 6
           if-no-files-found: error
