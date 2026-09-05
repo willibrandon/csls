@@ -259,7 +259,8 @@ internal sealed partial class DapSession : IDebuggerSessionObserver, IAsyncDispo
             return;
         }
 
-        if (requestId == _cancelableRequestSequence &&
+        if (requestId is int activeSequence &&
+            (activeSequence == _cancelableRequestSequence || activeSequence == _pendingTargetRequest?.Seq) &&
             _cancelableRequestCancellation is not null)
         {
             await _cancelableRequestCancellation.CancelAsync().ConfigureAwait(false);
@@ -308,7 +309,7 @@ internal sealed partial class DapSession : IDebuggerSessionObserver, IAsyncDispo
     }
 
     private static bool IsCancelableRequest(string command) =>
-        command is "evaluate" or "setVariable" or "setExpression" or "variables" or
+        command is "configurationDone" or "evaluate" or "setVariable" or "setExpression" or "variables" or
             "stackTrace" or "scopes" or "threads" or "modules" or "loadedSources" or "source" or
             "breakpointLocations" or "stepInTargets" or "gotoTargets" or "completions" or
             "readMemory" or "disassemble" or "exceptionInfo";

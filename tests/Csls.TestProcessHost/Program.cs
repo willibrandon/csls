@@ -231,6 +231,16 @@ if (args is ["--wait-for-file", string waitPath])
     return 0;
 }
 
+if (args is ["--announce-process-and-wait-for-file", string processPath, string releasePath])
+{
+    string temporaryPath = processPath + ".tmp";
+    await File.WriteAllTextAsync(temporaryPath, Environment.ProcessId.ToString(CultureInfo.InvariantCulture))
+        .ConfigureAwait(false);
+    File.Move(temporaryPath, processPath);
+    await WaitForFileAsync(releasePath).ConfigureAwait(false);
+    return 0;
+}
+
 if (args is ["--announce-and-spin-until-file", string spinPath])
 {
     await Console.Out.WriteAsync("ready").ConfigureAwait(false);

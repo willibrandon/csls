@@ -87,6 +87,14 @@ internal sealed partial class DapSession
                     .ConfigureAwait(false);
             }
         }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            _state = DapSessionState.Initialized;
+            ClearPendingTarget();
+            _lifetime.Token.ThrowIfCancellationRequested();
+            await WriteRequestFailureAsync(request, "cancelled", _lifetime.Token).ConfigureAwait(false);
+            await WriteRequestFailureAsync(targetRequest, "cancelled", _lifetime.Token).ConfigureAwait(false);
+        }
         catch (Exception exception) when (
             exception is ArgumentException or InvalidOperationException or IOException or
                 UnauthorizedAccessException or Win32Exception)

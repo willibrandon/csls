@@ -58,11 +58,14 @@ public sealed partial class DebuggerSession
         IDebuggeeProcess debuggee,
         CancellationToken cancellationToken)
     {
+        cancellationToken.ThrowIfCancellationRequested();
+        // Complete startup notifications once the initialized target is accepted by the session.
+        CancellationToken completionToken = _lifetime.Token;
         _debuggee = debuggee;
         await _observer.OnProcessStartedAsync(
             debuggee.Name,
             debuggee.Id,
-            cancellationToken).ConfigureAwait(false);
+            completionToken).ConfigureAwait(false);
         _state = DebugSessionState.Running;
         if (_pendingStop is PendingDebugStop pendingStop)
         {
@@ -72,7 +75,7 @@ public sealed partial class DebuggerSession
                 bool shouldContinue = await HandleRunningBreakpointAsync(
                     pendingStop.ThreadId,
                     pendingStop.BreakpointHit,
-                    cancellationToken).ConfigureAwait(false);
+                    completionToken).ConfigureAwait(false);
                 if (shouldContinue)
                 {
                     ((CorDebugDebuggee)debuggee).Continue();
@@ -87,7 +90,7 @@ public sealed partial class DebuggerSession
                 await EnterStoppedStateAsync(
                     pendingStop.Reason,
                     pendingStop.ThreadId,
-                    cancellationToken).ConfigureAwait(false);
+                    completionToken).ConfigureAwait(false);
             }
         }
 
