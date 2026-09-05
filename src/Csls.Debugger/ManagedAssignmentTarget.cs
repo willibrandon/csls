@@ -13,11 +13,15 @@ internal sealed class ManagedAssignmentTarget : IDisposable
         nint pointer,
         ManagedTupleCustomTypeInfo? tupleCustomTypeInfo,
         ManagedValueOrigin? origin,
+        ManagedBoundType? declaredType,
+        ManagedBoundType? storageType,
         string? evaluateName)
     {
         _pointer = pointer;
         TupleCustomTypeInfo = tupleCustomTypeInfo;
         Origin = origin;
+        DeclaredType = declaredType;
+        StorageType = storageType;
         EvaluateName = evaluateName;
     }
 
@@ -39,6 +43,16 @@ internal sealed class ManagedAssignmentTarget : IDisposable
     internal ManagedValueOrigin? Origin { get; }
 
     /// <summary>
+    /// Gets the declared destination type independently of its current referent.
+    /// </summary>
+    internal ManagedBoundType? DeclaredType { get; }
+
+    /// <summary>
+    /// Gets the physical array element type when runtime array covariance narrows writable storage.
+    /// </summary>
+    internal ManagedBoundType? StorageType { get; }
+
+    /// <summary>
     /// Gets the destination expression with already evaluated array indices.
     /// </summary>
     internal string? EvaluateName { get; }
@@ -47,12 +61,14 @@ internal sealed class ManagedAssignmentTarget : IDisposable
     /// Adopts the native reference even if allocating its managed owner fails.
     /// </summary>
     internal static ManagedAssignmentTarget TakeOwnership(
-        (nint Value, ManagedTupleCustomTypeInfo? TupleCustomTypeInfo, ManagedValueOrigin? Origin) value,
-        string? evaluateName)
+        (nint Value, ManagedTupleCustomTypeInfo? TupleCustomTypeInfo, ManagedValueOrigin? Origin, ManagedBoundType? DeclaredType) value,
+        string? evaluateName,
+        ManagedBoundType? storageType = null)
     {
         try
         {
-            return new ManagedAssignmentTarget(value.Value, value.TupleCustomTypeInfo, value.Origin, evaluateName);
+            return new ManagedAssignmentTarget(value.Value, value.TupleCustomTypeInfo, value.Origin,
+                value.DeclaredType, storageType, evaluateName);
         }
         catch
         {

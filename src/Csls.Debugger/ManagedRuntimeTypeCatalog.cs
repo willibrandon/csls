@@ -13,6 +13,7 @@ internal sealed class ManagedRuntimeTypeCatalog
     private const int MaximumForwardingDepth = 256;
     private const int MaximumModuleCount = 4096;
     private const int MaximumTypeScanCount = 1_000_000;
+    private const int CannotResolveAssembly = unchecked((int)0x80131C11);
     private readonly SourceBreakpointManager _modules;
 
     /// <summary>
@@ -204,7 +205,7 @@ internal sealed class ManagedRuntimeTypeCatalog
         }
     }
 
-    private static unsafe nint GetReferencedAssembly(nint module, uint referenceToken)
+    private unsafe nint GetReferencedAssembly(nint module, uint referenceToken)
     {
         nint assembly = 0;
         nint module2 = 0;
@@ -220,9 +221,26 @@ internal sealed class ManagedRuntimeTypeCatalog
             else
             {
                 module2 = ComAbi.QueryInterface(module, ICorDebugModule2Abi.InterfaceId);
-                CorDebugHResult.ThrowIfFailed(
-                    new ICorDebugModule2Abi(module2).ResolveAssembly(referenceToken, (nint)assemblyAddress),
-                    "ICorDebugModule2.ResolveAssembly");
+                var runtimeModule = new ICorDebugModule2Abi(module2);
+                int result = runtimeModule.ResolveAssembly(referenceToken, (nint)assemblyAddress);
+                assembly = Volatile.Read(ref *assemblyAddress);
+                if (result == CannotResolveAssembly && _modules.FindModule(module) is { MetadataDeltas.Count: > 0 } loaded)
+                {
+                    // An added AssemblyRef can be cold while an identical older reference is already bound.
+                    foreach (uint equivalent in ManagedAssemblyReferenceResolver.FindEquivalentReferences(loaded, referenceToken))
+                    {
+                        ReleasePointer(assembly);
+                        assembly = 0;
+                        result = runtimeModule.ResolveAssembly(equivalent, (nint)assemblyAddress);
+                        assembly = Volatile.Read(ref *assemblyAddress);
+                        if (result != CannotResolveAssembly)
+                        {
+                            break;
+                        }
+                    }
+                }
+
+                CorDebugHResult.ThrowIfFailed(result, "ICorDebugModule2.ResolveAssembly");
             }
 
             assembly = RequirePointer(Volatile.Read(ref *assemblyAddress), "Runtime assembly resolution");

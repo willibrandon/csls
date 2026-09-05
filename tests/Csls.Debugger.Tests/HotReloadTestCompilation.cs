@@ -13,7 +13,7 @@ namespace Csls.Debugger.Tests;
 /// <summary>
 /// Emits a real executable and matching Roslyn Hot Reload generation for runtime tests.
 /// </summary>
-internal static class HotReloadTestCompilation
+internal static partial class HotReloadTestCompilation
 {
     private const string AssemblyName = "CslsHotReloadTarget";
 
@@ -22,6 +22,8 @@ internal static class HotReloadTestCompilation
     /// </summary>
     /// <param name="directory">The isolated output directory.</param>
     /// <param name="cancellationToken">Cancels compilation and file writes.</param>
+    /// <param name="updateLocalDeclarations">Whether the new body introduces reference local declarations.</param>
+    /// <param name="addMethod">Whether the update adds a method with reference arguments.</param>
     /// <returns>The executable paths, updated source, breakpoint line, and compiler deltas.</returns>
     internal static async Task<(
         string ProgramPath,
@@ -35,14 +37,16 @@ internal static class HotReloadTestCompilation
         int[] UpdatedTypes,
         int[] UpdatedMethods)> EmitAsync(
             string directory,
-            CancellationToken cancellationToken)
+            CancellationToken cancellationToken,
+            bool updateLocalDeclarations = false,
+            bool addMethod = false)
     {
         Directory.CreateDirectory(directory);
         string sourcePath = Path.Join(directory, "Program.cs");
         string programPath = Path.Join(directory, $"{AssemblyName}.dll");
         string pdbPath = Path.ChangeExtension(programPath, ".pdb");
         string baselineSource = CreateSource(1);
-        string updatedSource = CreateSource(2);
+        string updatedSource = CreateSource(2, updateLocalDeclarations, addMethod);
         CSharpCompilation baselineCompilation = CreateCompilation(
             baselineSource,
             sourcePath);
@@ -74,13 +78,22 @@ internal static class HotReloadTestCompilation
             SemanticEditKind.Update,
             FindValueMethod(baselineCompilation),
             FindValueMethod(updatedCompilation));
+        List<SemanticEdit> edits = [edit];
+        IMethodSymbol? addedMethod = null;
+        if (addMethod)
+        {
+            addedMethod = updatedCompilation.GetTypeByMetadataName("Program")?.GetMembers("Added")
+                .OfType<IMethodSymbol>().Single()
+                ?? throw new InvalidOperationException("The added method was not compiled.");
+            edits.Add(new SemanticEdit(SemanticEditKind.Insert, oldSymbol: null, addedMethod));
+        }
         using var metadataDelta = new MemoryStream();
         using var ilDelta = new MemoryStream();
         using var pdbDelta = new MemoryStream();
         EmitDifferenceResult updateResult = updatedCompilation.EmitDifference(
             baseline,
-            [edit],
-            isAddedSymbol: static _ => false,
+            edits,
+            isAddedSymbol: symbol => SymbolEqualityComparer.Default.Equals(symbol, addedMethod),
             metadataDelta,
             ilDelta,
             pdbDelta,
@@ -314,14 +327,31 @@ internal static class HotReloadTestCompilation
         }
         """;
 
-    private static string CreateSource(int value) => $$"""
+    private static string CreateSource(int value, bool referenceLocals = false, bool addMethod = false) => $$"""
         using System;
         using System.IO;
         using System.Threading;
 
         internal static class Program
         {
-            private static int Value() => {{value}};
+            private static int Value() {{(referenceLocals ? $$"""
+            {
+                Exception target = new InvalidOperationException("original");
+                var source = new ArgumentException("replacement");
+                GC.KeepAlive(source);
+                GC.KeepAlive(target);
+                return {{value}};
+            }
+            """ : addMethod ? "=> Added(new InvalidOperationException(\"original\"), new ArgumentException(\"replacement\"), (11, 12));" : $"=> {value};")}}
+
+            {{(addMethod ? $$"""
+            private static int Added(Exception target, ArgumentException source, (int first, int second) pair)
+            {
+                GC.KeepAlive(source);
+                GC.KeepAlive(target);
+                return {{value}};
+            }
+            """ : "")}}
 
             private static void Main(string[] arguments)
             {

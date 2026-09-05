@@ -1,5 +1,6 @@
 using Csls.Debugger.Contracts;
 using Csls.Debugger.Control;
+using StreamJsonRpc;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Text;
@@ -10,7 +11,7 @@ namespace Csls.Debugger.Tests;
 /// Verifies compiler-driven Hot Reload through the real private RPC and CoreCLR boundary.
 /// </summary>
 [TestClass]
-public sealed class DebuggerRpcHotReloadTests
+public sealed partial class DebuggerRpcHotReloadTests
 {
     private readonly long _startedTimestamp = Stopwatch.GetTimestamp();
 
@@ -166,7 +167,9 @@ public sealed class DebuggerRpcHotReloadTests
 
     private async Task ExerciseAsync(
         string testDirectory,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool updateLocalDeclarations = false,
+        bool addMethod = false)
     {
         ReportProgress("Emitting the target and compiler deltas.");
         (
@@ -181,7 +184,9 @@ public sealed class DebuggerRpcHotReloadTests
             int[] updatedTypes,
             int[] updatedMethods) = await HotReloadTestCompilation.EmitAsync(
                 testDirectory,
-                cancellationToken).ConfigureAwait(false);
+                cancellationToken,
+                updateLocalDeclarations,
+                addMethod).ConfigureAwait(false);
         string continuePath = Path.Join(testDirectory, "continue.signal");
         ReportProgress("Starting the debugger worker and connecting private RPC.");
         DebuggerWorkerTestSession worker = await DebuggerWorkerTestSession
@@ -195,10 +200,11 @@ public sealed class DebuggerRpcHotReloadTests
                 [new DebugSourceBreakpointRequest(breakpointLine, null)]),
             cancellationToken).ConfigureAwait(false);
         ReportProgress("Setting the replacement method's function breakpoint.");
-        _ = await client.SetFunctionBreakpointsAsync(
+        IReadOnlyList<DebugFunctionBreakpointInfo> configuredFunctions = await client.SetFunctionBreakpointsAsync(
             new DebugFunctionBreakpointSetRequest(
-                [new DebugFunctionBreakpointRequest("Program.Value")]),
+                [new DebugFunctionBreakpointRequest(addMethod ? "Program.Added" : "Program.Value")]),
             cancellationToken).ConfigureAwait(false);
+        DebugFunctionBreakpointInfo configuredFunction = Assert.ContainsSingle(configuredFunctions);
         ReportProgress("Launching the target with Hot Reload enabled.");
         _ = await client.LaunchAsync(
             new DebugLaunchRequest
@@ -223,6 +229,14 @@ public sealed class DebuggerRpcHotReloadTests
         Assert.Contains("Baseline", module.HotReloadCapabilities);
         Assert.Contains("AddFieldRva", module.HotReloadCapabilities);
         Assert.AreEqual(0, module.HotReloadGeneration);
+        if (addMethod)
+        {
+            DebugBreakpointSnapshot beforeUpdate = await client.GetBreakpointsAsync(cancellationToken).ConfigureAwait(false);
+            DebugFunctionBreakpointInfo pending = Assert.ContainsSingle(beforeUpdate.FunctionBreakpoints);
+            Assert.AreEqual(configuredFunction.Id, pending.Id);
+            Assert.AreEqual("Program.Added", pending.Name);
+            Assert.IsFalse(pending.Verified);
+        }
 
         ReportProgress("Writing the updated source.");
         await File.WriteAllTextAsync(
@@ -231,8 +245,7 @@ public sealed class DebuggerRpcHotReloadTests
             Encoding.UTF8,
             cancellationToken).ConfigureAwait(false);
         ReportProgress("Applying the compiler deltas.");
-        DebugHotReloadResult applied = await client.ApplyHotReloadAsync(
-            new DebugHotReloadRequest(
+        var updateRequest = new DebugHotReloadRequest(
                 stopped.StopGeneration,
                 module.Id,
                 module.HotReloadGeneration,
@@ -240,15 +253,36 @@ public sealed class DebuggerRpcHotReloadTests
                 ilDelta,
                 pdbDelta,
                 updatedTypes,
-                ["Baseline"],
+                addMethod ? ["Baseline", "AddMethodToExistingType"] : ["Baseline"],
                 updatedMethods,
-                []),
-            cancellationToken).ConfigureAwait(false);
+                []);
+        if (addMethod)
+        {
+            RemoteInvocationException rejected = await Assert.ThrowsExactlyAsync<RemoteInvocationException>(
+                () => client.ApplyHotReloadAsync(updateRequest with { UpdatedMethods = [] }, cancellationToken))
+                .ConfigureAwait(false);
+            Assert.Contains("do not match the delta", rejected.Message, StringComparison.Ordinal);
+            DebugSessionSnapshot afterRejected = await client.GetSessionAsync(cancellationToken).ConfigureAwait(false);
+            Assert.AreEqual(stopped.StopGeneration, afterRejected.StopGeneration);
+            Assert.AreEqual(DebugSessionState.Stopped, afterRejected.State);
+        }
+
+        DebugHotReloadResult applied = await client.ApplyHotReloadAsync(updateRequest, cancellationToken).ConfigureAwait(false);
         Assert.AreEqual(module.Id, applied.ModuleId);
         Assert.AreEqual(1, applied.ModuleGeneration);
         Assert.AreEqual(stopped.StopGeneration + 1, applied.StopGeneration);
         Assert.IsNotEmpty(applied.UpdatedMethods);
         Assert.IsNotEmpty(applied.UpdatedTypes);
+        if (addMethod)
+        {
+            Assert.HasCount(2, applied.UpdatedMethods);
+            Assert.Contains(checked((uint)Assert.ContainsSingle(updatedMethods)), applied.UpdatedMethods);
+            DebugBreakpointSnapshot afterUpdate = await client.GetBreakpointsAsync(cancellationToken).ConfigureAwait(false);
+            DebugFunctionBreakpointInfo bound = Assert.ContainsSingle(afterUpdate.FunctionBreakpoints);
+            Assert.AreEqual(configuredFunction.Id, bound.Id);
+            Assert.AreEqual("Program.Added", bound.Name);
+            Assert.IsTrue(bound.Verified, bound.Message);
+        }
         ReportProgress("Verifying session and module generations after applying deltas.");
         DebugSessionSnapshot afterApply = await client.GetSessionAsync(cancellationToken)
             .ConfigureAwait(false);
@@ -273,6 +307,7 @@ public sealed class DebuggerRpcHotReloadTests
             DebugSessionState.Stopped,
             cancellationToken).ConfigureAwait(false);
         Assert.IsGreaterThan(applied.StopGeneration, updatedMethodStop.StopGeneration);
+        Assert.AreEqual("function breakpoint", updatedMethodStop.StopReason);
         int threadId = updatedMethodStop.StoppedThreadId
             ?? throw new AssertFailedException("The updated method stop has no thread.");
         ReportProgress("Reading and verifying the replacement method's stack.");
@@ -287,6 +322,21 @@ public sealed class DebuggerRpcHotReloadTests
             sourceLines,
             string.Join(Environment.NewLine, stack.StackFrames.Select(static frame =>
                 $"{frame.Name} {frame.Source?.Path}:{frame.Line}")));
+        if (addMethod)
+        {
+            DebugStackFrameInfo addedFrame = Assert.ContainsSingle(stack.StackFrames.Where(static frame => frame.Name == "Program.Added"));
+            Assert.AreEqual(stack.StackFrames[0].Id, addedFrame.Id);
+            int methodBodyLine = updatedSource.Split('\n').Select(static (text, index) => (Text: text, Line: index + 1))
+                .Single(static item => item.Text.Contains("private static int Added(", StringComparison.Ordinal)).Line + 1;
+            Assert.AreEqual(methodBodyLine, addedFrame.Line);
+        }
+        if (updateLocalDeclarations || addMethod)
+        {
+            await InspectUpdatedLocalsAsync(client, sourcePath, updatedSource, updatedMethodStop, cancellationToken,
+                rejectReverseAssignment: addMethod, expectedMethodName: addMethod ? "Program.Added" : "Program.Value")
+                .ConfigureAwait(false);
+        }
+
         ReportProgress("Continuing the replacement method to target exit.");
         _ = await client.ContinueAsync(cancellationToken).ConfigureAwait(false);
         _ = await WaitForStateAsync(

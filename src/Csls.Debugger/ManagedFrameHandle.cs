@@ -79,6 +79,11 @@ internal sealed class ManagedFrameHandle
     internal IReadOnlyList<byte[]> SymbolDeltas { get; init; } = [];
 
     /// <summary>
+    /// Gets or initializes the metadata deltas visible to this stopped frame.
+    /// </summary>
+    internal IReadOnlyList<byte[]> MetadataDeltas { get; init; } = [];
+
+    /// <summary>
     /// Gets or initializes the selected associated PDB path when symbols are external.
     /// </summary>
     internal string? SymbolPath { get; init; }

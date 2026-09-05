@@ -141,9 +141,16 @@ internal sealed class CorDebugLoadedModule
     /// Opens the base symbols and all applied Hot Reload symbol generations.
     /// </summary>
     /// <returns>An owned symbol reader, or null when symbols are unavailable.</returns>
-    internal DebugSymbolReader? OpenSymbols() => SymbolImage is not null
-        ? DebugSymbolReader.TryOpen(SymbolImage, SymbolDeltas)
+    internal DebugSymbolReader? OpenSymbols() => OpenSymbols(SymbolDeltas);
+
+    /// <summary>
+    /// Opens the base symbols and an exact method-version snapshot of applied symbol generations.
+    /// </summary>
+    /// <param name="symbolDeltas">The ordered immutable deltas visible to the requested method version.</param>
+    /// <returns>An owned symbol reader, or null when symbols are unavailable.</returns>
+    internal DebugSymbolReader? OpenSymbols(IReadOnlyList<byte[]> symbolDeltas) => SymbolImage is not null
+        ? DebugSymbolReader.TryOpen(SymbolImage, symbolDeltas)
         : Path is null
             ? null
-            : DebugSymbolReader.TryOpen(Path, SymbolPath, SymbolDeltas);
+            : DebugSymbolReader.TryOpen(Path, SymbolPath, symbolDeltas);
 }

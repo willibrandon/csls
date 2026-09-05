@@ -25,8 +25,9 @@ internal static class ManagedSymbolVariableNameResolver
             return new Dictionary<int, ManagedSymbolVariable>();
         }
 
-        MetadataReader metadata = peReader.GetMetadataReader();
-        MethodDefinition method = GetMethod(metadata, frame.MethodToken);
+        using var metadata = new ManagedMetadataImage(peReader.GetMetadataReader(), frame.MetadataDeltas);
+        var methodHandle = (MethodDefinitionHandle)MetadataTokens.EntityHandle(checked((int)frame.MethodToken));
+        MethodDefinition method = metadata.GetMethodDefinition(methodHandle);
         bool hasThis = (method.Attributes & MethodAttributes.Static) == 0;
         Dictionary<int, ManagedSymbolVariable> result = [];
         if (hasThis)
@@ -34,8 +35,9 @@ internal static class ManagedSymbolVariableNameResolver
             result[0] = new ManagedSymbolVariable("this", TupleCustomTypeInfo: null);
         }
 
-        foreach (Parameter parameter in method.GetParameters().Select(metadata.GetParameter))
+        foreach (ParameterHandle parameterHandle in metadata.GetParameters(methodHandle))
         {
+            Parameter parameter = metadata.GetParameter(parameterHandle);
             if (parameter.SequenceNumber == 0)
             {
                 continue;
@@ -45,9 +47,7 @@ internal static class ManagedSymbolVariableNameResolver
             string name = metadata.GetString(parameter.Name);
             result[runtimeIndex] = new ManagedSymbolVariable(
                 string.IsNullOrEmpty(name) ? $"argument {runtimeIndex}" : name,
-                ManagedTupleElementNameReader.ReadAttribute(
-                    metadata,
-                    parameter.GetCustomAttributes()));
+                ManagedTupleElementNameReader.ReadAttribute(metadata, parameterHandle));
         }
 
         return result;
@@ -71,15 +71,4 @@ internal static class ManagedSymbolVariableNameResolver
         return symbols.GetLocalVariables(frame.MethodToken, frame.IlOffset);
     }
 
-    private static MethodDefinition GetMethod(MetadataReader metadata, uint methodToken)
-    {
-        int rowNumber = checked((int)(methodToken & 0x00ffffff));
-        if (rowNumber == 0 || rowNumber > metadata.MethodDefinitions.Count)
-        {
-            throw new BadImageFormatException(
-                $"Method token 0x{methodToken:X8} is outside the module metadata.");
-        }
-
-        return metadata.GetMethodDefinition(MetadataTokens.MethodDefinitionHandle(rowNumber));
-    }
 }

@@ -11,7 +11,7 @@ namespace Csls.Debugger;
 /// </summary>
 internal sealed partial class CorDebugDebuggee
 {
-    private ManagedConstructorBinding ResolveConstructor(
+    private ManagedFunctionBinding ResolveConstructor(
         string typeName,
         DebugExpressionLanguage language,
         ManagedExpressionValue[] arguments,
@@ -32,11 +32,11 @@ internal sealed partial class CorDebugDebuggee
                 "readable PE image.");
         }
 
-        MetadataReader metadata = peReader.GetMetadataReader();
-        TypeDefinition type = metadata.GetTypeDefinition(
-            System.Reflection.Metadata.Ecma335.MetadataTokens.TypeDefinitionHandle(
-                checked((int)(typeToken & 0x00FFFFFF))));
-        int expectedTypeArgumentCount = type.GetGenericParameters().Count;
+        using var metadata = new ManagedMetadataImage(peReader.GetMetadataReader(), module.MetadataDeltas);
+        TypeDefinitionHandle typeHandle = System.Reflection.Metadata.Ecma335.MetadataTokens.TypeDefinitionHandle(
+            checked((int)(typeToken & 0x00FFFFFF)));
+        TypeDefinition type = metadata.GetTypeDefinition(typeHandle);
+        int expectedTypeArgumentCount = metadata.GetGenericParameterCount(typeHandle);
         if (expectedTypeArgumentCount != runtimeType.TypeArguments.Count)
         {
             throw new InvalidOperationException(
@@ -51,7 +51,7 @@ internal sealed partial class CorDebugDebuggee
                 $"Runtime type '{typeName}' is abstract and cannot be constructed.");
         }
 
-        uint? constructorToken = TryResolveDeclaredMethod(
+        uint? constructorToken = ManagedFunctionMethodResolver.Resolve(
             metadata,
             typeToken,
             ".ctor",
@@ -80,8 +80,11 @@ internal sealed partial class CorDebugDebuggee
                     "object construction");
             }
 
+            ManagedBoundType[] boundArguments = [.. typeArguments.Select(argument => _boundTypes.CaptureType(argument, thread))];
+            ManagedBoundType? resultType = _boundTypes.BindMethodResult(
+                module.Pointer, constructorToken.Value, boundArguments, thread, constructsObject: true);
             function = GetModuleFunction(module.Pointer, constructorToken.Value);
-            return new ManagedConstructorBinding(function, typeArguments);
+            return new ManagedFunctionBinding(function, typeArguments, resultType);
         }
         catch
         {

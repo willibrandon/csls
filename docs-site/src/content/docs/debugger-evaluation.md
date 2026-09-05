@@ -17,6 +17,13 @@ supply argument and lexically active local names. Object expansion reads exact r
 types and walks the complete derived-to-base hierarchy, including base classes declared
 in another loaded assembly. Arrays are paged and retain their live rank and dimensions.
 
+Hot Reload local declarations and symbols follow the executing method version. Older
+active frames keep their original local types, names, and source positions; newly
+entered frames use the replacement declarations and symbols.
+Inspection, assignment, and subsequent stepping resolve those declarations across
+successive compiler updates. Newly added methods retain source locations, named
+arguments, and named-tuple argument metadata for inspection and assignment.
+
 Values expose `evaluateName` only when csls can construct a valid source expression for
 that value. Expansion and evaluation therefore share the same field and array identity
 instead of manufacturing expressions that the evaluator cannot resolve.
@@ -54,11 +61,17 @@ method when CoreCLR permits function evaluation at the selected frame. Explicit 
 loaded non-generic or closed generic runtime type, including nested generic and
 array type arguments.
 
-The binder searches exact metadata signatures, including inherited instance methods in
+Calls can select static methods, instance methods, and constructors added by Hot
+Reload to an existing type. The binder reads the current declarations and signatures,
+including subsequent updates, while the calling frame keeps its own method-version
+symbols. Added methods retain their declared return type for assignment checks.
+
+The binder reads metadata signatures, including inherited instance methods in
 another module. Arguments can be CLR primitives, `null`, current-generation object and
 array references, or literal and side-effect-free computed strings. Strings are
 allocated in the target with their exact UTF-16 length, including embedded NUL values.
-An ambiguous overload or type name fails before execution.
+An ambiguous overload or type name fails before execution. Generic method inference
+and complete source-language overload resolution are outside the supported call subset.
 
 Only the selected managed thread runs during a call. One function evaluation can be
 active at a time and has a five-second deadline. Overlapping DAP requests queue in
@@ -88,13 +101,17 @@ managed array element. The right-hand side uses the side-effect-free evaluator.
 
 Supported values are exact primitives, checked contextual integral literals,
 language-valid built-in numeric widening, explicit primitive conversions, `null`, and
-an existing runtime reference with the same runtime type. Direct writes do not run
+an existing compatible runtime reference. Direct writes do not run
 target code, so they preserve the generation and publish variable invalidation for
 aliased editor views.
 
-Reference compatibility uses loaded runtime type identity, including generic arguments
-and assembly load context. Matching type names alone do not permit a write. Direct
-writes to managed by-reference and native pointer locations are rejected.
+Reference compatibility uses declared source and destination types, including generic
+arguments and assembly load context. It supports identity, base-class, interface,
+generic variance, and array covariance conversions. Typed nulls retain their declared
+type, and covariant arrays enforce the actual element storage type. Matching type names
+alone do not permit a write. Responses reacquire the original physical storage to expose
+the replacement runtime value. Direct writes to managed by-reference and native pointer
+locations are rejected.
 
 An existing unboxed struct can be copied into a destination of the same loaded runtime
 type, including tuples and `Nullable<T>`. Copies preserve the entire value, including
@@ -127,8 +144,10 @@ write attempt. MCP resource subscriptions receive change notifications.
 
 String, call, and construction expressions can also supply an assignment value through
 explicitly authorized target execution. The debugger then reacquires the destination
-frame, applies the assignment, and returns the new generation. Boxing, complete
-reference conversions, and user-defined conversions remain unsupported.
+frame, applies the assignment, and returns the new generation. Calls retain their declared
+return type, including closed containing-type parameters. A derived result does not
+authorize an implicit downcast. Implicit boxing, explicit reference casts, and user-defined
+conversions remain unsupported.
 
 ## Completion
 

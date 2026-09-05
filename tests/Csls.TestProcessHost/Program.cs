@@ -15,7 +15,8 @@ if (args is ["--debugger-fixture", string fixturePath])
 
 if (args is ["--debugger-reference-assignment-fixture", string referenceAssignmentPath])
 {
-    return ReferenceAssignmentFixture.Run(referenceAssignmentPath);
+    return ReferenceAssignmentFixture<Exception>.Run(
+        referenceAssignmentPath, new InvalidOperationException("generic base"), new ArgumentException("generic replacement"));
 }
 
 if (args is ["--debugger-nullable-assignment-fixture", string nullableAssignmentPath])

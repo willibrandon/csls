@@ -12,12 +12,12 @@ internal sealed partial class CorDebugDebuggee
         string name,
         DebugStopGeneration generation)
     {
-        (nint value, ManagedTupleCustomTypeInfo? tupleCustomTypeInfo, ManagedValueOrigin? origin) = ResolveFrameValue(
+        (nint value, ManagedTupleCustomTypeInfo? tupleCustomTypeInfo, ManagedValueOrigin? origin, ManagedBoundType? declaredType) = ResolveFrameValue(
             frame, name, allowInstanceReceiver: true);
         try
         {
             return RetainExpressionValue(
-                name, name, value, frame.Id, generation, tupleCustomTypeInfo, origin);
+                name, name, value, frame.Id, generation, tupleCustomTypeInfo, origin, declaredType);
         }
         finally
         {
@@ -32,7 +32,8 @@ internal sealed partial class CorDebugDebuggee
         int frameId,
         DebugStopGeneration generation,
         ManagedTupleCustomTypeInfo? tupleCustomTypeInfo,
-        ManagedValueOrigin? origin)
+        ManagedValueOrigin? origin,
+        ManagedBoundType? declaredType = null)
     {
         (ManagedValueDisplay runtimeValue, ManagedValueDisplay formatted) = FormatRuntimeValuePair(
             value, debuggerDisplayDepth: 0, tupleCustomTypeInfo);
@@ -44,9 +45,10 @@ internal sealed partial class CorDebugDebuggee
                 name, formatted.Value, formatted.Type,
                 references.VariablesReference, references.MemoryReference, evaluateName),
             runtimeValueReference: 0,
-            runtimeValue);
+            runtimeValue) with
+        { DeclaredType = declaredType };
         if (expression.HasScalar && expression.Scalar is not string &&
-            ManagedRuntimeValueIdentity.GetElementType(value) != 0x11)
+            ManagedRuntimeValueIdentity.GetElementType(value) is not (0x11 or 0x0e or 0x12 or 0x14 or 0x1c or 0x1d))
         {
             return expression;
         }

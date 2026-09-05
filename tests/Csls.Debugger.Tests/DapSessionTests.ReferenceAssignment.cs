@@ -152,7 +152,7 @@ public sealed partial class DapSessionTests
             string? message = rejected.GetProperty("message").GetString();
             Assert.IsNotNull(message);
             Assert.Contains(ElementType, message, StringComparison.Ordinal);
-            Assert.Contains("requires identical loaded runtime types", message, StringComparison.Ordinal);
+            Assert.Contains("No implicit reference conversion exists", message, StringComparison.Ordinal);
             await AssertReferenceElementFieldAsync(client, frameId, Target).ConfigureAwait(false);
             await AssertReferenceElementFieldAsync(client, frameId, Source).ConfigureAwait(false);
 

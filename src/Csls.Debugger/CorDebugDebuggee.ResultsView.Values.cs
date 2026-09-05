@@ -154,12 +154,14 @@ internal sealed partial class CorDebugDebuggee
     private uint? TryResolveResultsViewBoxingMethod(nint module, uint token)
     {
         using PEReader reader = OpenRuntimeModule(module);
-        MetadataReader metadata = reader.GetMetadataReader();
+        CorDebugLoadedModule loaded = _sourceBreakpoints.FindModule(module)
+            ?? throw new InvalidOperationException("The object-copy method's runtime module is unavailable.");
+        using var metadata = new ManagedMetadataImage(reader.GetMetadataReader(), loaded.MetadataDeltas);
         TypeDefinition definition = metadata.GetTypeDefinition(
             MetadataTokens.TypeDefinitionHandle(checked((int)(token & 0x00FFFFFF))));
-        return definition.BaseType.IsNil && metadata.StringComparer.Equals(definition.Namespace, "System") &&
-            metadata.StringComparer.Equals(definition.Name, "Object")
-                ? TryResolveDeclaredMethod(metadata, token, "MemberwiseClone",
+        return definition.BaseType.IsNil && metadata.GetString(definition.Namespace) == "System" &&
+            metadata.GetString(definition.Name) == "Object"
+                ? ManagedFunctionMethodResolver.Resolve(metadata, token, "MemberwiseClone",
                     DebugExpressionLanguage.CSharp, [], staticMethod: false) ??
                     throw new InvalidOperationException("The runtime has no object-copy method.")
                 : null;

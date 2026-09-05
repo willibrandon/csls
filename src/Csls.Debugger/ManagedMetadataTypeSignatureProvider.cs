@@ -12,14 +12,17 @@ internal sealed class ManagedMetadataTypeSignatureProvider :
 {
     private const byte ValueTypeKind = 0x11;
     private readonly nint _sourceModule;
+    private readonly ManagedMetadataImage? _metadata;
 
     /// <summary>
     /// Creates a signature provider preserving its borrowed source runtime module.
     /// </summary>
     /// <param name="sourceModule">The borrowed runtime module, or zero for metadata-only decoding.</param>
-    internal ManagedMetadataTypeSignatureProvider(nint sourceModule)
+    /// <param name="metadata">The scoped aggregate reader when decoding a Hot Reload metadata chain.</param>
+    internal ManagedMetadataTypeSignatureProvider(nint sourceModule, ManagedMetadataImage? metadata = null)
     {
         _sourceModule = sourceModule;
+        _metadata = metadata;
     }
 
     /// <summary>
@@ -37,12 +40,13 @@ internal sealed class ManagedMetadataTypeSignatureProvider :
 
     /// <inheritdoc />
     public ManagedMetadataTypeSignature GetByReferenceType(
-        ManagedMetadataTypeSignature elementType) => throw Unsupported("by-reference");
+        ManagedMetadataTypeSignature elementType) => elementType with { UnsupportedKind = "by-reference" };
 
     /// <inheritdoc />
     public ManagedMetadataTypeSignature GetFunctionPointerType(
-        MethodSignature<ManagedMetadataTypeSignature> signature) =>
-        throw Unsupported("function-pointer");
+        MethodSignature<ManagedMetadataTypeSignature> signature) => new(
+            MetadataName: null, AssemblyName: null, GenericTypeParameterIndex: null,
+            TypeArguments: [], ArrayShapes: [], IsValueType: false, UnsupportedKind: "function-pointer");
 
     /// <inheritdoc />
     public ManagedMetadataTypeSignature GetGenericInstantiation(
@@ -55,7 +59,9 @@ internal sealed class ManagedMetadataTypeSignatureProvider :
     /// <inheritdoc />
     public ManagedMetadataTypeSignature GetGenericMethodParameter(
         object? genericContext,
-        int index) => throw Unsupported("generic method parameter");
+        int index) => new(
+            MetadataName: null, AssemblyName: null, GenericTypeParameterIndex: null,
+            TypeArguments: [], ArrayShapes: [], IsValueType: false, GenericMethodParameterIndex: index);
 
     /// <inheritdoc />
     public ManagedMetadataTypeSignature GetGenericTypeParameter(
@@ -80,11 +86,12 @@ internal sealed class ManagedMetadataTypeSignatureProvider :
 
     /// <inheritdoc />
     public ManagedMetadataTypeSignature GetPointerType(
-        ManagedMetadataTypeSignature elementType) => throw Unsupported("pointer");
+        ManagedMetadataTypeSignature elementType) => elementType with { UnsupportedKind = "pointer" };
 
     /// <inheritdoc />
-    public ManagedMetadataTypeSignature GetPrimitiveType(PrimitiveTypeCode typeCode) =>
-        typeCode switch
+    public ManagedMetadataTypeSignature GetPrimitiveType(PrimitiveTypeCode typeCode)
+    {
+        ManagedMetadataTypeSignature signature = typeCode switch
         {
             PrimitiveTypeCode.Void => Primitive("System.Void", isValueType: true),
             PrimitiveTypeCode.Boolean => Primitive("System.Boolean", isValueType: true),
@@ -107,6 +114,8 @@ internal sealed class ManagedMetadataTypeSignatureProvider :
             PrimitiveTypeCode.UIntPtr => Primitive("System.UIntPtr", isValueType: true),
             _ => throw Unsupported($"primitive {typeCode}")
         };
+        return signature with { PrimitiveType = typeCode };
+    }
 
     /// <inheritdoc />
     public ManagedMetadataTypeSignature GetSZArrayType(
@@ -148,8 +157,18 @@ internal sealed class ManagedMetadataTypeSignatureProvider :
         MetadataReader reader,
         object? genericContext,
         TypeSpecificationHandle handle,
-        byte rawTypeKind) => reader.GetTypeSpecification(handle)
-        .DecodeSignature(this, genericContext);
+        byte rawTypeKind)
+    {
+        if (_metadata is null)
+        {
+            return reader.GetTypeSpecification(handle).DecodeSignature(this, genericContext);
+        }
+
+        (MetadataReader owner, EntityHandle relative) = _metadata.Resolve(handle);
+        BlobReader blob = _metadata.GetBlobReader(owner.GetTypeSpecification((TypeSpecificationHandle)relative).Signature);
+        var decoder = new SignatureDecoder<ManagedMetadataTypeSignature, object?>(this, _metadata.Baseline, genericContext);
+        return decoder.DecodeType(ref blob);
+    }
 
     private static ManagedMetadataTypeSignature Primitive(
         string metadataName,
@@ -161,28 +180,28 @@ internal sealed class ManagedMetadataTypeSignatureProvider :
             ArrayShapes: [],
             isValueType);
 
-    private static string GetTypeDefinitionName(
+    private string GetTypeDefinitionName(
         MetadataReader reader,
         TypeDefinitionHandle handle)
     {
-        TypeDefinition type = reader.GetTypeDefinition(handle);
-        string name = reader.GetString(type.Name);
-        TypeDefinitionHandle declaringType = type.GetDeclaringType();
+        TypeDefinition type = _metadata is null ? reader.GetTypeDefinition(handle) : _metadata.GetTypeDefinition(handle);
+        string name = GetString(reader, type.Name);
+        TypeDefinitionHandle declaringType = _metadata is null ? type.GetDeclaringType() : _metadata.GetDeclaringType(handle);
         if (!declaringType.IsNil)
         {
             return $"{GetTypeDefinitionName(reader, declaringType)}+{name}";
         }
 
-        string typeNamespace = reader.GetString(type.Namespace);
+        string typeNamespace = GetString(reader, type.Namespace);
         return string.IsNullOrEmpty(typeNamespace) ? name : $"{typeNamespace}.{name}";
     }
 
-    private static string GetTypeReferenceName(
+    private string GetTypeReferenceName(
         MetadataReader reader,
         TypeReferenceHandle handle)
     {
-        TypeReference type = reader.GetTypeReference(handle);
-        string name = reader.GetString(type.Name);
+        TypeReference type = GetTypeReference(reader, handle);
+        string name = GetString(reader, type.Name);
         if (type.ResolutionScope.Kind == HandleKind.TypeReference)
         {
             return $"{GetTypeReferenceName(
@@ -190,21 +209,23 @@ internal sealed class ManagedMetadataTypeSignatureProvider :
                 (TypeReferenceHandle)type.ResolutionScope)}+{name}";
         }
 
-        string typeNamespace = reader.GetString(type.Namespace);
+        string typeNamespace = GetString(reader, type.Namespace);
         return string.IsNullOrEmpty(typeNamespace) ? name : $"{typeNamespace}.{name}";
     }
 
-    private static string? GetTypeReferenceAssemblyName(
+    private string? GetTypeReferenceAssemblyName(
         MetadataReader reader,
         TypeReferenceHandle handle)
     {
-        EntityHandle scope = reader.GetTypeReference(handle).ResolutionScope;
+        EntityHandle scope = GetTypeReference(reader, handle).ResolutionScope;
         for (int depth = 0; depth < 256; depth++)
         {
             if (scope.Kind == HandleKind.AssemblyReference)
             {
-                return reader.GetString(
-                    reader.GetAssemblyReference((AssemblyReferenceHandle)scope).Name);
+                AssemblyReference assembly = _metadata is null
+                    ? reader.GetAssemblyReference((AssemblyReferenceHandle)scope)
+                    : _metadata.GetAssemblyReference((AssemblyReferenceHandle)scope);
+                return GetString(reader, assembly.Name);
             }
 
             if (scope.Kind != HandleKind.TypeReference)
@@ -212,17 +233,17 @@ internal sealed class ManagedMetadataTypeSignatureProvider :
                 return GetCurrentAssemblyName(reader);
             }
 
-            scope = reader.GetTypeReference((TypeReferenceHandle)scope).ResolutionScope;
+            scope = GetTypeReference(reader, (TypeReferenceHandle)scope).ResolutionScope;
         }
 
         throw new BadImageFormatException("A metadata type reference exceeds 256 nested levels.");
     }
 
-    private static uint GetAssemblyReferenceToken(
+    private uint GetAssemblyReferenceToken(
         MetadataReader reader,
         TypeReferenceHandle handle)
     {
-        EntityHandle scope = reader.GetTypeReference(handle).ResolutionScope;
+        EntityHandle scope = GetTypeReference(reader, handle).ResolutionScope;
         for (int depth = 0; depth < 256; depth++)
         {
             if (scope.Kind == HandleKind.AssemblyReference)
@@ -235,16 +256,22 @@ internal sealed class ManagedMetadataTypeSignatureProvider :
                 return 0;
             }
 
-            scope = reader.GetTypeReference((TypeReferenceHandle)scope).ResolutionScope;
+            scope = GetTypeReference(reader, (TypeReferenceHandle)scope).ResolutionScope;
         }
 
         throw new BadImageFormatException("A metadata type reference exceeds 256 nested levels.");
     }
 
-    private static string? GetCurrentAssemblyName(MetadataReader reader) => reader.IsAssembly
-        ? reader.GetString(reader.GetAssemblyDefinition().Name)
+    private string? GetCurrentAssemblyName(MetadataReader reader) => (_metadata?.Baseline ?? reader).IsAssembly
+        ? GetString(reader, (_metadata?.Baseline ?? reader).GetAssemblyDefinition().Name)
         : null;
 
+    private string GetString(MetadataReader reader, StringHandle handle) =>
+        _metadata is null ? reader.GetString(handle) : _metadata.GetString(handle);
+
+    private TypeReference GetTypeReference(MetadataReader reader, TypeReferenceHandle handle) =>
+        _metadata is null ? reader.GetTypeReference(handle) : _metadata.GetTypeReference(handle);
+
     private static BadImageFormatException Unsupported(string kind) => new(
-        $"Results View does not support a {kind} interface signature.");
+        $"The debugger does not support a {kind} metadata signature.");
 }

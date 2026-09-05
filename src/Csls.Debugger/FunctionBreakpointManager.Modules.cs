@@ -8,43 +8,33 @@ namespace Csls.Debugger;
 internal sealed partial class FunctionBreakpointManager
 {
     /// <summary>
-    /// Retains a loaded module and binds matching function breakpoints.
+    /// Retains independent native ownership of the shared loaded-module record and binds function breakpoints.
     /// </summary>
-    /// <param name="module">The borrowed ICorDebugModule pointer.</param>
-    /// <param name="moduleImage">The immutable in-memory PE image, when applicable.</param>
+    /// <param name="module">The authoritative loaded-module metadata and borrowed native references.</param>
     /// <param name="cancellationToken">Cancels breakpoint-change notification.</param>
     /// <returns>A task that completes after applicable methods are bound.</returns>
     internal async ValueTask LoadModuleAsync(
-        nint module,
-        byte[]? moduleImage,
+        CorDebugLoadedModule module,
         CancellationToken cancellationToken)
     {
         ObjectDisposedException.ThrowIf(_disposed != 0, this);
-        ArgumentOutOfRangeException.ThrowIfZero(module);
+        ArgumentNullException.ThrowIfNull(module);
         if (_modules.Count == MaximumModuleCount)
         {
             throw new InvalidOperationException(
                 $"The target exceeds the loaded-module limit of {MaximumModuleCount}.");
         }
 
-        nint identity = ComAbi.QueryInterface(module, s_iUnknownInterfaceId);
-        _ = ComAbi.AddRef(module);
-        var loadedModule = new CorDebugLoadedModule
+        _ = ComAbi.AddRef(module.Identity);
+        _ = ComAbi.AddRef(module.Pointer);
+        if (!_modules.TryAdd(module.Identity, module))
         {
-            Id = 0,
-            Path = GetModulePath(module),
-            Pointer = module,
-            Identity = identity,
-            ModuleImage = moduleImage
-        };
-        if (!_modules.TryAdd(identity, loadedModule))
-        {
-            _ = ComAbi.Release(identity);
-            _ = ComAbi.Release(module);
+            _ = ComAbi.Release(module.Identity);
+            _ = ComAbi.Release(module.Pointer);
             return;
         }
 
-        await BindModuleAsync(loadedModule, notifyChanges: true, cancellationToken)
+        await BindModuleAsync(module, notifyChanges: true, cancellationToken)
             .ConfigureAwait(false);
     }
 
@@ -96,19 +86,6 @@ internal sealed partial class FunctionBreakpointManager
         finally
         {
             _ = ComAbi.Release(identity);
-        }
-    }
-
-    private static string? GetModulePath(nint module)
-    {
-        try
-        {
-            string path = CorDebugModulePath.Get(module);
-            return Path.IsPathFullyQualified(path) ? Path.GetFullPath(path) : null;
-        }
-        catch (InvalidOperationException)
-        {
-            return null;
         }
     }
 

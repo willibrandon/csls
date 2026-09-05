@@ -57,6 +57,7 @@ internal static class ManagedSymbolFrameResolver
                 loadedModule,
                 methodToken,
                 ilOffset,
+                GetFunctionGeneration(function, loadedModule),
                 fallbackName);
         }
         catch (Exception exception) when (DebugSymbolReader.IsReadFailure(exception))
@@ -81,27 +82,30 @@ internal static class ManagedSymbolFrameResolver
         CorDebugLoadedModule module,
         uint methodToken,
         uint ilOffset,
+        int generation,
         string fallbackName)
     {
         string displayName = fallbackName;
-        MetadataReader? metadata = null;
+        IReadOnlyList<byte[]> symbolDeltas = [.. module.SymbolDeltas.Take(generation)];
+        IReadOnlyList<byte[]> metadataDeltas = [.. module.MetadataDeltas.Take(generation)];
         using PEReader? peReader = module.OpenPeReader();
-        if (peReader is not null)
+        using ManagedMetadataImage? metadata = peReader is null ? null
+            : new ManagedMetadataImage(peReader.GetMetadataReader(), metadataDeltas);
+        if (metadata is not null)
         {
-            metadata = peReader.GetMetadataReader();
             int rowNumber = checked((int)(methodToken & 0x00ffffff));
-            if (rowNumber == 0 || rowNumber > metadata.MethodDefinitions.Count)
+            if (!metadata.ContainsMethod(MetadataTokens.MethodDefinitionHandle(rowNumber)))
             {
-                return Unknown(fallbackName, module);
+                return Unknown(fallbackName, module, symbolDeltas, metadataDeltas);
             }
 
             displayName = ResolveMethodName(metadata, methodToken, fallbackName);
         }
 
-        using DebugSymbolReader? symbols = module.OpenSymbols();
+        using DebugSymbolReader? symbols = module.OpenSymbols(symbolDeltas);
         if (symbols is null)
         {
-            return Unknown(displayName, module);
+            return Unknown(displayName, module, symbolDeltas, metadataDeltas);
         }
 
         if (metadata is not null &&
@@ -126,7 +130,7 @@ internal static class ManagedSymbolFrameResolver
 
         if (selected is null)
         {
-            return Unknown(displayName, module);
+            return Unknown(displayName, module, symbolDeltas, metadataDeltas);
         }
 
         return new ManagedFrameLocation
@@ -136,7 +140,8 @@ internal static class ManagedSymbolFrameResolver
             ModuleId = module.Id,
             ModuleImage = module.ModuleImage,
             SymbolImage = module.SymbolImage,
-            SymbolDeltas = [.. module.SymbolDeltas],
+            SymbolDeltas = symbolDeltas,
+            MetadataDeltas = metadataDeltas,
             SourcePath = selected.SourcePath,
             Line = selected.StartLine,
             Column = selected.StartColumn,
@@ -144,20 +149,48 @@ internal static class ManagedSymbolFrameResolver
         };
     }
 
+    private static unsafe int GetFunctionGeneration(nint function, CorDebugLoadedModule module)
+    {
+        if (module.HotReloadGeneration == 0)
+        {
+            return 0;
+        }
+
+        nint function2 = ComAbi.QueryInterface(function, ICorDebugFunction2Abi.InterfaceId);
+        try
+        {
+            uint version = 0;
+            uint* versionAddress = &version;
+            CorDebugHResult.ThrowIfFailed(new ICorDebugFunction2Abi(function2).GetVersionNumber((nint)versionAddress),
+                "ICorDebugFunction2.GetVersionNumber");
+            version = Volatile.Read(ref *versionAddress);
+            if (version == 0 || version - 1 > module.SymbolDeltas.Count || version - 1 > module.MetadataDeltas.Count)
+            {
+                throw new BadImageFormatException("The active method version is outside the retained Hot Reload history.");
+            }
+
+            return checked((int)(version - 1));
+        }
+        finally
+        {
+            _ = ComAbi.Release(function2);
+        }
+    }
+
     private static string ResolveMethodName(
-        MetadataReader metadata,
+        ManagedMetadataImage metadata,
         uint methodToken,
         string fallbackName)
     {
         int rowNumber = checked((int)(methodToken & 0x00ffffff));
-        if (rowNumber == 0 || rowNumber > metadata.MethodDefinitions.Count)
+        if (!metadata.ContainsMethod(MetadataTokens.MethodDefinitionHandle(rowNumber)))
         {
             return fallbackName;
         }
 
-        MethodDefinition method = metadata.GetMethodDefinition(
-            MetadataTokens.MethodDefinitionHandle(rowNumber));
-        TypeDefinition declaringType = metadata.GetTypeDefinition(method.GetDeclaringType());
+        MethodDefinitionHandle handle = MetadataTokens.MethodDefinitionHandle(rowNumber);
+        MethodDefinition method = metadata.GetMethodDefinition(handle);
+        TypeDefinition declaringType = metadata.GetTypeDefinition(metadata.GetDeclaringType(handle));
         string typeName = metadata.GetString(declaringType.Name);
         string typeNamespace = metadata.GetString(declaringType.Namespace);
         string methodName = metadata.GetString(method.Name);
@@ -181,7 +214,9 @@ internal static class ManagedSymbolFrameResolver
 
     private static ManagedFrameLocation Unknown(
         string name,
-        CorDebugLoadedModule module) =>
+        CorDebugLoadedModule module,
+        IReadOnlyList<byte[]> symbolDeltas,
+        IReadOnlyList<byte[]> metadataDeltas) =>
         new()
         {
             Name = name,
@@ -189,7 +224,8 @@ internal static class ManagedSymbolFrameResolver
             ModuleId = module.Id,
             ModuleImage = module.ModuleImage,
             SymbolImage = module.SymbolImage,
-            SymbolDeltas = [.. module.SymbolDeltas],
+            SymbolDeltas = symbolDeltas,
+            MetadataDeltas = metadataDeltas,
             Line = 0,
             Column = 0
         };

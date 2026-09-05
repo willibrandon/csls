@@ -41,7 +41,8 @@ internal sealed partial class CorDebugDebuggee
     private unsafe (
         nint Value,
         ManagedTupleCustomTypeInfo? TupleCustomTypeInfo,
-        ManagedValueOrigin? Origin) ResolveInstanceFieldValue(
+        ManagedValueOrigin? Origin,
+        ManagedBoundType? DeclaredType) ResolveInstanceFieldValue(
         ManagedExpressionValue receiver,
         string name,
         DebugExpressionLanguage language)
@@ -80,10 +81,19 @@ internal sealed partial class CorDebugDebuggee
                 tupleCustomTypeInfo,
                 name,
                 comparison,
-                out (nint Value, ManagedTupleCustomTypeInfo? CustomTypeInfo, ManagedValueOrigin? Origin) tupleElement,
+                out (nint Value, ManagedTupleCustomTypeInfo? CustomTypeInfo, ManagedValueOrigin? Origin, int LogicalIndex) tupleElement,
                 origin))
             {
-                return tupleElement;
+                try
+                {
+                    ManagedBoundType declaredType = ResolveTupleElementType(receiver, currentType, tupleElement.LogicalIndex);
+                    return (tupleElement.Value, tupleElement.CustomTypeInfo, tupleElement.Origin, declaredType);
+                }
+                catch
+                {
+                    _ = ComAbi.Release(tupleElement.Value);
+                    throw;
+                }
             }
 
             for (int depth = 0;
@@ -98,13 +108,7 @@ internal sealed partial class CorDebugDebuggee
                     runtimeClass = GetRuntimeTypeClass(currentType);
                     module = GetClassModule(runtimeClass);
                     uint typeToken = GetClassToken(runtimeClass);
-                    using PEReader peReader = _sourceBreakpoints
-                        .FindModule(module)
-                        ?.OpenPeReader() ?? new PEReader(new FileStream(
-                            CorDebugModulePath.Get(module),
-                            FileMode.Open,
-                            FileAccess.Read,
-                            FileShare.Read | FileShare.Delete));
+                    using PEReader peReader = OpenRuntimeModule(module);
                     MetadataReader metadata = peReader.GetMetadataReader();
                     uint? fieldToken = TryResolveDeclaredInstanceField(
                         metadata,
@@ -120,10 +124,12 @@ internal sealed partial class CorDebugDebuggee
                             currentType, metadata, field, depth == 0 ? tupleCustomTypeInfo : null);
                         ManagedValueOrigin? fieldOrigin = CreateFieldValueOrigin(
                             origin, runtimeClass, resolvedFieldToken);
+                        ManagedBoundType declaredType = ResolveFieldDeclaredType(receiver, currentType, module, resolvedFieldToken);
                         return (
                             GetObjectFieldValue(instance, runtimeClass, resolvedFieldToken),
                             fieldTupleInfo,
-                            fieldOrigin);
+                            fieldOrigin,
+                            declaredType);
                     }
 
                     nint* baseTypeAddress = &baseType;
@@ -185,6 +191,41 @@ internal sealed partial class CorDebugDebuggee
 
         throw new InvalidOperationException(
             $"Instance field '{name}' is unavailable on the runtime type hierarchy.");
+    }
+
+    private ManagedBoundType ResolveTupleElementType(ManagedExpressionValue receiver, nint exactType, int index)
+    {
+        nint thread = GetThread(_values[receiver.RuntimeValueReference].ThreadId
+            ?? throw new InvalidOperationException("The tuple receiver has no stopped thread."));
+        try
+        {
+            ManagedBoundType tupleType = _boundTypes.CaptureType(exactType, thread);
+            while (index >= 7)
+            {
+                tupleType = tupleType.TypeArguments[7];
+                index -= 7;
+            }
+
+            return tupleType.TypeArguments[index];
+        }
+        finally
+        {
+            _ = ComAbi.Release(thread);
+        }
+    }
+
+    private ManagedBoundType ResolveFieldDeclaredType(ManagedExpressionValue receiver, nint declaringType, nint module, uint token)
+    {
+        nint thread = GetThread(_values[receiver.RuntimeValueReference].ThreadId
+            ?? throw new InvalidOperationException("The field receiver has no stopped thread."));
+        try
+        {
+            return _boundTypes.BindField(declaringType, module, token, thread);
+        }
+        finally
+        {
+            _ = ComAbi.Release(thread);
+        }
     }
 
     private static uint? TryResolveDeclaredInstanceField(

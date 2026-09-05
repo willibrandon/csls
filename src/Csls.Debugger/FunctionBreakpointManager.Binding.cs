@@ -32,26 +32,29 @@ internal sealed partial class FunctionBreakpointManager
                 return;
             }
 
-            MetadataReader metadata = peReader.GetMetadataReader();
-            foreach (TypeDefinitionHandle typeHandle in metadata.TypeDefinitions)
+            using var metadata = new ManagedMetadataImage(peReader.GetMetadataReader(), module.MetadataDeltas);
+            Dictionary<TypeDefinitionHandle, string> typeNames = [];
+            foreach (MethodDefinitionHandle methodHandle in metadata.GetMethods())
             {
-                TypeDefinition type = metadata.GetTypeDefinition(typeHandle);
-                string typeName = GetTypeName(metadata, typeHandle);
-                foreach (MethodDefinitionHandle methodHandle in type.GetMethods())
+                cancellationToken.ThrowIfCancellationRequested();
+                TypeDefinitionHandle type = metadata.GetDeclaringType(methodHandle);
+                if (!typeNames.TryGetValue(type, out string? typeName))
                 {
-                    string methodName = metadata.GetString(
-                        metadata.GetMethodDefinition(methodHandle).Name);
-                    foreach (FunctionBreakpointDefinition definition in _definitions)
-                    {
-                        if (definition.ValidationMessage is not null ||
-                            !Matches(definition.Name, typeName, methodName) ||
-                            !TryBind(module, methodHandle, definition))
-                        {
-                            continue;
-                        }
+                    typeName = GetTypeName(metadata, type);
+                    typeNames.Add(type, typeName);
+                }
 
-                        definition.BindingCount++;
+                string methodName = metadata.GetString(metadata.GetMethodDefinition(methodHandle).Name);
+                foreach (FunctionBreakpointDefinition definition in _definitions)
+                {
+                    if (definition.ValidationMessage is not null ||
+                        !Matches(definition.Name, typeName, methodName) ||
+                        !TryBind(module, methodHandle, definition))
+                    {
+                        continue;
                     }
+
+                    definition.BindingCount++;
                 }
             }
         }
@@ -139,18 +142,30 @@ internal sealed partial class FunctionBreakpointManager
         string.Equals(requested, methodName, StringComparison.Ordinal) ||
         string.Equals(requested, $"{typeName}.{methodName}", StringComparison.Ordinal);
 
-    private static string GetTypeName(MetadataReader metadata, TypeDefinitionHandle handle)
+    private static string GetTypeName(ManagedMetadataImage metadata, TypeDefinitionHandle handle)
     {
-        TypeDefinition type = metadata.GetTypeDefinition(handle);
-        string name = metadata.GetString(type.Name);
-        TypeDefinitionHandle declaringType = type.GetDeclaringType();
-        if (!declaringType.IsNil)
+        List<string> names = [];
+        for (int depth = 0; depth < 256; depth++)
         {
-            return $"{GetTypeName(metadata, declaringType)}.{name}";
+            TypeDefinition type = metadata.GetTypeDefinition(handle);
+            names.Add(metadata.GetString(type.Name));
+            TypeDefinitionHandle declaringType = metadata.GetDeclaringType(handle);
+            if (declaringType.IsNil)
+            {
+                string @namespace = metadata.GetString(type.Namespace);
+                if (!string.IsNullOrEmpty(@namespace))
+                {
+                    names.Add(@namespace);
+                }
+
+                names.Reverse();
+                return string.Join('.', names);
+            }
+
+            handle = declaringType;
         }
 
-        string @namespace = metadata.GetString(type.Namespace);
-        return string.IsNullOrEmpty(@namespace) ? name : $"{@namespace}.{name}";
+        throw new BadImageFormatException("A function breakpoint type exceeds 256 nested levels.");
     }
 
     private void ReleaseBindings(bool runtimeAvailable = true)

@@ -10,7 +10,6 @@ namespace Csls.Debugger;
 /// </summary>
 internal sealed class ManagedResultsViewResolver
 {
-    private const uint ArrayElementType = 0x14;
     private const uint ClassElementType = 0x12;
     private const string EnumerableMetadataName = "System.Collections.IEnumerable";
     private const string GenericEnumerableMetadataName =
@@ -21,10 +20,9 @@ internal sealed class ManagedResultsViewResolver
         "System.Linq.SystemCore_EnumerableDebugView";
     private const string GenericDebugViewMetadataName =
         "System.Linq.SystemCore_EnumerableDebugView`1";
-    private const uint SingleDimensionArrayElementType = 0x1D;
-    private const uint ValueTypeElementType = 0x11;
     private readonly SourceBreakpointManager _modules;
     private readonly ManagedRuntimeTypeCatalog _typeCatalog;
+    private readonly ManagedRuntimeTypeResolver _runtimeTypes;
 
     /// <summary>
     /// Creates a Results View resolver over the loaded runtime-module catalog.
@@ -35,6 +33,7 @@ internal sealed class ManagedResultsViewResolver
         ArgumentNullException.ThrowIfNull(modules);
         _modules = modules;
         _typeCatalog = new ManagedRuntimeTypeCatalog(modules);
+        _runtimeTypes = new ManagedRuntimeTypeResolver(_typeCatalog, new ManagedCoreLibrary(modules));
     }
 
     /// <summary>
@@ -357,7 +356,7 @@ internal sealed class ManagedResultsViewResolver
                     StringComparison.Ordinal) &&
                     candidate.TypeArguments is [ManagedMetadataTypeSignature argument])
                 {
-                    elementType = ResolveRuntimeType(argument, genericArguments, thread);
+                    elementType = _runtimeTypes.Resolve(argument, genericArguments, [], thread);
                     return true;
                 }
             }
@@ -461,7 +460,7 @@ internal sealed class ManagedResultsViewResolver
         runtimeType = 0;
         try
         {
-            runtimeType = ResolveRuntimeType(signature, genericArguments, thread);
+            runtimeType = _runtimeTypes.Resolve(signature, genericArguments, [], thread);
             return true;
         }
         catch (Exception exception) when (
@@ -472,140 +471,6 @@ internal sealed class ManagedResultsViewResolver
         }
     }
 
-    private unsafe nint ResolveRuntimeType(
-        ManagedMetadataTypeSignature signature,
-        IReadOnlyList<nint> genericArguments,
-        nint thread,
-        int depth = 0)
-    {
-        EnsureHierarchyDepth(depth);
-        nint result = 0;
-        if (signature.GenericTypeParameterIndex is int parameterIndex)
-        {
-            if ((uint)parameterIndex >= (uint)genericArguments.Count)
-            {
-                throw new BadImageFormatException(
-                    $"Generic parameter {parameterIndex} is outside the runtime type arity.");
-            }
-
-            result = Retain(genericArguments[parameterIndex]);
-        }
-        else
-        {
-            string metadataName = signature.MetadataName ??
-                throw new BadImageFormatException("A metadata type signature has no identity.");
-            if (!_typeCatalog.TryResolveSignature(
-                signature,
-                out CorDebugLoadedModule? module,
-                out uint typeToken) ||
-                module is null)
-            {
-                throw new InvalidOperationException(
-                    $"Runtime type '{metadataName}' is not loaded uniquely.");
-            }
-
-            nint runtimeClass = 0;
-            nint runtimeClass2 = 0;
-            nint[] typeArguments = new nint[signature.TypeArguments.Count];
-            try
-            {
-                for (int index = 0; index < typeArguments.Length; index++)
-                {
-                    typeArguments[index] = ResolveRuntimeType(
-                        signature.TypeArguments[index],
-                        genericArguments,
-                        thread,
-                        depth + 1);
-                }
-
-                runtimeClass = GetModuleClass(module.Pointer, typeToken);
-                runtimeClass2 = ComAbi.QueryInterface(
-                    runtimeClass,
-                    ICorDebugClass2Abi.InterfaceId);
-                fixed (nint* typeArgumentsAddress = typeArguments)
-                {
-                    nint* resultAddress = &result;
-                    CorDebugHResult.ThrowIfFailed(
-                        new ICorDebugClass2Abi(runtimeClass2).GetParameterizedType(
-                            signature.IsValueType ? ValueTypeElementType : ClassElementType,
-                            checked((uint)typeArguments.Length),
-                            typeArguments.Length == 0 ? 0 : (nint)typeArgumentsAddress,
-                            (nint)resultAddress),
-                        "ICorDebugClass2.GetParameterizedType");
-                    result = RequirePointer(
-                        Volatile.Read(ref *resultAddress),
-                        "ICorDebugClass2.GetParameterizedType");
-                }
-            }
-            finally
-            {
-                ReleaseAll(typeArguments);
-                ReleasePointer(runtimeClass2);
-                ReleasePointer(runtimeClass);
-            }
-        }
-
-        if (signature.ArrayShapes.Count == 0)
-        {
-            return result;
-        }
-
-        return ApplyArrayShapes(result, signature.ArrayShapes, thread);
-    }
-
-    private static unsafe nint ApplyArrayShapes(
-        nint elementType,
-        IReadOnlyList<ManagedMetadataArrayShape> shapes,
-        nint thread)
-    {
-        nint appDomain = 0;
-        nint appDomain2 = 0;
-        nint currentType = elementType;
-        try
-        {
-            nint* appDomainAddress = &appDomain;
-            CorDebugHResult.ThrowIfFailed(
-                new ICorDebugThreadAbi(thread).GetAppDomain((nint)appDomainAddress),
-                "ICorDebugThread.GetAppDomain");
-            appDomain = RequirePointer(
-                Volatile.Read(ref *appDomainAddress),
-                "ICorDebugThread.GetAppDomain");
-            appDomain2 = ComAbi.QueryInterface(
-                appDomain,
-                ICorDebugAppDomain2Abi.InterfaceId);
-            foreach (ManagedMetadataArrayShape shape in shapes)
-            {
-                nint arrayType = 0;
-                nint* arrayTypeAddress = &arrayType;
-                CorDebugHResult.ThrowIfFailed(
-                    new ICorDebugAppDomain2Abi(appDomain2).GetArrayOrPointerType(
-                        shape.IsVector
-                            ? SingleDimensionArrayElementType
-                            : ArrayElementType,
-                        checked((uint)shape.Rank),
-                        currentType,
-                        (nint)arrayTypeAddress),
-                    "ICorDebugAppDomain2.GetArrayOrPointerType");
-                arrayType = RequirePointer(
-                    Volatile.Read(ref *arrayTypeAddress),
-                    "ICorDebugAppDomain2.GetArrayOrPointerType");
-                ReleasePointer(currentType);
-                currentType = arrayType;
-            }
-
-            return currentType;
-        }
-        catch
-        {
-            ReleasePointer(currentType);
-            throw;
-        }
-        finally
-        {
-            ReleasePointer(appDomain2);
-            ReleasePointer(appDomain);
-        }
-    }
 
     private List<ManagedMetadataTypeSignature> ReadInterfaces(nint runtimeType)
     {

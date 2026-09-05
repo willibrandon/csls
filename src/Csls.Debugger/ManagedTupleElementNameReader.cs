@@ -52,6 +52,40 @@ internal static class ManagedTupleElementNameReader
     }
 
     /// <summary>
+    /// Reads tuple-name transforms across aggregate metadata rows and generation-owned heaps.
+    /// </summary>
+    internal static ManagedTupleCustomTypeInfo? ReadAttribute(ManagedMetadataImage metadata, EntityHandle entity)
+    {
+        try
+        {
+            var provider = new ManagedMetadataTypeSignatureProvider(0, metadata);
+            foreach (CustomAttribute attribute in metadata.GetCustomAttributes(entity))
+            {
+                EntityHandle type = metadata.GetAttributeType(attribute);
+                string? name = type.Kind switch
+                {
+                    HandleKind.TypeDefinition => provider.GetTypeFromDefinition(
+                        metadata.Baseline, (TypeDefinitionHandle)type, 0x12).MetadataName,
+                    HandleKind.TypeReference => provider.GetTypeFromReference(
+                        metadata.Baseline, (TypeReferenceHandle)type, 0x12).MetadataName,
+                    _ => null
+                };
+                if (string.Equals(name, TupleElementNamesAttribute, StringComparison.Ordinal))
+                {
+                    return DecodeAttribute(metadata.GetBlobReader(attribute.Value));
+                }
+            }
+        }
+        catch (Exception exception) when (
+            exception is BadImageFormatException or DecoderFallbackException or OverflowException)
+        {
+            return null;
+        }
+
+        return null;
+    }
+
+    /// <summary>
     /// Reads compiler tuple-name transforms attached to one Portable PDB entity.
     /// </summary>
     /// <param name="metadata">The Portable PDB metadata.</param>

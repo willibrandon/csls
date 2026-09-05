@@ -118,6 +118,7 @@ internal sealed partial class CorDebugDebuggee
                 ModuleImage = location.ModuleImage,
                 SymbolImage = location.SymbolImage,
                 SymbolDeltas = location.SymbolDeltas,
+                MetadataDeltas = location.MetadataDeltas,
                 SymbolPath = location.ModulePath is null
                     ? null
                     : _sourceBreakpoints.GetSymbolPath(location.ModulePath),

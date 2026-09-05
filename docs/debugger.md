@@ -133,8 +133,9 @@ and supply one matched metadata, IL, and minimal Portable PDB delta generation,
 the aggregate updated type and method tokens, and every runtime capability
 required by the edit. The debugger rejects a generation before mutation when a
 required capability is absent, a changed type does not resolve through the
-complete metadata generation chain, or the compiler's method set differs from
-the Portable PDB delta.
+complete metadata generation chain, or the compiler's changed existing-method set
+differs from the Portable PDB delta. Newly added PDB methods must resolve through
+the candidate metadata generation.
 When an updated method is active, it must also supply the old method token,
 method version, and IL offset together with the updated zero-based source span.
 The debugger validates module identity, generation ordering, payload bounds,
@@ -142,6 +143,7 @@ Portable PDB continuity, and every active-statement mapping before applying the
 generation atomically. It then overlays the current document checksums, rebinds
 source, function, and managed-IL instruction breakpoints, remaps active methods
 to exact compiler-selected instructions, and invalidates stopped-state handles.
+Pending function breakpoints bind when an update introduces their named method.
 
 C# and Visual Basic compiler services provide this delta workflow. Ordinary F#
 debugging remains first-class, but F# Hot Reload is not claimed until its
@@ -214,6 +216,16 @@ primitive, string, field, object, and array inspection does not execute target
 code. Scope and variable handles belong to the generation in which they were returned.
 Unchanged physical frames retain their logical identifiers across debugger-owned
 evaluation; application execution retires those identifiers too.
+
+After Hot Reload, local inspection and assignment use the executing method version's
+declarations and symbols. Active older frames retain their local types, names, and
+source positions while newly entered frames use the replacements, including across
+successive updates. Stack-frame and argument inspection also resolve newly added
+methods, including named-tuple argument metadata.
+Explicit evaluation can call static methods, instance methods, and constructors
+added to existing types, including after subsequent updates to those methods.
+Their current signatures and declared return types govern method selection and
+assignment, while the calling frame retains its own method-version symbols.
 
 DAP `evaluate` selects expression syntax from the selected frame's PDB language
 identity. C#, Visual Basic, and F# expressions are parsed in a lazy per-session
@@ -304,10 +316,12 @@ construction resolves nested generic, array, and nullable arguments to exact
 `ICorDebugType` values and executes through CoreCLR's parameterized-object API.
 Generic arity mismatches, unresolved or ambiguous types, and object or collection
 initializers fail before target execution. Unsupported value-type arguments,
-overload sets that exact metadata parameter identities cannot select uniquely,
+overload sets that the supported argument matching cannot select uniquely,
 properties, user-defined operators, and implicit `ToString` execution are
 also rejected. Variables include `evaluateName` only when csls can provide a valid
 source expression for the value.
+Generic method inference and complete source-language overload resolution are
+outside the supported call subset.
 
 Object expansion honors `DebuggerBrowsableAttribute` on runtime fields. Fields marked
 `Never` are omitted from the default view, `Collapsed` fields remain ordinary members,
@@ -372,16 +386,22 @@ runtime fields.
 DAP `setVariable` and `setExpression` assign named locals, arguments, instance fields,
 and managed array elements. Exact primitives, checked contextual integral literals,
 language-valid built-in numeric widening, explicit built-in primitive conversions,
-null, and retained runtime references of the same runtime type use a direct write and
+null, and compatible retained runtime references use a direct write and
 preserve the current stop generation. Literal and side-effect-free computed strings are
 materialized with `ICorDebugEval2.NewStringWithLength`; explicitly qualified method-call
 and object-construction results use the same guarded function-evaluation lifecycle as
 DAP `evaluate`. These paths reacquire and validate the selected frame before writing,
 return the replacement stop generation, and invalidate both stacks and variables.
-Boxing, reference conversions, and user-defined conversions remain unsupported.
+Implicit boxing, explicit reference casts, and user-defined conversions are not supported.
 
-Reference writes compare loaded runtime type identity, including generic arguments
-and assembly load context. Type names alone do not establish compatibility. Direct
+Reference writes use the declared source and destination types, including typed nulls,
+generic arguments, and assembly load context. Identity, base-class, implemented-interface,
+generic variance, and array covariance conversions are checked before mutation. A
+covariant array also enforces its actual element storage type. Assignment responses
+reacquire physical storage to show the new runtime value rather than a cached wrapper.
+Method-call results retain the method's declared return type, including closed generic
+parameters; returning a derived object does not authorize an implicit downcast.
+Type names alone do not establish compatibility. Direct
 writes to managed by-reference and native pointer locations are rejected before
 changing target storage, including when assigning null.
 

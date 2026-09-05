@@ -30,6 +30,7 @@ internal static class ManagedIlSourceMap
                 ModuleImage = frame.ModuleImage,
                 SymbolImage = frame.SymbolImage,
                 SymbolDeltas = frame.SymbolDeltas,
+                MetadataDeltas = frame.MetadataDeltas,
                 SourcePath = point.SourcePath,
                 Line = point.StartLine,
                 Column = point.StartColumn,

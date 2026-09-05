@@ -17,7 +17,6 @@ internal static class ManagedRuntimeTypeArguments
     internal static unsafe nint[] Retain(nint type)
     {
         nint enumerator = 0;
-        List<nint> arguments = [];
         try
         {
             nint* enumeratorAddress = &enumerator;
@@ -25,6 +24,41 @@ internal static class ManagedRuntimeTypeArguments
                 new ICorDebugTypeAbi(type).EnumerateTypeParameters((nint)enumeratorAddress),
                 "ICorDebugType.EnumerateTypeParameters");
             enumerator = Volatile.Read(ref *enumeratorAddress);
+            return Read(enumerator);
+        }
+        finally
+        {
+            Release(enumerator);
+        }
+    }
+
+    /// <summary>
+    /// Reads owned declaring-type arguments followed by method arguments from a stopped IL frame.
+    /// </summary>
+    internal static unsafe nint[] RetainFrame(nint frame)
+    {
+        nint ilFrame2 = ComAbi.QueryInterface(frame, ICorDebugILFrame2Abi.InterfaceId);
+        nint enumerator = 0;
+        try
+        {
+            nint* address = &enumerator;
+            CorDebugHResult.ThrowIfFailed(new ICorDebugILFrame2Abi(ilFrame2).EnumerateTypeParameters((nint)address),
+                "ICorDebugILFrame2.EnumerateTypeParameters");
+            enumerator = Volatile.Read(ref *address);
+            return Read(enumerator);
+        }
+        finally
+        {
+            Release(enumerator);
+            Release(ilFrame2);
+        }
+    }
+
+    private static unsafe nint[] Read(nint enumerator)
+    {
+        List<nint> arguments = [];
+        try
+        {
             if (enumerator == 0)
             {
                 throw new InvalidOperationException("The runtime returned no type-argument enumerator.");
@@ -81,12 +115,13 @@ internal static class ManagedRuntimeTypeArguments
 
             throw;
         }
-        finally
+    }
+
+    private static void Release(nint pointer)
+    {
+        if (pointer != 0)
         {
-            if (enumerator != 0)
-            {
-                _ = ComAbi.Release(enumerator);
-            }
+            _ = ComAbi.Release(pointer);
         }
     }
 }

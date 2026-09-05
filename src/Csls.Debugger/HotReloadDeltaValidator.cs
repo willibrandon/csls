@@ -67,7 +67,7 @@ internal static class HotReloadDeltaValidator
             .Order()];
         ValidateCompilerTokenSet(
             updatedMethods,
-            discoveredTokens: discoveredUpdatedMethods,
+            discoveredTokens: GetExistingUpdatedMethods(module, metadataDelta, discoveredUpdatedMethods),
             expectedTokenKind: 0x06000000,
             parameterName: "updatedMethods");
         List<HotReloadActiveStatementRemap> remaps = ValidateActiveStatements(
@@ -78,6 +78,31 @@ internal static class HotReloadDeltaValidator
             discoveredUpdatedMethods,
             validatedUpdatedTypes,
             remaps);
+    }
+
+    private static List<uint> GetExistingUpdatedMethods(
+        CorDebugLoadedModule module, byte[] metadataDelta, IReadOnlyList<uint> methods)
+    {
+        using PEReader pe = module.OpenPeReader()
+            ?? throw new InvalidOperationException("The Hot Reload baseline metadata is unavailable.");
+        using var previous = new ManagedMetadataImage(pe.GetMetadataReader(), module.MetadataDeltas);
+        using var candidate = new ManagedMetadataImage(pe.GetMetadataReader(), [.. module.MetadataDeltas, metadataDelta]);
+        List<uint> updated = [];
+        foreach (uint token in methods)
+        {
+            var handle = (MethodDefinitionHandle)MetadataTokens.EntityHandle(checked((int)token));
+            if (!candidate.ContainsMethod(handle))
+            {
+                throw new BadImageFormatException("The Hot Reload symbols refer to an undefined method.");
+            }
+
+            if (previous.ContainsMethod(handle))
+            {
+                updated.Add(token);
+            }
+        }
+
+        return updated;
     }
 
     private static IReadOnlyList<uint> ValidateMetadata(

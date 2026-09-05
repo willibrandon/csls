@@ -21,6 +21,11 @@ internal sealed class ManagedFunctionEvaluation
     internal required nint[] TypeArguments { get; set; }
 
     /// <summary>
+    /// Gets the immutable declared result type captured before the target executes.
+    /// </summary>
+    internal ManagedBoundType? DeclaredResultType { get; init; }
+
+    /// <summary>
     /// Gets or initializes the owned ICorDebugThread pointer selected for evaluation.
     /// </summary>
     internal required nint Thread { get; init; }

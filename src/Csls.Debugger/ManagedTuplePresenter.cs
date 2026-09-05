@@ -263,7 +263,7 @@ internal sealed class ManagedTuplePresenter
     /// <param name="customTypeInfo">The optional tuple-name transforms.</param>
     /// <param name="elementName">The authored or ItemN element name.</param>
     /// <param name="comparison">The source-language name comparison.</param>
-    /// <param name="element">Receives the retained physical field value, nested tuple metadata, and origin.</param>
+    /// <param name="element">Receives the retained physical field value, nested tuple metadata, origin, and logical index.</param>
     /// <param name="origin">The exact physical storage of the tuple value.</param>
     /// <returns>True when exactly one logical element matches.</returns>
     internal bool TryGetElementValue(
@@ -272,7 +272,7 @@ internal sealed class ManagedTuplePresenter
         ManagedTupleCustomTypeInfo? customTypeInfo,
         string elementName,
         StringComparison comparison,
-        out (nint Value, ManagedTupleCustomTypeInfo? CustomTypeInfo, ManagedValueOrigin? Origin) element,
+        out (nint Value, ManagedTupleCustomTypeInfo? CustomTypeInfo, ManagedValueOrigin? Origin, int LogicalIndex) element,
         ManagedValueOrigin? origin = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(elementName);
@@ -294,7 +294,8 @@ internal sealed class ManagedTuplePresenter
                 element = (
                     fieldValue,
                     projection.ElementCustomTypeInfo[index],
-                    fieldOrigin);
+                    fieldOrigin,
+                    index);
                 return true;
             }
         }
@@ -327,7 +328,8 @@ internal sealed class ManagedTuplePresenter
         element = (
             matchingValue,
             projection.ElementCustomTypeInfo[matchingIndex.Value],
-            matchingOrigin);
+            matchingOrigin,
+            matchingIndex.Value);
         return true;
     }
 

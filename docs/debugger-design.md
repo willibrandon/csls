@@ -518,13 +518,61 @@ approximated.
 Assignment resolves a writable local, argument, instance field, or managed array
 element from compiler-lowered source syntax. Explicit built-in conversions, checked
 contextual integral literals, and language-valid numeric widening write directly
-through `ICorDebugGenericValue`; null and retained references of the same actual
-runtime type write through `ICorDebugReferenceValue`. Direct writes preserve the stop
+through `ICorDebugGenericValue`; null and compatible retained references write through
+`ICorDebugReferenceValue`. Direct writes preserve the stop
 generation and invalidate variable views only. A session-owned mutation revision
 advances immediately before snapshot retirement and each native write attempt.
 Adapters compare it independently of successful responses and stop generations, so
 failed writes and post-write formatting failures still notify clients to refresh.
 Rejected validation leaves both the revision and existing snapshots unchanged.
+Reference conversion uses immutable declared-type descriptors keyed by loaded module,
+definition token, generic arguments, and array shape. Frame declarations substitute
+containing-type and method parameters independently; field declarations use the closed
+declaring type. Intrinsics resolve through CoreCLR's own core-library identity, not a
+global search for matching names. A bounded metadata traversal checks base classes,
+interfaces, and variance. Array writes separately validate the declared element type
+and the actual array's element storage type. Typed null expressions retain their source
+declaration, so a null current value cannot authorize an invalid conversion.
+Guarded calls bind their return declaration and closed containing-type arguments
+before execution. That declaration survives the new stop generation independently
+of the returned object's concrete runtime type and is checked before assignment.
+
+Local declarations use the active `ICorDebugFunction` local-signature token.
+Frame symbol snapshots use `ICorDebugFunction2.GetVersionNumber` to select the
+module's edit history through that function version. An older active frame retains
+its own sequence points, local names, and declaration metadata after another update.
+Unchanged methods keep their earlier version even when other methods are edited.
+A scoped metadata reader resolves aggregate entity tokens to their latest mapped
+rows and cumulative string/blob handles to their owning generation. Signature
+tokens from older active methods remain valid while newly entered methods use the
+replacement declarations. Baseline PE method bodies do not determine updated local
+types.
+New method ownership and parameter membership come from the delta edit log;
+suppressed member-list columns in minimal deltas are not treated as full tables.
+Frame names, argument signatures, parameter names, and tuple-name attributes resolve
+through aggregate metadata. Update validation distinguishes existing methods reported
+by the compiler from added methods present in the PDB, validates both against the
+candidate metadata, and publishes the complete set of changed debug-information tokens.
+Source and function breakpoints share the loaded-module record and its committed
+metadata generations. Each manager independently retains and releases its native
+module references. Function breakpoint binding enumerates baseline and added methods,
+so a pending breakpoint can bind when Hot Reload introduces its named method.
+
+Explicit calls share a current-generation method resolver for static methods,
+instance methods, and constructors. It enumerates aggregate member ownership and
+decodes each signature through its owning heap. Return-type binding captures the
+current declaration before target execution, independent of the caller's version.
+New assembly-reference rows can be unbound even when an identical older reference
+is already bound. The runtime type catalog first asks CoreCLR for the original
+binding. If that reference is unresolved, it tries equivalent references only in
+the same origin module, comparing the full version, flags, name, culture, and public
+key or token. It never substitutes a globally name-matched assembly or loads target
+code to establish a binding.
+
+After mutation, the response reacquires the original physical storage instead of
+reevaluating target expressions or indices. Heap receivers are dereferenced through a
+short-lived debugger handle to avoid reusing cached object or array contents. This
+preserves receiver identity while exposing the replacement value and runtime type.
 DAP clients request invalidation events through the `supportsInvalidatedEvent`
 initialize argument. This is a client capability, not a server capability; clients
 that omit it or set it to false receive assignment responses without those events.
@@ -572,8 +620,8 @@ resuming. It then reacquires that frame in the replacement generation, proves th
 identity still matches, resolves the writable target again, and performs the write.
 DAP invalidates stacks and variables, while private RPC and MCP return the resulting
 generation and synchronize the authoritative session resource before publishing value
-invalidation. Boxing, reference conversions, and user-defined conversions remain
-unsupported until their complete type-safe materialization rules are implemented.
+invalidation. Implicit boxing, explicit reference casts, and user-defined conversions
+require additional type-safe binding and materialization rules and are not advertised.
 
 Expansion understands debugger display/proxy/browsable attributes, raw and results
 views, root-hidden members, tuples, dynamic flags, nullable values, arrays,

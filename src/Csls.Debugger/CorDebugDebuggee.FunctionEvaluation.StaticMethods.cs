@@ -12,11 +12,12 @@ internal sealed partial class CorDebugDebuggee
 {
     private const int MaximumFunctionEvaluationTypeScanCount = 1_000_000;
 
-    private nint ResolveStaticFunction(
+    private ManagedFunctionBinding ResolveStaticFunction(
         DebugExpressionNode receiver,
         string methodName,
         DebugExpressionLanguage language,
-        ManagedExpressionValue[] arguments)
+        ManagedExpressionValue[] arguments,
+        nint thread)
     {
         if (!TryGetQualifiedTypeName(receiver, out string typeName))
         {
@@ -28,16 +29,8 @@ internal sealed partial class CorDebugDebuggee
             typeName,
             language,
             "static call");
-        using PEReader? resolvedReader = resolvedModule.OpenPeReader();
-        if (resolvedReader is null)
-        {
-            throw new InvalidOperationException(
-                $"Loaded module '{resolvedModule.Name ?? "unnamed module"}' no longer has " +
-                "a readable PE image.");
-        }
-
-        uint? methodToken = TryResolveDeclaredMethod(
-            resolvedReader.GetMetadataReader(),
+        uint? methodToken = ManagedFunctionMethodResolver.Resolve(
+            resolvedModule,
             typeToken,
             methodName,
             language,
@@ -50,7 +43,9 @@ internal sealed partial class CorDebugDebuggee
                 $"is available on runtime type '{typeName}'.");
         }
 
-        return GetModuleFunction(resolvedModule.Pointer, methodToken.Value);
+        ManagedBoundType? resultType = _boundTypes.BindMethodResult(
+            resolvedModule.Pointer, methodToken.Value, [], thread);
+        return new ManagedFunctionBinding(GetModuleFunction(resolvedModule.Pointer, methodToken.Value), [], resultType);
     }
 
     private (CorDebugLoadedModule Module, uint TypeToken) ResolveLoadedRuntimeType(

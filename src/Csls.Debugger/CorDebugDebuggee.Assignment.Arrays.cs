@@ -23,8 +23,22 @@ internal sealed partial class CorDebugDebuggee
         string? evaluateName = ManagedExpressionName.CreateElement(
             receiver.Display.EvaluateName, indexes, plan.Language);
         ManagedTupleCustomTypeInfo? tupleCustomTypeInfo = GetExpressionTupleCustomTypeInfo(receiver);
+        nint thread = GetThread(frame.ThreadId);
+        ManagedBoundType storageType;
+        try
+        {
+            storageType = _boundTypes.CaptureValue(GetRuntimeValue(receiver), thread).TypeArguments[0];
+        }
+        finally
+        {
+            _ = ComAbi.Release(thread);
+        }
+
+        ManagedBoundType declaredType = receiver.DeclaredType is { IsArray: true } declaredArray
+            ? declaredArray.TypeArguments[0]
+            : throw new InvalidOperationException("The array receiver has no declared array type.");
         (nint value, ManagedValueOrigin? origin) = ResolveArrayElementValue(receiver, indexes);
-        return ManagedAssignmentTarget.TakeOwnership((value, tupleCustomTypeInfo, origin), evaluateName);
+        return ManagedAssignmentTarget.TakeOwnership((value, tupleCustomTypeInfo, origin, declaredType), evaluateName, storageType);
     }
 
     private unsafe (nint Value, ManagedValueOrigin? Origin) ResolveArrayElementValue(

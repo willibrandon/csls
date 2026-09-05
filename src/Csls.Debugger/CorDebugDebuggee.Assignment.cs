@@ -133,7 +133,10 @@ internal sealed partial class CorDebugDebuggee
                 EvaluateName: null),
             evaluation.RuntimeValueReference,
             FormatRuntimeValuePair(
-                retained.Pointer, debuggerDisplayDepth: 0, retained.TupleCustomTypeInfo).Runtime);
+                retained.Pointer, debuggerDisplayDepth: 0, retained.TupleCustomTypeInfo).Runtime) with
+        {
+            DeclaredType = evaluation.DeclaredType
+        };
         return SetExpressionCore(
             frame,
             target,
@@ -163,15 +166,26 @@ internal sealed partial class CorDebugDebuggee
             target.Root,
             generation,
             targetExpression);
+        if (destination.Origin is null)
+        {
+            throw new InvalidOperationException("The assignment has no recoverable physical storage.");
+        }
+
         AssignManagedValue(
             destination.Pointer,
             source,
             language,
             sourceIsContextualLiteral,
-            mutations);
-        ManagedValueDisplay display = FormatRuntimeValue(destination.Pointer, destination.TupleCustomTypeInfo);
+            mutations,
+            destination.DeclaredType,
+            destination.StorageType,
+            frame.ThreadId);
+        using var refreshed = ManagedAssignmentTarget.TakeOwnership(
+            (ReacquireAssignmentValue(frame, destination.Origin), destination.TupleCustomTypeInfo,
+                destination.Origin, destination.DeclaredType), destination.EvaluateName, destination.StorageType);
+        ManagedValueDisplay display = FormatRuntimeValue(refreshed.Pointer, refreshed.TupleCustomTypeInfo);
         ManagedValueReferences references = RetainValue(
-            destination.Pointer,
+            refreshed.Pointer,
             generation,
             destination.EvaluateName,
             frame.Id,
@@ -213,16 +227,17 @@ internal sealed partial class CorDebugDebuggee
                 $"Expression node {node.Kind} is not a writable managed value.")
         };
 
-    private static ManagedAssignmentTarget ResolveFrameAssignmentTarget(
+    private ManagedAssignmentTarget ResolveFrameAssignmentTarget(
         ManagedFrameHandle frame,
         string name,
         string evaluateName) => ManagedAssignmentTarget.TakeOwnership(
             ResolveFrameValue(frame, name, allowInstanceReceiver: false), evaluateName);
 
-    private static (
+    private (
         nint Value,
         ManagedTupleCustomTypeInfo? TupleCustomTypeInfo,
-        ManagedValueOrigin? Origin) ResolveFrameValue(
+        ManagedValueOrigin? Origin,
+        ManagedBoundType? DeclaredType) ResolveFrameValue(
         ManagedFrameHandle frame,
         string name,
         bool allowInstanceReceiver)
@@ -239,11 +254,13 @@ internal sealed partial class CorDebugDebuggee
         {
             ManagedValueOrigin? origin = frame.CreateValueOrigin(ManagedScopeKind.Locals, localIndex.Value);
             ManagedTupleCustomTypeInfo? tupleCustomTypeInfo = localNames[localIndex.Value].TupleCustomTypeInfo;
+            ManagedBoundType declaredType = ResolveFrameDeclaredType(frame, ManagedScopeKind.Locals, localIndex.Value);
             return (
                 GetFrameAssignmentTarget(
                     frame.Pointer, ManagedScopeKind.Locals, localIndex.Value),
                 tupleCustomTypeInfo,
-                origin);
+                origin,
+                declaredType);
         }
 
         IReadOnlyDictionary<int, ManagedSymbolVariable> argumentNames = GetVariableNames(
@@ -262,15 +279,114 @@ internal sealed partial class CorDebugDebuggee
 
             ManagedValueOrigin? origin = frame.CreateValueOrigin(ManagedScopeKind.Arguments, argumentIndex.Value);
             ManagedTupleCustomTypeInfo? tupleCustomTypeInfo = argumentNames[argumentIndex.Value].TupleCustomTypeInfo;
+            ManagedBoundType declaredType = ResolveFrameDeclaredType(frame, ManagedScopeKind.Arguments, argumentIndex.Value);
             return (
                 GetFrameAssignmentTarget(
                     frame.Pointer, ManagedScopeKind.Arguments, argumentIndex.Value),
                 tupleCustomTypeInfo,
-                origin);
+                origin,
+                declaredType);
         }
 
         throw new InvalidOperationException(
             $"The assignment target '{name}' is unavailable in the selected frame.");
+    }
+
+    private ManagedBoundType ResolveFrameDeclaredType(ManagedFrameHandle frame, ManagedScopeKind scope, int index)
+    {
+        nint thread = GetThread(frame.ThreadId);
+        try
+        {
+            return _frameTypes.Resolve(frame, scope, index, thread);
+        }
+        finally
+        {
+            _ = ComAbi.Release(thread);
+        }
+    }
+
+    private unsafe nint ReacquireAssignmentValue(ManagedFrameHandle frame, ManagedValueOrigin? origin, int depth = 0)
+    {
+        if (depth >= 128)
+        {
+            throw new InvalidOperationException("The assignment storage path exceeds 128 levels.");
+        }
+
+        if (origin is ManagedFrameValueOrigin slot)
+        {
+            if (slot.ThreadId != frame.ThreadId || slot.StackStart != frame.StackStart ||
+                slot.StackEnd != frame.StackEnd || slot.ModuleId != frame.ModuleId || slot.MethodToken != frame.MethodToken)
+            {
+                throw new InvalidOperationException("The assignment slot no longer belongs to the selected frame.");
+            }
+
+            return GetFrameAssignmentTarget(frame.Pointer, slot.ScopeKind, slot.Index);
+        }
+
+        if (origin is ManagedHeapValueOrigin heap)
+        {
+            if (!_values.TryGetValue(heap.ValueReference, out ManagedValueHandle? owner))
+            {
+                throw new InvalidOperationException("The assignment receiver is stale.");
+            }
+
+            ValidateValueLifetime(owner);
+            nint handle = CreateFunctionEvaluationHandle(owner.Pointer);
+            try
+            {
+                return DereferenceValue(handle);
+            }
+            finally
+            {
+                ReleaseFunctionEvaluationHandle(handle);
+            }
+        }
+
+        ManagedValueOrigin parentOrigin = origin switch
+        {
+            ManagedFieldValueOrigin field => field.Parent,
+            ManagedArrayElementValueOrigin element => element.Parent,
+            _ => throw new InvalidOperationException("The assignment has no recoverable physical storage.")
+        };
+        nint parent = ReacquireAssignmentValue(frame, parentOrigin, depth + 1);
+        nint dereferenced = 0;
+        nint instance = 0;
+        nint runtimeClass = 0;
+        nint result = 0;
+        try
+        {
+            dereferenced = DereferenceValue(parent);
+            if (origin is ManagedFieldValueOrigin field)
+            {
+                CorDebugLoadedModule module = _sourceBreakpoints.FindModule(field.ModuleId)
+                    ?? throw new InvalidOperationException("The assignment field's module has unloaded.");
+                runtimeClass = GetModuleClass(module.Pointer, field.TypeToken);
+                instance = ComAbi.QueryInterface(dereferenced, ICorDebugObjectValueAbi.InterfaceId);
+                result = GetObjectFieldValue(instance, runtimeClass, field.FieldToken);
+            }
+            else if (origin is ManagedArrayElementValueOrigin element)
+            {
+                instance = ComAbi.QueryInterface(dereferenced, ICorDebugArrayValueAbi.InterfaceId);
+                nint* resultAddress = &result;
+                CorDebugHResult.ThrowIfFailed(new ICorDebugArrayValueAbi(instance).GetElementAtPosition(
+                    checked((uint)element.Index), (nint)resultAddress), "ICorDebugArrayValue.GetElementAtPosition");
+                result = RequirePointer(Volatile.Read(ref *resultAddress), "ICorDebugArrayValue.GetElementAtPosition");
+            }
+
+            return result;
+        }
+        catch
+        {
+            ReleaseFunctionEvaluationPointer(result);
+            throw;
+        }
+        finally
+        {
+            ReleaseFunctionEvaluationPointer(runtimeClass);
+            ReleaseFunctionEvaluationPointer(instance);
+            ReleaseFunctionEvaluationPointer(dereferenced);
+            ReleaseFunctionEvaluationPointer(parent);
+        }
     }
 
     private static int? FindVariableIndex(

@@ -13,7 +13,10 @@ internal sealed partial class CorDebugDebuggee
         ManagedExpressionValue source,
         DebugExpressionLanguage language,
         bool sourceIsContextualLiteral,
-        ManagedVariableMutationState mutations)
+        ManagedVariableMutationState mutations,
+        ManagedBoundType? declaredType,
+        ManagedBoundType? storageType,
+        int threadId)
     {
         bool visualBasicNothing = language == DebugExpressionLanguage.VisualBasic && sourceIsContextualLiteral &&
             source is { HasScalar: true, Scalar: null, RuntimeValueReference: <= 0 };
@@ -89,6 +92,7 @@ internal sealed partial class CorDebugDebuggee
 
         try
         {
+            ValidateReferenceConversion(destination, source, declaredType, storageType, threadId);
             AssignManagedReference(destination, destinationReference, source, mutations);
         }
         finally
@@ -121,16 +125,6 @@ internal sealed partial class CorDebugDebuggee
         }
 
         nint sourceValue = GetRuntimeValue(source);
-        if (!ManagedRuntimeValueIdentity.HaveSameRuntimeType(destination, sourceValue))
-        {
-            ManagedValueDisplay destinationDisplay = FormatRuntimeValuePair(
-                destination, debuggerDisplayDepth: 0, tupleCustomTypeInfo: null).Runtime;
-            throw new InvalidOperationException(
-                $"Reference assignment from '{source.Type}' to " +
-                $"'{destinationDisplay.Type}' requires identical loaded runtime types; " +
-                "type names alone do not establish assignment compatibility.");
-        }
-
         nint sourceReference = 0;
         try
         {
@@ -155,6 +149,49 @@ internal sealed partial class CorDebugDebuggee
             {
                 _ = ComAbi.Release(sourceReference);
             }
+        }
+    }
+
+    private void ValidateReferenceConversion(
+        nint destination,
+        ManagedExpressionValue source,
+        ManagedBoundType? declaredType,
+        ManagedBoundType? storageType,
+        int threadId)
+    {
+        ManagedReferenceAssignmentValidator.ValidateDestination(destination);
+        nint thread = GetThread(threadId);
+        try
+        {
+            ManagedBoundType target = declaredType
+                ?? throw new InvalidOperationException("The reference destination has no declared type.");
+            ManagedBoundType? sourceType = source.DeclaredType;
+            if (sourceType is null && source.RuntimeValueReference > 0)
+            {
+                throw new InvalidOperationException("The reference expression has no declared type.");
+            }
+
+            if (sourceType is not null && !_referenceConversions.IsImplicit(sourceType, target, thread))
+            {
+                throw new InvalidOperationException(
+                    $"No implicit reference conversion exists from '{sourceType.DisplayName}' " +
+                    $"(loaded module {sourceType.ModuleId}) to '{target.DisplayName}' (loaded module {target.ModuleId}).");
+            }
+
+            if (storageType is not null && source.RuntimeValueReference > 0 &&
+                !(source.HasScalar && source.Scalar is null))
+            {
+                ManagedBoundType actual = _boundTypes.CaptureValue(GetRuntimeValue(source), thread);
+                if (!_referenceConversions.IsRuntimeAssignable(actual, storageType, thread))
+                {
+                    throw new InvalidOperationException(
+                        $"Array storage of '{storageType.Name}' cannot contain '{actual.Name}'.");
+                }
+            }
+        }
+        finally
+        {
+            _ = ComAbi.Release(thread);
         }
     }
 

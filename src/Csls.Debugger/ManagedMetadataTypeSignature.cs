@@ -1,3 +1,5 @@
+using System.Reflection.Metadata;
+
 namespace Csls.Debugger;
 
 /// <summary>
@@ -12,6 +14,9 @@ namespace Csls.Debugger;
 /// <param name="SourceModule">The borrowed runtime module containing this signature.</param>
 /// <param name="DefinitionToken">The exact local type-definition token, or zero for references.</param>
 /// <param name="AssemblyReferenceToken">The source module's assembly-reference token, or zero.</param>
+/// <param name="GenericMethodParameterIndex">The method parameter index, or null.</param>
+/// <param name="PrimitiveType">The intrinsic signature code, independent of similarly named user types.</param>
+/// <param name="UnsupportedKind">A decoded shape that cannot be resolved as an ordinary runtime type.</param>
 internal sealed record ManagedMetadataTypeSignature(
     string? MetadataName,
     string? AssemblyName,
@@ -21,4 +26,7 @@ internal sealed record ManagedMetadataTypeSignature(
     bool IsValueType,
     nint SourceModule = 0,
     uint DefinitionToken = 0,
-    uint AssemblyReferenceToken = 0);
+    uint AssemblyReferenceToken = 0,
+    int? GenericMethodParameterIndex = null,
+    PrimitiveTypeCode? PrimitiveType = null,
+    string? UnsupportedKind = null);

@@ -137,7 +137,8 @@ public sealed partial class McpDebuggerLifecycleTests
         string sourcePath,
         int breakpointLine,
         string signalPath,
-        CancellationToken cancellationToken) =>
+        CancellationToken cancellationToken,
+        string fixtureMode = "--debugger-fixture") =>
         await CallAsync(
             client,
             "debug_session_start",
@@ -145,7 +146,7 @@ public sealed partial class McpDebuggerLifecycleTests
             {
                 ["program"] = EditorToolResolver.ResolveTestProcessHost(repositoryRoot),
                 ["workingDirectory"] = repositoryRoot,
-                ["arguments"] = new[] { "--debugger-fixture", signalPath },
+                ["arguments"] = new[] { fixtureMode, signalPath },
                 ["sourceFileMap"] = new Dictionary<string, string>
                 {
                     ["/_/"] = repositoryRoot

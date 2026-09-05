@@ -1,5 +1,6 @@
 using System.Collections.Immutable;
 using System.Reflection.Metadata;
+using System.Reflection.Metadata.Ecma335;
 
 namespace Csls.Debugger;
 
@@ -11,15 +12,28 @@ internal sealed class FunctionEvaluationSignatureTypeProvider :
 {
     private const byte ValueTypeKind = 0x11;
     private const byte ClassTypeKind = 0x12;
+    private const int MaximumNestingDepth = 256;
+    private readonly ManagedMetadataImage? _metadata;
+    private readonly int _specificationDepth;
 
-    private FunctionEvaluationSignatureTypeProvider()
+    private FunctionEvaluationSignatureTypeProvider(ManagedMetadataImage? metadata, int specificationDepth)
     {
+        _metadata = metadata;
+        _specificationDepth = specificationDepth;
+    }
+
+    /// <summary>
+    /// Creates a signature decoder over the current aggregate metadata generation.
+    /// </summary>
+    internal FunctionEvaluationSignatureTypeProvider(ManagedMetadataImage metadata) : this(metadata, 0)
+    {
+        ArgumentNullException.ThrowIfNull(metadata);
     }
 
     /// <summary>
     /// Gets the stateless signature type provider.
     /// </summary>
-    internal static FunctionEvaluationSignatureTypeProvider Instance { get; } = new();
+    internal static FunctionEvaluationSignatureTypeProvider Instance { get; } = new(null, 0);
 
     /// <inheritdoc />
     public string GetPrimitiveType(PrimitiveTypeCode typeCode) => typeCode switch
@@ -67,9 +81,24 @@ internal sealed class FunctionEvaluationSignatureTypeProvider :
         MetadataReader reader,
         object? genericContext,
         TypeSpecificationHandle handle,
-        byte rawTypeKind) => AddTypeKind(
-            reader.GetTypeSpecification(handle).DecodeSignature(this, genericContext),
-            rawTypeKind);
+        byte rawTypeKind)
+    {
+        if (_specificationDepth == MaximumNestingDepth)
+        {
+            throw new BadImageFormatException("A function signature exceeds its type-specification nesting limit.");
+        }
+
+        var nested = new FunctionEvaluationSignatureTypeProvider(_metadata, _specificationDepth + 1);
+        if (_metadata is null)
+        {
+            return AddTypeKind(reader.GetTypeSpecification(handle).DecodeSignature(nested, genericContext), rawTypeKind);
+        }
+
+        (MetadataReader owner, EntityHandle relative) = _metadata.Resolve(handle);
+        BlobReader blob = _metadata.GetBlobReader(owner.GetTypeSpecification((TypeSpecificationHandle)relative).Signature);
+        var decoder = new SignatureDecoder<string, object?>(nested, _metadata.Baseline, genericContext);
+        return AddTypeKind(decoder.DecodeType(ref blob), rawTypeKind);
+    }
 
     /// <inheritdoc />
     public string GetSZArrayType(string elementType) =>
@@ -115,38 +144,56 @@ internal sealed class FunctionEvaluationSignatureTypeProvider :
     public string GetFunctionPointerType(MethodSignature<string> signature) =>
         "function-pointer";
 
-    private static string GetTypeDefinitionName(
+    private string GetTypeDefinitionName(
         MetadataReader reader,
         TypeDefinitionHandle handle)
     {
-        TypeDefinition type = reader.GetTypeDefinition(handle);
-        string name = reader.GetString(type.Name);
-        TypeDefinitionHandle declaringType = type.GetDeclaringType();
-        if (!declaringType.IsNil)
+        List<string> names = [];
+        for (int depth = 0; depth < MaximumNestingDepth; depth++)
         {
-            return $"{GetTypeDefinitionName(reader, declaringType)}+{name}";
+            TypeDefinition type = _metadata is null ? reader.GetTypeDefinition(handle) : _metadata.GetTypeDefinition(handle);
+            names.Add(GetString(reader, type.Name));
+            TypeDefinitionHandle declaringType = _metadata is null ? type.GetDeclaringType() : _metadata.GetDeclaringType(handle);
+            if (declaringType.IsNil)
+            {
+                return JoinTypeName(GetString(reader, type.Namespace), names);
+            }
+
+            handle = declaringType;
         }
 
-        string @namespace = reader.GetString(type.Namespace);
-        return string.IsNullOrEmpty(@namespace) ? name : $"{@namespace}.{name}";
+        throw new BadImageFormatException("A function signature type exceeds its declaring-type nesting limit.");
     }
 
-    private static string GetTypeReferenceName(
+    private string GetTypeReferenceName(
         MetadataReader reader,
         TypeReferenceHandle handle)
     {
-        TypeReference type = reader.GetTypeReference(handle);
-        string name = reader.GetString(type.Name);
-        if (type.ResolutionScope.Kind == HandleKind.TypeReference)
+        List<string> names = [];
+        for (int depth = 0; depth < MaximumNestingDepth; depth++)
         {
-            return $"{GetTypeReferenceName(
-                reader,
-                (TypeReferenceHandle)type.ResolutionScope)}+{name}";
+            TypeReference type = _metadata is null ? reader.GetTypeReference(handle) : _metadata.GetTypeReference(handle);
+            names.Add(GetString(reader, type.Name));
+            if (type.ResolutionScope.Kind != HandleKind.TypeReference)
+            {
+                return JoinTypeName(GetString(reader, type.Namespace), names);
+            }
+
+            handle = (TypeReferenceHandle)type.ResolutionScope;
         }
 
-        string @namespace = reader.GetString(type.Namespace);
+        throw new BadImageFormatException("A function signature type exceeds its reference nesting limit.");
+    }
+
+    private static string JoinTypeName(string @namespace, List<string> names)
+    {
+        names.Reverse();
+        string name = string.Join('+', names);
         return string.IsNullOrEmpty(@namespace) ? name : $"{@namespace}.{name}";
     }
+
+    private string GetString(MetadataReader reader, StringHandle handle) =>
+        _metadata is null ? reader.GetString(handle) : _metadata.GetString(handle);
 
     private static string AddTypeKind(string type, byte rawTypeKind) => rawTypeKind switch
     {
