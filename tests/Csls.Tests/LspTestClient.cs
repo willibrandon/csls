@@ -83,6 +83,8 @@ internal sealed class LspTestClient
     private JsonElement? _dotNetConfiguration;
     private JsonElement? _preferredConfiguration;
     private TaskCompletionSource? _capabilityRegistrationRelease;
+    private TaskCompletionSource? _configurationResponseRelease;
+    private TaskCompletionSource? _configurationResponseCanceled;
     private int _configurationRequestCount;
 
     /// <summary>
@@ -146,7 +148,7 @@ internal sealed class LspTestClient
     /// <param name="parameters">The server's ordered configuration request.</param>
     /// <param name="cancellationToken">The request cancellation token.</param>
     /// <returns>The matching nullable configuration values.</returns>
-    internal Task<JsonElement?[]> GetConfigurationAsync(
+    internal async Task<JsonElement?[]> GetConfigurationAsync(
         ConfigurationParams parameters,
         CancellationToken cancellationToken)
     {
@@ -158,9 +160,12 @@ internal sealed class LspTestClient
             throw new InvalidOperationException("The configuration request could not be observed.");
         }
 
+        Task? releaseTask;
+        TaskCompletionSource? canceled;
+        JsonElement?[] values;
         lock (_gate)
         {
-            JsonElement?[] values =
+            values =
             [
                 .. parameters.Items.Select(item => item.Section switch
                 {
@@ -170,7 +175,56 @@ internal sealed class LspTestClient
                     _ => null
                 })
             ];
-            return Task.FromResult(values);
+            releaseTask = _configurationResponseRelease?.Task;
+            canceled = _configurationResponseCanceled;
+        }
+
+        if (releaseTask is not null)
+        {
+            try
+            {
+                await releaseTask.WaitAsync(cancellationToken).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                canceled?.TrySetResult();
+                throw;
+            }
+        }
+
+        return values;
+    }
+
+    /// <summary>
+    /// Holds configuration responses and observes cancellation arriving over the real LSP connection.
+    /// </summary>
+    /// <returns>A task completed when a held configuration request is canceled by the server.</returns>
+    internal Task HoldConfigurationResponseUntilCanceledAsync()
+    {
+        lock (_gate)
+        {
+            if (_configurationResponseRelease is not null)
+            {
+                throw new InvalidOperationException("A configuration response is already held.");
+            }
+
+            _configurationResponseRelease = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            var canceled = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            _configurationResponseCanceled = canceled;
+            return canceled.Task;
+        }
+    }
+
+    /// <summary>
+    /// Releases configuration responses when the owning test finishes or fails.
+    /// </summary>
+    internal void ReleaseConfigurationResponse()
+    {
+        lock (_gate)
+        {
+            _configurationResponseRelease?.TrySetResult();
+            _configurationResponseRelease = null;
+            _configurationResponseCanceled = null;
         }
     }
 
