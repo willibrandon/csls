@@ -119,9 +119,10 @@ public sealed partial class DapSessionTests
             Assert.IsGreaterThan(0, fixtureModule.GetProperty("id").GetInt32());
             Assert.AreEqual(Path.GetFileName(processHost), fixtureModule.GetProperty("name").GetString());
             Assert.AreEqual("Symbols loaded.", fixtureModule.GetProperty("symbolStatus").GetString());
-            Assert.AreEqual(
-                Path.ChangeExtension(processHost, ".pdb"),
-                fixtureModule.GetProperty("symbolFilePath").GetString());
+            string expectedSymbolPath = Path.ChangeExtension(processHost, ".pdb");
+            string? symbolPath = fixtureModule.GetProperty("symbolFilePath").GetString();
+            Assert.IsTrue(DebuggerTestPath.AreEquivalent(expectedSymbolPath, symbolPath),
+                $"Expected symbols '{expectedSymbolPath}', received '{symbolPath}'.");
 
             threadId = await StepAndReadStopAsync(
                 client,
