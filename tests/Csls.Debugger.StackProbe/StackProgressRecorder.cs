@@ -42,5 +42,10 @@ internal sealed class StackProgressRecorder(CancellationTokenSource cancellation
         {
             throw new OperationCanceledException("The progress destination was canceled independently.");
         }
+
+        if (failureMode == "fail-unexpected" && value.State == DebugStackWalkState.Walking)
+        {
+            throw new FormatException("The progress destination rejected the payload format.");
+        }
     }
 }

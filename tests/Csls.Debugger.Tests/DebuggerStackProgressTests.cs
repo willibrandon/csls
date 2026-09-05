@@ -143,6 +143,27 @@ public sealed class DebuggerStackProgressTests
     }
 
     /// <summary>
+    /// Preserves unexpected receiver errors and retires the receiver before reporting rollback.
+    /// </summary>
+    [TestMethod]
+    [Timeout(30000, CooperativeCancellation = true)]
+    public async Task UnexpectedStackProgressFailurePreservesOriginalException()
+    {
+        using JsonDocument document = await RunProbeAsync("fail-unexpected", 0, 0).ConfigureAwait(false);
+        JsonElement result = document.RootElement;
+        Assert.AreEqual(nameof(FormatException), result.GetProperty("failureType").GetString());
+        Assert.AreEqual("The progress destination rejected the payload format.", result.GetProperty("failureMessage").GetString());
+        Assert.AreEqual(JsonValueKind.Null, result.GetProperty("innerType").ValueKind);
+        Assert.Contains("StackProgressRecorder.Report", result.GetProperty("failureStack").GetString()!);
+        DebugStackWalkProgress update = Assert.ContainsSingle(ReadUpdates(result));
+        Assert.AreEqual(DebugStackWalkState.Walking, update.State);
+        Assert.AreEqual(256, update.InspectedFrames);
+        Assert.AreEqual(1, result.GetProperty("recovery").GetProperty("RetainedFrameBindings").GetInt32());
+        Assert.AreEqual(0, result.GetProperty("recovery").GetProperty("OwnedWalkInterfaces").GetInt32());
+        AssertRecovery(result, 5000);
+    }
+
+    /// <summary>
     /// Avoids native work for an already-canceled request and preserves a page completed before cancellation.
     /// </summary>
     /// <param name="mode">The point at which the client cancels its request.</param>

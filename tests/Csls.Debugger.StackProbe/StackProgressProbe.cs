@@ -73,11 +73,12 @@ internal static class StackProgressProbe
                 requestCancellation.Token).ConfigureAwait(false);
             result["page"] = JsonSerializer.SerializeToNode(page, StackProbeJsonContext.Default.DebugStackTrace);
         }
-        catch (Exception failure) when (failure is OperationCanceledException or InvalidOperationException or AggregateException)
+        catch (Exception failure) when (failure is OperationCanceledException or InvalidOperationException or AggregateException or FormatException)
         {
             result["failureType"] = failure.GetType().Name;
             result["failureMessage"] = failure.Message;
             result["innerType"] = failure.InnerException?.GetType().Name;
+            result["failureStack"] = failure.StackTrace;
             if (failure is AggregateException aggregate)
             {
                 result["causes"] = new JsonArray([.. aggregate.Flatten().InnerExceptions.Select(static exception => JsonValue.Create(exception.GetType().Name))]);

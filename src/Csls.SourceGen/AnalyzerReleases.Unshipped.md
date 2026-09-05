@@ -22,3 +22,4 @@ CSLS0020 | CodeQuality | Error | Same-target conditional assignments use a condi
 CSLS0021 | Reliability | Error | Catch blocks explicitly recover from or propagate exceptions
 CSLS0022 | Reliability | Error | Path composition preserves preceding components with Path.Join
 CSLS0023 | CodeQuality | Error | Nullable properties are captured before unwrapping
+CSLS0024 | Reliability | Error | Catch-all handlers filter failures or rethrow the original exception

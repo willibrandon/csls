@@ -157,8 +157,11 @@ bindings, and walker-owned interface references; these are ownership counts, not
 native heap sizes or operating-system handle counts. Progress never supplies an
 estimated stack total. In-process receivers run synchronously on the actor and
 must return promptly without reentering the session. Receiver failures fail the
-request and release unpublished registrations; a failed failure notification
-retains both exceptions. Cancellation received after a completed page has been
+request and release unpublished registrations. I/O, receiver-state, and unrelated
+cancellation failures are wrapped as progress errors; failure notifications retain
+both the inspection error and these receiver errors. Unexpected receiver exceptions
+propagate with their original type and stack trace. Failed receivers are retired
+before cleanup notification. Cancellation received after a completed page has been
 reported does not discard that page.
 
 Pause is idempotent for a live managed target that is already stopped, including
