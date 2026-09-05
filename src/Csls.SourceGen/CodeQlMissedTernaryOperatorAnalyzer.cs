@@ -47,6 +47,7 @@ public sealed class CodeQlMissedTernaryOperatorAnalyzer : DiagnosticAnalyzer
     {
         var statement = (IfStatementSyntax)context.Node;
         if (statement.Else is null ||
+            statement.Parent is ElseClauseSyntax ||
             statement.Else.Statement is IfStatementSyntax ||
             !TryGetOnlyAssignment(statement.Statement, out AssignmentExpressionSyntax whenTrue) ||
             !TryGetOnlyAssignment(
@@ -62,17 +63,24 @@ public sealed class CodeQlMissedTernaryOperatorAnalyzer : DiagnosticAnalyzer
         ISymbol? falseTarget = context.SemanticModel.GetSymbolInfo(
             whenFalse.Left,
             context.CancellationToken).Symbol;
+        if (trueTarget is IDiscardSymbol trueDiscard && falseTarget is IDiscardSymbol falseDiscard &&
+            SymbolEqualityComparer.Default.Equals(trueDiscard.Type, falseDiscard.Type))
+        {
+            ReportAssignment(context, statement, "_");
+            return;
+        }
+
         if (trueTarget is not ILocalSymbol local ||
             !SymbolEqualityComparer.Default.Equals(local, falseTarget))
         {
             return;
         }
 
-        context.ReportDiagnostic(Diagnostic.Create(
-            s_rule,
-            statement.GetLocation(),
-            local.Name));
+        ReportAssignment(context, statement, local.Name);
     }
+
+    private static void ReportAssignment(SyntaxNodeAnalysisContext context, IfStatementSyntax statement, string name) =>
+        context.ReportDiagnostic(Diagnostic.Create(s_rule, statement.GetLocation(), name));
 
     private static bool TryGetOnlyAssignment(
         StatementSyntax statement,

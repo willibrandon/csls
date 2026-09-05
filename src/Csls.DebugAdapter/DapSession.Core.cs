@@ -87,16 +87,10 @@ internal sealed partial class DapSession : IDebuggerSessionObserver, IAsyncDispo
                 if (_cancelableRequest is not null || !_pendingRequests.TryDequeue(out request))
                 {
                     pendingRead ??= _reader.ReadRequestAsync(readCancellation.Token).AsTask();
-                    if (_cancelableRequest is null)
-                    {
-                        _ = await Task.WhenAny(pendingRead, _targetCompletion.Task)
-                            .WaitAsync(linked.Token).ConfigureAwait(false);
-                    }
-                    else
-                    {
-                        _ = await Task.WhenAny(pendingRead, _cancelableRequest, _targetCompletion.Task)
-                            .WaitAsync(linked.Token).ConfigureAwait(false);
-                    }
+                    _ = await (_cancelableRequest is null
+                        ? Task.WhenAny(pendingRead, _targetCompletion.Task)
+                        : Task.WhenAny(pendingRead, _cancelableRequest, _targetCompletion.Task))
+                        .WaitAsync(linked.Token).ConfigureAwait(false);
 
                     if (_targetCompletion.Task.IsCompleted)
                     {
