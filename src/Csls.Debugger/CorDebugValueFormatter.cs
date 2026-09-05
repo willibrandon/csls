@@ -21,33 +21,15 @@ internal static class CorDebugValueFormatter
     /// Tries to format a CoreLib primitive represented as a value-class evaluation result.
     /// </summary>
     /// <param name="value">The borrowed value-class ICorDebugValue pointer.</param>
-    /// <param name="metadataTypeName">The exact CoreLib metadata type name.</param>
+    /// <param name="elementType">The intrinsic element kind established by core-library identity validation.</param>
     /// <param name="display">Receives the debugger primitive display.</param>
     /// <returns>True when the value is a recognized primitive value class.</returns>
     internal static unsafe bool TryFormatPrimitiveValueClass(
         nint value,
-        string metadataTypeName,
+        uint elementType,
         out ManagedValueDisplay display)
     {
-        (uint ElementType, string TypeName) primitive = metadataTypeName switch
-        {
-            "System.Boolean" => (0x02, "bool"),
-            "System.Char" => (0x03, "char"),
-            "System.SByte" => (0x04, "sbyte"),
-            "System.Byte" => (0x05, "byte"),
-            "System.Int16" => (0x06, "short"),
-            "System.UInt16" => (0x07, "ushort"),
-            "System.Int32" => (0x08, "int"),
-            "System.UInt32" => (0x09, "uint"),
-            "System.Int64" => (0x0a, "long"),
-            "System.UInt64" => (0x0b, "ulong"),
-            "System.Single" => (0x0c, "float"),
-            "System.Double" => (0x0d, "double"),
-            "System.IntPtr" => (0x18, "nint"),
-            "System.UIntPtr" => (0x19, "nuint"),
-            _ => default
-        };
-        if (primitive.ElementType == 0)
+        if (elementType is not (>= 0x02 and <= 0x0d or 0x18 or 0x19))
         {
             display = default;
             return false;
@@ -85,8 +67,8 @@ internal static class CorDebugValueFormatter
             }
 
             display = new ManagedValueDisplay(
-                FormatPrimitive(primitive.ElementType, bytes),
-                primitive.TypeName);
+                FormatPrimitive(elementType, bytes),
+                TypeName(elementType));
             return true;
         }
         finally

@@ -65,13 +65,15 @@ internal sealed partial class CorDebugDebuggee
                 exactType,
                 depth: 0,
                 tupleCustomTypeInfo,
-                out uint elementType);
+                out uint elementType,
+                out uint? intrinsicElementType);
             ManagedValueDisplay ordinary;
             if (elementType == 0x11 &&
                 hasInspectedValue &&
+                intrinsicElementType is uint primitiveElementType &&
                 CorDebugValueFormatter.TryFormatPrimitiveValueClass(
                     inspectedValue,
-                    type,
+                    primitiveElementType,
                     out ManagedValueDisplay primitiveDisplay))
             {
                 ordinary = primitiveDisplay;
@@ -84,7 +86,8 @@ internal sealed partial class CorDebugDebuggee
             }
             else if (elementType == 0x11 &&
                 hasInspectedValue &&
-                string.Equals(type, "decimal", StringComparison.Ordinal))
+                string.Equals(type, "decimal", StringComparison.Ordinal) &&
+                IsCoreLibraryDefinition(exactType))
             {
                 ordinary = new ManagedValueDisplay(
                     FormatDecimalValue(inspectedValue, exactType),
@@ -160,11 +163,19 @@ internal sealed partial class CorDebugDebuggee
         }
     }
 
+    private string FormatRuntimeType(
+        nint type,
+        int depth,
+        ManagedTupleCustomTypeInfo? tupleCustomTypeInfo,
+        out uint elementType) =>
+        FormatRuntimeType(type, depth, tupleCustomTypeInfo, out elementType, out _);
+
     private unsafe string FormatRuntimeType(
         nint type,
         int depth,
         ManagedTupleCustomTypeInfo? tupleCustomTypeInfo,
-        out uint elementType)
+        out uint elementType,
+        out uint? intrinsicElementType)
     {
         if (depth >= MaximumRuntimeTypeDepth)
         {
@@ -179,41 +190,53 @@ internal sealed partial class CorDebugDebuggee
             api.GetType((nint)elementTypeAddress),
             "ICorDebugType.GetType");
         elementType = Volatile.Read(ref *elementTypeAddress);
-        return elementType switch
+        intrinsicElementType = null;
+        if (elementType is 0x11 or 0x12)
         {
-            0x01 => "void",
-            0x02 => "bool",
-            0x03 => "char",
-            0x04 => "sbyte",
-            0x05 => "byte",
-            0x06 => "short",
-            0x07 => "ushort",
-            0x08 => "int",
-            0x09 => "uint",
-            0x0a => "long",
-            0x0b => "ulong",
-            0x0c => "float",
-            0x0d => "double",
-            0x0e => "string",
+            return FormatNamedRuntimeType(type, depth, tupleCustomTypeInfo, out intrinsicElementType);
+        }
+
+        return FormatPrimitiveRuntimeType(elementType) ?? (elementType switch
+        {
             0x0f => $"{FormatFirstTypeParameter(type, api, depth, tupleCustomTypeInfo)}*",
             0x10 => $"{FormatFirstTypeParameter(type, api, depth, tupleCustomTypeInfo)}&",
-            0x11 or 0x12 => FormatNamedRuntimeType(type, depth, tupleCustomTypeInfo),
             0x14 => FormatArrayType(type, api, depth, tupleCustomTypeInfo),
-            0x16 => "typed-reference",
-            0x18 => "nint",
-            0x19 => "nuint",
             0x1b => "delegate*",
-            0x1c => "object",
             0x1d => $"{FormatFirstTypeParameter(type, api, depth, tupleCustomTypeInfo)}[]",
             _ => $"element-type 0x{elementType:X2}"
-        };
+        });
     }
+
+    private static string? FormatPrimitiveRuntimeType(uint elementType) => elementType switch
+    {
+        0x01 => "void",
+        0x02 => "bool",
+        0x03 => "char",
+        0x04 => "sbyte",
+        0x05 => "byte",
+        0x06 => "short",
+        0x07 => "ushort",
+        0x08 => "int",
+        0x09 => "uint",
+        0x0a => "long",
+        0x0b => "ulong",
+        0x0c => "float",
+        0x0d => "double",
+        0x0e => "string",
+        0x16 => "typed-reference",
+        0x18 => "nint",
+        0x19 => "nuint",
+        0x1c => "object",
+        _ => null
+    };
 
     private string FormatNamedRuntimeType(
         nint type,
         int depth,
-        ManagedTupleCustomTypeInfo? tupleCustomTypeInfo)
+        ManagedTupleCustomTypeInfo? tupleCustomTypeInfo,
+        out uint? intrinsicElementType)
     {
+        intrinsicElementType = null;
         nint runtimeClass = 0;
         nint module = 0;
         try
@@ -226,6 +249,14 @@ internal sealed partial class CorDebugDebuggee
             TypeDefinitionHandle typeHandle = MetadataTokens.TypeDefinitionHandle(
                 checked((int)(typeToken & 0x00FFFFFF)));
             string name = GetMetadataTypeName(metadata, typeHandle);
+            if (ManagedBoundTypeSystem.GetIntrinsicElementType(name) is uint intrinsic &&
+                IsCoreLibraryDefinition(type, module))
+            {
+                intrinsicElementType = intrinsic;
+                return FormatPrimitiveRuntimeType(intrinsic)
+                    ?? throw new InvalidOperationException("An intrinsic type has no display name.");
+            }
+
             if (name.StartsWith("System.ValueTuple`", StringComparison.Ordinal) &&
                 _tuplePresenter.TryFormatType(
                     type,
@@ -247,7 +278,8 @@ internal sealed partial class CorDebugDebuggee
             }
 
             string displayName = RemoveGenericArity(name);
-            if (string.Equals(displayName, "System.Decimal", StringComparison.Ordinal))
+            if (string.Equals(displayName, "System.Decimal", StringComparison.Ordinal) &&
+                IsCoreLibraryDefinition(type, module))
             {
                 return "decimal";
             }
@@ -275,6 +307,71 @@ internal sealed partial class CorDebugDebuggee
         int depth,
         ManagedTupleCustomTypeInfo? tupleCustomTypeInfo) =>
         FormatRuntimeType(type, depth, tupleCustomTypeInfo, out _);
+
+    private bool IsCoreLibraryDefinition(nint type)
+    {
+        nint runtimeClass = 0;
+        nint module = 0;
+        try
+        {
+            runtimeClass = GetRuntimeTypeClass(type);
+            module = GetClassModule(runtimeClass);
+            return IsCoreLibraryDefinition(type, module);
+        }
+        finally
+        {
+            ReleaseFunctionEvaluationPointer(module);
+            ReleaseFunctionEvaluationPointer(runtimeClass);
+        }
+    }
+
+    private unsafe bool IsCoreLibraryDefinition(nint type, nint module)
+    {
+        nint current = type;
+        _ = ComAbi.AddRef(current);
+        nint rootClass = 0;
+        nint rootModule = 0;
+        try
+        {
+            for (int depth = 0; depth < MaximumRuntimeTypeDepth; depth++)
+            {
+                nint parent = 0;
+                nint* parentAddress = &parent;
+                CorDebugHResult.ThrowIfFailed(new ICorDebugTypeAbi(current).GetBase((nint)parentAddress),
+                    "ICorDebugType.GetBase");
+                parent = Volatile.Read(ref *parentAddress);
+                if (parent == 0)
+                {
+                    rootClass = GetRuntimeTypeClass(current);
+                    rootModule = GetClassModule(rootClass);
+                    CorDebugLoadedModule root = _sourceBreakpoints.FindModule(rootModule)
+                        ?? throw new InvalidOperationException("The runtime root type module is unavailable.");
+                    if (_sourceBreakpoints.FindModule(module)?.Id != root.Id)
+                    {
+                        return false;
+                    }
+
+                    using PEReader pe = OpenRuntimeModule(rootModule);
+                    MetadataReader metadata = pe.GetMetadataReader();
+                    var handle = (TypeDefinitionHandle)MetadataTokens.EntityHandle(checked((int)GetClassToken(rootClass)));
+                    TypeDefinition definition = metadata.GetTypeDefinition(handle);
+                    return (definition.Attributes & System.Reflection.TypeAttributes.Interface) == 0 &&
+                        GetMetadataTypeName(metadata, handle) == "System.Object";
+                }
+
+                _ = ComAbi.Release(current);
+                current = parent;
+            }
+
+            throw new InvalidOperationException("The runtime type hierarchy exceeds the supported depth.");
+        }
+        finally
+        {
+            ReleaseFunctionEvaluationPointer(rootModule);
+            ReleaseFunctionEvaluationPointer(rootClass);
+            ReleaseFunctionEvaluationPointer(current);
+        }
+    }
 
     private unsafe List<string> FormatRuntimeTypeArguments(
         nint type,
@@ -386,8 +483,9 @@ internal sealed partial class CorDebugDebuggee
         uint* rankAddress = &rank;
         CorDebugHResult.ThrowIfFailed(type.GetRank((nint)rankAddress), "ICorDebugType.GetRank");
         rank = Volatile.Read(ref *rankAddress);
+        string dimensions = rank == 1 ? "*" : new string(',', checked((int)rank - 1));
         return $"{FormatFirstTypeParameter(exactType, type, depth, tupleCustomTypeInfo)}" +
-            $"[{new string(',', checked((int)rank - 1))}]";
+            $"[{dimensions}]";
     }
 
     private static string FormatArrayValue(nint value, string type)

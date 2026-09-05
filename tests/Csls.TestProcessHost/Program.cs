@@ -108,6 +108,11 @@ if (args is ["--debugger-captured-arguments", string capturedAssembly, string ca
         capturedReplacement, capturedReceiver).ConfigureAwait(false);
 }
 
+if (args is ["--debugger-unused-argument-shapes", string unusedArgumentAssembly])
+{
+    return await DebuggerAsyncArgumentRunner.RunUnusedShapesAsync(unusedArgumentAssembly).ConfigureAwait(false);
+}
+
 if (args is ["--debugger-concurrent-async-step-fixture"])
 {
     return await DebuggerAsyncStepFixture.RunConcurrentAsync().ConfigureAwait(false);

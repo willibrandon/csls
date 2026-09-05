@@ -50,7 +50,7 @@ public sealed partial class DapSessionTests
         if (language == "CSharp" && configuration == "Release")
         {
             Assert.AreEqual("<optimized out>", arguments[3].GetProperty("value").GetString());
-            Assert.AreEqual("System.Int32", arguments[3].GetProperty("type").GetString());
+            Assert.AreEqual("int", arguments[3].GetProperty("type").GetString());
             Assert.AreEqual(0, arguments[3].GetProperty("variablesReference").GetInt32());
             Assert.IsFalse(arguments[3].TryGetProperty("evaluateName", out _));
             Assert.AreEqual("readOnly", Assert.ContainsSingle(arguments[3].GetProperty("presentationHint")
@@ -93,6 +93,52 @@ public sealed partial class DapSessionTests
             TestContext.CancellationToken).ConfigureAwait(false);
         Assert.AreEqual("\"replacement\"", assigned.GetProperty("result").GetString());
         await ContinueEntryToExitAsync(client, threadId, "replacement").ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Formats closed source declarations after the compiler eliminates their captured storage.
+    /// </summary>
+    [TestMethod]
+    [Timeout(30000, CooperativeCancellation = true)]
+    public async Task OptimizedOutArgumentsRetainConstructedDeclaredTypes()
+    {
+        const string project = "Csls.Debugger.Fixtures.CSharp";
+        string program = DebuggerLanguageFixtures.GetProgramPath(project, "Release");
+        string source = Path.Join(FindRepositoryRoot(), "test-assets", project, "DebuggerGenericFixture.cs");
+        int line = FindSourceLine(await File.ReadAllLinesAsync(source, TestContext.CancellationToken)
+            .ConfigureAwait(false), "Console.Write(42)");
+        DapTestClient client = await DapTestClient.CreateAsync(TestContext.CancellationToken).ConfigureAwait(false);
+        await using ConfiguredAsyncDisposable cleanup = client.ConfigureAwait(false);
+        _ = await LaunchAtEntryAsync(client, ResolveTestProcessHost(),
+            ["--debugger-unused-argument-shapes", program]).ConfigureAwait(false);
+        int threadId = await ContinueEntryToCapturedArgumentsAsync(client, source, line).ConfigureAwait(false);
+        JsonElement frame = await ReadTopSourceFrameAsync(client, threadId).ConfigureAwait(false);
+        Assert.AreEqual(line, frame.GetProperty("line").GetInt32());
+        (int argumentsReference, _) = await ReadFrameScopeReferencesAsync(client,
+            frame.GetProperty("id").GetInt32()).ConfigureAwait(false);
+        JsonElement[] arguments = await ReadVariablesAsync(client, argumentsReference).ConfigureAwait(false);
+        Assert.AreSequenceEqual(
+            ["typeArgument", "methodArgument", "vector", "rectangle", "nullable", "pair", "nested", "jagged", "amount", "offsetArray"],
+            arguments.Select(argument => argument.GetProperty("name").GetString()).ToArray());
+        Assert.AreSequenceEqual(
+            ["int", "string", "int[]", "string[,]", "int?", "(int Count, string Name)",
+                "System.Collections.Generic.Dictionary<string, System.Collections.Generic.List<int?[]>>", "int[][]", "decimal", "int[*]"],
+            arguments.Select(argument => argument.GetProperty("type").GetString()).ToArray());
+        foreach (JsonElement argument in arguments)
+        {
+            string? name = argument.GetProperty("name").GetString();
+            Assert.AreEqual("<optimized out>", argument.GetProperty("value").GetString(), name);
+            Assert.AreEqual(0, argument.GetProperty("variablesReference").GetInt32(), name);
+            Assert.IsFalse(argument.TryGetProperty("evaluateName", out _), name);
+            Assert.AreEqual("readOnly", Assert.ContainsSingle(argument.GetProperty("presentationHint")
+                .GetProperty("attributes").EnumerateArray()).GetString(), name);
+        }
+
+        JsonElement[] page = await ReadVariablesAsync(client, argumentsReference, start: 3, count: 3)
+            .ConfigureAwait(false);
+        Assert.AreSequenceEqual(["string[,]", "int?", "(int Count, string Name)"],
+            page.Select(argument => argument.GetProperty("type").GetString()).ToArray());
+        await ContinueEntryToExitAsync(client, threadId, "42").ConfigureAwait(false);
     }
 
     /// <summary>

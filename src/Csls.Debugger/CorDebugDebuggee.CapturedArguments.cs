@@ -23,7 +23,7 @@ internal sealed partial class CorDebugDebuggee
             if (resolved.Value == 0)
             {
                 result.Add(new DebugVariableInfo(argument.Name, "<optimized out>",
-                    resolved.DeclaredType?.DisplayName ?? string.Empty, 0, null, null,
+                    FormatCapturedParameterType(frame, resolved.DeclaredType, argument.TupleCustomTypeInfo), 0, null, null,
                     DebugVariablePresentationKind.Unavailable));
                 continue;
             }
@@ -37,6 +37,34 @@ internal sealed partial class CorDebugDebuggee
         }
 
         return result;
+    }
+
+    private string FormatCapturedParameterType(
+        ManagedFrameHandle frame, ManagedBoundType? declaredType, ManagedTupleCustomTypeInfo? tupleCustomTypeInfo)
+    {
+        if (declaredType is null)
+        {
+            return string.Empty;
+        }
+
+        if (FormatPrimitiveRuntimeType(declaredType.ElementType) is string primitive)
+        {
+            return primitive;
+        }
+
+        nint thread = 0;
+        nint type = 0;
+        try
+        {
+            thread = GetThread(frame.ThreadId);
+            type = _boundTypes.ResolveRuntimeType(declaredType, thread);
+            return FormatRuntimeType(type, depth: 0, tupleCustomTypeInfo, out _);
+        }
+        finally
+        {
+            ReleaseFunctionEvaluationPointer(type);
+            ReleaseFunctionEvaluationPointer(thread);
+        }
     }
 
     private unsafe (nint Value, ManagedTupleCustomTypeInfo? TupleCustomTypeInfo,

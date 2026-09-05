@@ -132,6 +132,44 @@ internal sealed class ManagedBoundTypeSystem
     internal ManagedBoundType CaptureType(nint type, nint thread) => CaptureTypeCore(type, thread, depth: 0);
 
     /// <summary>
+    /// Resolves a bound identity to an owned runtime type using its exact defining module.
+    /// </summary>
+    /// <param name="type">The closed type identity to resolve.</param>
+    /// <param name="thread">The borrowed thread identifying the target application domain.</param>
+    /// <returns>An owned ICorDebugType reference that the caller must release.</returns>
+    internal nint ResolveRuntimeType(ManagedBoundType type, nint thread) =>
+        new ManagedRuntimeTypeResolver(_catalog, _coreLibrary).Resolve(
+            CreateRuntimeSignature(type, depth: 0), [], [], thread);
+
+    /// <summary>
+    /// Maps an intrinsic metadata name to its canonical element kind after core-library identity validation.
+    /// </summary>
+    /// <param name="name">The complete metadata name from the validated core-library module.</param>
+    /// <returns>The intrinsic element kind, or null for an ordinary named type.</returns>
+    internal static uint? GetIntrinsicElementType(string name) => name switch
+    {
+        "System.Boolean" => 0x02,
+        "System.Char" => 0x03,
+        "System.SByte" => 0x04,
+        "System.Byte" => 0x05,
+        "System.Int16" => 0x06,
+        "System.UInt16" => 0x07,
+        "System.Int32" => 0x08,
+        "System.UInt32" => 0x09,
+        "System.Int64" => 0x0a,
+        "System.UInt64" => 0x0b,
+        "System.Single" => 0x0c,
+        "System.Double" => 0x0d,
+        "System.String" => 0x0e,
+        "System.TypedReference" => 0x16,
+        "System.IntPtr" => 0x18,
+        "System.UIntPtr" => 0x19,
+        "System.Object" => 0x1c,
+        "System.Void" => 0x01,
+        _ => null
+    };
+
+    /// <summary>
     /// Binds a call's declared result before execution can invalidate its borrowed runtime context.
     /// </summary>
     internal ManagedBoundType? BindMethodResult(
@@ -363,28 +401,7 @@ internal sealed class ManagedBoundTypeSystem
         string name = signature.MetadataName ?? throw new BadImageFormatException("A type has no metadata name.");
         if (module.Id == _coreLibrary.GetModule(thread).Id)
         {
-            kind = name switch
-            {
-                "System.Boolean" => 0x02,
-                "System.Char" => 0x03,
-                "System.SByte" => 0x04,
-                "System.Byte" => 0x05,
-                "System.Int16" => 0x06,
-                "System.UInt16" => 0x07,
-                "System.Int32" => 0x08,
-                "System.UInt32" => 0x09,
-                "System.Int64" => 0x0a,
-                "System.UInt64" => 0x0b,
-                "System.Single" => 0x0c,
-                "System.Double" => 0x0d,
-                "System.String" => 0x0e,
-                "System.TypedReference" => 0x16,
-                "System.IntPtr" => 0x18,
-                "System.UIntPtr" => 0x19,
-                "System.Object" => 0x1c,
-                "System.Void" => 0x01,
-                _ => kind
-            };
+            kind = GetIntrinsicElementType(name) ?? kind;
         }
 
         return new ManagedBoundType(kind, module.Id, token, name, arguments);
@@ -401,6 +418,25 @@ internal sealed class ManagedBoundTypeSystem
     private CorDebugLoadedModule GetModule(ManagedBoundType type) => type.ModuleId is int id
         ? _modules.FindModule(id) ?? throw new InvalidOperationException("The declared type's module has unloaded.")
         : throw new InvalidOperationException("The type has no defining module.");
+
+    private ManagedMetadataTypeSignature CreateRuntimeSignature(ManagedBoundType type, int depth)
+    {
+        CheckDepth(depth);
+        if (type.IsArray)
+        {
+            ManagedMetadataTypeSignature element = CreateRuntimeSignature(type.TypeArguments[0], depth + 1);
+            return element with
+            {
+                ArrayShapes = [.. element.ArrayShapes, new ManagedMetadataArrayShape(type.ArrayRank, type.ElementType == 0x1d)]
+            };
+        }
+
+        CorDebugLoadedModule module = GetModule(type);
+        return new ManagedMetadataTypeSignature(type.Name, null, null,
+            [.. type.TypeArguments.Select(argument => CreateRuntimeSignature(argument, depth + 1))],
+            [], IsValueType: !type.IsReference, SourceModule: module.Pointer,
+            DefinitionToken: type.DefinitionToken);
+    }
 
     private static PEReader OpenModule(CorDebugLoadedModule module) => module.OpenPeReader()
         ?? throw new InvalidOperationException("The declared type's metadata is unavailable.");

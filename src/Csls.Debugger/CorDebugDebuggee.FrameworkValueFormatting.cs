@@ -25,6 +25,13 @@ internal sealed partial class CorDebugDebuggee
         string typeName,
         out string display)
     {
+        if (typeName is not ("System.DateTime" or "System.DateTimeOffset" or "System.Guid" or "System.TimeSpan") ||
+            !IsCoreLibraryDefinition(type))
+        {
+            display = string.Empty;
+            return false;
+        }
+
         display = typeName switch
         {
             "System.DateTime" => FormatDateTimeValue(value, type),
