@@ -19,6 +19,56 @@ public sealed class DebugAdapterProcessTests
     public TestContext TestContext { get; set; } = null!;
 
     /// <summary>
+    /// Validates terminal entry selection and paired source coordinates before target activation.
+    /// </summary>
+    /// <param name="hasSource">Whether the command includes a source document.</param>
+    /// <param name="line">The supplied source line, or null when omitted.</param>
+    /// <param name="stopAtEntry">Whether the command also requests an entry stop.</param>
+    /// <param name="expectedError">The precise invalid-option diagnostic.</param>
+    [TestMethod]
+    [DataRow(false, null, false, "Choose --stop-at-entry or an initial breakpoint with --source and --line.")]
+    [DataRow(true, null, false, "Specify --source and --line together.")]
+    [DataRow(false, 1, false, "Specify --source and --line together.")]
+    [DataRow(true, null, true, "Specify --source and --line together.")]
+    [DataRow(false, 1, true, "Specify --source and --line together.")]
+    [DataRow(true, 0, true, "--line must be a positive one-based source line.")]
+    [DataRow(true, -1, false, "--line must be a positive one-based source line.")]
+    [Timeout(30000, CooperativeCancellation = true)]
+    public async Task TerminalLaunchValidatesEntryAndSourceSelection(
+        bool hasSource, int? line, bool stopAtEntry, string expectedError)
+    {
+        string repositoryRoot = FindRepositoryRoot();
+        var startInfo = new ProcessStartInfo(ResolveDotNetHost()) { WorkingDirectory = repositoryRoot };
+        startInfo.ArgumentList.Add(Path.Join(repositoryRoot, "artifacts", "bin", "Csls.App", "debug", "csls.dll"));
+        startInfo.ArgumentList.Add("debugger");
+        startInfo.ArgumentList.Add("tui");
+        startInfo.ArgumentList.Add("launch");
+        startInfo.ArgumentList.Add(Path.Join(repositoryRoot, "artifacts", "bin", "Csls.TestProcessHost",
+            "debug", "csls-test-process-host.dll"));
+        if (hasSource)
+        {
+            startInfo.ArgumentList.Add("--source");
+            startInfo.ArgumentList.Add(Path.Join(repositoryRoot, "tests", "Csls.TestProcessHost", "Program.cs"));
+        }
+
+        if (line is int number)
+        {
+            startInfo.ArgumentList.Add("--line");
+            startInfo.ArgumentList.Add(number.ToString(CultureInfo.InvariantCulture));
+        }
+
+        if (stopAtEntry)
+        {
+            startInfo.ArgumentList.Add("--stop-at-entry");
+        }
+
+        (int exitCode, _, string error) = await DebuggerTestProcess.RunAsync(startInfo, TestContext.CancellationToken)
+            .ConfigureAwait(false);
+        Assert.AreEqual(1, exitCode);
+        Assert.Contains(expectedError, error);
+    }
+
+    /// <summary>
     /// Initializes and disconnects the debugger command without contaminating protocol output.
     /// </summary>
     [TestMethod]

@@ -1,4 +1,5 @@
 Imports System.Diagnostics
+Imports System.Threading.Tasks
 
 Namespace Global.Csls.Debugger.Fixtures.VisualBasic
     ''' <summary>
@@ -31,5 +32,20 @@ Namespace Global.Csls.Debugger.Fixtures.VisualBasic
                 Return _value
             End Get
         End Property
+
+        ''' <summary>
+        ''' Consumes captured generic parameters after asynchronous suspension.
+        ''' </summary>
+        ''' <param name="argument">The value inspected and replaced by the debugger.</param>
+        ''' <param name="replacement">The expected value after debugger assignment.</param>
+        ''' <param name="unused">An unused source parameter for optimized-storage inspection.</param>
+        ''' <returns>Zero when execution consumes the assigned parameter.</returns>
+        Friend Async Function RunCapturedAsync(argument As T, replacement As T, unused As Integer) As Task(Of Integer)
+            Await Task.Yield()
+            Console.Write(argument)
+            GC.KeepAlive(_value)
+            GC.KeepAlive(replacement)
+            Return If(EqualityComparer(Of T).Default.Equals(argument, replacement), 0, 1)
+        End Function
     End Class
 End Namespace

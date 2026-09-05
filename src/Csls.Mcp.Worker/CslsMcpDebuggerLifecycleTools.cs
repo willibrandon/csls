@@ -38,6 +38,7 @@ internal sealed class CslsMcpDebuggerLifecycleTools
     /// <param name="enableHotReload">Whether CoreCLR should prepare loaded modules for Hot Reload.</param>
     /// <param name="justMyCode">Whether source stepping excludes non-user code.</param>
     /// <param name="enableStepFiltering">Whether stepping skips properties and operators.</param>
+    /// <param name="stopAtEntry">Whether launch stops at the first executable entry-point statement.</param>
     /// <returns>The new explicit debugger-session identity and initial state.</returns>
     [McpServerTool(
         Name = "debug_session_start",
@@ -74,7 +75,9 @@ internal sealed class CslsMcpDebuggerLifecycleTools
         [Description("Classify and step only user code by default.")]
         bool justMyCode = true,
         [Description("Skip managed properties and operators while stepping by default.")]
-        bool enableStepFiltering = true)
+        bool enableStepFiltering = true,
+        [Description("Stop at the first executable entry-point statement. Defaults to false.")]
+        bool stopAtEntry = false)
     {
         return McpDebuggerToolResult.RunAsync(async () =>
         {
@@ -100,6 +103,7 @@ internal sealed class CslsMcpDebuggerLifecycleTools
                         new Dictionary<string, string>(StringComparer.Ordinal),
                     SuppressJitOptimizations = suppressJitOptimizations,
                     EnableHotReload = enableHotReload,
+                    StopAtEntry = stopAtEntry,
                     JustMyCode = justMyCode,
                     EnableStepFiltering = enableStepFiltering
                 },

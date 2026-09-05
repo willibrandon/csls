@@ -14,6 +14,7 @@ internal sealed partial class CorDebugDebuggee :
     private readonly SourceBreakpointManager _sourceBreakpoints;
     private readonly FunctionBreakpointManager _functionBreakpoints;
     private readonly InstructionBreakpointManager _instructionBreakpoints;
+    private readonly EntryPointBreakpointManager _entryBreakpoint;
     private readonly ManagedTupleTypeShape _tupleTypeShape;
     private readonly ManagedTuplePresenter _tuplePresenter;
     private readonly ManagedObjectExpander _objectExpander;
@@ -74,6 +75,7 @@ internal sealed partial class CorDebugDebuggee :
         SourceBreakpointManager sourceBreakpoints,
         FunctionBreakpointManager functionBreakpoints,
         InstructionBreakpointManager instructionBreakpoints,
+        EntryPointBreakpointManager entryBreakpoint,
         DisposableOwner<CorDebugManagedCallback> managedCallbackOwner,
         DisposableOwner<CorDebugRuntimeStartupRegistration> registrationOwner,
         DbgShimStandardStreamsOwner? standardStreamsOwner,
@@ -94,6 +96,7 @@ internal sealed partial class CorDebugDebuggee :
         _sourceBreakpoints = sourceBreakpoints;
         _functionBreakpoints = functionBreakpoints;
         _instructionBreakpoints = instructionBreakpoints;
+        _entryBreakpoint = entryBreakpoint;
         _tupleTypeShape = new ManagedTupleTypeShape(this);
         _tuplePresenter = new ManagedTuplePresenter(
             this,

@@ -18,6 +18,7 @@ internal sealed class DebuggerSymbolFixtures : IAsyncDisposable
     {
         _fixtureDirectory = fixtureDirectory;
         SourcePath = sourcePath;
+        SymbolFreeProgramPath = GetProgramPath(fixtureDirectory, "SymbolFreeFixture");
         ValidSourceLinkProgramPath = GetProgramPath(fixtureDirectory, "SourceLinkValid");
         CancellationSourceLinkProgramPath = GetProgramPath(fixtureDirectory, "SourceLinkCancellation");
         ImplicitSourceLinkProgramPath = GetProgramPath(fixtureDirectory, "SourceLinkImplicit");
@@ -37,6 +38,11 @@ internal sealed class DebuggerSymbolFixtures : IAsyncDisposable
     /// Gets the original source path recorded by the Windows PDB fixture.
     /// </summary>
     internal string SourcePath { get; }
+
+    /// <summary>
+    /// Gets the executable compiled with symbol generation disabled.
+    /// </summary>
+    internal string SymbolFreeProgramPath { get; }
 
     /// <summary>
     /// Gets the program whose Source Link endpoint serves checksum-valid content.
@@ -135,10 +141,13 @@ internal sealed class DebuggerSymbolFixtures : IAsyncDisposable
                 fixtures.MismatchedSourceLinkServer.SourceLinkPattern,
                 cancellationToken).ConfigureAwait(false);
             bool includeWindowsPdb = fixtures.WindowsPdbProgramPath is not null;
+            _ = await WriteEntrySymbolProjectAsync(
+                sourceDirectory, fixtureDirectory, windowsPdb: false, cancellationToken).ConfigureAwait(false);
             _ = includeWindowsPdb
-                ? await WriteWindowsPdbProjectAsync(
+                ? await WriteEntrySymbolProjectAsync(
                     sourceDirectory,
                     fixtureDirectory,
+                    windowsPdb: true,
                     cancellationToken).ConfigureAwait(false)
                 : null;
             string solutionPath = await WriteSolutionAsync(
@@ -222,12 +231,13 @@ internal sealed class DebuggerSymbolFixtures : IAsyncDisposable
             $"{projectName}.dll");
     }
 
-    private static async Task<string> WriteWindowsPdbProjectAsync(
+    private static async Task<string> WriteEntrySymbolProjectAsync(
         string sourceDirectory,
         string fixtureDirectory,
+        bool windowsPdb,
         CancellationToken cancellationToken)
     {
-        const string projectName = "WindowsPdbFixture";
+        string projectName = windowsPdb ? "WindowsPdbFixture" : "SymbolFreeFixture";
         string projectDirectory = Path.Join(fixtureDirectory, projectName);
         Directory.CreateDirectory(projectDirectory);
         var project = new XDocument(
@@ -237,10 +247,10 @@ internal sealed class DebuggerSymbolFixtures : IAsyncDisposable
                 new XElement(
                     "PropertyGroup",
                     new XElement("AssemblyName", projectName),
-                    new XElement("DebugSymbols", "true"),
-                    new XElement("DebugType", "full"),
-                    new XElement("Deterministic", "false"),
-                    new XElement("EmbedAllSources", "true"),
+                    new XElement("DebugSymbols", windowsPdb),
+                    new XElement("DebugType", windowsPdb ? "full" : "none"),
+                    new XElement("Deterministic", !windowsPdb),
+                    new XElement("EmbedAllSources", windowsPdb),
                     new XElement("EnableDefaultCompileItems", "false"),
                     new XElement("ImplicitUsings", "enable"),
                     new XElement("Nullable", "enable"),
@@ -279,8 +289,8 @@ internal sealed class DebuggerSymbolFixtures : IAsyncDisposable
         CancellationToken cancellationToken)
     {
         string[] projectNames = includeWindowsPdb
-            ? ["SourceLinkValid", "SourceLinkImplicit", "SourceLinkMismatched", "SourceLinkCancellation", "WindowsPdbFixture"]
-            : ["SourceLinkValid", "SourceLinkImplicit", "SourceLinkMismatched", "SourceLinkCancellation"];
+            ? ["SourceLinkValid", "SourceLinkImplicit", "SourceLinkMismatched", "SourceLinkCancellation", "SymbolFreeFixture", "WindowsPdbFixture"]
+            : ["SourceLinkValid", "SourceLinkImplicit", "SourceLinkMismatched", "SourceLinkCancellation", "SymbolFreeFixture"];
         var solution = new XDocument(
             new XElement(
                 "Solution",
@@ -313,6 +323,8 @@ internal sealed class DebuggerSymbolFixtures : IAsyncDisposable
         startInfo.ArgumentList.Add("--disable-build-servers");
         startInfo.ArgumentList.Add("--maxcpucount:1");
         startInfo.ArgumentList.Add("--property:UseSharedCompilation=false");
+        startInfo.ArgumentList.Add($"-bl:{Path.Join(DebuggerTestEnvironment.FindRepositoryRoot(),
+            "artifacts", "diagnostics", "debugger-symbol-fixtures", "{}.binlog")}");
         (int exitCode, string output, string error) = await DebuggerTestProcess.RunAsync(
             startInfo,
             cancellationToken).ConfigureAwait(false);

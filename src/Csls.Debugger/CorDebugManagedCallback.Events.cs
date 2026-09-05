@@ -79,6 +79,7 @@ internal sealed partial class CorDebugManagedCallback
         await _sourceBreakpoints.LoadModuleAsync(module, cancellationToken).ConfigureAwait(false);
         CorDebugLoadedModule loadedModule = _sourceBreakpoints.FindModule(module)
             ?? throw new InvalidOperationException("The runtime load callback did not register its module.");
+        _entryBreakpoint.LoadModule(loadedModule, cancellationToken);
         await _functionBreakpoints.LoadModuleAsync(
             loadedModule,
             cancellationToken).ConfigureAwait(false);
@@ -94,6 +95,11 @@ internal sealed partial class CorDebugManagedCallback
         nint module,
         CancellationToken cancellationToken)
     {
+        if (_sourceBreakpoints.FindModule(module) is CorDebugLoadedModule loadedModule)
+        {
+            _entryBreakpoint.UnloadModule(loadedModule.Id);
+        }
+
         await _sourceBreakpoints.UnloadModuleAsync(module, cancellationToken)
             .ConfigureAwait(false);
         await _functionBreakpoints.UnloadModuleAsync(module, cancellationToken)

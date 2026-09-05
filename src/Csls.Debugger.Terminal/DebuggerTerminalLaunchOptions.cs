@@ -18,12 +18,17 @@ public sealed class DebuggerTerminalLaunchOptions
     /// <summary>
     /// Gets the source document containing the initial breakpoint.
     /// </summary>
-    public required string SourcePath { get; init; }
+    public string? SourcePath { get; init; }
 
     /// <summary>
     /// Gets the one-based initial breakpoint line.
     /// </summary>
-    public required int Line { get; init; }
+    public int? Line { get; init; }
+
+    /// <summary>
+    /// Gets whether launch stops at the first executable entry-point statement.
+    /// </summary>
+    public bool StopAtEntry { get; init; }
 
     /// <summary>
     /// Gets the ordered target arguments.

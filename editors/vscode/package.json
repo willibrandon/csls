@@ -324,7 +324,7 @@
               },
               "args": {
                 "type": "array",
-                "description": "Arguments passed directly to the managed target without shell interpretation.",
+                "description": "Arguments passed directly to the managed target as literal values.",
                 "items": {
                   "type": "string"
                 },
@@ -333,7 +333,12 @@
               "noDebug": {
                 "type": "boolean",
                 "default": false,
-                "description": "Launch the target without attaching CoreCLR."
+                "description": "Run the target as an ordinary process."
+              },
+              "stopAtEntry": {
+                "type": "boolean",
+                "default": false,
+                "description": "Stop at the first executable entry-point statement."
               },
               "env": {
                 "type": "object",

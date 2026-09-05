@@ -79,6 +79,7 @@ public sealed partial class DebuggerControlService
         SourceFileMap = request.SourceFileMap,
         SourceLinkOptions = request.SourceLinkOptions,
         SymbolOptions = request.SymbolOptions,
+        StopAtEntry = request.StopAtEntry,
         SuppressJitOptimizations = request.SuppressJitOptimizations,
         EnableHotReload = request.EnableHotReload,
         JustMyCode = request.JustMyCode,

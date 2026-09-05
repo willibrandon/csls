@@ -125,6 +125,18 @@ internal sealed class WindowsPdbReader : IDisposable
     }
 
     /// <summary>
+    /// Gets the user entry method recorded in the Windows PDB.
+    /// </summary>
+    /// <returns>The entry method token, or null when the PDB has no entry.</returns>
+    internal uint? GetEntryPoint()
+    {
+        int result = GetReader().GetUserEntryPoint(out int token);
+        return result >= 0 && (token & 0xff000000) == 0x06000000
+            ? checked((uint)token)
+            : null;
+    }
+
+    /// <summary>
     /// Reads every bounded source document from the Windows PDB.
     /// </summary>
     /// <returns>The immutable source-document snapshot.</returns>

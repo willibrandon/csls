@@ -52,6 +52,21 @@ internal sealed class DebugSymbolReader : IDisposable
     internal string? Path { get; }
 
     /// <summary>
+    /// Gets the compiler-recorded user entry method from the validated symbols.
+    /// </summary>
+    /// <returns>The entry method token, or null when the symbols have no entry.</returns>
+    internal uint? GetEntryPoint()
+    {
+        if (_windows is not null)
+        {
+            return _windows.GetEntryPoint();
+        }
+
+        MethodDefinitionHandle entry = GetPortableReader().Metadata.DebugMetadataHeader?.EntryPoint ?? default;
+        return entry.IsNil ? null : checked((uint)MetadataTokens.GetToken(entry));
+    }
+
+    /// <summary>
     /// Opens identity-matched symbols for a file-backed managed module.
     /// </summary>
     /// <param name="modulePath">The absolute managed PE path.</param>

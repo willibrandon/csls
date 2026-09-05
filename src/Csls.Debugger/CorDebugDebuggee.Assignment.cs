@@ -286,6 +286,23 @@ internal sealed partial class CorDebugDebuggee
                 declaredType);
         }
 
+        if (ManagedStateMachineArgumentResolver.Resolve(frame) is { } capturedArguments)
+        {
+            ManagedCapturedArgument argument = capturedArguments.FirstOrDefault(candidate =>
+                string.Equals(candidate.Name, name, comparison))
+                ?? throw new InvalidOperationException($"The source parameter '{name}' is unavailable in the selected frame.");
+            if (!allowInstanceReceiver && argument.ParameterIndex is null)
+            {
+                throw new InvalidOperationException("The current instance receiver cannot be assigned.");
+            }
+
+            (nint Value, ManagedTupleCustomTypeInfo? TupleCustomTypeInfo,
+                ManagedValueOrigin? Origin, ManagedBoundType? DeclaredType) resolved = ResolveCapturedArgument(frame, argument);
+            return resolved.Value != 0
+                ? resolved
+                : throw new InvalidOperationException($"The source parameter '{name}' is optimized out in the selected frame.");
+        }
+
         IReadOnlyDictionary<int, ManagedSymbolVariable> argumentNames = GetVariableNames(
             frame,
             ManagedScopeKind.Arguments);

@@ -1,3 +1,4 @@
+using Csls.Debugger.Contracts;
 using System.Reflection;
 using System.Reflection.Metadata;
 using System.Reflection.Metadata.Ecma335;
@@ -32,7 +33,9 @@ internal static class ManagedSymbolVariableNameResolver
         Dictionary<int, ManagedSymbolVariable> result = [];
         if (hasThis)
         {
-            result[0] = new ManagedSymbolVariable("this", TupleCustomTypeInfo: null);
+            result[0] = new ManagedSymbolVariable(
+                frame.ExpressionLanguage == DebugExpressionLanguage.VisualBasic ? "Me" : "this",
+                TupleCustomTypeInfo: null);
         }
 
         foreach (ParameterHandle parameterHandle in metadata.GetParameters(methodHandle))

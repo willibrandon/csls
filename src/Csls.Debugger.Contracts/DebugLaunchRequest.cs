@@ -49,6 +49,11 @@ public sealed class DebugLaunchRequest
     public DebugSymbolOptions SymbolOptions { get; init; } = new();
 
     /// <summary>
+    /// Gets whether launch stops at the first executable entry-point statement.
+    /// </summary>
+    public bool StopAtEntry { get; init; }
+
+    /// <summary>
     /// Gets whether the debugger requests unoptimized JIT code for loaded managed modules.
     /// </summary>
     public bool SuppressJitOptimizations { get; init; }

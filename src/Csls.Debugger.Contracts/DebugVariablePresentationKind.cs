@@ -15,6 +15,12 @@ public enum DebugVariablePresentationKind
     Normal,
 
     /// <summary>
+    /// Presents a source variable whose runtime storage is unavailable at the selected stop.
+    /// </summary>
+    [JsonStringEnumMemberName("unavailable")]
+    Unavailable,
+
+    /// <summary>
     /// Presents a debugger-created virtual container.
     /// </summary>
     [JsonStringEnumMemberName("virtual")]

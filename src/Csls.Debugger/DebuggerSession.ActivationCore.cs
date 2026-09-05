@@ -153,6 +153,7 @@ public sealed partial class DebuggerSession
                     _sourceBreakpoints.ResetRuntimeBindings();
                     _functionBreakpoints.ResetRuntimeBindings();
                     _instructionBreakpoints.ResetRuntimeBindings();
+                    _entryBreakpoint.Reset();
                     _debuggee.Detach();
                 }
                 catch

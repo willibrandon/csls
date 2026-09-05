@@ -197,15 +197,13 @@ public sealed partial class DapSessionTests
         JsonElement[] argumentValues = await ReadVariablesAsync(
             client,
             arguments.GetProperty("variablesReference").GetInt32()).ConfigureAwait(false);
-        Assert.HasCount(1, argumentValues);
-        int stateMachineReference = argumentValues[0]
-            .GetProperty("variablesReference").GetInt32();
-        Assert.IsGreaterThan(0, stateMachineReference);
-        JsonElement[] fields = await ReadVariablesAsync(client, stateMachineReference)
-            .ConfigureAwait(false);
-        JsonElement[] selectedValues = [.. fields.Where(field =>
-            field.GetProperty("name").GetString() == "value" &&
-            field.GetProperty("value").GetString() == "41")];
-        Assert.HasCount(1, selectedValues);
+        Assert.AreSequenceEqual(["value", "delayMilliseconds"],
+            argumentValues.Select(argument => argument.GetProperty("name").GetString()).ToArray());
+        Assert.AreSequenceEqual(["41", "350"],
+            argumentValues.Select(argument => argument.GetProperty("value").GetString()).ToArray());
+        Assert.AreEqual("value", argumentValues[0].GetProperty("evaluateName").GetString());
+        JsonElement evaluated = await ReadEvaluationAsync(client, frameId, "value", success: true,
+            TestContext.CancellationToken).ConfigureAwait(false);
+        Assert.AreEqual("41", evaluated.GetProperty("result").GetString());
     }
 }

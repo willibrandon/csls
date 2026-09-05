@@ -101,6 +101,21 @@ public sealed partial class DebuggerSession
             nint breakpoint,
             CancellationToken cancellationToken)
     {
+        if (_entryBreakpoint.TryComplete(breakpoint))
+        {
+            if (_state == DebugSessionState.Starting)
+            {
+                _pendingStop = new PendingDebugStop("entry", threadId, Exception: null);
+            }
+            else if (_state == DebugSessionState.Running)
+            {
+                await EnterStoppedStateAsync("entry", threadId, cancellationToken)
+                    .ConfigureAwait(false);
+            }
+
+            return ManagedTargetBreakpointDecision.Stopped;
+        }
+
         if (_state != DebugSessionState.Running ||
             _debuggee is not CorDebugDebuggee managedDebuggee)
         {

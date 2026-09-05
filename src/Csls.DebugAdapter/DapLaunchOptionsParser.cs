@@ -22,11 +22,7 @@ internal static class DapLaunchOptionsParser
 
         bool noDebug = arguments.TryGetProperty("noDebug", out JsonElement noDebugValue) &&
             noDebugValue.ValueKind == JsonValueKind.True;
-        if (DapBooleanOptionParser.Get(arguments, "stopAtEntry", defaultValue: false))
-        {
-            throw new ArgumentException(
-                "The launch stopAtEntry option is not supported by this debugger capability set.");
-        }
+        bool stopAtEntry = DapBooleanOptionParser.Get(arguments, "stopAtEntry", defaultValue: false);
 
         string program = GetRequiredString(arguments, "program");
         if (!Path.IsPathFullyQualified(program))
@@ -65,6 +61,7 @@ internal static class DapLaunchOptionsParser
                 Arguments = ParseArguments(arguments),
                 Environment = ParseEnvironment(arguments),
                 RuntimeHostPath = ResolveRuntimeHost(arguments),
+                StopAtEntry = stopAtEntry,
                 SourceFileMap = DapSourceOptionsParser.ParseSourceFileMap(arguments),
                 SourceLinkOptions = DapSourceOptionsParser.ParseSourceLinkOptions(arguments),
                 SymbolOptions = DapSymbolOptionsParser.Parse(arguments),

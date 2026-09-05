@@ -9,10 +9,15 @@ namespace Csls.Debugger.Tests;
 public sealed partial class DapSessionTests
 {
     /// <summary>
-    /// Rejects stop-at-entry requests until the adapter can honor their runtime semantics.
+    /// Rejects malformed entry-stop options before launching a target.
     /// </summary>
     [TestMethod]
-    public async Task LaunchRejectsUnadvertisedStopAtEntry()
+    [DataRow("null")]
+    [DataRow("\"true\"")]
+    [DataRow("1")]
+    [DataRow("{}")]
+    [DataRow("[]")]
+    public async Task LaunchRejectsInvalidStopAtEntry(string option)
     {
         DapTestClient client = await DapTestClient
             .CreateAsync(TestContext.CancellationToken)
@@ -31,7 +36,8 @@ public sealed partial class DapSessionTests
             {
                 writer.WriteStartObject();
                 writer.WriteString("program", ResolveTestProcessHost());
-                writer.WriteBoolean("stopAtEntry", true);
+                writer.WritePropertyName("stopAtEntry");
+                writer.WriteRawValue(option);
                 writer.WriteEndObject();
             },
             TestContext.CancellationToken).ConfigureAwait(false);
@@ -40,7 +46,7 @@ public sealed partial class DapSessionTests
             .ConfigureAwait(false);
         AssertResponse(response.RootElement, sequence, "launch", success: false);
         Assert.Contains(
-            "stopAtEntry option is not supported",
+            "stopAtEntry",
             response.RootElement.GetProperty("message").GetString()!,
             StringComparison.Ordinal);
         await client.CloseProtocolAsync().ConfigureAwait(false);
@@ -54,7 +60,10 @@ public sealed partial class DapSessionTests
     /// Launches a real managed process after configuration and forwards its output and exit.
     /// </summary>
     [TestMethod]
-    public async Task NoDebugLaunchRunsOwnedProcessAfterConfiguration()
+    [DataRow(null)]
+    [DataRow(false)]
+    [DataRow(true)]
+    public async Task NoDebugLaunchRunsOwnedProcessAfterConfiguration(bool? stopAtEntry)
     {
         DapTestClient client = await DapTestClient
             .CreateAsync(TestContext.CancellationToken)
@@ -103,7 +112,8 @@ public sealed partial class DapSessionTests
                 writer,
                 processHost,
                 ["--print-environment", "CSLS_DEBUGGER_TEST_VALUE"],
-                wait: false),
+                wait: false,
+                stopAtEntry: stopAtEntry),
             TestContext.CancellationToken).ConfigureAwait(false);
         using JsonDocument initialized = await client
             .ReadMessageAsync(TestContext.CancellationToken)
@@ -163,8 +173,10 @@ public sealed partial class DapSessionTests
     /// Launches a real managed assembly through dbgshim and preserves DAP protocol output.
     /// </summary>
     [TestMethod]
+    [DataRow(null)]
+    [DataRow(false)]
     [Timeout(30000, CooperativeCancellation = true)]
-    public async Task ManagedLaunchActivatesCoreClrAndForwardsTargetOutput()
+    public async Task ManagedLaunchActivatesCoreClrAndForwardsTargetOutput(bool? stopAtEntry)
     {
         DapTestClient client = await DapTestClient
             .CreateAsync(TestContext.CancellationToken)
@@ -185,7 +197,8 @@ public sealed partial class DapSessionTests
                 ResolveTestProcessHost(),
                 ["--print-environment-and-exit", "CSLS_DEBUGGER_TEST_VALUE", "23"],
                 wait: false,
-                noDebug: false),
+                noDebug: false,
+                stopAtEntry: stopAtEntry),
             TestContext.CancellationToken).ConfigureAwait(false);
         using JsonDocument initialized = await client
             .ReadMessageAsync(TestContext.CancellationToken)

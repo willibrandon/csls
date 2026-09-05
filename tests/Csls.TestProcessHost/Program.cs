@@ -101,6 +101,13 @@ if (args is ["--debugger-async-step-fixture", string asyncInitialValue])
         .ConfigureAwait(false);
 }
 
+if (args is ["--debugger-captured-arguments", string capturedAssembly, string capturedArgument,
+    string capturedReplacement, string capturedReceiver])
+{
+    return await DebuggerAsyncArgumentRunner.RunAsync(capturedAssembly, capturedArgument,
+        capturedReplacement, capturedReceiver).ConfigureAwait(false);
+}
+
 if (args is ["--debugger-concurrent-async-step-fixture"])
 {
     return await DebuggerAsyncStepFixture.RunConcurrentAsync().ConfigureAwait(false);

@@ -17,6 +17,7 @@ internal sealed partial class CorDebugDebuggee
     /// <param name="sourceBreakpoints">The session source-breakpoint owner.</param>
     /// <param name="functionBreakpoints">The session function-breakpoint owner.</param>
     /// <param name="instructionBreakpoints">The session managed-IL breakpoint owner.</param>
+    /// <param name="entryBreakpoint">The session one-shot entry breakpoint owner.</param>
     /// <param name="breakpointReached">The ordered runtime-breakpoint decision callback.</param>
     /// <param name="targetBreakpointReached">The ordered targeted-step breakpoint callback.</param>
     /// <param name="stepCompleted">The ordered runtime-step completion callback.</param>
@@ -31,6 +32,7 @@ internal sealed partial class CorDebugDebuggee
         SourceBreakpointManager sourceBreakpoints,
         FunctionBreakpointManager functionBreakpoints,
         InstructionBreakpointManager instructionBreakpoints,
+        EntryPointBreakpointManager entryBreakpoint,
         Func<int, ManagedBreakpointHit, CancellationToken, ValueTask<bool>> breakpointReached,
         Func<int, nint, CancellationToken, ValueTask<ManagedTargetBreakpointDecision>>
             targetBreakpointReached,
@@ -45,6 +47,7 @@ internal sealed partial class CorDebugDebuggee
         ArgumentNullException.ThrowIfNull(sourceBreakpoints);
         ArgumentNullException.ThrowIfNull(functionBreakpoints);
         ArgumentNullException.ThrowIfNull(instructionBreakpoints);
+        ArgumentNullException.ThrowIfNull(entryBreakpoint);
         ArgumentNullException.ThrowIfNull(breakpointReached);
         ArgumentNullException.ThrowIfNull(targetBreakpointReached);
         ArgumentNullException.ThrowIfNull(stepCompleted);
@@ -84,6 +87,7 @@ internal sealed partial class CorDebugDebuggee
                 sourceBreakpoints,
                 functionBreakpoints,
                 instructionBreakpoints,
+                entryBreakpoint,
                 breakpointReached,
                 targetBreakpointReached,
                 stepCompleted,
@@ -123,6 +127,7 @@ internal sealed partial class CorDebugDebuggee
                 sourceBreakpoints,
                 functionBreakpoints,
                 instructionBreakpoints,
+                entryBreakpoint,
                 managedCallbackOwner,
                 registrationOwner,
                 standardStreamsOwner: null,

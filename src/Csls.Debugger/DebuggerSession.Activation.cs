@@ -45,6 +45,7 @@ public sealed partial class DebuggerSession
                 _sourceBreakpoints,
                 _functionBreakpoints,
                 _instructionBreakpoints,
+                _entryBreakpoint,
                 HandleRuntimeBreakpointCoreAsync,
                 HandleRuntimeTargetBreakpointCoreAsync,
                 HandleRuntimeStepCoreAsync,
@@ -71,6 +72,7 @@ public sealed partial class DebuggerSession
         DebuggeeAttachOptions options,
         CancellationToken cancellationToken)
     {
+        _entryBreakpoint.Configure(enabled: false);
         _sourceBreakpoints.SetSourceOptions(
             options.SourceFileMap,
             options.SourceLinkOptions,

@@ -197,11 +197,13 @@ internal sealed partial class DapSession
 
                             if (variable.PresentationKind is DebugVariablePresentationKind.ResultsView or
                                 DebugVariablePresentationKind.ResultsSnapshot or
-                                DebugVariablePresentationKind.ReadOnlyString)
+                                DebugVariablePresentationKind.ReadOnlyString or
+                                DebugVariablePresentationKind.Unavailable)
                             {
                                 writer.WriteStartArray("attributes");
                                 writer.WriteStringValue("readOnly");
-                                if (variable.PresentationKind != DebugVariablePresentationKind.ResultsSnapshot)
+                                if (variable.PresentationKind is DebugVariablePresentationKind.ResultsView or
+                                    DebugVariablePresentationKind.ReadOnlyString)
                                 {
                                     writer.WriteStringValue(variable.PresentationKind ==
                                         DebugVariablePresentationKind.ResultsView ? "hasSideEffects" : "rawString");

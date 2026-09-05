@@ -27,6 +27,7 @@ internal sealed partial class CorDebugManagedCallback : IDisposable
     private readonly SourceBreakpointManager _sourceBreakpoints;
     private readonly FunctionBreakpointManager _functionBreakpoints;
     private readonly InstructionBreakpointManager _instructionBreakpoints;
+    private readonly EntryPointBreakpointManager _entryBreakpoint;
     private readonly Func<int, ManagedBreakpointHit, CancellationToken, ValueTask<bool>>
         _breakpointReached;
     private readonly Func<int, nint, CancellationToken,
@@ -51,6 +52,7 @@ internal sealed partial class CorDebugManagedCallback : IDisposable
     /// <param name="sourceBreakpoints">The source-breakpoint binding owner.</param>
     /// <param name="functionBreakpoints">The function-breakpoint binding owner.</param>
     /// <param name="instructionBreakpoints">The managed-IL breakpoint binding owner.</param>
+    /// <param name="entryBreakpoint">The one-shot entry breakpoint binding owner.</param>
     /// <param name="breakpointReached">The ordered runtime-breakpoint decision callback.</param>
     /// <param name="targetBreakpointReached">The ordered targeted-step breakpoint callback.</param>
     /// <param name="stepCompleted">The ordered source-step completion callback.</param>
@@ -62,6 +64,7 @@ internal sealed partial class CorDebugManagedCallback : IDisposable
         SourceBreakpointManager sourceBreakpoints,
         FunctionBreakpointManager functionBreakpoints,
         InstructionBreakpointManager instructionBreakpoints,
+        EntryPointBreakpointManager entryBreakpoint,
         Func<int, ManagedBreakpointHit, CancellationToken, ValueTask<bool>> breakpointReached,
         Func<int, nint, CancellationToken, ValueTask<ManagedTargetBreakpointDecision>>
             targetBreakpointReached,
@@ -74,6 +77,7 @@ internal sealed partial class CorDebugManagedCallback : IDisposable
         ArgumentNullException.ThrowIfNull(sourceBreakpoints);
         ArgumentNullException.ThrowIfNull(functionBreakpoints);
         ArgumentNullException.ThrowIfNull(instructionBreakpoints);
+        ArgumentNullException.ThrowIfNull(entryBreakpoint);
         ArgumentNullException.ThrowIfNull(breakpointReached);
         ArgumentNullException.ThrowIfNull(targetBreakpointReached);
         ArgumentNullException.ThrowIfNull(stepCompleted);
@@ -84,6 +88,7 @@ internal sealed partial class CorDebugManagedCallback : IDisposable
         _sourceBreakpoints = sourceBreakpoints;
         _functionBreakpoints = functionBreakpoints;
         _instructionBreakpoints = instructionBreakpoints;
+        _entryBreakpoint = entryBreakpoint;
         _breakpointReached = breakpointReached;
         _targetBreakpointReached = targetBreakpointReached;
         _stepCompleted = stepCompleted;

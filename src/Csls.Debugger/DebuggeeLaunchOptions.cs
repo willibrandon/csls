@@ -33,6 +33,11 @@ public sealed class DebuggeeLaunchOptions
     public string? RuntimeHostPath { get; init; }
 
     /// <summary>
+    /// Gets whether launch pauses at the first authored entry-point statement.
+    /// </summary>
+    public bool StopAtEntry { get; init; }
+
+    /// <summary>
     /// Gets build-time source prefixes mapped to local editor paths.
     /// </summary>
     public IReadOnlyDictionary<string, string> SourceFileMap { get; init; } =

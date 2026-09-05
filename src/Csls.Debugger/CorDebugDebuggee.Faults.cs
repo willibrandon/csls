@@ -30,6 +30,7 @@ internal sealed partial class CorDebugDebuggee
         _sourceBreakpoints.ResetRuntimeBindings(runtimeAvailable: false);
         _functionBreakpoints.ResetRuntimeBindings(runtimeAvailable: false);
         _instructionBreakpoints.ResetRuntimeBindings(runtimeAvailable: false);
+        _entryBreakpoint.Reset(runtimeAvailable: false);
         nint corDebug = Interlocked.Exchange(ref _corDebug, 0);
         nint debugProcess = Interlocked.Exchange(ref _debugProcess, 0);
         ReleaseRuntimeReferences(corDebug, debugProcess, runtimeAvailable: false);

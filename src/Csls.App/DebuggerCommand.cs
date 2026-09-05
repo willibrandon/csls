@@ -57,25 +57,27 @@ internal static class DebuggerCommand
             Arity = ArgumentArity.ZeroOrMore,
             DefaultValueFactory = static _ => []
         };
-        var sourceOption = new Option<string>("--source")
+        var sourceOption = new Option<string?>("--source")
         {
             Description = "Source document containing the initial breakpoint.",
-            HelpName = "path",
-            Required = true
+            HelpName = "path"
         };
-        var lineOption = new Option<int>("--line")
+        var lineOption = new Option<int?>("--line")
         {
             Description = "One-based line for the initial source breakpoint.",
-            HelpName = "number",
-            Required = true
+            HelpName = "number"
         };
         lineOption.Validators.Add(static result =>
         {
-            if (result.GetValueOrDefault<int>() <= 0)
+            if (result.GetValueOrDefault<int?>() is <= 0)
             {
                 result.AddError("--line must be a positive one-based source line.");
             }
         });
+        var stopAtEntryOption = new Option<bool>("--stop-at-entry")
+        {
+            Description = "Stop at the first executable entry-point statement."
+        };
         var workingDirectoryOption = new Option<string>("--cwd")
         {
             Description = "Target working directory.",
@@ -90,19 +92,34 @@ internal static class DebuggerCommand
         Option<string[]> sourceFileMapOption = CreateSourceFileMapOption();
         var command = new Command(
             "launch",
-            "Launch a managed target and stop at an initial source breakpoint.")
+            "Launch a managed target and stop at entry or an initial source breakpoint.")
         {
             programArgument,
             argumentsArgument,
             sourceOption,
             lineOption,
+            stopAtEntryOption,
             workingDirectoryOption,
             runtimeOption,
             sourceFileMapOption
         };
+        command.Validators.Add(result =>
+        {
+            bool hasSource = result.GetValue(sourceOption) is not null;
+            bool hasLine = result.GetValue(lineOption).HasValue;
+            if (hasSource != hasLine)
+            {
+                result.AddError("Specify --source and --line together.");
+            }
+            else if (!hasSource && !result.GetValue(stopAtEntryOption))
+            {
+                result.AddError("Choose --stop-at-entry or an initial breakpoint with --source and --line.");
+            }
+        });
         command.SetAction((parseResult, cancellationToken) =>
         {
             string? runtime = parseResult.GetValue(runtimeOption);
+            string? source = parseResult.GetValue(sourceOption);
             Dictionary<string, string> sourceFileMap = ParseSourceFileMap(
                 parseResult.GetValue(sourceFileMapOption));
             return DebuggerWorkerSupervisor.RunAsync(
@@ -110,10 +127,11 @@ internal static class DebuggerCommand
                     "launch",
                     Path.GetFullPath(parseResult.GetRequiredValue(programArgument)),
                     Path.GetFullPath(parseResult.GetRequiredValue(workingDirectoryOption)),
-                    Path.GetFullPath(parseResult.GetRequiredValue(sourceOption)),
-                    parseResult.GetRequiredValue(lineOption)
+                    source is null ? string.Empty : Path.GetFullPath(source),
+                    (parseResult.GetValue(lineOption) ?? 0)
                         .ToString(CultureInfo.InvariantCulture),
                     string.IsNullOrWhiteSpace(runtime) ? string.Empty : Path.GetFullPath(runtime),
+                    parseResult.GetValue(stopAtEntryOption) ? "true" : "false",
                     sourceFileMap.Count.ToString(CultureInfo.InvariantCulture),
                     .. sourceFileMap.SelectMany(static mapping =>
                         new[] { mapping.Key, mapping.Value }),

@@ -71,6 +71,7 @@ public sealed partial class DebuggerSession
                 _sourceBreakpoints,
                 _functionBreakpoints,
                 _instructionBreakpoints,
+                _entryBreakpoint,
                 HandleRuntimeBreakpointCoreAsync,
                 HandleRuntimeTargetBreakpointCoreAsync,
                 HandleRuntimeStepCoreAsync,
@@ -97,6 +98,7 @@ public sealed partial class DebuggerSession
         DebuggeeLaunchOptions options,
         CancellationToken cancellationToken)
     {
+        _entryBreakpoint.Configure(options.StopAtEntry);
         _sourceBreakpoints.SetSourceOptions(
             options.SourceFileMap,
             options.SourceLinkOptions,
@@ -123,6 +125,7 @@ public sealed partial class DebuggerSession
                 _sourceBreakpoints.ResetRuntimeBindings(runtimeAvailable);
                 _functionBreakpoints.ResetRuntimeBindings(runtimeAvailable);
                 _instructionBreakpoints.ResetRuntimeBindings(runtimeAvailable);
+                _entryBreakpoint.Reset(runtimeAvailable);
                 if (!runtimeAvailable)
                 {
                     _state = DebugSessionState.Faulted;

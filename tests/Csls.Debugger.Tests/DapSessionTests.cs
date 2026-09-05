@@ -267,12 +267,18 @@ public sealed partial class DapSessionTests
         IReadOnlyList<string> arguments,
         bool wait,
         bool noDebug = true,
-        bool suppressJitOptimizations = false)
+        bool suppressJitOptimizations = false,
+        bool? stopAtEntry = null)
     {
         writer.WriteStartObject();
         writer.WriteBoolean("noDebug", noDebug);
         writer.WriteString("program", processHost);
         writer.WriteBoolean("suppressJITOptimizations", suppressJitOptimizations);
+        if (stopAtEntry is bool entryStop)
+        {
+            writer.WriteBoolean("stopAtEntry", entryStop);
+        }
+
         writer.WriteStartArray("args");
         foreach (string argument in arguments)
         {

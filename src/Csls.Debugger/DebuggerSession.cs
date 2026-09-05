@@ -17,6 +17,7 @@ public sealed partial class DebuggerSession : IAsyncDisposable
     private readonly SourceBreakpointManager _sourceBreakpoints;
     private readonly FunctionBreakpointManager _functionBreakpoints;
     private readonly InstructionBreakpointManager _instructionBreakpoints;
+    private readonly EntryPointBreakpointManager _entryBreakpoint = new();
     private IDebuggeeProcess? _debuggee;
     private Task? _debuggeeLifetime;
     private CancellationTokenSource? _debuggeeObservationCancellation;

@@ -17,6 +17,12 @@ internal sealed partial class CorDebugDebuggee
         int count)
     {
         const int maximumValueCount = 64 * 1024;
+        if (kind == ManagedScopeKind.Arguments &&
+            ManagedStateMachineArgumentResolver.Resolve(frame) is { } capturedArguments)
+        {
+            return EnumerateCapturedArguments(frame, capturedArguments, generation, start, count);
+        }
+
         nint ilFrame = 0;
         nint enumerator = 0;
         try

@@ -11,7 +11,7 @@ namespace Csls.Debugger.Terminal;
 public static class DebuggerTerminalHost
 {
     /// <summary>
-    /// Launches a managed target and opens the debugger at its initial source breakpoint.
+    /// Launches a managed target and opens the debugger at its entry or initial source breakpoint.
     /// </summary>
     /// <param name="options">The validated launch and breakpoint options.</param>
     /// <param name="cancellationToken">The interactive session cancellation token.</param>
@@ -31,11 +31,15 @@ public static class DebuggerTerminalHost
         var client = new DebuggerRpcClient(endpoint.SocketPath);
         await using ConfiguredAsyncDisposable clientCleanup = client.ConfigureAwait(false);
         await client.ConnectAsync(cancellationToken).ConfigureAwait(false);
-        _ = await client.SetSourceBreakpointsAsync(
-            new DebugSourceBreakpointSetRequest(
-                options.SourcePath,
-                [new DebugSourceBreakpointRequest(options.Line, null)]),
-            cancellationToken).ConfigureAwait(false);
+        if (options.SourcePath is string sourcePath && options.Line is int line)
+        {
+            _ = await client.SetSourceBreakpointsAsync(
+                new DebugSourceBreakpointSetRequest(
+                    sourcePath,
+                    [new DebugSourceBreakpointRequest(line, null)]),
+                cancellationToken).ConfigureAwait(false);
+        }
+
         _ = await client.LaunchAsync(
             new DebugLaunchRequest
             {
@@ -43,7 +47,8 @@ public static class DebuggerTerminalHost
                 WorkingDirectory = options.WorkingDirectory,
                 Arguments = options.Arguments,
                 RuntimeHostPath = options.RuntimeHostPath,
-                SourceFileMap = options.SourceFileMap
+                SourceFileMap = options.SourceFileMap,
+                StopAtEntry = options.StopAtEntry
             },
             cancellationToken).ConfigureAwait(false);
         return await RunTerminalAsync(client, cancellationToken).ConfigureAwait(false);
@@ -116,13 +121,27 @@ public static class DebuggerTerminalHost
                 $"The target working directory does not exist: {options.WorkingDirectory}");
         }
 
-        if (!Path.IsPathFullyQualified(options.SourcePath) || !File.Exists(options.SourcePath))
+        if ((options.SourcePath is null) != (options.Line is null))
+        {
+            throw new ArgumentException("An initial source breakpoint requires both a source path and line.", nameof(options));
+        }
+
+        if (options.SourcePath is null && !options.StopAtEntry)
+        {
+            throw new ArgumentException("Choose an entry stop or an initial source breakpoint.", nameof(options));
+        }
+
+        if (options.SourcePath is string sourcePath &&
+            (!Path.IsPathFullyQualified(sourcePath) || !File.Exists(sourcePath)))
         {
             throw new FileNotFoundException(
                 "The initial breakpoint source does not exist.",
                 options.SourcePath);
         }
 
-        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(options.Line);
+        if (options.Line is int line)
+        {
+            ArgumentOutOfRangeException.ThrowIfNegativeOrZero(line);
+        }
     }
 }
