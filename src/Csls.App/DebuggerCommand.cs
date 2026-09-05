@@ -89,6 +89,18 @@ internal static class DebuggerCommand
             Description = "Optional dotnet host path used to run a managed assembly.",
             HelpName = "path"
         };
+        var environmentFileOption = new Option<string?>("--env-file")
+        {
+            Description = "UTF-8 environment file, absolute or relative to --cwd.",
+            HelpName = "path"
+        };
+        environmentFileOption.Validators.Add(static result =>
+        {
+            if (result.GetValueOrDefault<string?>() is string path && string.IsNullOrWhiteSpace(path))
+            {
+                result.AddError("--env-file must name an environment file.");
+            }
+        });
         Option<string[]> sourceFileMapOption = CreateSourceFileMapOption();
         var command = new Command(
             "launch",
@@ -100,6 +112,7 @@ internal static class DebuggerCommand
             lineOption,
             stopAtEntryOption,
             workingDirectoryOption,
+            environmentFileOption,
             runtimeOption,
             sourceFileMapOption
         };
@@ -132,6 +145,7 @@ internal static class DebuggerCommand
                         .ToString(CultureInfo.InvariantCulture),
                     string.IsNullOrWhiteSpace(runtime) ? string.Empty : Path.GetFullPath(runtime),
                     parseResult.GetValue(stopAtEntryOption) ? "true" : "false",
+                    parseResult.GetValue(environmentFileOption) ?? string.Empty,
                     sourceFileMap.Count.ToString(CultureInfo.InvariantCulture),
                     .. sourceFileMap.SelectMany(static mapping =>
                         new[] { mapping.Key, mapping.Value }),

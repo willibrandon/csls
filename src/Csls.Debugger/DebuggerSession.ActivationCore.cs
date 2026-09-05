@@ -20,7 +20,9 @@ public sealed partial class DebuggerSession
         await BeginLaunchCoreAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            _debuggee = DebuggeeProcess.Start(options);
+            Dictionary<string, string> environment = await DebuggeeLaunchEnvironment.CreateAsync(options, cancellationToken)
+                .ConfigureAwait(false);
+            _debuggee = DebuggeeProcess.Start(options, environment);
         }
         catch
         {

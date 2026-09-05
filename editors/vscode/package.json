@@ -347,6 +347,11 @@
                   "type": ["string", "null"]
                 }
               },
+              "envFile": {
+                "type": "string",
+                "minLength": 1,
+                "description": "UTF-8 environment file of at most 1 MiB, absolute or relative to cwd. Explicit env entries override file assignments."
+              },
               "runtimeHost": {
                 "type": "string",
                 "description": "Absolute path to the compatible dotnet host used for a managed assembly."

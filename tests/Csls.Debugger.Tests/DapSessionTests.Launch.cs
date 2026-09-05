@@ -121,7 +121,9 @@ public sealed partial class DapSessionTests
         bool noDebug,
         string? expected,
         IReadOnlyDictionary<string, string?>? parentEnvironment = null,
-        IReadOnlyDictionary<string, string?>? targetEnvironment = null)
+        IReadOnlyDictionary<string, string?>? targetEnvironment = null,
+        string? environmentFile = null,
+        string? workingDirectory = null)
     {
         DapTestClient client = await DapTestClient.CreateAsync(TestContext.CancellationToken, parentEnvironment)
             .ConfigureAwait(false);
@@ -132,11 +134,33 @@ public sealed partial class DapSessionTests
             AssertResponse(response.RootElement, initialize, "initialize", success: true);
         }
 
+        await AssertEnvironmentLaunchAsync(client, variable, noDebug, expected, targetEnvironment,
+            environmentFile, workingDirectory).ConfigureAwait(false);
+    }
+
+    private async Task AssertEnvironmentLaunchAsync(
+        DapTestClient client,
+        string variable,
+        bool noDebug,
+        string? expected,
+        IReadOnlyDictionary<string, string?>? targetEnvironment = null,
+        string? environmentFile = null,
+        string? workingDirectory = null)
+    {
         int launch = await client.SendRequestAsync("launch", writer =>
         {
             writer.WriteStartObject();
             writer.WriteString("program", ResolveTestProcessHost());
             writer.WriteBoolean("noDebug", noDebug);
+            if (environmentFile is not null)
+            {
+                writer.WriteString("envFile", environmentFile);
+            }
+
+            if (workingDirectory is not null)
+            {
+                writer.WriteString("cwd", workingDirectory);
+            }
             writer.WriteStartArray("args");
             writer.WriteStringValue("--print-environment-entry");
             writer.WriteStringValue(variable);
@@ -210,6 +234,259 @@ public sealed partial class DapSessionTests
     }
 
     /// <summary>
+    /// Loads UTF-8 environment files through the managed and no-debug launch paths.
+    /// </summary>
+    /// <param name="noDebug">Whether to launch without managed debugging.</param>
+    /// <param name="assignment">The file's assignment and comment syntax.</param>
+    /// <param name="expected">The exact value observed inside the application.</param>
+    [TestMethod]
+    [DataRow(false, "CSLS_ENV_FILE_VALUE=plain", "plain")]
+    [DataRow(true, "CSLS_ENV_FILE_VALUE=plain", "plain")]
+    [DataRow(false, "\uFEFF# comment\r\nexport CSLS_ENV_FILE_VALUE = 'quoted π # literal'\r\n", "quoted π # literal")]
+    [DataRow(true, "\uFEFF# comment\r\nexport CSLS_ENV_FILE_VALUE = 'quoted π # literal'\r\n", "quoted π # literal")]
+    [DataRow(false, "CSLS_ENV_FILE_VALUE=first\nCSLS_ENV_FILE_VALUE=last # comment", "last")]
+    [DataRow(true, "CSLS_ENV_FILE_VALUE=first\nCSLS_ENV_FILE_VALUE=last # comment", "last")]
+    [DataRow(false, "CSLS_ENV_FILE_VALUE=\n", "")]
+    [DataRow(true, "CSLS_ENV_FILE_VALUE=\n", "")]
+    [DataRow(false, "CSLS_ENV_FILE_VALUE=\"line\\nnext\\t\\\"quote\\\"\"", "line\nnext\t\"quote\"")]
+    [DataRow(true, "CSLS_ENV_FILE_VALUE=\"line\\nnext\\t\\\"quote\\\"\"", "line\nnext\t\"quote\"")]
+    [DataRow(false, "CSLS_ENV_FILE_VALUE='${LITERAL}\\path=a#b'", "${LITERAL}\\path=a#b")]
+    [DataRow(true, "CSLS_ENV_FILE_VALUE='${LITERAL}\\path=a#b'", "${LITERAL}\\path=a#b")]
+    [DataRow(false, "CSLS_ENV_FILE_VALUE=\"line\nnext\" # comment", "line\nnext")]
+    [DataRow(true, "CSLS_ENV_FILE_VALUE=\"line\nnext\" # comment", "line\nnext")]
+    [DataRow(false, "CSLS_ENV_FILE_VALUE=\"line  \n  next  \"", "line  \n  next  ")]
+    [DataRow(true, "CSLS_ENV_FILE_VALUE=\"line  \n  next  \"", "line  \n  next  ")]
+    [DataRow(false, "", "inherited")]
+    [DataRow(true, "", "inherited")]
+    [DataRow(false, "# comments only\n \t", "inherited")]
+    [DataRow(true, "# comments only\n \t", "inherited")]
+    [Timeout(30000, CooperativeCancellation = true)]
+    public async Task LaunchLoadsEnvironmentFile(bool noDebug, string assignment, string expected)
+    {
+        DirectoryInfo directory = Directory.CreateTempSubdirectory("csls-environment-file-");
+        string path = Path.Join(directory.FullName, ".env");
+        try
+        {
+            await File.WriteAllTextAsync(path, assignment, TestContext.CancellationToken).ConfigureAwait(false);
+            await AssertLaunchedEnvironmentAsync("CSLS_ENV_FILE_VALUE", noDebug, expected,
+                new Dictionary<string, string?> { ["CSLS_ENV_FILE_VALUE"] = "inherited" },
+                environmentFile: ".env", workingDirectory: directory.FullName).ConfigureAwait(false);
+        }
+        finally
+        {
+            File.Delete(path);
+            directory.Delete();
+        }
+    }
+
+    /// <summary>
+    /// Applies explicit environment replacements and removals after environment-file values.
+    /// </summary>
+    /// <param name="noDebug">Whether to launch without managed debugging.</param>
+    /// <param name="replacement">The explicit replacement or null removal.</param>
+    [TestMethod]
+    [DataRow(false, "explicit")]
+    [DataRow(true, "explicit")]
+    [DataRow(false, "")]
+    [DataRow(true, "")]
+    [DataRow(false, null)]
+    [DataRow(true, null)]
+    [Timeout(30000, CooperativeCancellation = true)]
+    public async Task LaunchEnvironmentOverridesFile(bool noDebug, string? replacement)
+    {
+        DirectoryInfo directory = Directory.CreateTempSubdirectory("csls-environment-file-");
+        string path = Path.Join(directory.FullName, ".env");
+        try
+        {
+            await File.WriteAllTextAsync(path, "CSLS_ENV_FILE_VALUE=file", TestContext.CancellationToken)
+                .ConfigureAwait(false);
+            await AssertLaunchedEnvironmentAsync("CSLS_ENV_FILE_VALUE", noDebug, replacement,
+                new Dictionary<string, string?> { ["CSLS_ENV_FILE_VALUE"] = "inherited" },
+                new Dictionary<string, string?> { ["CSLS_ENV_FILE_VALUE"] = replacement },
+                environmentFile: path).ConfigureAwait(false);
+        }
+        finally
+        {
+            File.Delete(path);
+            directory.Delete();
+        }
+    }
+
+    /// <summary>
+    /// Rejects malformed environment files without exposing values and accepts a corrected file in the same session.
+    /// </summary>
+    /// <param name="noDebug">Whether to launch without managed debugging.</param>
+    /// <param name="scenario">The invalid input at the real file boundary.</param>
+    [TestMethod]
+    [DataRow(false, "missing")]
+    [DataRow(true, "missing")]
+    [DataRow(false, "directory")]
+    [DataRow(true, "directory")]
+    [DataRow(false, "utf8")]
+    [DataRow(true, "utf8")]
+    [DataRow(false, "oversize")]
+    [DataRow(true, "oversize")]
+    [DataRow(false, "no-assignment")]
+    [DataRow(true, "no-assignment")]
+    [DataRow(false, "name")]
+    [DataRow(true, "name")]
+    [DataRow(false, "nul")]
+    [DataRow(true, "nul")]
+    [DataRow(false, "quote")]
+    [DataRow(true, "quote")]
+    [DataRow(false, "suffix")]
+    [DataRow(true, "suffix")]
+    [Timeout(30000, CooperativeCancellation = true)]
+    public async Task LaunchRejectsInvalidEnvironmentFileAndRecovers(bool noDebug, string scenario)
+    {
+        DirectoryInfo directory = Directory.CreateTempSubdirectory("csls-environment-file-");
+        string path = Path.Join(directory.FullName, ".env");
+        try
+        {
+            if (scenario == "directory")
+            {
+                Directory.CreateDirectory(path);
+            }
+            else if (scenario != "missing")
+            {
+                byte[] bytes = scenario switch
+                {
+                    "utf8" => [0xc0, 0xaf],
+                    "oversize" => new byte[1024 * 1024 + 1],
+                    _ => System.Text.Encoding.UTF8.GetBytes(scenario switch
+                    {
+                        "no-assignment" => "sensitive-value",
+                        "name" => "INVALID NAME=sensitive-value",
+                        "nul" => "VALUE=sensitive-value\0",
+                        "quote" => "VALUE=\"sensitive-value",
+                        "suffix" => "VALUE=\"sensitive-value\"junk",
+                        _ => throw new ArgumentException("Unknown malformed envFile scenario.", nameof(scenario))
+                    })
+                };
+                await File.WriteAllBytesAsync(path, bytes, TestContext.CancellationToken).ConfigureAwait(false);
+            }
+
+            await AssertInvalidEnvironmentFileRecoveryAsync(path, noDebug).ConfigureAwait(false);
+        }
+        finally
+        {
+            if (Directory.Exists(path))
+            {
+                Directory.Delete(path);
+            }
+            else
+            {
+                File.Delete(path);
+            }
+
+            directory.Delete();
+        }
+    }
+
+    /// <summary>
+    /// Rejects a Unix FIFO immediately and keeps the adapter usable for a subsequent file-backed launch.
+    /// </summary>
+    /// <param name="noDebug">Whether to launch without managed debugging.</param>
+    [TestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
+    [OSCondition(ConditionMode.Exclude, OperatingSystems.Windows)]
+    [Timeout(30000, CooperativeCancellation = true)]
+    public async Task LaunchRejectsEnvironmentFifoAndRecovers(bool noDebug)
+    {
+        DirectoryInfo directory = Directory.CreateTempSubdirectory("csls-environment-fifo-");
+        string path = Path.Join(directory.FullName, ".env");
+        try
+        {
+            var command = new System.Diagnostics.ProcessStartInfo("mkfifo") { ArgumentList = { path } };
+            (int exitCode, string output, string error) = await DebuggerTestProcess.RunAsync(command,
+                TestContext.CancellationToken).ConfigureAwait(false);
+            Assert.AreEqual(0, exitCode, output + error);
+            await AssertInvalidEnvironmentFileRecoveryAsync(path, noDebug).ConfigureAwait(false);
+        }
+        finally
+        {
+            File.Delete(path);
+            directory.Delete();
+        }
+    }
+
+    /// <summary>
+    /// Accepts an environment file at the byte limit while preserving an inherited target value.
+    /// </summary>
+    /// <param name="noDebug">Whether to launch without managed debugging.</param>
+    [TestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
+    [Timeout(30000, CooperativeCancellation = true)]
+    public async Task LaunchAcceptsEnvironmentFileAtByteLimit(bool noDebug)
+    {
+        DirectoryInfo directory = Directory.CreateTempSubdirectory("csls-environment-file-");
+        string path = Path.Join(directory.FullName, ".env");
+        try
+        {
+            await File.WriteAllTextAsync(path, "#" + new string('x', 1024 * 1024 - 1), TestContext.CancellationToken)
+                .ConfigureAwait(false);
+            Assert.AreEqual(1024 * 1024, new FileInfo(path).Length);
+            await AssertLaunchedEnvironmentAsync("CSLS_ENV_FILE_VALUE", noDebug, "inherited",
+                new Dictionary<string, string?> { ["CSLS_ENV_FILE_VALUE"] = "inherited" }, environmentFile: path)
+                .ConfigureAwait(false);
+        }
+        finally
+        {
+            File.Delete(path);
+            directory.Delete();
+        }
+    }
+
+    private async Task AssertInvalidEnvironmentFileRecoveryAsync(string path, bool noDebug)
+    {
+        DapTestClient client = await DapTestClient.CreateAsync(TestContext.CancellationToken).ConfigureAwait(false);
+        await using ConfiguredAsyncDisposable cleanup = client.ConfigureAwait(false);
+        int initialize = await client.SendInitializeRequestAsync(TestContext.CancellationToken).ConfigureAwait(false);
+        using (JsonDocument response = await client.ReadMessageAsync(TestContext.CancellationToken).ConfigureAwait(false))
+        {
+            AssertResponse(response.RootElement, initialize, "initialize", success: true);
+        }
+
+        int launch = await client.SendRequestAsync("launch", writer =>
+        {
+            writer.WriteStartObject();
+            writer.WriteString("program", ResolveTestProcessHost());
+            writer.WriteBoolean("noDebug", noDebug);
+            writer.WriteString("envFile", path);
+            writer.WriteEndObject();
+        }, TestContext.CancellationToken).ConfigureAwait(false);
+        using (JsonDocument initialized = await client.ReadMessageAsync(TestContext.CancellationToken).ConfigureAwait(false))
+        {
+            AssertEvent(initialized.RootElement, "initialized");
+        }
+
+        int configuration = await client.SendRequestAsync("configurationDone", WriteEmptyObject,
+            TestContext.CancellationToken).ConfigureAwait(false);
+        foreach ((int sequence, string command) in new[] { (configuration, "configurationDone"), (launch, "launch") })
+        {
+            using JsonDocument response = await client.ReadMessageAsync(TestContext.CancellationToken).ConfigureAwait(false);
+            AssertResponse(response.RootElement, sequence, command, success: false);
+            Assert.DoesNotContain("sensitive-value", response.RootElement.ToString(), StringComparison.Ordinal);
+        }
+
+        if (Directory.Exists(path))
+        {
+            Directory.Delete(path);
+        }
+        else
+        {
+            File.Delete(path);
+        }
+
+        await File.WriteAllTextAsync(path, "CSLS_ENV_FILE_VALUE=recovered", TestContext.CancellationToken)
+            .ConfigureAwait(false);
+        await AssertEnvironmentLaunchAsync(client, "CSLS_ENV_FILE_VALUE", noDebug, "recovered", environmentFile: path)
+            .ConfigureAwait(false);
+    }
+
+    /// <summary>
     /// Rejects malformed entry-stop options before launching a target.
     /// </summary>
     [TestMethod]
@@ -218,7 +495,23 @@ public sealed partial class DapSessionTests
     [DataRow("1")]
     [DataRow("{}")]
     [DataRow("[]")]
-    public async Task LaunchRejectsInvalidStopAtEntry(string option)
+    public Task LaunchRejectsInvalidStopAtEntry(string option) => AssertInvalidLaunchOptionAsync("stopAtEntry", option);
+
+    /// <summary>
+    /// Rejects empty and non-string environment-file options before target configuration.
+    /// </summary>
+    /// <param name="option">The malformed JSON environment-file value.</param>
+    [TestMethod]
+    [DataRow("null")]
+    [DataRow("true")]
+    [DataRow("1")]
+    [DataRow("{}")]
+    [DataRow("[]")]
+    [DataRow("\"\"")]
+    [DataRow("\" \"")]
+    public Task LaunchRejectsInvalidEnvironmentFileOption(string option) => AssertInvalidLaunchOptionAsync("envFile", option);
+
+    private async Task AssertInvalidLaunchOptionAsync(string name, string option)
     {
         DapTestClient client = await DapTestClient
             .CreateAsync(TestContext.CancellationToken)
@@ -237,7 +530,7 @@ public sealed partial class DapSessionTests
             {
                 writer.WriteStartObject();
                 writer.WriteString("program", ResolveTestProcessHost());
-                writer.WritePropertyName("stopAtEntry");
+                writer.WritePropertyName(name);
                 writer.WriteRawValue(option);
                 writer.WriteEndObject();
             },
@@ -247,7 +540,7 @@ public sealed partial class DapSessionTests
             .ConfigureAwait(false);
         AssertResponse(response.RootElement, sequence, "launch", success: false);
         Assert.Contains(
-            "stopAtEntry",
+            name,
             response.RootElement.GetProperty("message").GetString()!,
             StringComparison.Ordinal);
         await client.CloseProtocolAsync().ConfigureAwait(false);

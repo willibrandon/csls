@@ -30,6 +30,7 @@ internal sealed class CslsMcpDebuggerLifecycleTools
     /// <param name="cancellationToken">The MCP request cancellation token.</param>
     /// <param name="arguments">The ordered target arguments.</param>
     /// <param name="environment">Target environment additions and removals.</param>
+    /// <param name="environmentFilePath">The optional UTF-8 environment file resolved relative to the target working directory.</param>
     /// <param name="runtimeHostPath">The optional absolute managed runtime host path.</param>
     /// <param name="sourceFileMap">Build-time source prefixes mapped to local source prefixes.</param>
     /// <param name="initialSourcePath">The optional initial source breakpoint path.</param>
@@ -60,6 +61,8 @@ internal sealed class CslsMcpDebuggerLifecycleTools
         IReadOnlyList<string>? arguments = null,
         [Description("Target environment additions; null values remove inherited variables.")]
         IReadOnlyDictionary<string, string?>? environment = null,
+        [Description("UTF-8 environment file, absolute or relative to workingDirectory. Explicit environment entries override file assignments.")]
+        string? environmentFilePath = null,
         [Description("Optional absolute dotnet or executable host path.")]
         string? runtimeHostPath = null,
         [Description("Build-time source path prefixes mapped to local source path prefixes.")]
@@ -87,13 +90,15 @@ internal sealed class CslsMcpDebuggerLifecycleTools
                 runtimeHostPath,
                 sourceFileMap,
                 initialSourcePath,
-                initialLine);
+                initialLine,
+                environmentFilePath);
             return await _broker.LaunchAsync(
                 new DebugLaunchRequest
                 {
                     Program = Path.GetFullPath(program),
                     WorkingDirectory = Path.GetFullPath(workingDirectory),
                     Arguments = arguments ?? [],
+                    EnvironmentFilePath = environmentFilePath,
                     Environment = environment ??
                         new Dictionary<string, string?>(StringComparer.Ordinal),
                     RuntimeHostPath = runtimeHostPath is null

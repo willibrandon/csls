@@ -55,12 +55,14 @@ internal sealed partial class CorDebugDebuggee
         ArgumentNullException.ThrowIfNull(exceptionRaised);
         ArgumentNullException.ThrowIfNull(evaluationCompleted);
         ValidateOptions(options);
+        Dictionary<string, string> targetEnvironment = await DebuggeeLaunchEnvironment.CreateAsync(options, cancellationToken)
+            .ConfigureAwait(false);
         DbgShimLibrary.VerifyPlatformSupport();
 
         using CorDebugRuntimeActivationLease activationLease = await CorDebugRuntimeActivationLease
             .AcquireAsync(cancellationToken).ConfigureAwait(false);
         string commandLine = DbgShimCommandLineBuilder.Build(options);
-        using var environment = DbgShimEnvironmentBlock.Create(options.Environment);
+        using var environment = DbgShimEnvironmentBlock.Create(targetEnvironment);
         var standardStreamsOwner = new DbgShimStandardStreamsOwner();
         await using ConfiguredAsyncDisposable standardStreamsOwnerScope =
             standardStreamsOwner.ConfigureAwait(false);

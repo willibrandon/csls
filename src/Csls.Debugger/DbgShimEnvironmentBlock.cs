@@ -21,30 +21,22 @@ internal sealed unsafe class DbgShimEnvironmentBlock : IDisposable
     internal nint Pointer => _buffer;
 
     /// <summary>
-    /// Creates a complete inherited environment with explicit target modifications.
+    /// Encodes the complete target environment for native process creation.
     /// </summary>
-    /// <param name="modifications">Environment values to add, replace, or remove.</param>
+    /// <param name="values">The complete target environment.</param>
     /// <returns>An owned, double-null-terminated native environment block.</returns>
     internal static DbgShimEnvironmentBlock Create(
-        IReadOnlyDictionary<string, string?> modifications)
+        IReadOnlyDictionary<string, string> values)
     {
-        ArgumentNullException.ThrowIfNull(modifications);
+        ArgumentNullException.ThrowIfNull(values);
         StringComparer comparer = OperatingSystem.IsWindows()
             ? StringComparer.OrdinalIgnoreCase
             : StringComparer.Ordinal;
-        var environment = new SortedDictionary<string, string>(DebuggerWorkerEnvironment.CreateTargetEnvironment(), comparer);
-
-        foreach ((string name, string? value) in modifications)
+        var environment = new SortedDictionary<string, string>(comparer);
+        foreach ((string name, string value) in values)
         {
             ValidateEntry(name, value);
-            if (value is null)
-            {
-                environment.Remove(name);
-            }
-            else
-            {
-                environment[name] = value;
-            }
+            environment[name] = value;
         }
 
         var text = new StringBuilder();

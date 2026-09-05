@@ -17,16 +17,29 @@ internal static class McpDebuggerLaunchValidator
     /// <param name="sourceFileMap">Build-time source prefixes mapped to local source prefixes.</param>
     /// <param name="initialSourcePath">The optional initial breakpoint source.</param>
     /// <param name="initialLine">The optional one-based initial breakpoint line.</param>
+    /// <param name="environmentFilePath">The optional environment file, absolute or relative to the working directory.</param>
     internal static void ValidateLaunch(
         string program,
         string workingDirectory,
         string? runtimeHostPath,
         IReadOnlyDictionary<string, string>? sourceFileMap,
         string? initialSourcePath,
-        int? initialLine)
+        int? initialLine,
+        string? environmentFilePath)
     {
         ValidateExistingFile(program, nameof(program));
         ValidateExistingDirectory(workingDirectory, nameof(workingDirectory));
+        if (environmentFilePath is not null)
+        {
+            if (string.IsNullOrWhiteSpace(environmentFilePath) || environmentFilePath.Length > MaximumPathLength ||
+                environmentFilePath.Contains('\0', StringComparison.Ordinal))
+            {
+                throw InvalidRequest($"environmentFilePath must be a valid path containing between 1 and {MaximumPathLength} characters.");
+            }
+
+            ValidateExistingFile(Path.GetFullPath(environmentFilePath, workingDirectory), nameof(environmentFilePath));
+        }
+
         if (runtimeHostPath is not null)
         {
             ValidateExistingFile(runtimeHostPath, nameof(runtimeHostPath));

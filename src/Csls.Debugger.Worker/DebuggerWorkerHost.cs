@@ -59,14 +59,14 @@ internal static partial class DebuggerWorkerHost
         IReadOnlyList<string> arguments,
         CancellationToken cancellationToken)
     {
-        if (arguments.Count < 8 ||
+        if (arguments.Count < 9 ||
             !int.TryParse(
                 arguments[4],
                 NumberStyles.None,
                 CultureInfo.InvariantCulture,
                 out int line) ||
             !bool.TryParse(arguments[6], out bool stopAtEntry) ||
-            !TryParseSourceFileMap(arguments, 7, out Dictionary<string, string>? sourceFileMap,
+            !TryParseSourceFileMap(arguments, 8, out Dictionary<string, string>? sourceFileMap,
                 out int targetArgumentIndex))
         {
             throw new InvalidDataException(
@@ -81,6 +81,7 @@ internal static partial class DebuggerWorkerHost
                 SourcePath = string.IsNullOrEmpty(arguments[3]) ? null : arguments[3],
                 Line = line == 0 ? null : line,
                 StopAtEntry = stopAtEntry,
+                EnvironmentFilePath = string.IsNullOrEmpty(arguments[7]) ? null : arguments[7],
                 RuntimeHostPath = string.IsNullOrEmpty(arguments[5]) ? null : arguments[5],
                 SourceFileMap = sourceFileMap,
                 Arguments = arguments.Skip(targetArgumentIndex).ToArray()

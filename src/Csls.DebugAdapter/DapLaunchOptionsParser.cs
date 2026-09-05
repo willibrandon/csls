@@ -60,6 +60,9 @@ internal static class DapLaunchOptionsParser
                 WorkingDirectory = workingDirectory,
                 Arguments = ParseArguments(arguments),
                 Environment = ParseEnvironment(arguments),
+                EnvironmentFilePath = arguments.TryGetProperty("envFile", out JsonElement environmentFile)
+                    ? GetString(environmentFile, "envFile")
+                    : null,
                 RuntimeHostPath = ResolveRuntimeHost(arguments),
                 StopAtEntry = stopAtEntry,
                 SourceFileMap = DapSourceOptionsParser.ParseSourceFileMap(arguments),

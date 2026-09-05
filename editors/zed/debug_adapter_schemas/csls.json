@@ -37,6 +37,11 @@
         ]
       }
     },
+    "envFile": {
+      "type": "string",
+      "minLength": 1,
+      "description": "UTF-8 environment file of at most 1 MiB, absolute or relative to cwd. Explicit env entries override file assignments."
+    },
     "noDebug": {
       "type": "boolean",
       "default": false,

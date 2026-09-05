@@ -46,6 +46,7 @@ public static class DebuggerTerminalHost
                 Program = options.Program,
                 WorkingDirectory = options.WorkingDirectory,
                 Arguments = options.Arguments,
+                EnvironmentFilePath = options.EnvironmentFilePath,
                 RuntimeHostPath = options.RuntimeHostPath,
                 SourceFileMap = options.SourceFileMap,
                 StopAtEntry = options.StopAtEntry

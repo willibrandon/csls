@@ -847,6 +847,7 @@ Options:
   --line <number>                  One-based line for the initial source breakpoint.
   --stop-at-entry                  Stop at the first executable entry-point statement.
   --cwd <path>                     Target working directory. [default: .]
+  --env-file <path>                UTF-8 environment file, absolute or relative to --cwd.
   --runtime <path>                 Optional dotnet host path used to run a managed assembly.
   --source-file-map <build=local>  Map an absolute PDB build-path prefix to an absolute local source prefix.
   -?, -h, --help                   Show help and usage information

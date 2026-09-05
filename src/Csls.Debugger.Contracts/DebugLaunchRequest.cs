@@ -27,6 +27,11 @@ public sealed class DebugLaunchRequest
         new Dictionary<string, string?>(StringComparer.Ordinal);
 
     /// <summary>
+    /// Gets the optional UTF-8 environment file resolved relative to the target working directory.
+    /// </summary>
+    public string? EnvironmentFilePath { get; init; }
+
+    /// <summary>
     /// Gets the optional host used to run a managed assembly.
     /// </summary>
     public string? RuntimeHostPath { get; init; }

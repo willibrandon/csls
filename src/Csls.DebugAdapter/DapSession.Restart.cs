@@ -90,7 +90,7 @@ internal sealed partial class DapSession
             }
         }
         catch (Exception exception) when (
-            exception is InvalidOperationException or IOException or UnauthorizedAccessException or
+            exception is ArgumentException or InvalidOperationException or IOException or InvalidDataException or UnauthorizedAccessException or
                 Win32Exception)
         {
             _restartRequest = null;

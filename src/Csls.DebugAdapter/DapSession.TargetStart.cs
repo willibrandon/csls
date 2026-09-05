@@ -96,7 +96,7 @@ internal sealed partial class DapSession
             await WriteRequestFailureAsync(targetRequest, "cancelled", _lifetime.Token).ConfigureAwait(false);
         }
         catch (Exception exception) when (
-            exception is ArgumentException or InvalidOperationException or IOException or
+            exception is ArgumentException or InvalidOperationException or IOException or InvalidDataException or
                 UnauthorizedAccessException or Win32Exception)
         {
             _state = DapSessionState.Initialized;

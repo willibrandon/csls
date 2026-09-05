@@ -62,6 +62,53 @@ Set `stopAtEntry` to `true` to stop at the first executable entry-point statemen
 The default is `false`. Continue from that stop to run the application with its
 configured breakpoints. Restart applies the launch configuration's entry-stop setting.
 
+## Load environment variables from a file
+
+Set `envFile` in a launch configuration to load a UTF-8 environment file:
+
+```json
+{
+  "name": ".NET Launch",
+  "type": "coreclr",
+  "request": "launch",
+  "program": "/absolute/path/to/bin/Debug/net10.0/App.dll",
+  "cwd": "/absolute/path/to/project",
+  "envFile": ".env",
+  "env": {
+    "APP_ENVIRONMENT": "Development"
+  }
+}
+```
+
+Relative `envFile` paths resolve from `cwd`. Use a file of at most 1 MiB.
+For example:
+
+```dotenv
+# Application settings
+APP_ENVIRONMENT=Staging
+SERVICE_NAME="Local service"
+export GREETING='Hello π'
+```
+
+File assignments override inherited environment variables. Explicit `env` entries
+override file assignments; `null` removes a variable and `""` sets an empty value.
+Repeated assignments use the last value. Variable-name comparison follows the
+target operating system.
+
+Blank lines and `#` comment lines are accepted. An unquoted value can end with a
+comment introduced by whitespace followed by `#`. Single and double quotes
+preserve spaces and `#` characters. Double-quoted values accept `\n`, `\r`, and
+`\t` escapes. Quoted values can span lines; line breaks become `\n` in the value.
+Shell expressions such as `${NAME}` remain literal text.
+
+The debugger rereads the file on restart. Invalid assignments produce an error
+identifying the file and line while keeping the assignment value private.
+
+Zed uses the same `envFile` property. In the terminal, pass `--env-file <path>` to
+`csls debugger tui launch`; relative paths resolve from `--cwd`. MCP
+`debug_session_start` accepts `environmentFilePath`, with relative paths resolved
+from `workingDirectory` and explicit `environment` entries applied last.
+
 ## VS Code attach
 
 Attach selects one already-running process by operating-system identifier:

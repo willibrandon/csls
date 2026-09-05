@@ -11,13 +11,92 @@ public sealed partial class McpDebuggerLifecycleTests
     private static readonly string[] s_entryPointArguments = ["--print-environment", "CSLS_ENTRY_RESULT"];
 
     /// <summary>
+    /// Returns recoverable environment-file errors and keeps the MCP connection available for a corrected launch.
+    /// </summary>
+    /// <param name="path">The malformed path or file selected through the tool transport.</param>
+    /// <param name="errorCode">The expected structured debugger error.</param>
+    [TestMethod]
+    [DataRow("", "debugger_request_invalid")]
+    [DataRow("\0", "debugger_request_invalid")]
+    [DataRow("missing.env", "debugger_request_invalid")]
+    [DataRow(".env", "debugger_operation_failed")]
+    [Timeout(60000, CooperativeCancellation = true)]
+    public async Task McpEnvironmentFileErrorsAllowCorrectedLaunch(string path, string errorCode)
+    {
+        DirectoryInfo directory = Directory.CreateTempSubdirectory("csls-mcp-environment-");
+        string environmentFile = Path.Join(directory.FullName, ".env");
+        try
+        {
+            await File.WriteAllTextAsync(environmentFile, "INVALID ASSIGNMENT", TestContext.CancellationToken)
+                .ConfigureAwait(false);
+            McpProcessSession mcp = await StartMcpAsync(TestContext.CancellationToken).ConfigureAwait(false);
+            await using ConfiguredAsyncDisposable cleanup = mcp.ConfigureAwait(false);
+            var arguments = new Dictionary<string, object?>
+            {
+                ["program"] = EditorToolResolver.ResolveTestProcessHost(EditorToolResolver.FindRepositoryRoot()),
+                ["workingDirectory"] = directory.FullName,
+                ["environmentFilePath"] = path,
+                ["stopAtEntry"] = true
+            };
+            await AssertToolErrorAsync(mcp.Client, "debug_session_start", arguments, errorCode,
+                TestContext.CancellationToken).ConfigureAwait(false);
+            JsonElement sessions = await CallAsync(mcp.Client, "debug_sessions_list", [], TestContext.CancellationToken)
+                .ConfigureAwait(false);
+            Assert.IsEmpty(sessions.EnumerateArray());
+            await File.WriteAllTextAsync(environmentFile, "VALUE=corrected", TestContext.CancellationToken)
+                .ConfigureAwait(false);
+            arguments["environmentFilePath"] = ".env";
+            JsonElement started = await CallAsync(mcp.Client, "debug_session_start", arguments, TestContext.CancellationToken)
+                .ConfigureAwait(false);
+            string debugSession = started.GetProperty("debugSession").GetString()!;
+            ProcessExitObservation exit = ProcessExitWaiter.Observe(started.GetProperty("processId").GetInt32());
+            JsonElement stopped = await WaitForStoppedAsync(mcp.Client, debugSession, TestContext.CancellationToken)
+                .ConfigureAwait(false);
+            Assert.AreEqual("entry", stopped.GetProperty("stopReason").GetString());
+            JsonElement ended = await CallAsync(mcp.Client, "debug_session_end",
+                new Dictionary<string, object?> { ["debugSession"] = debugSession }, TestContext.CancellationToken)
+                .ConfigureAwait(false);
+            Assert.AreEqual("terminated", ended.GetProperty("state").GetString());
+            await ProcessExitWaiter.WaitAsync(exit, TimeSpan.FromSeconds(10), TestContext.CancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            File.Delete(environmentFile);
+            directory.Delete();
+        }
+    }
+
+    /// <summary>
     /// Stops at authored entry, preserves observation-only access, and rearms on authorized restart.
     /// </summary>
+    /// <param name="restart">Whether to replace the stopped target before continuing.</param>
+    /// <param name="environmentMode">Whether values come from explicit entries, a file, or explicit overrides of a file.</param>
     [TestMethod]
-    [DataRow(false)]
-    [DataRow(true)]
+    [DataRow(false, "direct")]
+    [DataRow(true, "direct")]
+    [DataRow(false, "file")]
+    [DataRow(true, "file")]
+    [DataRow(false, "override")]
+    [DataRow(true, "override")]
     [Timeout(60000, CooperativeCancellation = true)]
-    public async Task McpStopAtEntryPreservesAuthorizationAndRestart(bool restart)
+    public async Task McpStopAtEntryPreservesAuthorizationAndRestart(bool restart, string environmentMode)
+    {
+        DirectoryInfo directory = Directory.CreateTempSubdirectory("csls-mcp-entry-");
+        string path = Path.Join(directory.FullName, ".env");
+        try
+        {
+            await File.WriteAllTextAsync(path, "CSLS_ENTRY_RESULT=file-result", TestContext.CancellationToken)
+                .ConfigureAwait(false);
+            await AssertMcpEntryPointAsync(restart, environmentMode, path).ConfigureAwait(false);
+        }
+        finally
+        {
+            File.Delete(path);
+            directory.Delete();
+        }
+    }
+
+    private async Task AssertMcpEntryPointAsync(bool restart, string environmentMode, string environmentFile)
     {
         string repositoryRoot = EditorToolResolver.FindRepositoryRoot();
         string sourcePath = Path.Join(repositoryRoot, "tests", "Csls.TestProcessHost", "Program.cs");
@@ -27,13 +106,16 @@ public sealed partial class McpDebuggerLifecycleTests
                 "if (args is [\"--unix-wait-status-fixture\"", StringComparison.Ordinal)).Number;
         McpProcessSession mcp = await StartMcpAsync(TestContext.CancellationToken).ConfigureAwait(false);
         await using ConfiguredAsyncDisposable cleanup = mcp.ConfigureAwait(false);
+        Dictionary<string, string> environment = environmentMode == "file" ? [] :
+            new() { ["CSLS_ENTRY_RESULT"] = "entry-result" };
         JsonElement started = await CallAsync(mcp.Client, "debug_session_start",
             new Dictionary<string, object?>
             {
                 ["program"] = EditorToolResolver.ResolveTestProcessHost(repositoryRoot),
-                ["workingDirectory"] = repositoryRoot,
+                ["workingDirectory"] = Path.GetDirectoryName(environmentFile),
                 ["arguments"] = s_entryPointArguments,
-                ["environment"] = new Dictionary<string, string> { ["CSLS_ENTRY_RESULT"] = "entry-result" },
+                ["environmentFilePath"] = environmentMode == "direct" ? null : ".env",
+                ["environment"] = environment,
                 ["sourceFileMap"] = new Dictionary<string, string> { ["/_/"] = repositoryRoot },
                 ["stopAtEntry"] = true
             }, TestContext.CancellationToken).ConfigureAwait(false);
@@ -64,6 +146,8 @@ public sealed partial class McpDebuggerLifecycleTests
 
         if (restart)
         {
+            await File.WriteAllTextAsync(environmentFile, "CSLS_ENTRY_RESULT=restart-result", TestContext.CancellationToken)
+                .ConfigureAwait(false);
             JsonElement restarted = await CallAsync(mcp.Client, "debug_session_restart",
                 new Dictionary<string, object?>
                 {
@@ -99,7 +183,8 @@ public sealed partial class McpDebuggerLifecycleTests
             new Dictionary<string, object?> { ["debugSession"] = debugSession },
             TestContext.CancellationToken).ConfigureAwait(false);
         JsonElement entry = Assert.ContainsSingle(output.GetProperty("entries").EnumerateArray());
-        Assert.AreEqual("entry-result", entry.GetProperty("output").GetString());
+        string expectedOutput = environmentMode == "file" ? (restart ? "restart-result" : "file-result") : "entry-result";
+        Assert.AreEqual(expectedOutput, entry.GetProperty("output").GetString());
         Assert.AreEqual("standardOutput", entry.GetProperty("category").GetString());
         string diagnostics = await mcp.DisconnectAsync(TimeSpan.FromSeconds(20), TestContext.CancellationToken)
             .ConfigureAwait(false);

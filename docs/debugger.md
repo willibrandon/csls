@@ -29,6 +29,9 @@ Use `--cwd <directory>` to choose the target working directory and
 `--runtime <path>` to select a compatible `dotnet` host. Arguments after `--`
 are passed directly to the target.
 
+Use `--env-file <path>` to load UTF-8 environment assignments before launch.
+Relative file paths resolve from `--cwd`.
+
 The terminal opens when the initial breakpoint stops the process. Select a thread
 and stack frame to inspect its source, arguments, and locals. The auxiliary view
 shows target output, modules, breakpoints, watches, or the current exception.
@@ -93,6 +96,12 @@ In VS Code, use a `coreclr` launch configuration:
   }
 }
 ```
+
+Set `envFile` to load assignments from a UTF-8 file of at most 1 MiB. Relative
+paths resolve from `cwd`. File assignments override inherited variables, and
+explicit `env` entries take precedence over file assignments. Restart rereads
+the file. MCP `debug_session_start` accepts the same file through
+`environmentFilePath`.
 
 In Zed, use `"adapter": "csls"` in `debug.json`. For attach, set
 `"request": "attach"` and provide a positive `processId`.

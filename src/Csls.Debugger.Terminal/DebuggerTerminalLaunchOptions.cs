@@ -36,6 +36,11 @@ public sealed class DebuggerTerminalLaunchOptions
     public IReadOnlyList<string> Arguments { get; init; } = [];
 
     /// <summary>
+    /// Gets the optional UTF-8 environment file resolved relative to the target working directory.
+    /// </summary>
+    public string? EnvironmentFilePath { get; init; }
+
+    /// <summary>
     /// Gets the optional runtime host used for a managed assembly.
     /// </summary>
     public string? RuntimeHostPath { get; init; }

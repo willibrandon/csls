@@ -28,6 +28,11 @@ public sealed class DebuggeeLaunchOptions
     public required IReadOnlyDictionary<string, string?> Environment { get; init; }
 
     /// <summary>
+    /// Gets the UTF-8 environment-file path resolved against the target working directory.
+    /// </summary>
+    public string? EnvironmentFilePath { get; init; }
+
+    /// <summary>
     /// Gets the host used to execute managed assemblies.
     /// </summary>
     public string? RuntimeHostPath { get; init; }

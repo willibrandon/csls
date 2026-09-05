@@ -88,6 +88,7 @@ This page is generated from the shipping DAP dispatcher, initialize response, an
 | `noDebug` | `boolean` | No | `false` | Run the target as an ordinary process. |
 | `stopAtEntry` | `boolean` | No | `false` | Stop at the first executable entry-point statement. |
 | `env` | `object` | No |  | Environment variables added to the target. A null value removes an inherited variable. |
+| `envFile` | `string` | No |  | UTF-8 environment file of at most 1 MiB, absolute or relative to cwd. Explicit env entries override file assignments. |
 | `runtimeHost` | `string` | No |  | Absolute path to the compatible dotnet host used for a managed assembly. |
 | `sourceFileMap` | `object` | No |  | Maps absolute build-time source prefixes to absolute local source prefixes. |
 | `sourceLinkOptions` | `object` | No |  | Controls Source Link URL patterns, including explicit private-network authorization. |

@@ -75,6 +75,7 @@ public sealed partial class DebuggerControlService
         WorkingDirectory = request.WorkingDirectory,
         Arguments = request.Arguments,
         Environment = request.Environment,
+        EnvironmentFilePath = request.EnvironmentFilePath,
         RuntimeHostPath = request.RuntimeHostPath,
         SourceFileMap = request.SourceFileMap,
         SourceLinkOptions = request.SourceLinkOptions,

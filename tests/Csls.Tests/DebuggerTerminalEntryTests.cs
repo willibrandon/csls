@@ -20,11 +20,31 @@ public sealed class DebuggerTerminalEntryTests
     /// <summary>
     /// Opens an entry stop, renders its source and arguments, and continues to normal target exit.
     /// </summary>
+    /// <param name="useEnvironmentFile">Whether launch loads its value from an environment file relative to the target directory.</param>
     [TestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
     [OSCondition(ConditionMode.Include, OperatingSystems.Linux)]
     [TestCategory("DebuggerTerminal")]
     [Timeout(60000, CooperativeCancellation = true)]
-    public async Task TerminalStopAtEntryRendersSourceAndContinues()
+    public async Task TerminalStopAtEntryRendersSourceAndContinues(bool useEnvironmentFile)
+    {
+        DirectoryInfo directory = Directory.CreateTempSubdirectory("csls-terminal-entry-");
+        string path = Path.Join(directory.FullName, ".env");
+        try
+        {
+            await File.WriteAllTextAsync(path, "CSLS_TERMINAL_ENTRY_RESULT=entry-result", TestContext.CancellationToken)
+                .ConfigureAwait(false);
+            await AssertTerminalEntryAsync(useEnvironmentFile ? directory.FullName : null).ConfigureAwait(false);
+        }
+        finally
+        {
+            File.Delete(path);
+            directory.Delete();
+        }
+    }
+
+    private async Task AssertTerminalEntryAsync(string? environmentDirectory)
     {
         string repositoryRoot = EditorToolResolver.FindRepositoryRoot();
         string artifactsRoot = EditorToolResolver.ResolveArtifactsRoot(repositoryRoot);
@@ -35,13 +55,16 @@ public sealed class DebuggerTerminalEntryTests
             ["CSLS_DEBUGGER_WORKER_PATH"] = Path.Join(artifactsRoot, "bin", "Csls.Debugger.Worker",
                 "debug", "csls-debugger-worker.dll"),
             ["DOTNET_HOST_PATH"] = EditorToolResolver.ResolveDotNetHost(),
-            ["CSLS_TERMINAL_ENTRY_RESULT"] = "entry-result"
+            ["CSLS_TERMINAL_ENTRY_RESULT"] = environmentDirectory is null ? "entry-result" : "inherited-result"
         };
+        string[] environmentArguments = environmentDirectory is null ? [] :
+            ["--cwd", environmentDirectory, "--env-file", ".env"];
         var workload = new Hex1bPtyWorkload(EditorToolResolver.ResolveDotNetHost(),
             [
                 EditorToolResolver.ResolveLauncher(repositoryRoot), "debugger", "tui", "launch",
                 EditorToolResolver.ResolveTestProcessHost(repositoryRoot), "--stop-at-entry",
                 "--source-file-map", $"/_/={repositoryRoot}",
+                .. environmentArguments,
                 "--", "--print-environment", "CSLS_TERMINAL_ENTRY_RESULT"
             ], repositoryRoot, width, height, environment);
         await using ConfiguredAsyncDisposable cleanup = workload.ConfigureAwait(false);

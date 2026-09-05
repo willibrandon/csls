@@ -331,13 +331,23 @@ An absent, incomplete, dump-inapplicable, or platform-inapplicable feature is no
 advertised. Unknown requests receive a normal unsuccessful response and do not
 fault the session. Invalid sequencing receives a stable machine-readable error.
 
-The adapter accepts launch options `program`, `cwd`, `args`, `env`, `noDebug`, `stopAtEntry`,
+The adapter accepts launch options `program`, `cwd`, `args`, `env`, `envFile`, `noDebug`, `stopAtEntry`,
 `runtimeHost`, `sourceFileMap`, `sourceLinkOptions`, `symbolOptions`, `justMyCode`,
 `enableStepFiltering`, `suppressJITOptimizations`, and `enableHotReload`. Live attach
 requires `processId` and accepts the same source, symbol, and stepping options.
 Editors and the CLI resolve projects, launch profiles, and tests to a concrete
 program before invoking DAP. The adapter does not run builds or interpret
 arbitrary shell text.
+
+Launch environment construction is shared by managed and ordinary process
+launches. It restores the caller's inherited environment, overlays `envFile`
+assignments, then applies explicit additions and removals. Each launch and
+restart reads a fresh UTF-8 file, resolving relative paths against the target
+working directory. Reads are bounded to 1 MiB. Unix input handles open with
+nonblocking and close-on-exec flags; seekability is checked before reading.
+Invalid assignment diagnostics identify the file and line and keep values private.
+The control contract exposes `EnvironmentFilePath`, MCP accepts
+`environmentFilePath`, and the terminal launcher accepts `--env-file`.
 
 `stopAtEntry` defaults to `false`. Enabling it installs a session-owned one-shot
 breakpoint at the compiler-authored entry statement. Managed PE entry metadata,

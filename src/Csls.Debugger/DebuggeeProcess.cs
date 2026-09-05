@@ -39,8 +39,9 @@ internal sealed class DebuggeeProcess : IDebuggeeProcess
     /// Starts a target without invoking a command shell.
     /// </summary>
     /// <param name="options">The validated launch options.</param>
+    /// <param name="environment">The complete target environment.</param>
     /// <returns>The owned target process.</returns>
-    internal static DebuggeeProcess Start(DebuggeeLaunchOptions options)
+    internal static DebuggeeProcess Start(DebuggeeLaunchOptions options, IReadOnlyDictionary<string, string> environment)
     {
         ArgumentNullException.ThrowIfNull(options);
 
@@ -81,21 +82,9 @@ internal sealed class DebuggeeProcess : IDebuggeeProcess
         }
 
         startInfo.Environment.Clear();
-        foreach ((string name, string value) in DebuggerWorkerEnvironment.CreateTargetEnvironment())
+        foreach ((string name, string value) in environment)
         {
             startInfo.Environment[name] = value;
-        }
-
-        foreach ((string name, string? value) in options.Environment)
-        {
-            if (value is null)
-            {
-                startInfo.Environment.Remove(name);
-            }
-            else
-            {
-                startInfo.Environment[name] = value;
-            }
         }
 
         Process process = new()

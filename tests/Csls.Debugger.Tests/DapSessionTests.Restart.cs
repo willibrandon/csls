@@ -10,6 +10,123 @@ namespace Csls.Debugger.Tests;
 public sealed partial class DapSessionTests
 {
     /// <summary>
+    /// Rereads a changed environment file on restart and reports malformed replacements through the existing DAP connection.
+    /// </summary>
+    /// <param name="noDebug">Whether to launch without managed debugging.</param>
+    /// <param name="invalidReplacement">Whether the replacement file contains malformed data.</param>
+    [TestMethod]
+    [DataRow(false, false)]
+    [DataRow(true, false)]
+    [DataRow(false, true)]
+    [DataRow(true, true)]
+    [Timeout(30000, CooperativeCancellation = true)]
+    public async Task RestartReloadsEnvironmentFile(bool noDebug, bool invalidReplacement)
+    {
+        DirectoryInfo directory = Directory.CreateTempSubdirectory("csls-restart-environment-");
+        string environmentFile = Path.Join(directory.FullName, ".env");
+        string signalFile = Path.Join(directory.FullName, "release.signal");
+        try
+        {
+            await File.WriteAllTextAsync(environmentFile, "CSLS_RESTART_VALUE=before", TestContext.CancellationToken)
+                .ConfigureAwait(false);
+            DapTestClient client = await DapTestClient.CreateAsync(TestContext.CancellationToken).ConfigureAwait(false);
+            await using ConfiguredAsyncDisposable cleanup = client.ConfigureAwait(false);
+            int initialize = await client.SendInitializeRequestAsync(TestContext.CancellationToken).ConfigureAwait(false);
+            using (JsonDocument response = await client.ReadMessageAsync(TestContext.CancellationToken).ConfigureAwait(false))
+            {
+                AssertResponse(response.RootElement, initialize, "initialize", success: true);
+            }
+
+            int launch = await client.SendRequestAsync("launch", writer =>
+            {
+                writer.WriteStartObject();
+                writer.WriteString("program", ResolveTestProcessHost());
+                writer.WriteString("cwd", directory.FullName);
+                writer.WriteString("envFile", ".env");
+                writer.WriteBoolean("noDebug", noDebug);
+                writer.WriteStartArray("args");
+                writer.WriteStringValue("--print-utf8-environment-and-wait-for-file");
+                writer.WriteStringValue("CSLS_RESTART_VALUE");
+                writer.WriteStringValue(signalFile);
+                writer.WriteEndArray();
+                writer.WriteEndObject();
+            }, TestContext.CancellationToken).ConfigureAwait(false);
+            using (JsonDocument initialized = await client.ReadMessageAsync(TestContext.CancellationToken).ConfigureAwait(false))
+            {
+                AssertEvent(initialized.RootElement, "initialized");
+            }
+
+            int configuration = await client.SendRequestAsync("configurationDone", WriteEmptyObject,
+                TestContext.CancellationToken).ConfigureAwait(false);
+            await ReadUntilResponseAsync(client, configuration, "configurationDone").ConfigureAwait(false);
+            await ReadUntilResponseAsync(client, launch, "launch").ConfigureAwait(false);
+            int firstProcess = await ReadEnvironmentProcessAsync(client, "before").ConfigureAwait(false);
+            await File.WriteAllTextAsync(environmentFile,
+                invalidReplacement ? "VALUE=\"sensitive-value" : "CSLS_RESTART_VALUE=after",
+                TestContext.CancellationToken).ConfigureAwait(false);
+            int restart = await client.SendRequestAsync("restart", WriteEmptyObject, TestContext.CancellationToken)
+                .ConfigureAwait(false);
+            using (JsonDocument exited = await client.ReadMessageAsync(TestContext.CancellationToken).ConfigureAwait(false))
+            {
+                AssertEvent(exited.RootElement, "exited");
+            }
+
+            using (JsonDocument response = await client.ReadMessageAsync(TestContext.CancellationToken).ConfigureAwait(false))
+            {
+                AssertResponse(response.RootElement, restart, "restart", success: !invalidReplacement);
+                if (invalidReplacement)
+                {
+                    Assert.Contains("envFile", response.RootElement.GetProperty("message").GetString()!);
+                    Assert.DoesNotContain("sensitive-value", response.RootElement.ToString());
+                }
+            }
+
+            await AssertProcessExitedAsync(firstProcess, TestContext.CancellationToken).ConfigureAwait(false);
+            if (invalidReplacement)
+            {
+                using JsonDocument terminated = await client.ReadMessageAsync(TestContext.CancellationToken).ConfigureAwait(false);
+                AssertEvent(terminated.RootElement, "terminated");
+            }
+            else
+            {
+                int replacementProcess = await ReadEnvironmentProcessAsync(client, "after").ConfigureAwait(false);
+                Assert.AreNotEqual(firstProcess, replacementProcess);
+                int disconnect = await client.SendRequestAsync("disconnect", WriteEmptyObject, TestContext.CancellationToken)
+                    .ConfigureAwait(false);
+                await ReadUntilResponseAsync(client, disconnect, "disconnect").ConfigureAwait(false);
+                await AssertProcessExitedAsync(replacementProcess, TestContext.CancellationToken).ConfigureAwait(false);
+            }
+
+            Assert.AreEqual(0, await client.WaitForExitAsync(TestContext.CancellationToken).ConfigureAwait(false));
+            Assert.IsEmpty(client.Diagnostics.ToString());
+        }
+        finally
+        {
+            File.Delete(environmentFile);
+            directory.Delete();
+        }
+    }
+
+    private async Task<int> ReadEnvironmentProcessAsync(DapTestClient client, string expected)
+    {
+        using JsonDocument process = await client.ReadMessageAsync(TestContext.CancellationToken).ConfigureAwait(false);
+        AssertEvent(process.RootElement, "process");
+        int processId = process.RootElement.GetProperty("body").GetProperty("systemProcessId").GetInt32();
+        Assert.IsGreaterThan(0, processId);
+        var output = new System.Text.StringBuilder();
+        while (output.Length < expected.Length)
+        {
+            using JsonDocument message = await client.ReadMessageAsync(TestContext.CancellationToken).ConfigureAwait(false);
+            AssertEvent(message.RootElement, "output");
+            Assert.AreEqual("stdout", message.RootElement.GetProperty("body").GetProperty("category").GetString());
+            output.Append(message.RootElement.GetProperty("body").GetProperty("output").GetString());
+        }
+
+        Assert.AreEqual(expected, output.ToString());
+        return processId;
+    }
+
+    /// <summary>
     /// Replaces a running managed target while retaining the adapter connection.
     /// </summary>
     [TestMethod]
