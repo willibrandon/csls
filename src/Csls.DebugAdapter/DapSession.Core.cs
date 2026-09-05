@@ -14,7 +14,7 @@ internal sealed partial class DapSession : IDebuggerSessionObserver, IAsyncDispo
     private readonly DapMessageWriter _writer;
     private readonly DapRequestQueue _pendingRequests = new();
     private readonly Func<string, Task> _writeErrorAsync;
-    private readonly CancellationTokenSource _lifetime = new();
+    private readonly CancellationTokenSource _lifetime;
     private readonly TaskCompletionSource _targetCompletion = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly SemaphoreSlim _stopEventGate = new(1, 1);
     private readonly DebuggerSession _engineSession;
@@ -50,14 +50,16 @@ internal sealed partial class DapSession : IDebuggerSessionObserver, IAsyncDispo
     /// <param name="input">The protocol input stream.</param>
     /// <param name="output">The protocol output stream.</param>
     /// <param name="error">The diagnostics-only text stream.</param>
-    internal DapSession(Stream input, Stream output, TextWriter error)
+    /// <param name="cancellationToken">Cancels the complete protocol connection.</param>
+    internal DapSession(Stream input, Stream output, TextWriter error, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(input);
         ArgumentNullException.ThrowIfNull(output);
         ArgumentNullException.ThrowIfNull(error);
 
+        _lifetime = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         _reader = new DapMessageReader(input);
-        _writer = new DapMessageWriter(output);
+        _writer = new DapMessageWriter(output, _lifetime.Token);
         _writeErrorAsync = error.WriteLineAsync;
         _engineSession = DebuggerEngine.CreateSession(this);
     }
@@ -65,14 +67,11 @@ internal sealed partial class DapSession : IDebuggerSessionObserver, IAsyncDispo
     /// <summary>
     /// Processes requests until disconnect, end of input, cancellation, or protocol failure.
     /// </summary>
-    /// <param name="cancellationToken">Cancels the complete adapter session.</param>
     /// <returns>Zero for a normal session or one for a terminal protocol failure.</returns>
-    internal async Task<int> RunAsync(CancellationToken cancellationToken)
+    internal async Task<int> RunAsync()
     {
-        using var linked = CancellationTokenSource.CreateLinkedTokenSource(
-            cancellationToken,
-            _lifetime.Token);
-        using var readCancellation = CancellationTokenSource.CreateLinkedTokenSource(linked.Token);
+        CancellationToken sessionToken = _lifetime.Token;
+        using var readCancellation = CancellationTokenSource.CreateLinkedTokenSource(sessionToken);
         Task<Request?>? pendingRead = null;
         try
         {
@@ -90,7 +89,7 @@ internal sealed partial class DapSession : IDebuggerSessionObserver, IAsyncDispo
                     _ = await (_cancelableRequest is null
                         ? Task.WhenAny(pendingRead, _targetCompletion.Task)
                         : Task.WhenAny(pendingRead, _cancelableRequest, _targetCompletion.Task))
-                        .WaitAsync(linked.Token).ConfigureAwait(false);
+                        .WaitAsync(sessionToken).ConfigureAwait(false);
 
                     if (_targetCompletion.Task.IsCompleted)
                     {
@@ -104,7 +103,7 @@ internal sealed partial class DapSession : IDebuggerSessionObserver, IAsyncDispo
 
                     Task<Request?> completedRead = pendingRead;
                     pendingRead = null;
-                    request = await completedRead.WaitAsync(linked.Token).ConfigureAwait(false);
+                    request = await completedRead.WaitAsync(sessionToken).ConfigureAwait(false);
                     if (request is null)
                     {
                         break;
@@ -112,7 +111,7 @@ internal sealed partial class DapSession : IDebuggerSessionObserver, IAsyncDispo
 
                     if (string.Equals(request.Command, "cancel", StringComparison.Ordinal))
                     {
-                        await CancelRequestAsync(request, linked.Token).ConfigureAwait(false);
+                        await CancelRequestAsync(request, sessionToken).ConfigureAwait(false);
                         continue;
                     }
 
@@ -123,32 +122,32 @@ internal sealed partial class DapSession : IDebuggerSessionObserver, IAsyncDispo
                             await WriteRequestFailureAsync(request,
                                 "The DAP pending request limit was reached. Wait for pending " +
                                     "responses or cancel queued requests before sending more work.",
-                                linked.Token).ConfigureAwait(false);
+                                sessionToken).ConfigureAwait(false);
                         }
 
                         continue;
                     }
                 }
 
-                if (IsCancelableTargetCodeRequest(request.Command))
+                if (IsCancelableRequest(request.Command))
                 {
                     _cancelableRequestCancellation = CancellationTokenSource
-                        .CreateLinkedTokenSource(linked.Token);
+                        .CreateLinkedTokenSource(sessionToken);
                     _cancelableRequestSequence = request.Seq;
-                    _cancelableRequest = HandleRequestAsync(
+                    _cancelableRequest = HandleCancelableRequestAsync(
                         request,
                         _cancelableRequestCancellation.Token).AsTask();
                     continue;
                 }
 
-                await HandleRequestAsync(request, linked.Token).ConfigureAwait(false);
+                await HandleRequestAsync(request, sessionToken).ConfigureAwait(false);
             }
 
             if (_state is DapSessionState.Terminated or DapSessionState.Faulted)
             {
                 // Target exit stops input without canceling responses already owed to the client.
                 await readCancellation.CancelAsync().ConfigureAwait(false);
-                await CompleteTerminatedRequestsAsync(linked.Token).ConfigureAwait(false);
+                await CompleteTerminatedRequestsAsync(sessionToken).ConfigureAwait(false);
                 if (pendingRead is not null)
                 {
                     Request? unread = await SettleProtocolReadAsync(pendingRead, readCancellation.Token)
@@ -156,14 +155,14 @@ internal sealed partial class DapSession : IDebuggerSessionObserver, IAsyncDispo
                     pendingRead = null;
                     if (unread is not null)
                     {
-                        await WriteStateFailureAsync(unread, linked.Token).ConfigureAwait(false);
+                        await WriteStateFailureAsync(unread, sessionToken).ConfigureAwait(false);
                     }
                 }
             }
 
             return _state == DapSessionState.Faulted ? 1 : 0;
         }
-        catch (OperationCanceledException) when (linked.IsCancellationRequested)
+        catch (OperationCanceledException) when (sessionToken.IsCancellationRequested)
         {
             return _state == DapSessionState.Faulted ? 1 : 0;
         }
@@ -175,23 +174,17 @@ internal sealed partial class DapSession : IDebuggerSessionObserver, IAsyncDispo
         }
         finally
         {
-            try
+            Volatile.Write(ref _protocolClosed, 1);
+            await _lifetime.CancelAsync().ConfigureAwait(false);
+            if (_cancelableRequest is not null)
             {
-                await linked.CancelAsync().ConfigureAwait(false);
-                if (_cancelableRequest is not null)
-                {
-                    await _cancelableRequestCancellation!.CancelAsync().ConfigureAwait(false);
-                    await CompleteCancelableRequestAsync().ConfigureAwait(false);
-                }
-
-                if (pendingRead is not null)
-                {
-                    _ = await SettleProtocolReadAsync(pendingRead, linked.Token).ConfigureAwait(false);
-                }
+                await _cancelableRequestCancellation!.CancelAsync().ConfigureAwait(false);
+                await CompleteCancelableRequestAsync().ConfigureAwait(false);
             }
-            finally
+
+            if (pendingRead is not null)
             {
-                Volatile.Write(ref _protocolClosed, 1);
+                _ = await SettleProtocolReadAsync(pendingRead, sessionToken).ConfigureAwait(false);
             }
         }
     }
@@ -291,9 +284,32 @@ internal sealed partial class DapSession : IDebuggerSessionObserver, IAsyncDispo
         _cancelableRequest = null;
         _cancelableRequestCancellation = null;
         _cancelableRequestSequence = 0;
-        await cancelableRequest.WaitAsync(CancellationToken.None).ConfigureAwait(false);
+        try
+        {
+            await cancelableRequest.WaitAsync(CancellationToken.None).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (_lifetime.IsCancellationRequested)
+        {
+            // A closed connection cannot carry the final response of its canceled operation.
+            return;
+        }
     }
 
-    private static bool IsCancelableTargetCodeRequest(string command) =>
-        command is "evaluate" or "setVariable" or "setExpression" or "variables";
+    private async ValueTask HandleCancelableRequestAsync(Request request, CancellationToken cancellationToken)
+    {
+        try
+        {
+            await HandleRequestAsync(request, cancellationToken).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested && !_lifetime.IsCancellationRequested)
+        {
+            await WriteRequestFailureAsync(request, "cancelled", _lifetime.Token).ConfigureAwait(false);
+        }
+    }
+
+    private static bool IsCancelableRequest(string command) =>
+        command is "evaluate" or "setVariable" or "setExpression" or "variables" or
+            "stackTrace" or "scopes" or "threads" or "modules" or "loadedSources" or "source" or
+            "breakpointLocations" or "stepInTargets" or "gotoTargets" or "completions" or
+            "readMemory" or "disassemble" or "exceptionInfo";
 }

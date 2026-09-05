@@ -12,6 +12,7 @@
 
   <ItemGroup>
     <PackageReference Include="Microsoft.CodeAnalysis.CSharp" />
+    <ProjectReference Include="../../src/Csls.DebugAdapter/Csls.DebugAdapter.csproj" />
     <ProjectReference Include="../../src/Csls.Debugger.Control/Csls.Debugger.Control.csproj" />
     <ProjectReference Include="../../src/Csls.Debugger.Terminal/Csls.Debugger.Terminal.csproj" />
     <ProjectReference Include="../../src/Csls.Debugger/Csls.Debugger.csproj" />

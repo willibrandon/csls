@@ -21,8 +21,8 @@ public static class DebugAdapterHost
         TextWriter error,
         CancellationToken cancellationToken)
     {
-        var session = new DapSession(input, output, error);
+        var session = new DapSession(input, output, error, cancellationToken);
         await using ConfiguredAsyncDisposable sessionDisposal = session.ConfigureAwait(false);
-        return await session.RunAsync(cancellationToken).ConfigureAwait(false);
+        return await session.RunAsync().ConfigureAwait(false);
     }
 }

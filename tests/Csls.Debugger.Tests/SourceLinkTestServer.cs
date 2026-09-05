@@ -11,6 +11,9 @@ namespace Csls.Debugger.Tests;
 internal sealed class SourceLinkTestServer : IAsyncDisposable
 {
     private readonly byte[] _content;
+    private readonly bool _holdFirstResponse;
+    private readonly TaskCompletionSource _firstRequest = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    private readonly TaskCompletionSource _firstDisconnect = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly CancellationTokenSource _lifetime = new();
     private readonly TcpListener _listener = new(IPAddress.Loopback, 0);
     private Task? _serverTask;
@@ -20,9 +23,11 @@ internal sealed class SourceLinkTestServer : IAsyncDisposable
     /// Creates a Source Link test server for exact source bytes.
     /// </summary>
     /// <param name="content">The bytes returned by every source request.</param>
-    internal SourceLinkTestServer(byte[] content)
+    /// <param name="holdFirstResponse">Whether to withhold the first response body until the client disconnects.</param>
+    internal SourceLinkTestServer(byte[] content, bool holdFirstResponse = false)
     {
         _content = content;
+        _holdFirstResponse = holdFirstResponse;
     }
 
     /// <summary>
@@ -34,6 +39,22 @@ internal sealed class SourceLinkTestServer : IAsyncDisposable
     /// Gets the number of HTTP requests accepted by the server.
     /// </summary>
     internal int RequestCount => Volatile.Read(ref _requestCount);
+
+    /// <summary>
+    /// Waits until the first real request has received its HTTP response headers.
+    /// </summary>
+    /// <param name="cancellationToken">Cancels observation of the network request.</param>
+    /// <returns>A task completed only after the response headers are written.</returns>
+    internal Task WaitForFirstRequestAsync(CancellationToken cancellationToken) =>
+        _firstRequest.Task.WaitAsync(cancellationToken);
+
+    /// <summary>
+    /// Waits until the client closes its held HTTP response connection.
+    /// </summary>
+    /// <param name="cancellationToken">Cancels observation of the peer disconnect.</param>
+    /// <returns>A task completed only after the peer closes or resets the socket.</returns>
+    internal Task WaitForFirstDisconnectAsync(CancellationToken cancellationToken) =>
+        _firstDisconnect.Task.WaitAsync(cancellationToken);
 
     /// <summary>
     /// Starts the loopback listener.
@@ -102,13 +123,35 @@ internal sealed class SourceLinkTestServer : IAsyncDisposable
             }
         }
 
-        _ = Interlocked.Increment(ref _requestCount);
+        int requestCount = Interlocked.Increment(ref _requestCount);
         byte[] header = Encoding.ASCII.GetBytes(
             "HTTP/1.1 200 OK\r\n" +
             $"Content-Length: {_content.Length.ToString(CultureInfo.InvariantCulture)}\r\n" +
             "Content-Type: text/x-csharp\r\n" +
             "Connection: close\r\n\r\n");
         await stream.WriteAsync(header, cancellationToken).ConfigureAwait(false);
+        _firstRequest.TrySetResult();
+        if (_holdFirstResponse && requestCount == 1)
+        {
+            byte[] unexpected = new byte[1];
+            try
+            {
+                if (await stream.ReadAsync(unexpected, cancellationToken).ConfigureAwait(false) != 0)
+                {
+                    throw new InvalidDataException("The source client sent unexpected data after its GET request.");
+                }
+            }
+            catch (IOException exception) when (exception.InnerException is SocketException
+            { SocketErrorCode: SocketError.ConnectionReset or SocketError.ConnectionAborted })
+            {
+                _firstDisconnect.TrySetResult();
+                return;
+            }
+
+            _firstDisconnect.TrySetResult();
+            return;
+        }
+
         await stream.WriteAsync(_content, cancellationToken).ConfigureAwait(false);
     }
 }

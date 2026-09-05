@@ -83,7 +83,8 @@ and complete source-language overload resolution are outside the supported call 
 
 Only the selected managed thread runs during a call. One function evaluation can be
 active at a time and has a five-second deadline. Overlapping DAP requests queue in
-arrival order while cancellation remains responsive. A canceled queued request
+arrival order while cancellation remains responsive during evaluation, inspection,
+and source downloads. A canceled queued request
 returns `cancelled` without running. The queue holds at most 64 requests and 16 MiB
 of total wire payload; overflow produces an explicit request error.
 

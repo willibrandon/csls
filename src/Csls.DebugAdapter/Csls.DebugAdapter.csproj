@@ -8,6 +8,7 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <InternalsVisibleTo Include="Csls.Debugger.Tests" />
     <ProjectReference Include="../Csls.Debugger/Csls.Debugger.csproj" />
     <ProjectReference Include="../Csls.Debugger.Contracts/Csls.Debugger.Contracts.csproj" />
   </ItemGroup>

@@ -19,6 +19,7 @@ internal sealed class DebuggerSymbolFixtures : IAsyncDisposable
         _fixtureDirectory = fixtureDirectory;
         SourcePath = sourcePath;
         ValidSourceLinkProgramPath = GetProgramPath(fixtureDirectory, "SourceLinkValid");
+        CancellationSourceLinkProgramPath = GetProgramPath(fixtureDirectory, "SourceLinkCancellation");
         ImplicitSourceLinkProgramPath = GetProgramPath(fixtureDirectory, "SourceLinkImplicit");
         MismatchedSourceLinkProgramPath = GetProgramPath(
             fixtureDirectory,
@@ -27,6 +28,7 @@ internal sealed class DebuggerSymbolFixtures : IAsyncDisposable
             ? GetProgramPath(fixtureDirectory, "WindowsPdbFixture")
             : null;
         ValidSourceLinkServer = new SourceLinkTestServer(source);
+        CancellationSourceLinkServer = new SourceLinkTestServer(source, holdFirstResponse: true);
         ImplicitSourceLinkServer = new SourceLinkTestServer(source);
         MismatchedSourceLinkServer = new SourceLinkTestServer([.. source, (byte)' ']);
     }
@@ -40,6 +42,11 @@ internal sealed class DebuggerSymbolFixtures : IAsyncDisposable
     /// Gets the program whose Source Link endpoint serves checksum-valid content.
     /// </summary>
     internal string ValidSourceLinkProgramPath { get; }
+
+    /// <summary>
+    /// Gets the program whose first source download remains open until cancellation.
+    /// </summary>
+    internal string CancellationSourceLinkProgramPath { get; }
 
     /// <summary>
     /// Gets the program whose Source Link endpoint must not be accessed implicitly.
@@ -60,6 +67,11 @@ internal sealed class DebuggerSymbolFixtures : IAsyncDisposable
     /// Gets the server that provides checksum-valid source content.
     /// </summary>
     internal SourceLinkTestServer ValidSourceLinkServer { get; }
+
+    /// <summary>
+    /// Gets the server that observes cancellation of a held source response.
+    /// </summary>
+    internal SourceLinkTestServer CancellationSourceLinkServer { get; }
 
     /// <summary>
     /// Gets the server used to prove that loopback Source Link access requires consent.
@@ -95,6 +107,7 @@ internal sealed class DebuggerSymbolFixtures : IAsyncDisposable
         try
         {
             fixtures.ValidSourceLinkServer.Start();
+            fixtures.CancellationSourceLinkServer.Start();
             fixtures.ImplicitSourceLinkServer.Start();
             fixtures.MismatchedSourceLinkServer.Start();
             _ = await WriteSourceLinkProjectAsync(
@@ -102,6 +115,12 @@ internal sealed class DebuggerSymbolFixtures : IAsyncDisposable
                 fixtureDirectory,
                 "SourceLinkValid",
                 fixtures.ValidSourceLinkServer.SourceLinkPattern,
+                cancellationToken).ConfigureAwait(false);
+            _ = await WriteSourceLinkProjectAsync(
+                sourceDirectory,
+                fixtureDirectory,
+                "SourceLinkCancellation",
+                fixtures.CancellationSourceLinkServer.SourceLinkPattern,
                 cancellationToken).ConfigureAwait(false);
             _ = await WriteSourceLinkProjectAsync(
                 sourceDirectory,
@@ -142,6 +161,7 @@ internal sealed class DebuggerSymbolFixtures : IAsyncDisposable
     {
         await DisposeServersAsync(
             ValidSourceLinkServer,
+            CancellationSourceLinkServer,
             ImplicitSourceLinkServer,
             MismatchedSourceLinkServer).ConfigureAwait(false);
         await DebuggerTestDirectoryReleaseWaiter.DeleteAsync(
@@ -259,8 +279,8 @@ internal sealed class DebuggerSymbolFixtures : IAsyncDisposable
         CancellationToken cancellationToken)
     {
         string[] projectNames = includeWindowsPdb
-            ? ["SourceLinkValid", "SourceLinkImplicit", "SourceLinkMismatched", "WindowsPdbFixture"]
-            : ["SourceLinkValid", "SourceLinkImplicit", "SourceLinkMismatched"];
+            ? ["SourceLinkValid", "SourceLinkImplicit", "SourceLinkMismatched", "SourceLinkCancellation", "WindowsPdbFixture"]
+            : ["SourceLinkValid", "SourceLinkImplicit", "SourceLinkMismatched", "SourceLinkCancellation"];
         var solution = new XDocument(
             new XElement(
                 "Solution",

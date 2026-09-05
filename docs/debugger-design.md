@@ -273,13 +273,18 @@ queues ordered work, and returns without invoking ICorDebug directly.
 DAP messages use ASCII headers and UTF-8 JSON payloads. The transport accepts one
 and only one valid `Content-Length`, bounds headers and payloads before allocation,
 reads exact payload lengths, and treats truncation as a terminal protocol error.
-Writes are serialized so output events cannot interleave with responses. Standard
-output is protocol-only; human diagnostics use standard error.
+Writes are serialized so output events cannot interleave with responses. Request
+cancellation may discard an event before its header is written. Once a header is
+visible, its complete payload is written using the connection lifetime; only
+connection shutdown interrupts a started frame. A successfully completed request
+retains its response even if cancellation arrives while that response waits to be
+written. Standard output is protocol-only; human diagnostics use standard error.
 
 The DAP dispatcher preserves arrival order for ordinary requests, including
-overlapping stack, scope, variable, and watch refreshes. A target-code-capable
-request finishes its response and invalidation events before the next ordinary
-request starts. While that operation runs, the reader continues accepting requests
+overlapping stack, scope, variable, and watch refreshes. Inspection and
+target-code-capable requests finish their responses and any invalidation events
+before the next ordinary request starts. During stack walks, source downloads,
+other inspection, and target evaluation, the reader continues accepting requests
 and handles `cancel` immediately. Pending work is bounded to 64 requests and 16 MiB
 of total wire payload; an overflow receives a request-specific error without
 closing the cancellation channel. Canceling queued work removes it and answers

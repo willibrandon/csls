@@ -12,6 +12,7 @@ namespace Csls.DebugAdapter;
 internal sealed class DapMessageWriter : IAsyncDisposable
 {
     private readonly Stream _output;
+    private readonly CancellationToken _transportCancellationToken;
     private readonly SemaphoreSlim _writeGate = new(1, 1);
     private int _sequence;
 
@@ -19,10 +20,12 @@ internal sealed class DapMessageWriter : IAsyncDisposable
     /// Creates a serialized DAP message writer.
     /// </summary>
     /// <param name="output">The adapter-to-client byte stream.</param>
-    internal DapMessageWriter(Stream output)
+    /// <param name="transportCancellationToken">Cancels writes only when the complete connection ends.</param>
+    internal DapMessageWriter(Stream output, CancellationToken transportCancellationToken)
     {
         ArgumentNullException.ThrowIfNull(output);
         _output = output;
+        _transportCancellationToken = transportCancellationToken;
     }
 
     /// <summary>
@@ -32,7 +35,7 @@ internal sealed class DapMessageWriter : IAsyncDisposable
     /// <param name="success">Whether the request succeeded.</param>
     /// <param name="message">An optional failure description.</param>
     /// <param name="writeBody">An optional response-body writer.</param>
-    /// <param name="cancellationToken">Cancels the stream write.</param>
+    /// <param name="cancellationToken">Cancels a failed response before its header; successful responses use the connection lifetime.</param>
     /// <returns>A task that completes after the framed response is flushed.</returns>
     internal ValueTask WriteResponseAsync(
         Request request,
@@ -62,14 +65,14 @@ internal sealed class DapMessageWriter : IAsyncDisposable
 
                 writer.WriteEndObject();
             },
-            cancellationToken);
+            success ? _transportCancellationToken : cancellationToken);
 
     /// <summary>
     /// Writes a server-originated DAP event.
     /// </summary>
     /// <param name="eventName">The DAP event name.</param>
     /// <param name="writeBody">An optional event-body writer.</param>
-    /// <param name="cancellationToken">Cancels the stream write.</param>
+    /// <param name="cancellationToken">Cancels the event before its header is written.</param>
     /// <returns>A task that completes after the framed event is flushed.</returns>
     internal ValueTask WriteEventAsync(
         string eventName,
@@ -116,10 +119,12 @@ internal sealed class DapMessageWriter : IAsyncDisposable
                 CultureInfo.InvariantCulture,
                 $"Content-Length: {payload.WrittenCount}\r\n\r\n");
             byte[] header = Encoding.ASCII.GetBytes(headerText);
+            cancellationToken.ThrowIfCancellationRequested();
 
-            await _output.WriteAsync(header, cancellationToken).ConfigureAwait(false);
-            await _output.WriteAsync(payload.WrittenMemory, cancellationToken).ConfigureAwait(false);
-            await _output.FlushAsync(cancellationToken).ConfigureAwait(false);
+            // Once a header is visible, only connection shutdown may interrupt its exact payload.
+            await _output.WriteAsync(header, _transportCancellationToken).ConfigureAwait(false);
+            await _output.WriteAsync(payload.WrittenMemory, _transportCancellationToken).ConfigureAwait(false);
+            await _output.FlushAsync(_transportCancellationToken).ConfigureAwait(false);
         }
         finally
         {
