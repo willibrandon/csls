@@ -31,6 +31,7 @@ internal static class McpHost
         await using ConfiguredAsyncDisposable debuggerBrokerCleanup =
             debuggerBroker.ConfigureAwait(false);
         var tools = new CslsMcpTools(broker);
+        var editTools = new CslsMcpEditTools(broker);
         var workspaceTools = new CslsMcpWorkspaceTools(broker);
         var requestTools = new CslsMcpRequestTools(broker);
         var resources = new CslsMcpResources(broker);
@@ -76,6 +77,7 @@ internal static class McpHost
             })
             .WithStdioServerTransport()
             .WithTools(tools, serializerOptions)
+            .WithTools(editTools, serializerOptions)
             .WithTools(workspaceTools, serializerOptions)
             .WithTools(requestTools, serializerOptions)
             .WithResources(resources)
