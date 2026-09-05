@@ -80,6 +80,12 @@ internal sealed class DebuggeeProcess : IDebuggeeProcess
             startInfo.ArgumentList.Add(argument);
         }
 
+        startInfo.Environment.Clear();
+        foreach ((string name, string value) in DebuggerWorkerEnvironment.CreateTargetEnvironment())
+        {
+            startInfo.Environment[name] = value;
+        }
+
         foreach ((string name, string? value) in options.Environment)
         {
             if (value is null)

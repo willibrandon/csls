@@ -1,4 +1,3 @@
-using System.Collections;
 using System.Runtime.InteropServices;
 using System.Text;
 
@@ -33,14 +32,7 @@ internal sealed unsafe class DbgShimEnvironmentBlock : IDisposable
         StringComparer comparer = OperatingSystem.IsWindows()
             ? StringComparer.OrdinalIgnoreCase
             : StringComparer.Ordinal;
-        var environment = new SortedDictionary<string, string>(comparer);
-        foreach (DictionaryEntry entry in Environment.GetEnvironmentVariables())
-        {
-            if (entry.Key is string name && entry.Value is string value)
-            {
-                environment[name] = value;
-            }
-        }
+        var environment = new SortedDictionary<string, string>(DebuggerWorkerEnvironment.CreateTargetEnvironment(), comparer);
 
         foreach ((string name, string? value) in modifications)
         {

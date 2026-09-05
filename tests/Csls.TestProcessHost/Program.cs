@@ -192,6 +192,13 @@ if (args is [
         finishSignalPath);
 }
 
+if (args is ["--print-environment-entry", string entryVariable])
+{
+    string? entryValue = Environment.GetEnvironmentVariable(entryVariable);
+    Console.Write(entryValue is null ? "unset" : $"set:{entryValue}");
+    return 23;
+}
+
 if (args is ["--print-environment-and-exit", string printedVariable, string exitCode])
 {
     await Console.Out.WriteAsync(

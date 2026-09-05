@@ -82,7 +82,9 @@ internal sealed partial class DapTestClient
         Diagnostics.Dispose();
     }
 
-    private Task InitializeAsync(CancellationToken cancellationToken)
+    private Task InitializeAsync(
+        IReadOnlyDictionary<string, string?>? environment,
+        CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
         string repositoryRoot = FindRepositoryRoot();
@@ -105,6 +107,21 @@ internal sealed partial class DapTestClient
         startInfo.ArgumentList.Add(applicationPath);
         startInfo.ArgumentList.Add("debugger");
         startInfo.ArgumentList.Add("dap");
+        if (environment is not null)
+        {
+            foreach ((string name, string? value) in environment)
+            {
+                if (value is null)
+                {
+                    startInfo.Environment.Remove(name);
+                }
+                else
+                {
+                    startInfo.Environment[name] = value;
+                }
+            }
+        }
+
         string? configuredWorkerPath = Environment.GetEnvironmentVariable(
             "CSLS_DEBUGGER_WORKER_TEST_PATH");
         startInfo.Environment["CSLS_DEBUGGER_WORKER_PATH"] =

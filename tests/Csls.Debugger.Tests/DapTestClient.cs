@@ -35,13 +35,16 @@ internal sealed partial class DapTestClient : IAsyncDisposable
     /// Connects the test client and starts a production DAP session.
     /// </summary>
     /// <param name="cancellationToken">Cancels connection establishment.</param>
+    /// <param name="environment">Optional environment changes isolated to the adapter process.</param>
     /// <returns>The connected test client.</returns>
-    internal static async Task<DapTestClient> CreateAsync(CancellationToken cancellationToken)
+    internal static async Task<DapTestClient> CreateAsync(
+        CancellationToken cancellationToken,
+        IReadOnlyDictionary<string, string?>? environment = null)
     {
         var client = new DapTestClient();
         try
         {
-            await client.InitializeAsync(cancellationToken).ConfigureAwait(false);
+            await client.InitializeAsync(environment, cancellationToken).ConfigureAwait(false);
             return client;
         }
         catch
