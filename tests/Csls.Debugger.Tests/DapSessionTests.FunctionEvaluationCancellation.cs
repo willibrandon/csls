@@ -110,18 +110,8 @@ public sealed partial class DapSessionTests
                     writer.WriteEndObject();
                 },
                 TestContext.CancellationToken).ConfigureAwait(false);
-            using JsonDocument concurrentEvaluation = await client
-                .ReadMessageAsync(TestContext.CancellationToken)
+            await AssertQueuedRequestCanceledAsync(client, concurrentEvaluationSequence, "evaluate")
                 .ConfigureAwait(false);
-            AssertResponse(
-                concurrentEvaluation.RootElement,
-                concurrentEvaluationSequence,
-                "evaluate",
-                success: false);
-            Assert.Contains(
-                "still in progress",
-                concurrentEvaluation.RootElement.GetProperty("message").GetString()!,
-                StringComparison.OrdinalIgnoreCase);
 
             int cancelSequence = await client.SendRequestAsync(
                 "cancel",
@@ -268,18 +258,8 @@ public sealed partial class DapSessionTests
                     writer.WriteEndObject();
                 },
                 TestContext.CancellationToken).ConfigureAwait(false);
-            using JsonDocument concurrentAssignment = await client
-                .ReadMessageAsync(TestContext.CancellationToken)
+            await AssertQueuedRequestCanceledAsync(client, concurrentAssignmentSequence, "evaluate")
                 .ConfigureAwait(false);
-            AssertResponse(
-                concurrentAssignment.RootElement,
-                concurrentAssignmentSequence,
-                "evaluate",
-                success: false);
-            Assert.Contains(
-                "still in progress",
-                concurrentAssignment.RootElement.GetProperty("message").GetString()!,
-                StringComparison.OrdinalIgnoreCase);
 
             int assignmentCancelSequence = await client.SendRequestAsync(
                 "cancel",

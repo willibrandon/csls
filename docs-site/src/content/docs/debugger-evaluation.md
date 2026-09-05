@@ -61,7 +61,12 @@ allocated in the target with their exact UTF-16 length, including embedded NUL v
 An ambiguous overload or type name fails before execution.
 
 Only the selected managed thread runs during a call. One function evaluation can be
-active at a time and has a five-second deadline. Cancellation and timeout call
+active at a time and has a five-second deadline. Overlapping DAP requests queue in
+arrival order while cancellation remains responsive. A canceled queued request
+returns `cancelled` without running. The queue holds at most 64 requests and 16 MiB
+of total wire payload; overflow produces an explicit request error.
+
+Cancellation and timeout call
 `ICorDebugEval.Abort`, await the completion callback, and never escalate to
 `RudeAbort`. A returned value, target exception, or cooperative abort advances the stop
 generation because target code may allocate, collect, or mutate state. The same stopped

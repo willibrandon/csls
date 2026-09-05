@@ -12,6 +12,7 @@ internal sealed partial class DapSession : IDebuggerSessionObserver, IAsyncDispo
 {
     private readonly DapMessageReader _reader;
     private readonly DapMessageWriter _writer;
+    private readonly DapRequestQueue _pendingRequests = new();
     private readonly Func<string, Task> _writeErrorAsync;
     private readonly CancellationTokenSource _lifetime = new();
     private readonly SemaphoreSlim _stopEventGate = new(1, 1);
@@ -39,7 +40,6 @@ internal sealed partial class DapSession : IDebuggerSessionObserver, IAsyncDispo
         DebugExceptionInfo? Exception)? _deferredStop;
     private Task? _cancelableRequest;
     private CancellationTokenSource? _cancelableRequestCancellation;
-    private TaskCompletionSource? _cancelableResponseCompletion;
     private int _cancelableRequestSequence;
     private int _protocolClosed;
 
@@ -71,63 +71,70 @@ internal sealed partial class DapSession : IDebuggerSessionObserver, IAsyncDispo
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(
             cancellationToken,
             _lifetime.Token);
+        Task<Request?>? pendingRead = null;
         try
         {
             while (_state is not DapSessionState.Terminated and not DapSessionState.Faulted)
             {
-                Request? request = await _reader
-                    .ReadRequestAsync(linked.Token)
-                    .AsTask()
-                    .WaitAsync(linked.Token)
-                    .ConfigureAwait(false);
-                if (request is null)
+                if (_cancelableRequest is { IsCompleted: true })
                 {
-                    break;
+                    await CompleteCancelableRequestAsync().ConfigureAwait(false);
                 }
 
-                if (string.Equals(request.Command, "cancel", StringComparison.Ordinal))
+                Request? request;
+                if (_cancelableRequest is not null || !_pendingRequests.TryDequeue(out request))
                 {
-                    await CancelRequestAsync(request, linked.Token).ConfigureAwait(false);
-                    continue;
-                }
-
-                if (_cancelableRequest is not null)
-                {
-                    if (!_cancelableRequest.IsCompleted &&
-                        !_cancelableResponseCompletion!.Task.IsCompleted)
+                    pendingRead ??= _reader.ReadRequestAsync(linked.Token).AsTask();
+                    if (_cancelableRequest is not null)
                     {
-                        await WriteRequestFailureAsync(
-                            request,
-                            "A managed target-code operation is still in progress. Cancel it or " +
-                                "wait for its response before sending another request.",
-                            linked.Token).ConfigureAwait(false);
+                        _ = await Task.WhenAny(pendingRead, _cancelableRequest)
+                            .WaitAsync(linked.Token).ConfigureAwait(false);
+                        if (_cancelableRequest.IsCompleted)
+                        {
+                            continue;
+                        }
+                    }
+
+                    Task<Request?> completedRead = pendingRead;
+                    pendingRead = null;
+                    request = await completedRead.WaitAsync(linked.Token).ConfigureAwait(false);
+                    if (request is null)
+                    {
+                        break;
+                    }
+
+                    if (string.Equals(request.Command, "cancel", StringComparison.Ordinal))
+                    {
+                        await CancelRequestAsync(request, linked.Token).ConfigureAwait(false);
                         continue;
                     }
 
-                    await CompleteCancelableRequestAsync().ConfigureAwait(false);
+                    if (_cancelableRequest is not null)
+                    {
+                        if (!_pendingRequests.TryEnqueue(request, _reader.LastPayloadBytes))
+                        {
+                            await WriteRequestFailureAsync(request,
+                                "The DAP pending request limit was reached. Wait for pending " +
+                                    "responses or cancel queued requests before sending more work.",
+                                linked.Token).ConfigureAwait(false);
+                        }
+
+                        continue;
+                    }
                 }
 
                 if (IsCancelableTargetCodeRequest(request.Command))
                 {
                     _cancelableRequestCancellation = CancellationTokenSource
                         .CreateLinkedTokenSource(linked.Token);
-                    _cancelableResponseCompletion = new TaskCompletionSource(
-                        TaskCreationOptions.RunContinuationsAsynchronously);
                     _cancelableRequestSequence = request.Seq;
-                    _cancelableRequest = HandleCancelableRequestAsync(
+                    _cancelableRequest = HandleRequestAsync(
                         request,
-                        _cancelableResponseCompletion,
-                        _cancelableRequestCancellation.Token);
+                        _cancelableRequestCancellation.Token).AsTask();
                     continue;
                 }
 
                 await HandleRequestAsync(request, linked.Token).ConfigureAwait(false);
-            }
-
-            if (_cancelableRequest is not null)
-            {
-                await _cancelableRequestCancellation!.CancelAsync().ConfigureAwait(false);
-                await CompleteCancelableRequestAsync().ConfigureAwait(false);
             }
 
             return _state == DapSessionState.Faulted ? 1 : 0;
@@ -144,7 +151,39 @@ internal sealed partial class DapSession : IDebuggerSessionObserver, IAsyncDispo
         }
         finally
         {
-            Volatile.Write(ref _protocolClosed, 1);
+            try
+            {
+                await linked.CancelAsync().ConfigureAwait(false);
+                if (_cancelableRequest is not null)
+                {
+                    await _cancelableRequestCancellation!.CancelAsync().ConfigureAwait(false);
+                    await CompleteCancelableRequestAsync().ConfigureAwait(false);
+                }
+
+                if (pendingRead is not null)
+                {
+                    await SettleProtocolReadAsync(pendingRead, linked.Token).ConfigureAwait(false);
+                }
+            }
+            finally
+            {
+                Volatile.Write(ref _protocolClosed, 1);
+            }
+        }
+    }
+
+    private static async Task SettleProtocolReadAsync(
+        Task<Request?> pendingRead,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            _ = await pendingRead.WaitAsync(CancellationToken.None).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            // The canceled read is settled before its transport and cancellation source are disposed.
+            return;
         }
     }
 
@@ -195,6 +234,10 @@ internal sealed partial class DapSession : IDebuggerSessionObserver, IAsyncDispo
         {
             await _cancelableRequestCancellation.CancelAsync().ConfigureAwait(false);
         }
+        else if (requestId is int sequence && _pendingRequests.TryRemove(sequence, out Request? queued))
+        {
+            await WriteRequestFailureAsync(queued, "cancelled", cancellationToken).ConfigureAwait(false);
+        }
 
         await _writer.WriteResponseAsync(
             request,
@@ -210,24 +253,8 @@ internal sealed partial class DapSession : IDebuggerSessionObserver, IAsyncDispo
         using CancellationTokenSource cancellation = _cancelableRequestCancellation!;
         _cancelableRequest = null;
         _cancelableRequestCancellation = null;
-        _cancelableResponseCompletion = null;
         _cancelableRequestSequence = 0;
         await cancelableRequest.WaitAsync(CancellationToken.None).ConfigureAwait(false);
-    }
-
-    private async Task HandleCancelableRequestAsync(
-        Request request,
-        TaskCompletionSource responseCompletion,
-        CancellationToken cancellationToken)
-    {
-        try
-        {
-            await HandleRequestAsync(request, cancellationToken).ConfigureAwait(false);
-        }
-        finally
-        {
-            _ = responseCompletion.TrySetResult();
-        }
     }
 
     private static bool IsCancelableTargetCodeRequest(string command) =>

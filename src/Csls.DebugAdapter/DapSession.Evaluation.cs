@@ -23,61 +23,48 @@ internal sealed partial class DapSession
         bool targetCodeExecuted = false;
         try
         {
-            try
-            {
-                string expression = GetRequiredNonEmptyString(
-                    request.Arguments,
-                    "expression",
-                    "evaluate");
-                int frameId = await GetEvaluationFrameIdAsync(
-                    request.Arguments,
-                    cancellationToken).ConfigureAwait(false);
-                DebugEvaluateResult result = await _engineSession.EvaluateAsync(
-                    frameId,
-                    expression,
-                    allowTargetCodeExecution: true,
-                    cancellationToken).ConfigureAwait(false);
-                SignalCancelableResponseReady();
-                await _writer.WriteResponseAsync(
-                    request,
-                    success: true,
-                    message: null,
-                    writer =>
+            string expression = GetRequiredNonEmptyString(
+                request.Arguments,
+                "expression",
+                "evaluate");
+            int frameId = await GetEvaluationFrameIdAsync(
+                request.Arguments,
+                cancellationToken).ConfigureAwait(false);
+            DebugEvaluateResult result = await _engineSession.EvaluateAsync(
+                frameId,
+                expression,
+                allowTargetCodeExecution: true,
+                cancellationToken).ConfigureAwait(false);
+            await _writer.WriteResponseAsync(
+                request,
+                success: true,
+                message: null,
+                writer =>
+                {
+                    writer.WriteStartObject();
+                    writer.WriteString("result", result.Result);
+                    writer.WriteString("type", result.Type);
+                    writer.WriteNumber("variablesReference", result.VariablesReference);
+                    if (result.MemoryReference is not null)
                     {
-                        writer.WriteStartObject();
-                        writer.WriteString("result", result.Result);
-                        writer.WriteString("type", result.Type);
-                        writer.WriteNumber("variablesReference", result.VariablesReference);
-                        if (result.MemoryReference is not null)
-                        {
-                            writer.WriteString("memoryReference", result.MemoryReference);
-                        }
+                        writer.WriteString("memoryReference", result.MemoryReference);
+                    }
 
-                        writer.WriteEndObject();
-                    },
-                    cancellationToken).ConfigureAwait(false);
-                targetCodeExecuted = result.TargetCodeExecuted;
-            }
-            catch (Exception exception) when (
-                exception is ArgumentException or InvalidOperationException or NotSupportedException or
-                IOException or UnauthorizedAccessException or BadImageFormatException)
-            {
-                SignalCancelableResponseReady();
-                await WriteRequestFailureAsync(request, exception.Message, cancellationToken)
-                    .ConfigureAwait(false);
-            }
-            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-            {
-                SignalCancelableResponseReady();
-                await WriteRequestFailureAsync(
-                    request,
-                    "cancelled",
-                    _lifetime.Token).ConfigureAwait(false);
-            }
+                    writer.WriteEndObject();
+                },
+                cancellationToken).ConfigureAwait(false);
+            targetCodeExecuted = result.TargetCodeExecuted;
         }
-        finally
+        catch (Exception exception) when (
+            exception is ArgumentException or InvalidOperationException or NotSupportedException or
+            IOException or UnauthorizedAccessException or BadImageFormatException)
         {
-            _ = _cancelableResponseCompletion?.TrySetResult();
+            await WriteRequestFailureAsync(request, exception.Message, cancellationToken)
+                .ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            await WriteRequestFailureAsync(request, "cancelled", _lifetime.Token).ConfigureAwait(false);
         }
 
         targetCodeExecuted |= _engineSession.StopGeneration != initialGeneration;
@@ -100,11 +87,6 @@ internal sealed partial class DapSession
                 writer.WriteEndObject();
             },
             cancellationToken) : ValueTask.CompletedTask;
-
-    private void SignalCancelableResponseReady()
-    {
-        _ = _cancelableResponseCompletion?.TrySetResult();
-    }
 
     private async Task<int> GetEvaluationFrameIdAsync(
         JsonElement arguments,

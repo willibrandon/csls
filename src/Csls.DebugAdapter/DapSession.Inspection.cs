@@ -148,7 +148,6 @@ internal sealed partial class DapSession
                     cancellationToken,
                     filter)
                 .ConfigureAwait(false);
-            SignalCancelableResponseReady();
             await _writer.WriteResponseAsync(
                 request,
                 success: true,
@@ -230,14 +229,12 @@ internal sealed partial class DapSession
             exception is ArgumentException or InvalidOperationException or
             IOException or UnauthorizedAccessException or BadImageFormatException or TimeoutException)
         {
-            SignalCancelableResponseReady();
             await WriteRequestFailureAsync(request, exception.Message, cancellationToken)
                 .ConfigureAwait(false);
         }
 
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
-            SignalCancelableResponseReady();
             await WriteRequestFailureAsync(request, "cancelled", _lifetime.Token).ConfigureAwait(false);
         }
 

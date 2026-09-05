@@ -169,7 +169,8 @@ class VariablesObserver {
   }
 
   private captureInspectionMessage(message: unknown, type: "request" | "response"): void {
-    if (isMessage(message, type, "stackTrace") || isMessage(message, type, "scopes")) {
+    if (isMessage(message, type, "stackTrace") || isMessage(message, type, "scopes") ||
+        isMessage(message, type, "threads")) {
       if (type === "response" && message["success"] !== true) {
         this.failures.push(message);
       }

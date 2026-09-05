@@ -18,7 +18,7 @@ internal static partial class DebuggerWorkerHost
                 "The debugger control worker accepts no positional arguments.");
         }
 
-        var standardStreams = DebuggerWorkerStandardStreams.Open(stabilizeInput: true);
+        var standardStreams = DebuggerWorkerStandardStreams.Open();
         await using ConfiguredAsyncDisposable cleanup = standardStreams.ConfigureAwait(false);
         var service = new DebuggerControlService();
         await using ConfiguredAsyncDisposable serviceCleanup = service.ConfigureAwait(false);

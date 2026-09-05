@@ -15,6 +15,8 @@ internal sealed partial class DebuggerWorkerStandardStreams : IAsyncDisposable
     private const int StandardErrorDescriptor = 2;
     private const int SetFileDescriptorFlags = 2;
     private const int CloseOnExec = 1;
+    private const int StandardInputHandle = -10;
+    private const uint DuplicateSameAccess = 2;
     private readonly SafeFileHandle? _inputHandle;
     private readonly SafeFileHandle? _outputHandle;
     private readonly SafeFileHandle? _errorHandle;
@@ -23,31 +25,21 @@ internal sealed partial class DebuggerWorkerStandardStreams : IAsyncDisposable
     private readonly Stream _errorStream = Stream.Null;
     private readonly StreamWriter? _error;
 
-    private DebuggerWorkerStandardStreams(bool stabilizeInput)
+    private DebuggerWorkerStandardStreams()
     {
         try
         {
             if (OperatingSystem.IsWindows())
             {
-                _input = Console.OpenStandardInput();
+                _inputHandle = DuplicateWindowsStandardInput();
+                _input = new FileStream(_inputHandle, FileAccess.Read, bufferSize: 4096, isAsync: false);
                 _output = Console.OpenStandardOutput();
                 _errorStream = Console.OpenStandardError();
             }
             else
             {
-                if (stabilizeInput)
-                {
-                    _inputHandle = DuplicateStandardDescriptor(StandardInputDescriptor);
-                    _input = new FileStream(
-                        _inputHandle,
-                        FileAccess.Read,
-                        bufferSize: 4096,
-                        isAsync: false);
-                }
-                else
-                {
-                    _input = Console.OpenStandardInput();
-                }
+                _inputHandle = DuplicateStandardDescriptor(StandardInputDescriptor);
+                _input = new BufferedStream(new UnixDebuggerInputStream(_inputHandle), bufferSize: 4096);
 
                 _outputHandle = DuplicateStandardDescriptor(StandardOutputDescriptor);
                 _errorHandle = DuplicateStandardDescriptor(StandardErrorDescriptor);
@@ -104,10 +96,8 @@ internal sealed partial class DebuggerWorkerStandardStreams : IAsyncDisposable
     /// <summary>
     /// Opens stable copies of the worker's inherited standard streams.
     /// </summary>
-    /// <param name="stabilizeInput">Whether standard input may be read while a target launch redirects process descriptors.</param>
     /// <returns>The owned standard-stream set.</returns>
-    internal static DebuggerWorkerStandardStreams Open(bool stabilizeInput) =>
-        new(stabilizeInput);
+    internal static DebuggerWorkerStandardStreams Open() => new();
 
     /// <inheritdoc />
     public async ValueTask DisposeAsync()
@@ -151,6 +141,29 @@ internal sealed partial class DebuggerWorkerStandardStreams : IAsyncDisposable
             throw;
         }
     }
+
+    private static SafeFileHandle DuplicateWindowsStandardInput()
+    {
+        nint currentProcess = -1;
+        if (DuplicateHandle(currentProcess, GetStandardHandle(StandardInputHandle), currentProcess,
+                out SafeFileHandle duplicate, access: 0, inherit: 0, options: DuplicateSameAccess) == 0)
+        {
+            int error = Marshal.GetLastPInvokeError();
+            duplicate.Dispose();
+            throw new Win32Exception(error, "DuplicateHandle(stdin)");
+        }
+
+        return duplicate;
+    }
+
+    [LibraryImport("kernel32.dll", EntryPoint = "GetStdHandle", SetLastError = true)]
+    [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
+    private static partial nint GetStandardHandle(int standardHandle);
+
+    [LibraryImport("kernel32.dll", EntryPoint = "DuplicateHandle", SetLastError = true)]
+    [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
+    private static partial int DuplicateHandle(nint sourceProcess, nint source, nint targetProcess,
+        out SafeFileHandle target, uint access, int inherit, uint options);
 
     [LibraryImport("libc", EntryPoint = "dup", SetLastError = true)]
     [DefaultDllImportSearchPaths(DllImportSearchPath.SafeDirectories)]

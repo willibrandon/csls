@@ -38,7 +38,6 @@ internal sealed partial class DapSession
                 _engineSession.StopGeneration,
                 cancellationToken).ConfigureAwait(false);
             targetCodeExecuted = result.TargetCodeExecuted;
-            SignalCancelableResponseReady();
             await WriteAssignmentResponseAsync(request, result.Variable, cancellationToken)
                 .ConfigureAwait(false);
         }
@@ -46,13 +45,11 @@ internal sealed partial class DapSession
             exception is ArgumentException or InvalidOperationException or NotSupportedException or
             IOException or UnauthorizedAccessException or BadImageFormatException)
         {
-            SignalCancelableResponseReady();
             await WriteRequestFailureAsync(request, exception.Message, cancellationToken)
                 .ConfigureAwait(false);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
-            SignalCancelableResponseReady();
             await WriteRequestFailureAsync(request, "cancelled", _lifetime.Token)
                 .ConfigureAwait(false);
         }
@@ -98,7 +95,6 @@ internal sealed partial class DapSession
                 _engineSession.StopGeneration,
                 cancellationToken).ConfigureAwait(false);
             targetCodeExecuted = result.TargetCodeExecuted;
-            SignalCancelableResponseReady();
             await WriteAssignmentResponseAsync(request, result.Variable, cancellationToken)
                 .ConfigureAwait(false);
         }
@@ -106,13 +102,11 @@ internal sealed partial class DapSession
             exception is ArgumentException or InvalidOperationException or NotSupportedException or
             IOException or UnauthorizedAccessException or BadImageFormatException)
         {
-            SignalCancelableResponseReady();
             await WriteRequestFailureAsync(request, exception.Message, cancellationToken)
                 .ConfigureAwait(false);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
-            SignalCancelableResponseReady();
             await WriteRequestFailureAsync(request, "cancelled", _lifetime.Token)
                 .ConfigureAwait(false);
         }

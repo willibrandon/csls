@@ -132,4 +132,19 @@ internal sealed class DebuggerFixtureValue
             Thread.SpinWait(10_000);
         }
     }
+
+    /// <summary>
+    /// Returns after the debugger test releases an evaluation through a real file boundary.
+    /// </summary>
+    /// <returns>The retained numeric value.</returns>
+    internal int WaitForDebuggerRelease()
+    {
+        File.WriteAllText(EvaluationSignalPath, "started");
+        while (!File.Exists(EvaluationSignalPath + ".release"))
+        {
+            Thread.SpinWait(10_000);
+        }
+
+        return Number;
+    }
 }

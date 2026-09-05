@@ -469,6 +469,10 @@ public sealed partial class DapSessionTests
                     StringComparison.OrdinalIgnoreCase);
                 evaluationReceived = true;
             }
+            else
+            {
+                Assert.Fail($"Unexpected response while cancelling target code: {root}");
+            }
         }
     }
 

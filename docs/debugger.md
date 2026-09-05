@@ -284,6 +284,10 @@ missing and ambiguous type identities fail before target execution.
 
 Function evaluation runs only the selected managed thread while the other managed
 threads remain stopped. One call may run at a time and has a five-second deadline.
+DAP queues overlapping editor requests in arrival order and keeps cancellation
+responsive during evaluation. Canceling queued work removes it before execution;
+canceling an active call propagates to the runtime. Pending work is limited to
+64 requests and 16 MiB of total wire payload, with an explicit error for overflow.
 DAP advertises request cancellation; cancellation and deadline expiry use
 `ICorDebugEval.Abort`, wait for CoreCLR's completion callback, and never escalate
 to `RudeAbort`. A call result, thrown exception, or cooperative abort advances the

@@ -25,6 +25,11 @@ internal sealed class DapMessageReader
     private readonly int _maximumPayloadBytes;
 
     /// <summary>
+    /// Gets the wire payload size of the last successfully read request.
+    /// </summary>
+    internal int LastPayloadBytes { get; private set; }
+
+    /// <summary>
     /// Creates a bounded DAP request reader.
     /// </summary>
     /// <param name="input">The client-to-adapter byte stream.</param>
@@ -129,6 +134,7 @@ internal sealed class DapMessageReader
             throw new InvalidDataException("A DAP request envelope is invalid.");
         }
 
+        LastPayloadBytes = payloadLength;
         return request;
     }
 

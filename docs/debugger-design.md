@@ -186,10 +186,12 @@ reported before partial session activation where the platform exposes enough dat
 
 On Unix, dbgshim inherits the host's process-wide standard handles, so launch is
 serialized through a short process-wide gate. Before protocol processing starts,
-the worker duplicates its output and diagnostic descriptors into stable
-close-on-exec handles. The concurrent private-control reader also receives a stable
-input descriptor; the sequential DAP reader retains its cancellation-aware standard
-input because it cannot read during launch. Launch redirects descriptors zero
+the worker duplicates all three standard descriptors into stable close-on-exec
+handles. Both DAP read-ahead and private-control input remain on the stable input
+descriptor. A Unix input wait watches that descriptor and a private cancellation
+pipe; cancellation wakes the native wait, and disposal waits for the reader before
+closing the wake descriptors. Windows input uses a noninheritable duplicate and
+the runtime's cancellable file-stream read. Launch redirects descriptors zero
 through two only for the `CreateProcessForLaunch` call, marks its saved restoration
 handles close-on-exec, and restores them in nested `finally` blocks. Protocol writes
 therefore remain on the stable handles during launch, and neither the stable nor
@@ -239,6 +241,19 @@ and only one valid `Content-Length`, bounds headers and payloads before allocati
 reads exact payload lengths, and treats truncation as a terminal protocol error.
 Writes are serialized so output events cannot interleave with responses. Standard
 output is protocol-only; human diagnostics use standard error.
+
+The DAP dispatcher preserves arrival order for ordinary requests, including
+overlapping stack, scope, variable, and watch refreshes. A target-code-capable
+request finishes its response and invalidation events before the next ordinary
+request starts. While that operation runs, the reader continues accepting requests
+and handles `cancel` immediately. Pending work is bounded to 64 requests and 16 MiB
+of total wire payload; an overflow receives a request-specific error without
+closing the cancellation channel. Canceling queued work removes it and answers
+that request with `cancelled`, while canceling active work propagates to the engine.
+Queue removal releases both budgets and preserves the surviving request order.
+Completion wakes the dispatcher even when no further client input arrives.
+Session shutdown cancels and settles its active operation and outstanding read
+before disposing their resources.
 
 The checked-in protocol schema is synchronized by a .NET file-based C# app. The
 generator produces one documented type per file and a source-generated JSON

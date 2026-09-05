@@ -82,11 +82,13 @@ internal sealed partial class DapTestClient : IAsyncDisposable
     /// <param name="command">The request command.</param>
     /// <param name="writeArguments">An optional arguments-object writer.</param>
     /// <param name="cancellationToken">Cancels the pipe write.</param>
+    /// <param name="minimumPayloadBytes">Pads the JSON with trailing whitespace for hostile payload-budget tests.</param>
     /// <returns>The assigned request sequence number.</returns>
     internal async Task<int> SendRequestAsync(
         string command,
         Action<Utf8JsonWriter>? writeArguments,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        int minimumPayloadBytes = 0)
     {
         Process process = _process ?? throw new InvalidOperationException(
             "The DAP test client has not been initialized.");
@@ -105,6 +107,13 @@ internal sealed partial class DapTestClient : IAsyncDisposable
             }
 
             writer.WriteEndObject();
+        }
+
+        int padding = minimumPayloadBytes - payload.WrittenCount;
+        if (padding > 0)
+        {
+            payload.GetSpan(padding)[..padding].Fill((byte)' ');
+            payload.Advance(padding);
         }
 
         byte[] header = Encoding.ASCII.GetBytes($"Content-Length: {payload.WrittenCount}\r\n\r\n");
