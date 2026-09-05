@@ -29,7 +29,9 @@ public sealed partial class DapSessionTests
             }
         }
 
-        Assert.Fail("No managed stack frame resolved to the debugger fixture.");
+        Assert.Fail($"No managed stack frame resolved to the debugger fixture. " +
+            $"Adapter diagnostics: {client.Diagnostics}. " +
+            $"Recent protocol messages:{Environment.NewLine}{client.ProtocolTranscript}");
         return default;
     }
 

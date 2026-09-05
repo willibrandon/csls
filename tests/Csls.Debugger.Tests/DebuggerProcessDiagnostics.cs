@@ -134,7 +134,15 @@ internal static class DebuggerProcessDiagnostics
         int processId, string directory, TestContext testContext, CancellationToken cancellationToken)
     {
         string path = Path.Join(directory, $"process-{processId}.sample.txt");
-        var startInfo = new ProcessStartInfo("/usr/bin/sample");
+        bool hostedRunner = string.Equals(Environment.GetEnvironmentVariable("GITHUB_ACTIONS"),
+            "true", StringComparison.OrdinalIgnoreCase);
+        var startInfo = new ProcessStartInfo(hostedRunner ? "/usr/bin/sudo" : "/usr/bin/sample");
+        if (hostedRunner)
+        {
+            startInfo.ArgumentList.Add("-n");
+            startInfo.ArgumentList.Add("/usr/bin/sample");
+        }
+
         startInfo.ArgumentList.Add(processId.ToString(CultureInfo.InvariantCulture));
         startInfo.ArgumentList.Add("1");
         startInfo.ArgumentList.Add("-file");
