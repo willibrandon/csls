@@ -139,6 +139,14 @@ receive a short page. An all-remaining request that exceeds the response budget
 fails with a paging diagnostic rather than silently truncating the stack.
 Frame reacquisition after evaluation uses the same walker and retains only the
 activation with the recorded physical range, loaded module, and method identity.
+Frame and instruction registrations belong to one inspection until it succeeds.
+A failed or canceled stack page releases its newly acquired native bindings and
+instruction references rather than consuming the stopped interval's retained-frame
+budget. Previously published logical identities survive rollback, including those
+whose native binding was temporarily reacquired after debugger-owned evaluation.
+Discarded identifiers are never reassigned. One registry owns frame, opaque
+instruction-reference, and virtual instruction-address indexes so they commit and
+retire together.
 
 Pause is idempotent for a live managed target that is already stopped, including
 when a breakpoint or step completes ahead of the queued pause. The actor preserves

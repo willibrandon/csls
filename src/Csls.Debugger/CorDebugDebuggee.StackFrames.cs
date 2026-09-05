@@ -124,19 +124,11 @@ internal sealed partial class CorDebugDebuggee
                     : _sourceBreakpoints.GetSymbolPath(location.ModulePath),
                 Name = location.Name,
                 InstructionReference = $"csls-il-{Guid.NewGuid():N}",
-                InstructionAddressId = checked(++_nextInstructionAddressId),
+                InstructionAddressId = _frames.AllocateInstructionAddressId(),
                 ExpressionLanguage = location.ExpressionLanguage
             };
             _frames.Add(existing, identity);
             frame = 0;
-            _instructionAddressFrames.Add(existing.InstructionAddressId, existing);
-            _instructionFrames.Add(
-                existing.InstructionReference,
-                new ManagedInstructionReferenceHandle
-                {
-                    Frame = existing,
-                    IlOffset = existing.IlOffset
-                });
         }
 
         DebugSourceInfo? source = location.ModuleId is int sourceModuleId && location.SourcePath is not null

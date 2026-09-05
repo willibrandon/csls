@@ -15,6 +15,7 @@ internal sealed partial class CorDebugDebuggee
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
+        using ManagedFrameRegistration registration = _frames.BeginRegistration();
         using var walker = ManagedStackWalker.Open(_debugProcess, identity.ThreadId);
         while (walker.TryTakeFrame(out nint pointer, cancellationToken))
         {
@@ -30,6 +31,8 @@ internal sealed partial class CorDebugDebuggee
                 DebugStackFrameInfo frame = CreateStackFrame(identity.ThreadId, walker.FrameIndex, generation, consumed);
                 if (frame.Id == frameId)
                 {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    registration.Commit();
                     return;
                 }
             }

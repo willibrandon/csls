@@ -95,7 +95,7 @@ internal sealed partial class CorDebugDebuggee
                 nameof(reference));
         }
 
-        if (_instructionFrames.TryGetValue(
+        if (_frames.TryGetInstruction(
             reference,
             out ManagedInstructionReferenceHandle? location))
         {
@@ -112,7 +112,7 @@ internal sealed partial class CorDebugDebuggee
         {
             ulong ownerId = virtualAddress >> 32;
             if (ownerId == 0 || ownerId > int.MaxValue ||
-                !_instructionAddressFrames.TryGetValue((int)ownerId, out ManagedFrameHandle? frame))
+                !_frames.TryGetByInstructionAddress((int)ownerId, out ManagedFrameHandle? frame))
             {
                 throw new InvalidOperationException(
                     $"Instruction reference '{reference}' is stale or unknown.");

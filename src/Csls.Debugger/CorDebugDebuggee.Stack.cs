@@ -30,6 +30,7 @@ internal sealed partial class CorDebugDebuggee
         ArgumentOutOfRangeException.ThrowIfNegative(levels);
         ArgumentOutOfRangeException.ThrowIfGreaterThan(levels, maximumPageSize);
         cancellationToken.ThrowIfCancellationRequested();
+        using ManagedFrameRegistration registration = _frames.BeginRegistration();
         using var walker = ManagedStackWalker.Open(_debugProcess, threadId);
         List<DebugStackFrameInfo> frames = [];
         while (walker.TryTakeFrame(out nint frame, cancellationToken))
@@ -50,13 +51,19 @@ internal sealed partial class CorDebugDebuggee
 
             // CreateStackFrame consumes this reference even when symbol resolution fails.
             frames.Add(CreateStackFrame(threadId, walker.FrameIndex, generation, frame));
+            cancellationToken.ThrowIfCancellationRequested();
             if (levels > 0 && frames.Count == levels)
             {
-                return new DebugStackTrace(frames, TotalFrames: null);
+                var page = new DebugStackTrace(frames, TotalFrames: null);
+                registration.Commit();
+                return page;
             }
         }
 
-        return new DebugStackTrace(frames, walker.FrameIndex + 1);
+        cancellationToken.ThrowIfCancellationRequested();
+        var result = new DebugStackTrace(frames, walker.FrameIndex + 1);
+        registration.Commit();
+        return result;
     }
 
     /// <summary>
@@ -68,8 +75,6 @@ internal sealed partial class CorDebugDebuggee
     {
         RetireResultsViewSnapshot();
         _frames.Clear(preserveFrameIdentity);
-        _instructionFrames.Clear();
-        _instructionAddressFrames.Clear();
         _stepTargets.Clear();
         _gotoTargets.Clear();
         _scopes.Clear();

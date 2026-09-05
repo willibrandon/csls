@@ -87,13 +87,7 @@ internal sealed partial class CorDebugDebuggee
                     ThreadId = frame.ThreadId,
                     IlOffset = ilOffset
                 });
-                _instructionFrames.Add(
-                    instructionReference,
-                    new ManagedInstructionReferenceHandle
-                    {
-                        Frame = frame,
-                        IlOffset = ilOffset
-                    });
+                _frames.AddInstruction(instructionReference, frame, ilOffset);
                 result.Add(info);
                 if (result.Count == MaximumGotoTargetCount)
                 {
