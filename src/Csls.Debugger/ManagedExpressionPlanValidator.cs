@@ -60,6 +60,7 @@ internal static class ManagedExpressionPlanValidator
         {
             DebugExpressionNodeKind.Identifier or
             DebugExpressionNodeKind.This or
+            DebugExpressionNodeKind.DefaultLiteral or
             DebugExpressionNodeKind.Literal => 0,
             DebugExpressionNodeKind.MemberAccess or
             DebugExpressionNodeKind.Conversion or
@@ -97,6 +98,12 @@ internal static class ManagedExpressionPlanValidator
         {
             throw new InvalidDataException(
                 "A conversion expression requires a destination type.");
+        }
+
+        if (node.Kind == DebugExpressionNodeKind.DefaultLiteral &&
+            (node.Text is not null || node.TypeName is not null))
+        {
+            throw new InvalidDataException("A default literal cannot carry text or an inferred type.");
         }
 
         ValidateOperator(node);

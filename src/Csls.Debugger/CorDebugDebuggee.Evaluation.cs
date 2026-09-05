@@ -66,6 +66,7 @@ internal sealed partial class CorDebugDebuggee
             DebugExpressionNodeKind.This => EvaluateRuntimeRoot(
                 frame, "this", generation),
             DebugExpressionNodeKind.Literal => ManagedExpressionValueFactory.FromLiteral(node),
+            DebugExpressionNodeKind.DefaultLiteral => ManagedExpressionValueFactory.FromContextualDefault(),
             DebugExpressionNodeKind.Conversion =>
                 ManagedPrimitiveConversionEvaluator.EvaluateExplicit(
                     EvaluateNode(frame, plan, node.Children[0], generation),

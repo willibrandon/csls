@@ -15,6 +15,14 @@ internal sealed partial class CorDebugDebuggee
         bool sourceIsContextualLiteral,
         ManagedVariableMutationState mutations)
     {
+        bool visualBasicNothing = language == DebugExpressionLanguage.VisualBasic && sourceIsContextualLiteral &&
+            source is { HasScalar: true, Scalar: null, RuntimeValueReference: <= 0 };
+        if (source.IsContextualDefault || visualBasicNothing)
+        {
+            AssignManagedDefault(destination, mutations);
+            return;
+        }
+
         if (ManagedRuntimeValueIdentity.GetElementType(destination) == 0x11)
         {
             if (source.RuntimeValueReference <= 0)
@@ -146,5 +154,29 @@ internal sealed partial class CorDebugDebuggee
     {
         mutations.Advance();
         RetireResultsViewSnapshot();
+    }
+
+    private void AssignManagedDefault(nint destination, ManagedVariableMutationState mutations)
+    {
+        uint elementType = ManagedRuntimeValueIdentity.GetElementType(destination);
+        if (elementType is 0x0e or 0x12 or 0x14 or 0x1c or 0x1d)
+        {
+            nint reference = ComAbi.QueryInterface(destination, ICorDebugReferenceValueAbi.InterfaceId);
+            try
+            {
+                AssignManagedReference(destination, reference,
+                    ManagedExpressionValueFactory.FromScalar(value: null, "object"), mutations);
+            }
+            finally
+            {
+                _ = ComAbi.Release(reference);
+            }
+
+            return;
+        }
+
+        using var assignment = ManagedValueTypeAssignment.PrepareDefault(destination);
+        BeginVariableMutation(mutations);
+        assignment.Write();
     }
 }

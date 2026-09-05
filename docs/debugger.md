@@ -389,6 +389,14 @@ destination declaration, and returned expandable values retain the destination's
 physical identity. Array indices are resolved before mutation, so an index that
 depends on the copied value does not redirect the returned result.
 
+C# `default` and Visual Basic `Nothing` reset an assignment destination to its
+default value without running target code. Primitive and struct storage is cleared
+through CoreCLR's original value home, including nullable presence, tuple reference
+fields, and ref-like values such as spans. Object-reference locations become null.
+These writes preserve the stop generation and destination tuple names. C# `null`
+does not acquire Visual Basic's conversion to non-nullable value types, and a C#
+`default` expression without a destination type reports that the type context is missing.
+
 Ref-like struct copies and individual field writes into register-backed structs are
 rejected. Whole register-backed values use the runtime's original value home and
 report its write restrictions. Validation failures occur before snapshot retirement;

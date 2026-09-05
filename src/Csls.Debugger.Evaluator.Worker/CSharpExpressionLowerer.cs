@@ -40,6 +40,8 @@ internal static class CSharpExpressionLowerer
             DebugExpressionNodeKind.Identifier,
             identifier.Identifier.ValueText),
         ThisExpressionSyntax => Node(DebugExpressionNodeKind.This),
+        LiteralExpressionSyntax literal when literal.IsKind(SyntaxKind.DefaultLiteralExpression) =>
+            Node(DebugExpressionNodeKind.DefaultLiteral),
         LiteralExpressionSyntax literal => ExpressionLiteral.Create(literal.Token.Value),
         ParenthesizedExpressionSyntax parenthesized => Lower(parenthesized.Expression),
         CastExpressionSyntax conversion => ConversionNode(

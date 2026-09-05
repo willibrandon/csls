@@ -524,6 +524,19 @@ origins retain the original object rather than the mutable reference slot used t
 reach it. Ref-like copies and field writes into register-backed structs are rejected;
 whole register-backed writes report the runtime's own restrictions.
 
+C# default literals have an explicit expression-plan node and remain untyped until
+assignment supplies the actual runtime storage type. They never become string
+literals or trigger string materialization. A default node has no text, type name,
+operator, or children. Untyped standalone evaluation fails with a type-context
+diagnostic. Visual Basic Nothing uses its language-defined contextual assignment
+conversion; this rule does not apply to C# null or to typed null expressions.
+Primitive and struct defaults prepare a complete zero-initialized payload, bounded
+by the same 1 MiB limit, before advancing the mutation revision and invoking the
+original generic value setter. Reference defaults use the reference setter.
+Default initialization does not copy references from another storage lifetime, so
+it can clear ref-like values while whole-value ref-like copies remain rejected.
+Managed interior pointers and native pointer destinations remain unwritable.
+
 Values that require target allocation or execution use the guarded evaluator. Strings
 are allocated with `ICorDebugEval2.NewStringWithLength`; explicitly qualified calls and
 object construction reuse the ordinary function-evaluation binder. The result is held

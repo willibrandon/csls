@@ -10,6 +10,14 @@ namespace Csls.Debugger;
 internal static class ManagedExpressionValueFactory
 {
     /// <summary>
+    /// Preserves an untyped default until a destination supplies its exact runtime type.
+    /// </summary>
+    internal static ManagedExpressionValue FromContextualDefault() => new(
+        new DebugVariableInfo("$result", "default", Type: "default", VariablesReference: 0,
+            MemoryReference: null, EvaluateName: null),
+        Scalar: null, HasScalar: false, Type: "default", IsContextualDefault: true);
+
+    /// <summary>
     /// Wraps one runtime variable and decodes its scalar representation when possible.
     /// </summary>
     /// <param name="variable">The runtime-backed debugger variable.</param>

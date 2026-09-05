@@ -58,5 +58,10 @@ public enum DebugExpressionNodeKind
     /// <summary>
     /// Selects one of two values using a Boolean condition.
     /// </summary>
-    Conditional
+    Conditional,
+
+    /// <summary>
+    /// Produces the default value of a type supplied by the surrounding expression context.
+    /// </summary>
+    DefaultLiteral
 }

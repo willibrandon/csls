@@ -6,7 +6,7 @@ using System.Reflection.PortableExecutable;
 namespace Csls.Debugger;
 
 /// <summary>
-/// Prepares an exact bounded value-type copy before mutating its original runtime storage.
+/// Prepares a bounded value copy or default before mutating its original runtime storage.
 /// </summary>
 internal sealed class ManagedValueTypeAssignment : IDisposable
 {
@@ -18,6 +18,43 @@ internal sealed class ManagedValueTypeAssignment : IDisposable
     {
         _destination = destination;
         _payload = payload;
+    }
+
+    /// <summary>
+    /// Prepares zero-initialized primitive or struct storage without copying references from another scope.
+    /// </summary>
+    internal static ManagedValueTypeAssignment PrepareDefault(nint destination)
+    {
+        uint elementType = ManagedRuntimeValueIdentity.GetElementType(destination);
+        if (elementType is not (>= 0x02 and <= 0x0d or 0x11 or 0x18 or 0x19))
+        {
+            throw new InvalidOperationException(
+                "Default assignment requires primitive, value-type, or object-reference storage; " +
+                "direct writes to managed by-reference and native pointer locations are not supported.");
+        }
+
+        uint size = GetSize(destination);
+        if (size is 0 or > MaximumCopyBytes)
+        {
+            throw new InvalidOperationException(
+                $"Default assignment requires a runtime size between 1 and {MaximumCopyBytes} bytes.");
+        }
+
+        byte[] payload = new byte[checked((int)size)];
+        nint generic = ComAbi.QueryInterface(destination, ICorDebugGenericValueAbi.InterfaceId);
+        try
+        {
+            var prepared = new ManagedValueTypeAssignment(generic, payload);
+            generic = 0;
+            return prepared;
+        }
+        finally
+        {
+            if (generic != 0)
+            {
+                _ = ComAbi.Release(generic);
+            }
+        }
     }
 
     /// <summary>

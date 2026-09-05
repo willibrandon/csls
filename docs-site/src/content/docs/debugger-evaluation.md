@@ -97,6 +97,14 @@ nullable presence and managed reference fields, and are limited to 1 MiB. Tuple 
 come from the destination declaration. Returned expandable values retain the original
 destination storage, with array indices evaluated before the write.
 
+A C# `default` literal or Visual Basic `Nothing` can be assigned directly to reset
+the destination to its default value. Primitive and struct storage is cleared through
+CoreCLR's original value home, including nullable presence and managed reference
+fields. Object references become null. Ref-like values such as spans can be cleared
+without copying references from another scope. These writes preserve the stop
+generation and destination tuple names. C# `null` remains distinct from Visual
+Basic's `Nothing` conversion to non-nullable value types.
+
 Ref-like copies and member writes into register-backed structs are rejected. Whole
 register-backed values use the runtime's write operation and report its restrictions.
 Validation failures preserve existing Results View snapshots; an attempted runtime
@@ -190,3 +198,7 @@ Object and collection initializers, general property expressions, user-defined o
 and conversions, object IDs, and automatic `ToString` calls are not advertised.
 Debugger proxy properties and Results View use the explicit presentation policy
 described above; ordinary expression inspection remains side-effect-free.
+
+The untyped C# `default` literal requires an assignment destination. Evaluating it
+alone reports a missing type context. Typed `default(T)` expressions and full
+target-type inference remain outside the supported subset.
