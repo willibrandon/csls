@@ -1056,16 +1056,20 @@ jobs:
         with:
           persist-credentials: false
 
+  vscode-test-assets:
+    uses: ./.github/workflows/vscode-test-assets.yml
+
   vscode-tests:
     name: VS Code tests (${{ matrix.group }})
     runs-on: ubuntu-latest
     timeout-minutes: 5
-    if: ${{ !cancelled() && needs.graphical-prerequisite-app.result == 'success' && needs.test-binaries.result == 'success' && needs.vscode-web-extension.result == 'success' }}
+    if: ${{ !cancelled() && needs.graphical-prerequisite-app.result == 'success' && needs.test-binaries.result == 'success' && needs.vscode-web-extension.result == 'success' && needs.vscode-test-assets.result == 'success' }}
     needs:
       - graphical-prerequisite-app
       - browser-prerequisite-packages
       - test-binaries
       - vscode-web-extension
+      - vscode-test-assets
     env:
       CSLS_RUN_VSCODE_REMOTE_TESTS: ${{ matrix.remote }}
       CSLS_RUN_VSCODE_WEB_TESTS: ${{ matrix.web }}
@@ -1075,31 +1079,15 @@ jobs:
       matrix:
         include:
           - group: desktop
-            cache_key: desktop
-            save_cache: true
             filter: FullyQualifiedName=Csls.Tests.VsCodeLanguageServerTests.VsCodeDesktopHostProvidesCSharpLanguageFeatures|FullyQualifiedName=Csls.Tests.VsCodeLanguageServerTests.VsCodeHostEnablesSemanticHighlightingWithoutThemeOptIn|FullyQualifiedName=Csls.Tests.VsCodeLanguageServerTests.VsCodeHostStopsAutomaticTestDiscoveryProcessesOnShutdown|FullyQualifiedName=Csls.Tests.VsCodeLanguageServerTests.VsCodeVariablesViewResolvesAndPagesResultsView|TestCategory=VsCodeOracle
             graphical_arguments: --without-clipboard --without-tree-sitter --without-vulkan
             remote: false
             web: false
-            vscode_arguments: ''
-            cache_paths: |
-              artifacts/tools/vscode
-              artifacts/tools/vscode-dotnet-runtime
-              artifacts/tools/vscode-csharp
-              artifacts/tools/vscode-csdevkit
           - group: remote
-            cache_key: remote
-            save_cache: true
             filter: FullyQualifiedName~Csls.Tests.VsCodeLanguageServerTests.VsCodeRemoteHost
             graphical_arguments: --without-clipboard --without-tree-sitter --without-vulkan
             remote: true
             web: false
-            vscode_arguments: -- --without-dev-kit
-            cache_paths: |
-              artifacts/tools/vscode
-              artifacts/tools/vscode-dotnet-runtime
-              artifacts/tools/vscode-csharp
-              artifacts/tools/vscode-server
           - group: web-chromium
             cache_key: web-chromium
             save_cache: true
@@ -1189,6 +1177,7 @@ jobs:
           fail-on-cache-miss: true
 
       - name: Restore VS Code tools
+        if: matrix.web
         id: vscode-tools-cache
         uses: actions/cache/restore@v6
         with:
@@ -1196,13 +1185,21 @@ jobs:
           key: vscode-tools-${{ matrix.cache_key }}-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/Provision-VsCode.cs', 'scripts/Provision-VsCodeRemoteServer.cs', 'scripts/ScriptSupport.cs', 'tests/vscode/package-lock.json', 'editors/vscode/package-lock.json') }}
 
       - name: Provision VS Code
+        if: matrix.web
         run: >-
           dotnet run --file scripts/Provision-VsCode.cs
           ${{ matrix.vscode_arguments }}
 
-      - name: Provision VS Code remote server
-        if: matrix.remote
-        run: dotnet run --file scripts/Provision-VsCodeRemoteServer.cs
+      - name: Download VS Code test assets
+        if: ${{ !matrix.web }}
+        uses: actions/download-artifact@v8
+        with:
+          name: vscode-test-assets-${{ github.run_attempt }}
+          path: artifacts
+
+      - name: Extract VS Code test assets
+        if: ${{ !matrix.web }}
+        run: tar --extract --file artifacts/vscode-test-assets.tar --directory .
 
       - name: Install graphical editor test prerequisites
         run: >-
@@ -1210,7 +1207,7 @@ jobs:
           ${{ matrix.graphical_arguments }}
 
       - name: Save VS Code tools
-        if: matrix.save_cache && steps.vscode-tools-cache.outputs.cache-hit != 'true'
+        if: matrix.web && matrix.save_cache && steps.vscode-tools-cache.outputs.cache-hit != 'true'
         uses: actions/cache/save@v6
         with:
           path: ${{ matrix.cache_paths }}
@@ -1223,6 +1220,16 @@ jobs:
           --filter "${{ matrix.filter }}"
           --minimum-expected-tests ${{ matrix.group == 'desktop' && 4 || matrix.group == 'remote' && 2 || 1 }}
           --output Detailed
+          --report-trx
+          --results-directory artifacts/test-results
+
+      - name: Preserve VS Code test results
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: vscode-test-results-${{ matrix.group }}-${{ github.run_attempt }}
+          path: artifacts/test-results
+          if-no-files-found: warn
 
   legacy-build-host-tests:
     name: Legacy build host tests
