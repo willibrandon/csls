@@ -259,7 +259,14 @@ internal sealed partial class DapSession : IDebuggerSessionObserver, IAsyncDispo
             return;
         }
 
-        if (requestId is int activeSequence &&
+        if (_state == DapSessionState.Configuring &&
+            _pendingTargetRequest is Request targetRequest && requestId == targetRequest.Seq)
+        {
+            ClearPendingTarget();
+            _state = DapSessionState.Initialized;
+            await WriteRequestFailureAsync(targetRequest, "cancelled", cancellationToken).ConfigureAwait(false);
+        }
+        else if (requestId is int activeSequence &&
             (activeSequence == _cancelableRequestSequence || activeSequence == _pendingTargetRequest?.Seq) &&
             _cancelableRequestCancellation is not null)
         {
