@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Text.Json;
 
@@ -9,6 +10,47 @@ namespace Csls.Debugger.Tests;
 public sealed partial class DapSessionTests
 {
     /// <summary>
+    /// Confirms that the overflow fixture reaches the runtime's fatal overflow path without a debugger.
+    /// </summary>
+    [TestMethod]
+    [TestCategory("DebuggerStress")]
+    [Timeout(30000, CooperativeCancellation = true)]
+    public async Task StackOverflowFixtureReportsRuntimeFailureWithoutDebugger()
+    {
+        string directory = Path.Join(Path.GetTempPath(), $"csls-stack-overflow-baseline-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(directory);
+        string dumpPath = Path.Join(directory, "target.dmp");
+        try
+        {
+            var startInfo = new ProcessStartInfo(Environment.GetEnvironmentVariable("DOTNET_HOST_PATH") ?? "dotnet")
+            {
+                WorkingDirectory = directory
+            };
+            startInfo.ArgumentList.Add(ResolveTestProcessHost());
+            startInfo.ArgumentList.Add("--debugger-stack-overflow-fixture");
+            foreach ((string name, string value) in CreateStackOverflowEnvironment(dumpPath))
+            {
+                startInfo.Environment[name] = value;
+            }
+
+            (int exitCode, string output, string error) = await DebuggerTestProcess.RunAsync(startInfo,
+                TestContext.CancellationToken).ConfigureAwait(false);
+            Assert.AreNotEqual(0, exitCode);
+            Assert.Contains("Stack overflow", error, StringComparison.OrdinalIgnoreCase,
+                $"The fixture exited with {exitCode}. stdout: {output}; stderr: {error}");
+        }
+        catch
+        {
+            RetainStackOverflowDump(dumpPath);
+            throw;
+        }
+        finally
+        {
+            await DebuggerTestDirectoryReleaseWaiter.DeleteAsync(directory, TimeSpan.FromSeconds(10)).ConfigureAwait(false);
+        }
+    }
+
+    /// <summary>
     /// Reports one failed target exit and termination while keeping adapter stdout valid DAP.
     /// </summary>
     [TestMethod]
@@ -18,6 +60,7 @@ public sealed partial class DapSessionTests
     {
         string directory = Path.Join(Path.GetTempPath(), $"csls-debugger-stack-overflow-{Guid.NewGuid():N}");
         Directory.CreateDirectory(directory);
+        string dumpPath = Path.Join(directory, "target.dmp");
         try
         {
             DapTestClient client = await DapTestClient.CreateAsync(TestContext.CancellationToken).ConfigureAwait(false);
@@ -38,8 +81,10 @@ public sealed partial class DapSessionTests
                 writer.WriteStringValue("--debugger-stack-overflow-fixture");
                 writer.WriteEndArray();
                 writer.WriteStartObject("env");
-                writer.WriteString("DOTNET_DbgEnableMiniDump", "0");
-                writer.WriteString("COMPlus_DbgEnableMiniDump", "0");
+                foreach ((string name, string value) in CreateStackOverflowEnvironment(dumpPath))
+                {
+                    writer.WriteString(name, value);
+                }
                 writer.WriteEndObject();
                 writer.WriteEndObject();
             }, TestContext.CancellationToken).ConfigureAwait(false);
@@ -134,9 +179,46 @@ public sealed partial class DapSessionTests
                 }
             }
         }
+        catch
+        {
+            RetainStackOverflowDump(dumpPath);
+            throw;
+        }
         finally
         {
             await DebuggerTestDirectoryReleaseWaiter.DeleteAsync(directory, TimeSpan.FromSeconds(10)).ConfigureAwait(false);
+        }
+    }
+
+    private static Dictionary<string, string> CreateStackOverflowEnvironment(string dumpPath)
+    {
+        string enableDump = OperatingSystem.IsWindows() ? "1" : "0";
+        return new Dictionary<string, string>
+        {
+            ["DOTNET_DbgEnableMiniDump"] = enableDump,
+            ["COMPlus_DbgEnableMiniDump"] = enableDump,
+            ["DOTNET_DbgMiniDumpType"] = "1",
+            ["DOTNET_DbgMiniDumpName"] = dumpPath
+        };
+    }
+
+    private void RetainStackOverflowDump(string path)
+    {
+        try
+        {
+            if (File.Exists(path))
+            {
+                string directory = Path.Join(DebuggerTestEnvironment.FindRepositoryRoot(), "artifacts", "test-results");
+                Directory.CreateDirectory(directory);
+                string artifact = Path.Join(directory, $"stack-overflow-{Guid.NewGuid():N}.dmp");
+                File.Move(path, artifact);
+                TestContext.AddResultFile(artifact);
+                TestContext.WriteLine($"Target crash dump retained at {artifact}.");
+            }
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            TestContext.WriteLine($"Target crash dump retention: {exception.Message}");
         }
     }
 }

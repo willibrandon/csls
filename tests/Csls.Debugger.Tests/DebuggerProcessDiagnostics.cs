@@ -1,3 +1,4 @@
+using Microsoft.Diagnostics.NETCore.Client;
 using System.ComponentModel;
 using System.Diagnostics;
 using System.Globalization;
@@ -5,7 +6,7 @@ using System.Globalization;
 namespace Csls.Debugger.Tests;
 
 /// <summary>
-/// Captures bounded native stacks from a failed test's macOS debugger process tree.
+/// Captures bounded native and managed stacks from a failed test's macOS debugger process tree.
 /// </summary>
 internal static class DebuggerProcessDiagnostics
 {
@@ -79,8 +80,11 @@ internal static class DebuggerProcessDiagnostics
             Directory.CreateDirectory(directory);
             testContext.WriteLine($"Capturing owned process stacks: {string.Join(", ", processes)}.");
             await CaptureWaitStatesAsync(processes, testContext, cancellation.Token).ConfigureAwait(false);
-            await Task.WhenAll(processes.Select(processId => CaptureProcessAsync(
-                processId, directory, testContext, cancellation.Token))).ConfigureAwait(false);
+            await Task.WhenAll(processes.SelectMany(processId => new[]
+            {
+                CaptureProcessAsync(processId, directory, testContext, cancellation.Token),
+                CaptureManagedProcessAsync(processId, directory, testContext, cancellation.Token)
+            })).ConfigureAwait(false);
         }
         catch (Exception exception) when (exception is
             OperationCanceledException or IOException or UnauthorizedAccessException or Win32Exception)
@@ -100,6 +104,30 @@ internal static class DebuggerProcessDiagnostics
         (int exitCode, string output, string error) = await DebuggerTestProcess.RunAsync(
             startInfo, cancellationToken).ConfigureAwait(false);
         testContext.WriteLine($"Owned process wait states (exit {exitCode}): {output}{error}");
+    }
+
+    private static async Task CaptureManagedProcessAsync(
+        int processId, string directory, TestContext testContext, CancellationToken cancellationToken)
+    {
+        string path = Path.Join(directory, $"process-{processId}.nettrace");
+        testContext.WriteLine($"Capturing managed stacks for process {processId} into {path}.");
+        try
+        {
+            await DebuggerManagedStackCapture.CaptureAsync(processId, path, cancellationToken).ConfigureAwait(false);
+            testContext.WriteLine($"Managed stack capture completed for process {processId}.");
+        }
+        catch (Exception exception) when (exception is OperationCanceledException or IOException or
+            UnauthorizedAccessException or DiagnosticsClientException or ObjectDisposedException)
+        {
+            testContext.WriteLine($"Managed stack capture for {processId}: {exception.Message}");
+        }
+        finally
+        {
+            if (File.Exists(path))
+            {
+                testContext.AddResultFile(path);
+            }
+        }
     }
 
     private static async Task CaptureProcessAsync(
