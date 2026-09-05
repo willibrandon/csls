@@ -112,7 +112,9 @@ public sealed partial class DapSessionTests
                         Assert.IsTrue(exited, "The target exit must precede termination.");
                         Assert.IsTrue(launched);
                         Assert.IsTrue(configured);
-                        Assert.IsTrue(overflowStopped);
+                        Assert.IsTrue(overflowStopped,
+                            $"The target terminated before an exception stop. Recent protocol messages:{Environment.NewLine}" +
+                            $"{client.ProtocolTranscript}{Environment.NewLine}Adapter diagnostics: {client.Diagnostics}");
                         Assert.IsTrue(continued);
                         Assert.IsTrue(continuationAcknowledged);
                         Assert.IsTrue(overflowReported, "The real runtime must report stack exhaustion.");
