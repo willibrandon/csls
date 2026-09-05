@@ -78,6 +78,7 @@ internal static class DebuggerProcessDiagnostics
                 "artifacts", "test-results", $"native-stacks-{hostProcessId}-{Guid.NewGuid():N}");
             Directory.CreateDirectory(directory);
             testContext.WriteLine($"Capturing owned process stacks: {string.Join(", ", processes)}.");
+            await CaptureWaitStatesAsync(processes, testContext, cancellation.Token).ConfigureAwait(false);
             await Task.WhenAll(processes.Select(processId => CaptureProcessAsync(
                 processId, directory, testContext, cancellation.Token))).ConfigureAwait(false);
         }
@@ -86,6 +87,19 @@ internal static class DebuggerProcessDiagnostics
         {
             testContext.WriteLine($"Native stack capture: {exception.Message}");
         }
+    }
+
+    private static async Task CaptureWaitStatesAsync(
+        List<int> processes, TestContext testContext, CancellationToken cancellationToken)
+    {
+        var startInfo = new ProcessStartInfo("/bin/ps");
+        startInfo.ArgumentList.Add("-p");
+        startInfo.ArgumentList.Add(string.Join(",", processes));
+        startInfo.ArgumentList.Add("-o");
+        startInfo.ArgumentList.Add("pid,ppid,state,wchan,comm");
+        (int exitCode, string output, string error) = await DebuggerTestProcess.RunAsync(
+            startInfo, cancellationToken).ConfigureAwait(false);
+        testContext.WriteLine($"Owned process wait states (exit {exitCode}): {output}{error}");
     }
 
     private static async Task CaptureProcessAsync(

@@ -334,7 +334,7 @@ public sealed partial class DapSessionTests
         string command,
         bool success)
     {
-        Assert.AreEqual("response", message.GetProperty("type").GetString());
+        Assert.AreEqual("response", message.GetProperty("type").GetString(), message.ToString());
         Assert.AreEqual(requestSequence, message.GetProperty("request_seq").GetInt32());
         Assert.AreEqual(command, message.GetProperty("command").GetString());
         Assert.AreEqual(
@@ -345,8 +345,8 @@ public sealed partial class DapSessionTests
 
     private static void AssertEvent(JsonElement message, string eventName)
     {
-        Assert.AreEqual("event", message.GetProperty("type").GetString());
-        Assert.AreEqual(eventName, message.GetProperty("event").GetString());
+        Assert.AreEqual("event", message.GetProperty("type").GetString(), message.ToString());
+        Assert.AreEqual(eventName, message.GetProperty("event").GetString(), message.ToString());
     }
 
     private static string ResolveTestProcessHost()
