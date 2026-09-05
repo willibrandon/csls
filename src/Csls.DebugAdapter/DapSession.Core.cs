@@ -15,6 +15,7 @@ internal sealed partial class DapSession : IDebuggerSessionObserver, IAsyncDispo
     private readonly DapRequestQueue _pendingRequests = new();
     private readonly Func<string, Task> _writeErrorAsync;
     private readonly CancellationTokenSource _lifetime = new();
+    private readonly TaskCompletionSource _targetCompletion = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly SemaphoreSlim _stopEventGate = new(1, 1);
     private readonly DebuggerSession _engineSession;
     private DapSessionState _state = DapSessionState.Created;
@@ -71,6 +72,7 @@ internal sealed partial class DapSession : IDebuggerSessionObserver, IAsyncDispo
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(
             cancellationToken,
             _lifetime.Token);
+        using var readCancellation = CancellationTokenSource.CreateLinkedTokenSource(linked.Token);
         Task<Request?>? pendingRead = null;
         try
         {
@@ -84,15 +86,26 @@ internal sealed partial class DapSession : IDebuggerSessionObserver, IAsyncDispo
                 Request? request;
                 if (_cancelableRequest is not null || !_pendingRequests.TryDequeue(out request))
                 {
-                    pendingRead ??= _reader.ReadRequestAsync(linked.Token).AsTask();
-                    if (_cancelableRequest is not null)
+                    pendingRead ??= _reader.ReadRequestAsync(readCancellation.Token).AsTask();
+                    if (_cancelableRequest is null)
                     {
-                        _ = await Task.WhenAny(pendingRead, _cancelableRequest)
+                        _ = await Task.WhenAny(pendingRead, _targetCompletion.Task)
                             .WaitAsync(linked.Token).ConfigureAwait(false);
-                        if (_cancelableRequest.IsCompleted)
-                        {
-                            continue;
-                        }
+                    }
+                    else
+                    {
+                        _ = await Task.WhenAny(pendingRead, _cancelableRequest, _targetCompletion.Task)
+                            .WaitAsync(linked.Token).ConfigureAwait(false);
+                    }
+
+                    if (_targetCompletion.Task.IsCompleted)
+                    {
+                        break;
+                    }
+
+                    if (_cancelableRequest is { IsCompleted: true })
+                    {
+                        continue;
                     }
 
                     Task<Request?> completedRead = pendingRead;
@@ -137,6 +150,23 @@ internal sealed partial class DapSession : IDebuggerSessionObserver, IAsyncDispo
                 await HandleRequestAsync(request, linked.Token).ConfigureAwait(false);
             }
 
+            if (_state is DapSessionState.Terminated or DapSessionState.Faulted)
+            {
+                // Target exit stops input without canceling responses already owed to the client.
+                await readCancellation.CancelAsync().ConfigureAwait(false);
+                await CompleteTerminatedRequestsAsync(linked.Token).ConfigureAwait(false);
+                if (pendingRead is not null)
+                {
+                    Request? unread = await SettleProtocolReadAsync(pendingRead, readCancellation.Token)
+                        .ConfigureAwait(false);
+                    pendingRead = null;
+                    if (unread is not null)
+                    {
+                        await WriteStateFailureAsync(unread, linked.Token).ConfigureAwait(false);
+                    }
+                }
+            }
+
             return _state == DapSessionState.Faulted ? 1 : 0;
         }
         catch (OperationCanceledException) when (linked.IsCancellationRequested)
@@ -162,7 +192,7 @@ internal sealed partial class DapSession : IDebuggerSessionObserver, IAsyncDispo
 
                 if (pendingRead is not null)
                 {
-                    await SettleProtocolReadAsync(pendingRead, linked.Token).ConfigureAwait(false);
+                    _ = await SettleProtocolReadAsync(pendingRead, linked.Token).ConfigureAwait(false);
                 }
             }
             finally
@@ -172,18 +202,31 @@ internal sealed partial class DapSession : IDebuggerSessionObserver, IAsyncDispo
         }
     }
 
-    private static async Task SettleProtocolReadAsync(
+    private async Task CompleteTerminatedRequestsAsync(CancellationToken cancellationToken)
+    {
+        if (_cancelableRequest is not null)
+        {
+            await CompleteCancelableRequestAsync().ConfigureAwait(false);
+        }
+
+        while (_pendingRequests.TryDequeue(out Request? request))
+        {
+            await WriteStateFailureAsync(request, cancellationToken).ConfigureAwait(false);
+        }
+    }
+
+    private static async Task<Request?> SettleProtocolReadAsync(
         Task<Request?> pendingRead,
         CancellationToken cancellationToken)
     {
         try
         {
-            _ = await pendingRead.WaitAsync(CancellationToken.None).ConfigureAwait(false);
+            return await pendingRead.WaitAsync(CancellationToken.None).ConfigureAwait(false);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
             // The canceled read is settled before its transport and cancellation source are disposed.
-            return;
+            return null;
         }
     }
 

@@ -195,8 +195,14 @@ public sealed partial class DebuggerSession
         await _actor.InvokeAsync(
             async token =>
             {
-                await _observer.OnExitedAsync(exitCode, token).ConfigureAwait(false);
                 _state = DebugSessionState.Terminated;
+                if (debuggee is CorDebugDebuggee exitedManagedDebuggee)
+                {
+                    exitedManagedDebuggee.FailFunctionEvaluation(new InvalidOperationException(
+                        "The debugger target exited during managed function evaluation."), runtimeAvailable: false);
+                }
+
+                await _observer.OnExitedAsync(exitCode, token).ConfigureAwait(false);
                 await _observer.OnTerminatedAsync(token).ConfigureAwait(false);
             },
             cancellationToken).ConfigureAwait(false);

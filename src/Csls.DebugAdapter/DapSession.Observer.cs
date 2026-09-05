@@ -210,18 +210,11 @@ internal sealed partial class DapSession
             return;
         }
 
-        bool endedWithoutClientRequest;
         await _stopEventGate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
             _targetExited = true;
             bool runtimeFailed = _engineSession.State == DebugSessionState.Faulted;
-            endedWithoutClientRequest = runtimeFailed ||
-                (_state is DapSessionState.Running or DapSessionState.Stopped &&
-                    _deferredStoppedReason is null);
-            _state = runtimeFailed
-                ? DapSessionState.Faulted
-                : DapSessionState.Terminated;
             if (IsProtocolClosed)
             {
                 return;
@@ -231,6 +224,9 @@ internal sealed partial class DapSession
                 "terminated",
                 writeBody: null,
                 cancellationToken).ConfigureAwait(false);
+            _state = runtimeFailed
+                ? DapSessionState.Faulted
+                : DapSessionState.Terminated;
         }
         catch (Exception exception) when (IsExpectedClosedTransportException(exception))
         {
@@ -241,10 +237,7 @@ internal sealed partial class DapSession
             _stopEventGate.Release();
         }
 
-        if (endedWithoutClientRequest)
-        {
-            await _lifetime.CancelAsync().ConfigureAwait(false);
-        }
+        _ = _targetCompletion.TrySetResult();
     }
 
     private async ValueTask CompleteRestartAsync(

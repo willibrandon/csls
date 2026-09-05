@@ -77,6 +77,11 @@ internal sealed partial class DapTestClient : IAsyncDisposable
         "The DAP test client has not been initialized.")).Id;
 
     /// <summary>
+    /// Gets the current target identifier reported by the adapter's process event.
+    /// </summary>
+    internal int? TargetProcessId { get; private set; }
+
+    /// <summary>
     /// Sends one framed DAP request through the client-to-adapter pipe.
     /// </summary>
     /// <param name="command">The request command.</param>
@@ -245,6 +250,12 @@ internal sealed partial class DapTestClient : IAsyncDisposable
             Assert.IsGreaterThan(_receivedSequence, sequence,
                 "DAP sequence numbers must increase in transport order.");
             _receivedSequence = sequence;
+            if (message.RootElement.GetProperty("type").GetString() == "event" &&
+                message.RootElement.GetProperty("event").GetString() == "process")
+            {
+                TargetProcessId = message.RootElement.GetProperty("body").GetProperty("systemProcessId").GetInt32();
+            }
+
             return message;
         }
         catch
