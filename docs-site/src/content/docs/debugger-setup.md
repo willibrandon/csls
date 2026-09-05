@@ -53,8 +53,8 @@ entry is:
 
 `cwd` defaults to the directory containing `program`. An environment property with a
 string value adds or replaces that variable; a `null` value removes it from the target
-environment. `runtimeHost` may identify an existing absolute host executable when the
-normal `dotnet` resolution is unsuitable.
+environment. Set `runtimeHost` to an absolute host executable path to choose the
+`dotnet` host that runs the application.
 
 Set `noDebug` to `true` to run the target as an ordinary process.
 
