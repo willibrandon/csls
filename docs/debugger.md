@@ -24,13 +24,16 @@ Use `--cwd <directory>` to choose the target working directory. Use
 Arguments after `--` are passed to the target without interpretation.
 
 The terminal opens after the initial source breakpoint stops the process. Its
-source pane follows the selected managed frame; the stack pane shows managed
+source pane follows the selected managed frame; the threads pane selects the
+inspected managed thread; the stack pane shows managed
 callers; and the variables pane reads arguments and lexically active locals from
 the current stop generation. A bounded auxiliary pane cycles through retained target
 output, managed modules with symbol policy, authoritative breakpoints, and the current
 managed exception. Watches evaluate without target-code execution in the selected frame.
 F1 opens a searchable command palette for watch, execution, restart, terminate, and
 detach operations.
+
+Each terminal instance opens one session. It does not provide a sessions browser.
 
 The execution keys are:
 
@@ -78,6 +81,16 @@ csls debugger dap
 DAP uses standard input and output exclusively for protocol messages. Diagnostic
 text is written to standard error. A concrete `program` is required; project,
 launch-profile, and test discovery belongs to the editor or calling tool.
+
+Launch supports `program`, `cwd`, `args`, `env`, `noDebug`, `runtimeHost`,
+`sourceFileMap`, `sourceLinkOptions`, `symbolOptions`, `justMyCode`,
+`enableStepFiltering`, `suppressJITOptimizations`, and `enableHotReload`. Attach
+requires a positive integer `processId`, with source, symbol, and stepping options.
+`envFile`, `console`, `requireExactSource`, `expressionEvaluationOptions`,
+`terminateChildProcesses`, and `pipeTransport` have no implemented behavior.
+`stopAtEntry: true` is rejected. Use a source breakpoint to select an initial stop.
+DAP does not open dumps with `dumpPath`; use MCP `debug_dump_open` for the available
+read-only dump inspection.
 
 The adapter advertises the standard DAP `restart` request for launch and attach.
 Restart accepts the client's latest nested launch or attach arguments, retains
@@ -394,7 +407,9 @@ materialized with `ICorDebugEval2.NewStringWithLength`; explicitly qualified met
 and object-construction results use the same guarded function-evaluation lifecycle as
 DAP `evaluate`. These paths reacquire and validate the selected frame before writing,
 return the replacement stop generation, and invalidate both stacks and variables.
-Implicit boxing, explicit reference casts, and user-defined conversions are not supported.
+Implicit boxing and user-defined conversions are not supported. Explicit reference
+casts use validated loaded type identities and preserve the selected declaration
+when binding the assignment.
 
 Reference writes use the declared source and destination types, including typed nulls,
 generic arguments, and assembly load context. Identity, base-class, implemented-interface,

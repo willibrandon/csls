@@ -49,7 +49,8 @@ state, COM lifetimes, symbols, sources, breakpoints, stepping, and values.
 `Csls.Debugger.Control` provides the private session RPC client and server.
 `Csls.Debugger.Evaluation` owns evaluator process supervision and bounded private
 RPC. The managed `Csls.Debugger.Evaluator.Worker` owns compiler services that are
-not NativeAOT-safe; dump inspection will join that managed-process boundary.
+not NativeAOT-safe. `Csls.Debugger.Dump.Worker` is a separate supervised managed
+process that owns read-only ClrMD dump inspection.
 
 `csls debugger dap` runs one session over standard input/output. An internal host
 mode registers a discoverable local session and exposes an owner-only Unix-domain
@@ -330,13 +331,21 @@ An absent, incomplete, dump-inapplicable, or platform-inapplicable feature is no
 advertised. Unknown requests receive a normal unsuccessful response and do not
 fault the session. Invalid sequencing receives a stable machine-readable error.
 
-Launch configuration uses established .NET names: `program`, `cwd`, `args`,
-`env`, `envFile`, `stopAtEntry`, `console`, `sourceFileMap`, `justMyCode`,
-`requireExactSource`, `enableStepFiltering`, `suppressJITOptimizations`,
-`enableHotReload`, `symbolOptions`, `expressionEvaluationOptions`, `terminateChildProcesses`,
-`processId`, and `pipeTransport`. Editors and the CLI resolve projects, launch
-profiles, and tests to a concrete program before invoking DAP. The adapter does not
-run builds or interpret arbitrary shell text.
+The adapter accepts launch options `program`, `cwd`, `args`, `env`, `noDebug`,
+`runtimeHost`, `sourceFileMap`, `sourceLinkOptions`, `symbolOptions`, `justMyCode`,
+`enableStepFiltering`, `suppressJITOptimizations`, and `enableHotReload`. Live attach
+requires `processId` and accepts the same source, symbol, and stepping options.
+Editors and the CLI resolve projects, launch profiles, and tests to a concrete
+program before invoking DAP. The adapter does not run builds or interpret
+arbitrary shell text.
+
+The required configuration additions are `envFile`, `stopAtEntry`, `console`,
+`requireExactSource`, `expressionEvaluationOptions`, `terminateChildProcesses`,
+and `pipeTransport`. These names specify intended .NET compatibility, not
+implemented options. In particular, `stopAtEntry: true` is explicitly rejected;
+the other additions have no implemented behavior. Completion requires request
+validation, runtime behavior, client schemas, documentation, and real-process
+tests for each option. Merely accepting a JSON property does not implement it.
 
 DAP frame and variable IDs are compact session-local handles, not process pointers.
 Paging is applied before expensive expansion. Memory references are opaque,
@@ -427,8 +436,11 @@ Source resolution order is:
 4. Checksum-valid Source Link content.
 
 Raw and CRLF-normalized checksum validation is supported where compiler/source
-mapping behavior requires it. `requireExactSource` rejects mismatches; otherwise a
-mismatch is visibly marked and never cached as authoritative.
+mapping behavior requires it. Source resolution requires a matching checksum;
+there is no implemented `requireExactSource` switch. The required configurable
+policy must reject mismatches when enabled and visibly identify unverified source
+when disabled, without caching that source as authoritative or silently rebinding
+breakpoints against different content.
 
 Symbol and source clients allow HTTPS by default, validate redirect destinations,
 bound redirects, response sizes, concurrency, and total cache size, write through
@@ -781,9 +793,15 @@ delta emission and active-statement mapping.
 
 ## Dumps, editors, terminal, and MCP
 
-A dump session uses the same session and value contracts but a read-only ClrMD
-backend in the managed worker. `dumpPath` is mutually exclusive with live
-`processId`. The initial backend exposes bounded managed thread, stack, and module
+A dump session uses private debugger control contracts and a read-only ClrMD
+backend in its supervised managed worker. MCP `debug_dump_open` opens these
+sessions through `debugger/openDump`; DAP does not accept `dumpPath` or open dumps.
+The required DAP dump integration must accept an absolute `dumpPath` mutually
+exclusive with live `processId`, use the same supervised backend, and advertise
+only read-only dump capabilities. It requires independent real-dump DAP and editor
+tests; the MCP tests do not establish that integration.
+
+The initial backend exposes bounded managed thread, stack, and module
 inspection without downloading symbols. Continue, pause, stepping, breakpoints,
 writes, evaluation, scopes, variables, exceptions, memory, source, disassembly, and
 Hot Reload return typed `notSupported` errors until their dump-specific semantics
@@ -795,9 +813,12 @@ binary through its debug-adapter manifest, supplies a JSON configuration schema,
 and translates its generic scenarios to the conventional .NET configuration.
 Neither integration downloads or discovers another debugger.
 
-The Hex1b TUI is a client of the private debugger RPC. It presents sessions,
-threads, frames, source, breakpoints, variables, watches, modules, exceptions,
-output, and a command palette without embedding engine logic.
+The Hex1b TUI is a client of the private debugger RPC. A single-session view has
+dedicated source, threads, stack, and arguments/locals panes. Its auxiliary pane
+cycles through output, modules, breakpoints, watches, and exceptions, with a
+separate command palette. It has no sessions view. A session browser and explicit
+session switching remain required additions, with ownership enforced by the
+control service and no engine logic embedded in the UI.
 
 MCP uses private debugger RPC rather than translating through DAP. Pure expression
 evaluation is the read-only `debug_evaluate` inspection tool, and physical variable
@@ -928,21 +949,30 @@ Every capability row records three forms of evidence:
 Contract plus observed runtime behavior wins when sources disagree. The decision
 log records the discrepancy and the test that locks the behavior.
 
-The real-process matrix covers C#, VB, and F# in Debug and Release; framework-
+The required real-process matrix includes C#, VB, and F# in Debug and Release; framework-
 dependent, self-contained, single-file, and ReadyToRun apps; portable, embedded,
 missing, corrupt, stale, server, Source Link, in-memory, and Windows symbols;
 async, iterator, closure, generic, exception, optimized, multithreaded, module
-reload, Hot Reload, cancellation, and shutdown scenarios.
+reload, Hot Reload, cancellation, and shutdown scenarios. Async acceptance must
+separately exercise Task and ValueTask suspension, `await foreach`, async
+step-out, finally-block breakpoints, cancellation, exceptions, and competing
+state-machine instances. Task-based `ConfigureAwait(false)` coverage alone does
+not satisfy this requirement.
 
 Protocol tests use real duplex transports and spawned adapters. Security tests pass
 hostile input through the real parser or file/network boundary. Editor tests launch
-the packaged adapter. Stress tests repeatedly launch and attach, force callback and
-output storms, kill clients/workers/targets, and verify process, thread, handle,
-temporary-file, and COM-reference cleanup.
+the packaged adapter. Stress acceptance requires repeated launch and attach,
+callback and output storms, client/worker/target death, and assertions on process,
+thread, handle, temporary-file, and COM-reference cleanup. Retained frame-binding
+and stack-walk interface assertions cover those specific ownership paths; they
+are not a substitute for whole-session OS-handle and memory-growth tests. Logging
+private-byte measurements without asserting a justified bound is not a leak gate.
 
-Performance baselines measure initialization, launch-to-entry, attach-to-stop,
+Debugger performance baselines must measure initialization, launch-to-entry, attach-to-stop,
 stop-to-stack, locals paging, cold/warm evaluation, breakpoint binding, output
-throughput, resident memory, process count, and published size. Controlled runners
+throughput, resident memory, process count, and published size. This requires
+debugger workloads in the benchmark harness; the existing language-server
+benchmarks do not establish debugger performance. Controlled runners must
 reject unexplained median regressions greater than ten percent. A correctness or
 security improvement may override the gate only when its evidence and cost are
 documented.
@@ -957,6 +987,7 @@ documented.
 | Per-frame language provider | Mixed-language stacks and future .NET languages cannot be modeled by a C# session flag |
 | Direct Portable PDB reader | It is public, cross-platform, efficient, and avoids unnecessary native symbol dependencies |
 | Private RPC for TUI and MCP | DAP is an editor protocol and cannot express session ownership or agent authorization precisely |
+| Separate implemented contracts from required additions | Configuration options, DAP dumps, session browsing, and performance gates require their own implementation and evidence; their inclusion in this design does not establish support |
 | No debugger fallback | The repository is unreleased and the product must have one testable execution path |
 | No F# Hot Reload claim | The current compiler does not expose the required EnC behavior |
 | IL-first instruction debugging | ICorDebug provides portable managed semantics; native/mixed-mode requires a distinct platform backend |

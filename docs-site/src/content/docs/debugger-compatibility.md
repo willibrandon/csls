@@ -14,6 +14,7 @@ description: Understand supported .NET targets, platforms, language behavior, se
 | macOS | x64 and ARM64 NativeAOT packages. Portable PDBs. |
 | Editors | VS Code and Zed through the same standard-input/output DAP host. |
 | Other clients | Any DAP client that negotiates and uses the capabilities returned by `initialize`. |
+| Terminal | A single-session source, threads, stack, variables, and auxiliary view; no sessions browser. |
 | Dumps | Read-only MCP sessions for bounded managed thread, stack, and module inspection. |
 | Hot Reload | Compiler-produced C# and Visual Basic updates on explicitly enabled launch modules. F# debugging is supported, but F# compiler delta emission is not yet claimed. |
 | Evaluation | Side-effect-free inspection, plus explicit method calls and construction of loaded non-generic or closed generic types through guarded target execution. |
@@ -87,11 +88,18 @@ configurations use familiar `program`, `cwd`, `args`, `env`, and `processId` pro
 Keep paths absolute. Move project building, launch-profile expansion, and test selection
 to the editor task that starts debugging.
 
+`envFile`, `console`, `requireExactSource`, `expressionEvaluationOptions`,
+`terminateChildProcesses`, and `pipeTransport` have no implemented behavior.
+`stopAtEntry: true` is rejected; set a source breakpoint for an initial stop instead.
+DAP `attach` requires `processId` and does not open dumps through `dumpPath`.
+The read-only dump workflow is available through MCP `debug_dump_open`.
+
 Replace adapter-specific remote transports with an invocation of `csls debugger dap` in
 the target environment. Replace proprietary debugger path/download settings with the
 installed csls tool and validate it using `csls debugger doctor`. Keep only options
-documented in [setup](../debugger-setup/) and [symbols](../debugger-symbols/); csls rejects
-unknown behavior rather than approximating another adapter's private extension.
+documented in the [DAP reference](../debugger-dap-reference/) and
+[symbols](../debugger-symbols/). An unrecognized JSON property can be ignored by
+the parser; its acceptance does not establish support for that behavior.
 
 ## Startup troubleshooting
 

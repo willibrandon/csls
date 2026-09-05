@@ -27,6 +27,9 @@ modules with symbol policy, authoritative breakpoints, side-effect-free watches,
 the current exception. F1 opens a searchable command palette for watch, execution,
 restart, terminate, and detach operations.
 
+Each terminal instance opens one session. There is no sessions browser or
+in-window session switching.
+
 | Key | Operation |
 | --- | --- |
 | F1 | Open the debugger command palette |
