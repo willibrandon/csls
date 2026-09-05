@@ -194,8 +194,10 @@ internal sealed class RequestActivityState
             }
 
             CompleteCore(status, exception, completedAt, completedTimestamp);
-            return true;
         }
+
+        CompleteRetirement();
+        return true;
     }
 
     /// <summary>
@@ -221,8 +223,10 @@ internal sealed class RequestActivityState
                 exception: null,
                 completedAt,
                 completedTimestamp);
-            return true;
         }
+
+        CompleteRetirement();
+        return true;
     }
 
     /// <summary>
@@ -263,6 +267,11 @@ internal sealed class RequestActivityState
         _status = status;
         _isCancellationRequested |= status == RequestExecutionStatus.Canceled;
         _traceRecord?.Complete(status, exception, completedAt, completedTimestamp);
+    }
+
+    private void CompleteRetirement()
+    {
+        // Linked registration disposal waits for peer callbacks that may inspect request state.
         _cancellationSource.Dispose();
         _retirement?.TrySetResult();
     }

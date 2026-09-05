@@ -594,6 +594,7 @@ public sealed class VsCodeLanguageServerTests
                 .WaitAsync(runTimeout ?? TimeSpan.FromMinutes(2), TestContext.CancellationToken)
                 .ConfigureAwait(false);
             completed = true;
+            Assert.AreEqual(0, runner.ExitCode, "The VS Code feature contract failed; see the captured editor logs.");
         }
         catch (Exception exception)
         {
@@ -635,8 +636,6 @@ public sealed class VsCodeLanguageServerTests
                 }
             }
         }
-
-        Assert.AreEqual(0, runner.ExitCode);
     }
 
     private async Task AssertNoUnexpectedCslsOutputAsync(
