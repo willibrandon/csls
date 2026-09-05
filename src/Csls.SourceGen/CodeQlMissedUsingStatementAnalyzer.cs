@@ -9,24 +9,24 @@ using System.Linq;
 namespace Csls.SourceGen;
 
 /// <summary>
-/// Prevents manual local-resource disposal that CodeQL requires using syntax for.
+/// Prevents manual resource disposal that CodeQL requires using syntax for.
 /// </summary>
 [DiagnosticAnalyzer(LanguageNames.CSharp)]
 public sealed class CodeQlMissedUsingStatementAnalyzer : DiagnosticAnalyzer
 {
     /// <summary>
-    /// Identifies disposable-local cleanup that must use structured ownership.
+    /// Identifies disposable-resource cleanup that must use structured ownership.
     /// </summary>
     public const string DiagnosticId = "CSLS0006";
 
     private static readonly DiagnosticDescriptor s_rule = new(
         DiagnosticId,
         "Use structured disposable ownership",
-        "Disposable local '{0}' is manually disposed in a finally block",
+        "Disposable resource '{0}' is manually disposed in a finally block",
         "Reliability",
         DiagnosticSeverity.Error,
         isEnabledByDefault: true,
-        description: "Disposable locals must not introduce CodeQL cs/missed-using-statement findings.");
+        description: "Disposable resources must not introduce CodeQL cs/missed-using-statement findings.");
 
     /// <inheritdoc />
     public override ImmutableArray<DiagnosticDescriptor> SupportedDiagnostics => [s_rule];
@@ -62,7 +62,8 @@ public sealed class CodeQlMissedUsingStatementAnalyzer : DiagnosticAnalyzer
 
         var member = (MemberAccessExpressionSyntax)invocation.Expression;
         ExpressionSyntax receiver = StripCasts(member.Expression);
-        if (context.SemanticModel.GetSymbolInfo(receiver, context.CancellationToken).Symbol is not ILocalSymbol local ||
+        ISymbol? resource = context.SemanticModel.GetSymbolInfo(receiver, context.CancellationToken).Symbol;
+        if (resource is not (ILocalSymbol or IFieldSymbol) ||
             context.SemanticModel.GetSymbolInfo(invocation, context.CancellationToken).Symbol is not IMethodSymbol method ||
             !IsDisposeMethod(method, context.Compilation))
         {
@@ -72,7 +73,7 @@ public sealed class CodeQlMissedUsingStatementAnalyzer : DiagnosticAnalyzer
         context.ReportDiagnostic(Diagnostic.Create(
             s_rule,
             receiver.GetLocation(),
-            local.Name));
+            resource.Name));
     }
 
     private static bool IsDisposeMethod(IMethodSymbol method, Compilation compilation)

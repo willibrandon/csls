@@ -33,7 +33,7 @@ internal sealed class CorDebugStartupProcessObservation : IAsyncDisposable
     /// <inheritdoc />
     public async ValueTask DisposeAsync()
     {
-        try
+        using (_cancellation)
         {
             await _cancellation.CancelAsync().ConfigureAwait(false);
             try
@@ -44,10 +44,6 @@ internal sealed class CorDebugStartupProcessObservation : IAsyncDisposable
             {
                 Debug.Assert(Completion.IsCompleted);
             }
-        }
-        finally
-        {
-            _cancellation.Dispose();
         }
     }
 

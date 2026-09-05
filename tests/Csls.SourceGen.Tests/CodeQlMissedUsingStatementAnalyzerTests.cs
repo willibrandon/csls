@@ -74,6 +74,64 @@ public sealed class CodeQlMissedUsingStatementAnalyzerTests(TestContext testCont
     }
 
     /// <summary>
+    /// Verifies field-owned cancellation cleanup in an async disposal method uses structured ownership.
+    /// </summary>
+    /// <param name="receiver">The disposable field receiver.</param>
+    [TestMethod]
+    [DataRow("_cancellation")]
+    [DataRow("this._cancellation")]
+    public async Task ReportsFieldDisposalInAsyncFinally(string receiver)
+    {
+        string source = $$"""
+            using System;
+            using System.Threading;
+            using System.Threading.Tasks;
+            internal sealed class Observation : IAsyncDisposable
+            {
+                private readonly CancellationTokenSource _cancellation = new();
+                public async ValueTask DisposeAsync()
+                {
+                    try { await _cancellation.CancelAsync(); }
+                    finally { {{receiver}}.Dispose(); }
+                }
+            }
+            """;
+
+        ImmutableArray<Diagnostic> diagnostics = await AnalyzeAsync(source).ConfigureAwait(false);
+        Diagnostic diagnostic = Assert.ContainsSingle(diagnostics);
+        Assert.AreEqual(CodeQlMissedUsingStatementAnalyzer.DiagnosticId, diagnostic.Id);
+        Assert.AreEqual(DiagnosticSeverity.Error, diagnostic.Severity);
+        Assert.Contains("'_cancellation'", diagnostic.GetMessage(CultureInfo.InvariantCulture));
+        Assert.IsNotNull(diagnostic.Location.SourceTree);
+        SourceText text = await diagnostic.Location.SourceTree.GetTextAsync(testContext.CancellationToken).ConfigureAwait(false);
+        Assert.AreEqual(receiver, text.ToString(diagnostic.Location.SourceSpan));
+    }
+
+    /// <summary>
+    /// Verifies async field cancellation inside a using scope has no missed-using diagnostic.
+    /// </summary>
+    [TestMethod]
+    public async Task AcceptsFieldUsingScopeInAsyncDisposal()
+    {
+        const string Source = """
+            using System;
+            using System.Threading;
+            using System.Threading.Tasks;
+            internal sealed class Observation : IAsyncDisposable
+            {
+                private readonly CancellationTokenSource _cancellation = new();
+                public async ValueTask DisposeAsync()
+                {
+                    using (_cancellation) { await _cancellation.CancelAsync(); }
+                }
+            }
+            """;
+
+        ImmutableArray<Diagnostic> diagnostics = await AnalyzeAsync(Source).ConfigureAwait(false);
+        Assert.IsEmpty(diagnostics);
+    }
+
+    /// <summary>
     /// Verifies a using scope can finish registration cleanup before an outer finally.
     /// </summary>
     [TestMethod]
