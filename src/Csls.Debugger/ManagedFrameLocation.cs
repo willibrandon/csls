@@ -13,6 +13,11 @@ internal sealed class ManagedFrameLocation
     internal required string Name { get; init; }
 
     /// <summary>
+    /// Gets whether the runtime method is user code under the active stepping policy, when known.
+    /// </summary>
+    internal bool? IsUserCode { get; init; }
+
+    /// <summary>
     /// Gets or initializes the source document path when available.
     /// </summary>
     internal string? SourcePath { get; init; }

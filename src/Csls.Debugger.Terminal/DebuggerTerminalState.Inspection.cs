@@ -242,7 +242,14 @@ internal sealed partial class DebuggerTerminalState
         int preferredIndex,
         CancellationToken cancellationToken)
     {
+        if (Snapshot.StoppedThreadId.HasValue && Snapshot.StopReason != "pause")
+        {
+            await LoadThreadAsync(preferredIndex, cancellationToken).ConfigureAwait(false);
+            return;
+        }
+
         (int Index, DebugStackTrace Stack)? firstManagedStack = null;
+        (int Index, DebugStackTrace Stack)? firstSourceStack = null;
         foreach (int index in Enumerable.Range(0, _threads.Count)
             .OrderBy(index => index == preferredIndex ? 0 : 1))
         {
@@ -257,15 +264,21 @@ internal sealed partial class DebuggerTerminalState
             firstManagedStack ??= (index, stack);
             if (stack.StackFrames.Any(static frame => frame.Source is not null && frame.Line > 0))
             {
+                firstSourceStack ??= (index, stack);
+            }
+
+            if (stack.StackFrames.Any(static frame =>
+                frame.IsUserCode == true && frame.Source is not null && frame.Line > 0))
+            {
                 await ApplyThreadStackAsync(index, stack, cancellationToken)
                     .ConfigureAwait(false);
                 return;
             }
         }
 
-        if (firstManagedStack is { } fallback)
+        if ((firstSourceStack ?? firstManagedStack) is { } available)
         {
-            await ApplyThreadStackAsync(fallback.Index, fallback.Stack, cancellationToken)
+            await ApplyThreadStackAsync(available.Index, available.Stack, cancellationToken)
                 .ConfigureAwait(false);
             return;
         }
@@ -290,8 +303,16 @@ internal sealed partial class DebuggerTerminalState
 
         _stackFrames = stack.StackFrames;
         StackLines = _stackFrames.Select(FormatStackFrame).ToArray();
-        int authoredFrameIndex = _stackFrames.ToList().FindIndex(
-            static frame => frame.Source is not null && frame.Line > 0);
+        int authoredFrameIndex = Snapshot.StopReason == "pause" || !Snapshot.StoppedThreadId.HasValue
+            ? _stackFrames.ToList().FindIndex(static frame =>
+                frame.IsUserCode == true && frame.Source is not null && frame.Line > 0)
+            : -1;
+        if (authoredFrameIndex < 0)
+        {
+            authoredFrameIndex = _stackFrames.ToList().FindIndex(
+                static frame => frame.Source is not null && frame.Line > 0);
+        }
+
         SelectedStackFrameIndex = Math.Max(0, authoredFrameIndex);
         if (_stackFrames.Count == 0)
         {

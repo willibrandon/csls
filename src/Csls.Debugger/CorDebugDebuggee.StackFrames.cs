@@ -139,6 +139,9 @@ internal sealed partial class CorDebugDebuggee
             methodToken == 0 ||
                 location.ModulePath is null && location.ModuleImage is null
                 ? null
-                : existing.InstructionReference);
+                : existing.InstructionReference)
+        {
+            IsUserCode = location.IsUserCode
+        };
     }
 }

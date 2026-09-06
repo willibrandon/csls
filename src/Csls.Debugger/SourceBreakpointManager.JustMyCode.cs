@@ -26,6 +26,39 @@ internal sealed partial class SourceBreakpointManager
         }
     }
 
+    /// <summary>
+    /// Resolves a stopped method's classification from module policy and runtime method overrides.
+    /// </summary>
+    /// <param name="module">The actor-owned loaded module containing the method.</param>
+    /// <param name="function">The borrowed ICorDebugFunction pointer.</param>
+    /// <returns>The known user-code classification, or null when the runtime query fails.</returns>
+    internal unsafe bool? GetUserCodeStatus(CorDebugLoadedModule module, nint function)
+    {
+        ClassifyUserCode(module);
+        if (module.IsUserCode != true || !module.JustMyCodeConfigured)
+        {
+            return module.IsUserCode;
+        }
+
+        if (!ComAbi.TryQueryInterface(function, ICorDebugFunction2Abi.InterfaceId, out nint function2))
+        {
+            return null;
+        }
+
+        try
+        {
+            int isUserCode = 0;
+            int* address = &isUserCode;
+            int result = new ICorDebugFunction2Abi(function2).GetJMCStatus((nint)address);
+            isUserCode = Volatile.Read(ref *address);
+            return result >= 0 ? isUserCode != 0 : null;
+        }
+        finally
+        {
+            _ = ComAbi.Release(function2);
+        }
+    }
+
     private void ClassifyUserCode(CorDebugLoadedModule module)
     {
         if (module.JustMyCodeConfigured)

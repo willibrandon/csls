@@ -210,6 +210,14 @@ public sealed class DebuggerTerminalTests
                     await automator.WaitUntilTextAsync("number = 42").ConfigureAwait(false);
                     await automator.WaitUntilTextAsync("out> ready").ConfigureAwait(false);
                     await automator.WaitUntilTextAsync("localNumber = 43").ConfigureAwait(false);
+                    using (Hex1bTerminalSnapshot paused = automator.CreateSnapshot())
+                    {
+                        Assert.Contains("Stopped  pause", paused.GetLine(0));
+                        Assert.Contains(
+                            "> Csls.TestProcessHost.DebuggerFixture.WaitForSignal",
+                            paused.GetScreenText());
+                    }
+
                     await automator.Shift().KeyAsync(
                         Hex1bKey.F5,
                         TestContext.CancellationToken).ConfigureAwait(false);

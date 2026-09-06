@@ -63,7 +63,8 @@ internal sealed class ManagedSymbolFrameResolver(SourceBreakpointManager sourceB
             (CorDebugLoadedModule, uint, uint, int) key = (loadedModule, methodToken, ilOffset, generation);
             if (!_locations.TryGetValue(key, out ManagedFrameLocation? location))
             {
-                location = ResolveModule(loadedModule, methodToken, ilOffset, generation, fallbackName);
+                location = ResolveModule(loadedModule, methodToken, ilOffset, generation, fallbackName,
+                    sourceBreakpoints.GetUserCodeStatus(loadedModule, function));
                 _locations.Add(key, location);
             }
 
@@ -114,7 +115,8 @@ internal sealed class ManagedSymbolFrameResolver(SourceBreakpointManager sourceB
         uint methodToken,
         uint ilOffset,
         int generation,
-        string fallbackName)
+        string fallbackName,
+        bool? isUserCode)
     {
         string displayName = fallbackName;
         IReadOnlyList<byte[]> symbolDeltas = [.. module.SymbolDeltas.Take(generation)];
@@ -127,7 +129,7 @@ internal sealed class ManagedSymbolFrameResolver(SourceBreakpointManager sourceB
             int rowNumber = checked((int)(methodToken & 0x00ffffff));
             if (!metadata.ContainsMethod(MetadataTokens.MethodDefinitionHandle(rowNumber)))
             {
-                return Unknown(fallbackName, module, symbolDeltas, metadataDeltas);
+                return Unknown(fallbackName, module, symbolDeltas, metadataDeltas, isUserCode);
             }
 
             displayName = ResolveMethodName(metadata, methodToken, fallbackName);
@@ -136,7 +138,7 @@ internal sealed class ManagedSymbolFrameResolver(SourceBreakpointManager sourceB
         using DebugSymbolReader? symbols = module.OpenSymbols(symbolDeltas);
         if (symbols is null)
         {
-            return Unknown(displayName, module, symbolDeltas, metadataDeltas);
+            return Unknown(displayName, module, symbolDeltas, metadataDeltas, isUserCode);
         }
 
         if (metadata is not null &&
@@ -161,12 +163,13 @@ internal sealed class ManagedSymbolFrameResolver(SourceBreakpointManager sourceB
 
         if (selected is null || selected.IsHidden)
         {
-            return Unknown(displayName, module, symbolDeltas, metadataDeltas);
+            return Unknown(displayName, module, symbolDeltas, metadataDeltas, isUserCode);
         }
 
         return new ManagedFrameLocation
         {
             Name = displayName,
+            IsUserCode = isUserCode,
             ModulePath = module.Path,
             ModuleId = module.Id,
             ModuleImage = module.ModuleImage,
@@ -247,10 +250,12 @@ internal sealed class ManagedSymbolFrameResolver(SourceBreakpointManager sourceB
         string name,
         CorDebugLoadedModule module,
         IReadOnlyList<byte[]> symbolDeltas,
-        IReadOnlyList<byte[]> metadataDeltas) =>
+        IReadOnlyList<byte[]> metadataDeltas,
+        bool? isUserCode) =>
         new()
         {
             Name = name,
+            IsUserCode = isUserCode,
             ModulePath = module.Path,
             ModuleId = module.Id,
             ModuleImage = module.ModuleImage,

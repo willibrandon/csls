@@ -15,4 +15,10 @@ public sealed record DebugStackFrameInfo(
     DebugSourceInfo? Source,
     int Line,
     int Column,
-    string? InstructionReference);
+    string? InstructionReference)
+{
+    /// <summary>
+    /// Gets whether the frame is user code under the active stepping policy, when known.
+    /// </summary>
+    public bool? IsUserCode { get; init; }
+}
