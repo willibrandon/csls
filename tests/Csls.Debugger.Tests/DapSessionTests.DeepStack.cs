@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Globalization;
 using System.Runtime.CompilerServices;
 using System.Text;
@@ -136,39 +137,64 @@ public sealed partial class DapSessionTests
 
     private async Task ExerciseDeepStackPagesAsync(int depth)
     {
+        long started = Stopwatch.GetTimestamp();
+        void RecordStage(string stage) => TestContext.WriteLine(
+            $"Depth {depth}; elapsed {Stopwatch.GetElapsedTime(started)}; {stage}.");
+
+        RecordStage("starting adapter");
         DapTestClient client = await DapTestClient.CreateAsync(TestContext.CancellationToken)
             .ConfigureAwait(false);
         await using ConfiguredAsyncDisposable disposal = client.ConfigureAwait(false);
-        (int threadId, string sourcePath) = await StartDeepStackAsync(client, depth).ConfigureAwait(false);
-        JsonElement top = await ReadDeepStackPageAsync(client, threadId, 0, 2).ConfigureAwait(false);
-        JsonElement[] topFrames = [.. top.GetProperty("stackFrames").EnumerateArray()];
-        Assert.HasCount(2, topFrames);
-        Assert.IsFalse(top.TryGetProperty("totalFrames", out _), "A partial walk must not invent a total.");
-        await AssertDeepStackArgumentAsync(client, topFrames[0], "remaining", 0).ConfigureAwait(false);
-        await AssertDeepStackArgumentAsync(client, topFrames[0], "entered", depth).ConfigureAwait(false);
+        try
+        {
+            RecordStage("launching target and waiting for measured descent");
+            (int threadId, string sourcePath) = await StartDeepStackAsync(client, depth).ConfigureAwait(false);
+            RecordStage("reading top page");
+            JsonElement top = await ReadDeepStackPageAsync(client, threadId, 0, 2).ConfigureAwait(false);
+            JsonElement[] topFrames = [.. top.GetProperty("stackFrames").EnumerateArray()];
+            Assert.HasCount(2, topFrames);
+            Assert.IsFalse(top.TryGetProperty("totalFrames", out _), "A partial walk must not invent a total.");
+            RecordStage("reading top arguments");
+            await AssertDeepStackArgumentAsync(client, topFrames[0], "remaining", 0).ConfigureAwait(false);
+            await AssertDeepStackArgumentAsync(client, topFrames[0], "entered", depth).ConfigureAwait(false);
 
-        JsonElement deep = await ReadDeepStackPageAsync(client, threadId, depth - 2, 2)
-            .ConfigureAwait(false);
-        JsonElement[] deepFrames = [.. deep.GetProperty("stackFrames").EnumerateArray()];
-        Assert.HasCount(2, deepFrames);
-        await AssertDeepStackArgumentAsync(client, deepFrames[0], "remaining", depth - 2).ConfigureAwait(false);
-        await AssertDeepStackArgumentAsync(client, deepFrames[1], "entered", 1).ConfigureAwait(false);
-        JsonElement overlap = await ReadDeepStackPageAsync(client, threadId, depth - 1, 1)
-            .ConfigureAwait(false);
-        Assert.AreEqual(deepFrames[1].GetProperty("id").GetInt32(),
-            overlap.GetProperty("stackFrames")[0].GetProperty("id").GetInt32());
+            RecordStage("reading deep page");
+            JsonElement deep = await ReadDeepStackPageAsync(client, threadId, depth - 2, 2)
+                .ConfigureAwait(false);
+            JsonElement[] deepFrames = [.. deep.GetProperty("stackFrames").EnumerateArray()];
+            Assert.HasCount(2, deepFrames);
+            RecordStage("reading deep arguments");
+            await AssertDeepStackArgumentAsync(client, deepFrames[0], "remaining", depth - 2).ConfigureAwait(false);
+            await AssertDeepStackArgumentAsync(client, deepFrames[1], "entered", 1).ConfigureAwait(false);
+            RecordStage("reading overlapping page");
+            JsonElement overlap = await ReadDeepStackPageAsync(client, threadId, depth - 1, 1)
+                .ConfigureAwait(false);
+            Assert.AreEqual(deepFrames[1].GetProperty("id").GetInt32(),
+                overlap.GetProperty("stackFrames")[0].GetProperty("id").GetInt32());
 
-        JsonElement tail = await ReadDeepStackPageAsync(client, threadId, depth, 64).ConfigureAwait(false);
-        int tailCount = tail.GetProperty("stackFrames").GetArrayLength();
-        Assert.IsLessThan(64, tailCount);
-        Assert.AreEqual(depth + tailCount, tail.GetProperty("totalFrames").GetInt32());
-        JsonElement empty = await ReadDeepStackPageAsync(client, threadId, depth + tailCount, 1)
-            .ConfigureAwait(false);
-        Assert.AreEqual(0, empty.GetProperty("stackFrames").GetArrayLength());
-        Assert.AreEqual(depth + tailCount, empty.GetProperty("totalFrames").GetInt32());
+            RecordStage("reading tail page");
+            JsonElement tail = await ReadDeepStackPageAsync(client, threadId, depth, 64).ConfigureAwait(false);
+            int tailCount = tail.GetProperty("stackFrames").GetArrayLength();
+            Assert.IsLessThan(64, tailCount);
+            Assert.AreEqual(depth + tailCount, tail.GetProperty("totalFrames").GetInt32());
+            RecordStage("reading page beyond tail");
+            JsonElement empty = await ReadDeepStackPageAsync(client, threadId, depth + tailCount, 1)
+                .ConfigureAwait(false);
+            Assert.AreEqual(0, empty.GetProperty("stackFrames").GetArrayLength());
+            Assert.AreEqual(depth + tailCount, empty.GetProperty("totalFrames").GetInt32());
 
-        TestContext.WriteLine($"Inspected target depth {depth}, stack budget 33554432 bytes, top/deep page sizes 2, exact total {depth + tailCount}.");
-        await FinishDeepStackAsync(client, sourcePath).ConfigureAwait(false);
+            TestContext.WriteLine($"Inspected target depth {depth}, stack budget 33554432 bytes, top/deep page sizes 2, exact total {depth + tailCount}.");
+            RecordStage("continuing target and awaiting normal shutdown");
+            await FinishDeepStackAsync(client, sourcePath).ConfigureAwait(false);
+            RecordStage("completed");
+        }
+        catch
+        {
+            RecordStage("failed");
+            TestContext.WriteLine(client.Diagnostics.ToString());
+            TestContext.WriteLine(client.ProtocolTranscript);
+            throw;
+        }
     }
 
     private async Task FinishDeepStackAsync(DapTestClient client, string sourcePath)

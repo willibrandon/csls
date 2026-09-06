@@ -99,8 +99,9 @@ internal static class WindowsStackOverflowCapture
             File.Delete(collector);
         }
 
-        // ProcDump returns two when the target exits before the maximum dump count is reached.
-        return process.ExitCode is 0 or 2 && Directory.EnumerateFiles(directory, "*.dmp").Any() ? 0 : 1;
+        // ProcDump reports the number of captured dumps when monitoring ends.
+        int dumps = Directory.EnumerateFiles(directory, "*.dmp").Count();
+        return dumps > 0 && (process.ExitCode == 0 || process.ExitCode == dumps) ? 0 : 1;
     }
 
     private static async Task<string> DownloadCollectorAsync(string directory, CancellationToken cancellationToken)

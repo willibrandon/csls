@@ -37,6 +37,7 @@ internal static class DebuggerDeepStackFixture
 
     private static void RunOverflowThread()
     {
+        DebuggerStackGuarantee.ReserveForOverflow();
         RuntimeHelpers.EnsureSufficientExecutionStack();
         Console.Out.WriteLine("overflow-ready");
         _ = Overflow(1);
