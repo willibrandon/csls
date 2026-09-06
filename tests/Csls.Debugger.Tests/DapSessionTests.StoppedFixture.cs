@@ -50,7 +50,8 @@ public sealed partial class DapSessionTests
         JsonElement frame = response.RootElement.GetProperty("body").GetProperty("stackFrames")
             .EnumerateArray().FirstOrDefault(candidate =>
                 candidate.TryGetProperty("source", out JsonElement source) &&
-                source.GetProperty("path").GetString() is string path &&
+                source.TryGetProperty("path", out JsonElement sourcePath) &&
+                sourcePath.GetString() is string path &&
                 path.EndsWith("DebuggerFixture.cs", StringComparison.Ordinal));
         return frame.ValueKind == JsonValueKind.Undefined ? null : frame.Clone();
     }

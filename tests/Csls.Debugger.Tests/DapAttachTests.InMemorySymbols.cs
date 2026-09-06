@@ -217,8 +217,9 @@ public sealed partial class DapAttachTests
                 .Select(static frame => (JsonElement?)frame.Clone())
                 .SingleOrDefault(candidate => candidate is JsonElement frame &&
                     frame.TryGetProperty("source", out JsonElement source) &&
+                    source.TryGetProperty("path", out JsonElement path) &&
                     DebuggerTestPath.AreEquivalent(
-                        source.GetProperty("path").GetString(),
+                        path.GetString(),
                         sourcePath));
             if (selectedFrame is not null)
             {

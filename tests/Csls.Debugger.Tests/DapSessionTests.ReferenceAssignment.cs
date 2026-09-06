@@ -227,7 +227,8 @@ public sealed partial class DapSessionTests
             foreach (JsonElement frame in stack.RootElement.GetProperty("body").GetProperty("stackFrames")
                 .EnumerateArray().Where(static frame =>
                     frame.TryGetProperty("source", out JsonElement source) &&
-                    source.GetProperty("path").GetString() is string path &&
+                    source.TryGetProperty("path", out JsonElement sourcePath) &&
+                    sourcePath.GetString() is string path &&
                     path.EndsWith("ReferenceAssignmentFixture.cs", StringComparison.Ordinal)))
             {
                 return frame.GetProperty("id").GetInt32();

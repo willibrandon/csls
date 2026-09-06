@@ -39,9 +39,8 @@ public sealed partial class DapSessionTests
         AssertResponse(response.RootElement, sequence, "loadedSources", success: true);
         JsonElement source = response.RootElement.GetProperty("body").GetProperty("sources")
             .EnumerateArray()
-            .Single(candidate => DebuggerTestPath.AreEquivalent(
-                candidate.GetProperty("path").GetString(),
-                sourcePath));
+            .Single(candidate => candidate.TryGetProperty("path", out JsonElement path) &&
+                DebuggerTestPath.AreEquivalent(path.GetString(), sourcePath));
         Assert.AreEqual(Path.GetFileName(sourcePath), source.GetProperty("name").GetString());
         Assert.AreEqual("embedded source", source.GetProperty("origin").GetString());
         int sourceReference = source.GetProperty("sourceReference").GetInt32();
