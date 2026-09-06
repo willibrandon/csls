@@ -19,6 +19,23 @@ internal static class DebuggerTestProcess
         CancellationToken cancellationToken,
         Action<string>? progress = null)
     {
+        (int _, int exitCode, string output, string error) = await RunWithIdentityAsync(
+            startInfo, cancellationToken, progress).ConfigureAwait(false);
+        return (exitCode, output, error);
+    }
+
+    /// <summary>
+    /// Runs one redirected child and preserves its process identity for operating-system crash diagnostics.
+    /// </summary>
+    /// <param name="startInfo">The complete child-process start information.</param>
+    /// <param name="cancellationToken">Cancels the process and terminates its complete tree.</param>
+    /// <param name="progress">Optionally observes diagnostic lines while the child is still running.</param>
+    /// <returns>The process identifier, exit code, standard output, and standard error.</returns>
+    internal static async Task<(int ProcessId, int ExitCode, string Output, string Error)> RunWithIdentityAsync(
+        ProcessStartInfo startInfo,
+        CancellationToken cancellationToken,
+        Action<string>? progress = null)
+    {
         ArgumentNullException.ThrowIfNull(startInfo);
         startInfo.RedirectStandardOutput = true;
         startInfo.RedirectStandardError = true;
@@ -54,6 +71,7 @@ internal static class DebuggerTestProcess
         }
 
         return (
+            process.Id,
             process.ExitCode,
             await output.ConfigureAwait(false),
             await error.ConfigureAwait(false));

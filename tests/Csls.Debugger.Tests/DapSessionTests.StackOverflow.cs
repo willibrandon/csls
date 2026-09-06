@@ -20,6 +20,7 @@ public sealed partial class DapSessionTests
         string directory = Path.Join(Path.GetTempPath(), $"csls-stack-overflow-baseline-{Guid.NewGuid():N}");
         Directory.CreateDirectory(directory);
         string dumpPath = Path.Join(directory, "target.dmp");
+        int processId = 0;
         try
         {
             var startInfo = new ProcessStartInfo(Environment.GetEnvironmentVariable("DOTNET_HOST_PATH") ?? "dotnet")
@@ -33,8 +34,9 @@ public sealed partial class DapSessionTests
                 startInfo.Environment[name] = value;
             }
 
-            (int exitCode, string output, string error) = await DebuggerTestProcess.RunAsync(startInfo,
+            (int targetId, int exitCode, string output, string error) = await DebuggerTestProcess.RunWithIdentityAsync(startInfo,
                 TestContext.CancellationToken).ConfigureAwait(false);
+            processId = targetId;
             Assert.AreNotEqual(0, exitCode);
             Assert.Contains("Stack overflow", error, StringComparison.OrdinalIgnoreCase,
                 $"The fixture exited with {exitCode}. stdout: {output}; stderr: {error}");
@@ -42,6 +44,7 @@ public sealed partial class DapSessionTests
         catch
         {
             RetainStackOverflowDump(dumpPath);
+            await DebuggerWindowsCrashDiagnostics.CaptureAsync(processId, TestContext).ConfigureAwait(false);
             throw;
         }
         finally
@@ -61,6 +64,7 @@ public sealed partial class DapSessionTests
         string directory = Path.Join(Path.GetTempPath(), $"csls-debugger-stack-overflow-{Guid.NewGuid():N}");
         Directory.CreateDirectory(directory);
         string dumpPath = Path.Join(directory, "target.dmp");
+        int processId = 0;
         try
         {
             DapTestClient client = await DapTestClient.CreateAsync(TestContext.CancellationToken).ConfigureAwait(false);
@@ -103,7 +107,6 @@ public sealed partial class DapSessionTests
             bool continued = false;
             bool continuationAcknowledged = false;
             string outputTail = string.Empty;
-            int processId = 0;
             int continueSequence = 0;
             while (true)
             {
@@ -182,6 +185,7 @@ public sealed partial class DapSessionTests
         catch
         {
             RetainStackOverflowDump(dumpPath);
+            await DebuggerWindowsCrashDiagnostics.CaptureAsync(processId, TestContext).ConfigureAwait(false);
             throw;
         }
         finally
