@@ -332,6 +332,36 @@ public sealed class CodeQlLocalDisposableAnalyzerTests(TestContext testContext)
     }
 
     /// <summary>
+    /// Verifies configured using blocks expose each library resource to the same ownership check as aliases.
+    /// </summary>
+    /// <param name="constructor">The stream constructor observed by remote analysis.</param>
+    [TestMethod]
+    [DataRow("new FileStream(path, FileMode.CreateNew)")]
+    [DataRow("new StreamWriter(path)")]
+    public async Task ReportsLibraryResourceWithConfiguredDisposalBlock(string constructor)
+    {
+        string source = $$"""
+            using System.IO;
+            using System.Threading.Tasks;
+            internal static class Streams
+            {
+                internal static async Task WriteAsync(string path)
+                {
+                    var stream = {{constructor}};
+                    await using (stream.ConfigureAwait(false))
+                    {
+                        await Task.Yield();
+                    }
+                }
+            }
+            """;
+
+        ImmutableArray<Diagnostic> diagnostics = await AnalyzeAsync(source).ConfigureAwait(false);
+
+        AssertReportsLocal(diagnostics, "stream");
+    }
+
+    /// <summary>
     /// Verifies a directly scoped library resource has visible exception-safe cleanup.
     /// </summary>
     [TestMethod]
@@ -347,6 +377,34 @@ public sealed class CodeQlLocalDisposableAnalyzerTests(TestContext testContext)
                     using var stream = new FileStream(path, FileMode.CreateNew);
                     await stream.WriteAsync(new byte[] { 1 }).ConfigureAwait(false);
                     await stream.FlushAsync().ConfigureAwait(false);
+                }
+            }
+            """;
+
+        ImmutableArray<Diagnostic> diagnostics = await AnalyzeAsync(Source).ConfigureAwait(false);
+
+        Assert.IsEmpty(diagnostics);
+    }
+
+    /// <summary>
+    /// Verifies nested direct scopes protect both the backup stream and its asynchronously flushed writer.
+    /// </summary>
+    [TestMethod]
+    public async Task AcceptsDirectlyScopedStreamAndWriter()
+    {
+        const string Source = """
+            using System.IO;
+            using System.Threading.Tasks;
+            internal static class Streams
+            {
+                internal static async Task WriteAsync(string path)
+                {
+                    using (var stream = new FileStream(path, FileMode.CreateNew))
+                    using (var writer = new StreamWriter(stream))
+                    {
+                        await writer.WriteAsync("policy").ConfigureAwait(false);
+                        await writer.FlushAsync().ConfigureAwait(false);
+                    }
                 }
             }
             """;

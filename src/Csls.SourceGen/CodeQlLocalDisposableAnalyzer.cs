@@ -88,13 +88,12 @@ public sealed class CodeQlLocalDisposableAnalyzer : DiagnosticAnalyzer
 
         return block.DescendantNodes(static node =>
                 node is not (AnonymousFunctionExpressionSyntax or LocalFunctionStatementSyntax))
-            .OfType<LocalDeclarationStatementSyntax>()
-            .Where(static statement => !statement.AwaitKeyword.IsKind(SyntaxKind.None))
-            .SelectMany(static statement => statement.Declaration.Variables)
-            .Any(variable => variable.Initializer?.Value is InvocationExpressionSyntax
+            .OfType<InvocationExpressionSyntax>()
+            .Where(IsAsyncUsingExpression)
+            .Any(invocation => invocation is
             {
                 Expression: MemberAccessExpressionSyntax { Expression: IdentifierNameSyntax receiver }
-            } invocation &&
+            } &&
                 SymbolEqualityComparer.Default.Equals(local,
                     context.SemanticModel.GetSymbolInfo(receiver, context.CancellationToken).Symbol) &&
                 context.SemanticModel.GetSymbolInfo(invocation, context.CancellationToken).Symbol is IMethodSymbol
@@ -106,6 +105,20 @@ public sealed class CodeQlLocalDisposableAnalyzer : DiagnosticAnalyzer
                 returnType.ToDisplayString() == "System.Runtime.CompilerServices.ConfiguredAsyncDisposable" &&
                 containingType.ToDisplayString() == "System.Threading.Tasks.TaskAsyncEnumerableExtensions");
     }
+
+    private static bool IsAsyncUsingExpression(InvocationExpressionSyntax invocation) =>
+        invocation.Parent switch
+        {
+            UsingStatementSyntax statement => !statement.AwaitKeyword.IsKind(SyntaxKind.None),
+            EqualsValueClauseSyntax
+            {
+                Parent: VariableDeclaratorSyntax
+                {
+                    Parent: VariableDeclarationSyntax { Parent: LocalDeclarationStatementSyntax declaration }
+                }
+            } => !declaration.AwaitKeyword.IsKind(SyntaxKind.None),
+            _ => false
+        };
 
     private static void AnalyzeInvocation(SyntaxNodeAnalysisContext context)
     {

@@ -6,7 +6,7 @@ CSLS0004 | Naming | Error | Static fields use the s_ prefix
 CSLS0005 | CodeQuality | Error | Metadata projections use Select before iteration
 CSLS0006 | Reliability | Error | Disposable locals use structured ownership
 CSLS0007 | Reliability | Error | Disposable collections use exception-safe lifetimes
-CSLS0008 | Reliability | Error | Disposable locals use explicit cleanup and exception-safe ownership transfer
+CSLS0008 | Reliability | Error | Disposable locals use explicit cleanup and exception-safe ownership transfer, including configured using blocks
 CSLS0009 | CodeQuality | Error | Sequence filters are expressed before iteration
 CSLS0010 | CodeQuality | Error | Boolean conditional throws use statement control flow
 CSLS0011 | CodeQuality | Error | Initialization-only fields use the readonly modifier

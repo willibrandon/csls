@@ -32,14 +32,11 @@ internal static class MacDebuggerTestAuthorization
             options.UnixCreateMode = UnixFileMode.UserRead | UnixFileMode.UserWrite;
         }
 
-        var backup = new FileStream(backupPath, options);
-        await using (backup.ConfigureAwait(false))
+        using (var backup = new FileStream(backupPath, options))
+        using (var writer = new StreamWriter(backup))
         {
-            var writer = new StreamWriter(backup);
-            await using (writer.ConfigureAwait(false))
-            {
-                await writer.WriteAsync(original.AsMemory(), cancellationToken).ConfigureAwait(false);
-            }
+            await writer.WriteAsync(original.AsMemory(), cancellationToken).ConfigureAwait(false);
+            await writer.FlushAsync(cancellationToken).ConfigureAwait(false);
         }
 
         await WriteAsync(policy, cancellationToken).ConfigureAwait(false);
