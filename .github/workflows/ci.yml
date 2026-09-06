@@ -1129,8 +1129,13 @@ jobs:
             graphical_arguments: --without-clipboard --without-tree-sitter --without-vulkan
             remote: false
             web: false
-          - group: remote
-            filter: FullyQualifiedName~Csls.Tests.VsCodeLanguageServerTests.VsCodeRemoteHost
+          - group: remote-features
+            filter: FullyQualifiedName=Csls.Tests.VsCodeLanguageServerTests.VsCodeRemoteHostProvidesCSharpLanguageFeatures
+            graphical_arguments: --without-clipboard --without-tree-sitter --without-vulkan
+            remote: true
+            web: false
+          - group: remote-repository
+            filter: FullyQualifiedName=Csls.Tests.VsCodeLanguageServerTests.VsCodeRemoteHostLoadsCslsWorkspaceWithoutWarningsOrErrors
             graphical_arguments: --without-clipboard --without-tree-sitter --without-vulkan
             remote: true
             web: false
@@ -1264,7 +1269,7 @@ jobs:
           dotnet test --test-modules artifacts/bin/Csls.Tests/debug/Csls.Tests.dll
           --root-directory .
           --filter "${{ matrix.filter }}"
-          --minimum-expected-tests ${{ matrix.group == 'desktop' && 4 || matrix.group == 'remote' && 2 || 1 }}
+          --minimum-expected-tests ${{ matrix.group == 'desktop' && 4 || 1 }}
           --output Detailed
           --report-trx
           --results-directory artifacts/test-results

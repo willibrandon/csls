@@ -21,7 +21,7 @@ public sealed partial class DapSessionTests
         int awaitLine = FindSourceLine(sourceLines, "received = await pipe.ReadAsync");
         int resumedLine = FindSourceLine(sourceLines, "answer += scopedIncrement * buffer[0];");
         int finallyLine = FindSourceLine(sourceLines, "answer++;");
-        string pipeName = $"csls-valuetask-step-{Guid.NewGuid():N}";
+        string pipeName = $"cv-{Guid.NewGuid():N}";
         using var pipe = new NamedPipeServerStream(pipeName, PipeDirection.InOut, 1,
             PipeTransmissionMode.Byte, PipeOptions.Asynchronous | PipeOptions.CurrentUserOnly);
         Task connection = pipe.WaitForConnectionAsync(TestContext.CancellationToken);
