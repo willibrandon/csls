@@ -200,7 +200,7 @@ jobs:
           if-no-files-found: error
 
   debugger-tests:
-    name: ${{ matrix.suite == 'stress' && format('Debugger stress ({0})', matrix.rid) || matrix.suite == 'evaluation' && format('Debugger evaluation ({0})', matrix.rid) || format('Debugger tests ({0})', matrix.rid) }}
+    name: ${{ matrix.name }} (${{ matrix.rid }})
     runs-on: ${{ matrix.os }}
     timeout-minutes: 5
     needs:
@@ -209,15 +209,25 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        suite: [standard, evaluation, stress]
+        suite: [standard, stepping, evaluation, stress]
         rid: [linux-x64, linux-arm64, win-x64, win-arm64, osx-x64, osx-arm64]
         include:
           # Complementary filters keep every non-stress test in exactly one job.
           - suite: standard
-            filter: TestCategory!=DebuggerStress&FullyQualifiedName!~Assignment&FullyQualifiedName!~Evaluation&FullyQualifiedName!~ResultsView&FullyQualifiedName!~DebuggerTypeProxy
+            name: Debugger tests
+            minimum_tests: 70
+            filter: TestCategory!=DebuggerStress&FullyQualifiedName!~Assignment&FullyQualifiedName!~Evaluation&FullyQualifiedName!~ResultsView&FullyQualifiedName!~DebuggerTypeProxy&FullyQualifiedName!~Async&FullyQualifiedName!~Step&FullyQualifiedName!~Iterator
+          - suite: stepping
+            name: Debugger stepping
+            minimum_tests: 38
+            filter: TestCategory!=DebuggerStress&FullyQualifiedName!~Assignment&FullyQualifiedName!~Evaluation&FullyQualifiedName!~ResultsView&FullyQualifiedName!~DebuggerTypeProxy&(FullyQualifiedName~Async|FullyQualifiedName~Step|FullyQualifiedName~Iterator)
           - suite: evaluation
+            name: Debugger evaluation
+            minimum_tests: 70
             filter: TestCategory!=DebuggerStress&(FullyQualifiedName~Assignment|FullyQualifiedName~Evaluation|FullyQualifiedName~ResultsView|FullyQualifiedName~DebuggerTypeProxy)
           - suite: stress
+            name: Debugger stress
+            minimum_tests: 2
             filter: TestCategory=DebuggerStress
           - os: ubuntu-latest
             rid: linux-x64
@@ -284,7 +294,7 @@ jobs:
           --root-directory .
           --results-directory artifacts/test-results
           --filter "${{ matrix.filter }}"
-          --minimum-expected-tests ${{ matrix.suite == 'stress' && 2 || 70 }}
+          --minimum-expected-tests ${{ matrix.minimum_tests }}
           --no-ansi
           --output Detailed
           --report-trx
