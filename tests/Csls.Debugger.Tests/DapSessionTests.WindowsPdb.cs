@@ -39,6 +39,14 @@ public sealed partial class DapSessionTests
                 "Microsoft C/C++ MSF 7.00",
                 Encoding.ASCII.GetString(signature));
 
+            using (DebugSymbolReader symbols = DebugSymbolReader.TryOpen(programPath)
+                ?? throw new AssertFailedException("The Windows compiler fixture has no matching symbols."))
+            {
+                IReadOnlyList<ManagedSequencePoint> points = symbols.GetSequencePoints(null, includeHidden: true);
+                Assert.IsNotEmpty(points.Where(point => point.IsHidden));
+                Assert.IsEmpty(symbols.GetSequencePoints(null).Where(point => point.IsHidden));
+            }
+
             string sourcePath = SymbolFixtures.SourcePath;
             string[] sourceLines = await File.ReadAllLinesAsync(
                 sourcePath,

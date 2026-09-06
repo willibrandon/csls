@@ -138,7 +138,9 @@ public sealed partial class DapSessionTests
         DapTestClient client,
         string sourcePath,
         int breakpointLine,
-        IReadOnlyList<string> arguments)
+        IReadOnlyList<string> arguments,
+        string? programPath = null,
+        bool suppressJitOptimizations = false)
     {
         int initializeSequence = await client.SendRequestAsync(
             "initialize",
@@ -151,10 +153,11 @@ public sealed partial class DapSessionTests
             "launch",
             writer => WriteLaunchArguments(
                 writer,
-                ResolveTestProcessHost(),
+                programPath ?? ResolveTestProcessHost(),
                 arguments,
                 wait: true,
-                noDebug: false),
+                noDebug: false,
+                suppressJitOptimizations: suppressJitOptimizations),
             TestContext.CancellationToken).ConfigureAwait(false);
         using JsonDocument initialized = await client
             .ReadMessageAsync(TestContext.CancellationToken).ConfigureAwait(false);

@@ -65,6 +65,7 @@ internal sealed partial class DapSession
             return;
         }
 
+        await BeginExecutionResponseAsync(cancellationToken).ConfigureAwait(false);
         try
         {
             await _engineSession.ContinueAsync(cancellationToken).ConfigureAwait(false);
@@ -89,6 +90,10 @@ internal sealed partial class DapSession
                 writeBody: null,
                 cancellationToken).ConfigureAwait(false);
         }
+        finally
+        {
+            await CompleteExecutionResponseAsync(cancellationToken).ConfigureAwait(false);
+        }
     }
 
     private async ValueTask StepAsync(
@@ -102,6 +107,7 @@ internal sealed partial class DapSession
             return;
         }
 
+        await BeginExecutionResponseAsync(cancellationToken).ConfigureAwait(false);
         try
         {
             int threadId = GetRequiredInteger(request.Arguments, "threadId", request.Command);
@@ -126,6 +132,10 @@ internal sealed partial class DapSession
         {
             await WriteRequestFailureAsync(request, exception.Message, cancellationToken)
                 .ConfigureAwait(false);
+        }
+        finally
+        {
+            await CompleteExecutionResponseAsync(cancellationToken).ConfigureAwait(false);
         }
     }
 

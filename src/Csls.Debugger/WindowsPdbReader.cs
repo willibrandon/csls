@@ -177,11 +177,12 @@ internal sealed class WindowsPdbReader : IDisposable
     }
 
     /// <summary>
-    /// Reads visible sequence points for one method or for the complete module.
+    /// Reads ordered sequence points for one method or for the complete module.
     /// </summary>
     /// <param name="methodToken">The method token, or null to enumerate every method.</param>
-    /// <returns>The immutable ordered visible sequence points.</returns>
-    internal IReadOnlyList<ManagedSequencePoint> GetSequencePoints(uint? methodToken)
+    /// <param name="includeHidden">Whether to retain compiler-generated instruction boundaries.</param>
+    /// <returns>The immutable ordered sequence points.</returns>
+    internal IReadOnlyList<ManagedSequencePoint> GetSequencePoints(uint? methodToken, bool includeHidden = false)
     {
         MetadataReader metadata = _peReader.GetMetadataReader();
         IEnumerable<uint> tokens = methodToken is uint selected
@@ -191,7 +192,7 @@ internal sealed class WindowsPdbReader : IDisposable
         var result = new List<ManagedSequencePoint>();
         foreach (uint token in tokens)
         {
-            ReadMethodSequencePoints(token, result);
+            ReadMethodSequencePoints(token, result, includeHidden);
             if (result.Count > MaximumSequencePointCount)
             {
                 throw new InvalidDataException(
@@ -281,8 +282,7 @@ internal sealed class WindowsPdbReader : IDisposable
             return [.. points.Select(static point => new ManagedAsyncAwaitPoint(
                 checked((uint)point.YieldOffset),
                 checked((uint)point.ResumeOffset),
-                checked((uint)point.ResumeMethod),
-                checked((uint)point.ResumeOffset)))];
+                checked((uint)point.ResumeMethod)))];
         }
         finally
         {
@@ -303,7 +303,8 @@ internal sealed class WindowsPdbReader : IDisposable
 
     private void ReadMethodSequencePoints(
         uint methodToken,
-        List<ManagedSequencePoint> result)
+        List<ManagedSequencePoint> result,
+        bool includeHidden)
     {
         ISymUnmanagedMethod? method = TryGetMethod(methodToken);
         if (method is null)
@@ -345,6 +346,12 @@ internal sealed class WindowsPdbReader : IDisposable
             {
                 if (startLines[index] == HiddenSequencePointLine)
                 {
+                    if (includeHidden)
+                    {
+                        result.Add(new ManagedSequencePoint(methodToken, offsets[index], string.Empty,
+                            HiddenSequencePointLine, 0, HiddenSequencePointLine, 0, Guid.Empty));
+                    }
+
                     continue;
                 }
 

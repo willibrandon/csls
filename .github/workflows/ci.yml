@@ -108,9 +108,11 @@ jobs:
           path: |
             artifacts/bin/Csls.*/debug
             artifacts/bin/Csls.Debugger.Fixtures.*/release
+            artifacts/bin/Csls.TestProcessHost/release
             artifacts/bin/Csls.SourceGen/release
             artifacts/obj/Csls.*/debug
             artifacts/obj/Csls.Debugger.Fixtures.*/release
+            artifacts/obj/Csls.TestProcessHost/release
             artifacts/obj/Csls.SourceGen/release
             artifacts/obj/Csls.*/*.cache
             artifacts/obj/Csls.*/*.json

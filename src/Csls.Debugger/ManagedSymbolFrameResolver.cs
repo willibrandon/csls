@@ -115,9 +115,9 @@ internal static class ManagedSymbolFrameResolver
         }
 
         ManagedSequencePoint? selected = null;
-        foreach (ManagedSequencePoint point in symbols.GetSequencePoints(methodToken))
+        foreach (ManagedSequencePoint point in symbols.GetSequencePoints(methodToken, includeHidden: true))
         {
-            if (selected is null || point.IlOffset <= ilOffset)
+            if (point.IlOffset <= ilOffset)
             {
                 selected = point;
             }
@@ -128,7 +128,7 @@ internal static class ManagedSymbolFrameResolver
             }
         }
 
-        if (selected is null)
+        if (selected is null || selected.IsHidden)
         {
             return Unknown(displayName, module, symbolDeltas, metadataDeltas);
         }

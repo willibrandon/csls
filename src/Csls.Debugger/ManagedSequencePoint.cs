@@ -1,7 +1,7 @@
 namespace Csls.Debugger;
 
 /// <summary>
-/// Represents one visible managed-symbol sequence point in a managed method.
+/// Represents one managed-symbol sequence point in a managed method.
 /// </summary>
 /// <param name="MethodToken">The containing method-definition metadata token.</param>
 /// <param name="IlOffset">The zero-based method-body IL offset.</param>
@@ -19,4 +19,10 @@ internal sealed record ManagedSequencePoint(
     int StartColumn,
     int EndLine,
     int EndColumn,
-    Guid LanguageId);
+    Guid LanguageId)
+{
+    /// <summary>
+    /// Gets whether the compiler marks this instruction range as hidden from source stepping.
+    /// </summary>
+    internal bool IsHidden => StartLine == 0x00feefee;
+}

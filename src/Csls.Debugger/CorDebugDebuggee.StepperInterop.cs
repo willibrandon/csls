@@ -72,18 +72,24 @@ internal sealed partial class CorDebugDebuggee
         if (!ManagedSymbolStepRangeResolver.TryResolve(
             thread,
             _sourceBreakpoints.FindModule,
-            out ManagedStepRange range))
+            out IReadOnlyList<ManagedStepRange> ranges,
+            out _))
         {
             return api.Step(kind == DebugStepKind.Into ? 1 : 0);
         }
 
-        uint* nativeRange = stackalloc uint[2];
-        nativeRange[0] = range.StartOffset;
-        nativeRange[1] = range.EndOffset;
-        return api.StepRange(
-            kind == DebugStepKind.Into ? 1 : 0,
-            (nint)nativeRange,
-            cRangeCount: 1);
+        uint[] nativeRanges = new uint[checked(ranges.Count * 2)];
+        for (int index = 0; index < ranges.Count; index++)
+        {
+            nativeRanges[index * 2] = ranges[index].StartOffset;
+            nativeRanges[index * 2 + 1] = ranges[index].EndOffset;
+        }
+
+        fixed (uint* nativeRange = nativeRanges)
+        {
+            return api.StepRange(kind == DebugStepKind.Into ? 1 : 0,
+                (nint)nativeRange, checked((uint)ranges.Count));
+        }
     }
 
     private static unsafe int StartGuardedTargetStep(

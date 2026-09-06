@@ -94,6 +94,11 @@ if (args is ["--debugger-step-fixture", string stepFixturePath])
     return DebuggerStepFixture.Run(stepFixturePath);
 }
 
+if (args is ["--debugger-response-order-fixture"])
+{
+    return DebuggerResponseOrderFixture.Run();
+}
+
 if (args is ["--debugger-async-step-fixture", string asyncInitialValue])
 {
     return await DebuggerAsyncStepFixture.RunAsync(
@@ -121,6 +126,16 @@ if (args is ["--debugger-concurrent-async-step-fixture"])
 if (args is ["--debugger-valuetask-step-fixture", string valueTaskPipeName])
 {
     return await DebuggerValueTaskStepFixture.RunAsync(valueTaskPipeName).ConfigureAwait(false);
+}
+
+if (args is ["--debugger-async-iterator-step-fixture", string asyncIteratorPipeName])
+{
+    return await DebuggerAsyncIteratorStepFixture.RunAsync(asyncIteratorPipeName).ConfigureAwait(false);
+}
+
+if (args is ["--debugger-concurrent-async-iterator-step-fixture", string concurrentAsyncIteratorPipeName])
+{
+    return await DebuggerAsyncIteratorStepFixture.RunConcurrentAsync(concurrentAsyncIteratorPipeName).ConfigureAwait(false);
 }
 
 if (args is ["--debugger-iterator-step-fixture"])

@@ -263,7 +263,8 @@ public sealed partial class DapSessionTests
         DapTestClient client,
         string command,
         int threadId,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        string expectedReason = "step")
     {
         int requestSequence = await client.SendRequestAsync(
             command,
@@ -307,7 +308,8 @@ public sealed partial class DapSessionTests
             else if (eventName == "stopped")
             {
                 JsonElement body = root.GetProperty("body");
-                Assert.AreEqual("step", body.GetProperty("reason").GetString());
+                Assert.IsTrue(responseReceived, client.ProtocolTranscript);
+                Assert.AreEqual(expectedReason, body.GetProperty("reason").GetString());
                 Assert.IsTrue(body.GetProperty("allThreadsStopped").GetBoolean());
                 stoppedThreadId = body.GetProperty("threadId").GetInt32();
             }
@@ -374,6 +376,7 @@ public sealed partial class DapSessionTests
 
             string? eventName = root.GetProperty("event").GetString();
             continuedReceived |= eventName == "continued";
+            Assert.AreNotEqual("stopped", eventName, root.GetRawText());
             if (eventName == "exited")
             {
                 Assert.AreEqual(0, root.GetProperty("body").GetProperty("exitCode").GetInt32());

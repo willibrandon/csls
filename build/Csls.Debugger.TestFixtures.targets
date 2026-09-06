@@ -1,5 +1,6 @@
 <Project>
   <ItemGroup>
+    <_CslsDebuggerLanguageFixture Include="$(MSBuildThisFileDirectory)../tests/Csls.TestProcessHost/Csls.TestProcessHost.csproj" />
     <_CslsDebuggerLanguageFixture Include="$(MSBuildThisFileDirectory)../test-assets/Csls.Debugger.Fixtures.CSharp/Csls.Debugger.Fixtures.CSharp.csproj" />
     <_CslsDebuggerLanguageFixture Include="$(MSBuildThisFileDirectory)../test-assets/Csls.Debugger.Fixtures.VisualBasic/Csls.Debugger.Fixtures.VisualBasic.vbproj" />
     <_CslsDebuggerLanguageFixture Include="$(MSBuildThisFileDirectory)../test-assets/Csls.Debugger.Fixtures.FSharp/Csls.Debugger.Fixtures.FSharp.fsproj" />

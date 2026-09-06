@@ -62,6 +62,7 @@ internal sealed partial class CorDebugDebuggee :
     private nint _activeStepper;
     private nint _activeStepperIdentity;
     private ManagedAsyncStep? _asyncStep;
+    private readonly ManagedAsyncConsumerStep _asyncConsumerStep;
     private ManagedTargetBreakpoint? _targetBreakpoint;
     private int _nextStepTargetId;
     private int _nextGotoTargetId;
@@ -94,6 +95,8 @@ internal sealed partial class CorDebugDebuggee :
             ?? throw new InvalidOperationException("No debuggee process is owned.");
         _actor = actor;
         _sourceBreakpoints = sourceBreakpoints;
+        _asyncConsumerStep = new ManagedAsyncConsumerStep(
+            new ManagedContinuationObjectReader(sourceBreakpoints.FindModule, DereferenceValue), CreateAsyncBreakpoint);
         _functionBreakpoints = functionBreakpoints;
         _instructionBreakpoints = instructionBreakpoints;
         _entryBreakpoint = entryBreakpoint;

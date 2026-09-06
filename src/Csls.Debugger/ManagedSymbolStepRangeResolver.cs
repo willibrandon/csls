@@ -12,16 +12,19 @@ internal static class ManagedSymbolStepRangeResolver
     /// </summary>
     /// <param name="thread">The borrowed ICorDebugThread pointer.</param>
     /// <param name="moduleResolver">Resolves the retained symbol state for a runtime module.</param>
-    /// <param name="range">Receives the resolved half-open IL range.</param>
+    /// <param name="ranges">Receives the current statement and hidden compiler instruction ranges.</param>
+    /// <param name="currentIsHidden">Receives whether the active instruction belongs to hidden compiler code.</param>
     /// <returns>True when managed symbol data describes the current instruction.</returns>
     internal static unsafe bool TryResolve(
         nint thread,
         Func<nint, CorDebugLoadedModule?> moduleResolver,
-        out ManagedStepRange range)
+        out IReadOnlyList<ManagedStepRange> ranges,
+        out bool currentIsHidden)
     {
         ArgumentOutOfRangeException.ThrowIfZero(thread);
         ArgumentNullException.ThrowIfNull(moduleResolver);
-        range = default;
+        ranges = [];
+        currentIsHidden = true;
         nint frame = 0;
         nint ilFrame = 0;
         nint function = 0;
@@ -84,7 +87,8 @@ internal static class ManagedSymbolStepRangeResolver
                 methodToken,
                 ilOffset,
                 codeSize,
-                out range);
+                out ranges,
+                out currentIsHidden);
         }
         catch (Exception exception) when (
             DebugSymbolReader.IsReadFailure(exception) ||
@@ -126,9 +130,11 @@ internal static class ManagedSymbolStepRangeResolver
         uint methodToken,
         uint ilOffset,
         uint codeSize,
-        out ManagedStepRange range)
+        out IReadOnlyList<ManagedStepRange> ranges,
+        out bool currentIsHidden)
     {
-        range = default;
+        ranges = [];
+        currentIsHidden = true;
         int rowNumber = checked((int)(methodToken & 0x00ffffff));
         if (rowNumber == 0)
         {
@@ -141,33 +147,37 @@ internal static class ManagedSymbolStepRangeResolver
             return false;
         }
 
-        ManagedSequencePoint? current = null;
-        ManagedSequencePoint? next = null;
-        foreach (ManagedSequencePoint point in symbols.GetSequencePoints(methodToken))
+        IReadOnlyList<ManagedSequencePoint> points = symbols.GetSequencePoints(methodToken, includeHidden: true);
+        var result = new List<ManagedStepRange>();
+        for (int index = 0; index < points.Count; index++)
         {
-            if (point.IlOffset <= ilOffset)
+            ManagedSequencePoint point = points[index];
+            uint start = checked((uint)point.IlOffset);
+            uint end = index + 1 < points.Count ? checked((uint)points[index + 1].IlOffset) : codeSize;
+            if (start >= end || end > codeSize)
             {
-                current = point;
-                continue;
+                throw new BadImageFormatException("The sequence-point range is outside the active method body.");
             }
 
-            next = point;
-            break;
+            if (point.IsHidden || (start <= ilOffset && ilOffset < end))
+            {
+                if (result.Count > 0 && result[^1].EndOffset == start)
+                {
+                    result[^1] = result[^1] with { EndOffset = end };
+                }
+                else
+                {
+                    result.Add(new ManagedStepRange(start, end));
+                }
+            }
+
+            if (start <= ilOffset && ilOffset < end)
+            {
+                currentIsHidden = point.IsHidden;
+            }
         }
 
-        if (current is null)
-        {
-            return false;
-        }
-
-        uint endOffset = next is null ? codeSize : checked((uint)next.IlOffset);
-        uint startOffset = checked((uint)current.IlOffset);
-        if (endOffset <= startOffset)
-        {
-            return false;
-        }
-
-        range = new ManagedStepRange(startOffset, endOffset);
-        return true;
+        ranges = result;
+        return result.Count > 0;
     }
 }

@@ -48,6 +48,22 @@ internal sealed partial class CorDebugDebuggee
                 PrepareAsyncStep(threadId, thread, kind);
             }
 
+            if (!targetsCall)
+            {
+                nint stateMachine = GetFirstArgument(thread);
+                try
+                {
+                    if (stateMachine != 0)
+                    {
+                        _asyncConsumerStep.Prepare(stateMachine);
+                    }
+                }
+                finally
+                {
+                    ReleaseCom(stateMachine);
+                }
+            }
+
             StartRuntimeStep(thread, kind, target);
             Continue();
         }
@@ -84,12 +100,8 @@ internal sealed partial class CorDebugDebuggee
 
             ReleaseActiveStepper(deactivate: false);
             ReleaseTargetBreakpoint();
-            if (_asyncStep is not null)
-            {
-                return false;
-            }
-
             ReleaseAsyncStep();
+            _asyncConsumerStep.Clear();
             return true;
         }
         finally
@@ -104,6 +116,7 @@ internal sealed partial class CorDebugDebuggee
     /// <param name="runtimeAvailable">Whether the runtime permits breakpoint and handle disposal.</param>
     internal void CancelStep(bool runtimeAvailable = true)
     {
+        _asyncConsumerStep.Clear(runtimeAvailable);
         ReleaseAsyncStep(runtimeAvailable);
         ReleaseTargetBreakpoint(runtimeAvailable);
         ReleaseActiveStepper(deactivate: runtimeAvailable);

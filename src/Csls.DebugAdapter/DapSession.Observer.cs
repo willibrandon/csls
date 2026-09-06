@@ -94,7 +94,7 @@ internal sealed partial class DapSession
 
             _state = DapSessionState.Stopped;
             _stoppedThreadId = threadId ?? _stoppedThreadId;
-            if (string.Equals(reason, _deferredStoppedReason, StringComparison.Ordinal))
+            if (_deferExecutionStops || string.Equals(reason, _deferredStoppedReason, StringComparison.Ordinal))
             {
                 _deferredStop = (reason, threadId, generation, exception);
                 return;
@@ -140,6 +140,38 @@ internal sealed partial class DapSession
         }
         finally
         {
+            _stopEventGate.Release();
+        }
+    }
+
+    private async ValueTask BeginExecutionResponseAsync(CancellationToken cancellationToken)
+    {
+        await _stopEventGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            _deferExecutionStops = true;
+        }
+        finally
+        {
+            _stopEventGate.Release();
+        }
+    }
+
+    private async ValueTask CompleteExecutionResponseAsync(CancellationToken cancellationToken)
+    {
+        await _stopEventGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            _deferExecutionStops = false;
+            if (!_targetExited && _deferredStop is { } stop)
+            {
+                await WriteStoppedEventAsync(stop.Reason, stop.ThreadId, stop.Exception, cancellationToken)
+                    .ConfigureAwait(false);
+            }
+        }
+        finally
+        {
+            _deferredStop = null;
             _stopEventGate.Release();
         }
     }

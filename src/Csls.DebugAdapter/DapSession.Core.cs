@@ -37,6 +37,7 @@ internal sealed partial class DapSession : IDebuggerSessionObserver, IAsyncDispo
     private bool _targetExited;
     private int? _stoppedThreadId;
     private string? _deferredStoppedReason;
+    private bool _deferExecutionStops;
     private (string Reason, int? ThreadId, DebugStopGeneration Generation,
         DebugExceptionInfo? Exception)? _deferredStop;
     private Task? _cancelableRequest;

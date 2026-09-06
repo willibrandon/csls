@@ -215,15 +215,16 @@ internal sealed class DebugSymbolReader : IDisposable
     }
 
     /// <summary>
-    /// Reads visible sequence points for one method or for the complete module.
+    /// Reads ordered sequence points for one method or for the complete module.
     /// </summary>
     /// <param name="methodToken">The method token, or null to enumerate every method.</param>
-    /// <returns>The immutable ordered visible sequence points.</returns>
-    internal IReadOnlyList<ManagedSequencePoint> GetSequencePoints(uint? methodToken)
+    /// <param name="includeHidden">Whether to retain compiler-generated instruction boundaries.</param>
+    /// <returns>The immutable ordered sequence points.</returns>
+    internal IReadOnlyList<ManagedSequencePoint> GetSequencePoints(uint? methodToken, bool includeHidden = false)
     {
         if (_windows is not null)
         {
-            return _windows.GetSequencePoints(methodToken);
+            return _windows.GetSequencePoints(methodToken, includeHidden);
         }
 
         IEnumerable<(uint Token, PortablePdbReader Reader, MethodDebugInformation Info)> methods =
@@ -234,11 +235,21 @@ internal sealed class DebugSymbolReader : IDisposable
             MetadataReader reader = portable.Metadata;
             foreach (SequencePoint point in method.GetSequencePoints())
             {
+                if (point.IsHidden || point.StartLine == HiddenSequencePointLine)
+                {
+                    if (includeHidden)
+                    {
+                        result.Add(new ManagedSequencePoint(token, point.Offset, string.Empty,
+                            HiddenSequencePointLine, 0, HiddenSequencePointLine, 0, Guid.Empty));
+                    }
+
+                    continue;
+                }
+
                 DocumentHandle document = point.Document.IsNil
                     ? method.Document
                     : point.Document;
-                if (point.IsHidden || point.StartLine == HiddenSequencePointLine ||
-                    document.IsNil)
+                if (document.IsNil)
                 {
                     continue;
                 }
@@ -407,26 +418,13 @@ internal sealed class DebugSymbolReader : IDisposable
         uint ilOffset,
         out ManagedAsyncAwaitPoint point)
     {
-        IReadOnlyList<ManagedAsyncAwaitPoint> points = _windows is not null
-            ? _windows.GetAsyncAwaitPoints(methodToken)
-            : GetPortableAsyncAwaitPoints(methodToken);
+        IReadOnlyList<ManagedAsyncAwaitPoint> points = GetAsyncAwaitPoints(methodToken);
         foreach (ManagedAsyncAwaitPoint candidate in points)
         {
             if (ilOffset <= candidate.YieldOffset)
             {
-                ManagedSequencePoint? resumed = GetSequencePoints(
-                    candidate.ResumeMethodToken).FirstOrDefault(sequencePoint =>
-                        sequencePoint.IlOffset >= candidate.ResumeOffset);
-                if (resumed is not null)
-                {
-                    point = candidate with
-                    {
-                        ResumeStopOffset = checked((uint)resumed.IlOffset)
-                    };
-                    return true;
-                }
-
-                break;
+                point = candidate;
+                return true;
             }
 
             if (ilOffset < candidate.ResumeOffset)
@@ -438,6 +436,13 @@ internal sealed class DebugSymbolReader : IDisposable
         point = default;
         return false;
     }
+
+    /// <summary>
+    /// Reads the bounded compiler-recorded suspension and resumption locations for one method.
+    /// </summary>
+    internal IReadOnlyList<ManagedAsyncAwaitPoint> GetAsyncAwaitPoints(uint methodToken) => _windows is not null
+        ? _windows.GetAsyncAwaitPoints(methodToken)
+        : GetPortableAsyncAwaitPoints(methodToken);
 
     /// <summary>
     /// Releases the selected Portable or Windows PDB owner.
@@ -561,8 +566,7 @@ internal sealed class DebugSymbolReader : IDisposable
                 result.Add(new ManagedAsyncAwaitPoint(
                     yieldOffset,
                     resumeOffset,
-                    MethodDefinitionTokenKind | checked((uint)resumeMethodRow),
-                    ResumeStopOffset: resumeOffset));
+                    MethodDefinitionTokenKind | checked((uint)resumeMethodRow)));
             }
 
             return result;

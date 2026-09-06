@@ -35,7 +35,7 @@ internal sealed partial class CorDebugDebuggee
                 InitialThreadId = threadId,
                 Kind = kind,
                 ResumeMethodToken = plan.AwaitPoint.ResumeMethodToken,
-                ResumeOffset = plan.AwaitPoint.ResumeStopOffset
+                ResumeOffset = plan.AwaitPoint.ResumeOffset
             };
         }
         catch
@@ -92,13 +92,34 @@ internal sealed partial class CorDebugDebuggee
             }
 
             ReleaseAsyncStep();
-            ClearFrameHandles();
-            return ManagedTargetBreakpointDecision.Stopped;
+            _asyncConsumerStep.Clear();
+            nint thread = GetThread(threadId);
+            try
+            {
+                return ResumeToUserCode(thread);
+            }
+            finally
+            {
+                ReleaseCom(thread);
+            }
         }
         finally
         {
             _ = ComAbi.Release(identity);
         }
+    }
+
+    private ManagedTargetBreakpointDecision ResumeToUserCode(nint thread)
+    {
+        if (ManagedSymbolStepRangeResolver.TryResolve(thread, _sourceBreakpoints.FindModule,
+            out _, out bool currentIsHidden) && !currentIsHidden)
+        {
+            ClearFrameHandles();
+            return ManagedTargetBreakpointDecision.Stopped;
+        }
+
+        StartRuntimeStep(thread, DebugStepKind.Over);
+        return ManagedTargetBreakpointDecision.Continue;
     }
 
     private static unsafe (nint Breakpoint, nint Identity) CreateAsyncBreakpoint(

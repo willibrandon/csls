@@ -81,6 +81,10 @@ accessors, CLR operators, and `DebuggerHidden` or `DebuggerStepThrough` members.
 
 Async stepping follows compiler-recorded continuations across threads and competing
 state-machine instances. Iterator stepping follows yield and consumer boundaries.
+For async iterators, Step Over follows a yielded value into its `await foreach`
+consumer, preserving that consumer's identity across thread changes and garbage
+collection. Source stepping follows actual control flow to visible statements,
+including backward branches into loop bodies.
 Presented frames use authored method identities where the PDB provides the required
 state-machine mapping.
 
