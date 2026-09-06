@@ -84,6 +84,7 @@ internal sealed partial class DapTestClient
 
     private Task InitializeAsync(
         IReadOnlyDictionary<string, string?>? environment,
+        string? workerPath,
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
@@ -122,7 +123,7 @@ internal sealed partial class DapTestClient
             }
         }
 
-        string? configuredWorkerPath = Environment.GetEnvironmentVariable(
+        string? configuredWorkerPath = workerPath ?? Environment.GetEnvironmentVariable(
             "CSLS_DEBUGGER_WORKER_TEST_PATH");
         startInfo.Environment["CSLS_DEBUGGER_WORKER_PATH"] =
             string.IsNullOrWhiteSpace(configuredWorkerPath)

@@ -6,7 +6,7 @@ using System.Text;
 namespace Csls.Debugger.Worker;
 
 /// <summary>
-/// Owns stable worker streams that cannot be redirected by a Unix target launch.
+/// Owns protocol streams independently of native target launches and runtime diagnostics.
 /// </summary>
 internal sealed partial class DebuggerWorkerStandardStreams : IAsyncDisposable
 {
@@ -53,6 +53,12 @@ internal sealed partial class DebuggerWorkerStandardStreams : IAsyncDisposable
                     FileAccess.Write,
                     bufferSize: 4096,
                     isAsync: false);
+                // Native libraries and runtime diagnostic children write through descriptor 1.
+                // Only the private, close-on-exec duplicate remains connected to protocol output.
+                if (RedirectDescriptor(StandardErrorDescriptor, StandardOutputDescriptor) < 0)
+                {
+                    throw new Win32Exception(Marshal.GetLastPInvokeError(), "dup2(stderr, stdout)");
+                }
             }
 
             _error = new StreamWriter(
@@ -168,6 +174,10 @@ internal sealed partial class DebuggerWorkerStandardStreams : IAsyncDisposable
     [LibraryImport("libc", EntryPoint = "dup", SetLastError = true)]
     [DefaultDllImportSearchPaths(DllImportSearchPath.SafeDirectories)]
     private static partial int Duplicate(int descriptor);
+
+    [LibraryImport("libc", EntryPoint = "dup2", SetLastError = true)]
+    [DefaultDllImportSearchPaths(DllImportSearchPath.SafeDirectories)]
+    private static partial int RedirectDescriptor(int sourceDescriptor, int targetDescriptor);
 
     [LibraryImport("libc", EntryPoint = "fcntl", SetLastError = true)]
     [DefaultDllImportSearchPaths(DllImportSearchPath.SafeDirectories)]
