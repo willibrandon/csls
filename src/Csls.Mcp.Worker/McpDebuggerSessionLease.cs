@@ -1,5 +1,4 @@
 using Csls.Debugger.Control;
-using System.Diagnostics;
 
 namespace Csls.Mcp.Worker;
 
@@ -23,24 +22,18 @@ internal sealed class McpDebuggerSessionLease : IAsyncDisposable
     /// <param name="id">The stable MCP session identifier.</param>
     /// <param name="kind">How the target will be acquired.</param>
     /// <param name="worker">The supervised debugger worker.</param>
-    /// <param name="diagnostics">The bounded worker diagnostics reader.</param>
-    /// <param name="client">The private debugger RPC client.</param>
     /// <returns>The initialized ownership lease.</returns>
     internal static McpDebuggerSessionLease Create(
         string id,
         McpDebuggerSessionKind kind,
-        Process worker,
-        ValueTask<string> diagnostics,
-        DebuggerRpcClient client)
+        DebuggerWorkerProcess worker)
     {
         return new McpDebuggerSessionLease
         {
             _session = new McpDebuggerSession(
                 id,
                 kind,
-                worker,
-                diagnostics,
-                client)
+                worker)
         };
     }
 

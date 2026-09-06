@@ -1,11 +1,11 @@
 using System.Text;
 
-namespace Csls.Mcp.Worker;
+namespace Csls.Debugger.Control;
 
 /// <summary>
 /// Captures a bounded prefix of debugger-worker diagnostics while draining stderr.
 /// </summary>
-internal static class McpDebuggerWorkerDiagnostics
+internal static class DebuggerWorkerDiagnostics
 {
     private const int MaximumCharacters = 64 * 1024;
 

@@ -1,6 +1,4 @@
-using Csls.Debugger;
 using Csls.Debugger.Control;
-using System.Diagnostics;
 
 namespace Csls.Mcp.Worker;
 
@@ -23,55 +21,17 @@ internal sealed partial class McpDebuggerSession
         McpDebuggerSessionKind kind,
         CancellationToken cancellationToken)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(workerPath);
-        bool managedWorker = string.Equals(
-            Path.GetExtension(workerPath),
-            ".dll",
-            StringComparison.OrdinalIgnoreCase);
-        var startInfo = new ProcessStartInfo
-        {
-            FileName = managedWorker ? ResolveDotNetHost() : workerPath,
-            WorkingDirectory = Path.GetDirectoryName(workerPath)
-                ?? throw new InvalidOperationException(
-                    $"Debugger worker {workerPath} has no containing directory."),
-            RedirectStandardError = true,
-            RedirectStandardInput = true,
-            RedirectStandardOutput = true,
-            UseShellExecute = false
-        };
-        if (managedWorker)
-        {
-            startInfo.ArgumentList.Add(workerPath);
-        }
-
-        startInfo.ArgumentList.Add("control");
-        if (kind is not McpDebuggerSessionKind.Dump)
-        {
-            DebuggerWorkerEnvironment.Configure(startInfo, workerPath);
-        }
-
-        Process process = Process.Start(startInfo)
-            ?? throw new InvalidOperationException("The debugger worker did not start.");
-        ValueTask<string> diagnostics = new(
-            McpDebuggerWorkerDiagnostics.ReadAsync(process.StandardError));
-        var client = new DebuggerRpcClient(
-            process.StandardInput.BaseStream,
-            process.StandardOutput.BaseStream,
-            leaveOpen: true);
+        DebuggerWorkerProcess worker = await DebuggerWorkerProcess.StartAsync(
+            workerPath,
+            configureNativeEnvironment: kind is not McpDebuggerSessionKind.Dump,
+            cancellationToken).ConfigureAwait(false);
         try
         {
-            await client.ConnectAsync(cancellationToken).ConfigureAwait(false);
-            return McpDebuggerSessionLease.Create(
-                id,
-                kind,
-                process,
-                diagnostics,
-                client);
+            return McpDebuggerSessionLease.Create(id, kind, worker);
         }
         catch
         {
-            await client.DisposeAsync().ConfigureAwait(false);
-            await StopWorkerAsync(process, diagnostics).ConfigureAwait(false);
+            await worker.DisposeAsync().ConfigureAwait(false);
             throw;
         }
     }
@@ -90,54 +50,18 @@ internal sealed partial class McpDebuggerSession
             _agentControlExpirationTimer.Dispose();
         }
 
-        await _operationGate.WaitAsync(CancellationToken.None).ConfigureAwait(false);
-        try
+        using (_operationGate)
         {
-            Client.ResourceChanged -= OnResourceChanged;
-            await Client.DisposeAsync().ConfigureAwait(false);
-            await _worker.StandardInput.DisposeAsync().ConfigureAwait(false);
-        }
-        finally
-        {
-            _ = _operationGate.Release();
-        }
-
-        await StopWorkerAsync(_worker, _diagnostics).ConfigureAwait(false);
-        _operationGate.Dispose();
-    }
-
-    private static async Task StopWorkerAsync(
-        Process process,
-        ValueTask<string> diagnostics)
-    {
-        using (process)
-        {
-            if (!process.HasExited)
+            await _operationGate.WaitAsync(CancellationToken.None).ConfigureAwait(false);
+            try
             {
-                try
-                {
-                    await process.WaitForExitAsync(CancellationToken.None)
-                        .WaitAsync(TimeSpan.FromSeconds(10)).ConfigureAwait(false);
-                }
-                catch (TimeoutException)
-                {
-                    process.Kill(entireProcessTree: true);
-                    await process.WaitForExitAsync(CancellationToken.None).ConfigureAwait(false);
-                }
+                Client.ResourceChanged -= OnResourceChanged;
+                await _worker.DisposeAsync().ConfigureAwait(false);
             }
-
-            string diagnosticText = await diagnostics.ConfigureAwait(false);
-            if (process.ExitCode != 0)
+            finally
             {
-                throw new InvalidDataException(
-                    $"Debugger worker exited with code {process.ExitCode}: {diagnosticText}");
+                _ = _operationGate.Release();
             }
         }
-    }
-
-    private static string ResolveDotNetHost()
-    {
-        string? hostPath = Environment.GetEnvironmentVariable("DOTNET_HOST_PATH");
-        return string.IsNullOrWhiteSpace(hostPath) ? "dotnet" : hostPath;
     }
 }

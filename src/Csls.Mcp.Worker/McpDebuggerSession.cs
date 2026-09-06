@@ -1,7 +1,6 @@
 using Csls.Debugger.Contracts;
 using Csls.Debugger.Control;
 using StreamJsonRpc;
-using System.Diagnostics;
 
 namespace Csls.Mcp.Worker;
 
@@ -10,8 +9,7 @@ namespace Csls.Mcp.Worker;
 /// </summary>
 internal sealed partial class McpDebuggerSession : IAsyncDisposable
 {
-    private readonly Process _worker;
-    private readonly ValueTask<string> _diagnostics;
+    private readonly DebuggerWorkerProcess _worker;
     private readonly SemaphoreSlim _operationGate = new(1, 1);
     private int _disposeState;
 
@@ -21,25 +19,20 @@ internal sealed partial class McpDebuggerSession : IAsyncDisposable
     /// <param name="id">The stable MCP session identifier.</param>
     /// <param name="kind">How the target will be acquired.</param>
     /// <param name="worker">The supervised debugger worker.</param>
-    /// <param name="diagnostics">The bounded worker diagnostics reader.</param>
-    /// <param name="client">The private debugger RPC client.</param>
     internal McpDebuggerSession(
         string id,
         McpDebuggerSessionKind kind,
-        Process worker,
-        ValueTask<string> diagnostics,
-        DebuggerRpcClient client)
+        DebuggerWorkerProcess worker)
     {
         Id = id;
         Kind = kind;
         _worker = worker;
-        _diagnostics = diagnostics;
         _agentControlExpirationTimer = new Timer(
             static state => ((McpDebuggerSession)state!).ExpireAgentControl(),
             this,
             Timeout.InfiniteTimeSpan,
             Timeout.InfiniteTimeSpan);
-        Client = client;
+        Client = worker.Client;
         Client.ResourceChanged += OnResourceChanged;
     }
 
