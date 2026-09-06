@@ -8,6 +8,8 @@ namespace Csls.Debugger;
 /// </summary>
 internal sealed partial class CorDebugDebuggee
 {
+    private readonly ManagedAsyncCallerStep _asyncCallerStep = new();
+
     /// <summary>
     /// Starts one source-level step on a managed thread and resumes the target.
     /// </summary>
@@ -62,6 +64,11 @@ internal sealed partial class CorDebugDebuggee
                 {
                     ReleaseCom(stateMachine);
                 }
+
+                if (_asyncStep is null && !_asyncConsumerStep.IsActive)
+                {
+                    _asyncCallerStep.Prepare(thread, _sourceBreakpoints.FindModule, ConfigureStepper);
+                }
             }
 
             if (kind != DebugStepKind.Out || !_asyncConsumerStep.IsActive)
@@ -89,14 +96,30 @@ internal sealed partial class CorDebugDebuggee
     /// <summary>
     /// Completes the active source step when its runtime callback arrives.
     /// </summary>
+    /// <param name="threadId">The completing managed thread.</param>
     /// <param name="stepper">The borrowed callback ICorDebugStepper pointer.</param>
-    /// <returns>True when the callback belongs to this debuggee's active step.</returns>
-    internal bool CompleteStep(nint stepper)
+    /// <param name="reason">The runtime step completion reason.</param>
+    /// <returns>True when the logical source step has completed at a visible statement.</returns>
+    internal bool CompleteStep(int threadId, nint stepper, int reason)
     {
         ArgumentOutOfRangeException.ThrowIfZero(stepper);
         nint identity = ComAbi.GetIdentity(stepper);
         try
         {
+            if (_asyncCallerStep.Owns(identity))
+            {
+                CancelStep();
+                nint thread = GetThread(threadId);
+                try
+                {
+                    return ResumeToUserCode(thread) == ManagedTargetBreakpointDecision.Stopped;
+                }
+                finally
+                {
+                    ReleaseCom(thread);
+                }
+            }
+
             if (identity != _activeStepperIdentity)
             {
                 return false;
@@ -106,6 +129,13 @@ internal sealed partial class CorDebugDebuggee
             ReleaseTargetBreakpoint();
             ReleaseAsyncStep();
             _asyncConsumerStep.Clear();
+            // STEP_RETURN can arrive in a runtime wrapper before the authored caller resumes.
+            if (reason == 1 && _asyncCallerStep.IsActive)
+            {
+                return false;
+            }
+
+            _asyncCallerStep.Clear();
             return true;
         }
         finally
@@ -120,6 +150,7 @@ internal sealed partial class CorDebugDebuggee
     /// <param name="runtimeAvailable">Whether the runtime permits breakpoint and handle disposal.</param>
     internal void CancelStep(bool runtimeAvailable = true)
     {
+        _asyncCallerStep.Clear(runtimeAvailable);
         _asyncConsumerStep.Clear(runtimeAvailable);
         ReleaseAsyncStep(runtimeAvailable);
         ReleaseTargetBreakpoint(runtimeAvailable);

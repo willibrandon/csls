@@ -415,8 +415,9 @@ public abstract class DapTestContext
             .EnumerateArray()
             .First(candidate =>
                 candidate.TryGetProperty("source", out JsonElement source) &&
+                source.TryGetProperty("path", out JsonElement path) &&
                 DebuggerTestPath.AreEquivalent(
-                    source.GetProperty("path").GetString(),
+                    path.GetString(),
                     sourcePath));
         return (
             frame.GetProperty("name").GetString()!,

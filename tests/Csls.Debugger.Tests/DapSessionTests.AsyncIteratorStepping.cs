@@ -136,6 +136,15 @@ public sealed partial class DapSessionTests
         string method, string localName, string localValue)
     {
         JsonElement frame = await ReadTopSourceFrameAsync(client, threadId).ConfigureAwait(false);
+        if (frame.GetProperty("name").GetString() != "Csls.TestProcessHost.DebuggerAsyncIteratorStepFixture." + method)
+        {
+            int modulesSequence = await client.SendRequestAsync("modules", WriteEmptyObject,
+                TestContext.CancellationToken).ConfigureAwait(false);
+            using JsonDocument modules = await client.ReadMessageAsync(TestContext.CancellationToken).ConfigureAwait(false);
+            AssertResponse(modules.RootElement, modulesSequence, "modules", success: true);
+            TestContext.WriteLine($"Module policy at unexpected step stop: {modules.RootElement}");
+        }
+
         Assert.AreEqual("Csls.TestProcessHost.DebuggerAsyncIteratorStepFixture." + method,
             frame.GetProperty("name").GetString(), frame.GetRawText());
         Assert.AreEqual(line, frame.GetProperty("line").GetInt32());

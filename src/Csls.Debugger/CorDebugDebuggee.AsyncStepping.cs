@@ -93,6 +93,7 @@ internal sealed partial class CorDebugDebuggee
 
             ReleaseAsyncStep();
             _asyncConsumerStep.Clear();
+            _asyncCallerStep.Clear();
             nint thread = GetThread(threadId);
             try
             {

@@ -62,7 +62,7 @@ internal static class DebuggerAsyncIteratorStepFixture
     private static async Task<int> ConsumeAsync(NamedPipeClientStream pipe, NamedPipeClientStream? coordination, int identity)
     {
         int total = 0;
-        await foreach (int value in ReadAndEnumerateAsync(pipe, coordination).ConfigureAwait(false))
+        await foreach (int value in new DebuggerAsyncEnumerable(ReadAndEnumerateAsync(pipe, coordination)).ConfigureAwait(false))
         {
             total += value;
         }

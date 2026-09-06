@@ -13,17 +13,26 @@ public sealed partial class DapSessionTests
     /// Cancels consumer breakpoints when user code interrupts an in-flight iterator yield step.
     /// </summary>
     /// <param name="configuration">The compiler optimization configuration.</param>
+    /// <param name="synchronousYield">Whether to interrupt the physical caller after a synchronous yield.</param>
     [TestMethod]
-    [DataRow("Debug")]
-    [DataRow("Release")]
+    [DataRow("Debug", false)]
+    [DataRow("Release", false)]
+    [DataRow("Debug", true)]
+    [DataRow("Release", true)]
     [Timeout(30000, CooperativeCancellation = true)]
-    public async Task BreakpointInterruptsAsyncIteratorConsumerStep(string configuration)
+    public async Task BreakpointInterruptsAsyncIteratorConsumerStep(string configuration, bool synchronousYield)
     {
         string sourcePath = Path.Join(FindRepositoryRoot(), "tests", "Csls.TestProcessHost", "DebuggerAsyncIteratorStepFixture.cs");
         string[] lines = await File.ReadAllLinesAsync(sourcePath, TestContext.CancellationToken).ConfigureAwait(false);
         int awaitLine = FindSourceLine(lines, "await pipe.ReadExactlyAsync");
-        int yieldLine = FindSourceLine(lines, "yield return CollectAndReturn");
-        int interruptionLine = FindSourceLine(lines, "GC.Collect(");
+        int yieldLine = FindSourceLine(lines,
+            synchronousYield ? "yield return checked(value);" : "yield return CollectAndReturn");
+        string interruptionSource = synchronousYield
+            ? Path.Join(FindRepositoryRoot(), "tests", "Csls.TestProcessHost", "DebuggerAsyncEnumerator.cs")
+            : sourcePath;
+        string[] interruptionLines = await File.ReadAllLinesAsync(interruptionSource, TestContext.CancellationToken)
+            .ConfigureAwait(false);
+        int interruptionLine = FindSourceLine(interruptionLines, synchronousYield ? "return pending;" : "GC.Collect(");
         string pipeName = $"cb-{Guid.NewGuid():N}";
         using var pipe = new NamedPipeServerStream(pipeName, PipeDirection.InOut, 1,
             PipeTransmissionMode.Byte, PipeOptions.Asynchronous | PipeOptions.CurrentUserOnly);
@@ -42,14 +51,16 @@ public sealed partial class DapSessionTests
         _ = await initialStep.ConfigureAwait(false);
         _ = await AssertSourcePolicyBreakpointAsync(client, sourcePath, yieldLine, verified: true).ConfigureAwait(false);
         int yieldThread = await ContinueEntryToUserBreakpointAsync(client).ConfigureAwait(false);
-        _ = await AssertSourcePolicyBreakpointAsync(client, sourcePath, interruptionLine, verified: true).ConfigureAwait(false);
+        await ClearSourceBreakpointsAsync(client, sourcePath).ConfigureAwait(false);
+        _ = await AssertSourcePolicyBreakpointAsync(client, interruptionSource, interruptionLine, verified: true).ConfigureAwait(false);
         int interruptedThread = await StepAndReadStopAsync(client, "next", yieldThread,
             TestContext.CancellationToken, expectedReason: "breakpoint").ConfigureAwait(false);
         JsonElement frame = await ReadTopSourceFrameAsync(client, interruptedThread).ConfigureAwait(false);
-        Assert.AreEqual("Csls.TestProcessHost.DebuggerAsyncIteratorStepFixture.CollectAndReturn",
+        Assert.AreEqual(synchronousYield ? "Csls.TestProcessHost.DebuggerAsyncEnumerator.MoveNextAsync"
+            : "Csls.TestProcessHost.DebuggerAsyncIteratorStepFixture.CollectAndReturn",
             frame.GetProperty("name").GetString());
         Assert.AreEqual(interruptionLine, frame.GetProperty("line").GetInt32());
-        await ClearSourceBreakpointsAsync(client, sourcePath).ConfigureAwait(false);
+        await ClearSourceBreakpointsAsync(client, interruptionSource).ConfigureAwait(false);
         int continueSequence = await client.SendRequestAsync("continue", WriteEmptyObject,
             TestContext.CancellationToken).ConfigureAwait(false);
         await ReadSuccessfulTerminationAsync(client, continueSequence, TestContext.CancellationToken).ConfigureAwait(false);

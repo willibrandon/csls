@@ -78,14 +78,13 @@ public sealed partial class DebuggerSession
         int reason,
         CancellationToken cancellationToken)
     {
-        _ = reason;
         if (_state != DebugSessionState.Running ||
             _debuggee is not CorDebugDebuggee managedDebuggee)
         {
             return false;
         }
 
-        if (!managedDebuggee.CompleteStep(stepper))
+        if (!managedDebuggee.CompleteStep(threadId, stepper, reason))
         {
             return false;
         }
