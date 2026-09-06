@@ -48,7 +48,9 @@ public sealed class DebuggerStackProgressTests
             JsonElement frame = frames[index];
             Assert.AreEqual("Csls.TestProcessHost.DebuggerDeepStackFixture.Descend", frame.GetProperty("Name").GetString());
             Assert.AreEqual(index == 0 ? topLine : callerLine, frame.GetProperty("Line").GetInt32());
-            Assert.AreEqual(sourcePath, frame.GetProperty("Source").GetProperty("Path").GetString());
+            string? actualSourcePath = frame.GetProperty("Source").GetProperty("Path").GetString();
+            Assert.IsTrue(DebuggerTestPath.AreEquivalent(sourcePath, actualSourcePath),
+                $"Expected source file '{sourcePath}', received '{actualSourcePath}'.");
         }
 
         Assert.HasCount(1000, frames.EnumerateArray().Select(static frame => frame.GetProperty("Id").GetInt32()).Distinct());
