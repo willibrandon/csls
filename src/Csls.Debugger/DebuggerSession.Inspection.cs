@@ -7,6 +7,36 @@ namespace Csls.Debugger;
 /// </summary>
 public sealed partial class DebuggerSession
 {
+    /// <inheritdoc />
+    public Task<IReadOnlyList<DebugScopeInfo>> GetScopesAsync(DebugScopesRequest request, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        return GetScopesAsync(request.FrameId, cancellationToken);
+    }
+
+    /// <inheritdoc />
+    public Task<IReadOnlyList<DebugVariableInfo>> GetVariablesAsync(DebugVariablesRequest request, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        return GetVariablesAsync(request.VariablesReference, request.Start, request.Count,
+            request.AllowTargetCodeExecution, cancellationToken, request.Filter);
+    }
+
+    /// <inheritdoc />
+    public Task<DebugStackTrace> GetStackAsync(DebugStackRequest request, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        return GetStackTraceAsync(request.ThreadId, request.StartFrame, request.Levels,
+            cancellationToken, request.Progress);
+    }
+
+    /// <inheritdoc />
+    public Task<DebugModulePage> GetModulesAsync(DebugModulesRequest request, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        return GetModulesAsync(request.StartModule, request.ModuleCount, cancellationToken);
+    }
+
     /// <summary>
     /// Replaces every source breakpoint requested for one absolute document path.
     /// </summary>

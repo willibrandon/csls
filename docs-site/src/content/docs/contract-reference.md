@@ -337,3 +337,4 @@ These public wire-contract types are generated from the compiled assemblies and 
 | `Csls.Debugger.Contracts.DebuggerResourceChangeKind` | Identifies debugger resources invalidated by one engine notification. |
 | `Csls.Debugger.Contracts.IDebuggerControlTarget` | Defines read-only breakpoint inspection exposed through private debugger control RPC. |
 | `Csls.Debugger.Contracts.IDebuggerEvaluatorTarget` | Defines the operations exposed by one supervised managed evaluator worker. |
+| `Csls.Debugger.Contracts.IDebuggerInspectionTarget` | Provides bounded thread, stack, scope, variable, and module inspection for live and offline targets. |

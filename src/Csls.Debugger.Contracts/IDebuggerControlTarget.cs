@@ -3,7 +3,7 @@ namespace Csls.Debugger.Contracts;
 /// <summary>
 /// Defines the engine operations exposed through private debugger control RPC.
 /// </summary>
-public partial interface IDebuggerControlTarget
+public partial interface IDebuggerControlTarget : IDebuggerInspectionTarget
 {
     /// <summary>
     /// Gets the current debugger session snapshot.
@@ -111,43 +111,6 @@ public partial interface IDebuggerControlTarget
     /// <returns>The running snapshot.</returns>
     Task<DebugSessionSnapshot> StepAsync(
         DebugStepRequest request,
-        CancellationToken cancellationToken);
-
-    /// <summary>
-    /// Gets current managed threads.
-    /// </summary>
-    /// <param name="cancellationToken">Cancels enumeration.</param>
-    /// <returns>The bounded current thread snapshot.</returns>
-    Task<IReadOnlyList<DebugThreadInfo>> GetThreadsAsync(CancellationToken cancellationToken);
-
-    /// <summary>
-    /// Gets a current-generation managed stack page.
-    /// </summary>
-    /// <param name="request">The selected thread and page.</param>
-    /// <param name="cancellationToken">Cancels enumeration.</param>
-    /// <returns>The requested stack page.</returns>
-    Task<DebugStackTrace> GetStackAsync(
-        DebugStackRequest request,
-        CancellationToken cancellationToken);
-
-    /// <summary>
-    /// Gets current-generation scopes for a frame.
-    /// </summary>
-    /// <param name="request">The selected frame.</param>
-    /// <param name="cancellationToken">Cancels enumeration.</param>
-    /// <returns>The current frame scopes.</returns>
-    Task<IReadOnlyList<DebugScopeInfo>> GetScopesAsync(
-        DebugScopesRequest request,
-        CancellationToken cancellationToken);
-
-    /// <summary>
-    /// Gets a current-generation variable page.
-    /// </summary>
-    /// <param name="request">The selected container and page.</param>
-    /// <param name="cancellationToken">Cancels enumeration.</param>
-    /// <returns>The requested variable page.</returns>
-    Task<IReadOnlyList<DebugVariableInfo>> GetVariablesAsync(
-        DebugVariablesRequest request,
         CancellationToken cancellationToken);
 
     /// <summary>

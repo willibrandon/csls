@@ -6,7 +6,7 @@ namespace Csls.Debugger;
 /// <summary>
 /// Owns one protocol-neutral debugger target and its ordered lifecycle.
 /// </summary>
-public sealed partial class DebuggerSession : IAsyncDisposable
+public sealed partial class DebuggerSession : IDebuggerInspectionTarget, IAsyncDisposable
 {
     private readonly IDebuggerSessionObserver _observer;
     private readonly CancellationTokenSource _lifetime = new();

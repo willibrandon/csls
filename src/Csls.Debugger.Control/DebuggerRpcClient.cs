@@ -7,7 +7,7 @@ namespace Csls.Debugger.Control;
 /// <summary>
 /// Invokes one explicitly selected private debugger control session.
 /// </summary>
-public sealed partial class DebuggerRpcClient : IAsyncDisposable
+public sealed partial class DebuggerRpcClient : IDebuggerInspectionTarget, IAsyncDisposable
 {
     /// <summary>
     /// Gets the current target session snapshot.
