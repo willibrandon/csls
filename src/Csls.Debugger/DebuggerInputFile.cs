@@ -29,7 +29,7 @@ internal static partial class DebuggerInputFile
         if (descriptor < 0)
         {
             int error = Marshal.GetLastPInvokeError();
-            throw new IOException($"Cannot open envFile '{path}'.", new Win32Exception(error));
+            throw new IOException($"Cannot open debugger input file '{path}'.", new Win32Exception(error));
         }
 
         using var owner = new DisposableOwner<SafeFileHandle>();

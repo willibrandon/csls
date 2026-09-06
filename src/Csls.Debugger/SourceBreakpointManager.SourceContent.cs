@@ -7,7 +7,6 @@ namespace Csls.Debugger;
 /// </summary>
 internal sealed partial class SourceBreakpointManager
 {
-    private const int MaximumLocalSourceBytes = 32 * 1024 * 1024;
     private readonly Dictionary<string, DebugSourceRegistration> _sources =
         new(PathComparer);
     private readonly Dictionary<int, DebugSourceRegistration> _sourcesByReference = [];
@@ -99,7 +98,7 @@ internal sealed partial class SourceBreakpointManager
 
         string resolvedPath = _sourcePathMapper.Map(document.Path);
         bool localSourceIsCurrent = document.EmbeddedSource is null &&
-            IsLocalSourceCurrent(resolvedPath, document.Checksum);
+            SourceChecksumVerifier.MatchesFile(resolvedPath, document.Checksum);
         bool useSourceLink = document.EmbeddedSource is null &&
             !localSourceIsCurrent &&
             document.Checksum is not null &&
@@ -155,33 +154,6 @@ internal sealed partial class SourceBreakpointManager
         };
         _sources.Add(key, registration);
         return registration;
-    }
-
-    private static bool IsLocalSourceCurrent(
-        string path,
-        DebugSourceChecksum? checksum)
-    {
-        try
-        {
-            var file = new FileInfo(path);
-            if (!file.Exists || file.Length > MaximumLocalSourceBytes)
-            {
-                return false;
-            }
-
-            if (checksum is null)
-            {
-                return true;
-            }
-
-            byte[] source = File.ReadAllBytes(path);
-            return SourceChecksumVerifier.Matches(source, checksum);
-        }
-        catch (Exception exception) when (
-            exception is IOException or UnauthorizedAccessException)
-        {
-            return false;
-        }
     }
 
     private static string GetMimeType(string path) =>

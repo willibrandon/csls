@@ -445,12 +445,9 @@ Source resolution order is:
 3. A checksum-valid original local path.
 4. Checksum-valid Source Link content.
 
-Raw and CRLF-normalized checksum validation is supported where compiler/source
-mapping behavior requires it. Source resolution requires a matching checksum;
-there is no implemented `requireExactSource` switch. The required configurable
-policy must reject mismatches when enabled and visibly identify unverified source
-when disabled, without caching that source as authoritative or silently rebinding
-breakpoints against different content.
+Local source validation hashes the original file bytes in bounded chunks and
+enforces a 32 MiB limit throughout the read. Seekable source files are opened with
+nonblocking Unix semantics. SHA1 and SHA256 checksums follow the managed PDB metadata.
 
 Symbol and source clients allow HTTPS by default, validate redirect destinations,
 bound redirects, response sizes, concurrency, and total cache size, write through

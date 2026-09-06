@@ -34,6 +34,7 @@ Use `sourceFileMap` when a PDB records paths from another build machine:
 Both keys and values are absolute paths. Mapping understands POSIX paths, Windows drive
 letters, and UNC paths regardless of the adapter host. The most specific matching prefix
 wins. The debugger validates mapped source content against the checksum in the PDB.
+Local source files have a 32 MiB limit and are verified in bounded chunks.
 
 ## Symbol search and caching
 
