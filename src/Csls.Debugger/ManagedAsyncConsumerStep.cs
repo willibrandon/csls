@@ -65,9 +65,8 @@ internal sealed class ManagedAsyncConsumerStep
             MetadataReader metadata = image.GetMetadataReader();
             TypeDefinition type = metadata.GetTypeDefinition(
                 MetadataTokens.TypeDefinitionHandle(checked((int)(typeToken & 0x00ffffff))));
-            foreach (MethodDefinitionHandle methodHandle in type.GetMethods())
+            foreach (uint token in type.GetMethods().Select(static handle => checked((uint)MetadataTokens.GetToken(handle))))
             {
-                uint token = checked((uint)MetadataTokens.GetToken(methodHandle));
                 if (symbols.GetStateMachineKickoffMethod(token) is null)
                 {
                     continue;

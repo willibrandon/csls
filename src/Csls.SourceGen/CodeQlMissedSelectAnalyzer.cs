@@ -80,7 +80,8 @@ public sealed class CodeQlMissedSelectAnalyzer : DiagnosticAnalyzer
     private static bool IsOversized(LocalDeclarationStatementSyntax declaration)
     {
         FileLinePositionSpan span = declaration.GetLocation().GetLineSpan();
-        return span.EndLinePosition.Character - span.StartLinePosition.Character > 65;
+        // CodeQL locations include their final column; Roslyn spans exclude it.
+        return span.EndLinePosition.Character - span.StartLinePosition.Character - 1 > 65;
     }
 
     private static bool SupportsGenericLinq(
