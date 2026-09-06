@@ -85,6 +85,10 @@ For async iterators, Step Over follows a yielded value into its `await foreach`
 consumer, preserving that consumer's identity across thread changes and garbage
 collection. Source stepping follows actual control flow to visible statements,
 including backward branches into loop bodies.
+Step Out from a resumed `Task` or `ValueTask` method follows its registered async
+caller, including callers using a captured task scheduler. The selected caller is
+preserved through garbage collection and competing calls. A user breakpoint or
+Pause ends the pending step, and Continue resumes normal execution.
 Presented frames use authored method identities where the PDB provides the required
 state-machine mapping.
 

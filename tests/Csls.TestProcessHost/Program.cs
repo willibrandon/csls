@@ -128,6 +128,24 @@ if (args is ["--debugger-valuetask-step-fixture", string valueTaskPipeName])
     return await DebuggerValueTaskStepFixture.RunAsync(valueTaskPipeName).ConfigureAwait(false);
 }
 
+if (args is ["--debugger-async-step-out-fixture", string asyncStepOutPipeName, string asyncStepOutKind])
+{
+    return await DebuggerAsyncStepOutFixture.RunAsync(asyncStepOutPipeName,
+        asyncStepOutKind == "ValueTask").ConfigureAwait(false);
+}
+
+if (args is ["--debugger-concurrent-async-step-out-fixture", string concurrentStepOutPipeName, string concurrentStepOutKind])
+{
+    return await DebuggerAsyncStepOutFixture.RunConcurrentAsync(concurrentStepOutPipeName,
+        concurrentStepOutKind == "ValueTask").ConfigureAwait(false);
+}
+
+if (args is ["--debugger-scheduled-async-step-out-fixture", string scheduledStepOutPipeName, string scheduledStepOutKind])
+{
+    return await DebuggerAsyncStepOutFixture.RunAsync(scheduledStepOutPipeName,
+        scheduledStepOutKind == "ValueTask", scheduled: true).ConfigureAwait(false);
+}
+
 if (args is ["--debugger-async-iterator-step-fixture", string asyncIteratorPipeName])
 {
     return await DebuggerAsyncIteratorStepFixture.RunAsync(asyncIteratorPipeName).ConfigureAwait(false);

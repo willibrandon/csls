@@ -54,10 +54,11 @@ internal sealed partial class CorDebugDebuggee
     internal void Pause()
     {
         _managedCallback.ThrowIfRuntimeFailed();
-        ClearFrameHandles();
         CorDebugHResult.ThrowIfFailed(
             new ICorDebugControllerAbi(_debugProcess).Stop(dwTimeoutIgnored: 0),
             "ICorDebugController.Stop");
+        CancelStep();
+        ClearFrameHandles();
     }
 
     /// <summary>

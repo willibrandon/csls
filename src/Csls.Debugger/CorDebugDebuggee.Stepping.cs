@@ -55,7 +55,7 @@ internal sealed partial class CorDebugDebuggee
                 {
                     if (stateMachine != 0)
                     {
-                        _asyncConsumerStep.Prepare(stateMachine);
+                        _asyncConsumerStep.Prepare(stateMachine, includeTasks: kind == DebugStepKind.Out);
                     }
                 }
                 finally
@@ -64,7 +64,11 @@ internal sealed partial class CorDebugDebuggee
                 }
             }
 
-            StartRuntimeStep(thread, kind, target);
+            if (kind != DebugStepKind.Out || !_asyncConsumerStep.IsActive)
+            {
+                StartRuntimeStep(thread, kind, target);
+            }
+
             Continue();
         }
         catch
