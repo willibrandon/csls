@@ -128,6 +128,16 @@ jobs:
           --property:CslsIncludeAllDebuggerNativeAssets=true
           --property:RuntimeIdentifiers=
 
+      - name: Publish portable debugger authorization app
+        run: >-
+          dotnet publish scripts/Configure-DebuggerTestAuthorization.cs
+          --configuration Debug
+          --no-self-contained
+          --property:PublishAot=false
+          --property:UseAppHost=false
+          --property:RuntimeIdentifier=
+          --output artifacts/bin/Csls.Debugger.TestAuthorization/debug
+
       - name: Pack debugger test binaries
         run: >-
           tar --create --file artifacts/debugger-test-binaries.tar
@@ -258,7 +268,7 @@ jobs:
 
       - name: Prepare macOS debugger authorization
         if: runner.os == 'macOS'
-        run: dotnet run --file scripts/Configure-DebuggerTestAuthorization.cs -- enable
+        run: dotnet artifacts/bin/Csls.Debugger.TestAuthorization/debug/Configure-DebuggerTestAuthorization.dll enable
 
       - name: Run debugger tests
         env:
@@ -284,7 +294,7 @@ jobs:
 
       - name: Restore macOS debugger authorization
         if: always() && runner.os == 'macOS'
-        run: dotnet run --file scripts/Configure-DebuggerTestAuthorization.cs -- restore
+        run: dotnet artifacts/bin/Csls.Debugger.TestAuthorization/debug/Configure-DebuggerTestAuthorization.dll restore
 
       - name: Preserve debugger test results
         if: always()
