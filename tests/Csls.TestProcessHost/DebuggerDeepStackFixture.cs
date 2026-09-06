@@ -26,13 +26,27 @@ internal static class DebuggerDeepStackFixture
     /// <summary>
     /// Exhausts only the fixture thread stack so the debugger must survive a fatal target event.
     /// </summary>
-    /// <returns>A failure code if the deliberately undersized stack unexpectedly completes.</returns>
+    /// <returns>A failure code if the recursive thread unexpectedly completes.</returns>
     internal static int RunOverflow()
     {
-        var thread = new Thread(() => _ = Descend(99999, 1), 64 * 1024);
+        var thread = new Thread(RunOverflowThread);
         thread.Start();
         thread.Join();
         return 1;
+    }
+
+    private static void RunOverflowThread()
+    {
+        RuntimeHelpers.EnsureSufficientExecutionStack();
+        Console.Out.WriteLine("overflow-ready");
+        _ = Overflow(1);
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining | MethodImplOptions.NoOptimization)]
+    private static int Overflow(int entered)
+    {
+        int descendants = Overflow(entered + 1);
+        return descendants + 1;
     }
 
     /// <summary>

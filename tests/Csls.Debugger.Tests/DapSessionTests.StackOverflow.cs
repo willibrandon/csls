@@ -38,8 +38,12 @@ public sealed partial class DapSessionTests
                 TestContext.CancellationToken).ConfigureAwait(false);
             processId = targetId;
             Assert.AreNotEqual(0, exitCode);
+            Assert.Contains("overflow-ready", output,
+                $"The fixture must reach managed recursion. Exit: {exitCode}; stderr: {error}");
             Assert.Contains("Stack overflow", error, StringComparison.OrdinalIgnoreCase,
                 $"The fixture exited with {exitCode}. stdout: {output}; stderr: {error}");
+            Assert.Contains("DebuggerDeepStackFixture.Overflow", error,
+                "The runtime must identify the recursive managed method in its fatal stack.");
         }
         catch
         {
@@ -103,6 +107,7 @@ public sealed partial class DapSessionTests
             bool configured = false;
             bool exited = false;
             bool overflowReported = false;
+            bool recursionStarted = false;
             bool overflowStopped = false;
             bool continued = false;
             bool continuationAcknowledged = false;
@@ -148,6 +153,7 @@ public sealed partial class DapSessionTests
                     case "output":
                         string? output = root.GetProperty("body").GetProperty("output").GetString();
                         string combined = outputTail + output;
+                        recursionStarted |= combined.Contains("overflow-ready", StringComparison.Ordinal);
                         overflowReported |= combined.Contains("Stack overflow", StringComparison.OrdinalIgnoreCase);
                         outputTail = combined[^Math.Min(32, combined.Length)..];
                         break;
@@ -160,6 +166,7 @@ public sealed partial class DapSessionTests
                         Assert.IsTrue(exited, "The target exit must precede termination.");
                         Assert.IsTrue(launched);
                         Assert.IsTrue(configured);
+                        Assert.IsTrue(recursionStarted, "The target must enter managed recursion before its fatal exit.");
                         Assert.IsTrue(overflowStopped,
                             $"The target terminated before an exception stop. Recent protocol messages:{Environment.NewLine}" +
                             $"{client.ProtocolTranscript}{Environment.NewLine}Adapter diagnostics: {client.Diagnostics}");
