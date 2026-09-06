@@ -14,7 +14,7 @@ public sealed partial class DapSessionTests
     [DataRow("CSharp", "cs", "internal static int Main(string[] arguments)", 1, "Debug")]
     [DataRow("VisualBasic", "vb", "Friend Function Main(arguments As String()) As Integer", 0, "Debug")]
     [DataRow("FSharp", "fs", "let mutable answer = Int32.Parse", 0, "Debug")]
-    [DataRow("CSharp", "cs", "if (arguments is", 0, "Release")]
+    [DataRow("CSharp", "cs", "if (arguments is [\"--unavailable-locals\"])", 0, "Release")]
     [Timeout(30000, CooperativeCancellation = true)]
     public async Task StopAtEntryUsesAuthoredLanguageEntry(
         string language,

@@ -15,6 +15,11 @@ internal static class Program
     /// <returns>Zero when the expected local value remains live.</returns>
     internal static int Main(string[] arguments)
     {
+        if (arguments is ["--unavailable-locals"])
+        {
+            return UnavailableLocalsFixture.Run(40, 84);
+        }
+
         if (arguments is ["--tiered-compilation", _, _, _, _])
         {
             return RunTieredCompilation(arguments[1..]);

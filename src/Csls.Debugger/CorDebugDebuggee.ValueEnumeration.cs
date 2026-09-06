@@ -49,67 +49,61 @@ internal sealed partial class CorDebugDebuggee
             int enumerateResult = kind == ManagedScopeKind.Arguments
                 ? api.EnumerateArguments((nint)enumeratorAddress)
                 : api.EnumerateLocalVariables((nint)enumeratorAddress);
-            CorDebugHResult.ThrowIfFailed(enumerateResult, $"ICorDebugILFrame.Enumerate{kind}");
             enumerator = Volatile.Read(ref *enumeratorAddress);
+            CorDebugHResult.ThrowIfFailed(enumerateResult, $"ICorDebugILFrame.Enumerate{kind}");
             if (enumerator == 0)
             {
                 throw new InvalidOperationException(
                     $"ICorDebugILFrame.Enumerate{kind} returned no enumerator.");
             }
 
+            uint total = 0;
+            CorDebugHResult.ThrowIfFailed(new ICorDebugEnumAbi(enumerator).GetCount((nint)(&total)),
+                "ICorDebugEnum.GetCount");
+            total = Volatile.Read(ref total);
+            if (total > maximumValueCount)
+            {
+                throw new InvalidOperationException(
+                    $"The scope exceeds the debugger value limit of {maximumValueCount}.");
+            }
+
+            int length = start >= total ? 0 : (int)total - start;
+            length = count == 0 ? length : Math.Min(count, length);
             List<DebugVariableInfo> result = [];
-            var values = new ICorDebugValueEnumAbi(enumerator);
-            for (int index = 0; index < maximumValueCount; index++)
+            for (int index = start; index - start < length; index++)
             {
                 nint value = 0;
-                uint fetched = 0;
-                nint* valueAddress = &value;
-                uint* fetchedAddress = &fetched;
-                int nextResult = values.Next(1, (nint)valueAddress, (nint)fetchedAddress);
-                CorDebugHResult.ThrowIfFailed(nextResult, "ICorDebugValueEnum.Next");
-                value = Volatile.Read(ref *valueAddress);
-                fetched = Volatile.Read(ref *fetchedAddress);
-                if (fetched == 0)
-                {
-                    return result;
-                }
-
                 try
                 {
-                    if (index >= start && (count == 0 || result.Count < count))
+                    _ = names.TryGetValue(index, out ManagedSymbolVariable? sourceVariable);
+                    string? sourceName = sourceVariable?.Name;
+                    ManagedTupleCustomTypeInfo? tupleCustomTypeInfo = sourceVariable?.TupleCustomTypeInfo;
+                    string name = !string.IsNullOrEmpty(sourceName)
+                        ? sourceName
+                        : kind == ManagedScopeKind.Arguments ? $"argument {index}" : $"local {index}";
+                    int getResult = kind == ManagedScopeKind.Arguments
+                        ? api.GetArgument((uint)index, (nint)(&value))
+                        : api.GetLocalVariable((uint)index, (nint)(&value));
+                    value = Volatile.Read(ref value);
+                    // CORDBG_E_IL_VAR_NOT_AVAILABLE describes this slot's native lifetime only.
+                    if (getResult == unchecked((int)0x80131304))
                     {
-                        _ = names.TryGetValue(
-                            index,
-                            out ManagedSymbolVariable? sourceVariable);
-                        string? sourceName = sourceVariable?.Name;
-                        ManagedTupleCustomTypeInfo? tupleCustomTypeInfo =
-                            sourceVariable?.TupleCustomTypeInfo;
-                        ManagedValueDisplay display = FormatRuntimeValue(
-                            value,
-                            tupleCustomTypeInfo);
-                        string name = !string.IsNullOrEmpty(sourceName)
-                                ? sourceName
-                                : kind == ManagedScopeKind.Arguments
-                                    ? $"argument {index}"
-                                    : $"local {index}";
-                        string? evaluateName = string.IsNullOrEmpty(sourceName)
-                            ? null
-                            : sourceName;
-                        ManagedValueReferences references = RetainValue(
-                            value,
-                            generation,
-                            evaluateName,
-                            frame.Id,
-                            tupleCustomTypeInfo: tupleCustomTypeInfo,
-                            origin: frame.CreateValueOrigin(kind, index));
-                        result.Add(new DebugVariableInfo(
-                            name,
-                            display.Value,
-                            display.Type,
-                            references.VariablesReference,
-                            references.MemoryReference,
-                            evaluateName));
+                        string type = frame.ModuleId is null || frame.MethodToken == 0 ? string.Empty
+                            : FormatDeclaredVariableType(frame,
+                                ResolveFrameDeclaredType(frame, kind, index), tupleCustomTypeInfo);
+                        result.Add(new DebugVariableInfo(name, "<unavailable at the current instruction>", type,
+                            0, null, null, DebugVariablePresentationKind.Unavailable));
+                        continue;
                     }
+
+                    CorDebugHResult.ThrowIfFailed(getResult, $"ICorDebugILFrame.Get{kind}");
+                    value = RequirePointer(value, $"ICorDebugILFrame.Get{kind}");
+                    ManagedValueDisplay display = FormatRuntimeValue(value, tupleCustomTypeInfo);
+                    string? evaluateName = string.IsNullOrEmpty(sourceName) ? null : sourceName;
+                    ManagedValueReferences references = RetainValue(value, generation, evaluateName, frame.Id,
+                        tupleCustomTypeInfo: tupleCustomTypeInfo, origin: frame.CreateValueOrigin(kind, index));
+                    result.Add(new DebugVariableInfo(name, display.Value, display.Type,
+                        references.VariablesReference, references.MemoryReference, evaluateName));
                 }
                 finally
                 {
@@ -118,15 +112,9 @@ internal sealed partial class CorDebugDebuggee
                         _ = ComAbi.Release(value);
                     }
                 }
-
-                if (count > 0 && result.Count == count)
-                {
-                    return result;
-                }
             }
 
-            throw new InvalidOperationException(
-                $"The scope exceeds the debugger value limit of {maximumValueCount}.");
+            return result;
         }
         finally
         {

@@ -23,7 +23,7 @@ internal sealed partial class CorDebugDebuggee
             if (resolved.Value == 0)
             {
                 result.Add(new DebugVariableInfo(argument.Name, "<optimized out>",
-                    FormatStateMachineVariableType(frame, resolved.DeclaredType, argument.TupleCustomTypeInfo), 0, null, null,
+                    FormatDeclaredVariableType(frame, resolved.DeclaredType, argument.TupleCustomTypeInfo), 0, null, null,
                     DebugVariablePresentationKind.Unavailable));
                 continue;
             }
@@ -39,7 +39,7 @@ internal sealed partial class CorDebugDebuggee
         return result;
     }
 
-    private string FormatStateMachineVariableType(
+    private string FormatDeclaredVariableType(
         ManagedFrameHandle frame, ManagedBoundType? declaredType, ManagedTupleCustomTypeInfo? tupleCustomTypeInfo)
     {
         if (declaredType is null)
