@@ -65,6 +65,9 @@ public sealed partial class DapSessionTests
             TestContext.CancellationToken).ConfigureAwait(false);
         await competing.WriteAsync(new byte[] { 1 }, TestContext.CancellationToken).ConfigureAwait(false);
         await selected.WriteAsync(new byte[] { 1 }, TestContext.CancellationToken).ConfigureAwait(false);
+        // Complete the duplex handshake before awaiting exit: the fixture awaits this write.
+        await selected.ReadExactlyAsync(handshake, TestContext.CancellationToken).ConfigureAwait(false);
+        Assert.AreEqual((byte)3, handshake[0]);
         await ReadSuccessfulTerminationAsync(client, continueSequence, TestContext.CancellationToken).ConfigureAwait(false);
         Assert.AreEqual(0, await client.WaitForExitAsync(TestContext.CancellationToken).ConfigureAwait(false));
         Assert.AreEqual(string.Empty, client.Diagnostics.ToString());
