@@ -480,12 +480,23 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     needs: file-apps
+    if: ${{ always() }}
 
     steps:
       - name: Complete file app verification
         uses: actions/checkout@v7
         with:
           persist-credentials: false
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 10.x
+
+      - name: Require successful file app jobs
+        env:
+          CSLS_WORKFLOW_DEPENDENCY_RESULT: ${{ needs.file-apps.result }}
+        run: dotnet run --file scripts/Verify-WorkflowDependency.cs
 
   vscode-web-extension:
     name: VS Code web extension
@@ -1098,12 +1109,46 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     needs: zed-tests
+    if: ${{ always() }}
 
     steps:
       - name: Complete Zed test verification
         uses: actions/checkout@v7
         with:
           persist-credentials: false
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 10.x
+
+      - name: Require successful Zed test jobs
+        env:
+          CSLS_WORKFLOW_DEPENDENCY_RESULT: ${{ needs.zed-tests.result }}
+        run: dotnet run --file scripts/Verify-WorkflowDependency.cs
+
+  vscode-remote-tests-complete:
+    name: VS Code tests (remote)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    needs: vscode-tests
+    if: ${{ always() }}
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 10.x
+
+      - name: Require successful VS Code test jobs
+        env:
+          CSLS_WORKFLOW_DEPENDENCY_RESULT: ${{ needs.vscode-tests.result }}
+        run: dotnet run --file scripts/Verify-WorkflowDependency.cs
 
   vscode-test-assets:
     uses: ./.github/workflows/vscode-test-assets.yml
