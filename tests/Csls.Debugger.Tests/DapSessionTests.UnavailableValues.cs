@@ -15,6 +15,9 @@ public sealed partial class DapSessionTests
     [Timeout(30000, CooperativeCancellation = true)]
     public async Task UnavailableFrameSlotsPreserveFollowingValuesAndPages()
     {
+        string resultDirectory = Path.Join(FindRepositoryRoot(), "artifacts", "test-results");
+        Directory.CreateDirectory(resultDirectory);
+        string disassemblyPath = Path.Join(resultDirectory, $"unavailable-slots-{Guid.NewGuid():N}.asm");
         DapTestClient client = await DapTestClient.CreateAsync(TestContext.CancellationToken)
             .ConfigureAwait(false);
         await using ConfiguredAsyncDisposable disposal = client.ConfigureAwait(false);
@@ -31,6 +34,10 @@ public sealed partial class DapSessionTests
             writer.WriteStringValue("--unavailable-locals");
             writer.WriteEndArray();
             writer.WriteBoolean("suppressJITOptimizations", false);
+            writer.WriteStartObject("env");
+            writer.WriteString("DOTNET_JitDisasm", "Csls.Debugger.Fixtures.CSharp.UnavailableLocalsFixture:Run");
+            writer.WriteString("DOTNET_JitStdOutFile", disassemblyPath);
+            writer.WriteEndObject();
             writer.WriteEndObject();
         }, TestContext.CancellationToken).ConfigureAwait(false);
         using JsonDocument initialized = await client.ReadMessageAsync(TestContext.CancellationToken)
@@ -61,6 +68,13 @@ public sealed partial class DapSessionTests
         int frameId = await FindUnavailableLocalsFrameAsync(client).ConfigureAwait(false);
         (int reference, JsonElement[] locals) = await ReadLogicalFrameLocalsAsync(client, frameId)
             .ConfigureAwait(false);
+        TestContext.WriteLine($"Optimized locals: {JsonSerializer.Serialize(locals)}");
+        if (File.Exists(disassemblyPath))
+        {
+            TestContext.WriteLine(await File.ReadAllTextAsync(disassemblyPath, TestContext.CancellationToken)
+                .ConfigureAwait(false));
+        }
+
         Assert.AreSequenceEqual(["expired", "retained"],
             locals.Select(static value => value.GetProperty("name").GetString()).ToArray());
         Assert.AreEqual("42", locals[1].GetProperty("value").GetString());

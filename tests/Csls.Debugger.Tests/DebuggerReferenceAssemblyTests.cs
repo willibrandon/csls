@@ -75,6 +75,8 @@ public sealed class DebuggerReferenceAssemblyTests
 
     private async Task BuildAsync(string project, string version)
     {
+        string results = Path.Join(DebuggerTestEnvironment.FindRepositoryRoot(), "artifacts", "test-results");
+        Directory.CreateDirectory(results);
         var start = new ProcessStartInfo(Environment.GetEnvironmentVariable("DOTNET_HOST_PATH") ?? "dotnet")
         {
             WorkingDirectory = Path.GetDirectoryName(project)!
@@ -84,7 +86,9 @@ public sealed class DebuggerReferenceAssemblyTests
             start.ArgumentList.Add(argument);
         }
 
-        (int exitCode, string output, string error) = await DebuggerTestProcess.RunAsync(start, TestContext.CancellationToken)
+        start.ArgumentList.Add($"-bl:{Path.Join(results, "reference-identity-{}.binlog")}");
+        (int exitCode, string output, string error) = await DebuggerTestProcess.RunAsync(start, TestContext.CancellationToken,
+            line => TestContext.WriteLine($"Reference build {version}: {line}"))
             .ConfigureAwait(false);
         Assert.AreEqual(0, exitCode, $"{output}{Environment.NewLine}{error}");
     }
