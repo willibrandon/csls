@@ -124,6 +124,11 @@ internal sealed class CorDebugLoadedModule
     internal bool JustMyCodeConfigured { get; set; }
 
     /// <summary>
+    /// Gets the method and type exclusions accepted by the runtime for this module's stepping policy.
+    /// </summary>
+    internal HashSet<uint> ExcludedStepTokens { get; } = [];
+
+    /// <summary>
     /// Opens an owned PE reader over the file or immutable in-memory module image.
     /// </summary>
     /// <returns>An owned PE reader, or null when the module image is unavailable.</returns>

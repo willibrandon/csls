@@ -27,36 +27,14 @@ internal sealed partial class SourceBreakpointManager
     }
 
     /// <summary>
-    /// Resolves a stopped method's classification from module policy and runtime method overrides.
+    /// Resolves the owned module classification without invalidating an active native stack walk.
     /// </summary>
     /// <param name="module">The actor-owned loaded module containing the method.</param>
-    /// <param name="function">The borrowed ICorDebugFunction pointer.</param>
-    /// <returns>The known user-code classification, or null when the runtime query fails.</returns>
-    internal unsafe bool? GetUserCodeStatus(CorDebugLoadedModule module, nint function)
+    /// <returns>The known module user-code classification.</returns>
+    internal bool? GetModuleUserCodeStatus(CorDebugLoadedModule module)
     {
         ClassifyUserCode(module);
-        if (module.IsUserCode != true || !module.JustMyCodeConfigured)
-        {
-            return module.IsUserCode;
-        }
-
-        if (!ComAbi.TryQueryInterface(function, ICorDebugFunction2Abi.InterfaceId, out nint function2))
-        {
-            return null;
-        }
-
-        try
-        {
-            int isUserCode = 0;
-            int* address = &isUserCode;
-            int result = new ICorDebugFunction2Abi(function2).GetJMCStatus((nint)address);
-            isUserCode = Volatile.Read(ref *address);
-            return result >= 0 ? isUserCode != 0 : null;
-        }
-        finally
-        {
-            _ = ComAbi.Release(function2);
-        }
+        return module.IsUserCode;
     }
 
     private void ClassifyUserCode(CorDebugLoadedModule module)
@@ -73,6 +51,7 @@ internal sealed partial class SourceBreakpointManager
 
     private unsafe void ConfigureJustMyCode(CorDebugLoadedModule module)
     {
+        module.ExcludedStepTokens.Clear();
         ClassifyUserCode(module);
         module.JustMyCodeConfigured = true;
         if (module.IsUserCode != true)

@@ -64,7 +64,7 @@ internal sealed class ManagedSymbolFrameResolver(SourceBreakpointManager sourceB
             if (!_locations.TryGetValue(key, out ManagedFrameLocation? location))
             {
                 location = ResolveModule(loadedModule, methodToken, ilOffset, generation, fallbackName,
-                    sourceBreakpoints.GetUserCodeStatus(loadedModule, function));
+                    sourceBreakpoints.GetModuleUserCodeStatus(loadedModule));
                 _locations.Add(key, location);
             }
 
@@ -127,9 +127,16 @@ internal sealed class ManagedSymbolFrameResolver(SourceBreakpointManager sourceB
         if (metadata is not null)
         {
             int rowNumber = checked((int)(methodToken & 0x00ffffff));
-            if (!metadata.ContainsMethod(MetadataTokens.MethodDefinitionHandle(rowNumber)))
+            MethodDefinitionHandle methodHandle = MetadataTokens.MethodDefinitionHandle(rowNumber);
+            if (!metadata.ContainsMethod(methodHandle))
             {
                 return Unknown(fallbackName, module, symbolDeltas, metadataDeltas, isUserCode);
+            }
+
+            uint typeToken = checked((uint)MetadataTokens.GetToken(metadata.GetDeclaringType(methodHandle)));
+            if (module.ExcludedStepTokens.Contains(methodToken) || module.ExcludedStepTokens.Contains(typeToken))
+            {
+                isUserCode = false;
             }
 
             displayName = ResolveMethodName(metadata, methodToken, fallbackName);

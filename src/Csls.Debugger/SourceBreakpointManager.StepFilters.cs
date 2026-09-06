@@ -15,8 +15,18 @@ internal sealed partial class SourceBreakpointManager
         CorDebugLoadedModule module,
         uint[] excludedTokens)
     {
-        int failureCount = excludedTokens.Count(token =>
-            !TryExcludeToken(module.Pointer, token));
+        int failureCount = 0;
+        foreach (uint token in excludedTokens)
+        {
+            if (TryExcludeToken(module.Pointer, token))
+            {
+                _ = module.ExcludedStepTokens.Add(token);
+            }
+            else
+            {
+                failureCount++;
+            }
+        }
 
         if (failureCount > 0)
         {
