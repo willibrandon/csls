@@ -20,6 +20,11 @@ internal static class Program
             return UnavailableLocalsFixture.Run(40, 84);
         }
 
+        if (arguments is ["--managed-break"])
+        {
+            return ManagedBreakFixture.Run(42);
+        }
+
         if (arguments is ["--tiered-compilation", _, _, _, _])
         {
             return RunTieredCompilation(arguments[1..]);

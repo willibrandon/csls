@@ -7,6 +7,25 @@ namespace Csls.Debugger;
 /// </summary>
 public sealed partial class DebuggerSession
 {
+    private async ValueTask<bool> HandleRuntimeBreakRequestCoreAsync(int threadId, CancellationToken cancellationToken)
+    {
+        if (_state == DebugSessionState.Starting)
+        {
+            _pendingStop = new PendingDebugStop("pause", threadId, Exception: null);
+        }
+        else if (_state == DebugSessionState.Running)
+        {
+            if (_debuggee is CorDebugDebuggee managedDebuggee)
+            {
+                managedDebuggee.CancelStep();
+            }
+
+            await EnterStoppedStateAsync("pause", threadId, cancellationToken).ConfigureAwait(false);
+        }
+
+        return false;
+    }
+
     private async ValueTask<bool> HandleRuntimeBreakpointCoreAsync(
         int threadId,
         ManagedBreakpointHit hit,

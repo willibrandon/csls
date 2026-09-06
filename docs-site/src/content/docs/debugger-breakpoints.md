@@ -72,6 +72,13 @@ with the runtime diagnostic. Instruction breakpoints rebind when the
 module reloads and survive tiered recompilation because their durable identity is
 module, method, and IL offset.
 
+## Break from application code
+
+Call `System.Diagnostics.Debugger.Break()` to stop an attached csls debugger at
+that point in the program. The stopped thread, call stack, and variables are
+available for inspection. An explicit break interrupts a pending step; Continue
+resumes the program from that stop.
+
 ## Source stepping
 
 Step Into, Step Over, and Step Out use CoreCLR steppers and Portable PDB sequence

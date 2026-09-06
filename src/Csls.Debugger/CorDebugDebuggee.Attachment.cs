@@ -22,6 +22,7 @@ internal sealed partial class CorDebugDebuggee
     /// <param name="breakpointReached">The ordered runtime-breakpoint decision callback.</param>
     /// <param name="targetBreakpointReached">The ordered targeted-step breakpoint callback.</param>
     /// <param name="stepCompleted">The ordered runtime-step completion callback.</param>
+    /// <param name="breakRequested">The ordered explicit managed-break callback.</param>
     /// <param name="exceptionRaised">The ordered managed-exception callback.</param>
     /// <param name="evaluationCompleted">The ordered function-evaluation completion callback.</param>
     /// <param name="cancellationToken">Cancels runtime activation without terminating the target.</param>
@@ -38,6 +39,7 @@ internal sealed partial class CorDebugDebuggee
         Func<int, nint, CancellationToken, ValueTask<ManagedTargetBreakpointDecision>>
             targetBreakpointReached,
         Func<int, nint, int, CancellationToken, ValueTask<bool>> stepCompleted,
+        Func<int, CancellationToken, ValueTask<bool>> breakRequested,
         Func<int, nint, DebugExceptionStage, CancellationToken, ValueTask<bool>> exceptionRaised,
         Func<nint, bool, CancellationToken, ValueTask<bool>> evaluationCompleted,
         CancellationToken cancellationToken)
@@ -52,6 +54,7 @@ internal sealed partial class CorDebugDebuggee
         ArgumentNullException.ThrowIfNull(breakpointReached);
         ArgumentNullException.ThrowIfNull(targetBreakpointReached);
         ArgumentNullException.ThrowIfNull(stepCompleted);
+        ArgumentNullException.ThrowIfNull(breakRequested);
         ArgumentNullException.ThrowIfNull(exceptionRaised);
         ArgumentNullException.ThrowIfNull(evaluationCompleted);
         if (processId == Environment.ProcessId)
@@ -91,6 +94,7 @@ internal sealed partial class CorDebugDebuggee
                 breakpointReached,
                 targetBreakpointReached,
                 stepCompleted,
+                breakRequested,
                 exceptionRaised,
                 evaluationCompleted));
             CorDebugManagedCallback managedCallback = managedCallbackOwner.Value

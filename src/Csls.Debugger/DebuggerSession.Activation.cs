@@ -49,6 +49,7 @@ public sealed partial class DebuggerSession
                 HandleRuntimeBreakpointCoreAsync,
                 HandleRuntimeTargetBreakpointCoreAsync,
                 HandleRuntimeStepCoreAsync,
+                HandleRuntimeBreakRequestCoreAsync,
                 HandleRuntimeExceptionCoreAsync,
                 HandleRuntimeEvaluationCoreAsync,
                 cancellationToken).ConfigureAwait(false);

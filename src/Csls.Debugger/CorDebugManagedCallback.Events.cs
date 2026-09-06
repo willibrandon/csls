@@ -7,6 +7,16 @@ namespace Csls.Debugger;
 /// </summary>
 internal sealed partial class CorDebugManagedCallback
 {
+    private ValueTask<bool> HandleBreakRequestAsync(nint thread, CancellationToken cancellationToken)
+    {
+        if (thread == 0 || IsFunctionEvaluationActive)
+        {
+            return ValueTask.FromResult(true);
+        }
+
+        return _breakRequested(checked((int)GetThreadId(thread)), cancellationToken);
+    }
+
     private ValueTask<bool> HandleStepCompleteAsync(
         nint thread,
         nint stepper,

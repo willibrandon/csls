@@ -33,6 +33,7 @@ internal sealed partial class CorDebugManagedCallback : IDisposable
     private readonly Func<int, nint, CancellationToken,
         ValueTask<ManagedTargetBreakpointDecision>> _targetBreakpointReached;
     private readonly Func<int, nint, int, CancellationToken, ValueTask<bool>> _stepCompleted;
+    private readonly Func<int, CancellationToken, ValueTask<bool>> _breakRequested;
     private readonly Func<int, nint, DebugExceptionStage, CancellationToken, ValueTask<bool>>
         _exceptionRaised;
     private readonly Func<nint, bool, CancellationToken, ValueTask<bool>> _evaluationCompleted;
@@ -56,6 +57,7 @@ internal sealed partial class CorDebugManagedCallback : IDisposable
     /// <param name="breakpointReached">The ordered runtime-breakpoint decision callback.</param>
     /// <param name="targetBreakpointReached">The ordered targeted-step breakpoint callback.</param>
     /// <param name="stepCompleted">The ordered source-step completion callback.</param>
+    /// <param name="breakRequested">The ordered explicit managed-break callback.</param>
     /// <param name="exceptionRaised">The ordered managed-exception callback.</param>
     /// <param name="evaluationCompleted">The ordered function-evaluation completion callback.</param>
     internal unsafe CorDebugManagedCallback(
@@ -69,6 +71,7 @@ internal sealed partial class CorDebugManagedCallback : IDisposable
         Func<int, nint, CancellationToken, ValueTask<ManagedTargetBreakpointDecision>>
             targetBreakpointReached,
         Func<int, nint, int, CancellationToken, ValueTask<bool>> stepCompleted,
+        Func<int, CancellationToken, ValueTask<bool>> breakRequested,
         Func<int, nint, DebugExceptionStage, CancellationToken, ValueTask<bool>> exceptionRaised,
         Func<nint, bool, CancellationToken, ValueTask<bool>> evaluationCompleted)
     {
@@ -81,6 +84,7 @@ internal sealed partial class CorDebugManagedCallback : IDisposable
         ArgumentNullException.ThrowIfNull(breakpointReached);
         ArgumentNullException.ThrowIfNull(targetBreakpointReached);
         ArgumentNullException.ThrowIfNull(stepCompleted);
+        ArgumentNullException.ThrowIfNull(breakRequested);
         ArgumentNullException.ThrowIfNull(exceptionRaised);
         ArgumentNullException.ThrowIfNull(evaluationCompleted);
         _actor = actor;
@@ -92,6 +96,7 @@ internal sealed partial class CorDebugManagedCallback : IDisposable
         _breakpointReached = breakpointReached;
         _targetBreakpointReached = targetBreakpointReached;
         _stepCompleted = stepCompleted;
+        _breakRequested = breakRequested;
         _exceptionRaised = exceptionRaised;
         _evaluationCompleted = evaluationCompleted;
         nuint allocationSize = checked((nuint)(s_referenceCountOffset + sizeof(int)));

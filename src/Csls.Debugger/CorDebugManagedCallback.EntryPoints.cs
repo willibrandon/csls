@@ -50,8 +50,17 @@ internal sealed partial class CorDebugManagedCallback
     [UnmanagedCallersOnly(CallConvs = [typeof(CallConvStdcall)])]
     private static int Break(nint self, nint appDomain, nint thread)
     {
-        _ = thread;
-        return QueueContinue(self, appDomain, createsProcess: false);
+        return QueueCallback(
+            self,
+            appDomain,
+            thread,
+            subject: 0,
+            auxiliary: 0,
+            createsProcess: false,
+            exitsProcess: false,
+            continueAfterCallback: true,
+            static (target, ownedThread, _, _, cancellationToken) =>
+                target.HandleBreakRequestAsync(ownedThread, cancellationToken));
     }
 
     [UnmanagedCallersOnly(CallConvs = [typeof(CallConvStdcall)])]
