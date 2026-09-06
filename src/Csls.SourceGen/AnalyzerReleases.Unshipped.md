@@ -25,3 +25,4 @@ CSLS0023 | CodeQuality | Error | Nullable properties are captured before unwrapp
 CSLS0024 | Reliability | Error | Catch-all handlers filter failures or rethrow the original exception
 CSLS0025 | CodeQuality | Error | Directly nested conditions are combined without changing alternative branches
 CSLS0026 | CodeQuality | Error | Hidden visible fields explicitly distinguish base storage
+CSLS0027 | CodeQuality | Error | Repeated string accumulation uses a string builder

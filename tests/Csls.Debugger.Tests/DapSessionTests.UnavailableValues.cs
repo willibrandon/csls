@@ -1,4 +1,5 @@
 using System.Runtime.CompilerServices;
+using System.Text;
 using System.Text.Json;
 
 namespace Csls.Debugger.Tests;
@@ -35,7 +36,7 @@ public sealed partial class DapSessionTests
             writer.WriteEndArray();
             writer.WriteBoolean("suppressJITOptimizations", false);
             writer.WriteStartObject("env");
-            writer.WriteString("DOTNET_JitDisasm", "Csls.Debugger.Fixtures.CSharp.UnavailableLocalsFixture:Run");
+            writer.WriteString("DOTNET_JitDisasm", "*");
             writer.WriteString("DOTNET_JitStdOutFile", disassemblyPath);
             writer.WriteEndObject();
             writer.WriteEndObject();
@@ -54,16 +55,16 @@ public sealed partial class DapSessionTests
         using JsonDocument process = await client.ReadMessageAsync(TestContext.CancellationToken)
             .ConfigureAwait(false);
         AssertEvent(process.RootElement, "process");
-        string output = string.Empty;
+        var output = new StringBuilder();
         while (output.Length < "41ready".Length)
         {
             using JsonDocument message = await client.ReadMessageAsync(TestContext.CancellationToken)
                 .ConfigureAwait(false);
             AssertEvent(message.RootElement, "output");
-            output += message.RootElement.GetProperty("body").GetProperty("output").GetString();
+            output.Append(message.RootElement.GetProperty("body").GetProperty("output").GetString());
         }
 
-        Assert.AreEqual("41ready", output);
+        Assert.AreEqual("41ready", output.ToString());
         await PauseFixtureAsync(client).ConfigureAwait(false);
         int frameId = await FindUnavailableLocalsFrameAsync(client).ConfigureAwait(false);
         (int reference, JsonElement[] locals) = await ReadLogicalFrameLocalsAsync(client, frameId)
@@ -71,8 +72,10 @@ public sealed partial class DapSessionTests
         TestContext.WriteLine($"Optimized locals: {JsonSerializer.Serialize(locals)}");
         if (File.Exists(disassemblyPath))
         {
-            TestContext.WriteLine(await File.ReadAllTextAsync(disassemblyPath, TestContext.CancellationToken)
-                .ConfigureAwait(false));
+            using var disassemblyStream = new FileStream(disassemblyPath, FileMode.Open, FileAccess.Read,
+                FileShare.ReadWrite | FileShare.Delete, bufferSize: 4096, FileOptions.Asynchronous);
+            using var disassemblyReader = new StreamReader(disassemblyStream, leaveOpen: true);
+            TestContext.WriteLine(await disassemblyReader.ReadToEndAsync(TestContext.CancellationToken).ConfigureAwait(false));
         }
 
         Assert.AreSequenceEqual(["expired", "retained"],
