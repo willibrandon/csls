@@ -126,6 +126,33 @@ The process must run CoreCLR, be accessible to the current user, and match the
 debugger host architecture. Disconnecting detaches and leaves the process running.
 Clients can explicitly request termination through an advertised, authorized operation.
 
+## Inspect a managed process dump
+
+Use an absolute `dumpPath` in an attach configuration to inspect managed threads,
+stack frames, modules, and captured arguments and locals:
+
+```json
+{
+  "name": ".NET Dump",
+  "type": "coreclr",
+  "request": "attach",
+  "dumpPath": "/absolute/path/to/application.dmp"
+}
+```
+
+Choose either `dumpPath` or `processId` for an attachment. `runtimeIndex` selects
+a zero-based managed runtime in the dump and defaults to `0`. An optional
+`dacPath` supplies the absolute path to the matching runtime Data Access Component.
+The dump worker runs in its own process; closing the session releases that worker
+and the dump file. Windows runtime discovery searches local .NET installations
+and validates image identity before loading a matching DAC.
+
+Expand captured arrays in the Variables view to inspect their elements. Array
+entries show the captured length and use the runtime's indices, including each
+dimension's lower bound. Nested arrays expand through their own entries. Editors
+can request pages of up to 4,096 elements from large arrays; repeated pages retain
+their variable identities throughout the dump session.
+
 ## Zed launch and attach
 
 The Zed extension registers the `csls` adapter. Put a launch entry in `debug.json`:
@@ -145,6 +172,9 @@ The Zed extension registers the `csls` adapter. Put a launch entry in `debug.jso
 
 For attach, use `"request": "attach"` and a positive `"processId"`. Zed starts the
 configured csls binary with `debugger dap`.
+
+A dump entry uses `"request": "attach"` with `"dumpPath"`, plus the same optional
+`runtimeIndex` and `dacPath` properties shown above.
 
 ## Runtime behavior options
 

@@ -40,6 +40,7 @@ internal sealed partial class DapSession
         _startMethod = "launch";
         _terminateDebuggeeByDefault = true;
         _state = DapSessionState.Configuring;
+        await ConfigureTargetCapabilitiesAsync(dump: false, cancellationToken).ConfigureAwait(false);
         await _writer.WriteEventAsync(
             "initialized",
             writeBody: null,
@@ -65,10 +66,14 @@ internal sealed partial class DapSession
         _pendingConfigurationRequest = request;
         try
         {
-            if (attach is not null)
+            if (attach is DapDumpAttachConfiguration dump)
+            {
+                await OpenDumpAsync(request, targetRequest, dump.Options, cancellationToken).ConfigureAwait(false);
+            }
+            else if (attach is DapProcessAttachConfiguration process)
             {
                 await _engineSession
-                    .AttachManagedAsync(attach.Options, cancellationToken)
+                    .AttachManagedAsync(process.Options, cancellationToken)
                     .ConfigureAwait(false);
             }
             else if (launch is not null && launch.NoDebug)

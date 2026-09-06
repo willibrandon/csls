@@ -36,13 +36,14 @@ internal sealed partial class DapSession
             arguments = replacement;
         }
 
-        DapAttachConfiguration? attach = null;
+        DapProcessAttachConfiguration? attach = null;
         DapLaunchConfiguration? launch = null;
         try
         {
             if (string.Equals(_startMethod, "attach", StringComparison.Ordinal))
             {
-                attach = DapAttachOptionsParser.Parse(arguments);
+                attach = DapAttachOptionsParser.Parse(arguments) as DapProcessAttachConfiguration
+                    ?? throw new ArgumentException("A live-process restart requires processId.");
             }
             else
             {

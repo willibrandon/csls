@@ -452,14 +452,50 @@
           },
           "attach": {
             "type": "object",
-            "required": [
-              "processId"
+            "oneOf": [
+              {
+                "required": ["processId"],
+                "properties": {
+                  "dumpPath": false,
+                  "runtimeIndex": false,
+                  "dacPath": false
+                }
+              },
+              {
+                "required": ["dumpPath"],
+                "properties": {
+                  "processId": false,
+                  "sourceFileMap": false,
+                  "sourceLinkOptions": false,
+                  "symbolOptions": false,
+                  "requireExactSource": false,
+                  "justMyCode": false,
+                  "enableStepFiltering": false
+                }
+              }
             ],
             "properties": {
               "processId": {
                 "type": "integer",
                 "minimum": 1,
                 "description": "Operating-system process identifier for a running .NET process."
+              },
+              "dumpPath": {
+                "type": "string",
+                "minLength": 1,
+                "description": "Absolute path to a managed process dump for read-only thread, stack, module, and captured-variable inspection. Select either dumpPath or processId."
+              },
+              "runtimeIndex": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 2147483647,
+                "default": 0,
+                "description": "Zero-based managed runtime index within the selected dump."
+              },
+              "dacPath": {
+                "type": "string",
+                "minLength": 1,
+                "description": "Absolute path to the matching runtime Data Access Component (DAC) for dump inspection."
               },
               "requireExactSource": {
                 "type": "boolean",

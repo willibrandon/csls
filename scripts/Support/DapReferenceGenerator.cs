@@ -25,18 +25,18 @@ internal static class DapReferenceGenerator
             "src",
             "Csls.DebugAdapter",
             "DapSession.Dispatch.cs");
-        string initializationPath = Path.Join(
+        string capabilitiesPath = Path.Join(
             repositoryRoot,
             "src",
             "Csls.DebugAdapter",
-            "DapSession.Initialization.cs");
+            "DapSession.Capabilities.cs");
         string packagePath = Path.Join(
             repositoryRoot,
             "editors",
             "vscode",
             "package.json");
         RequireFile(dispatchPath);
-        RequireFile(initializationPath);
+        RequireFile(capabilitiesPath);
         RequireFile(packagePath);
 
         CompilationUnitSyntax dispatch = CSharpSyntaxTree.ParseText(File.ReadAllText(dispatchPath))
@@ -56,23 +56,22 @@ internal static class DapReferenceGenerator
             throw new InvalidDataException("The DAP dispatcher exposes no request cases.");
         }
 
-        CompilationUnitSyntax initialization = CSharpSyntaxTree
-            .ParseText(File.ReadAllText(initializationPath))
+        CompilationUnitSyntax capabilitySource = CSharpSyntaxTree
+            .ParseText(File.ReadAllText(capabilitiesPath))
             .GetCompilationUnitRoot();
-        string[] capabilities =
+        (string Name, bool Dump)[] capabilities =
         [
-            .. initialization.DescendantNodes()
+            .. capabilitySource.DescendantNodes()
                 .OfType<InvocationExpressionSyntax>()
                 .Where(static invocation => GetInvokedMethodName(invocation) == "WriteBoolean")
                 .Select(static invocation => invocation.ArgumentList.Arguments)
                 .Where(static arguments => arguments.Count >= 2 &&
                     arguments[0].Expression is LiteralExpressionSyntax name &&
-                    name.IsKind(SyntaxKind.StringLiteralExpression) &&
-                    arguments[1].Expression.IsKind(SyntaxKind.TrueLiteralExpression))
-                .Select(static arguments =>
-                    ((LiteralExpressionSyntax)arguments[0].Expression).Token.ValueText)
-                .Distinct(StringComparer.Ordinal)
-                .Order(StringComparer.Ordinal)
+                    name.IsKind(SyntaxKind.StringLiteralExpression))
+                .Select(static arguments => (
+                    Name: ((LiteralExpressionSyntax)arguments[0].Expression).Token.ValueText,
+                    Dump: IsDumpCapability(arguments[1].Expression)))
+                .OrderBy(static capability => capability.Name, StringComparer.Ordinal)
         ];
         if (capabilities.Length == 0)
         {
@@ -81,7 +80,7 @@ internal static class DapReferenceGenerator
 
         (string Id, string Label, string Description, bool Default)[] exceptionFilters =
         [
-            .. initialization.DescendantNodes()
+            .. capabilitySource.DescendantNodes()
                 .OfType<InvocationExpressionSyntax>()
                 .Where(static invocation =>
                     GetInvokedMethodName(invocation) == "WriteExceptionBreakpointFilter")
@@ -126,7 +125,7 @@ internal static class DapReferenceGenerator
 
         var page = new StringBuilder(
             "---\ntitle: Debug Adapter Protocol reference\ndescription: Generated csls DAP requests, capabilities, and target configuration.\n---\n\n" +
-            "This page is generated from the shipping DAP dispatcher, initialize response, and " +
+            "This page is generated from the shipping DAP dispatcher, target capabilities, and " +
             "editor configuration schema.\n\n" +
             "## Requests\n\n" +
             "| Request | Purpose |\n" +
@@ -137,10 +136,19 @@ internal static class DapReferenceGenerator
                 .Append(GetDapRequestDescription(request)).AppendLine(" |");
         }
 
-        page.AppendLine().AppendLine("## Advertised capabilities").AppendLine()
-            .AppendLine("| Initialize capability |")
+        page.AppendLine().AppendLine("## Live process capabilities").AppendLine()
+            .AppendLine("| Capability |")
             .AppendLine("| --- |");
-        foreach (string capability in capabilities)
+        foreach (string capability in capabilities.Select(static capability => capability.Name))
+        {
+            page.Append("| `").Append(capability).AppendLine("` |");
+        }
+
+        page.AppendLine().AppendLine("## Dump capabilities").AppendLine()
+            .AppendLine("| Capability |")
+            .AppendLine("| --- |");
+        foreach (string capability in capabilities.Where(static capability => capability.Dump)
+            .Select(static capability => capability.Name))
         {
             page.Append("| `").Append(capability).AppendLine("` |");
         }
@@ -176,7 +184,16 @@ internal static class DapReferenceGenerator
                 .OfType<string>());
         }
 
-        page.AppendLine().Append("## ").Append(name).AppendLine(" configuration").AppendLine()
+        page.AppendLine().Append("## ").Append(name).AppendLine(" configuration").AppendLine();
+        if (configuration.TryGetProperty("oneOf", out JsonElement alternatives))
+        {
+            string[] selectors = [.. alternatives.EnumerateArray()
+                .SelectMany(static alternative => alternative.GetProperty("required").EnumerateArray())
+                .Select(static selector => $"`{selector.GetString()}`")];
+            page.Append("Select exactly one of ").Append(string.Join(" or ", selectors)).AppendLine(".").AppendLine();
+        }
+
+        page
             .AppendLine("| Property | Type | Required | Default | Description |")
             .AppendLine("| --- | --- | --- | --- | --- |");
         foreach (JsonProperty property in configuration.GetProperty("properties").EnumerateObject())
@@ -195,6 +212,14 @@ internal static class DapReferenceGenerator
                 .AppendLine(" |");
         }
     }
+
+    private static bool IsDumpCapability(ExpressionSyntax expression) => expression switch
+    {
+        LiteralExpressionSyntax literal when literal.IsKind(SyntaxKind.TrueLiteralExpression) => true,
+        PrefixUnaryExpressionSyntax negation when negation.IsKind(SyntaxKind.LogicalNotExpression) &&
+            negation.Operand is IdentifierNameSyntax { Identifier.ValueText: "dump" } => false,
+        _ => throw new InvalidDataException("A DAP capability has an unrecognized target-mode expression.")
+    };
 
     private static string FormatJsonSchemaType(JsonElement schema)
     {
@@ -225,7 +250,7 @@ internal static class DapReferenceGenerator
     {
         "initialize" => "Negotiate client coordinates and the supported capability allowlist.",
         "launch" => "Prepare one concrete debugger-owned managed process launch.",
-        "attach" => "Prepare attachment to one explicitly selected CoreCLR process.",
+        "attach" => "Prepare attachment to one explicitly selected CoreCLR process or managed process dump.",
         "configurationDone" => "Commit configured breakpoints and start the pending target.",
         "setBreakpoints" => "Atomically replace source breakpoints for one document.",
         "setFunctionBreakpoints" => "Atomically replace managed function breakpoints.",

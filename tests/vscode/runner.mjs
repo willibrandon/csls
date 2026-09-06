@@ -22,8 +22,9 @@ const extensionsPath = requireEnvironment("CSLS_VSCODE_EXTENSIONS_PATH");
 const cachePath = requireEnvironment("CSLS_VSCODE_CACHE_PATH");
 const remoteServerRoot = process.env.CSLS_VSCODE_REMOTE_SERVER_ROOT;
 const remoteDataPath = process.env.CSLS_VSCODE_REMOTE_DATA_PATH;
-const resultsViewUi = process.env.CSLS_VSCODE_SUITE === "dist/results-view-suite.cjs";
-const devToolsEndpointPath = resolve(userDataPath, "results-view-devtools-endpoint");
+const debuggerUi = ["dist/results-view-suite.cjs", "dist/dump-suite.cjs"]
+  .includes(process.env.CSLS_VSCODE_SUITE ?? "");
+const devToolsEndpointPath = resolve(userDataPath, "debugger-devtools-endpoint");
 const executablePath = await downloadAndUnzipVSCode({
   cachePath,
   reporter: new SilentReporter(),
@@ -54,7 +55,7 @@ await runTests({
     ? extensionPath
     : resolve(extensionPath, "remote-resolver"),
   extensionTestsEnv: {
-    ...(resultsViewUi ? { CSLS_VSCODE_CDP_ENDPOINT_PATH: devToolsEndpointPath } : {}),
+    ...(debuggerUi ? { CSLS_VSCODE_CDP_ENDPOINT_PATH: devToolsEndpointPath } : {}),
     ...copyEnvironment(
       "CSLS_VSCODE_EXPECTED_HOST",
       "CSLS_VSCODE_ORACLE_DIAGNOSTICS_TIMEOUT_MILLISECONDS",
@@ -83,14 +84,14 @@ await runTests({
     "--skip-release-notes",
     "--skip-welcome",
     "--user-data-dir=" + userDataPath,
-    ...(resultsViewUi
+    ...(debuggerUi
       ? ["--remote-debugging-address=127.0.0.1", "--remote-debugging-port=0"]
       : []),
     ...(remoteServerRoot === undefined
       ? []
       : ["--enable-proposed-api=csls-tests.csls-test-resolver"]),
   ],
-  ...(resultsViewUi ? { stderr: observeDevToolsEndpoint(devToolsEndpointPath) } : {}),
+  ...(debuggerUi ? { stderr: observeDevToolsEndpoint(devToolsEndpointPath) } : {}),
   vscodeExecutablePath: executablePath,
 });
 

@@ -1,4 +1,5 @@
 using Csls.Control.Contracts;
+using Csls.Debugger.Control;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -24,7 +25,7 @@ internal static class McpHost
         var broker = new McpSessionBroker();
         await using ConfiguredAsyncDisposable brokerCleanup = broker.ConfigureAwait(false);
         string? debuggerWorkerPath = McpDebuggerWorkerLocator.TryResolve();
-        string? debuggerDumpWorkerPath = McpDebuggerDumpWorkerLocator.TryResolve();
+        string? debuggerDumpWorkerPath = DebuggerDumpWorkerLocator.TryResolve();
         var debuggerBroker = new McpDebuggerSessionBroker(
             debuggerWorkerPath,
             debuggerDumpWorkerPath);

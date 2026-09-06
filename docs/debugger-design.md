@@ -799,19 +799,10 @@ delta emission and active-statement mapping.
 
 ## Dumps, editors, terminal, and MCP
 
-A dump session uses private debugger control contracts and a read-only ClrMD
-backend in its supervised managed worker. MCP `debug_dump_open` opens these
-sessions through `debugger/openDump`; DAP does not accept `dumpPath` or open dumps.
-The required DAP dump integration must accept an absolute `dumpPath` mutually
-exclusive with live `processId`, use the same supervised backend, and advertise
-only read-only dump capabilities. It requires independent real-dump DAP and editor
-tests; the MCP tests do not establish that integration.
-
-The initial backend exposes bounded managed thread, stack, and module
-inspection without downloading symbols. Continue, pause, stepping, breakpoints,
-writes, evaluation, scopes, variables, exceptions, memory, source, disassembly, and
-Hot Reload return typed `notSupported` errors until their dump-specific semantics
-and hostile-input validation are implemented.
+Dump inspection uses shared debugger control contracts and an independently owned
+managed worker. The [dump inspection design](debugger-dump-design.md) describes
+captured-frame reads, array paging, symbol identity, cancellation, and native
+library ownership.
 
 VS Code registers debug type `coreclr` with label `.NET (csls)` for C#, VB, F#,
 and Razor and invokes the bundled `csls debugger dap`. Zed registers the same
@@ -822,9 +813,8 @@ Neither integration downloads or discovers another debugger.
 The Hex1b TUI is a client of the private debugger RPC. A single-session view has
 dedicated source, threads, stack, and arguments/locals panes. Its auxiliary pane
 cycles through output, modules, breakpoints, watches, and exceptions, with a
-separate command palette. It has no sessions view. A session browser and explicit
-session switching remain required additions, with ownership enforced by the
-control service and no engine logic embedded in the UI.
+separate command palette. The control service enforces session ownership, and
+the terminal uses the shared inspection and execution contracts.
 
 MCP uses private debugger RPC rather than translating through DAP. Pure expression
 evaluation is the read-only `debug_evaluate` inspection tool, and physical variable

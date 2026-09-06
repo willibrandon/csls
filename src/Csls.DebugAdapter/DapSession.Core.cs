@@ -18,6 +18,9 @@ internal sealed partial class DapSession : IDebuggerSessionObserver, IAsyncDispo
     private readonly TaskCompletionSource _targetCompletion = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly SemaphoreSlim _stopEventGate = new(1, 1);
     private readonly DebuggerSession _engineSession;
+    private IDebuggerInspectionTarget _inspectionTarget;
+    private DapDumpSession? _dumpSession;
+    private bool _dumpCapabilities;
     private DapSessionState _state = DapSessionState.Created;
     private Request? _pendingTargetRequest;
     private Request? _pendingConfigurationRequest;
@@ -63,6 +66,7 @@ internal sealed partial class DapSession : IDebuggerSessionObserver, IAsyncDispo
         _writer = new DapMessageWriter(output, _lifetime.Token);
         _writeErrorAsync = error.WriteLineAsync;
         _engineSession = DebuggerEngine.CreateSession(this);
+        _inspectionTarget = _engineSession;
     }
 
     /// <summary>
@@ -87,10 +91,17 @@ internal sealed partial class DapSession : IDebuggerSessionObserver, IAsyncDispo
                 if (_cancelableRequest is not null || !_pendingRequests.TryDequeue(out request))
                 {
                     pendingRead ??= _reader.ReadRequestAsync(readCancellation.Token).AsTask();
+                    Task dumpCompletion = _dumpSession?.Completion ?? _targetCompletion.Task;
                     _ = await (_cancelableRequest is null
-                        ? Task.WhenAny(pendingRead, _targetCompletion.Task)
-                        : Task.WhenAny(pendingRead, _cancelableRequest, _targetCompletion.Task))
+                        ? Task.WhenAny(pendingRead, _targetCompletion.Task, dumpCompletion)
+                        : Task.WhenAny(pendingRead, _cancelableRequest, _targetCompletion.Task, dumpCompletion))
                         .WaitAsync(sessionToken).ConfigureAwait(false);
+
+                    if (_dumpSession is { Completion.IsCompleted: true })
+                    {
+                        await HandleDumpWorkerExitAsync(sessionToken).ConfigureAwait(false);
+                        break;
+                    }
 
                     if (_targetCompletion.Task.IsCompleted)
                     {
@@ -222,6 +233,7 @@ internal sealed partial class DapSession : IDebuggerSessionObserver, IAsyncDispo
     public async ValueTask DisposeAsync()
     {
         await _lifetime.CancelAsync().ConfigureAwait(false);
+        await DisposeDumpSessionAsync().ConfigureAwait(false);
         await _engineSession.DisposeAsync().ConfigureAwait(false);
         _cancelableRequestCancellation?.Dispose();
         _cancelableRequestCancellation = null;

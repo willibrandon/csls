@@ -67,6 +67,19 @@ public sealed class VsCodeLanguageServerTests
             localSuite: "dist/results-view-suite.cjs");
 
     /// <summary>
+    /// Opens a terminated process dump through the installed extension and navigates its managed stack.
+    /// </summary>
+    [TestMethod]
+    [TestCategory("VsCodeHost")]
+    [OSCondition(ConditionMode.Include, OperatingSystems.Linux)]
+    [Timeout(120000, CooperativeCancellation = true)]
+    public Task VsCodeInspectsManagedDumpThroughCslsDebugger() =>
+        RunVsCodeHostAsync(
+            remote: false,
+            localSuite: "dist/dump-suite.cjs",
+            prepareWorkspace: VsCodeDumpFixture.PrepareAsync);
+
+    /// <summary>
     /// Stops automatic test discovery and every process it started when VS Code shuts down.
     /// </summary>
     [TestMethod]
@@ -288,7 +301,10 @@ public sealed class VsCodeLanguageServerTests
         }
     }
 
-    private async Task RunVsCodeHostAsync(bool remote, string? localSuite = null)
+    private async Task RunVsCodeHostAsync(
+        bool remote,
+        string? localSuite = null,
+        Func<string, CancellationToken, Task>? prepareWorkspace = null)
     {
         string repositoryRoot = EditorToolResolver.FindRepositoryRoot();
         string runnerPath = Path.Join(repositoryRoot, "tests", "vscode", "runner.mjs");
@@ -364,6 +380,11 @@ public sealed class VsCodeLanguageServerTests
                 Path.Join(toolsPath, "Tool.cs"),
                 FileBasedAppText,
                 TestContext.CancellationToken).ConfigureAwait(false);
+            if (prepareWorkspace is not null)
+            {
+                await prepareWorkspace(workspacePath, TestContext.CancellationToken)
+                    .ConfigureAwait(false);
+            }
             string extensionPath = await VsCodeExtensionPackage.GetAsync(
                 repositoryRoot,
                 TestContext.CancellationToken).ConfigureAwait(false);
@@ -848,6 +869,9 @@ public sealed class VsCodeLanguageServerTests
             socketDirectory;
         startInfo.Environment["CSLS_DEBUGGER_WORKER_PATH"] =
             EditorToolResolver.ResolveDebuggerWorker(repositoryRoot);
+        startInfo.Environment["CSLS_DEBUGGER_DUMP_WORKER_PATH"] = Path.Join(
+            EditorToolResolver.ResolveArtifactsRoot(repositoryRoot),
+            "bin", "Csls.Debugger.Dump.Worker", "debug", "csls-debugger-dump-worker.dll");
         startInfo.Environment["NUGET_PACKAGES"] =
             EditorToolResolver.ResolveNuGetPackagesPath();
         if (localSuite is not null)

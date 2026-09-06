@@ -1,32 +1,19 @@
 import { strict as assert } from "node:assert";
-import { watch } from "node:fs";
-import { readFile } from "node:fs/promises";
-import { basename, dirname } from "node:path";
-import { chromium, type Browser, type Locator } from "playwright-core";
+import { type Locator } from "playwright-core";
+import { DebuggerWorkbenchUi } from "./debugger-workbench-ui";
 
 /** Drives only the real Electron workbench DOM through its loopback debugging endpoint. */
 export class ResultsViewUi {
-  private constructor(private readonly browser: Browser, private readonly tree: Locator) {}
+  private constructor(private readonly workbench: DebuggerWorkbenchUi, private readonly tree: Locator) {}
 
   static async connect(timeout: number): Promise<ResultsViewUi> {
-    const endpointPath = process.env["CSLS_VSCODE_CDP_ENDPOINT_PATH"];
-    assert(endpointPath !== undefined, "The isolated runner must publish its ephemeral DevTools endpoint.");
-    const endpoint = await readEndpoint(endpointPath, timeout);
-    const address = new URL(endpoint);
-    assert.equal(address.protocol, "ws:");
-    assert.equal(address.hostname, "127.0.0.1");
-    const browser = await chromium.connectOverCDP(endpoint, { timeout, noDefaults: true });
+    const workbench = await DebuggerWorkbenchUi.connect(timeout);
     try {
-      const pages = browser.contexts().flatMap((context) => context.pages())
-        .filter((page) => /\/workbench(?:-dev)?\.html(?:[?#]|$)/.test(page.url()));
-      assert.equal(pages.length, 1, "The isolated Electron instance must contain one workbench window.");
-      const page = pages[0]!;
-      page.setDefaultTimeout(timeout);
-      const tree = page.getByRole("tree", { name: "Debug Variables", exact: true });
+      const tree = workbench.page.getByRole("tree", { name: "Debug Variables", exact: true });
       await tree.waitFor({ state: "visible" });
-      return new ResultsViewUi(browser, tree);
+      return new ResultsViewUi(workbench, tree);
     } catch (error) {
-      await browser.close();
+      await workbench.dispose();
       throw error;
     }
   }
@@ -119,7 +106,7 @@ export class ResultsViewUi {
   async dispose(): Promise<void> {
     // For connectOverCDP, Playwright closes its transport, not the Electron process.
     // The existing extension-test runner remains the owner of the isolated editor.
-    await this.browser.close();
+    await this.workbench.dispose();
   }
 
   private row(name: string | RegExp): Locator {
@@ -134,39 +121,4 @@ export class ResultsViewUi {
       await row.locator(".monaco-tl-twistie").click();
     }
   }
-}
-
-async function readEndpoint(path: string, timeout: number): Promise<string> {
-  return new Promise<string>((resolve, reject) => {
-    const changes = watch(dirname(path), (_event, filename) => {
-      if (filename === basename(path)) {
-        void inspect();
-      }
-    });
-    const deadline = setTimeout(() => finish(
-      new Error("The isolated Electron instance did not publish its DevTools endpoint."),
-    ), timeout);
-    changes.on("error", finish);
-    void inspect();
-
-    async function inspect(): Promise<void> {
-      try {
-        finish(undefined, await readFile(path, "utf8"));
-      } catch (error) {
-        if (typeof error !== "object" || error === null || !("code" in error) || error.code !== "ENOENT") {
-          finish(error);
-        }
-      }
-    }
-
-    function finish(error?: unknown, endpoint?: string): void {
-      clearTimeout(deadline);
-      changes.close();
-      if (endpoint !== undefined) {
-        resolve(endpoint);
-      } else {
-        reject(error);
-      }
-    }
-  });
 }

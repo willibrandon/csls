@@ -31,7 +31,7 @@ internal sealed partial class DapSession
         IReadOnlyList<DebugThreadInfo> threads;
         try
         {
-            threads = await _engineSession.GetThreadsAsync(cancellationToken).ConfigureAwait(false);
+            threads = await _inspectionTarget.GetThreadsAsync(cancellationToken).ConfigureAwait(false);
         }
         catch (InvalidOperationException exception)
         {
@@ -85,8 +85,8 @@ internal sealed partial class DapSession
         try
         {
             int frameId = GetRequiredInteger(request.Arguments, "frameId", "scopes");
-            IReadOnlyList<DebugScopeInfo> scopes = await _engineSession
-                .GetScopesAsync(frameId, cancellationToken)
+            IReadOnlyList<DebugScopeInfo> scopes = await _inspectionTarget
+                .GetScopesAsync(new DebugScopesRequest(frameId), cancellationToken)
                 .ConfigureAwait(false);
             await _writer.WriteResponseAsync(
                 request,
@@ -139,14 +139,13 @@ internal sealed partial class DapSession
             int start = GetOptionalNonNegativeInteger(arguments, "start", "variables");
             int count = GetOptionalNonNegativeInteger(arguments, "count", "variables");
             DebugVariableFilter filter = GetVariableFilter(arguments);
-            IReadOnlyList<DebugVariableInfo> variables = await _engineSession
-                .GetVariablesAsync(
+            IReadOnlyList<DebugVariableInfo> variables = await _inspectionTarget
+                .GetVariablesAsync(new DebugVariablesRequest(
                     variablesReference,
                     _clientSupportsVariablePaging ? start : 0,
                     _clientSupportsVariablePaging ? count : 0,
-                    allowTargetCodeExecution: true,
-                    cancellationToken,
-                    filter)
+                    AllowTargetCodeExecution: !_dumpCapabilities,
+                    filter), cancellationToken)
                 .ConfigureAwait(false);
             await _writer.WriteResponseAsync(
                 request,

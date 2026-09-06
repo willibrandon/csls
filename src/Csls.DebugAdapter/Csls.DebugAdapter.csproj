@@ -11,5 +11,6 @@
     <InternalsVisibleTo Include="Csls.Debugger.Tests" />
     <ProjectReference Include="../Csls.Debugger/Csls.Debugger.csproj" />
     <ProjectReference Include="../Csls.Debugger.Contracts/Csls.Debugger.Contracts.csproj" />
+    <ProjectReference Include="../Csls.Debugger.Control/Csls.Debugger.Control.csproj" />
   </ItemGroup>
 </Project>

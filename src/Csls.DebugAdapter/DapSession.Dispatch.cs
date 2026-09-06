@@ -12,6 +12,16 @@ internal sealed partial class DapSession
         Request request,
         CancellationToken cancellationToken)
     {
+        if (_dumpCapabilities && _state != DapSessionState.Initialized &&
+            request.Command is not ("initialize" or "launch" or "attach" or "configurationDone" or
+                "threads" or "stackTrace" or "scopes" or "variables" or "modules" or "disconnect" or "cancel"))
+        {
+            await WriteRequestFailureAsync(request,
+                $"The '{request.Command}' request requires a live target; this session inspects a read-only dump.",
+                cancellationToken).ConfigureAwait(false);
+            return;
+        }
+
         switch (request.Command)
         {
             case "initialize":

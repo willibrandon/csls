@@ -1,18 +1,18 @@
-namespace Csls.Mcp.Worker;
+namespace Csls.Debugger.Control;
 
 /// <summary>
-/// Resolves the managed process-dump worker supervised by the MCP process.
+/// Resolves the managed process-dump worker from the debugger installation.
 /// </summary>
-internal static class McpDebuggerDumpWorkerLocator
+public static class DebuggerDumpWorkerLocator
 {
     private const string WorkerPathEnvironmentVariable =
         "CSLS_DEBUGGER_DUMP_WORKER_PATH";
 
     /// <summary>
-    /// Resolves the dump worker when this MCP installation includes one.
+    /// Resolves the dump worker from explicit configuration or the installation layout.
     /// </summary>
     /// <returns>The absolute worker path, or null when dump inspection is unavailable.</returns>
-    internal static string? TryResolve()
+    public static string? TryResolve()
     {
         string? configuredPath = Environment.GetEnvironmentVariable(
             WorkerPathEnvironmentVariable);

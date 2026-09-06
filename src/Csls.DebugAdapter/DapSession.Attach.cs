@@ -33,6 +33,8 @@ internal sealed partial class DapSession
         _startMethod = "attach";
         _terminateDebuggeeByDefault = false;
         _state = DapSessionState.Configuring;
+        await ConfigureTargetCapabilitiesAsync(_pendingAttach is DapDumpAttachConfiguration, cancellationToken)
+            .ConfigureAwait(false);
         await _writer.WriteEventAsync(
             "initialized",
             writeBody: null,

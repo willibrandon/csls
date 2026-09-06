@@ -24,6 +24,7 @@ internal sealed partial class DapSession
             JsonElement arguments = request.Arguments;
             if (arguments.ValueKind != JsonValueKind.Object ||
                 !arguments.TryGetProperty("threadId", out JsonElement threadIdValue) ||
+                threadIdValue.ValueKind != JsonValueKind.Number ||
                 !threadIdValue.TryGetInt32(out int threadId))
             {
                 throw new ArgumentException(
@@ -32,10 +33,8 @@ internal sealed partial class DapSession
 
             int startFrame = GetOptionalNonNegativeInteger(arguments, "startFrame", "stackTrace");
             int levels = GetOptionalNonNegativeInteger(arguments, "levels", "stackTrace");
-            DebugStackTrace stack = await _engineSession.GetStackTraceAsync(
-                threadId,
-                startFrame,
-                levels,
+            DebugStackTrace stack = await _inspectionTarget.GetStackAsync(
+                new DebugStackRequest(threadId, startFrame, levels),
                 cancellationToken).ConfigureAwait(false);
             await _writer.WriteResponseAsync(
                 request,

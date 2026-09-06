@@ -3,7 +3,7 @@ title: Debug Adapter Protocol reference
 description: Generated csls DAP requests, capabilities, and target configuration.
 ---
 
-This page is generated from the shipping DAP dispatcher, initialize response, and editor configuration schema.
+This page is generated from the shipping DAP dispatcher, target capabilities, and editor configuration schema.
 
 ## Requests
 
@@ -11,7 +11,7 @@ This page is generated from the shipping DAP dispatcher, initialize response, an
 | --- | --- |
 | `initialize` | Negotiate client coordinates and the supported capability allowlist. |
 | `launch` | Prepare one concrete debugger-owned managed process launch. |
-| `attach` | Prepare attachment to one explicitly selected CoreCLR process. |
+| `attach` | Prepare attachment to one explicitly selected CoreCLR process or managed process dump. |
 | `configurationDone` | Commit configured breakpoints and start the pending target. |
 | `setBreakpoints` | Atomically replace source breakpoints for one document. |
 | `setFunctionBreakpoints` | Atomically replace managed function breakpoints. |
@@ -44,9 +44,9 @@ This page is generated from the shipping DAP dispatcher, initialize response, an
 | `disconnect` | End the adapter session with launch or attach ownership semantics. |
 | `cancel` | Acknowledge DAP cancellation after propagating request cancellation. |
 
-## Advertised capabilities
+## Live process capabilities
 
-| Initialize capability |
+| Capability |
 | --- |
 | `supportsBreakpointLocationsRequest` |
 | `supportsCancelRequest` |
@@ -69,6 +69,14 @@ This page is generated from the shipping DAP dispatcher, initialize response, an
 | `supportsSetExpression` |
 | `supportsSetVariable` |
 | `supportsStepInTargetsRequest` |
+
+## Dump capabilities
+
+| Capability |
+| --- |
+| `supportsCancelRequest` |
+| `supportsConfigurationDoneRequest` |
+| `supportsModulesRequest` |
 
 ## Exception filters
 
@@ -101,9 +109,14 @@ This page is generated from the shipping DAP dispatcher, initialize response, an
 
 ## Attach configuration
 
+Select exactly one of `processId` or `dumpPath`.
+
 | Property | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |
-| `processId` | `integer` | Yes |  | Operating-system process identifier for a running .NET process. |
+| `processId` | `integer` | No |  | Operating-system process identifier for a running .NET process. |
+| `dumpPath` | `string` | No |  | Absolute path to a managed process dump for read-only thread, stack, module, and captured-variable inspection. Select either dumpPath or processId. |
+| `runtimeIndex` | `integer` | No | `0` | Zero-based managed runtime index within the selected dump. |
+| `dacPath` | `string` | No |  | Absolute path to the matching runtime Data Access Component (DAC) for dump inspection. |
 | `requireExactSource` | `boolean` | No | `true` | Require local source to match its debug symbols. Set false to bind against unverified local source. |
 | `sourceFileMap` | `object` | No |  | Maps absolute build-time source prefixes to absolute local source prefixes. |
 | `sourceLinkOptions` | `object` | No |  | Controls Source Link URL patterns, including explicit private-network authorization. |

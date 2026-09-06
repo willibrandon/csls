@@ -28,8 +28,8 @@ internal sealed partial class DapSession
                 request.Arguments,
                 "moduleCount",
                 "modules");
-            DebugModulePage page = await _engineSession
-                .GetModulesAsync(startModule, moduleCount, cancellationToken)
+            DebugModulePage page = await _inspectionTarget
+                .GetModulesAsync(new DebugModulesRequest(startModule, moduleCount), cancellationToken)
                 .ConfigureAwait(false);
             await WriteModulePageAsync(request, page, cancellationToken).ConfigureAwait(false);
         }

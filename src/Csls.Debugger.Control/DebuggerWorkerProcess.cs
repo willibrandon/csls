@@ -29,6 +29,14 @@ public sealed class DebuggerWorkerProcess : IAsyncDisposable
     public int ProcessId => _process.Id;
 
     /// <summary>
+    /// Observes termination of the owned worker without ending its RPC connection.
+    /// </summary>
+    /// <param name="cancellationToken">Cancels observation without terminating the worker.</param>
+    /// <returns>A task that completes when the worker process exits.</returns>
+    public Task WaitForExitAsync(CancellationToken cancellationToken) =>
+        _process.WaitForExitAsync(cancellationToken);
+
+    /// <summary>
     /// Starts an explicitly selected worker and verifies its private control protocol.
     /// </summary>
     /// <param name="workerPath">The absolute existing worker executable or assembly path.</param>

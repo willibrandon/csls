@@ -159,7 +159,35 @@ internal sealed partial class DapSession
             terminateDebuggee = terminateValue.GetBoolean();
         }
 
+        if (_state is DapSessionState.Created or DapSessionState.Initialized or DapSessionState.Configuring)
+        {
+            bool targetRequested = _pendingTargetRequest is not null;
+            if (_pendingTargetRequest is Request pendingTarget)
+            {
+                await WriteRequestFailureAsync(pendingTarget, "cancelled", cancellationToken).ConfigureAwait(false);
+            }
+            ClearPendingTarget();
+            await _writer.WriteResponseAsync(request, success: true, message: null, writeBody: null,
+                cancellationToken).ConfigureAwait(false);
+            if (targetRequested)
+            {
+                await _writer.WriteEventAsync("terminated", writeBody: null, cancellationToken).ConfigureAwait(false);
+            }
+            _state = DapSessionState.Terminated;
+            return;
+        }
+
         _state = DapSessionState.Terminating;
+        if (_dumpSession is not null)
+        {
+            await DisposeDumpSessionAsync().ConfigureAwait(false);
+            await _writer.WriteResponseAsync(request, success: true, message: null, writeBody: null,
+                cancellationToken).ConfigureAwait(false);
+            await _writer.WriteEventAsync("terminated", writeBody: null, cancellationToken).ConfigureAwait(false);
+            _state = DapSessionState.Terminated;
+            return;
+        }
+
         if (terminateDebuggee)
         {
             await _engineSession.TerminateAsync(cancellationToken).ConfigureAwait(false);
