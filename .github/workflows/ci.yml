@@ -256,6 +256,10 @@ jobs:
           name: debugger-unix-wait-${{ matrix.rid }}
           path: artifacts/bin/Csls.Debugger.Worker/debug
 
+      - name: Prepare macOS debugger authorization
+        if: runner.os == 'macOS'
+        run: dotnet run --file scripts/Configure-DebuggerTestAuthorization.cs -- enable
+
       - name: Run debugger tests
         env:
           CSLS_REPOSITORY_ROOT: ${{ github.workspace }}
@@ -277,6 +281,10 @@ jobs:
           --hangdump
           --hangdump-timeout 2m
           --hangdump-type None
+
+      - name: Restore macOS debugger authorization
+        if: always() && runner.os == 'macOS'
+        run: dotnet run --file scripts/Configure-DebuggerTestAuthorization.cs -- restore
 
       - name: Preserve debugger test results
         if: always()

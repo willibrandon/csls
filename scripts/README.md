@@ -12,6 +12,7 @@ supports `--help`.
 | `Build-VsCodeExtension.cs` | Packages a native-platform or web VS Code extension with its matching csls server. |
 | `Build-VsCodeWebWorker.cs` | Builds the browser WebAssembly language-server worker used by the VS Code web extension. |
 | `Build-ZedExtension.cs` | Builds the WebAssembly extension package consumed by Zed. |
+| `Configure-DebuggerTestAuthorization.cs` | Saves, configures, and restores developer-group authorization for unattended debugger tests on GitHub-hosted macOS runners. |
 | `Export-ContainerImage.cs` | Exports a container image as a Picket-scannable archive. |
 | `Generate-Docs.cs` | Generates CLI, MCP, configuration, and contract reference pages from the built product. |
 | `Generate-DapProtocol.cs` | Generates deterministic NativeAOT C# contracts from the checked-in DAP schema. |
