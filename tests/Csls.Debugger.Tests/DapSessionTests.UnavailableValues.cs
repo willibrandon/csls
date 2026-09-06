@@ -80,6 +80,11 @@ public sealed partial class DapSessionTests
 
         Assert.AreSequenceEqual(["expired", "retained"],
             locals.Select(static value => value.GetProperty("name").GetString()).ToArray());
+        if (locals[1].GetProperty("value").GetString() != "42" && client.TargetProcessId is int targetProcessId)
+        {
+            DebuggerNativeContextDiagnostics.TryWrite(TestContext, targetProcessId);
+        }
+
         Assert.AreEqual("42", locals[1].GetProperty("value").GetString());
         Assert.AreEqual("int", locals[1].GetProperty("type").GetString());
         AssertUnavailableFrameSlot(locals[0]);

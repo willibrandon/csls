@@ -12,6 +12,7 @@
 
   <ItemGroup>
     <PackageReference Include="Microsoft.CodeAnalysis.CSharp" />
+    <PackageReference Include="Microsoft.Diagnostics.Runtime" />
     <PackageReference Include="Microsoft.Diagnostics.NETCore.Client" />
     <PackageReference Include="Microsoft.Testing.Extensions.HangDump" PrivateAssets="All" />
     <ProjectReference Include="../../src/Csls.DebugAdapter/Csls.DebugAdapter.csproj" />
