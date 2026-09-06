@@ -31,6 +31,11 @@ public sealed class DebuggerTerminalLaunchOptions
     public bool StopAtEntry { get; init; }
 
     /// <summary>
+    /// Gets whether local source must match its debug symbols.
+    /// </summary>
+    public bool RequireExactSource { get; init; } = true;
+
+    /// <summary>
     /// Gets the ordered target arguments.
     /// </summary>
     public IReadOnlyList<string> Arguments { get; init; } = [];

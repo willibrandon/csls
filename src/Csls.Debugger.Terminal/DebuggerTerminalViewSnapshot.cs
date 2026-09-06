@@ -19,6 +19,11 @@ internal sealed record DebuggerTerminalViewSnapshot
     internal long SourceRevision { get; init; }
 
     /// <summary>
+    /// Gets the source pane title captured with its document provenance.
+    /// </summary>
+    internal string SourceTitle { get; init; } = "Source";
+
+    /// <summary>
     /// Gets the source rows captured for this frame.
     /// </summary>
     internal ImmutableArray<string> SourceLines { get; init; } =

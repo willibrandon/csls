@@ -36,8 +36,7 @@ internal sealed partial class CorDebugManagedCallback : IDisposable
     private readonly Func<int, nint, DebugExceptionStage, CancellationToken, ValueTask<bool>>
         _exceptionRaised;
     private readonly Func<nint, bool, CancellationToken, ValueTask<bool>> _evaluationCompleted;
-    private readonly TaskCompletionSource<int> _createProcessCompletion =
-        new(TaskCreationOptions.RunContinuationsAsynchronously);
+    private readonly CorDebugCallbackInitialization _initialization = new();
     private readonly TaskCompletionSource _exitProcessCompletion =
         new(TaskCreationOptions.RunContinuationsAsynchronously);
     private nint _instance;

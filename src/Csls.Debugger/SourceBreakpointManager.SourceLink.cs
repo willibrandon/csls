@@ -32,7 +32,7 @@ internal sealed partial class SourceBreakpointManager
             return registration.Content;
         }
 
-        if (registration.SourceLinkUri is null || registration.Info.Checksum is null)
+        if (registration.SourceLinkUri is null || registration.Document?.Checksum is not DebugSourceChecksum checksum)
         {
             throw new KeyNotFoundException(
                 $"Source reference {sourceReference} has no retrievable content.");
@@ -42,7 +42,7 @@ internal sealed partial class SourceBreakpointManager
             registration.SourceLinkUri,
             _sourceLinkPolicy,
             cancellationToken).ConfigureAwait(false);
-        if (!SourceChecksumVerifier.Matches(source, registration.Info.Checksum))
+        if (!SourceChecksumVerifier.Matches(source, checksum))
         {
             throw new InvalidDataException(
                 "Source Link content does not match its Portable PDB checksum.");

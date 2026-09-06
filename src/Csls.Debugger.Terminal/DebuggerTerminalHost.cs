@@ -49,6 +49,7 @@ public static class DebuggerTerminalHost
                 EnvironmentFilePath = options.EnvironmentFilePath,
                 RuntimeHostPath = options.RuntimeHostPath,
                 SourceFileMap = options.SourceFileMap,
+                RequireExactSource = options.RequireExactSource,
                 StopAtEntry = options.StopAtEntry
             },
             cancellationToken).ConfigureAwait(false);
@@ -79,6 +80,7 @@ public static class DebuggerTerminalHost
         _ = await client.AttachAsync(
             new DebugAttachRequest(options.ProcessId)
             {
+                RequireExactSource = options.RequireExactSource,
                 SourceFileMap = options.SourceFileMap
             },
             cancellationToken).ConfigureAwait(false);

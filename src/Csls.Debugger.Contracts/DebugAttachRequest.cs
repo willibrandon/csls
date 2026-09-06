@@ -13,6 +13,11 @@ public sealed record DebugAttachRequest(int ProcessId)
         new Dictionary<string, string>(StringComparer.Ordinal);
 
     /// <summary>
+    /// Gets whether local source must match the symbols before source breakpoint binding.
+    /// </summary>
+    public bool RequireExactSource { get; init; } = true;
+
+    /// <summary>
     /// Gets Source Link URL patterns mapped to enabled states.
     /// </summary>
     public IReadOnlyDictionary<string, bool> SourceLinkOptions { get; init; } =

@@ -340,6 +340,11 @@
                 "default": false,
                 "description": "Stop at the first executable entry-point statement."
               },
+              "requireExactSource": {
+                "type": "boolean",
+                "default": true,
+                "description": "Require local source to match its debug symbols. Set false to bind against unverified local source."
+              },
               "env": {
                 "type": "object",
                 "description": "Environment variables added to the target. A null value removes an inherited variable.",
@@ -455,6 +460,11 @@
                 "type": "integer",
                 "minimum": 1,
                 "description": "Operating-system process identifier for a running .NET process."
+              },
+              "requireExactSource": {
+                "type": "boolean",
+                "default": true,
+                "description": "Require local source to match its debug symbols. Set false to bind against unverified local source."
               },
               "sourceFileMap": {
                 "type": "object",

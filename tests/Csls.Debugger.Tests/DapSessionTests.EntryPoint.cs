@@ -91,7 +91,8 @@ public sealed partial class DapSessionTests
     }
 
     private async Task<(int ThreadId, int ProcessId)> LaunchAtEntryAsync(
-        DapTestClient client, string program, string[] arguments, bool initializeClient = true)
+        DapTestClient client, string program, string[] arguments, bool initializeClient = true,
+        IReadOnlyDictionary<string, string>? sourceFileMap = null, bool? requireExactSource = null)
     {
         if (initializeClient)
         {
@@ -114,7 +115,25 @@ public sealed partial class DapSessionTests
             }
 
             writer.WriteEndArray();
-            WriteDefaultSourceFileMap(writer);
+            if (sourceFileMap is null)
+            {
+                WriteDefaultSourceFileMap(writer);
+            }
+            else
+            {
+                writer.WriteStartObject("sourceFileMap");
+                foreach ((string buildPath, string localPath) in sourceFileMap)
+                {
+                    writer.WriteString(buildPath, localPath);
+                }
+
+                writer.WriteEndObject();
+            }
+
+            if (requireExactSource is bool exactSource)
+            {
+                writer.WriteBoolean("requireExactSource", exactSource);
+            }
             writer.WriteStartObject("env");
             writer.WriteString("CSLS_DEBUGGER_ENTRY_VALUE", "entry-result");
             writer.WriteString("--print-environment", "entry-mutated");

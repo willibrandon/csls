@@ -7,6 +7,11 @@ namespace Csls.Debugger.Terminal;
 public sealed record DebuggerTerminalAttachOptions(int ProcessId)
 {
     /// <summary>
+    /// Gets whether local source must match its debug symbols.
+    /// </summary>
+    public bool RequireExactSource { get; init; } = true;
+
+    /// <summary>
     /// Gets build-time source prefixes mapped to local source prefixes.
     /// </summary>
     public IReadOnlyDictionary<string, string> SourceFileMap { get; init; } =

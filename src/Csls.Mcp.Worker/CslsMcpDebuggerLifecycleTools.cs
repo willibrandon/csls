@@ -40,6 +40,7 @@ internal sealed class CslsMcpDebuggerLifecycleTools
     /// <param name="justMyCode">Whether source stepping excludes non-user code.</param>
     /// <param name="enableStepFiltering">Whether stepping skips properties and operators.</param>
     /// <param name="stopAtEntry">Whether launch stops at the first executable entry-point statement.</param>
+    /// <param name="requireExactSource">Whether local source must match its debug symbols.</param>
     /// <returns>The new explicit debugger-session identity and initial state.</returns>
     [McpServerTool(
         Name = "debug_session_start",
@@ -80,7 +81,9 @@ internal sealed class CslsMcpDebuggerLifecycleTools
         [Description("Skip managed properties and operators while stepping by default.")]
         bool enableStepFiltering = true,
         [Description("Stop at the first executable entry-point statement. Defaults to false.")]
-        bool stopAtEntry = false)
+        bool stopAtEntry = false,
+        [Description("Require local source to match its debug symbols. Defaults to true.")]
+        bool requireExactSource = true)
     {
         return McpDebuggerToolResult.RunAsync(async () =>
         {
@@ -109,6 +112,7 @@ internal sealed class CslsMcpDebuggerLifecycleTools
                     SuppressJitOptimizations = suppressJitOptimizations,
                     EnableHotReload = enableHotReload,
                     StopAtEntry = stopAtEntry,
+                    RequireExactSource = requireExactSource,
                     JustMyCode = justMyCode,
                     EnableStepFiltering = enableStepFiltering
                 },
@@ -125,6 +129,7 @@ internal sealed class CslsMcpDebuggerLifecycleTools
     /// <param name="cancellationToken">The MCP request cancellation token.</param>
     /// <param name="pause">Whether attachment immediately pauses the target.</param>
     /// <param name="sourceFileMap">Build-time source prefixes mapped to local source prefixes.</param>
+    /// <param name="requireExactSource">Whether local source must match its debug symbols.</param>
     /// <returns>The new explicit debugger-session identity and initial state.</returns>
     [McpServerTool(
         Name = "debug_session_attach",
@@ -143,7 +148,9 @@ internal sealed class CslsMcpDebuggerLifecycleTools
         [Description("Pause the target immediately after attachment.")]
         bool pause = true,
         [Description("Build-time source path prefixes mapped to local source path prefixes.")]
-        IReadOnlyDictionary<string, string>? sourceFileMap = null)
+        IReadOnlyDictionary<string, string>? sourceFileMap = null,
+        [Description("Require local source to match its debug symbols. Defaults to true.")]
+        bool requireExactSource = true)
     {
         return McpDebuggerToolResult.RunAsync(async () =>
         {
@@ -151,6 +158,7 @@ internal sealed class CslsMcpDebuggerLifecycleTools
             return await _broker.AttachAsync(
                 new DebugAttachRequest(processId)
                 {
+                    RequireExactSource = requireExactSource,
                     SourceFileMap = sourceFileMap ??
                         new Dictionary<string, string>(StringComparer.Ordinal)
                 },

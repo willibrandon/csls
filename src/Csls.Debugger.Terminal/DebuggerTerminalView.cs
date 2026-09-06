@@ -39,7 +39,7 @@ internal static class DebuggerTerminalView
                                             selection.FocusedIndex,
                                             snapshot))
                                     .Fill()])
-                                .Title("Source")
+                                .Title(snapshot.SourceTitle)
                                 .Fill()
                         ],
                         right =>

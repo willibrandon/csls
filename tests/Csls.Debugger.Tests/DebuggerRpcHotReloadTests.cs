@@ -244,6 +244,12 @@ public sealed partial class DebuggerRpcHotReloadTests
             updatedSource,
             Encoding.UTF8,
             cancellationToken).ConfigureAwait(false);
+        ReportProgress("Checking edited source against the original symbol generation.");
+        DebugSourceBreakpointInfo changedSource = Assert.ContainsSingle(await client.SetSourceBreakpointsAsync(
+            new DebugSourceBreakpointSetRequest(sourcePath, [new DebugSourceBreakpointRequest(breakpointLine, null)]),
+            cancellationToken).ConfigureAwait(false));
+        Assert.IsFalse(changedSource.Verified);
+        Assert.Contains("source file differs", changedSource.Message!);
         ReportProgress("Applying the compiler deltas.");
         var updateRequest = new DebugHotReloadRequest(
                 stopped.StopGeneration,
@@ -273,6 +279,10 @@ public sealed partial class DebuggerRpcHotReloadTests
         Assert.AreEqual(stopped.StopGeneration + 1, applied.StopGeneration);
         Assert.IsNotEmpty(applied.UpdatedMethods);
         Assert.IsNotEmpty(applied.UpdatedTypes);
+        DebugSourceBreakpointInfo reboundSource = Assert.ContainsSingle((await client.GetBreakpointsAsync(cancellationToken)
+            .ConfigureAwait(false)).SourceBreakpoints);
+        Assert.AreEqual(changedSource.Id, reboundSource.Id);
+        Assert.IsTrue(reboundSource.Verified, reboundSource.Message);
         if (addMethod)
         {
             Assert.HasCount(2, applied.UpdatedMethods);

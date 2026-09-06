@@ -102,7 +102,8 @@ public sealed partial class DebuggerSession
         _sourceBreakpoints.SetSourceOptions(
             options.SourceFileMap,
             options.SourceLinkOptions,
-            options.SymbolOptions);
+            options.SymbolOptions,
+            options.RequireExactSource);
         _sourceBreakpoints.SetRuntimeOptions(
             options.SuppressJitOptimizations,
             options.EnableHotReload,

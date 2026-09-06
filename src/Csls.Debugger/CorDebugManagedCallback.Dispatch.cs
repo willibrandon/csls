@@ -79,10 +79,10 @@ internal sealed partial class CorDebugManagedCallback
                 {
                     bool dispatchCallbacks = target.CanDispatchCallbacks;
                     bool shouldContinue = continueAfterCallback && dispatchCallbacks;
-                    if (createsProcess && !dispatchCallbacks)
+                    if (!dispatchCallbacks)
                     {
-                        _ = target._createProcessCompletion.TrySetException(new InvalidOperationException(
-                            "The target ended before its initial managed callback could resume it."));
+                        target._initialization.Fail(new InvalidOperationException(
+                            "The target ended before its initial managed callbacks completed."));
                     }
 
                     if (dispatchCallbacks)
@@ -101,10 +101,7 @@ internal sealed partial class CorDebugManagedCallback
                         }
                         catch (Exception exception) when (IsRecoverableCallbackFailure(exception))
                         {
-                            if (createsProcess)
-                            {
-                                _ = target._createProcessCompletion.TrySetException(exception);
-                            }
+                            target._initialization.Fail(exception);
 
                             shouldContinue = continueAfterCallback;
                             await target.ReportCallbackFailureAsync(
@@ -116,14 +113,14 @@ internal sealed partial class CorDebugManagedCallback
 
                     if (shouldContinue && target.CanDispatchCallbacks)
                     {
+                        bool completesInitialization = target._initialization.IsFinalCallback(currentController, createsProcess);
                         int result = new ICorDebugControllerAbi(currentController)
                             .Continue(fIsOutOfBand: 0);
-                        if (createsProcess)
-                        {
-                            _ = target._createProcessCompletion.TrySetResult(result);
-                        }
-
                         CorDebugHResult.ThrowIfFailed(result, "ICorDebugController.Continue");
+                        if (completesInitialization)
+                        {
+                            target._initialization.Complete();
+                        }
                     }
                 }
                 finally
@@ -180,7 +177,6 @@ internal sealed partial class CorDebugManagedCallback
                     _ = ComAbi.Release(currentController);
                 }
             },
-            createsProcess,
             exitsProcess,
             callbackName);
         return SuccessHResult;
@@ -189,7 +185,6 @@ internal sealed partial class CorDebugManagedCallback
     private async Task ObserveOperationAsync(
         Task operation,
         Action releaseUnclaimed,
-        bool createsProcess,
         bool exitsProcess,
         string callbackName)
     {
@@ -200,10 +195,7 @@ internal sealed partial class CorDebugManagedCallback
         catch (Exception exception) when (IsRecoverableCallbackFailure(exception))
         {
             releaseUnclaimed();
-            if (createsProcess)
-            {
-                _ = _createProcessCompletion.TrySetException(exception);
-            }
+            _initialization.Fail(exception);
 
             if (exitsProcess)
             {

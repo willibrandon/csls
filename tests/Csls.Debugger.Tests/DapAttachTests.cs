@@ -18,16 +18,45 @@ public sealed partial class DapAttachTests
     /// <summary>
     /// Attaches to a real CoreCLR process and detaches without terminating it.
     /// </summary>
+    /// <param name="requireExactSource">The explicit source policy or omission that selects the default.</param>
     [TestMethod]
+    [DataRow(null)]
+    [DataRow(true)]
+    [DataRow(false)]
     [Timeout(30000, CooperativeCancellation = true)]
-    public async Task AttachPausesAndDisconnectLeavesTargetRunning()
+    public async Task AttachPausesAndDisconnectLeavesTargetRunning(bool? requireExactSource)
     {
-        string waitPath = Path.Join(
-            Path.GetTempPath(),
-            $"csls-debugger-attach-{Guid.NewGuid():N}.signal");
+        DirectoryInfo directory = Directory.CreateTempSubdirectory("csls-debugger-attach-");
+        string waitPath = Path.Join(directory.FullName, "continue.signal");
+        string sourcePath = Path.Join(directory.FullName, "Program.cs");
+        try
+        {
+            await AttachAndInspectAsync(waitPath, sourcePath, requireExactSource).ConfigureAwait(false);
+        }
+        finally
+        {
+            File.Delete(waitPath);
+            File.Delete(sourcePath);
+            directory.Delete();
+        }
+    }
+
+    private async Task AttachAndInspectAsync(string waitPath, string sourcePath, bool? requireExactSource)
+    {
         using Process target = StartManagedTarget(waitPath);
         try
         {
+            string originalPath = Path.Join(FindRepositoryRoot(), "tests", "Csls.TestProcessHost", "Program.cs");
+            byte[] source = await File.ReadAllBytesAsync(originalPath, TestContext.CancellationToken).ConfigureAwait(false);
+            await File.WriteAllBytesAsync(sourcePath, source, TestContext.CancellationToken).ConfigureAwait(false);
+            await File.AppendAllTextAsync(sourcePath, "\n// Changed after compilation.\n", TestContext.CancellationToken).ConfigureAwait(false);
+            using DebugSymbolReader symbols = DebugSymbolReader.TryOpen(ResolveTestProcessHost())
+                ?? throw new AssertFailedException("The debugger fixture has no symbols.");
+            ManagedSymbolDocument document = Assert.ContainsSingle(symbols.GetDocuments().Where(item =>
+                item.Path.EndsWith("/Program.cs", StringComparison.Ordinal)));
+            int line = (await File.ReadAllLinesAsync(originalPath, TestContext.CancellationToken).ConfigureAwait(false))
+                .Select(static (text, index) => (Text: text, Line: index + 1))
+                .Single(static item => item.Text.Contains("if (args is [\"--unix-wait-status-fixture\"", StringComparison.Ordinal)).Line;
             char[] readyBuffer = new char[5];
             int readyCount = await target.StandardOutput
                 .ReadBlockAsync(readyBuffer, TestContext.CancellationToken)
@@ -50,7 +79,7 @@ public sealed partial class DapAttachTests
 
             int attachSequence = await client.SendRequestAsync(
                 "attach",
-                writer => WriteAttachArguments(writer, target.Id),
+                writer => WriteAttachArguments(writer, target.Id, document.Path, sourcePath, requireExactSource),
                 TestContext.CancellationToken).ConfigureAwait(false);
             using JsonDocument initialized = await client
                 .ReadMessageAsync(TestContext.CancellationToken)
@@ -96,6 +125,30 @@ public sealed partial class DapAttachTests
                 "pause",
                 stopped.RootElement.GetProperty("body").GetProperty("reason").GetString());
 
+            int breakpoint = await client.SendRequestAsync("setBreakpoints", writer =>
+            {
+                writer.WriteStartObject();
+                writer.WriteStartObject("source");
+                writer.WriteString("path", sourcePath);
+                writer.WriteEndObject();
+                writer.WriteStartArray("breakpoints");
+                writer.WriteStartObject();
+                writer.WriteNumber("line", line);
+                writer.WriteEndObject();
+                writer.WriteEndArray();
+                writer.WriteEndObject();
+            }, TestContext.CancellationToken).ConfigureAwait(false);
+            using (JsonDocument response = await client.ReadMessageAsync(TestContext.CancellationToken).ConfigureAwait(false))
+            {
+                AssertResponse(response.RootElement, breakpoint, "setBreakpoints");
+                JsonElement bound = Assert.ContainsSingle(response.RootElement.GetProperty("body").GetProperty("breakpoints").EnumerateArray());
+                Assert.AreEqual(requireExactSource == false, bound.GetProperty("verified").GetBoolean(), bound.GetRawText());
+                if (requireExactSource != false)
+                {
+                    Assert.Contains("source file differs", bound.GetProperty("message").GetString()!);
+                }
+            }
+
             int disconnectSequence = await client.SendRequestAsync(
                 "disconnect",
                 WriteEmptyObject,
@@ -122,11 +175,9 @@ public sealed partial class DapAttachTests
             if (!target.HasExited)
             {
                 target.Kill(entireProcessTree: true);
-                await target.WaitForExitAsync(TestContext.CancellationToken)
+                await target.WaitForExitAsync(CancellationToken.None)
                     .ConfigureAwait(false);
             }
-
-            File.Delete(waitPath);
         }
     }
 

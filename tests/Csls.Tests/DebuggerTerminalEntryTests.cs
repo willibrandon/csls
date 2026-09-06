@@ -21,13 +21,16 @@ public sealed class DebuggerTerminalEntryTests
     /// Opens an entry stop, renders its source and arguments, and continues to normal target exit.
     /// </summary>
     /// <param name="useEnvironmentFile">Whether launch loads its value from an environment file relative to the target directory.</param>
+    /// <param name="requireExactSource">The explicit policy or omission that selects the default.</param>
     [TestMethod]
-    [DataRow(false)]
-    [DataRow(true)]
+    [DataRow(false, null)]
+    [DataRow(true, null)]
+    [DataRow(false, true)]
+    [DataRow(false, false)]
     [OSCondition(ConditionMode.Include, OperatingSystems.Linux)]
     [TestCategory("DebuggerTerminal")]
     [Timeout(60000, CooperativeCancellation = true)]
-    public async Task TerminalStopAtEntryRendersSourceAndContinues(bool useEnvironmentFile)
+    public async Task TerminalStopAtEntryRendersSourceAndContinues(bool useEnvironmentFile, bool? requireExactSource)
     {
         DirectoryInfo directory = Directory.CreateTempSubdirectory("csls-terminal-entry-");
         string path = Path.Join(directory.FullName, ".env");
@@ -35,7 +38,8 @@ public sealed class DebuggerTerminalEntryTests
         {
             await File.WriteAllTextAsync(path, "CSLS_TERMINAL_ENTRY_RESULT=entry-result", TestContext.CancellationToken)
                 .ConfigureAwait(false);
-            await AssertTerminalEntryAsync(useEnvironmentFile ? directory.FullName : null).ConfigureAwait(false);
+            await AssertTerminalEntryAsync(useEnvironmentFile ? directory.FullName : null,
+                requireExactSource: requireExactSource).ConfigureAwait(false);
         }
         finally
         {
@@ -44,7 +48,37 @@ public sealed class DebuggerTerminalEntryTests
         }
     }
 
-    private async Task AssertTerminalEntryAsync(string? environmentDirectory)
+    /// <summary>
+    /// Displays the chosen source policy and continues from an entry stop with edited local source.
+    /// </summary>
+    /// <param name="emptySource">Whether the edited local file is empty.</param>
+    [TestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
+    [OSCondition(ConditionMode.Include, OperatingSystems.Linux)]
+    [TestCategory("DebuggerTerminal")]
+    [Timeout(60000, CooperativeCancellation = true)]
+    public async Task TerminalRelaxedSourcePolicyRendersProvenance(bool emptySource)
+    {
+        DirectoryInfo directory = Directory.CreateTempSubdirectory("csls-terminal-source-");
+        string path = Path.Join(directory.FullName, "Program.cs");
+        try
+        {
+            string original = await File.ReadAllTextAsync(Path.Join(EditorToolResolver.FindRepositoryRoot(),
+                "tests", "Csls.TestProcessHost", "Program.cs"), TestContext.CancellationToken).ConfigureAwait(false);
+            await File.WriteAllTextAsync(path, emptySource ? string.Empty : original + "\n// Edited after build.\n",
+                TestContext.CancellationToken).ConfigureAwait(false);
+            await AssertTerminalEntryAsync(null, path, requireExactSource: false, emptySource).ConfigureAwait(false);
+        }
+        finally
+        {
+            File.Delete(path);
+            directory.Delete();
+        }
+    }
+
+    private async Task AssertTerminalEntryAsync(string? environmentDirectory, string? mappedSource = null,
+        bool? requireExactSource = null, bool emptySource = false)
     {
         string repositoryRoot = EditorToolResolver.FindRepositoryRoot();
         string artifactsRoot = EditorToolResolver.ResolveArtifactsRoot(repositoryRoot);
@@ -59,12 +93,19 @@ public sealed class DebuggerTerminalEntryTests
         };
         string[] environmentArguments = environmentDirectory is null ? [] :
             ["--cwd", environmentDirectory, "--env-file", ".env"];
+        string[] sourceArguments = mappedSource is null ? [] :
+            ["--source-file-map", $"/_/tests/Csls.TestProcessHost/Program.cs={mappedSource}",
+                "--source-file-map", $"{Path.Join(repositoryRoot, "tests", "Csls.TestProcessHost", "Program.cs")}={mappedSource}"];
+        string[] policyArguments = requireExactSource is bool exactSource
+            ? ["--require-exact-source", exactSource ? "true" : "false"] : [];
         var workload = new Hex1bPtyWorkload(EditorToolResolver.ResolveDotNetHost(),
             [
                 EditorToolResolver.ResolveLauncher(repositoryRoot), "debugger", "tui", "launch",
                 EditorToolResolver.ResolveTestProcessHost(repositoryRoot), "--stop-at-entry",
                 "--source-file-map", $"/_/={repositoryRoot}",
                 .. environmentArguments,
+                .. sourceArguments,
+                .. policyArguments,
                 "--", "--print-environment", "CSLS_TERMINAL_ENTRY_RESULT"
             ], repositoryRoot, width, height, environment);
         await using ConfiguredAsyncDisposable cleanup = workload.ConfigureAwait(false);
@@ -81,8 +122,26 @@ public sealed class DebuggerTerminalEntryTests
             await automator.WaitUntilTextAsync("args =").ConfigureAwait(false);
             using (Hex1bTerminalSnapshot stopped = automator.CreateSnapshot())
             {
-                Assert.Contains("Source", stopped.GetRegion(sourceRegion).GetText());
-                Assert.Contains("--unix-wait-status-fixture", stopped.GetRegion(sourceRegion).GetText());
+                string sourceText = stopped.GetRegion(sourceRegion).GetText();
+                Assert.Contains("Source", sourceText);
+                if (emptySource)
+                {
+                    Assert.DoesNotContain("--unix-wait-status-fixture", sourceText);
+                }
+                else
+                {
+                    Assert.Contains("--unix-wait-status-fixture", sourceText);
+                }
+
+                if (mappedSource is not null)
+                {
+                    Assert.Contains("unverified local source", sourceText);
+                }
+                else
+                {
+                    Assert.DoesNotContain("unverified local source", sourceText);
+                }
+
                 Assert.Contains("Program.cs", stopped.GetScreenText());
                 Assert.DoesNotContain("entry-result", stopped.GetRegion(outputRegion).GetText());
                 TestContext.WriteLine(stopped.GetScreenText());
@@ -96,6 +155,7 @@ public sealed class DebuggerTerminalEntryTests
             using (Hex1bTerminalSnapshot terminated = automator.CreateSnapshot())
             {
                 Assert.DoesNotContain("Stopped", terminated.GetLine(0));
+                Assert.DoesNotContain("unverified local source", terminated.GetRegion(sourceRegion).GetText());
                 TestContext.WriteLine(terminated.GetScreenText());
             }
 

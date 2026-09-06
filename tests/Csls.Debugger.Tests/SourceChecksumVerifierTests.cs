@@ -17,7 +17,7 @@ public sealed class SourceChecksumVerifierTests
     public TestContext TestContext { get; set; } = null!;
 
     /// <summary>
-    /// Accepts original source and rejects modified, missing, and unsupported-checksum files.
+    /// Distinguishes original, modified, missing, and unverified source files.
     /// </summary>
     /// <param name="algorithm">The Portable PDB checksum algorithm.</param>
     [TestMethod]
@@ -42,16 +42,16 @@ public sealed class SourceChecksumVerifierTests
             }
 
             var checksum = new DebugSourceChecksum(algorithm, digest);
-            Assert.IsTrue(SourceChecksumVerifier.MatchesFile(path, checksum));
-            Assert.IsTrue(SourceChecksumVerifier.MatchesFile(path, checksum with { Value = digest.ToUpperInvariant() }));
-            Assert.IsTrue(SourceChecksumVerifier.MatchesFile(path, checksum: null));
-            Assert.IsFalse(SourceChecksumVerifier.MatchesFile(path, new DebugSourceChecksum("unsupported", digest)));
+            Assert.AreEqual(LocalSourceStatus.Verified, SourceChecksumVerifier.InspectFile(path, checksum));
+            Assert.AreEqual(LocalSourceStatus.Verified, SourceChecksumVerifier.InspectFile(path, checksum with { Value = digest.ToUpperInvariant() }));
+            Assert.AreEqual(LocalSourceStatus.Unverified, SourceChecksumVerifier.InspectFile(path, checksum: null));
+            Assert.AreEqual(LocalSourceStatus.Unverified, SourceChecksumVerifier.InspectFile(path, new DebugSourceChecksum("unsupported", digest)));
 
             await File.AppendAllTextAsync(path, Environment.NewLine, TestContext.CancellationToken).ConfigureAwait(false);
-            Assert.IsFalse(SourceChecksumVerifier.MatchesFile(path, checksum));
+            Assert.AreEqual(LocalSourceStatus.Mismatch, SourceChecksumVerifier.InspectFile(path, checksum));
             File.Delete(path);
-            Assert.IsFalse(SourceChecksumVerifier.MatchesFile(path, checksum));
-            Assert.IsFalse(SourceChecksumVerifier.MatchesFile(directory.FullName, checksum));
+            Assert.AreEqual(LocalSourceStatus.Unavailable, SourceChecksumVerifier.InspectFile(path, checksum));
+            Assert.AreEqual(LocalSourceStatus.Unavailable, SourceChecksumVerifier.InspectFile(directory.FullName, checksum));
         }
         finally
         {
@@ -85,8 +85,10 @@ public sealed class SourceChecksumVerifierTests
                 digest = Convert.ToHexString(SHA256.HashData(file));
             }
 
-            Assert.AreEqual(offset <= 0, SourceChecksumVerifier.MatchesFile(path, new DebugSourceChecksum("SHA256", digest)));
-            Assert.AreEqual(offset <= 0, SourceChecksumVerifier.MatchesFile(path, checksum: null));
+            Assert.AreEqual(offset <= 0 ? LocalSourceStatus.Verified : LocalSourceStatus.Unavailable,
+                SourceChecksumVerifier.InspectFile(path, new DebugSourceChecksum("SHA256", digest)));
+            Assert.AreEqual(offset <= 0 ? LocalSourceStatus.Unverified : LocalSourceStatus.Unavailable,
+                SourceChecksumVerifier.InspectFile(path, checksum: null));
         }
         finally
         {

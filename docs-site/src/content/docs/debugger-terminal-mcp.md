@@ -62,6 +62,10 @@ csls debugger tui attach 12345
 
 Closing the UI detaches and leaves the independently owned process running.
 
+Both terminal launch and attach accept `--require-exact-source true|false`, with
+`true` as the default. Use `--require-exact-source false` to inspect edited local
+source. The source pane title identifies unverified local files and retrieved source.
+
 ## MCP session selection
 
 The `csls-mcp` package supervises one isolated debugger worker per target. Every result
@@ -77,6 +81,10 @@ MCP connection. Use each session's identifier to inspect, restart, or end it.
 Set `stopAtEntry: true` on `debug_session_start` to inspect the target at its entry
 statement. Use the returned stop generation for argument and stack inspection.
 Grant agent control before continuing execution.
+
+`debug_session_start` and `debug_session_attach` accept `requireExactSource`, which
+defaults to `true`. Set it to `false` to use edited local source. Inspect the returned
+source descriptor's `origin` to identify unverified local content.
 
 Use `debug_dump_open` with one absolute existing dump path to create a read-only dump
 session. Clients that supply an MCP progress token receive monotonic validation,

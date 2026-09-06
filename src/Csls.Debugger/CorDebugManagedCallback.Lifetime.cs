@@ -1,5 +1,3 @@
-using Csls.Debugger.Interop;
-
 namespace Csls.Debugger;
 
 /// <summary>
@@ -34,16 +32,12 @@ internal sealed partial class CorDebugManagedCallback
     internal nint Pointer => Volatile.Read(ref _instance);
 
     /// <summary>
-    /// Waits until CoreCLR reports and resumes the initial create-process stop.
+    /// Waits until CoreCLR's initial process, module, and thread callbacks have drained.
     /// </summary>
-    /// <param name="cancellationToken">Cancels the wait for the initial managed callback.</param>
-    /// <returns>A task that completes after the runtime accepts Continue.</returns>
-    internal async Task WaitForCreateProcessAsync(CancellationToken cancellationToken)
-    {
-        int result = await _createProcessCompletion.Task.WaitAsync(cancellationToken)
-            .ConfigureAwait(false);
-        CorDebugHResult.ThrowIfFailed(result, "ICorDebugController.Continue");
-    }
+    /// <param name="cancellationToken">Cancels waiting for runtime initialization.</param>
+    /// <returns>A task that completes after the last startup continuation succeeds.</returns>
+    internal Task WaitForInitializationAsync(CancellationToken cancellationToken) =>
+        _initialization.WaitAsync(cancellationToken);
 
     /// <summary>
     /// Waits until CoreCLR delivers its terminal callback or disables debugging services.

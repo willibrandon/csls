@@ -115,12 +115,23 @@ public sealed partial class DapAttachTests
         }
     }
 
-    private static void WriteAttachArguments(Utf8JsonWriter writer, int processId)
+    private static void WriteAttachArguments(Utf8JsonWriter writer, int processId,
+        string? buildPath = null, string? localPath = null, bool? requireExactSource = null)
     {
         writer.WriteStartObject();
         writer.WriteNumber("processId", processId);
+        if (requireExactSource is bool exactSource)
+        {
+            writer.WriteBoolean("requireExactSource", exactSource);
+        }
+
         writer.WriteStartObject("sourceFileMap");
         writer.WriteString("/_/", FindRepositoryRoot());
+        if (buildPath is not null && localPath is not null)
+        {
+            writer.WriteString(buildPath, localPath);
+        }
+
         writer.WriteEndObject();
         writer.WriteEndObject();
     }

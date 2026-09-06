@@ -10,7 +10,7 @@ public sealed partial class DebuggerSession
     /// </summary>
     /// <param name="options">The validated target and runtime options.</param>
     /// <param name="cancellationToken">Cancels runtime activation without terminating the target.</param>
-    /// <returns>A task that completes after the process notification is accepted.</returns>
+    /// <returns>A task that completes after startup callbacks drain and the process notification is accepted.</returns>
     public async Task AttachManagedAsync(
         DebuggeeAttachOptions options,
         CancellationToken cancellationToken)
@@ -76,7 +76,8 @@ public sealed partial class DebuggerSession
         _sourceBreakpoints.SetSourceOptions(
             options.SourceFileMap,
             options.SourceLinkOptions,
-            options.SymbolOptions);
+            options.SymbolOptions,
+            options.RequireExactSource);
         _sourceBreakpoints.SetRuntimeOptions(
             suppressJitOptimizations: false,
             enableHotReload: false,

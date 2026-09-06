@@ -78,6 +78,7 @@ public sealed partial class DebuggerControlService
         EnvironmentFilePath = request.EnvironmentFilePath,
         RuntimeHostPath = request.RuntimeHostPath,
         SourceFileMap = request.SourceFileMap,
+        RequireExactSource = request.RequireExactSource,
         SourceLinkOptions = request.SourceLinkOptions,
         SymbolOptions = request.SymbolOptions,
         StopAtEntry = request.StopAtEntry,
@@ -91,6 +92,7 @@ public sealed partial class DebuggerControlService
     {
         ProcessId = request.ProcessId,
         SourceFileMap = request.SourceFileMap,
+        RequireExactSource = request.RequireExactSource,
         SourceLinkOptions = request.SourceLinkOptions,
         SymbolOptions = request.SymbolOptions,
         JustMyCode = request.JustMyCode,

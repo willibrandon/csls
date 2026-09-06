@@ -63,6 +63,11 @@
         "type": "string"
       }
     },
+    "requireExactSource": {
+      "type": "boolean",
+      "default": true,
+      "description": "Require local source to match its debug symbols. Set false to bind against unverified local source."
+    },
     "sourceLinkOptions": {
       "type": "object",
       "description": "Controls Source Link URL patterns, including explicit private-network authorization.",

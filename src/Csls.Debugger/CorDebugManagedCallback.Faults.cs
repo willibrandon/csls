@@ -43,7 +43,7 @@ internal sealed partial class CorDebugManagedCallback
         }
 
         _ = _runtimeFailureCompletion.TrySetResult(failure);
-        _ = _createProcessCompletion.TrySetException(failure);
+        _initialization.Fail(failure);
         // Disabled services cannot deliver the normal final managed callback.
         _ = _exitProcessCompletion.TrySetResult();
     }

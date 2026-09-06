@@ -9,7 +9,7 @@ namespace Csls.Debugger.Tests;
 public sealed partial class DapSessionTests
 {
     /// <summary>
-    /// Downloads checksum-valid Source Link content once and reuses the session cache.
+    /// Keeps checksum-valid Source Link references stable as local source changes under both source policies.
     /// </summary>
     [TestMethod]
     [Timeout(60000, CooperativeCancellation = true)]
@@ -28,12 +28,17 @@ public sealed partial class DapSessionTests
                     SymbolFixtures.SourcePath,
                     TestContext.CancellationToken).ConfigureAwait(false),
                 "answer++;");
-            await ExerciseSourceLinkAsync(
-                SymbolFixtures.ValidSourceLinkProgramPath,
-                testDirectory,
-                server,
-                breakpointLine)
-                .ConfigureAwait(false);
+            foreach (bool requireExactSource in new[] { true, false })
+            {
+                await ExerciseSourceLinkAsync(
+                    SymbolFixtures.ValidSourceLinkProgramPath,
+                    testDirectory,
+                    server,
+                    breakpointLine,
+                    requireExactSource).ConfigureAwait(false);
+            }
+
+            Assert.AreEqual(2, server.RequestCount);
         }
         finally
         {
@@ -47,9 +52,10 @@ public sealed partial class DapSessionTests
         string programPath,
         string testDirectory,
         SourceLinkTestServer server,
-        int breakpointLine)
+        int breakpointLine,
+        bool requireExactSource)
     {
-        const string documentPath = "/_/SourceLink/Program.cs";
+        string mappedPath = Path.Join(testDirectory, "Program.cs");
         DapTestClient client = await DapTestClient
             .CreateAsync(TestContext.CancellationToken)
             .ConfigureAwait(false);
@@ -68,7 +74,9 @@ public sealed partial class DapSessionTests
                 writer,
                 programPath,
                 [Path.Join(testDirectory, "continue.signal"), "41", "source-link"],
-                server.SourceLinkPattern),
+                server.SourceLinkPattern,
+                mappedPath,
+                requireExactSource),
             TestContext.CancellationToken).ConfigureAwait(false);
         using JsonDocument initialized = await client
             .ReadMessageAsync(TestContext.CancellationToken)
@@ -76,7 +84,7 @@ public sealed partial class DapSessionTests
         AssertEvent(initialized.RootElement, "initialized");
         int breakpointSequence = await client.SendRequestAsync(
             "setBreakpoints",
-            writer => WriteSourceBreakpointArguments(writer, documentPath, breakpointLine),
+            writer => WriteSourceBreakpointArguments(writer, mappedPath, breakpointLine),
             TestContext.CancellationToken).ConfigureAwait(false);
         using JsonDocument breakpoint = await client
             .ReadMessageAsync(TestContext.CancellationToken)
@@ -93,14 +101,45 @@ public sealed partial class DapSessionTests
             TestContext.CancellationToken).ConfigureAwait(false);
         int sourceReference = await ReadSourceLinkReferenceAsync(client, threadId)
             .ConfigureAwait(false);
+        await File.WriteAllTextAsync(mappedPath, "// Edited local source.\n", TestContext.CancellationToken).ConfigureAwait(false);
+        JsonElement edited = await ReadLoadedSourceLinkDocumentAsync(client).ConfigureAwait(false);
+        if (requireExactSource)
+        {
+            Assert.AreEqual(sourceReference, edited.GetProperty("sourceReference").GetInt32());
+            Assert.IsFalse(edited.TryGetProperty("path", out _));
+        }
+        else
+        {
+            Assert.IsFalse(edited.TryGetProperty("sourceReference", out _));
+            Assert.IsTrue(DebuggerTestPath.AreEquivalent(mappedPath, edited.GetProperty("path").GetString()));
+            Assert.IsFalse(edited.TryGetProperty("checksums", out _));
+            Assert.Contains("unverified local source", edited.GetProperty("origin").GetString()!);
+        }
+
+        // A previously issued source reference continues to identify the original PDB content.
         await AssertSourceLinkContentAsync(client, sourceReference).ConfigureAwait(false);
+        File.Copy(SymbolFixtures.SourcePath, mappedPath, overwrite: true);
+        JsonElement verified = await ReadLoadedSourceLinkDocumentAsync(client).ConfigureAwait(false);
+        Assert.IsTrue(DebuggerTestPath.AreEquivalent(mappedPath, verified.GetProperty("path").GetString()));
+        Assert.HasCount(1, verified.GetProperty("checksums").EnumerateArray());
+        Assert.IsFalse(verified.TryGetProperty("origin", out _));
+        File.Delete(mappedPath);
+        Assert.AreEqual(sourceReference, await ReadSourceLinkReferenceAsync(client, threadId).ConfigureAwait(false));
         await AssertSourceLinkContentAsync(client, sourceReference).ConfigureAwait(false);
-        Assert.AreEqual(1, server.RequestCount);
         await DisconnectStoppedSessionAsync(client).ConfigureAwait(false);
         Assert.AreEqual(
             0,
             await client.WaitForExitAsync(TestContext.CancellationToken).ConfigureAwait(false));
         Assert.AreEqual(string.Empty, client.Diagnostics.ToString());
+    }
+
+    private async Task<JsonElement> ReadLoadedSourceLinkDocumentAsync(DapTestClient client)
+    {
+        int sequence = await client.SendRequestAsync("loadedSources", WriteEmptyObject, TestContext.CancellationToken).ConfigureAwait(false);
+        using JsonDocument response = await client.ReadMessageAsync(TestContext.CancellationToken).ConfigureAwait(false);
+        AssertResponse(response.RootElement, sequence, "loadedSources", success: true);
+        return Assert.ContainsSingle(response.RootElement.GetProperty("body").GetProperty("sources").EnumerateArray()
+            .Where(source => source.GetProperty("name").GetString() == "Program.cs")).Clone();
     }
 
     private async Task<int> ReadSourceLinkReferenceAsync(DapTestClient client, int threadId)
@@ -153,11 +192,20 @@ public sealed partial class DapSessionTests
         Utf8JsonWriter writer,
         string programPath,
         IReadOnlyList<string> arguments,
-        string? sourceLinkPattern)
+        string? sourceLinkPattern,
+        string? mappedPath = null,
+        bool requireExactSource = true)
     {
         writer.WriteStartObject();
         writer.WriteBoolean("noDebug", false);
         writer.WriteString("program", programPath);
+        writer.WriteBoolean("requireExactSource", requireExactSource);
+        if (mappedPath is not null)
+        {
+            writer.WriteStartObject("sourceFileMap");
+            writer.WriteString("/_/SourceLink/Program.cs", mappedPath);
+            writer.WriteEndObject();
+        }
         writer.WriteStartArray("args");
         foreach (string argument in arguments)
         {

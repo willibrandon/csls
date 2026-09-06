@@ -19,6 +19,11 @@ internal sealed partial class DebuggerTerminalState
     private string[] _sourceTextLines = [];
 
     /// <summary>
+    /// Gets the source pane title including the selected document's provenance.
+    /// </summary>
+    internal string SourceTitle { get; private set; } = "Source";
+
+    /// <summary>
     /// Gets the bounded source context around the selected frame.
     /// </summary>
     internal IReadOnlyList<string> SourceLines { get; private set; } =
@@ -213,7 +218,7 @@ internal sealed partial class DebuggerTerminalState
         if (_threads.Count == 0)
         {
             ClearInspection();
-            SourceLines = ["No managed thread is available."];
+            SetUnavailableSource("No managed thread is available.");
             PublishViewSnapshot();
             return;
         }
@@ -366,11 +371,12 @@ internal sealed partial class DebuggerTerminalState
         }
         else
         {
-            SetUnavailableSource("Source is unavailable for the selected frame.");
+            SetUnavailableSource(frame.Source.Origin ?? "Source is unavailable for the selected frame.");
             return;
         }
 
-        int firstLine = Math.Max(1, frame.Line - 50);
+        SourceTitle = frame.Source.Origin is string origin ? $"Source: {origin}" : "Source";
+        int firstLine = Math.Max(1, Math.Min(_sourceTextLines.Length, frame.Line - 50));
         int last = Math.Min(_sourceTextLines.Length, frame.Line + 50);
         bool sourceMappingChanged = _sourceFrameId != frame.Id ||
             _sourceFirstLine != firstLine || SourceLines.Count != last - firstLine + 1;
@@ -402,6 +408,7 @@ internal sealed partial class DebuggerTerminalState
 
     private void SetUnavailableSource(string message)
     {
+        SourceTitle = "Source";
         _sourceRevision = checked(_sourceRevision + 1);
         _sourceFrameId = 0;
         _sourceTextLines = [];
@@ -428,6 +435,7 @@ internal sealed partial class DebuggerTerminalState
         _selectedFrame = null;
         _sourceTextLines = [];
         _sourceFirstLine = 0;
+        SourceTitle = "Source";
         SourceLines = [message];
         SourceFocusedIndex = 0;
         ThreadLines = [];

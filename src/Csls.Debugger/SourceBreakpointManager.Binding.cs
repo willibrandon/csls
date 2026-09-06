@@ -15,6 +15,7 @@ internal sealed partial class SourceBreakpointManager
         CancellationToken cancellationToken)
     {
         Dictionary<int, SourceBreakpointLocation> locations;
+        Dictionary<string, string> sourceFailures;
         try
         {
             using DebugSymbolReader? symbols = OpenSymbols(module);
@@ -34,6 +35,7 @@ internal sealed partial class SourceBreakpointManager
             module.SymbolPath = symbols.Path;
 
             locations = ResolveLocations(symbols.GetSequencePoints(methodToken: null), definitions);
+            sourceFailures = GetSourceValidationFailures(symbols, definitions);
         }
         catch (Exception exception) when (DebugSymbolReader.IsReadFailure(exception))
         {
@@ -43,6 +45,8 @@ internal sealed partial class SourceBreakpointManager
 
         foreach (SourceBreakpointDefinition definition in definitions)
         {
+            string? previousMessage = definition.ToInfo().Message;
+            _ = definition.SourceValidationFailures.Remove(module.Id);
             if (definition.ValidationMessage is not null)
             {
                 continue;
@@ -50,6 +54,18 @@ internal sealed partial class SourceBreakpointManager
 
             if (!locations.TryGetValue(definition.Id, out SourceBreakpointLocation? location))
             {
+                continue;
+            }
+
+            if (sourceFailures.TryGetValue(definition.SourcePath, out string? failure))
+            {
+                definition.SourceValidationFailures[module.Id] = failure;
+                if (notifyChanges && definition.ResolvedLine is null &&
+                    !string.Equals(previousMessage, failure, StringComparison.Ordinal))
+                {
+                    await _notifyChanged(definition.ToInfo(), cancellationToken).ConfigureAwait(false);
+                }
+
                 continue;
             }
 
@@ -62,6 +78,41 @@ internal sealed partial class SourceBreakpointManager
                 await _notifyChanged(definition.ToInfo(), cancellationToken).ConfigureAwait(false);
             }
         }
+    }
+
+    private Dictionary<string, string> GetSourceValidationFailures(
+        DebugSymbolReader symbols,
+        IReadOnlyList<SourceBreakpointDefinition> definitions)
+    {
+        var failures = new Dictionary<string, string>(PathComparer);
+        if (!_requireExactSource)
+        {
+            return failures;
+        }
+
+        var requestedPaths = new HashSet<string>(definitions.Select(static definition => definition.SourcePath), PathComparer);
+        foreach (ManagedSymbolDocument document in symbols.GetDocuments())
+        {
+            string path = _sourcePathMapper.Map(document.Path);
+            if (!requestedPaths.Contains(path))
+            {
+                continue;
+            }
+
+            LocalSourceStatus status = SourceChecksumVerifier.InspectFile(path, document.Checksum);
+            if (status == LocalSourceStatus.Mismatch)
+            {
+                failures[path] = "The source file differs from the loaded debug symbols. " +
+                    "Rebuild the target or set requireExactSource to false to bind using this source.";
+            }
+            else if (status == LocalSourceStatus.Unverified)
+            {
+                failures[path] = "The source file has no supported checksum in the loaded debug symbols. " +
+                    "Set requireExactSource to false to bind using this source.";
+            }
+        }
+
+        return failures;
     }
 
     private unsafe void Bind(

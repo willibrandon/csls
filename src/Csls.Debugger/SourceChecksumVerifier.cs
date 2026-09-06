@@ -15,25 +15,25 @@ internal static class SourceChecksumVerifier
     /// </summary>
     /// <param name="path">The resolved local source path.</param>
     /// <param name="checksum">The expected checksum, when supplied by the symbols.</param>
-    /// <returns>True when the local file satisfies its source-size and checksum requirements.</returns>
-    internal static bool MatchesFile(string path, DebugSourceChecksum? checksum)
+    /// <returns>The local file's readability and source checksum identity.</returns>
+    internal static LocalSourceStatus InspectFile(string path, DebugSourceChecksum? checksum)
     {
         try
         {
             using FileStream stream = DebuggerInputFile.OpenRead(path);
             if (!stream.CanSeek || stream.Length > MaximumLocalSourceBytes)
             {
-                return false;
+                return LocalSourceStatus.Unavailable;
             }
 
             if (checksum is null)
             {
-                return true;
+                return LocalSourceStatus.Unverified;
             }
 
             if (checksum.Algorithm is not ("SHA1" or "SHA256"))
             {
-                return false;
+                return LocalSourceStatus.Unverified;
             }
 
             using var hash = IncrementalHash.CreateHash(new HashAlgorithmName(checksum.Algorithm));
@@ -45,13 +45,13 @@ internal static class SourceChecksumVerifier
                 if (read == 0)
                 {
                     return string.Equals(Convert.ToHexString(hash.GetHashAndReset()), checksum.Value,
-                        StringComparison.OrdinalIgnoreCase);
+                        StringComparison.OrdinalIgnoreCase) ? LocalSourceStatus.Verified : LocalSourceStatus.Mismatch;
                 }
 
                 total += read;
                 if (total > MaximumLocalSourceBytes)
                 {
-                    return false;
+                    return LocalSourceStatus.Unavailable;
                 }
 
                 hash.AppendData(buffer[..read]);
@@ -59,7 +59,7 @@ internal static class SourceChecksumVerifier
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
         {
-            return false;
+            return LocalSourceStatus.Unavailable;
         }
     }
 

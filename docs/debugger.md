@@ -139,6 +139,12 @@ Matching Windows PDBs provide source locations on Windows. Symbol stores, embedd
 source, and Source Link supply validated symbols and source text. Configure trusted
 symbol locations and authorize private-network source endpoints explicitly.
 
+`requireExactSource` defaults to `true` for launch and attach. Source breakpoints
+use local files matching their PDB checksums. Set it to `false` to use edited
+local source; source views label that content as unverified. The same option is
+available on MCP session start and attach, and through the terminal's
+`--require-exact-source false` option.
+
 The detailed guides cover
 [breakpoints and stepping](../docs-site/src/content/docs/debugger-breakpoints.md),
 [evaluation and inspection](../docs-site/src/content/docs/debugger-evaluation.md),

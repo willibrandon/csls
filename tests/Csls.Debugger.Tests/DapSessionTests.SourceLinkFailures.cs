@@ -86,7 +86,8 @@ public sealed partial class DapSessionTests
                 writer,
                 programPath,
                 [Path.Join(testDirectory, "continue.signal"), "41", "source-link"],
-                configuredPattern),
+                configuredPattern,
+                requireExactSource: false),
             TestContext.CancellationToken).ConfigureAwait(false);
         using JsonDocument initialized = await client
             .ReadMessageAsync(TestContext.CancellationToken)

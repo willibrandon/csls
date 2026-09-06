@@ -843,14 +843,15 @@ Arguments:
   <arguments>  Arguments passed to the managed target.
 
 Options:
-  --source <path>                  Source document containing the initial breakpoint.
-  --line <number>                  One-based line for the initial source breakpoint.
-  --stop-at-entry                  Stop at the first executable entry-point statement.
-  --cwd <path>                     Target working directory. [default: .]
-  --env-file <path>                UTF-8 environment file, absolute or relative to --cwd.
-  --runtime <path>                 Optional dotnet host path used to run a managed assembly.
-  --source-file-map <build=local>  Map an absolute PDB build-path prefix to an absolute local source prefix.
-  -?, -h, --help                   Show help and usage information
+  --source <path>                      Source document containing the initial breakpoint.
+  --line <number>                      One-based line for the initial source breakpoint.
+  --stop-at-entry                      Stop at the first executable entry-point statement.
+  --cwd <path>                         Target working directory. [default: .]
+  --env-file <path>                    UTF-8 environment file, absolute or relative to --cwd.
+  --runtime <path>                     Optional dotnet host path used to run a managed assembly.
+  --require-exact-source <true|false>  Require local source to match its debug symbols.
+  --source-file-map <build=local>      Map an absolute PDB build-path prefix to an absolute local source prefix.
+  -?, -h, --help                       Show help and usage information
 ```
 
 ## csls debugger tui attach
@@ -866,6 +867,7 @@ Arguments:
   <process-id>  Running managed process identifier.
 
 Options:
-  --source-file-map <build=local>  Map an absolute PDB build-path prefix to an absolute local source prefix.
-  -?, -h, --help                   Show help and usage information
+  --require-exact-source <true|false>  Require local source to match its debug symbols.
+  --source-file-map <build=local>      Map an absolute PDB build-path prefix to an absolute local source prefix.
+  -?, -h, --help                       Show help and usage information
 ```

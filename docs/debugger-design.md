@@ -280,10 +280,10 @@ or terminates, drains callbacks, releases COM, unregisters startup, closes resum
 handles, and unloads no DBI component whose contract forbids unloading.
 
 The dbgshim runtime-startup callback transfers its owned callback object into the
-engine actor and returns promptly. The actor initializes ICorDebug, installs
-callback interfaces 1 through 4, and attaches the selected process. Every managed
-runtime callback retains only the interfaces that must outlive callback return,
-queues ordered work, and returns without invoking ICorDebug directly.
+engine actor and returns promptly. The actor initializes ICorDebug, installs callback
+interfaces 1 through 4, and completes activation after `HasQueuedCallbacks` confirms
+the startup notifications have drained. Every managed callback retains its borrowed
+interfaces, queues ordered work, and returns without invoking ICorDebug directly.
 
 ## Debug Adapter Protocol
 
@@ -332,7 +332,7 @@ advertised. Unknown requests receive a normal unsuccessful response and do not
 fault the session. Invalid sequencing receives a stable machine-readable error.
 
 The adapter accepts launch options `program`, `cwd`, `args`, `env`, `envFile`, `noDebug`, `stopAtEntry`,
-`runtimeHost`, `sourceFileMap`, `sourceLinkOptions`, `symbolOptions`, `justMyCode`,
+`runtimeHost`, `sourceFileMap`, `requireExactSource`, `sourceLinkOptions`, `symbolOptions`, `justMyCode`,
 `enableStepFiltering`, `suppressJITOptimizations`, and `enableHotReload`. Live attach
 requires `processId` and accepts the same source, symbol, and stepping options.
 Editors and the CLI resolve projects, launch profiles, and tests to a concrete
@@ -438,16 +438,15 @@ image is copied through `ICorDebugProcess::ReadMemory`, validated as managed PE,
 and shared by frame naming, local scopes, stepping, goto, disassembly, function
 breakpoints, and managed-IL breakpoints.
 
-Source resolution order is:
-
-1. Checksum-valid embedded source.
-2. A checksum-valid `sourceFileMap` path.
-3. A checksum-valid original local path.
-4. Checksum-valid Source Link content.
-
-Local source validation hashes the original file bytes in bounded chunks and
-enforces a 32 MiB limit throughout the read. Seekable source files are opened with
-nonblocking Unix semantics. SHA1 and SHA256 checksums follow the managed PDB metadata.
+Source resolution prefers checksum-valid embedded source, then mapped or original
+local files, then checksum-valid Source Link content. `requireExactSource` defaults
+to `true` for launch and attach and requires readable local breakpoint source to
+match its PDB. Setting it to `false` permits unverified local files, identified by
+their source origin. Descriptors revalidate local files on inspection. Issued source
+references retain the original PDB checksum across local descriptor changes.
+Local validation hashes source bytes in bounded chunks with a 32 MiB limit enforced
+throughout the read. Seekable files open with nonblocking Unix semantics. SHA1 and
+SHA256 checksums follow PDB metadata. Hot Reload rebinding uses updated checksums.
 
 Symbol and source clients allow HTTPS by default, validate redirect destinations,
 bound redirects, response sizes, concurrency, and total cache size, write through

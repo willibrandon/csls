@@ -120,7 +120,7 @@ internal sealed partial class CorDebugDebuggee
                 startup, processExit.Completion, process.Id, cancellationToken).ConfigureAwait(false);
             corDebug = activation.CorDebug;
             debugProcess = activation.Process;
-            await managedCallback.WaitForCreateProcessAsync(cancellationToken)
+            await managedCallback.WaitForInitializationAsync(cancellationToken)
                 .ConfigureAwait(false);
             managedCallback.ThrowIfRuntimeFailed();
 

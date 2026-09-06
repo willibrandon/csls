@@ -12,6 +12,7 @@ internal sealed partial class SourceBreakpointManager
     private readonly Dictionary<int, DebugSourceRegistration> _sourcesByReference = [];
     private readonly SourceLinkPolicy _sourceLinkPolicy = new();
     private readonly SourcePathMapper _sourcePathMapper = new();
+    private bool _requireExactSource = true;
     private int _nextSourceReference;
 
     /// <summary>
@@ -50,7 +51,9 @@ internal sealed partial class SourceBreakpointManager
         string key = CreateSourceKey(moduleKey, sourcePath);
         if (_sources.TryGetValue(key, out DebugSourceRegistration? existing))
         {
-            return existing.Info;
+            return existing.Document is ManagedSymbolDocument document
+                ? RegisterSource(moduleKey, document).Info
+                : RegisterUnavailableSource(moduleKey, sourcePath).Info;
         }
 
         using DebugSymbolReader? symbols = module is null
@@ -74,15 +77,18 @@ internal sealed partial class SourceBreakpointManager
     /// <param name="mappings">The complete source path mapping dictionary.</param>
     /// <param name="sourceLinkOptions">The complete Source Link URL policy.</param>
     /// <param name="symbolOptions">The complete trusted symbol search policy.</param>
+    /// <param name="requireExactSource">Whether local source must match the symbols before use.</param>
     internal void SetSourceOptions(
         IReadOnlyDictionary<string, string> mappings,
         IReadOnlyDictionary<string, bool> sourceLinkOptions,
-        DebugSymbolOptions symbolOptions)
+        DebugSymbolOptions symbolOptions,
+        bool requireExactSource)
     {
         ObjectDisposedException.ThrowIf(_disposed != 0, this);
         _sourcePathMapper.Set(mappings);
         _sourceLinkPolicy.Set(sourceLinkOptions);
         _symbolLocator.Set(symbolOptions);
+        _requireExactSource = requireExactSource;
         ClearSources();
     }
 
@@ -91,26 +97,25 @@ internal sealed partial class SourceBreakpointManager
         ManagedSymbolDocument document)
     {
         string key = CreateSourceKey(modulePath, document.Path);
-        if (_sources.TryGetValue(key, out DebugSourceRegistration? existing))
-        {
-            return existing;
-        }
-
+        _ = _sources.TryGetValue(key, out DebugSourceRegistration? existing);
         string resolvedPath = _sourcePathMapper.Map(document.Path);
-        bool localSourceIsCurrent = document.EmbeddedSource is null &&
-            SourceChecksumVerifier.MatchesFile(resolvedPath, document.Checksum);
+        LocalSourceStatus localStatus = document.EmbeddedSource is null
+            ? SourceChecksumVerifier.InspectFile(resolvedPath, document.Checksum)
+            : LocalSourceStatus.Unavailable;
+        bool localSourceIsCurrent = localStatus == LocalSourceStatus.Verified;
+        bool useUnverifiedLocalSource = !_requireExactSource &&
+            localStatus is LocalSourceStatus.Unverified or LocalSourceStatus.Mismatch;
         bool useSourceLink = document.EmbeddedSource is null &&
             !localSourceIsCurrent &&
+            !useUnverifiedLocalSource &&
             document.Checksum is not null &&
             document.SourceLinkUri is not null;
         int sourceReference = document.EmbeddedSource is null && !useSourceLink
             ? 0
-            : checked(++_nextSourceReference);
-        var registration = new DebugSourceRegistration
-        {
-            Info = new DebugSourceInfo(
+            : existing is { SourceReference: > 0 } ? existing.SourceReference : checked(++_nextSourceReference);
+        var info = new DebugSourceInfo(
                 GetPortableFileName(document.Path),
-                document.EmbeddedSource is not null || localSourceIsCurrent
+                document.EmbeddedSource is not null || localSourceIsCurrent || useUnverifiedLocalSource
                     ? resolvedPath
                     : null,
                 sourceReference,
@@ -118,21 +123,28 @@ internal sealed partial class SourceBreakpointManager
                     ? "embedded source"
                     : localSourceIsCurrent
                         ? null
-                        : useSourceLink
-                            ? "Source Link"
-                            : "original source is unavailable or does not match its checksum",
-                document.Checksum),
+                        : useUnverifiedLocalSource
+                            ? "unverified local source (requireExactSource=false)"
+                            : useSourceLink
+                                ? "Source Link"
+                                : "original source is unavailable or does not match its checksum",
+                useUnverifiedLocalSource ? null : document.Checksum);
+        DebugSourceRegistration registration = existing ?? new DebugSourceRegistration
+        {
+            Info = info,
+            Document = document,
             Content = document.EmbeddedSource is null
                 ? null
                 : new DebugSourceContent(
                     SourceTextDecoder.Decode(document.EmbeddedSource),
-                    GetMimeType(GetPortableFileName(document.Path))),
-            SourceLinkUri = useSourceLink ? document.SourceLinkUri : null
+                    GetMimeType(GetPortableFileName(document.Path)))
         };
-        _sources.Add(key, registration);
+        registration.Info = info;
+        _sources[key] = registration;
         if (sourceReference > 0)
         {
-            _sourcesByReference.Add(sourceReference, registration);
+            registration.SourceReference = sourceReference;
+            _ = _sourcesByReference.TryAdd(sourceReference, registration);
         }
 
         return registration;
@@ -143,16 +155,19 @@ internal sealed partial class SourceBreakpointManager
         string sourcePath)
     {
         string key = CreateSourceKey(modulePath, sourcePath);
+        string resolvedPath = _sourcePathMapper.Map(sourcePath);
+        bool useLocalSource = !_requireExactSource &&
+            SourceChecksumVerifier.InspectFile(resolvedPath, checksum: null) == LocalSourceStatus.Unverified;
         var registration = new DebugSourceRegistration
         {
             Info = new DebugSourceInfo(
                 GetPortableFileName(sourcePath),
-                File.Exists(sourcePath) ? sourcePath : null,
+                useLocalSource ? resolvedPath : null,
                 SourceReference: 0,
-                Origin: File.Exists(sourcePath) ? null : "source is unavailable",
+                Origin: useLocalSource ? "unverified local source (requireExactSource=false)" : "source is unavailable",
                 Checksum: null)
         };
-        _sources.Add(key, registration);
+        _sources[key] = registration;
         return registration;
     }
 

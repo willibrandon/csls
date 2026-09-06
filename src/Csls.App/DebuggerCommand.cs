@@ -102,6 +102,7 @@ internal static class DebuggerCommand
             }
         });
         Option<string[]> sourceFileMapOption = CreateSourceFileMapOption();
+        Option<bool> requireExactSourceOption = CreateRequireExactSourceOption();
         var command = new Command(
             "launch",
             "Launch a managed target and stop at entry or an initial source breakpoint.")
@@ -114,6 +115,7 @@ internal static class DebuggerCommand
             workingDirectoryOption,
             environmentFileOption,
             runtimeOption,
+            requireExactSourceOption,
             sourceFileMapOption
         };
         command.Validators.Add(result =>
@@ -146,6 +148,7 @@ internal static class DebuggerCommand
                     string.IsNullOrWhiteSpace(runtime) ? string.Empty : Path.GetFullPath(runtime),
                     parseResult.GetValue(stopAtEntryOption) ? "true" : "false",
                     parseResult.GetValue(environmentFileOption) ?? string.Empty,
+                    parseResult.GetValue(requireExactSourceOption) ? "true" : "false",
                     sourceFileMap.Count.ToString(CultureInfo.InvariantCulture),
                     .. sourceFileMap.SelectMany(static mapping =>
                         new[] { mapping.Key, mapping.Value }),
@@ -170,11 +173,13 @@ internal static class DebuggerCommand
             }
         });
         Option<string[]> sourceFileMapOption = CreateSourceFileMapOption();
+        Option<bool> requireExactSourceOption = CreateRequireExactSourceOption();
         var command = new Command(
             "attach",
             "Attach to and pause a running CoreCLR process.")
         {
             processIdArgument,
+            requireExactSourceOption,
             sourceFileMapOption
         };
         command.SetAction((parseResult, cancellationToken) =>
@@ -186,6 +191,7 @@ internal static class DebuggerCommand
                     "attach",
                     parseResult.GetRequiredValue(processIdArgument)
                         .ToString(CultureInfo.InvariantCulture),
+                    parseResult.GetValue(requireExactSourceOption) ? "true" : "false",
                     sourceFileMap.Count.ToString(CultureInfo.InvariantCulture),
                     .. sourceFileMap.SelectMany(static mapping =>
                         new[] { mapping.Key, mapping.Value })
@@ -194,6 +200,14 @@ internal static class DebuggerCommand
         });
         return command;
     }
+
+    private static Option<bool> CreateRequireExactSourceOption() => new("--require-exact-source")
+    {
+        Description = "Require local source to match its debug symbols.",
+        DefaultValueFactory = static _ => true,
+        Arity = ArgumentArity.ExactlyOne,
+        HelpName = "true|false"
+    };
 
     private static Option<string[]> CreateSourceFileMapOption()
     {

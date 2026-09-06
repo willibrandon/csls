@@ -132,11 +132,15 @@ public sealed partial class McpDebuggerLifecycleTests
         Assert.IsTrue(startProperties.TryGetProperty("enableHotReload", out _));
         Assert.AreEqual("boolean", startProperties.GetProperty("stopAtEntry").GetProperty("type").GetString());
         Assert.IsFalse(startProperties.GetProperty("stopAtEntry").GetProperty("default").GetBoolean());
+        Assert.AreEqual("boolean", startProperties.GetProperty("requireExactSource").GetProperty("type").GetString());
+        Assert.IsTrue(startProperties.GetProperty("requireExactSource").GetProperty("default").GetBoolean());
         JsonElement attachProperties = tools.Single(
             static tool => tool.Name == "debug_session_attach")
             .ProtocolTool.InputSchema.GetProperty("properties");
         Assert.IsFalse(attachProperties.TryGetProperty("agentControl", out _));
         Assert.IsTrue(attachProperties.TryGetProperty("sourceFileMap", out _));
+        Assert.AreEqual("boolean", attachProperties.GetProperty("requireExactSource").GetProperty("type").GetString());
+        Assert.IsTrue(attachProperties.GetProperty("requireExactSource").GetProperty("default").GetBoolean());
         JsonElement dumpProperties = tools.Single(
             static tool => tool.Name == "debug_dump_open")
             .ProtocolTool.InputSchema.GetProperty("properties");

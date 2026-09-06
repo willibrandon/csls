@@ -59,14 +59,15 @@ internal static partial class DebuggerWorkerHost
         IReadOnlyList<string> arguments,
         CancellationToken cancellationToken)
     {
-        if (arguments.Count < 9 ||
+        if (arguments.Count < 10 ||
             !int.TryParse(
                 arguments[4],
                 NumberStyles.None,
                 CultureInfo.InvariantCulture,
                 out int line) ||
             !bool.TryParse(arguments[6], out bool stopAtEntry) ||
-            !TryParseSourceFileMap(arguments, 8, out Dictionary<string, string>? sourceFileMap,
+            !bool.TryParse(arguments[8], out bool requireExactSource) ||
+            !TryParseSourceFileMap(arguments, 9, out Dictionary<string, string>? sourceFileMap,
                 out int targetArgumentIndex))
         {
             throw new InvalidDataException(
@@ -81,6 +82,7 @@ internal static partial class DebuggerWorkerHost
                 SourcePath = string.IsNullOrEmpty(arguments[3]) ? null : arguments[3],
                 Line = line == 0 ? null : line,
                 StopAtEntry = stopAtEntry,
+                RequireExactSource = requireExactSource,
                 EnvironmentFilePath = string.IsNullOrEmpty(arguments[7]) ? null : arguments[7],
                 RuntimeHostPath = string.IsNullOrEmpty(arguments[5]) ? null : arguments[5],
                 SourceFileMap = sourceFileMap,
@@ -93,13 +95,14 @@ internal static partial class DebuggerWorkerHost
         IReadOnlyList<string> arguments,
         CancellationToken cancellationToken)
     {
-        if (arguments.Count < 3 ||
+        if (arguments.Count < 4 ||
             !int.TryParse(
                 arguments[1],
                 NumberStyles.None,
                 CultureInfo.InvariantCulture,
                 out int processId) ||
-            !TryParseSourceFileMap(arguments, 2, out Dictionary<string, string>? sourceFileMap,
+            !bool.TryParse(arguments[2], out bool requireExactSource) ||
+            !TryParseSourceFileMap(arguments, 3, out Dictionary<string, string>? sourceFileMap,
                 out int nextArgumentIndex) ||
             nextArgumentIndex != arguments.Count)
         {
@@ -110,6 +113,7 @@ internal static partial class DebuggerWorkerHost
         return DebuggerTerminalHost.RunAttachAsync(
             new DebuggerTerminalAttachOptions(processId)
             {
+                RequireExactSource = requireExactSource,
                 SourceFileMap = sourceFileMap
             },
             cancellationToken);

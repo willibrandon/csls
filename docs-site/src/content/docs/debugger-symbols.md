@@ -33,8 +33,20 @@ Use `sourceFileMap` when a PDB records paths from another build machine:
 
 Both keys and values are absolute paths. Mapping understands POSIX paths, Windows drive
 letters, and UNC paths regardless of the adapter host. The most specific matching prefix
-wins. The debugger validates mapped source content against the checksum in the PDB.
+wins. By default, the debugger validates mapped source content against the checksum in the PDB.
 Local source files have a 32 MiB limit and are verified in bounded chunks.
+
+## Source verification
+
+`requireExactSource` defaults to `true` for launch and attach. A source breakpoint
+binds when the readable local file matches the PDB checksum. After editing a source
+file, rebuild the target or apply its compiler-produced Hot Reload update to bind
+against the updated symbols.
+
+Set `requireExactSource` to `false` to use edited local files with the loaded
+symbols. Source views label these files as `unverified local source`, and breakpoint
+locations follow the executable statements recorded by the PDB. Source Link content
+is checksum-validated under both settings.
 
 ## Symbol search and caching
 

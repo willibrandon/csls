@@ -30,6 +30,7 @@ internal static class DapAttachOptionsParser
             {
                 ProcessId = processId,
                 SourceFileMap = DapSourceOptionsParser.ParseSourceFileMap(arguments),
+                RequireExactSource = DapBooleanOptionParser.Get(arguments, "requireExactSource", defaultValue: true),
                 SourceLinkOptions = DapSourceOptionsParser.ParseSourceLinkOptions(arguments),
                 SymbolOptions = DapSymbolOptionsParser.Parse(arguments),
                 JustMyCode = DapBooleanOptionParser.Get(

@@ -34,6 +34,7 @@ internal sealed partial class DebuggerTerminalState
         {
             Header = BuildViewHeader(session, status, moduleSummary, exceptionSummary),
             SourceRevision = _sourceRevision,
+            SourceTitle = SourceTitle,
             SourceLines = [.. SourceLines],
             SourceFocusedIndex = SourceFocusedIndex,
             ThreadRevision = _threadRevision,
