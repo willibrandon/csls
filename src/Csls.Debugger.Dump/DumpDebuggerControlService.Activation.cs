@@ -14,7 +14,7 @@ public sealed partial class DumpDebuggerControlService
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(request);
-        return InvokeAsync(() => OpenDump(request), cancellationToken);
+        return InvokeAsync(() => OpenDump(request, cancellationToken), cancellationToken);
     }
 
     /// <inheritdoc />
@@ -52,7 +52,7 @@ public sealed partial class DumpDebuggerControlService
     public Task<DebugSessionSnapshot> DetachAsync(CancellationToken cancellationToken) =>
         CloseAsync(cancellationToken);
 
-    private DebugSessionSnapshot OpenDump(DebugDumpOpenRequest request)
+    private DebugSessionSnapshot OpenDump(DebugDumpOpenRequest request, CancellationToken cancellationToken)
     {
         if (_snapshot.State != DebugSessionState.Created)
         {
@@ -124,9 +124,7 @@ public sealed partial class DumpDebuggerControlService
             {
                 State = DebugSessionState.Stopped,
                 ProcessName = Path.GetFileName(dumpPath),
-                ProcessId = _dataTarget.DataReader.ProcessId > 0
-                    ? _dataTarget.DataReader.ProcessId
-                    : null,
+                ProcessId = DumpProcessIdentity.Read(_dataTarget.DataReader, dumpPath, cancellationToken),
                 StopReason = "dump",
                 StoppedThreadId = stoppedThreadId,
                 StopGeneration = 1

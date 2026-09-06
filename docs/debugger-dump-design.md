@@ -52,6 +52,10 @@ Each image is bounded to 512 MiB, metadata to 64 MiB, and retained copies to
 4,096 modules and 1 GiB. Cancellation is checked during discovery and copying.
 Virtual-process disposal releases native readers before deleting owned copies.
 
+Process identity is read from the captured platform records. Mach-O captures use
+CoreCLR's thread-info segment, with bounded load-command traversal and validation
+of its signature, process identifier, thread count, and recorded file range.
+
 Native library resolution validates the requested image's own build identity or
 the CoreCLR identity of its trusted installation, according to the runtime's
 library-provider index. Windows PE checks include architecture, timestamp, and
