@@ -209,14 +209,18 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        suite: [standard, stepping, evaluation, stress]
+        suite: [standard, protocol, stepping, evaluation, stress]
         rid: [linux-x64, linux-arm64, win-x64, win-arm64, osx-x64, osx-arm64]
         include:
           # Complementary filters keep every non-stress test in exactly one job.
           - suite: standard
             name: Debugger tests
             minimum_tests: 70
-            filter: TestCategory!=DebuggerStress&FullyQualifiedName!~Assignment&FullyQualifiedName!~Evaluation&FullyQualifiedName!~ResultsView&FullyQualifiedName!~DebuggerTypeProxy&FullyQualifiedName!~Async&FullyQualifiedName!~Step&FullyQualifiedName!~Iterator
+            filter: TestCategory!=DebuggerStress&FullyQualifiedName!~Assignment&FullyQualifiedName!~Evaluation&FullyQualifiedName!~ResultsView&FullyQualifiedName!~DebuggerTypeProxy&FullyQualifiedName!~Async&FullyQualifiedName!~Step&FullyQualifiedName!~Iterator&FullyQualifiedName!~Csls.Debugger.Tests.Dap
+          - suite: protocol
+            name: Debugger protocol
+            minimum_tests: 70
+            filter: TestCategory!=DebuggerStress&FullyQualifiedName!~Assignment&FullyQualifiedName!~Evaluation&FullyQualifiedName!~ResultsView&FullyQualifiedName!~DebuggerTypeProxy&FullyQualifiedName!~Async&FullyQualifiedName!~Step&FullyQualifiedName!~Iterator&FullyQualifiedName~Csls.Debugger.Tests.Dap
           - suite: stepping
             name: Debugger stepping
             minimum_tests: 38
