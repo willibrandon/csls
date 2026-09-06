@@ -6,7 +6,7 @@ namespace Csls.Debugger.Tests;
 /// <summary>
 /// Verifies DAP source retrieval through real Source Link metadata and HTTP.
 /// </summary>
-public sealed partial class DapSessionTests
+public sealed partial class DapSymbolTests
 {
     /// <summary>
     /// Keeps checksum-valid Source Link references stable as local source changes under both source policies.

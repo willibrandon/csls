@@ -48,6 +48,16 @@ internal sealed class DebuggerSymbolFixtures : IAsyncDisposable
     internal string EntryAppHostPath { get; }
 
     /// <summary>
+    /// Gets an apphost prepared by the build process with one required companion file omitted.
+    /// </summary>
+    /// <param name="missingAssembly">Whether the managed assembly rather than runtime configuration is omitted.</param>
+    /// <returns>The completed, read-only executable fixture path.</returns>
+    internal string GetIncompleteAppHostPath(bool missingAssembly) => Path.Join(
+        Path.GetDirectoryName(EntryAppHostPath),
+        missingAssembly ? "MissingAssembly" : "MissingRuntimeConfig",
+        Path.GetFileName(EntryAppHostPath));
+
+    /// <summary>
     /// Gets the executable compiled with symbol generation disabled.
     /// </summary>
     internal string SymbolFreeProgramPath { get; }
@@ -319,10 +329,39 @@ internal sealed class DebuggerSymbolFixtures : IAsyncDisposable
                     new XElement(
                         "Compile",
                         new XAttribute("Include", Path.Join(
-                            repositoryRoot, "tests", "Csls.TestProcessHost", "*.cs"))))));
+                            repositoryRoot, "tests", "Csls.TestProcessHost", "*.cs")))),
+                CreateIncompleteAppHostsTarget()));
         return File.WriteAllTextAsync(
             Path.Join(projectDirectory, "EntryAppHost.csproj"), project.ToString(), cancellationToken);
     }
+
+    private static XElement CreateIncompleteAppHostsTarget()
+    {
+        string appHostName = OperatingSystem.IsWindows() ? "EntryAppHost.exe" : "EntryAppHost";
+        string appHost = $"$(TargetDir){appHostName}";
+        string missingAssembly = $"$(TargetDir)MissingAssembly/{appHostName}";
+        string missingConfiguration = $"$(TargetDir)MissingRuntimeConfig/{appHostName}";
+        const string missingConfigurationAssembly = "$(TargetDir)MissingRuntimeConfig/EntryAppHost.dll";
+
+        // Executable writes stay in the isolated build process. Forking from the parallel
+        // test host while a copy is open can leave another child holding its write descriptor.
+        return new XElement("Target",
+            new XAttribute("Name", "PrepareIncompleteAppHosts"),
+            new XAttribute("AfterTargets", "Build"),
+            new XAttribute("Inputs", $"$(MSBuildAllProjects);$(TargetPath);{appHost}"),
+            new XAttribute("Outputs", $"{missingAssembly};{missingConfiguration};{missingConfigurationAssembly}"),
+            CreateFixtureCopyTask(appHost, missingAssembly),
+            CreateFixtureCopyTask(appHost, missingConfiguration),
+            CreateFixtureCopyTask("$(TargetPath)", missingConfigurationAssembly));
+    }
+
+    private static XElement CreateFixtureCopyTask(string source, string destination) => new("Copy",
+        new XAttribute("SourceFiles", source),
+        new XAttribute("DestinationFiles", destination),
+        new XAttribute("SkipUnchangedFiles", "true"),
+        new XElement("Output",
+            new XAttribute("TaskParameter", "CopiedFiles"),
+            new XAttribute("ItemName", "FileWrites")));
 
     private static async Task<string> WriteSolutionAsync(
         string fixtureDirectory,

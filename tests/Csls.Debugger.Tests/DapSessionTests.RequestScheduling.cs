@@ -205,14 +205,6 @@ public sealed partial class DapSessionTests
         }
     }
 
-    private Task<int> SendRequestCancellationAsync(DapTestClient client, int sequence) =>
-        client.SendRequestAsync("cancel", writer =>
-        {
-            writer.WriteStartObject();
-            writer.WriteNumber("requestId", sequence);
-            writer.WriteEndObject();
-        }, TestContext.CancellationToken);
-
     /// <summary>
     /// Disconnects queued work even while the protocol reader is waiting for an incomplete later payload.
     /// </summary>
@@ -287,15 +279,4 @@ public sealed partial class DapSessionTests
         }
     }
 
-    private async Task AssertQueuedRequestCanceledAsync(DapTestClient client, int sequence, string command)
-    {
-        int cancelSequence = await SendRequestCancellationAsync(client, sequence).ConfigureAwait(false);
-        using JsonDocument canceled = await client.ReadMessageAsync(TestContext.CancellationToken)
-            .ConfigureAwait(false);
-        AssertResponse(canceled.RootElement, sequence, command, success: false);
-        Assert.AreEqual("cancelled", canceled.RootElement.GetProperty("message").GetString());
-        using JsonDocument acknowledgement = await client.ReadMessageAsync(TestContext.CancellationToken)
-            .ConfigureAwait(false);
-        AssertResponse(acknowledgement.RootElement, cancelSequence, "cancel", success: true);
-    }
 }

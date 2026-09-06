@@ -7,7 +7,7 @@ namespace Csls.Debugger.Tests;
 /// <summary>
 /// Verifies executable entry stops across symbol formats through real DAP transports.
 /// </summary>
-public sealed partial class DapSessionTests
+public sealed partial class DapSymbolTests
 {
     /// <summary>
     /// Stops at the managed entry IL when the executable was compiled without symbols.

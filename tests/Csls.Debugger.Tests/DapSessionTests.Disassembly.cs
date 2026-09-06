@@ -64,43 +64,4 @@ public sealed partial class DapSessionTests
             StringComparison.OrdinalIgnoreCase);
     }
 
-    private async Task<JsonElement[]> ReadDisassemblyAsync(
-        DapTestClient client,
-        string reference,
-        long offset,
-        long instructionOffset,
-        int instructionCount)
-    {
-        int sequence = await client.SendRequestAsync(
-            "disassemble",
-            writer => WriteDisassemblyArguments(
-                writer,
-                reference,
-                offset,
-                instructionOffset,
-                instructionCount),
-            TestContext.CancellationToken).ConfigureAwait(false);
-        using JsonDocument response = await client
-            .ReadMessageAsync(TestContext.CancellationToken)
-            .ConfigureAwait(false);
-        AssertResponse(response.RootElement, sequence, "disassemble", success: true);
-        return [.. response.RootElement.GetProperty("body").GetProperty("instructions")
-            .EnumerateArray().Select(static instruction => instruction.Clone())];
-    }
-
-    private static void WriteDisassemblyArguments(
-        Utf8JsonWriter writer,
-        string reference,
-        long offset,
-        long instructionOffset,
-        int instructionCount)
-    {
-        writer.WriteStartObject();
-        writer.WriteString("memoryReference", reference);
-        writer.WriteNumber("offset", offset);
-        writer.WriteNumber("instructionOffset", instructionOffset);
-        writer.WriteNumber("instructionCount", instructionCount);
-        writer.WriteBoolean("resolveSymbols", true);
-        writer.WriteEndObject();
-    }
 }

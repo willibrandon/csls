@@ -243,24 +243,6 @@ public sealed partial class DapSessionTests
         return (threadId, sourcePath);
     }
 
-    private async Task<JsonElement> ReadDeepStackPageAsync(DapTestClient client, int threadId, int start, int levels)
-    {
-        int sequence = await SendDeepStackRequestAsync(client, threadId, start, levels).ConfigureAwait(false);
-        using JsonDocument response = await client.ReadMessageAsync(TestContext.CancellationToken).ConfigureAwait(false);
-        AssertResponse(response.RootElement, sequence, "stackTrace", success: true);
-        return response.RootElement.GetProperty("body").Clone();
-    }
-
-    private Task<int> SendDeepStackRequestAsync(DapTestClient client, int threadId, int start, int levels) =>
-        client.SendRequestAsync("stackTrace", writer =>
-        {
-            writer.WriteStartObject();
-            writer.WriteNumber("threadId", threadId);
-            writer.WriteNumber("startFrame", start);
-            writer.WriteNumber("levels", levels);
-            writer.WriteEndObject();
-        }, TestContext.CancellationToken);
-
     private async Task AssertDeepStackArgumentAsync(DapTestClient client, JsonElement frame, string name, int expected)
     {
         Assert.AreEqual("Csls.TestProcessHost.DebuggerDeepStackFixture.Descend", frame.GetProperty("name").GetString());

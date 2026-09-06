@@ -8,13 +8,8 @@ namespace Csls.Debugger.Tests;
 /// Verifies DAP sequencing and target ownership through production sessions.
 /// </summary>
 [TestClass]
-public sealed partial class DapSessionTests
+public sealed partial class DapSessionTests : DapTestContext
 {
-    /// <summary>
-    /// Gets the active MSTest context and its framework-managed cancellation token.
-    /// </summary>
-    public TestContext TestContext { get; set; } = null!;
-
     /// <summary>
     /// Rejects invalid request ordering without preventing later initialization.
     /// </summary>
@@ -260,109 +255,6 @@ public sealed partial class DapSessionTests
         Assert.AreEqual(0, await client.WaitForExitAsync(TestContext.CancellationToken).ConfigureAwait(false));
         await AssertProcessExitedAsync(processId, TestContext.CancellationToken).ConfigureAwait(false);
     }
-
-    private static void WriteLaunchArguments(
-        Utf8JsonWriter writer,
-        string processHost,
-        IReadOnlyList<string> arguments,
-        bool wait,
-        bool noDebug = true,
-        bool suppressJitOptimizations = false,
-        bool? stopAtEntry = null)
-    {
-        writer.WriteStartObject();
-        writer.WriteBoolean("noDebug", noDebug);
-        writer.WriteString("program", processHost);
-        writer.WriteBoolean("suppressJITOptimizations", suppressJitOptimizations);
-        if (stopAtEntry is bool entryStop)
-        {
-            writer.WriteBoolean("stopAtEntry", entryStop);
-        }
-
-        writer.WriteStartArray("args");
-        foreach (string argument in arguments)
-        {
-            writer.WriteStringValue(argument);
-        }
-
-        writer.WriteEndArray();
-        WriteDefaultSourceFileMap(writer);
-        if (!wait)
-        {
-            writer.WriteStartObject("env");
-            writer.WriteString("CSLS_DEBUGGER_TEST_VALUE", "transport-π-é");
-            writer.WriteEndObject();
-        }
-
-        writer.WriteEndObject();
-    }
-
-    private static void WriteDefaultSourceFileMap(Utf8JsonWriter writer)
-    {
-        writer.WriteStartObject("sourceFileMap");
-        writer.WriteString("/_/", FindRepositoryRoot());
-        writer.WriteEndObject();
-    }
-
-    private static void WriteEmptyObject(Utf8JsonWriter writer)
-    {
-        writer.WriteStartObject();
-        writer.WriteEndObject();
-    }
-
-    private static void WriteSourceBreakpointArguments(
-        Utf8JsonWriter writer,
-        string sourcePath,
-        int line)
-    {
-        writer.WriteStartObject();
-        writer.WriteStartObject("source");
-        writer.WriteString("name", Path.GetFileName(sourcePath));
-        writer.WriteString("path", sourcePath);
-        writer.WriteEndObject();
-        writer.WriteStartArray("breakpoints");
-        writer.WriteStartObject();
-        writer.WriteNumber("line", line);
-        writer.WriteEndObject();
-        writer.WriteEndArray();
-        writer.WriteEndObject();
-    }
-
-    private static void AssertResponse(
-        JsonElement message,
-        int requestSequence,
-        string command,
-        bool success)
-    {
-        Assert.AreEqual("response", message.GetProperty("type").GetString(), message.ToString());
-        Assert.AreEqual(requestSequence, message.GetProperty("request_seq").GetInt32());
-        Assert.AreEqual(command, message.GetProperty("command").GetString());
-        Assert.AreEqual(
-            success,
-            message.GetProperty("success").GetBoolean(),
-            message.ToString());
-    }
-
-    private static void AssertEvent(JsonElement message, string eventName)
-    {
-        Assert.AreEqual("event", message.GetProperty("type").GetString(), message.ToString());
-        Assert.AreEqual(eventName, message.GetProperty("event").GetString(), message.ToString());
-    }
-
-    private static string ResolveTestProcessHost()
-    {
-        string repositoryRoot = FindRepositoryRoot();
-        return Path.Join(
-            repositoryRoot,
-            "artifacts",
-            "bin",
-            "Csls.TestProcessHost",
-            "debug",
-            "csls-test-process-host.dll");
-    }
-
-    private static string FindRepositoryRoot([CallerFilePath] string sourcePath = "")
-        => DebuggerTestEnvironment.FindRepositoryRoot(sourcePath);
 
     private static async Task AssertProcessExitedAsync(
         int processId,

@@ -189,76 +189,6 @@ public sealed partial class DapSessionTests
         }
     }
 
-    private static int FindSourceLine(IReadOnlyList<string> sourceLines, string text) =>
-        sourceLines
-            .Select(static (line, index) => (Line: line, Number: index + 1))
-            .Single(candidate => candidate.Line.Contains(text, StringComparison.Ordinal))
-            .Number;
-
-    private static async Task<int> ReadInitialBreakpointStopAsync(
-        DapTestClient client,
-        int configurationSequence,
-        int launchSequence,
-        CancellationToken cancellationToken)
-    {
-        bool configurationReceived = false;
-        bool launchReceived = false;
-        bool processReceived = false;
-        bool breakpointChanged = false;
-        int? threadId = null;
-        while (!configurationReceived || !launchReceived || !processReceived ||
-            !breakpointChanged || threadId is null)
-        {
-            using JsonDocument message = await client
-                .ReadMessageAsync(cancellationToken)
-                .ConfigureAwait(false);
-            JsonElement root = message.RootElement;
-            if (root.GetProperty("type").GetString() == "response")
-            {
-                int requestSequence = root.GetProperty("request_seq").GetInt32();
-                if (requestSequence == configurationSequence)
-                {
-                    AssertResponse(
-                        root,
-                        configurationSequence,
-                        "configurationDone",
-                        success: true);
-                    configurationReceived = true;
-                }
-                else if (requestSequence == launchSequence)
-                {
-                    AssertResponse(root, launchSequence, "launch", success: true);
-                    launchReceived = true;
-                }
-
-                continue;
-            }
-
-            string? eventName = root.GetProperty("event").GetString();
-            if (eventName == "process")
-            {
-                processReceived = true;
-            }
-            else if (eventName == "breakpoint")
-            {
-                Assert.IsTrue(
-                    root.GetProperty("body")
-                        .GetProperty("breakpoint")
-                        .GetProperty("verified")
-                        .GetBoolean());
-                breakpointChanged = true;
-            }
-            else if (eventName == "stopped")
-            {
-                JsonElement body = root.GetProperty("body");
-                Assert.AreEqual("breakpoint", body.GetProperty("reason").GetString());
-                threadId = body.GetProperty("threadId").GetInt32();
-            }
-        }
-
-        return threadId.Value;
-    }
-
     private static async Task<int> StepAndReadStopAsync(
         DapTestClient client,
         string command,
@@ -316,40 +246,6 @@ public sealed partial class DapSessionTests
         }
 
         return stoppedThreadId.Value;
-    }
-
-    private static async Task<(string Name, string? SourcePath, int Line)> ReadSourceFrameAsync(
-        DapTestClient client,
-        int threadId,
-        string sourcePath,
-        CancellationToken cancellationToken)
-    {
-        int requestSequence = await client.SendRequestAsync(
-            "stackTrace",
-            writer =>
-            {
-                writer.WriteStartObject();
-                writer.WriteNumber("threadId", threadId);
-                writer.WriteEndObject();
-            },
-            cancellationToken).ConfigureAwait(false);
-        using JsonDocument response = await client
-            .ReadMessageAsync(cancellationToken)
-            .ConfigureAwait(false);
-        AssertResponse(response.RootElement, requestSequence, "stackTrace", success: true);
-        JsonElement frame = response.RootElement
-            .GetProperty("body")
-            .GetProperty("stackFrames")
-            .EnumerateArray()
-            .First(candidate =>
-                candidate.TryGetProperty("source", out JsonElement source) &&
-                DebuggerTestPath.AreEquivalent(
-                    source.GetProperty("path").GetString(),
-                    sourcePath));
-        return (
-            frame.GetProperty("name").GetString()!,
-            frame.GetProperty("source").GetProperty("path").GetString(),
-            frame.GetProperty("line").GetInt32());
     }
 
     private static async Task ReadSuccessfulTerminationAsync(

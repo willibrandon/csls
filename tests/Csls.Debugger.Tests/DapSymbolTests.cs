@@ -1,9 +1,10 @@
 namespace Csls.Debugger.Tests;
 
 /// <summary>
-/// Verifies DAP sequencing and target ownership through production sessions.
+/// Verifies DAP behavior with host-built symbol and apphost fixtures.
 /// </summary>
-public sealed partial class DapSessionTests
+[TestClass]
+public sealed partial class DapSymbolTests : DapTestContext
 {
     private static DebuggerSymbolFixtures? s_symbolFixtures;
 

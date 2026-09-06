@@ -6,7 +6,7 @@ namespace Csls.Debugger.Tests;
 /// <summary>
 /// Verifies cancellation while a real Source Link response is waiting for its body.
 /// </summary>
-public sealed partial class DapSessionTests
+public sealed partial class DapSymbolTests
 {
     /// <summary>
     /// Cancels blocked source retrieval and queued inspection without changing the stopped target.

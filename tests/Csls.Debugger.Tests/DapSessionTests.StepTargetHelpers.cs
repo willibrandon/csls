@@ -78,35 +78,6 @@ public sealed partial class DapSessionTests
         return stoppedThread.Value;
     }
 
-    private async Task<int> ReadGotoTargetAsync(
-        DapTestClient client,
-        string sourcePath,
-        int line)
-    {
-        int sequence = await client.SendRequestAsync(
-            "gotoTargets",
-            writer =>
-            {
-                writer.WriteStartObject();
-                writer.WriteStartObject("source");
-                writer.WriteString("path", sourcePath);
-                writer.WriteEndObject();
-                writer.WriteNumber("line", line);
-                writer.WriteEndObject();
-            },
-            TestContext.CancellationToken).ConfigureAwait(false);
-        using JsonDocument response = await client
-            .ReadMessageAsync(TestContext.CancellationToken).ConfigureAwait(false);
-        AssertResponse(response.RootElement, sequence, "gotoTargets", success: true);
-        JsonElement[] targets = [.. response.RootElement.GetProperty("body")
-            .GetProperty("targets").EnumerateArray()];
-        Assert.HasCount(1, targets);
-        Assert.AreEqual(line, targets[0].GetProperty("line").GetInt32());
-        Assert.IsFalse(string.IsNullOrWhiteSpace(targets[0]
-            .GetProperty("instructionPointerReference").GetString()));
-        return targets[0].GetProperty("id").GetInt32();
-    }
-
     private async Task GotoAndAssertOrderAsync(
         DapTestClient client,
         int threadId,

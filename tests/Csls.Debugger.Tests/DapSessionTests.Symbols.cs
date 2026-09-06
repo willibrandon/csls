@@ -126,27 +126,6 @@ public sealed partial class DapSessionTests
         Assert.AreEqual(string.Empty, client.Diagnostics.ToString());
     }
 
-    private async Task DisconnectStoppedSessionAsync(DapTestClient client)
-    {
-        int sequence = await client.SendRequestAsync(
-            "disconnect",
-            WriteEmptyObject,
-            TestContext.CancellationToken).ConfigureAwait(false);
-        while (true)
-        {
-            using JsonDocument response = await client
-                .ReadMessageAsync(TestContext.CancellationToken)
-                .ConfigureAwait(false);
-            JsonElement root = response.RootElement;
-            if (root.GetProperty("type").GetString() == "response" &&
-                root.GetProperty("request_seq").GetInt32() == sequence)
-            {
-                AssertResponse(root, sequence, "disconnect", success: true);
-                return;
-            }
-        }
-    }
-
     private static void WriteZeroBasedInitializeArguments(Utf8JsonWriter writer)
     {
         writer.WriteStartObject();

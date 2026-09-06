@@ -7,7 +7,7 @@ namespace Csls.Debugger.Tests;
 /// <summary>
 /// Verifies native Windows PDB behavior through a real compiler and DAP session.
 /// </summary>
-public sealed partial class DapSessionTests
+public sealed partial class DapSymbolTests
 {
     /// <summary>
     /// Binds and inspects source from an identity-matched Windows PDB.

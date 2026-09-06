@@ -6,7 +6,7 @@ namespace Csls.Debugger.Tests;
 /// <summary>
 /// Verifies Source Link trust and integrity failures over real DAP and HTTP transports.
 /// </summary>
-public sealed partial class DapSessionTests
+public sealed partial class DapSymbolTests
 {
     /// <summary>
     /// Rejects implicit loopback Source Link access before opening an HTTP connection.

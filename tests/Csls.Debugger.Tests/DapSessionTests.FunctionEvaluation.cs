@@ -28,9 +28,10 @@ public sealed partial class DapSessionTests
         string waitPath = Path.Join(
             Path.GetTempPath(),
             $"csls-debugger-function-evaluation-{Guid.NewGuid():N}.signal");
+        DapTestClient? client = null;
         try
         {
-            DapTestClient client = await DapTestClient
+            client = await DapTestClient
                 .CreateAsync(TestContext.CancellationToken)
                 .ConfigureAwait(false);
             await using ConfiguredAsyncDisposable clientDisposal = client.ConfigureAwait(false);
@@ -424,6 +425,16 @@ public sealed partial class DapSessionTests
                 await client.WaitForExitAsync(TestContext.CancellationToken)
                     .ConfigureAwait(false));
             Assert.AreEqual(string.Empty, client.Diagnostics.ToString());
+        }
+        catch
+        {
+            if (client is not null)
+            {
+                TestContext.WriteLine($"Adapter diagnostics: {client.Diagnostics}");
+                TestContext.WriteLine($"Recent protocol messages:{Environment.NewLine}{client.ProtocolTranscript}");
+            }
+
+            throw;
         }
         finally
         {

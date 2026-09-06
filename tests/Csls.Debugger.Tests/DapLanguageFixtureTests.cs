@@ -412,91 +412,6 @@ public sealed partial class DapSessionTests
         }
     }
 
-    private async Task InitializeAndLaunchAsync(
-        DapTestClient client,
-        string program,
-        string waitPath,
-        bool suppressJitOptimizations = false)
-    {
-        int initializeSequence = await client.SendInitializeRequestAsync(
-            TestContext.CancellationToken).ConfigureAwait(false);
-        using JsonDocument initialize = await client
-            .ReadMessageAsync(TestContext.CancellationToken)
-            .ConfigureAwait(false);
-        AssertResponse(
-            initialize.RootElement,
-            initializeSequence,
-            "initialize",
-            success: true);
-        _ = await client.SendRequestAsync(
-            "launch",
-            writer => WriteLaunchArguments(
-                writer,
-                program,
-                [waitPath, "41", "ready"],
-                wait: true,
-                noDebug: false,
-                suppressJitOptimizations: suppressJitOptimizations),
-            TestContext.CancellationToken).ConfigureAwait(false);
-        using JsonDocument initialized = await client
-            .ReadMessageAsync(TestContext.CancellationToken)
-            .ConfigureAwait(false);
-        AssertEvent(initialized.RootElement, "initialized");
-    }
-
-    private async Task<int> ConfigureBreakpointAsync(
-        DapTestClient client,
-        string sourcePath,
-        int breakpointLine,
-        string? condition = null)
-    {
-        _ = await client.SendRequestAsync(
-            "setBreakpoints",
-            writer =>
-            {
-                writer.WriteStartObject();
-                writer.WriteStartObject("source");
-                writer.WriteString("path", sourcePath);
-                writer.WriteEndObject();
-                writer.WriteStartArray("breakpoints");
-                writer.WriteStartObject();
-                writer.WriteNumber("line", breakpointLine);
-                if (condition is not null)
-                {
-                    writer.WriteString("condition", condition);
-                }
-
-                writer.WriteEndObject();
-                writer.WriteEndArray();
-                writer.WriteEndObject();
-            },
-            TestContext.CancellationToken).ConfigureAwait(false);
-        using JsonDocument pending = await client
-            .ReadMessageAsync(TestContext.CancellationToken)
-            .ConfigureAwait(false);
-        _ = await client.SendRequestAsync(
-            "configurationDone",
-            WriteEmptyObject,
-            TestContext.CancellationToken).ConfigureAwait(false);
-        while (true)
-        {
-            using JsonDocument message = await client
-                .ReadMessageAsync(TestContext.CancellationToken)
-                .ConfigureAwait(false);
-            JsonElement root = message.RootElement;
-            if (root.TryGetProperty("event", out JsonElement eventName) &&
-                eventName.GetString() == "stopped")
-            {
-                string? reason = root.GetProperty("body").GetProperty("reason").GetString();
-                Assert.AreEqual(
-                    "breakpoint",
-                    reason,
-                    root.GetRawText());
-                return root.GetProperty("body").GetProperty("threadId").GetInt32();
-            }
-        }
-    }
-
     private async Task<int> AssertStoppedFrameAsync(
         DapTestClient client,
         int threadId,
@@ -530,34 +445,6 @@ public sealed partial class DapSessionTests
                     sourcePath));
         Assert.AreEqual(breakpointLine, frame.GetProperty("line").GetInt32());
         return frame.GetProperty("id").GetInt32();
-    }
-
-    private async Task DisconnectAsync(DapTestClient client)
-    {
-        int sequence = await client.SendRequestAsync(
-            "disconnect",
-            WriteEmptyObject,
-            TestContext.CancellationToken).ConfigureAwait(false);
-        while (true)
-        {
-            using JsonDocument message = await client
-                .ReadMessageAsync(TestContext.CancellationToken)
-                .ConfigureAwait(false);
-            if (message.RootElement.TryGetProperty("request_seq", out JsonElement requestSequence) &&
-                requestSequence.GetInt32() == sequence)
-            {
-                AssertResponse(
-                    message.RootElement,
-                    sequence,
-                    "disconnect",
-                    success: true);
-                break;
-            }
-        }
-
-        Assert.AreEqual(
-            0,
-            await client.WaitForExitAsync(TestContext.CancellationToken).ConfigureAwait(false));
     }
 
 }

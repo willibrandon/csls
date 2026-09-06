@@ -826,32 +826,6 @@ public sealed partial class DapSessionTests
         }
     }
 
-    private static async Task<JsonElement> ReadEvaluationAsync(
-        DapTestClient client,
-        int frameId,
-        string expression,
-        bool success,
-        CancellationToken cancellationToken)
-    {
-        int sequence = await client.SendRequestAsync(
-            "evaluate",
-            writer =>
-            {
-                writer.WriteStartObject();
-                writer.WriteString("expression", expression);
-                writer.WriteNumber("frameId", frameId);
-                writer.WriteString("context", "watch");
-                writer.WriteEndObject();
-            },
-            cancellationToken).ConfigureAwait(false);
-        using JsonDocument response = await client.ReadMessageAsync(cancellationToken)
-            .ConfigureAwait(false);
-        AssertResponse(response.RootElement, sequence, "evaluate", success);
-        return (success
-            ? response.RootElement.GetProperty("body")
-            : response.RootElement).Clone();
-    }
-
     private static async Task<JsonElement> ReadSetVariableAsync(
         DapTestClient client,
         int variablesReference,
