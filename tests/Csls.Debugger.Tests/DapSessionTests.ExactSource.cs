@@ -42,6 +42,7 @@ public sealed partial class DapSessionTests
             await File.WriteAllBytesAsync(mappedSource, original, TestContext.CancellationToken).ConfigureAwait(false);
             DapTestClient client = await DapTestClient.CreateAsync(TestContext.CancellationToken).ConfigureAwait(false);
             await using ConfiguredAsyncDisposable disposal = client.ConfigureAwait(false);
+            using DapTestCancellationCapture cancellationLog = CaptureProtocolOnCancellation(client);
             (_, int originalProcessId) = await LaunchAtEntryAsync(client, program,
                 ["--debugger-fixture", Path.Join(directory.FullName, "continue.signal")],
                 sourceFileMap: mappings, requireExactSource: requireExactSource).ConfigureAwait(false);

@@ -13,6 +13,7 @@ internal sealed partial class DapTestClient : IAsyncDisposable
 {
     private const int MaximumTranscriptMessages = 24;
     private const int MaximumTranscriptPayloadBytes = 4096;
+    private readonly long _startedTimestamp = Stopwatch.GetTimestamp();
     private readonly Lock _transcriptGate = new();
     private readonly Queue<string> _transcript = new();
     private readonly Queue<JsonDocument> _bufferedMessages = new();
@@ -284,7 +285,7 @@ internal sealed partial class DapTestClient : IAsyncDisposable
                 _ = _transcript.Dequeue();
             }
 
-            _transcript.Enqueue($"{direction}: {text}{truncation}");
+            _transcript.Enqueue($"[{Stopwatch.GetElapsedTime(_startedTimestamp):c}] {direction}: {text}{truncation}");
         }
     }
 
