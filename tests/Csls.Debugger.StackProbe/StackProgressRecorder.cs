@@ -11,6 +11,13 @@ namespace Csls.Debugger.StackProbe;
 internal sealed class StackProgressRecorder(CancellationTokenSource cancellation, int checkpoint, string failureMode)
     : IProgress<DebugStackWalkProgress>
 {
+    private long? _allocationBaseline;
+
+    /// <summary>
+    /// Gets actor-thread allocation between the first and most recent native progress callbacks.
+    /// </summary>
+    internal long AllocatedBytes { get; private set; }
+
     /// <summary>
     /// Gets snapshots written on the actor and read after request completion.
     /// </summary>
@@ -19,6 +26,9 @@ internal sealed class StackProgressRecorder(CancellationTokenSource cancellation
     /// <inheritdoc />
     public void Report(DebugStackWalkProgress value)
     {
+        long allocated = GC.GetAllocatedBytesForCurrentThread();
+        _allocationBaseline ??= allocated;
+        AllocatedBytes = allocated - _allocationBaseline.Value;
         Updates.Add(value);
         if (value.State == DebugStackWalkState.Walking && value.InspectedFrames == checkpoint)
         {

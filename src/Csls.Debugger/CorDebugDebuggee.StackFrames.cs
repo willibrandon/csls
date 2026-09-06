@@ -12,11 +12,12 @@ internal sealed partial class CorDebugDebuggee
         int threadId,
         int frameIndex,
         DebugStopGeneration generation,
-        nint frame)
+        nint frame,
+        ManagedSymbolFrameResolver symbols)
     {
         try
         {
-            return CreateStackFrameCore(threadId, frameIndex, generation, ref frame);
+            return CreateStackFrameCore(threadId, frameIndex, generation, ref frame, symbols);
         }
         finally
         {
@@ -31,7 +32,8 @@ internal sealed partial class CorDebugDebuggee
         int threadId,
         int frameIndex,
         DebugStopGeneration generation,
-        ref nint frame)
+        ref nint frame,
+        ManagedSymbolFrameResolver symbols)
     {
         nint ilFrame = 0;
         uint methodToken = 0;
@@ -71,11 +73,7 @@ internal sealed partial class CorDebugDebuggee
                     "ICorDebugILFrame.GetIP");
                 methodToken = Volatile.Read(ref *methodTokenAddress);
                 ilOffset = Volatile.Read(ref *ilOffsetAddress);
-                location = ManagedSymbolFrameResolver.Resolve(
-                    frame,
-                    methodToken,
-                    ilOffset,
-                    _sourceBreakpoints.FindModule);
+                location = symbols.Resolve(frame, methodToken, ilOffset);
             }
         }
         finally
@@ -131,9 +129,7 @@ internal sealed partial class CorDebugDebuggee
             frame = 0;
         }
 
-        DebugSourceInfo? source = location.ModuleId is int sourceModuleId && location.SourcePath is not null
-            ? _sourceBreakpoints.GetSourceInfo(sourceModuleId, location.SourcePath)
-            : null;
+        DebugSourceInfo? source = symbols.ResolveSource(location);
         return new DebugStackFrameInfo(
             existing.Id,
             location.Name,

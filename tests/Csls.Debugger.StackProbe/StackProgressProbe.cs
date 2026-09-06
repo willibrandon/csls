@@ -67,11 +67,17 @@ internal static class StackProgressProbe
             await requestCancellation.CancelAsync().ConfigureAwait(false);
         }
 
+        DebugSourceInfo? pageSource = null;
         try
         {
             DebugStackTrace page = await service.GetStackAsync(new DebugStackRequest(threadId, offset, levels) { Progress = progress },
                 requestCancellation.Token).ConfigureAwait(false);
             result["page"] = JsonSerializer.SerializeToNode(page, StackProbeJsonContext.Default.DebugStackTrace);
+            pageSource = page.StackFrames.Count == 0 ? null : page.StackFrames[0].Source;
+            result["pageSourceInstances"] = page.StackFrames.Select(static frame => frame.Source)
+                .Distinct(ReferenceEqualityComparer.Instance).Count();
+            result["pageNameInstances"] = page.StackFrames.Select(static frame => frame.Name)
+                .Distinct(ReferenceEqualityComparer.Instance).Count();
         }
         catch (Exception failure) when (failure is OperationCanceledException or InvalidOperationException or AggregateException or FormatException)
         {
@@ -88,6 +94,7 @@ internal static class StackProgressProbe
 
         host.Refresh();
         result["privateBytesAfter"] = host.PrivateMemorySize64;
+        result["traversalAllocatedBytesAfterFirstCheckpoint"] = progress.AllocatedBytes;
         result["updates"] = new JsonArray([.. progress.Updates.Select(static value =>
             JsonSerializer.SerializeToNode(value, StackProbeJsonContext.Default.DebugStackWalkProgress))]);
         result["afterArguments"] = JsonSerializer.SerializeToNode(await ReadArgumentsAsync(service, arguments, cancellationToken)
@@ -98,6 +105,7 @@ internal static class StackProgressProbe
         DebugStackTrace refreshed = await service.GetStackAsync(new DebugStackRequest(threadId, 0, 1) { Progress = recovery }, cancellationToken)
             .ConfigureAwait(false);
         result["refreshed"] = JsonSerializer.SerializeToNode(refreshed, StackProbeJsonContext.Default.DebugStackTrace);
+        result["sourceRefreshedBetweenRequests"] = !ReferenceEquals(pageSource, refreshed.StackFrames[0].Source);
         result["recovery"] = JsonSerializer.SerializeToNode(recovery.Updates[^1], StackProbeJsonContext.Default.DebugStackWalkProgress);
         DebugStackTrace deep = await service.GetStackAsync(new DebugStackRequest(threadId, depth - 1, 1), cancellationToken).ConfigureAwait(false);
         IReadOnlyList<DebugScopeInfo> deepScopes = await service.GetScopesAsync(new DebugScopesRequest(deep.StackFrames[0].Id), cancellationToken)

@@ -1,3 +1,4 @@
+using Csls.Debugger.Contracts;
 using Csls.Debugger.Interop;
 using System.Reflection.Metadata;
 using System.Reflection.Metadata.Ecma335;
@@ -6,25 +7,27 @@ using System.Reflection.PortableExecutable;
 namespace Csls.Debugger;
 
 /// <summary>
-/// Resolves managed frame names and source positions from PE metadata and debug symbols.
+/// Resolves immutable frame presentation once per exact runtime location within one stack request.
 /// </summary>
-internal static class ManagedSymbolFrameResolver
+/// <param name="sourceBreakpoints">The actor-owned module and source catalog.</param>
+internal sealed class ManagedSymbolFrameResolver(SourceBreakpointManager sourceBreakpoints)
 {
+    private readonly Dictionary<(CorDebugLoadedModule Module, uint Method, uint Offset, int Generation), ManagedFrameLocation>
+        _locations = [];
+    private readonly Dictionary<(int Module, string Path), DebugSourceInfo> _sources = [];
+
     /// <summary>
     /// Resolves the best available display information for one IL frame.
     /// </summary>
     /// <param name="frame">The borrowed ICorDebugFrame pointer.</param>
     /// <param name="methodToken">The method-definition metadata token.</param>
     /// <param name="ilOffset">The current IL instruction offset.</param>
-    /// <param name="moduleResolver">Resolves the retained symbol state for a runtime module.</param>
     /// <returns>The resolved method and optional source location.</returns>
-    internal static unsafe ManagedFrameLocation Resolve(
+    internal unsafe ManagedFrameLocation Resolve(
         nint frame,
         uint methodToken,
-        uint ilOffset,
-        Func<nint, CorDebugLoadedModule?> moduleResolver)
+        uint ilOffset)
     {
-        ArgumentNullException.ThrowIfNull(moduleResolver);
         string fallbackName = $"0x{methodToken:X8}";
         nint function = 0;
         nint module = 0;
@@ -50,15 +53,21 @@ internal static class ManagedSymbolFrameResolver
                 return Unknown(fallbackName);
             }
 
-            CorDebugLoadedModule? loadedModule = moduleResolver(module);
-            return loadedModule is null
-                ? Unknown(fallbackName)
-                : ResolveModule(
-                loadedModule,
-                methodToken,
-                ilOffset,
-                GetFunctionGeneration(function, loadedModule),
-                fallbackName);
+            CorDebugLoadedModule? loadedModule = sourceBreakpoints.FindModule(module);
+            if (loadedModule is null)
+            {
+                return Unknown(fallbackName);
+            }
+
+            int generation = GetFunctionGeneration(function, loadedModule);
+            (CorDebugLoadedModule, uint, uint, int) key = (loadedModule, methodToken, ilOffset, generation);
+            if (!_locations.TryGetValue(key, out ManagedFrameLocation? location))
+            {
+                location = ResolveModule(loadedModule, methodToken, ilOffset, generation, fallbackName);
+                _locations.Add(key, location);
+            }
+
+            return location;
         }
         catch (Exception exception) when (DebugSymbolReader.IsReadFailure(exception))
         {
@@ -76,6 +85,28 @@ internal static class ManagedSymbolFrameResolver
                 _ = ComAbi.Release(function);
             }
         }
+    }
+
+    /// <summary>
+    /// Shares a verified source snapshot within this request while preserving the catalog's stable identity.
+    /// </summary>
+    /// <param name="location">The exact frame location resolved from its runtime method version.</param>
+    /// <returns>The request's source descriptor, or null when the frame has no source document.</returns>
+    internal DebugSourceInfo? ResolveSource(ManagedFrameLocation location)
+    {
+        if (location.ModuleId is not int moduleId || location.SourcePath is not string sourcePath)
+        {
+            return null;
+        }
+
+        (int, string) key = (moduleId, sourcePath);
+        if (!_sources.TryGetValue(key, out DebugSourceInfo? source))
+        {
+            source = sourceBreakpoints.GetSourceInfo(moduleId, sourcePath);
+            _sources.Add(key, source);
+        }
+
+        return source;
     }
 
     private static ManagedFrameLocation ResolveModule(

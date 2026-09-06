@@ -19,6 +19,43 @@ public sealed class DebuggerStackProgressTests
     public TestContext TestContext { get; set; } = null!;
 
     /// <summary>
+    /// Reuses source and exact-location presentation within a page while refreshing the next request.
+    /// </summary>
+    [TestMethod]
+    [Timeout(30000, CooperativeCancellation = true)]
+    public async Task NativeStackPagesReuseRequestScopedSymbolSnapshots()
+    {
+        using JsonDocument document = await RunProbeAsync("observe", 0, 0).ConfigureAwait(false);
+        JsonElement result = document.RootElement;
+        TestContext.WriteLine($"Source instances: {result.GetProperty("pageSourceInstances")}; " +
+            $"name instances: {result.GetProperty("pageNameInstances")}; " +
+            $"actor allocations after first checkpoint: {result.GetProperty("traversalAllocatedBytesAfterFirstCheckpoint")} bytes.");
+        JsonElement frames = result.GetProperty("page").GetProperty("StackFrames");
+        Assert.AreEqual(1000, frames.GetArrayLength());
+        Assert.AreEqual(1, result.GetProperty("pageSourceInstances").GetInt32());
+        Assert.AreEqual(2, result.GetProperty("pageNameInstances").GetInt32());
+        Assert.IsTrue(result.GetProperty("sourceRefreshedBetweenRequests").GetBoolean());
+        string sourcePath = Path.Join(DebuggerTestEnvironment.FindRepositoryRoot(), "tests",
+            "Csls.TestProcessHost", "DebuggerDeepStackFixture.cs");
+        string[] lines = await File.ReadAllLinesAsync(sourcePath, TestContext.CancellationToken).ConfigureAwait(false);
+        int topLine = Array.FindIndex(lines, static line => line.Contains("return CompleteDescent(entered);", StringComparison.Ordinal)) + 1;
+        int callerLine = Array.FindIndex(lines, static line => line.Contains("int descendants = Descend", StringComparison.Ordinal)) + 1;
+        Assert.IsGreaterThan(0, topLine);
+        Assert.IsGreaterThan(0, callerLine);
+        Assert.AreNotEqual(topLine, callerLine);
+        for (int index = 0; index < frames.GetArrayLength(); index++)
+        {
+            JsonElement frame = frames[index];
+            Assert.AreEqual("Csls.TestProcessHost.DebuggerDeepStackFixture.Descend", frame.GetProperty("Name").GetString());
+            Assert.AreEqual(index == 0 ? topLine : callerLine, frame.GetProperty("Line").GetInt32());
+            Assert.AreEqual(sourcePath, frame.GetProperty("Source").GetProperty("Path").GetString());
+        }
+
+        Assert.HasCount(1000, frames.EnumerateArray().Select(static frame => frame.GetProperty("Id").GetInt32()).Distinct());
+        AssertRecovery(result, 5000);
+    }
+
+    /// <summary>
     /// Cancels at an actual traversal checkpoint and preserves published frames after rollback.
     /// </summary>
     /// <param name="startFrame">The requested offset into the real recursive stack.</param>

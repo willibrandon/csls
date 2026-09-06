@@ -89,6 +89,9 @@ public sealed partial class DapSessionTests
                 TestContext.CancellationToken).ConfigureAwait(false);
             Assert.IsTrue(DebuggerTestPath.AreEquivalent(mappedSource, actualPath));
             Assert.AreEqual(line, actualLine);
+            await AssertStackSourceRefreshAsync(client, thread, mappedSource, original, line, requireExactSource,
+                document.SourceLinkUri is not null)
+                .ConfigureAwait(false);
             int restart = await client.SendRequestAsync("restart", WriteEmptyObject, TestContext.CancellationToken).ConfigureAwait(false);
             _ = await ReadEntryRestartAsync(client, restart, originalProcessId, breakpointId, "entry").ConfigureAwait(false);
             await AssertProcessExitedAsync(originalProcessId, TestContext.CancellationToken).ConfigureAwait(false);
@@ -104,6 +107,53 @@ public sealed partial class DapSessionTests
         {
             File.Delete(mappedSource);
             directory.Delete();
+        }
+    }
+
+    private async Task AssertStackSourceRefreshAsync(DapTestClient client, int threadId,
+        string path, byte[] original, int line, bool? requireExactSource, bool hasSourceLink)
+    {
+        JsonElement baseline = await ReadDeepStackPageAsync(client, threadId, 0, 1).ConfigureAwait(false);
+        int frameId = baseline.GetProperty("stackFrames")[0].GetProperty("id").GetInt32();
+        foreach (bool matches in new[] { false, true })
+        {
+            await File.WriteAllBytesAsync(path, original, TestContext.CancellationToken).ConfigureAwait(false);
+            if (!matches)
+            {
+                await File.AppendAllTextAsync(path, "\n// Edited while stopped.\n", TestContext.CancellationToken)
+                    .ConfigureAwait(false);
+            }
+
+            JsonElement page = await ReadDeepStackPageAsync(client, threadId, 0, 1).ConfigureAwait(false);
+            JsonElement frame = page.GetProperty("stackFrames")[0];
+            Assert.AreEqual(1, page.GetProperty("stackFrames").GetArrayLength());
+            Assert.AreEqual(frameId, frame.GetProperty("id").GetInt32());
+            Assert.AreEqual(line, frame.GetProperty("line").GetInt32());
+            JsonElement source = frame.GetProperty("source");
+            bool readable = matches || requireExactSource == false;
+            Assert.AreEqual(readable, source.TryGetProperty("path", out JsonElement sourcePath));
+            if (readable)
+            {
+                Assert.IsTrue(DebuggerTestPath.AreEquivalent(path, sourcePath.GetString()));
+            }
+
+            if (matches)
+            {
+                Assert.IsTrue(source.TryGetProperty("checksums", out _));
+                Assert.IsFalse(source.TryGetProperty("origin", out _));
+            }
+            else
+            {
+                string expectedOrigin = requireExactSource == false
+                    ? "unverified local source (requireExactSource=false)"
+                    : hasSourceLink ? "Source Link" : "original source is unavailable or does not match its checksum";
+                Assert.AreEqual(expectedOrigin, source.GetProperty("origin").GetString());
+                Assert.AreEqual(requireExactSource != false, source.TryGetProperty("checksums", out _));
+                if (requireExactSource != false && hasSourceLink)
+                {
+                    Assert.IsGreaterThan(0, source.GetProperty("sourceReference").GetInt32());
+                }
+            }
         }
     }
 

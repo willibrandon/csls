@@ -37,40 +37,49 @@ public sealed partial class DapSessionTests
         const int depth = 5000;
         DapTestClient client = await DapTestClient.CreateAsync(TestContext.CancellationToken).ConfigureAwait(false);
         await using ConfiguredAsyncDisposable disposal = client.ConfigureAwait(false);
-        (int threadId, string sourcePath) = await StartDeepStackAsync(client, depth).ConfigureAwait(false);
-        JsonElement top = await ReadDeepStackPageAsync(client, threadId, 0, 1).ConfigureAwait(false);
-        JsonElement maximum = await ReadDeepStackPageAsync(client, threadId, 0, 4096).ConfigureAwait(false);
-        Assert.AreEqual(4096, maximum.GetProperty("stackFrames").GetArrayLength());
-        await AssertDeepStackArgumentAsync(client, maximum.GetProperty("stackFrames")[4095], "remaining", 4095)
-            .ConfigureAwait(false);
-        foreach (int levels in new[] { 4097, int.MaxValue, 0 })
+        try
         {
-            int sequence = await SendDeepStackRequestAsync(client, threadId, 0, levels).ConfigureAwait(false);
-            using JsonDocument response = await client.ReadMessageAsync(TestContext.CancellationToken).ConfigureAwait(false);
-            AssertResponse(response.RootElement, sequence, "stackTrace", success: false);
-            Assert.Contains("4096", response.RootElement.GetProperty("message").GetString()!);
-        }
+            (int threadId, string sourcePath) = await StartDeepStackAsync(client, depth).ConfigureAwait(false);
+            JsonElement top = await ReadDeepStackPageAsync(client, threadId, 0, 1).ConfigureAwait(false);
+            JsonElement maximum = await ReadDeepStackPageAsync(client, threadId, 0, 4096).ConfigureAwait(false);
+            Assert.AreEqual(4096, maximum.GetProperty("stackFrames").GetArrayLength());
+            await AssertDeepStackArgumentAsync(client, maximum.GetProperty("stackFrames")[4095], "remaining", 4095)
+                .ConfigureAwait(false);
+            foreach (int levels in new[] { 4097, int.MaxValue, 0 })
+            {
+                int sequence = await SendDeepStackRequestAsync(client, threadId, 0, levels).ConfigureAwait(false);
+                using JsonDocument response = await client.ReadMessageAsync(TestContext.CancellationToken).ConfigureAwait(false);
+                AssertResponse(response.RootElement, sequence, "stackTrace", success: false);
+                Assert.Contains("4096", response.RootElement.GetProperty("message").GetString()!);
+            }
 
-        foreach ((int start, int levels) in new[] { (-1, 1), (0, -1) })
+            foreach ((int start, int levels) in new[] { (-1, 1), (0, -1) })
+            {
+                int sequence = await SendDeepStackRequestAsync(client, threadId, start, levels).ConfigureAwait(false);
+                using JsonDocument response = await client.ReadMessageAsync(TestContext.CancellationToken).ConfigureAwait(false);
+                AssertResponse(response.RootElement, sequence, "stackTrace", success: false);
+                Assert.Contains(start < 0 ? "startFrame" : "levels", response.RootElement.GetProperty("message").GetString()!);
+            }
+
+            JsonElement tail = await ReadDeepStackPageAsync(client, threadId, depth - 2, 0).ConfigureAwait(false);
+            Assert.IsGreaterThanOrEqualTo(2, tail.GetProperty("stackFrames").GetArrayLength());
+            Assert.AreEqual(depth - 2 + tail.GetProperty("stackFrames").GetArrayLength(),
+                tail.GetProperty("totalFrames").GetInt32());
+            JsonElement beyond = await ReadDeepStackPageAsync(client, threadId, int.MaxValue, 1).ConfigureAwait(false);
+            Assert.AreEqual(0, beyond.GetProperty("stackFrames").GetArrayLength());
+            Assert.AreEqual(tail.GetProperty("totalFrames").GetInt32(), beyond.GetProperty("totalFrames").GetInt32());
+            JsonElement unchanged = await ReadDeepStackPageAsync(client, threadId, 0, 1).ConfigureAwait(false);
+            AssertSameLogicalFrame(top.GetProperty("stackFrames")[0], unchanged.GetProperty("stackFrames")[0]);
+            await AssertDeepStackArgumentAsync(client, unchanged.GetProperty("stackFrames")[0], "entered", depth)
+                .ConfigureAwait(false);
+            await FinishDeepStackAsync(client, sourcePath).ConfigureAwait(false);
+        }
+        catch
         {
-            int sequence = await SendDeepStackRequestAsync(client, threadId, start, levels).ConfigureAwait(false);
-            using JsonDocument response = await client.ReadMessageAsync(TestContext.CancellationToken).ConfigureAwait(false);
-            AssertResponse(response.RootElement, sequence, "stackTrace", success: false);
-            Assert.Contains(start < 0 ? "startFrame" : "levels", response.RootElement.GetProperty("message").GetString()!);
+            TestContext.WriteLine(client.Diagnostics.ToString());
+            TestContext.WriteLine(client.ProtocolTranscript);
+            throw;
         }
-
-        JsonElement tail = await ReadDeepStackPageAsync(client, threadId, depth - 2, 0).ConfigureAwait(false);
-        Assert.IsGreaterThanOrEqualTo(2, tail.GetProperty("stackFrames").GetArrayLength());
-        Assert.AreEqual(depth - 2 + tail.GetProperty("stackFrames").GetArrayLength(),
-            tail.GetProperty("totalFrames").GetInt32());
-        JsonElement beyond = await ReadDeepStackPageAsync(client, threadId, int.MaxValue, 1).ConfigureAwait(false);
-        Assert.AreEqual(0, beyond.GetProperty("stackFrames").GetArrayLength());
-        Assert.AreEqual(tail.GetProperty("totalFrames").GetInt32(), beyond.GetProperty("totalFrames").GetInt32());
-        JsonElement unchanged = await ReadDeepStackPageAsync(client, threadId, 0, 1).ConfigureAwait(false);
-        AssertSameLogicalFrame(top.GetProperty("stackFrames")[0], unchanged.GetProperty("stackFrames")[0]);
-        await AssertDeepStackArgumentAsync(client, unchanged.GetProperty("stackFrames")[0], "entered", depth)
-            .ConfigureAwait(false);
-        await FinishDeepStackAsync(client, sourcePath).ConfigureAwait(false);
     }
 
     /// <summary>

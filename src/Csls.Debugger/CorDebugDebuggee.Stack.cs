@@ -34,6 +34,7 @@ internal sealed partial class CorDebugDebuggee
         cancellationToken.ThrowIfCancellationRequested();
         using ManagedFrameRegistration registration = _frames.BeginRegistration();
         using var walker = ManagedStackWalker.Open(_debugProcess, threadId);
+        var symbols = new ManagedSymbolFrameResolver(_sourceBreakpoints);
         var observer = new ManagedStackWalkObserver(progress);
         List<DebugStackFrameInfo> frames = [];
         int inspectedFrames = 0;
@@ -63,7 +64,7 @@ internal sealed partial class CorDebugDebuggee
                 else
                 {
                     // CreateStackFrame consumes this reference even when symbol resolution fails.
-                    frames.Add(CreateStackFrame(threadId, walker.FrameIndex, generation, frame));
+                    frames.Add(CreateStackFrame(threadId, walker.FrameIndex, generation, frame, symbols));
                 }
 
                 if (inspectedFrames % 256 == 0)
