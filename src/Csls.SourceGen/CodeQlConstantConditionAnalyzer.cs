@@ -42,6 +42,16 @@ public sealed class CodeQlConstantConditionAnalyzer : DiagnosticAnalyzer
         context.ConfigureGeneratedCodeAnalysis(GeneratedCodeAnalysisFlags.None);
         context.EnableConcurrentExecution();
         context.RegisterSyntaxNodeAction(AnalyzePattern, SyntaxKind.IsPatternExpression);
+        context.RegisterSyntaxNodeAction(AnalyzeConditionalAccess, SyntaxKind.ConditionalAccessExpression);
+    }
+
+    private static void AnalyzeConditionalAccess(SyntaxNodeAnalysisContext context)
+    {
+        var access = (ConditionalAccessExpressionSyntax)context.Node;
+        if (ConditionalAccessGuardProof.HasNonNullReceiver(access, context))
+        {
+            context.ReportDiagnostic(Diagnostic.Create(s_rule, access.GetLocation(), "false"));
+        }
     }
 
     private static void AnalyzePattern(SyntaxNodeAnalysisContext context)

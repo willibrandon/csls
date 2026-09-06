@@ -123,13 +123,18 @@ internal sealed class ManagedAsyncCallerStep
             module = Volatile.Read(ref module);
             CorDebugHResult.ThrowIfFailed(result, "ICorDebugFunction.GetModule");
             CorDebugLoadedModule? loadedModule = module == 0 ? null : resolveModule(module);
-            using DebugSymbolReader? symbols = loadedModule?.OpenSymbols();
+            if (loadedModule is null)
+            {
+                return false;
+            }
+
+            using DebugSymbolReader? symbols = loadedModule.OpenSymbols();
             if (symbols?.GetStateMachineKickoffMethod(token) is not uint kickoff)
             {
                 return false;
             }
 
-            using PEReader? image = loadedModule?.OpenPeReader();
+            using PEReader? image = loadedModule.OpenPeReader();
             if (image is null)
             {
                 return false;
