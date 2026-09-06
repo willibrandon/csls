@@ -10,13 +10,20 @@ internal sealed partial class SourceBreakpointManager
         IReadOnlyList<SourceBreakpointDefinition> definitions)
     {
         var result = new Dictionary<int, SourceBreakpointLocation>();
+        var documentDefinitions = new Dictionary<string, SourceBreakpointDefinition[]>(StringComparer.Ordinal);
         foreach (ManagedSequencePoint point in sequencePoints)
         {
-            string documentPath = _sourcePathMapper.Map(point.SourcePath);
-            foreach (SourceBreakpointDefinition definition in definitions)
+            if (!documentDefinitions.TryGetValue(point.SourcePath, out SourceBreakpointDefinition[]? matchingDefinitions))
             {
-                if (!PathsEqual(documentPath, definition.SourcePath) ||
-                    !IsBetterLocation(definition, point, result))
+                string documentPath = _sourcePathMapper.Map(point.SourcePath);
+                matchingDefinitions = [.. definitions.Where(definition =>
+                    PathsEqual(documentPath, definition.SourcePath))];
+                documentDefinitions.Add(point.SourcePath, matchingDefinitions);
+            }
+
+            foreach (SourceBreakpointDefinition definition in matchingDefinitions)
+            {
+                if (!IsBetterLocation(definition, point, result))
                 {
                     continue;
                 }
