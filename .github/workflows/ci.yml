@@ -269,6 +269,7 @@ jobs:
           path: artifacts/bin/Csls.Debugger.Worker/debug
 
       - name: Prepare macOS debugger authorization
+        id: debugger-authorization
         if: runner.os == 'macOS'
         run: dotnet artifacts/bin/Csls.Debugger.TestAuthorization/debug/Configure-DebuggerTestAuthorization.dll enable
 
@@ -295,7 +296,7 @@ jobs:
           --hangdump-type None
 
       - name: Restore macOS debugger authorization
-        if: always() && runner.os == 'macOS'
+        if: always() && runner.os == 'macOS' && steps.debugger-authorization.outcome != 'skipped'
         run: dotnet artifacts/bin/Csls.Debugger.TestAuthorization/debug/Configure-DebuggerTestAuthorization.dll restore
 
       - name: Preserve debugger test results
