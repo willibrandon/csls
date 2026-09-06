@@ -392,6 +392,8 @@ public sealed partial class LanguageServer : ILspRpcTarget, IAsyncDisposable
         }
         catch (Exception exception)
         {
+            LanguageServerLogger.LogWorkspaceLoadFailure(_logger, exception);
+            _interactiveWorkspaceReady.TrySetException(exception);
             _workspaceReady.TrySetException(exception);
             Interlocked.CompareExchange(
                 ref _workspacePhase,
@@ -1694,7 +1696,7 @@ public sealed partial class LanguageServer : ILspRpcTarget, IAsyncDisposable
         RequestMode requestMode,
         CancellationToken cancellationToken)
     {
-        if (requestMode == RequestMode.ReadWrite)
+        if (requestMode == RequestMode.ReadWrite || requestName == "workspace/inspect")
         {
             return Task.CompletedTask;
         }
