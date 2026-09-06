@@ -32,11 +32,14 @@ internal sealed class DebuggerGenericFixture<T>(T value)
     /// <returns>Zero when execution consumes the assigned parameter.</returns>
     internal async Task<int> RunCapturedAsync(T argument, T replacement, int unused)
     {
+        T savedArgument = argument;
+        (T Item, int Count) savedPair = (argument, 42);
         await Task.Yield();
         Console.Write(argument);
         GC.KeepAlive(_value);
         GC.KeepAlive(replacement);
-        return EqualityComparer<T>.Default.Equals(argument, replacement) ? 0 : 1;
+        return EqualityComparer<T>.Default.Equals(argument, replacement) &&
+            EqualityComparer<T>.Default.Equals(savedArgument, savedPair.Item) ? 0 : 1;
     }
 
     /// <summary>

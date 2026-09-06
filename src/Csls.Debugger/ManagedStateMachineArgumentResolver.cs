@@ -16,7 +16,7 @@ internal static class ManagedStateMachineArgumentResolver
     /// </summary>
     /// <param name="frame">The stopped frame and its exact symbol generation.</param>
     /// <returns>Ordered source parameters, or null for an ordinary runtime frame.</returns>
-    internal static IReadOnlyList<ManagedCapturedArgument>? Resolve(ManagedFrameHandle frame)
+    internal static IReadOnlyList<ManagedStateMachineVariable>? Resolve(ManagedFrameHandle frame)
     {
         if (frame.ExpressionLanguage is not (DebugExpressionLanguage.CSharp or DebugExpressionLanguage.VisualBasic))
         {
@@ -39,10 +39,10 @@ internal static class ManagedStateMachineArgumentResolver
         var kickoff = (MethodDefinitionHandle)MetadataTokens.EntityHandle(checked((int)kickoffToken));
         MethodDefinition method = metadata.GetMethodDefinition(kickoff);
         bool visualBasic = frame.ExpressionLanguage == DebugExpressionLanguage.VisualBasic;
-        var arguments = new List<ManagedCapturedArgument>();
+        var arguments = new List<ManagedStateMachineVariable>();
         if ((method.Attributes & MethodAttributes.Static) == 0)
         {
-            arguments.Add(new ManagedCapturedArgument(visualBasic ? "Me" : "this",
+            arguments.Add(new ManagedStateMachineVariable(visualBasic ? "Me" : "this",
                 visualBasic ? "$VB$Me" : "<>4__this", kickoffToken, null, null));
         }
 
@@ -60,7 +60,7 @@ internal static class ManagedStateMachineArgumentResolver
                 continue;
             }
 
-            arguments.Add(new ManagedCapturedArgument(name,
+            arguments.Add(new ManagedStateMachineVariable(name,
                 visualBasic ? "$VB$Local_" + name : name,
                 kickoffToken, parameter.SequenceNumber - 1,
                 ManagedTupleElementNameReader.ReadAttribute(metadata, handle)));

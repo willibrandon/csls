@@ -17,6 +17,11 @@ supply argument and lexically active local names. Object expansion reads exact r
 types and walks the complete derived-to-base hierarchy, including base classes declared
 in another loaded assembly. Arrays are paged and retain their live rank and dimensions.
 
+With Portable PDBs, C# and Visual Basic async locals retain their source names,
+closed generic types, and tuple element names across awaits. The Locals view
+follows each variable's recorded scope. Use the same source name for watch
+expressions, completion, and assignment before and after resumption.
+
 Stack requests use `startFrame` and `levels` to inspect deep callers a page at a
 time. DAP and private RPC return at most 4,096 frames per response; MCP pages contain
 at most 256. Continue requesting pages until one is shorter than requested.

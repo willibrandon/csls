@@ -8,7 +8,7 @@ namespace Csls.Debugger;
 /// </summary>
 internal sealed partial class CorDebugDebuggee
 {
-    private unsafe List<DebugVariableInfo> EnumerateValues(
+    private List<DebugVariableInfo> EnumerateValues(
         ManagedFrameHandle frame,
         ManagedScopeKind kind,
         IReadOnlyDictionary<int, ManagedSymbolVariable> names,
@@ -16,13 +16,29 @@ internal sealed partial class CorDebugDebuggee
         int start,
         int count)
     {
-        const int maximumValueCount = 64 * 1024;
         if (kind == ManagedScopeKind.Arguments &&
             ManagedStateMachineArgumentResolver.Resolve(frame) is { } capturedArguments)
         {
-            return EnumerateCapturedArguments(frame, capturedArguments, generation, start, count);
+            return EnumerateStateMachineVariables(frame, capturedArguments, generation, start, count);
         }
 
+        IReadOnlyList<ManagedStateMachineVariable> hoistedLocals = kind == ManagedScopeKind.Locals
+            ? ManagedStateMachineLocalResolver.Resolve(frame) : [];
+        List<DebugVariableInfo> result = EnumerateStateMachineVariables(frame, hoistedLocals, generation, start, count);
+        if (count == 0 || result.Count < count)
+        {
+            result.AddRange(EnumeratePhysicalValues(frame, kind, names, generation,
+                Math.Max(0, start - hoistedLocals.Count), count == 0 ? 0 : count - result.Count));
+        }
+
+        return result;
+    }
+
+    private unsafe List<DebugVariableInfo> EnumeratePhysicalValues(
+        ManagedFrameHandle frame, ManagedScopeKind kind, IReadOnlyDictionary<int, ManagedSymbolVariable> names,
+        DebugStopGeneration generation, int start, int count)
+    {
+        const int maximumValueCount = 64 * 1024;
         nint ilFrame = 0;
         nint enumerator = 0;
         try

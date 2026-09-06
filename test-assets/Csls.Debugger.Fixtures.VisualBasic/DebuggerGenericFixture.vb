@@ -41,11 +41,14 @@ Namespace Global.Csls.Debugger.Fixtures.VisualBasic
         ''' <param name="unused">An unused source parameter for optimized-storage inspection.</param>
         ''' <returns>Zero when execution consumes the assigned parameter.</returns>
         Friend Async Function RunCapturedAsync(argument As T, replacement As T, unused As Integer) As Task(Of Integer)
+            Dim savedArgument As T = argument
+            Dim savedPair As (Item As T, Count As Integer) = (argument, 42)
             Await Task.Yield()
             Console.Write(argument)
             GC.KeepAlive(_value)
             GC.KeepAlive(replacement)
-            Return If(EqualityComparer(Of T).Default.Equals(argument, replacement), 0, 1)
+            Return If(EqualityComparer(Of T).Default.Equals(argument, replacement) AndAlso
+                EqualityComparer(Of T).Default.Equals(savedArgument, savedPair.Item), 0, 1)
         End Function
     End Class
 End Namespace

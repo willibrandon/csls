@@ -40,7 +40,7 @@ public sealed partial class DapSessionTests
         JsonElement frame = await ReadTopSourceFrameAsync(client, threadId).ConfigureAwait(false);
         int frameId = frame.GetProperty("id").GetInt32();
         Assert.AreEqual(breakpointLine, frame.GetProperty("line").GetInt32());
-        (int argumentsReference, _) = await ReadFrameScopeReferencesAsync(client, frameId).ConfigureAwait(false);
+        (int argumentsReference, int localsReference) = await ReadFrameScopeReferencesAsync(client, frameId).ConfigureAwait(false);
         JsonElement[] arguments = await ReadVariablesAsync(client, argumentsReference).ConfigureAwait(false);
         Assert.AreSequenceEqual([receiver, "argument", "replacement", "unused"],
             arguments.Select(argument => argument.GetProperty("name").GetString()).ToArray());
@@ -86,6 +86,7 @@ public sealed partial class DapSessionTests
         JsonElement owner = await ReadEvaluationAsync(client, frameId, receiver + "._value", success: true,
             TestContext.CancellationToken).ConfigureAwait(false);
         Assert.AreEqual("\"receiver-value\"", owner.GetProperty("result").GetString());
+        await AssertHoistedGenericLocalsAsync(client, frameId, localsReference, language).ConfigureAwait(false);
         JsonElement replacement = await ReadSetVariableAsync(client, argumentsReference, "argument", "replacement",
             success: true, TestContext.CancellationToken).ConfigureAwait(false);
         Assert.AreEqual("\"replacement\"", replacement.GetProperty("value").GetString());
@@ -93,6 +94,37 @@ public sealed partial class DapSessionTests
             TestContext.CancellationToken).ConfigureAwait(false);
         Assert.AreEqual("\"replacement\"", assigned.GetProperty("result").GetString());
         await ContinueEntryToExitAsync(client, threadId, "replacement").ConfigureAwait(false);
+    }
+
+    private async Task AssertHoistedGenericLocalsAsync(DapTestClient client, int frameId, int localsReference, string language)
+    {
+        JsonElement[] locals = await ReadVariablesAsync(client, localsReference).ConfigureAwait(false);
+        JsonElement savedArgument = Assert.ContainsSingle(locals.Where(value => value.GetProperty("name").GetString() == "savedArgument"));
+        Assert.AreEqual("\"original\"", savedArgument.GetProperty("value").GetString());
+        Assert.AreEqual("string", savedArgument.GetProperty("type").GetString());
+        Assert.AreEqual("savedArgument", savedArgument.GetProperty("evaluateName").GetString());
+        JsonElement savedPair = Assert.ContainsSingle(locals.Where(value => value.GetProperty("name").GetString() == "savedPair"));
+        Assert.AreEqual("(string Item, int Count)", savedPair.GetProperty("type").GetString());
+        JsonElement[] pairItems = await ReadVariablesAsync(client, savedPair.GetProperty("variablesReference").GetInt32()).ConfigureAwait(false);
+        Assert.AreSequenceEqual(["Item", "Count", "Raw View"], pairItems.Select(item => item.GetProperty("name").GetString()).ToArray());
+        Assert.AreSequenceEqual(["\"original\"", "42"], pairItems.Take(2).Select(item => item.GetProperty("value").GetString()).ToArray());
+        JsonElement[] rawPair = await ReadVariablesAsync(client, pairItems[2].GetProperty("variablesReference").GetInt32()).ConfigureAwait(false);
+        Assert.AreSequenceEqual(["Item1", "Item2"], rawPair.Select(item => item.GetProperty("name").GetString()).ToArray());
+        Assert.AreSequenceEqual(["\"original\"", "42"], rawPair.Select(item => item.GetProperty("value").GetString()).ToArray());
+        JsonElement[] page = await ReadVariablesAsync(client, localsReference, start: 1, count: 1).ConfigureAwait(false);
+        Assert.AreEqual("savedPair", Assert.ContainsSingle(page).GetProperty("name").GetString());
+        JsonElement[] completions = await ReadCompletionsAsync(client, frameId, language == "VisualBasic" ? "SAVED" : "saved",
+            TestContext.CancellationToken).ConfigureAwait(false);
+        Assert.AreSequenceEqual(["savedArgument", "savedPair"], completions.Select(item => item.GetProperty("label").GetString()).ToArray());
+        JsonElement changed = await ReadSetVariableAsync(client, localsReference, "savedArgument", "replacement", success: true,
+            TestContext.CancellationToken).ConfigureAwait(false);
+        Assert.AreEqual("\"replacement\"", changed.GetProperty("value").GetString());
+        JsonElement readBack = await ReadEvaluationAsync(client, frameId, "savedArgument", success: true,
+            TestContext.CancellationToken).ConfigureAwait(false);
+        Assert.AreEqual("\"replacement\"", readBack.GetProperty("result").GetString());
+        JsonElement restored = await ReadSetExpressionAsync(client, frameId, "savedArgument", "savedPair.Item", success: true,
+            TestContext.CancellationToken).ConfigureAwait(false);
+        Assert.AreEqual("\"original\"", restored.GetProperty("value").GetString());
     }
 
     /// <summary>
@@ -167,9 +199,11 @@ public sealed partial class DapSessionTests
             elements.Select(element => element.GetProperty("value").GetString()).ToArray());
         Assert.IsEmpty(await ReadVariablesAsync(client, argumentsReference, start: 1, count: 1)
             .ConfigureAwait(false));
-        JsonElement completion = Assert.ContainsSingle(await ReadCompletionsAsync(
-            client, frameId, "ar", TestContext.CancellationToken).ConfigureAwait(false));
-        Assert.AreEqual("args", completion.GetProperty("label").GetString());
+        JsonElement[] completions = await ReadCompletionsAsync(client, frameId, "ar", TestContext.CancellationToken).ConfigureAwait(false);
+        Assert.AreSequenceEqual(["args", "argumentIndex"], completions.Select(item => item.GetProperty("label").GetString()).ToArray());
+        JsonElement index = await ReadEvaluationAsync(client, frameId, "argumentIndex", success: true,
+            TestContext.CancellationToken).ConfigureAwait(false);
+        Assert.AreEqual("0", index.GetProperty("result").GetString());
         JsonElement original = await ReadEvaluationAsync(client, frameId, "args[1]", success: true,
             TestContext.CancellationToken).ConfigureAwait(false);
         Assert.AreEqual("\"CSLS_DEBUGGER_ENTRY_VALUE\"", original.GetProperty("result").GetString());

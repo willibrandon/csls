@@ -118,6 +118,11 @@ if (args is ["--debugger-concurrent-async-step-fixture"])
     return await DebuggerAsyncStepFixture.RunConcurrentAsync().ConfigureAwait(false);
 }
 
+if (args is ["--debugger-valuetask-step-fixture", string valueTaskPipeName])
+{
+    return await DebuggerValueTaskStepFixture.RunAsync(valueTaskPipeName).ConfigureAwait(false);
+}
+
 if (args is ["--debugger-iterator-step-fixture"])
 {
     return DebuggerIteratorStepFixture.Run();

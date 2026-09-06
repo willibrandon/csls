@@ -14,6 +14,8 @@ internal sealed class DebugSymbolReader : IDisposable
     private const uint MethodDefinitionTokenKind = 0x06000000;
     private static readonly Guid s_asyncMethodSteppingInformation =
         new("54FD2AC5-E925-401A-9C2A-F94F171072F8");
+    private static readonly Guid s_stateMachineHoistedLocalScopes =
+        new("6DA9A61E-F8C7-4874-BE62-68BC5630DF71");
     private readonly PortablePdbReader? _portable;
     private readonly IReadOnlyList<PortablePdbReader> _portableDeltas = [];
     private readonly WindowsPdbReader? _windows;
@@ -311,6 +313,56 @@ internal sealed class DebugSymbolReader : IDisposable
         }
 
         return result;
+    }
+
+    /// <summary>
+    /// Reads the active hoisted-local indexes from the selected Portable PDB method generation.
+    /// </summary>
+    /// <param name="methodToken">The physical state-machine method token.</param>
+    /// <param name="ilOffset">The current instruction offset in that method.</param>
+    /// <returns>Zero-based hoisted-local slots whose half-open scopes contain the instruction.</returns>
+    internal IReadOnlySet<int> GetActiveHoistedLocalScopes(uint methodToken, uint ilOffset)
+    {
+        var active = new HashSet<int>();
+        if (!TryGetPortableMethod(methodToken, out PortablePdbReader? portable, out MethodDefinitionHandle method))
+        {
+            return active;
+        }
+
+        MetadataReader reader = portable.Metadata;
+        foreach (CustomDebugInformationHandle handle in reader.GetCustomDebugInformation(method))
+        {
+            CustomDebugInformation information = reader.GetCustomDebugInformation(handle);
+            if (reader.GetGuid(information.Kind) != s_stateMachineHoistedLocalScopes)
+            {
+                continue;
+            }
+
+            BlobReader blob = reader.GetBlobReader(information.Value);
+            if (blob.Length % 8 != 0 || blob.Length / 8 > 64 * 1024)
+            {
+                throw new BadImageFormatException("The hoisted-local scope record is truncated or exceeds 65536 entries.");
+            }
+
+            for (int index = 0; blob.RemainingBytes > 0; index++)
+            {
+                uint start = blob.ReadUInt32();
+                uint length = blob.ReadUInt32();
+                if (start > int.MaxValue || length > int.MaxValue || (ulong)start + length > int.MaxValue)
+                {
+                    throw new BadImageFormatException("The hoisted-local scope exceeds its method's IL range.");
+                }
+
+                if (ilOffset >= start && ilOffset - start < length)
+                {
+                    active.Add(index);
+                }
+            }
+
+            return active;
+        }
+
+        return active;
     }
 
     /// <summary>

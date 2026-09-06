@@ -7,23 +7,23 @@ using System.Reflection.PortableExecutable;
 namespace Csls.Debugger;
 
 /// <summary>
-/// Reads source parameters from exact state-machine storage shared by inspection and assignment.
+/// Reads source variables from exact state-machine storage shared by inspection and assignment.
 /// </summary>
 internal sealed partial class CorDebugDebuggee
 {
-    private List<DebugVariableInfo> EnumerateCapturedArguments(
-        ManagedFrameHandle frame, IReadOnlyList<ManagedCapturedArgument> arguments,
+    private List<DebugVariableInfo> EnumerateStateMachineVariables(
+        ManagedFrameHandle frame, IReadOnlyList<ManagedStateMachineVariable> arguments,
         DebugStopGeneration generation, int start, int count)
     {
         var result = new List<DebugVariableInfo>();
-        foreach (ManagedCapturedArgument argument in arguments.Skip(start).Take(count == 0 ? arguments.Count : count))
+        foreach (ManagedStateMachineVariable argument in arguments.Skip(start).Take(count == 0 ? arguments.Count : count))
         {
             (nint Value, ManagedTupleCustomTypeInfo? TupleCustomTypeInfo,
-                ManagedValueOrigin? Origin, ManagedBoundType? DeclaredType) resolved = ResolveCapturedArgument(frame, argument);
+                ManagedValueOrigin? Origin, ManagedBoundType? DeclaredType) resolved = ResolveStateMachineVariable(frame, argument);
             if (resolved.Value == 0)
             {
                 result.Add(new DebugVariableInfo(argument.Name, "<optimized out>",
-                    FormatCapturedParameterType(frame, resolved.DeclaredType, argument.TupleCustomTypeInfo), 0, null, null,
+                    FormatStateMachineVariableType(frame, resolved.DeclaredType, argument.TupleCustomTypeInfo), 0, null, null,
                     DebugVariablePresentationKind.Unavailable));
                 continue;
             }
@@ -39,7 +39,7 @@ internal sealed partial class CorDebugDebuggee
         return result;
     }
 
-    private string FormatCapturedParameterType(
+    private string FormatStateMachineVariableType(
         ManagedFrameHandle frame, ManagedBoundType? declaredType, ManagedTupleCustomTypeInfo? tupleCustomTypeInfo)
     {
         if (declaredType is null)
@@ -68,8 +68,8 @@ internal sealed partial class CorDebugDebuggee
     }
 
     private unsafe (nint Value, ManagedTupleCustomTypeInfo? TupleCustomTypeInfo,
-        ManagedValueOrigin? Origin, ManagedBoundType? DeclaredType) ResolveCapturedArgument(
-        ManagedFrameHandle frame, ManagedCapturedArgument argument)
+        ManagedValueOrigin? Origin, ManagedBoundType? DeclaredType) ResolveStateMachineVariable(
+        ManagedFrameHandle frame, ManagedStateMachineVariable argument)
     {
         nint receiver = GetFrameAssignmentTarget(frame.Pointer, ManagedScopeKind.Arguments, 0);
         nint dereferenced = 0;
