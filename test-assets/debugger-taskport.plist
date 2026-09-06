@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>allow-root</key>
+	<false/>
+	<key>authenticate-user</key>
+	<true/>
+	<key>class</key>
+	<string>user</string>
+	<key>comment</key>
+	<string>Used by task_for_pid(...).
+		Task_for_pid is called by programs requesting full control over another program
+		for things like debugging or performance analysis. This authorization only applies
+		if the requesting and target programs are run by the same user; it will never
+		authorize access to the program of another user.  WARNING: administrators are advised not to modify this right.</string>
+	<key>created</key>
+	<real>809841720.17433798</real>
+	<key>group</key>
+	<string>_developer</string>
+	<key>modified</key>
+	<real>809841720.17433798</real>
+	<key>session-owner</key>
+	<false/>
+	<key>shared</key>
+	<true/>
+	<key>timeout</key>
+	<integer>36000</integer>
+	<key>tries</key>
+	<integer>10000</integer>
+	<key>version</key>
+	<integer>0</integer>
+</dict>
+</plist>

@@ -18,9 +18,7 @@ internal static class MacDebuggerTestAuthorization
     {
         string backupPath = GetBackupPath();
         string original = await ReadAsync(cancellationToken).ConfigureAwait(false);
-        XDocument policy = Parse(original);
-        XElement authentication = GetValue(policy, "authenticate-user");
-        authentication.Name = "false";
+        string policy = CreatePolicy(original);
 
         // CreateNew preserves an earlier backup if preparation is accidentally invoked twice.
         var options = new FileStreamOptions
@@ -44,8 +42,8 @@ internal static class MacDebuggerTestAuthorization
             }
         }
 
-        await WriteAsync(policy.ToString(), cancellationToken).ConfigureAwait(false);
-        Verify(policy, Parse(await ReadAsync(cancellationToken).ConfigureAwait(false)));
+        await WriteAsync(policy, cancellationToken).ConfigureAwait(false);
+        VerifyPolicy(policy, await ReadAsync(cancellationToken).ConfigureAwait(false));
         await Console.Out.WriteLineAsync("Debugger authorization is enabled for the runner's developer group.")
             .ConfigureAwait(false);
     }
@@ -63,12 +61,27 @@ internal static class MacDebuggerTestAuthorization
         }
 
         string original = await File.ReadAllTextAsync(backupPath, cancellationToken).ConfigureAwait(false);
-        XDocument policy = Parse(original);
+        _ = Parse(original);
         await WriteAsync(original, cancellationToken).ConfigureAwait(false);
-        Verify(policy, Parse(await ReadAsync(cancellationToken).ConfigureAwait(false)));
+        VerifyPolicy(original, await ReadAsync(cancellationToken).ConfigureAwait(false));
         File.Delete(backupPath);
         await Console.Out.WriteLineAsync("The original debugger authorization policy is restored.").ConfigureAwait(false);
     }
+
+    /// <summary>
+    /// Creates the unattended policy by changing only interactive authentication in a validated original rule.
+    /// </summary>
+    internal static string CreatePolicy(string original)
+    {
+        XDocument policy = Parse(original);
+        GetValue(policy, "authenticate-user").Name = "false";
+        return policy.ToString();
+    }
+
+    /// <summary>
+    /// Verifies the effective authorization rule while allowing database-maintained timestamps to change.
+    /// </summary>
+    internal static void VerifyPolicy(string expected, string actual) => Verify(Parse(expected), Parse(actual));
 
     private static string GetBackupPath()
     {
@@ -114,7 +127,7 @@ internal static class MacDebuggerTestAuthorization
     {
         XElement? name = policy.Root?.Element("dict")?.Elements("key")
             .SingleOrDefault(element => element.Value == key);
-        return name?.NextNode as XElement ??
+        return name?.ElementsAfterSelf().FirstOrDefault() ??
             throw new InvalidOperationException($"The task-port policy has no value for '{key}'.");
     }
 
