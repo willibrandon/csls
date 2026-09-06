@@ -11,6 +11,15 @@
     <_CslsBundledWorkerPropertiesToRemove>$(_CslsBundledWorkerPropertiesToRemove);_CommandLineDefinedOutputPath</_CslsBundledWorkerPropertiesToRemove>
   </PropertyGroup>
 
+  <Target Name="_VerifyCslsNativePublish"
+          AfterTargets="Publish"
+          Condition="'$(PublishAot)' == 'true' and '$(DesignTimeBuild)' != 'true'">
+    <Error Condition="'$(NativeBinary)' == '' or !Exists('$(NativeBinary)')"
+           Text="Native AOT publishing did not produce a native binary for $(MSBuildProjectName). Restore and publish must use separate project evaluations." />
+    <Error Condition="Exists('$(PublishDir)$(AssemblyName).dll')"
+           Text="Native AOT publishing left a managed entry assembly in $(PublishDir): $(AssemblyName).dll" />
+  </Target>
+
   <Target Name="_PublishCslsBundledWorkers"
           AfterTargets="Publish"
           Condition="'@(CslsBundledWorker)' != '' and
@@ -22,9 +31,16 @@
       </_CslsBundledWorkerProject>
     </ItemGroup>
 
+    <!-- Publish must reevaluate the NuGet imports written by restore on the first build. -->
     <MSBuild Projects="@(_CslsBundledWorkerProject)"
-             Targets="Restore;Publish"
+             Targets="Restore"
              BuildInParallel="false"
+             Properties="CslsBundledWorkerBuildPhase=Restore"
+             RemoveProperties="$(_CslsBundledWorkerPropertiesToRemove)" />
+    <MSBuild Projects="@(_CslsBundledWorkerProject)"
+             Targets="Publish"
+             BuildInParallel="false"
+             Properties="CslsBundledWorkerBuildPhase=Publish"
              RemoveProperties="$(_CslsBundledWorkerPropertiesToRemove)" />
   </Target>
 

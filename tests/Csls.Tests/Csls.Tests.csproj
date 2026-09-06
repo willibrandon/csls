@@ -16,6 +16,8 @@
              Link="Support/MacDebuggerTestAuthorization.cs" />
     <Compile Include="../../scripts/Support/ProcessOutputCapture.cs"
              Link="Support/ProcessOutputCapture.cs" />
+    <Compile Include="../../scripts/Support/ToolPackageLayout.cs"
+             Link="Support/ToolPackageLayout.cs" />
     <Compile Include="../../src/Csls.Workspaces.MSBuild/WindowsJobObjectBasicAccountingInformation.cs"
              Link="WindowsJobObjectBasicAccountingInformation.cs" />
     <Compile Include="../../src/Csls.Workspaces.MSBuild/WindowsJobObjectBasicLimitInformation.cs"
