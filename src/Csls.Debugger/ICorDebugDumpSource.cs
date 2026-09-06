@@ -35,6 +35,13 @@ public interface ICorDebugDumpSource
     bool GetThreadContext(uint threadId, uint flags, Span<byte> context);
 
     /// <summary>
+    /// Enumerates local module images whose metadata can be checked against the captured PE identity.
+    /// </summary>
+    /// <param name="imagePath">The runtime's recorded module path or basename.</param>
+    /// <returns>Absolute local candidate paths, in discovery order.</returns>
+    IEnumerable<string> FindMetadataImages(string imagePath);
+
+    /// <summary>
     /// Resolves an exact Windows debugger-library request to a trusted absolute path.
     /// </summary>
     /// <param name="name">The requested library basename.</param>

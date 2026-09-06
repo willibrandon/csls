@@ -257,6 +257,7 @@ public sealed unsafe class CorDebugDumpProcess : IDisposable
             Release(ref _debugging);
             Release(ref _libraryProvider);
             Release(ref _dataTarget);
+            _callbacks.Dispose();
             GC.KeepAlive(_callbacks);
         }
     }

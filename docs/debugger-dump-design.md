@@ -43,6 +43,15 @@ embedded Portable PDBs share the live debugger's parameter and local-name reader
 The reader bounds symbol files and embedded expansion sizes, opens Unix inputs
 without waiting for FIFO writers, and preserves the caller's image ownership.
 
+CoreCLR requests additional module metadata through `ICorDebugMetaDataLocator`.
+The callback searches recorded local paths and installed runtime directories,
+checks the captured PE timestamp and image size, and retains a private copy for
+native metadata readers. Managed AnyCPU images use their recorded PE identity.
+Snapshots contain valid managed metadata and are checked again after copying.
+Each image is bounded to 512 MiB, metadata to 64 MiB, and retained copies to
+4,096 modules and 1 GiB. Cancellation is checked during discovery and copying.
+Virtual-process disposal releases native readers before deleting owned copies.
+
 Native library resolution validates the requested image's own build identity or
 the CoreCLR identity of its trusted installation, according to the runtime's
 library-provider index. Windows PE checks include architecture, timestamp, and

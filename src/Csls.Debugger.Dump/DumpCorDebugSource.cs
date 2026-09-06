@@ -36,6 +36,26 @@ internal sealed class DumpCorDebugSource : ICorDebugDumpSource
         _runtime.DataTarget.DataReader.GetThreadContext(threadId, flags, context);
 
     /// <inheritdoc />
+    public IEnumerable<string> FindMetadataImages(string imagePath)
+    {
+        string name = Path.GetFileName(imagePath);
+        if (string.IsNullOrWhiteSpace(name) || name.Length > 255 || name.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0)
+        {
+            yield break;
+        }
+
+        if (Path.IsPathFullyQualified(imagePath))
+        {
+            yield return imagePath;
+        }
+
+        foreach (string path in CandidatePaths(name))
+        {
+            yield return path;
+        }
+    }
+
+    /// <inheritdoc />
     public string ResolveWindowsLibrary(string name, bool runtimeIdentity, uint timestamp, uint imageSize)
     {
         if (!OperatingSystem.IsWindows() || Platform != OSPlatform.Windows || Architecture != RuntimeInformation.ProcessArchitecture)

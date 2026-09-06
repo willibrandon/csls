@@ -4,6 +4,7 @@
     <RootNamespace>Csls.Debugger.Tests</RootNamespace>
     <Description>Real protocol and process tests for the csls debugger.</Description>
     <MSTestAnalysisMode>All</MSTestAnalysisMode>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
 
   <ItemGroup>

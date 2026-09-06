@@ -8,12 +8,14 @@ namespace Csls.Debugger;
 /// Bridges immutable dump data and exact library resolution into the runtime's offline callbacks.
 /// </summary>
 [GeneratedComClass]
-internal sealed unsafe partial class CorDebugDumpCallbacks : ICorDebugDumpDataTarget, ICorDebugDumpLibraryProvider
+internal sealed unsafe partial class CorDebugDumpCallbacks : ICorDebugDumpDataTarget, ICorDebugDumpLibraryProvider,
+    ICorDebugDumpMetadataLocator, IDisposable
 {
     private const int InvalidArgument = unchecked((int)0x80070057);
     private const int Failure = unchecked((int)0x80004005);
     private const int Aborted = unchecked((int)0x80004004);
     private readonly ICorDebugDumpSource _source;
+    private readonly CorDebugDumpMetadataCache _metadata = new();
 
     /// <summary>
     /// Gets or sets the request owned by the serialized virtual-process operation.
@@ -30,6 +32,54 @@ internal sealed unsafe partial class CorDebugDumpCallbacks : ICorDebugDumpDataTa
     /// Gets the last managed callback failure for native activation diagnostics.
     /// </summary>
     internal Exception? LastFailure { get; private set; }
+
+    /// <inheritdoc />
+    public int GetMetaData(char* imagePath, uint timestamp, uint imageSize, uint capacity, uint* length, char* path)
+    {
+        if (length == null)
+        {
+            return InvalidArgument;
+        }
+
+        *length = 0;
+        if (imagePath == null || capacity > 32768 || path == null && capacity != 0)
+        {
+            return InvalidArgument;
+        }
+
+        if (Operation is { CanRead: false })
+        {
+            return Aborted;
+        }
+
+        try
+        {
+            string resolved = _metadata.Resolve(_source, ReadImagePath(imagePath), timestamp, imageSize, Operation);
+            uint required = checked((uint)resolved.Length + 1);
+            if (required > capacity)
+            {
+                *length = required;
+                return unchecked((int)0x8007007A);
+            }
+
+            resolved.AsSpan().CopyTo(new Span<char>(path, resolved.Length));
+            path[resolved.Length] = '\0';
+            *length = required;
+            return 0;
+        }
+        catch (OperationCanceledException)
+        {
+            return Aborted;
+        }
+        catch (Exception exception) when (IsRecoverable(exception))
+        {
+            LastFailure = exception;
+            return Failure;
+        }
+    }
+
+    /// <inheritdoc />
+    public void Dispose() => _metadata.Dispose();
 
     /// <inheritdoc />
     public int GetPlatform(int* platform)
@@ -173,6 +223,24 @@ internal sealed unsafe partial class CorDebugDumpCallbacks : ICorDebugDumpDataTa
         }
     }
 
+    private static string ReadImagePath(char* path)
+    {
+        for (int length = 0; length < 32768; length++)
+        {
+            if (path[length] == '\0')
+            {
+                if (length == 0)
+                {
+                    throw new InvalidDataException("The runtime requested an empty metadata path.");
+                }
+
+                return new string(path, 0, length);
+            }
+        }
+
+        throw new InvalidDataException("The runtime requested an oversized metadata path.");
+    }
+
     private static string ReadName(char* name)
     {
         for (int length = 0; length < 256; length++)
@@ -212,5 +280,6 @@ internal sealed unsafe partial class CorDebugDumpCallbacks : ICorDebugDumpDataTa
     }
 
     private static bool IsRecoverable(Exception exception) => exception is IOException or InvalidOperationException or
-        ArgumentException or NotSupportedException or OverflowException or UnauthorizedAccessException;
+        ArgumentException or NotSupportedException or OverflowException or UnauthorizedAccessException or
+        InvalidDataException or BadImageFormatException;
 }
