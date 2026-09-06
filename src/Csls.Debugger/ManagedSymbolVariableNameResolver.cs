@@ -27,14 +27,27 @@ internal static class ManagedSymbolVariableNameResolver
         }
 
         using var metadata = new ManagedMetadataImage(peReader.GetMetadataReader(), frame.MetadataDeltas);
-        var methodHandle = (MethodDefinitionHandle)MetadataTokens.EntityHandle(checked((int)frame.MethodToken));
+        return GetArguments(metadata, frame.MethodToken, frame.ExpressionLanguage);
+    }
+
+    /// <summary>
+    /// Resolves physical parameter slots from the selected module metadata and symbol language.
+    /// </summary>
+    /// <param name="metadata">The exact module metadata snapshot.</param>
+    /// <param name="methodToken">The captured or live method definition token.</param>
+    /// <param name="language">The method's symbol language.</param>
+    /// <returns>Argument names and tuple declarations keyed by runtime slot.</returns>
+    internal static IReadOnlyDictionary<int, ManagedSymbolVariable> GetArguments(
+        ManagedMetadataImage metadata, uint methodToken, DebugExpressionLanguage language)
+    {
+        var methodHandle = (MethodDefinitionHandle)MetadataTokens.EntityHandle(checked((int)methodToken));
         MethodDefinition method = metadata.GetMethodDefinition(methodHandle);
         bool hasThis = (method.Attributes & MethodAttributes.Static) == 0;
         Dictionary<int, ManagedSymbolVariable> result = [];
         if (hasThis)
         {
             result[0] = new ManagedSymbolVariable(
-                frame.ExpressionLanguage == DebugExpressionLanguage.VisualBasic ? "Me" : "this",
+                language == DebugExpressionLanguage.VisualBasic ? "Me" : "this",
                 TupleCustomTypeInfo: null);
         }
 

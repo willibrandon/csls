@@ -17,6 +17,7 @@
     <PackageReference Include="Microsoft.Testing.Extensions.HangDump" PrivateAssets="All" />
     <ProjectReference Include="../../src/Csls.DebugAdapter/Csls.DebugAdapter.csproj" />
     <ProjectReference Include="../../src/Csls.Debugger.Control/Csls.Debugger.Control.csproj" />
+    <ProjectReference Include="../../src/Csls.Debugger.Dump/Csls.Debugger.Dump.csproj" />
     <ProjectReference Include="../../src/Csls.Debugger.Terminal/Csls.Debugger.Terminal.csproj" />
     <ProjectReference Include="../../src/Csls.Debugger/Csls.Debugger.csproj" />
     <ProjectReference Include="../../src/Csls.App/Csls.App.csproj"
@@ -24,6 +25,8 @@
     <ProjectReference Include="../../src/Csls.Debugger.Worker/Csls.Debugger.Worker.csproj"
                       ReferenceOutputAssembly="false" />
     <ProjectReference Include="../../src/Csls.Debugger.Evaluator.Worker/Csls.Debugger.Evaluator.Worker.csproj"
+                      ReferenceOutputAssembly="false" />
+    <ProjectReference Include="../../src/Csls.Debugger.Dump.Worker/Csls.Debugger.Dump.Worker.csproj"
                       ReferenceOutputAssembly="false" />
     <ProjectReference Include="../../test-assets/Csls.Debugger.Fixtures.Embedded/Csls.Debugger.Fixtures.Embedded.csproj"
                       ReferenceOutputAssembly="false" />

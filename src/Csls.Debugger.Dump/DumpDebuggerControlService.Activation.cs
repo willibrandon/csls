@@ -82,15 +82,25 @@ public sealed partial class DumpDebuggerControlService
         }
 
         string? dacPath = ValidateDacPath(request.DacPath);
-        _dataTarget = DataTarget.LoadDump(
-            dumpPath,
-            new DataTargetOptions
+        var options = new DataTargetOptions
+        {
+            SymbolPaths = [],
+            TraceSymbolRequests = false,
+            VerifyDacOnWindows = true,
+            UseLockFreeMemoryMapReader = Environment.Is64BitProcess
+        };
+        if (OperatingSystem.IsWindows())
+        {
+            options = new DataTargetOptions
             {
-                SymbolPaths = [],
-                TraceSymbolRequests = false,
-                VerifyDacOnWindows = true,
-                UseLockFreeMemoryMapReader = Environment.Is64BitProcess
-            });
+                FileLocator = new DumpWindowsImageLocator(),
+                SymbolPaths = options.SymbolPaths,
+                TraceSymbolRequests = options.TraceSymbolRequests,
+                VerifyDacOnWindows = options.VerifyDacOnWindows,
+                UseLockFreeMemoryMapReader = options.UseLockFreeMemoryMapReader
+            };
+        }
+        _dataTarget = DataTarget.LoadDump(dumpPath, options);
         try
         {
             if (request.RuntimeIndex >= _dataTarget.ClrVersions.Length)
@@ -101,9 +111,10 @@ public sealed partial class DumpDebuggerControlService
             }
 
             ClrInfo runtimeInfo = _dataTarget.ClrVersions[request.RuntimeIndex];
-            _runtime = dacPath is null
-                ? runtimeInfo.CreateRuntime()
-                : runtimeInfo.CreateRuntime(dacPath, ignoreMismatch: false);
+            string resolvedDac = DumpDacResolver.Resolve(runtimeInfo, dacPath);
+            // Build identity is validated before loading; some dumps omit the display version entirely.
+            _runtime = runtimeInfo.CreateRuntime(resolvedDac, ignoreMismatch: runtimeInfo.Version.Major == 0);
+            _dacPath = resolvedDac;
             IReadOnlyList<DumpThread> threads = CreateThreads(_runtime);
             IReadOnlyList<DebugModuleInfo> modules = CreateModules(_runtime);
             _threads = threads;

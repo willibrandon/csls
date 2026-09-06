@@ -26,7 +26,7 @@ public sealed partial class McpDebuggerLifecycleTests
         Directory.CreateDirectory(testDirectory);
         string dumpPath = Path.Join(testDirectory, "managed-target.dmp");
         string finishPath = Path.Join(testDirectory, "finish.signal");
-        using Process target = StartDumpTarget(repositoryRoot, finishPath);
+        using Process target = StartDumpTarget(repositoryRoot, finishPath, captureFrameValues: true);
         try
         {
             await WaitForReadyAsync(target, TestContext.CancellationToken)
@@ -116,6 +116,62 @@ public sealed partial class McpDebuggerLifecycleTests
                 },
                 TestContext.CancellationToken).ConfigureAwait(false);
             Assert.IsGreaterThan(0, stack.GetProperty("totalFrames").GetInt32());
+            JsonElement frame = Assert.ContainsSingle(stack.GetProperty("stackFrames").EnumerateArray()
+                .Where(item => item.GetProperty("name").GetString()?.Contains(
+                    "DebuggerFixture.WaitForSignal", StringComparison.Ordinal) == true));
+            JsonElement scopes = await CallAsync(mcp.Client, "debug_scopes_get",
+                new Dictionary<string, object?>
+                {
+                    ["debugSession"] = debugSession,
+                    ["stopGeneration"] = 1L,
+                    ["frameId"] = frame.GetProperty("id").GetInt32()
+                }, TestContext.CancellationToken).ConfigureAwait(false);
+            Assert.AreEqual(1L, scopes.GetProperty("stopGeneration").GetInt64());
+            JsonElement scopeArray = scopes.GetProperty("scopes");
+            Assert.AreEqual(2, scopeArray.GetArrayLength());
+            Assert.AreEqual("Arguments", scopeArray[0].GetProperty("name").GetString());
+            Assert.AreEqual("Locals", scopeArray[1].GetProperty("name").GetString());
+            int argumentsReference = scopeArray[0].GetProperty("variablesReference").GetInt32();
+            int localsReference = scopeArray[1].GetProperty("variablesReference").GetInt32();
+            var variablesRequest = new Dictionary<string, object?>
+            {
+                ["debugSession"] = debugSession,
+                ["stopGeneration"] = 1L,
+                ["variablesReference"] = argumentsReference,
+                ["start"] = 2,
+                ["count"] = 1
+            };
+            JsonElement arguments = await CallAsync(mcp.Client, "debug_variables_get",
+                variablesRequest, TestContext.CancellationToken).ConfigureAwait(false);
+            Assert.AreEqual(1L, arguments.GetProperty("stopGeneration").GetInt64());
+            JsonElement argument = Assert.ContainsSingle(arguments.GetProperty("variables").EnumerateArray());
+            Assert.AreEqual("number", argument.GetProperty("name").GetString());
+            Assert.AreEqual("42", argument.GetProperty("value").GetString());
+            Assert.AreEqual("int", argument.GetProperty("type").GetString());
+            variablesRequest["variablesReference"] = localsReference;
+            variablesRequest["start"] = 0;
+            variablesRequest["count"] = 2;
+            JsonElement locals = await CallAsync(mcp.Client, "debug_variables_get",
+                variablesRequest, TestContext.CancellationToken).ConfigureAwait(false);
+            Assert.AreEqual(2, locals.GetProperty("variables").GetArrayLength());
+            Assert.AreEqual("localNumber", locals.GetProperty("variables")[0].GetProperty("name").GetString());
+            Assert.AreEqual("43", locals.GetProperty("variables")[0].GetProperty("value").GetString());
+            Assert.AreEqual("44", locals.GetProperty("variables")[1].GetProperty("value").GetString());
+            JsonElement resource = await ReadAsync(mcp.Client,
+                $"csls://debug/variables/{debugSession}/1/{localsReference}?start=1&count=1",
+                TestContext.CancellationToken).ConfigureAwait(false);
+            Assert.AreEqual(1L, resource.GetProperty("stopGeneration").GetInt64());
+            JsonElement resourceValue = Assert.ContainsSingle(resource.GetProperty("variables").EnumerateArray());
+            Assert.AreEqual(locals.GetProperty("variables")[1].GetRawText(), resourceValue.GetRawText());
+            variablesRequest["stopGeneration"] = 2L;
+            await AssertToolErrorAsync(mcp.Client, "debug_variables_get", variablesRequest,
+                "debugger_stale_generation", TestContext.CancellationToken).ConfigureAwait(false);
+            variablesRequest["stopGeneration"] = 1L;
+            await AssertToolErrorAsync(mcp.Client, "debug_variables_get_presented", variablesRequest,
+                "debugger_not_supported", TestContext.CancellationToken).ConfigureAwait(false);
+            JsonElement recovered = await CallAsync(mcp.Client, "debug_variables_get",
+                variablesRequest, TestContext.CancellationToken).ConfigureAwait(false);
+            Assert.AreEqual(locals.GetRawText(), recovered.GetRawText());
 
             JsonElement modules = await CallAsync(
                 mcp.Client,
@@ -203,7 +259,7 @@ public sealed partial class McpDebuggerLifecycleTests
             TestContext.CancellationToken).ConfigureAwait(false);
     }
 
-    private static Process StartDumpTarget(string repositoryRoot, string finishPath)
+    private static Process StartDumpTarget(string repositoryRoot, string finishPath, bool captureFrameValues = false)
     {
         var startInfo = new ProcessStartInfo
         {
@@ -215,7 +271,7 @@ public sealed partial class McpDebuggerLifecycleTests
             WorkingDirectory = repositoryRoot
         };
         startInfo.ArgumentList.Add(EditorToolResolver.ResolveTestProcessHost(repositoryRoot));
-        startInfo.ArgumentList.Add("--announce-and-spin-until-file");
+        startInfo.ArgumentList.Add(captureFrameValues ? "--debugger-fixture" : "--announce-and-spin-until-file");
         startInfo.ArgumentList.Add(finishPath);
         return Process.Start(startInfo)
             ?? throw new InvalidOperationException("The dump test target did not start.");

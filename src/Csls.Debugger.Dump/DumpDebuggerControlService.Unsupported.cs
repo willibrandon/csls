@@ -99,24 +99,6 @@ public sealed partial class DumpDebuggerControlService
         UnsupportedAsync<DebugSessionSnapshot>(request, "go to", cancellationToken);
 
     /// <inheritdoc />
-    public Task<IReadOnlyList<DebugScopeInfo>> GetScopesAsync(
-        DebugScopesRequest request,
-        CancellationToken cancellationToken) =>
-        UnsupportedAsync<IReadOnlyList<DebugScopeInfo>>(
-            request,
-            "managed local-variable recovery",
-            cancellationToken);
-
-    /// <inheritdoc />
-    public Task<IReadOnlyList<DebugVariableInfo>> GetVariablesAsync(
-        DebugVariablesRequest request,
-        CancellationToken cancellationToken) =>
-        UnsupportedAsync<IReadOnlyList<DebugVariableInfo>>(
-            request,
-            "managed variable expansion",
-            cancellationToken);
-
-    /// <inheritdoc />
     public Task<DebugEvaluateResult> EvaluateAsync(
         DebugEvaluateRequest request,
         CancellationToken cancellationToken) =>

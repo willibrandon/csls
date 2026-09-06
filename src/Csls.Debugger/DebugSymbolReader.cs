@@ -1,5 +1,6 @@
 using System.Reflection.Metadata;
 using System.Reflection.Metadata.Ecma335;
+using System.Reflection.PortableExecutable;
 using System.Runtime.InteropServices;
 
 namespace Csls.Debugger;
@@ -138,6 +139,29 @@ internal sealed class DebugSymbolReader : IDisposable
         => TryOpen(image, []);
 
     /// <summary>
+    /// Opens Portable PDBs using the identity of a selected captured module image.
+    /// </summary>
+    /// <param name="peReader">The captured module image containing its debug directory.</param>
+    /// <param name="modulePath">The recorded module path used to locate associated symbols.</param>
+    /// <returns>An owned reader, or null when matching symbols are unavailable.</returns>
+    internal static DebugSymbolReader? TryOpen(PEReader peReader, string modulePath)
+    {
+        using var owner = new DisposableOwner<PortablePdbReader>();
+        try
+        {
+            bool localPath = System.IO.Path.IsPathFullyQualified(modulePath) &&
+                !modulePath.StartsWith("\\\\", StringComparison.Ordinal) &&
+                !modulePath.StartsWith("//", StringComparison.Ordinal);
+            owner.Acquire(() => PortablePdbReader.TryOpen(peReader, modulePath, allowAssociatedSymbols: localPath));
+            return owner.Value is null ? null : new DebugSymbolReader(owner);
+        }
+        catch (Exception exception) when (IsReadFailure(exception))
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
     /// Opens runtime-supplied base symbols and their ordered Portable PDB deltas.
     /// </summary>
     /// <param name="image">The complete immutable base Portable PDB image.</param>
@@ -274,6 +298,36 @@ internal sealed class DebugSymbolReader : IDisposable
         }
 
         return result;
+    }
+
+    /// <summary>
+    /// Reads the method's document language independently of its sequence-point offsets.
+    /// </summary>
+    /// <param name="methodToken">The method-definition metadata token.</param>
+    /// <returns>The recorded document language, or an empty identity when unavailable.</returns>
+    internal Guid GetDocumentLanguage(uint methodToken)
+    {
+        if (_windows is not null)
+        {
+            IReadOnlyList<ManagedSequencePoint> points = _windows.GetSequencePoints(methodToken, includeHidden: false);
+            return points.Count == 0 ? Guid.Empty : points[0].LanguageId;
+        }
+
+        if (!TryGetPortableMethod(methodToken, out PortablePdbReader? portable, out MethodDefinitionHandle method))
+        {
+            return Guid.Empty;
+        }
+
+        MetadataReader metadata = portable.Metadata;
+        MethodDebugInformation information = metadata.GetMethodDebugInformation(method.ToDebugInformationHandle());
+        DocumentHandle document = information.Document;
+        if (document.IsNil)
+        {
+            document = information.GetSequencePoints().Select(static point => point.Document)
+                .FirstOrDefault(static handle => !handle.IsNil);
+        }
+
+        return document.IsNil ? Guid.Empty : metadata.GetGuid(metadata.GetDocument(document).Language);
     }
 
     /// <summary>

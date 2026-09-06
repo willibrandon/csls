@@ -9,6 +9,18 @@ namespace Csls.Debugger;
 internal static unsafe partial class DbgShimNativeMethods
 {
     /// <summary>
+    /// Creates the public CLR debugging service used to open virtual processes over captured memory.
+    /// </summary>
+    /// <param name="classId">The CLRDebugging class identifier.</param>
+    /// <param name="interfaceId">The ICLRDebugging interface identifier.</param>
+    /// <param name="instance">Receives an owned COM interface pointer.</param>
+    /// <returns>The activation HRESULT.</returns>
+    [LibraryImport("dbgshim", EntryPoint = "CLRCreateInstance")]
+    [DefaultDllImportSearchPaths(DllImportSearchPath.SafeDirectories)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvStdcall)])]
+    internal static partial int ClrCreateInstance(in Guid classId, in Guid interfaceId, out nint instance);
+
+    /// <summary>
     /// Creates a target process and optionally leaves it suspended for runtime activation.
     /// </summary>
     /// <param name="commandLine">The mutable command line interpreted by the operating system.</param>

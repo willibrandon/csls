@@ -25,6 +25,11 @@ if (args is ["--debugger-stack-overflow-fixture"])
     return DebuggerDeepStackFixture.RunOverflow();
 }
 
+if (args is ["--debugger-dump-arrays", string dumpArrayPath])
+{
+    return DebuggerDumpArrayFixture.Run(dumpArrayPath, "ready");
+}
+
 if (args is ["--debugger-fixture", string fixturePath])
 {
     return DebuggerFixture.WaitForSignal(

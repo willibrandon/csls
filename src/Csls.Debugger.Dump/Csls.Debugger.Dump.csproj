@@ -12,5 +12,6 @@
 
   <ItemGroup>
     <ProjectReference Include="../Csls.Debugger.Contracts/Csls.Debugger.Contracts.csproj" />
+    <ProjectReference Include="../Csls.Debugger/Csls.Debugger.csproj" />
   </ItemGroup>
 </Project>

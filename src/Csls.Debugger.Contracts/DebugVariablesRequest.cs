@@ -13,4 +13,10 @@ public sealed record DebugVariablesRequest(
     int Start,
     int Count,
     bool AllowTargetCodeExecution,
-    DebugVariableFilter Filter = DebugVariableFilter.All);
+    DebugVariableFilter Filter = DebugVariableFilter.All)
+{
+    /// <summary>
+    /// Gets the optional request-scoped captured-memory progress receiver for dump inspection.
+    /// </summary>
+    public IProgress<DebugDumpReadProgress>? DumpReadProgress { get; init; }
+}

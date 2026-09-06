@@ -36,6 +36,7 @@ namespace Csls.Debugger.Control;
 [GenerateShapeFor<DebugDisassembly>]
 [GenerateShapeFor<DebugDisassemblyRequest>]
 [GenerateShapeFor<DebugDumpOpenRequest>]
+[GenerateShapeFor<DebugDumpReadProgress>]
 [GenerateShapeFor<DebugInstructionInfo>]
 [GenerateShapeFor<DebugInstructionBreakpointInfo>]
 [GenerateShapeFor<DebugInstructionBreakpointRequest>]

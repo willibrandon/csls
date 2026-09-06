@@ -9,6 +9,7 @@ namespace Csls.Debugger;
 /// </summary>
 internal sealed class PortablePdbReader : IDisposable
 {
+    private const int MaximumPdbBytes = 256 * 1024 * 1024;
     private readonly MetadataReaderProvider _provider;
 
     private PortablePdbReader(
@@ -62,6 +63,22 @@ internal sealed class PortablePdbReader : IDisposable
 
         using FileStream moduleStream = OpenRead(modulePath);
         using var peReader = new PEReader(moduleStream);
+        return TryOpen(peReader, modulePath, symbolPath);
+    }
+
+    /// <summary>
+    /// Opens Portable PDBs matched against an already selected file or captured module image.
+    /// </summary>
+    /// <param name="peReader">The module image supplying the expected symbol identity.</param>
+    /// <param name="modulePath">The module path used only to locate adjacent symbols.</param>
+    /// <param name="symbolPath">An explicit associated PDB candidate, or null for defaults.</param>
+    /// <param name="allowAssociatedSymbols">Whether file-backed symbols may be opened.</param>
+    /// <returns>An owned reader of matching associated or embedded symbols, or null.</returns>
+    internal static PortablePdbReader? TryOpen(PEReader peReader, string modulePath, string? symbolPath = null,
+        bool allowAssociatedSymbols = true)
+    {
+        ArgumentNullException.ThrowIfNull(peReader);
+        ArgumentException.ThrowIfNullOrWhiteSpace(modulePath);
         using var providerOwner = new DisposableOwner<MetadataReaderProvider>();
         bool opened = false;
         string? associatedPath = null;
@@ -69,7 +86,7 @@ internal sealed class PortablePdbReader : IDisposable
         {
             opened = peReader.TryOpenAssociatedPortablePdb(
                 modulePath,
-                symbolPath is null ? OpenIfPresent : _ => OpenIfPresent(symbolPath),
+                path => allowAssociatedSymbols ? OpenIfPresent(symbolPath ?? path) : null,
                 out MetadataReaderProvider? provider,
                 out associatedPath);
             return provider;
@@ -168,7 +185,15 @@ internal sealed class PortablePdbReader : IDisposable
     {
         try
         {
-            return File.Exists(path) ? OpenRead(path) : null;
+            if (!File.Exists(path))
+            {
+                return null;
+            }
+
+            using var owner = new DisposableOwner<FileStream>();
+            owner.Acquire(() => OperatingSystem.IsWindows() ? OpenRead(path) : DebuggerInputFile.OpenRead(path));
+            FileStream stream = owner.Value ?? throw new InvalidOperationException("The symbol file has no stream.");
+            return stream.CanSeek && stream.Length <= MaximumPdbBytes ? owner.Detach() : null;
         }
         catch (Exception exception) when (
             exception is IOException or UnauthorizedAccessException)

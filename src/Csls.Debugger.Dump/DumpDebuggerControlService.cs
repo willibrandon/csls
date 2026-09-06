@@ -17,8 +17,11 @@ public sealed partial class DumpDebuggerControlService :
     private readonly SemaphoreSlim _operationGate = new(1, 1);
     private readonly Dictionary<int, IReadOnlyList<DumpStackFrame>> _framesByThread = [];
     private readonly Dictionary<int, DumpStackFrame> _framesById = [];
+    private readonly CorDebugDumpValues _values = new();
     private DataTarget? _dataTarget;
     private ClrRuntime? _runtime;
+    private CorDebugDumpProcess? _corDebug;
+    private string? _dacPath;
     private IReadOnlyList<DebugModuleInfo> _modules = [];
     private IReadOnlyList<DumpThread> _threads = [];
     private DebugSessionSnapshot _snapshot = new() { State = DebugSessionState.Created };
@@ -91,6 +94,10 @@ public sealed partial class DumpDebuggerControlService :
 
     private void DisposeTarget()
     {
+        _corDebug?.Dispose();
+        _corDebug = null;
+        _values.Clear();
+        _dacPath = null;
         _runtime?.Dispose();
         _runtime = null;
         _dataTarget?.Dispose();
