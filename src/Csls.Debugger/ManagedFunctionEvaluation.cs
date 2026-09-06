@@ -100,4 +100,23 @@ internal sealed class ManagedFunctionEvaluation
     /// Gets or sets whether the final user method call has been scheduled.
     /// </summary>
     internal bool MethodCallScheduled { get; set; }
+
+    /// <summary>
+    /// Gets the current evaluation stage without inspecting the running target or exposing argument values.
+    /// </summary>
+    internal string OperationDescription
+    {
+        get
+        {
+            string operation = PendingStringArgumentIndex >= 0
+                ? $"allocating string argument {PendingStringArgumentIndex + 1}"
+                : MaterializesString
+                    ? "allocating a string result"
+                    : ConstructsObject
+                        ? "invoking a constructor"
+                        : "invoking a method";
+            return $"{operation} on managed thread {ThreadId} " +
+                $"with {ThreadStates.Count} other managed threads suspended at evaluation start";
+        }
+    }
 }

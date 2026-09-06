@@ -74,6 +74,11 @@ public sealed partial class DapSessionTests
                 using JsonDocument response = await client.ReadMessageAsync(TestContext.CancellationToken).ConfigureAwait(false);
                 AssertResponse(response.RootElement, sequence, command, success: false);
                 Assert.Contains(cancelDuringAbort ? "cancelled" : "deadline", response.RootElement.GetProperty("message").GetString()!);
+                if (!cancelDuringAbort)
+                {
+                    Assert.Contains("invoking a method on managed thread", response.RootElement.GetProperty("message").GetString()!);
+                }
+
                 using JsonDocument invalidated = await client.ReadMessageAsync(TestContext.CancellationToken).ConfigureAwait(false);
                 AssertEvent(invalidated.RootElement, "invalidated");
                 Assert.AreSequenceEqual(["stacks", "variables"], invalidated.RootElement.GetProperty("body")

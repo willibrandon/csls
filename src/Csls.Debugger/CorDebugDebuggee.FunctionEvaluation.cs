@@ -32,6 +32,12 @@ internal sealed partial class CorDebugDebuggee
         _activeFunctionEvaluation?.Completion.Task;
 
     /// <summary>
+    /// Gets the actor-owned evaluation stage for deadline diagnostics without calling into the running target.
+    /// </summary>
+    internal string FunctionEvaluationDescription =>
+        _activeFunctionEvaluation?.OperationDescription ?? "publishing its completed result";
+
+    /// <summary>
     /// Starts one managed-method evaluation and resumes only its selected managed thread.
     /// </summary>
     /// <param name="frameId">The logical managed frame identifier for the visible stop.</param>

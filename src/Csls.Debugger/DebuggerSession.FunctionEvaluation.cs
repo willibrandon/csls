@@ -73,7 +73,7 @@ public sealed partial class DebuggerSession
             timedOut = true;
         }
 
-        await AbortAndSettleFunctionEvaluationAsync(debuggee, completion)
+        string evaluationDescription = await AbortAndSettleFunctionEvaluationAsync(debuggee, completion)
             .WaitAsync(CancellationToken.None)
             .ConfigureAwait(false);
         if (canceled || cancellationToken.IsCancellationRequested)
@@ -84,25 +84,27 @@ public sealed partial class DebuggerSession
         if (timedOut)
         {
             throw new TimeoutException(
-                "Managed function evaluation exceeded its five-second deadline and was " +
-                "canceled cooperatively.");
+                "Managed function evaluation exceeded its five-second deadline. " +
+                $"State at cancellation: {evaluationDescription}. The evaluation has settled.");
         }
 
         throw new InvalidOperationException(
             "Managed function evaluation ended without a result or failure.");
     }
 
-    private async Task AbortAndSettleFunctionEvaluationAsync(
+    private async Task<string> AbortAndSettleFunctionEvaluationAsync(
         CorDebugDebuggee debuggee,
         Task<ManagedFunctionEvaluationResult> completion)
     {
         Exception? abortFailure = null;
+        string evaluationDescription = "waiting to request cooperative cancellation";
         try
         {
             await _actor.InvokeAsync(
                 token =>
                 {
                     _ = token;
+                    evaluationDescription = debuggee.FunctionEvaluationDescription;
                     _ = debuggee.AbortFunctionEvaluation();
                     return ValueTask.CompletedTask;
                 },
@@ -129,7 +131,7 @@ public sealed partial class DebuggerSession
         catch (TimeoutException)
         {
             string reason = abortFailure is null
-                ? "Managed function evaluation did not settle after cooperative Abort."
+                ? $"Managed function evaluation did not settle after cooperative Abort while {evaluationDescription}."
                 : $"Managed function evaluation rejected cooperative Abort: " +
                     abortFailure.Message;
             reason += " The debugger will not invoke RudeAbort because it can corrupt target " +
@@ -146,6 +148,8 @@ public sealed partial class DebuggerSession
                 CancellationToken.None).ConfigureAwait(false);
             throw new InvalidOperationException(reason);
         }
+
+        return evaluationDescription;
     }
 
     private ValueTask<bool> HandleRuntimeEvaluationCoreAsync(

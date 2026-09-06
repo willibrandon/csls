@@ -50,6 +50,7 @@ public sealed partial class DebuggerRpcHotReloadTests
                 .ConfigureAwait(false);
             for (int index = 0; index < updates.Count; index++)
             {
+                ReportProgress($"Applying callable generation {index + 1} for {kind}.");
                 HotReloadDeclarationUpdate update = updates[index];
                 await File.WriteAllTextAsync(source, update.Source, Encoding.UTF8, TestContext.CancellationToken).ConfigureAwait(false);
                 DebugHotReloadResult applied = await client.ApplyHotReloadAsync(new DebugHotReloadRequest(
@@ -70,8 +71,10 @@ public sealed partial class DebuggerRpcHotReloadTests
                     "constructor" => "new Receiver(\"20\")",
                     _ => throw new AssertFailedException($"Unknown callable kind: {kind}")
                 };
+                ReportProgress($"Evaluating the {kind} in module generation {applied.ModuleGeneration} on thread {threadId}.");
                 DebugEvaluateResult result = await client.ExecuteExpressionAsync(new DebugExecuteExpressionRequest(
                     frame.Id, expression), TestContext.CancellationToken).ConfigureAwait(false);
+                ReportProgress($"The {kind} completed in module generation {applied.ModuleGeneration}.");
                 Assert.IsTrue(result.TargetCodeExecuted);
                 DebugSessionSnapshot evaluated = await client.GetSessionAsync(TestContext.CancellationToken).ConfigureAwait(false);
                 Assert.IsGreaterThan(applied.StopGeneration, evaluated.StopGeneration);
