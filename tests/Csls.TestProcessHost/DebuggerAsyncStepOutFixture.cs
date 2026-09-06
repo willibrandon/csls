@@ -71,7 +71,7 @@ internal static class DebuggerAsyncStepOutFixture
         }
         finally
         {
-            answer++; // task finally
+            ValidateReadResult(answer); // task finally
         }
     }
 
@@ -87,7 +87,15 @@ internal static class DebuggerAsyncStepOutFixture
         }
         finally
         {
-            answer++; // value task finally
+            ValidateReadResult(answer); // value task finally
+        }
+    }
+
+    private static void ValidateReadResult(int answer)
+    {
+        if (answer != 41)
+        {
+            throw new IOException("The asynchronous callee received an invalid pipe handshake.");
         }
     }
 

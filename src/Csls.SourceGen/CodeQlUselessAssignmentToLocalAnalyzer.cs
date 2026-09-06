@@ -2,6 +2,7 @@ using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Diagnostics;
+using Microsoft.CodeAnalysis.Operations;
 using System;
 using System.Collections.Immutable;
 using System.Linq;
@@ -50,6 +51,53 @@ public sealed class CodeQlUselessAssignmentToLocalAnalyzer : DiagnosticAnalyzer
         context.RegisterSyntaxNodeAction(
             AnalyzeForEach,
             SyntaxKind.ForEachStatement);
+        context.RegisterSyntaxNodeAction(
+            AnalyzeUpdate,
+            SyntaxKind.PostIncrementExpression,
+            SyntaxKind.PreIncrementExpression,
+            SyntaxKind.PostDecrementExpression,
+            SyntaxKind.PreDecrementExpression);
+    }
+
+    private static void AnalyzeUpdate(SyntaxNodeAnalysisContext context)
+    {
+        if (context.Node.Parent is not ExpressionStatementSyntax statement ||
+            context.SemanticModel.GetOperation(context.Node, context.CancellationToken) is not
+            IIncrementOrDecrementOperation { OperatorMethod: null, Target: ILocalReferenceOperation target } ||
+            target.Local.RefKind != RefKind.None)
+        {
+            return;
+        }
+
+        DataFlowAnalysis? flow = context.SemanticModel.AnalyzeDataFlow(statement);
+        if (flow is null || !flow.Succeeded || FlowsOut(flow, target.Local) ||
+            flow.Captured.Any(symbol => SymbolEqualityComparer.Default.Equals(symbol, target.Local)) ||
+            HasEscapingReference(context, target.Local))
+        {
+            return;
+        }
+
+        context.ReportDiagnostic(Diagnostic.Create(s_rule, context.Node.GetLocation(), target.Local.Name));
+    }
+
+    private static bool HasEscapingReference(SyntaxNodeAnalysisContext context, ILocalSymbol local)
+    {
+        SyntaxNode? scope = FindExecutableScope(context.Node);
+        return scope is not null && scope.DescendantNodes().OfType<IdentifierNameSyntax>().Any(identifier =>
+            HasReferenceParent(identifier) &&
+            SymbolEqualityComparer.Default.Equals(
+                context.SemanticModel.GetSymbolInfo(identifier, context.CancellationToken).Symbol, local));
+    }
+
+    private static bool HasReferenceParent(SyntaxNode expression)
+    {
+        while (expression.Parent is ParenthesizedExpressionSyntax parentheses)
+        {
+            expression = parentheses;
+        }
+
+        return expression.Parent is RefExpressionSyntax or ArgumentSyntax { RefKindKeyword.RawKind: not 0 } ||
+            expression.Parent is PrefixUnaryExpressionSyntax prefix && prefix.IsKind(SyntaxKind.AddressOfExpression);
     }
 
     private static void AnalyzeAssignment(SyntaxNodeAnalysisContext context)

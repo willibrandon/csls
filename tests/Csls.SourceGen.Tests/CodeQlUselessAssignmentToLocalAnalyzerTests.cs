@@ -1,6 +1,4 @@
 using Microsoft.CodeAnalysis;
-using Microsoft.CodeAnalysis.CSharp;
-using Microsoft.CodeAnalysis.Diagnostics;
 using System.Collections.Immutable;
 using System.Globalization;
 
@@ -12,6 +10,105 @@ namespace Csls.SourceGen.Tests;
 [TestClass]
 public sealed class CodeQlUselessAssignmentToLocalAnalyzerTests
 {
+    /// <summary>
+    /// Gets the cancellation context for the file-backed analyzer fixtures.
+    /// </summary>
+    public TestContext TestContext { get; set; } = null!;
+
+    /// <summary>
+    /// Rejects a local update in finally after the return value has already been evaluated.
+    /// </summary>
+    /// <param name="update">The unread local update.</param>
+    /// <param name="asynchronous">Whether the fixture suspends before returning.</param>
+    [TestMethod]
+    [DataRow("answer++", false)]
+    [DataRow("++answer", false)]
+    [DataRow("answer--", false)]
+    [DataRow("--answer", false)]
+    [DataRow("answer++", true)]
+    [DataRow("++answer", true)]
+    [DataRow("answer--", true)]
+    [DataRow("--answer", true)]
+    public async Task ReportsUnreadFinallyUpdate(string update, bool asynchronous)
+    {
+        ArgumentNullException.ThrowIfNull(update);
+        string returnType = asynchronous ? "async System.Threading.Tasks.Task<int>" : "int";
+        string suspension = asynchronous ? "await System.Threading.Tasks.Task.Yield();" : string.Empty;
+        string source = $$"""
+            internal static class Projection
+            {
+                internal static {{returnType}} Read(int input)
+                {
+                    int answer = input;
+                    {{suspension}}
+                    try { return answer + 1; }
+                    finally { {{update}}; }
+                }
+            }
+            """;
+
+        Diagnostic diagnostic = Assert.ContainsSingle(await AnalyzeAsync(source).ConfigureAwait(false));
+        Assert.AreEqual(CodeQlUselessAssignmentToLocalAnalyzer.DiagnosticId, diagnostic.Id);
+        Assert.AreEqual(DiagnosticSeverity.Error, diagnostic.Severity);
+        Assert.AreEqual(source.IndexOf(update, StringComparison.Ordinal), diagnostic.Location.SourceSpan.Start);
+        Assert.AreEqual(update.Length, diagnostic.Location.SourceSpan.Length);
+        Assert.Contains("answer", diagnostic.GetMessage(CultureInfo.InvariantCulture));
+    }
+
+    /// <summary>
+    /// Preserves updates observed by subsequent reads, closures, references, or expression consumers.
+    /// </summary>
+    /// <param name="body">The method body that observes an update.</param>
+    [TestMethod]
+    [DataRow("int answer = input; answer++; return answer;")]
+    [DataRow("int answer = input; --answer; return answer;")]
+    [DataRow("int answer = input; try { System.Console.WriteLine(answer); } finally { answer++; } return answer;")]
+    [DataRow("int answer = input; try { return answer; } finally { answer++; System.Console.WriteLine(answer); }")]
+    [DataRow("int answer = input; System.Func<int> read = () => answer; answer++; return read();")]
+    [DataRow("ref int answer = ref input; answer++; return input;")]
+    [DataRow("int answer = input; ref int alias = ref answer; answer++; return alias;")]
+    [DataRow("int answer = input; ref int alias = ref (answer); answer++; return alias;")]
+    [DataRow("int answer = input; return ++answer;")]
+    [DataRow("int answer = input; return answer++;")]
+    [DataRow("int answer = 0; for (; answer < input; answer++) { System.Console.WriteLine(answer); } return answer;")]
+    public async Task AcceptsObservedLocalUpdates(string body)
+    {
+        string source = $$"""
+            internal static class Projection
+            {
+                internal static int Read(int input) { {{body}} }
+            }
+            """;
+        Assert.IsEmpty(await AnalyzeAsync(source).ConfigureAwait(false));
+    }
+
+    /// <summary>
+    /// Preserves user-defined operators and updates to externally observable storage.
+    /// </summary>
+    [TestMethod]
+    public async Task AcceptsEffectfulUpdates()
+    {
+        const string Source = """
+            internal sealed class Counter
+            {
+                internal int Value { get; set; }
+                public static Counter operator ++(Counter value) { value.Value++; return value; }
+            }
+            internal static class Projection
+            {
+                internal static void Read(Counter input, int[] values, ref int reference)
+                {
+                    Counter counter = input;
+                    counter++;
+                    input.Value++;
+                    values[0]++;
+                    reference++;
+                }
+            }
+            """;
+        Assert.IsEmpty(await AnalyzeAsync(Source).ConfigureAwait(false));
+    }
+
     /// <summary>
     /// Verifies a final constant write to a local is rejected.
     /// </summary>
@@ -214,32 +311,6 @@ public sealed class CodeQlUselessAssignmentToLocalAnalyzerTests
         Assert.IsEmpty(diagnostics);
     }
 
-    private static async Task<ImmutableArray<Diagnostic>> AnalyzeAsync(string source)
-    {
-        var parseOptions = new CSharpParseOptions(
-            LanguageVersion.CSharp14,
-            DocumentationMode.Diagnose);
-        SyntaxTree syntaxTree = CSharpSyntaxTree.ParseText(
-            source,
-            parseOptions,
-            path: "Input.cs");
-        string trustedAssemblies = AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES") as string
-            ?? throw new InvalidOperationException(
-                "The runtime did not expose trusted platform assemblies.");
-        IEnumerable<MetadataReference> references = trustedAssemblies
-            .Split(Path.PathSeparator)
-            .Select(static path => MetadataReference.CreateFromFile(path));
-        var compilation = CSharpCompilation.Create(
-            "AnalyzerInput",
-            [syntaxTree],
-            references,
-            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
-        ImmutableArray<DiagnosticAnalyzer> analyzers =
-            [new CodeQlUselessAssignmentToLocalAnalyzer()];
-
-        return await compilation
-            .WithAnalyzers(analyzers)
-            .GetAnalyzerDiagnosticsAsync()
-            .ConfigureAwait(false);
-    }
+    private Task<ImmutableArray<Diagnostic>> AnalyzeAsync(string source) => CodeQlFileCompilation.AnalyzeAsync(
+        source, new CodeQlUselessAssignmentToLocalAnalyzer(), TestContext.CancellationToken);
 }
