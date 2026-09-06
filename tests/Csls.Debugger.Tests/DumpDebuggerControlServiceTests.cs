@@ -211,11 +211,10 @@ public sealed class DumpDebuggerControlServiceTests : DapTestContext
         Assert.AreEqual(DebugSessionState.Stopped, session.State);
         Assert.AreEqual(fixture.ProcessId, session.ProcessId);
         Assert.AreEqual("dump", session.StopReason);
-        int? stoppedThread = session.StoppedThreadId;
-        Assert.IsNotNull(stoppedThread);
+        int stoppedThread = Assert.IsInstanceOfType<int>(session.StoppedThreadId);
         IReadOnlyList<DebugThreadInfo> threads = await service.GetThreadsAsync(TestContext.CancellationToken).ConfigureAwait(false);
-        Assert.Contains(stoppedThread.Value, threads.Select(thread => thread.Id));
-        DebugStackTrace stack = await service.GetStackAsync(new DebugStackRequest(stoppedThread.Value, 0, 1),
+        Assert.Contains(stoppedThread, threads.Select(thread => thread.Id));
+        DebugStackTrace stack = await service.GetStackAsync(new DebugStackRequest(stoppedThread, 0, 1),
             TestContext.CancellationToken).ConfigureAwait(false);
         Assert.HasCount(1, stack.StackFrames);
         Assert.IsGreaterThan(0, stack.TotalFrames.GetValueOrDefault());

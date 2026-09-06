@@ -10,7 +10,7 @@ using System.Linq;
 namespace Csls.SourceGen;
 
 /// <summary>
-/// Prevents local writes that are never observed.
+/// Keeps local writes observable and captured-exception control flow explicit.
 /// </summary>
 [DiagnosticAnalyzer(LanguageNames.CSharp)]
 public sealed class CodeQlUselessAssignmentToLocalAnalyzer : DiagnosticAnalyzer
@@ -19,6 +19,20 @@ public sealed class CodeQlUselessAssignmentToLocalAnalyzer : DiagnosticAnalyzer
     /// Identifies a local assignment whose value does not flow to a read.
     /// </summary>
     public const string DiagnosticId = "CSLS0018";
+
+    /// <summary>
+    /// Identifies captured-exception rethrows that require an explicit null guard.
+    /// </summary>
+    public const string ConditionalRethrowDiagnosticId = "CSLS0029";
+
+    private static readonly DiagnosticDescriptor s_conditionalRethrowRule = new(
+        ConditionalRethrowDiagnosticId,
+        "Use an explicit captured-exception guard",
+        "Guard the captured exception explicitly before calling Throw",
+        "CodeQuality",
+        DiagnosticSeverity.Error,
+        isEnabledByDefault: true,
+        description: "Explicit guards preserve the returning path through exception-check helpers in CodeQL control-flow analysis.");
 
     private static readonly DiagnosticDescriptor s_rule = new(
         DiagnosticId,
@@ -30,7 +44,7 @@ public sealed class CodeQlUselessAssignmentToLocalAnalyzer : DiagnosticAnalyzer
         description: "Dead local writes must not introduce CodeQL cs/useless-assignment-to-local findings.");
 
     /// <inheritdoc />
-    public override ImmutableArray<DiagnosticDescriptor> SupportedDiagnostics => [s_rule];
+    public override ImmutableArray<DiagnosticDescriptor> SupportedDiagnostics => [s_rule, s_conditionalRethrowRule];
 
     /// <inheritdoc />
     public override void Initialize(AnalysisContext context)
@@ -42,6 +56,9 @@ public sealed class CodeQlUselessAssignmentToLocalAnalyzer : DiagnosticAnalyzer
 
         context.ConfigureGeneratedCodeAnalysis(GeneratedCodeAnalysisFlags.None);
         context.EnableConcurrentExecution();
+        context.RegisterSyntaxNodeAction(
+            AnalyzeConditionalRethrow,
+            SyntaxKind.ConditionalAccessExpression);
         context.RegisterSyntaxNodeAction(
             AnalyzeAssignment,
             SyntaxKind.SimpleAssignmentExpression);
@@ -57,6 +74,18 @@ public sealed class CodeQlUselessAssignmentToLocalAnalyzer : DiagnosticAnalyzer
             SyntaxKind.PreIncrementExpression,
             SyntaxKind.PostDecrementExpression,
             SyntaxKind.PreDecrementExpression);
+    }
+
+    private static void AnalyzeConditionalRethrow(SyntaxNodeAnalysisContext context)
+    {
+        var access = (ConditionalAccessExpressionSyntax)context.Node;
+        if (access.WhenNotNull is InvocationExpressionSyntax invocation &&
+            context.SemanticModel.GetSymbolInfo(invocation, context.CancellationToken).Symbol is IMethodSymbol
+            { Name: "Throw", IsStatic: false, Parameters.Length: 0 } method &&
+            method.ContainingType.ToDisplayString() == "System.Runtime.ExceptionServices.ExceptionDispatchInfo")
+        {
+            context.ReportDiagnostic(Diagnostic.Create(s_conditionalRethrowRule, access.GetLocation()));
+        }
     }
 
     private static void AnalyzeUpdate(SyntaxNodeAnalysisContext context)

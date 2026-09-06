@@ -24,6 +24,20 @@ public sealed class CodeQlDereferencedValueMayBeNullAnalyzer : DiagnosticAnalyze
     /// </summary>
     public const string NullablePropertyDiagnosticId = "CSLS0023";
 
+    /// <summary>
+    /// Identifies asserted nullable locals that require a typed capture before unwrapping.
+    /// </summary>
+    public const string NullableLocalDiagnosticId = "CSLS0028";
+
+    private static readonly DiagnosticDescriptor s_nullableLocalRule = new(
+        NullableLocalDiagnosticId,
+        "Capture asserted nullable locals as their underlying type",
+        "Capture asserted nullable local '{0}' with a typed assertion, pattern, or null-coalescing throw before unwrapping it",
+        "CodeQuality",
+        DiagnosticSeverity.Error,
+        isEnabledByDefault: true,
+        description: "Typed nullable captures preserve explicit value proof across subsequent work and suspension.");
+
     private static readonly DiagnosticDescriptor s_nullablePropertyRule = new(
         NullablePropertyDiagnosticId,
         "Capture nullable properties before unwrapping",
@@ -43,7 +57,8 @@ public sealed class CodeQlDereferencedValueMayBeNullAnalyzer : DiagnosticAnalyze
         description: "Nullable out variables must not introduce CodeQL cs/dereferenced-value-may-be-null findings.");
 
     /// <inheritdoc />
-    public override ImmutableArray<DiagnosticDescriptor> SupportedDiagnostics => [s_rule, s_nullablePropertyRule];
+    public override ImmutableArray<DiagnosticDescriptor> SupportedDiagnostics =>
+        [s_rule, s_nullablePropertyRule, s_nullableLocalRule];
 
     /// <inheritdoc />
     public override void Initialize(AnalysisContext context)
@@ -81,6 +96,49 @@ public sealed class CodeQlDereferencedValueMayBeNullAnalyzer : DiagnosticAnalyze
         {
             context.ReportDiagnostic(Diagnostic.Create(s_nullablePropertyRule, access.GetLocation(), property.Name));
         }
+        else if (context.SemanticModel.GetSymbolInfo(receiver, context.CancellationToken).Symbol is ILocalSymbol local &&
+            HasPrecedingNullAssertion(access, local, context))
+        {
+            context.ReportDiagnostic(Diagnostic.Create(s_nullableLocalRule, access.GetLocation(), local.Name));
+        }
+    }
+
+    private static bool HasPrecedingNullAssertion(MemberAccessExpressionSyntax access, ILocalSymbol local,
+        SyntaxNodeAnalysisContext context)
+    {
+        foreach (SyntaxNode ancestor in access.Ancestors())
+        {
+            if (ancestor is AnonymousFunctionExpressionSyntax or LocalFunctionStatementSyntax or
+                AccessorDeclarationSyntax or BaseMethodDeclarationSyntax)
+            {
+                break;
+            }
+
+            if (ancestor is not BlockSyntax block)
+            {
+                continue;
+            }
+
+            foreach (StatementSyntax statement in block.Statements)
+            {
+                if (statement.Span.End >= access.SpanStart)
+                {
+                    break;
+                }
+
+                if (statement is ExpressionStatementSyntax { Expression: InvocationExpressionSyntax invocation } &&
+                    invocation.ArgumentList.Arguments.Count > 0 &&
+                    context.SemanticModel.GetSymbolInfo(invocation, context.CancellationToken).Symbol is IMethodSymbol method &&
+                    method.Name == "IsNotNull" &&
+                    method.ContainingType.ToDisplayString() == "Microsoft.VisualStudio.TestTools.UnitTesting.Assert" &&
+                    SymbolEquals(invocation.ArgumentList.Arguments[0].Expression, local, context))
+                {
+                    return true;
+                }
+            }
+        }
+
+        return false;
     }
 
     private static void AnalyzeSuppression(SyntaxNodeAnalysisContext context)

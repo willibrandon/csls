@@ -46,7 +46,11 @@ internal sealed class CorDebugDumpReadOperation(CancellationToken cancellationTo
     /// </summary>
     internal void ThrowIfInterrupted()
     {
-        _observerFailure?.Throw();
+        if (_observerFailure is { } failure)
+        {
+            failure.Throw();
+        }
+
         cancellationToken.ThrowIfCancellationRequested();
     }
 
@@ -57,7 +61,10 @@ internal sealed class CorDebugDumpReadOperation(CancellationToken cancellationTo
     internal void ReportTerminal(DebugDumpReadState state)
     {
         Report(state);
-        _observerFailure?.Throw();
+        if (_observerFailure is { } failure)
+        {
+            failure.Throw();
+        }
     }
 
     /// <summary>
