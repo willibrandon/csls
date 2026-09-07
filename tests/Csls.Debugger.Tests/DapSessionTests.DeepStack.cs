@@ -42,6 +42,13 @@ public sealed partial class DapSessionTests
         {
             (int threadId, string sourcePath) = await StartDeepStackAsync(client, depth).ConfigureAwait(false);
             JsonElement top = await ReadDeepStackPageAsync(client, threadId, 0, 1).ConfigureAwait(false);
+            string evidence = await DapStoppedThreadDiagnostics.CaptureAsync(client, threadId, TestContext.CancellationToken)
+                .ConfigureAwait(false);
+            string[] responses = evidence.Split(Environment.NewLine, StringSplitOptions.RemoveEmptyEntries);
+            Assert.HasCount(2, responses);
+            Assert.AreEqual(4096 + " [truncated]".Length, responses[1].Length);
+            Assert.EndsWith(" [truncated]", responses[1]);
+            Assert.Contains("\"levels\":32", client.ProtocolTranscript);
             JsonElement maximum = await ReadDeepStackPageAsync(client, threadId, 0, 4096).ConfigureAwait(false);
             Assert.AreEqual(4096, maximum.GetProperty("stackFrames").GetArrayLength());
             await AssertDeepStackArgumentAsync(client, maximum.GetProperty("stackFrames")[4095], "remaining", 4095)

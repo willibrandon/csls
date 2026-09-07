@@ -394,8 +394,12 @@ public abstract class DapTestContext
             else if (eventName == "stopped")
             {
                 JsonElement body = root.GetProperty("body");
-                Assert.AreEqual("breakpoint", body.GetProperty("reason").GetString(), root.GetRawText());
                 threadId = body.GetProperty("threadId").GetInt32();
+                string? reason = body.GetProperty("reason").GetString();
+                string evidence = reason == "breakpoint" ? string.Empty :
+                    await DapStoppedThreadDiagnostics.CaptureAsync(client, threadId.Value, cancellationToken)
+                        .ConfigureAwait(false);
+                Assert.AreEqual("breakpoint", reason, $"{root.GetRawText()}{Environment.NewLine}{evidence}");
             }
         }
 
