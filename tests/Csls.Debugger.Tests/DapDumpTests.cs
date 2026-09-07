@@ -82,6 +82,7 @@ public sealed class DapDumpTests : DapTestContext
         Directory.Move(originalDirectory, relocatedDirectory);
         DapTestClient client = await CreateClientAsync().ConfigureAwait(false);
         await using ConfiguredAsyncDisposable clientCleanup = client.ConfigureAwait(false);
+        using DapTestCancellationCapture protocolCapture = CaptureProtocolOnCancellation(client);
         _ = await RequestAsync(client, "initialize", writer =>
         {
             writer.WriteStartObject();

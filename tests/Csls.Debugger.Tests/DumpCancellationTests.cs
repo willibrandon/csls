@@ -277,7 +277,9 @@ public sealed class DumpCancellationTests : DapTestContext
         }
 
         DebugStackFrameInfo selected = Assert.ContainsSingle(frames.Where(frame =>
-            frame.Name.Contains("DebuggerFixture.WaitForSignal", StringComparison.Ordinal)));
+            frame.Name.Contains("DebuggerFixture.WaitForSignal", StringComparison.Ordinal)),
+            $"Captured threads: {string.Join(", ", threads.Take(32).Select(static thread => $"{thread.Id}: {thread.Name}"))}. " +
+            $"Captured frames: {string.Join(", ", frames.Take(64).Select(static frame => $"{frame.Id}: {frame.Name}"))}.");
         IReadOnlyList<DebugScopeInfo> scopes = await service.GetScopesAsync(new DebugScopesRequest(selected.Id),
             TestContext.CancellationToken).ConfigureAwait(false);
         return Assert.ContainsSingle(scopes.Where(scope => scope.Name == "Locals"));
