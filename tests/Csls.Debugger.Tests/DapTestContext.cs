@@ -392,7 +392,7 @@ public abstract class DapTestContext
             else if (eventName == "stopped")
             {
                 JsonElement body = root.GetProperty("body");
-                Assert.AreEqual("breakpoint", body.GetProperty("reason").GetString());
+                Assert.AreEqual("breakpoint", body.GetProperty("reason").GetString(), root.GetRawText());
                 threadId = body.GetProperty("threadId").GetInt32();
             }
         }
