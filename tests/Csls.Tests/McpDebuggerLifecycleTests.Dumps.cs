@@ -281,8 +281,12 @@ public sealed partial class McpDebuggerLifecycleTests
             WorkingDirectory = repositoryRoot
         };
         startInfo.ArgumentList.Add(EditorToolResolver.ResolveTestProcessHost(repositoryRoot));
-        startInfo.ArgumentList.Add(captureFrameValues ? "--debugger-fixture" : "--announce-and-spin-until-file");
+        startInfo.ArgumentList.Add(captureFrameValues ? "--debugger-authorized-fixture" : "--announce-and-spin-until-file");
         startInfo.ArgumentList.Add(finishPath);
+        if (captureFrameValues)
+        {
+            startInfo.ArgumentList.Add(Environment.ProcessId.ToString(System.Globalization.CultureInfo.InvariantCulture));
+        }
         return Process.Start(startInfo)
             ?? throw new InvalidOperationException("The dump test target did not start.");
     }

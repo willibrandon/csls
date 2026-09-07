@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Globalization;
 using System.Runtime.CompilerServices;
 using System.Text.Json;
 
@@ -138,8 +139,9 @@ public sealed partial class DapSessionTests
             RedirectStandardOutput = true
         };
         startInfo.ArgumentList.Add(ResolveTestProcessHost());
-        startInfo.ArgumentList.Add("--debugger-fixture");
+        startInfo.ArgumentList.Add("--debugger-authorized-fixture");
         startInfo.ArgumentList.Add(waitPath);
+        startInfo.ArgumentList.Add(Environment.ProcessId.ToString(CultureInfo.InvariantCulture));
         return Process.Start(startInfo) ?? throw new AssertFailedException("The raw inspection target did not start.");
     }
 

@@ -45,6 +45,17 @@ if (args is ["--debugger-fixture", string fixturePath])
         (ArgumentNumber: 42, ArgumentText: "argument"));
 }
 
+if (args is ["--debugger-authorized-fixture", string authorizedFixturePath, string authorizedTestHost])
+{
+    DebuggerNativeAuthorization.AllowDebugger(int.Parse(authorizedTestHost, CultureInfo.InvariantCulture));
+    return DebuggerFixture.WaitForSignal(
+        authorizedFixturePath,
+        "ready",
+        42,
+        "answer",
+        (ArgumentNumber: 42, ArgumentText: "argument"));
+}
+
 if (args is ["--debugger-unsafe-stop-fixture" or "--debugger-dump-fixture", string unsafeStopPath])
 {
     return DebuggerFixture.WaitForSignal(

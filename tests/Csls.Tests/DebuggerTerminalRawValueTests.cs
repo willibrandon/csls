@@ -137,8 +137,9 @@ public sealed class DebuggerTerminalRawValueTests
             RedirectStandardOutput = true
         };
         startInfo.ArgumentList.Add(program);
-        startInfo.ArgumentList.Add("--debugger-fixture");
+        startInfo.ArgumentList.Add("--debugger-authorized-fixture");
         startInfo.ArgumentList.Add(signal);
+        startInfo.ArgumentList.Add(Environment.ProcessId.ToString(CultureInfo.InvariantCulture));
         return Process.Start(startInfo) ?? throw new AssertFailedException("The independent debugger target did not start.");
     }
 }
