@@ -44,14 +44,14 @@ public sealed class DumpVariableSymbolTests : DapTestContext
             case "matching":
                 break;
             case "module":
-                File.Copy(otherModule, fixture.ProgramPath, overwrite: true);
+                ReplaceFixtureFile(otherModule, fixture.ProgramPath);
                 break;
             case "missing":
                 File.Move(pdbPath, pdbPath + ".saved");
                 break;
             case "different":
-                File.Copy(otherModule, fixture.ProgramPath, overwrite: true);
-                File.Copy(Path.ChangeExtension(otherModule, ".pdb"), pdbPath, overwrite: true);
+                ReplaceFixtureFile(otherModule, fixture.ProgramPath);
+                ReplaceFixtureFile(Path.ChangeExtension(otherModule, ".pdb"), pdbPath);
                 break;
             case "truncated":
                 using (FileStream file = File.Open(pdbPath, FileMode.Open, FileAccess.Write, FileShare.None))
@@ -136,14 +136,46 @@ public sealed class DumpVariableSymbolTests : DapTestContext
             new DebugVariablesRequest(locals.VariablesReference, 1, 1, false), TestContext.CancellationToken).ConfigureAwait(false);
         Assert.AreEqual(localValues[1], Assert.ContainsSingle(page));
         _ = await service.TerminateAsync(TestContext.CancellationToken).ConfigureAwait(false);
-        using FileStream releasedDump = File.Open(fixture.DumpPath, FileMode.Open, FileAccess.ReadWrite, FileShare.None);
-        using FileStream releasedModule = File.Open(fixture.ProgramPath, FileMode.Open, FileAccess.ReadWrite, FileShare.None);
+        using FileStream releasedDump = OpenExclusiveFixtureFile(fixture.DumpPath);
+        using FileStream releasedModule = OpenExclusiveFixtureFile(fixture.ProgramPath);
         Assert.IsGreaterThan(0L, releasedDump.Length);
         Assert.IsGreaterThan(0L, releasedModule.Length);
         if (change != "missing")
         {
-            using FileStream releasedSymbols = File.Open(pdbPath, FileMode.Open, FileAccess.ReadWrite, FileShare.None);
+            using FileStream releasedSymbols = OpenExclusiveFixtureFile(pdbPath);
             Assert.IsGreaterThan(0L, releasedSymbols.Length);
+        }
+    }
+
+    private void ReplaceFixtureFile(string source, string destination)
+    {
+        try
+        {
+            File.Copy(source, destination, overwrite: true);
+        }
+        catch (IOException)
+        {
+            if (OperatingSystem.IsWindows())
+            {
+                DebuggerFileLockDiagnostics.Capture(destination, TestContext);
+            }
+            throw;
+        }
+    }
+
+    private FileStream OpenExclusiveFixtureFile(string path)
+    {
+        try
+        {
+            return File.Open(path, FileMode.Open, FileAccess.ReadWrite, FileShare.None);
+        }
+        catch (IOException)
+        {
+            if (OperatingSystem.IsWindows())
+            {
+                DebuggerFileLockDiagnostics.Capture(path, TestContext);
+            }
+            throw;
         }
     }
 
