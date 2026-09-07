@@ -8,6 +8,8 @@ VERSION
             csls_waitpid_track;
             csls_waitpid_try_get_exit_code;
             csls_waitpid_wait;
+            csls_waitpid_begin_inspection;
+            csls_waitpid_end_inspection;
             waitpid;
         local: *;
     };

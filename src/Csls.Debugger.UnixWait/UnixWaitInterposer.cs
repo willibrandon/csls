@@ -12,6 +12,8 @@ internal static partial class UnixWaitInterposer
     private const int StoppedSignal = 0x7f;
     private static readonly Lock s_waitGate = new();
     private static readonly ManualResetEventSlim s_waitStatusReady = new();
+    private static readonly ManualResetEventSlim s_inspectionFinished = new(initialState: true);
+    private static int s_inspectionThreadId;
     private static int s_processId;
     private static int s_exitCode;
     private static int s_hasExitCode;
@@ -25,6 +27,53 @@ internal static partial class UnixWaitInterposer
         CallConvs = [typeof(CallConvCdecl)])]
     internal static void Initialize()
     {
+    }
+
+    /// <summary>
+    /// Excludes a thread's tracing notifications from native process-exit consumers.
+    /// </summary>
+    /// <param name="threadId">The positive native thread identifier.</param>
+    /// <returns>Zero on acquisition or a native argument or ownership error.</returns>
+    [UnmanagedCallersOnly(EntryPoint = "csls_waitpid_begin_inspection", CallConvs = [typeof(CallConvCdecl)])]
+    internal static int BeginInspection(int threadId)
+    {
+        lock (s_waitGate)
+        {
+            if (threadId <= 0)
+            {
+                return 22;
+            }
+
+            if (s_inspectionThreadId != 0)
+            {
+                return 16;
+            }
+
+            s_inspectionFinished.Reset();
+            Volatile.Write(ref s_inspectionThreadId, threadId);
+            return 0;
+        }
+    }
+
+    /// <summary>
+    /// Restores native consumer access after the owning inspector has detached.
+    /// </summary>
+    /// <param name="threadId">The exact thread whose inspection is ending.</param>
+    /// <returns>Zero on release or a native ownership error.</returns>
+    [UnmanagedCallersOnly(EntryPoint = "csls_waitpid_end_inspection", CallConvs = [typeof(CallConvCdecl)])]
+    internal static int EndInspection(int threadId)
+    {
+        lock (s_waitGate)
+        {
+            if (threadId <= 0 || s_inspectionThreadId != threadId)
+            {
+                return 22;
+            }
+
+            Volatile.Write(ref s_inspectionThreadId, 0);
+            s_inspectionFinished.Set();
+            return 0;
+        }
     }
 
     /// <summary>
@@ -109,6 +158,29 @@ internal static partial class UnixWaitInterposer
 
     private static unsafe int WaitProcessView(int processId, int* status, int options, bool nonCancelable)
     {
+        if ((options & NoHang) != 0)
+        {
+            // Acquisition cannot race an already executing native exit poll.
+            lock (s_waitGate)
+            {
+                return IsInspectionSelection(processId) ? 0 : ReadProcessView(processId, status, options, nonCancelable);
+            }
+        }
+
+        while (IsInspectionSelection(processId))
+        {
+            s_inspectionFinished.Wait();
+        }
+
+        return ReadProcessView(processId, status, options, nonCancelable);
+    }
+
+    private static bool IsInspectionSelection(int processId) =>
+        Volatile.Read(ref s_inspectionThreadId) is > 0 and var threadId &&
+            (processId <= 0 || processId == threadId);
+
+    private static unsafe int ReadProcessView(int processId, int* status, int options, bool nonCancelable)
+    {
         if (processId != Volatile.Read(ref s_processId))
         {
             return WaitProcessCore(processId, status, options, nonCancelable);
@@ -171,6 +243,7 @@ internal static partial class UnixWaitInterposer
         }
 
         Marshal.SetLastPInvokeError(error);
+        Marshal.SetLastSystemError(error);
         return result;
     }
 

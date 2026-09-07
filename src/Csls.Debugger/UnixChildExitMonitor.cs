@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using System.Runtime.InteropServices;
+using System.Runtime.Versioning;
 
 namespace Csls.Debugger;
 
@@ -12,10 +13,18 @@ internal sealed partial class UnixChildExitMonitor
     private const int NoChildProcessError = 10;
     private const int NoHang = 1;
     private readonly Task<int?> _exitCode;
+    private readonly LinuxChildProcessObserver? _linuxObserver;
 
     private UnixChildExitMonitor(int processId)
     {
         UnixWaitStatusInterposer.Track(processId);
+        if (OperatingSystem.IsLinux())
+        {
+            _linuxObserver = new LinuxChildProcessObserver(processId);
+            _exitCode = _linuxObserver.ExitCode;
+            return;
+        }
+
         using var ownershipReady = new ManualResetEventSlim();
         _exitCode = Task.Factory.StartNew(
             () => WaitForExit(processId, ownershipReady),
@@ -26,7 +35,7 @@ internal sealed partial class UnixChildExitMonitor
     }
 
     /// <summary>
-    /// Starts a dedicated blocking wait before the CoreCLR transport poller can reap the child.
+    /// Establishes native child-wait ownership before the CoreCLR transport poller can reap the child.
     /// </summary>
     /// <param name="processId">The direct child process identifier returned by dbgshim.</param>
     /// <returns>The sole child-reaping owner.</returns>
@@ -48,6 +57,17 @@ internal sealed partial class UnixChildExitMonitor
     /// <returns>The process exit code, signal status, or null if another native waiter won ownership.</returns>
     internal Task<int?> WaitAsync(CancellationToken cancellationToken) =>
         _exitCode.WaitAsync(cancellationToken);
+
+    /// <summary>
+    /// Serializes a Linux thread's native context read with this child's exit wait.
+    /// </summary>
+    /// <param name="threadId">The selected native thread.</param>
+    /// <param name="cancellationToken">Cancels queued or stopped inspection.</param>
+    /// <returns>The native general-register image after inspection releases its trace stop.</returns>
+    [SupportedOSPlatform("linux")]
+    internal byte[] ReadRegisters(int threadId, CancellationToken cancellationToken) =>
+        (_linuxObserver ?? throw new InvalidOperationException("The child has no Linux wait owner."))
+            .ReadRegisters(threadId, cancellationToken);
 
     private static int? WaitForExit(int processId, ManualResetEventSlim ownershipReady)
     {

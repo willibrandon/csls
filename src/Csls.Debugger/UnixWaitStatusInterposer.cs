@@ -31,6 +31,51 @@ internal static partial class UnixWaitStatusInterposer
     internal static bool TryGetExitCode(int processId, out int exitCode) =>
         TryGetExitCodeCore(processId, out exitCode) != 0;
 
+    /// <summary>
+    /// Reserves a native thread's stop notifications before beginning register inspection.
+    /// </summary>
+    /// <param name="threadId">The thread whose native poll view must remain non-reaping.</param>
+    internal static void BeginThreadInspection(int threadId)
+    {
+        int result = BeginThreadInspectionCore(threadId);
+        if (result != 0)
+        {
+            throw new InvalidOperationException($"Native thread inspection could not reserve thread {threadId}: error {result}.");
+        }
+    }
+
+    /// <summary>
+    /// Releases the native poll exclusion after inspection has detached from its thread.
+    /// </summary>
+    /// <param name="threadId">The thread owned by the completed inspection.</param>
+    internal static void EndThreadInspection(int threadId)
+    {
+        int result = EndThreadInspectionCore(threadId);
+        if (result != 0)
+        {
+            throw new InvalidOperationException($"Native thread inspection lost ownership of thread {threadId}: error {result}.");
+        }
+    }
+
+    /// <summary>
+    /// Waits for a native child change from the debugger's sole reaping owner.
+    /// </summary>
+    /// <param name="processId">The selected child or traced thread.</param>
+    /// <param name="status">Receives the exact native wait status.</param>
+    /// <param name="options">The native wait options.</param>
+    /// <returns>The native wait result with errno captured on failure.</returns>
+    [LibraryImport("Csls.Debugger.UnixWait", EntryPoint = "csls_waitpid_wait", SetLastError = true)]
+    [DefaultDllImportSearchPaths(DllImportSearchPath.SafeDirectories)]
+    internal static partial int WaitProcess(int processId, out int status, int options);
+
+    [LibraryImport("Csls.Debugger.UnixWait", EntryPoint = "csls_waitpid_begin_inspection")]
+    [DefaultDllImportSearchPaths(DllImportSearchPath.SafeDirectories)]
+    private static partial int BeginThreadInspectionCore(int threadId);
+
+    [LibraryImport("Csls.Debugger.UnixWait", EntryPoint = "csls_waitpid_end_inspection")]
+    [DefaultDllImportSearchPaths(DllImportSearchPath.SafeDirectories)]
+    private static partial int EndThreadInspectionCore(int threadId);
+
     [LibraryImport("Csls.Debugger.UnixWait", EntryPoint = "csls_waitpid_track")]
     [DefaultDllImportSearchPaths(DllImportSearchPath.SafeDirectories)]
     private static partial void TrackCore(int processId);

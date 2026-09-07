@@ -37,14 +37,16 @@ internal sealed class ManagedStackWalker : IDisposable
     /// </summary>
     /// <param name="process">The borrowed ICorDebugProcess pointer.</param>
     /// <param name="threadId">The runtime thread identifier.</param>
+    /// <param name="exitMonitor">The launched child's native wait owner, or null for attachment.</param>
     /// <param name="cancellationToken">Cancels between native thread and context operations.</param>
     /// <returns>The owned walk, which must be disposed on the actor.</returns>
-    internal static ManagedStackWalker Open(nint process, int threadId, CancellationToken cancellationToken)
+    internal static ManagedStackWalker Open(nint process, int threadId, UnixChildExitMonitor? exitMonitor,
+        CancellationToken cancellationToken)
     {
         var walk = new ManagedStackWalker();
         try
         {
-            walk.Initialize(process, threadId, cancellationToken);
+            walk.Initialize(process, threadId, exitMonitor, cancellationToken);
             return walk;
         }
         catch
@@ -125,7 +127,8 @@ internal sealed class ManagedStackWalker : IDisposable
         Release(ref _thread);
     }
 
-    private unsafe void Initialize(nint process, int threadId, CancellationToken cancellationToken)
+    private unsafe void Initialize(nint process, int threadId, UnixChildExitMonitor? exitMonitor,
+        CancellationToken cancellationToken)
     {
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(threadId);
         cancellationToken.ThrowIfCancellationRequested();
@@ -155,15 +158,11 @@ internal sealed class ManagedStackWalker : IDisposable
         }
 
         cancellationToken.ThrowIfCancellationRequested();
-        if (OperatingSystem.IsMacOS() && RuntimeInformation.ProcessArchitecture == Architecture.Arm64 &&
+        if ((OperatingSystem.IsMacOS() || OperatingSystem.IsLinux()) &&
+            RuntimeInformation.ProcessArchitecture == Architecture.Arm64 &&
             !HasManagedArm64Context(process, threadId))
         {
-            uint processId = 0;
-            uint* processIdAddress = &processId;
-            CorDebugHResult.ThrowIfFailed(new ICorDebugProcessAbi(process).GetID((nint)processIdAddress),
-                "ICorDebugProcess.GetID");
-            byte[] context = MacArm64ThreadContext.Read(checked((int)Volatile.Read(ref *processIdAddress)), threadId,
-                cancellationToken);
+            byte[] context = ReadNativeArm64Context(process, threadId, exitMonitor, cancellationToken);
             fixed (byte* contextAddress = context)
             {
                 const int nonMatchingContext = unchecked((int)0x80131327);
@@ -178,6 +177,30 @@ internal sealed class ManagedStackWalker : IDisposable
         }
 
         cancellationToken.ThrowIfCancellationRequested();
+    }
+
+    private static unsafe byte[] ReadNativeArm64Context(nint process, int threadId,
+        UnixChildExitMonitor? exitMonitor, CancellationToken cancellationToken)
+    {
+        if (OperatingSystem.IsLinux())
+        {
+            byte[] registers = exitMonitor is null
+                ? LinuxThreadContext.ReadRegisters(threadId, cancellationToken)
+                : exitMonitor.ReadRegisters(threadId, cancellationToken);
+            return LinuxThreadContext.CreateArm64Context(registers);
+        }
+
+        if (OperatingSystem.IsMacOS())
+        {
+            uint processId = 0;
+            uint* processIdAddress = &processId;
+            CorDebugHResult.ThrowIfFailed(new ICorDebugProcessAbi(process).GetID((nint)processIdAddress),
+                "ICorDebugProcess.GetID");
+            return MacArm64ThreadContext.Read(checked((int)Volatile.Read(ref *processIdAddress)), threadId,
+                cancellationToken);
+        }
+
+        throw new PlatformNotSupportedException("Native ARM64 context capture requires a Unix host.");
     }
 
     private static unsafe bool HasManagedArm64Context(nint process, int threadId)
