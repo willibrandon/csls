@@ -144,6 +144,11 @@ public sealed class DapDumpTests : DapTestContext
         }
 
         JsonElement localValues = await ReadDumpVariablesAsync(client, locals, 0, 2).ConfigureAwait(false);
+        foreach (JsonElement value in localValues.EnumerateArray())
+        {
+            Assert.Contains("readOnly", value.GetProperty("presentationHint").GetProperty("attributes")
+                .EnumerateArray().Select(attribute => attribute.GetString()));
+        }
         Assert.AreEqual("localNumber", localValues[0].GetProperty("name").GetString());
         if (filtered)
         {

@@ -184,7 +184,7 @@ internal sealed partial class DapSession
                             writer.WriteString("evaluateName", variable.EvaluateName);
                         }
 
-                        if (variable.PresentationKind != DebugVariablePresentationKind.Normal)
+                        if (_dumpCapabilities || variable.PresentationKind != DebugVariablePresentationKind.Normal)
                         {
                             writer.WriteStartObject("presentationHint");
                             if (variable.PresentationKind is DebugVariablePresentationKind.Virtual or
@@ -194,7 +194,7 @@ internal sealed partial class DapSession
                                 writer.WriteString("kind", "virtual");
                             }
 
-                            if (variable.PresentationKind is DebugVariablePresentationKind.ResultsView or
+                            if (_dumpCapabilities || variable.PresentationKind is DebugVariablePresentationKind.ResultsView or
                                 DebugVariablePresentationKind.ResultsSnapshot or
                                 DebugVariablePresentationKind.ReadOnlyString or
                                 DebugVariablePresentationKind.Unavailable)
