@@ -24,7 +24,7 @@ public sealed class DumpDebuggerControlServiceTests : DapTestContext
     public async Task CapturedFrameRecoversPhysicalArgumentsAndLocals(bool includeHeap)
     {
         DebuggerDumpFixture fixture = await DebuggerDumpFixture.CreateAsync(ResolveTestProcessHost(),
-            TestContext.CancellationToken, captureFrameValues: true, includeHeap).ConfigureAwait(false);
+            TestContext.CancellationToken, captureFrameValues: true, includeHeap, diagnosticContext: TestContext).ConfigureAwait(false);
         await using ConfiguredAsyncDisposable fixtureCleanup = fixture.ConfigureAwait(false);
         var service = new DumpDebuggerControlService();
         await using ConfiguredAsyncDisposable serviceCleanup = service.ConfigureAwait(false);
@@ -45,11 +45,15 @@ public sealed class DumpDebuggerControlServiceTests : DapTestContext
         DebugStackFrameInfo waiting = Assert.ContainsSingle(frames.Where(frame =>
             frame.Name.Contains("DebuggerBlockingWait.Wait", StringComparison.Ordinal)),
             "Readiness must follow entry into the unreleased wait before capturing frame values.");
+        DebugStackFrameInfo readiness = Assert.ContainsSingle(frames.Where(frame =>
+            frame.Name.Contains("DebuggerBlockingWait.HoldReadinessThread", StringComparison.Ordinal)),
+            "The readiness thread must remain alive throughout dump capture.");
         DebugStackTrace initialStack = await service.GetStackAsync(new DebugStackRequest(initialThreadId, 0, 0),
             TestContext.CancellationToken).ConfigureAwait(false);
         Assert.Contains(selected, initialStack.StackFrames,
             $"Selected thread {initialThreadId}; threads: {string.Join(", ", threads)}; initial stack: {string.Join(", ", initialStack.StackFrames)}");
         Assert.Contains(waiting, initialStack.StackFrames);
+        Assert.DoesNotContain(readiness, initialStack.StackFrames);
         IReadOnlyList<DebugScopeInfo> scopes = await service.GetScopesAsync(new DebugScopesRequest(selected.Id),
             TestContext.CancellationToken).ConfigureAwait(false);
         DebugScopeInfo arguments = Assert.ContainsSingle(scopes.Where(scope => scope.Name == "Arguments"));

@@ -1,3 +1,5 @@
+using System.Runtime.CompilerServices;
+
 namespace Csls.TestProcessHost;
 
 /// <summary>
@@ -19,8 +21,7 @@ internal static class DebuggerBlockingWait
             // Thread.Start can itself wait; only observe the thread after startup has returned.
             SpinWait.SpinUntil(() => Volatile.Read(ref enteringWait) != 0);
             SpinWait.SpinUntil(() => (inspectedThread.ThreadState & ThreadState.WaitSleepJoin) != 0);
-            Console.Write(announcement);
-            Console.Out.Flush();
+            HoldReadinessThread(gate, announcement);
         })
         {
             IsBackground = true
@@ -28,6 +29,15 @@ internal static class DebuggerBlockingWait
         observer.Start();
         Volatile.Write(ref enteringWait, 1);
         // No thread releases this gate. Readiness cannot race a return into managed fixture code.
+        _ = gate.WaitOne();
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static void HoldReadinessThread(WaitHandle gate, string announcement)
+    {
+        Console.Write(announcement);
+        Console.Out.Flush();
+        // The collector enumerates threads after readiness; this thread must not exit during that enumeration.
         _ = gate.WaitOne();
     }
 }
