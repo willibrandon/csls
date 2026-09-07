@@ -67,11 +67,13 @@ public sealed class DumpMetadataCallbackTests : DapTestContext
             TestContext.CancellationToken, captureFrameValues: true, isolateModule: true).ConfigureAwait(false);
         await using ConfiguredAsyncDisposable fixtureCleanup = fixture.ConfigureAwait(false);
         using var target = DataTarget.LoadDump(fixture.DumpPath, new DataTargetOptions { SymbolPaths = [] });
-        var source = new DumpCorDebugSource(Assert.ContainsSingle(target.ClrVersions), null,
+        ClrInfo info = Assert.ContainsSingle(target.ClrVersions);
+        using ClrRuntime runtime = info.CreateRuntime(DumpDacResolver.Resolve(info, null), ignoreMismatch: info.Version.Major == 0);
+        var source = new DumpCorDebugSource(info, null,
             [Path.GetDirectoryName(fixture.ProgramPath) ?? throw new InvalidOperationException("The fixture has no directory.")]);
         using var callbacks = new CorDebugDumpCallbacks(source);
         string name = Path.GetFileName(fixture.ProgramPath);
-        Assert.Contains(name, target.EnumerateModules().Select(module => Path.GetFileName(module.FileName)));
+        Assert.Contains(name, runtime.EnumerateModules().Select(module => Path.GetFileName(module.Name)));
         (uint timestamp, uint size) = ReadIdentity(fixture.ProgramPath);
         (int Result, uint Length, string Path) resolved = Request(callbacks, name, timestamp, size, 32768);
         Assert.AreEqual(0, resolved.Result, $"{callbacks.LastFailure}; candidates: {string.Join(", ", source.FindMetadataImages(name).Take(8))}");

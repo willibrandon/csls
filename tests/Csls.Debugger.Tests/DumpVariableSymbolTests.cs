@@ -1,5 +1,7 @@
 using Csls.Debugger.Contracts;
 using Csls.Debugger.Dump;
+using Microsoft.Diagnostics.NETCore.Client;
+using Microsoft.Diagnostics.Runtime;
 using System.Reflection.Metadata;
 using System.Reflection.Metadata.Ecma335;
 using System.Reflection.PortableExecutable;
@@ -31,8 +33,10 @@ public sealed class DumpVariableSymbolTests : DapTestContext
     public async Task CapturedNamesRequireOriginalSymbols(string change, bool hasLocalNames)
     {
         DebuggerDumpFixture fixture = await DebuggerDumpFixture.CreateAsync(ResolveTestProcessHost(),
-            TestContext.CancellationToken, captureFrameValues: true, isolateModule: true).ConfigureAwait(false);
+            TestContext.CancellationToken, captureFrameValues: true, isolateModule: true,
+            captureType: OperatingSystem.IsWindows() ? DumpType.Full : DumpType.Triage).ConfigureAwait(false);
         await using ConfiguredAsyncDisposable fixtureCleanup = fixture.ConfigureAwait(false);
+        AssertCapturedModuleMetadata(fixture);
         string pdbPath = Path.ChangeExtension(fixture.ProgramPath, ".pdb");
         string otherModule = typeof(DumpVariableSymbolTests).Assembly.Location;
         switch (change)
@@ -141,5 +145,25 @@ public sealed class DumpVariableSymbolTests : DapTestContext
             using FileStream releasedSymbols = File.Open(pdbPath, FileMode.Open, FileAccess.ReadWrite, FileShare.None);
             Assert.IsGreaterThan(0L, releasedSymbols.Length);
         }
+    }
+
+    private static void AssertCapturedModuleMetadata(DebuggerDumpFixture fixture)
+    {
+        // Replacing the original image tests captured metadata only when those pages exist in the dump.
+        using var target = DataTarget.LoadDump(fixture.DumpPath, new DataTargetOptions { SymbolPaths = [] });
+        ClrInfo info = Assert.ContainsSingle(target.ClrVersions);
+        using ClrRuntime runtime = info.CreateRuntime(DumpDacResolver.Resolve(info, null), ignoreMismatch: info.Version.Major == 0);
+        ClrModule module = Assert.ContainsSingle(runtime.EnumerateModules().Where(module =>
+            Path.GetFileName(module.Name) == Path.GetFileName(fixture.ProgramPath)));
+        using var captured = new DumpMemoryStream(target.DataReader, module.ImageBase, checked((long)module.Size));
+        using var capturedReader = new PEReader(captured,
+            module.Layout == ModuleLayout.Mapped ? PEStreamOptions.IsLoadedImage : PEStreamOptions.Default);
+        using FileStream original = File.OpenRead(fixture.ProgramPath);
+        using var originalReader = new PEReader(original);
+        MetadataReader capturedMetadata = capturedReader.GetMetadataReader();
+        MetadataReader originalMetadata = originalReader.GetMetadataReader();
+        Guid identity = originalMetadata.GetGuid(originalMetadata.GetModuleDefinition().Mvid);
+        Assert.AreNotEqual(Guid.Empty, identity);
+        Assert.AreEqual(identity, capturedMetadata.GetGuid(capturedMetadata.GetModuleDefinition().Mvid));
     }
 }

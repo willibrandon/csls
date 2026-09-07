@@ -20,6 +20,11 @@ pointer. Variable pages read only their requested slots; unavailable captured
 storage remains an explicit per-value result. DAP and MCP route inspection through
 the same worker contracts, with target-code execution disabled for dump reads.
 
+Dump threads receive session-local identifiers in managed-thread order. Initial
+selection searches at most 4,096 captured frames across those threads for a thread
+containing a managed method. Runtime stack markers retain their own entries in
+stack inspection.
+
 Captured-frame reads carry request cancellation through CoreCLR's memory and
 thread-context callbacks. Callback progress reports completed read counts and
 copied bytes at the first read, each 64-read checkpoint, and completion. The

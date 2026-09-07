@@ -123,7 +123,7 @@ public sealed partial class DumpDebuggerControlService
             IReadOnlyList<DebugModuleInfo> modules = CreateModules(_runtime);
             _threads = threads;
             _modules = modules;
-            int? stoppedThreadId = threads.Count == 0 ? null : threads[0].Id;
+            int? stoppedThreadId = SelectInitialThread(threads, cancellationToken);
             _snapshot = new DebugSessionSnapshot
             {
                 State = DebugSessionState.Stopped,

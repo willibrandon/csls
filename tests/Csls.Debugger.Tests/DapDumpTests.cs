@@ -93,7 +93,8 @@ public sealed class DapDumpTests : DapTestContext
         JsonElement stack = await ReadStackAsync(client, threadId, start: 0, levels: 100).ConfigureAwait(false);
         JsonElement frame = Assert.ContainsSingle(stack.GetProperty("stackFrames").EnumerateArray()
             .Where(item => item.GetProperty("name").GetString()?.Contains(
-                "DebuggerFixture.WaitForSignal", StringComparison.Ordinal) == true));
+                "DebuggerFixture.WaitForSignal", StringComparison.Ordinal) == true),
+            $"Initial dump thread {threadId}: {stack}");
         int frameId = frame.GetProperty("id").GetInt32();
         JsonElement scopes = await RequestAsync(client, "scopes", writer =>
         {
@@ -111,8 +112,16 @@ public sealed class DapDumpTests : DapTestContext
         JsonElement values = await ReadDumpVariablesAsync(client, arguments, 0, 0).ConfigureAwait(false);
         Assert.AreEqual(8, values.GetArrayLength());
         Assert.AreEqual("number", values[2].GetProperty("name").GetString());
-        Assert.AreEqual("42", values[2].GetProperty("value").GetString());
-        Assert.AreEqual("int", values[2].GetProperty("type").GetString());
+        bool filtered = OperatingSystem.IsWindows() && !includeHeap;
+        if (filtered)
+        {
+            AssertFilteredValue(values[2]);
+        }
+        else
+        {
+            Assert.AreEqual("42", values[2].GetProperty("value").GetString());
+            Assert.AreEqual("int", values[2].GetProperty("type").GetString());
+        }
         if (includeHeap)
         {
             Assert.AreEqual("\"answer\"", values[3].GetProperty("value").GetString());
@@ -128,9 +137,17 @@ public sealed class DapDumpTests : DapTestContext
 
         JsonElement localValues = await ReadDumpVariablesAsync(client, locals, 0, 2).ConfigureAwait(false);
         Assert.AreEqual("localNumber", localValues[0].GetProperty("name").GetString());
-        Assert.AreEqual("43", localValues[0].GetProperty("value").GetString());
-        Assert.AreEqual("44", localValues[1].GetProperty("value").GetString());
-        Assert.AreEqual("long", localValues[1].GetProperty("type").GetString());
+        if (filtered)
+        {
+            AssertFilteredValue(localValues[0]);
+            AssertFilteredValue(localValues[1]);
+        }
+        else
+        {
+            Assert.AreEqual("43", localValues[0].GetProperty("value").GetString());
+            Assert.AreEqual("44", localValues[1].GetProperty("value").GetString());
+            Assert.AreEqual("long", localValues[1].GetProperty("type").GetString());
+        }
         if (includeHeap)
         {
             JsonElement arraySlot = await ReadDumpVariablesAsync(client, locals, 4, 1).ConfigureAwait(false);
@@ -189,6 +206,16 @@ public sealed class DapDumpTests : DapTestContext
         await CloseDumpAsync(client).ConfigureAwait(false);
         using FileStream released = File.Open(fixture.DumpPath, FileMode.Open, FileAccess.ReadWrite, FileShare.None);
         Assert.IsGreaterThan(0L, released.Length);
+    }
+
+    private static void AssertFilteredValue(JsonElement value)
+    {
+        Assert.AreEqual("Captured value unavailable: storage was filtered when the dump was created.",
+            value.GetProperty("value").GetString());
+        Assert.AreEqual(0, value.GetProperty("variablesReference").GetInt32());
+        Assert.IsFalse(value.TryGetProperty("memoryReference", out _));
+        Assert.Contains("readOnly", value.GetProperty("presentationHint").GetProperty("attributes")
+            .EnumerateArray().Select(attribute => attribute.GetString()));
     }
 
     /// <summary>

@@ -28,8 +28,9 @@ public sealed class DumpDebuggerControlServiceTests : DapTestContext
         await using ConfiguredAsyncDisposable fixtureCleanup = fixture.ConfigureAwait(false);
         var service = new DumpDebuggerControlService();
         await using ConfiguredAsyncDisposable serviceCleanup = service.ConfigureAwait(false);
-        _ = await service.OpenDumpAsync(fixture.OpenRequest, TestContext.CancellationToken)
+        DebugSessionSnapshot opened = await service.OpenDumpAsync(fixture.OpenRequest, TestContext.CancellationToken)
             .ConfigureAwait(false);
+        int initialThreadId = opened.StoppedThreadId ?? throw new AssertFailedException("The dump has no selected thread.");
         IReadOnlyList<DebugThreadInfo> threads = await service.GetThreadsAsync(TestContext.CancellationToken).ConfigureAwait(false);
         List<DebugStackFrameInfo> frames = [];
         foreach (DebugThreadInfo thread in threads)
@@ -41,6 +42,10 @@ public sealed class DumpDebuggerControlServiceTests : DapTestContext
 
         DebugStackFrameInfo selected = Assert.ContainsSingle(frames.Where(frame =>
             frame.Name.Contains("DebuggerFixture.WaitForSignal", StringComparison.Ordinal)));
+        DebugStackTrace initialStack = await service.GetStackAsync(new DebugStackRequest(initialThreadId, 0, 0),
+            TestContext.CancellationToken).ConfigureAwait(false);
+        Assert.Contains(selected, initialStack.StackFrames,
+            $"Selected thread {initialThreadId}; threads: {string.Join(", ", threads)}; initial stack: {string.Join(", ", initialStack.StackFrames)}");
         IReadOnlyList<DebugScopeInfo> scopes = await service.GetScopesAsync(new DebugScopesRequest(selected.Id),
             TestContext.CancellationToken).ConfigureAwait(false);
         DebugScopeInfo arguments = Assert.ContainsSingle(scopes.Where(scope => scope.Name == "Arguments"));
@@ -51,12 +56,24 @@ public sealed class DumpDebuggerControlServiceTests : DapTestContext
         Assert.HasCount(8, argumentValues);
         Assert.AreEqual("number", argumentValues[2].Name);
         Assert.AreEqual("text", argumentValues[3].Name);
-        Assert.AreEqual("42", argumentValues[2].Value);
-        Assert.AreEqual("int", argumentValues[2].Type);
+        bool filtered = OperatingSystem.IsWindows() && !includeHeap;
+        if (filtered)
+        {
+            AssertFilteredValue(argumentValues[2]);
+        }
+        else
+        {
+            Assert.AreEqual("42", argumentValues[2].Value);
+            Assert.AreEqual("int", argumentValues[2].Type);
+        }
         if (includeHeap)
         {
             Assert.AreEqual("\"answer\"", argumentValues[3].Value);
             Assert.AreEqual(DebugVariablePresentationKind.Normal, argumentValues[3].PresentationKind);
+        }
+        else if (filtered)
+        {
+            AssertFilteredValue(argumentValues[3]);
         }
         else
         {
@@ -68,9 +85,17 @@ public sealed class DumpDebuggerControlServiceTests : DapTestContext
         Assert.HasCount(2, localValues);
         Assert.AreEqual("localNumber", localValues[0].Name);
         Assert.AreEqual("localLong", localValues[1].Name);
-        Assert.AreEqual("43", localValues[0].Value);
-        Assert.AreEqual("44", localValues[1].Value);
-        Assert.AreEqual("long", localValues[1].Type);
+        if (filtered)
+        {
+            AssertFilteredValue(localValues[0]);
+            AssertFilteredValue(localValues[1]);
+        }
+        else
+        {
+            Assert.AreEqual("43", localValues[0].Value);
+            Assert.AreEqual("44", localValues[1].Value);
+            Assert.AreEqual("long", localValues[1].Type);
+        }
         IReadOnlyList<DebugVariableInfo> page = await service.GetVariablesAsync(
             new DebugVariablesRequest(locals.VariablesReference, 1, 1, false), TestContext.CancellationToken).ConfigureAwait(false);
         Assert.AreEqual(localValues[1], Assert.ContainsSingle(page));
@@ -106,6 +131,15 @@ public sealed class DumpDebuggerControlServiceTests : DapTestContext
         Assert.AreEqual(DebugSessionState.Terminated, closed.State);
         using FileStream released = File.Open(fixture.DumpPath, FileMode.Open, FileAccess.ReadWrite, FileShare.None);
         Assert.IsGreaterThan(0L, released.Length);
+    }
+
+    private static void AssertFilteredValue(DebugVariableInfo value)
+    {
+        Assert.AreEqual("Captured value unavailable: storage was filtered when the dump was created.", value.Value);
+        Assert.AreEqual(DebugVariablePresentationKind.Unavailable, value.PresentationKind);
+        Assert.AreEqual(0, value.VariablesReference);
+        Assert.IsNull(value.MemoryReference);
+        Assert.IsNull(value.EvaluateName);
     }
 
     /// <summary>

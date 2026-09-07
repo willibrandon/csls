@@ -103,8 +103,8 @@ public sealed partial class DumpDebuggerControlService
         return
         [
             .. runtimeThreads
-                .OrderBy(static item => item.OSThreadId)
-                .ThenBy(static item => item.ManagedThreadId)
+                .OrderBy(static item => item.ManagedThreadId > 0 ? item.ManagedThreadId : int.MaxValue)
+                .ThenBy(static item => item.OSThreadId)
                 .Select(static (item, index) => new DumpThread(index + 1, item))
         ];
     }
@@ -144,6 +144,29 @@ public sealed partial class DumpDebuggerControlService
                     null);
             })
         ];
+    }
+
+    private static int? SelectInitialThread(IReadOnlyList<DumpThread> threads, CancellationToken cancellationToken)
+    {
+        int? firstThreadId = threads.Count == 0 ? null : threads[0].Id;
+        int remainingFrames = MaximumFrames;
+        foreach (DumpThread thread in threads)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            foreach (ClrStackFrame frame in thread.Thread.EnumerateStackTrace(includeContext: false, remainingFrames))
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                if (frame.Kind == ClrStackFrameKind.ManagedMethod)
+                {
+                    return thread.Id;
+                }
+                if (--remainingFrames == 0)
+                {
+                    return firstThreadId;
+                }
+            }
+        }
+        return firstThreadId;
     }
 
     private static DebugThreadInfo CreateThreadInfo(DumpThread thread)
