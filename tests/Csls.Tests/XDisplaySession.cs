@@ -59,6 +59,22 @@ internal sealed class XDisplaySession : IAsyncDisposable
         CancellationToken cancellationToken)
     {
         FileStream reservation = ReserveDisplay(out int displayNumber, out string reservationPath);
+        try
+        {
+            return await StartReservedDisplayAsync(reservation, displayNumber, reservationPath, cancellationToken)
+                .ConfigureAwait(false);
+        }
+        catch
+        {
+            await reservation.DisposeAsync().ConfigureAwait(false);
+            File.Delete(reservationPath);
+            throw;
+        }
+    }
+
+    private static async Task<XDisplaySession> StartReservedDisplayAsync(FileStream reservation,
+        int displayNumber, string reservationPath, CancellationToken cancellationToken)
+    {
         var startInfo = new ProcessStartInfo
         {
             FileName = "Xvfb",
@@ -83,36 +99,25 @@ internal sealed class XDisplaySession : IAsyncDisposable
             startInfo.ArgumentList.Add(argument);
         }
 
-        Process process;
+        Process process = Process.Start(startInfo)
+            ?? throw new InvalidOperationException("Xvfb did not start.");
         try
         {
-            process = Process.Start(startInfo)
-                ?? throw new InvalidOperationException("Xvfb did not start.");
-        }
-        catch
-        {
-            await reservation.DisposeAsync().ConfigureAwait(false);
-            File.Delete(reservationPath);
-            throw;
-        }
-
-        var standardError = new StringBuilder();
-        object standardErrorSync = new();
-        process.ErrorDataReceived += (_, eventArgs) =>
-        {
-            if (eventArgs.Data is null)
+            var standardError = new StringBuilder();
+            object standardErrorSync = new();
+            process.ErrorDataReceived += (_, eventArgs) =>
             {
-                return;
-            }
+                if (eventArgs.Data is null)
+                {
+                    return;
+                }
 
-            lock (standardErrorSync)
-            {
-                _ = standardError.AppendLine(eventArgs.Data);
-            }
-        };
-        process.BeginErrorReadLine();
-        try
-        {
+                lock (standardErrorSync)
+                {
+                    _ = standardError.AppendLine(eventArgs.Data);
+                }
+            };
+            process.BeginErrorReadLine();
             string? publishedDisplay = await process.StandardOutput.ReadLineAsync(
                 cancellationToken).ConfigureAwait(false);
             string expectedDisplay = displayNumber.ToString(CultureInfo.InvariantCulture);
@@ -142,15 +147,15 @@ internal sealed class XDisplaySession : IAsyncDisposable
         }
         catch
         {
-            if (!process.HasExited)
+            using (process)
             {
-                process.Kill(entireProcessTree: true);
-            }
+                if (!process.HasExited)
+                {
+                    process.Kill(entireProcessTree: true);
+                }
 
-            await process.WaitForExitAsync(CancellationToken.None).ConfigureAwait(false);
-            process.Dispose();
-            await reservation.DisposeAsync().ConfigureAwait(false);
-            File.Delete(reservationPath);
+                await process.WaitForExitAsync(CancellationToken.None).ConfigureAwait(false);
+            }
             throw;
         }
     }

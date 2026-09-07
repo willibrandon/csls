@@ -59,12 +59,12 @@ public sealed class CodeQlLocalDisposableAnalyzer : DiagnosticAnalyzer
 
         foreach (VariableDeclaratorSyntax variable in declaration.Declaration.Variables)
         {
-            if (variable.Initializer?.Value is not
-                    (ObjectCreationExpressionSyntax or ImplicitObjectCreationExpressionSyntax) ||
+            if (variable.Initializer?.Value is not { } initializer || !CreatesResource(initializer) ||
                 context.SemanticModel.GetDeclaredSymbol(variable, context.CancellationToken) is not
                     ILocalSymbol local ||
                 !(DisposableLocalOwnership.HasUnprotectedTransfer(
                     local, variable, declaration, block, context) ||
+                    initializer is (ObjectCreationExpressionSyntax or ImplicitObjectCreationExpressionSyntax) &&
                     HasConfiguredLibraryDisposal(local, block, context)))
             {
                 continue;
@@ -74,13 +74,21 @@ public sealed class CodeQlLocalDisposableAnalyzer : DiagnosticAnalyzer
         }
     }
 
+    private static bool CreatesResource(ExpressionSyntax expression) => expression switch
+    {
+        ObjectCreationExpressionSyntax or ImplicitObjectCreationExpressionSyntax or InvocationExpressionSyntax => true,
+        ConditionalExpressionSyntax conditional => CreatesResource(conditional.WhenTrue) || CreatesResource(conditional.WhenFalse),
+        ParenthesizedExpressionSyntax parenthesized => CreatesResource(parenthesized.Expression),
+        _ => false
+    };
+
     private static bool HasConfiguredLibraryDisposal(
         ILocalSymbol local,
         BlockSyntax block,
         SyntaxNodeAnalysisContext context)
     {
         if (!local.Type.DeclaringSyntaxReferences.IsEmpty ||
-            local.Type.ContainingAssembly.Name.StartsWith("Csls.", StringComparison.Ordinal) ||
+            local.Type.ContainingAssembly?.Name.StartsWith("Csls.", StringComparison.Ordinal) == true ||
             !local.Type.AllInterfaces.Any(static type => type.ToDisplayString() == "System.IDisposable"))
         {
             return false;

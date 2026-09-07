@@ -52,6 +52,9 @@ public sealed class CodeQlMissedUsingStatementAnalyzerTests(TestContext testCont
     [DataRow("stream.Dispose();")]
     [DataRow("((IDisposable)stream).Dispose();")]
     [DataRow("if (stream != null) { stream.Dispose(); }")]
+    [DataRow("stream?.Dispose();")]
+    [DataRow("((IDisposable)stream)?.Dispose();")]
+    [DataRow("(stream)?.Dispose();")]
     public async Task ReportsDisposableLocalInFinally(string cleanup)
     {
         string source = $$"""
@@ -162,22 +165,25 @@ public sealed class CodeQlMissedUsingStatementAnalyzerTests(TestContext testCont
     /// <summary>
     /// Verifies ordinary disposal outside finally is not a missed using cleanup pattern.
     /// </summary>
+    /// <param name="cleanup">The direct or conditional disposal expression.</param>
     [TestMethod]
-    public async Task AcceptsDisposalOutsideFinally()
+    [DataRow("stream.Dispose();")]
+    [DataRow("stream?.Dispose();")]
+    public async Task AcceptsDisposalOutsideFinally(string cleanup)
     {
-        const string Source = """
+        string source = $$"""
             using System.IO;
             internal static class Reader
             {
                 internal static void Read()
                 {
                     var stream = new MemoryStream();
-                    stream.Dispose();
+                    {{cleanup}}
                 }
             }
             """;
 
-        ImmutableArray<Diagnostic> diagnostics = await AnalyzeAsync(Source).ConfigureAwait(false);
+        ImmutableArray<Diagnostic> diagnostics = await AnalyzeAsync(source).ConfigureAwait(false);
 
         Assert.IsEmpty(diagnostics);
     }
@@ -188,7 +194,9 @@ public sealed class CodeQlMissedUsingStatementAnalyzerTests(TestContext testCont
     /// <param name="callback">The deferred function containing explicit disposal.</param>
     [TestMethod]
     [DataRow("return () => stream.Dispose();")]
+    [DataRow("return () => stream?.Dispose();")]
     [DataRow("void Close() => stream.Dispose(); return Close;")]
+    [DataRow("void Close() => stream?.Dispose(); return Close;")]
     public async Task AcceptsDeferredDisposalDeclaredInsideFinally(string callback)
     {
         string source = $$"""

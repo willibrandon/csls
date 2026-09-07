@@ -47,21 +47,19 @@ public sealed class CodeQlMissedUsingStatementAnalyzer : DiagnosticAnalyzer
     private static void AnalyzeInvocation(SyntaxNodeAnalysisContext context)
     {
         var invocation = (InvocationExpressionSyntax)context.Node;
-        if (invocation is not
-            {
-                ArgumentList.Arguments.Count: 0,
-                Expression: MemberAccessExpressionSyntax
-                {
-                    Name.Identifier.ValueText: "Dispose"
-                }
-            } ||
-            !IsInsideFinally(invocation))
+        ExpressionSyntax? expression = invocation.Expression switch
+        {
+            MemberAccessExpressionSyntax { Name.Identifier.ValueText: "Dispose" } member => member.Expression,
+            MemberBindingExpressionSyntax { Name.Identifier.ValueText: "Dispose" }
+                when invocation.Parent is ConditionalAccessExpressionSyntax conditional => conditional.Expression,
+            _ => null
+        };
+        if (expression is null || invocation.ArgumentList.Arguments.Count != 0 || !IsInsideFinally(invocation))
         {
             return;
         }
 
-        var member = (MemberAccessExpressionSyntax)invocation.Expression;
-        ExpressionSyntax receiver = StripCasts(member.Expression);
+        ExpressionSyntax receiver = StripCasts(expression);
         ISymbol? resource = context.SemanticModel.GetSymbolInfo(receiver, context.CancellationToken).Symbol;
         if (resource is not (ILocalSymbol or IFieldSymbol) ||
             context.SemanticModel.GetSymbolInfo(invocation, context.CancellationToken).Symbol is not IMethodSymbol method ||

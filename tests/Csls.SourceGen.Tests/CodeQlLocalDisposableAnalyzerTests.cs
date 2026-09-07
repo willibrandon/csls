@@ -16,6 +16,120 @@ namespace Csls.SourceGen.Tests;
 public sealed class CodeQlLocalDisposableAnalyzerTests(TestContext testContext)
 {
     /// <summary>
+    /// Rejects factory-created resources transferred after an earlier owner's fallible cleanup.
+    /// </summary>
+    /// <param name="factory">The resource acquisition expression.</param>
+    [TestMethod]
+    [DataRow("File.OpenRead(path)")]
+    [DataRow("choose ? File.OpenRead(path) : File.OpenRead(alternate)")]
+    [DataRow("(File.OpenRead(path))")]
+    public async Task ReportsFactoryResultTransferAfterFallibleCleanup(string factory)
+    {
+        string source = $$"""
+            using System.IO;
+            internal static class Reader
+            {
+                internal static void Read(string path, string alternate, bool choose)
+                {
+                    FileStream current = null;
+                    try
+                    {
+                        current = File.OpenRead(path);
+                        for (int index = 0; index < 2; index++)
+                        {
+                            FileStream child = {{factory}};
+                            current.Dispose();
+                            current = child;
+                        }
+                    }
+                    finally { current?.Dispose(); }
+                }
+            }
+            """;
+
+        ImmutableArray<Diagnostic> diagnostics = await AnalyzeAsync(source).ConfigureAwait(false);
+        AssertReportsLocal(diagnostics, "child");
+    }
+
+    /// <summary>
+    /// Preserves transfers with no intervening failure and transfers protected by unconditional cleanup.
+    /// </summary>
+    /// <param name="transfer">The protected or immediate local ownership transfer.</param>
+    [TestMethod]
+    [DataRow("current = child;")]
+    [DataRow("try { current.Dispose(); current = child; } catch { child.Dispose(); throw; }")]
+    [DataRow("try { current.Dispose(); current = child; } catch { using (child) { } throw; }")]
+    public async Task AcceptsProtectedFactoryResultTransfer(string transfer)
+    {
+        string source = $$"""
+            using System.IO;
+            internal static class Reader
+            {
+                internal static void Read(string path)
+                {
+                    FileStream current = null;
+                    try
+                    {
+                        FileStream child = File.OpenRead(path);
+                        {{transfer}}
+                    }
+                    finally { current?.Dispose(); }
+                }
+            }
+            """;
+
+        ImmutableArray<Diagnostic> diagnostics = await AnalyzeAsync(source).ConfigureAwait(false);
+        Assert.IsEmpty(diagnostics);
+    }
+
+    /// <summary>
+    /// Accepts factory-created arrays whose type has no containing assembly or disposable contract.
+    /// </summary>
+    [TestMethod]
+    public async Task AcceptsArrayFactoryWithoutContainingAssembly()
+    {
+        const string Source = """
+            using System;
+            internal static class Reader
+            {
+                internal static int Read()
+                {
+                    int[] values = Array.Empty<int>();
+                    return values.Length;
+                }
+            }
+            """;
+
+        ImmutableArray<Diagnostic> diagnostics = await AnalyzeAsync(Source).ConfigureAwait(false);
+        Assert.IsEmpty(diagnostics);
+    }
+
+    /// <summary>
+    /// Rejects a factory-owned stream whose cleanup starts after another throwing constructor.
+    /// </summary>
+    [TestMethod]
+    public async Task ReportsFactoryBeforeCleanupRegion()
+    {
+        const string Source = """
+            using System.IO;
+            using System.Diagnostics;
+            internal static class Reader
+            {
+                internal static FileStream Read(string path)
+                {
+                    FileStream stream = File.OpenRead(path);
+                    var start = new ProcessStartInfo();
+                    try { start.FileName = path; return stream; }
+                    catch { stream.Dispose(); throw; }
+                }
+            }
+            """;
+
+        ImmutableArray<Diagnostic> diagnostics = await AnalyzeAsync(Source).ConfigureAwait(false);
+        AssertReportsLocal(diagnostics, "stream");
+    }
+
+    /// <summary>
     /// Verifies a second pipe constructor cannot precede the first pipe's cleanup region.
     /// </summary>
     [TestMethod]

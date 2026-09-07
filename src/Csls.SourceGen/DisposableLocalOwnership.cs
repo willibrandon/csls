@@ -47,7 +47,7 @@ internal static class DisposableLocalOwnership
             }
 
             mayThrow |= MayThrow(statement, context);
-            if (ReturnsLocal(statement, local, context))
+            if (ReturnsLocal(statement, local, context) || TransfersLocal(statement, local, context))
             {
                 return mayThrow;
             }
@@ -60,6 +60,18 @@ internal static class DisposableLocalOwnership
 
         return false;
     }
+
+    private static bool TransfersLocal(StatementSyntax statement, ILocalSymbol local, SyntaxNodeAnalysisContext context) =>
+        statement is ExpressionStatementSyntax
+        {
+            Expression: AssignmentExpressionSyntax
+            {
+                Left: IdentifierNameSyntax destination,
+                Right: IdentifierNameSyntax source
+            }
+        } && IsLocal(source, local, context) &&
+        context.SemanticModel.GetSymbolInfo(destination, context.CancellationToken).Symbol is ILocalSymbol receiver &&
+        !SymbolEqualityComparer.Default.Equals(receiver, local);
 
     private static bool HasExceptionCleanup(
         TryStatementSyntax statement,
@@ -110,8 +122,9 @@ internal static class DisposableLocalOwnership
         ILocalSymbol local,
         SyntaxNodeAnalysisContext context) =>
         scope.DescendantNodesAndSelf(DescendIntoExecution)
-            .OfType<InvocationExpressionSyntax>()
-            .Any(invocation => invocation.ArgumentList.Arguments.Count == 0 &&
+            .Any(node => node is UsingStatementSyntax { Expression: IdentifierNameSyntax scoped } &&
+                IsLocal(scoped, local, context) || node is InvocationExpressionSyntax invocation &&
+                invocation.ArgumentList.Arguments.Count == 0 &&
                 invocation.Expression is MemberAccessExpressionSyntax
                 {
                     Expression: IdentifierNameSyntax receiver,

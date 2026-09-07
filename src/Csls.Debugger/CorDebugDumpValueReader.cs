@@ -96,7 +96,7 @@ internal sealed unsafe class CorDebugDumpValueReader
             root = _values.Get(root.ParentId);
         }
         nint native = 0;
-        CorDebugDumpStorage? value = null;
+        using var storage = new DisposableCollection<CorDebugDumpStorage>();
         try
         {
             var api = new ICorDebugILFrameAbi(frame);
@@ -104,16 +104,15 @@ internal sealed unsafe class CorDebugDumpValueReader
                 : api.GetLocalVariable((uint)root.Slot, (nint)(&native));
             native = Volatile.Read(ref native);
             CorDebugHResult.ThrowIfFailed(result, "ICorDebugILFrame.GetValue");
-            value = _storage.FromValue(native);
+            nint rootValue = native;
+            CorDebugDumpStorage value = storage.Acquire(() => _storage.FromValue(rootValue));
             for (int index = selections.Count - 1; index >= 0; index--)
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 CorDebugDumpValuePath selection = selections[index];
-                CorDebugDumpStorage child = selection.Field is { } field
+                value = storage.Acquire(() => selection.Field is { } field
                     ? _objects.ReadField(value, field, cancellationToken)
-                    : _storage.GetElement(value, selection.ElementIndex);
-                value.Dispose();
-                value = child;
+                    : _storage.GetElement(value, selection.ElementIndex));
             }
             _ = _types.Format(value.Type, 0, null, out uint kind, out _);
             return kind is 0x14 or 0x1d
@@ -122,7 +121,6 @@ internal sealed unsafe class CorDebugDumpValueReader
         }
         finally
         {
-            value?.Dispose();
             if (native != 0)
             {
                 _ = ComAbi.Release(native);
