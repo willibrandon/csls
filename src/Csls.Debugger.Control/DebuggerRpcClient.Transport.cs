@@ -80,6 +80,19 @@ public sealed partial class DebuggerRpcClient
             throw new InvalidOperationException("The debugger RPC client is already connected.");
         }
 
+        try
+        {
+            await ConnectCoreAsync(cancellationToken).ConfigureAwait(false);
+        }
+        catch
+        {
+            await DisposeAsync().ConfigureAwait(false);
+            throw;
+        }
+    }
+
+    private async Task ConnectCoreAsync(CancellationToken cancellationToken)
+    {
         if (_socketPath is not null)
         {
             _socket = new Socket(AddressFamily.Unix, SocketType.Stream, ProtocolType.Unspecified);
@@ -118,7 +131,7 @@ public sealed partial class DebuggerRpcClient
         _rpc.StartListening();
         int version = await _rpc.InvokeWithCancellationAsync<int>(
             DebuggerControlMethods.GetProtocolVersion,
-            cancellationToken: cancellationToken).ConfigureAwait(false);
+            cancellationToken: cancellationToken).WaitAsync(cancellationToken).ConfigureAwait(false);
         if (version != DebuggerControlProtocol.CurrentVersion)
         {
             throw new InvalidDataException(
