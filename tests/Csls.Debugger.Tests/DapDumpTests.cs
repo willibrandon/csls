@@ -47,6 +47,7 @@ public sealed class DapDumpTests : DapTestContext
         JsonElement values = await ReadDumpVariablesAsync(client, arguments, 0, 0).ConfigureAwait(false);
         JsonElement value = values[2];
         Assert.AreEqual("number", value.GetProperty("name").GetString());
+        Assert.AreEqual("int", value.GetProperty("type").GetString());
         Assert.AreEqual("Captured value unavailable: storage was filtered when the dump was created.",
             value.GetProperty("value").GetString());
         Assert.AreEqual(0, value.GetProperty("variablesReference").GetInt32());
@@ -120,6 +121,8 @@ public sealed class DapDumpTests : DapTestContext
         JsonElement values = await ReadDumpVariablesAsync(client, arguments, 0, 0).ConfigureAwait(false);
         Assert.AreEqual(8, values.GetArrayLength());
         Assert.AreEqual("number", values[2].GetProperty("name").GetString());
+        Assert.AreEqual("int", values[2].GetProperty("type").GetString());
+        Assert.AreEqual("string", values[3].GetProperty("type").GetString());
         bool filtered = OperatingSystem.IsWindows() && !includeHeap;
         if (filtered)
         {
@@ -128,7 +131,6 @@ public sealed class DapDumpTests : DapTestContext
         else
         {
             Assert.AreEqual("42", values[2].GetProperty("value").GetString());
-            Assert.AreEqual("int", values[2].GetProperty("type").GetString());
         }
         if (includeHeap)
         {
@@ -150,6 +152,8 @@ public sealed class DapDumpTests : DapTestContext
                 .EnumerateArray().Select(attribute => attribute.GetString()));
         }
         Assert.AreEqual("localNumber", localValues[0].GetProperty("name").GetString());
+        Assert.AreEqual("int", localValues[0].GetProperty("type").GetString());
+        Assert.AreEqual("long", localValues[1].GetProperty("type").GetString());
         if (filtered)
         {
             AssertFilteredValue(localValues[0]);
@@ -159,7 +163,6 @@ public sealed class DapDumpTests : DapTestContext
         {
             Assert.AreEqual("43", localValues[0].GetProperty("value").GetString());
             Assert.AreEqual("44", localValues[1].GetProperty("value").GetString());
-            Assert.AreEqual("long", localValues[1].GetProperty("type").GetString());
         }
         if (includeHeap)
         {

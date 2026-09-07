@@ -10,6 +10,7 @@ namespace Csls.Debugger;
 internal sealed unsafe class CorDebugDumpValueReader
 {
     private readonly CorDebugDumpValues _values;
+    private readonly CorDebugDumpCallbacks _callbacks;
     private readonly ManagedRuntimeTypeFormatter _types;
     private readonly CorDebugDumpStorageReader _storage;
     private readonly CorDebugDumpArrayReader _arrays;
@@ -22,6 +23,7 @@ internal sealed unsafe class CorDebugDumpValueReader
         CorDebugDumpCallbacks callbacks, Func<nint, PEReader> openModule, Func<nint> getProcess)
     {
         _values = values;
+        _callbacks = callbacks;
         _types = new ManagedRuntimeTypeFormatter(openModule);
         _storage = new CorDebugDumpStorageReader(source, heap, callbacks, getProcess, new ManagedCapturedTypeResolver(openModule));
         _arrays = new CorDebugDumpArrayReader(callbacks, _storage, _types, Describe);
@@ -33,13 +35,28 @@ internal sealed unsafe class CorDebugDumpValueReader
     /// </summary>
     internal DebugVariableInfo Describe(nint value, string name, CorDebugDumpValuePath path, bool indexed = false)
     {
-        using CorDebugDumpStorage storage = _storage.FromValue(value);
-        if (storage.Address == 0 && storage.Size != 0)
+        string type = string.Empty;
+        long missingMemory = _callbacks.MissingMemoryReads;
+        try
         {
-            ManagedValueDisplay immediate = CorDebugValueFormatter.Format(value);
-            return new DebugVariableInfo(name, immediate.Value, _types.FormatValueType(value), 0, null, null, IsIndexed: indexed);
+            type = _types.FormatValueType(value);
+            using CorDebugDumpStorage storage = _storage.FromValue(value);
+            if (storage.Address == 0 && storage.Size != 0)
+            {
+                ManagedValueDisplay immediate = CorDebugValueFormatter.Format(value);
+                return new DebugVariableInfo(name, immediate.Value, type, 0, null, null, IsIndexed: indexed);
+            }
+            return Describe(storage, name, path, indexed);
         }
-        return Describe(storage, name, path, indexed);
+        catch (InvalidOperationException exception) when (IsUnavailable(exception) ||
+            _callbacks.IsMissingMemoryFailure(exception, missingMemory))
+        {
+            return Unavailable(name, exception, indexed) with { Type = type };
+        }
+        catch (CorDebugDumpStorageUnavailableException exception)
+        {
+            return Unavailable(name, exception, indexed) with { Type = type };
+        }
     }
 
     private DebugVariableInfo Describe(CorDebugDumpStorage value, string name, CorDebugDumpValuePath path, bool indexed)

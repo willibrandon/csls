@@ -60,6 +60,8 @@ public sealed class DumpDebuggerControlServiceTests : DapTestContext
         Assert.HasCount(8, argumentValues);
         Assert.AreEqual("number", argumentValues[2].Name);
         Assert.AreEqual("text", argumentValues[3].Name);
+        Assert.AreEqual("int", argumentValues[2].Type);
+        Assert.AreEqual("string", argumentValues[3].Type);
         bool filtered = OperatingSystem.IsWindows() && !includeHeap;
         if (filtered)
         {
@@ -68,7 +70,6 @@ public sealed class DumpDebuggerControlServiceTests : DapTestContext
         else
         {
             Assert.AreEqual("42", argumentValues[2].Value);
-            Assert.AreEqual("int", argumentValues[2].Type);
         }
         if (includeHeap)
         {
@@ -93,6 +94,8 @@ public sealed class DumpDebuggerControlServiceTests : DapTestContext
         Assert.HasCount(2, localValues);
         Assert.AreEqual("localNumber", localValues[0].Name);
         Assert.AreEqual("localLong", localValues[1].Name);
+        Assert.AreEqual("int", localValues[0].Type);
+        Assert.AreEqual("long", localValues[1].Type);
         if (filtered)
         {
             AssertFilteredValue(localValues[0]);
@@ -102,7 +105,6 @@ public sealed class DumpDebuggerControlServiceTests : DapTestContext
         {
             Assert.AreEqual("43", localValues[0].Value);
             Assert.AreEqual("44", localValues[1].Value);
-            Assert.AreEqual("long", localValues[1].Type);
         }
         IReadOnlyList<DebugVariableInfo> page = await service.GetVariablesAsync(
             new DebugVariablesRequest(locals.VariablesReference, 1, 1, false), TestContext.CancellationToken).ConfigureAwait(false);

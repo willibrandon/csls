@@ -53,6 +53,9 @@ public sealed class DumpFilteredValueTests : DapTestContext
         Assert.AreEqual("number", argumentValues[0].Name);
         Assert.AreEqual("localNumber", localValues[0].Name);
         Assert.AreEqual("localLong", localValues[1].Name);
+        Assert.AreEqual("int", argumentValues[0].Type);
+        Assert.AreEqual("int", localValues[0].Type);
+        Assert.AreEqual("long", localValues[1].Type);
         if (captureType == DumpType.Triage)
         {
             foreach (DebugVariableInfo value in argumentValues.Concat(localValues))
@@ -69,8 +72,6 @@ public sealed class DumpFilteredValueTests : DapTestContext
             Assert.AreEqual("42", argumentValues[0].Value);
             Assert.AreEqual("43", localValues[0].Value);
             Assert.AreEqual("44", localValues[1].Value);
-            Assert.AreEqual("int", argumentValues[0].Type);
-            Assert.AreEqual("long", localValues[1].Type);
             Assert.AreEqual(DebugVariablePresentationKind.Normal, argumentValues[0].PresentationKind);
         }
         IReadOnlyList<DebugVariableInfo> repeated = await service.GetVariablesAsync(
