@@ -275,6 +275,117 @@ public sealed class CodeQlLocalDisposableAnalyzerTests(TestContext testContext)
     }
 
     /// <summary>
+    /// Verifies conditional validation cleanup does not protect a handle factory's initialization.
+    /// </summary>
+    [TestMethod]
+    public async Task ReportsSafeHandleInitializationBeforeCleanup()
+    {
+        const string Source = """
+            using System;
+            using Microsoft.Win32.SafeHandles;
+            internal sealed class NativeHandle : SafeHandleZeroOrMinusOneIsInvalid
+            {
+                private NativeHandle() : base(true) { }
+                protected override bool ReleaseHandle() => true;
+
+                internal static NativeHandle Open(uint port, int result)
+                {
+                    var handle = new NativeHandle();
+                    handle.SetHandle(checked((nint)port));
+                    if (result != 0 || handle.IsInvalid)
+                    {
+                        handle.Dispose();
+                        throw new InvalidOperationException();
+                    }
+
+                    return handle;
+                }
+            }
+            """;
+
+        ImmutableArray<Diagnostic> diagnostics = await AnalyzeAsync(Source).ConfigureAwait(false);
+
+        AssertReportsLocal(diagnostics, "handle");
+    }
+
+    /// <summary>
+    /// Verifies direct handle returns require exception cleanup after fallible initialization.
+    /// </summary>
+    /// <param name="handler">The absent or incomplete initialization cleanup.</param>
+    [TestMethod]
+    [DataRow("")]
+    [DataRow("catch (IOException) { handle.Dispose(); throw; }")]
+    [DataRow("catch (Exception) when (cleanup) { handle.Dispose(); throw; }")]
+    public async Task ReportsHandleFactoryWithUnprotectedInitialization(string handler)
+    {
+        ArgumentNullException.ThrowIfNull(handler);
+        string initialization = handler.Length == 0
+            ? "handle.SetHandle(port); return handle;"
+            : $"try {{ handle.SetHandle(port); return handle; }} {handler}";
+        string source = $$"""
+            using System;
+            using System.IO;
+            using Microsoft.Win32.SafeHandles;
+            internal sealed class NativeHandle : SafeHandleZeroOrMinusOneIsInvalid
+            {
+                private NativeHandle() : base(true) { }
+                protected override bool ReleaseHandle() => true;
+
+                internal static NativeHandle Open(nint port, bool cleanup)
+                {
+                    var handle = new NativeHandle();
+                    {{initialization}}
+                }
+            }
+            """;
+
+        ImmutableArray<Diagnostic> diagnostics = await AnalyzeAsync(source).ConfigureAwait(false);
+
+        AssertReportsLocal(diagnostics, "handle");
+    }
+
+    /// <summary>
+    /// Verifies handle initialization and validation share unconditional exception cleanup.
+    /// </summary>
+    [TestMethod]
+    public async Task AcceptsProtectedSafeHandleFactory()
+    {
+        const string Source = """
+            using System;
+            using Microsoft.Win32.SafeHandles;
+            internal sealed class NativeHandle : SafeHandleZeroOrMinusOneIsInvalid
+            {
+                private NativeHandle() : base(true) { }
+                protected override bool ReleaseHandle() => true;
+
+                internal static NativeHandle Open(uint port, int result)
+                {
+                    var handle = new NativeHandle();
+                    try
+                    {
+                        handle.SetHandle(checked((nint)port));
+                        if (result != 0 || handle.IsInvalid)
+                        {
+                            throw new InvalidOperationException();
+                        }
+
+                        return handle;
+                    }
+                    catch
+                    {
+                        handle.Dispose();
+                        throw;
+                    }
+                }
+            }
+            """;
+
+        ImmutableArray<Diagnostic> diagnostics = await AnalyzeAsync(Source).ConfigureAwait(false);
+
+        Assert.IsEmpty(diagnostics);
+    }
+
+    /// <summary>
     /// Verifies merely declaring a deferred allocation does not execute it before the cleanup region.
     /// </summary>
     [TestMethod]

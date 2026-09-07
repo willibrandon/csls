@@ -28,16 +28,23 @@ internal sealed class MacTaskHandle : SafeHandle
     {
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(processId);
         var handle = new MacTaskHandle();
-        int result = MacThreadContextNativeMethods.OpenTask(
-            MacThreadContextNativeMethods.GetCurrentTask(), processId, out uint port);
-        handle.SetHandle(checked((nint)port));
-        if (result != 0 || handle.IsInvalid)
+        try
+        {
+            int result = MacThreadContextNativeMethods.OpenTask(
+                MacThreadContextNativeMethods.GetCurrentTask(), processId, out uint port);
+            handle.SetHandle(checked((nint)port));
+            if (result != 0 || handle.IsInvalid)
+            {
+                throw new InvalidOperationException($"Native register inspection could not acquire task {processId}: Mach status 0x{result:X}.");
+            }
+
+            return handle;
+        }
+        catch
         {
             handle.Dispose();
-            throw new InvalidOperationException($"Native register inspection could not acquire task {processId}: Mach status 0x{result:X}.");
+            throw;
         }
-
-        return handle;
     }
 
     /// <inheritdoc />

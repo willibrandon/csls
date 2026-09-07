@@ -29,7 +29,7 @@ public sealed class CodeQlLocalDisposableAnalyzer : DiagnosticAnalyzer
         "Reliability",
         DiagnosticSeverity.Error,
         isEnabledByDefault: true,
-        description: "Transferred locals must not introduce CodeQL cs/local-not-disposed findings.");
+        description: "Transferred locals must not introduce CodeQL cs/local-not-disposed or cs/dispose-not-called-on-throw findings.");
 
     /// <inheritdoc />
     public override ImmutableArray<DiagnosticDescriptor> SupportedDiagnostics => [s_rule];

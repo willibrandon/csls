@@ -6,12 +6,12 @@ using System.Linq;
 namespace Csls.SourceGen;
 
 /// <summary>
-/// Recognizes throwing operations before a constructed disposable reaches cleanup or tuple transfer.
+/// Recognizes throwing operations before a constructed disposable reaches cleanup or ownership transfer.
 /// </summary>
 internal static class DisposableLocalOwnership
 {
     /// <summary>
-    /// Determines whether a local can leak before entering its cleanup region or returning a tuple.
+    /// Determines whether a local can leak before entering its cleanup region or returning ownership.
     /// </summary>
     /// <param name="local">The constructed local resource.</param>
     /// <param name="variable">The local resource declaration.</param>
@@ -47,12 +47,12 @@ internal static class DisposableLocalOwnership
             }
 
             mayThrow |= MayThrow(statement, context);
-            if (ReturnsTupleElement(statement, local, context))
+            if (ReturnsLocal(statement, local, context))
             {
                 return mayThrow;
             }
 
-            if (DisposesLocal(statement, local, context))
+            if (statement is ExpressionStatementSyntax && DisposesLocal(statement, local, context))
             {
                 return false;
             }
@@ -79,15 +79,31 @@ internal static class DisposableLocalOwnership
             DisposesLocal(clause.Block, local, context));
     }
 
-    private static bool ReturnsTupleElement(
+    private static bool ReturnsLocal(
         StatementSyntax statement,
         ILocalSymbol local,
         SyntaxNodeAnalysisContext context) =>
         statement.DescendantNodesAndSelf(DescendIntoExecution)
             .OfType<ReturnStatementSyntax>()
-            .Any(returned => returned.Expression is TupleExpressionSyntax tuple &&
+            .Any(returned => IsSafeHandle(local.Type) &&
+                returned.Expression is IdentifierNameSyntax result &&
+                IsLocal(result, local, context) ||
+                returned.Expression is TupleExpressionSyntax tuple &&
                 tuple.Arguments.Any(argument => argument.Expression is IdentifierNameSyntax identifier &&
                     IsLocal(identifier, local, context)));
+
+    private static bool IsSafeHandle(ITypeSymbol type)
+    {
+        for (var current = type as INamedTypeSymbol; current is not null; current = current.BaseType)
+        {
+            if (current.ToDisplayString() == "System.Runtime.InteropServices.SafeHandle")
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
 
     private static bool DisposesLocal(
         SyntaxNode scope,
