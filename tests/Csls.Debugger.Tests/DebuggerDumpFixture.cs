@@ -57,10 +57,11 @@ internal sealed class DebuggerDumpFixture : IAsyncDisposable
     /// <param name="captureArrayShapes">Whether to retain the array-layout inspection fixture.</param>
     /// <param name="captureType">An explicit capture type for dump storage-contract tests.</param>
     /// <param name="diagnosticContext">An optional destination for capture timings and dump-writer output.</param>
+    /// <param name="blockDumpOutput">Whether to occupy the dump path with a directory for native write-failure coverage.</param>
     /// <returns>The owned dump from a terminated target.</returns>
     internal static async Task<DebuggerDumpFixture> CreateAsync(string program, CancellationToken cancellationToken,
         bool captureFrameValues = false, bool includeHeap = false, bool isolateModule = false, bool captureArrayShapes = false,
-        DumpType? captureType = null, TestContext? diagnosticContext = null)
+        DumpType? captureType = null, TestContext? diagnosticContext = null, bool blockDumpOutput = false)
     {
         long started = Stopwatch.GetTimestamp();
         string directory = Directory.CreateTempSubdirectory("csls-dap-dump-").FullName;
@@ -81,6 +82,11 @@ internal sealed class DebuggerDumpFixture : IAsyncDisposable
             }
 
             string dump = Path.Join(directory, "target.dmp");
+            if (blockDumpOutput)
+            {
+                Directory.CreateDirectory(dump);
+            }
+
             var startInfo = new ProcessStartInfo(Environment.GetEnvironmentVariable("DOTNET_HOST_PATH") ?? "dotnet")
             {
                 WorkingDirectory = directory,
@@ -96,6 +102,9 @@ internal sealed class DebuggerDumpFixture : IAsyncDisposable
                 ?? throw new InvalidOperationException("The dump target did not start.");
             Task<string> error = target.StandardError.ReadToEndAsync(CancellationToken.None);
             Task<string>? output = null;
+            DiagnosticsClientException? captureFailure = null;
+            string errorTail = string.Empty;
+            string outputTail = string.Empty;
             try
             {
                 Log($"Started target {target.Id}.");
@@ -113,6 +122,10 @@ internal sealed class DebuggerDumpFixture : IAsyncDisposable
                 Assert.IsGreaterThan(0L, new FileInfo(dump).Length);
                 Log($"Dump writer completed: {new FileInfo(dump).Length} bytes.");
             }
+            catch (DiagnosticsClientException exception)
+            {
+                captureFailure = exception;
+            }
             finally
             {
                 Log("Retiring target.");
@@ -122,12 +135,19 @@ internal sealed class DebuggerDumpFixture : IAsyncDisposable
                 }
                 await target.WaitForExitAsync(CancellationToken.None).ConfigureAwait(false);
                 Log($"Observed target exit {target.ExitCode}.");
-                LogOutput("stderr", await error.ConfigureAwait(false));
+                errorTail = GetTail(await error.ConfigureAwait(false));
+                LogOutput("stderr", errorTail);
                 if (output is not null)
                 {
-                    LogOutput("stdout", await output.ConfigureAwait(false));
+                    outputTail = GetTail(await output.ConfigureAwait(false));
+                    LogOutput("stdout", outputTail);
                 }
                 Log("Drained target streams.");
+            }
+
+            if (captureFailure is not null)
+            {
+                throw new DebuggerDumpCaptureException(target.Id, dump, outputTail, errorTail, captureFailure);
             }
 
             Assert.IsTrue(target.HasExited, "Offline inspection must begin after the actual target exits.");
@@ -147,11 +167,12 @@ internal sealed class DebuggerDumpFixture : IAsyncDisposable
         {
             if (!string.IsNullOrEmpty(text))
             {
-                const int maximumCharacters = 16 * 1024;
-                Log($"{stream} tail: {text[Math.Max(0, text.Length - maximumCharacters)..]}");
+                Log($"{stream} tail: {text}");
             }
         }
     }
+
+    private static string GetTail(string text) => text[Math.Max(0, text.Length - 16 * 1024)..];
 
     /// <inheritdoc />
     public ValueTask DisposeAsync() => new(

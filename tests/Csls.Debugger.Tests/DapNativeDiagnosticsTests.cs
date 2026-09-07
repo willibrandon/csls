@@ -15,6 +15,27 @@ namespace Csls.Debugger.Tests;
 public sealed class DapNativeDiagnosticsTests : DapTestContext
 {
     /// <summary>
+    /// Retains the native writer's filesystem error and releases the failed capture's target and directory.
+    /// </summary>
+    [TestMethod]
+    [Timeout(30000, CooperativeCancellation = true)]
+    public async Task DumpCaptureFailureRetainsNativeWriterError()
+    {
+        DebuggerDumpCaptureException failure = await Assert.ThrowsExactlyAsync<DebuggerDumpCaptureException>(
+            () => DebuggerDumpFixture.CreateAsync(ResolveTestProcessHost(), TestContext.CancellationToken,
+                blockDumpOutput: true)).ConfigureAwait(false);
+        _ = Assert.IsInstanceOfType<ServerErrorException>(failure.InnerException);
+        Assert.Contains(failure.DumpPath, failure.StandardError);
+        Assert.Contains(failure.StandardError, failure.Message);
+        Assert.IsLessThanOrEqualTo(16 * 1024, failure.StandardError.Length);
+        Assert.IsLessThanOrEqualTo(16 * 1024, failure.StandardOutput.Length);
+        string? directory = Path.GetDirectoryName(failure.DumpPath);
+        Assert.IsNotNull(directory);
+        Assert.IsFalse(Directory.Exists(directory));
+        _ = Assert.ThrowsExactly<ArgumentException>(() => Process.GetProcessById(failure.ProcessId));
+    }
+
+    /// <summary>
     /// Records a real target's fatal managed stack while leaving process memory out of the capture directory.
     /// </summary>
     [TestMethod]
