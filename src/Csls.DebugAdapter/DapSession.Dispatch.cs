@@ -1,5 +1,6 @@
 using Csls.DebugAdapter.Protocol;
 using Csls.Debugger.Contracts;
+using System.ComponentModel;
 
 namespace Csls.DebugAdapter;
 
@@ -11,6 +12,18 @@ internal sealed partial class DapSession
     private async ValueTask HandleRequestAsync(
         Request request,
         CancellationToken cancellationToken)
+    {
+        try
+        {
+            await DispatchRequestAsync(request, cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception exception) when (exception is Win32Exception or UnauthorizedAccessException)
+        {
+            await WriteRequestFailureAsync(request, exception.Message, cancellationToken).ConfigureAwait(false);
+        }
+    }
+
+    private async ValueTask DispatchRequestAsync(Request request, CancellationToken cancellationToken)
     {
         if (_dumpCapabilities && _state != DapSessionState.Initialized &&
             request.Command is not ("initialize" or "launch" or "attach" or "configurationDone" or

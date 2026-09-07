@@ -126,6 +126,11 @@ The process must run CoreCLR, be accessible to the current user, and match the
 debugger host architecture. Disconnecting detaches and leaves the process running.
 Clients can explicitly request termination through an advertised, authorized operation.
 
+On Linux ARM64, native frame inspection also requires `ptrace` authorization.
+With Yama's restricted attach policy, the target can use `PR_SET_PTRACER` to
+authorize the debugger process and its descendants. The kernel also checks the
+target's credentials and dumpability.
+
 ## Inspect a managed process dump
 
 Use an absolute `dumpPath` in an attach configuration to inspect managed threads,

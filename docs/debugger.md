@@ -70,6 +70,11 @@ csls debugger tui attach 12345
 The debugger pauses the process and opens the terminal. Closing an attached session
 detaches and leaves the process running.
 
+On Linux ARM64, native frame inspection also requires `ptrace` authorization.
+With Yama's restricted attach policy, the target can use `PR_SET_PTRACER` to
+authorize the debugger process and its descendants. The kernel also checks the
+target's credentials and dumpability.
+
 ## Editor integration
 
 VS Code and Zed start the Debug Adapter Protocol host with:

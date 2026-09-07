@@ -123,7 +123,12 @@ internal static class LinuxThreadContext
     {
         if (result.Value < 0)
         {
-            throw new Win32Exception(Marshal.GetLastPInvokeError(), $"{operation} failed for native thread {threadId}.");
+            int error = Marshal.GetLastPInvokeError();
+            string guidance = error == 1 && operation == "PTRACE_SEIZE"
+                ? " The target must authorize this debugger to trace it and have no other native tracer."
+                : string.Empty;
+            throw new Win32Exception(error, $"{operation} failed for native thread {threadId}: " +
+                new Win32Exception(error).Message + "." + guidance);
         }
     }
 }

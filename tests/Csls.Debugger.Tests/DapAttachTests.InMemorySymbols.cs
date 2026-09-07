@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Globalization;
 using System.Runtime.CompilerServices;
 using System.Text.Json;
 
@@ -50,10 +51,13 @@ public sealed partial class DapAttachTests
         string signalPath = Path.Join(
             Path.GetTempPath(),
             $"csls-debugger-in-memory-attach-{Guid.NewGuid():N}.signal");
+        DapTestClient client = await DapTestClient.CreateAsync(TestContext.CancellationToken).ConfigureAwait(false);
+        await using ConfiguredAsyncDisposable clientDisposal = client.ConfigureAwait(false);
         using Process target = StartInMemoryTarget(
             assemblyPath,
             symbolPath,
-            signalPath);
+            signalPath,
+            client.HostProcessId);
         try
         {
             char[] readyBuffer = new char[5];
@@ -63,10 +67,6 @@ public sealed partial class DapAttachTests
             Assert.AreEqual(readyBuffer.Length, readyCount);
             Assert.AreEqual("ready", new string(readyBuffer));
 
-            DapTestClient client = await DapTestClient
-                .CreateAsync(TestContext.CancellationToken)
-                .ConfigureAwait(false);
-            await using ConfiguredAsyncDisposable clientDisposal = client.ConfigureAwait(false);
             await AttachAsync(client, target.Id).ConfigureAwait(false);
             await WaitForInMemoryModuleAsync(client).ConfigureAwait(false);
             (int threadId, JsonDocument stopped, JsonDocument pause) =
@@ -277,10 +277,11 @@ public sealed partial class DapAttachTests
             .ReadMessageAsync(TestContext.CancellationToken)
             .ConfigureAwait(false);
         AssertResponse(variables.RootElement, variablesSequence, "variables");
-        Assert.IsNotEmpty(variables.RootElement.GetProperty("body")
+        JsonElement answer = Assert.ContainsSingle(variables.RootElement.GetProperty("body")
             .GetProperty("variables").EnumerateArray()
             .Where(variable => variable.GetProperty("name").GetString() == "answer")
             .ToArray());
+        Assert.AreEqual("42", answer.GetProperty("value").GetString());
     }
 
     private async Task WaitForInMemoryModuleAsync(DapTestClient client)
@@ -316,7 +317,8 @@ public sealed partial class DapAttachTests
     private static Process StartInMemoryTarget(
         string assemblyPath,
         string symbolPath,
-        string signalPath)
+        string signalPath,
+        int debuggerProcessId)
     {
         var startInfo = new ProcessStartInfo
         {
@@ -330,6 +332,7 @@ public sealed partial class DapAttachTests
         startInfo.ArgumentList.Add(assemblyPath);
         startInfo.ArgumentList.Add(symbolPath);
         startInfo.ArgumentList.Add(signalPath);
+        startInfo.ArgumentList.Add(debuggerProcessId.ToString(CultureInfo.InvariantCulture));
         return Process.Start(startInfo)
             ?? throw new InvalidOperationException("The in-memory attach fixture did not start.");
     }

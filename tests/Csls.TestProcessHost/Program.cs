@@ -3,6 +3,11 @@ using System.Diagnostics;
 using System.Globalization;
 using System.Text;
 
+if (args is ["--debugger-native-authorization-fixture", string nativeDebuggerPid])
+{
+    return DebuggerNativeAuthorizationFixture.Run(int.Parse(nativeDebuggerPid, CultureInfo.InvariantCulture));
+}
+
 if (args is ["--unix-wait-status-fixture", string waitedExitCode])
 {
     return UnixWaitStatusFixture.Run(
@@ -210,8 +215,10 @@ if (args is [
     "--debugger-in-memory-attach-fixture",
     string attachAssemblyPath,
     string attachSymbolPath,
-    string attachSignalPath])
+    string attachSignalPath,
+    string authorizedDebugger])
 {
+    DebuggerNativeAuthorization.AllowDebugger(int.Parse(authorizedDebugger, CultureInfo.InvariantCulture));
     return InMemoryAssemblyRunner.Run(
         attachAssemblyPath,
         attachSymbolPath,
