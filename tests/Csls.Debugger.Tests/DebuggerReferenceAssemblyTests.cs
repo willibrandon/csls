@@ -51,9 +51,9 @@ public sealed class DebuggerReferenceAssemblyTests
             string reference = Path.Join(intermediate, "ref", "Csls.ReferenceIdentity.dll");
             string emitted = Path.Join(intermediate, "refint", "Csls.ReferenceIdentity.dll");
             string implementation = Path.Join(directory.FullName, "bin", "Debug", "net10.0", "Csls.ReferenceIdentity.dll");
-            await BuildAsync(projectPath, "0.2.0").ConfigureAwait(false);
+            await BuildAsync(projectPath, "0.2.0", restore: true).ConfigureAwait(false);
             Assert.AreEqual(new Version(0, 2, 0, 0), ReadVersion(reference));
-            await BuildAsync(projectPath, "0.1.0").ConfigureAwait(false);
+            await BuildAsync(projectPath, "0.1.0", restore: false).ConfigureAwait(false);
             Assert.AreEqual(new Version(0, 1, 0, 0), ReadVersion(implementation));
             Assert.AreEqual(ReadVersion(implementation), ReadVersion(reference));
             byte[] expected = await File.ReadAllBytesAsync(emitted, TestContext.CancellationToken).ConfigureAwait(false);
@@ -62,7 +62,7 @@ public sealed class DebuggerReferenceAssemblyTests
 
             DateTime referenceWrite = File.GetLastWriteTimeUtc(reference);
             DateTime implementationWrite = File.GetLastWriteTimeUtc(implementation);
-            await BuildAsync(projectPath, "0.1.0").ConfigureAwait(false);
+            await BuildAsync(projectPath, "0.1.0", restore: false).ConfigureAwait(false);
             Assert.AreEqual(referenceWrite, File.GetLastWriteTimeUtc(reference));
             Assert.AreEqual(implementationWrite, File.GetLastWriteTimeUtc(implementation));
         }
@@ -73,7 +73,7 @@ public sealed class DebuggerReferenceAssemblyTests
         }
     }
 
-    private async Task BuildAsync(string project, string version)
+    private async Task BuildAsync(string project, string version, bool restore)
     {
         string results = Path.Join(DebuggerTestEnvironment.FindRepositoryRoot(), "artifacts", "test-results");
         Directory.CreateDirectory(results);
@@ -84,6 +84,12 @@ public sealed class DebuggerReferenceAssemblyTests
         foreach (string argument in new[] { "build", project, "--nologo", "--disable-build-servers", $"-p:Version={version}" })
         {
             start.ArgumentList.Add(argument);
+        }
+
+        if (!restore)
+        {
+            // Assembly-version changes preserve this fixture's restored dependency graph.
+            start.ArgumentList.Add("--no-restore");
         }
 
         string binlog = Path.Join(results, $"reference-identity-{Guid.NewGuid():N}.binlog");
