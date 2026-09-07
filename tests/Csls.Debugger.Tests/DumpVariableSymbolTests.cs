@@ -37,7 +37,9 @@ public sealed class DumpVariableSymbolTests : DapTestContext
             captureType: OperatingSystem.IsWindows() ? DumpType.Full : DumpType.Triage,
             diagnosticContext: TestContext).ConfigureAwait(false);
         await using ConfiguredAsyncDisposable fixtureCleanup = fixture.ConfigureAwait(false);
+        AssertFixtureImageReleased(fixture.ProgramPath, "after target exit, before captured metadata inspection");
         AssertCapturedModuleMetadata(fixture);
+        AssertFixtureImageReleased(fixture.ProgramPath, "after captured metadata inspection");
         string pdbPath = Path.ChangeExtension(fixture.ProgramPath, ".pdb");
         string otherModule = typeof(DumpVariableSymbolTests).Assembly.Location;
         switch (change)
@@ -152,6 +154,13 @@ public sealed class DumpVariableSymbolTests : DapTestContext
             using FileStream releasedSymbols = OpenExclusiveFixtureFile(pdbPath);
             Assert.IsGreaterThan(0L, releasedSymbols.Length);
         }
+    }
+
+    private void AssertFixtureImageReleased(string path, string phase)
+    {
+        TestContext.WriteLine($"Checking original module release {phase}.");
+        using FileStream image = OpenExclusiveFixtureFile(path);
+        Assert.IsGreaterThan(0L, image.Length);
     }
 
     private void ReplaceFixtureFile(string source, string destination)

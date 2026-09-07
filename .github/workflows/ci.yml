@@ -212,7 +212,7 @@ jobs:
         suite: [standard, protocol, symbols, type-inspection, stepping, evaluation, stress]
         rid: [linux-x64, linux-arm64, win-x64, win-arm64, osx-x64, osx-arm64]
         include:
-          # Complementary filters partition the main suites; dump-capture repeats object capture on its own runner.
+          # Complementary filters partition the main suites; dump-capture repeats only full object capture on its own runner.
           - suite: standard
             name: Debugger tests
             minimum_tests: 70
@@ -264,8 +264,8 @@ jobs:
             os: macos-26-intel
             rid: osx-x64
             unix_wait: true
-            minimum_tests: 2
-            filter: FullyQualifiedName~Csls.Debugger.Tests.DumpObjectTests
+            minimum_tests: 1
+            filter: FullyQualifiedName=Csls.Debugger.Tests.DumpObjectTests.CapturedObjectsPreservePhysicalFields&Name~Full
 
     steps:
       - name: Check out repository
