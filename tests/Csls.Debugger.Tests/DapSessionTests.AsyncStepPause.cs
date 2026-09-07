@@ -31,7 +31,10 @@ public sealed partial class DapSessionTests
             PipeTransmissionMode.Byte, PipeOptions.Asynchronous | PipeOptions.CurrentUserOnly);
         var connections = Task.WhenAll(selected.WaitForConnectionAsync(TestContext.CancellationToken),
             competing.WaitForConnectionAsync(TestContext.CancellationToken));
-        DapTestClient client = await DapTestClient.CreateAsync(TestContext.CancellationToken).ConfigureAwait(false);
+        var crashReports = new DebuggerCrashReportCapture(TestContext);
+        await using ConfiguredAsyncDisposable reportDisposal = crashReports.ConfigureAwait(false);
+        DapTestClient client = await DapTestClient.CreateAsync(TestContext.CancellationToken,
+            environment: crashReports.Variables).ConfigureAwait(false);
         await using ConfiguredAsyncDisposable disposal = client.ConfigureAwait(false);
         int initialThread = await LaunchToSourceBreakpointAsync(client, sourcePath, awaitLine,
             ["--debugger-concurrent-async-step-out-fixture", pipeName, kind], ResolveAsyncIteratorProgram(configuration),

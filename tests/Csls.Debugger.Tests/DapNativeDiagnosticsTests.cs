@@ -15,6 +15,40 @@ namespace Csls.Debugger.Tests;
 public sealed class DapNativeDiagnosticsTests : DapTestContext
 {
     /// <summary>
+    /// Records a real target's fatal managed stack while leaving process memory out of the capture directory.
+    /// </summary>
+    [TestMethod]
+    [OSCondition(OperatingSystems.Linux | OperatingSystems.OSX)]
+    [Timeout(30000, CooperativeCancellation = true)]
+    public async Task NativeCrashReportContainsTargetStack()
+    {
+        var capture = new DebuggerCrashReportCapture(TestContext);
+        await using ConfiguredAsyncDisposable cleanup = capture.ConfigureAwait(false);
+        var startInfo = new ProcessStartInfo(Environment.GetEnvironmentVariable("DOTNET_HOST_PATH") ?? "dotnet");
+        startInfo.ArgumentList.Add(ResolveTestProcessHost());
+        startInfo.ArgumentList.Add("--debugger-stack-overflow-fixture");
+        foreach ((string name, string? value) in capture.Variables)
+        {
+            startInfo.Environment[name] = value;
+        }
+
+        (int processId, int exitCode, string output, string error) = await DebuggerTestProcess.RunWithIdentityAsync(
+            startInfo, TestContext.CancellationToken).ConfigureAwait(false);
+        Assert.AreNotEqual(0, exitCode, output + error);
+        Assert.Contains("overflow-ready", output, error);
+        string report = Assert.ContainsSingle(Directory.GetFiles(capture.DirectoryPath));
+        Assert.AreEqual($"process-{processId}.crashreport.json", Path.GetFileName(report));
+        using FileStream stream = File.OpenRead(report);
+        using JsonDocument document = await JsonDocument.ParseAsync(stream,
+            cancellationToken: TestContext.CancellationToken).ConfigureAwait(false);
+        JsonElement[] crashed = [.. document.RootElement.GetProperty("payload").GetProperty("threads").EnumerateArray()
+            .Where(thread => thread.GetProperty("crashed").GetString() == "true")];
+        JsonElement thread = Assert.ContainsSingle(crashed);
+        Assert.Contains("DebuggerDeepStackFixture.Overflow", thread.GetProperty("stack_frames").GetRawText());
+        Assert.Contains("Stack overflow", error, StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
     /// Captures the actual worker while preserving subsequent DAP responses and orderly shutdown.
     /// </summary>
     [TestMethod]
