@@ -1,4 +1,6 @@
 using Csls.Debugger.Interop;
+using System.Buffers.Binary;
+using System.Runtime.InteropServices;
 
 namespace Csls.Debugger;
 
@@ -35,13 +37,14 @@ internal sealed class ManagedStackWalker : IDisposable
     /// </summary>
     /// <param name="process">The borrowed ICorDebugProcess pointer.</param>
     /// <param name="threadId">The runtime thread identifier.</param>
+    /// <param name="cancellationToken">Cancels between native thread and context operations.</param>
     /// <returns>The owned walk, which must be disposed on the actor.</returns>
-    internal static ManagedStackWalker Open(nint process, int threadId)
+    internal static ManagedStackWalker Open(nint process, int threadId, CancellationToken cancellationToken)
     {
         var walk = new ManagedStackWalker();
         try
         {
-            walk.Initialize(process, threadId);
+            walk.Initialize(process, threadId, cancellationToken);
             return walk;
         }
         catch
@@ -122,9 +125,10 @@ internal sealed class ManagedStackWalker : IDisposable
         Release(ref _thread);
     }
 
-    private unsafe void Initialize(nint process, int threadId)
+    private unsafe void Initialize(nint process, int threadId, CancellationToken cancellationToken)
     {
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(threadId);
+        cancellationToken.ThrowIfCancellationRequested();
         nint thread = 0;
         nint* threadAddress = &thread;
         int threadResult = new ICorDebugProcessAbi(process).GetThread(checked((uint)threadId), (nint)threadAddress);
@@ -149,6 +153,53 @@ internal sealed class ManagedStackWalker : IDisposable
         {
             throw new InvalidOperationException("ICorDebugThread3.CreateStackWalk returned no stack walker.");
         }
+
+        cancellationToken.ThrowIfCancellationRequested();
+        if (OperatingSystem.IsMacOS() && RuntimeInformation.ProcessArchitecture == Architecture.Arm64 &&
+            !HasManagedArm64Context(process, threadId))
+        {
+            uint processId = 0;
+            uint* processIdAddress = &processId;
+            CorDebugHResult.ThrowIfFailed(new ICorDebugProcessAbi(process).GetID((nint)processIdAddress),
+                "ICorDebugProcess.GetID");
+            byte[] context = MacArm64ThreadContext.Read(checked((int)Volatile.Read(ref *processIdAddress)), threadId,
+                cancellationToken);
+            fixed (byte* contextAddress = context)
+            {
+                const int nonMatchingContext = unchecked((int)0x80131327);
+                int result = new ICorDebugStackWalkAbi(_walker).SetContext(1,
+                    checked((uint)context.Length), (nint)contextAddress);
+                // CoreCLR preserves its managed walk when a native stop is outside the thread's stack bounds.
+                if (result != nonMatchingContext)
+                {
+                    CorDebugHResult.ThrowIfFailed(result, "ICorDebugStackWalk.SetContext");
+                }
+            }
+        }
+
+        cancellationToken.ThrowIfCancellationRequested();
+    }
+
+    private static unsafe bool HasManagedArm64Context(nint process, int threadId)
+    {
+        // Managed stops retain the runtime's saved context, including breakpoint and exception dispatch.
+        const int contextUnavailable = unchecked((int)0x80131C29);
+        Span<byte> context = stackalloc byte[912];
+        BinaryPrimitives.WriteUInt32LittleEndian(context, 0x00400003);
+        int result;
+        fixed (byte* address = context)
+        {
+            result = new ICorDebugProcessAbi(process).GetThreadContext(checked((uint)threadId),
+                checked((uint)context.Length), (nint)address);
+        }
+
+        if (result == contextUnavailable)
+        {
+            return false;
+        }
+
+        CorDebugHResult.ThrowIfFailed(result, "ICorDebugProcess.GetThreadContext");
+        return true;
     }
 
     private static void Release(ref nint pointer)

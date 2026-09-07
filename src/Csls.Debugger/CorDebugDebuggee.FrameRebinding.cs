@@ -16,7 +16,7 @@ internal sealed partial class CorDebugDebuggee
     {
         cancellationToken.ThrowIfCancellationRequested();
         using ManagedFrameRegistration registration = _frames.BeginRegistration();
-        using var walker = ManagedStackWalker.Open(_debugProcess, identity.ThreadId);
+        using var walker = ManagedStackWalker.Open(_debugProcess, identity.ThreadId, cancellationToken);
         var symbols = new ManagedSymbolFrameResolver(_sourceBreakpoints);
         while (walker.TryTakeFrame(out nint pointer, cancellationToken))
         {

@@ -33,7 +33,7 @@ internal sealed partial class CorDebugDebuggee
         ArgumentOutOfRangeException.ThrowIfGreaterThan(levels, maximumPageSize);
         cancellationToken.ThrowIfCancellationRequested();
         using ManagedFrameRegistration registration = _frames.BeginRegistration();
-        using var walker = ManagedStackWalker.Open(_debugProcess, threadId);
+        using var walker = ManagedStackWalker.Open(_debugProcess, threadId, cancellationToken);
         var symbols = new ManagedSymbolFrameResolver(_sourceBreakpoints);
         var observer = new ManagedStackWalkObserver(progress);
         List<DebugStackFrameInfo> frames = [];
