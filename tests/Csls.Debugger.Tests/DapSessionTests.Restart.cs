@@ -31,6 +31,7 @@ public sealed partial class DapSessionTests
                 .ConfigureAwait(false);
             DapTestClient client = await DapTestClient.CreateAsync(TestContext.CancellationToken).ConfigureAwait(false);
             await using ConfiguredAsyncDisposable cleanup = client.ConfigureAwait(false);
+            using DapTestCancellationCapture cancellationLog = CaptureProtocolOnCancellation(client);
             int initialize = await client.SendInitializeRequestAsync(TestContext.CancellationToken).ConfigureAwait(false);
             using (JsonDocument response = await client.ReadMessageAsync(TestContext.CancellationToken).ConfigureAwait(false))
             {
