@@ -154,58 +154,6 @@ public sealed partial class DapSessionTests
     }
 
     /// <summary>
-    /// Bounds retained wire payloads and releases their budget when queued work is canceled.
-    /// </summary>
-    [TestMethod]
-    [Timeout(30000, CooperativeCancellation = true)]
-    public async Task QueuedRequestPayloadBudgetIsReleasedByCancellation()
-    {
-        string waitPath = CreateResultsViewSignalPath();
-        try
-        {
-            DapTestClient client = await StartProxyFixtureAsync(waitPath).ConfigureAwait(false);
-            await using ConfiguredAsyncDisposable disposal = client.ConfigureAwait(false);
-            JsonElement frame = await GetFixtureFrameAsync(client).ConfigureAwait(false);
-            int evaluationSequence = await client.SendRequestAsync("evaluate", writer =>
-            {
-                writer.WriteStartObject();
-                writer.WriteString("expression", "localObject.WaitForDebuggerCancellation()");
-                writer.WriteNumber("frameId", frame.GetProperty("id").GetInt32());
-                writer.WriteEndObject();
-            }, TestContext.CancellationToken).ConfigureAwait(false);
-            await client.WaitForTargetSignalAsync(waitPath + ".evaluation", evaluationSequence,
-                TestContext.CancellationToken).ConfigureAwait(false);
-            int paddedSequence = await client.SendRequestAsync("threads", WriteEmptyObject,
-                TestContext.CancellationToken, minimumPayloadBytes: 16 * 1024 * 1024).ConfigureAwait(false);
-            int rejectedSequence = await client.SendRequestAsync("threads", WriteEmptyObject,
-                TestContext.CancellationToken).ConfigureAwait(false);
-            using JsonDocument rejected = await client.ReadMessageAsync(TestContext.CancellationToken)
-                .ConfigureAwait(false);
-            AssertResponse(rejected.RootElement, rejectedSequence, "threads", success: false);
-            Assert.Contains("pending request limit", rejected.RootElement.GetProperty("message").GetString()!,
-                StringComparison.OrdinalIgnoreCase);
-            await AssertQueuedRequestCanceledAsync(client, paddedSequence, "threads").ConfigureAwait(false);
-            int replacementSequence = await client.SendRequestAsync("threads", WriteEmptyObject,
-                TestContext.CancellationToken, minimumPayloadBytes: 16 * 1024 * 1024).ConfigureAwait(false);
-            int cancelSequence = await SendRequestCancellationAsync(client, evaluationSequence)
-                .ConfigureAwait(false);
-            await AssertCanceledTargetCodeOperationAsync(client, evaluationSequence, cancelSequence, "evaluate")
-                .ConfigureAwait(false);
-            using JsonDocument replacement = await client.ReadMessageAsync(TestContext.CancellationToken)
-                .ConfigureAwait(false);
-            AssertResponse(replacement.RootElement, replacementSequence, "threads", success: true);
-            Assert.IsNotEmpty(replacement.RootElement.GetProperty("body").GetProperty("threads")
-                .EnumerateArray());
-            await FinishResultsViewSessionAsync(client).ConfigureAwait(false);
-        }
-        finally
-        {
-            File.Delete(waitPath);
-            File.Delete(waitPath + ".evaluation");
-        }
-    }
-
-    /// <summary>
     /// Disconnects queued work even while the protocol reader is waiting for an incomplete later payload.
     /// </summary>
     [TestMethod]

@@ -99,7 +99,8 @@ public sealed partial class DapSymbolTests
     private async Task<int> StartSourceCancellationFixtureAsync(
         DapTestClient client,
         SourceLinkTestServer server,
-        string directory)
+        string directory,
+        string? programPath = null)
     {
         int line = FindSourceLine(await File.ReadAllLinesAsync(SymbolFixtures.SourcePath, TestContext.CancellationToken)
             .ConfigureAwait(false), "answer++;");
@@ -111,7 +112,7 @@ public sealed partial class DapSymbolTests
         }
 
         int launchSequence = await client.SendRequestAsync("launch", writer => WriteSourceLinkLaunchArguments(writer,
-            SymbolFixtures.CancellationSourceLinkProgramPath,
+            programPath ?? SymbolFixtures.CancellationSourceLinkProgramPath,
             [Path.Join(directory, "continue.signal"), "41", "source-link"], server.SourceLinkPattern),
             TestContext.CancellationToken).ConfigureAwait(false);
         using (JsonDocument initialized = await client.ReadMessageAsync(TestContext.CancellationToken).ConfigureAwait(false))

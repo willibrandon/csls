@@ -24,6 +24,7 @@ internal sealed class DebuggerSymbolFixtures : IAsyncDisposable
         SymbolFreeProgramPath = GetProgramPath(fixtureDirectory, "SymbolFreeFixture");
         ValidSourceLinkProgramPath = GetProgramPath(fixtureDirectory, "SourceLinkValid");
         CancellationSourceLinkProgramPath = GetProgramPath(fixtureDirectory, "SourceLinkCancellation");
+        QueuedSourceLinkProgramPath = GetProgramPath(fixtureDirectory, "SourceLinkQueued");
         ImplicitSourceLinkProgramPath = GetProgramPath(fixtureDirectory, "SourceLinkImplicit");
         MismatchedSourceLinkProgramPath = GetProgramPath(
             fixtureDirectory,
@@ -33,6 +34,7 @@ internal sealed class DebuggerSymbolFixtures : IAsyncDisposable
             : null;
         ValidSourceLinkServer = new SourceLinkTestServer(source);
         CancellationSourceLinkServer = new SourceLinkTestServer(source, holdFirstResponse: true);
+        QueuedSourceLinkServer = new SourceLinkTestServer(source, holdFirstResponse: true);
         ImplicitSourceLinkServer = new SourceLinkTestServer(source);
         MismatchedSourceLinkServer = new SourceLinkTestServer([.. source, (byte)' ']);
     }
@@ -73,6 +75,11 @@ internal sealed class DebuggerSymbolFixtures : IAsyncDisposable
     internal string CancellationSourceLinkProgramPath { get; }
 
     /// <summary>
+    /// Gets the program whose held source download occupies the request queue during payload-budget checks.
+    /// </summary>
+    internal string QueuedSourceLinkProgramPath { get; }
+
+    /// <summary>
     /// Gets the program whose Source Link endpoint must not be accessed implicitly.
     /// </summary>
     internal string ImplicitSourceLinkProgramPath { get; }
@@ -96,6 +103,11 @@ internal sealed class DebuggerSymbolFixtures : IAsyncDisposable
     /// Gets the server that observes cancellation of a held source response.
     /// </summary>
     internal SourceLinkTestServer CancellationSourceLinkServer { get; }
+
+    /// <summary>
+    /// Gets the isolated source endpoint used by the queued-payload cancellation test.
+    /// </summary>
+    internal SourceLinkTestServer QueuedSourceLinkServer { get; }
 
     /// <summary>
     /// Gets the server used to prove that loopback Source Link access requires consent.
@@ -132,6 +144,7 @@ internal sealed class DebuggerSymbolFixtures : IAsyncDisposable
         {
             fixtures.ValidSourceLinkServer.Start();
             fixtures.CancellationSourceLinkServer.Start();
+            fixtures.QueuedSourceLinkServer.Start();
             fixtures.ImplicitSourceLinkServer.Start();
             fixtures.MismatchedSourceLinkServer.Start();
             _ = await WriteSourceLinkProjectAsync(
@@ -145,6 +158,12 @@ internal sealed class DebuggerSymbolFixtures : IAsyncDisposable
                 fixtureDirectory,
                 "SourceLinkCancellation",
                 fixtures.CancellationSourceLinkServer.SourceLinkPattern,
+                cancellationToken).ConfigureAwait(false);
+            _ = await WriteSourceLinkProjectAsync(
+                sourceDirectory,
+                fixtureDirectory,
+                "SourceLinkQueued",
+                fixtures.QueuedSourceLinkServer.SourceLinkPattern,
                 cancellationToken).ConfigureAwait(false);
             _ = await WriteSourceLinkProjectAsync(
                 sourceDirectory,
@@ -191,6 +210,7 @@ internal sealed class DebuggerSymbolFixtures : IAsyncDisposable
         await DisposeServersAsync(
             ValidSourceLinkServer,
             CancellationSourceLinkServer,
+            QueuedSourceLinkServer,
             ImplicitSourceLinkServer,
             MismatchedSourceLinkServer).ConfigureAwait(false);
         await DebuggerTestDirectoryReleaseWaiter.DeleteAsync(
@@ -385,8 +405,8 @@ internal sealed class DebuggerSymbolFixtures : IAsyncDisposable
         CancellationToken cancellationToken)
     {
         string[] projectNames = includeWindowsPdb
-            ? ["SourceLinkValid", "SourceLinkImplicit", "SourceLinkMismatched", "SourceLinkCancellation", "SymbolFreeFixture", "WindowsPdbFixture", "EntryAppHost"]
-            : ["SourceLinkValid", "SourceLinkImplicit", "SourceLinkMismatched", "SourceLinkCancellation", "SymbolFreeFixture", "EntryAppHost"];
+            ? ["SourceLinkValid", "SourceLinkImplicit", "SourceLinkMismatched", "SourceLinkCancellation", "SourceLinkQueued", "SymbolFreeFixture", "WindowsPdbFixture", "EntryAppHost"]
+            : ["SourceLinkValid", "SourceLinkImplicit", "SourceLinkMismatched", "SourceLinkCancellation", "SourceLinkQueued", "SymbolFreeFixture", "EntryAppHost"];
         var solution = new XDocument(
             new XElement(
                 "Solution",
