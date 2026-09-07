@@ -8,9 +8,7 @@ namespace Csls.Debugger;
 internal sealed class ManagedRuntimeTypeResolver
 {
     private const uint ArrayElementType = 0x14;
-    private const uint ClassElementType = 0x12;
     private const uint SingleDimensionArrayElementType = 0x1D;
-    private const uint ValueTypeElementType = 0x11;
     private const int MaximumHierarchyDepth = 256;
     private readonly ManagedRuntimeTypeCatalog _typeCatalog;
     private readonly ManagedCoreLibrary _coreLibrary;
@@ -42,7 +40,7 @@ internal sealed class ManagedRuntimeTypeResolver
         IReadOnlyList<nint> methodArguments,
         nint thread) => ResolveCore(signature, genericArguments, methodArguments, thread, depth: 0);
 
-    private unsafe nint ResolveCore(
+    private nint ResolveCore(
         ManagedMetadataTypeSignature signature,
         IReadOnlyList<nint> genericArguments,
         IReadOnlyList<nint> methodArguments,
@@ -94,8 +92,6 @@ internal sealed class ManagedRuntimeTypeResolver
                     $"Runtime type '{metadataName}' is not loaded uniquely.");
             }
 
-            nint runtimeClass = 0;
-            nint runtimeClass2 = 0;
             nint[] typeArguments = new nint[signature.TypeArguments.Count];
             try
             {
@@ -109,24 +105,7 @@ internal sealed class ManagedRuntimeTypeResolver
                         depth + 1);
                 }
 
-                runtimeClass = GetModuleClass(module.Pointer, typeToken);
-                runtimeClass2 = ComAbi.QueryInterface(
-                    runtimeClass,
-                    ICorDebugClass2Abi.InterfaceId);
-                fixed (nint* typeArgumentsAddress = typeArguments)
-                {
-                    nint* resultAddress = &result;
-                    CorDebugHResult.ThrowIfFailed(
-                        new ICorDebugClass2Abi(runtimeClass2).GetParameterizedType(
-                            signature.IsValueType ? ValueTypeElementType : ClassElementType,
-                            checked((uint)typeArguments.Length),
-                            typeArguments.Length == 0 ? 0 : (nint)typeArgumentsAddress,
-                            (nint)resultAddress),
-                        "ICorDebugClass2.GetParameterizedType");
-                    result = RequirePointer(
-                        Volatile.Read(ref *resultAddress),
-                        "ICorDebugClass2.GetParameterizedType");
-                }
+                result = ManagedRuntimeTypeConstruction.Create(module.Pointer, typeToken, signature.IsValueType, typeArguments);
             }
             catch
             {
@@ -136,8 +115,6 @@ internal sealed class ManagedRuntimeTypeResolver
             finally
             {
                 ReleaseAll(typeArguments);
-                ReleasePointer(runtimeClass2);
-                ReleasePointer(runtimeClass);
             }
         }
 
@@ -218,19 +195,6 @@ internal sealed class ManagedRuntimeTypeResolver
             throw new BadImageFormatException(
                 $"A runtime type signature exceeds {MaximumHierarchyDepth} nested levels.");
         }
-    }
-
-    private static unsafe nint GetModuleClass(nint module, uint typeToken)
-    {
-        nint runtimeClass = 0;
-        nint* runtimeClassAddress = &runtimeClass;
-        CorDebugHResult.ThrowIfFailed(
-            new ICorDebugModuleAbi(module).GetClassFromToken(
-                typeToken, (nint)runtimeClassAddress),
-            "ICorDebugModule.GetClassFromToken");
-        return RequirePointer(
-            Volatile.Read(ref *runtimeClassAddress),
-            "ICorDebugModule.GetClassFromToken");
     }
 
     private static nint Retain(nint pointer)

@@ -1,6 +1,5 @@
 using Csls.Debugger.Interop;
 using System.Reflection.Metadata;
-using System.Reflection.Metadata.Ecma335;
 using System.Reflection.PortableExecutable;
 
 namespace Csls.Debugger;
@@ -11,10 +10,9 @@ namespace Csls.Debugger;
 internal sealed class ManagedRuntimeTypeCatalog
 {
     private const int MaximumForwardingDepth = 256;
-    private const int MaximumModuleCount = 4096;
-    private const int MaximumTypeScanCount = 1_000_000;
     private const int CannotResolveAssembly = unchecked((int)0x80131C11);
     private readonly SourceBreakpointManager _modules;
+    private readonly ManagedScopedTypeResolver _scopedTypes;
 
     /// <summary>
     /// Creates a runtime type catalog over the loaded module set.
@@ -24,6 +22,8 @@ internal sealed class ManagedRuntimeTypeCatalog
     {
         ArgumentNullException.ThrowIfNull(modules);
         _modules = modules;
+        _scopedTypes = new ManagedScopedTypeResolver(
+            module => _modules.FindModule(module)?.OpenPeReader(), GetReferencedAssembly);
     }
 
     /// <summary>
@@ -58,150 +58,18 @@ internal sealed class ManagedRuntimeTypeCatalog
             return resolvedModule is not null;
         }
 
-        nint assembly = GetReferencedAssembly(signature.SourceModule, signature.AssemblyReferenceToken);
+        if (!_scopedTypes.TryResolve(signature, out nint module, out resolvedToken))
+        {
+            return false;
+        }
         try
         {
-            int scannedTypes = 0;
-            if (FindTypeInAssembly(assembly, metadataName, [], 0, ref scannedTypes) is not { } match)
-            {
-                return false;
-            }
-
-            resolvedModule = match.Module;
-            resolvedToken = match.Token;
-            return true;
+            resolvedModule = _modules.FindModule(module);
+            return resolvedModule is not null;
         }
         finally
         {
-            ReleasePointer(assembly);
-        }
-    }
-
-    private (CorDebugLoadedModule Module, uint Token)? FindTypeInAssembly(
-        nint assembly,
-        string metadataName,
-        HashSet<nint> visited,
-        int depth,
-        ref int scannedTypes)
-    {
-        if (depth >= MaximumForwardingDepth)
-        {
-            throw new BadImageFormatException("A runtime type exceeds the supported forwarding depth.");
-        }
-
-        nint identity = ComAbi.GetIdentity(assembly);
-        try
-        {
-            if (!visited.Add(identity))
-            {
-                return null;
-            }
-        }
-        finally
-        {
-            ReleasePointer(identity);
-        }
-
-        List<CorDebugLoadedModule> modules = GetAssemblyModules(assembly);
-        (CorDebugLoadedModule Module, uint Token)? result = null;
-        foreach (CorDebugLoadedModule module in modules)
-        {
-            uint? match = TryFindTypeInModule(module, metadataName, null, ref scannedTypes);
-            if (match is not null)
-            {
-                if (result is not null)
-                {
-                    return null;
-                }
-
-                result = (module, match.Value);
-            }
-        }
-
-        if (result is not null)
-        {
-            return result;
-        }
-
-        foreach (CorDebugLoadedModule module in modules)
-        {
-            uint assemblyReference = GetForwardedAssemblyReference(module, metadataName);
-            if (assemblyReference == 0)
-            {
-                continue;
-            }
-
-            nint forwardedAssembly = GetReferencedAssembly(module.Pointer, assemblyReference);
-            try
-            {
-                if (FindTypeInAssembly(
-                    forwardedAssembly, metadataName, visited, depth + 1, ref scannedTypes) is { } match)
-                {
-                    return match;
-                }
-            }
-            finally
-            {
-                ReleasePointer(forwardedAssembly);
-            }
-        }
-
-        return null;
-    }
-
-    private unsafe List<CorDebugLoadedModule> GetAssemblyModules(nint assembly)
-    {
-        nint enumerator = 0;
-        try
-        {
-            nint* enumeratorAddress = &enumerator;
-            CorDebugHResult.ThrowIfFailed(
-                new ICorDebugAssemblyAbi(assembly).EnumerateModules((nint)enumeratorAddress),
-                "ICorDebugAssembly.EnumerateModules");
-            enumerator = RequirePointer(
-                Volatile.Read(ref *enumeratorAddress), "ICorDebugAssembly.EnumerateModules");
-            List<CorDebugLoadedModule> result = [];
-            var values = new ICorDebugModuleEnumAbi(enumerator);
-            for (int index = 0; index <= MaximumModuleCount; index++)
-            {
-                nint module = 0;
-                try
-                {
-                    uint fetched = 0;
-                    nint* moduleAddress = &module;
-                    uint* fetchedAddress = &fetched;
-                    CorDebugHResult.ThrowIfFailed(
-                        values.Next(1, (nint)moduleAddress, (nint)fetchedAddress),
-                        "ICorDebugModuleEnum.Next");
-                    module = Volatile.Read(ref *moduleAddress);
-                    if (Volatile.Read(ref *fetchedAddress) == 0)
-                    {
-                        return result;
-                    }
-
-                    if (index == MaximumModuleCount)
-                    {
-                        break;
-                    }
-
-                    CorDebugLoadedModule? loaded = _modules.FindModule(
-                        RequirePointer(module, "ICorDebugModuleEnum.Next"));
-                    if (loaded is not null)
-                    {
-                        result.Add(loaded);
-                    }
-                }
-                finally
-                {
-                    ReleasePointer(module);
-                }
-            }
-
-            throw new InvalidOperationException($"A runtime assembly exceeds {MaximumModuleCount} modules.");
-        }
-        finally
-        {
-            ReleasePointer(enumerator);
+            ReleasePointer(module);
         }
     }
 
@@ -255,41 +123,6 @@ internal sealed class ManagedRuntimeTypeCatalog
         {
             ReleasePointer(module2);
         }
-    }
-
-    private static uint GetForwardedAssemblyReference(CorDebugLoadedModule module, string metadataName)
-    {
-        using PEReader? peReader = module.OpenPeReader();
-        if (peReader is null || !peReader.HasMetadata)
-        {
-            return 0;
-        }
-
-        MetadataReader metadata = peReader.GetMetadataReader();
-        foreach (ExportedTypeHandle handle in metadata.ExportedTypes)
-        {
-            if (!string.Equals(GetExportedTypeName(metadata, handle), metadataName, StringComparison.Ordinal))
-            {
-                continue;
-            }
-
-            ExportedType type = metadata.GetExportedType(handle);
-            for (int depth = 0; depth < MaximumForwardingDepth; depth++)
-            {
-                if (type.Implementation.Kind != HandleKind.ExportedType)
-                {
-                    return type.IsForwarder && type.Implementation.Kind == HandleKind.AssemblyReference
-                        ? checked((uint)MetadataTokens.GetToken(type.Implementation))
-                        : 0;
-                }
-
-                type = metadata.GetExportedType((ExportedTypeHandle)type.Implementation);
-            }
-
-            throw new BadImageFormatException("A forwarded type exceeds the supported nesting depth.");
-        }
-
-        return 0;
     }
 
     /// <summary>
@@ -403,7 +236,7 @@ internal sealed class ManagedRuntimeTypeCatalog
         foreach (ExportedTypeHandle handle in metadata.ExportedTypes)
         {
             if (!string.Equals(
-                GetExportedTypeName(metadata, handle),
+                ManagedMetadataTypeLookup.GetExportedTypeName(metadata, handle),
                 metadataName,
                 StringComparison.Ordinal) ||
                 !TryGetForwardedAssembly(metadata, handle, out string? candidate))
@@ -423,32 +256,6 @@ internal sealed class ManagedRuntimeTypeCatalog
         }
 
         return forwardedAssembly;
-    }
-
-    private static string GetExportedTypeName(
-        MetadataReader metadata,
-        ExportedTypeHandle handle)
-    {
-        List<string> names = [];
-        for (int depth = 0; depth < MaximumForwardingDepth; depth++)
-        {
-            ExportedType type = metadata.GetExportedType(handle);
-            names.Add(metadata.GetString(type.Name));
-            if (type.Implementation.Kind != HandleKind.ExportedType)
-            {
-                names.Reverse();
-                string name = string.Join('+', names);
-                string typeNamespace = metadata.GetString(type.Namespace);
-                return string.IsNullOrEmpty(typeNamespace)
-                    ? name
-                    : $"{typeNamespace}.{name}";
-            }
-
-            handle = (ExportedTypeHandle)type.Implementation;
-        }
-
-        throw new BadImageFormatException(
-            $"An exported type exceeds {MaximumForwardingDepth} nested levels.");
     }
 
     private static bool TryGetForwardedAssembly(
@@ -494,51 +301,8 @@ internal sealed class ManagedRuntimeTypeCatalog
             return null;
         }
 
-        MetadataReader metadata = peReader.GetMetadataReader();
-        if (assemblyName is not null &&
-            (!metadata.IsAssembly || !string.Equals(
-                metadata.GetString(metadata.GetAssemblyDefinition().Name),
-                assemblyName,
-                StringComparison.OrdinalIgnoreCase)))
-        {
-            return null;
-        }
-
-        foreach (TypeDefinitionHandle handle in metadata.TypeDefinitions)
-        {
-            if (++scannedTypes > MaximumTypeScanCount)
-            {
-                throw new InvalidOperationException(
-                    $"Results View resolution exceeds {MaximumTypeScanCount} loaded types.");
-            }
-
-            if (string.Equals(
-                GetMetadataTypeName(metadata, handle),
-                metadataName,
-                StringComparison.Ordinal))
-            {
-                return checked((uint)MetadataTokens.GetToken(handle));
-            }
-        }
-
-        return null;
-    }
-
-    private static string GetMetadataTypeName(
-        MetadataReader metadata,
-        TypeDefinitionHandle handle)
-    {
-        TypeDefinition type = metadata.GetTypeDefinition(handle);
-        string name = metadata.GetString(type.Name);
-        if (!type.GetDeclaringType().IsNil)
-        {
-            return $"{GetMetadataTypeName(metadata, type.GetDeclaringType())}+{name}";
-        }
-
-        string typeNamespace = metadata.GetString(type.Namespace);
-        return string.IsNullOrEmpty(typeNamespace)
-            ? name
-            : $"{typeNamespace}.{name}";
+        return ManagedMetadataTypeLookup.FindDefinition(
+            peReader.GetMetadataReader(), metadataName, assemblyName, ref scannedTypes);
     }
 
     private static nint RequirePointer(nint pointer, string operation) => pointer != 0
