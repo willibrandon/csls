@@ -6,16 +6,16 @@ using System.Globalization;
 namespace Csls.Debugger.Tests;
 
 /// <summary>
-/// Captures bounded native and managed stacks from a failed test's macOS debugger process tree.
+/// Captures bounded native and managed stacks from a failed test's owned macOS process tree.
 /// </summary>
 internal static class DebuggerProcessDiagnostics
 {
     private const int MaximumProcesses = 8;
 
     /// <summary>
-    /// Records native wait locations before a failed test releases its owned adapter and target.
+    /// Records native wait locations before a failed test releases its owned processes.
     /// </summary>
-    /// <param name="hostProcessId">The adapter launcher process owned by the test.</param>
+    /// <param name="hostProcessId">The root process owned by the test.</param>
     /// <param name="testContext">The test context that retains diagnostic artifact paths.</param>
     /// <returns>A task that completes after diagnostic collection or its bounded deadline.</returns>
     internal static async Task CaptureAsync(int hostProcessId, TestContext testContext)
@@ -28,7 +28,7 @@ internal static class DebuggerProcessDiagnostics
         using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(10));
         try
         {
-            testContext.WriteLine($"Inspecting descendants of adapter process {hostProcessId}.");
+            testContext.WriteLine($"Inspecting descendants of owned process {hostProcessId}.");
             var startInfo = new ProcessStartInfo("/bin/ps");
             startInfo.ArgumentList.Add("-axo");
             startInfo.ArgumentList.Add("pid=,ppid=");
@@ -55,7 +55,7 @@ internal static class DebuggerProcessDiagnostics
 
             if (!parents.ContainsKey(hostProcessId))
             {
-                testContext.WriteLine($"Adapter process {hostProcessId} exited before native stack capture.");
+                testContext.WriteLine($"Owned process {hostProcessId} exited before native stack capture.");
                 return;
             }
 

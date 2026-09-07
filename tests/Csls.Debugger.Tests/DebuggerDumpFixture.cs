@@ -132,6 +132,16 @@ internal sealed class DebuggerDumpFixture : IAsyncDisposable
             {
                 captureFailure = exception;
             }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                if (diagnosticContext is not null)
+                {
+                    Log(File.Exists(dump) ? $"Partial dump size: {new FileInfo(dump).Length} bytes."
+                        : "Dump writer has not created the output file.");
+                    await DebuggerProcessDiagnostics.CaptureAsync(target.Id, diagnosticContext).ConfigureAwait(false);
+                }
+                throw;
+            }
             finally
             {
                 Log("Retiring target.");
