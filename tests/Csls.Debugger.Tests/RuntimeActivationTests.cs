@@ -11,6 +11,8 @@ namespace Csls.Debugger.Tests;
 [TestClass]
 public sealed class RuntimeActivationTests
 {
+    private DebuggerWorkerTestSession? _worker;
+
     /// <summary>
     /// Gets the active MSTest context and its framework-managed cancellation token.
     /// </summary>
@@ -34,34 +36,57 @@ public sealed class RuntimeActivationTests
         string absentSignal = Path.Join(
             Path.GetTempPath(),
             $"csls-debugger-activation-{Guid.NewGuid():N}.signal");
-        DebuggerWorkerTestSession worker = await DebuggerWorkerTestSession
+        _worker = await DebuggerWorkerTestSession
             .StartAsync(TestContext.CancellationToken).ConfigureAwait(false);
-        await using ConfiguredAsyncDisposable workerDisposal = worker.ConfigureAwait(false);
-        DebuggerRpcClient client = worker.Client;
-        DebugSessionSnapshot running = await client.LaunchAsync(
-            new DebugLaunchRequest
-            {
-                Program = program,
-                WorkingDirectory = repositoryRoot,
-                Arguments = ["--wait-for-file", absentSignal],
-                SourceFileMap = new Dictionary<string, string>(StringComparer.Ordinal)
+        DebuggerRpcClient client = _worker.Client;
+        string stage = "launch";
+        try
+        {
+            DebugSessionSnapshot running = await client.LaunchAsync(
+                new DebugLaunchRequest
                 {
-                    ["/_/"] = repositoryRoot
-                }
-            },
-            TestContext.CancellationToken).ConfigureAwait(false);
-        Assert.AreEqual(DebugSessionState.Running, running.State);
-        Assert.IsNotNull(running.ProcessId);
-        int processId = running.ProcessId
-            ?? throw new InvalidOperationException("The running target has no process identifier.");
-        DebugSessionSnapshot terminated = await client
-            .TerminateAsync(TestContext.CancellationToken).ConfigureAwait(false);
-        Assert.AreEqual(DebugSessionState.Terminated, terminated.State);
+                    Program = program,
+                    WorkingDirectory = repositoryRoot,
+                    Arguments = ["--wait-for-file", absentSignal],
+                    SourceFileMap = new Dictionary<string, string>(StringComparer.Ordinal)
+                    {
+                        ["/_/"] = repositoryRoot
+                    }
+                },
+                TestContext.CancellationToken).ConfigureAwait(false);
+            Assert.AreEqual(DebugSessionState.Running, running.State);
+            Assert.IsNotNull(running.ProcessId);
+            int processId = running.ProcessId
+                ?? throw new InvalidOperationException("The running target has no process identifier.");
+            stage = $"terminate target {processId}";
+            DebugSessionSnapshot terminated = await client
+                .TerminateAsync(TestContext.CancellationToken).ConfigureAwait(false);
+            Assert.AreEqual(DebugSessionState.Terminated, terminated.State);
 
-        Assert.IsGreaterThan(0, processId);
-        _ = Assert.ThrowsExactly<ArgumentException>(
-            () => Process.GetProcessById(processId));
-        Assert.IsFalse(File.Exists(absentSignal));
+            Assert.IsGreaterThan(0, processId);
+            _ = Assert.ThrowsExactly<ArgumentException>(
+                () => Process.GetProcessById(processId));
+            Assert.IsFalse(File.Exists(absentSignal));
+        }
+        catch (Exception exception)
+        {
+            TestContext.WriteLine($"Runtime activation failed during {stage}: {exception}");
+            await _worker.CaptureFailureAsync(TestContext).ConfigureAwait(false);
+            throw;
+        }
+    }
+
+    /// <summary>
+    /// Reports worker shutdown independently so cleanup retains the original activation failure.
+    /// </summary>
+    /// <returns>The completion of worker retirement.</returns>
+    [TestCleanup]
+    public async Task CleanupAsync()
+    {
+        if (_worker is not null)
+        {
+            await _worker.DisposeAsync().ConfigureAwait(false);
+        }
     }
 
     private static string FindRepositoryRoot([CallerFilePath] string sourcePath = "")

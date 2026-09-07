@@ -29,6 +29,14 @@ internal sealed class DebuggerWorkerTestSession : IAsyncDisposable
     internal DebuggerRpcClient Client { get; }
 
     /// <summary>
+    /// Preserves native and managed wait locations before the owned worker is retired.
+    /// </summary>
+    /// <param name="testContext">The destination for bounded failure diagnostics.</param>
+    /// <returns>The completion of diagnostic capture.</returns>
+    internal Task CaptureFailureAsync(TestContext testContext) =>
+        DebuggerProcessDiagnostics.CaptureAsync(_process.Id, testContext);
+
+    /// <summary>
     /// Starts and connects a packaged debugger worker from the current repository build.
     /// </summary>
     /// <param name="cancellationToken">Cancels worker connection establishment.</param>
