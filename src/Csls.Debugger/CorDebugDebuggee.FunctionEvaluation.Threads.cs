@@ -41,7 +41,7 @@ internal sealed partial class CorDebugDebuggee
                 try
                 {
                     int threadId = checked((int)GetManagedThreadId(thread));
-                    if (threadId == evaluationThreadId)
+                    if (threadId == evaluationThreadId || IsThreadTerminated(thread))
                     {
                         continue;
                     }
@@ -109,6 +109,11 @@ internal sealed partial class CorDebugDebuggee
 
                 try
                 {
+                    if (IsThreadTerminated(thread))
+                    {
+                        continue;
+                    }
+
                     int threadId = checked((int)GetManagedThreadId(thread));
                     int state = threadId == evaluationThreadId
                         ? 0

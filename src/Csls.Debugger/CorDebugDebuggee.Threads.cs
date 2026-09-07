@@ -31,7 +31,8 @@ internal sealed partial class CorDebugDebuggee
         {
             var result = new List<DebugThreadInfo>();
             var api = new ICorDebugThreadEnumAbi(enumerator);
-            while (result.Count < maximumThreadCount)
+            int visited = 0;
+            while (visited < maximumThreadCount)
             {
                 nint thread = 0;
                 uint fetched = 0;
@@ -46,8 +47,14 @@ internal sealed partial class CorDebugDebuggee
                     break;
                 }
 
+                visited++;
                 try
                 {
+                    if (IsThreadTerminated(thread))
+                    {
+                        continue;
+                    }
+
                     uint threadId = 0;
                     uint* threadIdAddress = &threadId;
                     CorDebugHResult.ThrowIfFailed(
@@ -65,7 +72,7 @@ internal sealed partial class CorDebugDebuggee
                 }
             }
 
-            if (result.Count == maximumThreadCount)
+            if (visited == maximumThreadCount)
             {
                 throw new InvalidOperationException(
                     $"The target exceeds the managed-thread limit of {maximumThreadCount}.");
@@ -77,5 +84,16 @@ internal sealed partial class CorDebugDebuggee
         {
             _ = ComAbi.Release(enumerator);
         }
+    }
+
+    private static unsafe bool IsThreadTerminated(nint thread)
+    {
+        const int stopped = 0x10;
+        int state = 0;
+        int* stateAddress = &state;
+        CorDebugHResult.ThrowIfFailed(new ICorDebugThreadAbi(thread).GetUserState((nint)stateAddress),
+            "ICorDebugThread.GetUserState");
+        // Runtime termination can precede delivery of the managed thread-exit callback.
+        return (Volatile.Read(ref *stateAddress) & stopped) != 0;
     }
 }

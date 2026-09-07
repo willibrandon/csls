@@ -101,6 +101,7 @@ public sealed partial class DapSessionTests
         {
             DapTestClient client = await StartStoppedFixtureAsync(waitPath, blockForInspection: true).ConfigureAwait(false);
             await using ConfiguredAsyncDisposable disposal = client.ConfigureAwait(false);
+            await AssertStoppedThreadsInspectableAsync(client).ConfigureAwait(false);
             JsonElement frame = await GetFixtureFrameAsync(client).ConfigureAwait(false);
             int frameId = frame.GetProperty("id").GetInt32();
             string targetExpression = $"localStringIdentity.{targetMember}";
@@ -132,6 +133,22 @@ public sealed partial class DapSessionTests
         finally
         {
             File.Delete(waitPath);
+        }
+    }
+
+    private async Task AssertStoppedThreadsInspectableAsync(DapTestClient client)
+    {
+        int sequence = await client.SendRequestAsync("threads", WriteEmptyObject,
+            TestContext.CancellationToken).ConfigureAwait(false);
+        using JsonDocument response = await client.ReadMessageAsync(TestContext.CancellationToken)
+            .ConfigureAwait(false);
+        AssertResponse(response.RootElement, sequence, "threads", success: true);
+        JsonElement[] threads = [.. response.RootElement.GetProperty("body").GetProperty("threads").EnumerateArray()];
+        Assert.IsNotEmpty(threads);
+        // The readiness observer can retire before its exit callback reaches the adapter.
+        foreach (JsonElement thread in threads)
+        {
+            _ = await FindFixtureFrameAsync(client, thread.GetProperty("id").GetInt32()).ConfigureAwait(false);
         }
     }
 
