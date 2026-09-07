@@ -21,12 +21,7 @@ public sealed partial class McpDebuggerLifecycleTests
                 "csls-mcp-worker.dll"),
             serverWorkerPath: null,
             cancellationToken,
-            Path.Join(
-                artifactsRoot,
-                "bin",
-                "Csls.Debugger.Worker",
-                "debug",
-                "csls-debugger-worker.dll"),
+            EditorToolResolver.ResolveDebuggerWorker(repositoryRoot),
             Path.Join(
                 artifactsRoot,
                 "bin",

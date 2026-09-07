@@ -48,7 +48,6 @@ public sealed class DebuggerTerminalRawValueTests
     private async Task ExerciseTerminalAsync(string directory, bool raw, bool attach)
     {
         string repository = EditorToolResolver.FindRepositoryRoot();
-        string artifacts = EditorToolResolver.ResolveArtifactsRoot(repository);
         string program = EditorToolResolver.ResolveTestProcessHost(repository);
         string source = Path.Join(repository, "tests", "Csls.TestProcessHost", "DebuggerFixture.cs");
         string signal = Path.Join(directory, "continue.signal");
@@ -71,7 +70,7 @@ public sealed class DebuggerTerminalRawValueTests
             string[] arguments = target is null ? ["--", "--debugger-fixture", signal] : [];
             var environment = new Dictionary<string, string>(StringComparer.Ordinal)
             {
-                ["CSLS_DEBUGGER_WORKER_PATH"] = Path.Join(artifacts, "bin", "Csls.Debugger.Worker", "debug", "csls-debugger-worker.dll"),
+                ["CSLS_DEBUGGER_WORKER_PATH"] = EditorToolResolver.ResolveDebuggerWorker(repository),
                 ["DOTNET_HOST_PATH"] = EditorToolResolver.ResolveDotNetHost()
             };
             const int Width = 180;
