@@ -110,6 +110,19 @@ public sealed partial class DapSessionTests
 
     private async Task ReadEnvironmentDisconnectAsync(DapTestClient client, int sequence)
     {
+        try
+        {
+            await ReadEnvironmentDisconnectCoreAsync(client, sequence).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            await DebuggerProcessDiagnostics.CaptureAsync(client.HostProcessId, TestContext).ConfigureAwait(false);
+            throw;
+        }
+    }
+
+    private async Task ReadEnvironmentDisconnectCoreAsync(DapTestClient client, int sequence)
+    {
         bool exited = false;
         bool terminated = false;
         bool responded = false;

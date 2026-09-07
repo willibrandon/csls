@@ -214,7 +214,7 @@ public sealed class DumpDebuggerControlServiceTests : DapTestContext
         Assert.Contains("debugging-library identity", failure.Message);
         DebugSessionSnapshot afterFailure = await service.GetSessionAsync(TestContext.CancellationToken).ConfigureAwait(false);
         Assert.AreEqual(DebugSessionState.Created, afterFailure.State);
-        using (FileStream released = File.Open(fixture.DumpPath, FileMode.Open, FileAccess.ReadWrite, FileShare.None))
+        using (FileStream released = OpenExclusiveDump(fixture.DumpPath))
         {
             Assert.IsGreaterThan(0L, released.Length);
         }
@@ -227,6 +227,58 @@ public sealed class DumpDebuggerControlServiceTests : DapTestContext
             TestContext.CancellationToken).ConfigureAwait(false);
         Assert.Contains("csls-test-process-host.dll", modules.Modules.Select(module => module.Name));
         _ = await service.TerminateAsync(TestContext.CancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Releases every rejected dump before the caller immediately reacquires exclusive file ownership.
+    /// </summary>
+    [TestMethod]
+    [OSCondition(OperatingSystems.Windows)]
+    [Timeout(60000, CooperativeCancellation = true)]
+    public async Task RejectedDumpRuntimeReleasesFileOnEveryOpen()
+    {
+        DebuggerDumpFixture fixture = await DebuggerDumpFixture.CreateAsync(ResolveTestProcessHost(),
+            TestContext.CancellationToken).ConfigureAwait(false);
+        await using ConfiguredAsyncDisposable fixtureCleanup = fixture.ConfigureAwait(false);
+        var service = new DumpDebuggerControlService();
+        await using ConfiguredAsyncDisposable serviceCleanup = service.ConfigureAwait(false);
+        for (int iteration = 0; iteration < 32; iteration++)
+        {
+            TestContext.WriteLine($"Rejected dump open {iteration}.");
+            ArgumentOutOfRangeException failure = await Assert.ThrowsExactlyAsync<ArgumentOutOfRangeException>(
+                () => service.OpenDumpAsync(new DebugDumpOpenRequest(fixture.DumpPath, RuntimeIndex: int.MaxValue),
+                    TestContext.CancellationToken)).ConfigureAwait(false);
+            Assert.Contains("managed runtime(s)", failure.Message);
+            DebugSessionSnapshot session = await service.GetSessionAsync(TestContext.CancellationToken).ConfigureAwait(false);
+            Assert.AreEqual(DebugSessionState.Created, session.State);
+            Assert.AreEqual(0L, session.StopGeneration);
+            using FileStream released = OpenExclusiveDump(fixture.DumpPath);
+            Assert.IsGreaterThan(0L, released.Length);
+        }
+
+        DebugSessionSnapshot recovered = await service.OpenDumpAsync(fixture.OpenRequest,
+            TestContext.CancellationToken).ConfigureAwait(false);
+        Assert.AreEqual(DebugSessionState.Stopped, recovered.State);
+        Assert.AreEqual(fixture.ProcessId, recovered.ProcessId);
+        _ = await service.TerminateAsync(TestContext.CancellationToken).ConfigureAwait(false);
+        using FileStream closed = OpenExclusiveDump(fixture.DumpPath);
+        Assert.IsGreaterThan(0L, closed.Length);
+    }
+
+    private FileStream OpenExclusiveDump(string path)
+    {
+        try
+        {
+            return File.Open(path, FileMode.Open, FileAccess.ReadWrite, FileShare.None);
+        }
+        catch (IOException)
+        {
+            if (OperatingSystem.IsWindows())
+            {
+                DebuggerFileLockDiagnostics.Capture(path, TestContext);
+            }
+            throw;
+        }
     }
 
     /// <summary>
