@@ -26,6 +26,14 @@ public interface ICorDebugDumpSource
     int ReadMemory(ulong address, Span<byte> buffer);
 
     /// <summary>
+    /// Reports captured value storage changed by the dump writer's memory filtering.
+    /// </summary>
+    /// <param name="address">The value storage address, or zero when its location is not exposed.</param>
+    /// <param name="size">The value storage size in bytes.</param>
+    /// <returns>Whether the captured bytes cannot establish the original application value.</returns>
+    bool IsMemoryFiltered(ulong address, ulong size);
+
+    /// <summary>
     /// Copies a captured operating-system thread context into the caller's buffer.
     /// </summary>
     /// <param name="threadId">The captured operating-system thread identifier.</param>

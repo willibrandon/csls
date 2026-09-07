@@ -83,6 +83,7 @@ public sealed partial class DumpDebuggerControlService
 
         string? dacPath = ValidateDacPath(request.DacPath);
         IReadOnlyList<string> binarySearchPaths = DebuggerDumpBinarySearchPaths.Validate(request.BinarySearchPaths);
+        var memoryFilter = DumpMemoryFilter.Read(dumpPath, cancellationToken);
         var options = new DataTargetOptions
         {
             SymbolPaths = [],
@@ -117,6 +118,7 @@ public sealed partial class DumpDebuggerControlService
             _runtime = runtimeInfo.CreateRuntime(resolvedDac, ignoreMismatch: runtimeInfo.Version.Major == 0);
             _dacPath = resolvedDac;
             _binarySearchPaths = binarySearchPaths;
+            _memoryFilter = memoryFilter;
             IReadOnlyList<DumpThread> threads = CreateThreads(_runtime);
             IReadOnlyList<DebugModuleInfo> modules = CreateModules(_runtime);
             _threads = threads;

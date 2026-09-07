@@ -32,7 +32,7 @@ public sealed unsafe class CorDebugDumpProcess : IDisposable
         ArgumentOutOfRangeException.ThrowIfZero(runtimeBaseAddress);
         _callbacks = new CorDebugDumpCallbacks(source);
         _values = values ?? new CorDebugDumpValues();
-        _arrays = new CorDebugDumpArrayReader(_values);
+        _arrays = new CorDebugDumpArrayReader(_values, source);
         var activation = new CorDebugDumpReadOperation(cancellationToken, null);
         _callbacks.Operation = activation;
         try
@@ -97,6 +97,28 @@ public sealed unsafe class CorDebugDumpProcess : IDisposable
         IProgress<DebugDumpReadProgress>? progress = null) =>
         ExecuteRead(() => ReadFrameCore(threadId, stackPointer, methodToken, arguments, start, count, cancellationToken),
             cancellationToken, progress);
+
+    /// <summary>
+    /// Resolves frame names from an identity-matched module snapshot when its metadata pages were omitted from the dump.
+    /// </summary>
+    /// <param name="modulePath">The captured module's recorded path.</param>
+    /// <param name="timestamp">The captured PE build timestamp.</param>
+    /// <param name="imageSize">The captured mapped image size.</param>
+    /// <param name="methodToken">The captured method definition token.</param>
+    /// <param name="ilOffset">The captured method's instruction offset.</param>
+    /// <param name="arguments">Whether to read parameter rather than local names.</param>
+    /// <param name="binarySearchPaths">The selected directories containing identity-matched adjacent symbols.</param>
+    /// <param name="cancellationToken">Cancels image discovery and snapshot copying.</param>
+    /// <returns>Available source names keyed by physical runtime slot.</returns>
+    public IReadOnlyDictionary<int, string> ReadModuleVariableNames(string modulePath, uint timestamp, uint imageSize,
+        uint methodToken, uint ilOffset, bool arguments, IReadOnlyList<string> binarySearchPaths,
+        CancellationToken cancellationToken) => ExecuteRead(() =>
+        {
+            ObjectDisposedException.ThrowIf(_process == 0, this);
+            string path = _callbacks.ResolveMetadataImage(modulePath, timestamp, imageSize);
+            using FileStream image = File.OpenRead(path);
+            return CapturedModuleVariableNames.Read(image, false, modulePath, methodToken, ilOffset, arguments, binarySearchPaths);
+        }, cancellationToken, null);
 
     /// <summary>
     /// Reacquires a captured expansion path and reads a bounded page of its children.

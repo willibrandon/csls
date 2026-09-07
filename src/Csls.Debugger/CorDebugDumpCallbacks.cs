@@ -44,6 +44,16 @@ internal sealed unsafe partial class CorDebugDumpCallbacks : ICorDebugDumpDataTa
     /// </summary>
     internal Exception? LastFailure { get; private set; }
 
+    /// <summary>
+    /// Shares an exact retained module snapshot between native metadata callbacks and managed name inspection.
+    /// </summary>
+    /// <param name="imagePath">The recorded module path or basename.</param>
+    /// <param name="timestamp">The captured PE timestamp.</param>
+    /// <param name="imageSize">The captured mapped image size.</param>
+    /// <returns>The privately owned, identity-checked image path.</returns>
+    internal string ResolveMetadataImage(string imagePath, uint timestamp, uint imageSize) =>
+        _metadata.Resolve(_source, imagePath, timestamp, imageSize, Operation);
+
     /// <inheritdoc />
     public int GetMetaData(char* imagePath, uint timestamp, uint imageSize, uint capacity, uint* length, char* path)
     {
@@ -65,7 +75,7 @@ internal sealed unsafe partial class CorDebugDumpCallbacks : ICorDebugDumpDataTa
 
         try
         {
-            string resolved = _metadata.Resolve(_source, ReadImagePath(imagePath), timestamp, imageSize, Operation);
+            string resolved = ResolveMetadataImage(ReadImagePath(imagePath), timestamp, imageSize);
             uint required = checked((uint)resolved.Length + 1);
             if (required > capacity)
             {

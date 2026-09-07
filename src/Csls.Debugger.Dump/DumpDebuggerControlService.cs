@@ -22,6 +22,7 @@ public sealed partial class DumpDebuggerControlService :
     private ClrRuntime? _runtime;
     private CorDebugDumpProcess? _corDebug;
     private string? _dacPath;
+    private DumpMemoryFilter? _memoryFilter;
     private IReadOnlyList<string> _binarySearchPaths = [];
     private IReadOnlyList<DebugModuleInfo> _modules = [];
     private IReadOnlyList<DumpThread> _threads = [];
@@ -99,6 +100,7 @@ public sealed partial class DumpDebuggerControlService :
         _corDebug = null;
         _values.Clear();
         _dacPath = null;
+        _memoryFilter = null;
         _binarySearchPaths = [];
         _runtime?.Dispose();
         _runtime = null;

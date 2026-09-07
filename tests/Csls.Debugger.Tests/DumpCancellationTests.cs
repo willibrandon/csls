@@ -1,6 +1,7 @@
 using Csls.Debugger.Contracts;
 using Csls.Debugger.Control;
 using Csls.Debugger.Dump;
+using Microsoft.Diagnostics.NETCore.Client;
 using System.Runtime.CompilerServices;
 
 namespace Csls.Debugger.Tests;
@@ -45,7 +46,7 @@ public sealed class DumpCancellationTests : DapTestContext
         AssertMonotonicProgress(updates);
         IReadOnlyList<DebugVariableInfo> recovered = await service.GetVariablesAsync(
             new DebugVariablesRequest(locals.VariablesReference, 0, 2, false), TestContext.CancellationToken).ConfigureAwait(false);
-        AssertLocals(recovered);
+        AssertLocals(recovered, fixture.CaptureType);
         Assert.AreEqual(initial, await service.GetSessionAsync(TestContext.CancellationToken).ConfigureAwait(false));
         _ = await service.TerminateAsync(TestContext.CancellationToken).ConfigureAwait(false);
         using FileStream released = File.Open(fixture.DumpPath, FileMode.Open, FileAccess.ReadWrite, FileShare.None);
@@ -96,7 +97,7 @@ public sealed class DumpCancellationTests : DapTestContext
         Assert.IsFalse(cancellation.IsCancellationRequested);
         Assert.AreEqual(DebugDumpReadState.Reading, Assert.ContainsSingle(observer.Updates).State);
         AssertLocals(await service.GetVariablesAsync(new DebugVariablesRequest(locals.VariablesReference, 0, 2, false),
-            TestContext.CancellationToken).ConfigureAwait(false));
+            TestContext.CancellationToken).ConfigureAwait(false), fixture.CaptureType);
         _ = await service.TerminateAsync(TestContext.CancellationToken).ConfigureAwait(false);
         using FileStream released = File.Open(fixture.DumpPath, FileMode.Open, FileAccess.ReadWrite, FileShare.None);
         Assert.IsGreaterThan(0L, released.Length);
@@ -129,7 +130,7 @@ public sealed class DumpCancellationTests : DapTestContext
         Assert.HasCount(2, observer.Updates);
         Assert.AreEqual(DebugDumpReadState.Canceled, observer.Updates[^1].State);
         AssertLocals(await service.GetVariablesAsync(new DebugVariablesRequest(locals.VariablesReference, 0, 2, false),
-            TestContext.CancellationToken).ConfigureAwait(false));
+            TestContext.CancellationToken).ConfigureAwait(false), fixture.CaptureType);
     }
 
     /// <summary>
@@ -154,7 +155,7 @@ public sealed class DumpCancellationTests : DapTestContext
         Assert.AreEqual(cancellation.Token, canceled.CancellationToken);
         Assert.IsEmpty(observer.Updates);
         AssertLocals(await service.GetVariablesAsync(new DebugVariablesRequest(locals.VariablesReference, 0, 2, false),
-            TestContext.CancellationToken).ConfigureAwait(false));
+            TestContext.CancellationToken).ConfigureAwait(false), fixture.CaptureType);
     }
 
     /// <summary>
@@ -182,7 +183,7 @@ public sealed class DumpCancellationTests : DapTestContext
         Assert.AreEqual(DebugDumpReadState.Completed, observer.Updates[^1].State);
         AssertMonotonicProgress(observer.Updates);
         AssertLocals(await service.GetVariablesAsync(new DebugVariablesRequest(locals.VariablesReference, 0, 2, false),
-            TestContext.CancellationToken).ConfigureAwait(false));
+            TestContext.CancellationToken).ConfigureAwait(false), fixture.CaptureType);
     }
 
     /// <summary>
@@ -214,7 +215,7 @@ public sealed class DumpCancellationTests : DapTestContext
         }
         else
         {
-            AssertLocals(values);
+            AssertLocals(values, fixture.CaptureType);
         }
 
         Assert.AreEqual(cancelCompleted, cancellation.IsCancellationRequested);
@@ -249,7 +250,7 @@ public sealed class DumpCancellationTests : DapTestContext
         IReadOnlyList<DebugVariableInfo> values = await worker.Client.GetVariablesAsync(
             new DebugVariablesRequest(locals.VariablesReference, 0, 2, false) { DumpReadProgress = observer },
             TestContext.CancellationToken).ConfigureAwait(false);
-        AssertLocals(values);
+        AssertLocals(values, fixture.CaptureType);
         DebugDumpReadProgress terminal = await observer.Terminal.WaitAsync(TestContext.CancellationToken).ConfigureAwait(false);
         Assert.AreEqual(DebugDumpReadState.Completed, terminal.State);
         Assert.IsGreaterThan(0L, terminal.MemoryReads);
@@ -282,13 +283,24 @@ public sealed class DumpCancellationTests : DapTestContext
         return Assert.ContainsSingle(scopes.Where(scope => scope.Name == "Locals"));
     }
 
-    private static void AssertLocals(IReadOnlyList<DebugVariableInfo> values)
+    private static void AssertLocals(IReadOnlyList<DebugVariableInfo> values, DumpType captureType)
     {
         Assert.HasCount(2, values);
         Assert.AreEqual("localNumber", values[0].Name);
+        Assert.AreEqual("localLong", values[1].Name);
+        if (OperatingSystem.IsWindows() && captureType == DumpType.Triage)
+        {
+            foreach (DebugVariableInfo value in values)
+            {
+                Assert.AreEqual(DebugVariablePresentationKind.Unavailable, value.PresentationKind);
+                Assert.AreEqual("Captured value unavailable: storage was filtered when the dump was created.", value.Value);
+                Assert.AreEqual(0, value.VariablesReference);
+                Assert.IsNull(value.MemoryReference);
+            }
+            return;
+        }
         Assert.AreEqual("43", values[0].Value);
         Assert.AreEqual("int", values[0].Type);
-        Assert.AreEqual("localLong", values[1].Name);
         Assert.AreEqual("44", values[1].Value);
         Assert.AreEqual("long", values[1].Type);
     }

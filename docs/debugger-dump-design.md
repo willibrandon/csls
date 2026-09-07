@@ -52,6 +52,14 @@ The callback searches recorded local paths, explicit binary directories, and ins
 checks the captured PE timestamp and image size, and retains a private copy for
 native metadata readers. Managed AnyCPU images use their recorded PE identity.
 Snapshots contain valid managed metadata and are checked again after copying.
+
+Windows minidump storage filtering is read from the header and bounded thread
+descriptors. Value formatting checks captured stack and backing-store ranges
+before reading a value, and marks filtered storage with an availability diagnostic.
+Register-only values in a filtered capture receive the same diagnostic because
+unwinding can recover registers from filtered saved stack slots. Captured memory
+remains available to the native stack walker. Parameter names use captured metadata
+or the identity-checked module snapshot when the dump omits read-only image pages.
 Each image is bounded to 512 MiB, metadata to 64 MiB, and retained copies to
 4,096 modules and 1 GiB. Cancellation is checked during discovery and copying.
 Virtual-process disposal releases native readers before deleting owned copies.

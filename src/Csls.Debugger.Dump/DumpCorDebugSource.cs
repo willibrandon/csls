@@ -11,6 +11,7 @@ internal sealed class DumpCorDebugSource : ICorDebugDumpSource
     private readonly ClrInfo _runtime;
     private readonly string? _dacPath;
     private readonly IReadOnlyList<string> _binarySearchPaths;
+    private readonly DumpMemoryFilter _memoryFilter;
 
     /// <summary>
     /// Binds one selected captured runtime and its optional explicit DAC selection.
@@ -18,11 +19,14 @@ internal sealed class DumpCorDebugSource : ICorDebugDumpSource
     /// <param name="runtime">The caller-owned selected runtime description.</param>
     /// <param name="dacPath">An optional user-selected absolute DAC path.</param>
     /// <param name="binarySearchPaths">Optional user-selected local binary directories.</param>
-    internal DumpCorDebugSource(ClrInfo runtime, string? dacPath, IReadOnlyList<string>? binarySearchPaths = null)
+    /// <param name="memoryFilter">The selected dump's captured storage-filter description.</param>
+    internal DumpCorDebugSource(ClrInfo runtime, string? dacPath, IReadOnlyList<string>? binarySearchPaths = null,
+        DumpMemoryFilter? memoryFilter = null)
     {
         _runtime = runtime;
         _dacPath = dacPath;
         _binarySearchPaths = DebuggerDumpBinarySearchPaths.Validate(binarySearchPaths);
+        _memoryFilter = memoryFilter ?? DumpMemoryFilter.Read(runtime.DataTarget.DataReader.DisplayName, CancellationToken.None);
     }
 
     /// <inheritdoc />
@@ -33,6 +37,9 @@ internal sealed class DumpCorDebugSource : ICorDebugDumpSource
 
     /// <inheritdoc />
     public int ReadMemory(ulong address, Span<byte> buffer) => _runtime.DataTarget.DataReader.Read(address, buffer);
+
+    /// <inheritdoc />
+    public bool IsMemoryFiltered(ulong address, ulong size) => _memoryFilter.Contains(address, size);
 
     /// <inheritdoc />
     public bool GetThreadContext(uint threadId, uint flags, Span<byte> context) =>

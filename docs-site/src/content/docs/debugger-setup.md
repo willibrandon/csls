@@ -152,6 +152,9 @@ The dump worker runs in its own process; closing the session releases that worke
 and the dump file. Windows runtime discovery searches local .NET installations
 and validates image identity before loading a matching DAC.
 
+Values whose storage was filtered during dump capture display an availability
+diagnostic in the Variables view. Retained values remain available for inspection.
+
 Expand captured arrays in the Variables view to inspect their elements. Array
 entries show the captured length and use the runtime's indices, including each
 dimension's lower bound. Nested arrays expand through their own entries. Editors

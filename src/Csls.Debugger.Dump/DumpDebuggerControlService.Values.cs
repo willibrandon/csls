@@ -74,7 +74,7 @@ public sealed partial class DumpDebuggerControlService
                     unchecked((uint)method.MetadataToken), request.VariablesReference % 2 == 0,
                     request.Start, request.Count, cancellationToken, request.DumpReadProgress), cancellationToken);
             IReadOnlyDictionary<int, string> names = ReadVariableNames(runtime, method, captured,
-                request.VariablesReference % 2 == 0);
+                request.VariablesReference % 2 == 0, cancellationToken);
             return captured.Values.Select((value, index) =>
                 names.TryGetValue(checked(request.Start + index), out string? name) && !string.IsNullOrEmpty(name)
                     ? value with { Name = BoundName(name, value.Name) }
@@ -85,7 +85,7 @@ public sealed partial class DumpDebuggerControlService
     private T ReadCaptured<T>(Func<CorDebugDumpProcess, T> read, CancellationToken cancellationToken)
     {
         ClrRuntime runtime = _runtime ?? throw new InvalidOperationException("The dump is closed.");
-        _corDebug ??= new CorDebugDumpProcess(new DumpCorDebugSource(runtime.ClrInfo, _dacPath, _binarySearchPaths),
+        _corDebug ??= new CorDebugDumpProcess(new DumpCorDebugSource(runtime.ClrInfo, _dacPath, _binarySearchPaths, _memoryFilter),
             runtime.ClrInfo.ModuleInfo.ImageBase, _values, cancellationToken);
         try
         {
@@ -100,7 +100,7 @@ public sealed partial class DumpDebuggerControlService
     }
 
     private IReadOnlyDictionary<int, string> ReadVariableNames(ClrRuntime runtime, ClrMethod method,
-        CorDebugDumpFrameInfo captured, bool arguments)
+        CorDebugDumpFrameInfo captured, bool arguments, CancellationToken cancellationToken)
     {
         ClrModule? module = method.Type?.Module;
         if (module is null || module.ImageBase == 0 || module.Size is 0 or > 512 * 1024 * 1024)
@@ -114,6 +114,29 @@ public sealed partial class DumpDebuggerControlService
             return CapturedModuleVariableNames.Read(image, module.Layout != ModuleLayout.Flat,
                 module.Name ?? module.AssemblyName ?? "captured-module", captured.MethodToken, captured.IlOffset, arguments,
                 _binarySearchPaths);
+        }
+        catch (Exception exception) when (exception is IOException or BadImageFormatException or OverflowException)
+        {
+            // Read-only image sections may be omitted even when the dump retains the PE headers and debug directory.
+            return ReadModuleVariableNames(runtime, module, captured, arguments, cancellationToken);
+        }
+    }
+
+    private IReadOnlyDictionary<int, string> ReadModuleVariableNames(ClrRuntime runtime, ClrModule module,
+        CorDebugDumpFrameInfo captured, bool arguments, CancellationToken cancellationToken)
+    {
+        try
+        {
+            ModuleInfo? recorded = runtime.DataTarget.EnumerateModules().Take(MaximumModules)
+                .FirstOrDefault(candidate => candidate.ImageBase == module.ImageBase);
+            if (recorded is null || recorded.IndexFileSize <= 0)
+            {
+                return new Dictionary<int, string>();
+            }
+            CorDebugDumpProcess process = _corDebug ?? throw new InvalidOperationException("No captured frame has been read.");
+            return process.ReadModuleVariableNames(module.Name ?? recorded.FileName,
+                unchecked((uint)recorded.IndexTimeStamp), checked((uint)recorded.IndexFileSize), captured.MethodToken,
+                captured.IlOffset, arguments, _binarySearchPaths, cancellationToken);
         }
         catch (Exception exception) when (exception is IOException or BadImageFormatException or OverflowException)
         {

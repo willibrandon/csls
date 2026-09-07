@@ -15,6 +15,52 @@ public sealed class DapDumpTests : DapTestContext
     private static readonly string[] s_invalidAttachArguments = ["null", "[]", "{}"];
 
     /// <summary>
+    /// Presents Windows-filtered values as read-only unavailable entries through the actual dump worker and DAP client.
+    /// </summary>
+    [TestMethod]
+    [OSCondition(OperatingSystems.Windows)]
+    [Timeout(60000, CooperativeCancellation = true)]
+    public async Task DumpVariablesExposeFilteredStorageOverDap()
+    {
+        DebuggerDumpFixture fixture = await DebuggerDumpFixture.CreateAsync(ResolveTestProcessHost(),
+            TestContext.CancellationToken, captureFrameValues: true).ConfigureAwait(false);
+        await using ConfiguredAsyncDisposable fixtureCleanup = fixture.ConfigureAwait(false);
+        DapTestClient client = await CreateClientAsync().ConfigureAwait(false);
+        await using ConfiguredAsyncDisposable clientCleanup = client.ConfigureAwait(false);
+        _ = await OpenDumpAsync(client, fixture.DumpPath).ConfigureAwait(false);
+        JsonElement threads = await RequestAsync(client, "threads", WriteEmptyObject).ConfigureAwait(false);
+        List<JsonElement> frames = [];
+        foreach (JsonElement thread in threads.GetProperty("threads").EnumerateArray())
+        {
+            JsonElement stack = await ReadStackAsync(client, thread.GetProperty("id").GetInt32(), 0, 100).ConfigureAwait(false);
+            frames.AddRange(stack.GetProperty("stackFrames").EnumerateArray());
+        }
+        JsonElement frame = Assert.ContainsSingle(frames.Where(item => item.GetProperty("name").GetString()
+            ?.Contains("DebuggerFixture.WaitForSignal", StringComparison.Ordinal) == true));
+        JsonElement scopes = await RequestAsync(client, "scopes", writer =>
+        {
+            writer.WriteStartObject();
+            writer.WriteNumber("frameId", frame.GetProperty("id").GetInt32());
+            writer.WriteEndObject();
+        }).ConfigureAwait(false);
+        int arguments = scopes.GetProperty("scopes")[0].GetProperty("variablesReference").GetInt32();
+        JsonElement values = await ReadDumpVariablesAsync(client, arguments, 0, 0).ConfigureAwait(false);
+        JsonElement value = values[2];
+        Assert.AreEqual("number", value.GetProperty("name").GetString());
+        Assert.AreEqual("Captured value unavailable: storage was filtered when the dump was created.",
+            value.GetProperty("value").GetString());
+        Assert.AreEqual(0, value.GetProperty("variablesReference").GetInt32());
+        Assert.IsFalse(value.TryGetProperty("memoryReference", out _));
+        Assert.Contains("readOnly", value.GetProperty("presentationHint").GetProperty("attributes")
+            .EnumerateArray().Select(attribute => attribute.GetString()));
+        Assert.AreEqual(values.GetRawText(), (await ReadDumpVariablesAsync(client, arguments, 0, 0)
+            .ConfigureAwait(false)).GetRawText());
+        await CloseDumpAsync(client).ConfigureAwait(false);
+        using FileStream released = File.Open(fixture.DumpPath, FileMode.Open, FileAccess.ReadWrite, FileShare.None);
+        Assert.IsGreaterThan(0L, released.Length);
+    }
+
+    /// <summary>
     /// Inspects captured values through the isolated worker while preserving paging, ownership, and read-only state.
     /// </summary>
     /// <param name="includeHeap">Whether the dump retains the heap string referenced by the frame.</param>
