@@ -23,16 +23,20 @@ public sealed unsafe class CorDebugDumpProcess : IDisposable
     /// </summary>
     /// <param name="source">The immutable source, owned by the caller until this process is disposed.</param>
     /// <param name="runtimeBaseAddress">The captured CoreCLR module's virtual base address.</param>
+    /// <param name="describeModule">Resolves a captured managed module's layout and PE identity by its base address.</param>
     /// <param name="values">The session-owned logical expansion paths preserved across native cache replacement.</param>
     /// <param name="cancellationToken">Cancels activation through captured-memory callbacks.</param>
     public CorDebugDumpProcess(ICorDebugDumpSource source, ulong runtimeBaseAddress,
+        Func<ulong, CancellationToken, CorDebugDumpModuleInfo> describeModule,
         CorDebugDumpValues? values = null, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(source);
+        ArgumentNullException.ThrowIfNull(describeModule);
         ArgumentOutOfRangeException.ThrowIfZero(runtimeBaseAddress);
         _callbacks = new CorDebugDumpCallbacks(source);
         _values = values ?? new CorDebugDumpValues();
-        _arrays = new CorDebugDumpArrayReader(_values, source, _callbacks);
+        var modules = new CorDebugDumpModuleReader(source, _callbacks, describeModule);
+        _arrays = new CorDebugDumpArrayReader(_values, source, _callbacks, new ManagedRuntimeTypeFormatter(modules.Open));
         var activation = new CorDebugDumpReadOperation(cancellationToken, null);
         _callbacks.Operation = activation;
         try

@@ -100,11 +100,10 @@ internal sealed partial class CorDebugDebuggee :
         _functionBreakpoints = functionBreakpoints;
         _instructionBreakpoints = instructionBreakpoints;
         _entryBreakpoint = entryBreakpoint;
-        _tupleTypeShape = new ManagedTupleTypeShape(this);
+        _tupleTypeShape = new ManagedTupleTypeShape(OpenRuntimeModule);
         _tuplePresenter = new ManagedTuplePresenter(
             this,
-            _tupleTypeShape,
-            FormatTupleElementType);
+            _tupleTypeShape);
         _objectExpander = new ManagedObjectExpander(this, _tuplePresenter, _tupleTypeShape);
         _debuggerDisplayFormatter = new ManagedDebuggerDisplayFormatter(this);
         _debuggerTypeProxyResolver = new ManagedDebuggerTypeProxyResolver(sourceBreakpoints);

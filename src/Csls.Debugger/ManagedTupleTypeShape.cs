@@ -16,16 +16,16 @@ internal sealed class ManagedTupleTypeShape
     private const int MaximumTupleCardinality = 4 * 1024;
     private const int MaximumTupleDepth = 64;
     private const int TupleRestPosition = 8;
-    private readonly IManagedObjectExpansionServices _services;
+    private readonly Func<nint, PEReader> _openModule;
 
     /// <summary>
     /// Creates tuple type mapping over loaded runtime modules.
     /// </summary>
-    /// <param name="services">The runtime module access used to validate tuple types.</param>
-    internal ManagedTupleTypeShape(IManagedObjectExpansionServices services)
+    /// <param name="openModule">The runtime module access used to validate tuple types.</param>
+    internal ManagedTupleTypeShape(Func<nint, PEReader> openModule)
     {
-        ArgumentNullException.ThrowIfNull(services);
-        _services = services;
+        ArgumentNullException.ThrowIfNull(openModule);
+        _openModule = openModule;
     }
 
     /// <summary>
@@ -531,7 +531,7 @@ internal sealed class ManagedTupleTypeShape
         {
             runtimeClass = GetRuntimeTypeClass(type);
             module = GetClassModule(runtimeClass);
-            using PEReader peReader = _services.OpenRuntimeModule(module);
+            using PEReader peReader = _openModule(module);
             MetadataReader metadata = peReader.GetMetadataReader();
             TypeDefinitionHandle handle = MetadataTokens.TypeDefinitionHandle(
                 checked((int)(GetClassToken(runtimeClass) & 0x00FFFFFF)));

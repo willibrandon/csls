@@ -45,6 +45,10 @@ internal static class DebuggerDumpArrayFixture
         }
         object[] cycle = new object[1];
         cycle[0] = cycle;
+        List<int>?[] constructed = [[81, 82], null];
+        (int, string)[] tuples = [(73, "captured pair")];
+        int?[] nullable = [37, null];
+        decimal[] decimals = [12.5m];
         DebuggerBlockingWait.Wait(announcement);
         GC.KeepAlive(path);
         GC.KeepAlive(vector);
@@ -60,6 +64,10 @@ internal static class DebuggerDumpArrayFixture
         GC.KeepAlive(texts);
         GC.KeepAlive(large);
         GC.KeepAlive(cycle);
+        GC.KeepAlive(constructed);
+        GC.KeepAlive(tuples);
+        GC.KeepAlive(nullable);
+        GC.KeepAlive(decimals);
         return 0;
     }
 }

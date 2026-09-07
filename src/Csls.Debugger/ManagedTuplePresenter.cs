@@ -16,78 +16,20 @@ internal sealed class ManagedTuplePresenter
     private const int TupleRestPosition = 8;
     private readonly IManagedObjectExpansionServices _services;
     private readonly ManagedTupleTypeShape _typeShape;
-    private readonly Func<nint, int, ManagedTupleCustomTypeInfo?, string> _formatType;
 
     /// <summary>
     /// Creates tuple presentation over generation-owned runtime services.
     /// </summary>
     /// <param name="services">The runtime operations used to format and retain values.</param>
     /// <param name="typeShape">The runtime tuple type and transform mapper.</param>
-    /// <param name="formatType">The exact runtime type formatter for tuple elements.</param>
     internal ManagedTuplePresenter(
         IManagedObjectExpansionServices services,
-        ManagedTupleTypeShape typeShape,
-        Func<nint, int, ManagedTupleCustomTypeInfo?, string> formatType)
+        ManagedTupleTypeShape typeShape)
     {
         ArgumentNullException.ThrowIfNull(services);
         ArgumentNullException.ThrowIfNull(typeShape);
-        ArgumentNullException.ThrowIfNull(formatType);
         _services = services;
         _typeShape = typeShape;
-        _formatType = formatType;
-    }
-
-    /// <summary>
-    /// Formats one compatible runtime tuple type with flattened Rest storage.
-    /// </summary>
-    /// <param name="type">The exact ICorDebugType pointer.</param>
-    /// <param name="depth">The current exact-type formatting depth.</param>
-    /// <param name="customTypeInfo">The optional tuple-name transforms.</param>
-    /// <param name="display">Receives the tuple-syntax type display.</param>
-    /// <returns>True when the runtime type is a compatible tuple with at least two elements.</returns>
-    internal bool TryFormatType(
-        nint type,
-        int depth,
-        ManagedTupleCustomTypeInfo? customTypeInfo,
-        out string display)
-    {
-        if (!_typeShape.TryCreateProjection(
-            type,
-            customTypeInfo,
-            out ManagedTupleTypeProjection projection))
-        {
-            display = string.Empty;
-            return false;
-        }
-
-        IReadOnlyList<nint> elementTypes = ManagedTupleTypeShape.GetLogicalElementTypes(
-            type,
-            projection.ElementNames.Count);
-        try
-        {
-            string[] elements = new string[elementTypes.Count];
-            for (int index = 0; index < elementTypes.Count; index++)
-            {
-                string typeDisplay = _formatType(
-                    elementTypes[index],
-                    depth + 1,
-                    projection.ElementCustomTypeInfo[index]);
-                string logicalName = projection.ElementNames[index];
-                elements[index] = string.Equals(
-                    logicalName,
-                    $"Item{index + 1}",
-                    StringComparison.Ordinal)
-                        ? typeDisplay
-                        : $"{typeDisplay} {logicalName}";
-            }
-
-            display = $"({string.Join(", ", elements)})";
-            return true;
-        }
-        finally
-        {
-            ReleaseAll(elementTypes);
-        }
     }
 
     /// <summary>

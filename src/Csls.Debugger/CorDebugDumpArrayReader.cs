@@ -9,8 +9,9 @@ namespace Csls.Debugger;
 /// <param name="values">The owning session's logical expansion paths.</param>
 /// <param name="source">The captured memory and its storage provenance.</param>
 /// <param name="callbacks">The captured-memory observations owned by the serialized virtual process.</param>
+/// <param name="types">The exact runtime type formatter shared with live inspection.</param>
 internal sealed unsafe class CorDebugDumpArrayReader(CorDebugDumpValues values, ICorDebugDumpSource source,
-    CorDebugDumpCallbacks callbacks)
+    CorDebugDumpCallbacks callbacks, ManagedRuntimeTypeFormatter types)
 {
     /// <summary>
     /// Formats a captured value and records an expansion path when it contains an array.
@@ -27,7 +28,8 @@ internal sealed unsafe class CorDebugDumpArrayReader(CorDebugDumpValues values, 
             return new DebugVariableInfo(name, "Captured value unavailable: storage was filtered when the dump was created.",
                 string.Empty, 0, null, null, DebugVariablePresentationKind.Unavailable, IsIndexed: indexed);
         }
-        ManagedValueDisplay display = CorDebugValueFormatter.Format(value);
+        ManagedValueDisplay immediate = CorDebugValueFormatter.Format(value);
+        var display = new ManagedValueDisplay(immediate.Value, types.FormatValueType(value));
         nint array = GetArray(value);
         try
         {

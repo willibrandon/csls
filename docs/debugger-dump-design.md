@@ -35,6 +35,12 @@ before reporting the terminal outcome. A failed inspection retires its virtual
 process cache; the next read opens a new cache over the same immutable dump while
 preserving logical frame identifiers and the session generation.
 
+Captured values use the live debugger's exact runtime type formatter. Array types
+preserve vector, rectangular, jagged, and non-vector rank-one constructions;
+generic arguments, tuples, nullable types, and primitive aliases retain their
+runtime identities. Metadata inspection uses captured module layout and shares
+identity-checked local snapshots with the native virtual process.
+
 Captured arrays expose their runtime element count and indexed child pages.
 Multidimensional indices use the captured dimensions and signed lower bounds in
 row-major order. A session-owned store retains logical frame-slot and child-index

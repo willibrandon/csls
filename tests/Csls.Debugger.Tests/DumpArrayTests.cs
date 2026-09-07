@@ -201,6 +201,20 @@ public sealed class DumpArrayTests : DapTestContext
     {
         Dictionary<string, DebugVariableInfo> locals = await ReadLocalsAsync(service).ConfigureAwait(false);
         DebugVariableInfo vector = locals["vector"];
+        Assert.AreEqual("int[]", vector.Type);
+        Assert.AreEqual("int[]", locals["empty"].Type);
+        Assert.AreEqual("int[]", locals["absent"].Type);
+        Assert.AreEqual("int[,]", locals["rectangular"].Type);
+        Assert.AreEqual("int[,]", locals["nonZero"].Type);
+        Assert.AreEqual("int[*]", locals["nonVector"].Type);
+        Assert.AreEqual("int[,]", locals["emptyDimension"].Type);
+        Assert.AreEqual("int[][]", locals["jagged"].Type);
+        Assert.AreEqual("string[]", locals["texts"].Type);
+        Assert.AreEqual("object[]", locals["cycle"].Type);
+        Assert.AreEqual("System.Collections.Generic.List<int>[]", locals["constructed"].Type);
+        Assert.AreEqual("(int, string)[]", locals["tuples"].Type);
+        Assert.AreEqual("int?[]", locals["nullable"].Type);
+        Assert.AreEqual("decimal[]", locals["decimals"].Type);
         Assert.IsGreaterThan(0, vector.VariablesReference);
         Assert.AreEqual(3, vector.IndexedVariables);
         Assert.AreEqual(0, vector.NamedVariables);
@@ -238,12 +252,21 @@ public sealed class DumpArrayTests : DapTestContext
         Assert.AreSequenceEqual(["71", "72"], nonVector.Select(value => value.Value));
         IReadOnlyList<DebugVariableInfo> jagged = await ReadAsync(service, locals["jagged"]).ConfigureAwait(false);
         Assert.HasCount(4, jagged);
+        Assert.AreSequenceEqual(["int[]", "int[]", "int[]", "int[]"], jagged.Select(value => value.Type));
         Assert.AreSequenceEqual(jagged, await ReadAsync(service, locals["jagged"]).ConfigureAwait(false));
         Assert.AreSequenceEqual(elements, await ReadAsync(service, jagged[0]).ConfigureAwait(false));
         Assert.AreSequenceEqual(elements, await ReadAsync(service, jagged[3]).ConfigureAwait(false));
         Assert.AreEqual(0, jagged[2].VariablesReference);
         IReadOnlyList<DebugVariableInfo> texts = await ReadAsync(service, locals["texts"]).ConfigureAwait(false);
         Assert.AreSequenceEqual(["\"captured\\ntext\"", "null", "\"last\""], texts.Select(value => value.Value));
+        IReadOnlyList<DebugVariableInfo> constructed = await ReadAsync(service, locals["constructed"]).ConfigureAwait(false);
+        Assert.AreSequenceEqual(["System.Collections.Generic.List<int>", "System.Collections.Generic.List<int>"],
+            constructed.Select(value => value.Type));
+        Assert.AreEqual("null", constructed[1].Value);
+        Assert.AreEqual("(int, string)", Assert.ContainsSingle(await ReadAsync(service, locals["tuples"]).ConfigureAwait(false)).Type);
+        Assert.AreSequenceEqual(["int?", "int?"],
+            (await ReadAsync(service, locals["nullable"]).ConfigureAwait(false)).Select(value => value.Type));
+        Assert.AreEqual("decimal", Assert.ContainsSingle(await ReadAsync(service, locals["decimals"]).ConfigureAwait(false)).Type);
         Assert.AreEqual(65537, locals["large"].IndexedVariables);
         IReadOnlyList<DebugVariableInfo> last = await ReadAsync(service, locals["large"], 65535, 2).ConfigureAwait(false);
         Assert.AreSequenceEqual(["65635", "65636"], last.Select(value => value.Value));

@@ -17,6 +17,11 @@ internal sealed class CorDebugDumpReadOperation(CancellationToken cancellationTo
     private long _contextReads;
 
     /// <summary>
+    /// Gets the cancellation token belonging to this captured inspection request.
+    /// </summary>
+    internal CancellationToken CancellationToken => cancellationToken;
+
+    /// <summary>
     /// Gets whether CoreCLR can continue reading captured data for this request.
     /// </summary>
     internal bool CanRead => !cancellationToken.IsCancellationRequested && _observerFailure is null;

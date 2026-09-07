@@ -86,7 +86,8 @@ public sealed partial class DumpDebuggerControlService
     {
         ClrRuntime runtime = _runtime ?? throw new InvalidOperationException("The dump is closed.");
         _corDebug ??= new CorDebugDumpProcess(new DumpCorDebugSource(runtime.ClrInfo, _dacPath, _binarySearchPaths, _memoryFilter),
-            runtime.ClrInfo.ModuleInfo.ImageBase, _values, cancellationToken);
+            runtime.ClrInfo.ModuleInfo.ImageBase, DescribeCapturedModule,
+            _values, cancellationToken);
         try
         {
             return read(_corDebug);
@@ -97,6 +98,31 @@ public sealed partial class DumpDebuggerControlService
             _corDebug = null;
             throw;
         }
+    }
+
+    private CorDebugDumpModuleInfo DescribeCapturedModule(ulong address, CancellationToken cancellationToken)
+    {
+        ClrRuntime runtime = _runtime ?? throw new InvalidOperationException("The dump is closed.");
+        int count = 0;
+        foreach (ClrModule module in runtime.EnumerateModules())
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (++count > MaximumModules)
+            {
+                throw new InvalidDataException("Captured metadata exceeds the module inspection limit.");
+            }
+            if (module.ImageBase != address)
+            {
+                continue;
+            }
+            ModuleInfo? recorded = runtime.DataTarget.EnumerateModules().Take(MaximumModules)
+                .FirstOrDefault(candidate => candidate.ImageBase == address);
+            return new CorDebugDumpModuleInfo(address, module.Size, module.Layout != ModuleLayout.Flat,
+                module.Name ?? recorded?.FileName ?? "captured-module",
+                unchecked((uint)(recorded?.IndexTimeStamp ?? 0)),
+                checked((uint)(recorded?.IndexFileSize ?? 0)));
+        }
+        throw new InvalidDataException("The runtime type belongs to an unknown captured module.");
     }
 
     private IReadOnlyDictionary<int, string> ReadVariableNames(ClrRuntime runtime, ClrMethod method,
