@@ -34,8 +34,9 @@ internal static class DebuggerMacCoreCapture
             await RunAsync("/usr/bin/codesign",
                 ["--force", "--sign", "-", "--entitlements", entitlements, collector], progress, diagnosticContext, cancellationToken)
                 .ConfigureAwait(false);
+            // Cache the captured pages for immediate offline inspection. The collector writes chunks smaller than 2 GiB.
             await RunAsync(collector,
-                ["-s", "-x", "full", "-v", "-o", path, processId.ToString(CultureInfo.InvariantCulture)],
+                ["-s", "-x", "full", "-t", "2097152", "-v", "-o", path, processId.ToString(CultureInfo.InvariantCulture)],
                 progress, diagnosticContext, cancellationToken).ConfigureAwait(false);
             File.SetUnixFileMode(path, UnixFileMode.UserRead | UnixFileMode.UserWrite);
         }
