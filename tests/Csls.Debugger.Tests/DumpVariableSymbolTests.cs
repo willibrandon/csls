@@ -34,7 +34,8 @@ public sealed class DumpVariableSymbolTests : DapTestContext
     {
         DebuggerDumpFixture fixture = await DebuggerDumpFixture.CreateAsync(ResolveTestProcessHost(),
             TestContext.CancellationToken, captureFrameValues: true, isolateModule: true,
-            captureType: OperatingSystem.IsWindows() ? DumpType.Full : DumpType.Triage).ConfigureAwait(false);
+            captureType: OperatingSystem.IsWindows() ? DumpType.Full : DumpType.Triage,
+            diagnosticContext: TestContext).ConfigureAwait(false);
         await using ConfiguredAsyncDisposable fixtureCleanup = fixture.ConfigureAwait(false);
         AssertCapturedModuleMetadata(fixture);
         string pdbPath = Path.ChangeExtension(fixture.ProgramPath, ".pdb");

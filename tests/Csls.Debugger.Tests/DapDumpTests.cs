@@ -74,7 +74,8 @@ public sealed class DapDumpTests : DapTestContext
     public async Task DumpScopesAndVariablesPreserveCapturedValues(bool includeHeap, bool supportsPaging)
     {
         DebuggerDumpFixture fixture = await DebuggerDumpFixture.CreateAsync(ResolveTestProcessHost(),
-            TestContext.CancellationToken, captureFrameValues: true, includeHeap, isolateModule: true).ConfigureAwait(false);
+            TestContext.CancellationToken, captureFrameValues: true, includeHeap, isolateModule: true,
+            diagnosticContext: TestContext).ConfigureAwait(false);
         await using ConfiguredAsyncDisposable fixtureCleanup = fixture.ConfigureAwait(false);
         string originalDirectory = Path.GetDirectoryName(fixture.ProgramPath)
             ?? throw new InvalidOperationException("The fixture has no directory.");

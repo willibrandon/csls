@@ -56,14 +56,17 @@ internal sealed class DebuggerDumpFixture : IAsyncDisposable
     /// <param name="isolateModule">Whether to copy the target files into the owned fixture directory.</param>
     /// <param name="captureArrayShapes">Whether to retain the array-layout inspection fixture.</param>
     /// <param name="captureType">An explicit capture type for dump storage-contract tests.</param>
+    /// <param name="diagnosticContext">An optional destination for capture timings and dump-writer output.</param>
     /// <returns>The owned dump from a terminated target.</returns>
     internal static async Task<DebuggerDumpFixture> CreateAsync(string program, CancellationToken cancellationToken,
         bool captureFrameValues = false, bool includeHeap = false, bool isolateModule = false, bool captureArrayShapes = false,
-        DumpType? captureType = null)
+        DumpType? captureType = null, TestContext? diagnosticContext = null)
     {
+        long started = Stopwatch.GetTimestamp();
         string directory = Directory.CreateTempSubdirectory("csls-dap-dump-").FullName;
         try
         {
+            Log("Created capture directory.");
             if (isolateModule)
             {
                 string sourceDirectory = Path.GetDirectoryName(program)
@@ -74,6 +77,7 @@ internal sealed class DebuggerDumpFixture : IAsyncDisposable
                     File.Copy(file, Path.Join(moduleDirectory, Path.GetFileName(file)));
                 }
                 program = Path.Join(moduleDirectory, Path.GetFileName(program));
+                Log("Copied isolated module files.");
             }
 
             string dump = Path.Join(directory, "target.dmp");
@@ -94,29 +98,36 @@ internal sealed class DebuggerDumpFixture : IAsyncDisposable
             Task<string>? output = null;
             try
             {
+                Log($"Started target {target.Id}.");
                 char[] ready = new char[5];
                 int length = await target.StandardOutput.ReadBlockAsync(ready, cancellationToken).ConfigureAwait(false);
                 Assert.AreEqual(ready.Length, length);
                 Assert.AreEqual("ready", new string(ready));
+                Log("Target announced readiness.");
                 output = target.StandardOutput.ReadToEndAsync(CancellationToken.None);
                 var diagnostics = new DiagnosticsClient(target.Id);
+                Log($"Requesting {captureType ?? (includeHeap ? DumpType.WithHeap : DumpType.Triage)} dump.");
                 await diagnostics.WriteDumpAsync(captureType ?? (includeHeap ? DumpType.WithHeap : DumpType.Triage),
                     dump, logDumpGeneration: false, cancellationToken)
                     .ConfigureAwait(false);
                 Assert.IsGreaterThan(0L, new FileInfo(dump).Length);
+                Log($"Dump writer completed: {new FileInfo(dump).Length} bytes.");
             }
             finally
             {
+                Log("Retiring target.");
                 if (!target.HasExited)
                 {
                     target.Kill(entireProcessTree: true);
                 }
                 await target.WaitForExitAsync(CancellationToken.None).ConfigureAwait(false);
-                _ = await error.ConfigureAwait(false);
+                Log($"Observed target exit {target.ExitCode}.");
+                LogOutput("stderr", await error.ConfigureAwait(false));
                 if (output is not null)
                 {
-                    _ = await output.ConfigureAwait(false);
+                    LogOutput("stdout", await output.ConfigureAwait(false));
                 }
+                Log("Drained target streams.");
             }
 
             Assert.IsTrue(target.HasExited, "Offline inspection must begin after the actual target exits.");
@@ -127,6 +138,18 @@ internal sealed class DebuggerDumpFixture : IAsyncDisposable
         {
             await DebuggerTestDirectoryReleaseWaiter.DeleteAsync(directory, TimeSpan.FromSeconds(10)).ConfigureAwait(false);
             throw;
+        }
+
+        void Log(string message) => diagnosticContext?.WriteLine(
+            $"Dump capture {Stopwatch.GetElapsedTime(started).TotalMilliseconds:F1} ms: {message}");
+
+        void LogOutput(string stream, string text)
+        {
+            if (!string.IsNullOrEmpty(text))
+            {
+                const int maximumCharacters = 16 * 1024;
+                Log($"{stream} tail: {text[Math.Max(0, text.Length - maximumCharacters)..]}");
+            }
         }
     }
 
