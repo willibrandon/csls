@@ -139,7 +139,7 @@ internal sealed class DebugSymbolReader : IDisposable
         => TryOpen(image, []);
 
     /// <summary>
-    /// Opens Portable PDBs using the identity of a selected captured module image.
+    /// Opens Portable and Windows PDBs using the identity of a selected captured module image.
     /// </summary>
     /// <param name="peReader">The captured module image containing its debug directory.</param>
     /// <param name="modulePath">The recorded module path used to locate associated symbols.</param>
@@ -153,7 +153,27 @@ internal sealed class DebugSymbolReader : IDisposable
                 !modulePath.StartsWith("\\\\", StringComparison.Ordinal) &&
                 !modulePath.StartsWith("//", StringComparison.Ordinal);
             owner.Acquire(() => PortablePdbReader.TryOpen(peReader, modulePath, allowAssociatedSymbols: localPath));
-            return owner.Value is null ? null : new DebugSymbolReader(owner);
+            if (owner.Value is not null)
+            {
+                return new DebugSymbolReader(owner);
+            }
+
+            if (!localPath || !OperatingSystem.IsWindows())
+            {
+                return null;
+            }
+
+            CodeViewSymbolReference? reference = PortablePdbReader.ReadCodeViewReference(peReader);
+            string? directory = System.IO.Path.GetDirectoryName(modulePath);
+            if (reference is null || directory is null)
+            {
+                return null;
+            }
+
+            using var windowsOwner = new DisposableOwner<WindowsPdbReader>();
+            windowsOwner.Acquire(() => WindowsPdbReader.TryOpen(
+                peReader, System.IO.Path.Join(directory, reference.FileName)));
+            return windowsOwner.Value is null ? null : new DebugSymbolReader(windowsOwner);
         }
         catch (Exception exception) when (IsReadFailure(exception))
         {

@@ -19,33 +19,35 @@ internal sealed class WindowsPdbReader : IDisposable
     private const int MaximumSequencePointCount = 1_048_576;
     private const int MaximumSourceBytes = 32 * 1024 * 1024;
     private const int MaximumAsyncAwaitCount = 16 * 1024;
+    private const int MaximumMetadataBytes = 64 * 1024 * 1024;
+    private const int MaximumPdbBytes = 256 * 1024 * 1024;
     private static readonly Guid s_sha1Algorithm =
         new("FF1816EC-AA5E-4D10-87F7-6F4963833460");
     private static readonly Guid s_sha256Algorithm =
         new("8829D00F-11B8-4213-878B-770E8597AC16");
-    private readonly PEReader _peReader;
+    private readonly MetadataReaderProvider _metadataProvider;
     private readonly FileStream _pdbStream;
     private readonly IReadOnlyList<KeyValuePair<string, string>> _sourceLinkMappings;
     private ISymUnmanagedReader5? _reader;
 
     private WindowsPdbReader(
         string path,
-        DisposableOwner<PEReader> peReaderOwner,
+        DisposableOwner<MetadataReaderProvider> metadataOwner,
         DisposableOwner<FileStream> pdbStreamOwner,
         ref ISymUnmanagedReader5? reader)
     {
-        PEReader peReader = peReaderOwner.Value
-            ?? throw new InvalidOperationException("No PE reader is owned.");
+        MetadataReaderProvider metadataProvider = metadataOwner.Value
+            ?? throw new InvalidOperationException("No module metadata is owned.");
         FileStream pdbStream = pdbStreamOwner.Value
             ?? throw new InvalidOperationException("No Windows PDB stream is owned.");
         ISymUnmanagedReader5 symReader = reader
             ?? throw new InvalidOperationException("No Windows PDB reader is owned.");
         Path = path;
-        _peReader = peReader;
+        _metadataProvider = metadataProvider;
         _pdbStream = pdbStream;
         _reader = symReader;
         _sourceLinkMappings = ReadSourceLinkMappings(symReader);
-        _ = peReaderOwner.Detach();
+        _ = metadataOwner.Detach();
         _ = pdbStreamOwner.Detach();
         reader = null;
     }
@@ -74,14 +76,39 @@ internal sealed class WindowsPdbReader : IDisposable
             return null;
         }
 
-        using var peReaderOwner = new DisposableOwner<PEReader>();
-        peReaderOwner.Acquire(() => new PEReader(new FileStream(
+        using var moduleStream = new FileStream(
             modulePath,
             FileMode.Open,
             FileAccess.Read,
-            FileShare.Read | FileShare.Delete)));
-        PEReader peReader = peReaderOwner.Value
-            ?? throw new InvalidOperationException("The PE reader was not created.");
+            FileShare.Read | FileShare.Delete);
+        using var peReader = new PEReader(moduleStream);
+        return TryOpen(peReader, symbolPath);
+    }
+
+    /// <summary>
+    /// Opens Windows symbols against captured CodeView identity with independently owned metadata.
+    /// </summary>
+    /// <param name="peReader">The caller-owned captured or file-backed managed image.</param>
+    /// <param name="symbolPath">The absolute Windows PDB candidate path.</param>
+    /// <returns>An owned reader, or null when the candidate does not match the captured image.</returns>
+    internal static WindowsPdbReader? TryOpen(PEReader peReader, string symbolPath)
+    {
+        ArgumentNullException.ThrowIfNull(peReader);
+        ArgumentException.ThrowIfNullOrWhiteSpace(symbolPath);
+        if (!OperatingSystem.IsWindows() ||
+            !System.IO.Path.IsPathFullyQualified(symbolPath) ||
+            !peReader.HasMetadata || peReader.PEHeaders.MetadataSize > MaximumMetadataBytes ||
+            !File.Exists(symbolPath))
+        {
+            return null;
+        }
+
+        CodeViewSymbolReference? reference = PortablePdbReader.ReadCodeViewReference(peReader);
+        if (reference is null)
+        {
+            return null;
+        }
+
         using var pdbStreamOwner = new DisposableOwner<FileStream>();
         pdbStreamOwner.Acquire(() => new FileStream(
             symbolPath,
@@ -90,18 +117,21 @@ internal sealed class WindowsPdbReader : IDisposable
             FileShare.Read | FileShare.Delete));
         FileStream pdbStream = pdbStreamOwner.Value
             ?? throw new InvalidOperationException("The Windows PDB stream was not created.");
+        if (pdbStream.Length > MaximumPdbBytes)
+        {
+            return null;
+        }
+
+        using var metadataOwner = new DisposableOwner<MetadataReaderProvider>();
+        metadataOwner.Acquire(() => MetadataReaderProvider.FromMetadataImage(peReader.GetMetadata().GetContent()));
+        MetadataReaderProvider metadata = metadataOwner.Value
+            ?? throw new InvalidOperationException("The module metadata was not copied.");
         ISymUnmanagedReader5? reader = null;
         try
         {
-            CodeViewSymbolReference? reference = PortablePdbReader.ReadCodeViewReference(modulePath);
-            if (reference is null)
-            {
-                return null;
-            }
-
             reader = WindowsPdbReaderFactory.Create(
                 pdbStream,
-                new WindowsPdbMetadataProvider(peReader.GetMetadataReader()));
+                new WindowsPdbMetadataProvider(metadata.GetMetadataReader()));
             int matchResult = reader.MatchesModule(
                 reference.Signature,
                 reference.Stamp,
@@ -114,7 +144,7 @@ internal sealed class WindowsPdbReader : IDisposable
 
             return new WindowsPdbReader(
                 System.IO.Path.GetFullPath(symbolPath),
-                peReaderOwner,
+                metadataOwner,
                 pdbStreamOwner,
                 ref reader);
         }
@@ -184,7 +214,7 @@ internal sealed class WindowsPdbReader : IDisposable
     /// <returns>The immutable ordered sequence points.</returns>
     internal IReadOnlyList<ManagedSequencePoint> GetSequencePoints(uint? methodToken, bool includeHidden = false)
     {
-        MetadataReader metadata = _peReader.GetMetadataReader();
+        MetadataReader metadata = _metadataProvider.GetMetadataReader();
         IEnumerable<uint> tokens = methodToken is uint selected
             ? [selected]
             : metadata.MethodDefinitions.Select(static handle =>
@@ -291,14 +321,14 @@ internal sealed class WindowsPdbReader : IDisposable
     }
 
     /// <summary>
-    /// Releases the native reader and its retained symbol and module streams.
+    /// Releases the native reader, symbol stream, and owned module metadata snapshot.
     /// </summary>
     public void Dispose()
     {
         ISymUnmanagedReader5? reader = Interlocked.Exchange(ref _reader, null);
         DisposeComObject(reader);
         _pdbStream.Dispose();
-        _peReader.Dispose();
+        _metadataProvider.Dispose();
     }
 
     private void ReadMethodSequencePoints(

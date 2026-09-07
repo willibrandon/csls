@@ -147,6 +147,17 @@ internal sealed class PortablePdbReader : IDisposable
         ArgumentException.ThrowIfNullOrWhiteSpace(modulePath);
         using FileStream moduleStream = OpenRead(modulePath);
         using var peReader = new PEReader(moduleStream);
+        return ReadCodeViewReference(peReader);
+    }
+
+    /// <summary>
+    /// Reads an associated PDB identity from a caller-owned managed PE image.
+    /// </summary>
+    /// <param name="peReader">The captured or file-backed PE image.</param>
+    /// <returns>The CodeView identity, or null when the image does not name a PDB.</returns>
+    internal static CodeViewSymbolReference? ReadCodeViewReference(PEReader peReader)
+    {
+        ArgumentNullException.ThrowIfNull(peReader);
         foreach (DebugDirectoryEntry entry in peReader.ReadDebugDirectory())
         {
             if (entry.Type != DebugDirectoryEntryType.CodeView)

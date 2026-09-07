@@ -13,7 +13,7 @@ internal sealed class WindowsPdbMetadataProvider : ISymReaderMetadataProvider
     private readonly MetadataReader _metadata;
 
     /// <summary>
-    /// Creates a provider over metadata owned by a live PE reader.
+    /// Creates a provider over metadata retained by the owning symbol reader.
     /// </summary>
     /// <param name="metadata">The module metadata that remains valid for the provider lifetime.</param>
     internal WindowsPdbMetadataProvider(MetadataReader metadata)

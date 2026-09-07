@@ -13,6 +13,11 @@ embedded Portable PDBs, runtime-provided in-memory symbols, trusted local stores
 HTTP(S) symbol stores. On Windows, identity-matched Windows PDBs use Microsoft's public
 DiaSymReader component for x86, x64, and ARM64.
 
+Dump inspection resolves local names from Portable PDBs and, on Windows, Windows
+PDBs matched against the captured module's identity. Keep the original PDB beside
+the application assembly, or place it in a directory listed in `binarySearchPaths`
+when opening the dump. Parameters use the metadata captured with the application.
+
 In-memory PE and Portable PDB snapshots receive the same breakpoints, stacks, locals,
 stepping, goto, disassembly, and instruction-breakpoint behavior as files on disk. The
 debugger consumes runtime symbol updates during launch and recovers available snapshots

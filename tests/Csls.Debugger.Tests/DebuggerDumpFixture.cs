@@ -58,10 +58,12 @@ internal sealed class DebuggerDumpFixture : IAsyncDisposable
     /// <param name="captureType">An explicit capture type for dump storage-contract tests.</param>
     /// <param name="diagnosticContext">An optional destination for capture timings and dump-writer output.</param>
     /// <param name="blockDumpOutput">Whether to occupy the dump path with a directory for native write-failure coverage.</param>
+    /// <param name="arguments">Explicit arguments for a compiler fixture that announces readiness through stdout.</param>
     /// <returns>The owned dump from a terminated target.</returns>
     internal static async Task<DebuggerDumpFixture> CreateAsync(string program, CancellationToken cancellationToken,
         bool captureFrameValues = false, bool includeHeap = false, bool isolateModule = false, bool captureArrayShapes = false,
-        DumpType? captureType = null, TestContext? diagnosticContext = null, bool blockDumpOutput = false)
+        DumpType? captureType = null, TestContext? diagnosticContext = null, bool blockDumpOutput = false,
+        IReadOnlyList<string>? arguments = null)
     {
         long started = Stopwatch.GetTimestamp();
         string directory = Directory.CreateTempSubdirectory("csls-dap-dump-").FullName;
@@ -95,9 +97,13 @@ internal sealed class DebuggerDumpFixture : IAsyncDisposable
                 RedirectStandardError = true
             };
             startInfo.ArgumentList.Add(program);
-            startInfo.ArgumentList.Add(captureArrayShapes ? "--debugger-dump-arrays"
-                : captureFrameValues ? "--debugger-dump-fixture" : "--announce-and-spin-until-file");
-            startInfo.ArgumentList.Add(Path.Join(directory, "finish.signal"));
+            foreach (string argument in arguments ??
+                [captureArrayShapes ? "--debugger-dump-arrays"
+                    : captureFrameValues ? "--debugger-dump-fixture" : "--announce-and-spin-until-file",
+                    Path.Join(directory, "finish.signal")])
+            {
+                startInfo.ArgumentList.Add(argument);
+            }
             using Process target = Process.Start(startInfo)
                 ?? throw new InvalidOperationException("The dump target did not start.");
             Task<string> error = target.StandardError.ReadToEndAsync(CancellationToken.None);
