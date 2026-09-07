@@ -44,8 +44,17 @@ public sealed class DumpCancellationTests : DapTestContext
         Assert.AreEqual(checkpoint, updates[^1].MemoryReads + updates[^1].ContextReads);
         Assert.IsGreaterThan(0L, updates[^1].BytesRead);
         AssertMonotonicProgress(updates);
-        IReadOnlyList<DebugVariableInfo> recovered = await service.GetVariablesAsync(
-            new DebugVariablesRequest(locals.VariablesReference, 0, 2, false), TestContext.CancellationToken).ConfigureAwait(false);
+        IReadOnlyList<DebugVariableInfo> recovered;
+        try
+        {
+            recovered = await service.GetVariablesAsync(new DebugVariablesRequest(locals.VariablesReference, 0, 2, false),
+                TestContext.CancellationToken).ConfigureAwait(false);
+        }
+        catch
+        {
+            fixture.PreserveFailure(TestContext);
+            throw;
+        }
         AssertLocals(recovered, fixture.CaptureType);
         Assert.AreEqual(initial, await service.GetSessionAsync(TestContext.CancellationToken).ConfigureAwait(false));
         _ = await service.TerminateAsync(TestContext.CancellationToken).ConfigureAwait(false);

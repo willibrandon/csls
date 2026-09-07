@@ -42,10 +42,14 @@ public sealed class DumpDebuggerControlServiceTests : DapTestContext
 
         DebugStackFrameInfo selected = Assert.ContainsSingle(frames.Where(frame =>
             frame.Name.Contains("DebuggerFixture.WaitForSignal", StringComparison.Ordinal)));
+        DebugStackFrameInfo waiting = Assert.ContainsSingle(frames.Where(frame =>
+            frame.Name.Contains("DebuggerBlockingWait.Wait", StringComparison.Ordinal)),
+            "Readiness must follow entry into the unreleased wait before capturing frame values.");
         DebugStackTrace initialStack = await service.GetStackAsync(new DebugStackRequest(initialThreadId, 0, 0),
             TestContext.CancellationToken).ConfigureAwait(false);
         Assert.Contains(selected, initialStack.StackFrames,
             $"Selected thread {initialThreadId}; threads: {string.Join(", ", threads)}; initial stack: {string.Join(", ", initialStack.StackFrames)}");
+        Assert.Contains(waiting, initialStack.StackFrames);
         IReadOnlyList<DebugScopeInfo> scopes = await service.GetScopesAsync(new DebugScopesRequest(selected.Id),
             TestContext.CancellationToken).ConfigureAwait(false);
         DebugScopeInfo arguments = Assert.ContainsSingle(scopes.Where(scope => scope.Name == "Arguments"));

@@ -113,8 +113,14 @@ public sealed class DumpVariableSymbolTests : DapTestContext
             frames.AddRange(stack.StackFrames);
         }
 
-        DebugStackFrameInfo selected = Assert.ContainsSingle(frames.Where(frame =>
-            frame.Name.Contains("DebuggerFixture.WaitForSignal", StringComparison.Ordinal)));
+        DebugStackFrameInfo[] matching = [.. frames.Where(frame =>
+            frame.Name.Contains("DebuggerFixture.WaitForSignal", StringComparison.Ordinal))];
+        if (matching.Length != 1)
+        {
+            fixture.PreserveFailure(TestContext);
+        }
+        DebugStackFrameInfo selected = Assert.ContainsSingle(matching,
+            $"Captured stacks:{Environment.NewLine}{string.Join(Environment.NewLine, frames)}");
         IReadOnlyList<DebugScopeInfo> scopes = await service.GetScopesAsync(new DebugScopesRequest(selected.Id),
             TestContext.CancellationToken).ConfigureAwait(false);
         DebugScopeInfo arguments = Assert.ContainsSingle(scopes.Where(scope => scope.Name == "Arguments"));

@@ -96,7 +96,7 @@ internal sealed class DebuggerDumpFixture : IAsyncDisposable
             };
             startInfo.ArgumentList.Add(program);
             startInfo.ArgumentList.Add(captureArrayShapes ? "--debugger-dump-arrays"
-                : captureFrameValues ? "--debugger-fixture" : "--announce-and-spin-until-file");
+                : captureFrameValues ? "--debugger-dump-fixture" : "--announce-and-spin-until-file");
             startInfo.ArgumentList.Add(Path.Join(directory, "finish.signal"));
             using Process target = Process.Start(startInfo)
                 ?? throw new InvalidOperationException("The dump target did not start.");
@@ -173,6 +173,37 @@ internal sealed class DebuggerDumpFixture : IAsyncDisposable
     }
 
     private static string GetTail(string text) => text[Math.Max(0, text.Length - 16 * 1024)..];
+
+    /// <summary>
+    /// Preserves the failed capture and its application image in the uploaded test-result directory.
+    /// </summary>
+    /// <param name="context">The failed test's diagnostic destination.</param>
+    internal void PreserveFailure(TestContext context)
+    {
+        try
+        {
+            string directory = Directory.CreateDirectory(Path.Join(DebuggerTestEnvironment.FindRepositoryRoot(),
+                "artifacts", "test-results", $"dump-failure-{Guid.NewGuid():N}")).FullName;
+            string dump = Path.Join(directory, "target.dmp");
+            File.Copy(DumpPath, dump);
+            context.AddResultFile(dump);
+            string image = Path.Join(directory, Path.GetFileName(ProgramPath));
+            File.Copy(ProgramPath, image);
+            context.AddResultFile(image);
+            string symbols = Path.ChangeExtension(ProgramPath, ".pdb");
+            if (File.Exists(symbols))
+            {
+                string copiedSymbols = Path.Join(directory, Path.GetFileName(symbols));
+                File.Copy(symbols, copiedSymbols);
+                context.AddResultFile(copiedSymbols);
+            }
+            context.WriteLine($"Captured dump inspection failure: {directory}");
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            context.WriteLine($"Preserving the failed dump also failed: {exception}");
+        }
+    }
 
     /// <inheritdoc />
     public ValueTask DisposeAsync() => new(
