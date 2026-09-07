@@ -8,6 +8,7 @@ using System.Diagnostics;
 using System.IO.Compression;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
+using System.Text;
 
 const string MonoRepositoryPath = "/etc/apt/sources.list.d/mono-official-stable.list";
 const string MonoPackageBaseUrl = "https://download.mono-project.com/repo/debian/";
@@ -468,10 +469,12 @@ static async Task<string> RunCheckedAsync(
         startInfo.ArgumentList.Add(argument);
     }
 
+    await Console.Error.WriteLineAsync($"Running {executablePath} {string.Join(' ', arguments)}")
+        .ConfigureAwait(false);
     using Process process = Process.Start(startInfo)
         ?? throw new InvalidOperationException($"The process did not start: {executablePath}");
-    Task<string> standardOutputTask = process.StandardOutput.ReadToEndAsync();
-    Task<string> standardErrorTask = process.StandardError.ReadToEndAsync();
+    Task<string> standardOutputTask = ReadAndForwardAsync(process.StandardOutput, Console.Out);
+    Task<string> standardErrorTask = ReadAndForwardAsync(process.StandardError, Console.Error);
     await process.WaitForExitAsync().ConfigureAwait(false);
     string standardOutput = await standardOutputTask.ConfigureAwait(false);
     string standardError = await standardErrorTask.ConfigureAwait(false);
@@ -482,23 +485,20 @@ static async Task<string> RunCheckedAsync(
             $"{standardError}{standardOutput}".Trim());
     }
 
-    if (standardOutput.Length > 0)
-    {
-        await Console.Out.WriteAsync(standardOutput).ConfigureAwait(false);
-        if (!standardOutput.EndsWith(Environment.NewLine, StringComparison.Ordinal))
-        {
-            await Console.Out.WriteLineAsync().ConfigureAwait(false);
-        }
-    }
-
-    if (standardError.Length > 0)
-    {
-        await Console.Error.WriteAsync(standardError).ConfigureAwait(false);
-        if (!standardError.EndsWith(Environment.NewLine, StringComparison.Ordinal))
-        {
-            await Console.Error.WriteLineAsync().ConfigureAwait(false);
-        }
-    }
-
     return standardOutput;
+}
+
+static async Task<string> ReadAndForwardAsync(StreamReader reader, TextWriter destination)
+{
+    var output = new StringBuilder();
+    char[] buffer = new char[4096];
+    int count;
+    while ((count = await reader.ReadAsync(buffer.AsMemory()).ConfigureAwait(false)) != 0)
+    {
+        output.Append(buffer, 0, count);
+        await destination.WriteAsync(buffer.AsMemory(0, count)).ConfigureAwait(false);
+        await destination.FlushAsync().ConfigureAwait(false);
+    }
+
+    return output.ToString();
 }
