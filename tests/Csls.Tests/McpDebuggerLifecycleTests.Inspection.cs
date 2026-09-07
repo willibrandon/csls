@@ -34,6 +34,16 @@ public sealed partial class McpDebuggerLifecycleTests
             stoppedThreadId,
             threads.GetProperty("threads").EnumerateArray()
                 .Select(static thread => thread.GetProperty("id").GetInt32()));
+        JsonElement initialPage = await CallAsync(client, "debug_stack_get",
+            new Dictionary<string, object?>
+            {
+                ["debugSession"] = debugSession,
+                ["stopGeneration"] = generation,
+                ["threadId"] = stoppedThreadId,
+                ["levels"] = 1
+            }, cancellationToken).ConfigureAwait(false);
+        Assert.AreEqual(1, initialPage.GetProperty("stackFrames").GetArrayLength());
+        Assert.IsFalse(initialPage.TryGetProperty("totalFrames", out _));
         JsonElement stack = await CallAsync(
             client,
             "debug_stack_get",
@@ -59,7 +69,9 @@ public sealed partial class McpDebuggerLifecycleTests
                 ["levels"] = 1
             }, cancellationToken).ConfigureAwait(false);
         Assert.AreEqual(1, firstPage.GetProperty("stackFrames").GetArrayLength());
-        Assert.IsFalse(firstPage.TryGetProperty("totalFrames", out _));
+        Assert.AreEqual(stack.GetProperty("totalFrames").GetInt32(), firstPage.GetProperty("totalFrames").GetInt32());
+        Assert.AreEqual(initialPage.GetProperty("stackFrames")[0].GetProperty("id").GetInt32(),
+            firstPage.GetProperty("stackFrames")[0].GetProperty("id").GetInt32());
         Assert.AreEqual(generation, firstPage.GetProperty("stopGeneration").GetInt64());
         Assert.AreEqual(stack.GetProperty("stackFrames")[0].GetProperty("id").GetInt32(),
             firstPage.GetProperty("stackFrames")[0].GetProperty("id").GetInt32());

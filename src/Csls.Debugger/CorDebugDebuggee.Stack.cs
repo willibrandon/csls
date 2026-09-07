@@ -17,7 +17,7 @@ internal sealed partial class CorDebugDebuggee
     /// <param name="levels">The maximum count, or zero for all remaining frames.</param>
     /// <param name="cancellationToken">Cancels native stack enumeration.</param>
     /// <param name="progress">Receives bounded synchronous traversal and ownership snapshots.</param>
-    /// <returns>The selected stack page and exact total only when the walk reaches its end.</returns>
+    /// <returns>The selected stack page and the exact total once the stack end has been observed.</returns>
     internal DebugStackTrace GetStackTrace(
         int threadId,
         DebugStopGeneration generation,
@@ -33,24 +33,50 @@ internal sealed partial class CorDebugDebuggee
         ArgumentOutOfRangeException.ThrowIfGreaterThan(levels, maximumPageSize);
         cancellationToken.ThrowIfCancellationRequested();
         using ManagedFrameRegistration registration = _frames.BeginRegistration();
-        using var walker = ManagedStackWalker.Open(_debugProcess, threadId, _unixExitMonitor, cancellationToken);
+        List<ManagedFrameHandle>? retained = GetRetainedStackPage(threadId, startFrame, levels, maximumPageSize);
+        using ManagedStackWalker? walker = retained is null
+            ? ManagedStackWalker.Open(_debugProcess, threadId, _unixExitMonitor, cancellationToken) : null;
         var symbols = new ManagedSymbolFrameResolver(_sourceBreakpoints);
         var observer = new ManagedStackWalkObserver(progress);
         List<DebugStackFrameInfo> frames = [];
         int inspectedFrames = 0;
         try
         {
-            int? totalFrames = null;
+            int? totalFrames = _frames.GetStackTotal(threadId);
             while (true)
             {
-                if (!walker.TryTakeFrame(out nint frame, cancellationToken))
+                cancellationToken.ThrowIfCancellationRequested();
+                nint frame;
+                int frameIndex;
+                if (retained is not null)
                 {
-                    totalFrames = walker.FrameIndex + 1;
-                    break;
+                    if (frames.Count == retained.Count)
+                    {
+                        break;
+                    }
+
+                    ManagedFrameHandle binding = retained[frames.Count];
+                    frame = binding.Pointer;
+                    frameIndex = binding.FrameIndex;
+                    _ = ComAbi.AddRef(frame);
+                }
+                else if (walker is not null)
+                {
+                    if (!walker.TryTakeFrame(out frame, cancellationToken))
+                    {
+                        totalFrames = walker.FrameIndex + 1;
+                        break;
+                    }
+
+                    frameIndex = walker.FrameIndex;
+                }
+                else
+                {
+                    throw new InvalidOperationException("The stack page has no frame source.");
                 }
 
                 inspectedFrames++;
-                if (walker.FrameIndex < startFrame)
+                if (frameIndex < startFrame)
                 {
                     _ = ComAbi.Release(frame);
                 }
@@ -64,7 +90,7 @@ internal sealed partial class CorDebugDebuggee
                 else
                 {
                     // CreateStackFrame consumes this reference even when symbol resolution fails.
-                    frames.Add(CreateStackFrame(threadId, walker.FrameIndex, generation, frame, symbols));
+                    frames.Add(CreateStackFrame(threadId, frameIndex, generation, frame, symbols));
                 }
 
                 if (inspectedFrames % 256 == 0)
@@ -81,14 +107,19 @@ internal sealed partial class CorDebugDebuggee
 
             cancellationToken.ThrowIfCancellationRequested();
             var result = new DebugStackTrace(frames, totalFrames);
-            walker.Dispose();
+            walker?.Dispose();
             observer.Report(Snapshot(DebugStackWalkState.Completed));
+            if (totalFrames is int total)
+            {
+                _frames.SetStackTotal(threadId, total);
+            }
+
             registration.Commit();
             return result;
         }
         catch (Exception failure)
         {
-            walker.Dispose();
+            walker?.Dispose();
             registration.Dispose();
             DebugStackWalkState state = failure is OperationCanceledException && cancellationToken.IsCancellationRequested
                 ? DebugStackWalkState.Canceled
@@ -98,7 +129,41 @@ internal sealed partial class CorDebugDebuggee
         }
 
         DebugStackWalkProgress Snapshot(DebugStackWalkState state) =>
-            new(threadId, inspectedFrames, frames.Count, _frames.Count, walker.OwnedInterfaceCount, state);
+            new(threadId, inspectedFrames, frames.Count, _frames.Count, walker?.OwnedInterfaceCount ?? 0, state);
+    }
+
+    private List<ManagedFrameHandle>? GetRetainedStackPage(int threadId, int startFrame, int levels, int maximumPageSize)
+    {
+        int? total = _frames.GetStackTotal(threadId);
+        if (levels == 0 && total is null)
+        {
+            return null;
+        }
+
+        int count = total is int knownTotal ? Math.Max(0, knownTotal - startFrame) : levels;
+        if (levels > 0)
+        {
+            count = Math.Min(count, levels);
+        }
+
+        if (count > maximumPageSize)
+        {
+            return null;
+        }
+
+        List<ManagedFrameHandle> retained = [];
+        for (int index = 0; index < count; index++)
+        {
+            if (index > int.MaxValue - startFrame ||
+                !_frames.TryGetByPosition(threadId, startFrame + index, out ManagedFrameHandle? frame))
+            {
+                return null;
+            }
+
+            retained.Add(frame);
+        }
+
+        return retained;
     }
 
     /// <summary>

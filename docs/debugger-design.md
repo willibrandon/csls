@@ -133,7 +133,10 @@ frames and stops as soon as the requested page is full. Requests check cancellat
 between native calls. Each response retains at most 4,096 frames; this response
 budget is independent of the stack depth. A walk has a separate limit of 1,048,576
 native positions, with an explicit error if that work budget is exhausted.
-The exact total is returned only when that request observes the end of the stack.
+Retained frames serve repeated pages within the same stopped runtime generation,
+with source information refreshed for each request. Once a walk reaches the stack
+end, subsequent pages include its exact total. Target execution retires that total
+along with the native frame bindings.
 DAP and MCP omit `totalFrames` for a full page whose remaining tail has not been counted;
 private RPC represents that unknown total as null. Clients continue until they
 receive a short page. An all-remaining request that exceeds the response budget

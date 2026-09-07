@@ -15,6 +15,7 @@ internal sealed class ManagedStoppedFrameRegistry
     private readonly Dictionary<int, ManagedFrameIdentity> _identities = [];
     private readonly Dictionary<string, ManagedInstructionReferenceHandle> _instructions = new(StringComparer.Ordinal);
     private readonly Dictionary<int, ManagedFrameHandle> _instructionAddresses = [];
+    private readonly Dictionary<int, int> _stackTotals = [];
     private int _nextId;
     private int _nextInstructionAddressId;
 
@@ -27,6 +28,20 @@ internal sealed class ManagedStoppedFrameRegistry
     /// Gets the current number of owned native frame bindings.
     /// </summary>
     internal int Count => _current.Count;
+
+    /// <summary>
+    /// Gets the exact stack length observed for a thread in the current runtime generation.
+    /// </summary>
+    /// <param name="threadId">The owning managed thread.</param>
+    /// <returns>The observed total, or null until a walk reaches its end.</returns>
+    internal int? GetStackTotal(int threadId) => _stackTotals.TryGetValue(threadId, out int total) ? total : null;
+
+    /// <summary>
+    /// Retains the exact length of a successfully completed stack walk.
+    /// </summary>
+    /// <param name="threadId">The owning managed thread.</param>
+    /// <param name="total">The number of managed frames observed through the stack end.</param>
+    internal void SetStackTotal(int threadId, int total) => _stackTotals[threadId] = total;
 
     /// <summary>
     /// Begins an inspection whose new bindings are retained only after successful completion.
@@ -225,6 +240,7 @@ internal sealed class ManagedStoppedFrameRegistry
         _current.Clear();
         _instructions.Clear();
         _instructionAddresses.Clear();
+        _stackTotals.Clear();
         if (!preserveIdentity)
         {
             _logicalIds.Clear();

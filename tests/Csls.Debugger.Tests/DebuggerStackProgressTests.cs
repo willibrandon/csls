@@ -19,6 +19,30 @@ public sealed class DebuggerStackProgressTests
     public TestContext TestContext { get; set; } = null!;
 
     /// <summary>
+    /// Reuses retained deep bindings and observed totals with work bounded by the requested page.
+    /// </summary>
+    [TestMethod]
+    [Timeout(30000, CooperativeCancellation = true)]
+    public async Task RetainedStackPagesAvoidRepeatedPrefixTraversal()
+    {
+        using JsonDocument document = await RunProbeAsync("observe", 0, 0).ConfigureAwait(false);
+        JsonElement result = document.RootElement;
+        JsonElement deep = result.GetProperty("deep").GetProperty("StackFrames")[0];
+        JsonElement overlap = result.GetProperty("overlap").GetProperty("StackFrames")[0];
+        Assert.AreEqual(deep.GetProperty("Id").GetInt32(), overlap.GetProperty("Id").GetInt32());
+        Assert.AreEqual(deep.GetProperty("InstructionReference").GetString(), overlap.GetProperty("InstructionReference").GetString());
+        Assert.AreEqual(1, result.GetProperty("overlapProgress").GetProperty("InspectedFrames").GetInt32());
+        Assert.AreEqual(1, result.GetProperty("overlapProgress").GetProperty("CapturedFrames").GetInt32());
+        Assert.AreEqual(0, result.GetProperty("overlapProgress").GetProperty("OwnedWalkInterfaces").GetInt32());
+        Assert.AreEqual(0, result.GetProperty("emptyProgress").GetProperty("InspectedFrames").GetInt32());
+        Assert.AreEqual(0, result.GetProperty("empty").GetProperty("StackFrames").GetArrayLength());
+        Assert.AreEqual(result.GetProperty("tail").GetProperty("TotalFrames").GetInt32(),
+            result.GetProperty("empty").GetProperty("TotalFrames").GetInt32());
+        Assert.IsTrue(result.GetProperty("sourceRefreshedBetweenRequests").GetBoolean());
+        AssertRecovery(result, 5000);
+    }
+
+    /// <summary>
     /// Reuses source and exact-location presentation within a page while refreshing the next request.
     /// </summary>
     [TestMethod]
@@ -167,6 +191,7 @@ public sealed class DebuggerStackProgressTests
     [TestMethod]
     [DataRow("fail-walking", DebugStackWalkState.Walking, nameof(IOException))]
     [DataRow("fail-completed", DebugStackWalkState.Completed, nameof(IOException))]
+    [DataRow("cached-fail-completed", DebugStackWalkState.Completed, nameof(IOException))]
     [DataRow("fail-canceled", DebugStackWalkState.Walking, nameof(OperationCanceledException))]
     [Timeout(30000, CooperativeCancellation = true)]
     public async Task NativeStackProgressReceiverFailureRollsBack(string mode, DebugStackWalkState state, string innerType)
@@ -176,6 +201,14 @@ public sealed class DebuggerStackProgressTests
         Assert.AreEqual(nameof(InvalidOperationException), result.GetProperty("failureType").GetString());
         Assert.AreEqual(innerType, result.GetProperty("innerType").GetString());
         Assert.AreEqual(state, ReadUpdates(result)[^1].State);
+        if (mode == "cached-fail-completed")
+        {
+            DebugStackWalkProgress cached = Assert.ContainsSingle(ReadUpdates(result));
+            Assert.AreEqual(1, cached.InspectedFrames);
+            Assert.AreEqual(1, cached.CapturedFrames);
+            Assert.AreEqual(0, cached.OwnedWalkInterfaces);
+        }
+
         Assert.AreEqual(1, result.GetProperty("recovery").GetProperty("RetainedFrameBindings").GetInt32());
         Assert.AreEqual(0, result.GetProperty("recovery").GetProperty("OwnedWalkInterfaces").GetInt32());
         AssertRecovery(result, 5000);

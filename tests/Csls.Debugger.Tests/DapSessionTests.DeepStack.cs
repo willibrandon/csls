@@ -98,6 +98,8 @@ public sealed partial class DapSessionTests
             .GetProperty("stackFrames")[0];
         JsonElement deep = (await ReadDeepStackPageAsync(client, threadId, depth - 1, 1).ConfigureAwait(false))
             .GetProperty("stackFrames")[0];
+        JsonElement tail = await ReadDeepStackPageAsync(client, threadId, depth, 64).ConfigureAwait(false);
+        Assert.AreEqual(depth + tail.GetProperty("stackFrames").GetArrayLength(), tail.GetProperty("totalFrames").GetInt32());
         JsonElement executed = await ReadEvaluationAsync(client, top.GetProperty("id").GetInt32(),
             "Csls.TestProcessHost.DebuggerDeepStackFixture.AddOne(41)", success: true, TestContext.CancellationToken)
             .ConfigureAwait(false);
@@ -129,8 +131,10 @@ public sealed partial class DapSessionTests
 
         await AssertDeepStackArgumentAsync(client, deep, "entered", 2).ConfigureAwait(false);
         await AssertDeepStackArgumentAsync(client, top, "entered", depth).ConfigureAwait(false);
-        JsonElement refreshed = (await ReadDeepStackPageAsync(client, threadId, depth - 1, 1).ConfigureAwait(false))
-            .GetProperty("stackFrames")[0];
+        JsonElement refreshedPage = await ReadDeepStackPageAsync(client, threadId, depth - 1, 1).ConfigureAwait(false);
+        Assert.IsFalse(refreshedPage.TryGetProperty("totalFrames", out _),
+            "Target execution must retire the previously observed stack total.");
+        JsonElement refreshed = refreshedPage.GetProperty("stackFrames")[0];
         AssertSameLogicalFrame(deep, refreshed);
         await FinishDeepStackAsync(client, sourcePath).ConfigureAwait(false);
     }

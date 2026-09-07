@@ -57,8 +57,10 @@ internal static class StackProgressProbe
             ["baseline"] = JsonSerializer.SerializeToNode(baseline.Updates[^1], StackProbeJsonContext.Default.DebugStackWalkProgress),
             ["initialArguments"] = JsonSerializer.SerializeToNode(initialArguments, StackProbeJsonContext.Default.IReadOnlyListDebugVariableInfo)
         };
-        int levels = mode is "oversized" or "fail-failed" ? 0 : mode == "cancel" ? 4096 : 1000;
-        var progress = new StackProgressRecorder(requestCancellation, checkpoint, mode);
+        int levels = mode is "oversized" or "fail-failed" ? 0 : mode == "cancel" ? 4096
+            : mode == "cached-fail-completed" ? 1 : 1000;
+        var progress = new StackProgressRecorder(requestCancellation, checkpoint,
+            mode == "cached-fail-completed" ? "fail-completed" : mode);
         using var host = Process.GetCurrentProcess();
         host.Refresh();
         result["privateBytesBefore"] = host.PrivateMemorySize64;
@@ -113,6 +115,12 @@ internal static class StackProgressProbe
         result["deepArguments"] = JsonSerializer.SerializeToNode(await ReadArgumentsAsync(service,
             deepScopes.Single(static scope => scope.Name == "Arguments"), cancellationToken).ConfigureAwait(false),
             StackProbeJsonContext.Default.IReadOnlyListDebugVariableInfo);
+        var overlapProgress = new StackProgressRecorder(requestCancellation, 0, "observe");
+        DebugStackTrace overlap = await service.GetStackAsync(new DebugStackRequest(threadId, depth - 1, 1)
+        { Progress = overlapProgress }, cancellationToken).ConfigureAwait(false);
+        result["deep"] = JsonSerializer.SerializeToNode(deep, StackProbeJsonContext.Default.DebugStackTrace);
+        result["overlap"] = JsonSerializer.SerializeToNode(overlap, StackProbeJsonContext.Default.DebugStackTrace);
+        result["overlapProgress"] = JsonSerializer.SerializeToNode(overlapProgress.Updates[^1], StackProbeJsonContext.Default.DebugStackWalkProgress);
         var tailProgress = new StackProgressRecorder(requestCancellation, 0, "observe");
         DebugStackTrace tail = await service.GetStackAsync(new DebugStackRequest(threadId, depth, 64) { Progress = tailProgress }, cancellationToken)
             .ConfigureAwait(false);

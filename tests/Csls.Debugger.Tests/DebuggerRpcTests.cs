@@ -117,6 +117,10 @@ public sealed partial class DebuggerRpcTests
         IReadOnlyList<DebugThreadInfo> threads = await client.GetThreadsAsync(cancellationToken)
             .ConfigureAwait(false);
         Assert.IsNotEmpty(threads);
+        DebugStackTrace initialPage = await client.GetStackAsync(
+            new DebugStackRequest(stoppedThreadId, 0, 1), cancellationToken).ConfigureAwait(false);
+        Assert.HasCount(1, initialPage.StackFrames);
+        Assert.IsNull(initialPage.TotalFrames);
         DebugStackTrace stack = await client.GetStackAsync(
             new DebugStackRequest(stoppedThreadId, 0, 64),
             cancellationToken).ConfigureAwait(false);
@@ -124,7 +128,8 @@ public sealed partial class DebuggerRpcTests
         DebugStackTrace firstPage = await client.GetStackAsync(
             new DebugStackRequest(stoppedThreadId, 0, 1), cancellationToken).ConfigureAwait(false);
         Assert.HasCount(1, firstPage.StackFrames);
-        Assert.IsNull(firstPage.TotalFrames);
+        Assert.AreEqual(stack.TotalFrames, firstPage.TotalFrames);
+        Assert.AreEqual(initialPage.StackFrames[0].Id, firstPage.StackFrames[0].Id);
         Assert.AreEqual(stack.StackFrames[0].Id, firstPage.StackFrames[0].Id);
         DebugStackFrameInfo frame = stack.StackFrames.Single(candidate =>
             DebuggerTestPath.AreEquivalent(candidate.Source?.Path, sourcePath) &&
