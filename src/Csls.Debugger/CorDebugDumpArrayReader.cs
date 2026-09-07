@@ -158,6 +158,7 @@ internal sealed unsafe class CorDebugDumpArrayReader(CorDebugDumpValues values, 
             throw new InvalidDataException("The captured array dimensions disagree with its element count.");
         }
 
+        string elementType = types.FormatArrayElementType(array);
         List<DebugVariableInfo> result = new(take);
         for (int index = start; index - start < take; index++)
         {
@@ -185,7 +186,7 @@ internal sealed unsafe class CorDebugDumpArrayReader(CorDebugDumpValues values, 
             catch (InvalidOperationException exception) when (IsUnavailable(exception) ||
                 callbacks.IsMissingMemoryFailure(exception, missingMemory))
             {
-                result.Add(Unavailable(name, exception, indexed: true));
+                result.Add(Unavailable(name, exception, indexed: true) with { Type = elementType });
             }
             finally
             {

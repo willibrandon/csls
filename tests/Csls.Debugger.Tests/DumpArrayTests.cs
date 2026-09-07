@@ -263,7 +263,8 @@ public sealed class DumpArrayTests : DapTestContext
         Assert.AreSequenceEqual(["System.Collections.Generic.List<int>", "System.Collections.Generic.List<int>"],
             constructed.Select(value => value.Type));
         Assert.AreEqual("null", constructed[1].Value);
-        Assert.AreEqual("(int, string)", Assert.ContainsSingle(await ReadAsync(service, locals["tuples"]).ConfigureAwait(false)).Type);
+        DebugVariableInfo tupleElement = Assert.ContainsSingle(await ReadAsync(service, locals["tuples"]).ConfigureAwait(false));
+        Assert.AreEqual("(int, string)", tupleElement.Type, tupleElement.ToString());
         Assert.AreSequenceEqual(["int?", "int?"],
             (await ReadAsync(service, locals["nullable"]).ConfigureAwait(false)).Select(value => value.Type));
         Assert.AreEqual("decimal", Assert.ContainsSingle(await ReadAsync(service, locals["decimals"]).ConfigureAwait(false)).Type);

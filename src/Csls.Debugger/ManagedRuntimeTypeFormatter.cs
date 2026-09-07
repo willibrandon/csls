@@ -28,7 +28,14 @@ internal sealed class ManagedRuntimeTypeFormatter
     /// <summary>
     /// Formats the exact runtime type of a borrowed live or captured value.
     /// </summary>
-    internal unsafe string FormatValueType(nint value)
+    internal string FormatValueType(nint value) => FormatValueType(value, arrayElement: false);
+
+    /// <summary>
+    /// Formats the declared element type of a borrowed array independently of its captured element storage.
+    /// </summary>
+    internal string FormatArrayElementType(nint value) => FormatValueType(value, arrayElement: true);
+
+    private unsafe string FormatValueType(nint value, bool arrayElement)
     {
         nint value2 = ComAbi.QueryInterface(value, ICorDebugValue2Abi.InterfaceId);
         nint type = 0;
@@ -37,7 +44,10 @@ internal sealed class ManagedRuntimeTypeFormatter
             int result = new ICorDebugValue2Abi(value2).GetExactType((nint)(&type));
             type = Volatile.Read(ref type);
             CorDebugHResult.ThrowIfFailed(result, "ICorDebugValue2.GetExactType");
-            return Format(RequirePointer(type, "ICorDebugValue2.GetExactType"), 0, null, out _, out _);
+            type = RequirePointer(type, "ICorDebugValue2.GetExactType");
+            return arrayElement
+                ? FormatFirstTypeParameter(type, new ICorDebugTypeAbi(type), 0, null)
+                : Format(type, 0, null, out _, out _);
         }
         finally
         {
