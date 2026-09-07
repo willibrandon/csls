@@ -1,3 +1,5 @@
+using Microsoft.CodeAnalysis.CSharp;
+using Microsoft.CodeAnalysis.CSharp.Syntax;
 using System.Runtime.CompilerServices;
 using System.Text.Json;
 
@@ -100,10 +102,11 @@ public sealed partial class McpDebuggerLifecycleTests
     {
         string repositoryRoot = EditorToolResolver.FindRepositoryRoot();
         string sourcePath = Path.Join(repositoryRoot, "tests", "Csls.TestProcessHost", "Program.cs");
-        int entryLine = (await File.ReadAllLinesAsync(sourcePath, TestContext.CancellationToken)
-            .ConfigureAwait(false)).Select(static (line, index) => (Line: line, Number: index + 1))
-            .Single(static candidate => candidate.Line.Contains(
-                "if (args is [\"--unix-wait-status-fixture\"", StringComparison.Ordinal)).Number;
+        string sourceText = await File.ReadAllTextAsync(sourcePath, TestContext.CancellationToken).ConfigureAwait(false);
+        CompilationUnitSyntax syntax = CSharpSyntaxTree.ParseText(sourceText, cancellationToken: TestContext.CancellationToken)
+            .GetCompilationUnitRoot(TestContext.CancellationToken);
+        GlobalStatementSyntax firstStatement = syntax.Members.OfType<GlobalStatementSyntax>().First();
+        int entryLine = firstStatement.GetFirstToken().GetLocation().GetLineSpan().StartLinePosition.Line + 1;
         McpProcessSession mcp = await StartMcpAsync(TestContext.CancellationToken).ConfigureAwait(false);
         await using ConfiguredAsyncDisposable cleanup = mcp.ConfigureAwait(false);
         Dictionary<string, string> environment = environmentMode == "file" ? [] :

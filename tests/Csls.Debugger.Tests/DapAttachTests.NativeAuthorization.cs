@@ -66,13 +66,16 @@ public sealed partial class DapAttachTests
             }
 
             int resume = await client.SendRequestAsync("continue", WriteEmptyObject, TestContext.CancellationToken).ConfigureAwait(false);
-            using (JsonDocument response = await client.ReadMessageAsync(TestContext.CancellationToken).ConfigureAwait(false))
+            using (JsonDocument first = await client.ReadMessageAsync(TestContext.CancellationToken).ConfigureAwait(false))
+            using (JsonDocument second = await client.ReadMessageAsync(TestContext.CancellationToken).ConfigureAwait(false))
             {
-                AssertResponse(response.RootElement, resume, "continue");
-            }
-            using (JsonDocument continued = await client.ReadMessageAsync(TestContext.CancellationToken).ConfigureAwait(false))
-            {
-                AssertEvent(continued.RootElement, "continued");
+                bool firstIsResponse = first.RootElement.GetProperty("type").GetString() == "response";
+                JsonElement response = firstIsResponse ? first.RootElement : second.RootElement;
+                JsonElement continued = firstIsResponse ? second.RootElement : first.RootElement;
+                AssertResponse(response, resume, "continue");
+                Assert.IsTrue(response.GetProperty("body").GetProperty("allThreadsContinued").GetBoolean());
+                AssertEvent(continued, "continued");
+                Assert.IsTrue(continued.GetProperty("body").GetProperty("allThreadsContinued").GetBoolean());
             }
 
             await SetNativeAccessAsync(target, "allow", "allowed").ConfigureAwait(false);
@@ -98,6 +101,12 @@ public sealed partial class DapAttachTests
             Assert.AreEqual(0, target.ExitCode);
             Assert.AreEqual(0, await client.WaitForExitAsync(TestContext.CancellationToken).ConfigureAwait(false));
             Assert.IsEmpty(client.Diagnostics.ToString());
+        }
+        catch
+        {
+            TestContext.WriteLine(client.ProtocolTranscript);
+            TestContext.WriteLine(client.Diagnostics.ToString());
+            throw;
         }
         finally
         {

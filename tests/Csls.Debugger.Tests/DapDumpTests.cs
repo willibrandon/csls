@@ -91,6 +91,12 @@ public sealed class DapDumpTests : DapTestContext
         int threadId = await OpenDumpAsync(client, fixture.DumpPath, initialize: false,
             binarySearchPaths: [relocatedDirectory]).ConfigureAwait(false);
         JsonElement stack = await ReadStackAsync(client, threadId, start: 0, levels: 100).ConfigureAwait(false);
+        if (!stack.GetProperty("stackFrames").EnumerateArray().Any(item => item.GetProperty("name").GetString()
+            ?.Contains("DebuggerFixture.WaitForSignal", StringComparison.Ordinal) == true))
+        {
+            await LogDumpThreadsAsync(client).ConfigureAwait(false);
+            TestContext.WriteLine(client.ProtocolTranscript);
+        }
         JsonElement frame = Assert.ContainsSingle(stack.GetProperty("stackFrames").EnumerateArray()
             .Where(item => item.GetProperty("name").GetString()?.Contains(
                 "DebuggerFixture.WaitForSignal", StringComparison.Ordinal) == true),
@@ -218,6 +224,17 @@ public sealed class DapDumpTests : DapTestContext
         await CloseDumpAsync(client).ConfigureAwait(false);
         using FileStream released = File.Open(fixture.DumpPath, FileMode.Open, FileAccess.ReadWrite, FileShare.None);
         Assert.IsGreaterThan(0L, released.Length);
+    }
+
+    private async Task LogDumpThreadsAsync(DapTestClient client)
+    {
+        JsonElement threads = await RequestAsync(client, "threads", WriteEmptyObject).ConfigureAwait(false);
+        foreach (JsonElement thread in threads.GetProperty("threads").EnumerateArray().Take(32))
+        {
+            int threadId = thread.GetProperty("id").GetInt32();
+            JsonElement stack = await ReadStackAsync(client, threadId, 0, 64).ConfigureAwait(false);
+            TestContext.WriteLine($"Captured thread {thread}: {stack}");
+        }
     }
 
     private static void AssertFilteredValue(JsonElement value)

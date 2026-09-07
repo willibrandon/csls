@@ -1,3 +1,5 @@
+using Microsoft.CodeAnalysis.CSharp;
+using Microsoft.CodeAnalysis.CSharp.Syntax;
 using System.Runtime.CompilerServices;
 
 namespace Csls.Debugger.Tests;
@@ -10,6 +12,7 @@ public sealed partial class DapSymbolTests
     /// <summary>
     /// Enters the authored async top-level method before it produces target output.
     /// </summary>
+    /// <param name="useAppHost">Whether to launch the fixture through its native apphost.</param>
     [TestMethod]
     [DataRow(false)]
     [DataRow(true)]
@@ -22,8 +25,11 @@ public sealed partial class DapSymbolTests
         try
         {
             string source = Path.Join(FindRepositoryRoot(), "tests", "Csls.TestProcessHost", "Program.cs");
-            int expectedLine = FindSourceLine(await File.ReadAllLinesAsync(source, TestContext.CancellationToken)
-                .ConfigureAwait(false), "if (args is [\"--unix-wait-status-fixture\"");
+            string sourceText = await File.ReadAllTextAsync(source, TestContext.CancellationToken).ConfigureAwait(false);
+            CompilationUnitSyntax syntax = CSharpSyntaxTree.ParseText(sourceText, cancellationToken: TestContext.CancellationToken)
+                .GetCompilationUnitRoot(TestContext.CancellationToken);
+            GlobalStatementSyntax firstStatement = syntax.Members.OfType<GlobalStatementSyntax>().First();
+            int expectedLine = firstStatement.GetFirstToken().GetLocation().GetLineSpan().StartLinePosition.Line + 1;
             string program = useAppHost
                 ? SymbolFixtures.EntryAppHostPath
                 : ResolveTestProcessHost();
