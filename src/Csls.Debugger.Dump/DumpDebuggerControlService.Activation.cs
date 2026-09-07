@@ -102,7 +102,7 @@ public sealed partial class DumpDebuggerControlService
                 UseLockFreeMemoryMapReader = options.UseLockFreeMemoryMapReader
             };
         }
-        _dataTarget = DataTarget.LoadDump(dumpPath, options);
+        _dataTarget = DumpMachODataReader.Open(dumpPath, options, cancellationToken);
         try
         {
             if (request.RuntimeIndex >= _dataTarget.ClrVersions.Length)

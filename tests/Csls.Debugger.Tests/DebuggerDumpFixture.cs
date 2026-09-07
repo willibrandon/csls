@@ -120,11 +120,19 @@ internal sealed class DebuggerDumpFixture : IAsyncDisposable
                 Assert.AreEqual("ready", new string(ready));
                 Log("Target announced readiness.");
                 output = target.StandardOutput.ReadToEndAsync(CancellationToken.None);
-                var diagnostics = new DiagnosticsClient(target.Id);
                 Log($"Requesting {captureType ?? (includeHeap ? DumpType.WithHeap : DumpType.Triage)} dump.");
-                await diagnostics.WriteDumpAsync(captureType ?? (includeHeap ? DumpType.WithHeap : DumpType.Triage),
-                    dump, logDumpGeneration: false, cancellationToken)
-                    .ConfigureAwait(false);
+                if (OperatingSystem.IsMacOS() && captureType == DumpType.Full)
+                {
+                    await DebuggerMacCoreCapture.CaptureAsync(target.Id, dump, Log, cancellationToken)
+                        .ConfigureAwait(false);
+                }
+                else
+                {
+                    var diagnostics = new DiagnosticsClient(target.Id);
+                    await diagnostics.WriteDumpAsync(captureType ?? (includeHeap ? DumpType.WithHeap : DumpType.Triage),
+                        dump, logDumpGeneration: false, cancellationToken)
+                        .ConfigureAwait(false);
+                }
                 Assert.IsGreaterThan(0L, new FileInfo(dump).Length);
                 Log($"Dump writer completed: {new FileInfo(dump).Length} bytes.");
             }
