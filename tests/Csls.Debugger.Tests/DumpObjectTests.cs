@@ -15,48 +15,56 @@ public sealed class DumpObjectTests : DapTestContext
     /// <summary>
     /// Preserves exact field storage, generic base types, boxed structs and mixed object-array paths.
     /// </summary>
-    /// <param name="useWorker">Whether to inspect through the private worker RPC transport.</param>
     /// <param name="captureType">The actual runtime dump-writer policy.</param>
     [TestMethod]
-    [DataRow(false, DumpType.WithHeap)]
-    [DataRow(true, DumpType.WithHeap)]
-    [DataRow(false, DumpType.Full)]
-    [DataRow(true, DumpType.Full)]
+    [DataRow(DumpType.WithHeap)]
+    [DataRow(DumpType.Full)]
     [Timeout(60000, CooperativeCancellation = true)]
-    public async Task CapturedObjectsPreservePhysicalFields(bool useWorker, DumpType captureType)
+    public async Task CapturedObjectsPreservePhysicalFields(DumpType captureType)
     {
         DebuggerDumpFixture fixture = await DebuggerDumpFixture.CreateAsync(ResolveTestProcessHost(),
-            TestContext.CancellationToken, captureArrayShapes: true, captureType: captureType).ConfigureAwait(false);
+            TestContext.CancellationToken, captureArrayShapes: true, captureType: captureType,
+            diagnosticContext: TestContext).ConfigureAwait(false);
         await using ConfiguredAsyncDisposable fixtureCleanup = fixture.ConfigureAwait(false);
         try
         {
-            if (useWorker)
-            {
-                string workerPath = Path.Join(FindRepositoryRoot(), "artifacts", "bin", "Csls.Debugger.Dump.Worker", "debug",
-                    "csls-debugger-dump-worker.dll");
-                DebuggerWorkerProcess worker = await DebuggerWorkerProcess.StartAsync(workerPath, false,
-                    TestContext.CancellationToken).ConfigureAwait(false);
-                await using ConfiguredAsyncDisposable workerCleanup = worker.ConfigureAwait(false);
-                _ = await worker.Client.OpenDumpAsync(fixture.OpenRequest, TestContext.CancellationToken).ConfigureAwait(false);
-                await AssertFieldsAsync(worker.Client, () => worker.Client.GetSessionAsync(TestContext.CancellationToken)).ConfigureAwait(false);
-                _ = await worker.Client.TerminateAsync(TestContext.CancellationToken).ConfigureAwait(false);
-            }
-            else
-            {
-                var service = new DumpDebuggerControlService();
-                await using ConfiguredAsyncDisposable serviceCleanup = service.ConfigureAwait(false);
-                _ = await service.OpenDumpAsync(fixture.OpenRequest, TestContext.CancellationToken).ConfigureAwait(false);
-                await AssertFieldsAsync(service, () => service.GetSessionAsync(TestContext.CancellationToken)).ConfigureAwait(false);
-                _ = await service.TerminateAsync(TestContext.CancellationToken).ConfigureAwait(false);
-            }
-            using FileStream released = File.Open(fixture.DumpPath, FileMode.Open, FileAccess.ReadWrite, FileShare.None);
-            Assert.IsGreaterThan(0L, released.Length);
+            await AssertDirectFieldsAsync(fixture).ConfigureAwait(false);
+            AssertReleased(fixture);
+            await AssertWorkerFieldsAsync(fixture).ConfigureAwait(false);
+            AssertReleased(fixture);
         }
         catch
         {
             fixture.PreserveFailure(TestContext);
             throw;
         }
+    }
+
+    private async Task AssertDirectFieldsAsync(DebuggerDumpFixture fixture)
+    {
+        var service = new DumpDebuggerControlService();
+        await using ConfiguredAsyncDisposable cleanup = service.ConfigureAwait(false);
+        _ = await service.OpenDumpAsync(fixture.OpenRequest, TestContext.CancellationToken).ConfigureAwait(false);
+        await AssertFieldsAsync(service, () => service.GetSessionAsync(TestContext.CancellationToken)).ConfigureAwait(false);
+        _ = await service.TerminateAsync(TestContext.CancellationToken).ConfigureAwait(false);
+    }
+
+    private async Task AssertWorkerFieldsAsync(DebuggerDumpFixture fixture)
+    {
+        string workerPath = Path.Join(FindRepositoryRoot(), "artifacts", "bin", "Csls.Debugger.Dump.Worker", "debug",
+            "csls-debugger-dump-worker.dll");
+        DebuggerWorkerProcess worker = await DebuggerWorkerProcess.StartAsync(workerPath, false,
+            TestContext.CancellationToken).ConfigureAwait(false);
+        await using ConfiguredAsyncDisposable cleanup = worker.ConfigureAwait(false);
+        _ = await worker.Client.OpenDumpAsync(fixture.OpenRequest, TestContext.CancellationToken).ConfigureAwait(false);
+        await AssertFieldsAsync(worker.Client, () => worker.Client.GetSessionAsync(TestContext.CancellationToken)).ConfigureAwait(false);
+        _ = await worker.Client.TerminateAsync(TestContext.CancellationToken).ConfigureAwait(false);
+    }
+
+    private static void AssertReleased(DebuggerDumpFixture fixture)
+    {
+        using FileStream released = File.Open(fixture.DumpPath, FileMode.Open, FileAccess.ReadWrite, FileShare.None);
+        Assert.IsGreaterThan(0L, released.Length);
     }
 
     /// <summary>

@@ -86,11 +86,22 @@ public sealed class DebuggerReferenceAssemblyTests
             start.ArgumentList.Add(argument);
         }
 
-        start.ArgumentList.Add($"-bl:{Path.Join(results, "reference-identity-{}.binlog")}");
-        (int exitCode, string output, string error) = await DebuggerTestProcess.RunAsync(start, TestContext.CancellationToken,
-            line => TestContext.WriteLine($"Reference build {version}: {line}"))
-            .ConfigureAwait(false);
-        Assert.AreEqual(0, exitCode, $"{output}{Environment.NewLine}{error}");
+        string binlog = Path.Join(results, $"reference-identity-{Guid.NewGuid():N}.binlog");
+        start.ArgumentList.Add($"-bl:{binlog}");
+        try
+        {
+            (int exitCode, string output, string error) = await DebuggerTestProcess.RunAsync(start, TestContext.CancellationToken,
+                line => TestContext.WriteLine($"Reference build {version}: {line}"))
+                .ConfigureAwait(false);
+            Assert.AreEqual(0, exitCode, $"{output}{Environment.NewLine}{error}");
+        }
+        finally
+        {
+            if (File.Exists(binlog))
+            {
+                TestContext.AddResultFile(binlog);
+            }
+        }
     }
 
     private static Version ReadVersion(string path)
