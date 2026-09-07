@@ -84,7 +84,8 @@ internal static class DebuggerProcessDiagnostics
             {
                 CaptureProcessAsync(processId, directory, testContext, cancellation.Token),
                 CaptureManagedProcessAsync(processId, directory, testContext, cancellation.Token)
-            }).Append(DebuggerMacAuthorizationDiagnostics.CaptureAsync(testContext, cancellation.Token)))
+            }).Append(CaptureKernelStacksAsync(processes, directory, testContext, cancellation.Token))
+                .Append(DebuggerMacAuthorizationDiagnostics.CaptureAsync(testContext, cancellation.Token)))
                 .ConfigureAwait(false);
         }
         catch (Exception exception) when (exception is
@@ -105,6 +106,51 @@ internal static class DebuggerProcessDiagnostics
         (int exitCode, string output, string error) = await DebuggerTestProcess.RunAsync(
             startInfo, cancellationToken).ConfigureAwait(false);
         testContext.WriteLine($"Owned process wait states (exit {exitCode}): {output}{error}");
+    }
+
+    private static async Task CaptureKernelStacksAsync(
+        List<int> processes, string directory, TestContext testContext, CancellationToken cancellationToken)
+    {
+        string path = Path.Join(directory, "owned-processes.spindump.txt");
+        bool hostedRunner = string.Equals(Environment.GetEnvironmentVariable("GITHUB_ACTIONS"),
+            "true", StringComparison.OrdinalIgnoreCase);
+        var startInfo = new ProcessStartInfo(hostedRunner ? "/usr/bin/sudo" : "/usr/sbin/spindump");
+        if (hostedRunner)
+        {
+            startInfo.ArgumentList.Add("-n");
+            startInfo.ArgumentList.Add("/usr/sbin/spindump");
+        }
+
+        startInfo.ArgumentList.Add(processes[0].ToString(CultureInfo.InvariantCulture));
+        startInfo.ArgumentList.Add("1");
+        startInfo.ArgumentList.Add("10");
+        // Spindump otherwise samples the whole host. Restrict it to this test's owned process tree.
+        startInfo.ArgumentList.Add("-onlyTarget");
+        foreach (int processId in processes.Skip(1))
+        {
+            startInfo.ArgumentList.Add("-proc");
+            startInfo.ArgumentList.Add(processId.ToString(CultureInfo.InvariantCulture));
+        }
+        startInfo.ArgumentList.Add("-timeline");
+        startInfo.ArgumentList.Add("-noBinary");
+        startInfo.ArgumentList.Add("-timelimit");
+        startInfo.ArgumentList.Add("5");
+        startInfo.ArgumentList.Add("-o");
+        startInfo.ArgumentList.Add(path);
+        testContext.WriteLine($"Capturing owned process kernel stacks into {path}.");
+        try
+        {
+            (int exitCode, string output, string error) = await DebuggerTestProcess.RunAsync(
+                startInfo, cancellationToken).ConfigureAwait(false);
+            testContext.WriteLine($"Owned process kernel stack capture exited with {exitCode}: {output}{error}");
+        }
+        finally
+        {
+            if (File.Exists(path))
+            {
+                testContext.AddResultFile(path);
+            }
+        }
     }
 
     private static async Task CaptureManagedProcessAsync(
