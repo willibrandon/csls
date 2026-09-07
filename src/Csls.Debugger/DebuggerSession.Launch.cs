@@ -64,7 +64,7 @@ public sealed partial class DebuggerSession
             await _actor.InvokeAsync(
                 token => BeginManagedLaunchAsync(options, token),
                 cancellationToken).ConfigureAwait(false);
-            _debuggee = await CorDebugDebuggee.LaunchAsync(
+            CorDebugDebuggee debuggee = await CorDebugDebuggee.LaunchAsync(
                 options,
                 _actor,
                 _observer,
@@ -79,8 +79,13 @@ public sealed partial class DebuggerSession
                 HandleRuntimeExceptionCoreAsync,
                 HandleRuntimeEvaluationCoreAsync,
                 cancellationToken).ConfigureAwait(false);
+            _debuggee = debuggee;
             await _actor.InvokeAsync(
-                token => CompleteLaunchCoreAsync(_debuggee, token),
+                token =>
+                {
+                    debuggee.SetExpressionEvaluationOptions(options.ExpressionEvaluationOptions);
+                    return CompleteLaunchCoreAsync(debuggee, token);
+                },
                 cancellationToken).ConfigureAwait(false);
         }
         catch (CorDebugRuntimeException)
@@ -99,6 +104,7 @@ public sealed partial class DebuggerSession
         DebuggeeLaunchOptions options,
         CancellationToken cancellationToken)
     {
+        ArgumentNullException.ThrowIfNull(options.ExpressionEvaluationOptions);
         _entryBreakpoint.Configure(options.StopAtEntry);
         _sourceBreakpoints.SetSourceOptions(
             options.SourceFileMap,

@@ -1,3 +1,4 @@
+using Csls.Debugger.Contracts;
 using ModelContextProtocol.Protocol;
 using System.Text.Json.Serialization;
 
@@ -12,6 +13,7 @@ namespace Csls.Mcp.Worker;
     GenerationMode = JsonSourceGenerationMode.Metadata)]
 [JsonSerializable(typeof(McpWorkspaceSummary))]
 [JsonSerializable(typeof(McpDebugSessionInfo))]
+[JsonSerializable(typeof(DebugExpressionEvaluationOptions))]
 [JsonSerializable(typeof(McpDebugOutputEntry))]
 [JsonSerializable(typeof(McpDebugModuleInfo))]
 [JsonSerializable(typeof(McpDebugExceptionInfo))]

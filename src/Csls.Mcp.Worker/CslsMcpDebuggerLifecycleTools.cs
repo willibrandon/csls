@@ -41,6 +41,7 @@ internal sealed class CslsMcpDebuggerLifecycleTools
     /// <param name="enableStepFiltering">Whether stepping skips properties and operators.</param>
     /// <param name="stopAtEntry">Whether launch stops at the first executable entry-point statement.</param>
     /// <param name="requireExactSource">Whether local source must match its debug symbols.</param>
+    /// <param name="expressionEvaluationOptions">The managed value presentation policy for the session.</param>
     /// <returns>The new explicit debugger-session identity and initial state.</returns>
     [McpServerTool(
         Name = "debug_session_start",
@@ -83,7 +84,9 @@ internal sealed class CslsMcpDebuggerLifecycleTools
         [Description("Stop at the first executable entry-point statement. Defaults to false.")]
         bool stopAtEntry = false,
         [Description("Require local source to match its debug symbols. Defaults to true.")]
-        bool requireExactSource = true)
+        bool requireExactSource = true,
+        [Description("Managed value presentation. Set showRawValues to true to inspect physical fields.")]
+        DebugExpressionEvaluationOptions? expressionEvaluationOptions = null)
     {
         return McpDebuggerToolResult.RunAsync(async () =>
         {
@@ -113,6 +116,7 @@ internal sealed class CslsMcpDebuggerLifecycleTools
                     EnableHotReload = enableHotReload,
                     StopAtEntry = stopAtEntry,
                     RequireExactSource = requireExactSource,
+                    ExpressionEvaluationOptions = expressionEvaluationOptions ?? new(),
                     JustMyCode = justMyCode,
                     EnableStepFiltering = enableStepFiltering
                 },
@@ -130,6 +134,7 @@ internal sealed class CslsMcpDebuggerLifecycleTools
     /// <param name="pause">Whether attachment immediately pauses the target.</param>
     /// <param name="sourceFileMap">Build-time source prefixes mapped to local source prefixes.</param>
     /// <param name="requireExactSource">Whether local source must match its debug symbols.</param>
+    /// <param name="expressionEvaluationOptions">The managed value presentation policy for the session.</param>
     /// <returns>The new explicit debugger-session identity and initial state.</returns>
     [McpServerTool(
         Name = "debug_session_attach",
@@ -150,7 +155,9 @@ internal sealed class CslsMcpDebuggerLifecycleTools
         [Description("Build-time source path prefixes mapped to local source path prefixes.")]
         IReadOnlyDictionary<string, string>? sourceFileMap = null,
         [Description("Require local source to match its debug symbols. Defaults to true.")]
-        bool requireExactSource = true)
+        bool requireExactSource = true,
+        [Description("Managed value presentation. Set showRawValues to true to inspect physical fields.")]
+        DebugExpressionEvaluationOptions? expressionEvaluationOptions = null)
     {
         return McpDebuggerToolResult.RunAsync(async () =>
         {
@@ -159,6 +166,7 @@ internal sealed class CslsMcpDebuggerLifecycleTools
                 new DebugAttachRequest(processId)
                 {
                     RequireExactSource = requireExactSource,
+                    ExpressionEvaluationOptions = expressionEvaluationOptions ?? new(),
                     SourceFileMap = sourceFileMap ??
                         new Dictionary<string, string>(StringComparer.Ordinal)
                 },

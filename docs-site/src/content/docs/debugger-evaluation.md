@@ -181,6 +181,19 @@ selected stopped thread's top managed frame is used.
 
 ## Value presentation
 
+Set `expressionEvaluationOptions.showRawValues` to `true` in a DAP launch or
+live-process attach configuration to inspect physical runtime fields. This view
+includes fields marked `DebuggerBrowsable(Never)`, keeps root-hidden fields as
+named children, and exposes tuple `Item` and `Rest` storage. Objects and array
+elements use their runtime names and types. Source expressions and paging remain
+available for these fields.
+
+The default, `false`, applies debugger display attributes, tuple element names,
+type proxies, and enumerable presentation. The option is retained across restart.
+MCP `debug_session_start` and `debug_session_attach` accept the same
+`expressionEvaluationOptions` object. Terminal launch and attach select physical
+presentation with `--show-raw-values`.
+
 All surfaces use one exact CoreCLR type formatter. It preserves generic arguments,
 array dimensions, tuple shape, nullable underlying types and values, enum storage and
 flags, and `decimal` scale. `DateTime`, `DateTimeOffset`, `TimeSpan`, and `Guid` are

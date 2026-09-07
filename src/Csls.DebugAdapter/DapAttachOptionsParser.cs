@@ -33,7 +33,7 @@ internal static class DapAttachOptionsParser
             string dumpPath = ParseAbsolutePath(dumpPathValue, "dumpPath");
             string? liveOption = arguments.EnumerateObject().Select(static option => option.Name)
                 .FirstOrDefault(static name => name is "sourceFileMap" or "sourceLinkOptions" or "symbolOptions" or
-                    "requireExactSource" or "justMyCode" or "enableStepFiltering");
+                    "requireExactSource" or "justMyCode" or "enableStepFiltering" or "expressionEvaluationOptions");
             if (liveOption is not null)
             {
                 throw new ArgumentException(
@@ -76,6 +76,7 @@ internal static class DapAttachOptionsParser
                 ProcessId = processId,
                 SourceFileMap = DapSourceOptionsParser.ParseSourceFileMap(arguments),
                 RequireExactSource = DapBooleanOptionParser.Get(arguments, "requireExactSource", defaultValue: true),
+                ExpressionEvaluationOptions = DapExpressionEvaluationOptionsParser.Parse(arguments),
                 SourceLinkOptions = DapSourceOptionsParser.ParseSourceLinkOptions(arguments),
                 SymbolOptions = DapSymbolOptionsParser.Parse(arguments),
                 JustMyCode = DapBooleanOptionParser.Get(

@@ -97,7 +97,8 @@ public sealed partial class DapSessionTests
         AssertEvent(terminated.RootElement, "terminated");
         Assert.AreEqual(
             0,
-            await client.WaitForExitAsync(TestContext.CancellationToken).ConfigureAwait(false));
+            await client.WaitForExitAsync(TestContext.CancellationToken).ConfigureAwait(false),
+            client.Diagnostics.ToString());
     }
 
     private async Task<JsonDocument> ReadExecutionControlMessageAsync(

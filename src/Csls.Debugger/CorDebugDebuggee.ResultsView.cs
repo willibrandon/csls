@@ -18,7 +18,8 @@ internal sealed partial class CorDebugDebuggee
         ManagedValueOrigin? origin,
         ManagedResultsViewLifetime? lifetime)
     {
-        if (view is not (ManagedValueView.Default or ManagedValueView.Raw or
+        if (_expressionEvaluationOptions.ShowRawValues ||
+            view is not (ManagedValueView.Default or ManagedValueView.Raw or
             ManagedValueView.ProxyBypassed) ||
             (threadId ?? GetValueThreadId(frameId)) is not int selectedThread)
         {

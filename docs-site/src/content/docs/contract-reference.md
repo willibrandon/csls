@@ -270,6 +270,7 @@ These public wire-contract types are generated from the compiled assemblies and 
 | `Csls.Debugger.Contracts.DebugExceptionInfoRequest` | Selects the managed thread that caused the current exception stop. |
 | `Csls.Debugger.Contracts.DebugExecuteExpressionRequest` | Selects a stopped managed frame and expression for authorized target execution. |
 | `Csls.Debugger.Contracts.DebugExpressionCompileRequest` | Selects a source-language grammar and expression for evaluator binding. |
+| `Csls.Debugger.Contracts.DebugExpressionEvaluationOptions` | Selects the presentation of values inspected in a managed debugger session. |
 | `Csls.Debugger.Contracts.DebugExpressionLanguage` | Identifies the source-language grammar used to bind a debugger expression. |
 | `Csls.Debugger.Contracts.DebugExpressionNode` | Carries one immutable operation in a language-neutral debugger expression tree. |
 | `Csls.Debugger.Contracts.DebugExpressionNodeKind` | Identifies one operation in a language-neutral debugger expression tree. |

@@ -345,6 +345,18 @@
                 "default": true,
                 "description": "Require local source to match its debug symbols. Set false to bind against unverified local source."
               },
+              "expressionEvaluationOptions": {
+                "type": "object",
+                "additionalProperties": false,
+                "description": "Managed value presentation. Set showRawValues to true to inspect physical fields.",
+                "properties": {
+                  "showRawValues": {
+                    "type": "boolean",
+                    "default": false,
+                    "description": "Inspect physical fields using raw value presentation."
+                  }
+                }
+              },
               "env": {
                 "type": "object",
                 "description": "Environment variables added to the target. A null value removes an inherited variable.",
@@ -509,6 +521,18 @@
                 "type": "boolean",
                 "default": true,
                 "description": "Require local source to match its debug symbols. Set false to bind against unverified local source."
+              },
+              "expressionEvaluationOptions": {
+                "type": "object",
+                "additionalProperties": false,
+                "description": "Managed value presentation for live process attachment. Set showRawValues to true to inspect physical fields.",
+                "properties": {
+                  "showRawValues": {
+                    "type": "boolean",
+                    "default": false,
+                    "description": "Inspect physical fields using raw value presentation."
+                  }
+                }
               },
               "sourceFileMap": {
                 "type": "object",

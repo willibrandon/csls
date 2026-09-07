@@ -134,6 +134,8 @@ public sealed partial class McpDebuggerLifecycleTests
         Assert.IsFalse(startProperties.GetProperty("stopAtEntry").GetProperty("default").GetBoolean());
         Assert.AreEqual("boolean", startProperties.GetProperty("requireExactSource").GetProperty("type").GetString());
         Assert.IsTrue(startProperties.GetProperty("requireExactSource").GetProperty("default").GetBoolean());
+        Assert.AreEqual("boolean", startProperties.GetProperty("expressionEvaluationOptions")
+            .GetProperty("properties").GetProperty("showRawValues").GetProperty("type").GetString());
         JsonElement attachProperties = tools.Single(
             static tool => tool.Name == "debug_session_attach")
             .ProtocolTool.InputSchema.GetProperty("properties");
@@ -141,6 +143,8 @@ public sealed partial class McpDebuggerLifecycleTests
         Assert.IsTrue(attachProperties.TryGetProperty("sourceFileMap", out _));
         Assert.AreEqual("boolean", attachProperties.GetProperty("requireExactSource").GetProperty("type").GetString());
         Assert.IsTrue(attachProperties.GetProperty("requireExactSource").GetProperty("default").GetBoolean());
+        Assert.AreEqual("boolean", attachProperties.GetProperty("expressionEvaluationOptions")
+            .GetProperty("properties").GetProperty("showRawValues").GetProperty("type").GetString());
         JsonElement dumpProperties = tools.Single(
             static tool => tool.Name == "debug_dump_open")
             .ProtocolTool.InputSchema.GetProperty("properties");

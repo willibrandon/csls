@@ -227,5 +227,6 @@ public sealed partial class DapSessionTests
     private static JsonElement FindByEvaluateName(
         IEnumerable<JsonElement> variables,
         string evaluateName) => variables.Single(variable =>
-            variable.GetProperty("evaluateName").GetString() == evaluateName);
+            variable.TryGetProperty("evaluateName", out JsonElement expression) &&
+            expression.GetString() == evaluateName);
 }

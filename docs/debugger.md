@@ -32,6 +32,11 @@ are passed directly to the target.
 Use `--env-file <path>` to load UTF-8 environment assignments before launch.
 Relative file paths resolve from `--cwd`.
 
+Use `--show-raw-values` with terminal launch or attach to inspect physical runtime
+fields in objects, tuples, and collections. Editor configurations and MCP session
+start or attach requests select this view with
+`"expressionEvaluationOptions": { "showRawValues": true }`.
+
 The terminal opens when the initial breakpoint stops the process. Select a thread
 and stack frame to inspect its source, arguments, and locals. The auxiliary view
 shows target output, modules, breakpoints, watches, or the current exception.

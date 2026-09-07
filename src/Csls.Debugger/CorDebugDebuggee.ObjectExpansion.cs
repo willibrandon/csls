@@ -57,7 +57,7 @@ internal sealed partial class CorDebugDebuggee
         ManagedValueDisplay ordinaryDisplay,
         int debuggerDisplayDepth,
         ManagedDebuggerDisplayAttribute attribute) =>
-        _debuggerDisplayFormatter.TryFormatMember(
+        !_expressionEvaluationOptions.ShowRawValues && _debuggerDisplayFormatter.TryFormatMember(
             container,
             ordinaryDisplay,
             debuggerDisplayDepth,

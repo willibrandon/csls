@@ -48,6 +48,11 @@ internal sealed partial class CorDebugManagedCallback
         _exitProcessCompletion.Task.WaitAsync(cancellationToken);
 
     /// <summary>
+    /// Gets whether terminal callback handling has released the runtime process pointer.
+    /// </summary>
+    internal bool HasCompletedExit => _exitProcessCompletion.Task.IsCompletedSuccessfully;
+
+    /// <summary>
     /// Prevents queued runtime callbacks from resuming a target that is being detached.
     /// </summary>
     internal void BeginDetach() => Volatile.Write(ref _detaching, 1);

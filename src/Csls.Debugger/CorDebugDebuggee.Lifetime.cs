@@ -94,8 +94,11 @@ internal sealed partial class CorDebugDebuggee
                             return ValueTask.CompletedTask;
                         }
 
-                        _ = PrepareForDetach();
-                        Detach();
+                        if (!_managedCallback.HasCompletedExit)
+                        {
+                            _ = PrepareForDetach();
+                            Detach();
+                        }
                         return ValueTask.CompletedTask;
                     },
                     CancellationToken.None).ConfigureAwait(false);

@@ -75,6 +75,12 @@ internal sealed partial class CorDebugDebuggee
             throw new InvalidOperationException("The Results View snapshot is stale.");
         }
 
+        if (_expressionEvaluationOptions.ShowRawValues &&
+            view is ManagedValueView.Default or ManagedValueView.ProxyBypassed)
+        {
+            view = ManagedValueView.ProxyRaw;
+        }
+
         nint identity;
         try
         {

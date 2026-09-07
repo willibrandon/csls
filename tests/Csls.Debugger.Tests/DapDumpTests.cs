@@ -589,7 +589,8 @@ public sealed class DapDumpTests : DapTestContext
             ("binarySearchPaths", "[\"//server/share\"]"),
             ("binarySearchPaths", "[" + string.Join(',', Enumerable.Repeat("\"/\"", 65)) + "]"),
             ("sourceFileMap", "{}"), ("sourceLinkOptions", "{}"), ("symbolOptions", "{}"),
-            ("requireExactSource", "true"), ("justMyCode", "false"), ("enableStepFiltering", "false")
+            ("requireExactSource", "true"), ("justMyCode", "false"), ("enableStepFiltering", "false"),
+            ("expressionEvaluationOptions", "{\"showRawValues\":true}")
         ];
         foreach ((string name, string value) in invalidProperties)
         {

@@ -24,6 +24,11 @@ public sealed class DebuggeeAttachOptions
     public bool RequireExactSource { get; init; } = true;
 
     /// <summary>
+    /// Gets the session's managed value presentation options.
+    /// </summary>
+    public DebugExpressionEvaluationOptions ExpressionEvaluationOptions { get; init; } = new();
+
+    /// <summary>
     /// Gets Source Link URL patterns mapped to enabled states.
     /// </summary>
     public IReadOnlyDictionary<string, bool> SourceLinkOptions { get; init; } =

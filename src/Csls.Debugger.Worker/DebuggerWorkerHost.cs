@@ -59,7 +59,7 @@ internal static partial class DebuggerWorkerHost
         IReadOnlyList<string> arguments,
         CancellationToken cancellationToken)
     {
-        if (arguments.Count < 10 ||
+        if (arguments.Count < 11 ||
             !int.TryParse(
                 arguments[4],
                 NumberStyles.None,
@@ -67,7 +67,8 @@ internal static partial class DebuggerWorkerHost
                 out int line) ||
             !bool.TryParse(arguments[6], out bool stopAtEntry) ||
             !bool.TryParse(arguments[8], out bool requireExactSource) ||
-            !TryParseSourceFileMap(arguments, 9, out Dictionary<string, string>? sourceFileMap,
+            !bool.TryParse(arguments[9], out bool showRawValues) ||
+            !TryParseSourceFileMap(arguments, 10, out Dictionary<string, string>? sourceFileMap,
                 out int targetArgumentIndex))
         {
             throw new InvalidDataException(
@@ -83,6 +84,7 @@ internal static partial class DebuggerWorkerHost
                 Line = line == 0 ? null : line,
                 StopAtEntry = stopAtEntry,
                 RequireExactSource = requireExactSource,
+                ExpressionEvaluationOptions = new() { ShowRawValues = showRawValues },
                 EnvironmentFilePath = string.IsNullOrEmpty(arguments[7]) ? null : arguments[7],
                 RuntimeHostPath = string.IsNullOrEmpty(arguments[5]) ? null : arguments[5],
                 SourceFileMap = sourceFileMap,
@@ -95,14 +97,15 @@ internal static partial class DebuggerWorkerHost
         IReadOnlyList<string> arguments,
         CancellationToken cancellationToken)
     {
-        if (arguments.Count < 4 ||
+        if (arguments.Count < 5 ||
             !int.TryParse(
                 arguments[1],
                 NumberStyles.None,
                 CultureInfo.InvariantCulture,
                 out int processId) ||
             !bool.TryParse(arguments[2], out bool requireExactSource) ||
-            !TryParseSourceFileMap(arguments, 3, out Dictionary<string, string>? sourceFileMap,
+            !bool.TryParse(arguments[3], out bool showRawValues) ||
+            !TryParseSourceFileMap(arguments, 4, out Dictionary<string, string>? sourceFileMap,
                 out int nextArgumentIndex) ||
             nextArgumentIndex != arguments.Count)
         {
@@ -114,6 +117,7 @@ internal static partial class DebuggerWorkerHost
             new DebuggerTerminalAttachOptions(processId)
             {
                 RequireExactSource = requireExactSource,
+                ExpressionEvaluationOptions = new() { ShowRawValues = showRawValues },
                 SourceFileMap = sourceFileMap
             },
             cancellationToken);

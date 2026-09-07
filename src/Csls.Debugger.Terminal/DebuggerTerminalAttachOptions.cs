@@ -1,3 +1,5 @@
+using Csls.Debugger.Contracts;
+
 namespace Csls.Debugger.Terminal;
 
 /// <summary>
@@ -10,6 +12,11 @@ public sealed record DebuggerTerminalAttachOptions(int ProcessId)
     /// Gets whether local source must match its debug symbols.
     /// </summary>
     public bool RequireExactSource { get; init; } = true;
+
+    /// <summary>
+    /// Gets the session's managed value presentation options.
+    /// </summary>
+    public DebugExpressionEvaluationOptions ExpressionEvaluationOptions { get; init; } = new();
 
     /// <summary>
     /// Gets build-time source prefixes mapped to local source prefixes.

@@ -1,3 +1,4 @@
+using Csls.Debugger.Contracts;
 using Csls.Debugger.Interop;
 using System.Buffers.Binary;
 using System.Reflection.Metadata;
@@ -12,6 +13,17 @@ namespace Csls.Debugger;
 internal sealed partial class CorDebugDebuggee
 {
     private ManagedRuntimeTypeFormatter? _runtimeTypes;
+    private DebugExpressionEvaluationOptions _expressionEvaluationOptions = new();
+
+    /// <summary>
+    /// Configures value presentation on the session actor before publishing the activated target.
+    /// </summary>
+    /// <param name="options">The immutable launch or attach presentation policy.</param>
+    internal void SetExpressionEvaluationOptions(DebugExpressionEvaluationOptions options)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+        _expressionEvaluationOptions = options;
+    }
 
     private ManagedRuntimeTypeFormatter RuntimeTypes => _runtimeTypes ??= new ManagedRuntimeTypeFormatter(OpenRuntimeModule);
 
@@ -112,6 +124,7 @@ internal sealed partial class CorDebugDebuggee
             }
             else if (elementType == 0x11 &&
                 hasInspectedValue &&
+                !_expressionEvaluationOptions.ShowRawValues &&
                 _tuplePresenter.TryFormatValue(
                     inspectedValue,
                     exactType,
@@ -135,6 +148,7 @@ internal sealed partial class CorDebugDebuggee
 
             ManagedValueDisplay presentation = elementType is 0x11 or 0x12 &&
                 hasInspectedValue &&
+                !_expressionEvaluationOptions.ShowRawValues &&
                 _debuggerDisplayFormatter.TryFormat(
                     inspectedValue,
                     exactType,

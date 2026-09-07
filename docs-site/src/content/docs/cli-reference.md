@@ -850,6 +850,7 @@ Options:
   --env-file <path>                    UTF-8 environment file, absolute or relative to --cwd.
   --runtime <path>                     Optional dotnet host path used to run a managed assembly.
   --require-exact-source <true|false>  Require local source to match its debug symbols.
+  --show-raw-values                    Inspect physical fields using raw value presentation.
   --source-file-map <build=local>      Map an absolute PDB build-path prefix to an absolute local source prefix.
   -?, -h, --help                       Show help and usage information
 ```
@@ -868,6 +869,7 @@ Arguments:
 
 Options:
   --require-exact-source <true|false>  Require local source to match its debug symbols.
+  --show-raw-values                    Inspect physical fields using raw value presentation.
   --source-file-map <build=local>      Map an absolute PDB build-path prefix to an absolute local source prefix.
   -?, -h, --help                       Show help and usage information
 ```

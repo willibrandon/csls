@@ -31,7 +31,8 @@ public abstract class DapTestContext
     /// </summary>
     private protected async Task<(int ThreadId, int ProcessId)> LaunchAtEntryAsync(
         DapTestClient client, string program, string[] arguments, bool initializeClient = true,
-        IReadOnlyDictionary<string, string>? sourceFileMap = null, bool? requireExactSource = null)
+        IReadOnlyDictionary<string, string>? sourceFileMap = null, bool? requireExactSource = null,
+        Action<Utf8JsonWriter>? writeProperties = null)
     {
         if (initializeClient)
         {
@@ -77,6 +78,7 @@ public abstract class DapTestContext
             writer.WriteString("CSLS_DEBUGGER_ENTRY_VALUE", "entry-result");
             writer.WriteString("--print-environment", "entry-mutated");
             writer.WriteEndObject();
+            writeProperties?.Invoke(writer);
             writer.WriteEndObject();
         }, TestContext.CancellationToken).ConfigureAwait(false);
         using (JsonDocument initialized = await client.ReadMessageAsync(TestContext.CancellationToken)
@@ -696,7 +698,8 @@ public abstract class DapTestContext
         bool wait,
         bool noDebug = true,
         bool suppressJitOptimizations = false,
-        bool? stopAtEntry = null)
+        bool? stopAtEntry = null,
+        bool? showRawValues = null)
     {
         writer.WriteStartObject();
         writer.WriteBoolean("noDebug", noDebug);
@@ -705,6 +708,13 @@ public abstract class DapTestContext
         if (stopAtEntry is bool entryStop)
         {
             writer.WriteBoolean("stopAtEntry", entryStop);
+        }
+
+        if (showRawValues is bool rawValues)
+        {
+            writer.WriteStartObject("expressionEvaluationOptions");
+            writer.WriteBoolean("showRawValues", rawValues);
+            writer.WriteEndObject();
         }
 
         writer.WriteStartArray("args");
