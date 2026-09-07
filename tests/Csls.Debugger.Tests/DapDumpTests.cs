@@ -28,8 +28,12 @@ public sealed class DapDumpTests : DapTestContext
     public async Task DumpScopesAndVariablesPreserveCapturedValues(bool includeHeap, bool supportsPaging)
     {
         DebuggerDumpFixture fixture = await DebuggerDumpFixture.CreateAsync(ResolveTestProcessHost(),
-            TestContext.CancellationToken, captureFrameValues: true, includeHeap).ConfigureAwait(false);
+            TestContext.CancellationToken, captureFrameValues: true, includeHeap, isolateModule: true).ConfigureAwait(false);
         await using ConfiguredAsyncDisposable fixtureCleanup = fixture.ConfigureAwait(false);
+        string originalDirectory = Path.GetDirectoryName(fixture.ProgramPath)
+            ?? throw new InvalidOperationException("The fixture has no directory.");
+        string relocatedDirectory = originalDirectory + "-relocated";
+        Directory.Move(originalDirectory, relocatedDirectory);
         DapTestClient client = await CreateClientAsync().ConfigureAwait(false);
         await using ConfiguredAsyncDisposable clientCleanup = client.ConfigureAwait(false);
         _ = await RequestAsync(client, "initialize", writer =>
@@ -38,7 +42,8 @@ public sealed class DapDumpTests : DapTestContext
             writer.WriteBoolean("supportsVariablePaging", supportsPaging);
             writer.WriteEndObject();
         }).ConfigureAwait(false);
-        int threadId = await OpenDumpAsync(client, fixture.DumpPath, initialize: false).ConfigureAwait(false);
+        int threadId = await OpenDumpAsync(client, fixture.DumpPath, initialize: false,
+            binarySearchPaths: [relocatedDirectory]).ConfigureAwait(false);
         JsonElement stack = await ReadStackAsync(client, threadId, start: 0, levels: 100).ConfigureAwait(false);
         JsonElement frame = Assert.ContainsSingle(stack.GetProperty("stackFrames").EnumerateArray()
             .Where(item => item.GetProperty("name").GetString()?.Contains(
@@ -437,6 +442,10 @@ public sealed class DapDumpTests : DapTestContext
             ("runtimeIndex", "\"0\""), ("runtimeIndex", "null"),
             ("dacPath", "null"), ("dacPath", "false"), ("dacPath", "\"\""),
             ("dacPath", "\"relative.dll\""), ("processId", "1"),
+            ("binarySearchPaths", "null"), ("binarySearchPaths", "false"), ("binarySearchPaths", "{}"),
+            ("binarySearchPaths", "[null]"), ("binarySearchPaths", "[\"relative\"]"),
+            ("binarySearchPaths", "[\"//server/share\"]"),
+            ("binarySearchPaths", "[" + string.Join(',', Enumerable.Repeat("\"/\"", 65)) + "]"),
             ("sourceFileMap", "{}"), ("sourceLinkOptions", "{}"), ("symbolOptions", "{}"),
             ("requireExactSource", "true"), ("justMyCode", "false"), ("enableStepFiltering", "false")
         ];
@@ -459,7 +468,18 @@ public sealed class DapDumpTests : DapTestContext
             Assert.Contains(name, message);
         }
 
-        int stoppedThread = await OpenDumpAsync(client, fixture.DumpPath, initialize: false).ConfigureAwait(false);
+        JsonElement liveFailure = await RequestAsync(client, "attach", writer =>
+        {
+            writer.WriteStartObject();
+            writer.WriteNumber("processId", 1);
+            writer.WriteStartArray("binarySearchPaths");
+            writer.WriteEndArray();
+            writer.WriteEndObject();
+        }, success: false).ConfigureAwait(false);
+        Assert.Contains("binarySearchPaths", liveFailure.GetProperty("message").GetString()
+            ?? throw new AssertFailedException("The rejected live option needs a diagnostic."));
+        int stoppedThread = await OpenDumpAsync(client, fixture.DumpPath, initialize: false, binarySearchPaths: [])
+            .ConfigureAwait(false);
         JsonElement threads = await RequestAsync(client, "threads", WriteEmptyObject).ConfigureAwait(false);
         Assert.Contains(stoppedThread, threads.GetProperty("threads").EnumerateArray()
             .Select(thread => thread.GetProperty("id").GetInt32()));
@@ -586,13 +606,13 @@ public sealed class DapDumpTests : DapTestContext
         "Csls.Debugger.Dump.Worker", "debug", "csls-debugger-dump-worker.dll");
 
     private async Task<int> OpenDumpAsync(DapTestClient client, string dumpPath, bool initialize = true,
-        bool capabilitiesChanged = true)
+        bool capabilitiesChanged = true, IReadOnlyList<string>? binarySearchPaths = null)
     {
         if (initialize)
         {
             _ = await RequestAsync(client, "initialize", WriteEmptyObject).ConfigureAwait(false);
         }
-        int attach = await PrepareDumpAsync(client, dumpPath, capabilitiesChanged: capabilitiesChanged)
+        int attach = await PrepareDumpAsync(client, dumpPath, capabilitiesChanged: capabilitiesChanged, binarySearchPaths: binarySearchPaths)
             .ConfigureAwait(false);
         _ = await RequestAsync(client, "configurationDone", WriteEmptyObject).ConfigureAwait(false);
         using (JsonDocument attached = await client.ReadMessageAsync(TestContext.CancellationToken).ConfigureAwait(false))
@@ -607,13 +627,20 @@ public sealed class DapDumpTests : DapTestContext
     }
 
     private async Task<int> PrepareDumpAsync(DapTestClient client, string dumpPath,
-        bool capabilitiesChanged = true, int runtimeIndex = 0, string? dacPath = null)
+        bool capabilitiesChanged = true, int runtimeIndex = 0, string? dacPath = null, IReadOnlyList<string>? binarySearchPaths = null)
     {
         int attach = await client.SendRequestAsync("attach", writer =>
         {
             writer.WriteStartObject();
             writer.WriteString("dumpPath", dumpPath);
             writer.WriteNumber("runtimeIndex", runtimeIndex);
+            writer.WriteStartArray("binarySearchPaths");
+            foreach (string directory in binarySearchPaths ??
+                [Path.GetDirectoryName(ResolveTestProcessHost()) ?? throw new InvalidOperationException("The fixture has no directory.")])
+            {
+                writer.WriteStringValue(directory);
+            }
+            writer.WriteEndArray();
             if (dacPath is not null)
             {
                 writer.WriteString("dacPath", dacPath);

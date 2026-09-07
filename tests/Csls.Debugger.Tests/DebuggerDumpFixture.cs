@@ -1,3 +1,4 @@
+using Csls.Debugger.Contracts;
 using Microsoft.Diagnostics.NETCore.Client;
 using System.Diagnostics;
 
@@ -32,6 +33,12 @@ internal sealed class DebuggerDumpFixture : IAsyncDisposable
     /// Gets the exact assembly path used to start the captured target.
     /// </summary>
     internal string ProgramPath { get; }
+
+    /// <summary>
+    /// Gets the real dump and its original application binary directory for offline inspection.
+    /// </summary>
+    internal DebugDumpOpenRequest OpenRequest => new(DumpPath, BinarySearchPaths:
+        [Path.GetDirectoryName(ProgramPath) ?? throw new InvalidOperationException("The fixture has no binary directory.")]);
 
     /// <summary>
     /// Captures a real CoreCLR dump, observes target exit, and transfers ownership of the dump directory.

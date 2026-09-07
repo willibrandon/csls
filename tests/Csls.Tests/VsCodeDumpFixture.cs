@@ -66,6 +66,9 @@ internal static class VsCodeDumpFixture
         {
             writer.WriteStartObject();
             writer.WriteString("dumpPath", dumpPath);
+            writer.WriteStartArray("binarySearchPaths");
+            writer.WriteStringValue(Path.GetDirectoryName(EditorToolResolver.ResolveTestProcessHost(repositoryRoot)));
+            writer.WriteEndArray();
             writer.WriteNumber("processId", target.Id);
             writer.WriteString("moduleName", "csls-test-process-host.dll");
             writer.WriteEndObject();

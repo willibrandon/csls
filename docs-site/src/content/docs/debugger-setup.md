@@ -136,13 +136,18 @@ stack frames, modules, and captured arguments and locals:
   "name": ".NET Dump",
   "type": "coreclr",
   "request": "attach",
-  "dumpPath": "/absolute/path/to/application.dmp"
+  "dumpPath": "/absolute/path/to/application.dmp",
+  "binarySearchPaths": ["/absolute/path/to/application/bin"]
 }
 ```
 
 Choose either `dumpPath` or `processId` for an attachment. `runtimeIndex` selects
 a zero-based managed runtime in the dump and defaults to `0`. An optional
 `dacPath` supplies the absolute path to the matching runtime Data Access Component.
+`binarySearchPaths` supplies ordered, existing absolute local directories containing
+the captured application's binaries and adjacent symbols. The debugger checks image
+and symbol identities before using them. Add the original build output directory,
+or a directory containing a matching copy, when inspecting a dump on another machine.
 The dump worker runs in its own process; closing the session releases that worker
 and the dump file. Windows runtime discovery searches local .NET installations
 and validates image identity before loading a matching DAC.
@@ -174,7 +179,7 @@ For attach, use `"request": "attach"` and a positive `"processId"`. Zed starts t
 configured csls binary with `debugger dap`.
 
 A dump entry uses `"request": "attach"` with `"dumpPath"`, plus the same optional
-`runtimeIndex` and `dacPath` properties shown above.
+`runtimeIndex`, `dacPath`, and `binarySearchPaths` properties shown above.
 
 ## Runtime behavior options
 

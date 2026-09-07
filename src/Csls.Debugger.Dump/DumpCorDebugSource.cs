@@ -10,16 +10,19 @@ internal sealed class DumpCorDebugSource : ICorDebugDumpSource
 {
     private readonly ClrInfo _runtime;
     private readonly string? _dacPath;
+    private readonly IReadOnlyList<string> _binarySearchPaths;
 
     /// <summary>
     /// Binds one selected captured runtime and its optional explicit DAC selection.
     /// </summary>
     /// <param name="runtime">The caller-owned selected runtime description.</param>
     /// <param name="dacPath">An optional user-selected absolute DAC path.</param>
-    internal DumpCorDebugSource(ClrInfo runtime, string? dacPath)
+    /// <param name="binarySearchPaths">Optional user-selected local binary directories.</param>
+    internal DumpCorDebugSource(ClrInfo runtime, string? dacPath, IReadOnlyList<string>? binarySearchPaths = null)
     {
         _runtime = runtime;
         _dacPath = dacPath;
+        _binarySearchPaths = DebuggerDumpBinarySearchPaths.Validate(binarySearchPaths);
     }
 
     /// <inheritdoc />
@@ -47,6 +50,25 @@ internal sealed class DumpCorDebugSource : ICorDebugDumpSource
         if (Path.IsPathFullyQualified(imagePath))
         {
             yield return imagePath;
+        }
+
+        foreach (string directory in _binarySearchPaths)
+        {
+            yield return Path.Join(directory, name);
+        }
+
+        int count = 0;
+        StringComparison comparison = OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
+        foreach (ModuleInfo module in _runtime.DataTarget.EnumerateModules())
+        {
+            if (++count > 4096)
+            {
+                throw new InvalidDataException("Captured metadata discovery exceeds the 4096-module limit.");
+            }
+            if (string.Equals(name, Path.GetFileName(module.FileName), comparison))
+            {
+                yield return module.FileName;
+            }
         }
 
         foreach (string path in CandidatePaths(name))

@@ -1,3 +1,4 @@
+using Csls.Debugger;
 using Csls.Debugger.Contracts;
 using ModelContextProtocol;
 using ModelContextProtocol.Server;
@@ -31,6 +32,7 @@ internal sealed class CslsMcpDebuggerDumpTools
     /// <param name="cancellationToken">The MCP request cancellation token.</param>
     /// <param name="runtimeIndex">The zero-based runtime index for multi-runtime dumps.</param>
     /// <param name="dacPath">An optional absolute matching DAC path.</param>
+    /// <param name="binarySearchPaths">Optional ordered absolute local directories containing matching application binaries and adjacent symbols.</param>
     /// <returns>The new explicit read-only debugger-session identity.</returns>
     [McpServerTool(
         Name = "debug_dump_open",
@@ -50,7 +52,9 @@ internal sealed class CslsMcpDebuggerDumpTools
         [Description("Zero-based managed runtime index for a dump containing multiple runtimes.")]
         int runtimeIndex = 0,
         [Description("Optional absolute matching DAC path for cross-runtime inspection.")]
-        string? dacPath = null)
+        string? dacPath = null,
+        [Description("Ordered absolute existing local directories containing matching application binaries and adjacent symbols; at most 64 directories.")]
+        IReadOnlyList<string>? binarySearchPaths = null)
     {
         return McpDebuggerToolResult.RunAsync(async () =>
         {
@@ -61,6 +65,15 @@ internal sealed class CslsMcpDebuggerDumpTools
                 Message = "Validating managed process dump."
             });
             Validate(dumpPath, runtimeIndex, dacPath);
+            IReadOnlyList<string> validatedPaths;
+            try
+            {
+                validatedPaths = DebuggerDumpBinarySearchPaths.Validate(binarySearchPaths);
+            }
+            catch (ArgumentException exception)
+            {
+                throw new McpDebuggerException("debugger_request_invalid", $"binarySearchPaths: {exception.Message}");
+            }
             progress.Report(new ProgressNotificationValue
             {
                 Progress = 1,
@@ -71,7 +84,8 @@ internal sealed class CslsMcpDebuggerDumpTools
                 new DebugDumpOpenRequest(
                     Path.GetFullPath(dumpPath),
                     runtimeIndex,
-                    dacPath is null ? null : Path.GetFullPath(dacPath)),
+                    dacPath is null ? null : Path.GetFullPath(dacPath),
+                    validatedPaths),
                 cancellationToken).ConfigureAwait(false);
             progress.Report(new ProgressNotificationValue
             {

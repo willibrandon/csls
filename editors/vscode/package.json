@@ -458,7 +458,8 @@
                 "properties": {
                   "dumpPath": false,
                   "runtimeIndex": false,
-                  "dacPath": false
+                  "dacPath": false,
+                  "binarySearchPaths": false
                 }
               },
               {
@@ -496,6 +497,13 @@
                 "type": "string",
                 "minLength": 1,
                 "description": "Absolute path to the matching runtime Data Access Component (DAC) for dump inspection."
+              },
+              "binarySearchPaths": {
+                "type": "array",
+                "maxItems": 64,
+                "items": { "type": "string", "minLength": 1, "maxLength": 32768 },
+                "default": [],
+                "description": "Ordered absolute existing local directories containing matching application binaries and adjacent symbols for dump inspection."
               },
               "requireExactSource": {
                 "type": "boolean",

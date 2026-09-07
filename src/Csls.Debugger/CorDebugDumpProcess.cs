@@ -197,7 +197,13 @@ public sealed unsafe class CorDebugDumpProcess : IDisposable
                 nint frame = 0;
                 try
                 {
-                    CorDebugHResult.ThrowIfFailed(stack.GetFrame((nint)(&frame)), "ICorDebugStackWalk.GetFrame");
+                    int result = stack.GetFrame((nint)(&frame));
+                    if (result < 0 && _callbacks.LastFailure is { } failure)
+                    {
+                        throw new InvalidOperationException(
+                            $"ICorDebugStackWalk.GetFrame failed with HRESULT 0x{result:X8}. Captured-data callback: {failure.Message}", failure);
+                    }
+                    CorDebugHResult.ThrowIfFailed(result, "ICorDebugStackWalk.GetFrame");
                     frame = Volatile.Read(ref frame);
                     if (frame != 0 && ComAbi.TryQueryInterface(frame, ICorDebugILFrameAbi.InterfaceId, out nint ilFrame))
                     {

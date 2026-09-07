@@ -241,7 +241,7 @@ public sealed class DumpCancellationTests : DapTestContext
         DebuggerWorkerProcess worker = await DebuggerWorkerProcess.StartAsync(workerPath, false,
             TestContext.CancellationToken).ConfigureAwait(false);
         await using ConfiguredAsyncDisposable workerCleanup = worker.ConfigureAwait(false);
-        _ = await worker.Client.OpenDumpAsync(new DebugDumpOpenRequest(fixture.DumpPath),
+        _ = await worker.Client.OpenDumpAsync(fixture.OpenRequest,
             TestContext.CancellationToken).ConfigureAwait(false);
         DebugScopeInfo locals = await SelectFrameAsync(worker.Client).ConfigureAwait(false);
         using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(TestContext.CancellationToken);
@@ -258,7 +258,9 @@ public sealed class DumpCancellationTests : DapTestContext
 
     private async Task<DebugScopeInfo> OpenFrameAsync(DumpDebuggerControlService service, string dumpPath)
     {
-        _ = await service.OpenDumpAsync(new DebugDumpOpenRequest(dumpPath), TestContext.CancellationToken).ConfigureAwait(false);
+        _ = await service.OpenDumpAsync(new DebugDumpOpenRequest(dumpPath, BinarySearchPaths:
+            [Path.GetDirectoryName(ResolveTestProcessHost()) ?? throw new InvalidOperationException("The fixture has no directory.")]),
+            TestContext.CancellationToken).ConfigureAwait(false);
         return await SelectFrameAsync(service).ConfigureAwait(false);
     }
 

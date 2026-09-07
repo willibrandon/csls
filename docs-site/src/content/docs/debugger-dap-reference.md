@@ -117,6 +117,7 @@ Select exactly one of `processId` or `dumpPath`.
 | `dumpPath` | `string` | No |  | Absolute path to a managed process dump for read-only thread, stack, module, and captured-variable inspection. Select either dumpPath or processId. |
 | `runtimeIndex` | `integer` | No | `0` | Zero-based managed runtime index within the selected dump. |
 | `dacPath` | `string` | No |  | Absolute path to the matching runtime Data Access Component (DAC) for dump inspection. |
+| `binarySearchPaths` | `array` | No | `[]` | Ordered absolute existing local directories containing matching application binaries and adjacent symbols for dump inspection. |
 | `requireExactSource` | `boolean` | No | `true` | Require local source to match its debug symbols. Set false to bind against unverified local source. |
 | `sourceFileMap` | `object` | No |  | Maps absolute build-time source prefixes to absolute local source prefixes. |
 | `sourceLinkOptions` | `object` | No |  | Controls Source Link URL patterns, including explicit private-network authorization. |

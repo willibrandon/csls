@@ -85,7 +85,7 @@ public sealed partial class DumpDebuggerControlService
     private T ReadCaptured<T>(Func<CorDebugDumpProcess, T> read, CancellationToken cancellationToken)
     {
         ClrRuntime runtime = _runtime ?? throw new InvalidOperationException("The dump is closed.");
-        _corDebug ??= new CorDebugDumpProcess(new DumpCorDebugSource(runtime.ClrInfo, _dacPath),
+        _corDebug ??= new CorDebugDumpProcess(new DumpCorDebugSource(runtime.ClrInfo, _dacPath, _binarySearchPaths),
             runtime.ClrInfo.ModuleInfo.ImageBase, _values, cancellationToken);
         try
         {
@@ -99,7 +99,7 @@ public sealed partial class DumpDebuggerControlService
         }
     }
 
-    private static IReadOnlyDictionary<int, string> ReadVariableNames(ClrRuntime runtime, ClrMethod method,
+    private IReadOnlyDictionary<int, string> ReadVariableNames(ClrRuntime runtime, ClrMethod method,
         CorDebugDumpFrameInfo captured, bool arguments)
     {
         ClrModule? module = method.Type?.Module;
@@ -112,7 +112,8 @@ public sealed partial class DumpDebuggerControlService
         {
             using var image = new DumpMemoryStream(runtime.DataTarget.DataReader, module.ImageBase, (long)module.Size);
             return CapturedModuleVariableNames.Read(image, module.Layout != ModuleLayout.Flat,
-                module.Name ?? module.AssemblyName ?? "captured-module", captured.MethodToken, captured.IlOffset, arguments);
+                module.Name ?? module.AssemblyName ?? "captured-module", captured.MethodToken, captured.IlOffset, arguments,
+                _binarySearchPaths);
         }
         catch (Exception exception) when (exception is IOException or BadImageFormatException or OverflowException)
         {

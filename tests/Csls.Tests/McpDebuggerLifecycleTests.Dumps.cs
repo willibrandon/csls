@@ -59,10 +59,20 @@ public sealed partial class McpDebuggerLifecycleTests
                     progressReceived.TrySetResult();
                 }
             });
+            foreach (string invalidPath in new[] { "relative", "//server/share", Path.Join(testDirectory, "absent"), dumpPath })
+            {
+                await AssertToolErrorAsync(mcp.Client, "debug_dump_open",
+                    new Dictionary<string, object?> { ["dumpPath"] = dumpPath, ["binarySearchPaths"] = new[] { invalidPath } },
+                    "debugger_request_invalid", TestContext.CancellationToken).ConfigureAwait(false);
+            }
             JsonElement opened = await CallAsync(
                 mcp.Client,
                 "debug_dump_open",
-                new Dictionary<string, object?> { ["dumpPath"] = dumpPath },
+                new Dictionary<string, object?>
+                {
+                    ["dumpPath"] = dumpPath,
+                    ["binarySearchPaths"] = new[] { Path.GetDirectoryName(EditorToolResolver.ResolveTestProcessHost(repositoryRoot)) }
+                },
                 TestContext.CancellationToken,
                 progress).ConfigureAwait(false);
             await progressReceived.Task.WaitAsync(

@@ -51,7 +51,7 @@ internal static class DapAttachOptionsParser
                 : null;
             return new DapDumpAttachConfiguration
             {
-                Options = new DebugDumpOpenRequest(dumpPath, runtimeIndex, dacPath)
+                Options = new DebugDumpOpenRequest(dumpPath, runtimeIndex, dacPath, ParseBinarySearchPaths(arguments))
             };
         }
 
@@ -63,9 +63,10 @@ internal static class DapAttachOptionsParser
                 "The attach request requires a positive integer processId.");
         }
 
-        if (arguments.TryGetProperty("runtimeIndex", out _) || arguments.TryGetProperty("dacPath", out _))
+        if (arguments.TryGetProperty("runtimeIndex", out _) || arguments.TryGetProperty("dacPath", out _) ||
+            arguments.TryGetProperty("binarySearchPaths", out _))
         {
-            throw new ArgumentException("The attach runtimeIndex and dacPath options require dumpPath.");
+            throw new ArgumentException("The attach runtimeIndex, dacPath and binarySearchPaths options require dumpPath.");
         }
 
         var result = new DapProcessAttachConfiguration
@@ -103,5 +104,27 @@ internal static class DapAttachOptionsParser
         }
 
         return Path.GetFullPath(path);
+    }
+
+    private static IReadOnlyList<string> ParseBinarySearchPaths(JsonElement arguments)
+    {
+        if (!arguments.TryGetProperty("binarySearchPaths", out JsonElement paths))
+        {
+            return [];
+        }
+        if (paths.ValueKind != JsonValueKind.Array || paths.GetArrayLength() > DebuggerDumpBinarySearchPaths.MaximumDirectories)
+        {
+            throw new ArgumentException("The attach binarySearchPaths must be an array of at most 64 local directories.");
+        }
+
+        try
+        {
+            return DebuggerDumpBinarySearchPaths.Validate(paths.EnumerateArray()
+                .Select(value => ParseAbsolutePath(value, "binarySearchPaths")).ToArray());
+        }
+        catch (ArgumentException exception)
+        {
+            throw new ArgumentException($"The attach binarySearchPaths are invalid: {exception.Message}", exception);
+        }
     }
 }

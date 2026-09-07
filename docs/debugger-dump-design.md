@@ -7,6 +7,10 @@ through `ICLRDebugging.OpenVirtualProcess`. MCP `debug_dump_open` opens these
 sessions through `debugger/openDump`. DAP `attach` selects an absolute `dumpPath`
 or a live `processId`. Dump attachments accept a zero-based `runtimeIndex` and
 an optional absolute `dacPath` for the matching runtime Data Access Component.
+`binarySearchPaths` supplies up to 64 ordered, existing absolute local directories
+containing application binaries and adjacent symbols. Activation validates and
+snapshots those paths before acquiring the dump. Matching uses recorded image and
+symbol identities, so moved application builds remain inspectable.
 
 Dump activation publishes its capability set before `initialized`, completes
 configuration and attachment, and emits a `stopped` event. The backend exposes
@@ -44,7 +48,7 @@ The reader bounds symbol files and embedded expansion sizes, opens Unix inputs
 without waiting for FIFO writers, and preserves the caller's image ownership.
 
 CoreCLR requests additional module metadata through `ICorDebugMetaDataLocator`.
-The callback searches recorded local paths and installed runtime directories,
+The callback searches recorded local paths, explicit binary directories, and installed runtime directories,
 checks the captured PE timestamp and image size, and retains a private copy for
 native metadata readers. Managed AnyCPU images use their recorded PE identity.
 Snapshots contain valid managed metadata and are checked again after copying.

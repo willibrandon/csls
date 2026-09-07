@@ -13,6 +13,16 @@ namespace Csls.Debugger.Dump;
 internal sealed class DumpWindowsImageLocator : IFileLocator
 {
     private readonly IReadOnlyList<string> _directories = DumpWindowsRuntimeDirectories.GetDirectories();
+    private readonly IReadOnlyList<string> _binarySearchPaths;
+
+    /// <summary>
+    /// Binds explicit application binary roots while retaining trusted native runtime discovery.
+    /// </summary>
+    /// <param name="binarySearchPaths">Optional absolute local application binary directories.</param>
+    internal DumpWindowsImageLocator(IReadOnlyList<string>? binarySearchPaths = null)
+    {
+        _binarySearchPaths = DebuggerDumpBinarySearchPaths.Validate(binarySearchPaths);
+    }
 
     /// <inheritdoc />
     public string? FindPEImage(string fileName, int buildTimeStamp, int imageSize, bool checkProperties)
@@ -25,7 +35,9 @@ internal sealed class DumpWindowsImageLocator : IFileLocator
 
         // ClrMD also asks for DACs under CoreCLR's symbol key. A local image is
         // accepted only under its own PE identity, including when checkProperties is false.
-        return _directories.Select(directory => Path.Join(directory, name))
+        string? binary = _binarySearchPaths.Select(directory => Path.Join(directory, name))
+            .FirstOrDefault(candidate => MatchesImage(candidate, buildTimeStamp, imageSize, allowManaged: true));
+        return binary ?? _directories.Select(directory => Path.Join(directory, name))
             .FirstOrDefault(candidate => MatchesImage(candidate, buildTimeStamp, imageSize));
     }
 
@@ -39,8 +51,9 @@ internal sealed class DumpWindowsImageLocator : IFileLocator
     /// <param name="path">The local image to inspect without loading code.</param>
     /// <param name="timeStamp">The expected PE build timestamp.</param>
     /// <param name="imageSize">The expected mapped image size.</param>
+    /// <param name="allowManaged">Whether an IL-only AnyCPU application image is also eligible.</param>
     /// <returns>Whether the image has the exact required identity and architecture.</returns>
-    internal static bool MatchesImage(string path, int timeStamp, int imageSize)
+    internal static bool MatchesImage(string path, int timeStamp, int imageSize, bool allowManaged = false)
     {
         if (imageSize <= 0)
         {
@@ -51,6 +64,10 @@ internal sealed class DumpWindowsImageLocator : IFileLocator
         {
             using FileStream stream = File.OpenRead(path);
             using var reader = new PEReader(stream);
+            if (allowManaged && !reader.HasMetadata)
+            {
+                return false;
+            }
             PEHeaders headers = reader.PEHeaders;
             Machine expectedMachine = RuntimeInformation.ProcessArchitecture switch
             {
@@ -59,7 +76,9 @@ internal sealed class DumpWindowsImageLocator : IFileLocator
                 Architecture.X86 => Machine.I386,
                 _ => Machine.Unknown
             };
-            return expectedMachine != Machine.Unknown && headers.CoffHeader.Machine == expectedMachine &&
+            bool anyCpu = allowManaged && headers.CoffHeader.Machine == Machine.I386 &&
+                headers.CorHeader is { } cor && (cor.Flags & (CorFlags.ILOnly | CorFlags.Requires32Bit)) == CorFlags.ILOnly;
+            return expectedMachine != Machine.Unknown && (headers.CoffHeader.Machine == expectedMachine || anyCpu) &&
                 headers.CoffHeader.TimeDateStamp == timeStamp && headers.PEHeader?.SizeOfImage == imageSize;
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or BadImageFormatException)

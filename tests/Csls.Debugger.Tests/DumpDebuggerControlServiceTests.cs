@@ -28,7 +28,7 @@ public sealed class DumpDebuggerControlServiceTests : DapTestContext
         await using ConfiguredAsyncDisposable fixtureCleanup = fixture.ConfigureAwait(false);
         var service = new DumpDebuggerControlService();
         await using ConfiguredAsyncDisposable serviceCleanup = service.ConfigureAwait(false);
-        _ = await service.OpenDumpAsync(new DebugDumpOpenRequest(fixture.DumpPath), TestContext.CancellationToken)
+        _ = await service.OpenDumpAsync(fixture.OpenRequest, TestContext.CancellationToken)
             .ConfigureAwait(false);
         IReadOnlyList<DebugThreadInfo> threads = await service.GetThreadsAsync(TestContext.CancellationToken).ConfigureAwait(false);
         List<DebugStackFrameInfo> frames = [];

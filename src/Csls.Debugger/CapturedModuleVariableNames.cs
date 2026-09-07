@@ -19,9 +19,10 @@ public static class CapturedModuleVariableNames
     /// <param name="methodToken">The physical method definition token.</param>
     /// <param name="ilOffset">The captured instruction offset used to select active local scopes.</param>
     /// <param name="arguments">Whether to resolve parameters rather than locals.</param>
+    /// <param name="binarySearchPaths">Optional local directories used to locate identity-matched adjacent symbols.</param>
     /// <returns>Available source names keyed by physical runtime slot.</returns>
     public static IReadOnlyDictionary<int, string> Read(Stream moduleImage, bool isLoadedImage,
-        string modulePath, uint methodToken, uint ilOffset, bool arguments)
+        string modulePath, uint methodToken, uint ilOffset, bool arguments, IReadOnlyList<string>? binarySearchPaths = null)
     {
         ArgumentNullException.ThrowIfNull(moduleImage);
         ArgumentException.ThrowIfNullOrWhiteSpace(modulePath);
@@ -32,7 +33,7 @@ public static class CapturedModuleVariableNames
             return new Dictionary<int, string>();
         }
 
-        using DebugSymbolReader? symbols = TryReadSymbols(peReader, moduleImage, isLoadedImage, modulePath);
+        using DebugSymbolReader? symbols = TryReadSymbols(peReader, moduleImage, isLoadedImage, modulePath, binarySearchPaths);
         IReadOnlyDictionary<int, ManagedSymbolVariable> variables;
         if (arguments)
         {
@@ -61,7 +62,8 @@ public static class CapturedModuleVariableNames
         }
     }
 
-    private static DebugSymbolReader? TryReadSymbols(PEReader peReader, Stream image, bool isLoadedImage, string path)
+    private static DebugSymbolReader? TryReadSymbols(PEReader peReader, Stream image, bool isLoadedImage, string path,
+        IReadOnlyList<string>? binarySearchPaths)
     {
         const int maximumPdbBytes = 256 * 1024 * 1024;
         try
@@ -98,7 +100,23 @@ public static class CapturedModuleVariableNames
                 }
             }
 
-            return DebugSymbolReader.TryOpen(peReader, path);
+            using var owner = new DisposableOwner<DebugSymbolReader>();
+            owner.Acquire(() => DebugSymbolReader.TryOpen(peReader, path));
+            if (owner.Value is not null)
+            {
+                return owner.Detach();
+            }
+
+            foreach (string directory in DebuggerDumpBinarySearchPaths.Validate(binarySearchPaths))
+            {
+                owner.Acquire(() => DebugSymbolReader.TryOpen(peReader, Path.Join(directory, Path.GetFileName(path))));
+                if (owner.Value is not null)
+                {
+                    return owner.Detach();
+                }
+            }
+
+            return null;
         }
         catch (Exception exception) when (DebugSymbolReader.IsReadFailure(exception))
         {

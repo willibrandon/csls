@@ -67,7 +67,7 @@ export async function run(): Promise<void> {
   assert(folder !== undefined, "The isolated editor workspace must be open.");
   const fixture = JSON.parse(await readFile(
     vscode.Uri.joinPath(folder.uri, ".vscode", "dump-fixture.json").fsPath, "utf8",
-  )) as { dumpPath: string; processId: number; moduleName: string };
+  )) as { dumpPath: string; binarySearchPaths: string[]; processId: number; moduleName: string };
   assert(fixture.processId > 0);
   const extension = vscode.extensions.getExtension("willibrandon.csls");
   assert(extension !== undefined, "The packaged csls extension must be installed.");
@@ -107,6 +107,7 @@ export async function run(): Promise<void> {
       type: "coreclr",
       request: "attach",
       dumpPath: fixture.dumpPath,
+      binarySearchPaths: fixture.binarySearchPaths,
     }), timeoutMilliseconds, "The installed extension did not open the managed dump."), true);
     const activeSession = await withTimeout(started.promise, timeoutMilliseconds,
       "VS Code did not create the dump debug session.");

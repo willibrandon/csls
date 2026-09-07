@@ -82,6 +82,7 @@ public sealed partial class DumpDebuggerControlService
         }
 
         string? dacPath = ValidateDacPath(request.DacPath);
+        IReadOnlyList<string> binarySearchPaths = DebuggerDumpBinarySearchPaths.Validate(request.BinarySearchPaths);
         var options = new DataTargetOptions
         {
             SymbolPaths = [],
@@ -93,7 +94,7 @@ public sealed partial class DumpDebuggerControlService
         {
             options = new DataTargetOptions
             {
-                FileLocator = new DumpWindowsImageLocator(),
+                FileLocator = new DumpWindowsImageLocator(binarySearchPaths),
                 SymbolPaths = options.SymbolPaths,
                 TraceSymbolRequests = options.TraceSymbolRequests,
                 VerifyDacOnWindows = options.VerifyDacOnWindows,
@@ -115,6 +116,7 @@ public sealed partial class DumpDebuggerControlService
             // Build identity is validated before loading; some dumps omit the display version entirely.
             _runtime = runtimeInfo.CreateRuntime(resolvedDac, ignoreMismatch: runtimeInfo.Version.Major == 0);
             _dacPath = resolvedDac;
+            _binarySearchPaths = binarySearchPaths;
             IReadOnlyList<DumpThread> threads = CreateThreads(_runtime);
             IReadOnlyList<DebugModuleInfo> modules = CreateModules(_runtime);
             _threads = threads;

@@ -16,6 +16,72 @@ namespace Csls.Debugger.Tests;
 public sealed class DumpMetadataCallbackTests : DapTestContext
 {
     /// <summary>
+    /// Finds relocated captured binaries through immutable explicit roots and skips a mismatched earlier candidate.
+    /// </summary>
+    [TestMethod]
+    [Timeout(60000, CooperativeCancellation = true)]
+    public async Task MetadataCallbackResolvesRelocatedExactImage()
+    {
+        DebuggerDumpFixture fixture = await DebuggerDumpFixture.CreateAsync(ResolveTestProcessHost(),
+            TestContext.CancellationToken, captureFrameValues: true, isolateModule: true).ConfigureAwait(false);
+        await using ConfiguredAsyncDisposable fixtureCleanup = fixture.ConfigureAwait(false);
+        string original = Path.GetDirectoryName(fixture.ProgramPath)
+            ?? throw new InvalidOperationException("The fixture has no directory.");
+        string relocated = original + "-relocated";
+        Directory.Move(original, relocated);
+        string wrong = Directory.CreateDirectory(original + "-wrong").FullName;
+        string name = Path.GetFileName(fixture.ProgramPath);
+        string image = Path.Join(relocated, name);
+        File.Copy(typeof(DumpMetadataCallbackTests).Assembly.Location, Path.Join(wrong, name));
+        using var target = DataTarget.LoadDump(fixture.DumpPath, new DataTargetOptions { SymbolPaths = [] });
+        ClrInfo runtime = Assert.ContainsSingle(target.ClrVersions);
+        (uint timestamp, uint size) = ReadIdentity(image);
+        using (var missing = new CorDebugDumpCallbacks(new DumpCorDebugSource(runtime, null, [wrong])))
+        {
+            (int Result, uint Length, string Path) rejected = Request(missing, name, timestamp, size, 32768);
+            Assert.AreEqual(unchecked((int)0x80004005), rejected.Result);
+            Assert.AreEqual(0U, rejected.Length);
+            Assert.AreEqual(string.Empty, rejected.Path);
+        }
+
+        string[] paths = [wrong, relocated];
+        var source = new DumpCorDebugSource(runtime, null, paths);
+        paths[1] = wrong;
+        using var callbacks = new CorDebugDumpCallbacks(source);
+        (int Result, uint Length, string Path) resolved = Request(callbacks, name, timestamp, size, 32768);
+        Assert.AreEqual(0, resolved.Result, callbacks.LastFailure?.ToString());
+        Assert.AreEqual((timestamp, size), ReadIdentity(resolved.Path));
+        Assert.AreSequenceEqual(
+            SHA256.HashData(await File.ReadAllBytesAsync(image, TestContext.CancellationToken).ConfigureAwait(false)),
+            SHA256.HashData(await File.ReadAllBytesAsync(resolved.Path, TestContext.CancellationToken).ConfigureAwait(false)));
+    }
+
+    /// <summary>
+    /// Resolves a basename-only runtime request through the module paths recorded in the captured target.
+    /// </summary>
+    [TestMethod]
+    [Timeout(60000, CooperativeCancellation = true)]
+    public async Task MetadataCallbackResolvesCapturedModuleBasename()
+    {
+        DebuggerDumpFixture fixture = await DebuggerDumpFixture.CreateAsync(ResolveTestProcessHost(),
+            TestContext.CancellationToken, captureFrameValues: true, isolateModule: true).ConfigureAwait(false);
+        await using ConfiguredAsyncDisposable fixtureCleanup = fixture.ConfigureAwait(false);
+        using var target = DataTarget.LoadDump(fixture.DumpPath, new DataTargetOptions { SymbolPaths = [] });
+        var source = new DumpCorDebugSource(Assert.ContainsSingle(target.ClrVersions), null,
+            [Path.GetDirectoryName(fixture.ProgramPath) ?? throw new InvalidOperationException("The fixture has no directory.")]);
+        using var callbacks = new CorDebugDumpCallbacks(source);
+        string name = Path.GetFileName(fixture.ProgramPath);
+        Assert.Contains(name, target.EnumerateModules().Select(module => Path.GetFileName(module.FileName)));
+        (uint timestamp, uint size) = ReadIdentity(fixture.ProgramPath);
+        (int Result, uint Length, string Path) resolved = Request(callbacks, name, timestamp, size, 32768);
+        Assert.AreEqual(0, resolved.Result, $"{callbacks.LastFailure}; candidates: {string.Join(", ", source.FindMetadataImages(name).Take(8))}");
+        Assert.AreEqual((timestamp, size), ReadIdentity(resolved.Path));
+        Assert.AreSequenceEqual(
+            SHA256.HashData(await File.ReadAllBytesAsync(fixture.ProgramPath, TestContext.CancellationToken).ConfigureAwait(false)),
+            SHA256.HashData(await File.ReadAllBytesAsync(resolved.Path, TestContext.CancellationToken).ConfigureAwait(false)));
+    }
+
+    /// <summary>
     /// Retains an exact private image across buffer sizing, original-file replacement, and native requests.
     /// </summary>
     /// <param name="runtimeImage">Whether to request CoreLib rather than the AnyCPU application module.</param>
@@ -126,6 +192,9 @@ public sealed class DumpMetadataCallbackTests : DapTestContext
         Assert.AreEqual(unchecked((int)0x80004005), rejected.Result);
         Assert.AreEqual(0U, rejected.Length);
         Assert.AreEqual(string.Empty, rejected.Path);
+        Assert.IsNotNull(callbacks.LastFailure);
+        callbacks.Operation = new CorDebugDumpReadOperation(TestContext.CancellationToken, null);
+        Assert.IsNull(callbacks.LastFailure);
         File.Copy(fixture.ProgramPath, image, overwrite: true);
         (timestamp, size) = ReadIdentity(image);
         (int Result, uint Length, string Path) recovered = Request(callbacks, image, timestamp, size, 32768);

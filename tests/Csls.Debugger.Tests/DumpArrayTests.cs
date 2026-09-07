@@ -24,7 +24,7 @@ public sealed class DumpArrayTests : DapTestContext
         await using ConfiguredAsyncDisposable fixtureCleanup = fixture.ConfigureAwait(false);
         var service = new DumpDebuggerControlService();
         await using ConfiguredAsyncDisposable serviceCleanup = service.ConfigureAwait(false);
-        _ = await service.OpenDumpAsync(new DebugDumpOpenRequest(fixture.DumpPath), TestContext.CancellationToken).ConfigureAwait(false);
+        _ = await service.OpenDumpAsync(fixture.OpenRequest, TestContext.CancellationToken).ConfigureAwait(false);
         DebugSessionSnapshot before = await service.GetSessionAsync(TestContext.CancellationToken).ConfigureAwait(false);
         await AssertShapesAsync(service).ConfigureAwait(false);
         Assert.AreEqual(before, await service.GetSessionAsync(TestContext.CancellationToken).ConfigureAwait(false));
@@ -47,7 +47,7 @@ public sealed class DumpArrayTests : DapTestContext
         DebuggerWorkerProcess worker = await DebuggerWorkerProcess.StartAsync(workerPath, false,
             TestContext.CancellationToken).ConfigureAwait(false);
         await using ConfiguredAsyncDisposable workerCleanup = worker.ConfigureAwait(false);
-        _ = await worker.Client.OpenDumpAsync(new DebugDumpOpenRequest(fixture.DumpPath),
+        _ = await worker.Client.OpenDumpAsync(fixture.OpenRequest,
             TestContext.CancellationToken).ConfigureAwait(false);
         DebugSessionSnapshot before = await worker.Client.GetSessionAsync(TestContext.CancellationToken).ConfigureAwait(false);
         await AssertShapesAsync(worker.Client).ConfigureAwait(false);
@@ -76,7 +76,7 @@ public sealed class DumpArrayTests : DapTestContext
         await using ConfiguredAsyncDisposable fixtureCleanup = fixture.ConfigureAwait(false);
         var service = new DumpDebuggerControlService();
         await using ConfiguredAsyncDisposable serviceCleanup = service.ConfigureAwait(false);
-        _ = await service.OpenDumpAsync(new DebugDumpOpenRequest(fixture.DumpPath), TestContext.CancellationToken).ConfigureAwait(false);
+        _ = await service.OpenDumpAsync(fixture.OpenRequest, TestContext.CancellationToken).ConfigureAwait(false);
         Dictionary<string, DebugVariableInfo> locals = await ReadLocalsAsync(service).ConfigureAwait(false);
         DebugVariableInfo jagged = locals["jagged"];
         IReadOnlyList<DebugVariableInfo> published = await ReadAsync(service, jagged, 0, 1).ConfigureAwait(false);
@@ -124,7 +124,7 @@ public sealed class DumpArrayTests : DapTestContext
         await using ConfiguredAsyncDisposable fixtureCleanup = fixture.ConfigureAwait(false);
         var service = new DumpDebuggerControlService();
         await using ConfiguredAsyncDisposable serviceCleanup = service.ConfigureAwait(false);
-        _ = await service.OpenDumpAsync(new DebugDumpOpenRequest(fixture.DumpPath), TestContext.CancellationToken).ConfigureAwait(false);
+        _ = await service.OpenDumpAsync(fixture.OpenRequest, TestContext.CancellationToken).ConfigureAwait(false);
         Dictionary<string, DebugVariableInfo> locals = await ReadLocalsAsync(service).ConfigureAwait(false);
         DebugVariableInfo many = locals["many"];
         int remaining = 65536 - locals.Values.Count(value => value.VariablesReference != 0);
@@ -177,7 +177,7 @@ public sealed class DumpArrayTests : DapTestContext
         await using ConfiguredAsyncDisposable fixtureCleanup = fixture.ConfigureAwait(false);
         var service = new DumpDebuggerControlService();
         await using ConfiguredAsyncDisposable serviceCleanup = service.ConfigureAwait(false);
-        _ = await service.OpenDumpAsync(new DebugDumpOpenRequest(fixture.DumpPath), TestContext.CancellationToken).ConfigureAwait(false);
+        _ = await service.OpenDumpAsync(fixture.OpenRequest, TestContext.CancellationToken).ConfigureAwait(false);
         Dictionary<string, DebugVariableInfo> locals = await ReadLocalsAsync(service).ConfigureAwait(false);
         DebugVariableInfo current = locals["cycle"];
         for (int depth = 0; depth < 256; depth++)

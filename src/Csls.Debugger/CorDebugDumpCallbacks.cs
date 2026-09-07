@@ -20,7 +20,18 @@ internal sealed unsafe partial class CorDebugDumpCallbacks : ICorDebugDumpDataTa
     /// <summary>
     /// Gets or sets the request owned by the serialized virtual-process operation.
     /// </summary>
-    internal CorDebugDumpReadOperation? Operation { get; set; }
+    internal CorDebugDumpReadOperation? Operation
+    {
+        get;
+        set
+        {
+            field = value;
+            if (value is not null)
+            {
+                LastFailure = null;
+            }
+        }
+    }
 
     /// <summary>
     /// Creates callbacks over a caller-owned immutable dump source.
