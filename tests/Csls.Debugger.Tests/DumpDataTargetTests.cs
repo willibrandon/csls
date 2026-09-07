@@ -2,6 +2,7 @@ using Csls.Debugger.Dump;
 using Csls.Debugger.Interop;
 using Microsoft.Diagnostics.Runtime;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using System.Runtime.InteropServices.Marshalling;
 
 namespace Csls.Debugger.Tests;
@@ -49,7 +50,8 @@ public sealed class DumpDataTargetTests : DapTestContext
         Assert.AreEqual(1L, callbacks.MissingMemoryReads);
 
         byte[] expected = new byte[16];
-        using (FileStream image = File.OpenRead(runtime.ModuleInfo.FileName))
+        string runtimeImage = Path.Join(RuntimeEnvironment.GetRuntimeDirectory(), Path.GetFileName(runtime.ModuleInfo.FileName));
+        using (FileStream image = File.OpenRead(runtimeImage))
         {
             await image.ReadExactlyAsync(expected, TestContext.CancellationToken).ConfigureAwait(false);
         }
