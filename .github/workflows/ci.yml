@@ -209,7 +209,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        suite: [standard, protocol, type-inspection, stepping, evaluation, stress]
+        suite: [standard, protocol, symbols, type-inspection, stepping, evaluation, stress]
         rid: [linux-x64, linux-arm64, win-x64, win-arm64, osx-x64, osx-arm64]
         include:
           # Complementary filters keep every non-stress test in exactly one job.
@@ -220,7 +220,11 @@ jobs:
           - suite: protocol
             name: Debugger protocol
             minimum_tests: 70
-            filter: TestCategory!=DebuggerStress&FullyQualifiedName!~Assignment&FullyQualifiedName!~Evaluation&FullyQualifiedName!~ResultsView&FullyQualifiedName!~DebuggerTypeProxy&FullyQualifiedName!~Async&FullyQualifiedName!~Step&FullyQualifiedName!~Iterator&FullyQualifiedName~Csls.Debugger.Tests.Dap&FullyQualifiedName!~Csls.Debugger.Tests.DapDumpTests&FullyQualifiedName!~ReferenceConversions&FullyQualifiedName!~ReferenceTypeExpressions&FullyQualifiedName!~RawStringReferences
+            filter: TestCategory!=DebuggerStress&FullyQualifiedName!~Assignment&FullyQualifiedName!~Evaluation&FullyQualifiedName!~ResultsView&FullyQualifiedName!~DebuggerTypeProxy&FullyQualifiedName!~Async&FullyQualifiedName!~Step&FullyQualifiedName!~Iterator&FullyQualifiedName~Csls.Debugger.Tests.Dap&FullyQualifiedName!~Csls.Debugger.Tests.DapDumpTests&FullyQualifiedName!~ReferenceConversions&FullyQualifiedName!~ReferenceTypeExpressions&FullyQualifiedName!~RawStringReferences&FullyQualifiedName!~Csls.Debugger.Tests.DapSymbolTests&FullyQualifiedName!~PortablePdbLanguagesBindIn&FullyQualifiedName!~RuntimeGenericArityBoundary&FullyQualifiedName!~CapturedGenericArgumentsRetainSourceIdentityAfterAwait
+          - suite: symbols
+            name: Debugger symbols
+            minimum_tests: 30
+            filter: TestCategory!=DebuggerStress&FullyQualifiedName!~Assignment&FullyQualifiedName!~Evaluation&FullyQualifiedName!~ResultsView&FullyQualifiedName!~DebuggerTypeProxy&FullyQualifiedName!~Async&FullyQualifiedName!~Step&FullyQualifiedName!~Iterator&FullyQualifiedName~Csls.Debugger.Tests.Dap&(FullyQualifiedName~Csls.Debugger.Tests.DapSymbolTests|FullyQualifiedName~PortablePdbLanguagesBindIn|FullyQualifiedName~RuntimeGenericArityBoundary|FullyQualifiedName~CapturedGenericArgumentsRetainSourceIdentityAfterAwait)
           - suite: type-inspection
             name: Debugger type inspection
             minimum_tests: 40
