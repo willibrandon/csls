@@ -147,7 +147,7 @@ public sealed class ZedLanguageServerTests
                 var control = new ControlRpcClient(session.SocketPath);
                 await using ConfiguredAsyncDisposable controlCleanup =
                     control.ConfigureAwait(false);
-                ControlDashboardSnapshot initialSnapshot = await WaitForOpenDocumentAsync(
+                ControlDashboardSnapshot initialSnapshot = await ZedControlObservation.WaitForOpenDocumentAsync(
                     control,
                     documentPath,
                     TimeSpan.FromSeconds(30),
@@ -161,18 +161,18 @@ public sealed class ZedLanguageServerTests
                 try
                 {
                     X11Input.SendControlSequence(displayName, 'k', 'i');
-                    await WaitForTraceEntryAsync(
+                    await ZedControlObservation.WaitForEntryAsync(
                         control,
                         "textDocument/hover",
                         TimeSpan.FromSeconds(30),
                         TestContext.CancellationToken).ConfigureAwait(false);
                     X11Input.SendF12(displayName);
-                    await WaitForTraceEntryAsync(
+                    await ZedControlObservation.WaitForEntryAsync(
                         control,
                         "textDocument/definition",
                         TimeSpan.FromSeconds(30),
                         TestContext.CancellationToken).ConfigureAwait(false);
-                    await WaitForTraceEntriesToSettleAsync(
+                    await ZedControlObservation.WaitForSettledEntriesAsync(
                         control,
                         new HashSet<string>(StringComparer.Ordinal)
                         {
@@ -188,8 +188,8 @@ public sealed class ZedLanguageServerTests
                         .ConfigureAwait(false);
                 }
 
-                AssertTraceSucceeded(trace, "textDocument/hover");
-                AssertTraceSucceeded(trace, "textDocument/definition");
+                ZedControlObservation.AssertSucceeded(trace, "textDocument/hover");
+                ZedControlObservation.AssertSucceeded(trace, "textDocument/definition");
                 ControlHoverResult hoverResult = await control.GetHoverAsync(
                     new ControlHoverRequest
                     {
@@ -372,7 +372,7 @@ public sealed class ZedLanguageServerTests
                 var control = new ControlRpcClient(session.SocketPath);
                 await using ConfiguredAsyncDisposable controlCleanup =
                     control.ConfigureAwait(false);
-                await WaitForOpenDocumentAsync(
+                await ZedControlObservation.WaitForOpenDocumentAsync(
                     control,
                     documentPath,
                     TimeSpan.FromSeconds(30),
@@ -384,30 +384,30 @@ public sealed class ZedLanguageServerTests
                 try
                 {
                     X11Input.SendControlSequence(displayName, 'k', 'i');
-                    await WaitForTraceEntryAsync(
+                    await ZedControlObservation.WaitForEntryAsync(
                         control,
                         "textDocument/hover",
                         TimeSpan.FromSeconds(30),
                         TestContext.CancellationToken).ConfigureAwait(false);
                     X11Input.SendF12(displayName);
-                    await WaitForTraceEntryAsync(
+                    await ZedControlObservation.WaitForEntryAsync(
                         control,
                         "textDocument/definition",
                         TimeSpan.FromSeconds(30),
                         TestContext.CancellationToken).ConfigureAwait(false);
-                    await WaitForOpenDocumentAsync(
+                    await ZedControlObservation.WaitForOpenDocumentAsync(
                         control,
                         definitionPath,
                         TimeSpan.FromSeconds(30),
                         TestContext.CancellationToken).ConfigureAwait(false);
                     X11Input.FocusWindow(displayName, "ControlLogBuffer.cs");
                     X11Input.SendFindAllReferences(displayName);
-                    await WaitForTraceEntryAsync(
+                    await ZedControlObservation.WaitForEntryAsync(
                         control,
                         "textDocument/references",
                         TimeSpan.FromSeconds(30),
                         TestContext.CancellationToken).ConfigureAwait(false);
-                    await WaitForTraceEntriesToSettleAsync(
+                    await ZedControlObservation.WaitForSettledEntriesAsync(
                         control,
                         new HashSet<string>(StringComparer.Ordinal)
                         {
@@ -429,9 +429,9 @@ public sealed class ZedLanguageServerTests
                     }
                 }
 
-                AssertTraceSucceeded(trace, "textDocument/hover");
-                AssertTraceSucceeded(trace, "textDocument/definition");
-                AssertTraceSucceeded(trace, "textDocument/references");
+                ZedControlObservation.AssertSucceeded(trace, "textDocument/hover");
+                ZedControlObservation.AssertSucceeded(trace, "textDocument/definition");
+                ZedControlObservation.AssertSucceeded(trace, "textDocument/references");
                 ControlTraceEntry definitionTrace = trace.Entries.First(entry =>
                     string.Equals(
                         entry.Name,
@@ -624,7 +624,7 @@ public sealed class ZedLanguageServerTests
                 serverExit = ProcessExitWaiter.Observe(session.ProcessId);
                 var control = new ControlRpcClient(session.SocketPath);
                 await using ConfiguredAsyncDisposable controlCleanup = control.ConfigureAwait(false);
-                await WaitForOpenDocumentAsync(
+                await ZedControlObservation.WaitForOpenDocumentAsync(
                     control,
                     documentPath,
                     TimeSpan.FromSeconds(30),
@@ -800,26 +800,6 @@ public sealed class ZedLanguageServerTests
         ];
     }
 
-    private static void AssertTraceSucceeded(ControlTraceInfo trace, string requestName)
-    {
-        ControlTraceEntry[] completedRequests =
-        [
-            .. trace.Entries.Where(entry => string.Equals(
-                entry.Name,
-                requestName,
-                StringComparison.Ordinal) &&
-                entry.CompletedAt.HasValue)
-        ];
-        Assert.IsNotEmpty(
-            completedRequests,
-            $"Zed did not complete {requestName} through csls.");
-        foreach (ControlTraceEntry request in completedRequests)
-        {
-            Assert.AreEqual("Succeeded", request.Status);
-            Assert.IsNull(request.ExceptionType);
-        }
-    }
-
     private static async Task AssertNoUnexpectedCslsZedLogsAsync(
         string userDataPath,
         CancellationToken cancellationToken)
@@ -842,120 +822,6 @@ public sealed class ZedLanguageServerTests
             unexpectedEntries,
             $"Zed logged unexpected CSLS warnings or errors:{Environment.NewLine}" +
             string.Join(Environment.NewLine, unexpectedEntries));
-    }
-
-    private static async Task<ControlDashboardSnapshot> WaitForOpenDocumentAsync(
-        ControlRpcClient control,
-        string documentPath,
-        TimeSpan timeout,
-        CancellationToken cancellationToken)
-    {
-        using var timeoutSource = CancellationTokenSource.CreateLinkedTokenSource(
-            cancellationToken);
-        timeoutSource.CancelAfter(timeout);
-        using var timer = new PeriodicTimer(TimeSpan.FromMilliseconds(100));
-        ControlDashboardSnapshot? lastSnapshot = null;
-        try
-        {
-            while (await timer.WaitForNextTickAsync(timeoutSource.Token).ConfigureAwait(false))
-            {
-                ControlDashboardSnapshot snapshot =
-                    await control.GetDashboardSnapshotAsync(
-                        new ControlDashboardRequest { IncludeDiagnostics = false },
-                        timeoutSource.Token).ConfigureAwait(false);
-                lastSnapshot = snapshot;
-                if (snapshot.Documents.Any(document =>
-                    document.IsOpen && PathComparer.Equals(document.FilePath, documentPath)))
-                {
-                    return snapshot;
-                }
-            }
-        }
-        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
-        {
-            string openDocuments = string.Join(
-                Environment.NewLine,
-                lastSnapshot?.Documents
-                    .Where(static document => document.IsOpen)
-                    .Select(static document => document.FilePath ?? document.Name) ?? []);
-            throw new TimeoutException(
-                $"Zed did not open {documentPath} through csls. Open documents:" +
-                $"{Environment.NewLine}{openDocuments}");
-        }
-
-        throw new InvalidOperationException("The open-document polling loop ended unexpectedly.");
-    }
-
-    private static async Task<ControlTraceInfo> WaitForTraceEntryAsync(
-        ControlRpcClient control,
-        string requestName,
-        TimeSpan timeout,
-        CancellationToken cancellationToken)
-    {
-        using var timeoutSource = CancellationTokenSource.CreateLinkedTokenSource(
-            cancellationToken);
-        timeoutSource.CancelAfter(timeout);
-        using var timer = new PeriodicTimer(TimeSpan.FromMilliseconds(100));
-        try
-        {
-            while (await timer.WaitForNextTickAsync(timeoutSource.Token).ConfigureAwait(false))
-            {
-                ControlDashboardSnapshot snapshot =
-                    await control.GetDashboardSnapshotAsync(
-                        new ControlDashboardRequest { IncludeDiagnostics = false },
-                        timeoutSource.Token).ConfigureAwait(false);
-                if (snapshot.Requests.Trace.Entries.Any(entry =>
-                    string.Equals(entry.Name, requestName, StringComparison.Ordinal) &&
-                    entry.CompletedAt.HasValue))
-                {
-                    return snapshot.Requests.Trace;
-                }
-            }
-        }
-        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
-        {
-            throw new TimeoutException($"Zed did not complete {requestName} through csls.");
-        }
-
-        throw new InvalidOperationException("The trace polling loop ended unexpectedly.");
-    }
-
-    private static async Task WaitForTraceEntriesToSettleAsync(
-        ControlRpcClient control,
-        HashSet<string> requestNames,
-        TimeSpan timeout,
-        CancellationToken cancellationToken)
-    {
-        using var timeoutSource = CancellationTokenSource.CreateLinkedTokenSource(
-            cancellationToken);
-        timeoutSource.CancelAfter(timeout);
-        using var timer = new PeriodicTimer(TimeSpan.FromMilliseconds(100));
-        int settledSnapshots = 0;
-        try
-        {
-            while (await timer.WaitForNextTickAsync(timeoutSource.Token).ConfigureAwait(false))
-            {
-                ControlDashboardSnapshot snapshot =
-                    await control.GetDashboardSnapshotAsync(
-                        new ControlDashboardRequest { IncludeDiagnostics = false },
-                        timeoutSource.Token).ConfigureAwait(false);
-                bool hasRunningRequest = snapshot.Requests.Trace.Entries.Any(entry =>
-                    requestNames.Contains(entry.Name) &&
-                    !entry.CompletedAt.HasValue);
-                settledSnapshots = hasRunningRequest ? 0 : settledSnapshots + 1;
-                if (settledSnapshots == 2)
-                {
-                    return;
-                }
-            }
-        }
-        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
-        {
-            throw new TimeoutException(
-                "Zed did not complete all interactive requests through csls.");
-        }
-
-        throw new InvalidOperationException("The trace settling loop ended unexpectedly.");
     }
 
     private static async Task WaitForDiagnosticToClearAsync(
