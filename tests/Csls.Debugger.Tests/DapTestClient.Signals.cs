@@ -8,10 +8,10 @@ namespace Csls.Debugger.Tests;
 internal sealed partial class DapTestClient
 {
     /// <summary>
-    /// Waits for target execution and rejects premature operation completion or target exit.
+    /// Waits for target execution and rejects operation completion or target exit without an execution signal.
     /// </summary>
     /// <param name="path">The target-created signal file.</param>
-    /// <param name="requestSequence">The operation that must remain in progress.</param>
+    /// <param name="requestSequence">The operation whose execution signal is expected.</param>
     /// <param name="cancellationToken">Cancels the signal and protocol observation.</param>
     /// <returns>A task that completes when target execution creates the signal.</returns>
     internal async Task WaitForTargetSignalAsync(
@@ -37,6 +37,11 @@ internal sealed partial class DapTestClient
             Task<JsonDocument> incoming = GetPendingMessageAsync(cancellationToken);
             _ = await Task.WhenAny(signal.Task, incoming)
                 .WaitAsync(cancellationToken).ConfigureAwait(false);
+            if (signal.Task.IsCompleted)
+            {
+                break;
+            }
+
             if (!incoming.IsCompleted)
             {
                 continue;
@@ -50,6 +55,15 @@ internal sealed partial class DapTestClient
                 root.GetProperty("request_seq").GetInt32() == requestSequence;
             bool terminated = root.GetProperty("type").GetString() == "event" &&
                 root.GetProperty("event").GetString() is "exited" or "terminated";
+            // Filesystem notifications and protocol reads are independent transports.
+            // The target may have created its signal before this response arrived,
+            // while the filesystem notification is still queued on another thread.
+            if (File.Exists(path))
+            {
+                _ = signal.TrySetResult();
+                break;
+            }
+
             if (completed || terminated)
             {
                 Assert.Fail(
