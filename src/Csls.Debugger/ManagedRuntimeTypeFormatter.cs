@@ -169,16 +169,18 @@ internal sealed class ManagedRuntimeTypeFormatter
                 return $"{arguments[0]}?";
             }
 
-            string displayName = RemoveGenericArity(name);
-            if (string.Equals(displayName, "System.Decimal", StringComparison.Ordinal) &&
+            if (string.Equals(name, "System.Decimal", StringComparison.Ordinal) &&
                 IsCoreLibraryDefinition(type, module))
             {
                 return "decimal";
             }
 
-            return arguments.Count == 0
-                ? displayName
-                : $"{displayName}<{string.Join(", ", arguments)}>";
+            if (metadata.GetTypeDefinition(typeHandle).GetGenericParameters().Count != arguments.Count)
+            {
+                throw new InvalidOperationException("The runtime type's generic arguments do not match its metadata.");
+            }
+
+            return FormatConstructedTypeName(metadata, typeHandle, arguments);
         }
         finally
         {
@@ -461,6 +463,42 @@ internal sealed class ManagedRuntimeTypeFormatter
         if (!declaringType.IsNil)
         {
             return $"{GetMetadataTypeName(metadata, declaringType, depth + 1)}.{name}";
+        }
+
+        string @namespace = metadata.GetString(definition.Namespace);
+        return string.IsNullOrEmpty(@namespace) ? name : $"{@namespace}.{name}";
+    }
+
+    private static string FormatConstructedTypeName(
+        MetadataReader metadata,
+        TypeDefinitionHandle handle,
+        List<string> arguments,
+        int depth = 0)
+    {
+        if (depth >= MaximumRuntimeTypeDepth)
+        {
+            throw new BadImageFormatException("The metadata type nesting exceeds the supported depth.");
+        }
+
+        TypeDefinition definition = metadata.GetTypeDefinition(handle);
+        TypeDefinitionHandle declaringType = definition.GetDeclaringType();
+        int argumentCount = definition.GetGenericParameters().Count;
+        int declaringArgumentCount = declaringType.IsNil
+            ? 0 : metadata.GetTypeDefinition(declaringType).GetGenericParameters().Count;
+        if (declaringArgumentCount > argumentCount || argumentCount > arguments.Count)
+        {
+            throw new BadImageFormatException("The nested type's generic parameters do not match its declaring type.");
+        }
+
+        string name = RemoveGenericArity(metadata.GetString(definition.Name));
+        if (argumentCount > declaringArgumentCount)
+        {
+            name += $"<{string.Join(", ", arguments.GetRange(declaringArgumentCount, argumentCount - declaringArgumentCount))}>";
+        }
+
+        if (!declaringType.IsNil)
+        {
+            return $"{FormatConstructedTypeName(metadata, declaringType, arguments, depth + 1)}.{name}";
         }
 
         string @namespace = metadata.GetString(definition.Namespace);

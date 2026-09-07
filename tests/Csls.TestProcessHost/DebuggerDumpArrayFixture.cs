@@ -49,6 +49,9 @@ internal static class DebuggerDumpArrayFixture
         (int, string)[] tuples = [(73, "captured pair")];
         int?[] nullable = [37, null];
         decimal[] decimals = [12.5m];
+        Dictionary<int, List<string>> dictionary = new() { [71] = ["captured"] };
+        Dictionary<int, List<string>>.KeyCollection?[] nested = [dictionary.Keys, null];
+        Dictionary<int, List<string>>.KeyCollection.Enumerator[] nestedEnumerators = [default];
         DebuggerBlockingWait.Wait(announcement);
         GC.KeepAlive(path);
         GC.KeepAlive(vector);
@@ -68,6 +71,8 @@ internal static class DebuggerDumpArrayFixture
         GC.KeepAlive(tuples);
         GC.KeepAlive(nullable);
         GC.KeepAlive(decimals);
+        GC.KeepAlive(nested);
+        GC.KeepAlive(nestedEnumerators);
         return 0;
     }
 }

@@ -215,6 +215,10 @@ public sealed class DumpArrayTests : DapTestContext
         Assert.AreEqual("(int, string)[]", locals["tuples"].Type);
         Assert.AreEqual("int?[]", locals["nullable"].Type);
         Assert.AreEqual("decimal[]", locals["decimals"].Type);
+        Assert.AreEqual("System.Collections.Generic.Dictionary<int, System.Collections.Generic.List<string>>.KeyCollection[]",
+            locals["nested"].Type);
+        Assert.AreEqual("System.Collections.Generic.Dictionary<int, System.Collections.Generic.List<string>>.KeyCollection.Enumerator[]",
+            locals["nestedEnumerators"].Type);
         Assert.IsGreaterThan(0, vector.VariablesReference);
         Assert.AreEqual(3, vector.IndexedVariables);
         Assert.AreEqual(0, vector.NamedVariables);
@@ -268,6 +272,14 @@ public sealed class DumpArrayTests : DapTestContext
         Assert.AreSequenceEqual(["int?", "int?"],
             (await ReadAsync(service, locals["nullable"]).ConfigureAwait(false)).Select(value => value.Type));
         Assert.AreEqual("decimal", Assert.ContainsSingle(await ReadAsync(service, locals["decimals"]).ConfigureAwait(false)).Type);
+        IReadOnlyList<DebugVariableInfo> nested = await ReadAsync(service, locals["nested"]).ConfigureAwait(false);
+        Assert.AreSequenceEqual(
+            ["System.Collections.Generic.Dictionary<int, System.Collections.Generic.List<string>>.KeyCollection",
+             "System.Collections.Generic.Dictionary<int, System.Collections.Generic.List<string>>.KeyCollection"],
+            nested.Select(value => value.Type));
+        Assert.AreEqual("null", nested[1].Value);
+        Assert.AreEqual("System.Collections.Generic.Dictionary<int, System.Collections.Generic.List<string>>.KeyCollection.Enumerator",
+            Assert.ContainsSingle(await ReadAsync(service, locals["nestedEnumerators"]).ConfigureAwait(false)).Type);
         Assert.AreEqual(65537, locals["large"].IndexedVariables);
         IReadOnlyList<DebugVariableInfo> last = await ReadAsync(service, locals["large"], 65535, 2).ConfigureAwait(false);
         Assert.AreSequenceEqual(["65635", "65636"], last.Select(value => value.Value));
