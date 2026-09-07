@@ -615,6 +615,7 @@ internal sealed class ManagedTupleTypeShape
 
     private static unsafe List<nint> EnumerateTypeArguments(nint type)
     {
+        List<nint> result = [];
         nint enumerator = 0;
         try
         {
@@ -625,31 +626,49 @@ internal sealed class ManagedTupleTypeShape
             enumerator = RequirePointer(
                 Volatile.Read(ref *enumeratorAddress),
                 "ICorDebugType.EnumerateTypeParameters");
-            List<nint> result = [];
             ICorDebugTypeEnumAbi values = new(enumerator);
-            for (int index = 0; index < MaximumRuntimeTypeArgumentCount; index++)
+            while (true)
             {
+                bool transferred = false;
                 nint argument = 0;
                 uint fetched = 0;
                 nint* argumentAddress = &argument;
                 uint* fetchedAddress = &fetched;
-                CorDebugHResult.ThrowIfFailed(
-                    values.Next(1, (nint)argumentAddress, (nint)fetchedAddress),
-                    "ICorDebugTypeEnum.Next");
-                argument = Volatile.Read(ref *argumentAddress);
-                fetched = Volatile.Read(ref *fetchedAddress);
-                if (fetched == 0)
+                try
                 {
-                    return result;
+                    CorDebugHResult.ThrowIfFailed(
+                        values.Next(1, (nint)argumentAddress, (nint)fetchedAddress),
+                        "ICorDebugTypeEnum.Next");
+                    argument = Volatile.Read(ref *argumentAddress);
+                    fetched = Volatile.Read(ref *fetchedAddress);
+                    if (fetched == 0)
+                    {
+                        return result;
+                    }
+
+                    if (result.Count == MaximumRuntimeTypeArgumentCount)
+                    {
+                        throw new InvalidOperationException(
+                            $"The runtime type exceeds the generic argument limit of {MaximumRuntimeTypeArgumentCount}.");
+                    }
+
+                    result.Add(RequirePointer(argument, "ICorDebugTypeEnum.Next"));
+                    transferred = true;
                 }
-
-                result.Add(RequirePointer(argument, "ICorDebugTypeEnum.Next"));
+                finally
+                {
+                    argument = Volatile.Read(ref *argumentAddress);
+                    if (!transferred && argument != 0)
+                    {
+                        _ = ComAbi.Release(argument);
+                    }
+                }
             }
-
+        }
+        catch
+        {
             ReleaseAll(result);
-            throw new InvalidOperationException(
-                $"The runtime type exceeds the generic argument limit of " +
-                $"{MaximumRuntimeTypeArgumentCount}.");
+            throw;
         }
         finally
         {

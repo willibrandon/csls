@@ -290,45 +290,48 @@ internal sealed class ManagedRuntimeTypeFormatter
                 "ICorDebugType.EnumerateTypeParameters");
             var result = new List<string>();
             var values = new ICorDebugTypeEnumAbi(enumerator);
-            for (int index = 0; index < MaximumRuntimeTypeArgumentCount; index++)
+            while (true)
             {
                 nint argument = 0;
                 uint fetched = 0;
                 nint* argumentAddress = &argument;
                 uint* fetchedAddress = &fetched;
-                CorDebugHResult.ThrowIfFailed(
-                    values.Next(1, (nint)argumentAddress, (nint)fetchedAddress),
-                    "ICorDebugTypeEnum.Next");
-                argument = Volatile.Read(ref *argumentAddress);
-                fetched = Volatile.Read(ref *fetchedAddress);
-                if (fetched == 0)
-                {
-                    return result;
-                }
-
                 try
                 {
+                    CorDebugHResult.ThrowIfFailed(
+                        values.Next(1, (nint)argumentAddress, (nint)fetchedAddress),
+                        "ICorDebugTypeEnum.Next");
+                    argument = Volatile.Read(ref *argumentAddress);
+                    fetched = Volatile.Read(ref *fetchedAddress);
+                    if (fetched == 0)
+                    {
+                        return result;
+                    }
+
+                    if (result.Count == MaximumRuntimeTypeArgumentCount)
+                    {
+                        throw new InvalidOperationException(
+                            $"The runtime type exceeds the generic argument limit of {MaximumRuntimeTypeArgumentCount}.");
+                    }
+
                     result.Add(Format(
                         argument,
                         depth + 1,
                         _typeShape.GetTypeArgumentCustomTypeInfo(
                             type,
                             tupleCustomTypeInfo,
-                            index),
+                            result.Count),
                         out _, out _));
                 }
                 finally
                 {
+                    argument = Volatile.Read(ref *argumentAddress);
                     if (argument != 0)
                     {
                         _ = ComAbi.Release(argument);
                     }
                 }
             }
-
-            throw new InvalidOperationException(
-                $"The runtime type exceeds the generic argument limit of " +
-                $"{MaximumRuntimeTypeArgumentCount}.");
         }
         finally
         {
