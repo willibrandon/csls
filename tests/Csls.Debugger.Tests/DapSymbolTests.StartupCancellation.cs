@@ -1,3 +1,4 @@
+using Microsoft.Win32.SafeHandles;
 using System.Diagnostics;
 using System.Globalization;
 using System.Runtime.CompilerServices;
@@ -58,8 +59,7 @@ public sealed partial class DapSymbolTests
                 TestContext.CancellationToken).ConfigureAwait(false);
             await client.WaitForTargetSignalAsync(processPath, configuration, TestContext.CancellationToken)
                 .ConfigureAwait(false);
-            int processId = int.Parse(await File.ReadAllTextAsync(processPath, TestContext.CancellationToken)
-                .ConfigureAwait(false), CultureInfo.InvariantCulture);
+            int processId = await ReadTargetProcessIdAsync(processPath, TestContext.CancellationToken).ConfigureAwait(false);
             using var target = Process.GetProcessById(processId);
             Assert.IsFalse(target.HasExited);
 
@@ -113,5 +113,38 @@ public sealed partial class DapSymbolTests
         {
             await DebuggerTestDirectoryReleaseWaiter.DeleteAsync(directory, TimeSpan.FromSeconds(10)).ConfigureAwait(false);
         }
+    }
+
+    /// <summary>
+    /// Reads the published process identifier while Windows retains delete access for a rename.
+    /// </summary>
+    [TestMethod]
+    [OSCondition(ConditionMode.Include, OperatingSystems.Windows)]
+    public async Task PublishedProcessIdAllowsRenameHandle()
+    {
+        string directory = Directory.CreateTempSubdirectory("csls-published-process-").FullName;
+        string path = Path.Join(directory, "process.id");
+        try
+        {
+            using var target = Process.GetCurrentProcess();
+            await File.WriteAllTextAsync(path, target.Id.ToString(CultureInfo.InvariantCulture),
+                TestContext.CancellationToken).ConfigureAwait(false);
+            using SafeFileHandle publication = File.OpenHandle(path, FileMode.Open, FileAccess.Read,
+                FileShare.Read | FileShare.Delete, FileOptions.DeleteOnClose);
+            Assert.AreEqual(target.Id, await ReadTargetProcessIdAsync(path, TestContext.CancellationToken)
+                .ConfigureAwait(false));
+        }
+        finally
+        {
+            await DebuggerTestDirectoryReleaseWaiter.DeleteAsync(directory, TimeSpan.FromSeconds(10)).ConfigureAwait(false);
+        }
+    }
+
+    private static async Task<int> ReadTargetProcessIdAsync(string path, CancellationToken cancellationToken)
+    {
+        using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read | FileShare.Delete,
+            bufferSize: 4096, FileOptions.Asynchronous | FileOptions.SequentialScan);
+        using var reader = new StreamReader(stream);
+        return int.Parse(await reader.ReadToEndAsync(cancellationToken).ConfigureAwait(false), CultureInfo.InvariantCulture);
     }
 }
