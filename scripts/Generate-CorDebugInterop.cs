@@ -127,6 +127,15 @@ foreach (KeyValuePair<
 }
 
 outputs["CorDebugTypeId.g.cs"] = GenerateCorDebugTypeId(idlDigest);
+foreach ((string native, string managed) in new[]
+{
+    ("COR_TYPE_LAYOUT", "CorDebugTypeLayout"),
+    ("COR_ARRAY_LAYOUT", "CorDebugArrayLayout"),
+    ("COR_FIELD", "CorDebugFieldLayout")
+})
+{
+    outputs[$"{managed}.g.cs"] = GenerateLayout(native, managed, sourceWithoutComments, idlDigest);
+}
 outputs["CorDebugAbiManifest.g.cs"] = GenerateManifest(interfaces.Count, idlDigest);
 
 string outputDirectory = Path.Join(
@@ -486,6 +495,54 @@ static string GenerateCorDebugTypeId(string idlDigest)
         .AppendLine("    internal ulong Token2 { get; init; }")
         .AppendLine("}")
         .ToString();
+}
+
+static string GenerateLayout(string native, string managed, string idl, string idlDigest)
+{
+    Match declaration = CreateRegex($@"\btypedef\s+struct\s+{native}\s*\{{(?<fields>[^}}]+)\}}\s*{native}\s*;",
+        RegexOptions.CultureInvariant).Match(idl);
+    if (!declaration.Success)
+    {
+        throw new InvalidDataException($"The public IDL has no {native} layout.");
+    }
+    StringBuilder source = CreateHeader(idlDigest);
+    source.AppendLine("using System.CodeDom.Compiler;")
+        .AppendLine("using System.Runtime.InteropServices;")
+        .AppendLine()
+        .AppendLine("namespace Csls.Debugger.Interop;")
+        .AppendLine()
+        .AppendLine("/// <summary>")
+        .Append("/// Projects the public ").Append(native).AppendLine(" layout in native declaration order.")
+        .AppendLine("/// </summary>")
+        .AppendLine("[GeneratedCode(\"Generate-CorDebugInterop\", \"1.0\")]")
+        .AppendLine("[StructLayout(LayoutKind.Sequential)]")
+        .Append("internal readonly struct ").AppendLine(managed)
+        .AppendLine("{");
+    foreach (string field in declaration.Groups["fields"].Value.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+    {
+        string[] parts = field.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length != 2)
+        {
+            throw new InvalidDataException($"The public {native} field has an unsupported declaration: {field}.");
+        }
+        string type = parts[0] switch
+        {
+            "COR_TYPEID" => "CorDebugTypeId",
+            "ULONG32" or "CorElementType" or "mdFieldDef" => "uint",
+            _ => throw new InvalidDataException($"The public {native} field type is unsupported: {parts[0]}.")
+        };
+        string name = char.ToUpperInvariant(parts[1][0]) + parts[1][1..];
+        if (name.EndsWith("ID", StringComparison.Ordinal))
+        {
+            name = name[..^2] + "Id";
+        }
+        source.AppendLine("    /// <summary>")
+            .Append("    /// Gets the native ").Append(parts[1]).AppendLine(" value.")
+            .AppendLine("    /// </summary>")
+            .Append("    internal ").Append(type).Append(' ').Append(name).AppendLine(" { get; init; }")
+            .AppendLine();
+    }
+    return source.AppendLine("}").ToString();
 }
 
 static string GenerateManifest(int interfaceCount, string idlDigest)

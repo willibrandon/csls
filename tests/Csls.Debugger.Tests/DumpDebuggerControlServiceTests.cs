@@ -82,7 +82,11 @@ public sealed class DumpDebuggerControlServiceTests : DapTestContext
         else
         {
             Assert.AreEqual(DebugVariablePresentationKind.Unavailable, argumentValues[3].PresentationKind);
-            Assert.Contains("0x80131305", argumentValues[3].Value);
+            Assert.AreEqual("Captured value unavailable: ICorDebugProcess5.GetTypeID failed with HRESULT 0x80131C49.",
+                argumentValues[3].Value);
+            Assert.AreEqual(0, argumentValues[3].VariablesReference);
+            Assert.IsNull(argumentValues[3].MemoryReference);
+            Assert.IsNull(argumentValues[3].EvaluateName);
         }
         IReadOnlyList<DebugVariableInfo> localValues = await service.GetVariablesAsync(
             new DebugVariablesRequest(locals.VariablesReference, 0, 2, false), TestContext.CancellationToken).ConfigureAwait(false);

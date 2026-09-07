@@ -12,7 +12,7 @@ public sealed unsafe class CorDebugDumpProcess : IDisposable
     private readonly CorDebugDumpCallbacks _callbacks;
     private readonly Lock _gate = new();
     private readonly CorDebugDumpValues _values;
-    private readonly CorDebugDumpArrayReader _arrays;
+    private readonly CorDebugDumpValueReader _reader;
     private nint _debugging;
     private nint _process;
     private nint _dataTarget;
@@ -24,19 +24,21 @@ public sealed unsafe class CorDebugDumpProcess : IDisposable
     /// <param name="source">The immutable source, owned by the caller until this process is disposed.</param>
     /// <param name="runtimeBaseAddress">The captured CoreCLR module's virtual base address.</param>
     /// <param name="describeModule">Resolves a captured managed module's layout and PE identity by its base address.</param>
+    /// <param name="heap">Resolves immutable heap storage through the captured runtime's data-access services.</param>
     /// <param name="values">The session-owned logical expansion paths preserved across native cache replacement.</param>
     /// <param name="cancellationToken">Cancels activation through captured-memory callbacks.</param>
     public CorDebugDumpProcess(ICorDebugDumpSource source, ulong runtimeBaseAddress,
-        Func<ulong, CancellationToken, CorDebugDumpModuleInfo> describeModule,
+        Func<ulong, CancellationToken, CorDebugDumpModuleInfo> describeModule, ICorDebugDumpHeap heap,
         CorDebugDumpValues? values = null, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(source);
         ArgumentNullException.ThrowIfNull(describeModule);
+        ArgumentNullException.ThrowIfNull(heap);
         ArgumentOutOfRangeException.ThrowIfZero(runtimeBaseAddress);
         _callbacks = new CorDebugDumpCallbacks(source);
         _values = values ?? new CorDebugDumpValues();
         var modules = new CorDebugDumpModuleReader(source, _callbacks, describeModule);
-        _arrays = new CorDebugDumpArrayReader(_values, source, _callbacks, new ManagedRuntimeTypeFormatter(modules.Open));
+        _reader = new CorDebugDumpValueReader(_values, source, heap, _callbacks, modules.Open, () => _process);
         var activation = new CorDebugDumpReadOperation(cancellationToken, null);
         _callbacks.Operation = activation;
         try
@@ -333,7 +335,7 @@ public sealed unsafe class CorDebugDumpProcess : IDisposable
             "ICorDebugILFrame.GetIP");
         IReadOnlyList<DebugVariableInfo> result = children is null
             ? ReadValues(ilFrame, root, start, count, cancellationToken)
-            : _arrays.Read(ilFrame, _values.Get(children.VariablesReference), children.VariablesReference,
+            : _reader.Read(ilFrame, _values.Get(children.VariablesReference), children.VariablesReference,
                 start, count, children.Filter, cancellationToken);
         return new CorDebugDumpFrameInfo(Volatile.Read(ref method), root.StackPointer, Volatile.Read(ref offset), result);
     }
@@ -375,12 +377,16 @@ public sealed unsafe class CorDebugDumpProcess : IDisposable
                 {
                     int get = arguments ? api.GetArgument((uint)index, (nint)(&value)) : api.GetLocalVariable((uint)index, (nint)(&value));
                     CorDebugHResult.ThrowIfFailed(get, "ICorDebugILFrame.GetValue");
-                    result.Add(_arrays.Describe(Volatile.Read(ref value), name, root with { Slot = index }));
+                    result.Add(_reader.Describe(Volatile.Read(ref value), name, root with { Slot = index }));
                 }
-                catch (InvalidOperationException exception) when (CorDebugDumpArrayReader.IsUnavailable(exception) ||
+                catch (InvalidOperationException exception) when (CorDebugDumpValueReader.IsUnavailable(exception) ||
                     _callbacks.IsMissingMemoryFailure(exception, missingMemory))
                 {
-                    result.Add(CorDebugDumpArrayReader.Unavailable(name, exception));
+                    result.Add(CorDebugDumpValueReader.Unavailable(name, exception));
+                }
+                catch (CorDebugDumpStorageUnavailableException exception)
+                {
+                    result.Add(CorDebugDumpValueReader.Unavailable(name, exception));
                 }
                 finally
                 {

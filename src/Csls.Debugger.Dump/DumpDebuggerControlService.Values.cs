@@ -86,7 +86,7 @@ public sealed partial class DumpDebuggerControlService
     {
         ClrRuntime runtime = _runtime ?? throw new InvalidOperationException("The dump is closed.");
         _corDebug ??= new CorDebugDumpProcess(new DumpCorDebugSource(runtime.ClrInfo, _dacPath, _binarySearchPaths, _memoryFilter),
-            runtime.ClrInfo.ModuleInfo.ImageBase, DescribeCapturedModule,
+            runtime.ClrInfo.ModuleInfo.ImageBase, DescribeCapturedModule, new DumpCorDebugHeap(runtime),
             _values, cancellationToken);
         try
         {

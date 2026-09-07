@@ -177,8 +177,10 @@ specified duration and can be revoked with `enabled: false`. Closing the MCP
 connection terminates its launched process trees, detaches its attached targets,
 and shuts down its workers.
 
-`debug_dump_open` opens an existing dump for managed thread, stack, and module
-inspection. Resource subscriptions deliver updates from debugger events.
+`debug_dump_open` opens an existing dump for managed thread, stack, module, and
+captured-value inspection. Expand objects and structs through their instance fields
+and arrays through their indexed elements. Resource subscriptions deliver updates
+from debugger events.
 Authorized `debug_hot_reload` calls apply compiler-produced C# and Visual Basic
 updates to launch modules prepared with `enableHotReload: true`.
 

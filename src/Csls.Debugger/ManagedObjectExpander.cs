@@ -3,7 +3,6 @@ using Csls.Debugger.Interop;
 using System.Reflection;
 using System.Reflection.Metadata;
 using System.Reflection.Metadata.Ecma335;
-using System.Reflection.PortableExecutable;
 
 namespace Csls.Debugger;
 
@@ -14,8 +13,8 @@ internal sealed class ManagedObjectExpander
 {
     private const int MaximumDebuggerBrowsableNestingDepth = 32;
     private const int MaximumExpandableValueCount = 64 * 1024;
-    private const int MaximumTypeHierarchyDepth = 256;
     private readonly IManagedObjectExpansionServices _services;
+    private readonly ManagedInstanceFieldReader _fields;
     private readonly ManagedDebuggerTypeProxyExpander _proxyExpander;
     private readonly ManagedTuplePresenter _tuplePresenter;
     private readonly ManagedTupleTypeShape _tupleTypeShape;
@@ -35,6 +34,7 @@ internal sealed class ManagedObjectExpander
         ArgumentNullException.ThrowIfNull(tuplePresenter);
         ArgumentNullException.ThrowIfNull(tupleTypeShape);
         _services = services;
+        _fields = new ManagedInstanceFieldReader(services.OpenRuntimeModule);
         _proxyExpander = new ManagedDebuggerTypeProxyExpander(services, this);
         _tuplePresenter = tuplePresenter;
         _tupleTypeShape = tupleTypeShape;
@@ -170,7 +170,7 @@ internal sealed class ManagedObjectExpander
         IReadOnlyList<ManagedDebuggerTypeProxyPropertyPresentation> properties) =>
         _proxyExpander.MaterializeStaticMembers(value, frame, generation, properties);
 
-    private unsafe void AppendObjectFields(
+    private void AppendObjectFields(
         List<DebugVariableInfo> result,
         nint value,
         string? parentEvaluateName,
@@ -186,125 +186,24 @@ internal sealed class ManagedObjectExpander
         ManagedValueOrigin? origin,
         ManagedTupleCustomTypeInfo? tupleCustomTypeInfo)
     {
-        nint instance = 0;
-        nint value2 = 0;
-        nint currentType = 0;
-        try
+        _fields.VisitTypes(value, declaration =>
         {
-            instance = ComAbi.QueryInterface(value, ICorDebugObjectValueAbi.InterfaceId);
-            value2 = ComAbi.QueryInterface(value, ICorDebugValue2Abi.InterfaceId);
-            nint* exactTypeAddress = &currentType;
-            CorDebugHResult.ThrowIfFailed(
-                new ICorDebugValue2Abi(value2).GetExactType((nint)exactTypeAddress),
-                "ICorDebugValue2.GetExactType");
-            currentType = RequirePointer(
-                Volatile.Read(ref *exactTypeAddress),
-                "ICorDebugValue2.GetExactType");
+            ReadDeclaredInstanceFields(
+                result, declaration.Instance, declaration.Class, declaration.Type,
+                declaration.Metadata, declaration.TypeToken, parentEvaluateName,
+                frameId, generation, start, count, state, path, nestingDepth, view,
+                origin, declaration.Depth == 0 ? tupleCustomTypeInfo : null);
+            return !IsVariablePageFull(result, count);
+        });
 
-            for (int depth = 0;
-                currentType != 0 && depth < MaximumTypeHierarchyDepth;
-                depth++)
-            {
-                nint runtimeClass = 0;
-                nint module = 0;
-                nint baseType = 0;
-                try
-                {
-                    runtimeClass = GetRuntimeTypeClass(currentType);
-                    module = GetClassModule(runtimeClass);
-                    uint typeToken = GetClassToken(runtimeClass);
-                    using PEReader peReader = _services.OpenRuntimeModule(module);
-                    ReadDeclaredInstanceFields(
-                        result,
-                        instance,
-                        runtimeClass,
-                        currentType,
-                        peReader.GetMetadataReader(),
-                        typeToken,
-                        parentEvaluateName,
-                        frameId,
-                        generation,
-                        start,
-                        count,
-                        state,
-                        path,
-                        nestingDepth,
-                        view,
-                        origin,
-                        depth == 0 ? tupleCustomTypeInfo : null);
-                    if (IsVariablePageFull(result, count))
-                    {
-                        return;
-                    }
-
-                    nint* baseTypeAddress = &baseType;
-                    CorDebugHResult.ThrowIfFailed(
-                        new ICorDebugTypeAbi(currentType).GetBase((nint)baseTypeAddress),
-                        "ICorDebugType.GetBase");
-                    baseType = Volatile.Read(ref *baseTypeAddress);
-                }
-                finally
-                {
-                    if (module != 0)
-                    {
-                        _ = ComAbi.Release(module);
-                    }
-
-                    if (runtimeClass != 0)
-                    {
-                        _ = ComAbi.Release(runtimeClass);
-                    }
-
-                    if (currentType != 0)
-                    {
-                        _ = ComAbi.Release(currentType);
-                    }
-
-                    currentType = baseType;
-                }
-            }
-
-            if (currentType != 0)
-            {
-                throw new InvalidOperationException(
-                    $"The runtime type hierarchy exceeds the supported depth of " +
-                    $"{MaximumTypeHierarchyDepth}.");
-            }
-
-            if (includeRawView &&
-                view is not ManagedValueView.Raw and not ManagedValueView.ProxyRaw &&
-                state.WasTransformed &&
-                !IsVariablePageFull(result, count))
-            {
-                AppendRawView(
-                    result,
-                    value,
-                    parentEvaluateName,
-                    frameId,
-                    generation,
-                    start,
-                    count,
-                    state,
-                    origin,
-                    tupleCustomTypeInfo);
-            }
-        }
-        finally
+        if (includeRawView &&
+            view is not ManagedValueView.Raw and not ManagedValueView.ProxyRaw &&
+            state.WasTransformed &&
+            !IsVariablePageFull(result, count))
         {
-            if (currentType != 0)
-            {
-                _ = ComAbi.Release(currentType);
-            }
-
-            if (value2 != 0)
-            {
-                _ = ComAbi.Release(value2);
-            }
-
-            if (instance != 0)
-            {
-                _ = ComAbi.Release(instance);
-            }
+            AppendRawView(
+                result, value, parentEvaluateName, frameId, generation,
+                start, count, state, origin, tupleCustomTypeInfo);
         }
     }
 
@@ -496,7 +395,7 @@ internal sealed class ManagedObjectExpander
         bool addedToPath = false;
         try
         {
-            fieldValue = GetObjectFieldValue(
+            fieldValue = ManagedInstanceFieldReader.ReadField(
                 instance,
                 declaringClass,
                 checked((uint)MetadataTokens.GetToken(fieldHandle)));
@@ -703,7 +602,7 @@ internal sealed class ManagedObjectExpander
         ManagedResultsViewLifetime? lifetime,
         ManagedTupleCustomTypeInfo? tupleCustomTypeInfo)
     {
-        nint fieldValue = GetObjectFieldValue(
+        nint fieldValue = ManagedInstanceFieldReader.ReadField(
             instance,
             declaringClass,
             checked((uint)MetadataTokens.GetToken(fieldHandle)));
@@ -783,60 +682,5 @@ internal sealed class ManagedObjectExpander
         int result = new ICorDebugValueAbi(value).GetAddress((nint)addressPointer);
         return result >= 0 ? Volatile.Read(ref *addressPointer) : 0;
     }
-
-    private static unsafe nint GetRuntimeTypeClass(nint type)
-    {
-        nint runtimeClass = 0;
-        nint* runtimeClassAddress = &runtimeClass;
-        CorDebugHResult.ThrowIfFailed(
-            new ICorDebugTypeAbi(type).GetClass((nint)runtimeClassAddress),
-            "ICorDebugType.GetClass");
-        return RequirePointer(
-            Volatile.Read(ref *runtimeClassAddress),
-            "ICorDebugType.GetClass");
-    }
-
-    private static unsafe nint GetClassModule(nint runtimeClass)
-    {
-        nint result = 0;
-        nint* resultAddress = &result;
-        CorDebugHResult.ThrowIfFailed(
-            new ICorDebugClassAbi(runtimeClass).GetModule((nint)resultAddress),
-            "ICorDebugClass.GetModule");
-        return RequirePointer(result, "ICorDebugClass.GetModule");
-    }
-
-    private static unsafe uint GetClassToken(nint runtimeClass)
-    {
-        uint result = 0;
-        uint* resultAddress = &result;
-        CorDebugHResult.ThrowIfFailed(
-            new ICorDebugClassAbi(runtimeClass).GetToken((nint)resultAddress),
-            "ICorDebugClass.GetToken");
-        return Volatile.Read(ref *resultAddress);
-    }
-
-    private static unsafe nint GetObjectFieldValue(
-        nint instance,
-        nint declaringClass,
-        uint fieldToken)
-    {
-        nint fieldValue = 0;
-        nint* fieldValueAddress = &fieldValue;
-        CorDebugHResult.ThrowIfFailed(
-            new ICorDebugObjectValueAbi(instance).GetFieldValue(
-                declaringClass,
-                fieldToken,
-                (nint)fieldValueAddress),
-            "ICorDebugObjectValue.GetFieldValue");
-        return RequirePointer(
-            Volatile.Read(ref *fieldValueAddress),
-            "ICorDebugObjectValue.GetFieldValue");
-    }
-
-    private static nint RequirePointer(nint value, string operation) =>
-        Volatile.Read(ref value) != 0
-            ? value
-            : throw new InvalidOperationException($"{operation} returned no value.");
 
 }

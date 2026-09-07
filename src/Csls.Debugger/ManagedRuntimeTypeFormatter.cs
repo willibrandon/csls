@@ -35,6 +35,12 @@ internal sealed class ManagedRuntimeTypeFormatter
     /// </summary>
     internal string FormatArrayElementType(nint value) => FormatValueType(value, arrayElement: true);
 
+    /// <summary>
+    /// Formats the declared component of an exact array type independently of captured element storage.
+    /// </summary>
+    internal string FormatArrayElementRuntimeType(nint type) =>
+        FormatFirstTypeParameter(type, new ICorDebugTypeAbi(type), 0, null);
+
     private unsafe string FormatValueType(nint value, bool arrayElement)
     {
         nint value2 = ComAbi.QueryInterface(value, ICorDebugValue2Abi.InterfaceId);

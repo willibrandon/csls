@@ -52,6 +52,17 @@ internal static class DebuggerDumpArrayFixture
         Dictionary<int, List<string>> dictionary = new() { [71] = ["captured"] };
         Dictionary<int, List<string>>.KeyCollection?[] nested = [dictionary.Keys, null];
         Dictionary<int, List<string>>.KeyCollection.Enumerator[] nestedEnumerators = [default];
+        object emptyObject = new();
+        StrongBox<int> singletonObject = new(29);
+        StrongBox<int>? absentObject = null;
+        DebuggerFixtureList inheritedObject = new(81);
+        DebuggerFixtureValue capturedObject = new(42, "answer!", path);
+        object boxedPair = (73, "captured pair");
+        StrongBox<object[]> chain = new([new StrongBox<int[]>(vector)]);
+        StrongBox<object?> cycleObject = new();
+        cycleObject.Value = cycleObject;
+        DebuggerDumpHiddenField hiddenFields = new();
+        DebuggerDumpNestedFields inlineFields = new();
         DebuggerBlockingWait.Wait(announcement);
         GC.KeepAlive(path);
         GC.KeepAlive(vector);
@@ -73,6 +84,16 @@ internal static class DebuggerDumpArrayFixture
         GC.KeepAlive(decimals);
         GC.KeepAlive(nested);
         GC.KeepAlive(nestedEnumerators);
+        GC.KeepAlive(emptyObject);
+        GC.KeepAlive(singletonObject);
+        GC.KeepAlive(absentObject);
+        GC.KeepAlive(inheritedObject);
+        GC.KeepAlive(capturedObject);
+        GC.KeepAlive(boxedPair);
+        GC.KeepAlive(chain);
+        GC.KeepAlive(cycleObject);
+        GC.KeepAlive(hiddenFields.GetDerivedValue());
+        GC.KeepAlive(inlineFields);
         return 0;
     }
 }

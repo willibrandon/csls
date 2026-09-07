@@ -166,6 +166,12 @@ dimension's lower bound. Nested arrays expand through their own entries. Editors
 can request pages of up to 4,096 elements from large arrays; repeated pages retain
 their variable identities throughout the dump session.
 
+Expand captured objects and structs to inspect their physical instance fields,
+including private fields and fields inherited from generic base types. Object
+fields use named pages; array elements use indexed pages. Boxed structs, fields
+containing arrays, and arrays containing objects each expand from their captured
+storage. Editors present dump values as read-only.
+
 ## Zed launch and attach
 
 The Zed extension registers the `csls` adapter. Put a launch entry in `debug.json`:

@@ -213,7 +213,10 @@ internal static class CorDebugValueFormatter
         return Quote(new string(characters, 0, characterCount));
     }
 
-    private static string FormatPrimitive(uint elementType, ReadOnlySpan<byte> bytes) =>
+    /// <summary>
+    /// Formats already validated primitive storage using invariant debugger literals.
+    /// </summary>
+    internal static string FormatPrimitive(uint elementType, ReadOnlySpan<byte> bytes) =>
         elementType switch
         {
             0x02 => bytes[0] == 0 ? "false" : "true",
@@ -261,7 +264,10 @@ internal static class CorDebugValueFormatter
             _ => $"element-type 0x{elementType:X2}"
         };
 
-    private static string Quote(string value)
+    /// <summary>
+    /// Quotes a captured or live string with the shared debugger escaping rules.
+    /// </summary>
+    internal static string Quote(string value)
     {
         var result = new StringBuilder(value.Length + 2);
         result.Append('"');

@@ -184,6 +184,36 @@ public sealed class DapDumpTests : DapTestContext
                 .ConfigureAwait(false)).GetArrayLength());
             Assert.AreEqual(children.GetRawText(), (await ReadDumpVariablesAsync(client, arrayReference, 1, 1, filter: "indexed")
                 .ConfigureAwait(false)).GetRawText());
+            JsonElement objectSlot = await ReadDumpVariablesAsync(client, locals, 7, 1).ConfigureAwait(false);
+            JsonElement capturedObject = supportsPaging ? objectSlot[0] : Assert.ContainsSingle(objectSlot.EnumerateArray()
+                .Where(value => value.GetProperty("name").GetString() == "localObject"));
+            Assert.AreEqual("localObject", capturedObject.GetProperty("name").GetString());
+            int objectReference = capturedObject.GetProperty("variablesReference").GetInt32();
+            Assert.IsGreaterThan(0, objectReference);
+            if (supportsPaging)
+            {
+                Assert.AreEqual(4, capturedObject.GetProperty("namedVariables").GetInt32());
+            }
+            JsonElement fieldPage = await ReadDumpVariablesAsync(client, objectReference, 2, 1).ConfigureAwait(false);
+            Assert.AreEqual(supportsPaging ? 1 : 4, fieldPage.GetArrayLength());
+            JsonElement pair = fieldPage[supportsPaging ? 0 : 2];
+            Assert.AreEqual("Pair", pair.GetProperty("name").GetString());
+            Assert.AreEqual("(int, string)", pair.GetProperty("type").GetString());
+            int pairReference = pair.GetProperty("variablesReference").GetInt32();
+            Assert.IsGreaterThan(0, pairReference);
+            JsonElement pairFields = await ReadDumpVariablesAsync(client, pairReference, 0, 0).ConfigureAwait(false);
+            Assert.AreSequenceEqual(["Item1", "Item2"], pairFields.EnumerateArray()
+                .Select(value => value.GetProperty("name").GetString()));
+            Assert.AreSequenceEqual(["42", "\"answer!\""], pairFields.EnumerateArray()
+                .Select(value => value.GetProperty("value").GetString()));
+            Assert.Contains("readOnly", pair.GetProperty("presentationHint").GetProperty("attributes")
+                .EnumerateArray().Select(attribute => attribute.GetString()));
+            Assert.IsFalse(pair.TryGetProperty("evaluateName", out _));
+            Assert.IsFalse(pair.TryGetProperty("memoryReference", out _));
+            Assert.AreEqual(0, (await ReadDumpVariablesAsync(client, objectReference, 0, 1, filter: "indexed")
+                .ConfigureAwait(false)).GetArrayLength());
+            Assert.AreEqual(fieldPage.GetRawText(), (await ReadDumpVariablesAsync(client, objectReference, 2, 1)
+                .ConfigureAwait(false)).GetRawText());
         }
         else
         {
