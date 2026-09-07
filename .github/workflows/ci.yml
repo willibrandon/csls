@@ -912,6 +912,16 @@ jobs:
           --root-directory .
           --filter "FullyQualifiedName~Csls.Tests.EmacsLanguageServerTests|FullyQualifiedName~Csls.Tests.FreshLanguageServerTests|FullyQualifiedName~Csls.Tests.HelixLanguageServerTests|FullyQualifiedName~Csls.Tests.NeovimLanguageServerTests|FullyQualifiedName~Csls.Tests.UpstreamParityTests"
           --minimum-expected-tests 7
+          --report-trx
+          --results-directory artifacts/test-results/terminal-editors
+
+      - name: Upload terminal editor test results
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: terminal-editor-test-results-${{ github.run_attempt }}
+          path: artifacts/test-results/terminal-editors
+          if-no-files-found: warn
 
   zed-test-assets:
     name: Zed test assets
