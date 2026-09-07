@@ -125,6 +125,11 @@ internal sealed partial class CorDebugDebuggee :
             ? TextReader.Null
             : CreateReader(standardStreams.StandardError);
         _process = process;
+        if (OperatingSystem.IsWindows())
+        {
+            // Retain the attached process object before its PID can disappear or be reused.
+            _ = process.SafeHandle;
+        }
         _unixExitMonitor = unixExitMonitor;
         _ownsProcess = ownsProcess;
         _ownsRuntimeLease = ownsRuntimeLease ? 1 : 0;

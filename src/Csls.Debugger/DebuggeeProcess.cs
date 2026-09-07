@@ -138,7 +138,7 @@ internal sealed class DebuggeeProcess : IDebuggeeProcess
     /// <returns>The target exit code.</returns>
     public async Task<int> WaitForExitAsync(CancellationToken cancellationToken)
     {
-        await _process.WaitForExitAsync(cancellationToken).ConfigureAwait(false);
+        await DebuggerProcessExit.WaitAsync(_process, cancellationToken).ConfigureAwait(false);
         return _process.ExitCode;
     }
 
@@ -149,13 +149,12 @@ internal sealed class DebuggeeProcess : IDebuggeeProcess
     /// <returns>A task that completes after the target exits.</returns>
     public async Task TerminateAsync(CancellationToken cancellationToken)
     {
-        if (_process.HasExited)
+        if (!_process.HasExited)
         {
-            return;
+            _process.Kill(entireProcessTree: true);
         }
 
-        _process.Kill(entireProcessTree: true);
-        await _process.WaitForExitAsync(cancellationToken).ConfigureAwait(false);
+        await DebuggerProcessExit.WaitAsync(_process, cancellationToken).ConfigureAwait(false);
     }
 
     /// <inheritdoc />
@@ -172,10 +171,13 @@ internal sealed class DebuggeeProcess : IDebuggeeProcess
             return;
         }
 
-        if (Volatile.Read(ref _detached) == 0 && !_process.HasExited)
+        if (Volatile.Read(ref _detached) == 0)
         {
-            _process.Kill(entireProcessTree: true);
-            await _process.WaitForExitAsync().ConfigureAwait(false);
+            if (!_process.HasExited)
+            {
+                _process.Kill(entireProcessTree: true);
+            }
+            await DebuggerProcessExit.WaitAsync(_process, CancellationToken.None).ConfigureAwait(false);
         }
 
         _process.Dispose();

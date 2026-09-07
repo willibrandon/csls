@@ -34,7 +34,7 @@ public sealed class DebuggerWorkerProcess : IAsyncDisposable
     /// <param name="cancellationToken">Cancels observation without terminating the worker.</param>
     /// <returns>A task that completes when the worker process exits.</returns>
     public Task WaitForExitAsync(CancellationToken cancellationToken) =>
-        _process.WaitForExitAsync(cancellationToken);
+        DebuggerProcessExit.WaitAsync(_process, cancellationToken);
 
     /// <summary>
     /// Starts an explicitly selected worker and verifies its private control protocol.
@@ -144,18 +144,18 @@ public sealed class DebuggerWorkerProcess : IAsyncDisposable
     {
         using (process)
         {
-            if (!process.HasExited)
+            using var gracefulExit = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+            try
             {
-                try
-                {
-                    await process.WaitForExitAsync(CancellationToken.None)
-                        .WaitAsync(TimeSpan.FromSeconds(10)).ConfigureAwait(false);
-                }
-                catch (TimeoutException)
+                await DebuggerProcessExit.WaitAsync(process, gracefulExit.Token).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException) when (gracefulExit.IsCancellationRequested)
+            {
+                if (!process.HasExited)
                 {
                     process.Kill(entireProcessTree: true);
-                    await process.WaitForExitAsync(CancellationToken.None).ConfigureAwait(false);
                 }
+                await DebuggerProcessExit.WaitAsync(process, CancellationToken.None).ConfigureAwait(false);
             }
 
             string diagnosticText = await diagnostics.ConfigureAwait(false);

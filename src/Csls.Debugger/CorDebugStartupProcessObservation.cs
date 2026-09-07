@@ -57,7 +57,7 @@ internal sealed class CorDebugStartupProcessObservation : IAsyncDisposable
             return await unixExitMonitor.WaitAsync(cancellationToken).ConfigureAwait(false);
         }
 
-        await process.WaitForExitAsync(cancellationToken).ConfigureAwait(false);
+        await DebuggerProcessExit.WaitAsync(process, cancellationToken).ConfigureAwait(false);
         try
         {
             return process.ExitCode;

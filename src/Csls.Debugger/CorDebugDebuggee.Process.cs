@@ -41,7 +41,7 @@ internal sealed partial class CorDebugDebuggee
         }
         else
         {
-            await _process.WaitForExitAsync(cancellationToken).ConfigureAwait(false);
+            await DebuggerProcessExit.WaitAsync(_process, cancellationToken).ConfigureAwait(false);
             exitCode = GetExitCode(_process);
         }
 
@@ -99,6 +99,6 @@ internal sealed partial class CorDebugDebuggee
         }
 
         managedCallback?.RetireProcess();
-        await process.WaitForExitAsync(cancellationToken).ConfigureAwait(false);
+        await DebuggerProcessExit.WaitAsync(process, cancellationToken).ConfigureAwait(false);
     }
 }
