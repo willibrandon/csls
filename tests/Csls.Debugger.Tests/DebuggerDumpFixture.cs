@@ -123,7 +123,7 @@ internal sealed class DebuggerDumpFixture : IAsyncDisposable
                 Log($"Requesting {captureType ?? (includeHeap ? DumpType.WithHeap : DumpType.Triage)} dump.");
                 if (OperatingSystem.IsMacOS() && captureType == DumpType.Full)
                 {
-                    await DebuggerMacCoreCapture.CaptureAsync(target.Id, dump, Log, cancellationToken)
+                    await DebuggerMacCoreCapture.CaptureAsync(target.Id, dump, Log, diagnosticContext, cancellationToken)
                         .ConfigureAwait(false);
                 }
                 else
