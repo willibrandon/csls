@@ -22,7 +22,8 @@ internal sealed partial class CorDebugDebuggee
     {
         _managedCallback.ThrowIfRuntimeFailed();
         completion = null;
-        if (_activeFunctionEvaluation is not null ||
+        if (!_expressionEvaluationOptions.AllowImplicitFuncEval ||
+            _activeFunctionEvaluation is not null ||
             _functionEvaluationDisabledReason is not null ||
             !_values.TryGetValue(variablesReference, out ManagedValueHandle? handle) ||
             handle.View != ManagedValueView.Default ||

@@ -194,6 +194,17 @@ MCP `debug_session_start` and `debug_session_attach` accept the same
 `expressionEvaluationOptions` object. Terminal launch and attach select physical
 presentation with `--show-raw-values`.
 
+`expressionEvaluationOptions.allowImplicitFuncEval` controls automatic target-code
+execution during authorized inspection. The default, `true`, permits debugger
+proxy construction and property evaluation. Set it to `false` to inspect the
+original object's fields with debugger-host formatting, including field-based
+`DebuggerDisplay` values and tuple element names. Explicit expression calls and
+selected Results View expansion use their existing target-execution authorization.
+
+DAP and MCP launch and attach requests accept this option and retain it across
+restart. Terminal launch and attach expose it as `--allow-implicit-func-eval true`
+or `--allow-implicit-func-eval false`.
+
 All surfaces use one exact CoreCLR type formatter. It preserves generic arguments,
 array dimensions, tuple shape, nullable underlying types and values, enum storage and
 flags, and `decimal` scale. `DateTime`, `DateTimeOffset`, `TimeSpan`, and `Guid` are

@@ -13,6 +13,7 @@ internal class DebuggerTypeProxyFixtureProxy
     /// <param name="target">The original runtime object.</param>
     protected DebuggerTypeProxyFixtureProxy(DebuggerTypeProxyFixture target)
     {
+        Interlocked.Increment(ref DebuggerProxyEvaluationCounters.s_current.Constructions);
         Value = target._rawValue + 1;
         Items = [target._rawValue + 2, target._rawValue + 3];
         ProtectedValue = target._rawValue + 4;
@@ -53,7 +54,14 @@ internal class DebuggerTypeProxyFixtureProxy
     /// <summary>
     /// Gets a computed value through target-code property evaluation.
     /// </summary>
-    public int ComputedValue => Value + 10;
+    public int ComputedValue
+    {
+        get
+        {
+            Interlocked.Increment(ref DebuggerProxyEvaluationCounters.s_current.GetterCalls);
+            return Value + 10;
+        }
+    }
 
     /// <summary>
     /// Gets an expandable array retained across subsequent property evaluations.

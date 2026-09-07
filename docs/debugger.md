@@ -37,6 +37,13 @@ fields in objects, tuples, and collections. Editor configurations and MCP sessio
 start or attach requests select this view with
 `"expressionEvaluationOptions": { "showRawValues": true }`.
 
+Use `--allow-implicit-func-eval false` to keep automatic value inspection in the
+debugger host. Editor configurations and MCP session requests select this policy
+with `"expressionEvaluationOptions": { "allowImplicitFuncEval": false }`.
+The default, `true`, permits authorized debugger proxy construction and property
+evaluation. Explicit expression calls and Results View expansion retain their
+target-execution authorization. Both presentation options persist across restart.
+
 The terminal opens when the initial breakpoint stops the process. Select a thread
 and stack frame to inspect its source, arguments, and locals. The auxiliary view
 shows target output, modules, breakpoints, watches, or the current exception.

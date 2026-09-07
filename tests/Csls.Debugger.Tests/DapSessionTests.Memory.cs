@@ -71,7 +71,8 @@ public sealed partial class DapSessionTests
     }
 
     private async Task<DapTestClient> StartStoppedFixtureAsync(
-        string waitPath, bool blockForInspection = false, bool? showRawValues = null)
+        string waitPath, bool blockForInspection = false, bool? showRawValues = null,
+        bool? allowImplicitFuncEval = null)
     {
         DapTestClient client = await DapTestClient
             .CreateAsync(TestContext.CancellationToken)
@@ -93,7 +94,8 @@ public sealed partial class DapSessionTests
                 [blockForInspection ? "--debugger-unsafe-stop-fixture" : "--debugger-fixture", waitPath],
                 wait: true,
                 noDebug: false,
-                showRawValues: showRawValues),
+                showRawValues: showRawValues,
+                allowImplicitFuncEval: allowImplicitFuncEval),
             TestContext.CancellationToken).ConfigureAwait(false);
         for (int index = 0; index < 5; index++)
         {

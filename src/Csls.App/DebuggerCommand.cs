@@ -104,6 +104,7 @@ internal static class DebuggerCommand
         Option<string[]> sourceFileMapOption = CreateSourceFileMapOption();
         Option<bool> requireExactSourceOption = CreateRequireExactSourceOption();
         Option<bool> showRawValuesOption = CreateShowRawValuesOption();
+        Option<bool> allowImplicitFuncEvalOption = CreateAllowImplicitFuncEvalOption();
         var command = new Command(
             "launch",
             "Launch a managed target and stop at entry or an initial source breakpoint.")
@@ -118,6 +119,7 @@ internal static class DebuggerCommand
             runtimeOption,
             requireExactSourceOption,
             showRawValuesOption,
+            allowImplicitFuncEvalOption,
             sourceFileMapOption
         };
         command.Validators.Add(result =>
@@ -152,6 +154,7 @@ internal static class DebuggerCommand
                     parseResult.GetValue(environmentFileOption) ?? string.Empty,
                     parseResult.GetValue(requireExactSourceOption) ? "true" : "false",
                     parseResult.GetValue(showRawValuesOption) ? "true" : "false",
+                    parseResult.GetValue(allowImplicitFuncEvalOption) ? "true" : "false",
                     sourceFileMap.Count.ToString(CultureInfo.InvariantCulture),
                     .. sourceFileMap.SelectMany(static mapping =>
                         new[] { mapping.Key, mapping.Value }),
@@ -178,6 +181,7 @@ internal static class DebuggerCommand
         Option<string[]> sourceFileMapOption = CreateSourceFileMapOption();
         Option<bool> requireExactSourceOption = CreateRequireExactSourceOption();
         Option<bool> showRawValuesOption = CreateShowRawValuesOption();
+        Option<bool> allowImplicitFuncEvalOption = CreateAllowImplicitFuncEvalOption();
         var command = new Command(
             "attach",
             "Attach to and pause a running CoreCLR process.")
@@ -185,6 +189,7 @@ internal static class DebuggerCommand
             processIdArgument,
             requireExactSourceOption,
             showRawValuesOption,
+            allowImplicitFuncEvalOption,
             sourceFileMapOption
         };
         command.SetAction((parseResult, cancellationToken) =>
@@ -198,6 +203,7 @@ internal static class DebuggerCommand
                         .ToString(CultureInfo.InvariantCulture),
                     parseResult.GetValue(requireExactSourceOption) ? "true" : "false",
                     parseResult.GetValue(showRawValuesOption) ? "true" : "false",
+                    parseResult.GetValue(allowImplicitFuncEvalOption) ? "true" : "false",
                     sourceFileMap.Count.ToString(CultureInfo.InvariantCulture),
                     .. sourceFileMap.SelectMany(static mapping =>
                         new[] { mapping.Key, mapping.Value })
@@ -210,6 +216,14 @@ internal static class DebuggerCommand
     private static Option<bool> CreateShowRawValuesOption() => new("--show-raw-values")
     {
         Description = "Inspect physical fields using raw value presentation."
+    };
+
+    private static Option<bool> CreateAllowImplicitFuncEvalOption() => new("--allow-implicit-func-eval")
+    {
+        Description = "Allow automatic debugger proxy construction and property evaluation.",
+        DefaultValueFactory = static _ => true,
+        Arity = ArgumentArity.ExactlyOne,
+        HelpName = "true|false"
     };
 
     private static Option<bool> CreateRequireExactSourceOption() => new("--require-exact-source")

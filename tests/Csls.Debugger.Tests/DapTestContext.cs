@@ -703,7 +703,8 @@ public abstract class DapTestContext
         bool noDebug = true,
         bool suppressJitOptimizations = false,
         bool? stopAtEntry = null,
-        bool? showRawValues = null)
+        bool? showRawValues = null,
+        bool? allowImplicitFuncEval = null)
     {
         writer.WriteStartObject();
         writer.WriteBoolean("noDebug", noDebug);
@@ -714,10 +715,17 @@ public abstract class DapTestContext
             writer.WriteBoolean("stopAtEntry", entryStop);
         }
 
-        if (showRawValues is bool rawValues)
+        if (showRawValues.HasValue || allowImplicitFuncEval.HasValue)
         {
             writer.WriteStartObject("expressionEvaluationOptions");
-            writer.WriteBoolean("showRawValues", rawValues);
+            if (showRawValues is bool rawValues)
+            {
+                writer.WriteBoolean("showRawValues", rawValues);
+            }
+            if (allowImplicitFuncEval is bool implicitEvaluation)
+            {
+                writer.WriteBoolean("allowImplicitFuncEval", implicitEvaluation);
+            }
             writer.WriteEndObject();
         }
 

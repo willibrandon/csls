@@ -25,27 +25,25 @@ internal static class DapExpressionEvaluationOptionsParser
             throw new ArgumentException("expressionEvaluationOptions must be an object.");
         }
 
-        bool showRawValues = false;
-        bool seenRawValues = false;
+        var result = new DebugExpressionEvaluationOptions();
+        var seen = new HashSet<string>(StringComparer.Ordinal);
         foreach (JsonProperty option in options.EnumerateObject())
         {
-            if (option.Name != "showRawValues")
+            if (option.Name is not ("showRawValues" or "allowImplicitFuncEval"))
             {
                 throw new ArgumentException($"Unknown expressionEvaluationOptions member '{option.Name}'.");
             }
 
-            if (seenRawValues || option.Value.ValueKind is not JsonValueKind.True and not JsonValueKind.False)
+            if (!seen.Add(option.Name) || option.Value.ValueKind is not JsonValueKind.True and not JsonValueKind.False)
             {
-                throw new ArgumentException("expressionEvaluationOptions.showRawValues must be a single boolean value.");
+                throw new ArgumentException($"expressionEvaluationOptions.{option.Name} must be a single boolean value.");
             }
 
-            seenRawValues = true;
-            showRawValues = option.Value.GetBoolean();
+            result = option.Name == "showRawValues"
+                ? result with { ShowRawValues = option.Value.GetBoolean() }
+                : result with { AllowImplicitFuncEval = option.Value.GetBoolean() };
         }
 
-        return new()
-        {
-            ShowRawValues = showRawValues
-        };
+        return result;
     }
 }

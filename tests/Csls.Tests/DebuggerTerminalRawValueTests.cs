@@ -45,7 +45,33 @@ public sealed class DebuggerTerminalRawValueTests
         }
     }
 
-    private async Task ExerciseTerminalAsync(string directory, bool raw, bool attach)
+    /// <summary>
+    /// Accepts automatic evaluation policy while preserving debugger-host watch formatting and process ownership.
+    /// </summary>
+    /// <param name="allowImplicitFuncEval">Whether authorized inspection constructs debugger proxies.</param>
+    /// <param name="attach">Whether the terminal attaches to an independently started target.</param>
+    [TestMethod]
+    [DataRow(false, false)]
+    [DataRow(true, false)]
+    [DataRow(false, true)]
+    [DataRow(true, true)]
+    [OSCondition(ConditionMode.Include, OperatingSystems.Linux)]
+    [TestCategory("DebuggerTerminal")]
+    [Timeout(60000, CooperativeCancellation = true)]
+    public async Task TerminalImplicitEvaluationOptionPreservesWatchPresentation(bool allowImplicitFuncEval, bool attach)
+    {
+        DirectoryInfo directory = Directory.CreateTempSubdirectory("cti-");
+        try
+        {
+            await ExerciseTerminalAsync(directory.FullName, raw: false, attach, allowImplicitFuncEval).ConfigureAwait(false);
+        }
+        finally
+        {
+            await DirectoryReleaseWaiter.DeleteAsync(directory.FullName, TimeSpan.FromSeconds(10)).ConfigureAwait(false);
+        }
+    }
+
+    private async Task ExerciseTerminalAsync(string directory, bool raw, bool attach, bool? allowImplicitFuncEval = null)
     {
         string repository = EditorToolResolver.FindRepositoryRoot();
         string program = EditorToolResolver.ResolveTestProcessHost(repository);
@@ -73,11 +99,17 @@ public sealed class DebuggerTerminalRawValueTests
                 ["CSLS_DEBUGGER_WORKER_PATH"] = EditorToolResolver.ResolveDebuggerWorker(repository),
                 ["DOTNET_HOST_PATH"] = EditorToolResolver.ResolveDotNetHost()
             };
+            string[] policy = [];
+            if (allowImplicitFuncEval is bool automatic)
+            {
+                policy = ["--allow-implicit-func-eval", automatic ? "true" : "false"];
+            }
             const int Width = 180;
             const int Height = 35;
             var workload = new Hex1bPtyWorkload(EditorToolResolver.ResolveDotNetHost(),
                 [EditorToolResolver.ResolveLauncher(repository), "debugger", "tui", .. activation,
-                    "--show-raw-values", raw ? "true" : "false", "--source-file-map", $"/_/={repository}", .. arguments],
+                    "--show-raw-values", raw ? "true" : "false", .. policy,
+                    "--source-file-map", $"/_/={repository}", .. arguments],
                 directory, Width, Height, environment);
             await using ConfiguredAsyncDisposable cleanup = workload.ConfigureAwait(false);
             using Hex1bTerminal terminal = Hex1bTerminal.CreateBuilder()

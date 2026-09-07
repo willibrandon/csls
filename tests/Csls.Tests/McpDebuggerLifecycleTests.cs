@@ -136,6 +136,10 @@ public sealed partial class McpDebuggerLifecycleTests
         Assert.IsTrue(startProperties.GetProperty("requireExactSource").GetProperty("default").GetBoolean());
         Assert.AreEqual("boolean", startProperties.GetProperty("expressionEvaluationOptions")
             .GetProperty("properties").GetProperty("showRawValues").GetProperty("type").GetString());
+        JsonElement startImplicit = startProperties.GetProperty("expressionEvaluationOptions")
+            .GetProperty("properties").GetProperty("allowImplicitFuncEval");
+        Assert.AreEqual("boolean", startImplicit.GetProperty("type").GetString());
+        Assert.IsTrue(startImplicit.GetProperty("default").GetBoolean());
         JsonElement attachProperties = tools.Single(
             static tool => tool.Name == "debug_session_attach")
             .ProtocolTool.InputSchema.GetProperty("properties");
@@ -145,6 +149,10 @@ public sealed partial class McpDebuggerLifecycleTests
         Assert.IsTrue(attachProperties.GetProperty("requireExactSource").GetProperty("default").GetBoolean());
         Assert.AreEqual("boolean", attachProperties.GetProperty("expressionEvaluationOptions")
             .GetProperty("properties").GetProperty("showRawValues").GetProperty("type").GetString());
+        JsonElement attachImplicit = attachProperties.GetProperty("expressionEvaluationOptions")
+            .GetProperty("properties").GetProperty("allowImplicitFuncEval");
+        Assert.AreEqual("boolean", attachImplicit.GetProperty("type").GetString());
+        Assert.IsTrue(attachImplicit.GetProperty("default").GetBoolean());
         JsonElement dumpProperties = tools.Single(
             static tool => tool.Name == "debug_dump_open")
             .ProtocolTool.InputSchema.GetProperty("properties");

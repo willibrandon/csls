@@ -145,7 +145,8 @@ public sealed partial class DapSessionTests
         return Process.Start(startInfo) ?? throw new AssertFailedException("The raw inspection target did not start.");
     }
 
-    private async Task<DapTestClient> AttachRawValueTargetAsync(int processId, bool? showRawValues)
+    private async Task<DapTestClient> AttachRawValueTargetAsync(int processId, bool? showRawValues,
+        bool? allowImplicitFuncEval = null)
     {
         DapTestClient client = await DapTestClient.CreateAsync(TestContext.CancellationToken).ConfigureAwait(false);
         try
@@ -161,10 +162,17 @@ public sealed partial class DapSessionTests
                 writer.WriteStartObject();
                 writer.WriteNumber("processId", processId);
                 WriteDefaultSourceFileMap(writer);
-                if (showRawValues is bool raw)
+                if (showRawValues.HasValue || allowImplicitFuncEval.HasValue)
                 {
                     writer.WriteStartObject("expressionEvaluationOptions");
-                    writer.WriteBoolean("showRawValues", raw);
+                    if (showRawValues is bool raw)
+                    {
+                        writer.WriteBoolean("showRawValues", raw);
+                    }
+                    if (allowImplicitFuncEval is bool implicitEvaluation)
+                    {
+                        writer.WriteBoolean("allowImplicitFuncEval", implicitEvaluation);
+                    }
                     writer.WriteEndObject();
                 }
                 writer.WriteEndObject();
@@ -236,6 +244,13 @@ public sealed partial class DapSessionTests
     [DataRow("{\"showRawValues\":{}}")]
     [DataRow("{\"unknownOption\":true}")]
     [DataRow("{\"showRawValues\":true,\"showRawValues\":false}")]
+    [DataRow("{\"allowImplicitFuncEval\":null}")]
+    [DataRow("{\"allowImplicitFuncEval\":\"true\"}")]
+    [DataRow("{\"allowImplicitFuncEval\":1}")]
+    [DataRow("{\"allowImplicitFuncEval\":[]}")]
+    [DataRow("{\"allowImplicitFuncEval\":{}}")]
+    [DataRow("{\"allowImplicitFuncEval\":true,\"showRawValues\":false,\"allowImplicitFuncEval\":false}")]
+    [DataRow("{\"AllowImplicitFuncEval\":false}")]
     [Timeout(30000, CooperativeCancellation = true)]
     public async Task InvalidExpressionEvaluationOptionsPreserveInitializedSession(string option)
     {

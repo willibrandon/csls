@@ -43,6 +43,7 @@ internal static class DebuggerFixture
         localStringIdentity.SetValues("first\nvalue", "second\tvalue");
         var localProxy = new DebuggerTypeProxyFixture();
         var localProxyProjection = new DebuggerTypeProxyFixtureProxyDerived(localProxy);
+        DebuggerProxyEvaluationCounters localProxyCounters = DebuggerProxyEvaluationCounters.s_current;
         var localGenericProxy = new GenericDebuggerTypeProxyFixture<int>(49);
         var localClosedGenericProxy = new ClosedGenericDebuggerTypeProxyFixture();
         var localInheritedProxy = new InheritedDebuggerTypeProxyFixture();
@@ -178,6 +179,7 @@ internal static class DebuggerFixture
         GC.KeepAlive(localStringIdentity);
         GC.KeepAlive(localProxy);
         GC.KeepAlive(localProxyProjection);
+        GC.KeepAlive(localProxyCounters);
         GC.KeepAlive(localGenericProxy);
         GC.KeepAlive(localClosedGenericProxy);
         GC.KeepAlive(localInheritedProxy);

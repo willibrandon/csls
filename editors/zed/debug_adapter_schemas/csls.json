@@ -95,8 +95,13 @@
     "expressionEvaluationOptions": {
       "type": "object",
       "additionalProperties": false,
-      "description": "Managed value presentation for launch and live process attachment. Set showRawValues to true to inspect physical fields.",
+      "description": "Managed value presentation and automatic target-code evaluation policy for launch and live process attachment.",
       "properties": {
+        "allowImplicitFuncEval": {
+          "type": "boolean",
+          "default": true,
+          "description": "Allow automatic debugger proxy construction and property evaluation."
+        },
         "showRawValues": {
           "type": "boolean",
           "default": false,
