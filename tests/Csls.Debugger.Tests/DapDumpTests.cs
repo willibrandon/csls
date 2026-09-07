@@ -172,6 +172,18 @@ public sealed class DapDumpTests : DapTestContext
             Assert.AreEqual(children.GetRawText(), (await ReadDumpVariablesAsync(client, arrayReference, 1, 1, filter: "indexed")
                 .ConfigureAwait(false)).GetRawText());
         }
+        else
+        {
+            JsonElement arrayPage = await ReadDumpVariablesAsync(client, locals, 4, 1).ConfigureAwait(false);
+            JsonElement array = Assert.ContainsSingle(arrayPage.EnumerateArray()
+                .Where(value => value.GetProperty("name").GetString() == "localArray"));
+            string? unavailable = array.GetProperty("value").GetString();
+            Assert.IsNotNull(unavailable);
+            Assert.Contains("Captured value unavailable", unavailable);
+            Assert.AreEqual(0, array.GetProperty("variablesReference").GetInt32());
+            Assert.Contains("readOnly", array.GetProperty("presentationHint").GetProperty("attributes")
+                .EnumerateArray().Select(attribute => attribute.GetString()));
+        }
         JsonElement next = await ReadDumpVariablesAsync(client, locals, 1, 1).ConfigureAwait(false);
         if (supportsPaging)
         {

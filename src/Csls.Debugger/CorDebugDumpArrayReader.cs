@@ -8,7 +8,9 @@ namespace Csls.Debugger;
 /// </summary>
 /// <param name="values">The owning session's logical expansion paths.</param>
 /// <param name="source">The captured memory and its storage provenance.</param>
-internal sealed unsafe class CorDebugDumpArrayReader(CorDebugDumpValues values, ICorDebugDumpSource source)
+/// <param name="callbacks">The captured-memory observations owned by the serialized virtual process.</param>
+internal sealed unsafe class CorDebugDumpArrayReader(CorDebugDumpValues values, ICorDebugDumpSource source,
+    CorDebugDumpCallbacks callbacks)
 {
     /// <summary>
     /// Formats a captured value and records an expansion path when it contains an array.
@@ -167,6 +169,7 @@ internal sealed unsafe class CorDebugDumpArrayReader(CorDebugDumpValues values, 
                 remainder /= (int)dimensions[dimension];
             }
             string name = $"[{string.Join(',', indices)}]";
+            long missingMemory = callbacks.MissingMemoryReads;
             try
             {
                 element = GetElement(array, index);
@@ -177,7 +180,8 @@ internal sealed unsafe class CorDebugDumpArrayReader(CorDebugDumpValues values, 
                     Depth = checked(path.Depth + 1)
                 }, indexed: true));
             }
-            catch (InvalidOperationException exception) when (IsUnavailable(exception))
+            catch (InvalidOperationException exception) when (IsUnavailable(exception) ||
+                callbacks.IsMissingMemoryFailure(exception, missingMemory))
             {
                 result.Add(Unavailable(name, exception, indexed: true));
             }

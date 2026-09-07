@@ -32,7 +32,7 @@ public sealed unsafe class CorDebugDumpProcess : IDisposable
         ArgumentOutOfRangeException.ThrowIfZero(runtimeBaseAddress);
         _callbacks = new CorDebugDumpCallbacks(source);
         _values = values ?? new CorDebugDumpValues();
-        _arrays = new CorDebugDumpArrayReader(_values, source);
+        _arrays = new CorDebugDumpArrayReader(_values, source, _callbacks);
         var activation = new CorDebugDumpReadOperation(cancellationToken, null);
         _callbacks.Operation = activation;
         try
@@ -366,13 +366,15 @@ public sealed unsafe class CorDebugDumpProcess : IDisposable
                 cancellationToken.ThrowIfCancellationRequested();
                 nint value = 0;
                 string name = $"{(arguments ? "argument" : "local")} {index}";
+                long missingMemory = _callbacks.MissingMemoryReads;
                 try
                 {
                     int get = arguments ? api.GetArgument((uint)index, (nint)(&value)) : api.GetLocalVariable((uint)index, (nint)(&value));
                     CorDebugHResult.ThrowIfFailed(get, "ICorDebugILFrame.GetValue");
                     result.Add(_arrays.Describe(Volatile.Read(ref value), name, root with { Slot = index }));
                 }
-                catch (InvalidOperationException exception) when (CorDebugDumpArrayReader.IsUnavailable(exception))
+                catch (InvalidOperationException exception) when (CorDebugDumpArrayReader.IsUnavailable(exception) ||
+                    _callbacks.IsMissingMemoryFailure(exception, missingMemory))
                 {
                     result.Add(CorDebugDumpArrayReader.Unavailable(name, exception));
                 }

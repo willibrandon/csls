@@ -13,6 +13,7 @@ internal sealed unsafe partial class CorDebugDumpCallbacks : ICorDebugDumpDataTa
 {
     private const int InvalidArgument = unchecked((int)0x80070057);
     private const int Failure = unchecked((int)0x80004005);
+    private const int MissingMemory = unchecked((int)0x80131C49);
     private const int Aborted = unchecked((int)0x80004004);
     private readonly ICorDebugDumpSource _source;
     private readonly CorDebugDumpMetadataCache _metadata = new();
@@ -29,6 +30,7 @@ internal sealed unsafe partial class CorDebugDumpCallbacks : ICorDebugDumpDataTa
             if (value is not null)
             {
                 LastFailure = null;
+                MissingMemoryReads = 0;
             }
         }
     }
@@ -43,6 +45,21 @@ internal sealed unsafe partial class CorDebugDumpCallbacks : ICorDebugDumpDataTa
     /// Gets the last managed callback failure for native activation diagnostics.
     /// </summary>
     internal Exception? LastFailure { get; private set; }
+
+    /// <summary>
+    /// Gets the number of reads whose requested bytes were absent from captured memory during this operation.
+    /// </summary>
+    internal long MissingMemoryReads { get; private set; }
+
+    /// <summary>
+    /// Identifies a generic native value failure following a missing-memory callback in that value's read.
+    /// </summary>
+    /// <param name="exception">The failed native value operation.</param>
+    /// <param name="checkpoint">The missing-memory count immediately before reading the value.</param>
+    /// <returns>Whether the failed value encountered missing captured storage.</returns>
+    internal bool IsMissingMemoryFailure(InvalidOperationException exception, long checkpoint) =>
+        exception.InnerException?.HResult == Failure && MissingMemoryReads > checkpoint &&
+        LastFailure is null && Operation is { CanRead: true };
 
     /// <summary>
     /// Shares an exact retained module snapshot between native metadata callbacks and managed name inspection.
@@ -156,6 +173,10 @@ internal sealed unsafe partial class CorDebugDumpCallbacks : ICorDebugDumpDataTa
                 return Failure;
             }
 
+            if (count < requested)
+            {
+                MissingMemoryReads++;
+            }
             Operation?.RecordMemoryRead(count);
             if (Operation is { CanRead: false })
             {
@@ -163,7 +184,7 @@ internal sealed unsafe partial class CorDebugDumpCallbacks : ICorDebugDumpDataTa
             }
 
             *read = (uint)count;
-            return count > 0 || requested == 0 ? 0 : Failure;
+            return count > 0 || requested == 0 ? 0 : MissingMemory;
         }
         catch (Exception exception) when (IsRecoverable(exception))
         {
