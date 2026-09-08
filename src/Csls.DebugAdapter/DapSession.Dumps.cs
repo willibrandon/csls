@@ -56,7 +56,7 @@ internal sealed partial class DapSession
             await CompleteCancelableRequestAsync().ConfigureAwait(false);
         }
         await DisposeDumpSessionAsync().ConfigureAwait(false);
-        await _writeErrorAsync("The managed dump worker exited before its session was closed.").ConfigureAwait(false);
+        await _writeErrorAsync("The managed dump worker disconnected before its session was closed.").ConfigureAwait(false);
         await _writer.WriteEventAsync("terminated", writeBody: null, cancellationToken).ConfigureAwait(false);
     }
 }

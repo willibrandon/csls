@@ -236,7 +236,7 @@ internal sealed partial class DapSession
 
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
-            await WriteRequestFailureAsync(request, "cancelled", _lifetime.Token).ConfigureAwait(false);
+            await WriteCanceledRequestAsync(request).ConfigureAwait(false);
         }
 
         if (_engineSession.StopGeneration != initialGeneration)

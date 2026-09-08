@@ -87,6 +87,13 @@ internal sealed partial class DapSession : IDebuggerSessionObserver, IAsyncDispo
                     await CompleteCancelableRequestAsync().ConfigureAwait(false);
                 }
 
+                // A closed worker transport must retire the session before another queued request starts.
+                if (_dumpSession is { HasDisconnected: true })
+                {
+                    await HandleDumpWorkerExitAsync(sessionToken).ConfigureAwait(false);
+                    break;
+                }
+
                 Request? request;
                 if (_cancelableRequest is not null || !_pendingRequests.TryDequeue(out request))
                 {
@@ -97,7 +104,7 @@ internal sealed partial class DapSession : IDebuggerSessionObserver, IAsyncDispo
                         : Task.WhenAny(pendingRead, _cancelableRequest, _targetCompletion.Task, dumpCompletion))
                         .WaitAsync(sessionToken).ConfigureAwait(false);
 
-                    if (_dumpSession is { Completion.IsCompleted: true })
+                    if (_dumpSession is { HasDisconnected: true })
                     {
                         await HandleDumpWorkerExitAsync(sessionToken).ConfigureAwait(false);
                         break;
@@ -324,9 +331,14 @@ internal sealed partial class DapSession : IDebuggerSessionObserver, IAsyncDispo
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested && !_lifetime.IsCancellationRequested)
         {
-            await WriteRequestFailureAsync(request, "cancelled", _lifetime.Token).ConfigureAwait(false);
+            await WriteCanceledRequestAsync(request).ConfigureAwait(false);
         }
     }
+
+    private ValueTask WriteCanceledRequestAsync(Request request) =>
+        WriteRequestFailureAsync(request,
+            _dumpCapabilities && _state == DapSessionState.Faulted ? DapDumpSession.DisconnectedMessage : "cancelled",
+            _lifetime.Token);
 
     private static bool IsCancelableRequest(string command) =>
         command is "configurationDone" or "evaluate" or "setVariable" or "setExpression" or "variables" or

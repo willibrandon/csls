@@ -9,13 +9,20 @@ namespace Csls.DebugAdapter;
 /// </summary>
 internal sealed class DapDumpSession : IDebuggerInspectionTarget, IAsyncDisposable
 {
+    /// <summary>
+    /// Describes an inspection interrupted by loss of its owned worker.
+    /// </summary>
+    internal const string DisconnectedMessage = "The managed dump worker disconnected during inspection.";
+
     private readonly DebuggerWorkerProcess _worker;
+    private readonly Task _workerExit;
 
     private DapDumpSession(DebuggerWorkerProcess worker, DebugSessionSnapshot snapshot)
     {
         _worker = worker;
         Snapshot = snapshot;
-        Completion = worker.WaitForExitAsync(CancellationToken.None);
+        _workerExit = worker.WaitForExitAsync(CancellationToken.None);
+        Completion = Task.WhenAny(_workerExit, worker.Client.Disconnected);
     }
 
     /// <summary>
@@ -24,9 +31,14 @@ internal sealed class DapDumpSession : IDebuggerInspectionTarget, IAsyncDisposab
     internal DebugSessionSnapshot Snapshot { get; }
 
     /// <summary>
-    /// Gets the observation of the owned worker's process exit.
+    /// Gets the observation of the owned worker's process exit or RPC disconnection.
     /// </summary>
     internal Task Completion { get; }
+
+    /// <summary>
+    /// Gets whether the worker or its transport has ended independently of asynchronous completion continuations.
+    /// </summary>
+    internal bool HasDisconnected => _workerExit.IsCompleted || _worker.Client.Disconnected.IsCompleted;
 
     /// <summary>
     /// Opens a dump through a private supervised worker.
@@ -98,7 +110,7 @@ internal sealed class DapDumpSession : IDebuggerInspectionTarget, IAsyncDisposab
         }
         catch (ConnectionLostException exception)
         {
-            throw new InvalidOperationException("The managed dump worker disconnected during inspection.", exception);
+            throw new InvalidOperationException(DisconnectedMessage, exception);
         }
     }
 }

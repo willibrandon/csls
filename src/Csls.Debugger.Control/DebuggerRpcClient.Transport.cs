@@ -13,6 +13,7 @@ public sealed partial class DebuggerRpcClient
     private const int MaximumMessageBytes = 4 * 1024 * 1024;
     private readonly string? _socketPath;
     private readonly bool _leaveStreamsOpen;
+    private readonly TaskCompletionSource _disconnected = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private Socket? _socket;
     private Stream? _sendingStream;
     private Stream? _receivingStream;
@@ -22,6 +23,11 @@ public sealed partial class DebuggerRpcClient
     private NerdbankMessagePackFormatter? _formatter;
     private JsonRpc? _rpc;
     private int _disposed;
+
+    /// <summary>
+    /// Gets the signal raised when the RPC connection closes, before pending calls are faulted.
+    /// </summary>
+    public Task Disconnected => _disconnected.Task;
 
     /// <summary>
     /// Creates a client for an explicit absolute debugger socket path.
@@ -125,6 +131,7 @@ public sealed partial class DebuggerRpcClient
             CancelLocallyInvokedMethodsWhenConnectionIsClosed = true,
             DisplayName = "debugger-control-client"
         };
+        _rpc.Disconnected += (_, _) => _disconnected.TrySetResult();
         _rpc.AddLocalRpcMethod(
             DebuggerControlNotifications.ResourceChanged,
             new Action<DebuggerResourceChangeEventArgs>(OnResourceChanged));

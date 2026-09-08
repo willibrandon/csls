@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Runtime.Versioning;
 using System.Text.Json;
@@ -391,7 +392,7 @@ public sealed class DapDumpTests : DapTestContext
         DapTestClient client = await CreateClientAsync().ConfigureAwait(false);
         await using ConfiguredAsyncDisposable clientCleanup = client.ConfigureAwait(false);
         _ = await OpenDumpAsync(client, fixture.DumpPath).ConfigureAwait(false);
-        using System.Diagnostics.Process worker = LinuxDebuggerProcessTree.OpenWorker(client.HostProcessId, DumpWorkerPath);
+        using Process worker = LinuxDebuggerProcessTree.OpenWorker(client.HostProcessId, DumpWorkerPath);
         Assert.AreNotEqual(fixture.ProcessId, worker.Id);
         if (killWorker)
         {
@@ -399,7 +400,7 @@ public sealed class DapDumpTests : DapTestContext
             using JsonDocument terminated = await client.ReadMessageAsync(TestContext.CancellationToken).ConfigureAwait(false);
             AssertEvent(terminated.RootElement, "terminated");
             Assert.AreEqual(1, await client.WaitForExitAsync(TestContext.CancellationToken).ConfigureAwait(false));
-            Assert.Contains("managed dump worker exited", client.Diagnostics.ToString());
+            Assert.Contains("managed dump worker disconnected", client.Diagnostics.ToString());
         }
         else
         {
@@ -413,6 +414,117 @@ public sealed class DapDumpTests : DapTestContext
         {
             using JsonDocument unexpected = await client.ReadMessageAsync(TestContext.CancellationToken).ConfigureAwait(false);
         }).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Settles active and queued inspection requests when their independently observed dump worker dies.
+    /// </summary>
+    /// <param name="command">The inspection request held on the real worker transport.</param>
+    [TestMethod]
+    [DataRow("threads")]
+    [DataRow("modules")]
+    [DataRow("stackTrace")]
+    [DataRow("scopes")]
+    [DataRow("variables")]
+    [OSCondition(OperatingSystems.Linux)]
+    [SupportedOSPlatform("linux")]
+    [Timeout(60000, CooperativeCancellation = true)]
+    public async Task DumpWorkerFailureSettlesActiveAndQueuedRequests(string command)
+    {
+        DebuggerDumpFixture fixture = await DebuggerDumpFixture.CreateAsync(ResolveTestProcessHost(),
+            TestContext.CancellationToken, captureFrameValues: true).ConfigureAwait(false);
+        await using ConfiguredAsyncDisposable fixtureCleanup = fixture.ConfigureAwait(false);
+        DapTestClient client = await CreateClientAsync().ConfigureAwait(false);
+        await using ConfiguredAsyncDisposable clientCleanup = client.ConfigureAwait(false);
+        int threadId = await OpenDumpAsync(client, fixture.DumpPath).ConfigureAwait(false);
+        JsonElement stack = await ReadStackAsync(client, threadId, 0, 100).ConfigureAwait(false);
+        JsonElement frame = Assert.ContainsSingle(stack.GetProperty("stackFrames").EnumerateArray().Where(item =>
+            item.GetProperty("name").GetString()?.Contains("DebuggerFixture.WaitForSignal", StringComparison.Ordinal) == true));
+        JsonElement scopes = await RequestAsync(client, "scopes", writer =>
+        {
+            writer.WriteStartObject();
+            writer.WriteNumber("frameId", frame.GetProperty("id").GetInt32());
+            writer.WriteEndObject();
+        }).ConfigureAwait(false);
+        int reference = scopes.GetProperty("scopes")[0].GetProperty("variablesReference").GetInt32();
+        using Process worker = LinuxDebuggerProcessTree.OpenWorker(client.HostProcessId, DumpWorkerPath);
+        try
+        {
+            await LinuxDebuggerProcessTree.SuspendAsync(worker, TestContext.CancellationToken).ConfigureAwait(false);
+            int active = await client.SendRequestAsync(command, writer =>
+            {
+                writer.WriteStartObject();
+                switch (command)
+                {
+                    case "stackTrace": writer.WriteNumber("threadId", threadId); break;
+                    case "scopes": writer.WriteNumber("frameId", frame.GetProperty("id").GetInt32()); break;
+                    case "variables": writer.WriteNumber("variablesReference", reference); break;
+                }
+                writer.WriteEndObject();
+            }, TestContext.CancellationToken).ConfigureAwait(false);
+            int queued = await client.SendRequestAsync("threads", WriteEmptyObject, TestContext.CancellationToken)
+                .ConfigureAwait(false);
+            int removed = await client.SendRequestAsync("modules", WriteEmptyObject, TestContext.CancellationToken)
+                .ConfigureAwait(false);
+            int cancel = await client.SendRequestAsync("cancel", writer =>
+            {
+                writer.WriteStartObject();
+                writer.WriteNumber("requestId", removed);
+                writer.WriteEndObject();
+            }, TestContext.CancellationToken).ConfigureAwait(false);
+            using (JsonDocument canceled = await client.ReadMessageAsync(TestContext.CancellationToken).ConfigureAwait(false))
+            {
+                AssertResponse(canceled.RootElement, removed, "modules", success: false);
+                Assert.AreEqual("cancelled", canceled.RootElement.GetProperty("message").GetString());
+            }
+            using (JsonDocument acknowledged = await client.ReadMessageAsync(TestContext.CancellationToken).ConfigureAwait(false))
+            {
+                AssertResponse(acknowledged.RootElement, cancel, "cancel", success: true);
+            }
+            // Canceling a queued request proves the adapter is receiving input while the active RPC remains blocked.
+            Assert.IsFalse(worker.HasExited);
+            worker.Kill();
+            var responses = new HashSet<int>();
+            bool terminated = false;
+            for (int index = 0; index < 3; index++)
+            {
+                using JsonDocument message = await client.ReadMessageAsync(TestContext.CancellationToken).ConfigureAwait(false);
+                JsonElement root = message.RootElement;
+                if (root.GetProperty("type").GetString() == "event")
+                {
+                    AssertEvent(root, "terminated");
+                    Assert.IsFalse(terminated);
+                    terminated = true;
+                    continue;
+                }
+                int sequence = root.GetProperty("request_seq").GetInt32();
+                Assert.IsTrue(sequence == active || sequence == queued);
+                Assert.IsTrue(responses.Add(sequence), "Each request must receive exactly one terminal response.");
+                AssertResponse(root, sequence, sequence == active ? command : "threads", success: false);
+                Assert.AreEqual(sequence == active ? "The managed dump worker disconnected during inspection."
+                    : "The request 'threads' is invalid while the session is Faulted.",
+                    root.GetProperty("message").GetString());
+            }
+            Assert.IsTrue(terminated);
+            Assert.HasCount(2, responses);
+            Assert.AreEqual(1, await client.WaitForExitAsync(TestContext.CancellationToken).ConfigureAwait(false));
+            Assert.Contains("managed dump worker disconnected", client.Diagnostics.ToString());
+            Assert.IsNull(client.TargetProcessId);
+            _ = await Assert.ThrowsExactlyAsync<EndOfStreamException>(async () =>
+            {
+                using JsonDocument unexpected = await client.ReadMessageAsync(TestContext.CancellationToken).ConfigureAwait(false);
+            }).ConfigureAwait(false);
+        }
+        finally
+        {
+            if (!worker.HasExited)
+            {
+                worker.Kill();
+            }
+            await worker.WaitForExitAsync(CancellationToken.None).ConfigureAwait(false);
+        }
+        using FileStream released = File.Open(fixture.DumpPath, FileMode.Open, FileAccess.ReadWrite, FileShare.None);
+        Assert.IsGreaterThan(0L, released.Length);
     }
 
     /// <summary>
