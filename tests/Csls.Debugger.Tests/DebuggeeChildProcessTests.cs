@@ -46,12 +46,19 @@ public sealed class DebuggeeChildProcessTests
             using var branch = Process.GetProcessById(ids[1]);
             using var grandchild = Process.GetProcessById(ids[2]);
             using var leaf = Process.GetProcessById(ids[3]);
+            // Retain exact process handles while the children are alive, before requesting their termination.
+            _ = branch.SafeHandle;
+            _ = grandchild.SafeHandle;
+            _ = leaf.SafeHandle;
 
             DebuggeeChildProcesses.Terminate(root.Id);
 
-            await branch.WaitForExitAsync(TestContext.CancellationToken).ConfigureAwait(false);
-            await grandchild.WaitForExitAsync(TestContext.CancellationToken).ConfigureAwait(false);
-            await leaf.WaitForExitAsync(TestContext.CancellationToken).ConfigureAwait(false);
+            await DebuggerProcessExit.WaitAsync(branch, TestContext.CancellationToken).ConfigureAwait(false);
+            await DebuggerProcessExit.WaitAsync(grandchild, TestContext.CancellationToken).ConfigureAwait(false);
+            await DebuggerProcessExit.WaitAsync(leaf, TestContext.CancellationToken).ConfigureAwait(false);
+            Assert.IsTrue(branch.HasExited);
+            Assert.IsTrue(grandchild.HasExited);
+            Assert.IsTrue(leaf.HasExited);
             Assert.IsFalse(root.HasExited);
             Assert.IsFalse(sibling.HasExited);
             Assert.IsEmpty(DebuggeeChildProcesses.GetIds(root.Id));
