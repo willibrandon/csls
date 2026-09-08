@@ -149,7 +149,10 @@ public sealed class DapTerminationTests : DapTestContext
         foreach (int id in ids)
         {
             Assert.IsGreaterThan(0, id);
-            targets.Add(Process.GetProcessById(id));
+            var process = Process.GetProcessById(id);
+            targets.Add(process);
+            // Keep the original process object alive across termination and Windows PID reuse.
+            _ = process.SafeHandle;
         }
         return ids;
     }
@@ -187,7 +190,7 @@ public sealed class DapTerminationTests : DapTestContext
     {
         foreach (Process process in targets)
         {
-            await process.WaitForExitAsync(TestContext.CancellationToken).ConfigureAwait(false);
+            await DebuggerProcessExit.WaitAsync(process, TestContext.CancellationToken).ConfigureAwait(false);
             Assert.IsTrue(process.HasExited);
         }
     }
