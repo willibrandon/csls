@@ -18,6 +18,8 @@
              Link="Support/ProcessOutputCapture.cs" />
     <Compile Include="../../scripts/Support/ToolPackageLayout.cs"
              Link="Support/ToolPackageLayout.cs" />
+    <Compile Include="../../scripts/Support/VsCodeTestInstallation.cs"
+             Link="Support/VsCodeTestInstallation.cs" />
     <Compile Include="../../src/Csls.Workspaces.MSBuild/WindowsJobObjectBasicAccountingInformation.cs"
              Link="WindowsJobObjectBasicAccountingInformation.cs" />
     <Compile Include="../../src/Csls.Workspaces.MSBuild/WindowsJobObjectBasicLimitInformation.cs"

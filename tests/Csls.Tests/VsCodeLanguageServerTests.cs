@@ -837,15 +837,6 @@ public sealed class VsCodeLanguageServerTests
         string socketDirectory,
         string? remoteTestExtensionPath)
     {
-        string? configuredToolsRoot = Environment.GetEnvironmentVariable("CSLS_TOOLS_ROOT");
-        string toolsRoot = string.IsNullOrWhiteSpace(configuredToolsRoot)
-            ? Path.Join(repositoryRoot, "artifacts", "tools")
-            : Path.GetFullPath(configuredToolsRoot);
-        string vscodeCachePath = Path.Join(
-            toolsRoot,
-            "vscode",
-            "stable");
-        Directory.CreateDirectory(vscodeCachePath);
         var startInfo = new ProcessStartInfo
         {
             FileName = "node",
@@ -855,7 +846,8 @@ public sealed class VsCodeLanguageServerTests
             WorkingDirectory = repositoryRoot
         };
         startInfo.ArgumentList.Add(runnerPath);
-        startInfo.Environment["CSLS_VSCODE_CACHE_PATH"] = vscodeCachePath;
+        startInfo.Environment["CSLS_VSCODE_EXECUTABLE_PATH"] =
+            EditorToolResolver.ResolveVsCodeExecutable(repositoryRoot);
         startInfo.Environment["CSLS_VSCODE_EXTENSION_PATH"] = extensionPath;
         startInfo.Environment["CSLS_VSCODE_EXTENSIONS_PATH"] = extensionsPath;
         startInfo.Environment["CSLS_VSCODE_EXPECTED_HOST"] = remoteServerRoot is null

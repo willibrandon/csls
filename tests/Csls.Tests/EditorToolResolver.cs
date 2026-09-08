@@ -1,3 +1,4 @@
+using Csls.Support;
 using System.Runtime.InteropServices;
 
 namespace Csls.Tests;
@@ -197,6 +198,26 @@ internal static class EditorToolResolver
         }
 
         return Path.Join(userProfilePath, ".nuget", "packages");
+    }
+
+    /// <summary>
+    /// Resolves the completed stable-channel installation prepared for editor tests.
+    /// </summary>
+    /// <param name="repositoryRoot">The absolute repository root.</param>
+    /// <returns>The absolute VS Code executable path.</returns>
+    internal static string ResolveVsCodeExecutable(string repositoryRoot)
+    {
+        string? configuredToolsRoot = Environment.GetEnvironmentVariable("CSLS_TOOLS_ROOT");
+        string toolsRoot = string.IsNullOrWhiteSpace(configuredToolsRoot)
+            ? Path.Join(repositoryRoot, "artifacts", "tools")
+            : Path.GetFullPath(configuredToolsRoot);
+        string cachePath = Path.Join(toolsRoot, "vscode", "stable");
+        if (!Directory.Exists(cachePath))
+        {
+            TestPrerequisite.Skip("VS Code is not provisioned. Run scripts/Provision-VsCode.cs.");
+        }
+
+        return VsCodeTestInstallation.Resolve(cachePath);
     }
 
     /// <summary>

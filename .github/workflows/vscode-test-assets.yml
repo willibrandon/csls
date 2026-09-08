@@ -47,9 +47,9 @@ jobs:
             artifacts/tools/vscode-csharp
             artifacts/tools/vscode-csdevkit
             artifacts/tools/vscode-server
-          key: vscode-tools-shared-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/Provision-VsCode.cs', 'scripts/Provision-VsCodeRemoteServer.cs', 'scripts/ScriptSupport.cs', 'tests/vscode/package-lock.json', 'editors/vscode/package-lock.json') }}
+          key: vscode-tools-shared-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/Provision-VsCode.cs', 'scripts/Provision-VsCodeRemoteServer.cs', 'scripts/Support/VsCodeTestInstallation.cs', 'scripts/ScriptSupport.cs', 'tests/vscode/package-lock.json', 'editors/vscode/package-lock.json') }}
           restore-keys: |
-            vscode-tools-desktop-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/Provision-VsCode.cs', 'scripts/Provision-VsCodeRemoteServer.cs', 'scripts/ScriptSupport.cs', 'tests/vscode/package-lock.json', 'editors/vscode/package-lock.json') }}
+            vscode-tools-desktop-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/Provision-VsCode.cs', 'scripts/Provision-VsCodeRemoteServer.cs', 'scripts/Support/VsCodeTestInstallation.cs', 'scripts/ScriptSupport.cs', 'tests/vscode/package-lock.json', 'editors/vscode/package-lock.json') }}
 
       - name: Provision current VS Code and extensions
         run: dotnet run --file scripts/Provision-VsCode.cs
@@ -67,7 +67,7 @@ jobs:
             artifacts/tools/vscode-csharp
             artifacts/tools/vscode-csdevkit
             artifacts/tools/vscode-server
-          key: vscode-tools-shared-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/Provision-VsCode.cs', 'scripts/Provision-VsCodeRemoteServer.cs', 'scripts/ScriptSupport.cs', 'tests/vscode/package-lock.json', 'editors/vscode/package-lock.json') }}
+          key: vscode-tools-shared-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/Provision-VsCode.cs', 'scripts/Provision-VsCodeRemoteServer.cs', 'scripts/Support/VsCodeTestInstallation.cs', 'scripts/ScriptSupport.cs', 'tests/vscode/package-lock.json', 'editors/vscode/package-lock.json') }}
 
       - name: Pack VS Code test assets
         run: >-

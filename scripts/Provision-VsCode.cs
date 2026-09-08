@@ -3,9 +3,12 @@
 #:property LangVersion=14.0
 #:property Nullable=enable
 #:property TreatWarningsAsErrors=true
+#:property RootNamespace=Csls
 #:package SharpCompress
 #:include ScriptSupport.cs
+#:include Support/VsCodeTestInstallation.cs
 
+using Csls.Support;
 using System.ComponentModel;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
@@ -268,6 +271,11 @@ try
         throw new InvalidDataException(
             "The VS Code stable-channel provisioner returned a missing executable: " +
             executablePath);
+    }
+
+    if (!webOnly)
+    {
+        VsCodeTestInstallation.Publish(desktopCachePath, executablePath);
     }
 
     await Console.Out.WriteLineAsync(executablePath).ConfigureAwait(false);

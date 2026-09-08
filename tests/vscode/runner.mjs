@@ -6,10 +6,8 @@ import { Writable } from "node:stream";
 import { pathToFileURL } from "node:url";
 import { fileURLToPath } from "node:url";
 import {
-  downloadAndUnzipVSCode,
   resolveCliArgsFromVSCodeExecutablePath,
   runTests,
-  SilentReporter,
 } from "@vscode/test-electron";
 
 process.env.DONT_PROMPT_WSL_INSTALL = "1";
@@ -19,18 +17,12 @@ const extensionPath = dirname(fileURLToPath(import.meta.url));
 const workspacePath = requireEnvironment("CSLS_VSCODE_WORKSPACE_PATH");
 const userDataPath = requireEnvironment("CSLS_VSCODE_USER_DATA_PATH");
 const extensionsPath = requireEnvironment("CSLS_VSCODE_EXTENSIONS_PATH");
-const cachePath = requireEnvironment("CSLS_VSCODE_CACHE_PATH");
+const executablePath = requireEnvironment("CSLS_VSCODE_EXECUTABLE_PATH");
 const remoteServerRoot = process.env.CSLS_VSCODE_REMOTE_SERVER_ROOT;
 const remoteDataPath = process.env.CSLS_VSCODE_REMOTE_DATA_PATH;
 const debuggerUi = ["dist/results-view-suite.cjs", "dist/dump-suite.cjs"]
   .includes(process.env.CSLS_VSCODE_SUITE ?? "");
 const devToolsEndpointPath = resolve(userDataPath, "debugger-devtools-endpoint");
-const executablePath = await downloadAndUnzipVSCode({
-  cachePath,
-  reporter: new SilentReporter(),
-  timeout: 120_000,
-  version: "stable",
-});
 const extensionPackages = resolveExtensionPackages();
 if (remoteServerRoot === undefined) {
   for (const packagePath of extensionPackages) {
@@ -50,7 +42,6 @@ if (remoteServerRoot === undefined) {
 }
 
 await runTests({
-  cachePath,
   extensionDevelopmentPath: remoteServerRoot === undefined
     ? extensionPath
     : resolve(extensionPath, "remote-resolver"),

@@ -286,10 +286,6 @@ public sealed class VsCodeOracleTests
         string? displayName)
     {
         string runnerPath = Path.Join(repositoryRoot, "tests", "vscode", "runner.mjs");
-        string? configuredToolsRoot = Environment.GetEnvironmentVariable("CSLS_TOOLS_ROOT");
-        string toolsRoot = string.IsNullOrWhiteSpace(configuredToolsRoot)
-            ? Path.Join(repositoryRoot, "artifacts", "tools")
-            : Path.GetFullPath(configuredToolsRoot);
         var startInfo = new ProcessStartInfo
         {
             FileName = "node",
@@ -299,10 +295,8 @@ public sealed class VsCodeOracleTests
             WorkingDirectory = repositoryRoot
         };
         startInfo.ArgumentList.Add(runnerPath);
-        startInfo.Environment["CSLS_VSCODE_CACHE_PATH"] = Path.Join(
-            toolsRoot,
-            "vscode",
-            "stable");
+        startInfo.Environment["CSLS_VSCODE_EXECUTABLE_PATH"] =
+            EditorToolResolver.ResolveVsCodeExecutable(repositoryRoot);
         startInfo.Environment["CSLS_VSCODE_EXTENSIONS_PATH"] = extensionsPath;
         startInfo.Environment["CSLS_VSCODE_EXTENSION_PATHS"] =
             JsonSerializer.Serialize(extensionPaths);
