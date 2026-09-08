@@ -349,6 +349,16 @@ if (args is ["--wait-for-standard-input"])
     return 0;
 }
 
+if (args is ["--write-buffered-diagnostics", string diagnosticStream, string diagnosticReleasePath])
+{
+    using Stream output = diagnosticStream == "stderr" ? Console.OpenStandardError() : Console.OpenStandardOutput();
+    string payload = Environment.ProcessId.ToString(CultureInfo.InvariantCulture) + "\nfirst diagnostic\r\nUnicode: \u03bb \ud83d\ude80\rfinal diagnostic";
+    // One small write commits all records before the reader can cancel after the process identifier.
+    await output.WriteAsync(Encoding.UTF8.GetBytes(payload)).ConfigureAwait(false);
+    await WaitForFileAsync(diagnosticReleasePath).ConfigureAwait(false);
+    return 0;
+}
+
 if (args is ["--wait-for-file", string waitPath])
 {
     await WaitForFileAsync(waitPath).ConfigureAwait(false);

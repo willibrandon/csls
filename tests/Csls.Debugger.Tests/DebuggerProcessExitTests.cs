@@ -9,6 +9,60 @@ namespace Csls.Debugger.Tests;
 public sealed class DebuggerProcessExitTests : DapTestContext
 {
     /// <summary>
+    /// Preserves captured diagnostic records when cancellation follows the first line of an atomic pipe write.
+    /// </summary>
+    /// <param name="stream">The real redirected stream containing the complete diagnostic write.</param>
+    [TestMethod]
+    [DataRow("stdout")]
+    [DataRow("stderr")]
+    [Timeout(30000, CooperativeCancellation = true)]
+    public async Task CancellationPreservesCapturedDiagnosticFragment(string stream)
+    {
+        string directory = Directory.CreateTempSubdirectory("csls-canceled-diagnostics-").FullName;
+        using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(TestContext.CancellationToken);
+        Process? target = null;
+        var lines = new List<string>();
+        try
+        {
+            var start = new ProcessStartInfo(Environment.GetEnvironmentVariable("DOTNET_HOST_PATH") ?? "dotnet");
+            start.StandardOutputEncoding = System.Text.Encoding.UTF8;
+            start.StandardErrorEncoding = System.Text.Encoding.UTF8;
+            start.ArgumentList.Add(ResolveTestProcessHost());
+            start.ArgumentList.Add("--write-buffered-diagnostics");
+            start.ArgumentList.Add(stream);
+            start.ArgumentList.Add(Path.Join(directory, "release.signal"));
+            OperationCanceledException failure = await Assert.ThrowsAsync<OperationCanceledException>(() =>
+                DebuggerTestProcess.RunAsync(start, cancellation.Token, line =>
+                {
+                    if (lines.Count == 0)
+                    {
+                        target = Process.GetProcessById(int.Parse(line, System.Globalization.CultureInfo.InvariantCulture));
+                        _ = target.SafeHandle;
+                        cancellation.Cancel();
+                    }
+                    lines.Add(line);
+                })).ConfigureAwait(false);
+            Assert.AreEqual(cancellation.Token, failure.CancellationToken);
+            Assert.IsNotNull(target);
+            AssertKernelTermination(target);
+            Assert.AreSequenceEqual(new[]
+            {
+                target.Id.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                "first diagnostic", "Unicode: \u03bb \ud83d\ude80", "final diagnostic"
+            }, lines);
+        }
+        finally
+        {
+            using Process? ownedTarget = target;
+            if (ownedTarget is not null)
+            {
+                await ReleaseTargetAsync(ownedTarget).ConfigureAwait(false);
+            }
+            await DebuggerTestDirectoryReleaseWaiter.DeleteAsync(directory, TimeSpan.FromSeconds(10)).ConfigureAwait(false);
+        }
+    }
+
+    /// <summary>
     /// Observes native termination for both natural and forced exits, including repeated completed waits.
     /// </summary>
     /// <param name="terminate">Whether to terminate the owned process instead of closing its input.</param>

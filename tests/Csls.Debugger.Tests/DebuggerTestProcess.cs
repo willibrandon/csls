@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Text;
 
 namespace Csls.Debugger.Tests;
 
@@ -99,13 +100,54 @@ internal static class DebuggerTestProcess
             return await reader.ReadToEndAsync(cancellationToken).ConfigureAwait(false);
         }
 
-        var result = new System.Text.StringBuilder();
-        while (await reader.ReadLineAsync(cancellationToken).ConfigureAwait(false) is string line)
+        var result = new StringBuilder();
+        var line = new StringBuilder();
+        char[] buffer = new char[4096];
+        bool skipLineFeed = false;
+        try
         {
-            result.AppendLine(line);
-            progress(line);
+            // Own partial lines so cancelling a read cannot discard an already captured diagnostic fragment.
+            while (await reader.ReadAsync(buffer.AsMemory(), cancellationToken).ConfigureAwait(false) is int count && count > 0)
+            {
+                for (int index = 0; index < count; index++)
+                {
+                    char character = buffer[index];
+                    if (skipLineFeed)
+                    {
+                        skipLineFeed = false;
+                        if (character == '\n')
+                        {
+                            continue;
+                        }
+                    }
+                    if (character is '\r' or '\n')
+                    {
+                        PublishLine(result, line, progress);
+                        skipLineFeed = character == '\r';
+                    }
+                    else
+                    {
+                        line.Append(character);
+                    }
+                }
+            }
+        }
+        finally
+        {
+            if (line.Length != 0)
+            {
+                PublishLine(result, line, progress);
+            }
         }
 
         return result.ToString();
+    }
+
+    private static void PublishLine(StringBuilder result, StringBuilder line, Action<string> progress)
+    {
+        string record = line.ToString();
+        line.Clear();
+        result.AppendLine(record);
+        progress(record);
     }
 }
