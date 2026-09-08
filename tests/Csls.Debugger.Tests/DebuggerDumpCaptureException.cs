@@ -34,9 +34,9 @@ internal sealed class DebuggerDumpCaptureException : IOException
     /// </summary>
     /// <param name="processId">The terminated test-owned target.</param>
     /// <param name="dumpPath">The attempted dump destination.</param>
-    /// <param name="standardOutput">The bounded target standard-output tail.</param>
-    /// <param name="standardError">The bounded target standard-error tail.</param>
-    /// <param name="innerException">The original diagnostics protocol failure.</param>
+    /// <param name="standardOutput">The bounded collector and target standard-output tail.</param>
+    /// <param name="standardError">The bounded collector and target standard-error tail.</param>
+    /// <param name="innerException">The original collector or diagnostics protocol failure.</param>
     internal DebuggerDumpCaptureException(int processId, string dumpPath, string standardOutput,
         string standardError, Exception innerException)
         : base($"Dump capture for process {processId} at '{dumpPath}' failed.{Environment.NewLine}" +

@@ -108,7 +108,9 @@ internal sealed class DebuggerDumpFixture : IAsyncDisposable
                 ?? throw new InvalidOperationException("The dump target did not start.");
             Task<string> error = target.StandardError.ReadToEndAsync(CancellationToken.None);
             Task<string>? output = null;
-            DiagnosticsClientException? captureFailure = null;
+            Exception? captureFailure = null;
+            string collectorOutput = string.Empty;
+            string collectorError = string.Empty;
             string errorTail = string.Empty;
             string outputTail = string.Empty;
             try
@@ -121,7 +123,18 @@ internal sealed class DebuggerDumpFixture : IAsyncDisposable
                 Log("Target announced readiness.");
                 output = target.StandardOutput.ReadToEndAsync(CancellationToken.None);
                 Log($"Requesting {captureType ?? (includeHeap ? DumpType.WithHeap : DumpType.Triage)} dump.");
-                if (OperatingSystem.IsMacOS() && captureType == DumpType.Full)
+                if (OperatingSystem.IsWindows())
+                {
+                    int exitCode;
+                    (exitCode, collectorOutput, collectorError) = await WindowsDebuggerProcessCapture.CaptureAsync(
+                        target, dump, cancellationToken, captureType ?? (includeHeap ? DumpType.WithHeap : DumpType.Triage))
+                        .ConfigureAwait(false);
+                    if (exitCode != 0)
+                    {
+                        throw new IOException($"The native snapshot collector exited with code {exitCode}.");
+                    }
+                }
+                else if (OperatingSystem.IsMacOS() && captureType == DumpType.Full)
                 {
                     await DebuggerMacCoreCapture.CaptureAsync(target.Id, dump, Log, diagnosticContext, cancellationToken)
                         .ConfigureAwait(false);
@@ -136,7 +149,7 @@ internal sealed class DebuggerDumpFixture : IAsyncDisposable
                 Assert.IsGreaterThan(0L, new FileInfo(dump).Length);
                 Log($"Dump writer completed: {new FileInfo(dump).Length} bytes.");
             }
-            catch (DiagnosticsClientException exception)
+            catch (Exception exception) when (exception is DiagnosticsClientException or IOException)
             {
                 captureFailure = exception;
             }
@@ -168,11 +181,11 @@ internal sealed class DebuggerDumpFixture : IAsyncDisposable
                     Log("Observed Windows kernel process termination.");
                 }
                 Log($"Observed target exit {target.ExitCode}.");
-                errorTail = GetTail(await error.ConfigureAwait(false));
+                errorTail = GetTail(collectorError + await error.ConfigureAwait(false));
                 LogOutput("stderr", errorTail);
                 if (output is not null)
                 {
-                    outputTail = GetTail(await output.ConfigureAwait(false));
+                    outputTail = GetTail(collectorOutput + await output.ConfigureAwait(false));
                     LogOutput("stdout", outputTail);
                 }
                 Log("Drained target streams.");

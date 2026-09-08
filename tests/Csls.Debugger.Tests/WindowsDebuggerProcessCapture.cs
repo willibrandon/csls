@@ -1,3 +1,4 @@
+using Microsoft.Diagnostics.NETCore.Client;
 using System.ComponentModel;
 using System.Diagnostics;
 using System.Globalization;
@@ -74,9 +75,10 @@ internal static class WindowsDebuggerProcessCapture
     /// <param name="process">The caller-owned process with a retained native identity.</param>
     /// <param name="path">The new dump path.</param>
     /// <param name="cancellationToken">Cancels and reaps the collector independently of the captured process.</param>
+    /// <param name="captureType">An optional managed dump policy, with native thread capture as the default.</param>
     /// <returns>The collector exit status and diagnostics.</returns>
     internal static Task<(int ExitCode, string Output, string Error)> CaptureAsync(
-        Process process, string path, CancellationToken cancellationToken)
+        Process process, string path, CancellationToken cancellationToken, DumpType? captureType = null)
     {
         _ = process.SafeHandle;
         var startInfo = new ProcessStartInfo(Environment.GetEnvironmentVariable("DOTNET_HOST_PATH") ?? "dotnet");
@@ -86,6 +88,15 @@ internal static class WindowsDebuggerProcessCapture
         startInfo.ArgumentList.Add(process.Id.ToString(CultureInfo.InvariantCulture));
         startInfo.ArgumentList.Add(process.StartTime.ToUniversalTime().ToFileTimeUtc().ToString(CultureInfo.InvariantCulture));
         startInfo.ArgumentList.Add(path);
+        startInfo.ArgumentList.Add(captureType switch
+        {
+            null => "threads",
+            DumpType.Normal => "normal",
+            DumpType.Triage => "triage",
+            DumpType.WithHeap => "heap",
+            DumpType.Full => "full",
+            _ => throw new ArgumentOutOfRangeException(nameof(captureType))
+        });
         return DebuggerTestProcess.RunAsync(startInfo, cancellationToken);
     }
 

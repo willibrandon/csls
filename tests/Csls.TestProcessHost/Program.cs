@@ -10,6 +10,18 @@ if (args is ["--windows-native-dump", string dumpProcessId, string dumpCreationT
         long.Parse(dumpCreationTime, CultureInfo.InvariantCulture), nativeDumpPath);
 }
 
+if (args is ["--windows-native-dump", string selectedDumpProcessId, string selectedDumpCreationTime,
+    string selectedNativeDumpPath, string captureKind] && OperatingSystem.IsWindows())
+{
+    return WindowsNativeDumpFixture.Run(int.Parse(selectedDumpProcessId, CultureInfo.InvariantCulture),
+        long.Parse(selectedDumpCreationTime, CultureInfo.InvariantCulture), selectedNativeDumpPath, captureKind);
+}
+
+if (args is ["--windows-module-churn", string churnStopPath] && OperatingSystem.IsWindows())
+{
+    return WindowsModuleChurnFixture.Run(churnStopPath);
+}
+
 if (args is ["--debugger-process-tree", string processTreePipe])
 {
     return await DebuggerProcessTreeFixture.RunRootAsync(processTreePipe).ConfigureAwait(false);
