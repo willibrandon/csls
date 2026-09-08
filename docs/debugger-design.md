@@ -12,13 +12,14 @@ distribution neither links nor redistributes proprietary debugger components.
 ## Product definition
 
 The product is a standalone managed .NET debugger whose engine is independent of
-an editor and of any single .NET source language. It serves five clients:
+an editor and of any single .NET source language. It serves these clients:
 
 1. Debug Adapter Protocol clients over standard input and output.
 2. The csls Hex1b terminal debugger over private local RPC.
 3. Coding agents through MCP tools and resources over private local RPC.
 4. VS Code through its standard `coreclr` debug type.
 5. Zed through its debug-adapter extension API.
+6. An [interactive debugger REPL](debugger-repl-design.md) over private local RPC.
 
 Initial general-availability runtime support is live CoreCLR and read-only managed
 dumps. C#, Visual Basic, and F# receive language-aware source debugging and
@@ -35,7 +36,7 @@ support require separate runtime backends but must not require new client protoc
 ```text
 VS Code / Zed ── DAP stdio ──┐
                               │
-Terminal UI ─ private RPC ────┼── NativeAOT debugger host ── dbgshim / ICorDebug
+TUI / REPL ── private RPC ────┼── NativeAOT debugger host ── dbgshim / ICorDebug
                               │             │
 MCP worker ── private RPC ────┘             └── managed evaluator worker
                                                          │
@@ -70,7 +71,7 @@ and identified by content hash when compiler semantic binding requires them.
 
 ## Session ownership and state
 
-Exactly one client owns lifecycle mutation. DAP and TUI sessions own themselves.
+Exactly one client owns lifecycle mutation. DAP, TUI, and REPL sessions own themselves.
 An MCP-launched session is MCP-owned. Other clients may observe a session, but
 mutation requires a separate explicit, revocable grant for the exact MCP connection
 and debugger session. MCP launch and attach begin observation-only. A grant has an
@@ -893,10 +894,10 @@ a debugger TCP listener or tunnels DAP over MCP.
 
 The README introduces the debugger only when the managed vertical slice is the
 default editor path. The documentation site then owns task-oriented pages for
-setup, launch and attach, breakpoints and stepping, C#/VB/F# evaluation, symbols
-and Source Link, dumps, Hot Reload, terminal workflows, MCP workflows, security,
-troubleshooting, and the runtime/language/RID support matrix. Unsupported behavior
-is stated directly beside each workflow.
+setup, launch and attach, breakpoints and stepping, C#/VB/F# evaluation, symbols,
+Source Link, dumps, Hot Reload, TUI and REPL workflows, MCP, security, troubleshooting,
+and the runtime/language/RID support matrix. Pages describe shipping behavior with
+executable examples; implementation planning belongs in design and planning documents.
 
 DAP, private RPC, CLI, configuration, and MCP reference pages are generated from
 shipping contracts by repository C# automation. Repository verification fails on
@@ -985,7 +986,7 @@ documented.
 | Logical frames survive internal evaluation | Editors can refresh the same stopped frame while native bindings and value references are replaced; MCP still requires the exact current generation |
 | Per-frame language provider | Mixed-language stacks and future .NET languages cannot be modeled by a C# session flag |
 | Direct Portable PDB reader | It is public, cross-platform, efficient, and avoids unnecessary native symbol dependencies |
-| Private RPC for TUI and MCP | DAP is an editor protocol and cannot express session ownership or agent authorization precisely |
+| Private RPC for TUI, REPL, and MCP | One typed control contract preserves session ownership, evaluation policy, and agent authorization across clients |
 | Separate implemented contracts from required additions | Configuration options, DAP dumps, session browsing, and performance gates require their own implementation and evidence; their inclusion in this design does not establish support |
 | No debugger fallback | The repository is unreleased and the product must have one testable execution path |
 | No F# Hot Reload claim | The current compiler does not expose the required EnC behavior |
