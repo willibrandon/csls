@@ -25,6 +25,11 @@ internal static class Program
             return DebuggerStaticReceiverFixture.Run(arguments);
         }
 
+        if (arguments is ["--static-storage"])
+        {
+            return DebuggerStaticStorageFixture.Run(arguments);
+        }
+
         if (arguments is ["--managed-break"])
         {
             return ManagedBreakFixture.Run(42);

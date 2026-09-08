@@ -4,6 +4,7 @@ using System.Reflection;
 using System.Reflection.Metadata;
 using System.Reflection.Metadata.Ecma335;
 using System.Reflection.PortableExecutable;
+using System.Runtime.InteropServices;
 
 namespace Csls.Debugger;
 
@@ -13,6 +14,8 @@ namespace Csls.Debugger;
 internal sealed class ManagedStaticFieldResolver
 {
     private const int MaximumHierarchyDepth = 128;
+    private const int ClassNotLoaded = unchecked((int)0x80131303);
+    private const int StaticVariableUnavailable = unchecked((int)0x8013131A);
     private readonly SourceBreakpointManager _modules;
     private readonly ManagedBoundTypeSystem _types;
 
@@ -103,6 +106,12 @@ internal sealed class ManagedStaticFieldResolver
             nint* address = &value;
             int hresult = new ICorDebugTypeAbi(type).GetStaticFieldValue(fieldToken, frame.Pointer, (nint)address);
             value = Volatile.Read(ref *address);
+            if (hresult is ClassNotLoaded or StaticVariableUnavailable)
+            {
+                throw new InvalidOperationException(
+                    $"Static storage for '{declaringType.DisplayName}' has not been initialized in the selected thread.",
+                    Marshal.GetExceptionForHR(hresult));
+            }
             CorDebugHResult.ThrowIfFailed(hresult, "ICorDebugType.GetStaticFieldValue");
             if (value == 0)
             {
