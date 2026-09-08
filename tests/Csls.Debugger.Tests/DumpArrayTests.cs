@@ -2,6 +2,7 @@ using Csls.Debugger.Contracts;
 using Csls.Debugger.Control;
 using Csls.Debugger.Dump;
 using StreamJsonRpc;
+using System.Diagnostics;
 using System.Runtime.CompilerServices;
 
 namespace Csls.Debugger.Tests;
@@ -40,15 +41,19 @@ public sealed class DumpArrayTests : DapTestContext
     [Timeout(60000, CooperativeCancellation = true)]
     public async Task PrivateRpcPreservesCapturedArrayPages()
     {
+        long started = Stopwatch.GetTimestamp();
         DebuggerDumpFixture fixture = await CreateFixtureAsync().ConfigureAwait(false);
         await using ConfiguredAsyncDisposable fixtureCleanup = fixture.ConfigureAwait(false);
+        Log("Starting dump worker.");
         string workerPath = Path.Join(FindRepositoryRoot(), "artifacts", "bin", "Csls.Debugger.Dump.Worker", "debug",
             "csls-debugger-dump-worker.dll");
         DebuggerWorkerProcess worker = await DebuggerWorkerProcess.StartAsync(workerPath, false,
             TestContext.CancellationToken).ConfigureAwait(false);
         await using ConfiguredAsyncDisposable workerCleanup = worker.ConfigureAwait(false);
+        Log("Opening captured dump through the worker.");
         _ = await worker.Client.OpenDumpAsync(fixture.OpenRequest,
             TestContext.CancellationToken).ConfigureAwait(false);
+        Log("Reading the session and array pages.");
         DebugSessionSnapshot before = await worker.Client.GetSessionAsync(TestContext.CancellationToken).ConfigureAwait(false);
         await AssertShapesAsync(worker.Client).ConfigureAwait(false);
         DebugSessionSnapshot after = await worker.Client.GetSessionAsync(TestContext.CancellationToken).ConfigureAwait(false);
@@ -57,9 +62,15 @@ public sealed class DumpArrayTests : DapTestContext
         Assert.AreEqual(before.StopGeneration, after.StopGeneration);
         Assert.AreEqual(before.StoppedThreadId, after.StoppedThreadId);
         Assert.AreEqual(before.StopReason, after.StopReason);
+        Log("Terminating the dump session.");
         _ = await worker.Client.TerminateAsync(TestContext.CancellationToken).ConfigureAwait(false);
+        Log("Checking exclusive dump-file access.");
         using FileStream released = File.Open(fixture.DumpPath, FileMode.Open, FileAccess.ReadWrite, FileShare.None);
         Assert.IsGreaterThan(0L, released.Length);
+        Log("Completed array inspection and file-release assertions.");
+
+        void Log(string message) => TestContext.WriteLine(
+            $"Dump array RPC {Stopwatch.GetElapsedTime(started).TotalMilliseconds:F1} ms: {message}");
     }
 
     /// <summary>
@@ -305,7 +316,8 @@ public sealed class DumpArrayTests : DapTestContext
     private async Task<DebuggerDumpFixture> CreateFixtureAsync()
     {
         DebuggerDumpFixture fixture = await DebuggerDumpFixture.CreateAsync(ResolveTestProcessHost(),
-            TestContext.CancellationToken, includeHeap: true, captureArrayShapes: true).ConfigureAwait(false);
+            TestContext.CancellationToken, includeHeap: true, captureArrayShapes: true,
+            diagnosticContext: TestContext).ConfigureAwait(false);
         _dumpPath = fixture.DumpPath;
         return fixture;
     }

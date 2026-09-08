@@ -2,6 +2,7 @@ using Csls.Debugger.Contracts;
 using Csls.Debugger.Control;
 using Csls.Debugger.Dump;
 using Microsoft.Diagnostics.NETCore.Client;
+using System.Diagnostics;
 using System.Runtime.CompilerServices;
 
 namespace Csls.Debugger.Tests;
@@ -123,16 +124,24 @@ public sealed class DumpObjectTests : DapTestContext
     [Timeout(60000, CooperativeCancellation = true)]
     public async Task CapturedObjectDepthLimitPreservesPublishedPaths()
     {
+        long started = Stopwatch.GetTimestamp();
         DebuggerDumpFixture fixture = await DebuggerDumpFixture.CreateAsync(ResolveTestProcessHost(),
-            TestContext.CancellationToken, includeHeap: true, captureArrayShapes: true).ConfigureAwait(false);
+            TestContext.CancellationToken, includeHeap: true, captureArrayShapes: true,
+            diagnosticContext: TestContext).ConfigureAwait(false);
         await using ConfiguredAsyncDisposable fixtureCleanup = fixture.ConfigureAwait(false);
         var service = new DumpDebuggerControlService();
         await using ConfiguredAsyncDisposable serviceCleanup = service.ConfigureAwait(false);
+        Log("Opening captured dump.");
         _ = await service.OpenDumpAsync(fixture.OpenRequest, TestContext.CancellationToken).ConfigureAwait(false);
+        Log("Reading captured locals.");
         Dictionary<string, DebugVariableInfo> locals = await ReadLocalsAsync(service).ConfigureAwait(false);
         DebugVariableInfo current = locals["cycleObject"];
         for (int depth = 0; depth < 256; depth++)
         {
+            if (depth % 32 == 0)
+            {
+                Log($"Reading nested selection {depth + 1}.");
+            }
             DebugVariableInfo next = Assert.ContainsSingle(await ReadAsync(service, current).ConfigureAwait(false));
             Assert.AreEqual("Value", next.Name);
             Assert.AreEqual(1, next.NamedVariables, next.ToString());
@@ -140,11 +149,16 @@ public sealed class DumpObjectTests : DapTestContext
             Assert.AreNotEqual(current.VariablesReference, next.VariablesReference);
             current = next;
         }
+        Log("Checking depth rejection and retained paths.");
         InvalidDataException rejected = await Assert.ThrowsExactlyAsync<InvalidDataException>(() =>
             ReadAsync(service, current)).ConfigureAwait(false);
         Assert.Contains("256 nested selections", rejected.Message);
         Assert.AreEqual(1, Assert.ContainsSingle(await ReadAsync(service, locals["cycleObject"]).ConfigureAwait(false)).NamedVariables);
         Assert.AreEqual("29", Assert.ContainsSingle(await ReadAsync(service, locals["singletonObject"]).ConfigureAwait(false)).Value);
+        Log("Completed depth and retained-path assertions.");
+
+        void Log(string message) => TestContext.WriteLine(
+            $"Dump object depth {Stopwatch.GetElapsedTime(started).TotalMilliseconds:F1} ms: {message}");
     }
 
     private async Task AssertFieldsAsync(IDebuggerInspectionTarget service, Func<Task<DebugSessionSnapshot>> getSession)
