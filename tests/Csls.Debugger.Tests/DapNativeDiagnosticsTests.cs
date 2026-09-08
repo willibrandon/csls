@@ -104,6 +104,7 @@ public sealed class DapNativeDiagnosticsTests : DapTestContext
     [Timeout(30000, CooperativeCancellation = true)]
     public async Task HeapCrashCapturePreservesPrivateNativeMemory()
     {
+        long started = Stopwatch.GetTimestamp();
         var capture = new DebuggerCrashReportCapture(TestContext, DumpType.WithHeap);
         int processId;
         ulong address;
@@ -118,7 +119,9 @@ public sealed class DapNativeDiagnosticsTests : DapTestContext
             }
 
             (processId, int exitCode, string output, string error) = await DebuggerTestProcess.RunWithIdentityAsync(
-                startInfo, TestContext.CancellationToken).ConfigureAwait(false);
+                startInfo, TestContext.CancellationToken,
+                line => TestContext.WriteLine($"Heap crash capture {Stopwatch.GetElapsedTime(started).TotalMilliseconds:F1} ms: {line}"),
+                diagnosticContext: TestContext).ConfigureAwait(false);
             Assert.AreNotEqual(0, exitCode, output + error);
             Assert.Contains("native-memory-crash", error);
             const string AddressPrefix = "native-memory-ready:";
