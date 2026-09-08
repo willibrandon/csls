@@ -107,10 +107,11 @@ internal static class DebuggerProcessDiagnostics
         startInfo.ArgumentList.Add("-p");
         startInfo.ArgumentList.Add(string.Join(",", processes));
         startInfo.ArgumentList.Add("-o");
-        startInfo.ArgumentList.Add("pid,ppid,state,wchan,comm");
+        // Record elapsed and cumulative CPU time before the profilers suspend or otherwise observe the target.
+        startInfo.ArgumentList.Add("pid,ppid,state,wchan,pcpu,time,etime,rss,vsz,comm");
         (int exitCode, string output, string error) = await DebuggerTestProcess.RunAsync(
             startInfo, cancellationToken).ConfigureAwait(false);
-        testContext.WriteLine($"Owned process wait states (exit {exitCode}): {output}{error}");
+        testContext.WriteLine($"Owned process wait states and resource use (exit {exitCode}): {output}{error}");
     }
 
     private static async Task CaptureKernelStacksAsync(
