@@ -24,8 +24,8 @@ public sealed class DebuggerTestProcessTests : DapTestContext
     [Timeout(30000, CooperativeCancellation = true)]
     public async Task InheritedOutputCaptureHonorsCompletionAndCancellation(bool reportProgress, bool cancelCapture)
     {
-        string rootPipeName = $"csls-output-root-{Guid.NewGuid():N}";
-        string childPipeName = $"csls-output-child-{Guid.NewGuid():N}";
+        string rootPipeName = $"csls-{Guid.NewGuid():N}";
+        string childPipeName = $"csls-{Guid.NewGuid():N}";
         using var rootPipe = new NamedPipeServerStream(rootPipeName, PipeDirection.InOut, 1,
             PipeTransmissionMode.Byte, PipeOptions.Asynchronous);
         using var childPipe = new NamedPipeServerStream(childPipeName, PipeDirection.Out, 1,
