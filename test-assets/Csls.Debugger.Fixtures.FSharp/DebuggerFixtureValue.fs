@@ -9,12 +9,17 @@ open System.Diagnostics
 type internal DebuggerFixtureValue(number: int) =
     static let mutable s_number = 0
     let storedNumber = number
-    do s_number <- number + 20
 
     /// <summary>
     /// Reads the compiler-owned static field for independent runtime observations.
     /// </summary>
     static member internal ReadStaticNumber() = s_number
+
+    /// <summary>
+    /// Initializes shared storage before the fixture stops for inspection.
+    /// </summary>
+    /// <param name="number">The input supplied to the fixture entry point.</param>
+    static member internal InitializeStaticNumber(number: int) = s_number <- number + 20
 
     /// <summary>
     /// Gets the value returned by the debugger-visible method.

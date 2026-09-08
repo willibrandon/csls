@@ -13,6 +13,7 @@ open System.Threading
 [<EntryPoint>]
 let main arguments =
     let mutable answer = Int32.Parse(arguments[1], CultureInfo.InvariantCulture)
+    DebuggerFixtureValue.InitializeStaticNumber(answer)
     let value = DebuggerFixtureValue(answer)
     let genericValue = DebuggerGenericFixture<int>(answer)
     let nestedGenericValue =

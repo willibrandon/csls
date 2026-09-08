@@ -22,7 +22,6 @@ internal sealed class DebuggerFixtureValue
     internal DebuggerFixtureValue(int number)
     {
         _number = number;
-        s_number = number + 20;
     }
 
     /// <summary>
@@ -34,6 +33,12 @@ internal sealed class DebuggerFixtureValue
     /// Observes static storage through code compiled into the target process.
     /// </summary>
     internal static int ReadStaticNumber() => s_number;
+
+    /// <summary>
+    /// Initializes shared storage before the fixture stops for inspection.
+    /// </summary>
+    /// <param name="number">The input supplied to the fixture entry point.</param>
+    internal static void InitializeStaticNumber(int number) => s_number = number + 20;
 
     /// <summary>
     /// Computes a stable result by executing target code.

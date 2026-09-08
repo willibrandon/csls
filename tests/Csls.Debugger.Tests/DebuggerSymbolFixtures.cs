@@ -227,19 +227,10 @@ internal sealed class DebuggerSymbolFixtures : IAsyncDisposable
     {
         string projectDirectory = Path.Join(fixtureDirectory, projectName);
         Directory.CreateDirectory(projectDirectory);
-        File.Copy(Path.Join(sourceDirectory, "Program.cs"), Path.Join(projectDirectory, "Program.cs"));
-        File.Copy(
-            Path.Join(sourceDirectory, "DebuggerFixtureValue.cs"),
-            Path.Join(projectDirectory, "DebuggerFixtureValue.cs"));
-        File.Copy(
-            Path.Join(sourceDirectory, "DebuggerGenericFixture.cs"),
-            Path.Join(projectDirectory, "DebuggerGenericFixture.cs"));
-        File.Copy(
-            Path.Join(sourceDirectory, "UnavailableLocalsFixture.cs"),
-            Path.Join(projectDirectory, "UnavailableLocalsFixture.cs"));
-        File.Copy(
-            Path.Join(sourceDirectory, "ManagedBreakFixture.cs"),
-            Path.Join(projectDirectory, "ManagedBreakFixture.cs"));
+        foreach (string sourcePath in GetFixtureSourceFiles(sourceDirectory))
+        {
+            File.Copy(sourcePath, Path.Join(projectDirectory, Path.GetFileName(sourcePath)));
+        }
         await File.WriteAllTextAsync(
             Path.Join(projectDirectory, "sourcelink.json"),
             JsonSerializer.Serialize(new
@@ -304,29 +295,8 @@ internal sealed class DebuggerSymbolFixtures : IAsyncDisposable
                     new XElement("TargetFramework", "net10.0")),
                 new XElement(
                     "ItemGroup",
-                    new XElement(
-                        "Compile",
-                        new XAttribute("Include", Path.Join(sourceDirectory, "Program.cs"))),
-                    new XElement(
-                        "Compile",
-                        new XAttribute(
-                            "Include",
-                            Path.Join(sourceDirectory, "DebuggerFixtureValue.cs"))),
-                    new XElement(
-                        "Compile",
-                        new XAttribute(
-                            "Include",
-                            Path.Join(sourceDirectory, "DebuggerGenericFixture.cs"))),
-                    new XElement(
-                        "Compile",
-                        new XAttribute(
-                            "Include",
-                            Path.Join(sourceDirectory, "UnavailableLocalsFixture.cs"))),
-                    new XElement(
-                        "Compile",
-                        new XAttribute(
-                            "Include",
-                            Path.Join(sourceDirectory, "ManagedBreakFixture.cs"))))));
+                    GetFixtureSourceFiles(sourceDirectory).Select(static sourcePath => new XElement(
+                        "Compile", new XAttribute("Include", sourcePath))))));
         await File.WriteAllTextAsync(
             Path.Join(projectDirectory, $"{projectName}.csproj"),
             project.ToString(),
@@ -338,6 +308,9 @@ internal sealed class DebuggerSymbolFixtures : IAsyncDisposable
             "net10.0",
             $"{projectName}.dll");
     }
+
+    private static IEnumerable<string> GetFixtureSourceFiles(string sourceDirectory) =>
+        Directory.EnumerateFiles(sourceDirectory, "*.cs", SearchOption.TopDirectoryOnly).Order(StringComparer.Ordinal);
 
     private static Task WriteEntryAppHostProjectAsync(
         string repositoryRoot,

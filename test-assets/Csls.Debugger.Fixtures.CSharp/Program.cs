@@ -15,14 +15,14 @@ internal static class Program
     /// <returns>Zero when the expected local value remains live.</returns>
     internal static int Main(string[] arguments)
     {
-        if (arguments is ["--static-receiver"])
-        {
-            return DebuggerStaticReceiverFixture.Run(arguments);
-        }
-
         if (arguments is ["--unavailable-locals"])
         {
             return UnavailableLocalsFixture.Run(40, 84);
+        }
+
+        if (arguments is ["--static-receiver"])
+        {
+            return DebuggerStaticReceiverFixture.Run(arguments);
         }
 
         if (arguments is ["--managed-break"])
@@ -36,6 +36,7 @@ internal static class Program
         }
 
         int answer = int.Parse(arguments[1], CultureInfo.InvariantCulture);
+        DebuggerFixtureValue.InitializeStaticNumber(answer);
         var value = new DebuggerFixtureValue(answer);
         var genericValue = new DebuggerGenericFixture<int>(answer);
         var nestedGenericValue = new DebuggerGenericFixture<List<int>>([]);

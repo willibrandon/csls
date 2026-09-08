@@ -19,7 +19,6 @@ Namespace Global.Csls.Debugger.Fixtures.VisualBasic
         ''' <param name="number">The value returned by the debugger-visible method.</param>
         Friend Sub New(number As Integer)
             _number = number
-            s_number = number + 20
         End Sub
 
         ''' <summary>
@@ -37,6 +36,14 @@ Namespace Global.Csls.Debugger.Fixtures.VisualBasic
         Friend Shared Function ReadStaticNumber() As Integer
             Return s_number
         End Function
+
+        ''' <summary>
+        ''' Initializes shared storage before the fixture stops for inspection.
+        ''' </summary>
+        ''' <param name="number">The input supplied to the fixture entry point.</param>
+        Friend Shared Sub InitializeStaticNumber(number As Integer)
+            s_number = number + 20
+        End Sub
 
         ''' <summary>
         ''' Computes a stable result by executing target code.

@@ -28,3 +28,4 @@ CSLS0026 | CodeQuality | Error | Hidden visible fields explicitly distinguish ba
 CSLS0027 | CodeQuality | Error | Repeated string accumulation uses a string builder
 CSLS0028 | CodeQuality | Error | Asserted nullable locals use typed captures before unwrapping
 CSLS0029 | CodeQuality | Error | Captured exceptions use explicit guards before rethrowing
+CSLS0030 | CodeQuality | Error | Shared fields are written through static members

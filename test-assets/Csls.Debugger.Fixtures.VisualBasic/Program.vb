@@ -14,6 +14,7 @@ Friend Module Program
     ''' <returns>Zero when the expected local value remains live.</returns>
     Friend Function Main(arguments As String()) As Integer
         Dim answer As Integer = Integer.Parse(arguments(1), CultureInfo.InvariantCulture)
+        DebuggerFixtureValue.InitializeStaticNumber(answer)
         Dim value = New DebuggerFixtureValue(answer)
         Dim genericValue = New DebuggerGenericFixture(Of Integer)(answer)
         Dim nestedGenericValue = New DebuggerGenericFixture(Of List(Of Integer))(New List(Of Integer)())
