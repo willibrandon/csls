@@ -10,4 +10,5 @@ namespace Csls.EndToEndPerformance;
     PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase,
     WriteIndented = true)]
 [JsonSerializable(typeof(PerformanceReport))]
+[JsonSerializable(typeof(DebuggerPerformanceReport))]
 internal sealed partial class PerformanceReportJsonContext : JsonSerializerContext;

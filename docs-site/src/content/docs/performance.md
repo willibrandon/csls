@@ -48,6 +48,32 @@ report records the OS, CPU, memory limit, architecture, runtime, SDK, workspace,
 probe document, analyzer assemblies, commands, cache state, and iteration count. CI
 runs it on Windows, Linux, and macOS. Scheduled runs use three iterations.
 
+## Debugger measurements
+
+Run the debugger workload from a csls source checkout, passing the absolute path
+to your published csls installation:
+
+```console
+dotnet run --project benchmarks/Csls.EndToEndPerformance --configuration Release -- debugger --server /absolute/path/to/csls --fixture-source benchmarks/Csls.EndToEndPerformance/DebuggerPerformanceTarget.cs --iterations 3 --samples 5
+```
+
+Each iteration starts a fresh debugger, launches the compiled target, and stops at
+its source breakpoint. The workload measures thread and stack inspection, locals,
+array paging, expression evaluation, target output, and shutdown. It verifies the
+source location and values as part of each measured operation.
+
+Reports under `artifacts/end-to-end-performance` separate first and repeated
+requests and include executable hashes, machine and SDK details, resident memory,
+process-tree CPU time, and Windows/Linux private memory. Resource snapshots include
+the debugger, target, and evaluator. Launch-to-breakpoint timing includes breakpoint
+setup.
+
+Use `--operation-budget-ms` to set the maximum median for each operation,
+`--timeout-seconds` to set the session deadline, and `--output` to select a new
+report path. A completed run that exceeds its budget retains the report and returns
+exit code 1. Compare runs with the same binaries, build configuration, sampling
+options, and machine conditions.
+
 ## Native AOT size
 
 Each runtime package enables Native AOT compiler statistics for the `csls` and
