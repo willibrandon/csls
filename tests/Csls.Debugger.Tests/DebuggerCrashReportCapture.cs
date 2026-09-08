@@ -1,7 +1,10 @@
+using Microsoft.Diagnostics.NETCore.Client;
+using System.Globalization;
+
 namespace Csls.Debugger.Tests;
 
 /// <summary>
-/// Retains runtime crash reports and optional minidumps from test-owned Unix processes.
+/// Retains runtime crash reports and optional memory dumps from test-owned Unix processes.
 /// </summary>
 internal sealed class DebuggerCrashReportCapture : IAsyncDisposable
 {
@@ -11,8 +14,8 @@ internal sealed class DebuggerCrashReportCapture : IAsyncDisposable
     /// Creates an isolated report destination and child-process runtime configuration.
     /// </summary>
     /// <param name="testContext">The test that owns the processes and retained reports.</param>
-    /// <param name="captureMemory">Whether to retain a minidump alongside each runtime crash report.</param>
-    internal DebuggerCrashReportCapture(TestContext testContext, bool captureMemory = false)
+    /// <param name="dumpType">The optional memory-dump type retained alongside each runtime crash report.</param>
+    internal DebuggerCrashReportCapture(TestContext testContext, DumpType? dumpType = null)
     {
         _testContext = testContext;
         ArtifactDirectory = Path.Join(DebuggerTestEnvironment.FindRepositoryRoot(), "artifacts", "test-results",
@@ -23,9 +26,9 @@ internal sealed class DebuggerCrashReportCapture : IAsyncDisposable
         {
             variables["DOTNET_DbgEnableMiniDump"] = "1";
             variables["DOTNET_EnableCrashReport"] = "1";
-            variables["DOTNET_EnableCrashReportOnly"] = captureMemory ? "0" : "1";
-            variables["DOTNET_DbgMiniDumpType"] = "1";
-            variables["DOTNET_DbgMiniDumpName"] = Path.Join(DirectoryPath, captureMemory ? "process-%p.dmp" : "process-%p");
+            variables["DOTNET_EnableCrashReportOnly"] = dumpType.HasValue ? "0" : "1";
+            variables["DOTNET_DbgMiniDumpType"] = ((int)(dumpType ?? DumpType.Normal)).ToString(CultureInfo.InvariantCulture);
+            variables["DOTNET_DbgMiniDumpName"] = Path.Join(DirectoryPath, dumpType.HasValue ? "process-%p.dmp" : "process-%p");
         }
 
         Variables = variables;

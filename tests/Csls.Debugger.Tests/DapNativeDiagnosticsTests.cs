@@ -4,6 +4,7 @@ using Csls.Debugger.Dump;
 using Microsoft.Diagnostics.NETCore.Client;
 using Microsoft.Diagnostics.Runtime;
 using System.Diagnostics;
+using System.Globalization;
 using System.Runtime.CompilerServices;
 using System.Runtime.Versioning;
 using System.Text.Json;
@@ -48,7 +49,7 @@ public sealed class DapNativeDiagnosticsTests : DapTestContext
     [Timeout(30000, CooperativeCancellation = true)]
     public async Task NativeCrashReportContainsTargetStack(bool captureMemory)
     {
-        var capture = new DebuggerCrashReportCapture(TestContext, captureMemory);
+        var capture = new DebuggerCrashReportCapture(TestContext, captureMemory ? DumpType.Normal : null);
         int processId;
         string reportName;
         await using (capture.ConfigureAwait(false))
@@ -92,6 +93,56 @@ public sealed class DapNativeDiagnosticsTests : DapTestContext
             using var target = DataTarget.LoadDump(dump, new DataTargetOptions { SymbolPaths = [] });
             Assert.AreEqual(processId, DumpProcessIdentity.Read(target.DataReader, dump, TestContext.CancellationToken));
             _ = Assert.ContainsSingle(target.ClrVersions);
+        }
+    }
+
+    /// <summary>
+    /// Retains private native allocations at a fatal target exit and cleans up the temporary capture directory.
+    /// </summary>
+    [TestMethod]
+    [OSCondition(OperatingSystems.Linux | OperatingSystems.OSX)]
+    [Timeout(30000, CooperativeCancellation = true)]
+    public async Task HeapCrashCapturePreservesPrivateNativeMemory()
+    {
+        var capture = new DebuggerCrashReportCapture(TestContext, DumpType.WithHeap);
+        int processId;
+        ulong address;
+        await using (capture.ConfigureAwait(false))
+        {
+            var startInfo = new ProcessStartInfo(Environment.GetEnvironmentVariable("DOTNET_HOST_PATH") ?? "dotnet");
+            startInfo.ArgumentList.Add(ResolveTestProcessHost());
+            startInfo.ArgumentList.Add("--debugger-native-memory-crash-fixture");
+            foreach ((string name, string? value) in capture.Variables)
+            {
+                startInfo.Environment[name] = value;
+            }
+
+            (processId, int exitCode, string output, string error) = await DebuggerTestProcess.RunWithIdentityAsync(
+                startInfo, TestContext.CancellationToken).ConfigureAwait(false);
+            Assert.AreNotEqual(0, exitCode, output + error);
+            Assert.Contains("native-memory-crash", error);
+            const string AddressPrefix = "native-memory-ready:";
+            string announcement = Assert.ContainsSingle(output.Split('\n', StringSplitOptions.TrimEntries)
+                .Where(line => line.StartsWith(AddressPrefix, StringComparison.Ordinal)));
+            address = ulong.Parse(announcement.AsSpan(AddressPrefix.Length), NumberStyles.HexNumber,
+                CultureInfo.InvariantCulture);
+            Assert.IsGreaterThan(0UL, address);
+            Assert.HasCount(2, Directory.GetFiles(capture.DirectoryPath));
+        }
+
+        Assert.IsFalse(Directory.Exists(capture.DirectoryPath));
+        string dump = Path.Join(capture.ArtifactDirectory, $"process-{processId}.dmp");
+        string[] retained = Directory.GetFiles(capture.ArtifactDirectory);
+        Assert.HasCount(2, retained);
+        Assert.Contains(dump, retained);
+        Assert.Contains(dump + ".crashreport.json", retained);
+        using var target = DataTarget.LoadDump(dump, new DataTargetOptions { SymbolPaths = [] });
+        Assert.AreEqual(processId, DumpProcessIdentity.Read(target.DataReader, dump, TestContext.CancellationToken));
+        byte[] contents = new byte[4096];
+        foreach (ulong offset in new ulong[] { 0, 512 * 1024, 1024 * 1024 - 4096 })
+        {
+            Assert.AreEqual(contents.Length, target.DataReader.Read(checked(address + offset), contents));
+            Assert.AreEqual(-1, contents.AsSpan().IndexOfAnyExcept((byte)0x5a), $"Native allocation offset {offset}.");
         }
     }
 

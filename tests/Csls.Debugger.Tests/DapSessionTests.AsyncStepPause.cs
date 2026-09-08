@@ -1,3 +1,4 @@
+using Microsoft.Diagnostics.NETCore.Client;
 using System.IO.Pipes;
 using System.Runtime.CompilerServices;
 using System.Text.Json;
@@ -31,7 +32,7 @@ public sealed partial class DapSessionTests
             PipeTransmissionMode.Byte, PipeOptions.Asynchronous | PipeOptions.CurrentUserOnly);
         var connections = Task.WhenAll(selected.WaitForConnectionAsync(TestContext.CancellationToken),
             competing.WaitForConnectionAsync(TestContext.CancellationToken));
-        var crashReports = new DebuggerCrashReportCapture(TestContext, captureMemory: true);
+        var crashReports = new DebuggerCrashReportCapture(TestContext, DumpType.Normal);
         await using ConfiguredAsyncDisposable reportDisposal = crashReports.ConfigureAwait(false);
         DapTestClient client = await DapTestClient.CreateAsync(TestContext.CancellationToken,
             environment: crashReports.Variables).ConfigureAwait(false);

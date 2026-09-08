@@ -47,6 +47,11 @@ if (args is ["--debugger-stack-overflow-fixture"])
     return DebuggerDeepStackFixture.RunOverflow();
 }
 
+if (args is ["--debugger-native-memory-crash-fixture"])
+{
+    return DebuggerNativeMemoryCrashFixture.Run();
+}
+
 if (args is ["--debugger-dump-arrays", string dumpArrayPath])
 {
     return DebuggerDumpArrayFixture.Run(dumpArrayPath, "ready");
