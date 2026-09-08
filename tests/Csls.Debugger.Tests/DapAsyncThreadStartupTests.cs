@@ -127,8 +127,14 @@ public sealed class DapAsyncThreadStartupTests : DapTestContext
             int configured = await client.SendRequestAsync("configurationDone", WriteEmptyObject,
                 TestContext.CancellationToken).ConfigureAwait(false);
             JsonElement stopped = await ReadStopAsync(client, configured).ConfigureAwait(false);
+            string? reason = stopped.GetProperty("body").GetProperty("reason").GetString();
+            string evidence = reason == "breakpoint" ? string.Empty :
+                await DapStoppedThreadDiagnostics.CaptureAsync(client,
+                    stopped.GetProperty("body").GetProperty("threadId").GetInt32(), TestContext.CancellationToken)
+                    .ConfigureAwait(false);
+            Assert.AreEqual("breakpoint", reason, $"{stopped.GetRawText()}{Environment.NewLine}{evidence}");
+            // A target stopped during startup cannot complete the fixture's pipe connections.
             await connections.ConfigureAwait(false);
-            Assert.AreEqual("breakpoint", stopped.GetProperty("body").GetProperty("reason").GetString());
             int thread = stopped.GetProperty("body").GetProperty("threadId").GetInt32();
             Assert.IsGreaterThan(0, thread);
             int stack = await client.SendRequestAsync("stackTrace", writer =>
