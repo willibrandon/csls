@@ -48,6 +48,24 @@ internal static class EditorToolResolver
     }
 
     /// <summary>
+    /// Resolves a repository assembly built in the active test assembly's configuration.
+    /// </summary>
+    /// <param name="repositoryRoot">The absolute repository root.</param>
+    /// <param name="projectName">The project output directory name.</param>
+    /// <param name="assemblyFileName">The managed assembly file name.</param>
+    /// <returns>The absolute assembly path in the matching build configuration.</returns>
+    internal static string ResolveBuiltAssembly(
+        string repositoryRoot,
+        string projectName,
+        string assemblyFileName)
+    {
+        string pivot = Path.GetFileName(Path.TrimEndingDirectorySeparator(AppContext.BaseDirectory));
+        return Path.Join(
+            ResolveArtifactsRoot(repositoryRoot), "bin", projectName,
+            pivot, assemblyFileName);
+    }
+
+    /// <summary>
     /// Resolves a short unique control-socket directory for one real editor test.
     /// </summary>
     /// <param name="repositoryRoot">The absolute repository root.</param>
@@ -67,11 +85,9 @@ internal static class EditorToolResolver
     /// </summary>
     /// <param name="repositoryRoot">The absolute repository root.</param>
     /// <returns>The absolute managed launcher assembly path.</returns>
-    internal static string ResolveLauncher(string repositoryRoot) => Path.Join(
-        ResolveArtifactsRoot(repositoryRoot),
-        "bin",
+    internal static string ResolveLauncher(string repositoryRoot) => ResolveBuiltAssembly(
+        repositoryRoot,
         "Csls.App",
-        "debug",
         "csls.dll");
 
     /// <summary>
@@ -79,11 +95,9 @@ internal static class EditorToolResolver
     /// </summary>
     /// <param name="repositoryRoot">The absolute repository root.</param>
     /// <returns>The absolute managed worker assembly path.</returns>
-    internal static string ResolveServerWorker(string repositoryRoot) => Path.Join(
-        ResolveArtifactsRoot(repositoryRoot),
-        "bin",
+    internal static string ResolveServerWorker(string repositoryRoot) => ResolveBuiltAssembly(
+        repositoryRoot,
         "Csls.Worker",
-        "debug",
         "csls-worker.dll");
 
     private static string? FindRepositoryRoot(string startingPath)
@@ -284,7 +298,7 @@ internal static class EditorToolResolver
     }
 
     /// <summary>
-    /// Resolves the built C# process host used to provide deterministic child environments.
+    /// Resolves the Debug process fixture used to inspect source-level locals and arguments.
     /// </summary>
     /// <param name="repositoryRoot">The absolute repository root.</param>
     /// <returns>The absolute process host assembly path.</returns>
@@ -397,11 +411,9 @@ internal static class EditorToolResolver
         string? configuredPath = Environment.GetEnvironmentVariable(
             "CSLS_DEBUGGER_WORKER_TEST_PATH");
         string workerPath = string.IsNullOrWhiteSpace(configuredPath)
-            ? Path.Join(
-                ResolveArtifactsRoot(repositoryRoot),
-                "bin",
+            ? ResolveBuiltAssembly(
+                repositoryRoot,
                 "Csls.Debugger.Worker",
-                "debug",
                 "csls-debugger-worker.dll")
             : Path.GetFullPath(configuredPath);
         return File.Exists(workerPath)

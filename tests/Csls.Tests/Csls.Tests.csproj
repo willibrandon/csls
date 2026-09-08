@@ -67,4 +67,10 @@
     <ProjectReference Include="../../src/Csls.Worker/Csls.Worker.csproj"
                       ReferenceOutputAssembly="false" />
   </ItemGroup>
+
+  <ItemGroup>
+    <CslsDebuggerFixture Include="../Csls.TestProcessHost/Csls.TestProcessHost.csproj" />
+  </ItemGroup>
+
+  <Import Project="../../build/Csls.Debugger.TestFixtures.targets" />
 </Project>

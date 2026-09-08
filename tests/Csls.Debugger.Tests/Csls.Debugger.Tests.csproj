@@ -46,5 +46,12 @@
                       ReferenceOutputAssembly="false" />
   </ItemGroup>
 
+  <ItemGroup>
+    <CslsDebuggerFixture Include="../Csls.TestProcessHost/Csls.TestProcessHost.csproj" />
+    <CslsDebuggerFixture Include="../../test-assets/Csls.Debugger.Fixtures.CSharp/Csls.Debugger.Fixtures.CSharp.csproj" />
+    <CslsDebuggerFixture Include="../../test-assets/Csls.Debugger.Fixtures.VisualBasic/Csls.Debugger.Fixtures.VisualBasic.vbproj" />
+    <CslsDebuggerFixture Include="../../test-assets/Csls.Debugger.Fixtures.FSharp/Csls.Debugger.Fixtures.FSharp.fsproj" />
+  </ItemGroup>
+
   <Import Project="../../build/Csls.Debugger.TestFixtures.targets" />
 </Project>
