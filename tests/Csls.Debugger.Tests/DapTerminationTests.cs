@@ -32,8 +32,6 @@ public sealed class DapTerminationTests : DapTestContext
         string pipeName = $"csls-tree-{Guid.NewGuid():N}";
         using var firstRelease = new NamedPipeServerStream(pipeName, PipeDirection.Out, 2,
             PipeTransmissionMode.Byte, PipeOptions.Asynchronous);
-        using var replacementRelease = new NamedPipeServerStream(pipeName, PipeDirection.Out, 2,
-            PipeTransmissionMode.Byte, PipeOptions.Asynchronous);
         Task firstConnected = firstRelease.WaitForConnectionAsync(TestContext.CancellationToken);
         using Process sibling = StartSibling();
         var targets = new List<Process>();
@@ -56,7 +54,12 @@ public sealed class DapTerminationTests : DapTestContext
                 AssertEvent(stopped.RootElement, "stopped");
                 Assert.IsTrue(stopped.RootElement.GetProperty("body").GetProperty("allThreadsStopped").GetBoolean());
             }
-            if (restart)
+            // Each target must have exactly one available pipe instance when it connects.
+            using NamedPipeServerStream? replacementRelease = restart
+                ? new NamedPipeServerStream(pipeName, PipeDirection.Out, 2,
+                    PipeTransmissionMode.Byte, PipeOptions.Asynchronous)
+                : null;
+            if (replacementRelease is not null)
             {
                 Task replacementConnected = replacementRelease.WaitForConnectionAsync(TestContext.CancellationToken);
                 int sequence = await client.SendRequestAsync("restart", WriteEmptyObject, TestContext.CancellationToken)
