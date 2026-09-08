@@ -76,13 +76,16 @@ public sealed partial class DapSessionTests
     /// </summary>
     /// <param name="queuedCount">The number of inspection requests sent during target execution.</param>
     /// <param name="cancelMiddle">Whether to cancel and replace a middle request before draining.</param>
+    /// <param name="waitForDeadline">Whether the real evaluation deadline starts abort before requests are queued.</param>
     [TestMethod]
-    [DataRow(1, false)]
-    [DataRow(64, false)]
-    [DataRow(65, false)]
-    [DataRow(64, true)]
+    [DataRow(1, false, false)]
+    [DataRow(64, false, false)]
+    [DataRow(65, false, false)]
+    [DataRow(64, true, false)]
+    [DataRow(65, false, true)]
+    [DataRow(64, true, true)]
     [Timeout(30000, CooperativeCancellation = true)]
-    public async Task QueuedInspectionDrainsAfterEvaluationCancellation(int queuedCount, bool cancelMiddle)
+    public async Task QueuedInspectionDrainsAfterEvaluationCancellation(int queuedCount, bool cancelMiddle, bool waitForDeadline)
     {
         string waitPath = CreateResultsViewSignalPath();
         try
@@ -93,12 +96,17 @@ public sealed partial class DapSessionTests
             int evaluationSequence = await client.SendRequestAsync("evaluate", writer =>
             {
                 writer.WriteStartObject();
-                writer.WriteString("expression", "localObject.WaitForDebuggerCancellation()");
+                writer.WriteString("expression", "localObject.WaitForDebuggerAbortRelease()");
                 writer.WriteNumber("frameId", frame.GetProperty("id").GetInt32());
                 writer.WriteEndObject();
             }, TestContext.CancellationToken).ConfigureAwait(false);
             await client.WaitForTargetSignalAsync(waitPath + ".evaluation", evaluationSequence,
                 TestContext.CancellationToken).ConfigureAwait(false);
+            if (waitForDeadline)
+            {
+                await client.WaitForTargetSignalAsync(waitPath + ".evaluation.aborting", evaluationSequence,
+                    TestContext.CancellationToken).ConfigureAwait(false);
+            }
             Queue<int> sequences = new();
             for (int index = 0; index < queuedCount; index++)
             {
@@ -129,7 +137,9 @@ public sealed partial class DapSessionTests
 
             int cancelSequence = await SendRequestCancellationAsync(client, evaluationSequence)
                 .ConfigureAwait(false);
-            await AssertCanceledTargetCodeOperationAsync(client, evaluationSequence, cancelSequence, "evaluate")
+            await AssertCanceledTargetCodeOperationAsync(client, evaluationSequence, cancelSequence, "evaluate",
+                cancellationAcknowledged: () => File.WriteAllTextAsync(waitPath + ".evaluation.release", "release",
+                    TestContext.CancellationToken))
                 .ConfigureAwait(false);
             while (sequences.TryDequeue(out int sequence))
             {
@@ -150,6 +160,8 @@ public sealed partial class DapSessionTests
         {
             File.Delete(waitPath);
             File.Delete(waitPath + ".evaluation");
+            File.Delete(waitPath + ".evaluation.aborting");
+            File.Delete(waitPath + ".evaluation.release");
         }
     }
 

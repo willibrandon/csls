@@ -447,7 +447,8 @@ public sealed partial class DapSessionTests
         DapTestClient client,
         int operationSequence,
         int cancelSequence,
-        string command)
+        string command,
+        Func<Task>? cancellationAcknowledged = null)
     {
         bool evaluationReceived = false;
         bool cancelReceived = false;
@@ -470,6 +471,10 @@ public sealed partial class DapSessionTests
             {
                 AssertResponse(root, cancelSequence, "cancel", success: true);
                 cancelReceived = true;
+                if (cancellationAcknowledged is not null)
+                {
+                    await cancellationAcknowledged().ConfigureAwait(false);
+                }
             }
             else if (requestSequence == operationSequence)
             {
