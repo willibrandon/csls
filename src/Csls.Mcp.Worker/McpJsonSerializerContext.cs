@@ -13,6 +13,7 @@ namespace Csls.Mcp.Worker;
     GenerationMode = JsonSourceGenerationMode.Metadata)]
 [JsonSerializable(typeof(McpWorkspaceSummary))]
 [JsonSerializable(typeof(McpDebugSessionInfo))]
+[JsonSerializable(typeof(McpDebugSessionsResult))]
 [JsonSerializable(typeof(DebugExpressionEvaluationOptions))]
 [JsonSerializable(typeof(McpDebugOutputEntry))]
 [JsonSerializable(typeof(McpDebugModuleInfo))]

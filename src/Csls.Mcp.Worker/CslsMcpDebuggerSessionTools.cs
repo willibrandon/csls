@@ -25,7 +25,7 @@ internal sealed class CslsMcpDebuggerSessionTools
     /// Lists debugger sessions owned by this MCP connection.
     /// </summary>
     /// <param name="cancellationToken">The MCP request cancellation token.</param>
-    /// <returns>The ordered current debugger-session list.</returns>
+    /// <returns>The structured result containing the ordered current debugger sessions.</returns>
     [McpServerTool(
         Name = "debug_sessions_list",
         Title = "List .NET debugger sessions",
@@ -33,11 +33,13 @@ internal sealed class CslsMcpDebuggerSessionTools
         Idempotent = true,
         OpenWorld = false,
         ReadOnly = true,
-        UseStructuredContent = true)]
+        UseStructuredContent = true,
+        OutputSchemaType = typeof(McpDebugSessionsResult))]
     [Description("List only the explicit debugger sessions owned by this MCP connection.")]
-    public Task<IReadOnlyList<McpDebugSessionInfo>> ListAsync(
+    public Task<ModelContextProtocol.Protocol.CallToolResult> ListAsync(
         CancellationToken cancellationToken) =>
-        _broker.ListAsync(cancellationToken);
+        McpDebuggerToolResult.RunAsync(async () =>
+            new McpDebugSessionsResult(await _broker.ListAsync(cancellationToken).ConfigureAwait(false)));
 
     /// <summary>
     /// Gets current lifecycle state for one explicit debugger session.

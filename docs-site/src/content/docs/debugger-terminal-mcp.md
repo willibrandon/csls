@@ -68,15 +68,16 @@ source. The source pane title identifies unverified local files and retrieved so
 
 ## MCP session selection
 
-The `csls-mcp` package supervises one isolated debugger worker per target. Every result
-contains an opaque `debugSession`; stopped-state operations also require the exact
+The `csls-mcp` package supervises one isolated debugger worker per target. Session-specific
+results contain an opaque `debugSession`; stopped-state operations also require the exact
 `stopGeneration`. Each request selects its debugger target explicitly.
 
 Start a launch with `debug_session_start`, providing absolute `program` and
 `workingDirectory` paths. An optional paired `initialSourcePath` and `initialLine` sets
 a breakpoint before launch. Use `debug_session_attach` with one positive `processId`
-for an existing target. `debug_sessions_list` lists sessions owned by the current
-MCP connection. Use each session's identifier to inspect, restart, or end it.
+for an existing target. `debug_sessions_list` returns an object whose `sessions` array
+contains the sessions owned by the current MCP connection. Use each session's identifier
+to inspect, restart, or end it.
 
 Set `stopAtEntry: true` on `debug_session_start` to inspect the target at its entry
 statement. Use the returned stop generation for argument and stack inspection.

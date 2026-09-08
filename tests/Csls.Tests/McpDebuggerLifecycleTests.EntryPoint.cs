@@ -44,7 +44,9 @@ public sealed partial class McpDebuggerLifecycleTests
                 TestContext.CancellationToken).ConfigureAwait(false);
             JsonElement sessions = await CallAsync(mcp.Client, "debug_sessions_list", [], TestContext.CancellationToken)
                 .ConfigureAwait(false);
-            Assert.IsEmpty(sessions.EnumerateArray());
+            Assert.AreEqual(JsonValueKind.Object, sessions.ValueKind,
+                $"Negotiated MCP {mcp.Client.NegotiatedProtocolVersion}: {sessions.GetRawText()}");
+            Assert.IsEmpty(sessions.GetProperty("sessions").EnumerateArray());
             await File.WriteAllTextAsync(environmentFile, "VALUE=corrected", TestContext.CancellationToken)
                 .ConfigureAwait(false);
             arguments["environmentFilePath"] = ".env";

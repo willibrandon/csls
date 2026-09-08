@@ -91,6 +91,11 @@ public sealed partial class McpDebuggerLifecycleTests
         }
 
         AssertAnnotations(tools, "debug_sessions_list", true, false, true, false);
+        JsonElement sessionListSchema = tools.Single(static tool => tool.Name == "debug_sessions_list")
+            .ProtocolTool.OutputSchema ?? throw new AssertFailedException("The debugger session list omitted its schema.");
+        Assert.AreEqual("object", sessionListSchema.GetProperty("type").GetString());
+        Assert.AreEqual("array", sessionListSchema.GetProperty("properties").GetProperty("sessions")
+            .GetProperty("type").GetString());
         AssertAnnotations(tools, "debug_session_get", true, false, true, false);
         AssertAnnotations(tools, "debug_session_start", false, true, false, true);
         AssertAnnotations(tools, "debug_session_attach", false, true, false, true);

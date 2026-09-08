@@ -60,7 +60,8 @@ public sealed partial class McpDebuggerLifecycleTests
             "debug_sessions_list",
             [],
             cancellationToken).ConfigureAwait(false);
-        Assert.AreEqual(debugSession, listed[0].GetProperty("debugSession").GetString());
+        JsonElement listedSession = Assert.ContainsSingle(listed.GetProperty("sessions").EnumerateArray());
+        Assert.AreEqual(debugSession, listedSession.GetProperty("debugSession").GetString());
         JsonElement ended = await CallAsync(
             mcp.Client,
             "debug_session_end",
