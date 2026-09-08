@@ -49,14 +49,19 @@ public sealed partial class DebuggerSession
             {
                 _ = token;
                 CorDebugDebuggee managedDebuggee = GetStoppedManagedDebuggee();
-                if (plan.Root.Kind is DebugExpressionNodeKind.Invocation or
-                    DebugExpressionNodeKind.ObjectCreation)
+                ManagedPropertyEvaluation? property = null;
+                bool explicitCall = plan.Root.Kind is DebugExpressionNodeKind.Invocation or
+                    DebugExpressionNodeKind.ObjectCreation;
+                if (!explicitCall)
+                {
+                    result = managedDebuggee.PrepareEvaluation(frameId, plan, generation, out property);
+                }
+                if (explicitCall || property is not null)
                 {
                     if (!allowTargetCodeExecution)
                     {
                         throw new InvalidOperationException(
-                            "This caller is not authorized to execute target code during " +
-                            "expression evaluation.");
+                            "This expression requires target-code evaluation, which this caller has not authorized.");
                     }
 
                     evaluationDebuggee = managedDebuggee;
@@ -65,7 +70,8 @@ public sealed partial class DebuggerSession
                         functionEvaluation = managedDebuggee.BeginFunctionEvaluationAsync(
                             frameId,
                             plan,
-                            generation);
+                            generation,
+                            property);
                         _state = DebugSessionState.Running;
                     }
                     catch (Exception exception) when (
@@ -76,11 +82,6 @@ public sealed partial class DebuggerSession
                         throw new InvalidOperationException(reason, exception);
                     }
                 }
-                else
-                {
-                    result = managedDebuggee.Evaluate(frameId, plan, generation);
-                }
-
                 return ValueTask.CompletedTask;
             },
             cancellationToken).ConfigureAwait(false);

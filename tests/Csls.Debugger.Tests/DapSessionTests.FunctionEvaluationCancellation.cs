@@ -123,9 +123,12 @@ public sealed partial class DapSessionTests
     /// <summary>
     /// Cancels one running method evaluation and preserves the stopped target for later requests.
     /// </summary>
+    /// <param name="expression">The explicit method or implicit property to cancel after target execution begins.</param>
     [TestMethod]
+    [DataRow("localObject.WaitForDebuggerCancellation()")]
+    [DataRow("localObject.CancelableNumberProperty")]
     [Timeout(30000, CooperativeCancellation = true)]
-    public async Task ManagedFunctionEvaluationCancelsMethodAndRecovers()
+    public async Task ManagedFunctionEvaluationCancelsMethodAndRecovers(string expression)
     {
         string sourcePath = Path.Join(
             FindRepositoryRoot(),
@@ -202,7 +205,7 @@ public sealed partial class DapSessionTests
                     writer.WriteStartObject();
                     writer.WriteString(
                         "expression",
-                        "localObject.WaitForDebuggerCancellation()");
+                        expression);
                     writer.WriteNumber("frameId", frame.GetProperty("id").GetInt32());
                     writer.WriteString("context", "watch");
                     writer.WriteEndObject();

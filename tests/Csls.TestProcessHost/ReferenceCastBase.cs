@@ -16,6 +16,16 @@ internal class ReferenceCastBase
     internal int GetValue() => _value;
 
     /// <summary>
+    /// Evaluates the base declaration's nonvirtual property through its method body.
+    /// </summary>
+    internal int ValueProperty => GetValue();
+
+    /// <summary>
+    /// Provides a property slot for runtime dispatch through an explicit base cast.
+    /// </summary>
+    internal virtual int VirtualValueProperty => _value + 100;
+
+    /// <summary>
     /// Provides a virtual dispatch slot independently of the hidden method.
     /// </summary>
     internal virtual int GetVirtualValue() => _value + 100;

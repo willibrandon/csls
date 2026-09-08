@@ -44,9 +44,23 @@ public sealed partial class DebuggerSession
             },
             cancellationToken).ConfigureAwait(false);
 
+        if (targetExpression is null)
+        {
+            DebugExpressionPlan valuePlan = await CompileExpressionAsync(language, value, cancellationToken).ConfigureAwait(false);
+            DebugVariableInfo? assigned = null;
+            await _actor.InvokeAsync(token =>
+            {
+                token.ThrowIfCancellationRequested();
+                assigned = GetAssignmentDebuggee(generation).SetRetainedVariable(
+                    frameId, variablesReference, name, valuePlan, generation, _variableMutations);
+                return ValueTask.CompletedTask;
+            }, cancellationToken).ConfigureAwait(false);
+            return new DebugAssignmentResult(generation.Value, TargetCodeExecuted: false, assigned!);
+        }
+
         return await SetExpressionCoreAsync(
             frameId,
-            targetExpression!,
+            targetExpression,
             value,
             name,
             language,

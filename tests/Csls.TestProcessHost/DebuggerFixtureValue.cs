@@ -88,6 +88,33 @@ internal sealed class DebuggerFixtureValue
     public int MutatingNumberProperty => ++Number;
 
     /// <summary>
+    /// Returns this object after recording one getter execution in its numeric field.
+    /// </summary>
+    public DebuggerFixtureValue MutatingSelfProperty
+    {
+        get
+        {
+            Number++;
+            return this;
+        }
+    }
+
+    /// <summary>
+    /// Computes a tuple with property-specific names through target execution.
+    /// </summary>
+    public (int Next, string Caption) ComputedPairProperty => (Number + 1, Text);
+
+    /// <summary>
+    /// Throws from a property getter to verify supervised evaluation recovery.
+    /// </summary>
+    public int ThrowingNumberProperty => ThrowForDebugger();
+
+    /// <summary>
+    /// Signals property execution and waits for cooperative debugger cancellation.
+    /// </summary>
+    public int CancelableNumberProperty => WaitForDebuggerCancellation();
+
+    /// <summary>
     /// Returns the original numeric value and mutates its field in a finally handler.
     /// </summary>
     public int FinallyNumberProperty

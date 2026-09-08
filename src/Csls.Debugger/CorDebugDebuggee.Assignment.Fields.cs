@@ -39,19 +39,21 @@ internal sealed partial class CorDebugDebuggee
 
         string? evaluateName = ManagedExpressionName.CreateMember(receiver.Display.EvaluateName, node.Text!);
         return ManagedAssignmentTarget.TakeOwnership(
-            ResolveInstanceFieldValue(receiver, node.Text!, plan.Language), evaluateName);
+            ResolveInstanceMemberValue(receiver, node.Text!, plan.Language, out _, allowFieldBackedProperty: false), evaluateName);
     }
 
     private unsafe (
         nint Value,
         ManagedTupleCustomTypeInfo? TupleCustomTypeInfo,
         ManagedValueOrigin? Origin,
-        ManagedBoundType? DeclaredType) ResolveInstanceFieldValue(
+        ManagedBoundType? DeclaredType) ResolveInstanceMemberValue(
         ManagedExpressionValue receiver,
         string name,
         DebugExpressionLanguage language,
-        bool allowFieldBackedProperty = false)
+        out ManagedPropertyEvaluation? property,
+        bool allowFieldBackedProperty)
     {
+        property = null;
         nint runtimeValue = GetRuntimeValue(receiver);
         nint dereferenced = 0;
         nint instance = 0;
@@ -120,6 +122,11 @@ internal sealed partial class CorDebugDebuggee
                     if (selectedTypeReached && ResolveDeclaredFieldOrProperty(metadata, module, typeToken, name,
                         language, allowFieldBackedProperty) is { } member)
                     {
+                        if (member.Getter is { FieldToken: null } getter)
+                        {
+                            property = BindPropertyEvaluation(receiver, currentType, getter);
+                            return default;
+                        }
                         uint resolvedFieldToken = member.FieldToken;
                         FieldDefinition field = metadata.GetFieldDefinition(
                             MetadataTokens.FieldDefinitionHandle(
@@ -197,13 +204,28 @@ internal sealed partial class CorDebugDebuggee
             $"Instance field '{name}' is unavailable on the runtime type hierarchy.");
     }
 
-    private (uint FieldToken, bool IsProperty, ManagedTupleCustomTypeInfo? TupleCustomTypeInfo)? ResolveDeclaredFieldOrProperty(
+    private ManagedPropertyEvaluation BindPropertyEvaluation(
+        ManagedExpressionValue receiver, nint declaringType, ManagedPropertyGetter getter)
+    {
+        nint thread = GetThread(_values[receiver.RuntimeValueReference].ThreadId
+            ?? throw new InvalidOperationException("The property receiver has no stopped thread."));
+        try
+        {
+            return new ManagedPropertyEvaluation(receiver, _boundTypes.CaptureType(declaringType, thread), getter);
+        }
+        finally
+        {
+            _ = ComAbi.Release(thread);
+        }
+    }
+
+    private (uint FieldToken, bool IsProperty, ManagedTupleCustomTypeInfo? TupleCustomTypeInfo, ManagedPropertyGetter? Getter)? ResolveDeclaredFieldOrProperty(
         MetadataReader metadata, nint module, uint typeToken, string name, DebugExpressionLanguage language,
         bool allowFieldBackedProperty)
     {
         if (TryResolveDeclaredInstanceField(metadata, typeToken, name, language) is uint field)
         {
-            return (field, false, null);
+            return (field, false, null, null);
         }
         if (!allowFieldBackedProperty)
         {
@@ -212,7 +234,7 @@ internal sealed partial class CorDebugDebuggee
         CorDebugLoadedModule loaded = _sourceBreakpoints.FindModule(module)
             ?? throw new InvalidOperationException("The property receiver's module has unloaded.");
         return ManagedFieldGetterResolver.Resolve(module, metadata, typeToken, name, language, loaded.MetadataDeltas) is { } getter
-            ? (getter.FieldToken, true, getter.TupleCustomTypeInfo) : null;
+            ? (getter.FieldToken ?? 0, true, getter.TupleCustomTypeInfo, getter) : null;
     }
 
     private bool IsSelectedReceiverType(ManagedExpressionValue receiver, nint runtimeType)

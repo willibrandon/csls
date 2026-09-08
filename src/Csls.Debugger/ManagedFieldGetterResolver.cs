@@ -19,8 +19,8 @@ internal static class ManagedFieldGetterResolver
     /// <param name="name">The source-language property name.</param>
     /// <param name="language">The source-language identifier comparison policy.</param>
     /// <param name="metadataDeltas">The accepted metadata generations of this loaded module.</param>
-    /// <returns>The proven field and property tuple names, or null when no matching property is declared.</returns>
-    internal static (uint FieldToken, ManagedTupleCustomTypeInfo? TupleCustomTypeInfo)? Resolve(
+    /// <returns>The exact accessor and optional proven field, or null when no matching property is declared.</returns>
+    internal static ManagedPropertyGetter? Resolve(
         nint module, MetadataReader metadata, uint typeToken, string name,
         DebugExpressionLanguage language, IReadOnlyList<byte[]> metadataDeltas)
     {
@@ -39,28 +39,40 @@ internal static class ManagedFieldGetterResolver
         }
 
         MethodDefinitionHandle getter = metadata.GetPropertyDefinition(matches[0]).GetAccessors().Getter;
-        if (!getter.IsNil)
+        if (getter.IsNil)
         {
-            using var currentMetadata = new ManagedMetadataImage(metadata, metadataDeltas);
-            MethodDefinition method = currentMetadata.GetMethodDefinition(getter);
-            if ((method.Attributes & (MethodAttributes.Static | MethodAttributes.Abstract | MethodAttributes.Virtual)) == 0 &&
-                (method.ImplAttributes & (MethodImplAttributes.CodeTypeMask | MethodImplAttributes.ManagedMask |
-                    MethodImplAttributes.Synchronized)) == MethodImplAttributes.IL &&
-                CorDebugMethodBodyReader.Read(module, checked((uint)MetadataTokens.GetToken(getter)),
-                    ManagedFieldGetterDecoder.MaximumMethodBodyBytes, out uint locals) is byte[] body &&
-                ManagedFieldGetterDecoder.TryDecode(body, out int fieldToken, out int returnLocal) &&
-                MetadataTokens.EntityHandle(fieldToken) is { Kind: HandleKind.FieldDefinition } entity)
+            throw new InvalidOperationException($"Property '{name}' has no getter.");
+        }
+
+        using var currentMetadata = new ManagedMetadataImage(metadata, metadataDeltas);
+        MethodDefinition method = currentMetadata.GetMethodDefinition(getter);
+        BlobReader signature = currentMetadata.GetBlobReader(method.Signature);
+        SignatureHeader header = signature.ReadSignatureHeader();
+        if ((method.Attributes & MethodAttributes.Static) != 0 || header.Kind != SignatureKind.Method || !header.IsInstance || header.IsGeneric ||
+            header.HasExplicitThis || header.CallingConvention != SignatureCallingConvention.Default ||
+            signature.ReadCompressedInteger() != 0)
+        {
+            throw new InvalidOperationException($"Property '{name}' requires a parameterless instance getter.");
+        }
+
+        var resolved = new ManagedPropertyGetter(checked((uint)MetadataTokens.GetToken(getter)),
+            currentMetadata.GetString(method.Name), null, ManagedTupleElementNameReader.ReadAttribute(currentMetadata, matches[0]));
+        if ((method.Attributes & (MethodAttributes.Static | MethodAttributes.Abstract | MethodAttributes.Virtual)) == 0 &&
+            (method.ImplAttributes & (MethodImplAttributes.CodeTypeMask | MethodImplAttributes.ManagedMask |
+                MethodImplAttributes.Synchronized)) == MethodImplAttributes.IL &&
+            CorDebugMethodBodyReader.Read(module, checked((uint)MetadataTokens.GetToken(getter)),
+                ManagedFieldGetterDecoder.MaximumMethodBodyBytes, out uint locals) is byte[] body &&
+            ManagedFieldGetterDecoder.TryDecode(body, out int fieldToken, out int returnLocal) &&
+            MetadataTokens.EntityHandle(fieldToken) is { Kind: HandleKind.FieldDefinition } entity)
+        {
+            FieldDefinition field = metadata.GetFieldDefinition((FieldDefinitionHandle)entity);
+            if (field.GetDeclaringType() == typeHandle && (field.Attributes & FieldAttributes.Static) == 0 &&
+                ManagedFieldGetterSignature.Matches(currentMetadata, method, field, locals, returnLocal))
             {
-                FieldDefinition field = metadata.GetFieldDefinition((FieldDefinitionHandle)entity);
-                if (field.GetDeclaringType() == typeHandle && (field.Attributes & FieldAttributes.Static) == 0 &&
-                    ManagedFieldGetterSignature.Matches(currentMetadata, method, field, locals, returnLocal))
-                {
-                    return (checked((uint)fieldToken), ManagedTupleElementNameReader.ReadAttribute(
-                        currentMetadata, matches[0]));
-                }
+                return resolved with { FieldToken = checked((uint)fieldToken) };
             }
         }
 
-        throw new InvalidOperationException($"Property '{name}' requires target-code evaluation.");
+        return resolved;
     }
 }

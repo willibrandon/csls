@@ -189,6 +189,20 @@ internal sealed partial class CorDebugDebuggee
             target.Root,
             generation,
             targetExpression);
+        return AssignResolvedValue(frame, destination, source, resultName, generation,
+            language, sourceIsContextualLiteral, mutations);
+    }
+
+    private DebugVariableInfo AssignResolvedValue(
+        ManagedFrameHandle frame,
+        ManagedAssignmentTarget destination,
+        ManagedExpressionValue source,
+        string resultName,
+        DebugStopGeneration generation,
+        DebugExpressionLanguage language,
+        bool sourceIsContextualLiteral,
+        ManagedVariableMutationState mutations)
+    {
         if (destination.Origin is null)
         {
             throw new InvalidOperationException("The assignment has no recoverable physical storage.");

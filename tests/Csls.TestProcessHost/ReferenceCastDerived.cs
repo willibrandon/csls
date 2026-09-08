@@ -24,6 +24,16 @@ internal sealed class ReferenceCastDerived : ReferenceCastBase
     internal new int GetValue() => _value;
 
     /// <summary>
+    /// Hides the base property and returns the derived declaration's storage.
+    /// </summary>
+    internal new int ValueProperty => GetValue();
+
+    /// <summary>
+    /// Dispatches base-typed property evaluation to the derived declaration.
+    /// </summary>
+    internal override int VirtualValueProperty => _value + 200;
+
+    /// <summary>
     /// Overrides the base virtual slot using derived-declaration storage.
     /// </summary>
     internal override int GetVirtualValue() => _value + 200;

@@ -36,6 +36,25 @@ internal sealed partial class CorDebugDebuggee
     }
 
     /// <summary>
+    /// Binds an expression once and identifies a root property that requires supervised execution.
+    /// </summary>
+    /// <param name="frameId">The session-local frame handle.</param>
+    /// <param name="plan">The validated source-language expression.</param>
+    /// <param name="generation">The stop generation that owns the frame.</param>
+    /// <param name="property">The bound root getter when target execution is required.</param>
+    /// <returns>The inspected result, or null when the bound getter requires execution.</returns>
+    internal DebugEvaluateResult? PrepareEvaluation(int frameId, DebugExpressionPlan plan,
+        DebugStopGeneration generation, out ManagedPropertyEvaluation? property)
+    {
+        ManagedFrameHandle frame = GetFrame(frameId, generation);
+        ManagedExpressionPlanValidator.Validate(plan, frame.ExpressionLanguage);
+        property = null;
+        return plan.Root.Kind == DebugExpressionNodeKind.MemberAccess
+            ? BindMember(frame, plan, plan.Root, generation, out property)?.ToResult()
+            : EvaluateNode(frame, plan, plan.Root, generation).ToResult();
+    }
+
+    /// <summary>
     /// Resolves a safe expression plan and requires a Boolean result.
     /// </summary>
     /// <param name="frameId">The session-local frame handle.</param>
@@ -148,8 +167,17 @@ internal sealed partial class CorDebugDebuggee
         ManagedFrameHandle frame,
         DebugExpressionPlan plan,
         DebugExpressionNode node,
-        DebugStopGeneration generation)
+        DebugStopGeneration generation) => BindMember(frame, plan, node, generation, out _)
+            ?? throw new InvalidOperationException($"Property '{node.Text}' requires target-code evaluation.");
+
+    private ManagedExpressionValue? BindMember(
+        ManagedFrameHandle frame,
+        DebugExpressionPlan plan,
+        DebugExpressionNode node,
+        DebugStopGeneration generation,
+        out ManagedPropertyEvaluation? property)
     {
+        property = null;
         if (TryResolveStaticReceiver(frame, node.Children[0], out string typeName))
         {
             return EvaluateStaticField(frame, typeName, node.Text!, generation);
@@ -159,8 +187,12 @@ internal sealed partial class CorDebugDebuggee
             plan,
             node.Children[0],
             generation);
-        (nint value, ManagedTupleCustomTypeInfo? tupleCustomTypeInfo, ManagedValueOrigin? origin, ManagedBoundType? declaredType) = ResolveInstanceFieldValue(
-            receiver, node.Text!, plan.Language, allowFieldBackedProperty: true);
+        (nint value, ManagedTupleCustomTypeInfo? tupleCustomTypeInfo, ManagedValueOrigin? origin, ManagedBoundType? declaredType) = ResolveInstanceMemberValue(
+            receiver, node.Text!, plan.Language, out property, allowFieldBackedProperty: true);
+        if (property is not null)
+        {
+            return null;
+        }
         try
         {
             return RetainExpressionValue(

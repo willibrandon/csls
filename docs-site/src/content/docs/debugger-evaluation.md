@@ -88,6 +88,13 @@ method when CoreCLR permits function evaluation at the selected frame. Explicit 
 loaded non-generic or closed generic runtime type, including nested generic and
 array type arguments.
 
+Evaluate an instance property directly, such as `customer.DisplayName`, to run its
+getter under `expressionEvaluationOptions.allowImplicitFuncEval`. Getter execution
+uses the same cancellation, deadline, and exception recovery as explicit calls.
+Results retain their declared tuple names and logical source frame. Use `setVariable`
+to assign primitive values or existing references to a returned object's fields.
+The assignment writes the retained object directly.
+
 Calls can select static methods, instance methods, and constructors added by Hot
 Reload to an existing type. The binder reads the current declarations and signatures,
 including subsequent updates, while the calling frame keeps its own method-version

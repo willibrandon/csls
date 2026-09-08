@@ -41,17 +41,19 @@ internal sealed partial class CorDebugDebuggee
         nint value,
         DebugStopGeneration generation,
         int threadId,
-        ManagedValueView view = ManagedValueView.Default)
+        ManagedValueView view = ManagedValueView.Default,
+        ManagedTupleCustomTypeInfo? tupleCustomTypeInfo = null,
+        int? frameId = null)
     {
         bool expandable = IsExpandable(value);
         ManagedValueHandle handle = RetainRuntimeValue(
             value,
             generation,
             evaluateName: null,
-            frameId: null,
+            frameId,
             threadId,
             view,
-            tupleCustomTypeInfo: null);
+            tupleCustomTypeInfo);
         return (
             handle.Id,
             expandable

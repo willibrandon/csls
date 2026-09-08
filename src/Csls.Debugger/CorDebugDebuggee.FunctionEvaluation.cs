@@ -43,11 +43,13 @@ internal sealed partial class CorDebugDebuggee
     /// <param name="frameId">The logical managed frame identifier for the visible stop.</param>
     /// <param name="plan">The validated invocation expression.</param>
     /// <param name="generation">The stop generation that owns the frame.</param>
+    /// <param name="property">The already-bound root property receiver and exact getter, when applicable.</param>
     /// <returns>The result completed by the matching CoreCLR evaluation callback.</returns>
     internal Task<ManagedFunctionEvaluationResult> BeginFunctionEvaluationAsync(
         int frameId,
         DebugExpressionPlan plan,
-        DebugStopGeneration generation)
+        DebugStopGeneration generation,
+        ManagedPropertyEvaluation? property = null)
     {
         _managedCallback.ThrowIfRuntimeFailed();
         if (_activeFunctionEvaluation is not null)
@@ -64,6 +66,18 @@ internal sealed partial class CorDebugDebuggee
         ManagedFrameHandle frame = GetFrame(frameId, generation);
         ManagedExpressionPlanValidator.Validate(plan, frame.ExpressionLanguage);
         DebugExpressionNode operation = plan.Root;
+        if (property is not null)
+        {
+            if (!_expressionEvaluationOptions.AllowImplicitFuncEval)
+            {
+                throw new InvalidOperationException("Automatic property evaluation is disabled by allowImplicitFuncEval.");
+            }
+            if (operation.Kind != DebugExpressionNodeKind.MemberAccess)
+            {
+                throw new InvalidDataException("A prepared property requires a member-access expression root.");
+            }
+            operation = operation with { Kind = DebugExpressionNodeKind.Invocation, Text = property.Getter.MethodName };
+        }
         bool materializesString = operation is
         {
             Kind: DebugExpressionNodeKind.Literal,
@@ -102,7 +116,7 @@ internal sealed partial class CorDebugDebuggee
             {
                 if (!constructsObject && !TryResolveStaticReceiver(frame, operation.Children[0], out _))
                 {
-                    receiver = EvaluateNode(frame, plan, operation.Children[0], generation);
+                    receiver = property?.Receiver ?? EvaluateNode(frame, plan, operation.Children[0], generation);
                 }
 
                 for (int index = 0; index < suppliedArguments.Length; index++)
@@ -168,7 +182,7 @@ internal sealed partial class CorDebugDebuggee
                     : receiverValue == 0
                         ? ResolveStaticFunction(operation.Children[0], operation.Text!, plan.Language, suppliedArguments, thread)
                         : ResolveInstanceFunction(dereferencedReceiver, operation.Text!, plan.Language, suppliedArguments, thread,
-                            receiver?.ExplicitReceiverType);
+                            property?.DeclaringType ?? receiver?.ExplicitReceiverType, property?.Getter.MethodToken);
                 function = binding.Function;
                 callTypeArguments = binding.TypeArguments;
                 declaredResultType = binding.DeclaredResultType;
@@ -198,6 +212,8 @@ internal sealed partial class CorDebugDebuggee
                 Function = function,
                 TypeArguments = callTypeArguments,
                 DeclaredResultType = declaredResultType,
+                ResultTupleCustomTypeInfo = property?.Getter.TupleCustomTypeInfo,
+                ResultFrameId = frame.Id,
                 Thread = thread,
                 Receiver = receiverHandle,
                 ConstructsObject = constructsObject,
@@ -402,7 +418,7 @@ internal sealed partial class CorDebugDebuggee
                 }
                 else
                 {
-                    ManagedValueDisplay display = FormatRuntimeValue(value);
+                    ManagedValueDisplay display = FormatRuntimeValue(value, isException ? null : active.ResultTupleCustomTypeInfo);
                     if (isException)
                     {
                         failure = new InvalidOperationException(
@@ -415,7 +431,9 @@ internal sealed partial class CorDebugDebuggee
                             value,
                             resultGeneration,
                             active.ThreadId,
-                            ManagedValueView.Default);
+                            ManagedValueView.Default,
+                            active.ResultTupleCustomTypeInfo,
+                            active.ResultFrameId);
 
                         result = new ManagedFunctionEvaluationResult(
                             new DebugEvaluateResult(

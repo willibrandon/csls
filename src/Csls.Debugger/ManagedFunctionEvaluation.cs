@@ -26,6 +26,16 @@ internal sealed class ManagedFunctionEvaluation
     internal ManagedBoundType? DeclaredResultType { get; init; }
 
     /// <summary>
+    /// Gets the property result's tuple names captured before the target executes.
+    /// </summary>
+    internal ManagedTupleCustomTypeInfo? ResultTupleCustomTypeInfo { get; init; }
+
+    /// <summary>
+    /// Gets the logical source frame used to bind assignments to returned object fields.
+    /// </summary>
+    internal int? ResultFrameId { get; init; }
+
+    /// <summary>
     /// Gets or initializes the owned ICorDebugThread pointer selected for evaluation.
     /// </summary>
     internal required nint Thread { get; init; }

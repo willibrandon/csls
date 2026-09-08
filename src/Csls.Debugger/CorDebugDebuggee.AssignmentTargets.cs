@@ -13,8 +13,8 @@ internal sealed partial class CorDebugDebuggee
     /// <param name="variablesReference">The generation-bound parent container.</param>
     /// <param name="name">The child name supplied by the debugger client.</param>
     /// <param name="generation">The current stopped generation.</param>
-    /// <returns>The owning frame and canonical source target expression.</returns>
-    internal (int FrameId, string Expression) GetVariableAssignmentTarget(
+    /// <returns>The owning frame and source expression, or null for a retained runtime child.</returns>
+    internal (int FrameId, string? Expression) GetVariableAssignmentTarget(
         int variablesReference,
         string name,
         DebugStopGeneration generation)
@@ -71,8 +71,12 @@ internal sealed partial class CorDebugDebuggee
                 $"Variable name '{name}' is ambiguous in container {variablesReference}.");
         }
 
-        string expression = matches[0].EvaluateName ?? throw new InvalidOperationException(
-            $"Variable '{name}' has no valid source expression and cannot be assigned.");
+        string? expression = matches[0].EvaluateName;
+        if (expression is null && scope is not null)
+        {
+            throw new InvalidOperationException(
+                $"Variable '{name}' has no valid source expression and cannot be assigned.");
+        }
         return (frame.Id, expression);
     }
 }
