@@ -1,6 +1,8 @@
 using Csls.Debugger.Contracts;
 using Csls.Debugger.Control;
+using Csls.Debugger.Dump;
 using Microsoft.Diagnostics.NETCore.Client;
+using Microsoft.Diagnostics.Runtime;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Runtime.Versioning;
@@ -36,37 +38,61 @@ public sealed class DapNativeDiagnosticsTests : DapTestContext
     }
 
     /// <summary>
-    /// Records a real target's fatal managed stack while leaving process memory out of the capture directory.
+    /// Records a real target's fatal managed stack and retains the requested crash artifacts after cleanup.
     /// </summary>
+    /// <param name="captureMemory">Whether the runtime also captures native thread contexts and stack memory.</param>
     [TestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
     [OSCondition(OperatingSystems.Linux | OperatingSystems.OSX)]
     [Timeout(30000, CooperativeCancellation = true)]
-    public async Task NativeCrashReportContainsTargetStack()
+    public async Task NativeCrashReportContainsTargetStack(bool captureMemory)
     {
-        var capture = new DebuggerCrashReportCapture(TestContext);
-        await using ConfiguredAsyncDisposable cleanup = capture.ConfigureAwait(false);
-        var startInfo = new ProcessStartInfo(Environment.GetEnvironmentVariable("DOTNET_HOST_PATH") ?? "dotnet");
-        startInfo.ArgumentList.Add(ResolveTestProcessHost());
-        startInfo.ArgumentList.Add("--debugger-stack-overflow-fixture");
-        foreach ((string name, string? value) in capture.Variables)
+        var capture = new DebuggerCrashReportCapture(TestContext, captureMemory);
+        int processId;
+        string reportName;
+        await using (capture.ConfigureAwait(false))
         {
-            startInfo.Environment[name] = value;
+            Assert.IsFalse(Directory.Exists(capture.ArtifactDirectory));
+            var startInfo = new ProcessStartInfo(Environment.GetEnvironmentVariable("DOTNET_HOST_PATH") ?? "dotnet");
+            startInfo.ArgumentList.Add(ResolveTestProcessHost());
+            startInfo.ArgumentList.Add("--debugger-stack-overflow-fixture");
+            foreach ((string name, string? value) in capture.Variables)
+            {
+                startInfo.Environment[name] = value;
+            }
+
+            (processId, int exitCode, string output, string error) = await DebuggerTestProcess.RunWithIdentityAsync(
+                startInfo, TestContext.CancellationToken).ConfigureAwait(false);
+            Assert.AreNotEqual(0, exitCode, output + error);
+            Assert.Contains("overflow-ready", output, error);
+            string[] artifacts = Directory.GetFiles(capture.DirectoryPath);
+            Assert.HasCount(captureMemory ? 2 : 1, artifacts, output + error);
+            reportName = $"process-{processId}" + (captureMemory ? ".dmp" : string.Empty) + ".crashreport.json";
+            string report = Assert.ContainsSingle(artifacts.Where(path => path.EndsWith(".crashreport.json", StringComparison.Ordinal)));
+            Assert.AreEqual(reportName, Path.GetFileName(report));
+            using FileStream stream = File.OpenRead(report);
+            using JsonDocument document = await JsonDocument.ParseAsync(stream,
+                cancellationToken: TestContext.CancellationToken).ConfigureAwait(false);
+            JsonElement[] crashed = [.. document.RootElement.GetProperty("payload").GetProperty("threads").EnumerateArray()
+                .Where(thread => thread.GetProperty("crashed").GetString() == "true")];
+            JsonElement thread = Assert.ContainsSingle(crashed);
+            Assert.Contains("DebuggerDeepStackFixture.Overflow", thread.GetProperty("stack_frames").GetRawText());
+            Assert.Contains("Stack overflow", error, StringComparison.OrdinalIgnoreCase);
         }
 
-        (int processId, int exitCode, string output, string error) = await DebuggerTestProcess.RunWithIdentityAsync(
-            startInfo, TestContext.CancellationToken).ConfigureAwait(false);
-        Assert.AreNotEqual(0, exitCode, output + error);
-        Assert.Contains("overflow-ready", output, error);
-        string report = Assert.ContainsSingle(Directory.GetFiles(capture.DirectoryPath));
-        Assert.AreEqual($"process-{processId}.crashreport.json", Path.GetFileName(report));
-        using FileStream stream = File.OpenRead(report);
-        using JsonDocument document = await JsonDocument.ParseAsync(stream,
-            cancellationToken: TestContext.CancellationToken).ConfigureAwait(false);
-        JsonElement[] crashed = [.. document.RootElement.GetProperty("payload").GetProperty("threads").EnumerateArray()
-            .Where(thread => thread.GetProperty("crashed").GetString() == "true")];
-        JsonElement thread = Assert.ContainsSingle(crashed);
-        Assert.Contains("DebuggerDeepStackFixture.Overflow", thread.GetProperty("stack_frames").GetRawText());
-        Assert.Contains("Stack overflow", error, StringComparison.OrdinalIgnoreCase);
+        Assert.IsFalse(Directory.Exists(capture.DirectoryPath));
+        string[] retained = Directory.GetFiles(capture.ArtifactDirectory);
+        Assert.HasCount(captureMemory ? 2 : 1, retained);
+        Assert.Contains(reportName, retained.Select(Path.GetFileName));
+        if (captureMemory)
+        {
+            string dump = Path.Join(capture.ArtifactDirectory, $"process-{processId}.dmp");
+            Assert.Contains(dump, retained);
+            using var target = DataTarget.LoadDump(dump, new DataTargetOptions { SymbolPaths = [] });
+            Assert.AreEqual(processId, DumpProcessIdentity.Read(target.DataReader, dump, TestContext.CancellationToken));
+            _ = Assert.ContainsSingle(target.ClrVersions);
+        }
     }
 
     /// <summary>

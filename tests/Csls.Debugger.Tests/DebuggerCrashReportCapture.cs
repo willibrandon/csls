@@ -1,7 +1,7 @@
 namespace Csls.Debugger.Tests;
 
 /// <summary>
-/// Retains runtime crash stacks from test-owned Unix processes without capturing their memory.
+/// Retains runtime crash reports and optional minidumps from test-owned Unix processes.
 /// </summary>
 internal sealed class DebuggerCrashReportCapture : IAsyncDisposable
 {
@@ -11,16 +11,21 @@ internal sealed class DebuggerCrashReportCapture : IAsyncDisposable
     /// Creates an isolated report destination and child-process runtime configuration.
     /// </summary>
     /// <param name="testContext">The test that owns the processes and retained reports.</param>
-    internal DebuggerCrashReportCapture(TestContext testContext)
+    /// <param name="captureMemory">Whether to retain a minidump alongside each runtime crash report.</param>
+    internal DebuggerCrashReportCapture(TestContext testContext, bool captureMemory = false)
     {
         _testContext = testContext;
+        ArtifactDirectory = Path.Join(DebuggerTestEnvironment.FindRepositoryRoot(), "artifacts", "test-results",
+            $"native-crash-{Guid.NewGuid():N}");
         DirectoryPath = Directory.CreateTempSubdirectory("csls-debugger-crash-report-").FullName;
         Dictionary<string, string?> variables = [];
         if (OperatingSystem.IsLinux() || OperatingSystem.IsMacOS())
         {
             variables["DOTNET_DbgEnableMiniDump"] = "1";
-            variables["DOTNET_EnableCrashReportOnly"] = "1";
-            variables["DOTNET_DbgMiniDumpName"] = Path.Join(DirectoryPath, "process-%p");
+            variables["DOTNET_EnableCrashReport"] = "1";
+            variables["DOTNET_EnableCrashReportOnly"] = captureMemory ? "0" : "1";
+            variables["DOTNET_DbgMiniDumpType"] = "1";
+            variables["DOTNET_DbgMiniDumpName"] = Path.Join(DirectoryPath, captureMemory ? "process-%p.dmp" : "process-%p");
         }
 
         Variables = variables;
@@ -30,6 +35,11 @@ internal sealed class DebuggerCrashReportCapture : IAsyncDisposable
     /// Gets the test-owned runtime report directory.
     /// </summary>
     internal string DirectoryPath { get; }
+
+    /// <summary>
+    /// Gets the unique retained-artifact directory created when a child produces crash evidence.
+    /// </summary>
+    internal string ArtifactDirectory { get; }
 
     /// <summary>
     /// Gets configuration applied only to processes started by this test.
@@ -44,14 +54,14 @@ internal sealed class DebuggerCrashReportCapture : IAsyncDisposable
     {
         try
         {
-            foreach (string report in Directory.EnumerateFiles(DirectoryPath, "*.crashreport.json"))
+            foreach (string report in Directory.EnumerateFiles(DirectoryPath).Where(path =>
+                path.EndsWith(".crashreport.json", StringComparison.Ordinal) || path.EndsWith(".dmp", StringComparison.Ordinal)))
             {
-                string results = Path.Join(DebuggerTestEnvironment.FindRepositoryRoot(), "artifacts", "test-results");
-                Directory.CreateDirectory(results);
-                string artifact = Path.Join(results, $"native-crash-{Guid.NewGuid():N}.crashreport.json");
+                Directory.CreateDirectory(ArtifactDirectory);
+                string artifact = Path.Join(ArtifactDirectory, Path.GetFileName(report));
                 File.Move(report, artifact);
                 _testContext.AddResultFile(artifact);
-                _testContext.WriteLine($"Runtime crash report retained at {artifact}.");
+                _testContext.WriteLine($"Runtime crash artifact retained at {artifact}.");
             }
         }
         finally

@@ -31,7 +31,7 @@ public sealed partial class DapSessionTests
             PipeTransmissionMode.Byte, PipeOptions.Asynchronous | PipeOptions.CurrentUserOnly);
         var connections = Task.WhenAll(selected.WaitForConnectionAsync(TestContext.CancellationToken),
             competing.WaitForConnectionAsync(TestContext.CancellationToken));
-        var crashReports = new DebuggerCrashReportCapture(TestContext);
+        var crashReports = new DebuggerCrashReportCapture(TestContext, captureMemory: true);
         await using ConfiguredAsyncDisposable reportDisposal = crashReports.ConfigureAwait(false);
         DapTestClient client = await DapTestClient.CreateAsync(TestContext.CancellationToken,
             environment: crashReports.Variables).ConfigureAwait(false);
