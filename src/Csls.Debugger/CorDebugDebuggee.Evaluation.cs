@@ -160,7 +160,7 @@ internal sealed partial class CorDebugDebuggee
             node.Children[0],
             generation);
         (nint value, ManagedTupleCustomTypeInfo? tupleCustomTypeInfo, ManagedValueOrigin? origin, ManagedBoundType? declaredType) = ResolveInstanceFieldValue(
-            receiver, node.Text!, plan.Language);
+            receiver, node.Text!, plan.Language, allowFieldBackedProperty: true);
         try
         {
             return RetainExpressionValue(

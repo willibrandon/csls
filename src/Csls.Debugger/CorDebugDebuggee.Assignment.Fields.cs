@@ -49,7 +49,8 @@ internal sealed partial class CorDebugDebuggee
         ManagedBoundType? DeclaredType) ResolveInstanceFieldValue(
         ManagedExpressionValue receiver,
         string name,
-        DebugExpressionLanguage language)
+        DebugExpressionLanguage language,
+        bool allowFieldBackedProperty = false)
     {
         nint runtimeValue = GetRuntimeValue(receiver);
         nint dereferenced = 0;
@@ -116,19 +117,16 @@ internal sealed partial class CorDebugDebuggee
                     using PEReader peReader = OpenRuntimeModule(module);
                     MetadataReader metadata = peReader.GetMetadataReader();
                     selectedTypeReached = selectedTypeReached || IsSelectedReceiverType(receiver, currentType);
-                    uint? fieldToken = selectedTypeReached ? TryResolveDeclaredInstanceField(
-                        metadata,
-                        typeToken,
-                        name,
-                        language) : null;
-                    if (fieldToken is uint resolvedFieldToken)
+                    if (selectedTypeReached && ResolveDeclaredFieldOrProperty(metadata, module, typeToken, name,
+                        language, allowFieldBackedProperty) is { } member)
                     {
+                        uint resolvedFieldToken = member.FieldToken;
                         FieldDefinition field = metadata.GetFieldDefinition(
                             MetadataTokens.FieldDefinitionHandle(
                                 checked((int)(resolvedFieldToken & 0x00FFFFFF))));
-                        ManagedTupleCustomTypeInfo? fieldTupleInfo = _tupleTypeShape.GetFieldCustomTypeInfo(
+                        ManagedTupleCustomTypeInfo? fieldTupleInfo = member.IsProperty ? member.TupleCustomTypeInfo : _tupleTypeShape.GetFieldCustomTypeInfo(
                             currentType, metadata, field, depth == 0 ? tupleCustomTypeInfo : null);
-                        ManagedValueOrigin? fieldOrigin = CreateFieldValueOrigin(
+                        ManagedValueOrigin? fieldOrigin = member.IsProperty ? null : CreateFieldValueOrigin(
                             origin, runtimeClass, resolvedFieldToken);
                         ManagedBoundType declaredType = ResolveFieldDeclaredType(receiver, currentType, module, resolvedFieldToken);
                         return (
@@ -197,6 +195,24 @@ internal sealed partial class CorDebugDebuggee
 
         throw new InvalidOperationException(
             $"Instance field '{name}' is unavailable on the runtime type hierarchy.");
+    }
+
+    private (uint FieldToken, bool IsProperty, ManagedTupleCustomTypeInfo? TupleCustomTypeInfo)? ResolveDeclaredFieldOrProperty(
+        MetadataReader metadata, nint module, uint typeToken, string name, DebugExpressionLanguage language,
+        bool allowFieldBackedProperty)
+    {
+        if (TryResolveDeclaredInstanceField(metadata, typeToken, name, language) is uint field)
+        {
+            return (field, false, null);
+        }
+        if (!allowFieldBackedProperty)
+        {
+            return null;
+        }
+        CorDebugLoadedModule loaded = _sourceBreakpoints.FindModule(module)
+            ?? throw new InvalidOperationException("The property receiver's module has unloaded.");
+        return ManagedFieldGetterResolver.Resolve(module, metadata, typeToken, name, language, loaded.MetadataDeltas) is { } getter
+            ? (getter.FieldToken, true, getter.TupleCustomTypeInfo) : null;
     }
 
     private bool IsSelectedReceiverType(ManagedExpressionValue receiver, nint runtimeType)

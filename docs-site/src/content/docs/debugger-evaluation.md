@@ -47,11 +47,17 @@ identity, then lowered to a bounded versioned plan consumed by the runtime engin
 The side-effect-free subset includes:
 
 - literals, locals, arguments, and `this` or `Me`;
-- instance fields, type-qualified static fields and constants, and managed array indexes;
+- instance fields, simple field-backed instance properties, type-qualified static fields and constants, and managed array indexes;
 - built-in unary, binary, comparison, and short-circuit Boolean operators;
 - conditional selection;
 - explicit built-in primitive conversions; and
 - language-valid checked integral constants and numeric widening used by assignment.
+
+For a simple nonvirtual getter that returns an instance field, csls validates the
+current method body and its storage signatures, then reads the field in the debugger
+host. These reads preserve the stop generation, existing string identity, and the
+property's declared tuple element names. Subsequent reads use Hot Reload's current
+getter body and metadata.
 
 C# casts, Visual Basic `CType` and predefined conversions, and F# numeric conversion
 functions lower to the same runtime operation. An unknown Portable PDB language receives

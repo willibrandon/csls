@@ -40,6 +40,72 @@ internal sealed class DebuggerFixtureValue
     public readonly string EvaluationSignalPath;
 
     /// <summary>
+    /// Gets the numeric field through a side-effect-free expression-bodied getter.
+    /// </summary>
+    public int NumberProperty => Number;
+
+    /// <summary>
+    /// Gets the numeric field through the compiler's debug return-local pattern.
+    /// </summary>
+    public int BlockNumberProperty
+    {
+        get
+        {
+            return Number;
+        }
+    }
+
+    /// <summary>
+    /// Gets the existing string reference through a side-effect-free getter.
+    /// </summary>
+    public string TextProperty => Text;
+
+    /// <summary>
+    /// Tests whether the getter result retains the exact original string object.
+    /// </summary>
+    /// <param name="value">The string supplied through the debugger's getter expression.</param>
+    /// <returns>True when the supplied reference is the original string field.</returns>
+    public bool IsOriginalText(string value) => ReferenceEquals(Text, value);
+
+    /// <summary>
+    /// Gets the tuple field through its declared element names.
+    /// </summary>
+    public (int Code, string Label) PairProperty => Pair;
+
+    /// <summary>
+    /// Gets the tuple through element names that differ from its backing field.
+    /// </summary>
+    public (int Number, string Text) RenamedPairProperty => Pair;
+
+    /// <summary>
+    /// Gets the tuple through an unnamed declaration.
+    /// </summary>
+    public (int, string) UnnamedPairProperty => Pair;
+
+    /// <summary>
+    /// Increments the numeric field before returning its changed value.
+    /// </summary>
+    public int MutatingNumberProperty => ++Number;
+
+    /// <summary>
+    /// Returns the original numeric value and mutates its field in a finally handler.
+    /// </summary>
+    public int FinallyNumberProperty
+    {
+        get
+        {
+            try
+            {
+                return Number;
+            }
+            finally
+            {
+                Number++;
+            }
+        }
+    }
+
+    /// <summary>
     /// Replaces the numeric field through ordinary target code when a fixture requires it.
     /// </summary>
     /// <param name="value">The replacement numeric value.</param>
