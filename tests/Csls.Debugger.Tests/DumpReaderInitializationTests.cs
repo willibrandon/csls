@@ -102,7 +102,8 @@ public sealed class DumpReaderInitializationTests : DapTestContext
         var options = new DataTargetOptions { SymbolPaths = [], UseLockFreeMemoryMapReader = lockFree };
         using (DataTarget target = DumpMachODataReader.Open(fixture.DumpPath, options, TestContext.CancellationToken))
         {
-            Assert.AreEqual(fixture.ProcessId, target.DataReader.ProcessId);
+            Assert.AreEqual(fixture.ProcessId,
+                DumpProcessIdentity.Read(target.DataReader, fixture.DumpPath, TestContext.CancellationToken));
             IThreadReader reader = Assert.IsInstanceOfType<IThreadReader>(target.DataReader);
             uint[] threads = [.. reader.EnumerateOSThreadIds()];
             Assert.IsNotEmpty(threads);
