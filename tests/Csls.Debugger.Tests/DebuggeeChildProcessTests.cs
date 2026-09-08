@@ -78,6 +78,62 @@ public sealed class DebuggeeChildProcessTests
     }
 
     /// <summary>
+    /// Preserves discovery when a process exits after its procfs stat reader has been acquired.
+    /// </summary>
+    [TestMethod]
+    [OSCondition(OperatingSystems.Linux)]
+    [Timeout(30000, CooperativeCancellation = true)]
+    public async Task LinuxProcessExitAfterStatOpenRetiresRecord()
+    {
+        using Process process = StartFixture("--wait-for-standard-input");
+        try
+        {
+            string path = $"/proc/{process.Id}/stat";
+            using (var live = new StreamReader(path))
+            {
+                Assert.AreEqual(Environment.ProcessId, DebuggeeChildProcesses.ReadLinuxParent(live, process.Id));
+            }
+            using var retired = new StreamReader(path);
+            process.StandardInput.Close();
+            await process.WaitForExitAsync(TestContext.CancellationToken).ConfigureAwait(false);
+            Assert.AreEqual(0, process.ExitCode);
+            Assert.IsNull(DebuggeeChildProcesses.ReadLinuxParent(retired, process.Id));
+            Assert.IsTrue(retired.BaseStream.CanRead);
+            Assert.IsEmpty(DebuggeeChildProcesses.GetIds(process.Id));
+        }
+        finally
+        {
+            await EndFixtureAsync(process).ConfigureAwait(false);
+        }
+    }
+
+    /// <summary>
+    /// Reports malformed process records instead of treating them as retired processes.
+    /// </summary>
+    /// <param name="record">The hostile process record written through a real file boundary.</param>
+    [TestMethod]
+    [DataRow("")]
+    [DataRow("123")]
+    [DataRow("123 (target) S")]
+    [DataRow("123 (target) S invalid 0")]
+    public void MalformedLinuxProcessRecordsRemainErrors(string record)
+    {
+        string path = Path.GetTempFileName();
+        try
+        {
+            File.WriteAllText(path, record);
+            using var reader = new StreamReader(path);
+            IOException failure = Assert.ThrowsExactly<IOException>(() => DebuggeeChildProcesses.ReadLinuxParent(reader, 123));
+            Assert.Contains("123", failure.Message);
+            Assert.IsTrue(reader.BaseStream.CanRead);
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
+    /// <summary>
     /// Rejects process identifiers that could select an operating-system process group.
     /// </summary>
     /// <param name="processId">The invalid parent identifier.</param>

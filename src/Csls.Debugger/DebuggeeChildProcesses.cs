@@ -77,35 +77,56 @@ internal static partial class DebuggeeChildProcesses
             {
                 continue;
             }
-            string stat;
             try
             {
-                stat = File.ReadAllText(Path.Join(directory, "stat"));
+                using var reader = new StreamReader(Path.Join(directory, "stat"));
+                if (ReadLinuxParent(reader, processId) == parentProcessId)
+                {
+                    children.Add(processId);
+                }
             }
             catch (IOException exception) when (exception is FileNotFoundException or DirectoryNotFoundException)
             {
                 continue;
             }
-            int nameEnd = stat.LastIndexOf(')');
-            ReadOnlySpan<char> fields = stat.AsSpan(nameEnd + 1).TrimStart();
-            int stateEnd = fields.IndexOf(' ');
-            if (nameEnd < 0 || stateEnd < 0)
-            {
-                throw new IOException($"The operating system returned an invalid process record for {processId}.");
-            }
-            fields = fields[(stateEnd + 1)..].TrimStart();
-            int parentEnd = fields.IndexOf(' ');
-            if (parentEnd < 0 || !int.TryParse(fields[..parentEnd], NumberStyles.None,
-                CultureInfo.InvariantCulture, out int parent))
-            {
-                throw new IOException($"The operating system returned an invalid parent for {processId}.");
-            }
-            if (parent == parentProcessId)
-            {
-                children.Add(processId);
-            }
         }
         return [.. children.Order()];
+    }
+
+    /// <summary>
+    /// Reads a parent identifier from an owned procfs reader, accounting for exit after the file was opened.
+    /// </summary>
+    /// <param name="reader">The caller-owned reader for a Linux process stat file.</param>
+    /// <param name="processId">The process identifier used in malformed-record diagnostics.</param>
+    /// <returns>The parent identifier, or null when the kernel has retired the process.</returns>
+    internal static int? ReadLinuxParent(StreamReader reader, int processId)
+    {
+        ArgumentNullException.ThrowIfNull(reader);
+        string stat;
+        try
+        {
+            stat = reader.ReadToEnd();
+        }
+        catch (IOException exception) when (exception.HResult == 3)
+        {
+            // Linux procfs returns ESRCH after its inode's task exits; .NET preserves the raw errno.
+            return null;
+        }
+        int nameEnd = stat.LastIndexOf(')');
+        ReadOnlySpan<char> fields = stat.AsSpan(nameEnd + 1).TrimStart();
+        int stateEnd = fields.IndexOf(' ');
+        if (nameEnd < 0 || stateEnd < 0)
+        {
+            throw new IOException($"The operating system returned an invalid process record for {processId}.");
+        }
+        fields = fields[(stateEnd + 1)..].TrimStart();
+        int parentEnd = fields.IndexOf(' ');
+        if (parentEnd < 0 || !int.TryParse(fields[..parentEnd], NumberStyles.None,
+            CultureInfo.InvariantCulture, out int parent))
+        {
+            throw new IOException($"The operating system returned an invalid parent for {processId}.");
+        }
+        return parent;
     }
 
     [SupportedOSPlatform("macos")]
