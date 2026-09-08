@@ -72,6 +72,56 @@ internal static class DebuggerProcessTreeFixture
         }
     }
 
+    /// <summary>
+    /// Transfers a live child's ownership to the test before exiting with the child's inherited output handles open.
+    /// </summary>
+    internal static async Task<int> RunInheritedOutputRootAsync(string rootPipe, string childPipe)
+    {
+        using var control = new NamedPipeClientStream(".", rootPipe, PipeDirection.InOut);
+        await control.ConnectAsync().ConfigureAwait(false);
+        var start = new ProcessStartInfo(Environment.ProcessPath
+            ?? throw new InvalidOperationException("The fixture host is unavailable."))
+        { UseShellExecute = false };
+        start.ArgumentList.Add(typeof(DebuggerProcessTreeFixture).Assembly.Location);
+        start.ArgumentList.Add("--debugger-inherited-output-child");
+        start.ArgumentList.Add(childPipe);
+        using Process child = Process.Start(start) ?? throw new InvalidOperationException("The output owner did not start.");
+        bool transferred = false;
+        try
+        {
+            using var identities = new StreamWriter(control, leaveOpen: true) { AutoFlush = true };
+            await identities.WriteLineAsync(string.Create(CultureInfo.InvariantCulture,
+                $"{Environment.ProcessId},{child.Id}")).ConfigureAwait(false);
+            byte[] release = new byte[1];
+            await control.ReadExactlyAsync(release).ConfigureAwait(false);
+            transferred = true;
+            await Console.Out.WriteLineAsync(rootPipe).ConfigureAwait(false);
+            await Console.Error.WriteLineAsync(rootPipe).ConfigureAwait(false);
+            return 0;
+        }
+        finally
+        {
+            if (!transferred)
+            {
+                await EndChildAsync(child).ConfigureAwait(false);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Retains the inherited standard streams until the owning test releases its independent pipe.
+    /// </summary>
+    internal static async Task<int> RunInheritedOutputChildAsync(string pipeName)
+    {
+        using var release = new NamedPipeClientStream(".", pipeName, PipeDirection.In);
+        await release.ConnectAsync().ConfigureAwait(false);
+        await Console.Out.WriteLineAsync(pipeName).ConfigureAwait(false);
+        await Console.Error.WriteLineAsync(pipeName).ConfigureAwait(false);
+        byte[] signal = new byte[1];
+        await release.ReadExactlyAsync(signal).ConfigureAwait(false);
+        return 0;
+    }
+
     private static Process StartChild(string kind)
     {
         var startInfo = new ProcessStartInfo(Environment.ProcessPath

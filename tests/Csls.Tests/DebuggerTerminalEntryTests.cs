@@ -2,6 +2,9 @@ using Hex1b;
 using Hex1b.Automation;
 using Hex1b.Input;
 using Hex1b.Layout;
+using Microsoft.CodeAnalysis.CSharp;
+using Microsoft.CodeAnalysis.CSharp.Syntax;
+using System.Globalization;
 using System.Runtime.CompilerServices;
 
 namespace Csls.Tests;
@@ -82,6 +85,15 @@ public sealed class DebuggerTerminalEntryTests
     {
         string repositoryRoot = EditorToolResolver.FindRepositoryRoot();
         string artifactsRoot = EditorToolResolver.ResolveArtifactsRoot(repositoryRoot);
+        string originalSource = await File.ReadAllTextAsync(Path.Join(repositoryRoot,
+            "tests", "Csls.TestProcessHost", "Program.cs"), TestContext.CancellationToken).ConfigureAwait(false);
+        CompilationUnitSyntax syntax = CSharpSyntaxTree.ParseText(originalSource,
+            cancellationToken: TestContext.CancellationToken).GetCompilationUnitRoot(TestContext.CancellationToken);
+        GlobalStatementSyntax firstStatement = syntax.Members.OfType<GlobalStatementSyntax>().First();
+        int entryLine = firstStatement.GetFirstToken().GetLocation().GetLineSpan().StartLinePosition.Line + 1;
+        string entryText = (await syntax.SyntaxTree.GetTextAsync(TestContext.CancellationToken).ConfigureAwait(false))
+            .Lines[entryLine - 1].ToString().Trim();
+        string visibleEntryText = entryText[..Math.Min(entryText.Length, 32)];
         const int width = 140;
         const int height = 35;
         var environment = new Dictionary<string, string>(StringComparer.Ordinal)
@@ -126,11 +138,15 @@ public sealed class DebuggerTerminalEntryTests
                 Assert.Contains("Source", sourceText);
                 if (emptySource)
                 {
-                    Assert.DoesNotContain("--unix-wait-status-fixture", sourceText);
+                    Assert.DoesNotContain(visibleEntryText, sourceText);
                 }
                 else
                 {
-                    Assert.Contains("--unix-wait-status-fixture", sourceText);
+                    string selectedLine = Assert.ContainsSingle(sourceText.Split('\n')
+                        .Where(line => line.StartsWith("│>", StringComparison.Ordinal)));
+                    string expectedPrefix = string.Create(CultureInfo.InvariantCulture,
+                        $"│>   {entryLine,5}  {visibleEntryText}");
+                    Assert.StartsWith(expectedPrefix, selectedLine);
                 }
 
                 if (mappedSource is not null)

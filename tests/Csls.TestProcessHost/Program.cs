@@ -20,6 +20,16 @@ if (args is ["--debugger-process-tree-child", string processTreeKind])
     return await DebuggerProcessTreeFixture.RunChildAsync(processTreeKind).ConfigureAwait(false);
 }
 
+if (args is ["--debugger-inherited-output-root", string rootOutputPipe, string childOutputPipe])
+{
+    return await DebuggerProcessTreeFixture.RunInheritedOutputRootAsync(rootOutputPipe, childOutputPipe).ConfigureAwait(false);
+}
+
+if (args is ["--debugger-inherited-output-child", string inheritedOutputPipe])
+{
+    return await DebuggerProcessTreeFixture.RunInheritedOutputChildAsync(inheritedOutputPipe).ConfigureAwait(false);
+}
+
 if (args is ["--debugger-native-authorization-fixture", string nativeDebuggerPid])
 {
     return DebuggerNativeAuthorizationFixture.Run(int.Parse(nativeDebuggerPid, CultureInfo.InvariantCulture));
