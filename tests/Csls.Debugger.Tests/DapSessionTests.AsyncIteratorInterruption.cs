@@ -37,7 +37,10 @@ public sealed partial class DapSessionTests
         using var pipe = new NamedPipeServerStream(pipeName, PipeDirection.InOut, 1,
             PipeTransmissionMode.Byte, PipeOptions.Asynchronous | PipeOptions.CurrentUserOnly);
         Task connection = pipe.WaitForConnectionAsync(TestContext.CancellationToken);
-        DapTestClient client = await DapTestClient.CreateAsync(TestContext.CancellationToken).ConfigureAwait(false);
+        var crashReports = new DebuggerCrashReportCapture(TestContext, captureMemory: true);
+        await using ConfiguredAsyncDisposable reportDisposal = crashReports.ConfigureAwait(false);
+        DapTestClient client = await DapTestClient.CreateAsync(TestContext.CancellationToken,
+            environment: crashReports.Variables).ConfigureAwait(false);
         await using ConfiguredAsyncDisposable disposal = client.ConfigureAwait(false);
         using DapTestCancellationCapture cancellationLog = CaptureProtocolOnCancellation(client);
         int initialThread = await LaunchToSourceBreakpointAsync(client, sourcePath, awaitLine,
