@@ -44,9 +44,9 @@ internal sealed class SourceBreakpointDefinition : IManagedBreakpointDefinition
     internal string? ValidationMessage { get; init; }
 
     /// <summary>
-    /// Gets source-verification failures keyed by the loaded module that rejected this breakpoint.
+    /// Gets source-verification and runtime-binding failures keyed by the loaded module.
     /// </summary>
-    internal Dictionary<int, string> SourceValidationFailures { get; } = [];
+    internal Dictionary<int, string> BindingFailures { get; } = [];
 
     /// <summary>
     /// Gets or sets the resolved one-based source line.
@@ -69,7 +69,7 @@ internal sealed class SourceBreakpointDefinition : IManagedBreakpointDefinition
         ResolvedLine ?? RequestedLine,
         ResolvedColumn ?? RequestedColumn,
         ValidationMessage ?? (ResolvedLine is null
-            ? SourceValidationFailures.Values.FirstOrDefault() ??
+            ? BindingFailures.Values.FirstOrDefault() ??
                 "The breakpoint is pending until a matching module and debug symbols are loaded."
             : null),
         Condition,

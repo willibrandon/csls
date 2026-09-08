@@ -57,4 +57,12 @@ internal sealed partial class CorDebugManagedCallback
         return await _breakpointReached(managedThreadId, hit, cancellationToken)
             .ConfigureAwait(false);
     }
+
+    private async ValueTask<bool> HandleBreakpointSetErrorAsync(
+        nint breakpoint,
+        CancellationToken cancellationToken)
+    {
+        await _sourceBreakpoints.RejectBindingAsync(breakpoint, cancellationToken).ConfigureAwait(false);
+        return true;
+    }
 }

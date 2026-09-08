@@ -46,7 +46,7 @@ internal sealed partial class SourceBreakpointManager
         foreach (SourceBreakpointDefinition definition in definitions)
         {
             string? previousMessage = definition.ToInfo().Message;
-            _ = definition.SourceValidationFailures.Remove(module.Id);
+            _ = definition.BindingFailures.Remove(module.Id);
             if (definition.ValidationMessage is not null)
             {
                 continue;
@@ -59,7 +59,7 @@ internal sealed partial class SourceBreakpointManager
 
             if (sourceFailures.TryGetValue(definition.SourcePath, out string? failure))
             {
-                definition.SourceValidationFailures[module.Id] = failure;
+                definition.BindingFailures[module.Id] = failure;
                 if (notifyChanges && definition.ResolvedLine is null &&
                     !string.Equals(previousMessage, failure, StringComparison.Ordinal))
                 {
@@ -69,7 +69,12 @@ internal sealed partial class SourceBreakpointManager
                 continue;
             }
 
-            Bind(module, definition, location);
+            if (!TryBind(module, definition, location))
+            {
+                await ReportBindingFailureAsync(module, definition, notifyChanges, cancellationToken).ConfigureAwait(false);
+                continue;
+            }
+
             bool firstResolution = definition.ResolvedLine is null;
             definition.ResolvedLine = location.Line;
             definition.ResolvedColumn = location.Column;
@@ -115,7 +120,7 @@ internal sealed partial class SourceBreakpointManager
         return failures;
     }
 
-    private unsafe void Bind(
+    private unsafe bool TryBind(
         CorDebugLoadedModule module,
         SourceBreakpointDefinition definition,
         SourceBreakpointLocation location)
@@ -139,15 +144,23 @@ internal sealed partial class SourceBreakpointManager
                 "ICorDebugFunction.GetILCode");
             code = Volatile.Read(ref *codeAddress);
             nint* breakpointAddress = &breakpoint;
-            CorDebugHResult.ThrowIfFailed(
-                new ICorDebugCodeAbi(code).CreateBreakpoint(
-                    location.IlOffset,
-                    (nint)breakpointAddress),
-                "ICorDebugCode.CreateBreakpoint");
+            int result = new ICorDebugCodeAbi(code).CreateBreakpoint(
+                location.IlOffset,
+                (nint)breakpointAddress);
             breakpoint = Volatile.Read(ref *breakpointAddress);
-            CorDebugHResult.ThrowIfFailed(
-                new ICorDebugBreakpointAbi(breakpoint).Activate(bActive: 1),
-                "ICorDebugBreakpoint.Activate");
+            if (result == UnableToSetBreakpointHResult)
+            {
+                return false;
+            }
+
+            CorDebugHResult.ThrowIfFailed(result, "ICorDebugCode.CreateBreakpoint");
+            result = new ICorDebugBreakpointAbi(breakpoint).Activate(bActive: 1);
+            if (result == UnableToSetBreakpointHResult)
+            {
+                return false;
+            }
+
+            CorDebugHResult.ThrowIfFailed(result, "ICorDebugBreakpoint.Activate");
             identity = ComAbi.QueryInterface(breakpoint, s_iUnknownInterfaceId);
             _bindings.Add(identity, new SourceBreakpointBinding
             {
@@ -159,6 +172,7 @@ internal sealed partial class SourceBreakpointManager
             });
             breakpoint = 0;
             identity = 0;
+            return true;
         }
         finally
         {

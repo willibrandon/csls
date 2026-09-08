@@ -30,9 +30,9 @@ internal sealed partial class SourceBreakpointManager
             RemoveHotReloadRemaps(identity);
             var affectedBreakpointIds = new HashSet<int>();
             foreach (SourceBreakpointDefinition definition in _definitions.Values.SelectMany(static definitions => definitions)
-                .Where(definition => definition.SourceValidationFailures.ContainsKey(loadedModule.Id)))
+                .Where(definition => definition.BindingFailures.ContainsKey(loadedModule.Id)))
             {
-                _ = definition.SourceValidationFailures.Remove(loadedModule.Id);
+                _ = definition.BindingFailures.Remove(loadedModule.Id);
                 _ = affectedBreakpointIds.Add(definition.Id);
             }
 
@@ -95,7 +95,7 @@ internal sealed partial class SourceBreakpointManager
                 definition.ResolvedLine = null;
                 definition.ResolvedColumn = null;
                 definition.HitCondition?.Reset();
-                definition.SourceValidationFailures.Clear();
+                definition.BindingFailures.Clear();
             }
         }
     }

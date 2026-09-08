@@ -309,10 +309,18 @@ internal sealed partial class CorDebugManagedCallback
     [UnmanagedCallersOnly(CallConvs = [typeof(CallConvStdcall)])]
     private static int BreakpointSetError(nint self, nint appDomain, nint thread, nint breakpoint, uint error)
     {
-        _ = thread;
-        _ = breakpoint;
         _ = error;
-        return QueueContinue(self, appDomain, createsProcess: false);
+        return QueueCallback(
+            self,
+            appDomain,
+            thread,
+            breakpoint,
+            auxiliary: 0,
+            createsProcess: false,
+            exitsProcess: false,
+            continueAfterCallback: true,
+            static (target, _, ownedBreakpoint, _, cancellationToken) =>
+                target.HandleBreakpointSetErrorAsync(ownedBreakpoint, cancellationToken));
     }
 
     [UnmanagedCallersOnly(CallConvs = [typeof(CallConvStdcall)])]
