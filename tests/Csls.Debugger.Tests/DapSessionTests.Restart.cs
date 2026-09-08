@@ -67,12 +67,12 @@ public sealed partial class DapSessionTests
                 TestContext.CancellationToken).ConfigureAwait(false);
             int restart = await client.SendRequestAsync("restart", WriteEmptyObject, TestContext.CancellationToken)
                 .ConfigureAwait(false);
-            using (JsonDocument exited = await client.ReadMessageAsync(TestContext.CancellationToken).ConfigureAwait(false))
+            using (JsonDocument exited = await ReadEnvironmentRestartMessageAsync(client).ConfigureAwait(false))
             {
                 AssertEvent(exited.RootElement, "exited");
             }
 
-            using (JsonDocument response = await client.ReadMessageAsync(TestContext.CancellationToken).ConfigureAwait(false))
+            using (JsonDocument response = await ReadEnvironmentRestartMessageAsync(client).ConfigureAwait(false))
             {
                 AssertResponse(response.RootElement, restart, "restart", success: !invalidReplacement);
                 if (invalidReplacement)
@@ -105,6 +105,19 @@ public sealed partial class DapSessionTests
         {
             File.Delete(environmentFile);
             directory.Delete();
+        }
+    }
+
+    private async Task<JsonDocument> ReadEnvironmentRestartMessageAsync(DapTestClient client)
+    {
+        try
+        {
+            return await client.ReadMessageAsync(TestContext.CancellationToken).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            await DebuggerProcessDiagnostics.CaptureAsync(client.HostProcessId, TestContext).ConfigureAwait(false);
+            throw;
         }
     }
 

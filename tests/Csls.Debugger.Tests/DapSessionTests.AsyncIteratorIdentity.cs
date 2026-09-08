@@ -33,6 +33,7 @@ public sealed partial class DapSessionTests
             competing.WaitForConnectionAsync(TestContext.CancellationToken));
         DapTestClient client = await DapTestClient.CreateAsync(TestContext.CancellationToken).ConfigureAwait(false);
         await using ConfiguredAsyncDisposable disposal = client.ConfigureAwait(false);
+        using DapTestCancellationCapture capture = CaptureProtocolOnCancellation(client);
         int initialThread = await LaunchToSourceBreakpointAsync(client, sourcePath, awaitLine,
             ["--debugger-concurrent-async-iterator-step-fixture", pipeName],
             ResolveAsyncIteratorProgram(configuration), suppressJitOptimizations: true).ConfigureAwait(false);
