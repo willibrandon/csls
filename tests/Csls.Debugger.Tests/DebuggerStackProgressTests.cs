@@ -19,6 +19,88 @@ public sealed class DebuggerStackProgressTests
     public TestContext TestContext { get; set; } = null!;
 
     /// <summary>
+    /// Resumes uncached forward pages from the last published activation while releasing each native walker.
+    /// </summary>
+    /// <param name="mode">Whether an intervening resumed walk is canceled before publication.</param>
+    [TestMethod]
+    [DataRow("observe")]
+    [DataRow("resume-cancel")]
+    [Timeout(30000, CooperativeCancellation = true)]
+    public async Task ForwardStackPagesResumeFromPublishedFrames(string mode)
+    {
+        using JsonDocument document = await RunProbeAsync(mode, 0, 0).ConfigureAwait(false);
+        JsonElement result = document.RootElement;
+        if (mode == "resume-cancel")
+        {
+            Assert.IsTrue(result.GetProperty("resumeCanceled").GetBoolean());
+            JsonElement canceled = result.GetProperty("resumeProgress");
+            Assert.AreEqual((int)DebugStackWalkState.Canceled, canceled.GetProperty("State").GetInt32());
+            Assert.AreEqual(256, canceled.GetProperty("InspectedFrames").GetInt32());
+            Assert.AreEqual(0, canceled.GetProperty("CapturedFrames").GetInt32());
+            Assert.AreEqual(1000, canceled.GetProperty("RetainedFrameBindings").GetInt32());
+            Assert.AreEqual(0, canceled.GetProperty("OwnedWalkInterfaces").GetInt32());
+        }
+
+        Assert.AreEqual(4001, result.GetProperty("deepProgress").GetProperty("InspectedFrames").GetInt32());
+        Assert.AreEqual(1, result.GetProperty("deepProgress").GetProperty("CapturedFrames").GetInt32());
+        Assert.AreEqual(0, result.GetProperty("deepProgress").GetProperty("OwnedWalkInterfaces").GetInt32());
+        int tailCount = result.GetProperty("tail").GetProperty("StackFrames").GetArrayLength();
+        Assert.AreEqual(tailCount + 1, result.GetProperty("tailProgress").GetProperty("InspectedFrames").GetInt32());
+        Assert.AreEqual(0, result.GetProperty("tailProgress").GetProperty("OwnedWalkInterfaces").GetInt32());
+        AssertRecovery(result, 5000);
+    }
+
+    /// <summary>
+    /// Starts an uncached earlier page from the top and preserves the later published walk position.
+    /// </summary>
+    [TestMethod]
+    [Timeout(30000, CooperativeCancellation = true)]
+    public async Task BackwardStackPagesPreserveForwardCheckpoint()
+    {
+        using JsonDocument document = await RunProbeAsync("backward", 2000, 0).ConfigureAwait(false);
+        JsonElement result = document.RootElement;
+        Assert.AreEqual(1001, result.GetProperty("backwardProgress").GetProperty("InspectedFrames").GetInt32());
+        Assert.AreEqual(1, result.GetProperty("backward").GetProperty("StackFrames").GetArrayLength());
+        Assert.AreEqual(2001, result.GetProperty("deepProgress").GetProperty("InspectedFrames").GetInt32());
+        Assert.AreEqual(0, result.GetProperty("deepProgress").GetProperty("OwnedWalkInterfaces").GetInt32());
+        AssertRecovery(result, 5000);
+    }
+
+    /// <summary>
+    /// Retires saved walk contexts when evaluation or source stepping resumes the target.
+    /// </summary>
+    /// <param name="mode">The target execution operation retiring stopped-state storage.</param>
+    [TestMethod]
+    [DataRow("evaluation")]
+    [DataRow("step")]
+    [Timeout(30000, CooperativeCancellation = true)]
+    public async Task TargetExecutionRetiresStackWalkCheckpoint(string mode)
+    {
+        using JsonDocument document = await RunProbeAsync(mode, 0, 0).ConfigureAwait(false);
+        JsonElement result = document.RootElement;
+        Assert.IsGreaterThan(result.GetProperty("stopped").GetProperty("StopGeneration").GetInt64(),
+            result.GetProperty("afterExecution").GetProperty("StopGeneration").GetInt64());
+        JsonElement next = result.GetProperty("afterExecutionPage").GetProperty("StackFrames")[0];
+        JsonElement previous = result.GetProperty("deep").GetProperty("StackFrames")[0];
+        if (mode == "evaluation")
+        {
+            Assert.IsTrue(result.GetProperty("executed").GetBoolean());
+            Assert.AreEqual("42", result.GetProperty("evaluation").GetString());
+            Assert.AreEqual(previous.GetProperty("Id").GetInt32(), next.GetProperty("Id").GetInt32());
+        }
+        else
+        {
+            Assert.AreEqual("step", result.GetProperty("afterExecution").GetProperty("StopReason").GetString());
+            Assert.AreNotEqual(previous.GetProperty("Id").GetInt32(), next.GetProperty("Id").GetInt32());
+        }
+
+        Assert.AreNotEqual(previous.GetProperty("InstructionReference").GetString(), next.GetProperty("InstructionReference").GetString());
+        Assert.AreEqual(5000, result.GetProperty("afterExecutionProgress").GetProperty("InspectedFrames").GetInt32());
+        Assert.AreEqual(0, result.GetProperty("afterExecutionProgress").GetProperty("OwnedWalkInterfaces").GetInt32());
+        AssertRecovery(result, 5000);
+    }
+
+    /// <summary>
     /// Reuses retained deep bindings and observed totals with work bounded by the requested page.
     /// </summary>
     [TestMethod]
@@ -141,7 +223,8 @@ public sealed class DebuggerStackProgressTests
         int total = tail.GetProperty("TotalFrames").GetInt32();
         Assert.AreEqual(5000 + tail.GetProperty("StackFrames").GetArrayLength(), total);
         Assert.IsLessThan(64, tail.GetProperty("StackFrames").GetArrayLength());
-        Assert.AreEqual(total, result.GetProperty("tailProgress").GetProperty("InspectedFrames").GetInt32());
+        Assert.AreEqual(tail.GetProperty("StackFrames").GetArrayLength() + 1,
+            result.GetProperty("tailProgress").GetProperty("InspectedFrames").GetInt32());
         Assert.AreEqual(total, result.GetProperty("empty").GetProperty("TotalFrames").GetInt32());
         Assert.AreEqual(0, result.GetProperty("empty").GetProperty("StackFrames").GetArrayLength());
         Assert.AreEqual(0, result.GetProperty("emptyProgress").GetProperty("CapturedFrames").GetInt32());
@@ -211,6 +294,7 @@ public sealed class DebuggerStackProgressTests
 
         Assert.AreEqual(1, result.GetProperty("recovery").GetProperty("RetainedFrameBindings").GetInt32());
         Assert.AreEqual(0, result.GetProperty("recovery").GetProperty("OwnedWalkInterfaces").GetInt32());
+        Assert.AreEqual(5000, result.GetProperty("deepProgress").GetProperty("InspectedFrames").GetInt32());
         AssertRecovery(result, 5000);
     }
 

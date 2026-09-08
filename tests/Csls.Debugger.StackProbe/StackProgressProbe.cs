@@ -109,7 +109,34 @@ internal static class StackProgressProbe
         result["refreshed"] = JsonSerializer.SerializeToNode(refreshed, StackProbeJsonContext.Default.DebugStackTrace);
         result["sourceRefreshedBetweenRequests"] = !ReferenceEquals(pageSource, refreshed.StackFrames[0].Source);
         result["recovery"] = JsonSerializer.SerializeToNode(recovery.Updates[^1], StackProbeJsonContext.Default.DebugStackWalkProgress);
-        DebugStackTrace deep = await service.GetStackAsync(new DebugStackRequest(threadId, depth - 1, 1), cancellationToken).ConfigureAwait(false);
+        if (mode == "backward")
+        {
+            var backwardProgress = new StackProgressRecorder(requestCancellation, 0, "observe");
+            DebugStackTrace backward = await service.GetStackAsync(new DebugStackRequest(threadId, 1000, 1)
+            { Progress = backwardProgress }, cancellationToken).ConfigureAwait(false);
+            result["backward"] = JsonSerializer.SerializeToNode(backward, StackProbeJsonContext.Default.DebugStackTrace);
+            result["backwardProgress"] = JsonSerializer.SerializeToNode(backwardProgress.Updates[^1], StackProbeJsonContext.Default.DebugStackWalkProgress);
+        }
+        else if (mode == "resume-cancel")
+        {
+            using var resumedCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            var resumedProgress = new StackProgressRecorder(resumedCancellation, 256, "observe");
+            try
+            {
+                _ = await service.GetStackAsync(new DebugStackRequest(threadId, depth - 1, 1) { Progress = resumedProgress },
+                    resumedCancellation.Token).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException) when (resumedCancellation.IsCancellationRequested)
+            {
+                result["resumeCanceled"] = true;
+            }
+            result["resumeProgress"] = JsonSerializer.SerializeToNode(resumedProgress.Updates[^1], StackProbeJsonContext.Default.DebugStackWalkProgress);
+        }
+
+        var deepProgress = new StackProgressRecorder(requestCancellation, 0, "observe");
+        DebugStackTrace deep = await service.GetStackAsync(new DebugStackRequest(threadId, depth - 1, 1)
+        { Progress = deepProgress }, cancellationToken).ConfigureAwait(false);
+        result["deepProgress"] = JsonSerializer.SerializeToNode(deepProgress.Updates[^1], StackProbeJsonContext.Default.DebugStackWalkProgress);
         IReadOnlyList<DebugScopeInfo> deepScopes = await service.GetScopesAsync(new DebugScopesRequest(deep.StackFrames[0].Id), cancellationToken)
             .ConfigureAwait(false);
         result["deepArguments"] = JsonSerializer.SerializeToNode(await ReadArgumentsAsync(service,
@@ -131,6 +158,30 @@ internal static class StackProgressProbe
             .ConfigureAwait(false);
         result["empty"] = JsonSerializer.SerializeToNode(empty, StackProbeJsonContext.Default.DebugStackTrace);
         result["emptyProgress"] = JsonSerializer.SerializeToNode(emptyProgress.Updates[^1], StackProbeJsonContext.Default.DebugStackWalkProgress);
+        if (mode is "evaluation" or "step")
+        {
+            if (mode == "evaluation")
+            {
+                DebugEvaluateResult evaluation = await service.ExecuteExpressionAsync(new DebugExecuteExpressionRequest(top.StackFrames[0].Id,
+                    "Csls.TestProcessHost.DebuggerDeepStackFixture.AddOne(41)"), cancellationToken).ConfigureAwait(false);
+                result["executed"] = evaluation.TargetCodeExecuted;
+                result["evaluation"] = evaluation.Result;
+            }
+            else
+            {
+                _ = await service.StepAsync(new DebugStepRequest(threadId, DebugStepKind.Into), cancellationToken).ConfigureAwait(false);
+            }
+
+            DebugSessionSnapshot nextStop = await WaitForStateAsync(service, DebugSessionState.Stopped, cancellationToken,
+                stopped.StopGeneration).ConfigureAwait(false);
+            result["afterExecution"] = JsonSerializer.SerializeToNode(nextStop, StackProbeJsonContext.Default.DebugSessionSnapshot);
+            var nextProgress = new StackProgressRecorder(requestCancellation, 0, "observe");
+            DebugStackTrace nextPage = await service.GetStackAsync(new DebugStackRequest(threadId, depth - 1, 1)
+            { Progress = nextProgress }, cancellationToken).ConfigureAwait(false);
+            result["afterExecutionPage"] = JsonSerializer.SerializeToNode(nextPage, StackProbeJsonContext.Default.DebugStackTrace);
+            result["afterExecutionProgress"] = JsonSerializer.SerializeToNode(nextProgress.Updates[^1], StackProbeJsonContext.Default.DebugStackWalkProgress);
+        }
+
         _ = await service.SetSourceBreakpointsAsync(new DebugSourceBreakpointSetRequest(source, []), cancellationToken).ConfigureAwait(false);
         _ = await service.ContinueAsync(cancellationToken).ConfigureAwait(false);
         DebugSessionSnapshot terminated = await WaitForStateAsync(service, DebugSessionState.Terminated, cancellationToken).ConfigureAwait(false);
@@ -145,12 +196,12 @@ internal static class StackProgressProbe
             new DebugVariablesRequest(scope.VariablesReference, 0, 0, AllowTargetCodeExecution: false), cancellationToken);
 
     private static async Task<DebugSessionSnapshot> WaitForStateAsync(DebuggerControlService service, DebugSessionState state,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken, long? previousGeneration = null)
     {
         while (true)
         {
             DebugSessionSnapshot snapshot = await service.GetSessionAsync(cancellationToken).ConfigureAwait(false);
-            if (snapshot.State == state)
+            if (snapshot.State == state && (previousGeneration is null || snapshot.StopGeneration > previousGeneration))
             {
                 return snapshot;
             }

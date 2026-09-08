@@ -1,3 +1,4 @@
+using Csls.Debugger.Contracts;
 using Csls.Debugger.Interop;
 using System.Diagnostics.CodeAnalysis;
 
@@ -16,6 +17,7 @@ internal sealed class ManagedStoppedFrameRegistry
     private readonly Dictionary<string, ManagedInstructionReferenceHandle> _instructions = new(StringComparer.Ordinal);
     private readonly Dictionary<int, ManagedFrameHandle> _instructionAddresses = [];
     private readonly Dictionary<int, int> _stackTotals = [];
+    private ManagedStackCheckpoint? _walkCheckpoint;
     private int _nextId;
     private int _nextInstructionAddressId;
 
@@ -42,6 +44,30 @@ internal sealed class ManagedStoppedFrameRegistry
     /// <param name="threadId">The owning managed thread.</param>
     /// <param name="total">The number of managed frames observed through the stack end.</param>
     internal void SetStackTotal(int threadId, int total) => _stackTotals[threadId] = total;
+
+    /// <summary>
+    /// Finds the saved context when the requested page follows it in the same stopped thread.
+    /// </summary>
+    /// <param name="threadId">The owning managed thread.</param>
+    /// <param name="generation">The current runtime stop.</param>
+    /// <param name="startFrame">The first requested managed frame.</param>
+    /// <returns>The reusable context, or null when the page requires a fresh walk.</returns>
+    internal ManagedStackCheckpoint? GetWalkCheckpoint(int threadId, DebugStopGeneration generation, int startFrame) =>
+        _walkCheckpoint is { } checkpoint && checkpoint.Identity.ThreadId == threadId &&
+        checkpoint.Generation == generation && checkpoint.FrameIndex <= startFrame ? checkpoint : null;
+
+    /// <summary>
+    /// Retains at most one context, preserving the furthest published activation when earlier pages are read.
+    /// </summary>
+    /// <param name="checkpoint">The context captured by a successfully published page.</param>
+    internal void SetWalkCheckpoint(ManagedStackCheckpoint checkpoint)
+    {
+        if (_walkCheckpoint is null || _walkCheckpoint.Identity.ThreadId != checkpoint.Identity.ThreadId ||
+            _walkCheckpoint.Generation != checkpoint.Generation || _walkCheckpoint.FrameIndex <= checkpoint.FrameIndex)
+        {
+            _walkCheckpoint = checkpoint;
+        }
+    }
 
     /// <summary>
     /// Begins an inspection whose new bindings are retained only after successful completion.
@@ -241,6 +267,7 @@ internal sealed class ManagedStoppedFrameRegistry
         _instructions.Clear();
         _instructionAddresses.Clear();
         _stackTotals.Clear();
+        _walkCheckpoint = null;
         if (!preserveIdentity)
         {
             _logicalIds.Clear();

@@ -35,7 +35,8 @@ internal sealed partial class CorDebugDebuggee
         using ManagedFrameRegistration registration = _frames.BeginRegistration();
         List<ManagedFrameHandle>? retained = GetRetainedStackPage(threadId, startFrame, levels, maximumPageSize);
         using ManagedStackWalker? walker = retained is null
-            ? ManagedStackWalker.Open(_debugProcess, threadId, _unixExitMonitor, cancellationToken) : null;
+            ? ManagedStackWalker.Open(_debugProcess, threadId, _unixExitMonitor, cancellationToken,
+                _frames.GetWalkCheckpoint(threadId, generation, startFrame)) : null;
         var symbols = new ManagedSymbolFrameResolver(_sourceBreakpoints);
         var observer = new ManagedStackWalkObserver(progress);
         List<DebugStackFrameInfo> frames = [];
@@ -107,11 +108,19 @@ internal sealed partial class CorDebugDebuggee
 
             cancellationToken.ThrowIfCancellationRequested();
             var result = new DebugStackTrace(frames, totalFrames);
+            ManagedStackCheckpoint? checkpoint = walker is not null && frames.Count > 0 &&
+                _frames.TryGetCurrent(frames[^1].Id, out ManagedFrameHandle? lastFrame)
+                    ? walker.CaptureCheckpoint(lastFrame, cancellationToken) : null;
             walker?.Dispose();
             observer.Report(Snapshot(DebugStackWalkState.Completed));
             if (totalFrames is int total)
             {
                 _frames.SetStackTotal(threadId, total);
+            }
+
+            if (checkpoint is not null)
+            {
+                _frames.SetWalkCheckpoint(checkpoint);
             }
 
             registration.Commit();

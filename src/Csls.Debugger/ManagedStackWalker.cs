@@ -17,6 +17,7 @@ internal sealed class ManagedStackWalker : IDisposable
     private int _walkCount;
     private bool _advance;
     private bool _ended;
+    private ManagedStackCheckpoint? _pendingCheckpoint;
 
     private ManagedStackWalker()
     {
@@ -39,14 +40,15 @@ internal sealed class ManagedStackWalker : IDisposable
     /// <param name="threadId">The runtime thread identifier.</param>
     /// <param name="exitMonitor">The launched child's native wait owner, or null for attachment.</param>
     /// <param name="cancellationToken">Cancels between native thread and context operations.</param>
+    /// <param name="checkpoint">The optional saved context owned by this stopped thread and generation.</param>
     /// <returns>The owned walk, which must be disposed on the actor.</returns>
     internal static ManagedStackWalker Open(nint process, int threadId, UnixChildExitMonitor? exitMonitor,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken, ManagedStackCheckpoint? checkpoint = null)
     {
         var walk = new ManagedStackWalker();
         try
         {
-            walk.Initialize(process, threadId, exitMonitor, cancellationToken);
+            walk.Initialize(process, threadId, exitMonitor, checkpoint, cancellationToken);
             return walk;
         }
         catch
@@ -101,10 +103,16 @@ internal sealed class ManagedStackWalker : IDisposable
                 cancellationToken.ThrowIfCancellationRequested();
                 if (result == 0 && current != 0)
                 {
+                    ValidateCheckpoint(current);
                     FrameIndex++;
                     frame = current;
                     current = 0;
                     return true;
+                }
+
+                if (_pendingCheckpoint is not null)
+                {
+                    throw new InvalidOperationException("The saved stack context no longer identifies a managed activation.");
                 }
             }
             finally
@@ -119,6 +127,26 @@ internal sealed class ManagedStackWalker : IDisposable
         return false;
     }
 
+    /// <summary>
+    /// Captures the last published managed activation without retaining a native walker between requests.
+    /// </summary>
+    /// <param name="frame">The retained frame at the walk's current position.</param>
+    /// <param name="cancellationToken">Cancels between native context reads.</param>
+    /// <returns>The bounded register snapshot, or null for an internal frame or exhausted walk.</returns>
+    internal ManagedStackCheckpoint? CaptureCheckpoint(ManagedFrameHandle frame, CancellationToken cancellationToken)
+    {
+        ObjectDisposedException.ThrowIf(_walker == 0, this);
+        if (_ended || FrameIndex != frame.FrameIndex || frame.ModuleId is not int moduleId ||
+            frame.MethodToken == 0 || frame.StackStart == 0 || frame.StackEnd == 0)
+        {
+            return null;
+        }
+
+        byte[] context = ManagedStackContext.Capture(_walker, cancellationToken);
+        return new ManagedStackCheckpoint(new(frame.ThreadId, frame.StackStart, frame.StackEnd, moduleId, frame.MethodToken),
+            frame.Generation, FrameIndex, _walkCount, context);
+    }
+
     /// <inheritdoc />
     public void Dispose()
     {
@@ -128,7 +156,7 @@ internal sealed class ManagedStackWalker : IDisposable
     }
 
     private unsafe void Initialize(nint process, int threadId, UnixChildExitMonitor? exitMonitor,
-        CancellationToken cancellationToken)
+        ManagedStackCheckpoint? checkpoint, CancellationToken cancellationToken)
     {
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(threadId);
         cancellationToken.ThrowIfCancellationRequested();
@@ -158,25 +186,57 @@ internal sealed class ManagedStackWalker : IDisposable
         }
 
         cancellationToken.ThrowIfCancellationRequested();
-        if ((OperatingSystem.IsMacOS() || OperatingSystem.IsLinux()) &&
+        if (checkpoint is not null)
+        {
+            CorDebugHResult.ThrowIfFailed(ManagedStackContext.Set(_walker,
+                checkpoint.NativePositionCount == 1 ? 1 : 2, checkpoint.Context), "ICorDebugStackWalk.SetContext");
+
+            FrameIndex = checkpoint.FrameIndex - 1;
+            _walkCount = checkpoint.NativePositionCount - 1;
+            _pendingCheckpoint = checkpoint;
+        }
+        else if ((OperatingSystem.IsMacOS() || OperatingSystem.IsLinux()) &&
             RuntimeInformation.ProcessArchitecture == Architecture.Arm64 &&
             !HasManagedArm64Context(process, threadId))
         {
             byte[] context = ReadNativeArm64Context(process, threadId, exitMonitor, cancellationToken);
-            fixed (byte* contextAddress = context)
+            const int nonMatchingContext = unchecked((int)0x80131327);
+            int result = ManagedStackContext.Set(_walker, 1, context);
+            // CoreCLR preserves its managed walk when a native stop is outside the thread's stack bounds.
+            if (result != nonMatchingContext)
             {
-                const int nonMatchingContext = unchecked((int)0x80131327);
-                int result = new ICorDebugStackWalkAbi(_walker).SetContext(1,
-                    checked((uint)context.Length), (nint)contextAddress);
-                // CoreCLR preserves its managed walk when a native stop is outside the thread's stack bounds.
-                if (result != nonMatchingContext)
-                {
-                    CorDebugHResult.ThrowIfFailed(result, "ICorDebugStackWalk.SetContext");
-                }
+                CorDebugHResult.ThrowIfFailed(result, "ICorDebugStackWalk.SetContext");
             }
         }
 
         cancellationToken.ThrowIfCancellationRequested();
+    }
+
+    private unsafe void ValidateCheckpoint(nint frame)
+    {
+        if (_pendingCheckpoint is not { } checkpoint)
+        {
+            return;
+        }
+
+        ulong start = 0;
+        ulong end = 0;
+        uint token = 0;
+        ulong* startAddress = &start;
+        ulong* endAddress = &end;
+        uint* tokenAddress = &token;
+        var activation = new ICorDebugFrameAbi(frame);
+        CorDebugHResult.ThrowIfFailed(activation.GetStackRange((nint)startAddress, (nint)endAddress),
+            "ICorDebugFrame.GetStackRange");
+        CorDebugHResult.ThrowIfFailed(activation.GetFunctionToken((nint)tokenAddress), "ICorDebugFrame.GetFunctionToken");
+        if (Volatile.Read(ref *startAddress) != checkpoint.Identity.StackStart ||
+            Volatile.Read(ref *endAddress) != checkpoint.Identity.StackEnd ||
+            Volatile.Read(ref *tokenAddress) != checkpoint.Identity.MethodToken)
+        {
+            throw new InvalidOperationException("The saved stack context resolved to a different managed activation.");
+        }
+
+        _pendingCheckpoint = null;
     }
 
     private static unsafe byte[] ReadNativeArm64Context(nint process, int threadId,
