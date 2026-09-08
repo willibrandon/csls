@@ -42,9 +42,10 @@ jobs:
         with:
           path: |
             artifacts/bin/Csls.*/debug
+            artifacts/bin/Csls.TestProcessHost/release
             !artifacts/bin/Csls.Debugger.Tests/debug
             !artifacts/bin/Csls.SourceGen.Tests/debug
-          key: test-binaries-v3-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.editorconfig', 'src/**', 'tests/**', 'test-assets/**', 'benchmarks/**', 'build/**', 'Directory.Build.*', 'Directory.Packages.props', 'NuGet.Config') }}
+          key: test-binaries-v3-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.github/workflows/ci.yml', '.editorconfig', '.globalconfig', 'global.json', 'src/**', 'tests/**', 'test-assets/**', 'benchmarks/**', 'build/**', 'scripts/Support/**', 'Directory.Build.*', 'Directory.Packages.props', 'NuGet.Config') }}
           restore-keys: test-binaries-v3-${{ runner.os }}-${{ runner.arch }}-
 
       - name: Restore source generator test binaries
@@ -52,7 +53,7 @@ jobs:
         uses: actions/cache@v6
         with:
           path: artifacts/bin/Csls.SourceGen.Tests/debug
-          key: source-generator-test-binaries-v3-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.editorconfig', 'src/**', 'tests/**', 'test-assets/**', 'benchmarks/**', 'build/**', 'Directory.Build.*', 'Directory.Packages.props', 'NuGet.Config') }}
+          key: source-generator-test-binaries-v3-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.github/workflows/ci.yml', '.editorconfig', '.globalconfig', 'global.json', 'src/**', 'tests/**', 'test-assets/**', 'benchmarks/**', 'build/**', 'Directory.Build.*', 'Directory.Packages.props', 'NuGet.Config') }}
           restore-keys: source-generator-test-binaries-v3-${{ runner.os }}-${{ runner.arch }}-
 
       - name: Restore test build intermediates
@@ -60,11 +61,13 @@ jobs:
         with:
           path: |
             artifacts/obj/Csls.*/debug
+            artifacts/obj/Csls.TestProcessHost/release
+            artifacts/obj/Csls.SourceGen/release
             artifacts/obj/Csls.*/*.cache
             artifacts/obj/Csls.*/*.json
             artifacts/obj/Csls.*/*.props
             artifacts/obj/Csls.*/*.targets
-          key: test-build-intermediates-v3-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.editorconfig', 'src/**', 'tests/**', 'test-assets/**', 'benchmarks/**', 'build/**', 'Directory.Build.*', 'Directory.Packages.props', 'NuGet.Config') }}
+          key: test-build-intermediates-v3-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.github/workflows/ci.yml', '.editorconfig', '.globalconfig', 'global.json', 'src/**', 'tests/**', 'test-assets/**', 'benchmarks/**', 'build/**', 'scripts/Support/**', 'Directory.Build.*', 'Directory.Packages.props', 'NuGet.Config') }}
           restore-keys: test-build-intermediates-v3-${{ runner.os }}-${{ runner.arch }}-
 
       - name: Build test binaries
@@ -118,7 +121,7 @@ jobs:
             artifacts/obj/Csls.*/*.json
             artifacts/obj/Csls.*/*.props
             artifacts/obj/Csls.*/*.targets
-          key: debugger-test-build-v2-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.github/workflows/ci.yml', '.editorconfig', 'global.json', 'src/**', 'benchmarks/Csls.EndToEndPerformance/**', 'tests/Csls.Debugger.Tests/**', 'tests/Csls.Debugger.StackProbe/**', 'tests/Csls.TestProcessHost/**', 'test-assets/Csls.Debugger.Fixtures.*/**', 'build/**', 'Directory.Build.*', 'Directory.Packages.props', 'NuGet.Config') }}
+          key: debugger-test-build-v2-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.github/workflows/ci.yml', '.editorconfig', '.globalconfig', 'global.json', 'src/**', 'benchmarks/Csls.EndToEndPerformance/**', 'tests/Csls.Debugger.Tests/**', 'tests/Csls.Debugger.StackProbe/**', 'tests/Csls.TestProcessHost/**', 'test-assets/Csls.Debugger.Fixtures.*/**', 'build/**', 'Directory.Build.*', 'Directory.Packages.props', 'NuGet.Config') }}
           restore-keys: debugger-test-build-v2-${{ runner.os }}-${{ runner.arch }}-
 
       - name: Build debugger test binaries
@@ -856,6 +859,16 @@ jobs:
           --root-directory .
           --filter "FullyQualifiedName~Csls.Tests.McpDebuggerLifecycleTests"
           --minimum-expected-tests 3
+          --report-trx
+          --results-directory artifacts/test-results
+
+      - name: Preserve debugger MCP test results
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: debugger-mcp-test-results-${{ github.run_attempt }}
+          path: artifacts/test-results
+          if-no-files-found: warn
 
   debugger-terminal-tests:
     name: Debugger terminal tests

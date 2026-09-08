@@ -97,7 +97,7 @@ public sealed class DebuggerReferenceAssemblyTests
         try
         {
             (int exitCode, string output, string error) = await DebuggerTestProcess.RunAsync(start, TestContext.CancellationToken,
-                line => TestContext.WriteLine($"Reference build {version}: {line}"))
+                line => TestContext.WriteLine($"Reference build {version}: {line}"), diagnosticContext: TestContext)
                 .ConfigureAwait(false);
             Assert.AreEqual(0, exitCode, $"{output}{Environment.NewLine}{error}");
         }

@@ -1,3 +1,4 @@
+using Csls.Support;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
 using System.Diagnostics;
@@ -39,6 +40,7 @@ internal sealed class McpProcessSession : IAsyncDisposable
     /// <param name="cancellationToken">The startup cancellation token.</param>
     /// <param name="debuggerWorkerPath">The optional debugger worker path.</param>
     /// <param name="debuggerDumpWorkerPath">The optional debugger dump worker path.</param>
+    /// <param name="diagnosticOutput">Receives server stderr as it arrives; defaults to the test's error output.</param>
     /// <returns>The connected real-process MCP session.</returns>
     internal static async Task<McpProcessSession> StartAsync(
         string repositoryRoot,
@@ -47,7 +49,8 @@ internal sealed class McpProcessSession : IAsyncDisposable
         string? serverWorkerPath,
         CancellationToken cancellationToken,
         string? debuggerWorkerPath = null,
-        string? debuggerDumpWorkerPath = null)
+        string? debuggerDumpWorkerPath = null,
+        TextWriter? diagnosticOutput = null)
     {
         string dotnetHost = EditorToolResolver.ResolveAbsoluteDotNetHost();
         Dictionary<string, string?> environment =
@@ -96,7 +99,10 @@ internal sealed class McpProcessSession : IAsyncDisposable
 
         Process process = Process.Start(startInfo)
             ?? throw new InvalidOperationException("The production MCP launcher did not start.");
-        Task<string> standardErrorTask = process.StandardError.ReadToEndAsync(
+        Task<string> standardErrorTask = ProcessOutputCapture.ReadAsync(
+            process.StandardError.BaseStream,
+            process.StandardError.CurrentEncoding,
+            diagnosticOutput ?? Console.Error,
             CancellationToken.None);
         var transport = new StreamClientTransport(
             process.StandardInput.BaseStream,
