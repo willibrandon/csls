@@ -1,6 +1,7 @@
 using Microsoft.Diagnostics.NETCore.Client;
 using System.Diagnostics;
 using System.IO.Pipes;
+using System.Reflection.Metadata;
 using System.Runtime.CompilerServices;
 using System.Text.Json;
 
@@ -53,15 +54,26 @@ public sealed class DapAsyncThreadStartupTests : DapTestContext
         string program = Path.Join(root, "artifacts", "bin", "Csls.TestProcessHost", configuration == "Release" ? "release" : "debug",
             "csls-test-process-host.dll");
         string? oracle = Environment.GetEnvironmentVariable("CSLS_DAP_ORACLE_PATH");
+        string breakpointSource = oracle is null ? source : ReadRecordedSource(program, Path.GetFileName(source));
         TestContext.WriteLine($"Adapter: {oracle ?? "csls"}; fixture: {program}; shape: {kind}; iteration: {iteration}.");
-        await VerifyStartupAsync(program, source, line, kind, oracle).ConfigureAwait(false);
+        TestContext.WriteLine($"Breakpoint source: {breakpointSource}:{line}.");
+        await VerifyStartupAsync(program, breakpointSource, line, kind, oracle).ConfigureAwait(false);
+    }
+
+    private static string ReadRecordedSource(string program, string fileName)
+    {
+        using FileStream stream = File.OpenRead(Path.ChangeExtension(program, ".pdb"));
+        using var provider = MetadataReaderProvider.FromPortablePdbStream(stream);
+        MetadataReader reader = provider.GetMetadataReader();
+        return Assert.ContainsSingle(reader.Documents.Select(handle => reader.GetString(reader.GetDocument(handle).Name))
+            .Where(path => path.Replace('\\', '/').EndsWith("/" + fileName, StringComparison.Ordinal)));
     }
 
     private async Task VerifyStartupAsync(string program, string source, int line, string kind, string? oracle)
     {
         _launchSequence = 0;
         _launchResponseReceived = false;
-        string pipeName = $"csls-start-{Guid.NewGuid():N}";
+        string pipeName = $"cs-{Guid.NewGuid():N}";
         using var connectionCancellation = CancellationTokenSource.CreateLinkedTokenSource(TestContext.CancellationToken);
         using var selected = new NamedPipeServerStream(pipeName, PipeDirection.InOut, 1,
             PipeTransmissionMode.Byte, PipeOptions.Asynchronous | PipeOptions.CurrentUserOnly);
@@ -111,6 +123,7 @@ public sealed class DapAsyncThreadStartupTests : DapTestContext
             }, TestContext.CancellationToken).ConfigureAwait(false);
             JsonElement binding = await ReadResponseAsync(client, setBreakpoints).ConfigureAwait(false);
             Assert.HasCount(1, binding.GetProperty("body").GetProperty("breakpoints").EnumerateArray());
+            TestContext.WriteLine($"Initial source binding: {binding.GetRawText()}.");
             int configured = await client.SendRequestAsync("configurationDone", WriteEmptyObject,
                 TestContext.CancellationToken).ConfigureAwait(false);
             JsonElement stopped = await ReadStopAsync(client, configured).ConfigureAwait(false);
