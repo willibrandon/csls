@@ -22,6 +22,13 @@ if (args is ["--windows-module-churn", string churnStopPath] && OperatingSystem.
     return WindowsModuleChurnFixture.Run(churnStopPath);
 }
 
+if (args is ["--windows-retired-snapshot", string snapshotProcessId, string snapshotCreationTime] &&
+    OperatingSystem.IsWindows())
+{
+    return WindowsRetiredSnapshotFixture.Run(int.Parse(snapshotProcessId, CultureInfo.InvariantCulture),
+        long.Parse(snapshotCreationTime, CultureInfo.InvariantCulture), "ready");
+}
+
 if (args is ["--debugger-process-tree", string processTreePipe])
 {
     return await DebuggerProcessTreeFixture.RunRootAsync(processTreePipe).ConfigureAwait(false);

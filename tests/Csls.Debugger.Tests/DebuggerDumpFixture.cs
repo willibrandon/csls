@@ -166,19 +166,18 @@ internal sealed class DebuggerDumpFixture : IAsyncDisposable
             finally
             {
                 Log("Retiring target.");
-                if (!target.HasExited)
-                {
-                    target.Kill(entireProcessTree: true);
-                }
-                await target.WaitForExitAsync(CancellationToken.None).ConfigureAwait(false);
                 if (OperatingSystem.IsWindows())
                 {
-                    // WaitForExitAsync can observe the exit code before the kernel process object is signaled.
-                    bool signaled = await Task.Run(() => target.WaitForExit(TimeSpan.FromSeconds(10)),
-                        CancellationToken.None).ConfigureAwait(false);
-                    Assert.IsTrue(signaled,
-                        "The captured target's Windows process handle must be signaled before offline inspection.");
+                    await WindowsDebuggerProcessCapture.RetireTargetAsync(target).ConfigureAwait(false);
                     Log("Observed Windows kernel process termination.");
+                }
+                else
+                {
+                    if (!target.HasExited)
+                    {
+                        target.Kill(entireProcessTree: true);
+                    }
+                    await target.WaitForExitAsync(CancellationToken.None).ConfigureAwait(false);
                 }
                 Log($"Observed target exit {target.ExitCode}.");
                 errorTail = GetTail(collectorError + await error.ConfigureAwait(false));

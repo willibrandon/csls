@@ -14,6 +14,27 @@ namespace Csls.Debugger.Tests;
 internal static class WindowsDebuggerProcessCapture
 {
     /// <summary>
+    /// Terminates a captured fixture and observes its retained kernel process handle before offline inspection.
+    /// </summary>
+    /// <param name="process">The caller-owned fixture whose collector is independently owned and reaped.</param>
+    /// <returns>A task completed after the Windows process object is signaled.</returns>
+    internal static async Task RetireTargetAsync(Process process)
+    {
+        if (!process.HasExited)
+        {
+            // The collector owns its PSS clones independently. A retired clone can remain enumerable while
+            // another process holds a query handle; it is not an execution child owned by this fixture.
+            process.Kill();
+        }
+        await process.WaitForExitAsync(CancellationToken.None).ConfigureAwait(false);
+        // The exit code can become observable before the kernel process object is signaled.
+        bool signaled = await Task.Run(() => process.WaitForExit(TimeSpan.FromSeconds(10)),
+            CancellationToken.None).ConfigureAwait(false);
+        Assert.IsTrue(signaled,
+            "The captured target's Windows process handle must be signaled before offline inspection.");
+    }
+
+    /// <summary>
     /// Retains bounded native evidence before the test releases its adapter and target processes.
     /// </summary>
     /// <param name="hostProcessId">The still-owned adapter process identifier.</param>

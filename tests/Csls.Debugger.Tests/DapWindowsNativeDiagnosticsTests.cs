@@ -19,6 +19,86 @@ namespace Csls.Debugger.Tests;
 public sealed class DapWindowsNativeDiagnosticsTests : DapTestContext
 {
     /// <summary>
+    /// Retires a captured target while an independent observer retains its terminated snapshot process object.
+    /// </summary>
+    [TestMethod]
+    [Timeout(30000, CooperativeCancellation = true)]
+    public async Task TargetRetirementPreservesIndependentSnapshotObserver()
+    {
+        string directory = Directory.CreateTempSubdirectory("csls-windows-retired-snapshot-").FullName;
+        try
+        {
+            using Process target = StartFixture("--windows-module-churn", Path.Join(directory, "stop.signal"));
+            Task<string> targetError = target.StandardError.ReadToEndAsync(CancellationToken.None);
+            try
+            {
+                string? ready = await target.StandardOutput.ReadLineAsync(TestContext.CancellationToken).ConfigureAwait(false);
+                Assert.IsNotNull(ready);
+                Assert.StartsWith("ready:", ready);
+                using Process observer = StartFixture("--windows-retired-snapshot",
+                    target.Id.ToString(CultureInfo.InvariantCulture),
+                    target.StartTime.ToUniversalTime().ToFileTimeUtc().ToString(CultureInfo.InvariantCulture));
+                Task<string> observerError = observer.StandardError.ReadToEndAsync(CancellationToken.None);
+                try
+                {
+                    Assert.AreEqual("ready", await observer.StandardOutput.ReadLineAsync(TestContext.CancellationToken)
+                        .ConfigureAwait(false));
+                    await WindowsDebuggerProcessCapture.RetireTargetAsync(target).ConfigureAwait(false);
+                    Assert.IsTrue(target.HasExited);
+                    Assert.IsTrue(await Task.Run(() => target.WaitForExit(TimeSpan.Zero), CancellationToken.None)
+                        .ConfigureAwait(false), "The actual target kernel handle must be signaled.");
+                    Assert.AreEqual(string.Empty, await target.StandardOutput.ReadToEndAsync(TestContext.CancellationToken)
+                        .ConfigureAwait(false));
+                    Assert.IsFalse(observer.HasExited, "Target retirement must preserve the independently owned observer.");
+                    observer.StandardInput.Close();
+                    await observer.WaitForExitAsync(TestContext.CancellationToken).ConfigureAwait(false);
+                    Assert.AreEqual(0, observer.ExitCode, await observerError.ConfigureAwait(false));
+                }
+                finally
+                {
+                    observer.StandardInput.Close();
+                    if (!observer.HasExited)
+                    {
+                        observer.Kill();
+                    }
+                    await observer.WaitForExitAsync(CancellationToken.None).ConfigureAwait(false);
+                    _ = await observerError.ConfigureAwait(false);
+                }
+            }
+            finally
+            {
+                if (!target.HasExited)
+                {
+                    target.Kill();
+                }
+                await target.WaitForExitAsync(CancellationToken.None).ConfigureAwait(false);
+                _ = await targetError.ConfigureAwait(false);
+            }
+        }
+        finally
+        {
+            await DebuggerTestDirectoryReleaseWaiter.DeleteAsync(directory, TimeSpan.FromSeconds(10)).ConfigureAwait(false);
+        }
+    }
+
+    private static Process StartFixture(params string[] arguments)
+    {
+        var start = new ProcessStartInfo(Environment.GetEnvironmentVariable("DOTNET_HOST_PATH") ?? "dotnet")
+        {
+            UseShellExecute = false,
+            RedirectStandardInput = true,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true
+        };
+        start.ArgumentList.Add(ResolveTestProcessHost());
+        foreach (string argument in arguments)
+        {
+            start.ArgumentList.Add(argument);
+        }
+        return Process.Start(start) ?? throw new InvalidOperationException("The Windows fixture did not start.");
+    }
+
+    /// <summary>
     /// Captures each storage policy during native module churn and preserves the original process and memory.
     /// </summary>
     /// <param name="captureType">The independently selected Windows dump storage policy.</param>
@@ -107,11 +187,7 @@ public sealed class DapWindowsNativeDiagnosticsTests : DapTestContext
             }
             finally
             {
-                if (!process.HasExited)
-                {
-                    process.Kill(entireProcessTree: true);
-                }
-                await process.WaitForExitAsync(CancellationToken.None).ConfigureAwait(false);
+                await WindowsDebuggerProcessCapture.RetireTargetAsync(process).ConfigureAwait(false);
                 _ = await error.ConfigureAwait(false);
                 if (output is not null)
                 {
