@@ -34,12 +34,12 @@
     <!-- Publish must reevaluate the NuGet imports written by restore on the first build. -->
     <MSBuild Projects="@(_CslsBundledWorkerProject)"
              Targets="Restore"
-             BuildInParallel="false"
+             BuildInParallel="true"
              Properties="CslsBundledWorkerBuildPhase=Restore"
              RemoveProperties="$(_CslsBundledWorkerPropertiesToRemove)" />
     <MSBuild Projects="@(_CslsBundledWorkerProject)"
              Targets="Publish"
-             BuildInParallel="false"
+             BuildInParallel="true"
              Properties="CslsBundledWorkerBuildPhase=Publish"
              RemoveProperties="$(_CslsBundledWorkerPropertiesToRemove)" />
   </Target>
