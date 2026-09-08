@@ -47,7 +47,7 @@ identity, then lowered to a bounded versioned plan consumed by the runtime engin
 The side-effect-free subset includes:
 
 - literals, locals, arguments, and `this` or `Me`;
-- instance fields and managed array indexes;
+- instance fields, type-qualified static fields and constants, and managed array indexes;
 - built-in unary, binary, comparison, and short-circuit Boolean operators;
 - conditional selection;
 - explicit built-in primitive conversions; and
@@ -115,7 +115,7 @@ annotations describe these effects as destructive, non-idempotent, and open-worl
 ## Assignment
 
 DAP `setVariable` and `setExpression`, plus MCP `debug_variable_set` and
-`debug_expression_set`, write directly to a stopped local, argument, instance field, or
+`debug_expression_set`, write directly to a stopped local, argument, mutable static or instance field, or
 managed array element. The right-hand side uses the side-effect-free evaluator.
 
 Supported values are exact primitives, checked contextual integral literals,

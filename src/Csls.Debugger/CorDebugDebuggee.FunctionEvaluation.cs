@@ -100,24 +100,9 @@ internal sealed partial class CorDebugDebuggee
             }
             else
             {
-                try
+                if (!constructsObject && !TryResolveStaticReceiver(frame, operation.Children[0], out _))
                 {
-                    if (!constructsObject)
-                    {
-                        receiver = EvaluateNode(
-                            frame,
-                            plan,
-                            operation.Children[0],
-                            generation);
-                    }
-                }
-                catch (InvalidOperationException exception) when (TryGetQualifiedTypeName(
-                    operation.Children[0],
-                    out _))
-                {
-                    System.Diagnostics.Debug.WriteLine(
-                        $"The invocation receiver will be bound as a static type: " +
-                        exception.Message);
+                    receiver = EvaluateNode(frame, plan, operation.Children[0], generation);
                 }
 
                 for (int index = 0; index < suppliedArguments.Length; index++)

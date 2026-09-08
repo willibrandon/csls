@@ -28,6 +28,16 @@ internal sealed class ManagedLoadedTypeNameResolver
     internal (CorDebugLoadedModule Module, uint TypeToken) Resolve(
         string typeName,
         DebugExpressionLanguage language,
+        string operation) => Find(typeName, language, operation)
+            ?? throw new InvalidOperationException(
+                $"No loaded runtime type named '{typeName}' is available for {operation}.");
+
+    /// <summary>
+    /// Finds a unique loaded declaration, preserving ambiguity and metadata failures independently of absence.
+    /// </summary>
+    internal (CorDebugLoadedModule Module, uint TypeToken)? Find(
+        string typeName,
+        DebugExpressionLanguage language,
         string operation)
     {
         StringComparison comparison = language == DebugExpressionLanguage.VisualBasic
@@ -50,8 +60,7 @@ internal sealed class ManagedLoadedTypeNameResolver
 
         if (matches.Count == 0)
         {
-            throw new InvalidOperationException(
-                $"No loaded runtime type named '{typeName}' is available for {operation}.");
+            return null;
         }
 
         if (matches.Count > 1)

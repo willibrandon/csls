@@ -10,6 +10,7 @@
     <PackageVersion Include="BenchmarkDotNet" Version="0.15.8" />
     <PackageVersion Include="FSharp.Compiler.Service"
                     Version="$(FSharpCompilerServiceVersion)" />
+    <PackageVersion Include="FSharp.Core" Version="10.1.400" />
     <PackageVersion Include="Hex1b" Version="0.165.0" />
     <PackageVersion Include="Microsoft.Build" Version="18.9.6" />
     <PackageVersion Include="Microsoft.Build.Framework" Version="18.9.6" />

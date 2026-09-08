@@ -88,23 +88,7 @@ internal sealed partial class CorDebugDebuggee
     {
         ManagedFrameHandle frame = GetFrame(frameId, generation);
         ManagedExpressionPlanValidator.Validate(receiverPlan, frame.ExpressionLanguage);
-        try
-        {
-            ManagedExpressionValue receiver = EvaluateNode(
-                frame,
-                receiverPlan,
-                receiverPlan.Root,
-                generation);
-            return GetInstanceMemberCompletions(
-                receiver,
-                prefix,
-                replacementStart,
-                replacementLength,
-                frame.ExpressionLanguage);
-        }
-        catch (InvalidOperationException) when (TryGetQualifiedTypeName(
-            receiverPlan.Root,
-            out string typeName))
+        if (TryResolveStaticReceiver(frame, receiverPlan.Root, out string typeName))
         {
             return GetStaticMemberCompletions(
                 typeName,
@@ -113,6 +97,8 @@ internal sealed partial class CorDebugDebuggee
                 replacementLength,
                 frame.ExpressionLanguage);
         }
+        ManagedExpressionValue receiver = EvaluateNode(frame, receiverPlan, receiverPlan.Root, generation);
+        return GetInstanceMemberCompletions(receiver, prefix, replacementStart, replacementLength, frame.ExpressionLanguage);
     }
 
     private IReadOnlyList<DebugCompletionInfo> GetInstanceMemberCompletions(
@@ -355,30 +341,27 @@ internal sealed partial class CorDebugDebuggee
         TypeDefinition type = metadata.GetTypeDefinition(
             MetadataTokens.TypeDefinitionHandle(checked((int)(typeToken & 0x00FFFFFF))));
         string declaringType = metadata.GetString(type.Name);
-        if (!staticMembers)
+        foreach (FieldDefinition field in type.GetFields().Select(metadata.GetFieldDefinition))
         {
-            foreach (FieldDefinition field in type.GetFields().Select(metadata.GetFieldDefinition))
+            string name = metadata.GetString(field.Name);
+            if (((field.Attributes & FieldAttributes.Static) != 0) != staticMembers ||
+                !ManagedExpressionName.IsSimpleIdentifier(name) ||
+                !MatchesCompletionPrefix(name, prefix, language))
             {
-                string name = metadata.GetString(field.Name);
-                if ((field.Attributes & FieldAttributes.Static) != 0 ||
-                    !ManagedExpressionName.IsSimpleIdentifier(name) ||
-                    !MatchesCompletionPrefix(name, prefix, language))
-                {
-                    continue;
-                }
-
-                string fieldType = field.DecodeSignature(
-                    FunctionEvaluationSignatureTypeProvider.Instance,
-                    genericContext: null);
-                AddMemberCompletion(
-                    candidates,
-                    name,
-                    fieldType,
-                    declaringType,
-                    DebugCompletionItemKind.Field,
-                    replacementStart,
-                    replacementLength);
+                continue;
             }
+
+            string fieldType = field.DecodeSignature(
+                FunctionEvaluationSignatureTypeProvider.Instance,
+                genericContext: null);
+            AddMemberCompletion(
+                candidates,
+                name,
+                fieldType,
+                declaringType,
+                DebugCompletionItemKind.Field,
+                replacementStart,
+                replacementLength);
         }
 
         foreach (MethodDefinitionHandle methodHandle in type.GetMethods())

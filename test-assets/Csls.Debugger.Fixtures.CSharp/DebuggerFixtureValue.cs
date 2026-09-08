@@ -8,6 +8,11 @@ namespace Csls.Debugger.Fixtures.CSharp;
 [DebuggerDisplay("csharp={_number}", Type = "csharp-display")]
 internal sealed class DebuggerFixtureValue
 {
+    /// <summary>
+    /// Holds mutable static storage for debugger expression tests.
+    /// </summary>
+    internal static int s_number;
+
     private readonly int _number;
 
     /// <summary>
@@ -17,12 +22,18 @@ internal sealed class DebuggerFixtureValue
     internal DebuggerFixtureValue(int number)
     {
         _number = number;
+        s_number = number + 20;
     }
 
     /// <summary>
     /// Gets the value returned by the debugger-visible method.
     /// </summary>
     internal int Number => _number;
+
+    /// <summary>
+    /// Observes static storage through code compiled into the target process.
+    /// </summary>
+    internal static int ReadStaticNumber() => s_number;
 
     /// <summary>
     /// Computes a stable result by executing target code.

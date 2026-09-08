@@ -151,6 +151,11 @@ Expressions and completions use the selected stopped frame. Explicit method call
 and object construction use guarded target execution. Direct assignments update
 stopped target storage.
 
+Use type-qualified expressions such as `System.Int32.MaxValue` and
+`System.String.Empty` to inspect constants and static fields. Static-field
+completions use the selected frame's language, and assignments to mutable static
+fields update the target's storage.
+
 Matching Portable PDBs provide source locations on Windows, Linux, and macOS.
 Matching Windows PDBs provide source locations on Windows. Symbol stores, embedded
 source, and Source Link supply validated symbols and source text. Configure trusted

@@ -9,6 +9,10 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="FSharp.Core" />
+  </ItemGroup>
+
+  <ItemGroup>
     <Compile Include="DebuggerGenericFixture.fs" />
     <Compile Include="DebuggerFixtureValue.fs" />
     <Compile Include="Program.fs" />

@@ -18,6 +18,10 @@ internal sealed partial class CorDebugDebuggee
         DebugExpressionNode node,
         DebugStopGeneration generation)
     {
+        if (TryResolveStaticReceiver(frame, node.Children[0], out string typeName))
+        {
+            return ResolveStaticFieldAssignmentTarget(frame, typeName, node.Text!);
+        }
         ManagedExpressionValue receiver = EvaluateNode(
             frame,
             plan,

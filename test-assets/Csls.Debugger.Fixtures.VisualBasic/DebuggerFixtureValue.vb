@@ -6,6 +6,11 @@ Namespace Global.Csls.Debugger.Fixtures.VisualBasic
     ''' </summary>
     <DebuggerDisplay("visual-basic={Me._number}", Type:="visual-basic-display")>
     Friend NotInheritable Class DebuggerFixtureValue
+        ''' <summary>
+        ''' Holds mutable static storage for debugger expression tests.
+        ''' </summary>
+        Friend Shared s_number As Integer
+
         Private ReadOnly _number As Integer
 
         ''' <summary>
@@ -14,6 +19,7 @@ Namespace Global.Csls.Debugger.Fixtures.VisualBasic
         ''' <param name="number">The value returned by the debugger-visible method.</param>
         Friend Sub New(number As Integer)
             _number = number
+            s_number = number + 20
         End Sub
 
         ''' <summary>
@@ -24,6 +30,13 @@ Namespace Global.Csls.Debugger.Fixtures.VisualBasic
                 Return _number
             End Get
         End Property
+
+        ''' <summary>
+        ''' Observes static storage through code compiled into the target process.
+        ''' </summary>
+        Friend Shared Function ReadStaticNumber() As Integer
+            Return s_number
+        End Function
 
         ''' <summary>
         ''' Computes a stable result by executing target code.

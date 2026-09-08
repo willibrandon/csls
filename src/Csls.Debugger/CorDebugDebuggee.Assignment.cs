@@ -370,6 +370,11 @@ internal sealed partial class CorDebugDebuggee
             return GetFrameAssignmentTarget(frame.Pointer, slot.ScopeKind, slot.Index);
         }
 
+        if (origin is ManagedStaticFieldValueOrigin staticField)
+        {
+            return ReacquireStaticField(frame, staticField);
+        }
+
         if (origin is ManagedHeapValueOrigin heap)
         {
             if (!_values.TryGetValue(heap.ValueReference, out ManagedValueHandle? owner))

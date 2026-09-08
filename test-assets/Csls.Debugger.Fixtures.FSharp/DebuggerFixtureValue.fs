@@ -7,7 +7,14 @@ open System.Diagnostics
 /// </summary>
 [<DebuggerDisplay("fsharp={storedNumber}", Type = "fsharp-display")>]
 type internal DebuggerFixtureValue(number: int) =
+    static let mutable s_number = 0
     let storedNumber = number
+    do s_number <- number + 20
+
+    /// <summary>
+    /// Reads the compiler-owned static field for independent runtime observations.
+    /// </summary>
+    static member internal ReadStaticNumber() = s_number
 
     /// <summary>
     /// Gets the value returned by the debugger-visible method.

@@ -97,6 +97,9 @@ public sealed partial class McpDebuggerLifecycleTests
                     await AssertMcpStructAssignmentIntegerAsync(mcp.Client, session, presentedGeneration, frameId,
                         $"localProxyCounters.{counter}", expected,
                         TestContext.CancellationToken).ConfigureAwait(false);
+                    await AssertMcpStructAssignmentIntegerAsync(mcp.Client, session, presentedGeneration, frameId,
+                        $"Csls.TestProcessHost.DebuggerProxyEvaluationCounters.s_current.{counter}", expected,
+                        TestContext.CancellationToken).ConfigureAwait(false);
                 }
                 if (incarnation == 0)
                 {
