@@ -3,6 +3,13 @@ using System.Diagnostics;
 using System.Globalization;
 using System.Text;
 
+if (args is ["--windows-native-dump", string dumpProcessId, string dumpCreationTime, string nativeDumpPath] &&
+    OperatingSystem.IsWindows())
+{
+    return WindowsNativeDumpFixture.Run(int.Parse(dumpProcessId, CultureInfo.InvariantCulture),
+        long.Parse(dumpCreationTime, CultureInfo.InvariantCulture), nativeDumpPath);
+}
+
 if (args is ["--debugger-process-tree", string processTreePipe])
 {
     return await DebuggerProcessTreeFixture.RunRootAsync(processTreePipe).ConfigureAwait(false);

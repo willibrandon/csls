@@ -41,7 +41,7 @@ public sealed class DapTerminationTests : DapTestContext
             await using ConfiguredAsyncDisposable clientDisposal = client.ConfigureAwait(false);
             using DapTestCancellationCapture capture = CaptureProtocolOnCancellation(client);
             await LaunchAsync(client, pipeName, noDebug).ConfigureAwait(false);
-            await firstConnected.ConfigureAwait(false);
+            await WaitForTreeConnectionAsync(client, firstConnected).ConfigureAwait(false);
             int[] firstIds = await ReadTreeAsync(client, targets).ConfigureAwait(false);
             Assert.IsFalse(sibling.HasExited);
             if (pause)
@@ -67,7 +67,7 @@ public sealed class DapTerminationTests : DapTestContext
                 await ReadTerminalResponseAsync(client, sequence, "restart", terminated: false).ConfigureAwait(false);
                 await AssertTreeExitedAsync(targets).ConfigureAwait(false);
                 Assert.IsFalse(sibling.HasExited);
-                await replacementConnected.ConfigureAwait(false);
+                await WaitForTreeConnectionAsync(client, replacementConnected).ConfigureAwait(false);
                 int[] replacementIds = await ReadTreeAsync(client, targets).ConfigureAwait(false);
                 Assert.IsEmpty(firstIds.Intersect(replacementIds));
             }
@@ -95,6 +95,19 @@ public sealed class DapTerminationTests : DapTestContext
                     await process.WaitForExitAsync(CancellationToken.None).ConfigureAwait(false);
                 }
             }
+        }
+    }
+
+    private async Task WaitForTreeConnectionAsync(DapTestClient client, Task connected)
+    {
+        try
+        {
+            await connected.WaitAsync(TestContext.CancellationToken).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            await DebuggerProcessDiagnostics.CaptureAsync(client.HostProcessId, TestContext).ConfigureAwait(false);
+            throw;
         }
     }
 

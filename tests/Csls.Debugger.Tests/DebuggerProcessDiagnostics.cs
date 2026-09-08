@@ -6,7 +6,7 @@ using System.Globalization;
 namespace Csls.Debugger.Tests;
 
 /// <summary>
-/// Captures bounded native and managed stacks from a failed test's owned macOS process tree.
+/// Captures bounded platform diagnostics from a failed test's owned process tree.
 /// </summary>
 internal static class DebuggerProcessDiagnostics
 {
@@ -20,6 +20,11 @@ internal static class DebuggerProcessDiagnostics
     /// <returns>A task that completes after diagnostic collection or its bounded deadline.</returns>
     internal static async Task CaptureAsync(int hostProcessId, TestContext testContext)
     {
+        if (OperatingSystem.IsWindows())
+        {
+            await WindowsDebuggerProcessCapture.CaptureTreeAsync(hostProcessId, testContext).ConfigureAwait(false);
+            return;
+        }
         if (!OperatingSystem.IsMacOS())
         {
             return;
