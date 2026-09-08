@@ -37,32 +37,43 @@ internal static partial class DebuggeeChildProcesses
     /// </summary>
     internal static void Terminate(int parentProcessId)
     {
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(parentProcessId);
+        if (OperatingSystem.IsWindows())
+        {
+            WindowsProcessSnapshot.VisitChildren(parentProcessId, static processId => TerminateChild(processId, null));
+            return;
+        }
         foreach (int processId in GetIds(parentProcessId))
         {
-            Process process;
+            TerminateChild(processId, parentProcessId);
+        }
+    }
+
+    private static void TerminateChild(int processId, int? parentProcessId)
+    {
+        Process process;
+        try
+        {
+            process = Process.GetProcessById(processId);
+        }
+        catch (ArgumentException)
+        {
+            return;
+        }
+        using (process)
+        {
+            // Windows callers already retain and validate the exact parent and child kernel handles.
+            if (parentProcessId is int parent && !GetIds(parent).Contains(processId))
+            {
+                return;
+            }
             try
             {
-                process = Process.GetProcessById(processId);
+                process.Kill(entireProcessTree: true);
             }
-            catch (ArgumentException)
+            catch (InvalidOperationException) when (process.HasExited)
             {
-                continue;
-            }
-            using (process)
-            {
-                // Revalidate membership after acquiring the process, since a child can exit during discovery.
-                if (!GetIds(parentProcessId).Contains(processId))
-                {
-                    continue;
-                }
-                try
-                {
-                    process.Kill(entireProcessTree: true);
-                }
-                catch (InvalidOperationException) when (process.HasExited)
-                {
-                    Debug.Assert(process.HasExited);
-                }
+                Debug.Assert(process.HasExited);
             }
         }
     }

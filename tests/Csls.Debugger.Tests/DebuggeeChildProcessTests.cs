@@ -1,7 +1,9 @@
+using Microsoft.Win32.SafeHandles;
 using System.Diagnostics;
 using System.Globalization;
 using System.IO.Pipes;
 using System.Runtime.InteropServices;
+using System.Runtime.Versioning;
 
 namespace Csls.Debugger.Tests;
 
@@ -108,6 +110,65 @@ public sealed class DebuggeeChildProcessTests
     }
 
     /// <summary>
+    /// Rejects older and identical process identities while preserving query ownership through child exit.
+    /// </summary>
+    [TestMethod]
+    [OSCondition(OperatingSystems.Windows)]
+    [SupportedOSPlatform("windows")]
+    [Timeout(30000, CooperativeCancellation = true)]
+    public async Task WindowsCreationTimesExcludeOlderProcessIdentities()
+    {
+        using var parent = Process.GetCurrentProcess();
+        using Process child = StartFixture("--wait-for-standard-input");
+        try
+        {
+            using SafeProcessHandle parentIdentity = WindowsProcessIdentity.Open(parent.Id);
+            using SafeProcessHandle childIdentity = WindowsProcessIdentity.Open(child.Id);
+            Assert.IsFalse(parentIdentity.IsInvalid);
+            Assert.IsFalse(childIdentity.IsInvalid);
+            Assert.IsGreaterThan(parent.StartTime.ToUniversalTime(), child.StartTime.ToUniversalTime());
+            Assert.IsTrue(WindowsProcessIdentity.WasCreatedAfter(childIdentity, parentIdentity));
+            Assert.IsFalse(WindowsProcessIdentity.WasCreatedAfter(parentIdentity, childIdentity),
+                "A process older than the selected parent cannot belong to that parent's process tree.");
+            Assert.IsFalse(WindowsProcessIdentity.WasCreatedAfter(childIdentity, childIdentity),
+                "The parent's own identity cannot be classified as one of its children.");
+            Assert.IsTrue(WindowsProcessIdentity.HasParent(childIdentity, parent.Id));
+            Assert.IsFalse(WindowsProcessIdentity.HasParent(parentIdentity, child.Id));
+            await AssertWindowsSiblingOwnershipAsync(child.Id, childIdentity).ConfigureAwait(false);
+
+            child.StandardInput.Close();
+            await DebuggerProcessExit.WaitAsync(child, TestContext.CancellationToken).ConfigureAwait(false);
+            Assert.AreEqual(0, child.ExitCode);
+            Assert.IsTrue(WindowsProcessIdentity.WasCreatedAfter(childIdentity, parentIdentity));
+            Assert.IsTrue(WindowsProcessIdentity.HasParent(childIdentity, parent.Id));
+            Assert.IsFalse(parentIdentity.IsClosed);
+            Assert.IsFalse(childIdentity.IsClosed);
+            Assert.IsEmpty(WindowsProcessSnapshot.GetChildren(child.Id));
+        }
+        finally
+        {
+            await EndFixtureAsync(child).ConfigureAwait(false);
+        }
+    }
+
+    [SupportedOSPlatform("windows")]
+    private static async Task AssertWindowsSiblingOwnershipAsync(int childProcessId, SafeProcessHandle childIdentity)
+    {
+        using Process sibling = StartFixture("--wait-for-standard-input");
+        try
+        {
+            using SafeProcessHandle siblingIdentity = WindowsProcessIdentity.Open(sibling.Id);
+            Assert.IsTrue(WindowsProcessIdentity.WasCreatedAfter(siblingIdentity, childIdentity));
+            Assert.IsFalse(WindowsProcessIdentity.HasParent(siblingIdentity, childProcessId),
+                "A newer sibling is not a child of the earlier process.");
+        }
+        finally
+        {
+            await EndFixtureAsync(sibling).ConfigureAwait(false);
+        }
+    }
+
+    /// <summary>
     /// Reports malformed process records instead of treating them as retired processes.
     /// </summary>
     /// <param name="record">The hostile process record written through a real file boundary.</param>
@@ -159,6 +220,9 @@ public sealed class DebuggeeChildProcessTests
         Assert.AreEqual(IntPtr.Size == 8 ? 568 : 556, Marshal.SizeOf<WindowsProcessSnapshotEntry>());
         Assert.AreEqual(IntPtr.Size == 8 ? 32 : 24,
             Marshal.OffsetOf<WindowsProcessSnapshotEntry>(nameof(WindowsProcessSnapshotEntry._parentProcessId)).ToInt32());
+        Assert.AreEqual(6 * IntPtr.Size, Marshal.SizeOf<WindowsProcessBasicInformation>());
+        Assert.AreEqual(5 * IntPtr.Size,
+            Marshal.OffsetOf<WindowsProcessBasicInformation>(nameof(WindowsProcessBasicInformation._parentProcessId)).ToInt32());
     }
 
     private static Process StartFixture(params string[] arguments)
