@@ -143,22 +143,34 @@ internal sealed partial class SourceBreakpointManager : IDisposable
                 $"The target exceeds the loaded-module limit of {MaximumModuleCount}.");
         }
 
-        nint identity = ComAbi.QueryInterface(module, s_iUnknownInterfaceId);
-        _ = ComAbi.AddRef(module);
         string? reportedName = GetModuleName(module);
         string? modulePath = GetModulePath(reportedName);
         bool isInMemory = IsInMemoryModule(module);
         bool isDynamic = IsDynamicModule(module);
-        (
-            bool? isOptimized,
-            string? optimizationDiagnostic,
-            bool? isHotReloadEnabled,
-            string? hotReloadDiagnostic) = ConfigureJitPolicy(module, isDynamic);
         DebugSymbolResolution? symbols = modulePath is null
             ? null
             : await _symbolLocator.ResolveAsync(modulePath, cancellationToken)
                 .ConfigureAwait(false);
         (DebugModuleSymbolKind symbolKind, string? symbolPath) = GetSymbolInfo(symbols);
+        byte[]? symbolImage = isInMemory || isDynamic ? CorDebugInMemorySymbolReader.TryRead(module) : null;
+        using (PortablePdbReader? reader = symbolImage is null ? null : PortablePdbReader.TryOpen(symbolImage))
+        {
+            symbolImage = reader is null ? null : symbolImage;
+        }
+        if (symbolImage is not null)
+        {
+            symbolKind = DebugModuleSymbolKind.InMemoryPortablePdb;
+            symbolPath = null;
+        }
+
+        (
+            bool? isOptimized,
+            string? optimizationDiagnostic,
+            bool? isHotReloadEnabled,
+            string? hotReloadDiagnostic) = ConfigureJitPolicy(module, isDynamic, symbolKind != DebugModuleSymbolKind.None);
+        byte[]? moduleImage = isInMemory ? CorDebugModuleImageReader.TryRead(module) : null;
+        nint identity = ComAbi.QueryInterface(module, s_iUnknownInterfaceId);
+        _ = ComAbi.AddRef(module);
         var loadedModule = new CorDebugLoadedModule
         {
             Id = checked(++_nextModuleId),
@@ -168,10 +180,11 @@ internal sealed partial class SourceBreakpointManager : IDisposable
             Identity = identity,
             SymbolKind = symbolKind,
             SymbolPath = symbolPath,
+            SymbolImage = symbolImage,
             SymbolsInspected = true,
             IsInMemory = isInMemory,
             IsDynamic = isDynamic,
-            ModuleImage = isInMemory ? CorDebugModuleImageReader.TryRead(module) : null,
+            ModuleImage = moduleImage,
             IsOptimized = isOptimized,
             OptimizationDiagnostic = optimizationDiagnostic,
             IsHotReloadEnabled = isHotReloadEnabled,
@@ -186,11 +199,6 @@ internal sealed partial class SourceBreakpointManager : IDisposable
             _ = ComAbi.Release(module);
             return;
         }
-
-        await RefreshInMemorySymbolsAsync(
-            loadedModule,
-            notifyChanges: true,
-            cancellationToken).ConfigureAwait(false);
 
         if (_steppingPolicyActivated)
         {

@@ -15,7 +15,8 @@ public sealed partial class DapSessionTests
         string programPath,
         string waitPath,
         bool suppressJitOptimizations,
-        bool enableHotReload)
+        bool enableHotReload,
+        bool? includeSymbols = null)
     {
         writer.WriteStartObject();
         writer.WriteString("program", programPath);
@@ -26,6 +27,21 @@ public sealed partial class DapSessionTests
         writer.WriteEndArray();
         writer.WriteBoolean("suppressJITOptimizations", suppressJitOptimizations);
         writer.WriteBoolean("enableHotReload", enableHotReload);
+        if (includeSymbols is bool selected)
+        {
+            writer.WriteStartObject("symbolOptions");
+            writer.WriteStartObject("moduleFilter");
+            writer.WriteString("mode", "loadOnlyIncluded");
+            writer.WriteBoolean("includeSymbolsNextToModules", false);
+            writer.WriteStartArray("includedModules");
+            if (selected)
+            {
+                writer.WriteStringValue(Path.GetFileName(programPath));
+            }
+            writer.WriteEndArray();
+            writer.WriteEndObject();
+            writer.WriteEndObject();
+        }
         writer.WriteEndObject();
     }
 }

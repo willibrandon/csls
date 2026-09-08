@@ -42,10 +42,27 @@ public sealed partial class DapSessionTests
             enableHotReload: true).ConfigureAwait(false);
     }
 
+    /// <summary>
+    /// Applies source-debugging JIT policy to modules selected for matching symbol loading.
+    /// </summary>
+    /// <param name="includeSymbols">Whether the launched module is selected for symbol loading.</param>
+    /// <param name="enableHotReload">Whether the launch requests Edit and Continue preparation.</param>
+    [TestMethod]
+    [DataRow(false, false)]
+    [DataRow(true, false)]
+    [DataRow(false, true)]
+    [DataRow(true, true)]
+    [Timeout(30000, CooperativeCancellation = true)]
+    public Task ModuleJitPolicyFollowsSymbolSelection(bool includeSymbols, bool enableHotReload) =>
+        AssertModuleOptimizationAsync(GetJitFixture("Release"), isSuppressed: true, enableHotReload,
+            includeSymbols, expectedHotReload: false);
+
     private async Task AssertModuleOptimizationAsync(
         string programPath,
         bool isSuppressed,
-        bool enableHotReload)
+        bool enableHotReload,
+        bool? includeSymbols = null,
+        bool? expectedHotReload = null)
     {
         string waitPath = Path.Join(
             Path.GetTempPath(),
@@ -61,7 +78,8 @@ public sealed partial class DapSessionTests
                 programPath,
                 waitPath,
                 isSuppressed,
-                enableHotReload)
+                enableHotReload,
+                includeSymbols)
                 .ConfigureAwait(false);
             int sequence = await client.SendRequestAsync(
                 "modules",
@@ -71,28 +89,48 @@ public sealed partial class DapSessionTests
                 .ReadMessageAsync(TestContext.CancellationToken)
                 .ConfigureAwait(false);
             AssertResponse(response.RootElement, sequence, "modules", success: true);
-            JsonElement[] modules = [.. response.RootElement.GetProperty("body")
-                .GetProperty("modules")
+            JsonElement loadedModules = response.RootElement.GetProperty("body").GetProperty("modules");
+            JsonElement[] modules = [.. loadedModules
                 .EnumerateArray()
                 .Where(candidate => candidate.TryGetProperty("path", out JsonElement path) &&
                     DebuggerTestPath.AreEquivalent(path.GetString(), programPath))];
             Assert.HasCount(1, modules, response.RootElement.ToString());
             JsonElement module = modules[0];
-            Assert.AreEqual(isSuppressed, !module.GetProperty("isOptimized").GetBoolean());
+            bool symbolsLoaded = includeSymbols != false;
+            bool sourcePolicyApplied = symbolsLoaded && isSuppressed;
+            bool hotReloadPrepared = expectedHotReload ?? enableHotReload;
+            Assert.AreEqual(sourcePolicyApplied, !module.GetProperty("isOptimized").GetBoolean(), module.ToString());
             Assert.AreEqual(
-                enableHotReload,
+                hotReloadPrepared,
                 module.GetProperty("isHotReloadEnabled").GetBoolean(),
                 response.RootElement.ToString());
             bool advertisesBaseline = module
                 .GetProperty("hotReloadCapabilities")
                 .EnumerateArray()
                 .Any(static capability => capability.GetString() == "Baseline");
-            Assert.AreEqual(enableHotReload, advertisesBaseline);
+            Assert.AreEqual(hotReloadPrepared, advertisesBaseline);
             Assert.AreEqual(0, module.GetProperty("hotReloadGeneration").GetInt32());
             Assert.AreEqual(
-                isSuppressed,
+                sourcePolicyApplied,
                 module.GetProperty("isUserCode").GetBoolean());
-            Assert.AreEqual("Symbols loaded.", module.GetProperty("symbolStatus").GetString());
+            string status = symbolsLoaded ? "Symbols loaded." : "Symbols not found.";
+            if (enableHotReload && !hotReloadPrepared)
+            {
+                status += symbolsLoaded ? " CoreCLR did not enable Hot Reload for this module."
+                    : " Hot Reload requires matching debug symbols.";
+            }
+            Assert.AreEqual(status, module.GetProperty("symbolStatus").GetString());
+            if (includeSymbols is not null)
+            {
+                JsonElement coreLibrary = Assert.ContainsSingle(loadedModules.EnumerateArray()
+                    .Where(static candidate => candidate.GetProperty("name").GetString() == "System.Private.CoreLib.dll"));
+                Assert.IsTrue(coreLibrary.GetProperty("isOptimized").GetBoolean(), coreLibrary.ToString());
+                Assert.IsFalse(coreLibrary.GetProperty("isHotReloadEnabled").GetBoolean());
+                Assert.IsEmpty(coreLibrary.GetProperty("hotReloadCapabilities").EnumerateArray());
+                Assert.IsFalse(coreLibrary.GetProperty("isUserCode").GetBoolean());
+                Assert.AreEqual(enableHotReload ? "Symbols not found. Hot Reload requires matching debug symbols." : "Symbols not found.",
+                    coreLibrary.GetProperty("symbolStatus").GetString());
+            }
             await DisconnectAsync(client).ConfigureAwait(false);
             Assert.AreEqual(string.Empty, client.Diagnostics.ToString());
         }
@@ -107,7 +145,8 @@ public sealed partial class DapSessionTests
         string programPath,
         string waitPath,
         bool suppressJitOptimizations,
-        bool enableHotReload)
+        bool enableHotReload,
+        bool? includeSymbols = null)
     {
         int initializeSequence = await client.SendRequestAsync(
             "initialize",
@@ -124,7 +163,8 @@ public sealed partial class DapSessionTests
                 programPath,
                 waitPath,
                 suppressJitOptimizations,
-                enableHotReload),
+                enableHotReload,
+                includeSymbols),
             TestContext.CancellationToken).ConfigureAwait(false);
         using JsonDocument initialized = await client
             .ReadMessageAsync(TestContext.CancellationToken)

@@ -88,7 +88,8 @@ internal sealed partial class SourceBreakpointManager
         bool? IsHotReloadEnabled,
         string? HotReloadDiagnostic) ConfigureJitPolicy(
         nint module,
-        bool isDynamic)
+        bool isDynamic,
+        bool hasSymbols)
     {
         if (!ComAbi.TryQueryInterface(module, ICorDebugModule2Abi.InterfaceId, out nint module2))
         {
@@ -100,7 +101,7 @@ internal sealed partial class SourceBreakpointManager
         {
             var api = new ICorDebugModule2Abi(module2);
             int setResult = 0;
-            if (!isDynamic)
+            if (!isDynamic && hasSymbols)
             {
                 if (_enableHotReload)
                 {
@@ -122,6 +123,7 @@ internal sealed partial class SourceBreakpointManager
             string? hotReloadDiagnostic = _enableHotReload switch
             {
                 true when isDynamic => "Dynamic modules cannot be prepared for Hot Reload.",
+                true when !hasSymbols => "Hot Reload requires matching debug symbols.",
                 true when setResult < 0 =>
                     $"Hot Reload enablement failed with HRESULT 0x{setResult:X8}.",
                 true when getResult < 0 =>
