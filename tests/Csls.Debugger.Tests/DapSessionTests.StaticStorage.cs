@@ -57,7 +57,7 @@ public sealed partial class DapSessionTests
         JsonElement unavailable = await ReadEvaluationAsync(client, frameId, $"{UntouchedType}.s_number", success: false,
             TestContext.CancellationToken).ConfigureAwait(false);
         string? message = unavailable.GetProperty("message").GetString();
-        Assert.AreEqual($"Static storage for '{UntouchedType}' has not been initialized in the selected thread.", message);
+        Assert.AreEqual($"Static storage for '{UntouchedType}' is unavailable in the selected thread.", message);
         await AssertStructAssignmentEvaluationAsync(client, frameId, Counter, "0", "int").ConfigureAwait(false);
         await AssertStructAssignmentEvaluationAsync(client, frameId, "sentinel", "42", "int").ConfigureAwait(false);
         await AssertStructAssignmentEvaluationAsync(client, frameId, $"{UntouchedType}.ReadNumber()", "314", "int").ConfigureAwait(false);
