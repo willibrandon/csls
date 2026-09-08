@@ -29,8 +29,7 @@ internal sealed class DumpMachODataReader : IDataReader, IThreadReader, IDisposa
     /// <returns>The owned captured target.</returns>
     internal static DataTarget Open(string path, DataTargetOptions options, CancellationToken cancellationToken)
     {
-        cancellationToken.ThrowIfCancellationRequested();
-        var target = DataTarget.LoadDump(path, options);
+        DataTarget target = DumpDataTargetLoader.Open(path, options, cancellationToken);
         try
         {
             if (target.DataReader.TargetPlatform != OSPlatform.OSX)
