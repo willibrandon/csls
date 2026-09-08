@@ -71,18 +71,32 @@ jobs:
 
       - name: Pack VS Code test assets
         run: >-
-          tar --create --file artifacts/vscode-test-assets.tar
-          artifacts/tools/vscode artifacts/tools/vscode-dotnet-runtime
-          artifacts/tools/vscode-csharp artifacts/tools/vscode-csdevkit
-          artifacts/tools/vscode-server
-          tests/vscode/node_modules tests/vscode/dist
-          editors/vscode/node_modules editors/vscode/dist
+          dotnet run --file scripts/Prepare-VsCodeTestAssets.cs
+          '/bl:artifacts/binlogs/vscode-assets-pack-{}.binlog' -- pack
 
-      - name: Share VS Code test assets
+      - name: Share common VS Code test assets
         uses: actions/upload-artifact@v7
         with:
-          name: vscode-test-assets
+          name: vscode-test-assets-common
           overwrite: true
-          path: artifacts/vscode-test-assets.tar
+          path: artifacts/vscode-test-assets-common.tar
+          compression-level: 6
+          if-no-files-found: error
+
+      - name: Share desktop VS Code test assets
+        uses: actions/upload-artifact@v7
+        with:
+          name: vscode-test-assets-desktop
+          overwrite: true
+          path: artifacts/vscode-test-assets-desktop.tar
+          compression-level: 6
+          if-no-files-found: error
+
+      - name: Share remote VS Code test assets
+        uses: actions/upload-artifact@v7
+        with:
+          name: vscode-test-assets-remote
+          overwrite: true
+          path: artifacts/vscode-test-assets-remote.tar
           compression-level: 6
           if-no-files-found: error

@@ -1365,12 +1365,16 @@ jobs:
         if: ${{ !matrix.web }}
         uses: actions/download-artifact@v8
         with:
-          name: vscode-test-assets
+          pattern: vscode-test-assets-{common,${{ matrix.remote && 'remote' || 'desktop' }}}
+          merge-multiple: true
           path: artifacts
 
       - name: Extract VS Code test assets
         if: ${{ !matrix.web }}
-        run: tar --extract --file artifacts/vscode-test-assets.tar --directory .
+        run: >-
+          dotnet run --file scripts/Prepare-VsCodeTestAssets.cs
+          '/bl:artifacts/binlogs/vscode-assets-extract-{}.binlog' --
+          extract --profile ${{ matrix.remote && 'remote' || 'desktop' }}
 
       - name: Install graphical editor test prerequisites
         run: >-
