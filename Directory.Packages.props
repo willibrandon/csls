@@ -26,7 +26,6 @@
     <PackageVersion Include="Microsoft.CodeAnalysis.CSharp"
                     Version="$(SourceGeneratorRoslynVersion)"
                     Condition="'$(MSBuildProjectName)' == 'Csls.SourceGen'" />
-    <PackageVersion Include="Microsoft.CodeAnalysis.NetAnalyzers" Version="10.0.400" />
     <PackageVersion Include="Microsoft.CodeAnalysis.CSharp.Features" Version="$(RoslynVersion)" />
     <PackageVersion Include="Microsoft.CodeAnalysis.CSharp.Workspaces" Version="$(RoslynVersion)" />
     <PackageVersion Include="Microsoft.CodeAnalysis.VisualBasic" Version="$(RoslynVersion)" />
