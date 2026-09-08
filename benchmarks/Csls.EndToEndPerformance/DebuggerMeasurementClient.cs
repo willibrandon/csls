@@ -161,12 +161,11 @@ internal sealed class DebuggerMeasurementClient : IAsyncDisposable
     /// <returns>The response body.</returns>
     internal async Task<JsonElement> ResponseAsync(int sequence, string command, CancellationToken cancellationToken)
     {
-        while (!_responses.ContainsKey(sequence))
+        JsonElement response;
+        while (!_responses.Remove(sequence, out response))
         {
             await ReceiveAsync(cancellationToken).ConfigureAwait(false);
         }
-        JsonElement response = _responses[sequence];
-        _responses.Remove(sequence);
         if (response.GetProperty("command").GetString() != command || !response.GetProperty("success").GetBoolean())
         {
             throw new InvalidDataException($"Measured DAP request {command} failed: {response}");
@@ -279,6 +278,10 @@ internal sealed class DebuggerMeasurementClient : IAsyncDisposable
         _receivedSequence = sequence;
         if (message.GetProperty("type").GetString() == "response")
         {
+            if (!message.GetProperty("success").GetBoolean())
+            {
+                throw new InvalidDataException($"Measured DAP request {message.GetProperty("command").GetString()} failed: {message}");
+            }
             if (_responses.Count >= 8 || !_responses.TryAdd(message.GetProperty("request_seq").GetInt32(), message.Clone()))
             {
                 throw new InvalidDataException("The measured debugger returned excessive or duplicate responses.");

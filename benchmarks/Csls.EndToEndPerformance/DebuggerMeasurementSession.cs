@@ -46,8 +46,7 @@ internal static class DebuggerMeasurementSession
             writer.WriteStringValue("debugger-target");
             writer.WriteEndArray();
             writer.WriteStartObject("sourceFileMap");
-            writer.WriteString(Path.GetDirectoryName(DebuggerPerformanceTarget.SourcePath)
-                ?? throw new InvalidOperationException("The compiled target requires a source directory."), Path.GetDirectoryName(options.SourcePath));
+            writer.WriteString(DebuggerPerformanceTarget.SourcePath, options.SourcePath);
             writer.WriteEndObject();
             writer.WriteEndObject();
         }, cancellationToken).ConfigureAwait(false);

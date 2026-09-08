@@ -23,8 +23,7 @@
     <ProjectReference Include="../../src/Csls.Debugger/Csls.Debugger.csproj" />
     <ProjectReference Include="../../src/Csls.App/Csls.App.csproj"
                       ReferenceOutputAssembly="false" />
-    <ProjectReference Include="../../benchmarks/Csls.EndToEndPerformance/Csls.EndToEndPerformance.csproj"
-                      ReferenceOutputAssembly="false" />
+    <ProjectReference Include="../../benchmarks/Csls.EndToEndPerformance/Csls.EndToEndPerformance.csproj" />
     <ProjectReference Include="../../src/Csls.Debugger.Worker/Csls.Debugger.Worker.csproj"
                       ReferenceOutputAssembly="false" />
     <ProjectReference Include="../../src/Csls.Debugger.Evaluator.Worker/Csls.Debugger.Evaluator.Worker.csproj"
