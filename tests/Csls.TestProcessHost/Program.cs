@@ -3,6 +3,16 @@ using System.Diagnostics;
 using System.Globalization;
 using System.Text;
 
+if (args is ["--debugger-process-tree", string processTreePipe])
+{
+    return await DebuggerProcessTreeFixture.RunRootAsync(processTreePipe).ConfigureAwait(false);
+}
+
+if (args is ["--debugger-process-tree-child", string processTreeKind])
+{
+    return await DebuggerProcessTreeFixture.RunChildAsync(processTreeKind).ConfigureAwait(false);
+}
+
 if (args is ["--debugger-native-authorization-fixture", string nativeDebuggerPid])
 {
     return DebuggerNativeAuthorizationFixture.Run(int.Parse(nativeDebuggerPid, CultureInfo.InvariantCulture));

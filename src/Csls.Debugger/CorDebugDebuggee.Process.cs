@@ -1,3 +1,4 @@
+using Csls.Debugger.Interop;
 using System.ComponentModel;
 using System.Diagnostics;
 
@@ -50,8 +51,63 @@ internal sealed partial class CorDebugDebuggee
     }
 
     /// <inheritdoc />
-    public Task TerminateAsync(CancellationToken cancellationToken) =>
-        TerminateProcessAsync(_process, _unixExitMonitor, _managedCallback, cancellationToken);
+    public async Task TerminateAsync(CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        if (RuntimeFailure is not null)
+        {
+            await TerminateProcessAsync(_process, _unixExitMonitor, _managedCallback, cancellationToken)
+                .ConfigureAwait(false);
+            return;
+        }
+
+        bool processExited = _unixExitMonitor?.IsCompleted ?? _process.HasExited;
+        if (!processExited && !_managedCallback.HasCompletedExit)
+        {
+            TerminateManagedProcess();
+        }
+        _ = await WaitForOperatingSystemExitAsync(cancellationToken).ConfigureAwait(false);
+    }
+
+    private unsafe void TerminateManagedProcess()
+    {
+        const int ProcessTerminated = unchecked((int)0x80131301);
+        var controller = new ICorDebugControllerAbi(_debugProcess);
+        int running = 0;
+        int* runningAddress = &running;
+        int result = controller.IsRunning((nint)runningAddress);
+        if (result == ProcessTerminated)
+        {
+            return;
+        }
+        CorDebugHResult.ThrowIfFailed(result, "ICorDebugController.IsRunning");
+        running = Volatile.Read(ref *runningAddress);
+        if (running != 0)
+        {
+            result = controller.Stop(dwTimeoutIgnored: 0);
+            if (result == ProcessTerminated)
+            {
+                return;
+            }
+            CorDebugHResult.ThrowIfFailed(result, "ICorDebugController.Stop");
+        }
+
+        try
+        {
+            DebuggeeChildProcesses.Terminate(_process.Id);
+        }
+        finally
+        {
+            // CoreCLR retires queued events and marks the process as exiting before killing it.
+            // It also performs the continuation needed for its terminal callback.
+            result = controller.Terminate(exitCode: 0);
+            if (result != ProcessTerminated)
+            {
+                CorDebugHResult.ThrowIfFailed(result, "ICorDebugController.Terminate");
+            }
+            _managedCallback.RetireProcess();
+        }
+    }
 
     private static int GetExitCode(Process process)
     {
