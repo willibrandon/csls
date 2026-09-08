@@ -98,7 +98,7 @@ internal static class WindowsDebuggerProcessCapture
     /// <param name="cancellationToken">Cancels and reaps the collector independently of the captured process.</param>
     /// <param name="captureType">An optional managed dump policy, with native thread capture as the default.</param>
     /// <returns>The collector exit status and diagnostics.</returns>
-    internal static Task<(int ExitCode, string Output, string Error)> CaptureAsync(
+    internal static async Task<(int ExitCode, string Output, string Error)> CaptureAsync(
         Process process, string path, CancellationToken cancellationToken, DumpType? captureType = null)
     {
         _ = process.SafeHandle;
@@ -118,7 +118,14 @@ internal static class WindowsDebuggerProcessCapture
             DumpType.Full => "full",
             _ => throw new ArgumentOutOfRangeException(nameof(captureType))
         });
-        return DebuggerTestProcess.RunAsync(startInfo, cancellationToken);
+        (int collectorId, int exitCode, string output, string error) =
+            await DebuggerTestProcess.RunWithIdentityAsync(startInfo, cancellationToken).ConfigureAwait(false);
+        if (exitCode != 0)
+        {
+            string crash = await DebuggerWindowsCrashDiagnostics.ReadAsync(collectorId).ConfigureAwait(false);
+            error = $"Native dump collector {collectorId} exited with code {exitCode}.{Environment.NewLine}{error}{crash}";
+        }
+        return (exitCode, output, error);
     }
 
     private static void RetainProcess(int processId, List<Process> processes, DisposableCollection<Process> ownership)

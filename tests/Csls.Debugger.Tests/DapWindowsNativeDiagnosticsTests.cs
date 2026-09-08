@@ -329,6 +329,12 @@ public sealed class DapWindowsNativeDiagnosticsTests : DapTestContext
                 process, path, TestContext.CancellationToken).ConfigureAwait(false);
             Assert.AreNotEqual(0, exitCode, output + error);
             Assert.Contains("IOException", error);
+            Assert.StartsWith("Native dump collector ", error);
+            string[] failure = error.Split(' ', 7);
+            int collectorId = int.Parse(failure[3], CultureInfo.InvariantCulture);
+            Assert.IsGreaterThan(0, collectorId);
+            Assert.AreNotEqual(process.Id, collectorId, "Crash evidence must select the failed collector, not its live target.");
+            Assert.Contains($"exited with code {exitCode}.", error);
             Assert.AreSequenceEqual(original,
                 await File.ReadAllBytesAsync(path, TestContext.CancellationToken).ConfigureAwait(false));
             Assert.IsFalse(process.HasExited);

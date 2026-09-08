@@ -17,10 +17,24 @@ internal static class DebuggerWindowsCrashDiagnostics
     /// <returns>A task that completes after the bounded event-log query.</returns>
     internal static async Task CaptureAsync(int processId, TestContext testContext)
     {
+        string diagnostics = await ReadAsync(processId).ConfigureAwait(false);
+        if (!string.IsNullOrEmpty(diagnostics))
+        {
+            testContext.WriteLine(diagnostics);
+        }
+    }
+
+    /// <summary>
+    /// Reads the hosted Windows crash records for one explicitly identified test-owned process.
+    /// </summary>
+    /// <param name="processId">The operating-system identifier of the failed process.</param>
+    /// <returns>The bounded query's output or its diagnostic failure.</returns>
+    internal static async Task<string> ReadAsync(int processId)
+    {
         if (!OperatingSystem.IsWindows() || processId <= 0 ||
             !string.Equals(Environment.GetEnvironmentVariable("GITHUB_ACTIONS"), "true", StringComparison.OrdinalIgnoreCase))
         {
-            return;
+            return string.Empty;
         }
 
         // Event 1000 records the faulting application's PID as a hexadecimal EventData value.
@@ -40,14 +54,12 @@ internal static class DebuggerWindowsCrashDiagnostics
         {
             (int exitCode, string output, string error) = await DebuggerTestProcess.RunAsync(startInfo, deadline.Token)
                 .ConfigureAwait(false);
-            testContext.WriteLine($"Windows crash events for target {decimalId}: exit {exitCode}.");
-            testContext.WriteLine(output);
-            testContext.WriteLine(error);
+            return $"Windows crash events for target {decimalId}: exit {exitCode}.{Environment.NewLine}{output}{error}";
         }
         catch (Exception exception) when (exception is
             OperationCanceledException or IOException or UnauthorizedAccessException or Win32Exception)
         {
-            testContext.WriteLine($"Windows crash event collection for target {decimalId}: {exception.Message}");
+            return $"Windows crash event collection for target {decimalId}: {exception.Message}";
         }
     }
 }
