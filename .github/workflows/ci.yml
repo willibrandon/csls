@@ -231,7 +231,7 @@ jobs:
             filter: TestCategory!=DebuggerStress&FullyQualifiedName!~Assignment&FullyQualifiedName!~Evaluation&FullyQualifiedName!~ResultsView&FullyQualifiedName!~DebuggerTypeProxy&FullyQualifiedName!~Async&FullyQualifiedName!~Step&FullyQualifiedName!~Iterator&FullyQualifiedName~Csls.Debugger.Tests.Dap&(FullyQualifiedName~Csls.Debugger.Tests.DapDumpTests|FullyQualifiedName~ReferenceConversions|FullyQualifiedName~ReferenceTypeExpressions|FullyQualifiedName~RawStringReferences)
           - suite: stepping
             name: Debugger stepping
-            minimum_tests: 38
+            minimum_tests: 70
             filter: TestCategory!=DebuggerStress&FullyQualifiedName!~Assignment&FullyQualifiedName!~Evaluation&FullyQualifiedName!~ResultsView&FullyQualifiedName!~DebuggerTypeProxy&(FullyQualifiedName~Async|FullyQualifiedName~Step|FullyQualifiedName~Iterator)
           - suite: evaluation
             name: Debugger evaluation
@@ -317,6 +317,28 @@ jobs:
           --hangdump
           --hangdump-timeout 2m
           --hangdump-type None
+
+      - name: Provision independent thread-start oracle
+        id: thread-start-oracle
+        if: always() && matrix.rid == 'linux-arm64' && matrix.suite == 'stepping' && steps.debugger-tests.outcome != 'skipped'
+        run: >-
+          dotnet run --file scripts/Provision-NetcoredbgOracle.cs
+          /bl:artifacts/binlogs/thread-start-oracle-{}.binlog -- --github-env
+
+      - name: Compare independent managed thread startup
+        if: always() && steps.thread-start-oracle.outcome == 'success'
+        env:
+          CSLS_REPOSITORY_ROOT: ${{ github.workspace }}
+        run: >-
+          dotnet test
+          --test-modules artifacts/bin/Csls.Debugger.Tests/debug/Csls.Debugger.Tests.dll
+          --root-directory .
+          --results-directory artifacts/test-results/thread-start-oracle
+          --filter "FullyQualifiedName~DapAsyncThreadStartupTests"
+          --minimum-expected-tests 32
+          --no-ansi
+          --output Detailed
+          --report-trx
 
       - name: Capture native stack-overflow failure
         if: failure() && matrix.rid == 'win-x64' && matrix.suite == 'stress' && steps.debugger-tests.outcome == 'failure'

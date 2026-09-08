@@ -56,6 +56,17 @@ Set `CSLS_CSHARP_LS_ORACLE_PATH` or
 `CSLS_ROSLYN_LANGUAGE_SERVER_ORACLE_PATH` to use an externally managed oracle
 executable instead.
 
+Provision the independent DAP debugger oracle with:
+
+```console
+dotnet run --file scripts/Provision-NetcoredbgOracle.cs
+```
+
+`DapAsyncThreadStartupTests` runs against csls by default. Set
+`CSLS_DAP_ORACLE_PATH` to the provisioner's printed executable path to run the
+same source-breakpoint, local-value, and process-termination checks against
+netcoredbg. Linux arm64 CI executes both adapters and retains their crash evidence.
+
 Set `CSLS_TOOLS_ROOT` to keep provisioned tools outside the repository. The
 development container uses a container-local tool root so prefix-dependent
 editor installations never reuse artifacts from the host checkout. Its build
