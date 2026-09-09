@@ -67,12 +67,12 @@ public sealed partial class DapSessionTests
                 TestContext.CancellationToken).ConfigureAwait(false);
             int restart = await client.SendRequestAsync("restart", WriteEmptyObject, TestContext.CancellationToken)
                 .ConfigureAwait(false);
-            using (JsonDocument exited = await ReadEnvironmentRestartMessageAsync(client).ConfigureAwait(false))
+            using (JsonDocument exited = await ReadEnvironmentMessageAsync(client).ConfigureAwait(false))
             {
                 AssertEvent(exited.RootElement, "exited");
             }
 
-            using (JsonDocument response = await ReadEnvironmentRestartMessageAsync(client).ConfigureAwait(false))
+            using (JsonDocument response = await ReadEnvironmentMessageAsync(client).ConfigureAwait(false))
             {
                 AssertResponse(response.RootElement, restart, "restart", success: !invalidReplacement);
                 if (invalidReplacement)
@@ -108,7 +108,7 @@ public sealed partial class DapSessionTests
         }
     }
 
-    private async Task<JsonDocument> ReadEnvironmentRestartMessageAsync(DapTestClient client)
+    private async Task<JsonDocument> ReadEnvironmentMessageAsync(DapTestClient client)
     {
         try
         {
@@ -173,14 +173,14 @@ public sealed partial class DapSessionTests
 
     private async Task<int> ReadEnvironmentProcessAsync(DapTestClient client, string expected)
     {
-        using JsonDocument process = await client.ReadMessageAsync(TestContext.CancellationToken).ConfigureAwait(false);
+        using JsonDocument process = await ReadEnvironmentMessageAsync(client).ConfigureAwait(false);
         AssertEvent(process.RootElement, "process");
         int processId = process.RootElement.GetProperty("body").GetProperty("systemProcessId").GetInt32();
         Assert.IsGreaterThan(0, processId);
         var output = new System.Text.StringBuilder();
         while (output.Length < expected.Length)
         {
-            using JsonDocument message = await client.ReadMessageAsync(TestContext.CancellationToken).ConfigureAwait(false);
+            using JsonDocument message = await ReadEnvironmentMessageAsync(client).ConfigureAwait(false);
             AssertEvent(message.RootElement, "output");
             Assert.AreEqual("stdout", message.RootElement.GetProperty("body").GetProperty("category").GetString());
             output.Append(message.RootElement.GetProperty("body").GetProperty("output").GetString());

@@ -1,5 +1,6 @@
 using System.Buffers.Binary;
 using System.Runtime.CompilerServices;
+using System.Text;
 using System.Text.Json;
 
 namespace Csls.Debugger.Tests;
@@ -70,6 +71,35 @@ public sealed partial class DapSessionTests
         }
     }
 
+    /// <summary>
+    /// Reports a failed fixture launch before pausing and releases the adapter owned by setup.
+    /// </summary>
+    [TestMethod]
+    [Timeout(30000, CooperativeCancellation = true)]
+    public async Task StoppedFixtureLaunchFailurePreservesErrorAndReleasesAdapter()
+    {
+        DirectoryInfo directory = Directory.CreateTempSubdirectory("csls-fixture-startup-");
+        try
+        {
+            DapTestClient client = await DapTestClient.CreateAsync(TestContext.CancellationToken)
+                .ConfigureAwait(false);
+            await using ConfiguredAsyncDisposable cleanup = client.ConfigureAwait(false);
+            int adapterProcessId = client.HostProcessId;
+            string missingProgram = Path.Join(directory.FullName, "missing.dll");
+            Assert.IsFalse(File.Exists(missingProgram));
+            AssertFailedException failure = await Assert.ThrowsExactlyAsync<AssertFailedException>(
+                () => StartStoppedFixtureAsync(client, missingProgram, Path.Join(directory.FullName, "wait.signal")))
+                .ConfigureAwait(false);
+            Assert.Contains("The launch program does not exist.", failure.Message);
+            Assert.DoesNotContain("\"command\":\"pause\"", client.ProtocolTranscript);
+            await AssertProcessExitedAsync(adapterProcessId, TestContext.CancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            directory.Delete();
+        }
+    }
+
     private async Task<DapTestClient> StartStoppedFixtureAsync(
         string waitPath, bool blockForInspection = false, bool? showRawValues = null,
         bool? allowImplicitFuncEval = null)
@@ -77,42 +107,82 @@ public sealed partial class DapSessionTests
         DapTestClient client = await DapTestClient
             .CreateAsync(TestContext.CancellationToken)
             .ConfigureAwait(false);
-        _ = await client.SendRequestAsync(
-            "initialize",
-            WriteVariablePagingInitializeArguments,
-            TestContext.CancellationToken).ConfigureAwait(false);
-        using JsonDocument initialize = await client
-            .ReadMessageAsync(TestContext.CancellationToken)
-            .ConfigureAwait(false);
-        Assert.IsTrue(initialize.RootElement.GetProperty("body")
-            .GetProperty("supportsReadMemoryRequest").GetBoolean());
-        _ = await client.SendRequestAsync(
-            "launch",
-            writer => WriteLaunchArguments(
-                writer,
-                ResolveTestProcessHost(),
-                [blockForInspection ? "--debugger-unsafe-stop-fixture" : "--debugger-fixture", waitPath],
-                wait: true,
-                noDebug: false,
-                showRawValues: showRawValues,
-                allowImplicitFuncEval: allowImplicitFuncEval),
-            TestContext.CancellationToken).ConfigureAwait(false);
-        for (int index = 0; index < 5; index++)
-        {
-            using JsonDocument ignored = await client
-                .ReadMessageAsync(TestContext.CancellationToken)
-                .ConfigureAwait(false);
-            if (index == 0)
-            {
-                _ = await client.SendRequestAsync(
-                    "configurationDone",
-                    WriteEmptyObject,
-                    TestContext.CancellationToken).ConfigureAwait(false);
-            }
-        }
+        return await StartStoppedFixtureAsync(client, ResolveTestProcessHost(), waitPath,
+            blockForInspection, showRawValues, allowImplicitFuncEval).ConfigureAwait(false);
+    }
 
-        await PauseFixtureAsync(client).ConfigureAwait(false);
-        return client;
+    private async Task<DapTestClient> StartStoppedFixtureAsync(
+        DapTestClient client, string program, string waitPath, bool blockForInspection = false,
+        bool? showRawValues = null, bool? allowImplicitFuncEval = null)
+    {
+        try
+        {
+            int initializeSequence = await client.SendRequestAsync(
+                "initialize", WriteVariablePagingInitializeArguments, TestContext.CancellationToken)
+                .ConfigureAwait(false);
+            using (JsonDocument initialize = await client.ReadMessageAsync(TestContext.CancellationToken)
+                .ConfigureAwait(false))
+            {
+                AssertResponse(initialize.RootElement, initializeSequence, "initialize", success: true);
+                Assert.IsTrue(initialize.RootElement.GetProperty("body")
+                    .GetProperty("supportsReadMemoryRequest").GetBoolean());
+            }
+
+            int launchSequence = await client.SendRequestAsync(
+                "launch",
+                writer => WriteLaunchArguments(
+                    writer,
+                    program,
+                    [blockForInspection ? "--debugger-unsafe-stop-fixture" : "--debugger-fixture", waitPath],
+                    wait: true,
+                    noDebug: false,
+                    showRawValues: showRawValues,
+                    allowImplicitFuncEval: allowImplicitFuncEval),
+                TestContext.CancellationToken).ConfigureAwait(false);
+            using (JsonDocument initialized = await client.ReadMessageAsync(TestContext.CancellationToken)
+                .ConfigureAwait(false))
+            {
+                AssertEvent(initialized.RootElement, "initialized");
+            }
+
+            int configurationSequence = await client.SendRequestAsync(
+                "configurationDone", WriteEmptyObject, TestContext.CancellationToken).ConfigureAwait(false);
+            using (JsonDocument configuration = await client.ReadMessageAsync(TestContext.CancellationToken)
+                .ConfigureAwait(false))
+            {
+                AssertResponse(configuration.RootElement, configurationSequence, "configurationDone", success: true);
+            }
+
+            using (JsonDocument launch = await client.ReadMessageAsync(TestContext.CancellationToken)
+                .ConfigureAwait(false))
+            {
+                AssertResponse(launch.RootElement, launchSequence, "launch", success: true);
+            }
+
+            using (JsonDocument process = await client.ReadMessageAsync(TestContext.CancellationToken)
+                .ConfigureAwait(false))
+            {
+                AssertEvent(process.RootElement, "process");
+                Assert.IsGreaterThan(0, process.RootElement.GetProperty("body").GetProperty("systemProcessId").GetInt32());
+            }
+
+            var output = new StringBuilder();
+            while (output.Length < "ready".Length)
+            {
+                using JsonDocument message = await client.ReadMessageAsync(TestContext.CancellationToken)
+                    .ConfigureAwait(false);
+                AppendFixtureOutput(message.RootElement, output);
+            }
+
+            Assert.AreEqual("ready", output.ToString());
+            await PauseFixtureAsync(client).ConfigureAwait(false);
+            return client;
+        }
+        catch
+        {
+            await client.DisposeAsync().ConfigureAwait(false);
+            throw;
+        }
     }
 
     private async Task<string> GetArrayMemoryReferenceAsync(DapTestClient client)

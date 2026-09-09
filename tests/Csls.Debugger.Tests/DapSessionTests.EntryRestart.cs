@@ -92,7 +92,7 @@ public sealed partial class DapSessionTests
         bool rebound = false;
         while (true)
         {
-            using JsonDocument message = await ReadEnvironmentRestartMessageAsync(client).ConfigureAwait(false);
+            using JsonDocument message = await ReadEnvironmentMessageAsync(client).ConfigureAwait(false);
             JsonElement root = message.RootElement;
             if (root.GetProperty("type").GetString() == "response")
             {
