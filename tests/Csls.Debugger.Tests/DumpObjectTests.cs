@@ -136,13 +136,32 @@ public sealed class DumpObjectTests : DapTestContext
         Log("Reading captured locals.");
         Dictionary<string, DebugVariableInfo> locals = await ReadLocalsAsync(service).ConfigureAwait(false);
         DebugVariableInfo current = locals["cycleObject"];
+        using var observation = CancellationTokenSource.CreateLinkedTokenSource(TestContext.CancellationToken);
+        long initialReads = 0;
+        long finalReads = 0;
         for (int depth = 0; depth < 256; depth++)
         {
             if (depth % 32 == 0)
             {
                 Log($"Reading nested selection {depth + 1}.");
             }
-            DebugVariableInfo next = Assert.ContainsSingle(await ReadAsync(service, current).ConfigureAwait(false));
+            DumpReadProgressRecorder? progress = depth is 0 or 255 ? new(observation) : null;
+            DebugVariableInfo next = Assert.ContainsSingle(await ReadAsync(service, current, progress: progress)
+                .ConfigureAwait(false));
+            if (progress is not null)
+            {
+                DebugDumpReadProgress completed = Assert.ContainsSingle(progress.Updates.Where(
+                    static update => update.State == DebugDumpReadState.Completed));
+                Assert.AreEqual(DebugDumpReadState.Completed, completed.State);
+                if (depth == 0)
+                {
+                    initialReads = completed.MemoryReads;
+                }
+                else
+                {
+                    finalReads = completed.MemoryReads;
+                }
+            }
             Assert.AreEqual("Value", next.Name);
             Assert.AreEqual(1, next.NamedVariables, next.ToString());
             Assert.IsGreaterThan(0, next.VariablesReference);
@@ -156,6 +175,11 @@ public sealed class DumpObjectTests : DapTestContext
         Assert.AreEqual(1, Assert.ContainsSingle(await ReadAsync(service, locals["cycleObject"]).ConfigureAwait(false)).NamedVariables);
         Assert.AreEqual("29", Assert.ContainsSingle(await ReadAsync(service, locals["singletonObject"]).ConfigureAwait(false)).Value);
         Log("Completed depth and retained-path assertions.");
+        Log($"Memory reads for the same object: initial={initialReads}, final={finalReads}.");
+        Assert.IsGreaterThan(0L, initialReads);
+        Assert.IsGreaterThan(0L, finalReads);
+        Assert.IsLessThanOrEqualTo(initialReads, finalReads,
+            "Expanding the same captured object must not reread its ancestors as the logical path grows.");
 
         void Log(string message) => TestContext.WriteLine(
             $"Dump object depth {Stopwatch.GetElapsedTime(started).TotalMilliseconds:F1} ms: {message}");
@@ -247,8 +271,10 @@ public sealed class DumpObjectTests : DapTestContext
     }
 
     private Task<IReadOnlyList<DebugVariableInfo>> ReadAsync(IDebuggerInspectionTarget service, DebugVariableInfo value,
-        int start = 0, int count = 0, DebugVariableFilter filter = DebugVariableFilter.All) => service.GetVariablesAsync(
-            new DebugVariablesRequest(value.VariablesReference, start, count, false, filter), TestContext.CancellationToken);
+        int start = 0, int count = 0, DebugVariableFilter filter = DebugVariableFilter.All,
+        IProgress<DebugDumpReadProgress>? progress = null) => service.GetVariablesAsync(
+            new DebugVariablesRequest(value.VariablesReference, start, count, false, filter) { DumpReadProgress = progress },
+            TestContext.CancellationToken);
 
     private async Task<Dictionary<string, DebugVariableInfo>> ReadLocalsAsync(IDebuggerInspectionTarget service)
     {

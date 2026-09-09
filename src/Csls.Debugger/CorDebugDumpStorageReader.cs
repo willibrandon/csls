@@ -71,6 +71,30 @@ internal sealed unsafe class CorDebugDumpStorageReader
     }
 
     /// <summary>
+    /// Reacquires a request-owned native type for storage retained from this immutable captured process.
+    /// </summary>
+    internal CorDebugDumpStorage FromLocation(CorDebugDumpStorageLocation location)
+    {
+        _callbacks.Operation?.ThrowIfInterrupted();
+        nint process5 = ComAbi.QueryInterface(_getProcess(), ICorDebugProcess5Abi.InterfaceId);
+        nint type = 0;
+        try
+        {
+            CorDebugHResult.ThrowIfFailed(new ICorDebugProcess5Abi(process5).GetTypeForTypeID(location.TypeId,
+                (nint)(&type)), "ICorDebugProcess5.GetTypeForTypeID");
+            type = Volatile.Read(ref type);
+            var value = new CorDebugDumpStorage(type, location.Address, location.Size, location.HeapObject, location.TypeId);
+            type = 0;
+            return value;
+        }
+        finally
+        {
+            Release(type);
+            Release(process5);
+        }
+    }
+
+    /// <summary>
     /// Reads one physical field using exact declaring identity and explicit captured storage bounds.
     /// </summary>
     internal CorDebugDumpStorage ReadField(CorDebugDumpStorage parent, ManagedRuntimeTypeDeclaration declaration,

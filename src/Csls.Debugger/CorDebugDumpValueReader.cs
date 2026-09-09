@@ -70,7 +70,7 @@ internal sealed unsafe class CorDebugDumpValueReader
         {
             int length = _storage.GetArrayCount(value, _storage.GetArrayLayout(value));
             return new DebugVariableInfo(name, $"{{Length = {length}}}", type,
-                length == 0 ? 0 : _values.Retain(path), null, null,
+                length == 0 ? 0 : _values.Retain(path, value), null, null,
                 NamedVariables: 0, IndexedVariables: length, IsIndexed: indexed);
         }
         if (type == "string")
@@ -95,34 +95,44 @@ internal sealed unsafe class CorDebugDumpValueReader
                 0, null, null, IsIndexed: indexed);
         }
         int fields = _objects.GetCount(value);
-        return new DebugVariableInfo(name, "{...}", type, fields == 0 ? 0 : _values.Retain(path), null, null,
+        return new DebugVariableInfo(name, "{...}", type, fields == 0 ? 0 : _values.Retain(path, value), null, null,
             NamedVariables: fields, IndexedVariables: 0, IsIndexed: indexed);
     }
 
     /// <summary>
-    /// Replays a logical field-and-array path from its physical frame slot and reads the selected child page.
+    /// Reads a child page from retained storage or its nearest captured ancestor and exact inline selections.
     /// </summary>
     internal IReadOnlyList<DebugVariableInfo> Read(nint frame, CorDebugDumpValuePath path,
         int reference, int start, int count, DebugVariableFilter filter, CancellationToken cancellationToken)
     {
         List<CorDebugDumpValuePath> selections = [];
         CorDebugDumpValuePath root = path;
-        while (root.ParentId != 0)
+        CorDebugDumpStorageLocation? location = _values.GetStorage(reference);
+        while (location is null && root.ParentId != 0)
         {
             selections.Add(root);
+            location = _values.GetStorage(root.ParentId);
             root = _values.Get(root.ParentId);
         }
         nint native = 0;
         using var storage = new DisposableCollection<CorDebugDumpStorage>();
         try
         {
-            var api = new ICorDebugILFrameAbi(frame);
-            int result = root.Arguments ? api.GetArgument((uint)root.Slot, (nint)(&native))
-                : api.GetLocalVariable((uint)root.Slot, (nint)(&native));
-            native = Volatile.Read(ref native);
-            CorDebugHResult.ThrowIfFailed(result, "ICorDebugILFrame.GetValue");
-            nint rootValue = native;
-            CorDebugDumpStorage value = storage.Acquire(() => _storage.FromValue(rootValue));
+            CorDebugDumpStorage value;
+            if (location is not null)
+            {
+                value = storage.Acquire(() => _storage.FromLocation(location));
+            }
+            else
+            {
+                var api = new ICorDebugILFrameAbi(frame);
+                int result = root.Arguments ? api.GetArgument((uint)root.Slot, (nint)(&native))
+                    : api.GetLocalVariable((uint)root.Slot, (nint)(&native));
+                native = Volatile.Read(ref native);
+                CorDebugHResult.ThrowIfFailed(result, "ICorDebugILFrame.GetValue");
+                nint rootValue = native;
+                value = storage.Acquire(() => _storage.FromValue(rootValue));
+            }
             for (int index = selections.Count - 1; index >= 0; index--)
             {
                 cancellationToken.ThrowIfCancellationRequested();

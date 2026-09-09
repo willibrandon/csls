@@ -1,13 +1,13 @@
 namespace Csls.Debugger;
 
 /// <summary>
-/// Retains bounded logical expansion paths independently of a captured process's native read cache.
+/// Retains bounded logical expansion paths and immutable storage independently of the native read cache.
 /// </summary>
 public sealed class CorDebugDumpValues
 {
     private const int FirstReference = 0x40000000;
     private const int MaximumReferences = 65536;
-    private readonly List<CorDebugDumpValuePath> _paths = [];
+    private readonly List<(CorDebugDumpValuePath Path, CorDebugDumpStorageLocation? Storage)> _paths = [];
     private readonly Dictionary<CorDebugDumpValuePath, int> _references = [];
 
     /// <summary>
@@ -35,13 +35,20 @@ public sealed class CorDebugDumpValues
     /// Retrieves an existing logical path without touching captured memory.
     /// </summary>
     internal CorDebugDumpValuePath Get(int reference) => Contains(reference)
-        ? _paths[reference - FirstReference]
+        ? _paths[reference - FirstReference].Path
+        : throw new ArgumentException("The captured value reference is stale or unknown.", nameof(reference));
+
+    /// <summary>
+    /// Retrieves captured storage that can be reacquired through its opaque runtime type identity.
+    /// </summary>
+    internal CorDebugDumpStorageLocation? GetStorage(int reference) => Contains(reference)
+        ? _paths[reference - FirstReference].Storage
         : throw new ArgumentException("The captured value reference is stale or unknown.", nameof(reference));
 
     /// <summary>
     /// Assigns a stable identifier to a captured storage path within the session budget.
     /// </summary>
-    internal int Retain(CorDebugDumpValuePath path)
+    internal int Retain(CorDebugDumpValuePath path, CorDebugDumpStorage storage)
     {
         if (_references.TryGetValue(path, out int reference))
         {
@@ -54,7 +61,9 @@ public sealed class CorDebugDumpValues
         }
 
         reference = checked(FirstReference + _paths.Count);
-        _paths.Add(path);
+        _paths.Add((path, storage.TypeId is { } typeId
+            ? new CorDebugDumpStorageLocation(typeId, storage.Address, storage.Size, storage.HeapObject)
+            : null));
         _references.Add(path, reference);
         return reference;
     }
@@ -66,7 +75,7 @@ public sealed class CorDebugDumpValues
     {
         while (_paths.Count > checkpoint)
         {
-            _ = _references.Remove(_paths[^1]);
+            _ = _references.Remove(_paths[^1].Path);
             _paths.RemoveAt(_paths.Count - 1);
         }
     }
