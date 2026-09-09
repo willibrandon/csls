@@ -66,7 +66,7 @@ internal sealed partial class WindowsDumpMappedMemory : IDisposable
             try
             {
                 byte* argument = input + 2 * sizeof(uint) + sizeof(nint);
-                return type == 18 ? QueryMemory(argument, output) : ReadMappedMemory(argument, output);
+                return type == 18 ? QueryMemory(Unsafe.ReadUnaligned<ulong>(argument), output) : ReadMappedMemory(argument, output);
             }
             catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or ArgumentException or
                 OverflowException or InvalidOperationException or Win32Exception)
@@ -154,13 +154,22 @@ internal sealed partial class WindowsDumpMappedMemory : IDisposable
         }
     }
 
-    private unsafe int QueryMemory(byte* input, byte* output)
+    /// <summary>
+    /// Queries the captured address map using the native minidump memory-information layout.
+    /// </summary>
+    /// <param name="address">The address of an actual captured virtual-memory page.</param>
+    /// <param name="output">The caller-owned HRESULT and 48-byte memory-information storage.</param>
+    /// <returns>The native callback disposition.</returns>
+    internal unsafe int QueryMemory(ulong address, byte* output)
     {
-        ulong address = Unsafe.ReadUnaligned<ulong>(input);
         int next = FindNextRegion(address);
         if (next < _regions.Count && _regions[next].Address <= address)
         {
             _regions[next].Metadata.CopyTo(new Span<byte>(output + sizeof(int), 48));
+            ulong start = address - address % checked((uint)Environment.SystemPageSize);
+            ulong end = checked(_regions[next].Address + _regions[next].Size);
+            Unsafe.WriteUnaligned(output + sizeof(int), start);
+            Unsafe.WriteUnaligned(output + sizeof(int) + 24, end - start);
         }
         else
         {

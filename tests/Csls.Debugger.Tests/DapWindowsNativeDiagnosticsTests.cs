@@ -19,6 +19,46 @@ namespace Csls.Debugger.Tests;
 public sealed class DapWindowsNativeDiagnosticsTests : DapTestContext
 {
     /// <summary>
+    /// Preserves Windows page-relative region boundaries and allocation metadata in captured shared memory.
+    /// </summary>
+    [TestMethod]
+    [Timeout(30000, CooperativeCancellation = true)]
+    public async Task CapturedMappedMemoryQueriesMatchWindowsPageBoundaries()
+    {
+        string directory = Directory.CreateTempSubdirectory("csls-windows-mapping-query-").FullName;
+        try
+        {
+            string path = Path.Join(directory, "query.dmp");
+            var start = new ProcessStartInfo(Environment.GetEnvironmentVariable("DOTNET_HOST_PATH") ?? "dotnet");
+            start.ArgumentList.Add(ResolveTestProcessHost());
+            start.ArgumentList.Add("--windows-mapped-memory-query");
+            start.ArgumentList.Add(path);
+            (int exitCode, string output, string error) = await DebuggerTestProcess.RunAsync(start, TestContext.CancellationToken)
+                .ConfigureAwait(false);
+            Assert.AreEqual(0, exitCode, output + error);
+            string[] queries = output.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries);
+            int pageSize = Environment.SystemPageSize;
+            int[] offsets = [0, 1, pageSize, pageSize + 17, 4 * pageSize - 1];
+            Assert.HasCount(offsets.Length, queries);
+            for (int index = 0; index < offsets.Length; index++)
+            {
+                ulong[] fields = [.. queries[index].Split(':').Select(static value => ulong.Parse(value, CultureInfo.InvariantCulture))];
+                Assert.HasCount(5, fields, queries[index]);
+                Assert.AreEqual(checked((ulong)offsets[index]), fields[0]);
+                Assert.AreEqual(checked((ulong)(offsets[index] / pageSize * pageSize)), fields[1], queries[index]);
+                Assert.AreEqual(checked((ulong)(4 * pageSize)) - fields[1], fields[2], queries[index]);
+                Assert.AreEqual(fields[1], fields[3], $"Captured mapping base differs from Windows: {queries[index]}");
+                Assert.AreEqual(fields[2], fields[4], $"Captured mapping length differs from Windows: {queries[index]}");
+            }
+            Assert.IsFalse(File.Exists(path + ".mapped"), "The independently captured mapping must be released.");
+        }
+        finally
+        {
+            await DebuggerTestDirectoryReleaseWaiter.DeleteAsync(directory, TimeSpan.FromSeconds(10)).ConfigureAwait(false);
+        }
+    }
+
+    /// <summary>
     /// Retires a captured target while an independent observer retains its terminated snapshot process object.
     /// </summary>
     [TestMethod]
