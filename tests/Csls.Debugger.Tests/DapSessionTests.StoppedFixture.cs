@@ -29,9 +29,24 @@ public sealed partial class DapSessionTests
             }
         }
 
-        Assert.Fail($"No managed stack frame resolved to the debugger fixture. " +
+        string failure = $"No managed stack frame resolved to the debugger fixture. " +
             $"Adapter diagnostics: {client.Diagnostics}. " +
-            $"Recent protocol messages:{Environment.NewLine}{client.ProtocolTranscript}");
+            $"Recent protocol messages:{Environment.NewLine}{client.ProtocolTranscript}";
+        if (OperatingSystem.IsWindows())
+        {
+            try
+            {
+                await WindowsDebuggerProcessCapture.CaptureTreeAsync(client.HostProcessId, TestContext)
+                    .ConfigureAwait(false);
+            }
+            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or
+                InvalidOperationException or ArgumentException or System.ComponentModel.Win32Exception or
+                OperationCanceledException)
+            {
+                TestContext.WriteLine($"Missing fixture frame capture: {exception.Message}");
+            }
+        }
+        Assert.Fail(failure);
         return default;
     }
 

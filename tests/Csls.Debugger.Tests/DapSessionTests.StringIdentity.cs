@@ -22,6 +22,7 @@ public sealed partial class DapSessionTests
             // Readiness is emitted after WaitSleepJoin is observed on an unreleased gate.
             DapTestClient client = await StartStoppedFixtureAsync(waitPath, blockForInspection: true).ConfigureAwait(false);
             await using ConfiguredAsyncDisposable disposal = client.ConfigureAwait(false);
+            using DapTestCancellationCapture capture = CaptureProtocolOnCancellation(client);
             JsonElement frame = await GetFixtureFrameAsync(client).ConfigureAwait(false);
             int frameId = frame.GetProperty("id").GetInt32();
             JsonElement assignedReference = await ReadSetExpressionAsync(
@@ -150,6 +151,7 @@ public sealed partial class DapSessionTests
         {
             DapTestClient client = await StartStoppedFixtureAsync(waitPath, blockForInspection: true).ConfigureAwait(false);
             await using ConfiguredAsyncDisposable disposal = client.ConfigureAwait(false);
+            using DapTestCancellationCapture capture = CaptureProtocolOnCancellation(client);
             await AssertStoppedThreadsInspectableAsync(client).ConfigureAwait(false);
             JsonElement frame = await GetFixtureFrameAsync(client).ConfigureAwait(false);
             int frameId = frame.GetProperty("id").GetInt32();
