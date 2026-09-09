@@ -210,8 +210,14 @@ internal sealed partial class McpDebuggerSessionBroker : IAsyncDisposable
         }
         finally
         {
-            await session.DisposeAsync().ConfigureAwait(false);
-            _ = _sessionSlots.Release();
+            try
+            {
+                await session.DisposeAsync().ConfigureAwait(false);
+            }
+            finally
+            {
+                _ = _sessionSlots.Release();
+            }
         }
     }
 
