@@ -221,7 +221,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        suite: [standard, dumps, physical-capture, protocol, symbols, type-inspection, stepping, evaluation, stress]
+        suite: [standard, dumps, physical-capture, protocol, protocol-lifecycle, protocol-inspection, symbols, type-inspection, stepping, evaluation, presentation, stress]
         rid: [linux-x64, linux-arm64, win-x64, win-arm64, osx-x64, osx-arm64]
         include:
           # Complementary filters partition the required debugger suites.
@@ -240,7 +240,15 @@ jobs:
           - suite: protocol
             name: Debugger protocol
             minimum_tests: 70
-            filter: TestCategory!=DebuggerStress&FullyQualifiedName!~Assignment&FullyQualifiedName!~Evaluation&FullyQualifiedName!~ResultsView&FullyQualifiedName!~DebuggerTypeProxy&FullyQualifiedName!~Async&FullyQualifiedName!~Step&FullyQualifiedName!~Iterator&FullyQualifiedName~Csls.Debugger.Tests.Dap&FullyQualifiedName!~Csls.Debugger.Tests.DapDumpTests&FullyQualifiedName!~ReferenceConversions&FullyQualifiedName!~ReferenceTypeExpressions&FullyQualifiedName!~RawStringReferences&FullyQualifiedName!~Csls.Debugger.Tests.DapSymbolTests&FullyQualifiedName!~PortablePdbLanguagesBindIn&FullyQualifiedName!~RuntimeGenericArityBoundary&FullyQualifiedName!~CapturedGenericArgumentsRetainSourceIdentityAfterAwait
+            filter: TestCategory!=DebuggerStress&FullyQualifiedName!~Assignment&FullyQualifiedName!~Evaluation&FullyQualifiedName!~ResultsView&FullyQualifiedName!~DebuggerTypeProxy&FullyQualifiedName!~Async&FullyQualifiedName!~Step&FullyQualifiedName!~Iterator&FullyQualifiedName~Csls.Debugger.Tests.Dap&FullyQualifiedName!~Csls.Debugger.Tests.DapDumpTests&FullyQualifiedName!~ReferenceConversions&FullyQualifiedName!~ReferenceTypeExpressions&FullyQualifiedName!~RawStringReferences&FullyQualifiedName!~Csls.Debugger.Tests.DapSymbolTests&FullyQualifiedName!~PortablePdbLanguagesBindIn&FullyQualifiedName!~RuntimeGenericArityBoundary&FullyQualifiedName!~CapturedGenericArgumentsRetainSourceIdentityAfterAwait&FullyQualifiedName!~ReferenceCast&FullyQualifiedName!~PrimitiveAliases&FullyQualifiedName!~RawValue&FullyQualifiedName!~Array&FullyQualifiedName!~Memory&FullyQualifiedName!~Stack&FullyQualifiedName!~Frame&FullyQualifiedName!~Scope&FullyQualifiedName!~Variable&FullyQualifiedName!~Inspection&FullyQualifiedName!~Completion&FullyQualifiedName!~Launch&FullyQualifiedName!~Restart&FullyQualifiedName!~Attach&FullyQualifiedName!~Disconnect&FullyQualifiedName!~Terminate&FullyQualifiedName!~Cancel&FullyQualifiedName!~Process&FullyQualifiedName!~Threads&FullyQualifiedName!~Running
+          - suite: protocol-lifecycle
+            name: Debugger process requests
+            minimum_tests: 40
+            filter: TestCategory!=DebuggerStress&FullyQualifiedName!~Assignment&FullyQualifiedName!~Evaluation&FullyQualifiedName!~ResultsView&FullyQualifiedName!~DebuggerTypeProxy&FullyQualifiedName!~Async&FullyQualifiedName!~Step&FullyQualifiedName!~Iterator&FullyQualifiedName~Csls.Debugger.Tests.Dap&FullyQualifiedName!~Csls.Debugger.Tests.DapDumpTests&FullyQualifiedName!~ReferenceConversions&FullyQualifiedName!~ReferenceTypeExpressions&FullyQualifiedName!~RawStringReferences&FullyQualifiedName!~Csls.Debugger.Tests.DapSymbolTests&FullyQualifiedName!~PortablePdbLanguagesBindIn&FullyQualifiedName!~RuntimeGenericArityBoundary&FullyQualifiedName!~CapturedGenericArgumentsRetainSourceIdentityAfterAwait&FullyQualifiedName!~ReferenceCast&FullyQualifiedName!~PrimitiveAliases&FullyQualifiedName!~RawValue&FullyQualifiedName!~Array&FullyQualifiedName!~Memory&FullyQualifiedName!~Stack&FullyQualifiedName!~Frame&FullyQualifiedName!~Scope&FullyQualifiedName!~Variable&FullyQualifiedName!~Inspection&FullyQualifiedName!~Completion&(FullyQualifiedName~Launch|FullyQualifiedName~Restart|FullyQualifiedName~Attach|FullyQualifiedName~Disconnect|FullyQualifiedName~Terminate|FullyQualifiedName~Cancel|FullyQualifiedName~Process|FullyQualifiedName~Threads|FullyQualifiedName~Running)
+          - suite: protocol-inspection
+            name: Debugger protocol inspection
+            minimum_tests: 40
+            filter: TestCategory!=DebuggerStress&FullyQualifiedName!~Assignment&FullyQualifiedName!~Evaluation&FullyQualifiedName!~ResultsView&FullyQualifiedName!~DebuggerTypeProxy&FullyQualifiedName!~Async&FullyQualifiedName!~Step&FullyQualifiedName!~Iterator&FullyQualifiedName~Csls.Debugger.Tests.Dap&FullyQualifiedName!~Csls.Debugger.Tests.DapDumpTests&FullyQualifiedName!~ReferenceConversions&FullyQualifiedName!~ReferenceTypeExpressions&FullyQualifiedName!~RawStringReferences&FullyQualifiedName!~Csls.Debugger.Tests.DapSymbolTests&FullyQualifiedName!~PortablePdbLanguagesBindIn&FullyQualifiedName!~RuntimeGenericArityBoundary&FullyQualifiedName!~CapturedGenericArgumentsRetainSourceIdentityAfterAwait&(FullyQualifiedName~ReferenceCast|FullyQualifiedName~PrimitiveAliases|FullyQualifiedName~RawValue|FullyQualifiedName~Array|FullyQualifiedName~Memory|FullyQualifiedName~Stack|FullyQualifiedName~Frame|FullyQualifiedName~Scope|FullyQualifiedName~Variable|FullyQualifiedName~Inspection|FullyQualifiedName~Completion)
           - suite: symbols
             name: Debugger symbols
             minimum_tests: 30
@@ -256,7 +264,11 @@ jobs:
           - suite: evaluation
             name: Debugger evaluation
             minimum_tests: 70
-            filter: TestCategory!=DebuggerStress&(FullyQualifiedName~Assignment|FullyQualifiedName~Evaluation|FullyQualifiedName~ResultsView|FullyQualifiedName~DebuggerTypeProxy)
+            filter: TestCategory!=DebuggerStress&(FullyQualifiedName~Assignment|FullyQualifiedName~Evaluation)&FullyQualifiedName!~ResultsView&FullyQualifiedName!~DebuggerTypeProxy
+          - suite: presentation
+            name: Debugger value presentation
+            minimum_tests: 40
+            filter: TestCategory!=DebuggerStress&(FullyQualifiedName~ResultsView|FullyQualifiedName~DebuggerTypeProxy)
           - suite: stress
             name: Debugger stress
             minimum_tests: 2
