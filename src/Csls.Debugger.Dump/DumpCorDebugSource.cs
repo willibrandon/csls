@@ -142,30 +142,12 @@ internal sealed class DumpCorDebugSource : ICorDebugDumpSource
             yield return Path.Join(Path.GetDirectoryName(_dacPath), name);
         }
 
-        yield return Path.Join(RuntimeEnvironment.GetRuntimeDirectory(), name);
-        string runtimeDirectory = Path.TrimEndingDirectorySeparator(RuntimeEnvironment.GetRuntimeDirectory());
-        string? frameworkDirectory = Path.GetDirectoryName(runtimeDirectory);
-        if (string.Equals(Path.GetFileName(frameworkDirectory), "Microsoft.NETCore.App", StringComparison.Ordinal) &&
-            frameworkDirectory is not null)
+        IReadOnlyList<string> directories = OperatingSystem.IsWindows()
+            ? DumpWindowsRuntimeDirectories.GetDirectories()
+            : DumpUnixRuntimeDirectories.GetDirectories();
+        foreach (string directory in directories)
         {
-            int count = 0;
-            foreach (string directory in Directory.EnumerateDirectories(frameworkDirectory))
-            {
-                if (++count > 1024)
-                {
-                    throw new InvalidDataException("Local runtime discovery exceeds the 1024-directory limit.");
-                }
-
-                yield return Path.Join(directory, name);
-            }
-        }
-
-        if (OperatingSystem.IsWindows())
-        {
-            foreach (string root in DumpWindowsRuntimeDirectories.GetDirectories())
-            {
-                yield return Path.Join(root, name);
-            }
+            yield return Path.Join(directory, name);
         }
     }
 

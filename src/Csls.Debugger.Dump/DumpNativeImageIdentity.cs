@@ -25,7 +25,11 @@ internal static class DumpNativeImageIdentity
 
         try
         {
-            using FileStream stream = File.OpenRead(path);
+            using FileStream stream = DebuggerInputFile.OpenRead(path);
+            if (!stream.CanSeek)
+            {
+                return false;
+            }
             return platform == OSPlatform.Linux ? MatchesElf(stream, architecture, identity) :
                 platform == OSPlatform.OSX && MatchesMachO(stream, architecture, identity);
         }

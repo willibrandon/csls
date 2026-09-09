@@ -88,4 +88,12 @@ identity-matched trusted installation when the dump indexes by CoreCLR. Windows
 signature verification remains enabled. The virtual process owns its COM
 references independently of live debugger sessions and releases them before the
 captured memory provider closes.
+
+Unix host discovery checks the executing runtime and sibling framework versions,
+`DOTNET_ROOT_<ARCH>`, `DOTNET_ROOT`, registered installations under `/etc/dotnet`,
+and the platform default installation. Architecture-specific registrations take
+precedence over the legacy registration. Discovery retains at most 1,024 distinct
+runtime directories. Registration files are bounded to 4 KiB, and Unix file reads
+use nonblocking handles with seekability checks before reading native identities.
+
 Disconnect and protocol EOF release the supervised worker and its dump mappings.

@@ -8,14 +8,14 @@ namespace Csls.Debugger;
 /// <summary>
 /// Opens debugger input files with owned handles and nonblocking Unix device semantics.
 /// </summary>
-internal static partial class DebuggerInputFile
+public static partial class DebuggerInputFile
 {
     /// <summary>
     /// Opens a read-only stream without waiting for a Unix FIFO writer to connect.
     /// </summary>
     /// <param name="path">The absolute input-file path.</param>
     /// <returns>The stream that owns the native file handle.</returns>
-    internal static FileStream OpenRead(string path)
+    public static FileStream OpenRead(string path)
     {
         if (OperatingSystem.IsWindows())
         {
