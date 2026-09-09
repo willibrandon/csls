@@ -62,11 +62,14 @@ public sealed partial class DapSessionTests
     /// Follows an async iterator's resumption and then its yielded value into the consumer.
     /// </summary>
     /// <param name="configuration">The compiler optimization configuration.</param>
+    /// <param name="trace">Whether this case also retains bounded internal step decisions.</param>
     [TestMethod]
-    [DataRow("Debug")]
-    [DataRow("Release")]
+    [DataRow("Debug", false)]
+    [DataRow("Release", false)]
+    [DataRow("Debug", true)]
+    [DataRow("Release", true)]
     [Timeout(30000, CooperativeCancellation = true)]
-    public async Task StepAcrossAsyncIteratorAwaitAndYieldPreservesSourceLocals(string configuration)
+    public async Task StepAcrossAsyncIteratorAwaitAndYieldPreservesSourceLocals(string configuration, bool trace)
     {
         string sourcePath = Path.Join(FindRepositoryRoot(), "tests", "Csls.TestProcessHost", "DebuggerAsyncIteratorStepFixture.cs");
         string[] lines = await File.ReadAllLinesAsync(sourcePath, TestContext.CancellationToken).ConfigureAwait(false);
@@ -82,13 +85,16 @@ public sealed partial class DapSessionTests
             PipeTransmissionMode.Byte, PipeOptions.Asynchronous | PipeOptions.CurrentUserOnly);
         Task connection = pipe.WaitForConnectionAsync(TestContext.CancellationToken);
         DapTestClient client = await DapTestClient.CreateAsync(TestContext.CancellationToken,
-            new Dictionary<string, string?> { ["CSLS_DEBUGGER_STEP_TRACE"] = tracePath }).ConfigureAwait(false);
+            new Dictionary<string, string?> { ["CSLS_DEBUGGER_STEP_TRACE"] = trace ? tracePath : null }).ConfigureAwait(false);
         await using ConfiguredAsyncDisposable disposal = client.ConfigureAwait(false);
         using DapTestCancellationCapture cancellationLog = CaptureProtocolOnCancellation(client);
         int initialThread = await LaunchToSourceBreakpointAsync(client, sourcePath, awaitLine,
             ["--debugger-async-iterator-step-fixture", pipeName], ResolveAsyncIteratorProgram(configuration),
             suppressJitOptimizations: true).ConfigureAwait(false);
-        TestContext.AddResultFile(tracePath);
+        if (trace)
+        {
+            TestContext.AddResultFile(tracePath);
+        }
         await connection.ConfigureAwait(false);
         await AssertAsyncIteratorFrameAsync(client, initialThread, sourcePath, awaitLine,
             "ReadAndEnumerateAsync", "value", "40").ConfigureAwait(false);
@@ -128,9 +134,16 @@ public sealed partial class DapSessionTests
         await ReadSuccessfulTerminationAsync(client, continueSequence, TestContext.CancellationToken).ConfigureAwait(false);
         Assert.AreEqual(0, await client.WaitForExitAsync(TestContext.CancellationToken).ConfigureAwait(false));
         Assert.AreEqual(string.Empty, client.Diagnostics.ToString());
-        string stepTrace = await File.ReadAllTextAsync(tracePath, TestContext.CancellationToken).ConfigureAwait(false);
-        Assert.Contains("yield reached", stepTrace);
-        Assert.Contains("resume matched", stepTrace);
+        if (trace)
+        {
+            string stepTrace = await File.ReadAllTextAsync(tracePath, TestContext.CancellationToken).ConfigureAwait(false);
+            Assert.Contains("yield reached", stepTrace);
+            Assert.Contains("resume matched", stepTrace);
+        }
+        else
+        {
+            Assert.IsFalse(File.Exists(tracePath));
+        }
     }
 
     private static string ResolveAsyncIteratorProgram(string configuration) =>
