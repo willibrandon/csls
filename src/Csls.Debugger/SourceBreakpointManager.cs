@@ -78,6 +78,20 @@ internal sealed partial class SourceBreakpointManager : IDisposable
         }
 
         string normalizedPath = SourcePathMapper.NormalizePath(sourcePath);
+        var retainedIds = new Dictionary<(int Line, int? Column), Queue<int>>();
+        if (_definitions.TryGetValue(normalizedPath, out List<SourceBreakpointDefinition>? previous))
+        {
+            foreach (SourceBreakpointDefinition definition in previous)
+            {
+                (int Line, int? Column) position = (definition.RequestedLine, definition.RequestedColumn);
+                if (!retainedIds.TryGetValue(position, out Queue<int>? ids))
+                {
+                    ids = new Queue<int>();
+                    retainedIds.Add(position, ids);
+                }
+                ids.Enqueue(definition.Id);
+            }
+        }
         RemoveBindings(normalizedPath);
         var definitions = new List<SourceBreakpointDefinition>(requests.Count);
         foreach (DebugSourceBreakpointRequest request in requests)
@@ -95,7 +109,9 @@ internal sealed partial class SourceBreakpointManager : IDisposable
                 out DebugHitCondition? hitCondition);
             definitions.Add(new SourceBreakpointDefinition
             {
-                Id = checked(++_nextBreakpointId),
+                Id = retainedIds.TryGetValue((request.Line, request.Column), out Queue<int>? ids) && ids.Count > 0
+                    ? ids.Dequeue()
+                    : checked(++_nextBreakpointId),
                 SourcePath = normalizedPath,
                 RequestedLine = request.Line,
                 RequestedColumn = request.Column,

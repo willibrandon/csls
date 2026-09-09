@@ -34,7 +34,7 @@ internal sealed partial class SourceBreakpointManager
             };
             module.SymbolPath = symbols.Path;
 
-            locations = ResolveLocations(symbols.GetSequencePoints(methodToken: null), definitions);
+            locations = ResolveLocations(symbols.GetSequencePoints(methodToken: null), definitions, cancellationToken);
             sourceFailures = GetSourceValidationFailures(symbols, definitions);
         }
         catch (Exception exception) when (DebugSymbolReader.IsReadFailure(exception))
