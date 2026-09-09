@@ -181,7 +181,8 @@ public sealed partial class DapSessionTests
             client,
             configurationSequence,
             launchSequence,
-            TestContext.CancellationToken).ConfigureAwait(false);
+            TestContext.CancellationToken,
+            TestContext).ConfigureAwait(false);
     }
 
     private async Task AssertSelectedAsyncStateMachineAsync(

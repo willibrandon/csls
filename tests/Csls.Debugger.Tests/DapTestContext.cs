@@ -342,7 +342,8 @@ public abstract class DapTestContext
         DapTestClient client,
         int configurationSequence,
         int launchSequence,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        TestContext? diagnosticContext = null)
     {
         bool configurationReceived = false;
         bool launchReceived = false;
@@ -399,6 +400,21 @@ public abstract class DapTestContext
                 string evidence = reason == "breakpoint" ? string.Empty :
                     await DapStoppedThreadDiagnostics.CaptureAsync(client, threadId.Value, cancellationToken)
                         .ConfigureAwait(false);
+                if (reason != "breakpoint" && diagnosticContext is not null && OperatingSystem.IsWindows())
+                {
+                    try
+                    {
+                        string directory = await WindowsDebuggerProcessCapture.CaptureTreeAsync(client.HostProcessId,
+                            diagnosticContext).ConfigureAwait(false);
+                        evidence += $"Native process evidence: {directory}{Environment.NewLine}";
+                    }
+                    catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or
+                        InvalidOperationException or ArgumentException or System.ComponentModel.Win32Exception or
+                        OperationCanceledException)
+                    {
+                        evidence += $"Native capture failed: {exception}{Environment.NewLine}";
+                    }
+                }
                 Assert.AreEqual("breakpoint", reason, $"{root.GetRawText()}{Environment.NewLine}{evidence}");
             }
         }

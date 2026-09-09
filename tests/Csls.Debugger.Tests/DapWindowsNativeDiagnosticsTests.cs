@@ -302,6 +302,66 @@ public sealed class DapWindowsNativeDiagnosticsTests : DapTestContext
     }
 
     /// <summary>
+    /// Retains the actual target's native threads before an unexpected initial stop raises its original assertion.
+    /// </summary>
+    [TestMethod]
+    [Timeout(30000, CooperativeCancellation = true)]
+    public async Task UnexpectedInitialStopCapturesNativeTargetBeforeCleanup()
+    {
+        DapTestClient client = await DapTestClient.CreateAsync(TestContext.CancellationToken).ConfigureAwait(false);
+        await using ConfiguredAsyncDisposable disposal = client.ConfigureAwait(false);
+        using DapTestCancellationCapture cancellationLog = CaptureProtocolOnCancellation(client);
+        int initialize = await client.SendInitializeRequestAsync(TestContext.CancellationToken).ConfigureAwait(false);
+        using (JsonDocument response = await client.ReadMessageAsync(TestContext.CancellationToken).ConfigureAwait(false))
+        {
+            AssertResponse(response.RootElement, initialize, "initialize", success: true);
+        }
+        int launch = await client.SendRequestAsync("launch", writer => WriteLaunchArguments(
+            writer, ResolveTestProcessHost(), ["--wait-for-standard-input"], wait: true,
+            noDebug: false, stopAtEntry: true), TestContext.CancellationToken).ConfigureAwait(false);
+        using (JsonDocument initialized = await client.ReadMessageAsync(TestContext.CancellationToken).ConfigureAwait(false))
+        {
+            AssertEvent(initialized.RootElement, "initialized");
+        }
+        int configuration = await client.SendRequestAsync("configurationDone", WriteEmptyObject,
+            TestContext.CancellationToken).ConfigureAwait(false);
+        AssertFailedException failure = await Assert.ThrowsExactlyAsync<AssertFailedException>(() =>
+            ReadInitialBreakpointStopAsync(client, configuration, launch, TestContext.CancellationToken, TestContext))
+            .ConfigureAwait(false);
+        Assert.Contains("breakpoint", failure.Message);
+        Assert.Contains("\"reason\":\"entry\"", failure.Message);
+        Assert.Contains("\"stackFrames\":[{", failure.Message);
+        string line = Assert.ContainsSingle(failure.Message.Split(Environment.NewLine)
+            .Where(static line => line.StartsWith("Native process evidence: ", StringComparison.Ordinal)));
+        string directory = line["Native process evidence: ".Length..];
+        int targetId = Assert.IsInstanceOfType<int>(client.TargetProcessId);
+        using var target = Process.GetProcessById(targetId);
+        _ = target.SafeHandle;
+        string dumpPath = Path.Join(directory, $"process-{targetId}.dmp");
+        Assert.IsTrue(File.Exists(dumpPath), await File.ReadAllTextAsync(Path.Join(directory, "capture.log"),
+            TestContext.CancellationToken).ConfigureAwait(false));
+        using (var captured = DataTarget.LoadDump(dumpPath, new DataTargetOptions { SymbolPaths = [] }))
+        {
+            Assert.AreEqual(targetId, DumpProcessIdentity.Read(captured.DataReader, dumpPath, TestContext.CancellationToken));
+            Assert.IsNotEmpty(captured.DataReader.EnumerateModules());
+            IThreadReader capturedThreads = Assert.IsInstanceOfType<IThreadReader>(captured.DataReader);
+            Assert.IsNotEmpty(capturedThreads.EnumerateOSThreadIds());
+        }
+        Assert.IsFalse(target.HasExited, "Native evidence must preserve the stopped target until explicit cleanup.");
+        int threads = await client.SendRequestAsync("threads", WriteEmptyObject, TestContext.CancellationToken)
+            .ConfigureAwait(false);
+        using (JsonDocument response = await client.ReadMessageAsync(TestContext.CancellationToken).ConfigureAwait(false))
+        {
+            AssertResponse(response.RootElement, threads, "threads", success: true);
+            Assert.IsNotEmpty(response.RootElement.GetProperty("body").GetProperty("threads").EnumerateArray());
+        }
+        await DisconnectAsync(client).ConfigureAwait(false);
+        await DebuggerProcessExit.WaitAsync(target, TestContext.CancellationToken).ConfigureAwait(false);
+        Assert.IsTrue(target.HasExited);
+        Assert.AreEqual(string.Empty, client.Diagnostics.ToString());
+    }
+
+    /// <summary>
     /// Captures the stopped target and adapter with their exact identities and retains a usable debugging session.
     /// </summary>
     [TestMethod]
