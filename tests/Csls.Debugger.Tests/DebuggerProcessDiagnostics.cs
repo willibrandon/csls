@@ -13,6 +13,56 @@ internal static class DebuggerProcessDiagnostics
     private const int MaximumProcesses = 8;
 
     /// <summary>
+    /// Retains kernel wait reports for the owned adapter and its reported target before failure cleanup.
+    /// </summary>
+    /// <param name="client">The live DAP client retaining ownership of the adapter and target.</param>
+    /// <param name="testContext">The test context retaining the reports.</param>
+    /// <returns>Completion after read-only observation or its bounded diagnostic deadline.</returns>
+    [System.Runtime.Versioning.SupportedOSPlatform("linux")]
+    internal static async Task CaptureLinuxWaitStatesAsync(DapTestClient client, TestContext testContext)
+    {
+        using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        string directory = Path.Join(DebuggerTestEnvironment.FindRepositoryRoot(), "artifacts", "test-results",
+            $"kernel-waits-{client.HostProcessId}-{Guid.NewGuid():N}");
+        int[] processes = client.TargetProcessId is int target
+            ? [client.HostProcessId, target] : [client.HostProcessId];
+        try
+        {
+            Directory.CreateDirectory(directory);
+            foreach (int processId in processes)
+            {
+                try
+                {
+                    using var process = Process.GetProcessById(processId);
+                    _ = process.SafeHandle;
+                    string report = await LinuxDebuggerProcessCapture.CaptureKernelStateAsync(process, directory,
+                        cancellation.Token).ConfigureAwait(false);
+                    testContext.WriteLine($"Kernel wait capture completed: {report}.");
+                }
+                catch (Exception exception) when (exception is OperationCanceledException or IOException or
+                    UnauthorizedAccessException or InvalidOperationException or ArgumentException or Win32Exception)
+                {
+                    testContext.WriteLine($"Kernel wait capture for {processId}: {exception.Message}");
+                }
+            }
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            testContext.WriteLine($"Kernel wait capture: {exception.Message}");
+        }
+        finally
+        {
+            if (Directory.Exists(directory))
+            {
+                foreach (string artifact in Directory.EnumerateFiles(directory))
+                {
+                    testContext.AddResultFile(artifact);
+                }
+            }
+        }
+    }
+
+    /// <summary>
     /// Records native wait locations before a failed test releases its owned processes.
     /// </summary>
     /// <param name="hostProcessId">The root process owned by the test.</param>

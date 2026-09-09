@@ -7,7 +7,7 @@ using System.Text;
 namespace Csls.Debugger.Tests;
 
 /// <summary>
-/// Captures native stacks and kernel wait information from an independently owned Linux debugger worker.
+/// Captures native stacks and kernel wait information from independently owned Linux debugger processes.
 /// </summary>
 [SupportedOSPlatform("linux")]
 internal static class LinuxDebuggerProcessCapture
@@ -25,14 +25,31 @@ internal static class LinuxDebuggerProcessCapture
     /// <returns>The absolute path of the completed native dump.</returns>
     internal static async Task<string> CaptureAsync(Process worker, string directory, CancellationToken cancellationToken)
     {
-        ArgumentNullException.ThrowIfNull(worker);
+        _ = await CaptureKernelStateAsync(worker, directory, cancellationToken).ConfigureAwait(false);
+        string dump = Path.Join(directory, $"process-{worker.Id}.dmp");
+        await new DiagnosticsClient(worker.Id).WriteDumpAsync(DumpType.Normal, dump,
+            logDumpGeneration: false, cancellationToken).ConfigureAwait(false);
+        return dump;
+    }
+
+    /// <summary>
+    /// Reads bounded kernel wait information while preserving the process's existing debugger attachment.
+    /// </summary>
+    /// <param name="process">The owned process retained by the caller until observation finishes.</param>
+    /// <param name="directory">The caller-owned artifact directory.</param>
+    /// <param name="cancellationToken">Cancels kernel observation and report writing.</param>
+    /// <returns>The absolute path of the completed kernel report.</returns>
+    internal static async Task<string> CaptureKernelStateAsync(Process process, string directory,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(process);
         cancellationToken.ThrowIfCancellationRequested();
-        if (worker.HasExited)
+        if (process.HasExited)
         {
-            throw new InvalidOperationException("The owned debugger worker exited before capture.");
+            throw new InvalidOperationException("The owned process exited before capture.");
         }
 
-        int processId = worker.Id;
+        int processId = process.Id;
         string root = Path.Join("/proc", processId.ToString(CultureInfo.InvariantCulture));
         var report = new StringBuilder();
         bool reportComplete = false;
@@ -58,12 +75,9 @@ internal static class LinuxDebuggerProcessCapture
             await AppendAsync(Path.Join("task", thread, "syscall")).ConfigureAwait(false);
             await AppendAsync(Path.Join("task", thread, "stack")).ConfigureAwait(false);
         }
-        string prefix = Path.Join(directory, $"process-{processId}");
-        await File.WriteAllTextAsync(prefix + ".proc.txt", report.ToString(), cancellationToken).ConfigureAwait(false);
-        string dump = prefix + ".dmp";
-        await new DiagnosticsClient(processId).WriteDumpAsync(DumpType.Normal, dump,
-            logDumpGeneration: false, cancellationToken).ConfigureAwait(false);
-        return dump;
+        string path = Path.Join(directory, $"process-{processId}.proc.txt");
+        await File.WriteAllTextAsync(path, report.ToString(), cancellationToken).ConfigureAwait(false);
+        return path;
 
         async Task AppendAsync(string relativePath)
         {

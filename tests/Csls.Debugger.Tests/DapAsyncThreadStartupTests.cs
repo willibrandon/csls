@@ -94,7 +94,6 @@ public sealed class DapAsyncThreadStartupTests : DapTestContext
             client = oracle is null
                 ? await DapTestClient.CreateAsync(TestContext.CancellationToken, environment).ConfigureAwait(false)
                 : await DapTestClient.CreateOracleAsync(oracle, environment, TestContext.CancellationToken).ConfigureAwait(false);
-            await using ConfiguredAsyncDisposable clientCleanup = client.ConfigureAwait(false);
             using DapTestCancellationCapture cancellationLog = CaptureProtocolOnCancellation(client);
             int initialize = await client.SendInitializeRequestAsync(TestContext.CancellationToken, writeProperties: writer =>
             {
@@ -173,18 +172,32 @@ public sealed class DapAsyncThreadStartupTests : DapTestContext
         catch
         {
             TestContext.WriteLine(client?.ProtocolTranscript ?? "Adapter creation failed.");
+            if (client is not null && OperatingSystem.IsLinux())
+            {
+                await DebuggerProcessDiagnostics.CaptureLinuxWaitStatesAsync(client, TestContext).ConfigureAwait(false);
+            }
             throw;
         }
         finally
         {
-            await connectionCancellation.CancelAsync().ConfigureAwait(false);
             try
             {
-                await connections.ConfigureAwait(false);
+                if (client is not null)
+                {
+                    await client.DisposeAsync().ConfigureAwait(false);
+                }
             }
-            catch (OperationCanceledException) when (connectionCancellation.IsCancellationRequested)
+            finally
             {
-                Debug.Assert(connections.IsCanceled);
+                await connectionCancellation.CancelAsync().ConfigureAwait(false);
+                try
+                {
+                    await connections.ConfigureAwait(false);
+                }
+                catch (OperationCanceledException) when (connectionCancellation.IsCancellationRequested)
+                {
+                    Debug.Assert(connections.IsCanceled);
+                }
             }
         }
     }

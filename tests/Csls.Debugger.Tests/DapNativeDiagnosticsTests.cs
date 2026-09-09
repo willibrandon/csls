@@ -255,17 +255,73 @@ public sealed class DapNativeDiagnosticsTests : DapTestContext
         }
     }
 
+    /// <summary>
+    /// Reads the adapter and target's kernel state while preserving the stopped frame and subsequent execution.
+    /// </summary>
+    [TestMethod]
+    [OSCondition(OperatingSystems.Linux)]
+    [SupportedOSPlatform("linux")]
+    [Timeout(30000, CooperativeCancellation = true)]
+    public async Task KernelWaitCapturePreservesStoppedTarget()
+    {
+        string directory = Directory.CreateTempSubdirectory("csls-kernel-wait-capture-").FullName;
+        try
+        {
+            DapTestClient client = await DapTestClient.CreateAsync(TestContext.CancellationToken,
+                workerPath: ManagedWorkerPath).ConfigureAwait(false);
+            await using ConfiguredAsyncDisposable cleanup = client.ConfigureAwait(false);
+            (int thread, int processId) = await LaunchAtEntryAsync(client, ResolveTestProcessHost(),
+                ["--print-environment", "CSLS_DEBUGGER_ENTRY_VALUE"]).ConfigureAwait(false);
+            using var host = Process.GetProcessById(client.HostProcessId);
+            using var target = Process.GetProcessById(processId);
+            JsonElement beforeStack = await ReadDeepStackPageAsync(client, thread, 0, 1).ConfigureAwait(false);
+            JsonElement before = Assert.ContainsSingle(beforeStack.GetProperty("stackFrames").EnumerateArray());
+            foreach (Process process in new[] { host, target })
+            {
+                string reportPath = await LinuxDebuggerProcessCapture.CaptureKernelStateAsync(process, directory,
+                    TestContext.CancellationToken).ConfigureAwait(false);
+                Assert.AreEqual(Path.Join(directory, $"process-{process.Id}.proc.txt"), reportPath);
+                string report = await File.ReadAllTextAsync(reportPath, TestContext.CancellationToken).ConfigureAwait(false);
+                Assert.Contains($"Pid:\t{process.Id}\n", report);
+                Assert.Contains($"task/{process.Id}/wchan", report);
+                Assert.Contains($"task/{process.Id}/syscall", report);
+                Assert.Contains("\nmaps\n", report);
+                Assert.IsLessThanOrEqualTo(1024 * 1024, report.Length);
+                Assert.IsFalse(process.HasExited);
+            }
+            Assert.HasCount(2, Directory.EnumerateFiles(directory));
+            Assert.IsEmpty(Directory.EnumerateFiles(directory, "*.dmp"));
+            JsonElement afterStack = await ReadDeepStackPageAsync(client, thread, 0, 1).ConfigureAwait(false);
+            JsonElement after = Assert.ContainsSingle(afterStack.GetProperty("stackFrames").EnumerateArray());
+            Assert.AreEqual(before.GetProperty("id").GetInt32(), after.GetProperty("id").GetInt32());
+            Assert.AreEqual(before.GetProperty("line").GetInt32(), after.GetProperty("line").GetInt32());
+            Assert.AreEqual(before.GetProperty("name").GetString(), after.GetProperty("name").GetString());
+            await ContinueEntryToExitAsync(client, thread, "entry-result").ConfigureAwait(false);
+            await target.WaitForExitAsync(TestContext.CancellationToken).ConfigureAwait(false);
+            Assert.IsTrue(target.HasExited);
+            Assert.IsTrue(host.HasExited);
+        }
+        finally
+        {
+            await DebuggerTestDirectoryReleaseWaiter.DeleteAsync(directory, TimeSpan.FromSeconds(10))
+                .ConfigureAwait(false);
+        }
+    }
+
     private static string ManagedWorkerPath => Path.Join(FindRepositoryRoot(), "artifacts", "bin",
         "Csls.Debugger.Worker", "debug", "csls-debugger-worker.dll");
 
     /// <summary>
     /// Cancels native diagnostic capture before contacting a live worker and preserves its protocol and artifact directory.
     /// </summary>
+    /// <param name="captureMemory">Whether capture also requests native thread contexts through the diagnostics socket.</param>
     [TestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
     [OSCondition(OperatingSystems.Linux)]
     [SupportedOSPlatform("linux")]
     [Timeout(30000, CooperativeCancellation = true)]
-    public async Task CanceledNativeCapturePreservesWorkerAndFiles()
+    public async Task CanceledNativeCapturePreservesWorkerAndFiles(bool captureMemory)
     {
         string directory = Directory.CreateTempSubdirectory("csls-canceled-native-capture-").FullName;
         try
@@ -278,7 +334,10 @@ public sealed class DapNativeDiagnosticsTests : DapTestContext
             using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(TestContext.CancellationToken);
             await cancellation.CancelAsync().ConfigureAwait(false);
             OperationCanceledException canceled = await Assert.ThrowsExactlyAsync<OperationCanceledException>(() =>
-                LinuxDebuggerProcessCapture.CaptureAsync(worker, directory, cancellation.Token)).ConfigureAwait(false);
+                captureMemory
+                    ? LinuxDebuggerProcessCapture.CaptureAsync(worker, directory, cancellation.Token)
+                    : LinuxDebuggerProcessCapture.CaptureKernelStateAsync(worker, directory, cancellation.Token))
+                .ConfigureAwait(false);
             Assert.AreEqual(cancellation.Token, canceled.CancellationToken);
             Assert.IsEmpty(Directory.EnumerateFileSystemEntries(directory));
             Assert.IsFalse(worker.HasExited);
