@@ -75,15 +75,20 @@ public sealed partial class DapSessionTests
         int yieldLine = FindSourceLine(lines, "yield return CollectAndReturn");
         int consumerLine = FindSourceLine(lines, "await foreach");
         string pipeName = $"ci-{Guid.NewGuid():N}";
+        string traceDirectory = Path.Join(FindRepositoryRoot(), "artifacts", "test-results");
+        Directory.CreateDirectory(traceDirectory);
+        string tracePath = Path.Join(traceDirectory, $"async-step-{Guid.NewGuid():N}.log");
         using var pipe = new NamedPipeServerStream(pipeName, PipeDirection.InOut, 1,
             PipeTransmissionMode.Byte, PipeOptions.Asynchronous | PipeOptions.CurrentUserOnly);
         Task connection = pipe.WaitForConnectionAsync(TestContext.CancellationToken);
-        DapTestClient client = await DapTestClient.CreateAsync(TestContext.CancellationToken).ConfigureAwait(false);
+        DapTestClient client = await DapTestClient.CreateAsync(TestContext.CancellationToken,
+            new Dictionary<string, string?> { ["CSLS_DEBUGGER_STEP_TRACE"] = tracePath }).ConfigureAwait(false);
         await using ConfiguredAsyncDisposable disposal = client.ConfigureAwait(false);
         using DapTestCancellationCapture cancellationLog = CaptureProtocolOnCancellation(client);
         int initialThread = await LaunchToSourceBreakpointAsync(client, sourcePath, awaitLine,
             ["--debugger-async-iterator-step-fixture", pipeName], ResolveAsyncIteratorProgram(configuration),
             suppressJitOptimizations: true).ConfigureAwait(false);
+        TestContext.AddResultFile(tracePath);
         await connection.ConfigureAwait(false);
         await AssertAsyncIteratorFrameAsync(client, initialThread, sourcePath, awaitLine,
             "ReadAndEnumerateAsync", "value", "40").ConfigureAwait(false);
@@ -123,6 +128,9 @@ public sealed partial class DapSessionTests
         await ReadSuccessfulTerminationAsync(client, continueSequence, TestContext.CancellationToken).ConfigureAwait(false);
         Assert.AreEqual(0, await client.WaitForExitAsync(TestContext.CancellationToken).ConfigureAwait(false));
         Assert.AreEqual(string.Empty, client.Diagnostics.ToString());
+        string stepTrace = await File.ReadAllTextAsync(tracePath, TestContext.CancellationToken).ConfigureAwait(false);
+        Assert.Contains("yield reached", stepTrace);
+        Assert.Contains("resume matched", stepTrace);
     }
 
     private static string ResolveAsyncIteratorProgram(string configuration) =>

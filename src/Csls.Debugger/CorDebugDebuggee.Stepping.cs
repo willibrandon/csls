@@ -9,6 +9,7 @@ namespace Csls.Debugger;
 internal sealed partial class CorDebugDebuggee
 {
     private readonly ManagedAsyncCallerStep _asyncCallerStep = new();
+    private readonly ManagedStepTrace? _stepTrace = ManagedStepTrace.Current;
 
     /// <summary>
     /// Starts one source-level step on a managed thread and resumes the target.
@@ -25,6 +26,7 @@ internal sealed partial class CorDebugDebuggee
     {
         _managedCallback.ThrowIfRuntimeFailed();
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(threadId);
+        _stepTrace?.Write($"request thread={threadId} kind={kind} generation={generation.Value}");
         if (_activeStepper != 0)
         {
             throw new InvalidOperationException("A managed step is already active.");
@@ -106,6 +108,7 @@ internal sealed partial class CorDebugDebuggee
         nint identity = ComAbi.GetIdentity(stepper);
         try
         {
+            _stepTrace?.Write($"step complete thread={threadId} reason={reason} active={identity == _activeStepperIdentity} caller={_asyncCallerStep.Owns(identity)} await={_asyncStep is not null} resume={_asyncStep?.WaitsForResume}");
             if (_asyncCallerStep.Owns(identity))
             {
                 CancelStep();
@@ -150,6 +153,7 @@ internal sealed partial class CorDebugDebuggee
     /// <param name="runtimeAvailable">Whether the runtime permits breakpoint and handle disposal.</param>
     internal void CancelStep(bool runtimeAvailable = true)
     {
+        _stepTrace?.Write($"cancel runtime={runtimeAvailable} active={_activeStepper != 0} await={_asyncStep is not null} resume={_asyncStep?.WaitsForResume}");
         _asyncCallerStep.Clear(runtimeAvailable);
         _asyncConsumerStep.Clear(runtimeAvailable);
         ReleaseAsyncStep(runtimeAvailable);

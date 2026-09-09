@@ -15,6 +15,7 @@ internal sealed partial class CorDebugDebuggee
             _sourceBreakpoints.FindModule,
             out ManagedAsyncStepPlan plan))
         {
+            _stepTrace?.Write($"no await plan thread={threadId}");
             return;
         }
 
@@ -37,6 +38,7 @@ internal sealed partial class CorDebugDebuggee
                 ResumeMethodToken = plan.AwaitPoint.ResumeMethodToken,
                 ResumeOffset = plan.AwaitPoint.ResumeOffset
             };
+            _stepTrace?.Write($"await plan thread={threadId} method=0x{plan.MethodToken:X8} yield=0x{plan.AwaitPoint.YieldOffset:X} resume-method=0x{plan.AwaitPoint.ResumeMethodToken:X8} resume-offset=0x{plan.AwaitPoint.ResumeOffset:X} handle={stateMachineHandle != 0}");
         }
         catch
         {
@@ -66,6 +68,7 @@ internal sealed partial class CorDebugDebuggee
 
             if (!step.WaitsForResume)
             {
+                _stepTrace?.Write($"yield reached thread={threadId} selected-thread={step.InitialThreadId}");
                 if (threadId != step.InitialThreadId)
                 {
                     return ManagedTargetBreakpointDecision.Continue;
@@ -75,6 +78,7 @@ internal sealed partial class CorDebugDebuggee
                 try
                 {
                     ReplaceWithAsyncResumeBreakpoint(step);
+                    _stepTrace?.Write($"resume armed thread={threadId}");
                 }
                 catch
                 {
@@ -88,9 +92,11 @@ internal sealed partial class CorDebugDebuggee
             if (step.StateMachineHandle != 0 &&
                 !StateMachineMatches(threadId, step.StateMachineHandle))
             {
+                _stepTrace?.Write($"resume rejected thread={threadId}");
                 return ManagedTargetBreakpointDecision.Continue;
             }
 
+            _stepTrace?.Write($"resume matched thread={threadId}");
             ReleaseAsyncStep();
             _asyncConsumerStep.Clear();
             _asyncCallerStep.Clear();
@@ -115,10 +121,12 @@ internal sealed partial class CorDebugDebuggee
         if (ManagedSymbolStepRangeResolver.TryResolve(thread, _sourceBreakpoints.FindModule,
             out _, out bool currentIsHidden) && !currentIsHidden)
         {
+            _stepTrace?.Write($"resumed at visible statement");
             ClearFrameHandles();
             return ManagedTargetBreakpointDecision.Stopped;
         }
 
+        _stepTrace?.Write($"runtime step to visible statement");
         StartRuntimeStep(thread, DebugStepKind.Over);
         return ManagedTargetBreakpointDecision.Continue;
     }
@@ -195,6 +203,7 @@ internal sealed partial class CorDebugDebuggee
             return;
         }
 
+        _stepTrace?.Write($"release await runtime={runtimeAvailable} resume={step.WaitsForResume}");
         ReleaseAsyncBreakpoint(step, runtimeAvailable);
         ReleaseStateMachineHandle(step.StateMachineHandle, runtimeAvailable);
         _ = ComAbi.Release(step.Module);
@@ -313,13 +322,16 @@ internal sealed partial class CorDebugDebuggee
             {
                 thread = GetThread(threadId);
                 current = GetFirstArgument(thread);
-                return current != 0 &&
-                    TryGetReferenceAddress(current, out ulong currentAddress) &&
-                    TryGetReferenceAddress(stateMachineHandle, out ulong selectedAddress) &&
-                    currentAddress == selectedAddress;
+                ulong currentAddress = 0;
+                ulong selectedAddress = 0;
+                bool currentRead = current != 0 && TryGetReferenceAddress(current, out currentAddress);
+                bool selectedRead = currentRead && TryGetReferenceAddress(stateMachineHandle, out selectedAddress);
+                _stepTrace?.Write($"resume identity thread={threadId} current-read={currentRead} current=0x{currentAddress:X} selected-read={selectedRead} selected=0x{selectedAddress:X}");
+                return currentRead && selectedRead && currentAddress == selectedAddress;
             }
-            catch (InvalidOperationException)
+            catch (InvalidOperationException exception)
             {
+                _stepTrace?.Write($"resume identity failure thread={threadId} error={exception.Message}");
                 return false;
             }
         }
