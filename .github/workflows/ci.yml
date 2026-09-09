@@ -221,7 +221,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        suite: [standard, dumps, physical-capture, protocol, protocol-lifecycle, protocol-inspection, symbols, type-inspection, stepping, evaluation, presentation, stress]
+        suite: [standard, dumps, physical-capture, protocol, protocol-lifecycle, protocol-inspection, symbols, type-inspection, stepping, evaluation, assignment, presentation, stress]
         rid: [linux-x64, linux-arm64, win-x64, win-arm64, osx-x64, osx-arm64]
         include:
           # Complementary filters partition the required debugger suites.
@@ -263,8 +263,12 @@ jobs:
             filter: TestCategory!=DebuggerStress&FullyQualifiedName!~Assignment&FullyQualifiedName!~Evaluation&FullyQualifiedName!~ResultsView&FullyQualifiedName!~DebuggerTypeProxy&(FullyQualifiedName~Async|FullyQualifiedName~Step|FullyQualifiedName~Iterator)
           - suite: evaluation
             name: Debugger evaluation
-            minimum_tests: 70
-            filter: TestCategory!=DebuggerStress&(FullyQualifiedName~Assignment|FullyQualifiedName~Evaluation)&FullyQualifiedName!~ResultsView&FullyQualifiedName!~DebuggerTypeProxy
+            minimum_tests: 56
+            filter: TestCategory!=DebuggerStress&FullyQualifiedName~Evaluation&FullyQualifiedName!~Assignment&FullyQualifiedName!~ResultsView&FullyQualifiedName!~DebuggerTypeProxy
+          - suite: assignment
+            name: Debugger assignment
+            minimum_tests: 65
+            filter: TestCategory!=DebuggerStress&FullyQualifiedName~Assignment&FullyQualifiedName!~ResultsView&FullyQualifiedName!~DebuggerTypeProxy
           - suite: presentation
             name: Debugger value presentation
             minimum_tests: 40
