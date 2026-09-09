@@ -8,6 +8,8 @@ namespace Csls.Debugger;
 /// </summary>
 internal sealed partial class CorDebugDebuggee
 {
+    private const int MaximumArrayPageSize = 64 * 1024;
+
     private unsafe List<DebugVariableInfo> ExpandArray(
         nint array,
         string? parentEvaluateName,
@@ -21,22 +23,23 @@ internal sealed partial class CorDebugDebuggee
     {
         var api = new ICorDebugArrayValueAbi(array);
         uint elementCount = GetArrayElementCount(api);
-        if (elementCount > MaximumExpandableValueCount)
-        {
-            throw new InvalidOperationException(
-                $"The array exceeds the debugger element limit of {MaximumExpandableValueCount}.");
-        }
-
         int available = checked((int)elementCount);
         if (start >= available)
         {
             return [];
         }
 
+        int take = count == 0 ? available - start : Math.Min(count, available - start);
+        if (take > MaximumArrayPageSize)
+        {
+            throw new InvalidOperationException(
+                $"The array page exceeds the debugger limit of {MaximumArrayPageSize} elements. " +
+                "Request a smaller page with start and count.");
+        }
+
         uint rank = GetArrayRank(api);
         uint[] dimensions = GetArrayDimensions(api, rank);
         int[] bases = GetArrayBases(api, rank);
-        int take = count == 0 ? available - start : Math.Min(count, available - start);
         int end = start + take;
         DebugExpressionLanguage? language = parentEvaluateName is not null && frameId is int id
             ? GetFrame(id, generation).ExpressionLanguage

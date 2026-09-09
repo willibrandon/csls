@@ -17,6 +17,12 @@ supply argument and lexically active local names. Object expansion reads exact r
 types and walks the complete derived-to-base hierarchy, including base classes declared
 in another loaded assembly. Arrays are paged and retain their live rank and dimensions.
 
+Use `start` and `count` in a DAP `variables` request to read a page from a live
+array. Each response can contain up to 65,536 elements. The page limit applies to
+the returned elements, so a small page can inspect later elements in a larger array.
+Nested arrays expand through their own variable references. Page results preserve
+each dimension's runtime indices and lower bounds.
+
 With Portable PDBs, C# and Visual Basic async locals retain their source names,
 closed generic types, and tuple element names across awaits. The Locals view
 follows each variable's recorded scope. Use the same source name for watch
