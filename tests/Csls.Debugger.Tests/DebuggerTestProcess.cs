@@ -112,14 +112,11 @@ internal static class DebuggerTestProcess
                     ReportProgress(record);
                 }, observation.Token, ReportPhase);
             }
-            exit = DebuggerProcessExit.WaitAsync(process, observation.Token);
+            // Native observation already waits for the kernel signal after continuing EXIT_PROCESS_DEBUG_EVENT.
+            exit = observeNativeExceptions ? nativeEvents : DebuggerProcessExit.WaitAsync(process, observation.Token);
             processObservation = observeProcess?.Invoke(process, ReportProgress, observation.Token) ?? Task.CompletedTask;
             // Observe each operation as it completes: a failed sink must end capture while the child is still alive.
             List<Task> pending = [output, error, exit];
-            if (observeNativeExceptions)
-            {
-                pending.Add(nativeEvents);
-            }
             if (observeProcess is not null)
             {
                 pending.Add(processObservation);
@@ -131,8 +128,8 @@ internal static class DebuggerTestProcess
                 await completed.ConfigureAwait(false);
                 ReportPhase(ReferenceEquals(completed, output) ? "stdout completed"
                     : ReferenceEquals(completed, error) ? "stderr completed"
-                    : ReferenceEquals(completed, exit) ? "Process handle signaled"
-                    : ReferenceEquals(completed, nativeEvents) ? "Native observation completed"
+                    : ReferenceEquals(completed, exit)
+                        ? observeNativeExceptions ? "Native observation completed" : "Process handle signaled"
                     : "Process observation completed");
             }
             await nativeEvents.ConfigureAwait(false);

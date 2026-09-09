@@ -20,9 +20,12 @@ public sealed class WindowsNativeDebugObserverTests : DapTestContext
     /// <summary>
     /// Records kernel termination from the native observer thread after continuing the process-exit event.
     /// </summary>
+    /// <param name="recordPhases">Whether the caller requests native phase diagnostics.</param>
     [TestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
     [Timeout(30000, CooperativeCancellation = true)]
-    public async Task NativeExitPhaseObservesSignaledProcessHandle()
+    public async Task NativeExitPhaseObservesSignaledProcessHandle(bool recordPhases)
     {
         ProcessStartInfo start = CreateStart("managed");
         start.UseShellExecute = false;
@@ -30,17 +33,20 @@ public sealed class WindowsNativeDebugObserverTests : DapTestContext
         start.RedirectStandardOutput = true;
         start.RedirectStandardError = true;
         using Process process = Process.Start(start) ?? throw new InvalidOperationException("The native fixture did not start.");
-        await VerifyNativeExitPhaseAsync(process).ConfigureAwait(false);
+        await VerifyNativeExitPhaseAsync(process, recordPhases).ConfigureAwait(false);
     }
 
-    private async Task VerifyNativeExitPhaseAsync(Process process)
+    private async Task VerifyNativeExitPhaseAsync(Process process, bool recordPhases)
     {
         using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(TestContext.CancellationToken);
         Task<string> output = process.StandardOutput.ReadToEndAsync(CancellationToken.None);
         Task<string> error = process.StandardError.ReadToEndAsync(CancellationToken.None);
         var phases = new List<string>();
         var records = new List<string>();
-        Task observation = WindowsNativeDebugObserver.ObserveAsync(process, records.Add, cancellation.Token, phase =>
+        Task observation = WindowsNativeDebugObserver.ObserveAsync(process, records.Add, cancellation.Token,
+            recordPhases ? RecordPhase : null);
+
+        void RecordPhase(string phase)
         {
             if (phase == "Native wait observed kernel termination")
             {
@@ -48,11 +54,13 @@ public sealed class WindowsNativeDebugObserverTests : DapTestContext
                 Assert.IsTrue(handle.WaitOne(0), "The native phase must observe actual kernel termination.");
             }
             phases.Add(phase);
-        });
+        }
         try
         {
             await observation.ConfigureAwait(false);
-            Assert.AreSequenceEqual(s_exitPhases, phases);
+            using var handle = new WindowsProcessExitWaitHandle(process.SafeHandle);
+            Assert.IsTrue(handle.WaitOne(0), "Observation must include kernel termination with or without phase reporting.");
+            Assert.AreSequenceEqual(recordPhases ? s_exitPhases : [], phases);
             Assert.AreEqual(0, process.ExitCode);
             Assert.AreEqual(nameof(NullReferenceException), (await output.ConfigureAwait(false)).Trim());
             Assert.AreEqual(string.Empty, await error.ConfigureAwait(false));

@@ -20,7 +20,7 @@ internal static partial class WindowsNativeDebugObserver
     /// <param name="report">Receives bounded native fault records outside the collector process.</param>
     /// <param name="cancellationToken">Cancels observation and detaches before caller-owned process cleanup.</param>
     /// <param name="phase">Optionally records capture-input release and process exit on the native event thread.</param>
-    /// <returns>The native observation lifetime.</returns>
+    /// <returns>The native observation lifetime, completed after Windows signals process termination.</returns>
     internal static Task ObserveAsync(Process process, Action<string> report, CancellationToken cancellationToken,
         Action<string>? phase = null) =>
         Task.Factory.StartNew(() => Observe(process, report, phase, cancellationToken), CancellationToken.None,
@@ -129,7 +129,7 @@ internal static partial class WindowsNativeDebugObserver
                     throw new Win32Exception(continueError);
                 }
                 exited = code == 5;
-                if (exited && phase is not null)
+                if (exited)
                 {
                     // Observe kernel termination on this dedicated native-event thread, independently of pool callbacks.
                     using var handle = new WindowsProcessExitWaitHandle(process.SafeHandle);
@@ -137,7 +137,7 @@ internal static partial class WindowsNativeDebugObserver
                     {
                         cancellationToken.ThrowIfCancellationRequested();
                     }
-                    phase("Native wait observed kernel termination");
+                    phase?.Invoke("Native wait observed kernel termination");
                 }
             }
         }
