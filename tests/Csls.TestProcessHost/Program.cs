@@ -3,6 +3,20 @@ using System.Diagnostics;
 using System.Globalization;
 using System.Text;
 
+if (args is ["--windows-observed", ..] && OperatingSystem.IsWindows())
+{
+    if (await Console.In.ReadLineAsync().ConfigureAwait(false) != "capture")
+    {
+        throw new InvalidOperationException("The native observer did not release the capture gate.");
+    }
+    args = args[1..];
+}
+
+if (args is ["--windows-native-fault", string nativeFaultMode] && OperatingSystem.IsWindows())
+{
+    return WindowsNativeFaultFixture.Run(nativeFaultMode);
+}
+
 if (args is ["--windows-native-dump", string dumpProcessId, string dumpCreationTime, string nativeDumpPath] &&
     OperatingSystem.IsWindows())
 {

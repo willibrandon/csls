@@ -107,6 +107,7 @@ internal static class WindowsDebuggerProcessCapture
         var startInfo = new ProcessStartInfo(Environment.GetEnvironmentVariable("DOTNET_HOST_PATH") ?? "dotnet");
         startInfo.ArgumentList.Add(Path.Join(DebuggerTestEnvironment.FindRepositoryRoot(), "artifacts", "bin",
             "Csls.TestProcessHost", "debug", "csls-test-process-host.dll"));
+        startInfo.ArgumentList.Add("--windows-observed");
         startInfo.ArgumentList.Add("--windows-native-dump");
         startInfo.ArgumentList.Add(process.Id.ToString(CultureInfo.InvariantCulture));
         startInfo.ArgumentList.Add(process.StartTime.ToUniversalTime().ToFileTimeUtc().ToString(CultureInfo.InvariantCulture));
@@ -122,7 +123,8 @@ internal static class WindowsDebuggerProcessCapture
         });
         (int collectorId, int exitCode, string output, string error) =
             await DebuggerTestProcess.RunWithIdentityAsync(startInfo, cancellationToken,
-                diagnosticContext is null ? null : line => diagnosticContext.WriteLine(line), diagnosticContext)
+                diagnosticContext is null ? null : line => diagnosticContext.WriteLine(line), diagnosticContext,
+                observeNativeExceptions: true)
                 .ConfigureAwait(false);
         if (exitCode != 0)
         {
