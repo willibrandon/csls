@@ -427,7 +427,17 @@ public sealed partial class DapSessionTests
         }
         catch
         {
-            await client.DisposeAsync().ConfigureAwait(false);
+            try
+            {
+                if (OperatingSystem.IsLinux())
+                {
+                    await DebuggerProcessDiagnostics.CaptureLinuxWaitStatesAsync(client, TestContext).ConfigureAwait(false);
+                }
+            }
+            finally
+            {
+                await client.DisposeAsync().ConfigureAwait(false);
+            }
             throw;
         }
         return client;
