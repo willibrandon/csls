@@ -641,7 +641,7 @@ jobs:
         uses: actions/cache/restore@v6
         with:
           path: artifacts/file-apps/install-graphical
-          key: graphical-prerequisite-app-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/Install-GraphicalEditorTestPrerequisites.cs', 'scripts/Support/GraphicalPrerequisite*.cs', 'scripts/Support/AptPackageCache.cs', 'scripts/Support/ProcessOutputCapture.cs', 'scripts/ScriptSupport.cs', 'scripts/Directory.Build.*', 'src/Csls.SourceGen/**/*.cs', 'src/Csls.SourceGen/*.csproj', '.editorconfig', '.globalconfig', 'Directory.Build.*', 'Directory.Packages.props', 'NuGet.Config') }}
+          key: graphical-prerequisite-app-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/Install-GraphicalEditorTestPrerequisites.cs', 'scripts/Support/GraphicalPrerequisite*.cs', 'scripts/Support/AptPackage*.cs', 'scripts/Support/ProcessOutputCapture.cs', 'scripts/ScriptSupport.cs', 'scripts/Directory.Build.*', 'src/Csls.SourceGen/**/*.cs', 'src/Csls.SourceGen/*.csproj', '.editorconfig', '.globalconfig', 'Directory.Build.*', 'Directory.Packages.props', 'NuGet.Config') }}
 
       - name: Publish graphical prerequisite app
         if: steps.graphical-prerequisite-app-cache.outputs.cache-hit != 'true'
@@ -654,13 +654,15 @@ jobs:
         uses: actions/cache/save@v6
         with:
           path: artifacts/file-apps/install-graphical
-          key: graphical-prerequisite-app-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/Install-GraphicalEditorTestPrerequisites.cs', 'scripts/Support/GraphicalPrerequisite*.cs', 'scripts/Support/AptPackageCache.cs', 'scripts/Support/ProcessOutputCapture.cs', 'scripts/ScriptSupport.cs', 'scripts/Directory.Build.*', 'src/Csls.SourceGen/**/*.cs', 'src/Csls.SourceGen/*.csproj', '.editorconfig', '.globalconfig', 'Directory.Build.*', 'Directory.Packages.props', 'NuGet.Config') }}
+          key: graphical-prerequisite-app-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/Install-GraphicalEditorTestPrerequisites.cs', 'scripts/Support/GraphicalPrerequisite*.cs', 'scripts/Support/AptPackage*.cs', 'scripts/Support/ProcessOutputCapture.cs', 'scripts/ScriptSupport.cs', 'scripts/Directory.Build.*', 'src/Csls.SourceGen/**/*.cs', 'src/Csls.SourceGen/*.csproj', '.editorconfig', '.globalconfig', 'Directory.Build.*', 'Directory.Packages.props', 'NuGet.Config') }}
 
   browser-prerequisite-packages:
     name: Browser prerequisite packages (${{ matrix.browser }})
     runs-on: ubuntu-latest
     timeout-minutes: 5
     needs: graphical-prerequisite-app
+    env:
+      CSLS_APT_SOURCE_LIST: /etc/apt/sources.list.d/ubuntu.sources
     strategy:
       fail-fast: false
       matrix:
@@ -681,7 +683,7 @@ jobs:
         uses: actions/cache/restore@v6
         with:
           path: artifacts/file-apps/install-graphical
-          key: graphical-prerequisite-app-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/Install-GraphicalEditorTestPrerequisites.cs', 'scripts/Support/GraphicalPrerequisite*.cs', 'scripts/Support/AptPackageCache.cs', 'scripts/Support/ProcessOutputCapture.cs', 'scripts/ScriptSupport.cs', 'scripts/Directory.Build.*', 'src/Csls.SourceGen/**/*.cs', 'src/Csls.SourceGen/*.csproj', '.editorconfig', '.globalconfig', 'Directory.Build.*', 'Directory.Packages.props', 'NuGet.Config') }}
+          key: graphical-prerequisite-app-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/Install-GraphicalEditorTestPrerequisites.cs', 'scripts/Support/GraphicalPrerequisite*.cs', 'scripts/Support/AptPackage*.cs', 'scripts/Support/ProcessOutputCapture.cs', 'scripts/ScriptSupport.cs', 'scripts/Directory.Build.*', 'src/Csls.SourceGen/**/*.cs', 'src/Csls.SourceGen/*.csproj', '.editorconfig', '.globalconfig', 'Directory.Build.*', 'Directory.Packages.props', 'NuGet.Config') }}
           fail-on-cache-miss: true
 
       - name: Resolve current browser packages
@@ -696,7 +698,7 @@ jobs:
         uses: actions/cache/restore@v6
         with:
           path: artifacts/browser-packages
-          key: browser-packages-${{ matrix.browser }}-${{ steps.browser-packages.outputs.key }}-${{ hashFiles('scripts/Install-GraphicalEditorTestPrerequisites.cs', 'scripts/Support/GraphicalPrerequisite*.cs', 'scripts/Support/AptPackageCache.cs') }}
+          key: browser-packages-${{ matrix.browser }}-${{ steps.browser-packages.outputs.key }}-${{ hashFiles('scripts/Install-GraphicalEditorTestPrerequisites.cs', 'scripts/Support/GraphicalPrerequisite*.cs', 'scripts/Support/AptPackage*.cs') }}
 
       - name: Download and verify browser packages
         run: >-
@@ -709,7 +711,7 @@ jobs:
         uses: actions/cache/save@v6
         with:
           path: artifacts/browser-packages
-          key: browser-packages-${{ matrix.browser }}-${{ steps.browser-packages.outputs.key }}-${{ hashFiles('scripts/Install-GraphicalEditorTestPrerequisites.cs', 'scripts/Support/GraphicalPrerequisite*.cs', 'scripts/Support/AptPackageCache.cs') }}
+          key: browser-packages-${{ matrix.browser }}-${{ steps.browser-packages.outputs.key }}-${{ hashFiles('scripts/Install-GraphicalEditorTestPrerequisites.cs', 'scripts/Support/GraphicalPrerequisite*.cs', 'scripts/Support/AptPackage*.cs') }}
 
       - name: Upload browser packages
         uses: actions/upload-artifact@v7
@@ -1000,6 +1002,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     needs: graphical-prerequisite-app
+    env:
+      CSLS_APT_SOURCE_LIST: /etc/apt/sources.list.d/ubuntu.sources
     outputs:
       zed-path: ${{ steps.provision-zed.outputs.zed-path }}
       csharp-extension-path: ${{ steps.provision-zed.outputs.csharp-extension-path }}
@@ -1019,7 +1023,7 @@ jobs:
         uses: actions/cache/restore@v6
         with:
           path: artifacts/file-apps/install-graphical
-          key: graphical-prerequisite-app-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/Install-GraphicalEditorTestPrerequisites.cs', 'scripts/Support/GraphicalPrerequisite*.cs', 'scripts/Support/AptPackageCache.cs', 'scripts/Support/ProcessOutputCapture.cs', 'scripts/ScriptSupport.cs', 'scripts/Directory.Build.*', 'src/Csls.SourceGen/**/*.cs', 'src/Csls.SourceGen/*.csproj', '.editorconfig', '.globalconfig', 'Directory.Build.*', 'Directory.Packages.props', 'NuGet.Config') }}
+          key: graphical-prerequisite-app-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/Install-GraphicalEditorTestPrerequisites.cs', 'scripts/Support/GraphicalPrerequisite*.cs', 'scripts/Support/AptPackage*.cs', 'scripts/Support/ProcessOutputCapture.cs', 'scripts/ScriptSupport.cs', 'scripts/Directory.Build.*', 'src/Csls.SourceGen/**/*.cs', 'src/Csls.SourceGen/*.csproj', '.editorconfig', '.globalconfig', 'Directory.Build.*', 'Directory.Packages.props', 'NuGet.Config') }}
           fail-on-cache-miss: true
 
       - name: Restore Zed tools
@@ -1128,6 +1132,7 @@ jobs:
       - zed-test-assets
       - test-binaries
     env:
+      CSLS_APT_SOURCE_LIST: /etc/apt/sources.list.d/ubuntu.sources
       CSLS_ZED_PATH: ${{ github.workspace }}/artifacts/tools/${{ needs.zed-test-assets.outputs.zed-path }}
       CSLS_ZED_CSHARP_EXTENSION_PATH: ${{ github.workspace }}/artifacts/tools/${{ needs.zed-test-assets.outputs.csharp-extension-path }}
     strategy:
@@ -1180,7 +1185,7 @@ jobs:
         uses: actions/cache/restore@v6
         with:
           path: artifacts/file-apps/install-graphical
-          key: graphical-prerequisite-app-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/Install-GraphicalEditorTestPrerequisites.cs', 'scripts/Support/GraphicalPrerequisite*.cs', 'scripts/Support/AptPackageCache.cs', 'scripts/Support/ProcessOutputCapture.cs', 'scripts/ScriptSupport.cs', 'scripts/Directory.Build.*', 'src/Csls.SourceGen/**/*.cs', 'src/Csls.SourceGen/*.csproj', '.editorconfig', '.globalconfig', 'Directory.Build.*', 'Directory.Packages.props', 'NuGet.Config') }}
+          key: graphical-prerequisite-app-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/Install-GraphicalEditorTestPrerequisites.cs', 'scripts/Support/GraphicalPrerequisite*.cs', 'scripts/Support/AptPackage*.cs', 'scripts/Support/ProcessOutputCapture.cs', 'scripts/ScriptSupport.cs', 'scripts/Directory.Build.*', 'src/Csls.SourceGen/**/*.cs', 'src/Csls.SourceGen/*.csproj', '.editorconfig', '.globalconfig', 'Directory.Build.*', 'Directory.Packages.props', 'NuGet.Config') }}
           fail-on-cache-miss: true
 
       - name: Resolve graphical prerequisite cache
@@ -1269,6 +1274,7 @@ jobs:
       - vscode-web-extension
       - vscode-test-assets
     env:
+      CSLS_APT_SOURCE_LIST: /etc/apt/sources.list.d/ubuntu.sources
       CSLS_RUN_VSCODE_REMOTE_TESTS: ${{ matrix.remote }}
       CSLS_RUN_VSCODE_WEB_TESTS: ${{ matrix.web }}
       CSLS_VSCODE_WEB_PACKAGE_PATH: ${{ github.workspace }}/artifacts/vscode-web-test-extension/willibrandon.csls-web.vsix
@@ -1361,7 +1367,7 @@ jobs:
         uses: actions/cache/restore@v6
         with:
           path: artifacts/file-apps/install-graphical
-          key: graphical-prerequisite-app-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/Install-GraphicalEditorTestPrerequisites.cs', 'scripts/Support/GraphicalPrerequisite*.cs', 'scripts/Support/AptPackageCache.cs', 'scripts/Support/ProcessOutputCapture.cs', 'scripts/ScriptSupport.cs', 'scripts/Directory.Build.*', 'src/Csls.SourceGen/**/*.cs', 'src/Csls.SourceGen/*.csproj', '.editorconfig', '.globalconfig', 'Directory.Build.*', 'Directory.Packages.props', 'NuGet.Config') }}
+          key: graphical-prerequisite-app-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/Install-GraphicalEditorTestPrerequisites.cs', 'scripts/Support/GraphicalPrerequisite*.cs', 'scripts/Support/AptPackage*.cs', 'scripts/Support/ProcessOutputCapture.cs', 'scripts/ScriptSupport.cs', 'scripts/Directory.Build.*', 'src/Csls.SourceGen/**/*.cs', 'src/Csls.SourceGen/*.csproj', '.editorconfig', '.globalconfig', 'Directory.Build.*', 'Directory.Packages.props', 'NuGet.Config') }}
           fail-on-cache-miss: true
 
       - name: Download browser packages
@@ -1444,6 +1450,7 @@ jobs:
     timeout-minutes: 5
     needs: test-binaries
     env:
+      CSLS_APT_SOURCE_LIST: /etc/apt/sources.list.d/ubuntu.sources
       CSLS_REQUIRE_LEGACY_BUILD_HOST: true
 
     steps:
@@ -1470,7 +1477,7 @@ jobs:
         uses: actions/cache@v6
         with:
           path: ~/.cache/csls
-          key: legacy-build-host-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/Provision-LegacyBuildHost.cs', 'scripts/ScriptSupport.cs') }}
+          key: legacy-build-host-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/Provision-LegacyBuildHost.cs', 'scripts/Support/AptPackageSources.cs', 'scripts/ScriptSupport.cs') }}
 
       - name: Provision legacy build host
         run: dotnet run --file scripts/Provision-LegacyBuildHost.cs

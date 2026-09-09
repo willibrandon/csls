@@ -3,7 +3,10 @@
 #:property LangVersion=14.0
 #:property Nullable=enable
 #:property TreatWarningsAsErrors=true
+#:property RootNamespace=Csls
+#:include Support/AptPackageSources.cs
 
+using Csls.Support;
 using System.Diagnostics;
 using System.IO.Compression;
 using System.Runtime.InteropServices;
@@ -95,7 +98,10 @@ static async Task ProvisionLinuxMonoAsync()
             $"Automatic Mono provisioning does not support Linux distribution '{identifier}'.");
     }
 
-    await RunPrivilegedAsync("rm", ["--force", MonoRepositoryPath]).ConfigureAwait(false);
+    if (Environment.GetEnvironmentVariable("CSLS_APT_SOURCE_LIST") is null)
+    {
+        await RunPrivilegedAsync("rm", ["--force", MonoRepositoryPath]).ConfigureAwait(false);
+    }
     await RunPrivilegedAsync("apt-get", ["update"]).ConfigureAwait(false);
     await RunPrivilegedAsync(
         "apt-get",
@@ -449,21 +455,28 @@ static string FindMonoMsBuildDirectory()
 static Task<string> RunPrivilegedAsync(
     string executablePath,
     IReadOnlyList<string> arguments) =>
-    string.Equals(Environment.UserName, "root", StringComparison.Ordinal)
-        ? RunCheckedAsync(executablePath, arguments)
-        : RunCheckedAsync("sudo", ["--non-interactive", executablePath, .. arguments]);
+    RunCheckedAsync(executablePath, arguments, privileged: true);
 
 static async Task<string> RunCheckedAsync(
     string executablePath,
-    IReadOnlyList<string> arguments)
+    IReadOnlyList<string> arguments,
+    bool privileged = false)
 {
+    bool useSudo = privileged && !string.Equals(Environment.UserName, "root", StringComparison.Ordinal);
     var startInfo = new ProcessStartInfo
     {
-        FileName = executablePath,
+        FileName = useSudo ? "sudo" : executablePath,
         RedirectStandardError = true,
         RedirectStandardOutput = true,
         UseShellExecute = false
     };
+    if (useSudo)
+    {
+        startInfo.ArgumentList.Add("--non-interactive");
+        startInfo.ArgumentList.Add(executablePath);
+    }
+
+    AptPackageSources.Configure(startInfo, executablePath, Environment.GetEnvironmentVariable("CSLS_APT_SOURCE_LIST"));
     foreach (string argument in arguments)
     {
         startInfo.ArgumentList.Add(argument);

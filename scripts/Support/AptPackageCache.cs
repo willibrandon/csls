@@ -217,6 +217,7 @@ internal static class AptPackageCache
             startInfo.ArgumentList.Add(executable);
         }
 
+        AptPackageSources.Configure(startInfo, executable, Environment.GetEnvironmentVariable("CSLS_APT_SOURCE_LIST"));
         foreach (string argument in arguments)
         {
             startInfo.ArgumentList.Add(argument);

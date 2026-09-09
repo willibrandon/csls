@@ -615,35 +615,32 @@ internal static class GraphicalPrerequisiteInstaller
     }
 
     private static Task RunPrivilegedAsync(string executablePath, IReadOnlyList<string> arguments) =>
-        string.Equals(Environment.UserName, "root", StringComparison.Ordinal)
-            ? RunCheckedAsync(executablePath, arguments)
-            : RunCheckedAsync("sudo", ["--non-interactive", executablePath, .. arguments]);
+        RunCheckedAsync(executablePath, arguments, privileged: true);
 
     private static async Task<bool> TryRunPrivilegedAsync(
         string executablePath,
         IReadOnlyList<string> arguments)
     {
-        (string actualExecutablePath, IReadOnlyList<string> actualArguments) =
-            string.Equals(Environment.UserName, "root", StringComparison.Ordinal)
-                ? (executablePath, arguments)
-                : ("sudo", ["--non-interactive", executablePath, .. arguments]);
         (int exitCode, _, _) = await RunAsync(
-            actualExecutablePath,
-            actualArguments,
-            streamOutput: true).ConfigureAwait(false);
+            executablePath,
+            arguments,
+            streamOutput: true,
+            privileged: true).ConfigureAwait(false);
         return exitCode == 0;
     }
 
     private static async Task RunCheckedAsync(
         string executablePath,
         IReadOnlyList<string> arguments,
-        string? workingDirectory = null)
+        string? workingDirectory = null,
+        bool privileged = false)
     {
         (int exitCode, _, _) = await RunAsync(
             executablePath,
             arguments,
             workingDirectory,
-            streamOutput: true).ConfigureAwait(false);
+            streamOutput: true,
+            privileged: privileged).ConfigureAwait(false);
         if (exitCode != 0)
         {
             throw new InvalidOperationException(
@@ -707,17 +704,26 @@ internal static class GraphicalPrerequisiteInstaller
         string executablePath,
         IReadOnlyList<string> arguments,
         string? workingDirectory = null,
-        bool streamOutput = false)
+        bool streamOutput = false,
+        bool privileged = false)
     {
+        bool useSudo = privileged && !string.Equals(Environment.UserName, "root", StringComparison.Ordinal);
         var startInfo = new ProcessStartInfo
         {
-            FileName = executablePath,
+            FileName = useSudo ? "sudo" : executablePath,
             RedirectStandardError = true,
             RedirectStandardOutput = true,
             UseShellExecute = false
         };
         startInfo.WorkingDirectory = workingDirectory ?? Directory.GetCurrentDirectory();
         startInfo.Environment["DEBIAN_FRONTEND"] = "noninteractive";
+        if (useSudo)
+        {
+            startInfo.ArgumentList.Add("--non-interactive");
+            startInfo.ArgumentList.Add(executablePath);
+        }
+
+        AptPackageSources.Configure(startInfo, executablePath, Environment.GetEnvironmentVariable("CSLS_APT_SOURCE_LIST"));
         foreach (string argument in arguments)
         {
             startInfo.ArgumentList.Add(argument);

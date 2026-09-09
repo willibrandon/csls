@@ -8,6 +8,7 @@
 #:package System.CommandLine
 #:include ScriptSupport.cs
 #:include Support/AptPackageCache.cs
+#:include Support/AptPackageSources.cs
 #:include Support/ProcessOutputCapture.cs
 #:include Support/GraphicalPrerequisiteCommand.cs
 #:include Support/GraphicalPrerequisiteOptions.cs

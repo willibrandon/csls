@@ -12,6 +12,8 @@
   </ItemGroup>
 
   <ItemGroup>
+    <Compile Include="../../scripts/Support/AptPackageSources.cs"
+             Link="Support/AptPackageSources.cs" />
     <Compile Include="../../scripts/Support/MacDebuggerTestAuthorization.cs"
              Link="Support/MacDebuggerTestAuthorization.cs" />
     <Compile Include="../../scripts/Support/ProcessOutputCapture.cs"
