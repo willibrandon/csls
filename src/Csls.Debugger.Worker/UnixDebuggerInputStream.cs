@@ -1,4 +1,5 @@
 using Microsoft.Win32.SafeHandles;
+using System.Collections.Concurrent;
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
@@ -6,7 +7,7 @@ using System.Runtime.InteropServices;
 namespace Csls.Debugger.Worker;
 
 /// <summary>
-/// Reads a stable Unix descriptor with a cancellation pipe that interrupts an idle native wait.
+/// Reads a stable Unix descriptor on an owned thread with cancellable native waits.
 /// </summary>
 internal sealed partial class UnixDebuggerInputStream : Stream
 {
@@ -19,6 +20,8 @@ internal sealed partial class UnixDebuggerInputStream : Stream
     private readonly SafeFileHandle _wakeWrite;
     private readonly SemaphoreSlim _readGate = new(1, 1);
     private readonly CancellationTokenSource _lifetime = new();
+    private readonly BlockingCollection<UnixDebuggerInputRead> _reads = new(1);
+    private readonly Thread _reader;
     private int _wakePending;
     private int _disposed;
 
@@ -31,6 +34,24 @@ internal sealed partial class UnixDebuggerInputStream : Stream
         ArgumentNullException.ThrowIfNull(input);
         _input = input;
         (_wakeRead, _wakeWrite) = CreateWakePipe();
+        try
+        {
+            _reader = new Thread(ReadRequests)
+            {
+                IsBackground = true,
+                Name = "csls debugger input"
+            };
+            _reader.Start();
+        }
+        catch
+        {
+            _wakeRead.Dispose();
+            _wakeWrite.Dispose();
+            _reads.Dispose();
+            _readGate.Dispose();
+            _lifetime.Dispose();
+            throw;
+        }
     }
 
     /// <inheritdoc />
@@ -83,8 +104,10 @@ internal sealed partial class UnixDebuggerInputStream : Stream
         await _readGate.WaitAsync(linked.Token).ConfigureAwait(false);
         try
         {
-            return await Task.Run(() => ReadCore(buffer.Span, linked.Token), CancellationToken.None)
-                .ConfigureAwait(false);
+            var completion = new TaskCompletionSource<int>(TaskCreationOptions.RunContinuationsAsynchronously);
+            var request = new UnixDebuggerInputRead(buffer, completion, linked.Token);
+            _reads.Add(request, linked.Token);
+            return await completion.Task.ConfigureAwait(false);
         }
         finally
         {
@@ -105,19 +128,61 @@ internal sealed partial class UnixDebuggerInputStream : Stream
     public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
 
     /// <inheritdoc />
+    public override async ValueTask DisposeAsync()
+    {
+        if (Interlocked.Exchange(ref _disposed, 1) == 0)
+        {
+            await _lifetime.CancelAsync().ConfigureAwait(false);
+            await _readGate.WaitAsync(CancellationToken.None).ConfigureAwait(false);
+            CloseReader();
+        }
+
+        await base.DisposeAsync().ConfigureAwait(false);
+    }
+
+    /// <inheritdoc />
     protected override void Dispose(bool disposing)
     {
         if (disposing && Interlocked.Exchange(ref _disposed, 1) == 0)
         {
             _lifetime.Cancel();
             _readGate.Wait();
-            _wakeRead.Dispose();
-            _wakeWrite.Dispose();
-            _lifetime.Dispose();
-            _readGate.Dispose();
+            CloseReader();
         }
 
         base.Dispose(disposing);
+    }
+
+    private void ReadRequests()
+    {
+        foreach (UnixDebuggerInputRead request in _reads.GetConsumingEnumerable())
+        {
+            try
+            {
+                int count = ReadCore(request.Buffer.Span, request.CancellationToken);
+                request.Completion.SetResult(count);
+            }
+            catch (OperationCanceledException) when (request.CancellationToken.IsCancellationRequested)
+            {
+                request.Completion.SetCanceled(request.CancellationToken);
+            }
+            catch (Exception exception) when (exception is IOException or ObjectDisposedException or Win32Exception)
+            {
+                request.Completion.SetException(exception);
+            }
+        }
+    }
+
+    private void CloseReader()
+    {
+        // The read gate keeps buffers and cancellation callbacks alive until the native call returns.
+        _reads.CompleteAdding();
+        _reader.Join();
+        _reads.Dispose();
+        _wakeRead.Dispose();
+        _wakeWrite.Dispose();
+        _lifetime.Dispose();
+        _readGate.Dispose();
     }
 
     private int ReadCore(Span<byte> buffer, CancellationToken cancellationToken)
