@@ -632,18 +632,6 @@ public sealed partial class DapSessionTests
                 "\"answer\"",
                 assignedReference.GetProperty("value").GetString());
 
-            JsonElement unsafeStringMaterialization = await ReadSetExpressionAsync(
-                client,
-                fixtureFrameId,
-                "localObject.Text",
-                "\"changed\"",
-                success: false,
-                TestContext.CancellationToken).ConfigureAwait(false);
-            Assert.Contains(
-                "garbage-collection-unsafe point",
-                unsafeStringMaterialization.GetProperty("message").GetString()!,
-                StringComparison.Ordinal);
-
             JsonElement assignedNull = await ReadSetExpressionAsync(
                 client,
                 fixtureFrameId,

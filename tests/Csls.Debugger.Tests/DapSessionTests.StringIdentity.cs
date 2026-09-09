@@ -9,6 +9,55 @@ namespace Csls.Debugger.Tests;
 public sealed partial class DapSessionTests
 {
     /// <summary>
+    /// Rejects string allocation in an observed native wait while preserving the target, frame, and existing references.
+    /// </summary>
+    [TestMethod]
+    [Timeout(30000, CooperativeCancellation = true)]
+    public async Task StringMaterializationAtNativeWaitPreservesFrameAndValue()
+    {
+        string waitPath = Path.Join(
+            Path.GetTempPath(), $"csls-string-native-wait-{Guid.NewGuid():N}.signal");
+        try
+        {
+            // Readiness is emitted after WaitSleepJoin is observed on an unreleased gate.
+            DapTestClient client = await StartStoppedFixtureAsync(waitPath, blockForInspection: true).ConfigureAwait(false);
+            await using ConfiguredAsyncDisposable disposal = client.ConfigureAwait(false);
+            JsonElement frame = await GetFixtureFrameAsync(client).ConfigureAwait(false);
+            int frameId = frame.GetProperty("id").GetInt32();
+            JsonElement assignedReference = await ReadSetExpressionAsync(
+                client, frameId, "localObject.Text", "text", success: true,
+                TestContext.CancellationToken).ConfigureAwait(false);
+            AssertStringIdentityValue(assignedReference, "value", "\"answer\"");
+
+            JsonElement materialization = await ReadSetExpressionAsync(
+                client, frameId, "localObject.Text", "\"changed\"", success: false,
+                TestContext.CancellationToken).ConfigureAwait(false);
+            string? message = materialization.GetProperty("message").GetString();
+            Assert.IsNotNull(message);
+            Assert.Contains("garbage-collection-unsafe point", message, StringComparison.Ordinal);
+            await AssertStringIdentityExpressionAsync(client, frameId, "localObject.Text", "\"answer\"")
+                .ConfigureAwait(false);
+            JsonElement unchangedFrame = await GetFixtureFrameAsync(client).ConfigureAwait(false);
+            Assert.AreEqual(frameId, unchangedFrame.GetProperty("id").GetInt32());
+            Assert.AreEqual(frame.GetProperty("line").GetInt32(), unchangedFrame.GetProperty("line").GetInt32());
+
+            JsonElement assignedNull = await ReadSetExpressionAsync(
+                client, frameId, "localObject.Text", "null", success: true,
+                TestContext.CancellationToken).ConfigureAwait(false);
+            AssertStringIdentityValue(assignedNull, "value", "null");
+            await AssertStringIdentityExpressionAsync(client, frameId, "localObject.Text", "null").ConfigureAwait(false);
+            await AssertStringIdentityExpressionAsync(client, frameId, "text", "\"answer\"").ConfigureAwait(false);
+            await DisconnectStoppedSessionAsync(client).ConfigureAwait(false);
+            Assert.AreEqual(0, await client.WaitForExitAsync(TestContext.CancellationToken).ConfigureAwait(false));
+            Assert.AreEqual(string.Empty, client.Diagnostics.ToString());
+        }
+        finally
+        {
+            File.Delete(waitPath);
+        }
+    }
+
+    /// <summary>
     /// Binds colliding string field names to their physical values rather than display rows.
     /// </summary>
     [TestMethod]
