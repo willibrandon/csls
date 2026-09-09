@@ -5,9 +5,12 @@
 #:property TreatWarningsAsErrors=true
 #:property RootNamespace=Csls
 #:package System.CommandLine
+#:include Support/VsCodeTestInstallation.cs
 
+using Csls.Support;
 using System.CommandLine;
 using System.Formats.Tar;
+using System.Text.Json;
 
 var root = new Option<DirectoryInfo>("--root")
 {
@@ -52,36 +55,37 @@ static string GetArchivePath(string repositoryRoot, string group) =>
 
 static void Pack(string repositoryRoot, string group)
 {
-    string[] directories = group switch
+    string[] paths = group switch
     {
         "common" =>
         [
-            "artifacts/tools/vscode",
-            "artifacts/tools/vscode-dotnet-runtime",
+            "artifacts/tools/vscode/stable/executable.path",
+            Path.GetRelativePath(repositoryRoot, GetEditorRoot(repositoryRoot)),
+            "artifacts/tools/vscode-dotnet-runtime/current",
             "tests/vscode/node_modules",
             "tests/vscode/dist",
             "editors/vscode/node_modules",
             "editors/vscode/dist"
         ],
-        "desktop" => ["artifacts/tools/vscode-csharp", "artifacts/tools/vscode-csdevkit"],
-        "remote" => ["artifacts/tools/vscode-server"],
+        "desktop" => ["artifacts/tools/vscode-csharp/current", "artifacts/tools/vscode-csdevkit/current"],
+        "remote" => [Path.GetRelativePath(repositoryRoot, GetServerRoot(repositoryRoot))],
         _ => throw new ArgumentOutOfRangeException(nameof(group), group, "Unknown asset group.")
     };
-    string? missingDirectory = directories.FirstOrDefault(directory =>
-        !Directory.Exists(Path.Join(repositoryRoot, directory)));
-    if (missingDirectory is not null)
+    string? missingPath = paths.FirstOrDefault(path =>
+        !Directory.Exists(Path.Join(repositoryRoot, path)) && !File.Exists(Path.Join(repositoryRoot, path)));
+    if (missingPath is not null)
     {
-        throw new DirectoryNotFoundException($"Required VS Code test assets are missing: {missingDirectory}.");
+        throw new FileNotFoundException($"Required VS Code test assets are missing: {missingPath}.");
     }
 
     string archivePath = GetArchivePath(repositoryRoot, group);
     using (FileStream stream = File.Create(archivePath))
     using (var writer = new TarWriter(stream))
     {
-        foreach (string directory in directories)
+        foreach (string relativePath in paths)
         {
             var pending = new Stack<string>();
-            pending.Push(Path.Join(repositoryRoot, directory));
+            pending.Push(Path.Join(repositoryRoot, relativePath));
             while (pending.TryPop(out string? path))
             {
                 string entryName = Path.GetRelativePath(repositoryRoot, path)
@@ -101,4 +105,38 @@ static void Pack(string repositoryRoot, string group)
     }
 
     Console.WriteLine($"Packed {Path.GetFileName(archivePath)}: {new FileInfo(archivePath).Length} bytes.");
+}
+
+static string GetEditorRoot(string repositoryRoot)
+{
+    string cache = Path.Join(repositoryRoot, "artifacts", "tools", "vscode", "stable");
+    string executable = VsCodeTestInstallation.Resolve(cache);
+    string directory = Path.GetRelativePath(cache, executable).Split(Path.DirectorySeparatorChar)[0];
+    return Path.Join(cache, directory);
+}
+
+static string GetServerRoot(string repositoryRoot)
+{
+    string revision = ReadRevision(Path.Join(GetEditorRoot(repositoryRoot), "resources", "app", "product.json"));
+    string server = Path.Join(repositoryRoot, "artifacts", "tools", "vscode-server", revision, "linux-x64");
+    if (!File.Exists(Path.Join(server, "node")) || !File.Exists(Path.Join(server, "out", "server-main.js")) ||
+        ReadRevision(Path.Join(server, "product.json")) != revision)
+    {
+        throw new InvalidDataException("Provision the VS Code server matching the selected desktop editor before packing assets.");
+    }
+
+    return server;
+}
+
+static string ReadRevision(string productPath)
+{
+    using FileStream stream = File.OpenRead(productPath);
+    using var document = JsonDocument.Parse(stream);
+    string? revision = document.RootElement.GetProperty("commit").GetString();
+    if (revision is not { Length: 40 } || !revision.All(char.IsAsciiHexDigit))
+    {
+        throw new InvalidDataException("The VS Code product metadata has an invalid commit identifier.");
+    }
+
+    return revision;
 }
