@@ -211,7 +211,137 @@ public sealed class DapBreakpointScaleTests : DapTestContext
         Assert.IsFalse(Directory.Exists(directory));
     }
 
-    private async Task<JsonElement> ReadBreakpointsAsync(DapTestClient client, string source, int[] lines, int?[]? columns = null)
+    /// <summary>
+    /// Preserves accumulated hits while replacing another breakpoint in the same source document.
+    /// </summary>
+    /// <param name="hitCondition">The retained exact, threshold, or modulo hit predicate.</param>
+    [TestMethod]
+    [DataRow("2")]
+    [DataRow(">=2")]
+    [DataRow("%2")]
+    [Timeout(30000, CooperativeCancellation = true)]
+    public Task SourceBreakpointReplacementPreservesAccumulatedHits(string hitCondition) =>
+        ExerciseHitConditionReplacementAsync(hitCondition, hitCondition, 1);
+
+    /// <summary>
+    /// Starts the replacement hit predicate at its first hit while preserving the logical breakpoint identity.
+    /// </summary>
+    [TestMethod]
+    [Timeout(30000, CooperativeCancellation = true)]
+    public Task SourceBreakpointReplacementAppliesChangedHitCondition() =>
+        ExerciseHitConditionReplacementAsync("2", "3", 6);
+
+    private async Task ExerciseHitConditionReplacementAsync(string hitCondition, string replacement, int expectedTotal)
+    {
+        const string text = """
+            using System;
+            namespace Csls.BreakpointScale;
+            /// <summary>
+            /// Keeps a counted source location live while another breakpoint is replaced.
+            /// </summary>
+            internal static class Program
+            {
+                /// <summary>
+                /// Accumulates known values on each iteration before printing their sum.
+                /// </summary>
+                internal static void Main()
+                {
+                    int total = 0;
+                    for (int iteration = 1; iteration <= 4; iteration++)
+                    {
+                        int observed = iteration;
+                        total += observed;
+                    }
+                    Console.WriteLine(total);
+                }
+            }
+            """;
+        string directory = Directory.CreateTempSubdirectory("csls-breakpoint-hits-").FullName;
+        try
+        {
+            (string program, string source) = await EmitProgramAsync(directory, text).ConfigureAwait(false);
+            string[] sourceLines = text.Split('\n');
+            int marker = FindSourceLine(sourceLines, "int observed =");
+            int counted = FindSourceLine(sourceLines, "total += observed;");
+            int final = FindSourceLine(sourceLines, "Console.WriteLine(total);");
+            DapTestClient client = await DapTestClient.CreateAsync(TestContext.CancellationToken).ConfigureAwait(false);
+            await using ConfiguredAsyncDisposable cleanup = client.ConfigureAwait(false);
+            using DapTestCancellationCapture capture = CaptureProtocolOnCancellation(client);
+            (int thread, _) = await LaunchAtEntryAsync(client, program, []).ConfigureAwait(false);
+            JsonElement original = await ReadBreakpointsAsync(client, source, [marker, counted],
+                conditions: ["iteration == 2", "observed >= 1"], hitConditions: [null, hitCondition]).ConfigureAwait(false);
+            foreach (JsonElement breakpoint in original.EnumerateArray())
+            {
+                Assert.IsTrue(breakpoint.GetProperty("verified").GetBoolean(), breakpoint.GetRawText());
+            }
+            thread = await ContinueToBreakpointAsync(client, thread).ConfigureAwait(false);
+            await AssertValueAsync(client, thread, source, marker, 1).ConfigureAwait(false);
+            JsonElement replaced = await ReadBreakpointsAsync(client, source, [counted, final],
+                conditions: ["observed >= 1", null], hitConditions: [replacement, null]).ConfigureAwait(false);
+            Assert.AreEqual(original[1].GetProperty("id").GetInt32(), replaced[0].GetProperty("id").GetInt32());
+            thread = await ContinueToBreakpointAsync(client, thread).ConfigureAwait(false);
+            await AssertValueAsync(client, thread, source, counted, expectedTotal).ConfigureAwait(false);
+            _ = await ReadBreakpointsAsync(client, source, [final]).ConfigureAwait(false);
+            thread = await ContinueToBreakpointAsync(client, thread).ConfigureAwait(false);
+            await AssertValueAsync(client, thread, source, final, 10).ConfigureAwait(false);
+            _ = await ReadBreakpointsAsync(client, source, []).ConfigureAwait(false);
+            await ContinueEntryToExitAsync(client, thread, "10" + Environment.NewLine).ConfigureAwait(false);
+        }
+        finally
+        {
+            await DebuggerTestDirectoryReleaseWaiter.DeleteAsync(directory, TimeSpan.FromSeconds(10)).ConfigureAwait(false);
+        }
+        Assert.IsFalse(Directory.Exists(directory));
+    }
+
+    /// <summary>
+    /// Deactivates previously bound locations when refreshed source or symbols invalidate the replacement.
+    /// </summary>
+    /// <param name="changeSource">Whether to edit source text or retire its symbol file.</param>
+    [TestMethod]
+    [DataRow(true)]
+    [DataRow(false)]
+    [Timeout(30000, CooperativeCancellation = true)]
+    public async Task SourceBreakpointReplacementRetiresInvalidatedBindings(bool changeSource)
+    {
+        string directory = Directory.CreateTempSubdirectory("csls-breakpoint-refresh-").FullName;
+        try
+        {
+            (string program, string source, int[] lines) = await EmitTargetAsync(directory, 3).ConfigureAwait(false);
+            DapTestClient client = await DapTestClient.CreateAsync(TestContext.CancellationToken).ConfigureAwait(false);
+            await using ConfiguredAsyncDisposable cleanup = client.ConfigureAwait(false);
+            using DapTestCancellationCapture capture = CaptureProtocolOnCancellation(client);
+            (int thread, _) = await LaunchAtEntryAsync(client, program, []).ConfigureAwait(false);
+            Dictionary<int, int> original = await SetBreakpointsAsync(client, source, lines).ConfigureAwait(false);
+            if (changeSource)
+            {
+                await File.AppendAllTextAsync(source, "\n// Changed after binding.\n", TestContext.CancellationToken)
+                    .ConfigureAwait(false);
+            }
+            else
+            {
+                File.Move(Path.ChangeExtension(program, ".pdb"), Path.Join(directory, "retired.pdb"));
+            }
+            JsonElement replaced = await ReadBreakpointsAsync(client, source, lines).ConfigureAwait(false);
+            for (int index = 0; index < lines.Length; index++)
+            {
+                Assert.AreEqual(original[lines[index]], replaced[index].GetProperty("id").GetInt32());
+                Assert.IsFalse(replaced[index].GetProperty("verified").GetBoolean(), replaced[index].GetRawText());
+                string? message = replaced[index].GetProperty("message").GetString();
+                Assert.IsNotNull(message);
+                Assert.Contains(changeSource ? "source file differs" : "pending", message);
+            }
+            await ContinueEntryToExitAsync(client, thread, "3" + Environment.NewLine).ConfigureAwait(false);
+        }
+        finally
+        {
+            await DebuggerTestDirectoryReleaseWaiter.DeleteAsync(directory, TimeSpan.FromSeconds(10)).ConfigureAwait(false);
+        }
+        Assert.IsFalse(Directory.Exists(directory));
+    }
+
+    private async Task<JsonElement> ReadBreakpointsAsync(DapTestClient client, string source, int[] lines,
+        int?[]? columns = null, string?[]? conditions = null, string?[]? hitConditions = null)
     {
         int sequence = await client.SendRequestAsync("setBreakpoints", writer =>
         {
@@ -227,6 +357,14 @@ public sealed class DapBreakpointScaleTests : DapTestContext
                 if (columns?[index] is int column)
                 {
                     writer.WriteNumber("column", column);
+                }
+                if (conditions?[index] is string condition)
+                {
+                    writer.WriteString("condition", condition);
+                }
+                if (hitConditions?[index] is string hitCondition)
+                {
+                    writer.WriteString("hitCondition", hitCondition);
                 }
                 writer.WriteEndObject();
             }

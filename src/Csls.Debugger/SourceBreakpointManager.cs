@@ -78,24 +78,26 @@ internal sealed partial class SourceBreakpointManager : IDisposable
         }
 
         string normalizedPath = SourcePathMapper.NormalizePath(sourcePath);
-        var retainedIds = new Dictionary<(int Line, int? Column), Queue<int>>();
+        var previousByPosition = new Dictionary<(int Line, int? Column), Queue<SourceBreakpointDefinition>>();
         if (_definitions.TryGetValue(normalizedPath, out List<SourceBreakpointDefinition>? previous))
         {
             foreach (SourceBreakpointDefinition definition in previous)
             {
                 (int Line, int? Column) position = (definition.RequestedLine, definition.RequestedColumn);
-                if (!retainedIds.TryGetValue(position, out Queue<int>? ids))
+                if (!previousByPosition.TryGetValue(position, out Queue<SourceBreakpointDefinition>? candidates))
                 {
-                    ids = new Queue<int>();
-                    retainedIds.Add(position, ids);
+                    candidates = new Queue<SourceBreakpointDefinition>();
+                    previousByPosition.Add(position, candidates);
                 }
-                ids.Enqueue(definition.Id);
+                candidates.Enqueue(definition);
             }
         }
-        RemoveBindings(normalizedPath);
         var definitions = new List<SourceBreakpointDefinition>(requests.Count);
+        var retained = new HashSet<SourceBreakpointDefinition>();
+        int nextBreakpointId = _nextBreakpointId;
         foreach (DebugSourceBreakpointRequest request in requests)
         {
+            cancellationToken.ThrowIfCancellationRequested();
             ArgumentOutOfRangeException.ThrowIfNegativeOrZero(request.Line);
             if (request.Column is <= 0)
             {
@@ -107,11 +109,14 @@ internal sealed partial class SourceBreakpointManager : IDisposable
             bool validHitCondition = DebugHitCondition.TryParse(
                 request.HitCondition,
                 out DebugHitCondition? hitCondition);
-            definitions.Add(new SourceBreakpointDefinition
+            SourceBreakpointDefinition? candidate =
+                previousByPosition.TryGetValue((request.Line, request.Column), out Queue<SourceBreakpointDefinition>? candidates) &&
+                candidates.TryDequeue(out SourceBreakpointDefinition? existing)
+                    ? existing
+                    : null;
+            var definition = new SourceBreakpointDefinition
             {
-                Id = retainedIds.TryGetValue((request.Line, request.Column), out Queue<int>? ids) && ids.Count > 0
-                    ? ids.Dequeue()
-                    : checked(++_nextBreakpointId),
+                Id = candidate?.Id ?? checked(++nextBreakpointId),
                 SourcePath = normalizedPath,
                 RequestedLine = request.Line,
                 RequestedColumn = request.Column,
@@ -121,9 +126,22 @@ internal sealed partial class SourceBreakpointManager : IDisposable
                 ValidationMessage = validHitCondition
                     ? null
                     : DebugHitCondition.ValidationErrorMessage
-            });
+            };
+            if (candidate is not null &&
+                string.Equals(candidate.Condition, definition.Condition, StringComparison.Ordinal) &&
+                string.Equals(candidate.LogMessage, definition.LogMessage, StringComparison.Ordinal) &&
+                string.Equals(candidate.HitCondition?.Expression, definition.HitCondition?.Expression, StringComparison.Ordinal) &&
+                string.Equals(candidate.ValidationMessage, definition.ValidationMessage, StringComparison.Ordinal))
+            {
+                definition = candidate;
+                _ = retained.Add(candidate);
+            }
+            definitions.Add(definition);
         }
 
+        cancellationToken.ThrowIfCancellationRequested();
+        RemoveBindings(normalizedPath, retained);
+        _nextBreakpointId = nextBreakpointId;
         if (definitions.Count == 0)
         {
             _ = _definitions.Remove(normalizedPath);
@@ -131,6 +149,12 @@ internal sealed partial class SourceBreakpointManager : IDisposable
         }
 
         _definitions[normalizedPath] = definitions;
+        foreach (SourceBreakpointDefinition definition in definitions)
+        {
+            definition.ResolvedLine = null;
+            definition.ResolvedColumn = null;
+            definition.BindingFailures.Clear();
+        }
         foreach (CorDebugLoadedModule module in _modules.Values)
         {
             await BindModuleAsync(

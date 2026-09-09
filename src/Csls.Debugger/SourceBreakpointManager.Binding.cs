@@ -14,50 +14,57 @@ internal sealed partial class SourceBreakpointManager
         bool notifyChanges,
         CancellationToken cancellationToken)
     {
-        Dictionary<int, SourceBreakpointLocation> locations;
-        Dictionary<string, string> sourceFailures;
+        Dictionary<int, SourceBreakpointLocation> locations = [];
+        Dictionary<string, string> sourceFailures = [];
         try
         {
             using DebugSymbolReader? symbols = OpenSymbols(module);
             module.SymbolsInspected = true;
-            if (symbols is null)
+            if (symbols is not null)
             {
-                return;
+                module.SymbolKind = symbols.StorageKind switch
+                {
+                    DebugSymbolStorageKind.Embedded => DebugModuleSymbolKind.EmbeddedPortablePdb,
+                    DebugSymbolStorageKind.InMemory => DebugModuleSymbolKind.InMemoryPortablePdb,
+                    DebugSymbolStorageKind.Windows => DebugModuleSymbolKind.WindowsPdb,
+                    _ => DebugModuleSymbolKind.PortablePdb
+                };
+                module.SymbolPath = symbols.Path;
+
+                locations = ResolveLocations(symbols.GetSequencePoints(methodToken: null), definitions, cancellationToken);
+                sourceFailures = GetSourceValidationFailures(symbols, definitions);
             }
-
-            module.SymbolKind = symbols.StorageKind switch
-            {
-                DebugSymbolStorageKind.Embedded => DebugModuleSymbolKind.EmbeddedPortablePdb,
-                DebugSymbolStorageKind.InMemory => DebugModuleSymbolKind.InMemoryPortablePdb,
-                DebugSymbolStorageKind.Windows => DebugModuleSymbolKind.WindowsPdb,
-                _ => DebugModuleSymbolKind.PortablePdb
-            };
-            module.SymbolPath = symbols.Path;
-
-            locations = ResolveLocations(symbols.GetSequencePoints(methodToken: null), definitions, cancellationToken);
-            sourceFailures = GetSourceValidationFailures(symbols, definitions);
         }
         catch (Exception exception) when (DebugSymbolReader.IsReadFailure(exception))
         {
             module.SymbolsInspected = true;
-            return;
+            locations.Clear();
         }
 
+        var ids = definitions.Select(static definition => definition.Id).ToHashSet();
+        var existingBindings = _bindings.Values
+            .Where(binding => binding.ModuleIdentity == module.Identity && ids.Contains(binding.BreakpointId))
+            .ToDictionary(static binding => binding.BreakpointId);
         foreach (SourceBreakpointDefinition definition in definitions)
         {
             string? previousMessage = definition.ToInfo().Message;
             _ = definition.BindingFailures.Remove(module.Id);
-            if (definition.ValidationMessage is not null)
+            _ = existingBindings.TryGetValue(definition.Id, out SourceBreakpointBinding? existingBinding);
+            _ = locations.TryGetValue(definition.Id, out SourceBreakpointLocation? location);
+            _ = sourceFailures.TryGetValue(definition.SourcePath, out string? failure);
+            if (existingBinding is not null &&
+                (definition.ValidationMessage is not null || failure is not null ||
+                    existingBinding.Location != location || existingBinding.Definition != definition))
+            {
+                RemoveBinding(existingBinding);
+                existingBinding = null;
+            }
+            if (definition.ValidationMessage is not null || location is null)
             {
                 continue;
             }
 
-            if (!locations.TryGetValue(definition.Id, out SourceBreakpointLocation? location))
-            {
-                continue;
-            }
-
-            if (sourceFailures.TryGetValue(definition.SourcePath, out string? failure))
+            if (failure is not null)
             {
                 definition.BindingFailures[module.Id] = failure;
                 if (notifyChanges && definition.ResolvedLine is null &&
@@ -69,7 +76,7 @@ internal sealed partial class SourceBreakpointManager
                 continue;
             }
 
-            if (!TryBind(module, definition, location))
+            if (existingBinding is null && !TryBind(module, definition, location))
             {
                 await ReportBindingFailureAsync(module, definition, notifyChanges, cancellationToken).ConfigureAwait(false);
                 continue;
@@ -167,6 +174,7 @@ internal sealed partial class SourceBreakpointManager
                 BreakpointId = definition.Id,
                 Definition = definition,
                 ModuleIdentity = module.Identity,
+                Location = location,
                 Breakpoint = breakpoint,
                 Identity = identity
             });
@@ -199,7 +207,7 @@ internal sealed partial class SourceBreakpointManager
         }
     }
 
-    private void RemoveBindings(string sourcePath)
+    private void RemoveBindings(string sourcePath, HashSet<SourceBreakpointDefinition> retained)
     {
         if (!_definitions.TryGetValue(sourcePath, out List<SourceBreakpointDefinition>? definitions))
         {
@@ -207,18 +215,23 @@ internal sealed partial class SourceBreakpointManager
         }
 
         var ids = definitions.Select(static definition => definition.Id).ToHashSet();
-        foreach ((nint identity, SourceBreakpointBinding binding) in _bindings.ToArray())
+        foreach (SourceBreakpointBinding binding in _bindings.Values.ToArray())
         {
-            if (!ids.Contains(binding.BreakpointId))
+            if (!ids.Contains(binding.BreakpointId) || retained.Contains(binding.Definition))
             {
                 continue;
             }
 
-            _ = new ICorDebugBreakpointAbi(binding.Breakpoint).Activate(bActive: 0);
-            _ = ComAbi.Release(binding.Identity);
-            _ = ComAbi.Release(binding.Breakpoint);
-            _ = _bindings.Remove(identity);
+            RemoveBinding(binding);
         }
+    }
+
+    private void RemoveBinding(SourceBreakpointBinding binding)
+    {
+        _ = new ICorDebugBreakpointAbi(binding.Breakpoint).Activate(bActive: 0);
+        _ = ComAbi.Release(binding.Identity);
+        _ = ComAbi.Release(binding.Breakpoint);
+        _ = _bindings.Remove(binding.Identity);
     }
 
     private static bool PathsEqual(string left, string right) =>

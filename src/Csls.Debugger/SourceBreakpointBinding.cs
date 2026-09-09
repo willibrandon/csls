@@ -21,6 +21,11 @@ internal sealed class SourceBreakpointBinding
     internal required nint ModuleIdentity { get; init; }
 
     /// <summary>
+    /// Gets the executable symbol location used to activate this binding.
+    /// </summary>
+    internal required SourceBreakpointLocation Location { get; init; }
+
+    /// <summary>
     /// Gets the owned ICorDebugFunctionBreakpoint pointer.
     /// </summary>
     internal required nint Breakpoint { get; init; }
