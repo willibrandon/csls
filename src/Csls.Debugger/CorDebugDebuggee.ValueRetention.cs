@@ -8,6 +8,51 @@ namespace Csls.Debugger;
 /// </summary>
 internal sealed partial class CorDebugDebuggee
 {
+    private ManagedExpressionValues? _expressionValues;
+
+    /// <summary>
+    /// Starts operation-owned retention for synchronous expression binding on the session actor.
+    /// </summary>
+    /// <returns>The owner that releases intermediate values after publication or failure.</returns>
+    internal ManagedValueRetentionScope BeginExpressionValues()
+    {
+        if (_expressionValues is not null)
+        {
+            throw new InvalidOperationException("An expression value operation is already active.");
+        }
+
+        _expressionValues = new ManagedExpressionValues();
+        return new ManagedValueRetentionScope(_expressionValues, CompleteExpressionValues);
+    }
+
+    private void CompleteExpressionValues(ManagedExpressionValues scope)
+    {
+        _expressionValues = null;
+        foreach (ManagedValueHandle value in scope.Created)
+        {
+            if (scope.Published.Contains(value.Id) || !_values.Remove(value.Id))
+            {
+                continue;
+            }
+
+            _valueIdentities.Remove((value.Identity, value.FrameId, value.EvaluateName,
+                value.View, value.Origin, value.Lifetime));
+            if (value.MemoryReference is { } memoryReference)
+            {
+                _memoryValues.Remove(memoryReference);
+            }
+            _ = ComAbi.Release(value.Pointer);
+            _ = ComAbi.Release(value.Identity);
+        }
+
+        foreach ((ulong Address, ManagedResultsViewLifetime? Lifetime) key in scope.HeapOrigins.Where(key =>
+            _heapValueOrigins.TryGetValue(key, out ManagedHeapValueOrigin? origin) &&
+            !_values.ContainsKey(origin.ValueReference)))
+        {
+            _heapValueOrigins.Remove(key);
+        }
+    }
+
     private ManagedValueReferences RetainValue(
         nint value,
         DebugStopGeneration generation,
@@ -139,6 +184,7 @@ internal sealed partial class CorDebugDebuggee
             TupleCustomTypeInfo = tupleCustomTypeInfo
         };
         _values.Add(handle.Id, handle);
+        _expressionValues?.Track(handle);
         _valueIdentities.Add(key, handle);
         if (memoryReference is not null)
         {

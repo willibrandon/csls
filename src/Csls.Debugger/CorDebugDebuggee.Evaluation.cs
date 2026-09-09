@@ -32,7 +32,10 @@ internal sealed partial class CorDebugDebuggee
     {
         ManagedFrameHandle frame = GetFrame(frameId, generation);
         ManagedExpressionPlanValidator.Validate(plan, frame.ExpressionLanguage);
-        return EvaluateNode(frame, plan, plan.Root, generation).ToResult();
+        using ManagedValueRetentionScope values = BeginExpressionValues();
+        DebugEvaluateResult result = EvaluateNode(frame, plan, plan.Root, generation).ToResult();
+        values.Preserve(result.VariablesReference);
+        return result;
     }
 
     /// <summary>
@@ -68,6 +71,7 @@ internal sealed partial class CorDebugDebuggee
     {
         ManagedFrameHandle frame = GetFrame(frameId, generation);
         ManagedExpressionPlanValidator.Validate(plan, frame.ExpressionLanguage);
+        using ManagedValueRetentionScope values = BeginExpressionValues();
         return ManagedExpressionValueFactory.RequireBoolean(EvaluateNode(
             frame,
             plan,

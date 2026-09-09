@@ -50,6 +50,7 @@ public sealed partial class DebuggerSession
                 _ = token;
                 CorDebugDebuggee managedDebuggee = GetStoppedManagedDebuggee();
                 ManagedPropertyEvaluation? property = null;
+                using ManagedValueRetentionScope values = managedDebuggee.BeginExpressionValues();
                 bool explicitCall = plan.Root.Kind is DebugExpressionNodeKind.Invocation or
                     DebugExpressionNodeKind.ObjectCreation;
                 if (!explicitCall)
@@ -72,6 +73,7 @@ public sealed partial class DebuggerSession
                             plan,
                             generation,
                             property);
+                        values.PreserveAll();
                         _state = DebugSessionState.Running;
                     }
                     catch (Exception exception) when (
@@ -81,6 +83,11 @@ public sealed partial class DebuggerSession
                         _state = DebugSessionState.Faulted;
                         throw new InvalidOperationException(reason, exception);
                     }
+                }
+                else
+                {
+                    values.Preserve((result ?? throw new InvalidOperationException(
+                        "Expression binding returned no result.")).VariablesReference);
                 }
                 return ValueTask.CompletedTask;
             },

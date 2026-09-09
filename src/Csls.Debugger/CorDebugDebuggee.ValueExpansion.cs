@@ -58,9 +58,7 @@ internal sealed partial class CorDebugDebuggee
             return count == 0 ? [.. variables] : [.. variables.Take(count)];
         }
 
-        nint value = TryDereferenceAndUnboxValue(handle.Pointer, out nint inspectedValue)
-            ? inspectedValue
-            : throw new InvalidOperationException("A null managed value cannot be expanded.");
+        nint value = DereferenceInspectionValue(handle);
         try
         {
             if (ComAbi.TryQueryInterface(
@@ -149,6 +147,26 @@ internal sealed partial class CorDebugDebuggee
         finally
         {
             _ = ComAbi.Release(value);
+        }
+    }
+
+    private nint DereferenceInspectionValue(ManagedValueHandle handle)
+    {
+        // Value-type wrappers cache a copy. Reacquire their original storage so
+        // edits through another wrapper are visible to existing expansion handles.
+        nint current = handle.Origin is not null && handle.FrameId is int frameId &&
+            ManagedRuntimeValueIdentity.GetElementType(handle.Pointer) == 0x11
+            ? ReacquireAssignmentValue(GetFrame(frameId, handle.Generation), handle.Origin)
+            : Retain(handle.Pointer);
+        try
+        {
+            return TryDereferenceAndUnboxValue(current, out nint value)
+                ? value
+                : throw new InvalidOperationException("A null managed value cannot be expanded.");
+        }
+        finally
+        {
+            _ = ComAbi.Release(current);
         }
     }
 
