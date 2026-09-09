@@ -129,6 +129,16 @@ internal static partial class WindowsNativeDebugObserver
                     throw new Win32Exception(continueError);
                 }
                 exited = code == 5;
+                if (exited && phase is not null)
+                {
+                    // Observe kernel termination on this dedicated native-event thread, independently of pool callbacks.
+                    using var handle = new WindowsProcessExitWaitHandle(process.SafeHandle);
+                    if (WaitHandle.WaitAny([handle, cancellationToken.WaitHandle]) == 1)
+                    {
+                        cancellationToken.ThrowIfCancellationRequested();
+                    }
+                    phase("Native wait observed kernel termination");
+                }
             }
         }
         catch (Exception exception)

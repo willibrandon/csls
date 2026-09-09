@@ -30,8 +30,9 @@ public sealed class DebuggerTestProcessTests : DapTestContext
         start.ArgumentList.Add("leaf");
         IOException observed = await Assert.ThrowsExactlyAsync<IOException>(async () =>
             await DebuggerTestProcess.RunAsync(start, TestContext.CancellationToken,
-                observeProcess: (process, token) =>
+                observeProcess: (process, report, token) =>
                 {
+                    _ = report;
                     token.ThrowIfCancellationRequested();
                     retained = children.Acquire(() => Process.GetProcessById(process.Id));
                     _ = retained.SafeHandle;

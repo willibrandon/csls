@@ -14,6 +14,63 @@ namespace Csls.Debugger.Tests;
 [SupportedOSPlatform("windows")]
 public sealed class WindowsNativeDebugObserverTests : DapTestContext
 {
+    private static readonly string[] s_exitPhases =
+        ["Capture input released", "Native process exit received", "Native wait observed kernel termination"];
+
+    /// <summary>
+    /// Records kernel termination from the native observer thread after continuing the process-exit event.
+    /// </summary>
+    [TestMethod]
+    [Timeout(30000, CooperativeCancellation = true)]
+    public async Task NativeExitPhaseObservesSignaledProcessHandle()
+    {
+        ProcessStartInfo start = CreateStart("managed");
+        start.UseShellExecute = false;
+        start.RedirectStandardInput = true;
+        start.RedirectStandardOutput = true;
+        start.RedirectStandardError = true;
+        using Process process = Process.Start(start) ?? throw new InvalidOperationException("The native fixture did not start.");
+        await VerifyNativeExitPhaseAsync(process).ConfigureAwait(false);
+    }
+
+    private async Task VerifyNativeExitPhaseAsync(Process process)
+    {
+        using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(TestContext.CancellationToken);
+        Task<string> output = process.StandardOutput.ReadToEndAsync(CancellationToken.None);
+        Task<string> error = process.StandardError.ReadToEndAsync(CancellationToken.None);
+        var phases = new List<string>();
+        var records = new List<string>();
+        Task observation = WindowsNativeDebugObserver.ObserveAsync(process, records.Add, cancellation.Token, phase =>
+        {
+            if (phase == "Native wait observed kernel termination")
+            {
+                using var handle = new WindowsProcessExitWaitHandle(process.SafeHandle);
+                Assert.IsTrue(handle.WaitOne(0), "The native phase must observe actual kernel termination.");
+            }
+            phases.Add(phase);
+        });
+        try
+        {
+            await observation.ConfigureAwait(false);
+            Assert.AreSequenceEqual(s_exitPhases, phases);
+            Assert.AreEqual(0, process.ExitCode);
+            Assert.AreEqual(nameof(NullReferenceException), (await output.ConfigureAwait(false)).Trim());
+            Assert.AreEqual(string.Empty, await error.ConfigureAwait(false));
+            AssertEvidence(Assert.ContainsSingle(records), process.Id, firstChance: true, nativeImage: false);
+        }
+        finally
+        {
+            await cancellation.CancelAsync().ConfigureAwait(false);
+            if (!process.HasExited)
+            {
+                process.Kill(entireProcessTree: true);
+            }
+            await DebuggerProcessExit.WaitAsync(process, CancellationToken.None).ConfigureAwait(false);
+            var pending = Task.WhenAll(observation, output, error);
+            await pending.ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
+        }
+    }
+
     /// <summary>
     /// Preserves CLR translation and handling of real null dereferences while bounding first-chance reports.
     /// </summary>

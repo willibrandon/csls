@@ -38,7 +38,7 @@ internal static class DebuggerMacCoreCapture
             await RunAsync(collector,
                 ["-s", "-x", "full", "-t", "2097152", "-v", "-o", path, processId.ToString(CultureInfo.InvariantCulture)],
                 progress, diagnosticContext, cancellationToken,
-                (process, token) => DebuggerCaptureResourceObservation.ObserveAsync(process, path, progress, token))
+                (process, report, token) => DebuggerCaptureResourceObservation.ObserveAsync(process, path, report, token))
                 .ConfigureAwait(false);
             File.SetUnixFileMode(path, UnixFileMode.UserRead | UnixFileMode.UserWrite);
         }
@@ -59,7 +59,7 @@ internal static class DebuggerMacCoreCapture
 
     private static async Task RunAsync(string executable, string[] arguments, Action<string> progress,
         TestContext? diagnosticContext, CancellationToken cancellationToken,
-        Func<Process, CancellationToken, Task>? observeProcess = null)
+        Func<Process, Action<string>, CancellationToken, Task>? observeProcess = null)
     {
         var start = new ProcessStartInfo(executable);
         foreach (string argument in arguments)

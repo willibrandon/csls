@@ -22,7 +22,7 @@ internal static class DebuggerTestProcess
         CancellationToken cancellationToken,
         Action<string>? progress = null,
         TestContext? diagnosticContext = null,
-        Func<Process, CancellationToken, Task>? observeProcess = null)
+        Func<Process, Action<string>, CancellationToken, Task>? observeProcess = null)
     {
         (int _, int exitCode, string output, string error) = await RunWithIdentityAsync(
             startInfo, cancellationToken, progress, diagnosticContext, observeProcess: observeProcess).ConfigureAwait(false);
@@ -45,7 +45,7 @@ internal static class DebuggerTestProcess
         Action<string>? progress = null,
         TestContext? diagnosticContext = null,
         bool observeNativeExceptions = false,
-        Func<Process, CancellationToken, Task>? observeProcess = null)
+        Func<Process, Action<string>, CancellationToken, Task>? observeProcess = null)
     {
         ArgumentNullException.ThrowIfNull(startInfo);
         if (observeNativeExceptions && !OperatingSystem.IsWindows())
@@ -56,21 +56,41 @@ internal static class DebuggerTestProcess
         startInfo.RedirectStandardOutput = true;
         startInfo.RedirectStandardError = true;
         startInfo.UseShellExecute = false;
+        using DebuggerCaptureTrace? trace = CreateTrace(diagnosticContext);
+        if (diagnosticContext is not null && trace is not null)
+        {
+            diagnosticContext.AddResultFile(trace.FilePath);
+        }
         long started = Stopwatch.GetTimestamp();
         using Process process = Process.Start(startInfo)
             ?? throw new InvalidOperationException(
                 $"The debugger test process did not start: {startInfo.FileName}");
-        return await CaptureAsync(process, progress, diagnosticContext, observeNativeExceptions, observeProcess, started, cancellationToken)
+        return await CaptureAsync(process, progress, diagnosticContext, trace,
+            observeNativeExceptions, observeProcess, started, cancellationToken)
             .ConfigureAwait(false);
     }
 
+    private static DebuggerCaptureTrace? CreateTrace(TestContext? context)
+    {
+        if (context is null)
+        {
+            return null;
+        }
+        string directory = Path.Join(DebuggerTestEnvironment.FindRepositoryRoot(), "artifacts", "test-results");
+        Directory.CreateDirectory(directory);
+        string path = Path.Join(directory, $"process-capture-{Guid.NewGuid():N}.log");
+        return new DebuggerCaptureTrace(path);
+    }
+
     private static async Task<(int ProcessId, int ExitCode, string Output, string Error)> CaptureAsync(
-        Process process, Action<string>? progress, TestContext? diagnosticContext, bool observeNativeExceptions,
-        Func<Process, CancellationToken, Task>? observeProcess, long started, CancellationToken cancellationToken)
+        Process process, Action<string>? progress, TestContext? diagnosticContext, DebuggerCaptureTrace? trace,
+        bool observeNativeExceptions, Func<Process, Action<string>, CancellationToken, Task>? observeProcess,
+        long started, CancellationToken cancellationToken)
     {
         using var observation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        Task<string> output = ReadOutputAsync(process.StandardOutput, progress, observation.Token);
-        Task<string> error = ReadOutputAsync(process.StandardError, progress, observation.Token);
+        Action<string>? captureProgress = progress is null && trace is null ? null : ReportProgress;
+        Task<string> output = ReadOutputAsync(process.StandardOutput, captureProgress, observation.Token);
+        Task<string> error = ReadOutputAsync(process.StandardError, captureProgress, observation.Token);
         var nativeDiagnostics = new StringBuilder();
         Task nativeEvents = Task.CompletedTask;
         Task exit = Task.CompletedTask;
@@ -83,11 +103,11 @@ internal static class DebuggerTestProcess
                 nativeEvents = WindowsNativeDebugObserver.ObserveAsync(process, record =>
                 {
                     nativeDiagnostics.AppendLine(record);
-                    progress?.Invoke(record);
+                    ReportProgress(record);
                 }, observation.Token, ReportPhase);
             }
             exit = DebuggerProcessExit.WaitAsync(process, observation.Token);
-            processObservation = observeProcess?.Invoke(process, observation.Token) ?? Task.CompletedTask;
+            processObservation = observeProcess?.Invoke(process, ReportProgress, observation.Token) ?? Task.CompletedTask;
             // Observe each operation as it completes: a failed sink must end capture while the child is still alive.
             List<Task> pending = [output, error, exit];
             if (observeNativeExceptions)
@@ -160,9 +180,17 @@ internal static class DebuggerTestProcess
             if (diagnosticContext is not null)
             {
                 ThreadPool.GetAvailableThreads(out int available, out _);
-                diagnosticContext.WriteLine(FormattableString.Invariant(
-                    $"Process capture {process.Id}: {phase} at {Stopwatch.GetElapsedTime(started).TotalMilliseconds:F1} ms; pool threads={ThreadPool.ThreadCount}, available={available}, queued={ThreadPool.PendingWorkItemCount}."));
+                string record = FormattableString.Invariant(
+                    $"Process capture {process.Id}: {phase} at {Stopwatch.GetElapsedTime(started).TotalMilliseconds:F1} ms; pool threads={ThreadPool.ThreadCount}, available={available}, queued={ThreadPool.PendingWorkItemCount}.");
+                trace?.WriteLine(record);
+                diagnosticContext.WriteLine(record);
             }
+        }
+
+        void ReportProgress(string record)
+        {
+            trace?.WriteLine(record);
+            progress?.Invoke(record);
         }
     }
 
