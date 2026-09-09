@@ -13,12 +13,12 @@ internal static partial class WindowsNativeFaultFixture
     /// <summary>
     /// Runs a managed exception, terminal native fault, or blocked-process scenario in the owned child.
     /// </summary>
-    /// <param name="mode">The managed, bounded, fatal, bounded-fatal, second-chance, or waiting scenario.</param>
+    /// <param name="mode">The managed, bounded, fatal, bounded-fatal, stack-evidence, second-chance, or waiting scenario.</param>
     /// <returns>Zero after the runtime records every requested managed task failure.</returns>
     internal static async Task<int> RunAsync(string mode)
     {
         ArgumentOutOfRangeException.ThrowIfNotEqual(
-            mode is "managed" or "bounded" or "fatal" or "bounded-fatal" or "second-chance" or "waiting", true);
+            mode is "managed" or "bounded" or "fatal" or "bounded-fatal" or "stack-evidence" or "second-chance" or "waiting", true);
         if (mode == "waiting")
         {
             Console.WriteLine(Environment.ProcessId);
@@ -39,9 +39,9 @@ internal static partial class WindowsNativeFaultFixture
             }
             Console.WriteLine(exception.GetType().Name);
         }
-        if (mode is "fatal" or "bounded-fatal")
+        if (mode is "fatal" or "bounded-fatal" or "stack-evidence")
         {
-            RaiseAccessViolation();
+            RaiseAccessViolation(mode == "stack-evidence");
             throw new InvalidOperationException("The terminal native access violation unexpectedly returned.");
         }
         if (mode == "second-chance")
@@ -59,9 +59,13 @@ internal static partial class WindowsNativeFaultFixture
         return *pointer;
     }
 
-    private static unsafe void RaiseAccessViolation()
+    private static unsafe void RaiseAccessViolation(bool announceStorage)
     {
         nuint* arguments = stackalloc nuint[2] { 1, 0x12345678 };
+        if (announceStorage)
+        {
+            Console.WriteLine(FormattableString.Invariant($"arguments=0x{(nuint)arguments:X} bytes={Convert.ToHexString(new ReadOnlySpan<byte>(arguments, 2 * sizeof(nuint)))}"));
+        }
         RaiseException(0xc0000005, 0, 2, arguments);
     }
 

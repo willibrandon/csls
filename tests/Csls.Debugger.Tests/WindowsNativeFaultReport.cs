@@ -10,7 +10,7 @@ using System.Text;
 namespace Csls.Debugger.Tests;
 
 /// <summary>
-/// Reads native fault identities and integer registers while an independently owned collector is stopped.
+/// Reads native fault identities, registers, and bounded memory while an independently owned collector is stopped.
 /// </summary>
 [SupportedOSPlatform("windows")]
 internal static partial class WindowsNativeFaultReport
@@ -72,6 +72,18 @@ internal static partial class WindowsNativeFaultReport
                 throw new Win32Exception(Marshal.GetLastPInvokeError());
             }
             text.Append(CultureInfo.InvariantCulture, $" context-prefix={Convert.ToHexString(new ReadOnlySpan<byte>(context, 272))}.");
+            int[] offsets = RuntimeInformation.ProcessArchitecture switch
+            {
+                Architecture.X64 => [152, 128, 136, 184, 192],
+                Architecture.Arm64 => [256, 8, 16, 24, 32],
+                Architecture.X86 => [196, 176, 172, 168, 164],
+                _ => throw new PlatformNotSupportedException("The native context requires a Windows process architecture.")
+            };
+            AppendMemory(process, text, "stack", Unsafe.ReadUnaligned<nuint>(context + offsets[0]), 2048);
+            for (int index = 1; index < offsets.Length; index++)
+            {
+                AppendMemory(process, text, $"register{index - 1}", Unsafe.ReadUnaligned<nuint>(context + offsets[index]), 64);
+            }
         }
         catch (Exception exception) when (exception is Win32Exception or InvalidOperationException or
             NotSupportedException or IOException or UnauthorizedAccessException or OverflowException)
@@ -80,6 +92,40 @@ internal static partial class WindowsNativeFaultReport
         }
         return text.ToString();
     }
+
+    private static unsafe void AppendMemory(Process process, StringBuilder text, string name, nuint address, int capacity)
+    {
+        ArgumentOutOfRangeException.ThrowIfLessThan(capacity, 1);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(capacity, 2048);
+        // Distinct small reads retain accessible stack bytes up to an unreadable page, without retrying a failed read.
+        byte* bytes = stackalloc byte[2048];
+        int length = 0;
+        int error = 0;
+        while (length < capacity)
+        {
+            nuint requested = checked((nuint)Math.Min(64, capacity - length));
+            int success = ReadProcessMemory(process.SafeHandle, checked(address + (nuint)length), bytes + length,
+                requested, out nuint completed);
+            error = success == 0 ? Marshal.GetLastPInvokeError() : 0;
+            if (completed > requested)
+            {
+                throw new IOException("Native fault memory returned more bytes than the requested buffer.");
+            }
+            length += checked((int)completed);
+            if (success == 0 || completed != requested)
+            {
+                break;
+            }
+        }
+        text.Append(CultureInfo.InvariantCulture,
+            $" {name}-address=0x{address:X} {name}-bytes={Convert.ToHexString(new ReadOnlySpan<byte>(bytes, length))} {name}-error={error}.");
+    }
+
+    [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
+    [LibraryImport("kernel32", SetLastError = true)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvStdcall)])]
+    private static unsafe partial int ReadProcessMemory(SafeProcessHandle process, nuint address, byte* buffer,
+        nuint size, out nuint completed);
 
     [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
     [LibraryImport("kernel32", SetLastError = true)]

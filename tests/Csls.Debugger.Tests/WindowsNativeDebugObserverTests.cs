@@ -148,6 +148,36 @@ public sealed class WindowsNativeDebugObserverTests : DapTestContext
     }
 
     /// <summary>
+    /// Retains the child-announced native exception arguments from its actual faulting stack before process termination.
+    /// </summary>
+    [TestMethod]
+    [Timeout(30000, CooperativeCancellation = true)]
+    public async Task NativeFaultRetainsIndependentlyAnnouncedStackStorage()
+    {
+        (int processId, int exitCode, string output, string error) = await DebuggerTestProcess.RunWithIdentityAsync(
+            CreateStart("stack-evidence"), TestContext.CancellationToken, observeNativeExceptions: true).ConfigureAwait(false);
+        Assert.AreEqual(unchecked((int)0xc0000005), exitCode, error);
+        string[] announcement = Assert.ContainsSingle(Lines(output)).Split(' ');
+        Assert.HasCount(2, announcement);
+        ulong address = ulong.Parse(announcement[0]["arguments=0x".Length..], NumberStyles.HexNumber,
+            CultureInfo.InvariantCulture);
+        byte[] expected = Convert.FromHexString(announcement[1]["bytes=".Length..]);
+        Assert.HasCount(2 * IntPtr.Size, expected);
+        string record = Assert.ContainsSingle(Lines(error).Where(IsFault));
+        AssertEvidence(record, processId, firstChance: true, nativeImage: true);
+        string[] fields = record.Split(' ');
+        string stackAddress = Assert.ContainsSingle(fields.Where(field => field.StartsWith("stack-address=", StringComparison.Ordinal)));
+        ulong start = ulong.Parse(stackAddress["stack-address=0x".Length..].TrimEnd('.'), NumberStyles.HexNumber,
+            CultureInfo.InvariantCulture);
+        string captured = Assert.ContainsSingle(fields.Where(field => field.StartsWith("stack-bytes=", StringComparison.Ordinal)));
+        byte[] bytes = Convert.FromHexString(captured["stack-bytes=".Length..].TrimEnd('.'));
+        Assert.IsInRange(1, 2048, bytes.Length);
+        Assert.IsInRange(start, checked(start + (ulong)bytes.Length - (ulong)expected.Length), address);
+        Assert.AreSequenceEqual(expected, bytes.AsSpan(checked((int)(address - start)), expected.Length).ToArray());
+        Assert.IsLessThanOrEqualTo(8192, record.Length, "Native memory evidence must remain bounded.");
+    }
+
+    /// <summary>
     /// Detaches native observation and reaps the exact retained child when capture is canceled while it waits.
     /// </summary>
     [TestMethod]
@@ -289,6 +319,23 @@ public sealed class WindowsNativeDebugObserverTests : DapTestContext
         ulong instruction = IntPtr.Size == 8
             ? BitConverter.ToUInt64(context, instructionOffset) : BitConverter.ToUInt32(context, instructionOffset);
         Assert.AreEqual(Number("instruction"), instruction, "The retained registers must belong to the faulting instruction.");
+        int[] memoryOffsets = RuntimeInformation.ProcessArchitecture switch
+        {
+            Architecture.X64 => [152, 128, 136, 184, 192],
+            Architecture.Arm64 => [256, 8, 16, 24, 32],
+            Architecture.X86 => [196, 176, 172, 168, 164],
+            _ => throw new PlatformNotSupportedException()
+        };
+        for (int index = 0; index < memoryOffsets.Length; index++)
+        {
+            string name = index == 0 ? "stack" : $"register{index - 1}";
+            ulong pointer = IntPtr.Size == 8
+                ? BitConverter.ToUInt64(context, memoryOffsets[index]) : BitConverter.ToUInt32(context, memoryOffsets[index]);
+            Assert.AreEqual(pointer, Number(name + "-address"));
+            byte[] memory = Convert.FromHexString(values[name + "-bytes"]);
+            Assert.IsLessThanOrEqualTo(index == 0 ? 2048 : 64, memory.Length);
+            _ = int.Parse(values[name + "-error"], CultureInfo.InvariantCulture);
+        }
         if (nativeImage)
         {
             Assert.AreEqual(1UL, ulong.Parse(values["operation"], CultureInfo.InvariantCulture));
