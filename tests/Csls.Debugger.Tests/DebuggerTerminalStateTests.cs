@@ -1,6 +1,9 @@
 using Csls.Debugger.Contracts;
 using Csls.Debugger.Control;
 using Csls.Debugger.Terminal;
+using Hex1b;
+using Hex1b.Automation;
+using Hex1b.Input;
 using System.Runtime.CompilerServices;
 
 namespace Csls.Debugger.Tests;
@@ -94,12 +97,16 @@ public sealed class DebuggerTerminalStateTests
         await AssertQueuedSelectionsAsync(state, oldView).ConfigureAwait(false);
 
         DebuggerTerminalViewSnapshot beforeStep = state.CaptureViewSnapshot();
-        await state.StepAsync(DebugStepKind.Over).ConfigureAwait(false);
-        await state.PauseAsync().ConfigureAwait(false);
+        await StepToNextStatementAsync(state).ConfigureAwait(false);
         DebuggerTerminalViewSnapshot currentView = state.CaptureViewSnapshot();
         Assert.AreEqual(DebugSessionState.Stopped, state.Snapshot.State);
+        Assert.AreEqual("step", state.Snapshot.StopReason);
         Assert.AreNotSame(beforeStep, currentView);
         Assert.IsGreaterThan(1, currentView.SourceLines.Length);
+        Assert.EndsWith(
+            "long localLong = number + 2L;",
+            currentView.SourceLines[currentView.SourceFocusedIndex]);
+        Assert.Contains("localNumber = 43  int", currentView.VariableLines);
         Assert.IsGreaterThan(1, currentView.ThreadLines.Length);
         Assert.IsGreaterThan(1, currentView.StackLines.Length);
         int staleSourceIndex = (currentView.SourceFocusedIndex + 1) % currentView.SourceLines.Length;
@@ -115,6 +122,38 @@ public sealed class DebuggerTerminalStateTests
 
         await state.TerminateAsync().ConfigureAwait(false);
         Assert.AreEqual(DebugSessionState.Terminated, state.Snapshot.State);
+    }
+
+    private async Task StepToNextStatementAsync(DebuggerTerminalState state)
+    {
+        using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(
+            TestContext.CancellationToken);
+        Hex1bTerminal terminal = Hex1bTerminal.CreateBuilder()
+            .WithHex1bApp(
+                state.AttachWorkload,
+                context => DebuggerTerminalView.Build(context, state))
+            .WithHeadless()
+            .WithDimensions(160, 50)
+            .Build();
+        await using ConfiguredAsyncDisposable terminalCleanup = terminal.ConfigureAwait(false);
+        Task<int> runTask = terminal.RunAsync(cancellation.Token);
+        try
+        {
+            var automator = new Hex1bTerminalAutomator(
+                terminal,
+                defaultTimeout: TimeSpan.FromSeconds(10));
+            await automator.WaitUntilTextAsync("Stopped  breakpoint").ConfigureAwait(false);
+            await automator.KeyAsync(Hex1bKey.F10, TestContext.CancellationToken)
+                .ConfigureAwait(false);
+            await automator.WaitUntilTextAsync("Stopped  step").ConfigureAwait(false);
+            using Hex1bTerminalSnapshot screen = automator.CreateSnapshot();
+            Assert.Contains("Stopped  step", screen.GetScreenText());
+        }
+        finally
+        {
+            await cancellation.CancelAsync().ConfigureAwait(false);
+            Assert.AreEqual(0, await runTask.ConfigureAwait(false));
+        }
     }
 
     private async Task AssertUnavailableWatchValuesAsync(
