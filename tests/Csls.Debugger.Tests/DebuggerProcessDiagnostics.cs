@@ -25,6 +25,11 @@ internal static class DebuggerProcessDiagnostics
             await WindowsDebuggerProcessCapture.CaptureTreeAsync(hostProcessId, testContext).ConfigureAwait(false);
             return;
         }
+        if (OperatingSystem.IsLinux())
+        {
+            await CaptureLinuxWorkerAsync(hostProcessId, testContext).ConfigureAwait(false);
+            return;
+        }
         if (!OperatingSystem.IsMacOS())
         {
             return;
@@ -97,6 +102,41 @@ internal static class DebuggerProcessDiagnostics
             OperationCanceledException or IOException or UnauthorizedAccessException or Win32Exception)
         {
             testContext.WriteLine($"Native stack capture: {exception.Message}");
+        }
+    }
+
+    [System.Runtime.Versioning.SupportedOSPlatform("linux")]
+    private static async Task CaptureLinuxWorkerAsync(int hostProcessId, TestContext testContext)
+    {
+        using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        string repository = DebuggerTestEnvironment.FindRepositoryRoot();
+        string directory = Path.Join(repository, "artifacts", "test-results",
+            $"native-stacks-{hostProcessId}-{Guid.NewGuid():N}");
+        try
+        {
+            string workerPath = Path.Join(repository, "artifacts", "bin", "Csls.Debugger.Worker", "debug",
+                "csls-debugger-worker.dll");
+            using Process worker = LinuxDebuggerProcessTree.OpenWorker(hostProcessId, workerPath);
+            Directory.CreateDirectory(directory);
+            testContext.WriteLine($"Capturing owned Linux worker {worker.Id} for adapter {hostProcessId}.");
+            string dump = await LinuxDebuggerProcessCapture.CaptureAsync(worker, directory, cancellation.Token)
+                .ConfigureAwait(false);
+            testContext.WriteLine($"Native worker capture completed: {dump}.");
+        }
+        catch (Exception exception) when (exception is OperationCanceledException or IOException or
+            UnauthorizedAccessException or DiagnosticsClientException or InvalidOperationException or Win32Exception)
+        {
+            testContext.WriteLine($"Linux worker capture: {exception.Message}");
+        }
+        finally
+        {
+            if (Directory.Exists(directory))
+            {
+                foreach (string artifact in Directory.EnumerateFiles(directory))
+                {
+                    testContext.AddResultFile(artifact);
+                }
+            }
         }
     }
 

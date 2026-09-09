@@ -3,6 +3,7 @@ using Csls.Debugger.Control;
 using Csls.Debugger.Dump;
 using Microsoft.Diagnostics.NETCore.Client;
 using Microsoft.Diagnostics.Runtime;
+using Microsoft.Diagnostics.Runtime.DataReaders.Implementation;
 using System.Diagnostics;
 using System.Globalization;
 using System.Runtime.CompilerServices;
@@ -168,11 +169,27 @@ public sealed class DapNativeDiagnosticsTests : DapTestContext
             await using ConfiguredAsyncDisposable cleanup = client.ConfigureAwait(false);
             await RequestAsync(client, "initialize", success: true).ConfigureAwait(false);
             using Process worker = LinuxDebuggerProcessTree.OpenWorker(client.HostProcessId, ManagedWorkerPath);
-            string dumpPath = Path.Join(directory, "worker.dmp");
-            await new DiagnosticsClient(worker.Id).WriteDumpAsync(DumpType.Normal, dumpPath,
-                logDumpGeneration: false, TestContext.CancellationToken).ConfigureAwait(false);
+            string dumpPath = await LinuxDebuggerProcessCapture.CaptureAsync(worker, directory,
+                TestContext.CancellationToken).ConfigureAwait(false);
+            Assert.AreEqual(Path.Join(directory, $"process-{worker.Id}.dmp"), dumpPath);
             Assert.IsGreaterThan(0L, new FileInfo(dumpPath).Length);
             Assert.IsFalse(worker.HasExited);
+            string kernelReport = await File.ReadAllTextAsync(Path.ChangeExtension(dumpPath, ".proc.txt"),
+                TestContext.CancellationToken).ConfigureAwait(false);
+            Assert.Contains($"Pid:\t{worker.Id}\n", kernelReport);
+            Assert.Contains("wchan", kernelReport);
+            Assert.Contains("syscall", kernelReport);
+            Assert.Contains($"task/{worker.Id}/wchan", kernelReport);
+            Assert.Contains("\nmaps\n", kernelReport);
+            Assert.IsLessThanOrEqualTo(1024 * 1024, kernelReport.Length);
+            using (var captured = DataTarget.LoadDump(dumpPath, new DataTargetOptions { SymbolPaths = [] }))
+            {
+                Assert.AreEqual(worker.Id, DumpProcessIdentity.Read(captured.DataReader, dumpPath,
+                    TestContext.CancellationToken));
+                IThreadReader threads = Assert.IsInstanceOfType<IThreadReader>(captured.DataReader);
+                Assert.Contains(checked((uint)worker.Id), threads.EnumerateOSThreadIds());
+                _ = Assert.ContainsSingle(captured.ClrVersions);
+            }
 
             await RequestAsync(client, "threads", success: false).ConfigureAwait(false);
             await RequestAsync(client, "disconnect", success: true).ConfigureAwait(false);
@@ -215,9 +232,8 @@ public sealed class DapNativeDiagnosticsTests : DapTestContext
             Assert.AreEqual(DebugSessionState.Created, before.State);
             Assert.IsNull(before.ProcessId);
 
-            string dumpPath = Path.Join(directory, "worker.dmp");
-            await new DiagnosticsClient(process.Id).WriteDumpAsync(DumpType.Normal, dumpPath,
-                logDumpGeneration: false, TestContext.CancellationToken).ConfigureAwait(false);
+            string dumpPath = await LinuxDebuggerProcessCapture.CaptureAsync(process, directory,
+                TestContext.CancellationToken).ConfigureAwait(false);
             Assert.IsGreaterThan(0L, new FileInfo(dumpPath).Length);
             Assert.IsFalse(process.HasExited);
             DebugSessionSnapshot after = await worker.Client.GetSessionAsync(TestContext.CancellationToken)
@@ -241,6 +257,44 @@ public sealed class DapNativeDiagnosticsTests : DapTestContext
 
     private static string ManagedWorkerPath => Path.Join(FindRepositoryRoot(), "artifacts", "bin",
         "Csls.Debugger.Worker", "debug", "csls-debugger-worker.dll");
+
+    /// <summary>
+    /// Cancels native diagnostic capture before contacting a live worker and preserves its protocol and artifact directory.
+    /// </summary>
+    [TestMethod]
+    [OSCondition(OperatingSystems.Linux)]
+    [SupportedOSPlatform("linux")]
+    [Timeout(30000, CooperativeCancellation = true)]
+    public async Task CanceledNativeCapturePreservesWorkerAndFiles()
+    {
+        string directory = Directory.CreateTempSubdirectory("csls-canceled-native-capture-").FullName;
+        try
+        {
+            DapTestClient client = await DapTestClient.CreateAsync(TestContext.CancellationToken,
+                workerPath: ManagedWorkerPath).ConfigureAwait(false);
+            await using ConfiguredAsyncDisposable cleanup = client.ConfigureAwait(false);
+            await RequestAsync(client, "initialize", success: true).ConfigureAwait(false);
+            using Process worker = LinuxDebuggerProcessTree.OpenWorker(client.HostProcessId, ManagedWorkerPath);
+            using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(TestContext.CancellationToken);
+            await cancellation.CancelAsync().ConfigureAwait(false);
+            OperationCanceledException canceled = await Assert.ThrowsExactlyAsync<OperationCanceledException>(() =>
+                LinuxDebuggerProcessCapture.CaptureAsync(worker, directory, cancellation.Token)).ConfigureAwait(false);
+            Assert.AreEqual(cancellation.Token, canceled.CancellationToken);
+            Assert.IsEmpty(Directory.EnumerateFileSystemEntries(directory));
+            Assert.IsFalse(worker.HasExited);
+            await RequestAsync(client, "threads", success: false).ConfigureAwait(false);
+            await RequestAsync(client, "disconnect", success: true).ConfigureAwait(false);
+            Assert.AreEqual(0, await client.WaitForExitAsync(TestContext.CancellationToken).ConfigureAwait(false));
+            await worker.WaitForExitAsync(TestContext.CancellationToken).ConfigureAwait(false);
+            Assert.IsTrue(worker.HasExited);
+            Assert.IsEmpty(client.Diagnostics.ToString());
+        }
+        finally
+        {
+            await DebuggerTestDirectoryReleaseWaiter.DeleteAsync(directory, TimeSpan.FromSeconds(10))
+                .ConfigureAwait(false);
+        }
+    }
 
     private async Task RequestAsync(DapTestClient client, string command, bool success)
     {
