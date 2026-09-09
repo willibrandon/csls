@@ -205,19 +205,31 @@ internal sealed partial class McpDebuggerSessionBroker : IAsyncDisposable
         McpDebuggerSession session = RemoveForEnd(debugSession, terminateAttachedTarget);
         try
         {
-            return await session.EndAsync(terminateAttachedTarget, cancellationToken)
-                .ConfigureAwait(false);
+            McpDebugSessionInfo ended;
+            try
+            {
+                ended = await session.EndAsync(terminateAttachedTarget, cancellationToken)
+                    .ConfigureAwait(false);
+            }
+            catch (Exception operationFailure)
+            {
+                try
+                {
+                    await session.DisposeAsync().ConfigureAwait(false);
+                }
+                catch (Exception cleanupFailure) when (
+                    cleanupFailure is IOException or InvalidDataException or ObjectDisposedException)
+                {
+                    operationFailure.Data["DebuggerSessionCleanupFailure"] = cleanupFailure;
+                }
+                throw;
+            }
+            await session.DisposeAsync().ConfigureAwait(false);
+            return ended;
         }
         finally
         {
-            try
-            {
-                await session.DisposeAsync().ConfigureAwait(false);
-            }
-            finally
-            {
-                _ = _sessionSlots.Release();
-            }
+            _ = _sessionSlots.Release();
         }
     }
 

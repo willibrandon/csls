@@ -12,7 +12,7 @@ namespace Csls.Tests;
 public sealed partial class McpDebuggerLifecycleTests
 {
     /// <summary>
-    /// Releases a failed worker's session slot so the connection can use its complete bounded capacity again.
+    /// Preserves the failed worker's connection error and releases its slot for the complete bounded session capacity.
     /// </summary>
     [TestMethod]
     [OSCondition(OperatingSystems.Linux)]
@@ -44,6 +44,19 @@ public sealed partial class McpDebuggerLifecycleTests
                 new Dictionary<string, object?> { ["debugSession"] = failedSession },
                 cancellationToken: TestContext.CancellationToken).ConfigureAwait(false);
             Assert.IsTrue(ended.IsError);
+            Assert.IsNull(ended.StructuredContent);
+            Assert.IsNotNull(ended.Meta);
+            string? code = ended.Meta["errorCode"]?.GetValue<string>();
+            Assert.IsNotNull(code);
+            Assert.AreEqual("debugger_connection_lost", code);
+            TextContentBlock failure = Assert.ContainsSingle(ended.Content.OfType<TextContentBlock>());
+            using (var error = JsonDocument.Parse(failure.Text))
+            {
+                Assert.AreEqual("debugger_connection_lost", error.RootElement.GetProperty("code").GetString());
+                string? message = error.RootElement.GetProperty("message").GetString();
+                Assert.IsNotNull(message);
+                Assert.Contains(failedSession, message);
+            }
             JsonElement empty = await CallAsync(mcp.Client, "debug_sessions_list", [], TestContext.CancellationToken)
                 .ConfigureAwait(false);
             Assert.IsEmpty(empty.GetProperty("sessions").EnumerateArray());

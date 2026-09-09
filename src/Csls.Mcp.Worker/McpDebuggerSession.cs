@@ -82,7 +82,7 @@ internal sealed partial class McpDebuggerSession : IAsyncDisposable
             return await operation(Client, cancellationToken).ConfigureAwait(false);
         }
         catch (Exception exception) when (
-            exception is IOException or InvalidDataException or ObjectDisposedException)
+            exception is IOException or InvalidDataException or ObjectDisposedException or ConnectionLostException)
         {
             throw new McpDebuggerException(
                 "debugger_connection_lost",
