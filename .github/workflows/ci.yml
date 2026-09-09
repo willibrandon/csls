@@ -72,9 +72,18 @@ jobs:
 
       - name: Build test binaries
         if: steps.test-binaries-cache.outputs.cache-hit != 'true' || steps.source-generator-test-binaries-cache.outputs.cache-hit != 'true'
+        # These tests execute portable builds. Release jobs restore the runtime packs for publishing.
         run: |
-          dotnet build tests/Csls.Tests/Csls.Tests.csproj
-          dotnet build tests/Csls.SourceGen.Tests/Csls.SourceGen.Tests.csproj
+          dotnet build tests/Csls.Tests/Csls.Tests.csproj --property:RuntimeIdentifiers= /bl:artifacts/binlogs/test-binaries-{}.binlog
+          dotnet build tests/Csls.SourceGen.Tests/Csls.SourceGen.Tests.csproj --property:RuntimeIdentifiers= /bl:artifacts/binlogs/source-generator-test-binaries-{}.binlog
+
+      - name: Preserve test build logs
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: test-build-logs
+          path: artifacts/binlogs
+          if-no-files-found: ignore
 
       - name: Pack test binaries
         run: tar --create --file artifacts/test-binaries.tar --directory artifacts bin
