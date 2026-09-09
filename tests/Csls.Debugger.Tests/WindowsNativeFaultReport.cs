@@ -72,17 +72,20 @@ internal static partial class WindowsNativeFaultReport
                 throw new Win32Exception(Marshal.GetLastPInvokeError());
             }
             text.Append(CultureInfo.InvariantCulture, $" context-prefix={Convert.ToHexString(new ReadOnlySpan<byte>(context, 272))}.");
-            int[] offsets = RuntimeInformation.ProcessArchitecture switch
+            (string Name, int Offset)[] registers = RuntimeInformation.ProcessArchitecture switch
             {
-                Architecture.X64 => [152, 128, 136, 184, 192],
-                Architecture.Arm64 => [256, 8, 16, 24, 32],
-                Architecture.X86 => [196, 176, 172, 168, 164],
+                Architecture.X64 => [("stack", 152), ("register0", 128), ("register1", 136), ("register2", 184),
+                    ("register3", 192), ("rbx", 144), ("rbp", 160), ("rsi", 168), ("rdi", 176)],
+                Architecture.Arm64 => [("stack", 256), ("register0", 8), ("register1", 16), ("register2", 24),
+                    ("register3", 32), ("x19", 160), ("x20", 168), ("x21", 176), ("x22", 184)],
+                Architecture.X86 => [("stack", 196), ("register0", 176), ("register1", 172), ("register2", 168),
+                    ("register3", 164), ("ebp", 180), ("esi", 160), ("edi", 156)],
                 _ => throw new PlatformNotSupportedException("The native context requires a Windows process architecture.")
             };
-            AppendMemory(process, text, "stack", Unsafe.ReadUnaligned<nuint>(context + offsets[0]), 2048);
-            for (int index = 1; index < offsets.Length; index++)
+            // Retain caller-owned state held in preserved registers as well as the native call arguments.
+            foreach ((string name, int registerOffset) in registers)
             {
-                AppendMemory(process, text, $"register{index - 1}", Unsafe.ReadUnaligned<nuint>(context + offsets[index]), 64);
+                AppendMemory(process, text, name, Unsafe.ReadUnaligned<nuint>(context + registerOffset), name == "stack" ? 2048 : 64);
             }
         }
         catch (Exception exception) when (exception is Win32Exception or InvalidOperationException or

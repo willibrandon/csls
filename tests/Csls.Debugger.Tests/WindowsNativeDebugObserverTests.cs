@@ -319,21 +319,23 @@ public sealed class WindowsNativeDebugObserverTests : DapTestContext
         ulong instruction = IntPtr.Size == 8
             ? BitConverter.ToUInt64(context, instructionOffset) : BitConverter.ToUInt32(context, instructionOffset);
         Assert.AreEqual(Number("instruction"), instruction, "The retained registers must belong to the faulting instruction.");
-        int[] memoryOffsets = RuntimeInformation.ProcessArchitecture switch
+        (string Name, int Offset)[] memoryOffsets = RuntimeInformation.ProcessArchitecture switch
         {
-            Architecture.X64 => [152, 128, 136, 184, 192],
-            Architecture.Arm64 => [256, 8, 16, 24, 32],
-            Architecture.X86 => [196, 176, 172, 168, 164],
+            Architecture.X64 => [("stack", 152), ("register0", 128), ("register1", 136), ("register2", 184),
+                ("register3", 192), ("rbx", 144), ("rbp", 160), ("rsi", 168), ("rdi", 176)],
+            Architecture.Arm64 => [("stack", 256), ("register0", 8), ("register1", 16), ("register2", 24),
+                ("register3", 32), ("x19", 160), ("x20", 168), ("x21", 176), ("x22", 184)],
+            Architecture.X86 => [("stack", 196), ("register0", 176), ("register1", 172), ("register2", 168),
+                ("register3", 164), ("ebp", 180), ("esi", 160), ("edi", 156)],
             _ => throw new PlatformNotSupportedException()
         };
-        for (int index = 0; index < memoryOffsets.Length; index++)
+        foreach ((string name, int offset) in memoryOffsets)
         {
-            string name = index == 0 ? "stack" : $"register{index - 1}";
             ulong pointer = IntPtr.Size == 8
-                ? BitConverter.ToUInt64(context, memoryOffsets[index]) : BitConverter.ToUInt32(context, memoryOffsets[index]);
+                ? BitConverter.ToUInt64(context, offset) : BitConverter.ToUInt32(context, offset);
             Assert.AreEqual(pointer, Number(name + "-address"));
             byte[] memory = Convert.FromHexString(values[name + "-bytes"]);
-            Assert.IsLessThanOrEqualTo(index == 0 ? 2048 : 64, memory.Length);
+            Assert.IsLessThanOrEqualTo(name == "stack" ? 2048 : 64, memory.Length);
             _ = int.Parse(values[name + "-error"], CultureInfo.InvariantCulture);
         }
         if (nativeImage)
