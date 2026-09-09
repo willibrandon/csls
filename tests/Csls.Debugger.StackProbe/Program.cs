@@ -9,5 +9,13 @@ if (args is not [string root, string mode, string offset, string checkpoint])
 
 DebuggerWorkerEnvironment.InitializeCurrentProcess();
 using var lifetime = new CancellationTokenSource(TimeSpan.FromSeconds(50));
-await StackProgressProbe.RunAsync(root, mode, int.Parse(offset, CultureInfo.InvariantCulture),
-    int.Parse(checkpoint, CultureInfo.InvariantCulture), lifetime.Token).ConfigureAwait(false);
+if (mode.StartsWith("values-", StringComparison.Ordinal))
+{
+    await ValueProgressProbe.RunAsync(root, mode[7..], int.Parse(checkpoint, CultureInfo.InvariantCulture),
+        lifetime.Token).ConfigureAwait(false);
+}
+else
+{
+    await StackProgressProbe.RunAsync(root, mode, int.Parse(offset, CultureInfo.InvariantCulture),
+        int.Parse(checkpoint, CultureInfo.InvariantCulture), lifetime.Token).ConfigureAwait(false);
+}

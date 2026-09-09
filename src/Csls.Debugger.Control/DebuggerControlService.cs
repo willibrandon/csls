@@ -117,13 +117,7 @@ public sealed partial class DebuggerControlService :
         DebugStopGeneration initialGeneration = _session.StopGeneration;
         try
         {
-            return await _session.GetVariablesAsync(
-                request.VariablesReference,
-                request.Start,
-                request.Count,
-                request.AllowTargetCodeExecution,
-                cancellationToken,
-                request.Filter).ConfigureAwait(false);
+            return await _session.GetVariablesAsync(request, cancellationToken).ConfigureAwait(false);
         }
         finally
         {

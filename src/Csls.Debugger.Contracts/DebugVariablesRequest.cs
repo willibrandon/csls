@@ -16,6 +16,11 @@ public sealed record DebugVariablesRequest(
     DebugVariableFilter Filter = DebugVariableFilter.All)
 {
     /// <summary>
+    /// Gets bounded live-value progress delivered synchronously on the engine actor and marshaled over private RPC.
+    /// </summary>
+    public IProgress<DebugValueReadProgress>? Progress { get; init; }
+
+    /// <summary>
     /// Gets the optional request-scoped captured-memory progress receiver for dump inspection.
     /// </summary>
     public IProgress<DebugDumpReadProgress>? DumpReadProgress { get; init; }

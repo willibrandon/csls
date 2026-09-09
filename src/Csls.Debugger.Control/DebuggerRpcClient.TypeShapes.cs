@@ -73,6 +73,7 @@ namespace Csls.Debugger.Control;
 [GenerateShapeFor<DebugSymbolOptions>]
 [GenerateShapeFor<DebugThreadInfo>]
 [GenerateShapeFor<DebugVariableInfo>]
+[GenerateShapeFor<DebugValueReadProgress>]
 [GenerateShapeFor<DebugVariablesRequest>]
 [GenerateShapeFor<IReadOnlyList<DebugScopeInfo>>]
 [GenerateShapeFor<IReadOnlyList<DebugExceptionBreakpointRequest>>]

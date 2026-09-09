@@ -72,6 +72,7 @@ internal sealed partial class CorDebugDebuggee
             List<DebugVariableInfo> result = [];
             for (int index = start; index - start < length; index++)
             {
+                _valueRead?.CheckCancellation();
                 nint value = 0;
                 try
                 {

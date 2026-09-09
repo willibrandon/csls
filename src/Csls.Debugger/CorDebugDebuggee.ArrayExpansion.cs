@@ -14,6 +14,7 @@ internal sealed partial class CorDebugDebuggee
     {
         for (int index = 0; index < variables.Count; index++)
         {
+            _valueRead?.CheckCancellation();
             variables[index] = WithArrayChildCounts(variables[index]);
         }
         return variables;
@@ -93,6 +94,7 @@ internal sealed partial class CorDebugDebuggee
         var result = new List<DebugVariableInfo>(take);
         for (int index = start; index < end; index++)
         {
+            _valueRead?.CheckCancellation();
             nint element = 0;
             nint* elementAddress = &element;
             CorDebugHResult.ThrowIfFailed(

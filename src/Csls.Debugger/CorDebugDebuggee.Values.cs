@@ -8,6 +8,8 @@ namespace Csls.Debugger;
 /// </summary>
 internal sealed partial class CorDebugDebuggee
 {
+    private ManagedValueReadOperation? _valueRead;
+
     /// <summary>
     /// Creates argument and local scopes for a generation-bound managed frame.
     /// </summary>
@@ -45,13 +47,17 @@ internal sealed partial class CorDebugDebuggee
     /// <param name="start">The zero-based first value to return.</param>
     /// <param name="count">The maximum count, or zero for all remaining values.</param>
     /// <param name="filter">The child category to select before applying pagination.</param>
+    /// <param name="cancellationToken">Cancels live enumeration between value operations.</param>
+    /// <param name="progress">Receives bounded progress on the session actor.</param>
     /// <returns>The requested immediate variable page.</returns>
     internal IReadOnlyList<DebugVariableInfo> GetVariables(
         int variablesReference,
         DebugStopGeneration generation,
         int start,
         int count,
-        DebugVariableFilter filter = DebugVariableFilter.All)
+        DebugVariableFilter filter = DebugVariableFilter.All,
+        IProgress<DebugValueReadProgress>? progress = null,
+        CancellationToken cancellationToken = default)
     {
         ArgumentOutOfRangeException.ThrowIfNegative(start);
         ArgumentOutOfRangeException.ThrowIfNegative(count);
@@ -60,13 +66,36 @@ internal sealed partial class CorDebugDebuggee
             throw new ArgumentOutOfRangeException(nameof(filter));
         }
 
-        using ManagedValueRetentionScope? values = _operationValues is null ? BeginValueRetention() : null;
-        IReadOnlyList<DebugVariableInfo> result = ReadVariablePage(variablesReference, generation, start, count, filter);
-        foreach (DebugVariableInfo variable in result)
+        ManagedValueReadOperation? parent = _valueRead;
+        _valueRead ??= new ManagedValueReadOperation(variablesReference, progress,
+            () => (_values.Count, _memoryValues.Count), cancellationToken);
+        try
         {
-            values?.Preserve(variable.VariablesReference);
+            using ManagedValueRetentionScope? values = _operationValues is null ? BeginValueRetention() : null;
+            _valueRead.CheckCancellation();
+            List<DebugVariableInfo> result = ReadVariablePage(variablesReference, generation, start, count, filter);
+            if (parent is null)
+            {
+                _valueRead.Complete(result.Count);
+            }
+            foreach (DebugVariableInfo variable in result)
+            {
+                values?.Preserve(variable.VariablesReference);
+            }
+            return result;
         }
-        return result;
+        catch (Exception failure)
+        {
+            if (parent is null)
+            {
+                _valueRead.ReportFailure(failure);
+            }
+            throw;
+        }
+        finally
+        {
+            _valueRead = parent;
+        }
     }
 
     private List<DebugVariableInfo> ReadVariablePage(
@@ -84,7 +113,7 @@ internal sealed partial class CorDebugDebuggee
         }
 
         ValidateGeneration(variablesReference, scope.Generation, generation);
-        ManagedFrameHandle frame = GetFrame(scope.FrameId, generation);
+        ManagedFrameHandle frame = GetFrame(scope.FrameId, generation, _valueRead?.CancellationToken ?? default);
         if (filter == DebugVariableFilter.Indexed)
         {
             return [];

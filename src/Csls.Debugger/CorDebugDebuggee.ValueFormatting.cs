@@ -54,6 +54,7 @@ internal sealed partial class CorDebugDebuggee
         int debuggerDisplayDepth,
         ManagedTupleCustomTypeInfo? tupleCustomTypeInfo)
     {
+        _valueRead?.CheckCancellation();
         nint inspectedValue = 0;
         nint value2 = 0;
         nint exactType = 0;
@@ -157,6 +158,7 @@ internal sealed partial class CorDebugDebuggee
                     out ManagedValueDisplay debuggerDisplay)
                     ? debuggerDisplay
                     : ordinary;
+            _valueRead?.ValueFormatted();
             return (ordinary, presentation);
         }
         finally

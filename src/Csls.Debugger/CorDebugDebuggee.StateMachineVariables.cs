@@ -18,6 +18,7 @@ internal sealed partial class CorDebugDebuggee
         var result = new List<DebugVariableInfo>();
         foreach (ManagedStateMachineVariable argument in arguments.Skip(start).Take(count == 0 ? arguments.Count : count))
         {
+            _valueRead?.CheckCancellation();
             (nint Value, ManagedTupleCustomTypeInfo? TupleCustomTypeInfo,
                 ManagedValueOrigin? Origin, ManagedBoundType? DeclaredType) resolved = ResolveStateMachineVariable(frame, argument);
             if (resolved.Value == 0)

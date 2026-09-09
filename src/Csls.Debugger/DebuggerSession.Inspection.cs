@@ -19,7 +19,7 @@ public sealed partial class DebuggerSession
     {
         ArgumentNullException.ThrowIfNull(request);
         return GetVariablesAsync(request.VariablesReference, request.Start, request.Count,
-            request.AllowTargetCodeExecution, cancellationToken, request.Filter);
+            request.AllowTargetCodeExecution, cancellationToken, request.Filter, request.Progress);
     }
 
     /// <inheritdoc />
@@ -206,8 +206,9 @@ public sealed partial class DebuggerSession
     /// <param name="start">The zero-based first variable to return.</param>
     /// <param name="count">The maximum count, or zero for all remaining values.</param>
     /// <param name="allowTargetCodeExecution">Whether target-code presentation is authorized.</param>
-    /// <param name="cancellationToken">Cancels queueing variable enumeration.</param>
+    /// <param name="cancellationToken">Cancels queueing and live variable enumeration.</param>
     /// <param name="filter">The child category to select before applying pagination.</param>
+    /// <param name="progress">Receives bounded live-value progress on the session actor.</param>
     /// <returns>The requested immediate variable page.</returns>
     public async Task<IReadOnlyList<DebugVariableInfo>> GetVariablesAsync(
         int variablesReference,
@@ -215,7 +216,8 @@ public sealed partial class DebuggerSession
         int count,
         bool allowTargetCodeExecution,
         CancellationToken cancellationToken,
-        DebugVariableFilter filter = DebugVariableFilter.All)
+        DebugVariableFilter filter = DebugVariableFilter.All,
+        IProgress<DebugValueReadProgress>? progress = null)
     {
         ObjectDisposedException.ThrowIf(_disposed != 0, this);
         ArgumentOutOfRangeException.ThrowIfNegative(start);
@@ -232,7 +234,6 @@ public sealed partial class DebuggerSession
         await _actor.InvokeAsync(
             token =>
             {
-                _ = token;
                 if (_state != DebugSessionState.Stopped ||
                     _debuggee is not CorDebugDebuggee managedDebuggee)
                 {
@@ -260,7 +261,9 @@ public sealed partial class DebuggerSession
                         _stopGeneration,
                         start,
                         count,
-                        filter);
+                        filter,
+                        progress,
+                        token);
                 }
 
                 return ValueTask.CompletedTask;
@@ -278,7 +281,6 @@ public sealed partial class DebuggerSession
         await _actor.InvokeAsync(
             token =>
             {
-                _ = token;
                 CorDebugDebuggee managedDebuggee = GetStoppedManagedDebuggee();
                 if (proxy.Generation != _stopGeneration)
                 {
@@ -293,7 +295,9 @@ public sealed partial class DebuggerSession
                         proxy.Generation,
                         start,
                         count,
-                        filter);
+                        filter,
+                        progress,
+                        token);
                 return ValueTask.CompletedTask;
             },
             cancellationToken).ConfigureAwait(false);
