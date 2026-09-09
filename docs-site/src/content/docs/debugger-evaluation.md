@@ -23,6 +23,12 @@ the returned elements, so a small page can inspect later elements in a larger ar
 Nested arrays expand through their own variable references. Page results preserve
 each dimension's runtime indices and lower bounds.
 
+Clients that advertise `supportsVariablePaging` receive array child counts in
+variables, evaluation, and assignment responses. Editors use these counts to
+fetch pages as you expand an array. MCP variable and evaluation results expose
+the same counts. A materialized Results View reports the complete array length
+and serves bounded pages from that snapshot.
+
 With Portable PDBs, C# and Visual Basic async locals retain their source names,
 closed generic types, and tuple element names across awaits. The Locals view
 follows each variable's recorded scope. Use the same source name for watch

@@ -64,7 +64,7 @@ internal sealed partial class CorDebugDebuggee
             candidate => candidate.Id == variablesReference);
         if (scope is null)
         {
-            return ExpandValue(variablesReference, generation, start, count, filter);
+            return WithArrayChildCounts(ExpandValue(variablesReference, generation, start, count, filter));
         }
 
         ValidateGeneration(variablesReference, scope.Generation, generation);
@@ -77,7 +77,7 @@ internal sealed partial class CorDebugDebuggee
         IReadOnlyDictionary<int, ManagedSymbolVariable> names = GetVariableNames(
             frame,
             scope.Kind);
-        return EnumerateValues(frame, scope.Kind, names, generation, start, count);
+        return WithArrayChildCounts(EnumerateValues(frame, scope.Kind, names, generation, start, count));
     }
 
     private DebugScopeInfo CreateScope(

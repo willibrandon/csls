@@ -118,6 +118,22 @@ internal sealed partial class DapSession
         }
     }
 
+    private void WriteVariableChildCounts(Utf8JsonWriter writer, int? namedVariables, int? indexedVariables)
+    {
+        if (!_clientSupportsVariablePaging)
+        {
+            return;
+        }
+        if (namedVariables is int named)
+        {
+            writer.WriteNumber("namedVariables", named);
+        }
+        if (indexedVariables is int indexed)
+        {
+            writer.WriteNumber("indexedVariables", indexed);
+        }
+    }
+
     private async ValueTask WriteVariablesAsync(
         Request request,
         CancellationToken cancellationToken)
@@ -162,18 +178,7 @@ internal sealed partial class DapSession
                         writer.WriteString("value", variable.Value);
                         writer.WriteString("type", variable.Type);
                         writer.WriteNumber("variablesReference", variable.VariablesReference);
-                        if (_clientSupportsVariablePaging)
-                        {
-                            if (variable.NamedVariables is int namedVariables)
-                            {
-                                writer.WriteNumber("namedVariables", namedVariables);
-                            }
-
-                            if (variable.IndexedVariables is int indexedVariables)
-                            {
-                                writer.WriteNumber("indexedVariables", indexedVariables);
-                            }
-                        }
+                        WriteVariableChildCounts(writer, variable.NamedVariables, variable.IndexedVariables);
                         if (variable.MemoryReference is not null)
                         {
                             writer.WriteString("memoryReference", variable.MemoryReference);

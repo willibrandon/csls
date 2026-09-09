@@ -155,7 +155,8 @@ internal sealed partial class CorDebugDebuggee
             if (receiverValue != 0)
             {
                 dereferencedReceiver = DereferenceValue(receiverValue);
-                if (!ComAbi.TryQueryInterface(
+                if (ManagedRuntimeValueIdentity.GetElementType(dereferencedReceiver) is not (0x14 or 0x1d) &&
+                    !ComAbi.TryQueryInterface(
                     dereferencedReceiver,
                     ICorDebugObjectValueAbi.InterfaceId,
                     out objectValue))
@@ -436,12 +437,12 @@ internal sealed partial class CorDebugDebuggee
                             active.ResultFrameId);
 
                         result = new ManagedFunctionEvaluationResult(
-                            new DebugEvaluateResult(
+                            WithArrayChildCounts(new DebugEvaluateResult(
                                 display.Value,
                                 display.Type,
                                 references.VariablesReference,
                                 references.MemoryReference,
-                                TargetCodeExecuted: true),
+                                TargetCodeExecuted: true)),
                             runtimeValueReference,
                             resultGeneration,
                             DebuggerTypeProxyApplied: false,

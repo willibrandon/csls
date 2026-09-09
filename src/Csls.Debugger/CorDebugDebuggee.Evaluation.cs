@@ -33,7 +33,7 @@ internal sealed partial class CorDebugDebuggee
         ManagedFrameHandle frame = GetFrame(frameId, generation);
         ManagedExpressionPlanValidator.Validate(plan, frame.ExpressionLanguage);
         using ManagedValueRetentionScope values = BeginExpressionValues();
-        DebugEvaluateResult result = EvaluateNode(frame, plan, plan.Root, generation).ToResult();
+        DebugEvaluateResult result = WithArrayChildCounts(EvaluateNode(frame, plan, plan.Root, generation).ToResult());
         values.Preserve(result.VariablesReference);
         return result;
     }
@@ -52,9 +52,10 @@ internal sealed partial class CorDebugDebuggee
         ManagedFrameHandle frame = GetFrame(frameId, generation);
         ManagedExpressionPlanValidator.Validate(plan, frame.ExpressionLanguage);
         property = null;
-        return plan.Root.Kind == DebugExpressionNodeKind.MemberAccess
+        DebugEvaluateResult? result = plan.Root.Kind == DebugExpressionNodeKind.MemberAccess
             ? BindMember(frame, plan, plan.Root, generation, out property)?.ToResult()
             : EvaluateNode(frame, plan, plan.Root, generation).ToResult();
+        return result is null ? null : WithArrayChildCounts(result);
     }
 
     /// <summary>

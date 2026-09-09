@@ -459,12 +459,6 @@ internal sealed partial class CorDebugDebuggee
         {
             array = ComAbi.QueryInterface(value, ICorDebugArrayValueAbi.InterfaceId);
             uint elementCount = GetArrayElementCount(new ICorDebugArrayValueAbi(array));
-            if (elementCount > MaximumExpandableValueCount)
-            {
-                throw new InvalidOperationException(
-                    $"The array exceeds the debugger element limit of {MaximumExpandableValueCount}.");
-            }
-
             ManagedValueDisplay display = FormatRuntimeValue(value);
             return new DebugVariableInfo(
                 "Results View", display.Value, display.Type, handle.Id, null, null,

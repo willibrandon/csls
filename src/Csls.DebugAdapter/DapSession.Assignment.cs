@@ -136,6 +136,7 @@ internal sealed partial class DapSession
                 writer.WriteString("value", result.Value);
                 writer.WriteString("type", result.Type);
                 writer.WriteNumber("variablesReference", result.VariablesReference);
+                WriteVariableChildCounts(writer, result.NamedVariables, result.IndexedVariables);
                 if (result.MemoryReference is not null)
                 {
                     writer.WriteString("memoryReference", result.MemoryReference);

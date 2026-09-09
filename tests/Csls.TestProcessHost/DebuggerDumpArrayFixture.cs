@@ -43,6 +43,8 @@ internal static class DebuggerDumpArrayFixture
         {
             large[index] = index + 100;
         }
+        ResultsViewFixture<int> results = new(large);
+        int resultsViewWarmup = Enumerable.Range(0, 1).Sum();
         object[] cycle = new object[1];
         cycle[0] = cycle;
         List<int>?[] constructed = [[81, 82], null];
@@ -77,6 +79,8 @@ internal static class DebuggerDumpArrayFixture
         GC.KeepAlive(emptyDimension);
         GC.KeepAlive(texts);
         GC.KeepAlive(large);
+        GC.KeepAlive(results);
+        GC.KeepAlive(resultsViewWarmup);
         GC.KeepAlive(cycle);
         GC.KeepAlive(constructed);
         GC.KeepAlive(tuples);

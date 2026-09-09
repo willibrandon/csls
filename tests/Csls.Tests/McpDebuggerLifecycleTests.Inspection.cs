@@ -104,6 +104,21 @@ public sealed partial class McpDebuggerLifecycleTests
         Assert.AreEqual(
             "localNumber",
             localNumber.GetProperty("evaluateName").GetString());
+        JsonElement localArray = Assert.ContainsSingle(variables.GetProperty("variables").EnumerateArray()
+            .Where(static item => item.GetProperty("name").GetString() == "localArray"));
+        Assert.AreEqual(0, localArray.GetProperty("namedVariables").GetInt32());
+        Assert.AreEqual(3, localArray.GetProperty("indexedVariables").GetInt32());
+        JsonElement arrayEvaluation = await CallAsync(client, "debug_evaluate",
+            new Dictionary<string, object?>
+            {
+                ["debugSession"] = debugSession,
+                ["stopGeneration"] = generation,
+                ["frameId"] = frame.GetProperty("id").GetInt32(),
+                ["expression"] = "localArray"
+            }, cancellationToken).ConfigureAwait(false);
+        Assert.AreEqual(generation, arrayEvaluation.GetProperty("stopGeneration").GetInt64());
+        Assert.AreEqual(0, arrayEvaluation.GetProperty("evaluation").GetProperty("namedVariables").GetInt32());
+        Assert.AreEqual(3, arrayEvaluation.GetProperty("evaluation").GetProperty("indexedVariables").GetInt32());
         JsonElement localProxy = variables.GetProperty("variables").EnumerateArray().Single(
             item => item.GetProperty("name").GetString() == "localProxy");
         await AssertToolErrorAsync(

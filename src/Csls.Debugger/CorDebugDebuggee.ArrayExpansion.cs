@@ -10,6 +10,52 @@ internal sealed partial class CorDebugDebuggee
 {
     private const int MaximumArrayPageSize = 64 * 1024;
 
+    private List<DebugVariableInfo> WithArrayChildCounts(List<DebugVariableInfo> variables)
+    {
+        for (int index = 0; index < variables.Count; index++)
+        {
+            variables[index] = WithArrayChildCounts(variables[index]);
+        }
+        return variables;
+    }
+
+    private DebugVariableInfo WithArrayChildCounts(DebugVariableInfo variable) =>
+        GetRetainedArrayLength(variable.VariablesReference) is int length
+            ? variable with { NamedVariables = 0, IndexedVariables = length }
+            : variable;
+
+    private DebugEvaluateResult WithArrayChildCounts(DebugEvaluateResult result) =>
+        GetRetainedArrayLength(result.VariablesReference) is int length
+            ? result with { NamedVariables = 0, IndexedVariables = length }
+            : result;
+
+    private int? GetRetainedArrayLength(int variablesReference)
+    {
+        if (!_values.TryGetValue(variablesReference, out ManagedValueHandle? handle) ||
+            handle.View == ManagedValueView.ResultsView || handle.SyntheticVariables is not null)
+        {
+            return null;
+        }
+
+        ValidateValueLifetime(handle);
+        nint value = DereferenceInspectionValue(handle);
+        nint array = 0;
+        try
+        {
+            if (!ComAbi.TryQueryInterface(value, ICorDebugArrayValueAbi.InterfaceId, out array))
+            {
+                return null;
+            }
+            uint length = GetArrayElementCount(new ICorDebugArrayValueAbi(array));
+            return length <= int.MaxValue ? (int)length : null;
+        }
+        finally
+        {
+            ReleaseFunctionEvaluationPointer(array);
+            _ = ComAbi.Release(value);
+        }
+    }
+
     private unsafe List<DebugVariableInfo> ExpandArray(
         nint array,
         string? parentEvaluateName,

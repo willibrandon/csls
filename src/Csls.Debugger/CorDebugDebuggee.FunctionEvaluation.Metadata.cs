@@ -33,6 +33,16 @@ internal sealed partial class CorDebugDebuggee
                 "ICorDebugValue2.GetExactType");
 
             bool selectedTypeReached = selectedReceiverType is null;
+            if (ManagedRuntimeValueIdentity.GetElementType(receiver) is 0x14 or 0x1d)
+            {
+                ManagedBoundType arrayType = _boundTypes.CaptureType(currentType, thread);
+                selectedTypeReached |= selectedReceiverType?.IsSameType(arrayType) == true;
+                // CLR array types have no metadata class or GetBase implementation.
+                // Their instance methods are declared by the loaded core library's System.Array.
+                nint arrayBase = _boundTypes.ResolveRuntimeType(_boundTypes.GetParents(arrayType, thread)[0], thread);
+                _ = ComAbi.Release(currentType);
+                currentType = arrayBase;
+            }
             for (int depth = 0;
                 currentType != 0 && depth < MaximumFunctionEvaluationHierarchyDepth;
                 depth++)

@@ -228,13 +228,13 @@ internal sealed partial class CorDebugDebuggee
             frame.Id,
             tupleCustomTypeInfo: destination.TupleCustomTypeInfo,
             origin: destination.Origin);
-        return new DebugVariableInfo(
+        return WithArrayChildCounts(new DebugVariableInfo(
             resultName,
             display.Value,
             display.Type,
             references.VariablesReference,
             references.MemoryReference,
-            destination.EvaluateName);
+            destination.EvaluateName));
     }
 
     private ManagedAssignmentTarget ResolveAssignmentTarget(
