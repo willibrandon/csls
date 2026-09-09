@@ -152,6 +152,41 @@ public sealed class WindowsNativeDebugObserverTests : DapTestContext
         Assert.IsTrue(await Task.Run(() => retained.WaitForExit(0), TestContext.CancellationToken).ConfigureAwait(false));
     }
 
+    /// <summary>
+    /// Detaches the native observer and reaps its waiting child when redirected output reporting fails.
+    /// </summary>
+    [TestMethod]
+    [Timeout(30000, CooperativeCancellation = true)]
+    public async Task OutputFailureDetachesAndReapsObservedProcess()
+    {
+        using var operation = CancellationTokenSource.CreateLinkedTokenSource(TestContext.CancellationToken);
+        using var children = new DisposableCollection<Process>();
+        var failure = new IOException("The observed child's output sink rejected its announcement.");
+        Process? retained = null;
+        Task running = DebuggerTestProcess.RunWithIdentityAsync(CreateStart("waiting"), operation.Token, line =>
+        {
+            retained = children.Acquire(() => Process.GetProcessById(int.Parse(line, CultureInfo.InvariantCulture)));
+            _ = retained.SafeHandle;
+            throw failure;
+        }, observeNativeExceptions: true);
+        try
+        {
+            IOException observed = await Assert.ThrowsExactlyAsync<IOException>(async () =>
+                await running.WaitAsync(TimeSpan.FromSeconds(5), TestContext.CancellationToken).ConfigureAwait(false))
+                .ConfigureAwait(false);
+            Assert.AreSame(failure, observed);
+            Assert.IsFalse(operation.IsCancellationRequested);
+            Assert.IsNotNull(retained);
+            Assert.IsTrue(await Task.Run(() => retained.WaitForExit(0), TestContext.CancellationToken).ConfigureAwait(false),
+                "The native observer must release the process before cleanup completes.");
+        }
+        finally
+        {
+            await operation.CancelAsync().ConfigureAwait(false);
+            await running.ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
+        }
+    }
+
     private static ProcessStartInfo CreateStart(string mode)
     {
         var start = new ProcessStartInfo(Environment.GetEnvironmentVariable("DOTNET_HOST_PATH") ?? "dotnet");

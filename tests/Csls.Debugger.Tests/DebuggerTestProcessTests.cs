@@ -12,6 +12,45 @@ namespace Csls.Debugger.Tests;
 public sealed class DebuggerTestProcessTests : DapTestContext
 {
     /// <summary>
+    /// Propagates an output sink failure while reaping the child that is still waiting for input.
+    /// </summary>
+    [TestMethod]
+    [Timeout(30000, CooperativeCancellation = true)]
+    public async Task OutputFailureReapsRunningProcess()
+    {
+        using var operation = CancellationTokenSource.CreateLinkedTokenSource(TestContext.CancellationToken);
+        using var children = new DisposableCollection<Process>();
+        var start = new ProcessStartInfo(Environment.GetEnvironmentVariable("DOTNET_HOST_PATH") ?? "dotnet");
+        start.ArgumentList.Add(ResolveTestProcessHost());
+        start.ArgumentList.Add("--debugger-process-tree-child");
+        start.ArgumentList.Add("leaf");
+        var failure = new IOException("The output sink rejected the running child's announcement.");
+        Process? retained = null;
+        Task running = DebuggerTestProcess.RunWithIdentityAsync(start, operation.Token, line =>
+        {
+            retained = children.Acquire(() => Process.GetProcessById(int.Parse(line, CultureInfo.InvariantCulture)));
+            _ = retained.SafeHandle;
+            throw failure;
+        });
+        try
+        {
+            IOException observed = await Assert.ThrowsExactlyAsync<IOException>(async () =>
+                await running.WaitAsync(TimeSpan.FromSeconds(5), TestContext.CancellationToken).ConfigureAwait(false))
+                .ConfigureAwait(false);
+            Assert.AreSame(failure, observed);
+            Assert.IsFalse(operation.IsCancellationRequested);
+            Assert.IsNotNull(retained);
+            Assert.IsTrue(await Task.Run(() => retained.WaitForExit(0), TestContext.CancellationToken).ConfigureAwait(false),
+                "The owned process must be reaped before its output failure reaches the caller.");
+        }
+        finally
+        {
+            await operation.CancelAsync().ConfigureAwait(false);
+            await running.ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
+        }
+    }
+
+    /// <summary>
     /// Completes or cancels inherited output capture after parent exit while preserving independent child ownership.
     /// </summary>
     /// <param name="reportProgress">Whether output is captured through the incremental progress path.</param>

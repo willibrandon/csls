@@ -55,30 +55,54 @@ internal static class DebuggerTestProcess
         using Process process = Process.Start(startInfo)
             ?? throw new InvalidOperationException(
                 $"The debugger test process did not start: {startInfo.FileName}");
-        Task<string> output = ReadOutputAsync(process.StandardOutput, progress, cancellationToken);
-        Task<string> error = ReadOutputAsync(process.StandardError, progress, cancellationToken);
+        return await CaptureAsync(process, progress, diagnosticContext, observeNativeExceptions, cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    private static async Task<(int ProcessId, int ExitCode, string Output, string Error)> CaptureAsync(
+        Process process, Action<string>? progress, TestContext? diagnosticContext, bool observeNativeExceptions,
+        CancellationToken cancellationToken)
+    {
+        using var observation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        Task<string> output = ReadOutputAsync(process.StandardOutput, progress, observation.Token);
+        Task<string> error = ReadOutputAsync(process.StandardError, progress, observation.Token);
         var nativeDiagnostics = new StringBuilder();
+        Task nativeEvents = Task.CompletedTask;
+        Task exit = Task.CompletedTask;
         try
         {
             if (observeNativeExceptions && OperatingSystem.IsWindows())
             {
-                await WindowsNativeDebugObserver.ObserveAsync(process, record =>
+                nativeEvents = WindowsNativeDebugObserver.ObserveAsync(process, record =>
                 {
                     nativeDiagnostics.AppendLine(record);
                     progress?.Invoke(record);
-                }, cancellationToken).ConfigureAwait(false);
+                }, observation.Token);
             }
-            await DebuggerProcessExit.WaitAsync(process, cancellationToken).ConfigureAwait(false);
+            exit = DebuggerProcessExit.WaitAsync(process, observation.Token);
+            // Observe each operation as it completes: a failed sink must end capture while the child is still alive.
+            List<Task> pending = [output, error, nativeEvents, exit];
+            while (pending.Count != 0)
+            {
+                Task completed = await Task.WhenAny(pending).ConfigureAwait(false);
+                _ = pending.Remove(completed);
+                await completed.ConfigureAwait(false);
+            }
+            await nativeEvents.ConfigureAwait(false);
+            await exit.ConfigureAwait(false);
             return (
                 process.Id,
                 process.ExitCode,
                 await output.ConfigureAwait(false),
                 await error.ConfigureAwait(false) + nativeDiagnostics);
         }
-        catch
+        catch (Exception failure)
         {
             try
             {
+                // Detach on the observer's owning thread before any diagnostic collector or process termination.
+                await observation.CancelAsync().ConfigureAwait(false);
+                await nativeEvents.ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
                 if (cancellationToken.IsCancellationRequested && diagnosticContext is not null && !process.HasExited)
                 {
                     await DebuggerProcessDiagnostics.CaptureAsync(process.Id, diagnosticContext).ConfigureAwait(false);
@@ -100,8 +124,12 @@ internal static class DebuggerTestProcess
                 }
                 await DebuggerProcessExit.WaitAsync(process, CancellationToken.None).ConfigureAwait(false);
 
-                Task streams = Task.WhenAll(output, error);
-                await streams.ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
+                var operations = Task.WhenAll(output, error, nativeEvents, exit);
+                await operations.ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
+            }
+            if (failure is OperationCanceledException && cancellationToken.IsCancellationRequested)
+            {
+                throw new OperationCanceledException(failure.Message, failure, cancellationToken);
             }
             throw;
         }
