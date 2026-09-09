@@ -23,6 +23,7 @@ public sealed partial class DapSessionTests
         {
             DapTestClient client = await StartProxyFixtureAsync(waitPath, isolateResultsViewAssembly: true).ConfigureAwait(false);
             await using ConfiguredAsyncDisposable disposal = client.ConfigureAwait(false);
+            using DapTestCancellationCapture protocolCapture = CaptureProtocolOnCancellation(client);
             JsonElement frame = await GetFixtureFrameAsync(client).ConfigureAwait(false);
             int frameId = frame.GetProperty("id").GetInt32();
             foreach (string expression in new[] { $"({TypeName}){Source}", $"{Source} as {TypeName}", $"{Source} is {TypeName}" })
@@ -82,6 +83,7 @@ public sealed partial class DapSessionTests
                 waitPath, "ReferenceAssignmentFixture.cs", "int result = DebuggerFixture.WaitForSignal(",
                 "--debugger-reference-assignment-fixture").ConfigureAwait(false);
             await using ConfiguredAsyncDisposable disposal = client.ConfigureAwait(false);
+            using DapTestCancellationCapture protocolCapture = CaptureProtocolOnCancellation(client);
             int frameId = await GetReferenceAssignmentFrameAsync(client).ConfigureAwait(false);
             JsonElement result = await ReadEvaluationAsync(
                 client, frameId, expression, success: true, TestContext.CancellationToken).ConfigureAwait(false);
@@ -127,6 +129,7 @@ public sealed partial class DapSessionTests
                 waitPath, "ReferenceAssignmentFixture.cs", "int result = DebuggerFixture.WaitForSignal(",
                 "--debugger-reference-assignment-fixture").ConfigureAwait(false);
             await using ConfiguredAsyncDisposable disposal = client.ConfigureAwait(false);
+            using DapTestCancellationCapture protocolCapture = CaptureProtocolOnCancellation(client);
             int frameId = await GetReferenceAssignmentFrameAsync(client).ConfigureAwait(false);
             JsonElement failure = await ReadEvaluationAsync(
                 client, frameId, expression, success: false, TestContext.CancellationToken).ConfigureAwait(false);
@@ -158,6 +161,7 @@ public sealed partial class DapSessionTests
                 waitPath, "ReferenceAssignmentFixture.cs", "int result = DebuggerFixture.WaitForSignal(",
                 "--debugger-reference-assignment-fixture").ConfigureAwait(false);
             await using ConfiguredAsyncDisposable disposal = client.ConfigureAwait(false);
+            using DapTestCancellationCapture protocolCapture = CaptureProtocolOnCancellation(client);
             int frameId = await GetReferenceAssignmentFrameAsync(client).ConfigureAwait(false);
             await AssertStructAssignmentEvaluationAsync(client, frameId, "hiddenBaseOracle", "11", "int").ConfigureAwait(false);
             await AssertStructAssignmentEvaluationAsync(client, frameId, "hiddenDerivedOracle", "22", "int").ConfigureAwait(false);

@@ -417,6 +417,32 @@ public sealed partial class DapSessionTests
         DapTestClient client = await DapTestClient
             .CreateAsync(TestContext.CancellationToken)
             .ConfigureAwait(false);
+        try
+        {
+            using (CaptureProtocolOnCancellation(client))
+            {
+                await InitializePresentationFixtureAsync(client, sourcePath, breakpointLine, fixtureCommand,
+                    waitPath, fixtureAssemblyPath, supportsVariablePaging, supportsInvalidatedEvent).ConfigureAwait(false);
+            }
+        }
+        catch
+        {
+            await client.DisposeAsync().ConfigureAwait(false);
+            throw;
+        }
+        return client;
+    }
+
+    private async Task InitializePresentationFixtureAsync(
+        DapTestClient client,
+        string sourcePath,
+        int breakpointLine,
+        string fixtureCommand,
+        string waitPath,
+        string? fixtureAssemblyPath,
+        bool supportsVariablePaging,
+        bool? supportsInvalidatedEvent)
+    {
         int initializeSequence = await client.SendInitializeRequestAsync(
             TestContext.CancellationToken,
             supportsInvalidatedEvent,
@@ -464,6 +490,5 @@ public sealed partial class DapSessionTests
             client,
             configurationSequence,
             launchSequence).ConfigureAwait(false);
-        return client;
     }
 }
