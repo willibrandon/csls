@@ -1,13 +1,13 @@
 namespace Csls.Debugger;
 
 /// <summary>
-/// Releases unpublished expression values when their synchronous actor operation ends.
+/// Releases unpublished runtime values when their synchronous actor operation ends.
 /// </summary>
 /// <param name="values">The operation's runtime-value ownership graph.</param>
 /// <param name="complete">The owning debuggee's value-release operation.</param>
 internal sealed class ManagedValueRetentionScope(
-    ManagedExpressionValues values,
-    Action<ManagedExpressionValues> complete) : IDisposable
+    ManagedOperationValues values,
+    Action<ManagedOperationValues> complete) : IDisposable
 {
     private bool _disposed;
 

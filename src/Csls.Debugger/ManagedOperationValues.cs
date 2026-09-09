@@ -3,9 +3,9 @@ using Csls.Debugger.Contracts;
 namespace Csls.Debugger;
 
 /// <summary>
-/// Records runtime values and their published ownership graph for one synchronous expression operation.
+/// Records runtime values and their published ownership graph for one synchronous debugger operation.
 /// </summary>
-internal sealed class ManagedExpressionValues
+internal sealed class ManagedOperationValues
 {
     private readonly Dictionary<int, ManagedValueHandle> _created = [];
     private readonly HashSet<int> _published = [];
@@ -27,7 +27,7 @@ internal sealed class ManagedExpressionValues
     internal IReadOnlyList<(ulong Address, ManagedResultsViewLifetime? Lifetime)> HeapOrigins => _heapOrigins;
 
     /// <summary>
-    /// Registers a newly acquired value before it can escape expression binding.
+    /// Registers a newly acquired value before it can escape the current operation.
     /// </summary>
     /// <param name="value">The generation-owned value acquired during this operation.</param>
     internal void Track(ManagedValueHandle value) => _created.Add(value.Id, value);

@@ -8,26 +8,26 @@ namespace Csls.Debugger;
 /// </summary>
 internal sealed partial class CorDebugDebuggee
 {
-    private ManagedExpressionValues? _expressionValues;
+    private ManagedOperationValues? _operationValues;
 
     /// <summary>
-    /// Starts operation-owned retention for synchronous expression binding on the session actor.
+    /// Starts operation-owned retention for synchronous value inspection or expression binding on the session actor.
     /// </summary>
     /// <returns>The owner that releases intermediate values after publication or failure.</returns>
-    internal ManagedValueRetentionScope BeginExpressionValues()
+    internal ManagedValueRetentionScope BeginValueRetention()
     {
-        if (_expressionValues is not null)
+        if (_operationValues is not null)
         {
-            throw new InvalidOperationException("An expression value operation is already active.");
+            throw new InvalidOperationException("A runtime value operation is already active.");
         }
 
-        _expressionValues = new ManagedExpressionValues();
-        return new ManagedValueRetentionScope(_expressionValues, CompleteExpressionValues);
+        _operationValues = new ManagedOperationValues();
+        return new ManagedValueRetentionScope(_operationValues, CompleteValueRetention);
     }
 
-    private void CompleteExpressionValues(ManagedExpressionValues scope)
+    private void CompleteValueRetention(ManagedOperationValues scope)
     {
-        _expressionValues = null;
+        _operationValues = null;
         foreach (ManagedValueHandle value in scope.Created)
         {
             if (scope.Published.Contains(value.Id) || !_values.Remove(value.Id))
@@ -184,7 +184,7 @@ internal sealed partial class CorDebugDebuggee
             TupleCustomTypeInfo = tupleCustomTypeInfo
         };
         _values.Add(handle.Id, handle);
-        _expressionValues?.Track(handle);
+        _operationValues?.Track(handle);
         _valueIdentities.Add(key, handle);
         if (memoryReference is not null)
         {

@@ -65,7 +65,7 @@ internal sealed partial class CorDebugDebuggee
             lifetime: source.Lifetime);
         origin = new ManagedHeapValueOrigin(retained.Id);
         _heapValueOrigins.Add(key, origin);
-        _expressionValues?.TrackHeapOrigin(key);
+        _operationValues?.TrackHeapOrigin(key);
         return origin;
     }
 

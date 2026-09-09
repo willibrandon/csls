@@ -60,6 +60,22 @@ internal sealed partial class CorDebugDebuggee
             throw new ArgumentOutOfRangeException(nameof(filter));
         }
 
+        using ManagedValueRetentionScope? values = _operationValues is null ? BeginValueRetention() : null;
+        IReadOnlyList<DebugVariableInfo> result = ReadVariablePage(variablesReference, generation, start, count, filter);
+        foreach (DebugVariableInfo variable in result)
+        {
+            values?.Preserve(variable.VariablesReference);
+        }
+        return result;
+    }
+
+    private List<DebugVariableInfo> ReadVariablePage(
+        int variablesReference,
+        DebugStopGeneration generation,
+        int start,
+        int count,
+        DebugVariableFilter filter)
+    {
         ManagedScopeHandle? scope = _scopes.Values.FirstOrDefault(
             candidate => candidate.Id == variablesReference);
         if (scope is null)

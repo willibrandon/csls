@@ -50,7 +50,7 @@ public sealed partial class DebuggerSession
                 _ = token;
                 CorDebugDebuggee managedDebuggee = GetStoppedManagedDebuggee();
                 ManagedPropertyEvaluation? property = null;
-                using ManagedValueRetentionScope values = managedDebuggee.BeginExpressionValues();
+                using ManagedValueRetentionScope values = managedDebuggee.BeginValueRetention();
                 bool explicitCall = plan.Root.Kind is DebugExpressionNodeKind.Invocation or
                     DebugExpressionNodeKind.ObjectCreation;
                 if (!explicitCall)
