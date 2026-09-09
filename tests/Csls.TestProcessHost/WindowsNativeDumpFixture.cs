@@ -21,9 +21,16 @@ internal static partial class WindowsNativeDumpFixture
     /// <param name="path">The new dump file owned by the calling test.</param>
     /// <param name="captureKind">The native threads, normal, triage, heap, or full capture policy.</param>
     /// <returns>Zero after the native writer successfully closes its output.</returns>
-    internal static unsafe int Run(int processId, long creationTime, string path, string captureKind = "threads")
+    internal static int Run(int processId, long creationTime, string path, string captureKind = "threads")
     {
         long started = Stopwatch.GetTimestamp();
+        Capture(processId, creationTime, path, captureKind, started);
+        ReportProgress(started, "Snapshot and file released");
+        return 0;
+    }
+
+    private static unsafe void Capture(int processId, long creationTime, string path, string captureKind, long started)
+    {
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(processId);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(creationTime);
         uint dumpType = captureKind switch
@@ -87,7 +94,6 @@ internal static partial class WindowsNativeDumpFixture
             state.Free();
         }
         ReportProgress(started, "Releasing snapshot and file");
-        return 0;
     }
 
     private static void ReportProgress(long started, string phase) => Console.Error.WriteLine(

@@ -192,6 +192,7 @@ public sealed class DapWindowsNativeDiagnosticsTests : DapTestContext
                     Assert.Contains("Writing dump at ", collectedError);
                     Assert.Contains("Dump written at ", collectedError);
                     Assert.Contains("Releasing snapshot and file at ", collectedError);
+                    Assert.Contains("Snapshot and file released at ", collectedError);
                     Assert.IsFalse(process.HasExited);
                     using var dump = DataTarget.LoadDump(path, new DataTargetOptions { SymbolPaths = [] });
                     Assert.AreEqual(process.Id,
