@@ -327,6 +327,8 @@ These public wire-contract types are generated from the compiled assemblies and 
 | `Csls.Debugger.Contracts.DebugSymbolModuleFilterOptions` | Filters eager symbol lookup by managed module file name. |
 | `Csls.Debugger.Contracts.DebugSymbolOptions` | Configures trusted locations used to resolve matching debugger symbols. |
 | `Csls.Debugger.Contracts.DebugThreadInfo` | Describes one managed thread visible at a debugger stop. |
+| `Csls.Debugger.Contracts.DebugValueReadProgress` | Reports live value inspection and the stopped session's value registry sizes. |
+| `Csls.Debugger.Contracts.DebugValueReadState` | Identifies the current or final state of a live variable inspection. |
 | `Csls.Debugger.Contracts.DebugVariableFilter` | Selects immediate variable children by their container-defined indexing category. |
 | `Csls.Debugger.Contracts.DebugVariableInfo` | Describes one debugger variable and its immediate formatted value. |
 | `Csls.Debugger.Contracts.DebugVariablePresentationKind` | Identifies how a debugger client should present one variable entry. |
