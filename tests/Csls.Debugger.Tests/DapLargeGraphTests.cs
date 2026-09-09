@@ -1,7 +1,10 @@
 using Csls.EndToEndPerformance;
+using Microsoft.Win32.SafeHandles;
+using System.ComponentModel;
 using System.Diagnostics;
 using System.Globalization;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.Json;
 
@@ -11,7 +14,7 @@ namespace Csls.Debugger.Tests;
 /// Inspects independently measured four-GiB targets through bounded DAP pages and observes owned-process cleanup.
 /// </summary>
 [TestClass]
-public sealed class DapLargeGraphTests : DapTestContext
+public sealed partial class DapLargeGraphTests : DapTestContext
 {
     private const long TargetBytes = 4L * 1024 * 1024 * 1024;
     private const int ChunkLength = 67108864;
@@ -53,9 +56,7 @@ public sealed class DapLargeGraphTests : DapTestContext
             Assert.AreEqual(line, frame.GetProperty("line").GetInt32());
             Assert.AreEqual("Csls.TestProcessHost.DebuggerLargeGraphFixture.Run", frame.GetProperty("name").GetString());
             int frameId = frame.GetProperty("id").GetInt32();
-            target.Refresh();
-            TestContext.WriteLine($"Four-GiB target {target.Id}: resident={target.WorkingSet64}, private={target.PrivateMemorySize64}.");
-            Assert.IsGreaterThanOrEqualTo(TargetBytes, target.WorkingSet64,
+            Assert.IsGreaterThanOrEqualTo(TargetBytes, ReadTargetStorage(target),
                 "The operating system must observe the populated target storage independently of its logical array counts.");
 
             JsonElement chunks = await ReadEvaluationAsync(client, frameId, "chunks", success: true,
@@ -132,6 +133,23 @@ public sealed class DapLargeGraphTests : DapTestContext
             throw;
         }
     }
+
+    private long ReadTargetStorage(Process target)
+    {
+        // Windows private commitment includes pages evicted from the working set.
+        // Trim the stopped target so its subsequent DAP pages also exercise that condition.
+        if (OperatingSystem.IsWindows() && K32EmptyWorkingSet(target.SafeHandle) == 0)
+        {
+            throw new Win32Exception(Marshal.GetLastPInvokeError());
+        }
+        target.Refresh();
+        TestContext.WriteLine($"Four-GiB target {target.Id}: resident={target.WorkingSet64}, private={target.PrivateMemorySize64}.");
+        return OperatingSystem.IsWindows() ? target.PrivateMemorySize64 : target.WorkingSet64;
+    }
+
+    [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
+    [LibraryImport("kernel32", SetLastError = true)]
+    private static partial int K32EmptyWorkingSet(SafeProcessHandle process);
 
     private async Task DisconnectAndObserveAsync(DapTestClient client, IReadOnlyList<int> processIds, int index)
     {
