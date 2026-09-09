@@ -76,7 +76,7 @@ public sealed partial class DapSessionTests
     /// </summary>
     /// <param name="queuedCount">The number of inspection requests sent during target execution.</param>
     /// <param name="cancelMiddle">Whether to cancel and replace a middle request before draining.</param>
-    /// <param name="waitForDeadline">Whether the real evaluation deadline starts abort before requests are queued.</param>
+    /// <param name="waitForDeadline">Whether the real evaluation deadline starts abort before the final request is queued.</param>
     [TestMethod]
     [DataRow(1, false, false)]
     [DataRow(64, false, false)]
@@ -92,6 +92,7 @@ public sealed partial class DapSessionTests
         {
             DapTestClient client = await StartProxyFixtureAsync(waitPath).ConfigureAwait(false);
             await using ConfiguredAsyncDisposable disposal = client.ConfigureAwait(false);
+            using DapTestCancellationCapture protocolCapture = CaptureProtocolOnCancellation(client);
             JsonElement frame = await GetFixtureFrameAsync(client).ConfigureAwait(false);
             int evaluationSequence = await client.SendRequestAsync("evaluate", writer =>
             {
@@ -102,13 +103,9 @@ public sealed partial class DapSessionTests
             }, TestContext.CancellationToken).ConfigureAwait(false);
             await client.WaitForTargetSignalAsync(waitPath + ".evaluation", evaluationSequence,
                 TestContext.CancellationToken).ConfigureAwait(false);
-            if (waitForDeadline)
-            {
-                await client.WaitForTargetSignalAsync(waitPath + ".evaluation.aborting", evaluationSequence,
-                    TestContext.CancellationToken).ConfigureAwait(false);
-            }
             Queue<int> sequences = new();
-            for (int index = 0; index < queuedCount; index++)
+            int initialRequests = waitForDeadline ? Math.Min(queuedCount, 64) : queuedCount;
+            for (int index = 0; index < initialRequests; index++)
             {
                 int sequence = await client.SendRequestAsync("threads", WriteEmptyObject,
                     TestContext.CancellationToken).ConfigureAwait(false);
@@ -131,9 +128,34 @@ public sealed partial class DapSessionTests
                 int removed = sequences.ElementAt(queuedCount / 2);
                 await AssertQueuedRequestCanceledAsync(client, removed, "threads").ConfigureAwait(false);
                 sequences = new Queue<int>(sequences.Where(sequence => sequence != removed));
-                sequences.Enqueue(await client.SendRequestAsync("threads", WriteEmptyObject,
-                    TestContext.CancellationToken).ConfigureAwait(false));
+                if (!waitForDeadline)
+                {
+                    sequences.Enqueue(await client.SendRequestAsync("threads", WriteEmptyObject,
+                        TestContext.CancellationToken).ConfigureAwait(false));
+                }
             }
+
+            if (waitForDeadline)
+            {
+                // Prepare the full queue before the bounded abort grace; exercise admission or overflow during abort.
+                await client.WaitForTargetSignalAsync(waitPath + ".evaluation.aborting", evaluationSequence,
+                    TestContext.CancellationToken).ConfigureAwait(false);
+                int sequence = await client.SendRequestAsync("threads", WriteEmptyObject,
+                    TestContext.CancellationToken).ConfigureAwait(false);
+                if (cancelMiddle)
+                {
+                    sequences.Enqueue(sequence);
+                }
+                else
+                {
+                    using JsonDocument overflow = await client.ReadMessageAsync(TestContext.CancellationToken)
+                        .ConfigureAwait(false);
+                    AssertResponse(overflow.RootElement, sequence, "threads", success: false);
+                    Assert.Contains("pending request limit", overflow.RootElement
+                        .GetProperty("message").GetString()!, StringComparison.OrdinalIgnoreCase);
+                }
+            }
+            Assert.HasCount(Math.Min(queuedCount, 64), sequences);
 
             int cancelSequence = await SendRequestCancellationAsync(client, evaluationSequence)
                 .ConfigureAwait(false);
