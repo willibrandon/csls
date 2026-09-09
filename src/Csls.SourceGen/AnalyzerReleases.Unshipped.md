@@ -30,3 +30,4 @@ CSLS0028 | CodeQuality | Error | Asserted nullable locals use typed captures bef
 CSLS0029 | CodeQuality | Error | Captured exceptions use explicit guards before rethrowing
 CSLS0030 | CodeQuality | Error | Shared fields are written through static members
 CSLS0031 | CodeQuality | Error | Dictionary guards retrieve values in the same lookup
+CSLS0032 | Reliability | Error | Nullable references are validated before use instead of catching NullReferenceException

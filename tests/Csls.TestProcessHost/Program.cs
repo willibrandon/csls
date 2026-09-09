@@ -14,7 +14,7 @@ if (args is ["--windows-observed", ..] && OperatingSystem.IsWindows())
 
 if (args is ["--windows-native-fault", string nativeFaultMode] && OperatingSystem.IsWindows())
 {
-    return WindowsNativeFaultFixture.Run(nativeFaultMode);
+    return await WindowsNativeFaultFixture.RunAsync(nativeFaultMode).ConfigureAwait(false);
 }
 
 if (args is ["--windows-native-dump", string dumpProcessId, string dumpCreationTime, string nativeDumpPath] &&

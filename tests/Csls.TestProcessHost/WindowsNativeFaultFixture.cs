@@ -14,8 +14,8 @@ internal static partial class WindowsNativeFaultFixture
     /// Runs a managed exception, terminal native fault, or blocked-process scenario in the owned child.
     /// </summary>
     /// <param name="mode">The managed, bounded, fatal, bounded-fatal, second-chance, or waiting scenario.</param>
-    /// <returns>Zero after the runtime handles every requested managed exception.</returns>
-    internal static int Run(string mode)
+    /// <returns>Zero after the runtime records every requested managed task failure.</returns>
+    internal static async Task<int> RunAsync(string mode)
     {
         ArgumentOutOfRangeException.ThrowIfNotEqual(
             mode is "managed" or "bounded" or "fatal" or "bounded-fatal" or "second-chance" or "waiting", true);
@@ -30,14 +30,14 @@ internal static partial class WindowsNativeFaultFixture
         int count = mode is "bounded" or "bounded-fatal" ? 12 : mode == "managed" ? 1 : 0;
         for (int index = 0; index < count; index++)
         {
-            try
+            Task<int> operation = Task.Run(ReadNull);
+            Task completion = operation;
+            await completion.ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
+            if (operation.Exception is not { InnerExceptions: [Exception exception] })
             {
-                Console.WriteLine(ReadNull());
+                throw new InvalidOperationException("The native fault must produce exactly one managed task exception.");
             }
-            catch (NullReferenceException exception)
-            {
-                Console.WriteLine(exception.GetType().Name);
-            }
+            Console.WriteLine(exception.GetType().Name);
         }
         if (mode is "fatal" or "bounded-fatal")
         {
