@@ -9,6 +9,7 @@
 
   <ItemGroup>
     <Using Include="Microsoft.VisualStudio.TestTools.UnitTesting" />
+    <Compile Include="../../scripts/Support/DebuggerDumpArchive.cs" Link="Support/DebuggerDumpArchive.cs" />
   </ItemGroup>
 
   <ItemGroup>

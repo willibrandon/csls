@@ -21,6 +21,11 @@ Building the debugger test project also builds its portable C#, Visual Basic, an
 F# fixtures in Debug and Release. CI shares these outputs across platform jobs.
 Fixtures with live Source Link endpoints or Windows PDBs are built on the test host.
 
+Debugger dump artifacts contain `debugger-dumps.tar.gz`. Extract this archive into
+the directory containing the downloaded test reports to restore the dump paths
+referenced by TRX attachments. The archive stores identical dumps once and
+restores their additional paths as hard links.
+
 The `DebuggerStress` category includes a live four-GiB object graph. Run these
 tests on a 64-bit host with at least eight GiB of memory capacity. The graph
 test checks populated target memory, bounded inspection pages, adapter memory

@@ -130,7 +130,7 @@ jobs:
             artifacts/obj/Csls.*/*.json
             artifacts/obj/Csls.*/*.props
             artifacts/obj/Csls.*/*.targets
-          key: debugger-test-build-v2-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.github/workflows/ci.yml', '.editorconfig', '.globalconfig', 'global.json', 'src/**', 'benchmarks/Csls.EndToEndPerformance/**', 'tests/Csls.Debugger.Tests/**', 'tests/Csls.Debugger.StackProbe/**', 'tests/Csls.TestProcessHost/**', 'test-assets/Csls.Debugger.Fixtures.*/**', 'build/**', 'Directory.Build.*', 'Directory.Packages.props', 'NuGet.Config') }}
+          key: debugger-test-build-v2-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.github/workflows/ci.yml', '.editorconfig', '.globalconfig', 'global.json', 'src/**', 'benchmarks/Csls.EndToEndPerformance/**', 'tests/Csls.Debugger.Tests/**', 'tests/Csls.Debugger.StackProbe/**', 'tests/Csls.TestProcessHost/**', 'test-assets/Csls.Debugger.Fixtures.*/**', 'scripts/Support/DebuggerDumpArchive.cs', 'build/**', 'Directory.Build.*', 'Directory.Packages.props', 'NuGet.Config') }}
           restore-keys: debugger-test-build-v2-${{ runner.os }}-${{ runner.arch }}-
 
       - name: Build debugger test binaries
@@ -141,6 +141,7 @@ jobs:
           dotnet build tests/Csls.Debugger.Tests/Csls.Debugger.Tests.csproj
           --property:CslsIncludeAllDebuggerNativeAssets=true
           --property:RuntimeIdentifiers=
+          '/bl:artifacts/binlogs/debugger-test-binaries-{}.binlog'
 
       - name: Publish portable debugger authorization app
         run: >-
@@ -151,6 +152,18 @@ jobs:
           --property:UseAppHost=false
           --property:RuntimeIdentifier=
           --output artifacts/bin/Csls.Debugger.TestAuthorization/debug
+          '/bl:artifacts/binlogs/debugger-authorization-{}.binlog'
+
+      - name: Publish portable dump archive app
+        run: >-
+          dotnet publish scripts/Pack-DebuggerDumps.cs
+          --configuration Debug
+          --no-self-contained
+          --property:PublishAot=false
+          --property:UseAppHost=false
+          --property:RuntimeIdentifier=
+          --output artifacts/bin/Csls.Debugger.DumpArchive/debug
+          '/bl:artifacts/binlogs/debugger-dump-archive-{}.binlog'
 
       - name: Pack debugger test binaries
         run: >-
@@ -404,12 +417,17 @@ jobs:
             !artifacts/test-results/**/*.dmp
           if-no-files-found: warn
 
+      - name: Pack debugger dump files
+        if: always() && steps.debugger-tests.outcome != 'skipped' && steps.debugger-tests.outcome != ''
+        run: dotnet artifacts/bin/Csls.Debugger.DumpArchive/debug/Pack-DebuggerDumps.dll
+
       - name: Preserve debugger dump files
         if: always()
         uses: actions/upload-artifact@v7
         with:
           name: debugger-dumps-${{ matrix.rid }}-${{ matrix.suite }}-${{ github.run_attempt }}
-          path: artifacts/test-results/**/*.dmp
+          path: artifacts/debugger-dumps.tar.gz
+          compression-level: 0
           if-no-files-found: warn
 
   native-aot-size:
