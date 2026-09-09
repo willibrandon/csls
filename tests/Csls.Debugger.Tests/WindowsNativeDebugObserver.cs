@@ -19,12 +19,15 @@ internal static partial class WindowsNativeDebugObserver
     /// <param name="process">The caller-owned process waiting for its capture input.</param>
     /// <param name="report">Receives bounded native fault records outside the collector process.</param>
     /// <param name="cancellationToken">Cancels observation and detaches before caller-owned process cleanup.</param>
+    /// <param name="phase">Optionally records capture-input release and process exit on the native event thread.</param>
     /// <returns>The native observation lifetime.</returns>
-    internal static Task ObserveAsync(Process process, Action<string> report, CancellationToken cancellationToken) =>
-        Task.Factory.StartNew(() => Observe(process, report, cancellationToken), CancellationToken.None,
+    internal static Task ObserveAsync(Process process, Action<string> report, CancellationToken cancellationToken,
+        Action<string>? phase = null) =>
+        Task.Factory.StartNew(() => Observe(process, report, phase, cancellationToken), CancellationToken.None,
             TaskCreationOptions.LongRunning, TaskScheduler.Default);
 
-    private static unsafe void Observe(Process process, Action<string> report, CancellationToken cancellationToken)
+    private static unsafe void Observe(Process process, Action<string> report, Action<string>? phase,
+        CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
         uint processId = checked((uint)process.Id);
@@ -76,6 +79,7 @@ internal static partial class WindowsNativeDebugObserver
                     }
                     else if (code == 5) // EXIT_PROCESS_DEBUG_EVENT
                     {
+                        phase?.Invoke("Native process exit received");
                         // CoreCLR can terminate on the first chance; retain the latest suppressed fault for that path.
                         if (Unsafe.ReadUnaligned<uint>(payload) != 0 && pendingFault is not null)
                         {
@@ -92,6 +96,7 @@ internal static partial class WindowsNativeDebugObserver
                             disposition = 0x10002;
                             process.StandardInput.WriteLine("capture");
                             process.StandardInput.Close();
+                            phase?.Invoke("Capture input released");
                         }
                         else if (exception == 0xc0000005)
                         {

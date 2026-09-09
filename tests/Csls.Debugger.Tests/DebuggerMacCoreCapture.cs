@@ -37,7 +37,9 @@ internal static class DebuggerMacCoreCapture
             // Cache the captured pages for immediate offline inspection. The collector writes chunks smaller than 2 GiB.
             await RunAsync(collector,
                 ["-s", "-x", "full", "-t", "2097152", "-v", "-o", path, processId.ToString(CultureInfo.InvariantCulture)],
-                progress, diagnosticContext, cancellationToken).ConfigureAwait(false);
+                progress, diagnosticContext, cancellationToken,
+                (process, token) => DebuggerCaptureResourceObservation.ObserveAsync(process, path, progress, token))
+                .ConfigureAwait(false);
             File.SetUnixFileMode(path, UnixFileMode.UserRead | UnixFileMode.UserWrite);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -56,7 +58,8 @@ internal static class DebuggerMacCoreCapture
     }
 
     private static async Task RunAsync(string executable, string[] arguments, Action<string> progress,
-        TestContext? diagnosticContext, CancellationToken cancellationToken)
+        TestContext? diagnosticContext, CancellationToken cancellationToken,
+        Func<Process, CancellationToken, Task>? observeProcess = null)
     {
         var start = new ProcessStartInfo(executable);
         foreach (string argument in arguments)
@@ -64,7 +67,7 @@ internal static class DebuggerMacCoreCapture
             start.ArgumentList.Add(argument);
         }
         (int exitCode, string output, string error) = await DebuggerTestProcess.RunAsync(
-            start, cancellationToken, progress, diagnosticContext)
+            start, cancellationToken, progress, diagnosticContext, observeProcess)
             .ConfigureAwait(false);
         Assert.AreEqual(0, exitCode, $"Native core collector failed: {output}{Environment.NewLine}{error}");
     }

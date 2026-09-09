@@ -12,6 +12,45 @@ namespace Csls.Debugger.Tests;
 public sealed class DebuggerTestProcessTests : DapTestContext
 {
     /// <summary>
+    /// Propagates synchronous and asynchronous observer failures after reaping the independently retained child.
+    /// </summary>
+    /// <param name="asynchronous">Whether the observer fails after yielding its execution.</param>
+    [TestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
+    [Timeout(30000, CooperativeCancellation = true)]
+    public async Task ObserverFailureReapsRunningProcess(bool asynchronous)
+    {
+        using var children = new DisposableCollection<Process>();
+        Process? retained = null;
+        var failure = new IOException("The process observation sink rejected the owned child.");
+        var start = new ProcessStartInfo(Environment.GetEnvironmentVariable("DOTNET_HOST_PATH") ?? "dotnet");
+        start.ArgumentList.Add(ResolveTestProcessHost());
+        start.ArgumentList.Add("--debugger-process-tree-child");
+        start.ArgumentList.Add("leaf");
+        IOException observed = await Assert.ThrowsExactlyAsync<IOException>(async () =>
+            await DebuggerTestProcess.RunAsync(start, TestContext.CancellationToken,
+                observeProcess: (process, token) =>
+                {
+                    token.ThrowIfCancellationRequested();
+                    retained = children.Acquire(() => Process.GetProcessById(process.Id));
+                    _ = retained.SafeHandle;
+                    return asynchronous ? FailAsync() : throw failure;
+                }).ConfigureAwait(false)).ConfigureAwait(false);
+        Assert.AreSame(failure, observed);
+        Assert.IsNotNull(retained);
+        Assert.IsTrue(retained.HasExited);
+        Assert.IsTrue(await Task.Run(() => retained.WaitForExit(0), TestContext.CancellationToken).ConfigureAwait(false),
+            "The observer failure must reach its caller after the owned process object is signaled.");
+
+        async Task FailAsync()
+        {
+            await Task.Yield();
+            throw failure;
+        }
+    }
+
+    /// <summary>
     /// Propagates an output sink failure while reaping the child that is still waiting for input.
     /// </summary>
     [TestMethod]
