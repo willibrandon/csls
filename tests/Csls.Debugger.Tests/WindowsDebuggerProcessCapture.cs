@@ -97,9 +97,11 @@ internal static class WindowsDebuggerProcessCapture
     /// <param name="path">The new dump path.</param>
     /// <param name="cancellationToken">Cancels and reaps the collector independently of the captured process.</param>
     /// <param name="captureType">An optional managed dump policy, with native thread capture as the default.</param>
+    /// <param name="diagnosticContext">Retains collector progress and native stacks before cancellation cleanup.</param>
     /// <returns>The collector exit status and diagnostics.</returns>
     internal static async Task<(int ExitCode, string Output, string Error)> CaptureAsync(
-        Process process, string path, CancellationToken cancellationToken, DumpType? captureType = null)
+        Process process, string path, CancellationToken cancellationToken, DumpType? captureType = null,
+        TestContext? diagnosticContext = null)
     {
         _ = process.SafeHandle;
         var startInfo = new ProcessStartInfo(Environment.GetEnvironmentVariable("DOTNET_HOST_PATH") ?? "dotnet");
@@ -119,7 +121,9 @@ internal static class WindowsDebuggerProcessCapture
             _ => throw new ArgumentOutOfRangeException(nameof(captureType))
         });
         (int collectorId, int exitCode, string output, string error) =
-            await DebuggerTestProcess.RunWithIdentityAsync(startInfo, cancellationToken).ConfigureAwait(false);
+            await DebuggerTestProcess.RunWithIdentityAsync(startInfo, cancellationToken,
+                diagnosticContext is null ? null : line => diagnosticContext.WriteLine(line), diagnosticContext)
+                .ConfigureAwait(false);
         if (exitCode != 0)
         {
             string crash = await DebuggerWindowsCrashDiagnostics.ReadAsync(collectorId).ConfigureAwait(false);

@@ -144,9 +144,14 @@ public sealed class DapWindowsNativeDiagnosticsTests : DapTestContext
                     long started = Stopwatch.GetTimestamp();
                     (int exitCode, string collectedOutput, string collectedError) =
                         await WindowsDebuggerProcessCapture.CaptureAsync(process, path, TestContext.CancellationToken,
-                            captureType).ConfigureAwait(false);
+                            captureType, TestContext).ConfigureAwait(false);
                     TestContext.WriteLine($"{captureType} capture {index}: {Stopwatch.GetElapsedTime(started).TotalMilliseconds:F1} ms.");
                     Assert.AreEqual(0, exitCode, collectedOutput + collectedError);
+                    Assert.Contains("Creating snapshot at ", collectedError);
+                    Assert.Contains("Snapshot captured at ", collectedError);
+                    Assert.Contains("Writing dump at ", collectedError);
+                    Assert.Contains("Dump written at ", collectedError);
+                    Assert.Contains("Releasing snapshot and file at ", collectedError);
                     Assert.IsFalse(process.HasExited);
                     using var dump = DataTarget.LoadDump(path, new DataTargetOptions { SymbolPaths = [] });
                     Assert.AreEqual(process.Id,
