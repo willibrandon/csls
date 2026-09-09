@@ -43,20 +43,7 @@ public sealed partial class McpDebuggerLifecycleTests
             CallToolResult ended = await mcp.Client.CallToolAsync("debug_session_end",
                 new Dictionary<string, object?> { ["debugSession"] = failedSession },
                 cancellationToken: TestContext.CancellationToken).ConfigureAwait(false);
-            Assert.IsTrue(ended.IsError);
-            Assert.IsNull(ended.StructuredContent);
-            Assert.IsNotNull(ended.Meta);
-            string? code = ended.Meta["errorCode"]?.GetValue<string>();
-            Assert.IsNotNull(code);
-            Assert.AreEqual("debugger_connection_lost", code);
-            TextContentBlock failure = Assert.ContainsSingle(ended.Content.OfType<TextContentBlock>());
-            using (var error = JsonDocument.Parse(failure.Text))
-            {
-                Assert.AreEqual("debugger_connection_lost", error.RootElement.GetProperty("code").GetString());
-                string? message = error.RootElement.GetProperty("message").GetString();
-                Assert.IsNotNull(message);
-                Assert.Contains(failedSession, message);
-            }
+            AssertDebuggerConnectionError(ended, failedSession);
             JsonElement empty = await CallAsync(mcp.Client, "debug_sessions_list", [], TestContext.CancellationToken)
                 .ConfigureAwait(false);
             Assert.IsEmpty(empty.GetProperty("sessions").EnumerateArray());
@@ -96,6 +83,22 @@ public sealed partial class McpDebuggerLifecycleTests
             }
             await target.WaitForExitAsync(CancellationToken.None).ConfigureAwait(false);
         }
+    }
+
+    private static void AssertDebuggerConnectionError(CallToolResult result, string session)
+    {
+        Assert.IsTrue(result.IsError);
+        Assert.IsNull(result.StructuredContent);
+        Assert.IsNotNull(result.Meta);
+        string? code = result.Meta["errorCode"]?.GetValue<string>();
+        Assert.IsNotNull(code);
+        Assert.AreEqual("debugger_connection_lost", code);
+        TextContentBlock failure = Assert.ContainsSingle(result.Content.OfType<TextContentBlock>());
+        using var error = JsonDocument.Parse(failure.Text);
+        Assert.AreEqual("debugger_connection_lost", error.RootElement.GetProperty("code").GetString());
+        string? message = error.RootElement.GetProperty("message").GetString();
+        Assert.IsNotNull(message);
+        Assert.Contains(session, message);
     }
 
     private static async Task<Process> FindOwnedDebuggerWorkerAsync(int targetId, int launcherId, string workerPath,
