@@ -57,10 +57,6 @@ internal static class DebuggerTestProcess
         startInfo.RedirectStandardError = true;
         startInfo.UseShellExecute = false;
         using DebuggerCaptureTrace? trace = CreateTrace(diagnosticContext);
-        if (diagnosticContext is not null && trace is not null)
-        {
-            diagnosticContext.AddResultFile(trace.FilePath);
-        }
         long started = Stopwatch.GetTimestamp();
         using Process process = Process.Start(startInfo)
             ?? throw new InvalidOperationException(
@@ -79,7 +75,17 @@ internal static class DebuggerTestProcess
         string directory = Path.Join(DebuggerTestEnvironment.FindRepositoryRoot(), "artifacts", "test-results");
         Directory.CreateDirectory(directory);
         string path = Path.Join(directory, $"process-capture-{Guid.NewGuid():N}.log");
-        return new DebuggerCaptureTrace(path);
+        var trace = new DebuggerCaptureTrace(path);
+        try
+        {
+            context.AddResultFile(trace.FilePath);
+            return trace;
+        }
+        catch
+        {
+            trace.Dispose();
+            throw;
+        }
     }
 
     private static async Task<(int ProcessId, int ExitCode, string Output, string Error)> CaptureAsync(

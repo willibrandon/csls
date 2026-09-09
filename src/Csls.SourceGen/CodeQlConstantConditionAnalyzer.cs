@@ -9,7 +9,7 @@ using System.Linq;
 namespace Csls.SourceGen;
 
 /// <summary>
-/// Prevents null tests made constant by guards or correlated conditional initializers.
+/// Prevents null tests made constant by guards or correlated local initializers.
 /// </summary>
 [DiagnosticAnalyzer(LanguageNames.CSharp)]
 public sealed class CodeQlConstantConditionAnalyzer : DiagnosticAnalyzer
@@ -126,13 +126,9 @@ public sealed class CodeQlConstantConditionAnalyzer : DiagnosticAnalyzer
             context.SemanticModel.GetSymbolInfo(pattern.Expression, context.CancellationToken).Symbol is not
                 ILocalSymbol { RefKind: RefKind.None } local ||
             local.DeclaringSyntaxReferences.FirstOrDefault()?.GetSyntax(context.CancellationToken) is not
-                VariableDeclaratorSyntax { Initializer.Value: ConditionalExpressionSyntax initializer } declarator ||
+                VariableDeclaratorSyntax { Initializer.Value: ExpressionSyntax initializer } declarator ||
             declarator.Parent?.Parent is not LocalDeclarationStatementSyntax declaration ||
-            declaration.Parent != body || declaration.Declaration.Variables.Count != 1 ||
-            UnwrapParentheses(initializer.Condition) is not IsPatternExpressionSyntax initialGuard ||
-            !TryGetNullTest(initialGuard.Pattern, out bool initialTestsNull) ||
-            !SymbolEqualityComparer.Default.Equals(source,
-                context.SemanticModel.GetSymbolInfo(initialGuard.Expression, context.CancellationToken).Symbol))
+            declaration.Parent != body || declaration.Declaration.Variables.Count != 1)
         {
             return false;
         }
@@ -147,8 +143,23 @@ public sealed class CodeQlConstantConditionAnalyzer : DiagnosticAnalyzer
         }
 
         bool sourceIsNull = binary.IsKind(SyntaxKind.LogicalAndExpression) ? guardTestsNull : !guardTestsNull;
+        if (initializer is InvocationExpressionSyntax invocation &&
+            GuardedFactoryNullProof.TryGetNullValue(invocation, source, local.Type, sourceIsNull, context,
+                out bool factoryReturnsNull))
+        {
+            value = testsNull == factoryReturnsNull;
+            return true;
+        }
+        if (initializer is not ConditionalExpressionSyntax conditional ||
+            UnwrapParentheses(conditional.Condition) is not IsPatternExpressionSyntax initialGuard ||
+            !TryGetNullTest(initialGuard.Pattern, out bool initialTestsNull) ||
+            !SymbolEqualityComparer.Default.Equals(source,
+                context.SemanticModel.GetSymbolInfo(initialGuard.Expression, context.CancellationToken).Symbol))
+        {
+            return false;
+        }
         ExpressionSyntax selected = UnwrapParentheses(
-            sourceIsNull == initialTestsNull ? initializer.WhenTrue : initializer.WhenFalse);
+            sourceIsNull == initialTestsNull ? conditional.WhenTrue : conditional.WhenFalse);
         if (selected.IsKind(SyntaxKind.NullLiteralExpression))
         {
             value = testsNull;
@@ -173,7 +184,7 @@ public sealed class CodeQlConstantConditionAnalyzer : DiagnosticAnalyzer
         BlockSyntax body,
         StatementSyntax first,
         StatementSyntax last,
-        ConditionalExpressionSyntax initializer,
+        ExpressionSyntax initializer,
         ISymbol source,
         ILocalSymbol local)
     {
