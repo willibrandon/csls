@@ -29,6 +29,7 @@ public sealed class DumpObjectTests : DapTestContext
         await using ConfiguredAsyncDisposable fixtureCleanup = fixture.ConfigureAwait(false);
         try
         {
+            DumpMachORegisterAssertions.Verify(fixture.DumpPath, TestContext.CancellationToken);
             await AssertDirectFieldsAsync(fixture).ConfigureAwait(false);
             AssertReleased(fixture);
             await AssertWorkerFieldsAsync(fixture).ConfigureAwait(false);

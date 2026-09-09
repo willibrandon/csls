@@ -103,6 +103,111 @@ public sealed class DumpMachODataReaderTests : DapTestContext
         }
     }
 
+    /// <summary>
+    /// Rejects thread-state records whose native word counts exceed their enclosing command.
+    /// </summary>
+    /// <param name="commandSize">The recorded thread-command byte extent.</param>
+    /// <param name="wordCount">The hostile register-state word count.</param>
+    [TestMethod]
+    [DataRow(12, 0u)]
+    [DataRow(16, 1u)]
+    [DataRow(16, uint.MaxValue)]
+    [DataRow(24, 3u)]
+    [DataRow(24, 1u)]
+    [Timeout(30000, CooperativeCancellation = true)]
+    public async Task InvalidNativeThreadStateBoundsAreRejected(int commandSize, uint wordCount)
+    {
+        byte[] bytes = new byte[32 + commandSize];
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes, 0xfeedfacf);
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(4), 0x01000007);
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(12), 4);
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(16), 1);
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(20), (uint)commandSize);
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(32), 4);
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(36), (uint)commandSize);
+        if (commandSize >= 16)
+        {
+            BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(40), uint.MaxValue);
+            BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(44), wordCount);
+        }
+        string path = Path.GetTempFileName();
+        try
+        {
+            await File.WriteAllBytesAsync(path, bytes, TestContext.CancellationToken).ConfigureAwait(false);
+            _ = Assert.ThrowsExactly<InvalidDataException>(() =>
+                DumpMachODataReader.ReadThreadOrdinals(path, TestContext.CancellationToken));
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
+    /// <summary>
+    /// Rejects truncated, conflicting and incorrectly wrapped Intel register records in native core files.
+    /// </summary>
+    /// <param name="mutation">The hostile Intel register encoding.</param>
+    /// <param name="message">The specific rejected register invariant.</param>
+    [TestMethod]
+    [DataRow("general-flavor", "wrapper has an invalid flavor or word count")]
+    [DataRow("general-count", "wrapper has an invalid flavor or word count")]
+    [DataRow("floating-flavor", "wrapper has an invalid flavor or word count")]
+    [DataRow("floating-count", "wrapper has an invalid flavor or word count")]
+    [DataRow("wrapped-size", "register state has an invalid size")]
+    [DataRow("general-size", "register state has an invalid size")]
+    [DataRow("floating-size", "register state has an invalid size")]
+    [DataRow("duplicate-general", "repeats its Intel general register state")]
+    [DataRow("duplicate-floating", "repeats its Intel floating-point register state")]
+    [DataRow("missing-general", "has no general register state")]
+    [Timeout(30000, CooperativeCancellation = true)]
+    public async Task InvalidNativeIntelRegisterRecordsAreRejected(string mutation, string message)
+    {
+        (uint Flavor, int Bytes, uint InnerFlavor, uint InnerCount)[] records = mutation switch
+        {
+            "general-flavor" => [(7, 176, 3, 42)],
+            "general-count" => [(7, 176, 4, 41)],
+            "floating-flavor" => [(8, 532, 4, 131)],
+            "floating-count" => [(8, 532, 5, 130)],
+            "wrapped-size" => [(7, 168, 4, 42)],
+            "general-size" => [(4, 160, 0, 0)],
+            "floating-size" => [(5, 516, 0, 0)],
+            "duplicate-general" => [(7, 176, 4, 42), (4, 168, 0, 0)],
+            "duplicate-floating" => [(7, 176, 4, 42), (8, 532, 5, 131), (5, 524, 0, 0)],
+            "missing-general" => [(8, 532, 5, 131)],
+            _ => throw new ArgumentOutOfRangeException(nameof(mutation))
+        };
+        int size = 8 + records.Sum(static record => 8 + record.Bytes);
+        byte[] bytes = new byte[32 + size];
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes, 0xfeedfacf);
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(4), 0x01000007);
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(12), 4);
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(16), 1);
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(20), (uint)size);
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(32), 4);
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(36), (uint)size);
+        int position = 40;
+        foreach ((uint flavor, int length, uint innerFlavor, uint innerCount) in records)
+        {
+            BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(position), flavor);
+            BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(position + 4), (uint)(length / 4));
+            BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(position + 8), innerFlavor);
+            BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(position + 12), innerCount);
+            position += 8 + length;
+        }
+        string path = Path.GetTempFileName();
+        try
+        {
+            await File.WriteAllBytesAsync(path, bytes, TestContext.CancellationToken).ConfigureAwait(false);
+            InvalidDataException rejected = Assert.ThrowsExactly<InvalidDataException>(() =>
+                DumpMachODataReader.ReadThreadOrdinals(path, TestContext.CancellationToken));
+            Assert.Contains(message, rejected.Message);
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
     private static byte[] CreateHostileCore(string json, int threads = 1, int notes = 1)
     {
         byte[] payload = Encoding.UTF8.GetBytes(json);

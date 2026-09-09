@@ -12,12 +12,15 @@ namespace Csls.Debugger.Dump;
 internal sealed class DumpMachODataReader : IDataReader, IThreadReader, IDisposable
 {
     private readonly DataTarget _owner;
-    private readonly IReadOnlyDictionary<uint, uint> _threadOrdinals;
+    private readonly IReadOnlyDictionary<uint, uint> _readerThreadIds;
+    private readonly IReadOnlyDictionary<uint, byte[]> _nativeContexts;
 
-    private DumpMachODataReader(DataTarget owner, IReadOnlyDictionary<uint, uint> threadOrdinals)
+    private DumpMachODataReader(DataTarget owner, IReadOnlyDictionary<uint, uint> readerThreadIds,
+        IReadOnlyDictionary<uint, byte[]> nativeContexts)
     {
         _owner = owner;
-        _threadOrdinals = threadOrdinals;
+        _readerThreadIds = readerThreadIds;
+        _nativeContexts = nativeContexts;
     }
 
     /// <summary>
@@ -37,8 +40,9 @@ internal sealed class DumpMachODataReader : IDataReader, IThreadReader, IDisposa
                 return target;
             }
 
-            IReadOnlyDictionary<uint, uint>? ordinals = ReadThreadOrdinals(path, cancellationToken);
-            if (ordinals is null || ordinals.Count == 0)
+            (IReadOnlyDictionary<uint, uint>? ordinals, IReadOnlyDictionary<uint, byte[]> contexts) =
+                ReadThreadMetadata(path, cancellationToken);
+            if ((ordinals is null || ordinals.Count == 0) && contexts.Count == 0)
             {
                 return target;
             }
@@ -52,16 +56,35 @@ internal sealed class DumpMachODataReader : IDataReader, IThreadReader, IDisposa
             {
                 throw new InvalidDataException("The Mach-O core exceeds the 4096-thread limit.");
             }
-            if (readerIds.ToHashSet().SetEquals(ordinals.Keys))
+            bool ordinalIds = readerIds.Order().SequenceEqual(Enumerable.Range(0, readerIds.Length).Select(static id => (uint)id));
+            if (ordinals is null || ordinals.Count == 0)
             {
-                return target;
+                if (!ordinalIds)
+                {
+                    throw new InvalidDataException("The Mach-O core cannot associate native register records with its thread identities.");
+                }
+                ordinals = readerIds.ToDictionary(static id => id);
             }
-            if (!readerIds.Order().SequenceEqual(Enumerable.Range(0, readerIds.Length).Select(static id => (uint)id)) ||
-                ordinals.Values.Any(ordinal => ordinal >= readerIds.Length))
+            bool recordedIds = readerIds.ToHashSet().SetEquals(ordinals.Keys);
+            if ((!ordinalIds && !recordedIds) || ordinals.Values.Any(ordinal => ordinal >= readerIds.Length))
             {
                 throw new InvalidDataException("The Mach-O thread metadata does not match the captured register contexts.");
             }
-            using var reader = new DumpDataReaderLease(() => new DumpMachODataReader(target, ordinals));
+            if (recordedIds && contexts.Count == 0)
+            {
+                return target;
+            }
+            var nativeContexts = new Dictionary<uint, byte[]>();
+            foreach ((uint threadId, uint ordinal) in ordinals)
+            {
+                if (contexts.TryGetValue(ordinal, out byte[]? context))
+                {
+                    nativeContexts.Add(threadId, context);
+                }
+            }
+            IReadOnlyDictionary<uint, uint> readerThreadIds = recordedIds
+                ? ordinals.Keys.ToDictionary(static id => id) : ordinals;
+            using var reader = new DumpDataReaderLease(() => new DumpMachODataReader(target, readerThreadIds, nativeContexts));
             return reader.CreateTarget(options);
         }
         catch
@@ -77,7 +100,11 @@ internal sealed class DumpMachODataReader : IDataReader, IThreadReader, IDisposa
     /// <param name="path">The original Mach-O core file.</param>
     /// <param name="cancellationToken">Cancels file and JSON traversal.</param>
     /// <returns>The recorded thread mapping, or null when the file contains no process-metadata note.</returns>
-    internal static IReadOnlyDictionary<uint, uint>? ReadThreadOrdinals(string path, CancellationToken cancellationToken)
+    internal static IReadOnlyDictionary<uint, uint>? ReadThreadOrdinals(string path, CancellationToken cancellationToken) =>
+        ReadThreadMetadata(path, cancellationToken).Ordinals;
+
+    private static (IReadOnlyDictionary<uint, uint>? Ordinals, IReadOnlyDictionary<uint, byte[]> Contexts) ReadThreadMetadata(
+        string path, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
         using FileStream stream = File.OpenRead(path);
@@ -96,6 +123,7 @@ internal sealed class DumpMachODataReader : IDataReader, IThreadReader, IDisposa
         long end = 32L + bytes;
         long position = 32;
         int threads = 0;
+        var contexts = new Dictionary<uint, byte[]>();
         byte[]? metadata = null;
         Span<byte> command = stackalloc byte[40];
         for (uint index = 0; index < commands; index++)
@@ -109,13 +137,22 @@ internal sealed class DumpMachODataReader : IDataReader, IThreadReader, IDisposa
             stream.ReadExactly(command[..8]);
             uint kind = BinaryPrimitives.ReadUInt32LittleEndian(command);
             uint size = BinaryPrimitives.ReadUInt32LittleEndian(command[4..]);
-            if (size < 8 || size % 8 != 0 || size > end - position)
+            uint alignment = kind == 4 ? 4u : 8u;
+            if (size < 8 || size % alignment != 0 || size > end - position)
             {
                 throw new InvalidDataException("The Mach-O load command has an invalid size.");
             }
-            if (kind == 4 && ++threads > 4096)
+            if (kind == 4)
             {
-                throw new InvalidDataException("The Mach-O core exceeds the 4096-thread limit.");
+                if (++threads > 4096)
+                {
+                    throw new InvalidDataException("The Mach-O core exceeds the 4096-thread limit.");
+                }
+                byte[]? context = DumpMachOThreadContexts.Read(stream, cpu, position + 8, position + size, cancellationToken);
+                if (context is not null)
+                {
+                    contexts.Add((uint)(threads - 1), context);
+                }
             }
             if (kind == 0x31)
             {
@@ -148,7 +185,7 @@ internal sealed class DumpMachODataReader : IDataReader, IThreadReader, IDisposa
         {
             throw new InvalidDataException("The Mach-O load commands do not fill their recorded table.");
         }
-        return metadata is null ? null : ParseThreadOrdinals(metadata, threads, cancellationToken);
+        return (metadata is null ? null : ParseThreadOrdinals(metadata, threads, cancellationToken), contexts);
     }
 
     private static Dictionary<uint, uint> ParseThreadOrdinals(byte[] metadata, int threadCount,
@@ -238,15 +275,22 @@ internal sealed class DumpMachODataReader : IDataReader, IThreadReader, IDisposa
     public IEnumerable<ModuleInfo> EnumerateModules() => _owner.DataReader.EnumerateModules();
 
     /// <inheritdoc />
-    public IEnumerable<uint> EnumerateOSThreadIds() => _threadOrdinals.Keys;
+    public IEnumerable<uint> EnumerateOSThreadIds() => _readerThreadIds.Keys;
 
     /// <inheritdoc />
     public ulong GetThreadTeb(uint osThreadId) => 0;
 
     /// <inheritdoc />
-    public bool GetThreadContext(uint threadID, uint contextFlags, Span<byte> context) =>
-        _threadOrdinals.TryGetValue(threadID, out uint ordinal) &&
-        _owner.DataReader.GetThreadContext(ordinal, contextFlags, context);
+    public bool GetThreadContext(uint threadID, uint contextFlags, Span<byte> context)
+    {
+        if (!_readerThreadIds.TryGetValue(threadID, out uint readerId))
+        {
+            return false;
+        }
+        return _nativeContexts.TryGetValue(threadID, out byte[]? captured)
+            ? captured.AsSpan().TryCopyTo(context)
+            : _owner.DataReader.GetThreadContext(readerId, contextFlags, context);
+    }
 
     /// <inheritdoc />
     public int Read(ulong address, Span<byte> buffer) => _owner.DataReader.Read(address, buffer);
