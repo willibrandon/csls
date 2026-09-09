@@ -461,6 +461,8 @@ public sealed class DapBreakpointScaleTests : DapTestContext
 
     private async Task<(string Program, string Source)> EmitProgramAsync(string directory, string source)
     {
+        long started = Stopwatch.GetTimestamp();
+        TestContext.WriteLine($"Compiling breakpoint fixture in {directory}.");
         string sourcePath = Path.Join(directory, "Program.cs");
         string programPath = Path.Join(directory, "Csls.BreakpointScale.dll");
         await File.WriteAllTextAsync(sourcePath, source, Encoding.UTF8, TestContext.CancellationToken).ConfigureAwait(false);
@@ -474,6 +476,7 @@ public sealed class DapBreakpointScaleTests : DapTestContext
             new CSharpCompilationOptions(OutputKind.ConsoleApplication, optimizationLevel: OptimizationLevel.Debug,
                 deterministic: true, nullableContextOptions: NullableContextOptions.Enable,
                 generalDiagnosticOption: ReportDiagnostic.Error));
+        TestContext.WriteLine($"Created breakpoint compilation in {Stopwatch.GetElapsedTime(started).TotalMilliseconds:F1} ms.");
         using (var pe = new FileStream(programPath, FileMode.CreateNew, FileAccess.Write, FileShare.None))
         using (var pdb = new FileStream(Path.ChangeExtension(programPath, ".pdb"), FileMode.CreateNew, FileAccess.Write, FileShare.None))
         {
@@ -484,6 +487,7 @@ public sealed class DapBreakpointScaleTests : DapTestContext
         }
         File.Copy(Path.ChangeExtension(ResolveTestProcessHost(), ".runtimeconfig.json"),
             Path.ChangeExtension(programPath, ".runtimeconfig.json"));
+        TestContext.WriteLine($"Emitted breakpoint fixture in {Stopwatch.GetElapsedTime(started).TotalMilliseconds:F1} ms.");
         return (programPath, sourcePath);
     }
 }

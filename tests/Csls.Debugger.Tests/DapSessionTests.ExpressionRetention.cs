@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Text.Json;
 
@@ -88,11 +89,13 @@ public sealed partial class DapSessionTests
     [Timeout(180000, CooperativeCancellation = true)]
     public async Task RepeatedReadOnlyExpressionsReleaseUnpublishedValues(bool rejected)
     {
+        long started = Stopwatch.GetTimestamp();
         string waitPath = CreateResultsViewSignalPath();
         try
         {
             DapTestClient client = await StartStoppedFixtureAsync(waitPath).ConfigureAwait(false);
             await using ConfiguredAsyncDisposable disposal = client.ConfigureAwait(false);
+            using DapTestCancellationCapture capture = CaptureProtocolOnCancellation(client);
             JsonElement frame = await GetFixtureFrameAsync(client).ConfigureAwait(false);
             int frameId = frame.GetProperty("id").GetInt32();
             JsonElement array = await ReadEvaluationAsync(client, frameId, "localStringIdentity._items",
@@ -110,6 +113,11 @@ public sealed partial class DapSessionTests
             // Cross the generation-wide value budget with reads that publish no runtime value handles.
             for (int iteration = 0; iteration < 520; iteration++)
             {
+                if (iteration % 64 == 0)
+                {
+                    TestContext.WriteLine($"Read-only expression {iteration + 1}/520, rejected={rejected}, " +
+                        $"elapsed={Stopwatch.GetElapsedTime(started).TotalMilliseconds:F1} ms.");
+                }
                 JsonElement result = await ReadEvaluationAsync(client, frameId,
                     rejected ? rejectedExpression : expression, success: !rejected,
                     TestContext.CancellationToken).ConfigureAwait(false);
@@ -126,6 +134,7 @@ public sealed partial class DapSessionTests
                 }
             }
 
+            TestContext.WriteLine($"Completed read-only expression requests in {Stopwatch.GetElapsedTime(started).TotalMilliseconds:F1} ms.");
             JsonElement[] elements = await ReadVariablesAsync(client, reference).ConfigureAwait(false);
             Assert.AreSequenceEqual(["\"unused\"", "\"array\\\\value\""],
                 elements.Select(element => element.GetProperty("value").GetString()).ToArray());
