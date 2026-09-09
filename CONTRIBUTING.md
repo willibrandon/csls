@@ -25,6 +25,9 @@ The `DebuggerStress` category includes a live four-GiB object graph. Run these
 tests on a 64-bit host with at least eight GiB of memory capacity. The graph
 test checks populated target memory, bounded inspection pages, adapter memory
 growth, and process cleanup.
+CI runs the four-GiB graph test on Linux and Windows in both architectures and
+on macOS Intel. The standard seven-GiB macOS ARM64 runner runs the other stress
+tests.
 
 `dotnet test` succeeds on a clean checkout without separately provisioned editor
 or parity-oracle fixtures. Tests for unavailable optional integrations are reported
