@@ -100,6 +100,11 @@ if (args is ["--debugger-native-memory-crash-fixture"])
     return DebuggerNativeMemoryCrashFixture.Run();
 }
 
+if (args is ["--debugger-large-graph-fixture"])
+{
+    return DebuggerLargeGraphFixture.Run();
+}
+
 if (args is ["--debugger-dump-arrays", string dumpArrayPath])
 {
     return DebuggerDumpArrayFixture.Run(dumpArrayPath, "ready");

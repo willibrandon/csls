@@ -21,6 +21,11 @@ Building the debugger test project also builds its portable C#, Visual Basic, an
 F# fixtures in Debug and Release. CI shares these outputs across platform jobs.
 Fixtures with live Source Link endpoints or Windows PDBs are built on the test host.
 
+The `DebuggerStress` category includes a live four-GiB object graph. Run these
+tests on a 64-bit host with at least eight GiB of memory capacity. The graph
+test checks populated target memory, bounded inspection pages, adapter memory
+growth, and process cleanup.
+
 `dotnet test` succeeds on a clean checkout without separately provisioned editor
 or parity-oracle fixtures. Tests for unavailable optional integrations are reported
 as skipped and include the exact provisioning command in their result message.
