@@ -151,6 +151,10 @@ Expressions and completions use the selected stopped frame. Explicit method call
 and object construction use guarded target execution. Direct assignments update
 stopped target storage.
 
+Use an explicit cast to inspect an exactly matching boxed struct. Assign the
+result to a local, field, or array element of the same runtime type to copy its
+value. Embedded reference fields keep the identity of their referenced objects.
+
 Use type-qualified expressions such as `System.Int32.MaxValue` and
 `System.String.Empty` to inspect constants and static fields. Static-field
 completions use the selected frame's language, and assignments to mutable static

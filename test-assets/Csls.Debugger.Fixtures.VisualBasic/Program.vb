@@ -27,6 +27,8 @@ Friend Module Program
             TypeOf referenceValue Is String, TypeOf nullReference Is Object, TypeOf boxedNumber Is Integer}
         Dim pairs As ValueTuple(Of Integer, Integer)() = {
             New ValueTuple(Of Integer, Integer)(0, 142), New ValueTuple(Of Integer, Integer)(151, 152)}
+        Dim boxedPair As Object = pairs(1)
+        Dim unboxedPairOracle As Integer = DirectCast(boxedPair, ValueTuple(Of Integer, Integer)).Item1
         answer += 1
         Console.Write(arguments(2))
         Console.Out.Flush()
@@ -44,6 +46,8 @@ Friend Module Program
         GC.KeepAlive(boxedNumber)
         GC.KeepAlive(typeOracle)
         GC.KeepAlive(pairs)
+        GC.KeepAlive(boxedPair)
+        GC.KeepAlive(unboxedPairOracle)
         Return answer - 42
     End Function
 End Module

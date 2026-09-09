@@ -39,14 +39,19 @@ internal sealed class ManagedReferenceExpressionEvaluator
 
         if (!target.IsReference)
         {
-            if (kind != DebugExpressionNodeKind.TryCast && !isNull && operand.HasScalar &&
+            bool identity = declaredSource is not null && declaredSource.IsSameType(target);
+            bool unboxing = kind != DebugExpressionNodeKind.ReferenceUpcast &&
+                declaredSource is { IsReference: true } &&
+                _conversions.IsRuntimeAssignable(target, declaredSource, thread);
+            if (kind != DebugExpressionNodeKind.TryCast && !isNull && (identity || unboxing) &&
                 actualSource is not null && actualSource.IsSameType(target))
             {
                 return operand with { DeclaredType = target, ExplicitReceiverType = target };
             }
 
+            string sourceDescription = isNull ? "null" : $"a value of type '{actualSource?.DisplayName ?? operand.Type}'";
             throw new InvalidOperationException(
-                $"The type operation cannot convert this value to '{targetDisplayName}' without supported value materialization.");
+                $"The type operation cannot convert {sourceDescription} to '{targetDisplayName}'.");
         }
 
         if (declaredSource is not null && !(kind == DebugExpressionNodeKind.ReferenceUpcast

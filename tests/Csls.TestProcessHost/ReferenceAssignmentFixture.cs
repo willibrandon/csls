@@ -31,6 +31,9 @@ internal static class ReferenceAssignmentFixture<TBase>
         Exception? nullBaseTarget = null;
         object objectTarget = "original object";
         object boxedSource = 42;
+        object boxedStruct = (Number: 17, Reference: new StrongBox<int>(23));
+        (int Number, StrongBox<int> Reference) structTarget = (31, new StrongBox<int>(37));
+        object? nullBox = null;
         object[] objectArray = ["original element"];
         var derivedSource = new ArgumentException("replacement");
         Exception widenedSource = new ArgumentException("widened source");
@@ -68,6 +71,9 @@ internal static class ReferenceAssignmentFixture<TBase>
         GC.KeepAlive(nullBaseTarget);
         GC.KeepAlive(objectTarget);
         GC.KeepAlive(boxedSource);
+        GC.KeepAlive(boxedStruct);
+        GC.KeepAlive(structTarget);
+        GC.KeepAlive(nullBox);
         GC.KeepAlive(objectArray);
         GC.KeepAlive(derivedSource);
         GC.KeepAlive(widenedSource);

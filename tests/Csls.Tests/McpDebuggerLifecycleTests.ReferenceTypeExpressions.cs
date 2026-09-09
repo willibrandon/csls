@@ -39,6 +39,7 @@ public sealed partial class McpDebuggerLifecycleTests
         string repositoryRoot, string sourcePath, int line, string directory, CancellationToken cancellationToken)
     {
         const string BaseField = "((Csls.TestProcessHost.ReferenceCastBase)hiddenObject)._value";
+        const string StructCast = "(System.ValueTuple<int, System.Runtime.CompilerServices.StrongBox<int>>)boxedStruct";
         McpProcessSession mcp = await StartMcpAsync(cancellationToken).ConfigureAwait(false);
         await using ConfiguredAsyncDisposable cleanup = mcp.ConfigureAwait(false);
         McpClient client = mcp.Client;
@@ -63,6 +64,10 @@ public sealed partial class McpDebuggerLifecycleTests
             "widenedSource is System.ArgumentException", cancellationToken).ConfigureAwait(false);
         Assert.AreEqual("true", typeTest.GetProperty("result").GetString());
         Assert.AreEqual("bool", typeTest.GetProperty("type").GetString());
+        await AssertMcpStructAssignmentIntegerAsync(client, session, generation, frameId,
+            $"({StructCast}).Item1", "17", cancellationToken).ConfigureAwait(false);
+        await AssertMcpStructAssignmentIntegerAsync(client, session, generation, frameId,
+            $"({StructCast}).Item2.Value", "23", cancellationToken).ConfigureAwait(false);
 
         await AssertMcpReferenceCastWatchesAsync(client, session, generation, frameId, cancellationToken).ConfigureAwait(false);
         await AssertToolErrorAsync(client, "debug_expression_set", new Dictionary<string, object?>
@@ -73,13 +78,23 @@ public sealed partial class McpDebuggerLifecycleTests
             ["expression"] = BaseField,
             ["value"] = "99"
         }, "debugger_control_denied", cancellationToken).ConfigureAwait(false);
+        await AssertToolErrorAsync(client, "debug_expression_set", new Dictionary<string, object?>
+        {
+            ["debugSession"] = session,
+            ["stopGeneration"] = generation,
+            ["frameId"] = frameId,
+            ["expression"] = "structTarget",
+            ["value"] = StructCast
+        }, "debugger_control_denied", cancellationToken).ConfigureAwait(false);
         await AssertToolErrorAsync(client, "debug_evaluate", new Dictionary<string, object?>
         {
             ["debugSession"] = session,
             ["stopGeneration"] = checked(generation + 1),
             ["frameId"] = frameId,
-            ["expression"] = BaseField
+            ["expression"] = StructCast
         }, "debugger_stale_generation", cancellationToken).ConfigureAwait(false);
+        await AssertMcpStructAssignmentIntegerAsync(client, session, generation, frameId,
+            "structTarget.Number", "31", cancellationToken).ConfigureAwait(false);
         await AssertMcpStructAssignmentIntegerAsync(client, session, generation, frameId, BaseField, "11", cancellationToken)
             .ConfigureAwait(false);
         await AssertMcpStructAssignmentIntegerAsync(client, session, generation, frameId, "factory._calls", "0", cancellationToken)
@@ -104,7 +119,8 @@ public sealed partial class McpDebuggerLifecycleTests
         [
             "widenedSource is System.ArgumentException",
             "(System.InvalidOperationException)widenedSource",
-            "widenedSource as System.InvalidOperationException"
+            "widenedSource as System.InvalidOperationException",
+            "((System.ValueTuple<int, System.Runtime.CompilerServices.StrongBox<int>>)boxedStruct).Item1"
         ];
         JsonElement watches = await CallAsync(client, "debug_watches_get", new Dictionary<string, object?>
         {
@@ -115,7 +131,7 @@ public sealed partial class McpDebuggerLifecycleTests
         }, cancellationToken).ConfigureAwait(false);
         Assert.AreEqual(generation, watches.GetProperty("stopGeneration").GetInt64());
         JsonElement[] values = [.. watches.GetProperty("watches").EnumerateArray()];
-        Assert.HasCount(3, values);
+        Assert.HasCount(4, values);
         Assert.AreEqual("true", values[0].GetProperty("evaluation").GetProperty("result").GetString());
         Assert.AreEqual("bool", values[0].GetProperty("evaluation").GetProperty("type").GetString());
         Assert.AreEqual("debugger_evaluation_failed", values[1].GetProperty("error").GetProperty("code").GetString());
@@ -123,6 +139,8 @@ public sealed partial class McpDebuggerLifecycleTests
         Assert.AreEqual("null", values[2].GetProperty("evaluation").GetProperty("result").GetString());
         Assert.AreEqual("System.InvalidOperationException", values[2].GetProperty("evaluation").GetProperty("type").GetString());
         Assert.AreEqual(0, values[2].GetProperty("evaluation").GetProperty("variablesReference").GetInt32());
+        Assert.AreEqual("17", values[3].GetProperty("evaluation").GetProperty("result").GetString());
+        Assert.AreEqual("int", values[3].GetProperty("evaluation").GetProperty("type").GetString());
 
         string uri = $"csls://debug/watches/{session}/{generation}/{frameId}?expression={Uri.EscapeDataString(expressions[0])}";
         JsonElement resource = await ReadAsync(client, uri, cancellationToken).ConfigureAwait(false);
@@ -130,5 +148,12 @@ public sealed partial class McpDebuggerLifecycleTests
         JsonElement resourceWatch = Assert.ContainsSingle(resource.GetProperty("watches").EnumerateArray());
         Assert.AreEqual("true", resourceWatch.GetProperty("evaluation").GetProperty("result").GetString());
         Assert.AreEqual("bool", resourceWatch.GetProperty("evaluation").GetProperty("type").GetString());
+
+        string structUri = $"csls://debug/watches/{session}/{generation}/{frameId}?expression={Uri.EscapeDataString(expressions[3])}";
+        JsonElement structResource = await ReadAsync(client, structUri, cancellationToken).ConfigureAwait(false);
+        Assert.AreEqual(generation, structResource.GetProperty("stopGeneration").GetInt64());
+        JsonElement structWatch = Assert.ContainsSingle(structResource.GetProperty("watches").EnumerateArray());
+        Assert.AreEqual("17", structWatch.GetProperty("evaluation").GetProperty("result").GetString());
+        Assert.AreEqual("int", structWatch.GetProperty("evaluation").GetProperty("type").GetString());
     }
 }

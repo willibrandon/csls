@@ -28,6 +28,8 @@ let main arguments =
                        nullReference :? string; boxedNumber :? int |]
     let numbers = [| answer; answer + 1 |]
     let pairs = [| ValueTuple<int, int>(0, 142); ValueTuple<int, int>(151, 152) |]
+    let boxedPair: obj = pairs[1]
+    let struct (unboxedPairOracle, _) = boxedPair :?> ValueTuple<int, int>
     answer <- answer + 1
     Console.Write(arguments[2])
     Console.Out.Flush()
@@ -44,4 +46,6 @@ let main arguments =
     GC.KeepAlive(boxedNumber)
     GC.KeepAlive(typeOracle)
     GC.KeepAlive(pairs)
+    GC.KeepAlive(boxedPair)
+    GC.KeepAlive(unboxedPairOracle)
     answer + numbers[0] - 83

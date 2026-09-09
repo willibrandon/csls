@@ -83,6 +83,33 @@ internal sealed partial class CorDebugDebuggee
         return retained.TupleCustomTypeInfo;
     }
 
+    private ManagedExpressionValue RetainValueTypeConversion(
+        ManagedExpressionValue value,
+        ManagedFrameHandle frame,
+        DebugStopGeneration generation)
+    {
+        if (!TryDereferenceAndUnboxValue(GetRuntimeValue(value), out nint unboxed))
+        {
+            throw new InvalidOperationException("A null reference cannot be unboxed to a value type.");
+        }
+
+        try
+        {
+            // CoreCLR retains a local value-class snapshot. The cast produces a value,
+            // so its fields have no writable origin in the original box or local.
+            return RetainExpressionValue(
+                value.Display.Name, value.Display.EvaluateName, unboxed, frame.Id, generation,
+                tupleCustomTypeInfo: null, origin: null, value.DeclaredType) with
+            {
+                ExplicitReceiverType = value.ExplicitReceiverType
+            };
+        }
+        finally
+        {
+            ReleaseFunctionEvaluationPointer(unboxed);
+        }
+    }
+
     private int[] EvaluateArrayIndexes(
         ManagedFrameHandle frame,
         DebugExpressionPlan plan,

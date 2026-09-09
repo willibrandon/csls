@@ -153,7 +153,11 @@ internal sealed partial class CorDebugDebuggee
             string displayName = ManagedRuntimeTypeNameParser.Parse(typeName, typeLanguage).DebuggerTypeName;
             ManagedExpressionValue result = _referenceExpressions.Evaluate(
                 operand, declared, actual, target, displayName, node.Kind, thread);
-            return result.ExplicitReceiverType is null ? result : result with
+            if (result.ExplicitReceiverType is null)
+            {
+                return result;
+            }
+            result = result with
             {
                 Display = result.Display with
                 {
@@ -161,6 +165,9 @@ internal sealed partial class CorDebugDebuggee
                         operand.Display.EvaluateName, primitiveType is null ? node.TypeName! : target.Name, node.Kind, plan.Language)
                 }
             };
+            return result.ExplicitReceiverType.ElementType == 0x11
+                ? RetainValueTypeConversion(result, frame, generation)
+                : result;
         }
         finally
         {

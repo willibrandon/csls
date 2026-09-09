@@ -53,6 +53,8 @@ internal static class Program
         bool[] typeOracle = [referenceValue is DebuggerFixtureValue, referenceValue is string,
             nullReference is object, boxedNumber is int];
         ValueTuple<int, int>[] pairs = [new(0, 142), new(151, 152)];
+        object boxedPair = pairs[1];
+        int unboxedPairOracle = ((ValueTuple<int, int>)boxedPair).Item1;
         if (arguments.Length >= 5)
         {
             File.WriteAllText(arguments[3], "started");
@@ -81,6 +83,8 @@ internal static class Program
         GC.KeepAlive(boxedNumber);
         GC.KeepAlive(typeOracle);
         GC.KeepAlive(pairs);
+        GC.KeepAlive(boxedPair);
+        GC.KeepAlive(unboxedPairOracle);
         return answer - 42;
     }
 

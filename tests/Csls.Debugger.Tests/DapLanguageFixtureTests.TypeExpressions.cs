@@ -85,6 +85,23 @@ public sealed partial class DapSessionTests
                 await AssertStructAssignmentEvaluationAsync(client, frameId, expression, expected, type).ConfigureAwait(false);
             }
 
+            (string unboxing, string destination) = language switch
+            {
+                "CSharp" => ("((System.ValueTuple<int, int>)boxedPair)", "pairs[0]"),
+                "VisualBasic" => ("DirectCast(boxedPair, System.ValueTuple(Of Integer, Integer))", "pairs(0)"),
+                _ => ("(boxedPair :?> System.ValueTuple<int, int>)", "pairs.[0]")
+            };
+            await AssertStructAssignmentEvaluationAsync(client, frameId, "unboxedPairOracle", "151", "int").ConfigureAwait(false);
+            await AssertStructAssignmentEvaluationAsync(client, frameId, unboxing + ".Item1", "151", "int").ConfigureAwait(false);
+            await AssertStructAssignmentEvaluationAsync(client, frameId, destination + ".Item1", "0", "int").ConfigureAwait(false);
+            _ = await ReadSetExpressionAsync(client, frameId, destination, unboxing, success: true,
+                TestContext.CancellationToken).ConfigureAwait(false);
+            await AssertStructAssignmentEvaluationAsync(client, frameId, destination + ".Item1", "151", "int").ConfigureAwait(false);
+            await AssertStructAssignmentEvaluationAsync(client, frameId, destination + ".Item2", "152", "int").ConfigureAwait(false);
+            _ = await ReadSetExpressionAsync(client, frameId, destination + ".Item1", "163", success: true,
+                TestContext.CancellationToken).ConfigureAwait(false);
+            await AssertStructAssignmentEvaluationAsync(client, frameId, destination + ".Item1", "163", "int").ConfigureAwait(false);
+            await AssertStructAssignmentEvaluationAsync(client, frameId, unboxing + ".Item1", "151", "int").ConfigureAwait(false);
             Assert.AreEqual(frameId, await AssertStoppedFrameAsync(client, threadId, sourcePath, line).ConfigureAwait(false));
             await FinishResultsViewSessionAsync(client).ConfigureAwait(false);
         }

@@ -82,12 +82,17 @@ Reference type tests and casts use side-effect-free inspection. C# supports `is`
 `(error as System.ArgumentException)` returns a typed null for a type mismatch.
 An invalid direct cast returns an evaluation error.
 
-Casts retain the same runtime object and preserve the expression's declared type,
+Reference casts retain the same runtime object and preserve the expression's declared type,
 including typed nulls. Class casts select the named class's fields and methods,
 including hidden members, while virtual calls retain runtime dispatch. Reference
 compatibility uses loaded-module identities and closed generic arguments; ambiguous
 type names produce an evaluation error. Exact primitive unboxing reads an existing
 box directly in the stopped target.
+
+Explicit struct casts, such as `(System.ValueTuple<int, int>)boxedPair`, produce
+value snapshots from an exact matching runtime type. Expand the result to inspect
+its copied fields. Reference fields keep the identity of their referenced objects.
+Visual Basic uses `DirectCast` and F# uses `:?>` for the same unboxing operation.
 
 The private `debugger/evaluate` RPC and MCP `debug_evaluate` use this side-effect-free
 path to read stopped storage and compute results in the debugger host.
@@ -159,6 +164,9 @@ type, including tuples and `Nullable<T>`. Copies preserve the entire value, incl
 nullable presence and managed reference fields, and are limited to 1 MiB. Tuple names
 come from the destination declaration. Returned expandable values retain the original
 destination storage, with array indices evaluated before the write.
+
+For a boxed struct, use an explicit cast on the right-hand side, such as
+`(System.ValueTuple<int, int>)boxedPair`, to copy its value into matching storage.
 
 A C# `default` literal or Visual Basic `Nothing` can be assigned directly to reset
 the destination to its default value. Primitive and struct storage is cleared through
