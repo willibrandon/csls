@@ -36,7 +36,7 @@ internal static partial class WindowsNativeFaultMemoryCapture
             writer.WriteString("architecture", RuntimeInformation.ProcessArchitecture.ToString());
             writer.WriteBase64String("context", context);
             writer.WriteStartArray("regions");
-            var captured = new HashSet<nuint>();
+            var captured = new Dictionary<nuint, byte[]>();
             var references = new List<nuint>();
             byte[] buffer = new byte[65536];
             foreach (nuint root in roots)
@@ -56,7 +56,7 @@ internal static partial class WindowsNativeFaultMemoryCapture
         return path;
     }
 
-    private static unsafe void Capture(Process process, Utf8JsonWriter writer, nuint address, HashSet<nuint> captured,
+    private static unsafe void Capture(Process process, Utf8JsonWriter writer, nuint address, Dictionary<nuint, byte[]> captured,
         List<nuint>? references, byte[] buffer)
     {
         if (captured.Count >= 32 || address == 0)
@@ -101,8 +101,9 @@ internal static partial class WindowsNativeFaultMemoryCapture
         }
         // Query from the window boundary so different interior pointers share the same captured region.
         nuint start = Math.Max(regionStart, windowStart);
-        if (!captured.Add(start))
+        if (captured.TryGetValue(start, out byte[]? retained))
         {
+            CollectReferences(address, start, retained, references);
             return;
         }
         int capacity = checked((int)Math.Min((nuint)buffer.Length - (start - windowStart), regionEnd - start));
@@ -133,27 +134,35 @@ internal static partial class WindowsNativeFaultMemoryCapture
         writer.WriteNumber("readError", readError);
         writer.WriteBase64String("bytes", buffer.AsSpan(0, length));
         writer.WriteEndObject();
-        if (references is not null)
+        byte[] bytesRead = buffer.AsSpan(0, length).ToArray();
+        captured.Add(start, bytesRead);
+        CollectReferences(address, start, bytesRead, references);
+    }
+
+    private static void CollectReferences(nuint address, nuint start, ReadOnlySpan<byte> bytes, List<nuint>? references)
+    {
+        if (references is null)
         {
-            int offset = checked((int)(address - start));
-            offset -= offset % IntPtr.Size;
-            if (offset >= length)
+            return;
+        }
+        int offset = checked((int)(address - start));
+        offset -= offset % IntPtr.Size;
+        if (offset >= bytes.Length)
+        {
+            return;
+        }
+        int added = 0;
+        int available = bytes.Length - offset;
+        foreach (nuint value in MemoryMarshal.Cast<byte, nuint>(bytes.Slice(offset, available - available % IntPtr.Size)))
+        {
+            if (added == 32 || references.Count == 256)
             {
-                return;
+                break;
             }
-            int added = 0;
-            int available = length - offset;
-            foreach (nuint value in MemoryMarshal.Cast<byte, nuint>(buffer.AsSpan(offset, available - available % IntPtr.Size)))
+            if (value >= 65536 && value % (nuint)IntPtr.Size == 0 && !references.Contains(value))
             {
-                if (added == 32 || references.Count == 256)
-                {
-                    break;
-                }
-                if (value >= 65536 && value % (nuint)IntPtr.Size == 0 && !references.Contains(value))
-                {
-                    references.Add(value);
-                    added++;
-                }
+                references.Add(value);
+                added++;
             }
         }
     }
