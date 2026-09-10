@@ -151,7 +151,7 @@ public sealed class DapWindowsNativeDiagnosticsTests : DapTestContext
     public async Task NativeCaptureSurvivesModuleChurn(DumpType captureType)
     {
         var readerStacks = new DebuggerCollectorStackCapture(TestContext);
-        await using System.Runtime.CompilerServices.ConfiguredAsyncDisposable readerStackLifetime = readerStacks.ConfigureAwait(false);
+        await using ConfiguredAsyncDisposable readerStackLifetime = readerStacks.ConfigureAwait(false);
         string directory = Directory.CreateTempSubdirectory("csls-windows-module-capture-").FullName;
         try
         {
