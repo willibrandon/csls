@@ -8,30 +8,25 @@ namespace Csls.Debugger.Tests;
 /// <summary>
 /// Samples the test host's managed readers after an independently observed collector exits.
 /// </summary>
-internal sealed class DebuggerCollectorStackCapture : IAsyncDisposable
+internal sealed class DebuggerCollectorStackCapture
 {
     private static readonly SemaphoreSlim s_samplingGate = new(1, 1);
     private readonly TestContext _testContext;
-    private readonly List<Task> _captures = [];
 
     /// <summary>
-    /// Owns background reader sampling until the test has released its collectors.
+    /// Records reader samples whose lifetime is owned by each process capture.
     /// </summary>
     /// <param name="testContext">The test context retaining trace artifacts and sampling diagnostics.</param>
     internal DebuggerCollectorStackCapture(TestContext testContext) => _testContext = testContext;
 
     /// <summary>
-    /// Starts bounded reader sampling after collector exit while its caller continues draining output.
+    /// Samples readers after collector exit until the owning capture finishes draining output.
     /// </summary>
     /// <param name="collector">The caller-owned collector whose kernel exit has already been observed.</param>
-    /// <param name="cancellationToken">Bounds sampling and symbol rundown.</param>
-    internal void ObserveOutputDrain(Process collector, CancellationToken cancellationToken)
-    {
-        _captures.Add(CaptureAsync(collector.Id, cancellationToken));
-    }
-
-    /// <inheritdoc />
-    public async ValueTask DisposeAsync() => await Task.WhenAll(_captures).ConfigureAwait(false);
+    /// <param name="cancellationToken">Cancels sampling and symbol rundown when output capture finishes.</param>
+    /// <returns>Completion after sampling and collector cleanup.</returns>
+    internal Task ObserveOutputDrainAsync(Process collector, CancellationToken cancellationToken) =>
+        CaptureAsync(collector.Id, cancellationToken);
 
     private async Task CaptureAsync(int collectorId, CancellationToken cancellationToken)
     {

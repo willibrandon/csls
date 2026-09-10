@@ -38,7 +38,7 @@ internal static class DebuggerTestProcess
     /// <param name="diagnosticContext">Optionally captures the owned child's native stacks before cancellation cleanup.</param>
     /// <param name="observeNativeExceptions">Whether to observe a Windows collector waiting for its capture input.</param>
     /// <param name="observeProcess">Optionally observes the owned process until exit or capture cancellation.</param>
-    /// <param name="observeOutputDrain">Optionally observes exited processes whose redirected output is still draining.</param>
+    /// <param name="observeOutputDrain">Observes exited processes until their output drains; capture cancels and awaits the observer.</param>
     /// <returns>The process identifier, exit code, standard output, and standard error.</returns>
     internal static async Task<(int ProcessId, int ExitCode, string Output, string Error)> RunWithIdentityAsync(
         ProcessStartInfo startInfo,
@@ -47,7 +47,7 @@ internal static class DebuggerTestProcess
         TestContext? diagnosticContext = null,
         bool observeNativeExceptions = false,
         Func<Process, Action<string>, CancellationToken, Task>? observeProcess = null,
-        Action<Process, CancellationToken>? observeOutputDrain = null)
+        Func<Process, CancellationToken, Task>? observeOutputDrain = null)
     {
         ArgumentNullException.ThrowIfNull(startInfo);
         if (observeNativeExceptions && !OperatingSystem.IsWindows())
@@ -94,10 +94,11 @@ internal static class DebuggerTestProcess
     private static async Task<(int ProcessId, int ExitCode, string Output, string Error)> CaptureAsync(
         Process process, Action<string>? progress, TestContext? diagnosticContext, DebuggerCaptureTrace? trace,
         bool observeNativeExceptions, Func<Process, Action<string>, CancellationToken, Task>? observeProcess,
-        Action<Process, CancellationToken>? observeOutputDrain,
+        Func<Process, CancellationToken, Task>? observeOutputDrain,
         long started, CancellationToken cancellationToken)
     {
         using var observation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        using var drainObservation = CancellationTokenSource.CreateLinkedTokenSource(observation.Token);
         Action<string>? captureProgress = progress is null && trace is null ? null : ReportProgress;
         Task<string> output = ReadOutputAsync(process.StandardOutput, captureProgress, observation.Token);
         Task<string> error = ReadOutputAsync(process.StandardError, captureProgress, observation.Token);
@@ -105,6 +106,7 @@ internal static class DebuggerTestProcess
         Task nativeEvents = Task.CompletedTask;
         Task exit = Task.CompletedTask;
         Task processObservation = Task.CompletedTask;
+        Task outputDrainObservation = Task.CompletedTask;
         try
         {
             ReportPhase("Started output capture");
@@ -130,15 +132,22 @@ internal static class DebuggerTestProcess
                 Task completed = await Task.WhenAny(pending).ConfigureAwait(false);
                 _ = pending.Remove(completed);
                 await completed.ConfigureAwait(false);
-                if (ReferenceEquals(completed, exit) && (!output.IsCompleted || !error.IsCompleted))
+                if (ReferenceEquals(completed, exit) && (!output.IsCompleted || !error.IsCompleted) &&
+                    observeOutputDrain is not null)
                 {
-                    observeOutputDrain?.Invoke(process, observation.Token);
+                    outputDrainObservation = observeOutputDrain(process, drainObservation.Token);
+                    pending.Add(outputDrainObservation);
+                }
+                if (output.IsCompleted && error.IsCompleted)
+                {
+                    await drainObservation.CancelAsync().ConfigureAwait(false);
                 }
                 ReportPhase(ReferenceEquals(completed, output) ? "stdout completed"
                     : ReferenceEquals(completed, error) ? "stderr completed"
                     : ReferenceEquals(completed, exit)
                         ? observeNativeExceptions ? "Native observation completed" : "Process handle signaled"
-                    : "Process observation completed");
+                    : ReferenceEquals(completed, outputDrainObservation)
+                        ? "Output-drain observation completed" : "Process observation completed");
             }
             await nativeEvents.ConfigureAwait(false);
             await exit.ConfigureAwait(false);
@@ -176,7 +185,7 @@ internal static class DebuggerTestProcess
                 }
                 await DebuggerProcessExit.WaitAsync(process, CancellationToken.None).ConfigureAwait(false);
 
-                var operations = Task.WhenAll(output, error, nativeEvents, exit, processObservation);
+                var operations = Task.WhenAll(output, error, nativeEvents, exit, processObservation, outputDrainObservation);
                 await operations.ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
             }
             if (failure is OperationCanceledException && cancellationToken.IsCancellationRequested)

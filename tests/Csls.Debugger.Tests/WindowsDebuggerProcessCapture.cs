@@ -98,12 +98,12 @@ internal static class WindowsDebuggerProcessCapture
     /// <param name="cancellationToken">Cancels and reaps the collector independently of the captured process.</param>
     /// <param name="captureType">An optional managed dump policy, with native thread capture as the default.</param>
     /// <param name="diagnosticContext">Retains collector progress and native stacks before cancellation cleanup.</param>
-    /// <param name="observeOutputDrain">Optionally observes exited collectors whose redirected output is still draining.</param>
+    /// <param name="observeOutputDrain">Observes exited collectors until their output drains; capture cancels and awaits the observer.</param>
     /// <returns>The collector exit status and diagnostics.</returns>
     internal static async Task<(int ExitCode, string Output, string Error)> CaptureAsync(
         Process process, string path, CancellationToken cancellationToken, DumpType? captureType = null,
         TestContext? diagnosticContext = null,
-        Action<Process, CancellationToken>? observeOutputDrain = null)
+        Func<Process, CancellationToken, Task>? observeOutputDrain = null)
     {
         _ = process.SafeHandle;
         // A collector can suspend its owner while capturing the owner's threads. Its native debugger

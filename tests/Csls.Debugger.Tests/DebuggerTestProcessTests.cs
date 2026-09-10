@@ -149,20 +149,26 @@ public sealed class DebuggerTestProcessTests : DapTestContext
         start.ArgumentList.Add(rootPipeName);
         start.ArgumentList.Add(childPipeName);
         var progress = new ConcurrentQueue<string>();
-        var draining = new TaskCompletionSource<(int ProcessId, bool HasExited)>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var draining = new TaskCompletionSource<(int ProcessId, bool HasExited, CancellationToken Token)>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
         var observerFailure = new IOException("The output-drain observer rejected capture.");
         int drainObservations = 0;
+        int observerFinished = 0;
         Task<(int ProcessId, int ExitCode, string Output, string Error)> running = DebuggerTestProcess.RunWithIdentityAsync(
             start, operation.Token, reportProgress ? progress.Enqueue : null,
-            observeOutputDrain: (process, token) =>
+            observeOutputDrain: async (process, token) =>
             {
                 token.ThrowIfCancellationRequested();
                 Interlocked.Increment(ref drainObservations);
-                draining.SetResult((process.Id, process.HasExited));
+                draining.SetResult((process.Id, process.HasExited, token));
                 if (rejectObservation)
                 {
                     throw observerFailure;
                 }
+                var stopped = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+                using CancellationTokenRegistration registration = token.Register(() => stopped.SetResult());
+                await stopped.Task.ConfigureAwait(false);
+                Volatile.Write(ref observerFinished, 1);
             });
         Process? root = null;
         Process? child = null;
@@ -184,7 +190,8 @@ public sealed class DebuggerTestProcessTests : DapTestContext
             await root.WaitForExitAsync(TestContext.CancellationToken).ConfigureAwait(false);
             Assert.AreEqual(0, root.ExitCode);
             Assert.IsFalse(child.HasExited);
-            (int observedId, bool observedExit) = await draining.Task.WaitAsync(TestContext.CancellationToken).ConfigureAwait(false);
+            (int observedId, bool observedExit, CancellationToken observerToken) = await draining.Task
+                .WaitAsync(TestContext.CancellationToken).ConfigureAwait(false);
             Assert.AreEqual(root.Id, observedId);
             Assert.IsTrue(observedExit, "Output-drain observation requires an exited process.");
             Assert.AreEqual(1, Volatile.Read(ref drainObservations));
@@ -227,6 +234,10 @@ public sealed class DebuggerTestProcessTests : DapTestContext
                 Assert.AreSequenceEqual(reportProgress ? expected.Concat(expected).Order() : [], progress.Order());
             }
             Assert.AreEqual(1, Volatile.Read(ref drainObservations), "Each exited process must be observed once.");
+            Assert.IsTrue(observerToken.IsCancellationRequested,
+                "Completed capture must stop its output-drain observer before returning to the caller.");
+            Assert.AreEqual(rejectObservation ? 0 : 1, Volatile.Read(ref observerFinished),
+                "Capture must await observer cleanup before returning its result or cancellation.");
         }
         finally
         {
