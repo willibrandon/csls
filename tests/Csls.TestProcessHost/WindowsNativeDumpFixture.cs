@@ -20,16 +20,27 @@ internal static partial class WindowsNativeDumpFixture
     /// <param name="creationTime">The expected UTC creation time in Windows file-time units.</param>
     /// <param name="path">The new dump file owned by the calling test.</param>
     /// <param name="captureKind">The native threads, normal, triage, heap, or full capture policy.</param>
+    /// <param name="diagnosticsPath">An optional sidecar path for collector progress and managed failures.</param>
     /// <returns>Zero after the native writer successfully closes its output.</returns>
-    internal static int Run(int processId, long creationTime, string path, string captureKind = "threads")
+    internal static int Run(int processId, long creationTime, string path, string captureKind = "threads",
+        string? diagnosticsPath = null)
     {
         long started = Stopwatch.GetTimestamp();
-        Capture(processId, creationTime, path, captureKind, started);
-        ReportProgress(started, "Snapshot and file released");
-        return 0;
+        try
+        {
+            Capture(processId, creationTime, path, captureKind, diagnosticsPath, started);
+            ReportProgress(started, "Snapshot and file released", diagnosticsPath);
+            return 0;
+        }
+        catch (Exception exception) when (diagnosticsPath is not null)
+        {
+            ReportProgress(started, exception.ToString(), diagnosticsPath);
+            return 1;
+        }
     }
 
-    private static unsafe void Capture(int processId, long creationTime, string path, string captureKind, long started)
+    private static unsafe void Capture(int processId, long creationTime, string path, string captureKind,
+        string? diagnosticsPath, long started)
     {
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(processId);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(creationTime);
@@ -60,7 +71,7 @@ internal static partial class WindowsNativeDumpFixture
             throw new InvalidOperationException("The selected process identity has changed.");
         }
         using SafeFileHandle file = File.OpenHandle(path, FileMode.CreateNew, FileAccess.ReadWrite, FileShare.None);
-        ReportProgress(started, "Creating snapshot");
+        ReportProgress(started, "Creating snapshot", diagnosticsPath);
         // CoreCLR requests standard CONTEXT records; extended PSS records exceed its native buffer size.
         // The clone supplies its own address map; separately captured live image metadata can race module churn.
         uint status = PssCaptureSnapshot(process, captureFlags: 0x800001fd, contextFlags,
@@ -70,7 +81,7 @@ internal static partial class WindowsNativeDumpFixture
         {
             throw new Win32Exception(checked((int)status));
         }
-        ReportProgress(started, "Snapshot captured");
+        ReportProgress(started, "Snapshot captured", diagnosticsPath);
         using SafeProcessHandle clone = snapshot.BorrowCloneProcess();
         using var memory = new WindowsDumpMappedMemory(process, clone, path);
         var state = GCHandle.Alloc(memory);
@@ -79,7 +90,7 @@ internal static partial class WindowsNativeDumpFixture
             nint* callback = stackalloc nint[2];
             callback[0] = (nint)(delegate* unmanaged[Stdcall]<nint, byte*, byte*, int>)&OnDumpCallback;
             callback[1] = GCHandle.ToIntPtr(state);
-            ReportProgress(started, "Writing dump");
+            ReportProgress(started, "Writing dump", diagnosticsPath);
             int success = MiniDumpWriteDump(snapshot, checked((uint)processId), file, dumpType, 0, 0, (nint)callback);
             int error = Marshal.GetLastPInvokeError();
             memory.ThrowIfFailed();
@@ -87,17 +98,26 @@ internal static partial class WindowsNativeDumpFixture
             {
                 throw new IOException($"Native dump capture failed with HRESULT 0x{error:X8}.");
             }
-            ReportProgress(started, "Dump written");
+            ReportProgress(started, "Dump written", diagnosticsPath);
         }
         finally
         {
             state.Free();
         }
-        ReportProgress(started, "Releasing snapshot and file");
+        ReportProgress(started, "Releasing snapshot and file", diagnosticsPath);
     }
 
-    private static void ReportProgress(long started, string phase) => Console.Error.WriteLine(
-        FormattableString.Invariant($"Native dump collector {Environment.ProcessId}: {phase} at {Stopwatch.GetElapsedTime(started).TotalMilliseconds:F1} ms."));
+    private static void ReportProgress(long started, string phase, string? diagnosticsPath)
+    {
+        string record = FormattableString.Invariant(
+            $"Native dump collector {Environment.ProcessId}: {phase} at {Stopwatch.GetElapsedTime(started).TotalMilliseconds:F1} ms.");
+        if (diagnosticsPath is null)
+        {
+            Console.Error.WriteLine(record);
+            return;
+        }
+        File.AppendAllText(diagnosticsPath, record + Environment.NewLine);
+    }
 
     [UnmanagedCallersOnly(CallConvs = [typeof(CallConvStdcall)])]
     private static unsafe int OnDumpCallback(nint parameter, byte* input, byte* output)

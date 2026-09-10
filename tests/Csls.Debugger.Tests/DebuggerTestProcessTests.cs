@@ -261,4 +261,79 @@ public sealed class DebuggerTestProcessTests : DapTestContext
             await completion.ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
         }
     }
+
+    /// <summary>
+    /// Completes an unredirected capture when an independent descendant retains inherited standard streams.
+    /// </summary>
+    [TestMethod]
+    [Timeout(30000, CooperativeCancellation = true)]
+    public async Task UnredirectedCaptureDoesNotWaitForDescendantStreamOwnership()
+    {
+        string rootPipeName = $"csls-{Guid.NewGuid():N}";
+        string childPipeName = $"csls-{Guid.NewGuid():N}";
+        using var rootPipe = new NamedPipeServerStream(rootPipeName, PipeDirection.InOut, 1,
+            PipeTransmissionMode.Byte, PipeOptions.Asynchronous);
+        using var childPipe = new NamedPipeServerStream(childPipeName, PipeDirection.Out, 1,
+            PipeTransmissionMode.Byte, PipeOptions.Asynchronous);
+        Task rootConnected = rootPipe.WaitForConnectionAsync(TestContext.CancellationToken);
+        Task childConnected = childPipe.WaitForConnectionAsync(TestContext.CancellationToken);
+        var start = new ProcessStartInfo(Environment.GetEnvironmentVariable("DOTNET_HOST_PATH") ?? "dotnet");
+        start.ArgumentList.Add(ResolveTestProcessHost());
+        start.ArgumentList.Add("--debugger-inherited-output-root");
+        start.ArgumentList.Add(rootPipeName);
+        start.ArgumentList.Add(childPipeName);
+        Task<(int ProcessId, int ExitCode, string Output, string Error)> running =
+            DebuggerTestProcess.RunWithIdentityAsync(start, TestContext.CancellationToken,
+                redirectStandardStreams: false);
+        Process? root = null;
+        Process? child = null;
+        try
+        {
+            await rootConnected.ConfigureAwait(false);
+            using var identities = new StreamReader(rootPipe, leaveOpen: true);
+            string? announcement = await identities.ReadLineAsync(TestContext.CancellationToken).ConfigureAwait(false);
+            Assert.IsNotNull(announcement);
+            int[] ids = [.. announcement.Split(',').Select(value => int.Parse(value, CultureInfo.InvariantCulture))];
+            Assert.HasCount(2, ids);
+            root = Process.GetProcessById(ids[0]);
+            child = Process.GetProcessById(ids[1]);
+            _ = root.SafeHandle;
+            _ = child.SafeHandle;
+            await childConnected.ConfigureAwait(false);
+
+            await rootPipe.WriteAsync(new byte[] { 1 }, TestContext.CancellationToken).ConfigureAwait(false);
+            (int processId, int exitCode, string output, string error) = await running
+                .WaitAsync(TimeSpan.FromSeconds(5), TestContext.CancellationToken).ConfigureAwait(false);
+            Assert.AreEqual(root.Id, processId);
+            Assert.AreEqual(0, exitCode);
+            Assert.AreEqual(string.Empty, output);
+            Assert.AreEqual(string.Empty, error);
+            Assert.IsFalse(child.HasExited,
+                "An independently transferred descendant must remain alive after its unredirected parent exits.");
+
+            await childPipe.WriteAsync(new byte[] { 1 }, TestContext.CancellationToken).ConfigureAwait(false);
+            await child.WaitForExitAsync(TestContext.CancellationToken).ConfigureAwait(false);
+            Assert.AreEqual(0, child.ExitCode);
+        }
+        finally
+        {
+            foreach (Process? process in new[] { child, root })
+            {
+                if (process is null)
+                {
+                    continue;
+                }
+                using (process)
+                {
+                    if (!process.HasExited)
+                    {
+                        process.Kill(entireProcessTree: true);
+                    }
+                    await process.WaitForExitAsync(CancellationToken.None).ConfigureAwait(false);
+                }
+            }
+            Task completion = running;
+            await completion.ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
+        }
+    }
 }

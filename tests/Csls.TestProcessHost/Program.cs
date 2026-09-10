@@ -36,6 +36,15 @@ if (args is ["--windows-native-dump", string selectedDumpProcessId, string selec
         long.Parse(selectedDumpCreationTime, CultureInfo.InvariantCulture), selectedNativeDumpPath, captureKind);
 }
 
+if (args is ["--windows-native-dump", string diagnosedDumpProcessId, string diagnosedDumpCreationTime,
+    string diagnosedNativeDumpPath, string diagnosedCaptureKind, string collectorDiagnosticsPath] &&
+    OperatingSystem.IsWindows())
+{
+    return WindowsNativeDumpFixture.Run(int.Parse(diagnosedDumpProcessId, CultureInfo.InvariantCulture),
+        long.Parse(diagnosedDumpCreationTime, CultureInfo.InvariantCulture), diagnosedNativeDumpPath,
+        diagnosedCaptureKind, collectorDiagnosticsPath);
+}
+
 if (args is ["--windows-module-churn", string churnStopPath] && OperatingSystem.IsWindows())
 {
     return WindowsModuleChurnFixture.Run(churnStopPath);

@@ -39,6 +39,7 @@ internal static class DebuggerTestProcess
     /// <param name="observeNativeExceptions">Whether to observe a Windows collector waiting for its capture input.</param>
     /// <param name="observeProcess">Optionally observes the owned process until exit or capture cancellation.</param>
     /// <param name="observeOutputDrain">Observes exited processes until their output drains; capture cancels and awaits the observer.</param>
+    /// <param name="redirectStandardStreams">Whether to capture the child's standard output and standard error streams.</param>
     /// <returns>The process identifier, exit code, standard output, and standard error.</returns>
     internal static async Task<(int ProcessId, int ExitCode, string Output, string Error)> RunWithIdentityAsync(
         ProcessStartInfo startInfo,
@@ -47,17 +48,23 @@ internal static class DebuggerTestProcess
         TestContext? diagnosticContext = null,
         bool observeNativeExceptions = false,
         Func<Process, Action<string>, CancellationToken, Task>? observeProcess = null,
-        Func<Process, CancellationToken, Task>? observeOutputDrain = null)
+        Func<Process, CancellationToken, Task>? observeOutputDrain = null,
+        bool redirectStandardStreams = true)
     {
         ArgumentNullException.ThrowIfNull(startInfo);
         if (observeNativeExceptions && !OperatingSystem.IsWindows())
         {
             throw new PlatformNotSupportedException("Native collector observation requires Windows.");
         }
+        if (!redirectStandardStreams && observeOutputDrain is not null)
+        {
+            throw new ArgumentException("Output-drain observation requires redirected standard streams.",
+                nameof(observeOutputDrain));
+        }
         cancellationToken.ThrowIfCancellationRequested();
         startInfo.RedirectStandardInput |= observeNativeExceptions;
-        startInfo.RedirectStandardOutput = true;
-        startInfo.RedirectStandardError = true;
+        startInfo.RedirectStandardOutput = redirectStandardStreams;
+        startInfo.RedirectStandardError = redirectStandardStreams;
         startInfo.UseShellExecute = false;
         using DebuggerCaptureTrace? trace = CreateTrace(diagnosticContext);
         long started = Stopwatch.GetTimestamp();
@@ -65,7 +72,8 @@ internal static class DebuggerTestProcess
             ?? throw new InvalidOperationException(
                 $"The debugger test process did not start: {startInfo.FileName}");
         return await CaptureAsync(process, progress, diagnosticContext, trace,
-            observeNativeExceptions, observeProcess, observeOutputDrain, started, cancellationToken)
+            observeNativeExceptions, observeProcess, observeOutputDrain, redirectStandardStreams,
+            started, cancellationToken)
             .ConfigureAwait(false);
     }
 
@@ -95,13 +103,18 @@ internal static class DebuggerTestProcess
         Process process, Action<string>? progress, TestContext? diagnosticContext, DebuggerCaptureTrace? trace,
         bool observeNativeExceptions, Func<Process, Action<string>, CancellationToken, Task>? observeProcess,
         Func<Process, CancellationToken, Task>? observeOutputDrain,
+        bool redirectStandardStreams,
         long started, CancellationToken cancellationToken)
     {
         using var observation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         using var drainObservation = CancellationTokenSource.CreateLinkedTokenSource(observation.Token);
         Action<string>? captureProgress = progress is null && trace is null ? null : ReportProgress;
-        Task<string> output = ReadOutputAsync(process.StandardOutput, captureProgress, observation.Token);
-        Task<string> error = ReadOutputAsync(process.StandardError, captureProgress, observation.Token);
+        Task<string> output = redirectStandardStreams
+            ? ReadOutputAsync(process.StandardOutput, captureProgress, observation.Token)
+            : Task.FromResult(string.Empty);
+        Task<string> error = redirectStandardStreams
+            ? ReadOutputAsync(process.StandardError, captureProgress, observation.Token)
+            : Task.FromResult(string.Empty);
         var nativeDiagnostics = new StringBuilder();
         Task nativeEvents = Task.CompletedTask;
         Task exit = Task.CompletedTask;
@@ -109,7 +122,7 @@ internal static class DebuggerTestProcess
         Task outputDrainObservation = Task.CompletedTask;
         try
         {
-            ReportPhase("Started output capture");
+            ReportPhase(redirectStandardStreams ? "Started output capture" : "Started process capture");
             if (observeNativeExceptions && OperatingSystem.IsWindows())
             {
                 nativeEvents = WindowsNativeDebugObserver.ObserveAsync(process, record =>

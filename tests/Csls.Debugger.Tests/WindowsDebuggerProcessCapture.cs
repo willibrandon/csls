@@ -135,17 +135,40 @@ internal static class WindowsDebuggerProcessCapture
             DumpType.Full => "full",
             _ => throw new ArgumentOutOfRangeException(nameof(captureType))
         });
-        (int collectorId, int exitCode, string output, string error) =
-            await DebuggerTestProcess.RunWithIdentityAsync(startInfo, cancellationToken,
-                diagnosticContext is null ? null : line => diagnosticContext.WriteLine(line), diagnosticContext,
-                observeNativeExceptions: observeNativeExceptions)
-                .ConfigureAwait(false);
-        if (exitCode != 0)
+        string collectorDiagnosticsPath = $"{path}.collector-{Guid.NewGuid():N}.log";
+        startInfo.ArgumentList.Add(collectorDiagnosticsPath);
+        string collectorDiagnostics = string.Empty;
+        try
         {
-            string crash = await DebuggerWindowsCrashDiagnostics.ReadAsync(collectorId).ConfigureAwait(false);
-            error = $"Native dump collector {collectorId} exited with code {exitCode}.{Environment.NewLine}{error}{crash}";
+            (int collectorId, int exitCode, string output, string error) =
+                await DebuggerTestProcess.RunWithIdentityAsync(startInfo, cancellationToken,
+                    diagnosticContext: diagnosticContext, observeNativeExceptions: observeNativeExceptions,
+                    redirectStandardStreams: false)
+                    .ConfigureAwait(false);
+            collectorDiagnostics = File.Exists(collectorDiagnosticsPath)
+                ? await File.ReadAllTextAsync(collectorDiagnosticsPath, CancellationToken.None).ConfigureAwait(false)
+                : string.Empty;
+            error += collectorDiagnostics;
+            if (exitCode != 0)
+            {
+                string crash = await DebuggerWindowsCrashDiagnostics.ReadAsync(collectorId).ConfigureAwait(false);
+                error = $"Native dump collector {collectorId} exited with code {exitCode}.{Environment.NewLine}{error}{crash}";
+            }
+            return (exitCode, output, error);
         }
-        return (exitCode, output, error);
+        finally
+        {
+            if (collectorDiagnostics.Length == 0 && File.Exists(collectorDiagnosticsPath))
+            {
+                collectorDiagnostics = await File.ReadAllTextAsync(collectorDiagnosticsPath, CancellationToken.None)
+                    .ConfigureAwait(false);
+            }
+            if (collectorDiagnostics.Length != 0)
+            {
+                diagnosticContext?.WriteLine(collectorDiagnostics);
+            }
+            File.Delete(collectorDiagnosticsPath);
+        }
     }
 
     private static void RetainProcess(int processId, List<Process> processes, DisposableCollection<Process> ownership)
