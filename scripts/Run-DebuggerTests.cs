@@ -12,6 +12,17 @@ using System.Diagnostics;
 using System.Globalization;
 using System.Text;
 
+const string usage =
+    "Usage: dotnet run --file scripts/Run-DebuggerTests.cs " +
+    "[--supervisor-timeout-seconds <seconds>] <dotnet-test-options>";
+if (args.Length == 1 && args[0] is "--help" or "-h" or "-?")
+{
+    await Console.Out.WriteLineAsync(
+        "Runs debugger tests under a bounded process-tree supervisor.").ConfigureAwait(false);
+    await Console.Out.WriteLineAsync(usage).ConfigureAwait(false);
+    return 0;
+}
+
 var deadline = TimeSpan.FromSeconds(150);
 int firstTestArgument = 0;
 if (args.Length != 0 && string.Equals(args[0], "--supervisor-timeout-seconds", StringComparison.Ordinal))
