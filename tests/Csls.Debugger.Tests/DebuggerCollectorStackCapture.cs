@@ -1,6 +1,7 @@
 using Microsoft.Diagnostics.NETCore.Client;
 using System.ComponentModel;
 using System.Diagnostics;
+using System.Runtime.Versioning;
 
 namespace Csls.Debugger.Tests;
 
@@ -48,6 +49,11 @@ internal sealed class DebuggerCollectorStackCapture : IAsyncDisposable
             Directory.CreateDirectory(Path.GetDirectoryName(path)
                 ?? throw new InvalidOperationException("The reader trace has no artifact directory."));
             _testContext.WriteLine($"Sampling test host {Environment.ProcessId} after collector {collectorId} exited: {path}.");
+            if (OperatingSystem.IsWindows())
+            {
+                // Native snapshot collection does not wait for the host's managed diagnostic server.
+                await CaptureNativeReadersAsync(Path.ChangeExtension(path, ".dmp"), cancellationToken).ConfigureAwait(false);
+            }
             await DebuggerManagedStackCapture.CaptureAsync(Environment.ProcessId, path, cancellationToken)
                 .ConfigureAwait(false);
             _testContext.WriteLine($"Completed test-host reader trace: {path}.");
@@ -63,6 +69,32 @@ internal sealed class DebuggerCollectorStackCapture : IAsyncDisposable
             {
                 s_samplingGate.Release();
             }
+            if (File.Exists(path))
+            {
+                _testContext.AddResultFile(path);
+            }
+        }
+    }
+
+    [SupportedOSPlatform("windows")]
+    private async Task CaptureNativeReadersAsync(string path, CancellationToken cancellationToken)
+    {
+        long started = Stopwatch.GetTimestamp();
+        try
+        {
+            using var host = Process.GetCurrentProcess();
+            (int exitCode, string output, string error) = await WindowsDebuggerProcessCapture.CaptureAsync(
+                host, path, cancellationToken).ConfigureAwait(false);
+            _testContext.WriteLine($"Native test-host reader capture exited with {exitCode} after " +
+                $"{Stopwatch.GetElapsedTime(started).TotalMilliseconds:F1} ms: {output}{error}");
+        }
+        catch (Exception exception) when (exception is OperationCanceledException or IOException or
+            UnauthorizedAccessException or InvalidOperationException or Win32Exception)
+        {
+            _testContext.WriteLine($"Native test-host reader capture: {exception.Message}");
+        }
+        finally
+        {
             if (File.Exists(path))
             {
                 _testContext.AddResultFile(path);

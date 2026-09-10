@@ -106,10 +106,16 @@ internal static class WindowsDebuggerProcessCapture
         Action<Process, CancellationToken>? observeOutputDrain = null)
     {
         _ = process.SafeHandle;
+        // A collector can suspend its owner while capturing the owner's threads. Its native debugger
+        // must therefore live outside that owner; self-capture runs without the in-process observer.
+        bool observeNativeExceptions = process.Id != Environment.ProcessId;
         var startInfo = new ProcessStartInfo(Environment.GetEnvironmentVariable("DOTNET_HOST_PATH") ?? "dotnet");
         startInfo.ArgumentList.Add(Path.Join(DebuggerTestEnvironment.FindRepositoryRoot(), "artifacts", "bin",
             "Csls.TestProcessHost", "debug", "csls-test-process-host.dll"));
-        startInfo.ArgumentList.Add("--windows-observed");
+        if (observeNativeExceptions)
+        {
+            startInfo.ArgumentList.Add("--windows-observed");
+        }
         startInfo.ArgumentList.Add("--windows-native-dump");
         startInfo.ArgumentList.Add(process.Id.ToString(CultureInfo.InvariantCulture));
         startInfo.ArgumentList.Add(process.StartTime.ToUniversalTime().ToFileTimeUtc().ToString(CultureInfo.InvariantCulture));
@@ -126,7 +132,7 @@ internal static class WindowsDebuggerProcessCapture
         (int collectorId, int exitCode, string output, string error) =
             await DebuggerTestProcess.RunWithIdentityAsync(startInfo, cancellationToken,
                 diagnosticContext is null ? null : line => diagnosticContext.WriteLine(line), diagnosticContext,
-                observeNativeExceptions: true, observeOutputDrain: observeOutputDrain)
+                observeNativeExceptions: observeNativeExceptions, observeOutputDrain: observeOutputDrain)
                 .ConfigureAwait(false);
         if (exitCode != 0)
         {

@@ -19,6 +19,56 @@ namespace Csls.Debugger.Tests;
 public sealed class DapWindowsNativeDiagnosticsTests : DapTestContext
 {
     /// <summary>
+    /// Captures the running test host's native stack storage and resumes its independently waiting thread.
+    /// </summary>
+    [TestMethod]
+    [Timeout(30000, CooperativeCancellation = true)]
+    public async Task NativeReaderSnapshotPreservesCurrentHost()
+    {
+        string directory = Directory.CreateTempSubdirectory("csls-windows-reader-snapshot-").FullName;
+        using var resume = new ManualResetEventSlim();
+        var ready = new TaskCompletionSource<ulong>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var thread = new Thread(() => WaitWithNativeStack(resume, ready));
+        try
+        {
+            thread.Start();
+            ulong address = await ready.Task.WaitAsync(TestContext.CancellationToken).ConfigureAwait(false);
+            using var host = Process.GetCurrentProcess();
+            string path = Path.Join(directory, "host.dmp");
+            (int exitCode, string output, string error) = await WindowsDebuggerProcessCapture.CaptureAsync(
+                host, path, TestContext.CancellationToken).ConfigureAwait(false);
+            Assert.AreEqual(0, exitCode, output + error);
+            Assert.Contains("Snapshot and file released", error);
+            using (var dump = DataTarget.LoadDump(path, new DataTargetOptions { SymbolPaths = [] }))
+            {
+                Assert.AreEqual(host.Id, DumpProcessIdentity.Read(dump.DataReader, path, TestContext.CancellationToken));
+                IThreadReader threads = Assert.IsInstanceOfType<IThreadReader>(dump.DataReader);
+                Assert.IsNotEmpty(threads.EnumerateOSThreadIds());
+                byte[] memory = new byte[128];
+                Assert.AreEqual(memory.Length, dump.DataReader.Read(address, memory));
+                Assert.AreEqual(-1, memory.AsSpan().IndexOfAnyExcept((byte)0x5a));
+            }
+            Assert.IsTrue(thread.IsAlive, "The snapshot must preserve the waiting thread until its owner releases it.");
+        }
+        finally
+        {
+            resume.Set();
+            bool finished = !thread.IsAlive || thread.Join(TimeSpan.FromSeconds(10));
+            await DebuggerTestDirectoryReleaseWaiter.DeleteAsync(directory, TimeSpan.FromSeconds(10)).ConfigureAwait(false);
+            Assert.IsTrue(finished, "The captured thread must resume and finish.");
+        }
+    }
+
+    private static unsafe void WaitWithNativeStack(ManualResetEventSlim resume, TaskCompletionSource<ulong> ready)
+    {
+        byte* memory = stackalloc byte[128];
+        new Span<byte>(memory, 128).Fill(0x5a);
+        ready.SetResult((ulong)memory);
+        resume.Wait();
+        _ = Volatile.Read(ref memory[0]);
+    }
+
+    /// <summary>
     /// Preserves Windows page-relative region boundaries and allocation metadata in captured shared memory.
     /// </summary>
     [TestMethod]
