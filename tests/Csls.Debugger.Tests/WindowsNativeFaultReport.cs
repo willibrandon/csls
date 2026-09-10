@@ -22,9 +22,13 @@ internal static partial class WindowsNativeFaultReport
     /// <param name="threadId">The operating-system thread reporting the exception.</param>
     /// <param name="record">The actual native exception record from Windows.</param>
     /// <param name="firstChance">Whether the runtime has yet to handle this exception.</param>
+    /// <param name="diagnosticContext">Optionally retains native-image fault memory before exception dispatch resumes.</param>
+    /// <param name="memoryPath">The completed private-memory artifact, when one was captured.</param>
     /// <returns>One bounded record captured while the reporting thread is suspended.</returns>
-    internal static unsafe string Read(Process process, uint threadId, byte* record, bool firstChance)
+    internal static unsafe string Read(Process process, uint threadId, byte* record, bool firstChance,
+        TestContext? diagnosticContext, out string? memoryPath)
     {
+        memoryPath = null;
         ulong address = Unsafe.ReadUnaligned<nuint>(record + 8 + sizeof(nint));
         var text = new StringBuilder();
         text.Append(CultureInfo.InvariantCulture,
@@ -38,6 +42,7 @@ internal static partial class WindowsNativeFaultReport
         }
         try
         {
+            bool nativeImage = false;
             process.Refresh();
             foreach (ProcessModule module in process.Modules)
             {
@@ -46,6 +51,7 @@ internal static partial class WindowsNativeFaultReport
                     ulong start = checked((ulong)module.BaseAddress);
                     if (address >= start && address - start < checked((ulong)module.ModuleMemorySize))
                     {
+                        nativeImage = true;
                         text.Append(CultureInfo.InvariantCulture,
                             $" module={module.ModuleName} offset=0x{address - start:X} base=0x{start:X} image-size=0x{module.ModuleMemorySize:X} version={module.FileVersionInfo.FileVersion}.");
                     }
@@ -86,6 +92,17 @@ internal static partial class WindowsNativeFaultReport
             foreach ((string name, int registerOffset) in registers)
             {
                 AppendMemory(process, text, name, Unsafe.ReadUnaligned<nuint>(context + registerOffset), name == "stack" ? 2048 : 64);
+            }
+            if (diagnosticContext is not null && (nativeImage || !firstChance))
+            {
+                Span<nuint> roots = stackalloc nuint[registers.Length];
+                for (int index = 0; index < registers.Length; index++)
+                {
+                    roots[index] = Unsafe.ReadUnaligned<nuint>(context + registers[index].Offset);
+                }
+                memoryPath = WindowsNativeFaultMemoryCapture.Write(process, new ReadOnlySpan<byte>(context, 2048),
+                    roots, diagnosticContext);
+                text.Append(CultureInfo.InvariantCulture, $" memory-artifact={memoryPath}");
             }
         }
         catch (Exception exception) when (exception is Win32Exception or InvalidOperationException or

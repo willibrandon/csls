@@ -3,6 +3,7 @@ using System.Diagnostics;
 using System.Globalization;
 using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
+using System.Text.Json;
 
 namespace Csls.Debugger.Tests;
 
@@ -155,7 +156,8 @@ public sealed class WindowsNativeDebugObserverTests : DapTestContext
     public async Task NativeFaultRetainsIndependentlyAnnouncedStackStorage()
     {
         (int processId, int exitCode, string output, string error) = await DebuggerTestProcess.RunWithIdentityAsync(
-            CreateStart("stack-evidence"), TestContext.CancellationToken, observeNativeExceptions: true).ConfigureAwait(false);
+            CreateStart("stack-evidence"), TestContext.CancellationToken, diagnosticContext: TestContext,
+            observeNativeExceptions: true).ConfigureAwait(false);
         Assert.AreEqual(unchecked((int)0xc0000005), exitCode, error);
         string[] announcement = Assert.ContainsSingle(Lines(output)).Split(' ');
         Assert.HasCount(2, announcement);
@@ -175,6 +177,23 @@ public sealed class WindowsNativeDebugObserverTests : DapTestContext
         Assert.IsInRange(start, checked(start + (ulong)bytes.Length - (ulong)expected.Length), address);
         Assert.AreSequenceEqual(expected, bytes.AsSpan(checked((int)(address - start)), expected.Length).ToArray());
         Assert.IsLessThanOrEqualTo(8192, record.Length, "Native memory evidence must remain bounded.");
+        const string ArtifactPrefix = " memory-artifact=";
+        Assert.Contains(ArtifactPrefix, record);
+        string path = record[(record.IndexOf(ArtifactPrefix, StringComparison.Ordinal) + ArtifactPrefix.Length)..];
+        using FileStream artifact = File.OpenRead(path);
+        Assert.IsLessThan(3L * 1024 * 1024, artifact.Length, "Private memory capture must remain bounded.");
+        using JsonDocument memory = await JsonDocument.ParseAsync(artifact, cancellationToken: TestContext.CancellationToken)
+            .ConfigureAwait(false);
+        Assert.AreEqual(processId, memory.RootElement.GetProperty("processId").GetInt32());
+        Assert.AreEqual(RuntimeInformation.ProcessArchitecture.ToString(), memory.RootElement.GetProperty("architecture").GetString());
+        JsonElement region = Assert.ContainsSingle(memory.RootElement.GetProperty("regions").EnumerateArray().Where(region =>
+            address >= region.GetProperty("address").GetUInt64() &&
+            address - region.GetProperty("address").GetUInt64() + (ulong)expected.Length <=
+                (ulong)region.GetProperty("bytes").GetBytesFromBase64().Length));
+        ulong regionStart = region.GetProperty("address").GetUInt64();
+        byte[] retained = region.GetProperty("bytes").GetBytesFromBase64();
+        Assert.AreEqual(0, region.GetProperty("readError").GetInt32());
+        Assert.AreSequenceEqual(expected, retained.AsSpan(checked((int)(address - regionStart)), expected.Length).ToArray());
     }
 
     /// <summary>

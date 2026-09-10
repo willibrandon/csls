@@ -116,7 +116,7 @@ internal static class DebuggerTestProcess
                 {
                     nativeDiagnostics.AppendLine(record);
                     ReportProgress(record);
-                }, observation.Token, ReportPhase);
+                }, observation.Token, ReportPhase, diagnosticContext);
             }
             // Native observation already waits for the kernel signal after continuing EXIT_PROCESS_DEBUG_EVENT.
             exit = observeNativeExceptions ? nativeEvents : DebuggerProcessExit.WaitAsync(process, observation.Token);

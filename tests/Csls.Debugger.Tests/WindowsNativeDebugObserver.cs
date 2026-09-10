@@ -20,13 +20,14 @@ internal static partial class WindowsNativeDebugObserver
     /// <param name="report">Receives bounded native fault records outside the collector process.</param>
     /// <param name="cancellationToken">Cancels observation and detaches before caller-owned process cleanup.</param>
     /// <param name="phase">Optionally records capture-input release and process exit on the native event thread.</param>
+    /// <param name="diagnosticContext">Retains private memory at the first native-image or second-chance fault.</param>
     /// <returns>The native observation lifetime, completed after Windows signals process termination.</returns>
     internal static Task ObserveAsync(Process process, Action<string> report, CancellationToken cancellationToken,
-        Action<string>? phase = null) =>
-        Task.Factory.StartNew(() => Observe(process, report, phase, cancellationToken), CancellationToken.None,
+        Action<string>? phase = null, TestContext? diagnosticContext = null) =>
+        Task.Factory.StartNew(() => Observe(process, report, phase, diagnosticContext, cancellationToken), CancellationToken.None,
             TaskCreationOptions.LongRunning, TaskScheduler.Default);
 
-    private static unsafe void Observe(Process process, Action<string> report, Action<string>? phase,
+    private static unsafe void Observe(Process process, Action<string> report, Action<string>? phase, TestContext? diagnosticContext,
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
@@ -45,6 +46,7 @@ internal static partial class WindowsNativeDebugObserver
             }
             bool initialBreakpoint = true;
             int firstChanceReports = 0;
+            bool memoryCaptured = false;
             string? pendingFault = null;
             byte* nativeEvent = stackalloc byte[176];
             int unionOffset = IntPtr.Size == 8 ? 16 : 12;
@@ -100,7 +102,9 @@ internal static partial class WindowsNativeDebugObserver
                         }
                         else if (exception == 0xc0000005)
                         {
-                            string record = WindowsNativeFaultReport.Read(process, threadId, payload, firstChance);
+                            string record = WindowsNativeFaultReport.Read(process, threadId, payload, firstChance,
+                                memoryCaptured ? null : diagnosticContext, out string? memoryPath);
+                            memoryCaptured |= memoryPath is not null;
                             if (!firstChance || firstChanceReports < 8)
                             {
                                 if (firstChance)
