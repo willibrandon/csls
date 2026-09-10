@@ -122,33 +122,38 @@ internal sealed class DebuggerDumpFixture : IAsyncDisposable
                 Assert.AreEqual("ready", new string(ready));
                 Log("Target announced readiness.");
                 output = target.StandardOutput.ReadToEndAsync(CancellationToken.None);
-                Log($"Requesting {captureType ?? (includeHeap ? DumpType.WithHeap : DumpType.Triage)} dump.");
-                if (OperatingSystem.IsWindows())
-                {
-                    int exitCode;
-                    (exitCode, collectorOutput, collectorError) = await WindowsDebuggerProcessCapture.CaptureAsync(
-                        target, dump, cancellationToken, captureType ?? (includeHeap ? DumpType.WithHeap : DumpType.Triage),
-                        diagnosticContext)
-                        .ConfigureAwait(false);
-                    if (exitCode != 0)
-                    {
-                        throw new IOException($"The native snapshot collector exited with code {exitCode}.");
-                    }
-                }
-                else if (OperatingSystem.IsMacOS() && captureType == DumpType.Full)
-                {
-                    await DebuggerMacCoreCapture.CaptureAsync(target.Id, dump, Log, diagnosticContext, cancellationToken)
-                        .ConfigureAwait(false);
-                }
-                else
-                {
-                    var diagnostics = new DiagnosticsClient(target.Id);
-                    await diagnostics.WriteDumpAsync(captureType ?? (includeHeap ? DumpType.WithHeap : DumpType.Triage),
-                        dump, logDumpGeneration: false, cancellationToken)
-                        .ConfigureAwait(false);
-                }
+                DumpType selectedCaptureType = captureType ?? (includeHeap ? DumpType.WithHeap : DumpType.Triage);
+                Log($"Requesting {selectedCaptureType} dump.");
+                await DebuggerDumpCaptureGate.RunAsync(selectedCaptureType, CaptureAsync, cancellationToken)
+                    .ConfigureAwait(false);
                 Assert.IsGreaterThan(0L, new FileInfo(dump).Length);
                 Log($"Dump writer completed: {new FileInfo(dump).Length} bytes.");
+
+                async Task CaptureAsync()
+                {
+                    if (OperatingSystem.IsWindows())
+                    {
+                        int exitCode;
+                        (exitCode, collectorOutput, collectorError) = await WindowsDebuggerProcessCapture.CaptureAsync(
+                            target, dump, cancellationToken, selectedCaptureType, diagnosticContext)
+                            .ConfigureAwait(false);
+                        if (exitCode != 0)
+                        {
+                            throw new IOException($"The native snapshot collector exited with code {exitCode}.");
+                        }
+                    }
+                    else if (OperatingSystem.IsMacOS() && selectedCaptureType == DumpType.Full)
+                    {
+                        await DebuggerMacCoreCapture.CaptureAsync(target.Id, dump, Log, diagnosticContext, cancellationToken)
+                            .ConfigureAwait(false);
+                    }
+                    else
+                    {
+                        var diagnostics = new DiagnosticsClient(target.Id);
+                        await diagnostics.WriteDumpAsync(selectedCaptureType, dump, logDumpGeneration: false, cancellationToken)
+                            .ConfigureAwait(false);
+                    }
+                }
             }
             catch (Exception exception) when (exception is DiagnosticsClientException or IOException)
             {
