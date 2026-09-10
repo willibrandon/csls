@@ -10,6 +10,7 @@ namespace Csls.Tests;
 internal sealed class LspTestClient
 {
     private readonly Lock _gate = new();
+    private readonly List<string> _logMessages = [];
     private readonly Channel<int> _configurationRequests = Channel.CreateUnbounded<int>(
         new UnboundedChannelOptions
         {
@@ -86,6 +87,36 @@ internal sealed class LspTestClient
     private TaskCompletionSource? _configurationResponseRelease;
     private TaskCompletionSource? _configurationResponseCanceled;
     private int _configurationRequestCount;
+
+    /// <summary>
+    /// Gets a snapshot of the server's protocol-delivered diagnostic messages.
+    /// </summary>
+    internal IReadOnlyList<string> LogMessages
+    {
+        get
+        {
+            lock (_gate)
+            {
+                return [.. _logMessages];
+            }
+        }
+    }
+
+    /// <summary>
+    /// Retains a server log notification for inspection after protocol shutdown or cancellation.
+    /// </summary>
+    /// <param name="parameters">The real window/logMessage notification parameters.</param>
+    /// <returns>A completed task after the message has been retained.</returns>
+    internal Task PublishLogMessageAsync(JsonElement parameters)
+    {
+        string message = parameters.GetProperty("message").GetString()
+            ?? throw new InvalidDataException("The server log notification has no message.");
+        lock (_gate)
+        {
+            _logMessages.Add(message);
+        }
+        return Task.CompletedTask;
+    }
 
     /// <summary>
     /// Creates a client with independently controlled legacy and preferred sections.

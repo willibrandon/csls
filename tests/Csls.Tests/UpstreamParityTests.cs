@@ -48,7 +48,7 @@ public sealed class UpstreamParityTests
                 "--autoLoadProjects",
                 "1",
                 "--logLevel",
-                "Error",
+                "Information",
                 "--telemetryLevel",
                 "off"
             ],
@@ -78,10 +78,22 @@ public sealed class UpstreamParityTests
         string oracleWorkspacePath = Path.Join(fixtureRoot, "oracle");
         Directory.CreateDirectory(cslsWorkspacePath);
         Directory.CreateDirectory(oracleWorkspacePath);
+        string diagnosticDirectory = Path.Join(EditorToolResolver.ResolveArtifactsRoot(repositoryRoot),
+            "test-results", "terminal-editors", $"{oracleDisplayName}-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(diagnosticDirectory);
+        string cslsLog = Path.Join(diagnosticDirectory, "csls.log");
+        string oracleLog = Path.Join(diagnosticDirectory, "oracle.log");
+        LspTestClient? oracleClient = useRoslynProtocol
+            ? new LspTestClient(legacyConfiguration: null, preferredConfiguration: null)
+            : null;
         var elapsed = Stopwatch.StartNew();
         string phase = "creating workspaces";
         try
         {
+            using var cslsOutput = new StreamWriter(cslsLog);
+            using var oracleOutput = new StreamWriter(oracleLog);
+            TestContext.AddResultFile(cslsLog);
+            TestContext.AddResultFile(oracleLog);
             BeginPhase("restoring csls workspace");
             string cslsDocumentPath = await CreateWorkspaceAsync(
                 cslsWorkspacePath,
@@ -96,17 +108,16 @@ public sealed class UpstreamParityTests
                 "csls-parity",
                 EditorToolResolver.ResolveDotNetHost(),
                 [workerPath],
-                cslsWorkspacePath).ConfigureAwait(false);
+                cslsWorkspacePath,
+                diagnosticOutput: cslsOutput).ConfigureAwait(false);
             await using ConfiguredAsyncDisposable cslsCleanup = csls.ConfigureAwait(false);
-            LspTestClient? oracleClient = useRoslynProtocol
-                ? new LspTestClient(legacyConfiguration: null, preferredConfiguration: null)
-                : null;
             LspProcessSession oracle = await LspProcessSession.StartAsync(
                 oracleDisplayName,
                 oraclePath,
                 oracleArguments,
                 oracleWorkspacePath,
-                oracleClient).ConfigureAwait(false);
+                oracleClient,
+                diagnosticOutput: oracleOutput).ConfigureAwait(false);
             await using ConfiguredAsyncDisposable oracleCleanup = oracle.ConfigureAwait(false);
 
             BeginPhase("initializing language servers");
@@ -335,12 +346,36 @@ public sealed class UpstreamParityTests
                 "Unhandled exception",
                 await oracleShutdownTask.ConfigureAwait(false),
                 StringComparison.Ordinal);
+            Assert.AreEqual(await cslsShutdownTask.ConfigureAwait(false),
+                await File.ReadAllTextAsync(cslsLog, TestContext.CancellationToken).ConfigureAwait(false));
+            Assert.AreEqual(await oracleShutdownTask.ConfigureAwait(false),
+                await File.ReadAllTextAsync(oracleLog, TestContext.CancellationToken).ConfigureAwait(false));
+            Assert.IsNotEmpty(await oracleShutdownTask.ConfigureAwait(false),
+                "The oracle's startup and workspace diagnostics must be retained with the test result.");
+            if (oracleClient is not null)
+            {
+                Assert.IsNotEmpty(oracleClient.LogMessages,
+                    "The Roslyn oracle's window/logMessage notifications must be retained.");
+            }
             BeginPhase("disposing language servers");
         }
         finally
         {
             TestContext.WriteLine($"{oracleDisplayName}: {phase} ended at {elapsed.Elapsed}.");
-            await DirectoryReleaseWaiter.DeleteAsync(fixtureRoot, TimeSpan.FromSeconds(10)).ConfigureAwait(false);
+            try
+            {
+                if (oracleClient is not null)
+                {
+                    string protocolLog = Path.Join(diagnosticDirectory, "oracle-lsp.log");
+                    await File.WriteAllLinesAsync(protocolLog, oracleClient.LogMessages, CancellationToken.None)
+                        .ConfigureAwait(false);
+                    TestContext.AddResultFile(protocolLog);
+                }
+            }
+            finally
+            {
+                await DirectoryReleaseWaiter.DeleteAsync(fixtureRoot, TimeSpan.FromSeconds(10)).ConfigureAwait(false);
+            }
         }
 
         void BeginPhase(string next)
