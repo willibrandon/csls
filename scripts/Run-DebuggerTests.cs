@@ -39,6 +39,7 @@ if (args.Length != 0 && string.Equals(args[0], "--supervisor-timeout-seconds", S
     deadline = TimeSpan.FromSeconds(timeoutSeconds);
     firstTestArgument = 2;
 }
+string resultsDirectory = ResolveResultsDirectory(args, firstTestArgument);
 
 var startInfo = new ProcessStartInfo
 {
@@ -55,37 +56,33 @@ for (int index = firstTestArgument; index < args.Length; index++)
 
 using Process process = Process.Start(startInfo)
     ?? throw new InvalidOperationException("The debugger test process did not start.");
-Task<string> standardOutput = ProcessOutputCapture.ReadAsync(
+Task exit = process.WaitForExitAsync();
+var deadlineElapsed = Task.Delay(deadline);
+Task<string> standardOutput = Task.Run(() => ProcessOutputCapture.ReadAsync(
     process.StandardOutput.BaseStream,
     process.StandardOutput.CurrentEncoding,
-    Console.Out);
-Task<string> standardError = ProcessOutputCapture.ReadAsync(
+    Console.Out));
+Task<string> standardError = Task.Run(() => ProcessOutputCapture.ReadAsync(
     process.StandardError.BaseStream,
     process.StandardError.CurrentEncoding,
-    Console.Error);
-Task exit = process.WaitForExitAsync();
-if (await Task.WhenAny(exit, Task.Delay(deadline)).ConfigureAwait(false) == exit)
+    Console.Error));
+var execution = Task.WhenAll(exit, standardOutput, standardError);
+if (await Task.WhenAny(execution, deadlineElapsed).ConfigureAwait(false) == execution)
 {
-    await Task.WhenAll(exit, standardOutput, standardError).ConfigureAwait(false);
+    await execution.ConfigureAwait(false);
     return process.ExitCode;
 }
 
 string timeoutMessage = FormattableString.Invariant(
     $"Debugger tests exceeded the supervisor deadline of {deadline.TotalSeconds:F0} seconds. Root PID: {process.Id}.");
-await Console.Error.WriteLineAsync(timeoutMessage).ConfigureAwait(false);
 string processSnapshot = await CaptureProcessSnapshotAsync().ConfigureAwait(false);
-await PreserveTimeoutEvidenceAsync(timeoutMessage, processSnapshot).ConfigureAwait(false);
-await Console.Error.WriteLineAsync(processSnapshot).ConfigureAwait(false);
-
-var termination = Task.Run(() => TerminateProcessTree(process));
-if (await Task.WhenAny(termination, Task.Delay(TimeSpan.FromSeconds(5))).ConfigureAwait(false) == termination)
+await PreserveTimeoutEvidenceAsync(resultsDirectory, timeoutMessage, processSnapshot).ConfigureAwait(false);
+await ReportAsync(timeoutMessage).ConfigureAwait(false);
+await ReportAsync(processSnapshot).ConfigureAwait(false);
+string? terminationFailure = TerminateProcessTree(process, processSnapshot);
+if (terminationFailure is not null)
 {
-    await termination.ConfigureAwait(false);
-}
-else
-{
-    await Console.Error.WriteLineAsync("Debugger test process-tree termination did not return within five seconds.")
-        .ConfigureAwait(false);
+    await ReportAsync(terminationFailure).ConfigureAwait(false);
 }
 
 try
@@ -94,7 +91,7 @@ try
 }
 catch (TimeoutException)
 {
-    await Console.Error.WriteLineAsync("Debugger test process did not exit within five seconds after termination.")
+    await ReportAsync("Debugger test process did not exit within five seconds after termination.")
         .ConfigureAwait(false);
 }
 
@@ -105,6 +102,19 @@ static string ResolveDotNetHost()
 {
     string? configured = Environment.GetEnvironmentVariable("DOTNET_HOST_PATH");
     return string.IsNullOrWhiteSpace(configured) ? "dotnet" : configured;
+}
+
+static string ResolveResultsDirectory(string[] arguments, int firstTestArgument)
+{
+    for (int index = firstTestArgument; index + 1 < arguments.Length; index++)
+    {
+        if (string.Equals(arguments[index], "--results-directory", StringComparison.Ordinal))
+        {
+            return arguments[index + 1];
+        }
+    }
+
+    return Path.Join("artifacts", "test-results");
 }
 
 static async Task<string> CaptureProcessSnapshotAsync()
@@ -127,7 +137,7 @@ static async Task<string> CaptureProcessSnapshotAsync()
     }
     catch (TimeoutException)
     {
-        snapshot.Kill(entireProcessTree: true);
+        snapshot.Kill();
         return "The native process snapshot command timed out.";
     }
 
@@ -168,9 +178,8 @@ static ProcessStartInfo CreateRedirectedStartInfo(string fileName) => new()
     UseShellExecute = false
 };
 
-static async Task PreserveTimeoutEvidenceAsync(string message, string processSnapshot)
+static async Task PreserveTimeoutEvidenceAsync(string directory, string message, string processSnapshot)
 {
-    string directory = Path.Join("artifacts", "test-results");
     try
     {
         Directory.CreateDirectory(directory);
@@ -182,13 +191,27 @@ static async Task PreserveTimeoutEvidenceAsync(string message, string processSna
     }
     catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
     {
-        await Console.Error.WriteLineAsync($"Could not preserve debugger timeout evidence: {exception.Message}")
+        await ReportAsync($"Could not preserve debugger timeout evidence: {exception.Message}")
             .ConfigureAwait(false);
     }
 }
 
-static void TerminateProcessTree(Process process)
+static string? TerminateProcessTree(Process process, string processSnapshot)
 {
+    var failures = new List<string>();
+    if (OperatingSystem.IsLinux() || OperatingSystem.IsMacOS())
+    {
+        foreach (int processId in FindDescendantProcessIds(processSnapshot, process.Id))
+        {
+            TerminateSingleProcess(processId, failures);
+        }
+
+        TerminateSingleProcess(process.Id, failures);
+        return failures.Count == 0
+            ? null
+            : $"Debugger test process-tree termination was incomplete: {string.Join("; ", failures)}";
+    }
+
     try
     {
         if (!process.HasExited)
@@ -198,10 +221,73 @@ static void TerminateProcessTree(Process process)
     }
     catch (Exception exception) when (exception is InvalidOperationException or Win32Exception)
     {
-        if (!process.HasExited)
+        failures.Add(exception.Message);
+    }
+
+    return failures.Count == 0
+        ? null
+        : $"Debugger test process-tree termination failed: {string.Join("; ", failures)}";
+}
+
+static IReadOnlyList<int> FindDescendantProcessIds(string processSnapshot, int rootProcessId)
+{
+    var childrenByParent = new Dictionary<int, List<int>>();
+    foreach (string line in processSnapshot.Split('\n', StringSplitOptions.RemoveEmptyEntries))
+    {
+        string[] columns = line.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries);
+        if (columns.Length < 2 ||
+            !int.TryParse(columns[0], NumberStyles.None, CultureInfo.InvariantCulture, out int processId) ||
+            !int.TryParse(columns[1], NumberStyles.None, CultureInfo.InvariantCulture, out int parentProcessId) ||
+            processId == Environment.ProcessId)
         {
-            Console.Error.WriteLine($"Debugger test process-tree termination failed: {exception.Message}");
+            continue;
         }
+
+        if (!childrenByParent.TryGetValue(parentProcessId, out List<int>? children))
+        {
+            children = [];
+            childrenByParent.Add(parentProcessId, children);
+        }
+
+        children.Add(processId);
+    }
+
+    var descendants = new List<int>();
+    var pending = new Stack<int>();
+    pending.Push(rootProcessId);
+    while (pending.TryPop(out int parentProcessId))
+    {
+        if (!childrenByParent.TryGetValue(parentProcessId, out List<int>? children))
+        {
+            continue;
+        }
+
+        foreach (int childProcessId in children)
+        {
+            descendants.Add(childProcessId);
+            pending.Push(childProcessId);
+        }
+    }
+
+    descendants.Reverse();
+    return descendants;
+}
+
+static void TerminateSingleProcess(int processId, List<string> failures)
+{
+    try
+    {
+        using var target = Process.GetProcessById(processId);
+        target.Kill();
+    }
+    catch (ArgumentException)
+    {
+        // The process exited between the snapshot and the termination pass.
+        return;
+    }
+    catch (Exception exception) when (exception is InvalidOperationException or Win32Exception)
+    {
+        failures.Add(FormattableString.Invariant($"PID {processId}: {exception.Message}"));
     }
 }
 
@@ -215,7 +301,22 @@ static async Task DrainOutputAsync(Task<string> standardOutput, Task<string> sta
     }
     catch (TimeoutException)
     {
-        await Console.Error.WriteLineAsync("Debugger test output did not close within five seconds after termination.")
+        await ReportAsync("Debugger test output did not close within five seconds after termination.")
             .ConfigureAwait(false);
+    }
+}
+
+static async Task ReportAsync(string message)
+{
+    try
+    {
+        await Console.Error.WriteLineAsync(message)
+            .WaitAsync(TimeSpan.FromSeconds(1), CancellationToken.None)
+            .ConfigureAwait(false);
+    }
+    catch (Exception exception) when (exception is IOException or ObjectDisposedException or TimeoutException)
+    {
+        // The evidence file remains authoritative when the runner log stream is unavailable.
+        return;
     }
 }

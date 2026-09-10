@@ -494,7 +494,7 @@ jobs:
         run: dotnet artifacts/bin/Csls.Debugger.TestAuthorization/debug/Configure-DebuggerTestAuthorization.dll restore
 
       - name: Preserve debugger test results
-        if: always()
+        if: failure()
         uses: actions/upload-artifact@v7
         with:
           name: debugger-test-results-${{ matrix.rid }}-${{ matrix.suite }}-${{ github.run_attempt }}
@@ -504,11 +504,11 @@ jobs:
           if-no-files-found: warn
 
       - name: Pack debugger dump files
-        if: always() && steps.debugger-tests.outcome != 'skipped' && steps.debugger-tests.outcome != ''
+        if: failure() && steps.debugger-tests.outcome != 'skipped' && steps.debugger-tests.outcome != ''
         run: dotnet artifacts/bin/Csls.Debugger.DumpArchive/debug/Pack-DebuggerDumps.dll
 
       - name: Preserve debugger dump files
-        if: always()
+        if: failure()
         uses: actions/upload-artifact@v7
         with:
           name: debugger-dumps-${{ matrix.rid }}-${{ matrix.suite }}-${{ github.run_attempt }}
