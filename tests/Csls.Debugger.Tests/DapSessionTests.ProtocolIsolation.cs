@@ -30,6 +30,7 @@ public sealed partial class DapSessionTests
                 .CreateAsync(TestContext.CancellationToken)
                 .ConfigureAwait(false);
             await using ConfiguredAsyncDisposable clientDisposal = client.ConfigureAwait(false);
+            using DapTestCancellationCapture capture = CaptureProtocolOnCancellation(client);
             int initializeSequence = await client.SendRequestAsync(
                 "initialize",
                 WriteEmptyObject,
@@ -42,7 +43,7 @@ public sealed partial class DapSessionTests
                 initializeSequence,
                 "initialize",
                 success: true);
-            int workerProcessId = await WaitForOnlyChildProcessAsync(
+            int workerProcessId = await ReadOnlyChildProcessAsync(
                 client.HostProcessId,
                 TestContext.CancellationToken).ConfigureAwait(false);
             List<string> protocolDescriptors = GetStableProtocolDescriptorTargets(
@@ -190,24 +191,33 @@ public sealed partial class DapSessionTests
         return (flags & CloseOnExecFlag) != 0;
     }
 
-    private static async Task<int> WaitForOnlyChildProcessAsync(
+    private static async Task<int> ReadOnlyChildProcessAsync(
         int processId,
         CancellationToken cancellationToken)
     {
-        string childrenPath = $"/proc/{processId}/task/{processId}/children";
-        using var timer = new PeriodicTimer(TimeSpan.FromMilliseconds(10));
-        do
+        // The initialize response proves that the worker exists. Linux associates children with
+        // their spawning thread, which can be a launcher continuation on the managed thread pool.
+        var children = new HashSet<int>();
+        foreach (string task in Directory.EnumerateDirectories($"/proc/{processId}/task"))
         {
-            string[] children = (await File.ReadAllTextAsync(childrenPath, cancellationToken)
-                    .ConfigureAwait(false))
-                .Split(' ', StringSplitOptions.RemoveEmptyEntries);
-            if (children.Length == 1)
+            string text;
+            try
             {
-                return int.Parse(children[0], NumberStyles.None, CultureInfo.InvariantCulture);
+                text = await File.ReadAllTextAsync(Path.Join(task, "children"), cancellationToken).ConfigureAwait(false);
+            }
+            catch (FileNotFoundException)
+            {
+                continue;
+            }
+            catch (DirectoryNotFoundException)
+            {
+                continue;
+            }
+            foreach (string child in text.Split(' ', StringSplitOptions.RemoveEmptyEntries))
+            {
+                children.Add(int.Parse(child, NumberStyles.None, CultureInfo.InvariantCulture));
             }
         }
-        while (await timer.WaitForNextTickAsync(cancellationToken).ConfigureAwait(false));
-
-        throw new InvalidOperationException("The debugger worker child process did not start.");
+        return Assert.ContainsSingle(children, "The initialized launcher must own exactly one debugger worker.");
     }
 }
