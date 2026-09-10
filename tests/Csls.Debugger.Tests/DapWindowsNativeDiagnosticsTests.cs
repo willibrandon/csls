@@ -210,6 +210,7 @@ public sealed class DapWindowsNativeDiagnosticsTests : DapTestContext
                 RedirectStandardOutput = true,
                 RedirectStandardError = true
             };
+            start.Environment["DOTNET_GCHeapHardLimit"] = "0x8000000";
             start.ArgumentList.Add(ResolveTestProcessHost());
             start.ArgumentList.Add("--windows-module-churn");
             start.ArgumentList.Add(stopPath);

@@ -110,8 +110,6 @@ internal sealed class DebuggerDumpFixture : IAsyncDisposable
             Task<string> error = target.StandardError.ReadToEndAsync(CancellationToken.None);
             Task<string>? output = null;
             Exception? captureFailure = null;
-            string collectorOutput = string.Empty;
-            string collectorError = string.Empty;
             string errorTail = string.Empty;
             string outputTail = string.Empty;
             try
@@ -125,36 +123,18 @@ internal sealed class DebuggerDumpFixture : IAsyncDisposable
                 output = target.StandardOutput.ReadToEndAsync(CancellationToken.None);
                 DumpType selectedCaptureType = captureType ?? (includeHeap ? DumpType.WithHeap : DumpType.Triage);
                 Log(OperatingSystem.IsMacOS() && selectedCaptureType == DumpType.Full
-                    ? "Requesting compact native macOS core for the full inspection profile."
+                    ? "Requesting complete native macOS core for the full inspection profile."
                     : $"Requesting {selectedCaptureType} dump.");
-                if (OperatingSystem.IsWindows())
-                {
-                    await CaptureAsync().ConfigureAwait(false);
-                }
-                else
-                {
-                    await DebuggerDumpCaptureGate.RunMemoryCaptureAsync(
-                        selectedCaptureType,
-                        CaptureAsync,
-                        cancellationToken).ConfigureAwait(false);
-                }
+                await DebuggerDumpCaptureGate.RunMemoryCaptureAsync(
+                    selectedCaptureType,
+                    CaptureAsync,
+                    cancellationToken).ConfigureAwait(false);
                 Assert.IsGreaterThan(0L, new FileInfo(dump).Length);
                 Log($"Dump writer completed: {new FileInfo(dump).Length} bytes.");
 
                 async Task CaptureAsync()
                 {
-                    if (OperatingSystem.IsWindows())
-                    {
-                        int exitCode;
-                        (exitCode, collectorOutput, collectorError) = await WindowsDebuggerProcessCapture.CaptureAsync(
-                            target, dump, cancellationToken, selectedCaptureType, diagnosticContext)
-                            .ConfigureAwait(false);
-                        if (exitCode != 0)
-                        {
-                            throw new IOException($"The native snapshot collector exited with code {exitCode}.");
-                        }
-                    }
-                    else if (OperatingSystem.IsMacOS() && selectedCaptureType == DumpType.Full)
+                    if (OperatingSystem.IsMacOS() && selectedCaptureType == DumpType.Full)
                     {
                         await DebuggerMacCoreCapture.CaptureAsync(target.Id, dump, Log, diagnosticContext, cancellationToken)
                             .ConfigureAwait(false);
@@ -198,11 +178,11 @@ internal sealed class DebuggerDumpFixture : IAsyncDisposable
                     await target.WaitForExitAsync(CancellationToken.None).ConfigureAwait(false);
                 }
                 Log($"Observed target exit {target.ExitCode}.");
-                errorTail = GetTail(collectorError + await error.ConfigureAwait(false));
+                errorTail = GetTail(await error.ConfigureAwait(false));
                 LogOutput("stderr", errorTail);
                 if (output is not null)
                 {
-                    outputTail = GetTail(collectorOutput + await output.ConfigureAwait(false));
+                    outputTail = GetTail(await output.ConfigureAwait(false));
                     LogOutput("stdout", outputTail);
                 }
                 Log("Drained target streams.");

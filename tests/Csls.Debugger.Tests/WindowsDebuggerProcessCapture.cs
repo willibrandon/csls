@@ -103,9 +103,8 @@ internal static class WindowsDebuggerProcessCapture
         Process process, string path, CancellationToken cancellationToken, DumpType? captureType = null,
         TestContext? diagnosticContext = null)
     {
-        return await DebuggerDumpCaptureGate.RunWindowsSnapshotAsync(
-            () => CaptureCoreAsync(process, path, captureType, diagnosticContext, cancellationToken),
-            cancellationToken).ConfigureAwait(false);
+        return await CaptureCoreAsync(process, path, captureType, diagnosticContext, cancellationToken)
+            .ConfigureAwait(false);
     }
 
     private static async Task<(int ExitCode, string Output, string Error)> CaptureCoreAsync(

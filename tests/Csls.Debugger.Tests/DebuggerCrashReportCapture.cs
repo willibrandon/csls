@@ -24,6 +24,7 @@ internal sealed class DebuggerCrashReportCapture : IAsyncDisposable
         Dictionary<string, string?> variables = [];
         if (OperatingSystem.IsLinux() || OperatingSystem.IsMacOS())
         {
+            variables["DOTNET_GCHeapHardLimit"] = "0x8000000";
             variables["DOTNET_DbgEnableMiniDump"] = "1";
             variables["DOTNET_EnableCrashReport"] = "1";
             variables["DOTNET_EnableCrashReportOnly"] = dumpType.HasValue ? "0" : "1";

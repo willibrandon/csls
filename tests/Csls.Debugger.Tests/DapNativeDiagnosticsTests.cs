@@ -7,7 +7,6 @@ using Microsoft.Diagnostics.Runtime.DataReaders.Implementation;
 using System.Diagnostics;
 using System.Globalization;
 using System.Runtime.CompilerServices;
-using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
 using System.Text.Json;
 
@@ -29,8 +28,7 @@ public sealed class DapNativeDiagnosticsTests : DapTestContext
         DebuggerDumpCaptureException failure = await Assert.ThrowsExactlyAsync<DebuggerDumpCaptureException>(
             () => DebuggerDumpFixture.CreateAsync(ResolveTestProcessHost(), TestContext.CancellationToken,
                 blockDumpOutput: true)).ConfigureAwait(false);
-        Assert.IsInstanceOfType(failure.InnerException, RuntimeInformation.IsOSPlatform(OSPlatform.Windows)
-            ? typeof(IOException) : typeof(ServerErrorException));
+        _ = Assert.IsInstanceOfType<ServerErrorException>(failure.InnerException);
         Assert.Contains(failure.DumpPath, failure.StandardError);
         Assert.Contains(failure.StandardError, failure.Message);
         Assert.IsLessThanOrEqualTo(16 * 1024, failure.StandardError.Length);
