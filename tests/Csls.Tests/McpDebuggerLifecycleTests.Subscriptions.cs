@@ -1,3 +1,4 @@
+using ModelContextProtocol;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
 using System.Runtime.CompilerServices;
@@ -11,6 +12,40 @@ namespace Csls.Tests;
 /// </summary>
 public sealed partial class McpDebuggerLifecycleTests
 {
+    /// <summary>
+    /// Surfaces a rejected subscription request while the server correctly sends no acknowledgement.
+    /// </summary>
+    [TestMethod]
+    [Timeout(30000, CooperativeCancellation = true)]
+    public async Task SubscriptionWaitReportsRejectedRequest()
+    {
+        McpProcessSession mcp = await StartMcpAsync(TestContext.CancellationToken).ConfigureAwait(false);
+        await using ConfiguredAsyncDisposable cleanup = mcp.ConfigureAwait(false);
+        var notification = new TaskCompletionSource<JsonRpcNotification>(TaskCreationOptions.RunContinuationsAsynchronously);
+        IAsyncDisposable registration = mcp.Client.RegisterNotificationHandler(
+            NotificationMethods.SubscriptionsAcknowledgedNotification,
+            (value, _) =>
+            {
+                notification.TrySetResult(value);
+                return default;
+            });
+        await using ConfiguredAsyncDisposable registrationCleanup = registration.ConfigureAwait(false);
+        Task rejected = mcp.Client.SendRequestAsync(new JsonRpcRequest
+        {
+            Id = new RequestId($"rejected-{Guid.NewGuid():N}"),
+            Method = "subscriptions/not-a-method"
+        }, TestContext.CancellationToken);
+
+        McpProtocolException failure = await Assert.ThrowsExactlyAsync<McpProtocolException>(async () =>
+            await AwaitSubscriptionNotificationAsync(notification.Task, rejected, TestContext.CancellationToken)
+                .WaitAsync(TestContext.CancellationToken)
+                .ConfigureAwait(false)).ConfigureAwait(false);
+
+        Assert.AreEqual(McpErrorCode.MethodNotFound, failure.ErrorCode);
+        Assert.IsTrue(rejected.IsFaulted);
+        Assert.IsFalse(notification.Task.IsCompleted);
+    }
+
     private static async Task<T> AssertResourceSubscriptionAsync<T>(
         McpClient client,
         string resourceUri,
@@ -72,8 +107,8 @@ public sealed partial class McpDebuggerLifecycleTests
 
         try
         {
-            JsonRpcNotification acknowledgement = await acknowledged.Task.WaitAsync(
-                cancellationToken).ConfigureAwait(false);
+            JsonRpcNotification acknowledgement = await AwaitSubscriptionNotificationAsync(
+                acknowledged.Task, listenTask, cancellationToken).ConfigureAwait(false);
             JsonArray granted = acknowledgement.Params!["notifications"]!
                 ["resourceSubscriptions"]!.AsArray();
             Assert.HasCount(1, granted);
@@ -82,8 +117,8 @@ public sealed partial class McpDebuggerLifecycleTests
             Assert.IsNotNull(acknowledgedId);
 
             T result = await mutation().ConfigureAwait(false);
-            JsonRpcNotification notification = await updated.Task.WaitAsync(cancellationToken)
-                .ConfigureAwait(false);
+            JsonRpcNotification notification = await AwaitSubscriptionNotificationAsync(
+                updated.Task, listenTask, cancellationToken).ConfigureAwait(false);
             Assert.AreEqual(acknowledgedId, GetSubscriptionId(notification));
             return result;
         }
@@ -101,6 +136,18 @@ public sealed partial class McpDebuggerLifecycleTests
             await listenCancellation.CancelAsync().ConfigureAwait(false);
             await listenTask.ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
         }
+    }
+
+    private static async Task<JsonRpcNotification> AwaitSubscriptionNotificationAsync(
+        Task<JsonRpcNotification> notification, Task listening, CancellationToken cancellationToken)
+    {
+        Task completed = await Task.WhenAny(notification, listening).WaitAsync(cancellationToken).ConfigureAwait(false);
+        if (ReferenceEquals(completed, listening))
+        {
+            await listening.WaitAsync(cancellationToken).ConfigureAwait(false);
+            Assert.Fail("The subscription ended before its next notification.");
+        }
+        return await notification.WaitAsync(cancellationToken).ConfigureAwait(false);
     }
 
     private static string? GetSubscriptionId(JsonRpcNotification notification) =>
