@@ -96,6 +96,7 @@ internal sealed class DebuggerDumpFixture : IAsyncDisposable
                 RedirectStandardOutput = true,
                 RedirectStandardError = true
             };
+            startInfo.Environment["DOTNET_GCHeapHardLimit"] = "0x8000000";
             startInfo.ArgumentList.Add(program);
             foreach (string argument in arguments ??
                 [captureArrayShapes ? "--debugger-dump-arrays"
@@ -123,9 +124,20 @@ internal sealed class DebuggerDumpFixture : IAsyncDisposable
                 Log("Target announced readiness.");
                 output = target.StandardOutput.ReadToEndAsync(CancellationToken.None);
                 DumpType selectedCaptureType = captureType ?? (includeHeap ? DumpType.WithHeap : DumpType.Triage);
-                Log($"Requesting {selectedCaptureType} dump.");
-                await DebuggerDumpCaptureGate.RunAsync(selectedCaptureType, CaptureAsync, cancellationToken)
-                    .ConfigureAwait(false);
+                Log(OperatingSystem.IsMacOS() && selectedCaptureType == DumpType.Full
+                    ? "Requesting compact native macOS core for the full inspection profile."
+                    : $"Requesting {selectedCaptureType} dump.");
+                if (OperatingSystem.IsWindows())
+                {
+                    await CaptureAsync().ConfigureAwait(false);
+                }
+                else
+                {
+                    await DebuggerDumpCaptureGate.RunMemoryCaptureAsync(
+                        selectedCaptureType,
+                        CaptureAsync,
+                        cancellationToken).ConfigureAwait(false);
+                }
                 Assert.IsGreaterThan(0L, new FileInfo(dump).Length);
                 Log($"Dump writer completed: {new FileInfo(dump).Length} bytes.");
 

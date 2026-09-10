@@ -5,13 +5,13 @@ using System.Runtime.Versioning;
 namespace Csls.Debugger.Tests;
 
 /// <summary>
-/// Captures complete native macOS core files from test-owned managed targets.
+/// Captures compact native macOS core files from test-owned managed targets.
 /// </summary>
 [SupportedOSPlatform("macos")]
 internal static class DebuggerMacCoreCapture
 {
     /// <summary>
-    /// Signs an owned collector copy and captures every accessible target memory region with its native thread identities.
+    /// Signs an owned collector copy and captures modified target pages with native thread identities and file references.
     /// </summary>
     /// <param name="processId">The independently running test-owned managed process.</param>
     /// <param name="path">The new core file inside the fixture's owned directory.</param>
@@ -36,7 +36,7 @@ internal static class DebuggerMacCoreCapture
                 .ConfigureAwait(false);
             // Cache the captured pages for immediate offline inspection. The collector writes chunks smaller than 2 GiB.
             await RunAsync(collector,
-                ["-s", "-x", "full", "-t", "2097152", "-v", "-o", path, processId.ToString(CultureInfo.InvariantCulture)],
+                ["-s", "-x", "compact", "-t", "2097152", "-v", "-o", path, processId.ToString(CultureInfo.InvariantCulture)],
                 progress, diagnosticContext, cancellationToken,
                 (process, report, token) => DebuggerCaptureResourceObservation.ObserveAsync(process, path, report, token))
                 .ConfigureAwait(false);

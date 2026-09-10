@@ -98,12 +98,19 @@ internal static class WindowsDebuggerProcessCapture
     /// <param name="cancellationToken">Cancels and reaps the collector independently of the captured process.</param>
     /// <param name="captureType">An optional managed dump policy, with native thread capture as the default.</param>
     /// <param name="diagnosticContext">Retains collector progress and native stacks before cancellation cleanup.</param>
-    /// <param name="observeOutputDrain">Observes exited collectors until their output drains; capture cancels and awaits the observer.</param>
     /// <returns>The collector exit status and diagnostics.</returns>
     internal static async Task<(int ExitCode, string Output, string Error)> CaptureAsync(
         Process process, string path, CancellationToken cancellationToken, DumpType? captureType = null,
-        TestContext? diagnosticContext = null,
-        Func<Process, CancellationToken, Task>? observeOutputDrain = null)
+        TestContext? diagnosticContext = null)
+    {
+        return await DebuggerDumpCaptureGate.RunWindowsSnapshotAsync(
+            () => CaptureCoreAsync(process, path, captureType, diagnosticContext, cancellationToken),
+            cancellationToken).ConfigureAwait(false);
+    }
+
+    private static async Task<(int ExitCode, string Output, string Error)> CaptureCoreAsync(
+        Process process, string path, DumpType? captureType, TestContext? diagnosticContext,
+        CancellationToken cancellationToken)
     {
         _ = process.SafeHandle;
         // A collector can suspend its owner while capturing the owner's threads. Its native debugger
@@ -132,7 +139,7 @@ internal static class WindowsDebuggerProcessCapture
         (int collectorId, int exitCode, string output, string error) =
             await DebuggerTestProcess.RunWithIdentityAsync(startInfo, cancellationToken,
                 diagnosticContext is null ? null : line => diagnosticContext.WriteLine(line), diagnosticContext,
-                observeNativeExceptions: observeNativeExceptions, observeOutputDrain: observeOutputDrain)
+                observeNativeExceptions: observeNativeExceptions)
                 .ConfigureAwait(false);
         if (exitCode != 0)
         {

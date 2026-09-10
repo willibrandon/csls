@@ -234,7 +234,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        suite: [standard, dumps, physical-capture, protocol, protocol-lifecycle, protocol-inspection, symbols, type-inspection, stepping, evaluation, assignment, presentation, stress]
+        suite: [standard, dumps, physical-capture, protocol, protocol-lifecycle, protocol-inspection, symbols, type-inspection, stepping, stepping-thread-start, evaluation, assignment, presentation, stress]
         rid: [linux-x64, linux-arm64, win-x64, win-arm64, osx-x64, osx-arm64]
         include:
           # Complementary filters partition the required debugger suites.
@@ -272,8 +272,12 @@ jobs:
             filter: TestCategory!=DebuggerStress&FullyQualifiedName!~Assignment&FullyQualifiedName!~Evaluation&FullyQualifiedName!~ResultsView&FullyQualifiedName!~DebuggerTypeProxy&FullyQualifiedName!~Async&FullyQualifiedName!~Step&FullyQualifiedName!~Iterator&FullyQualifiedName~Csls.Debugger.Tests.Dap&(FullyQualifiedName~Csls.Debugger.Tests.DapDumpTests|FullyQualifiedName~ReferenceConversions|FullyQualifiedName~ReferenceTypeExpressions|FullyQualifiedName~RawStringReferences)
           - suite: stepping
             name: Debugger stepping
-            minimum_tests: 70
-            filter: TestCategory!=DebuggerStress&FullyQualifiedName!~Assignment&FullyQualifiedName!~Evaluation&FullyQualifiedName!~ResultsView&FullyQualifiedName!~DebuggerTypeProxy&(FullyQualifiedName~Async|FullyQualifiedName~Step|FullyQualifiedName~Iterator)
+            minimum_tests: 50
+            filter: TestCategory!=DebuggerStress&FullyQualifiedName!~Assignment&FullyQualifiedName!~Evaluation&FullyQualifiedName!~ResultsView&FullyQualifiedName!~DebuggerTypeProxy&FullyQualifiedName!~Csls.Debugger.Tests.DapAsyncThreadStartupTests&(FullyQualifiedName~Async|FullyQualifiedName~Step|FullyQualifiedName~Iterator)
+          - suite: stepping-thread-start
+            name: Debugger async thread startup
+            minimum_tests: 32
+            filter: FullyQualifiedName~Csls.Debugger.Tests.DapAsyncThreadStartupTests
           - suite: evaluation
             name: Debugger evaluation
             minimum_tests: 56
@@ -378,7 +382,7 @@ jobs:
 
       - name: Provision independent thread-start oracle
         id: thread-start-oracle
-        if: always() && matrix.rid == 'linux-arm64' && matrix.suite == 'stepping' && steps.debugger-tests.outcome != 'skipped'
+        if: always() && matrix.rid == 'linux-arm64' && matrix.suite == 'stepping-thread-start' && steps.debugger-tests.outcome != 'skipped'
         run: >-
           dotnet run --file scripts/Provision-NetcoredbgOracle.cs
           /bl:artifacts/binlogs/thread-start-oracle-{}.binlog -- --github-env
@@ -966,10 +970,23 @@ jobs:
           --minimum-expected-tests 1
 
   terminal-editor-tests:
-    name: Terminal editor tests
+    name: Terminal editor tests (${{ matrix.group }})
     runs-on: ubuntu-latest
     timeout-minutes: 5
     needs: test-binaries
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - group: editors
+            minimum_tests: 5
+            filter: FullyQualifiedName~Csls.Tests.EmacsLanguageServerTests|FullyQualifiedName~Csls.Tests.FreshLanguageServerTests|FullyQualifiedName~Csls.Tests.HelixLanguageServerTests|FullyQualifiedName~Csls.Tests.NeovimLanguageServerTests
+          - group: csharp-ls-oracle
+            minimum_tests: 1
+            filter: FullyQualifiedName=Csls.Tests.UpstreamParityTests.HoverMatchesCsharpLsOracle
+          - group: roslyn-oracle
+            minimum_tests: 1
+            filter: FullyQualifiedName=Csls.Tests.UpstreamParityTests.CoreLanguageFeaturesMatchRoslynLanguageServerOracle
 
     steps:
       - name: Check out repository
@@ -1001,32 +1018,38 @@ jobs:
             artifacts/tools/fresh
             artifacts/tools/helix
             artifacts/tools/neovim
-          key: terminal-editor-tools-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/Provision-CsharpLsOracle.cs', 'scripts/Provision-RoslynLanguageServerOracle.cs', 'scripts/Provision-Emacs.cs', 'scripts/Provision-Fresh.cs', 'scripts/Provision-Helix.cs', 'scripts/Provision-Neovim.cs', 'scripts/ScriptSupport.cs') }}
+          key: terminal-editor-tools-${{ matrix.group }}-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/Provision-CsharpLsOracle.cs', 'scripts/Provision-RoslynLanguageServerOracle.cs', 'scripts/Provision-Emacs.cs', 'scripts/Provision-Fresh.cs', 'scripts/Provision-Helix.cs', 'scripts/Provision-Neovim.cs', 'scripts/ScriptSupport.cs') }}
 
       - name: Provision parity oracle
+        if: matrix.group == 'csharp-ls-oracle'
         run: dotnet run --file scripts/Provision-CsharpLsOracle.cs
 
       - name: Provision Roslyn parity oracle
+        if: matrix.group == 'roslyn-oracle'
         run: dotnet run --file scripts/Provision-RoslynLanguageServerOracle.cs
 
       - name: Provision Fresh
+        if: matrix.group == 'editors'
         run: dotnet run --file scripts/Provision-Fresh.cs
 
       - name: Provision GNU Emacs
+        if: matrix.group == 'editors'
         run: dotnet run --file scripts/Provision-Emacs.cs
 
       - name: Provision Helix
+        if: matrix.group == 'editors'
         run: dotnet run --file scripts/Provision-Helix.cs
 
       - name: Provision Neovim
+        if: matrix.group == 'editors'
         run: dotnet run --file scripts/Provision-Neovim.cs
 
       - name: Run terminal editor tests
         run: >-
           dotnet test --test-modules artifacts/bin/Csls.Tests/debug/Csls.Tests.dll
           --root-directory .
-          --filter "FullyQualifiedName~Csls.Tests.EmacsLanguageServerTests|FullyQualifiedName~Csls.Tests.FreshLanguageServerTests|FullyQualifiedName~Csls.Tests.HelixLanguageServerTests|FullyQualifiedName~Csls.Tests.NeovimLanguageServerTests|FullyQualifiedName~Csls.Tests.UpstreamParityTests"
-          --minimum-expected-tests 7
+          --filter "${{ matrix.filter }}"
+          --minimum-expected-tests ${{ matrix.minimum_tests }}
           --report-trx
           --results-directory artifacts/test-results/terminal-editors
 
@@ -1034,9 +1057,32 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: terminal-editor-test-results-${{ github.run_attempt }}
+          name: terminal-editor-test-results-${{ matrix.group }}-${{ github.run_attempt }}
           path: artifacts/test-results/terminal-editors
           if-no-files-found: warn
+
+  terminal-editor-tests-complete:
+    name: Terminal editor tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    needs: terminal-editor-tests
+    if: ${{ always() }}
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 10.x
+
+      - name: Require successful terminal editor jobs
+        env:
+          CSLS_WORKFLOW_DEPENDENCY_RESULT: ${{ needs.terminal-editor-tests.result }}
+        run: dotnet run --file scripts/Verify-WorkflowDependency.cs
 
   zed-test-assets:
     name: Zed test assets

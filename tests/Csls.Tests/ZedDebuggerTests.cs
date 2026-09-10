@@ -98,6 +98,7 @@ public sealed class ZedDebuggerTests
             Task<string> output = zed.StandardOutput.ReadToEndAsync(TestContext.CancellationToken);
             Task<string> error = zed.StandardError.ReadToEndAsync(TestContext.CancellationToken);
             ProcessExitObservation? serverExit = null;
+            bool completed = false;
             try
             {
                 await FocusZedAsync(
@@ -128,6 +129,7 @@ public sealed class ZedDebuggerTests
                     .WaitAsync(TimeSpan.FromSeconds(30), TestContext.CancellationToken)
                     .ConfigureAwait(false);
                 Assert.AreEqual(0, zed.ExitCode);
+                completed = true;
             }
             finally
             {
@@ -143,6 +145,14 @@ public sealed class ZedDebuggerTests
                 if (zed.ExitCode != 0 && !string.IsNullOrWhiteSpace(diagnostics))
                 {
                     TestContext.WriteLine(diagnostics);
+                }
+
+                string zedLogPath = Path.Join(userDataPath, "logs", "Zed.log");
+                if (!completed && File.Exists(zedLogPath))
+                {
+                    TestContext.WriteLine(await File.ReadAllTextAsync(
+                        zedLogPath,
+                        TestContext.CancellationToken).ConfigureAwait(false));
                 }
 
                 if (serverExit is ProcessExitObservation observation)
