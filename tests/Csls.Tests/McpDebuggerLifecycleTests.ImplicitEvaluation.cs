@@ -40,10 +40,11 @@ public sealed partial class McpDebuggerLifecycleTests
                 ["expressionEvaluationOptions"] = new Dictionary<string, object?> { ["allowImplicitFuncEval"] = allowImplicitFuncEval }
             }, TestContext.CancellationToken).ConfigureAwait(false);
             string session = started.GetProperty("debugSession").GetString()!;
-            ProcessExitObservation exit = ProcessExitWaiter.Observe(started.GetProperty("processId").GetInt32());
+            int targetId = started.GetProperty("processId").GetInt32();
+            ProcessExitObservation exit = ProcessExitWaiter.Observe(targetId);
             for (int incarnation = 0; incarnation < 2; incarnation++)
             {
-                JsonElement stopped = await WaitForStoppedAsync(mcp.Client, session, TestContext.CancellationToken).ConfigureAwait(false);
+                JsonElement stopped = await WaitForImplicitEvaluationStopAsync(mcp, session, targetId).ConfigureAwait(false);
                 long generation = stopped.GetProperty("stopGeneration").GetInt64();
                 int thread = stopped.GetProperty("stoppedThreadId").GetInt32();
                 JsonElement frame = await GetSourceFrameAsync(mcp.Client, session, generation, thread, source,
@@ -109,8 +110,9 @@ public sealed partial class McpDebuggerLifecycleTests
                         ["stopGeneration"] = presentedGeneration
                     }, TestContext.CancellationToken).ConfigureAwait(false);
                     await ProcessExitWaiter.WaitAsync(exit, TimeSpan.FromSeconds(10), TestContext.CancellationToken).ConfigureAwait(false);
-                    exit = ProcessExitWaiter.Observe(restarted.GetProperty("processId").GetInt32());
-                    _ = await WaitForStoppedAsync(mcp.Client, session, TestContext.CancellationToken).ConfigureAwait(false);
+                    targetId = restarted.GetProperty("processId").GetInt32();
+                    exit = ProcessExitWaiter.Observe(targetId);
+                    _ = await WaitForImplicitEvaluationStopAsync(mcp, session, targetId).ConfigureAwait(false);
                     await AssertToolErrorAsync(mcp.Client, "debug_variables_get", inspect,
                         "debugger_stale_generation", TestContext.CancellationToken).ConfigureAwait(false);
                     _ = await CallAsync(mcp.Client, "debug_agent_control_set", new Dictionary<string, object?>

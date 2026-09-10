@@ -161,7 +161,8 @@ public sealed partial class McpDebuggerLifecycleTests
     private static async Task<JsonElement> WaitForStoppedAsync(
         McpClient client,
         string debugSession,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        Action<JsonElement>? observeState = null)
     {
         while (true)
         {
@@ -170,6 +171,7 @@ public sealed partial class McpDebuggerLifecycleTests
                 "debug_session_get",
                 new Dictionary<string, object?> { ["debugSession"] = debugSession },
                 cancellationToken).ConfigureAwait(false);
+            observeState?.Invoke(state);
             if (state.GetProperty("state").GetString() == "stopped")
             {
                 return state;
