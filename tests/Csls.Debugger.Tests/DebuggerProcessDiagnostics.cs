@@ -263,6 +263,8 @@ internal static class DebuggerProcessDiagnostics
             startInfo.ArgumentList.Add("/usr/bin/fs_usage");
         }
         startInfo.ArgumentList.Add("-w");
+        // Scheduler transitions are separately enabled so syscall durations can identify time scheduled out.
+        startInfo.ArgumentList.Add("-W");
         startInfo.ArgumentList.Add("-f");
         startInfo.ArgumentList.Add("filesys");
         startInfo.ArgumentList.Add("-t");
