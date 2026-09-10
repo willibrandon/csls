@@ -150,6 +150,8 @@ public sealed class DapWindowsNativeDiagnosticsTests : DapTestContext
     [Timeout(30000, CooperativeCancellation = true)]
     public async Task NativeCaptureSurvivesModuleChurn(DumpType captureType)
     {
+        var readerStacks = new DebuggerCollectorStackCapture(TestContext);
+        await using System.Runtime.CompilerServices.ConfiguredAsyncDisposable readerStackLifetime = readerStacks.ConfigureAwait(false);
         string directory = Directory.CreateTempSubdirectory("csls-windows-module-capture-").FullName;
         try
         {
@@ -184,7 +186,8 @@ public sealed class DapWindowsNativeDiagnosticsTests : DapTestContext
                     long started = Stopwatch.GetTimestamp();
                     (int exitCode, string collectedOutput, string collectedError) =
                         await WindowsDebuggerProcessCapture.CaptureAsync(process, path, TestContext.CancellationToken,
-                            captureType, TestContext).ConfigureAwait(false);
+                            captureType, TestContext, (collector, _, token) => readerStacks.ObserveExitAsync(collector, token))
+                            .ConfigureAwait(false);
                     TestContext.WriteLine($"{captureType} capture {index}: {Stopwatch.GetElapsedTime(started).TotalMilliseconds:F1} ms.");
                     Assert.AreEqual(0, exitCode, collectedOutput + collectedError);
                     Assert.Contains("Creating snapshot at ", collectedError);
