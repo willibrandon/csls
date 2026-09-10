@@ -151,12 +151,15 @@ public sealed class WindowsNativeDebugObserverTests : DapTestContext
     /// <summary>
     /// Retains the child-announced native exception arguments from its actual faulting stack before process termination.
     /// </summary>
+    /// <param name="attachContext">Whether the caller supplies per-test artifact association.</param>
     [TestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
     [Timeout(30000, CooperativeCancellation = true)]
-    public async Task NativeFaultRetainsIndependentlyAnnouncedStackStorage()
+    public async Task NativeFaultRetainsIndependentlyAnnouncedStackStorage(bool attachContext)
     {
         (int processId, int exitCode, string output, string error) = await DebuggerTestProcess.RunWithIdentityAsync(
-            CreateStart("stack-evidence"), TestContext.CancellationToken, diagnosticContext: TestContext,
+            CreateStart("stack-evidence"), TestContext.CancellationToken, diagnosticContext: attachContext ? TestContext : null,
             observeNativeExceptions: true).ConfigureAwait(false);
         Assert.AreEqual(unchecked((int)0xc0000005), exitCode, error);
         string[] announcement = Assert.ContainsSingle(Lines(output)).Split(' ');

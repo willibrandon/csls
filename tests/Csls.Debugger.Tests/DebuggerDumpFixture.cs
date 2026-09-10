@@ -127,7 +127,8 @@ internal sealed class DebuggerDumpFixture : IAsyncDisposable
                 {
                     int exitCode;
                     (exitCode, collectorOutput, collectorError) = await WindowsDebuggerProcessCapture.CaptureAsync(
-                        target, dump, cancellationToken, captureType ?? (includeHeap ? DumpType.WithHeap : DumpType.Triage))
+                        target, dump, cancellationToken, captureType ?? (includeHeap ? DumpType.WithHeap : DumpType.Triage),
+                        diagnosticContext)
                         .ConfigureAwait(false);
                     if (exitCode != 0)
                     {

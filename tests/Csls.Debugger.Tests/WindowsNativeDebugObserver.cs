@@ -103,7 +103,7 @@ internal static partial class WindowsNativeDebugObserver
                         else if (exception == 0xc0000005)
                         {
                             string record = WindowsNativeFaultReport.Read(process, threadId, payload, firstChance,
-                                memoryCaptured ? null : diagnosticContext, out string? memoryPath);
+                                diagnosticContext, !memoryCaptured, out string? memoryPath);
                             memoryCaptured |= memoryPath is not null;
                             if (!firstChance || firstChanceReports < 8)
                             {

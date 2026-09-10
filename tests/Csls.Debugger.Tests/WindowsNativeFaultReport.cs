@@ -23,10 +23,11 @@ internal static partial class WindowsNativeFaultReport
     /// <param name="record">The actual native exception record from Windows.</param>
     /// <param name="firstChance">Whether the runtime has yet to handle this exception.</param>
     /// <param name="diagnosticContext">Optionally retains native-image fault memory before exception dispatch resumes.</param>
+    /// <param name="captureMemory">Whether this process still has its private-memory capture available.</param>
     /// <param name="memoryPath">The completed private-memory artifact, when one was captured.</param>
     /// <returns>One bounded record captured while the reporting thread is suspended.</returns>
     internal static unsafe string Read(Process process, uint threadId, byte* record, bool firstChance,
-        TestContext? diagnosticContext, out string? memoryPath)
+        TestContext? diagnosticContext, bool captureMemory, out string? memoryPath)
     {
         memoryPath = null;
         ulong address = Unsafe.ReadUnaligned<nuint>(record + 8 + sizeof(nint));
@@ -93,7 +94,7 @@ internal static partial class WindowsNativeFaultReport
             {
                 AppendMemory(process, text, name, Unsafe.ReadUnaligned<nuint>(context + registerOffset), name == "stack" ? 2048 : 64);
             }
-            if (diagnosticContext is not null && (nativeImage || !firstChance))
+            if (captureMemory && (nativeImage || !firstChance))
             {
                 Span<nuint> roots = stackalloc nuint[registers.Length];
                 for (int index = 0; index < registers.Length; index++)

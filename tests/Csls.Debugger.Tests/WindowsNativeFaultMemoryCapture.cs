@@ -20,10 +20,10 @@ internal static partial class WindowsNativeFaultMemoryCapture
     /// <param name="process">The caller-owned process suspended by Windows exception dispatch.</param>
     /// <param name="context">The actual native integer and control register context.</param>
     /// <param name="roots">The register values whose private storage is captured first.</param>
-    /// <param name="testContext">The test that retains the completed artifact.</param>
+    /// <param name="testContext">Optionally associates the completed artifact with its individual test result.</param>
     /// <returns>The completed memory artifact path.</returns>
     internal static unsafe string Write(Process process, ReadOnlySpan<byte> context, ReadOnlySpan<nuint> roots,
-        TestContext testContext)
+        TestContext? testContext)
     {
         string directory = Path.Join(DebuggerTestEnvironment.FindRepositoryRoot(), "artifacts", "test-results");
         Directory.CreateDirectory(directory);
@@ -52,7 +52,7 @@ internal static partial class WindowsNativeFaultMemoryCapture
             writer.WriteEndArray();
             writer.WriteEndObject();
         }
-        testContext.AddResultFile(path);
+        testContext?.AddResultFile(path);
         return path;
     }
 
