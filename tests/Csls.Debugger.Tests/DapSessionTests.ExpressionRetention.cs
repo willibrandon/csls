@@ -142,6 +142,17 @@ public sealed partial class DapSessionTests
             AssertSameLogicalFrame(frame, refreshed);
             await AssertStringIdentityExpressionAsync(client, frameId, "localText", "\"answer!\"")
                 .ConfigureAwait(false);
+            JsonElement assigned = await ReadSetExpressionAsync(client, frameId, "localText", "text",
+                success: true, TestContext.CancellationToken)
+                .ConfigureAwait(false);
+            Assert.AreEqual("\"answer\"", assigned.GetProperty("value").GetString());
+            JsonElement changed = await ReadEvaluationAsync(client, frameId, expression,
+                success: true, TestContext.CancellationToken).ConfigureAwait(false);
+            Assert.AreEqual("false", changed.GetProperty("result").GetString());
+            Assert.AreEqual("bool", changed.GetProperty("type").GetString());
+            Assert.AreEqual(0, changed.GetProperty("variablesReference").GetInt32());
+            await AssertStringIdentityExpressionAsync(client, frameId, "text", "\"answer\"")
+                .ConfigureAwait(false);
             await DisconnectStoppedSessionAsync(client).ConfigureAwait(false);
             Assert.AreEqual(0, await client.WaitForExitAsync(TestContext.CancellationToken).ConfigureAwait(false));
             Assert.AreEqual(string.Empty, client.Diagnostics.ToString());

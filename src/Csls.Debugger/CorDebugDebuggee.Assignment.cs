@@ -358,7 +358,7 @@ internal sealed partial class CorDebugDebuggee
         nint thread = GetThread(frame.ThreadId);
         try
         {
-            return _frameTypes.Resolve(frame, scope, index, thread);
+            return frame.GetDeclaredType(_frameTypes, scope, index, thread);
         }
         finally
         {

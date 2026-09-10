@@ -8,6 +8,10 @@ namespace Csls.Debugger;
 /// </summary>
 internal sealed class ManagedFrameHandle
 {
+    private readonly Dictionary<(ManagedScopeKind Kind, int Index), ManagedBoundType> _declaredTypes = [];
+    private IReadOnlyDictionary<int, ManagedSymbolVariable>? _localNames;
+    private IReadOnlyDictionary<int, ManagedSymbolVariable>? _argumentNames;
+
     /// <summary>
     /// Gets or initializes the session-local DAP frame identifier.
     /// </summary>
@@ -107,6 +111,56 @@ internal sealed class ManagedFrameHandle
     /// Gets or initializes the source-language evaluator grammar.
     /// </summary>
     internal required DebugExpressionLanguage ExpressionLanguage { get; init; }
+
+    /// <summary>
+    /// Reuses source names within this frame's immutable method, instruction, and symbol generation.
+    /// </summary>
+    /// <param name="kind">The physical argument or local collection.</param>
+    /// <returns>The source names resolved for this native frame binding.</returns>
+    internal IReadOnlyDictionary<int, ManagedSymbolVariable> GetVariableNames(ManagedScopeKind kind)
+    {
+        IReadOnlyDictionary<int, ManagedSymbolVariable>? cached = kind == ManagedScopeKind.Arguments
+            ? _argumentNames : _localNames;
+        if (cached is not null)
+        {
+            return cached;
+        }
+
+        IReadOnlyDictionary<int, ManagedSymbolVariable> names = kind == ManagedScopeKind.Arguments
+            ? ManagedSymbolVariableNameResolver.GetArguments(this)
+            : ManagedSymbolVariableNameResolver.GetLocals(this);
+        // An unavailable symbol file may become readable before this stopped interval ends.
+        if (names.Count != 0)
+        {
+            if (kind == ManagedScopeKind.Arguments)
+            {
+                _argumentNames = names;
+            }
+            else
+            {
+                _localNames = names;
+            }
+        }
+        return names;
+    }
+
+    /// <summary>
+    /// Reuses pointer-free slot declarations while each inspection reads current target storage.
+    /// </summary>
+    /// <param name="resolver">The owning session's runtime type resolver.</param>
+    /// <param name="kind">The physical argument or local collection.</param>
+    /// <param name="index">The slot within the selected collection.</param>
+    /// <param name="thread">The borrowed current-generation runtime thread.</param>
+    /// <returns>The exact declared type for this native frame binding.</returns>
+    internal ManagedBoundType GetDeclaredType(ManagedFrameTypeResolver resolver, ManagedScopeKind kind, int index, nint thread)
+    {
+        if (!_declaredTypes.TryGetValue((kind, index), out ManagedBoundType? type))
+        {
+            type = resolver.Resolve(this, kind, index, thread);
+            _declaredTypes.Add((kind, index), type);
+        }
+        return type;
+    }
 
     /// <summary>
     /// Identifies one exact slot when this frame has a resolved runtime module and method.
