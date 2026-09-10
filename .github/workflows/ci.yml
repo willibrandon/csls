@@ -353,11 +353,22 @@ jobs:
             name: Debugger stress
             minimum_tests: 2
             filter: TestCategory=DebuggerStress
+          # Give the four-GiB fixture exclusive ownership of the macOS x64 test process.
+          - suite: stress
+            rid: osx-x64
+            filter: TestCategory=DebuggerStress&FullyQualifiedName!=Csls.Debugger.Tests.DapLargeGraphTests.FourGiBGraphPreservesBoundedInspectionAndShutdown
           # The standard macOS ARM64 runner has 7 GiB; this fixture requires 8 GiB.
           # Keep every other stress test here and the four-GiB test on the other RIDs.
           - suite: stress
             rid: osx-arm64
             filter: TestCategory=DebuggerStress&FullyQualifiedName!=Csls.Debugger.Tests.DapLargeGraphTests.FourGiBGraphPreservesBoundedInspectionAndShutdown
+          - suite: stress-large-graph
+            name: Debugger four-GiB graph stress
+            minimum_tests: 1
+            filter: FullyQualifiedName=Csls.Debugger.Tests.DapLargeGraphTests.FourGiBGraphPreservesBoundedInspectionAndShutdown
+            os: macos-26-intel
+            rid: osx-x64
+            unix_wait: true
           # Free macOS runners validate the complete heap profile; Linux and Windows also validate the Full profile.
           - suite: physical-capture
             rid: osx-x64
