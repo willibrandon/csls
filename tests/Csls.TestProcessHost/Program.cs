@@ -420,6 +420,12 @@ if (args is ["--announce-and-spin-until-file", string spinPath])
     return 0;
 }
 
+if (args is ["--debugger-dump-wait", _])
+{
+    DebuggerBlockingWait.Wait("ready");
+    return 0;
+}
+
 Dictionary<string, string> environment = new(StringComparer.Ordinal);
 int argumentIndex = 0;
 while (argumentIndex < args.Length &&

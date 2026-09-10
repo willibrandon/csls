@@ -100,7 +100,7 @@ internal sealed class DebuggerDumpFixture : IAsyncDisposable
             startInfo.ArgumentList.Add(program);
             foreach (string argument in arguments ??
                 [captureArrayShapes ? "--debugger-dump-arrays"
-                    : captureFrameValues ? "--debugger-dump-fixture" : "--announce-and-spin-until-file",
+                    : captureFrameValues ? "--debugger-dump-fixture" : "--debugger-dump-wait",
                     Path.Join(directory, "finish.signal")])
             {
                 startInfo.ArgumentList.Add(argument);

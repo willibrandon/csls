@@ -245,7 +245,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        suite: [standard, dumps, physical-capture, protocol, protocol-breakpoints, protocol-capture, protocol-values, protocol-lifecycle, protocol-inspection, symbols, type-inspection, stepping, stepping-thread-start, evaluation, assignment, assignment-array, presentation-results, presentation-proxy, stress]
+        suite: [standard, dumps-platform, dumps-state, dumps-symbols, dumps-values, physical-capture, protocol, protocol-breakpoints, protocol-capture, capture-normal, capture-triage, capture-heap, capture-full, protocol-values, protocol-lifecycle, protocol-inspection, symbols, type-inspection, stepping, stepping-thread-start, evaluation, assignment, assignment-array, presentation-results, presentation-proxy, stress]
         rid: [linux-x64, linux-arm64, win-x64, win-arm64, osx-x64, osx-arm64]
         include:
           # Complementary filters partition the required debugger suites.
@@ -253,10 +253,22 @@ jobs:
             name: Debugger tests
             minimum_tests: 70
             filter: TestCategory!=DebuggerStress&FullyQualifiedName!~Assignment&FullyQualifiedName!~Evaluation&FullyQualifiedName!~ResultsView&FullyQualifiedName!~DebuggerTypeProxy&FullyQualifiedName!~Async&FullyQualifiedName!~Step&FullyQualifiedName!~Iterator&FullyQualifiedName!~Csls.Debugger.Tests.Dap&FullyQualifiedName!~Csls.Debugger.Tests.Dump
-          - suite: dumps
-            name: Debugger dump inspection
+          - suite: dumps-platform
+            name: Debugger platform dump inspection
             minimum_tests: 40
-            filter: TestCategory!=DebuggerStress&FullyQualifiedName!~Assignment&FullyQualifiedName!~Evaluation&FullyQualifiedName!~ResultsView&FullyQualifiedName!~DebuggerTypeProxy&FullyQualifiedName!~Async&FullyQualifiedName!~Step&FullyQualifiedName!~Iterator&FullyQualifiedName!~Csls.Debugger.Tests.Dap&FullyQualifiedName~Csls.Debugger.Tests.Dump&FullyQualifiedName!=Csls.Debugger.Tests.DumpObjectTests.CapturedObjectsPreservePhysicalFields&FullyQualifiedName!=Csls.Debugger.Tests.DumpObjectTests.CapturedFullObjectsPreservePhysicalFields
+            filter: TestCategory!=DebuggerStress&(FullyQualifiedName~Csls.Debugger.Tests.DumpMachODataReaderTests|FullyQualifiedName~Csls.Debugger.Tests.DumpDataTargetTests)
+          - suite: dumps-state
+            name: Debugger dump state inspection
+            minimum_tests: 40
+            filter: TestCategory!=DebuggerStress&(FullyQualifiedName~Csls.Debugger.Tests.DumpCancellationTests|FullyQualifiedName~Csls.Debugger.Tests.DumpMemoryFilterTests|FullyQualifiedName~Csls.Debugger.Tests.DumpProcessIdentityTests|FullyQualifiedName~Csls.Debugger.Tests.DumpFilteredValueTests)
+          - suite: dumps-symbols
+            name: Debugger dump symbol inspection
+            minimum_tests: 45
+            filter: TestCategory!=DebuggerStress&(FullyQualifiedName~Csls.Debugger.Tests.DumpMetadataCallbackTests|FullyQualifiedName~Csls.Debugger.Tests.DumpNativeImageTests|FullyQualifiedName~Csls.Debugger.Tests.DumpBinarySearchTests|FullyQualifiedName~Csls.Debugger.Tests.DumpReaderInitializationTests)
+          - suite: dumps-values
+            name: Debugger dump value inspection
+            minimum_tests: 50
+            filter: TestCategory!=DebuggerStress&(FullyQualifiedName~Csls.Debugger.Tests.DumpArchiveTests|FullyQualifiedName~Csls.Debugger.Tests.DumpArrayTests|FullyQualifiedName~Csls.Debugger.Tests.DumpDebuggerControlServiceTests|FullyQualifiedName~Csls.Debugger.Tests.DumpObjectTests|FullyQualifiedName~Csls.Debugger.Tests.DumpUnixRuntimeDirectoriesTests|FullyQualifiedName~Csls.Debugger.Tests.DumpVariableSymbolTests)&FullyQualifiedName!=Csls.Debugger.Tests.DumpObjectTests.CapturedObjectsPreservePhysicalFields&FullyQualifiedName!=Csls.Debugger.Tests.DumpObjectTests.CapturedFullObjectsPreservePhysicalFields
           - suite: physical-capture
             name: Debugger physical dump capture
             minimum_tests: 2
@@ -271,8 +283,24 @@ jobs:
             filter: TestCategory!=DebuggerStress&FullyQualifiedName!~Assignment&FullyQualifiedName!~Evaluation&FullyQualifiedName!~ResultsView&FullyQualifiedName!~DebuggerTypeProxy&FullyQualifiedName!~Async&FullyQualifiedName!~Step&FullyQualifiedName!~Iterator&FullyQualifiedName~Csls.Debugger.Tests.Dap&FullyQualifiedName!~Csls.Debugger.Tests.DapDumpTests&FullyQualifiedName!~ReferenceConversions&FullyQualifiedName!~ReferenceTypeExpressions&FullyQualifiedName!~RawStringReferences&FullyQualifiedName!~Csls.Debugger.Tests.DapSymbolTests&FullyQualifiedName!~PortablePdbLanguagesBindIn&FullyQualifiedName!~RuntimeGenericArityBoundary&FullyQualifiedName!~CapturedGenericArgumentsRetainSourceIdentityAfterAwait&FullyQualifiedName!~ReferenceCast&FullyQualifiedName!~PrimitiveAliases&FullyQualifiedName!~RawValue&FullyQualifiedName!~Array&FullyQualifiedName!~Memory&FullyQualifiedName!~Stack&FullyQualifiedName!~Frame&FullyQualifiedName!~Scope&FullyQualifiedName!~Variable&FullyQualifiedName!~Inspection&FullyQualifiedName!~Completion&FullyQualifiedName!~Launch&FullyQualifiedName!~Restart&FullyQualifiedName!~Attach&FullyQualifiedName!~Disconnect&FullyQualifiedName!~Terminate&FullyQualifiedName!~Cancel&FullyQualifiedName!~Process&FullyQualifiedName!~Threads&FullyQualifiedName!~Running&(FullyQualifiedName~Breakpoint|FullyQualifiedName~Logpoint)
           - suite: protocol-capture
             name: Debugger capture protocol
-            minimum_tests: 12
-            filter: TestCategory!=DebuggerStress&FullyQualifiedName!~Assignment&FullyQualifiedName!~Evaluation&FullyQualifiedName!~ResultsView&FullyQualifiedName!~DebuggerTypeProxy&FullyQualifiedName!~Async&FullyQualifiedName!~Step&FullyQualifiedName!~Iterator&FullyQualifiedName~Csls.Debugger.Tests.Dap&FullyQualifiedName!~Csls.Debugger.Tests.DapDumpTests&FullyQualifiedName!~ReferenceConversions&FullyQualifiedName!~ReferenceTypeExpressions&FullyQualifiedName!~RawStringReferences&FullyQualifiedName!~Csls.Debugger.Tests.DapSymbolTests&FullyQualifiedName!~PortablePdbLanguagesBindIn&FullyQualifiedName!~RuntimeGenericArityBoundary&FullyQualifiedName!~CapturedGenericArgumentsRetainSourceIdentityAfterAwait&FullyQualifiedName!~ReferenceCast&FullyQualifiedName!~PrimitiveAliases&FullyQualifiedName!~RawValue&FullyQualifiedName!~Array&FullyQualifiedName!~Memory&FullyQualifiedName!~Stack&FullyQualifiedName!~Frame&FullyQualifiedName!~Scope&FullyQualifiedName!~Variable&FullyQualifiedName!~Inspection&FullyQualifiedName!~Completion&FullyQualifiedName!~Launch&FullyQualifiedName!~Restart&FullyQualifiedName!~Attach&FullyQualifiedName!~Disconnect&FullyQualifiedName!~Terminate&FullyQualifiedName!~Cancel&FullyQualifiedName!~Process&FullyQualifiedName!~Threads&FullyQualifiedName!~Running&FullyQualifiedName!~Breakpoint&FullyQualifiedName!~Logpoint&(FullyQualifiedName~Native|FullyQualifiedName~Dump|FullyQualifiedName~Kernel|FullyQualifiedName~Retirement|FullyQualifiedName~MissingTarget)
+            minimum_tests: 8
+            filter: TestCategory!=DebuggerStress&FullyQualifiedName!~Assignment&FullyQualifiedName!~Evaluation&FullyQualifiedName!~ResultsView&FullyQualifiedName!~DebuggerTypeProxy&FullyQualifiedName!~Async&FullyQualifiedName!~Step&FullyQualifiedName!~Iterator&FullyQualifiedName~Csls.Debugger.Tests.Dap&FullyQualifiedName!~Csls.Debugger.Tests.DapDumpTests&FullyQualifiedName!~ReferenceConversions&FullyQualifiedName!~ReferenceTypeExpressions&FullyQualifiedName!~RawStringReferences&FullyQualifiedName!~Csls.Debugger.Tests.DapSymbolTests&FullyQualifiedName!~PortablePdbLanguagesBindIn&FullyQualifiedName!~RuntimeGenericArityBoundary&FullyQualifiedName!~CapturedGenericArgumentsRetainSourceIdentityAfterAwait&FullyQualifiedName!~ReferenceCast&FullyQualifiedName!~PrimitiveAliases&FullyQualifiedName!~RawValue&FullyQualifiedName!~Array&FullyQualifiedName!~Memory&FullyQualifiedName!~Stack&FullyQualifiedName!~Frame&FullyQualifiedName!~Scope&FullyQualifiedName!~Variable&FullyQualifiedName!~Inspection&FullyQualifiedName!~Completion&FullyQualifiedName!~Launch&FullyQualifiedName!~Restart&FullyQualifiedName!~Attach&FullyQualifiedName!~Disconnect&FullyQualifiedName!~Terminate&FullyQualifiedName!~Cancel&FullyQualifiedName!~Process&FullyQualifiedName!~Threads&FullyQualifiedName!~Running&FullyQualifiedName!~Breakpoint&FullyQualifiedName!~Logpoint&FullyQualifiedName!~NativeCaptureSurvivesModuleChurn&(FullyQualifiedName~Native|FullyQualifiedName~Dump|FullyQualifiedName~Kernel|FullyQualifiedName~Retirement|FullyQualifiedName~MissingTarget)
+          - suite: capture-normal
+            name: Debugger native normal capture
+            minimum_tests: 1
+            filter: FullyQualifiedName=Csls.Debugger.Tests.DapWindowsNativeDiagnosticsTests.NativeCaptureSurvivesModuleChurn&Name~Normal
+          - suite: capture-triage
+            name: Debugger native triage capture
+            minimum_tests: 1
+            filter: FullyQualifiedName=Csls.Debugger.Tests.DapWindowsNativeDiagnosticsTests.NativeCaptureSurvivesModuleChurn&Name~Triage
+          - suite: capture-heap
+            name: Debugger native heap capture
+            minimum_tests: 1
+            filter: FullyQualifiedName=Csls.Debugger.Tests.DapWindowsNativeDiagnosticsTests.NativeCaptureSurvivesModuleChurn&Name~WithHeap
+          - suite: capture-full
+            name: Debugger native full capture
+            minimum_tests: 1
+            filter: FullyQualifiedName=Csls.Debugger.Tests.DapWindowsNativeDiagnosticsTests.NativeCaptureSurvivesModuleChurn&Name~Full
           - suite: protocol-values
             name: Debugger value protocol
             minimum_tests: 18
