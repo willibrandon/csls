@@ -130,7 +130,7 @@ jobs:
             artifacts/obj/Csls.*/*.json
             artifacts/obj/Csls.*/*.props
             artifacts/obj/Csls.*/*.targets
-          key: debugger-test-build-v2-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.github/workflows/ci.yml', '.editorconfig', '.globalconfig', 'global.json', 'src/**', 'benchmarks/Csls.EndToEndPerformance/**', 'tests/Csls.Debugger.Tests/**', 'tests/Csls.Debugger.StackProbe/**', 'tests/Csls.TestProcessHost/**', 'test-assets/Csls.Debugger.Fixtures.*/**', 'scripts/Support/DebuggerDumpArchive.cs', 'build/**', 'Directory.Build.*', 'Directory.Packages.props', 'NuGet.Config') }}
+          key: debugger-test-build-v2-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.github/workflows/ci.yml', '.editorconfig', '.globalconfig', 'global.json', 'src/**', 'benchmarks/Csls.EndToEndPerformance/**', 'tests/Csls.Debugger.Tests/**', 'tests/Csls.Debugger.StackProbe/**', 'tests/Csls.TestProcessHost/**', 'test-assets/Csls.Debugger.Fixtures.*/**', 'scripts/Run-DebuggerTests.cs', 'scripts/Support/DebuggerDumpArchive.cs', 'scripts/Support/ProcessOutputCapture.cs', 'build/**', 'Directory.Build.*', 'Directory.Packages.props', 'NuGet.Config') }}
           restore-keys: debugger-test-build-v2-${{ runner.os }}-${{ runner.arch }}-
 
       - name: Build debugger test binaries
@@ -164,6 +164,17 @@ jobs:
           --property:RuntimeIdentifier=
           --output artifacts/bin/Csls.Debugger.DumpArchive/debug
           '/bl:artifacts/binlogs/debugger-dump-archive-{}.binlog'
+
+      - name: Publish portable debugger test supervisor
+        run: >-
+          dotnet publish scripts/Run-DebuggerTests.cs
+          --configuration Debug
+          --no-self-contained
+          --property:PublishAot=false
+          --property:UseAppHost=false
+          --property:RuntimeIdentifier=
+          --output artifacts/bin/Csls.Debugger.TestSupervisor/debug
+          '/bl:artifacts/binlogs/debugger-test-supervisor-{}.binlog'
 
       - name: Pack debugger test binaries
         run: >-
@@ -377,7 +388,8 @@ jobs:
         # Record active tests and process IDs before an idle run reaches the job limit.
         # Avoid dump requests against targets that already have a debugger attached.
         run: >-
-          dotnet test
+          dotnet artifacts/bin/Csls.Debugger.TestSupervisor/debug/Run-DebuggerTests.dll
+          --supervisor-timeout-seconds 150
           --test-modules artifacts/bin/Csls.Debugger.Tests/debug/Csls.Debugger.Tests.dll
           --root-directory .
           --results-directory artifacts/test-results
