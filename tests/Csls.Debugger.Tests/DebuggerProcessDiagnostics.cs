@@ -11,6 +11,7 @@ namespace Csls.Debugger.Tests;
 internal static class DebuggerProcessDiagnostics
 {
     private const int MaximumProcesses = 8;
+    private static readonly SemaphoreSlim s_fileActivityCaptureGate = new(1, 1);
 
     /// <summary>
     /// Retains kernel wait reports for the owned adapter and its reported target before failure cleanup.
@@ -276,8 +277,21 @@ internal static class DebuggerProcessDiagnostics
         }
 
         string path = Path.Join(directory, "owned-processes.filesystem.txt");
-        (int exitCode, string output, string error) = await DebuggerTestProcess.RunAsync(
-            startInfo, cancellationToken).ConfigureAwait(false);
+        int exitCode;
+        string output;
+        string error;
+        // macOS permits one foreground ktrace owner. Concurrent failure reports must
+        // release that resource before another owned tracer starts, including on cancellation.
+        await s_fileActivityCaptureGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            (exitCode, output, error) = await DebuggerTestProcess.RunAsync(
+                startInfo, cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            s_fileActivityCaptureGate.Release();
+        }
         const int MaximumCharacters = 1024 * 1024;
         string report = $"Filesystem capture exit code: {exitCode}{Environment.NewLine}{error}{Environment.NewLine}{output}";
         if (report.Length > MaximumCharacters)
