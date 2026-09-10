@@ -186,7 +186,7 @@ public sealed class DapWindowsNativeDiagnosticsTests : DapTestContext
                     long started = Stopwatch.GetTimestamp();
                     (int exitCode, string collectedOutput, string collectedError) =
                         await WindowsDebuggerProcessCapture.CaptureAsync(process, path, TestContext.CancellationToken,
-                            captureType, TestContext, (collector, _, token) => readerStacks.ObserveExitAsync(collector, token))
+                            captureType, TestContext, readerStacks.ObserveOutputDrain)
                             .ConfigureAwait(false);
                     TestContext.WriteLine($"{captureType} capture {index}: {Stopwatch.GetElapsedTime(started).TotalMilliseconds:F1} ms.");
                     Assert.AreEqual(0, exitCode, collectedOutput + collectedError);

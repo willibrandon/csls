@@ -20,14 +20,12 @@ internal sealed class DebuggerCollectorStackCapture : IAsyncDisposable
     internal DebuggerCollectorStackCapture(TestContext testContext) => _testContext = testContext;
 
     /// <summary>
-    /// Starts bounded reader sampling at collector exit while its caller continues draining output.
+    /// Starts bounded reader sampling after collector exit while its caller continues draining output.
     /// </summary>
-    /// <param name="collector">The caller-owned collector whose kernel exit triggers sampling.</param>
-    /// <param name="cancellationToken">Bounds exit observation, sampling, and symbol rundown.</param>
-    /// <returns>Completion after collector exit starts an independently owned sampling operation.</returns>
-    internal async Task ObserveExitAsync(Process collector, CancellationToken cancellationToken)
+    /// <param name="collector">The caller-owned collector whose kernel exit has already been observed.</param>
+    /// <param name="cancellationToken">Bounds sampling and symbol rundown.</param>
+    internal void ObserveOutputDrain(Process collector, CancellationToken cancellationToken)
     {
-        await DebuggerProcessExit.WaitAsync(collector, cancellationToken).ConfigureAwait(false);
         _captures.Add(CaptureAsync(collector.Id, cancellationToken));
     }
 

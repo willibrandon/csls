@@ -122,13 +122,17 @@ public sealed class DebuggerTestProcessTests : DapTestContext
     /// </summary>
     /// <param name="reportProgress">Whether output is captured through the incremental progress path.</param>
     /// <param name="cancelCapture">Whether to cancel capture before releasing the inherited write handles.</param>
+    /// <param name="rejectObservation">Whether the drain observer rejects capture after the root exits.</param>
     [TestMethod]
-    [DataRow(false, false)]
-    [DataRow(true, false)]
-    [DataRow(false, true)]
-    [DataRow(true, true)]
+    [DataRow(false, false, false)]
+    [DataRow(true, false, false)]
+    [DataRow(false, true, false)]
+    [DataRow(true, true, false)]
+    [DataRow(false, false, true)]
+    [DataRow(true, false, true)]
     [Timeout(30000, CooperativeCancellation = true)]
-    public async Task InheritedOutputCaptureHonorsCompletionAndCancellation(bool reportProgress, bool cancelCapture)
+    public async Task InheritedOutputCaptureHonorsCompletionAndCancellation(bool reportProgress, bool cancelCapture,
+        bool rejectObservation)
     {
         string rootPipeName = $"csls-{Guid.NewGuid():N}";
         string childPipeName = $"csls-{Guid.NewGuid():N}";
@@ -145,8 +149,21 @@ public sealed class DebuggerTestProcessTests : DapTestContext
         start.ArgumentList.Add(rootPipeName);
         start.ArgumentList.Add(childPipeName);
         var progress = new ConcurrentQueue<string>();
+        var draining = new TaskCompletionSource<(int ProcessId, bool HasExited)>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var observerFailure = new IOException("The output-drain observer rejected capture.");
+        int drainObservations = 0;
         Task<(int ProcessId, int ExitCode, string Output, string Error)> running = DebuggerTestProcess.RunWithIdentityAsync(
-            start, operation.Token, reportProgress ? progress.Enqueue : null);
+            start, operation.Token, reportProgress ? progress.Enqueue : null,
+            observeOutputDrain: (process, token) =>
+            {
+                token.ThrowIfCancellationRequested();
+                Interlocked.Increment(ref drainObservations);
+                draining.SetResult((process.Id, process.HasExited));
+                if (rejectObservation)
+                {
+                    throw observerFailure;
+                }
+            });
         Process? root = null;
         Process? child = null;
         try
@@ -162,11 +179,26 @@ public sealed class DebuggerTestProcessTests : DapTestContext
             _ = root.SafeHandle;
             _ = child.SafeHandle;
             await childConnected.ConfigureAwait(false);
+            Assert.IsFalse(draining.Task.IsCompleted, "The root has not been released to exit.");
             await rootPipe.WriteAsync(new byte[] { 1 }, TestContext.CancellationToken).ConfigureAwait(false);
             await root.WaitForExitAsync(TestContext.CancellationToken).ConfigureAwait(false);
             Assert.AreEqual(0, root.ExitCode);
             Assert.IsFalse(child.HasExited);
-            Assert.IsFalse(running.IsCompleted, "The live descendant still owns both redirected write handles.");
+            (int observedId, bool observedExit) = await draining.Task.WaitAsync(TestContext.CancellationToken).ConfigureAwait(false);
+            Assert.AreEqual(root.Id, observedId);
+            Assert.IsTrue(observedExit, "Output-drain observation requires an exited process.");
+            Assert.AreEqual(1, Volatile.Read(ref drainObservations));
+            if (rejectObservation)
+            {
+                IOException failure = await Assert.ThrowsExactlyAsync<IOException>(async () =>
+                    await running.WaitAsync(TestContext.CancellationToken).ConfigureAwait(false)).ConfigureAwait(false);
+                Assert.AreSame(observerFailure, failure);
+                Assert.IsFalse(child.HasExited, "Observer failure must preserve the independently transferred child.");
+            }
+            else
+            {
+                Assert.IsFalse(running.IsCompleted, "The live descendant still owns both redirected write handles.");
+            }
 
             if (cancelCapture)
             {
@@ -181,7 +213,7 @@ public sealed class DebuggerTestProcessTests : DapTestContext
             await childPipe.WriteAsync(new byte[] { 1 }, TestContext.CancellationToken).ConfigureAwait(false);
             await child.WaitForExitAsync(TestContext.CancellationToken).ConfigureAwait(false);
             Assert.AreEqual(0, child.ExitCode);
-            if (!cancelCapture)
+            if (!cancelCapture && !rejectObservation)
             {
                 (int processId, int exitCode, string output, string error) = await running
                     .WaitAsync(TestContext.CancellationToken).ConfigureAwait(false);
@@ -194,6 +226,7 @@ public sealed class DebuggerTestProcessTests : DapTestContext
                     error.Split('\n', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries).Order());
                 Assert.AreSequenceEqual(reportProgress ? expected.Concat(expected).Order() : [], progress.Order());
             }
+            Assert.AreEqual(1, Volatile.Read(ref drainObservations), "Each exited process must be observed once.");
         }
         finally
         {
