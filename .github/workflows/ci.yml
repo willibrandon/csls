@@ -226,6 +226,11 @@ jobs:
             rid: osx-arm64
 
     steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
       - name: Set up .NET
         uses: actions/setup-dotnet@v6
         with:
@@ -411,11 +416,6 @@ jobs:
             unix_wait: true
 
     steps:
-      - name: Check out repository
-        uses: actions/checkout@v7
-        with:
-          persist-credentials: false
-
       - name: Set up .NET
         uses: actions/setup-dotnet@v6
         with:
