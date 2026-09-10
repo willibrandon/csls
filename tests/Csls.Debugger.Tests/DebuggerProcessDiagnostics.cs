@@ -140,6 +140,8 @@ internal static class DebuggerProcessDiagnostics
             Directory.CreateDirectory(directory);
             testContext.WriteLine($"Capturing owned process stacks: {string.Join(", ", processes)}.");
             await CaptureWaitStatesAsync(processes, testContext, cancellation.Token).ConfigureAwait(false);
+            // Observe filesystem timing before stack profilers suspend the captured processes.
+            await CaptureFileActivityAsync(processes, directory, testContext, cancellation.Token).ConfigureAwait(false);
             await Task.WhenAll(processes.SelectMany(processId => new[]
             {
                 CaptureProcessAsync(processId, directory, testContext, cancellation.Token),
@@ -247,6 +249,42 @@ internal static class DebuggerProcessDiagnostics
                 testContext.AddResultFile(path);
             }
         }
+    }
+
+    private static async Task CaptureFileActivityAsync(
+        List<int> processes, string directory, TestContext testContext, CancellationToken cancellationToken)
+    {
+        bool hostedRunner = string.Equals(Environment.GetEnvironmentVariable("GITHUB_ACTIONS"),
+            "true", StringComparison.OrdinalIgnoreCase);
+        var startInfo = new ProcessStartInfo(hostedRunner ? "/usr/bin/sudo" : "/usr/bin/fs_usage");
+        if (hostedRunner)
+        {
+            startInfo.ArgumentList.Add("-n");
+            startInfo.ArgumentList.Add("/usr/bin/fs_usage");
+        }
+        startInfo.ArgumentList.Add("-w");
+        startInfo.ArgumentList.Add("-f");
+        startInfo.ArgumentList.Add("filesys");
+        startInfo.ArgumentList.Add("-t");
+        startInfo.ArgumentList.Add("1");
+        // An explicit inclusion list keeps unrelated host filesystem activity out of the report.
+        foreach (int processId in processes)
+        {
+            startInfo.ArgumentList.Add(processId.ToString(CultureInfo.InvariantCulture));
+        }
+
+        string path = Path.Join(directory, "owned-processes.filesystem.txt");
+        (int exitCode, string output, string error) = await DebuggerTestProcess.RunAsync(
+            startInfo, cancellationToken).ConfigureAwait(false);
+        const int MaximumCharacters = 1024 * 1024;
+        string report = $"Filesystem capture exit code: {exitCode}{Environment.NewLine}{error}{Environment.NewLine}{output}";
+        if (report.Length > MaximumCharacters)
+        {
+            report = report[..MaximumCharacters] + Environment.NewLine + "Filesystem capture truncated.";
+        }
+        await File.WriteAllTextAsync(path, report, cancellationToken).ConfigureAwait(false);
+        testContext.AddResultFile(path);
+        testContext.WriteLine($"Owned process filesystem capture exited with {exitCode}: {path}.");
     }
 
     private static async Task CaptureManagedProcessAsync(
