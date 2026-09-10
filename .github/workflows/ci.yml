@@ -179,7 +179,25 @@ jobs:
       - name: Pack debugger test binaries
         run: >-
           tar --create --file artifacts/debugger-test-binaries.tar
-          --directory artifacts bin
+          --directory .
+          artifacts/bin
+          .editorconfig
+          .globalconfig
+          Csls.slnx
+          Directory.Build.props
+          Directory.Build.rsp
+          Directory.Build.targets
+          Directory.Packages.props
+          NuGet.Config
+          global.json
+          benchmarks
+          build
+          scripts
+          src
+          test-assets
+          tests/Csls.Debugger.StackProbe
+          tests/Csls.Debugger.Tests
+          tests/Csls.TestProcessHost
 
       - name: Share debugger test binaries
         uses: actions/upload-artifact@v7
@@ -208,11 +226,6 @@ jobs:
             rid: osx-arm64
 
     steps:
-      - name: Check out repository
-        uses: actions/checkout@v7
-        with:
-          persist-credentials: false
-
       - name: Set up .NET
         uses: actions/setup-dotnet@v6
         with:
@@ -420,7 +433,7 @@ jobs:
       - name: Extract test binaries
         run: >-
           tar --extract --file artifacts/debugger-test-binaries.tar
-          --directory artifacts
+          --directory .
 
       - name: Restore Unix wait interposer
         if: matrix.unix_wait
