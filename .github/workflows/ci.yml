@@ -303,6 +303,15 @@ jobs:
           - suite: stress
             rid: osx-arm64
             filter: TestCategory=DebuggerStress&FullyQualifiedName!=Csls.Debugger.Tests.DapLargeGraphTests.FourGiBGraphPreservesBoundedInspectionAndShutdown
+          # Free macOS runners validate the complete heap profile; Linux and Windows also validate the Full profile.
+          - suite: physical-capture
+            rid: osx-x64
+            minimum_tests: 1
+            filter: FullyQualifiedName=Csls.Debugger.Tests.DumpObjectTests.CapturedObjectsPreservePhysicalFields
+          - suite: physical-capture
+            rid: osx-arm64
+            minimum_tests: 1
+            filter: FullyQualifiedName=Csls.Debugger.Tests.DumpObjectTests.CapturedObjectsPreservePhysicalFields
           - os: ubuntu-latest
             rid: linux-x64
             unix_wait: true
