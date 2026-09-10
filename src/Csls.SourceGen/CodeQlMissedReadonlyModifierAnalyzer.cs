@@ -93,7 +93,7 @@ public sealed class CodeQlMissedReadonlyModifierAnalyzer : DiagnosticAnalyzer
         ConcurrentDictionary<IFieldSymbol, byte> disqualifyingWrites)
     {
         var reference = (IFieldReferenceOperation)context.Operation;
-        if (!IsWrite(reference) || IsInitializationWrite(reference.Field, context.ContainingSymbol))
+        if (!IsWrite(reference, context.ContainingSymbol) || IsInitializationWrite(reference.Field, context.ContainingSymbol))
         {
             return;
         }
@@ -101,10 +101,12 @@ public sealed class CodeQlMissedReadonlyModifierAnalyzer : DiagnosticAnalyzer
         disqualifyingWrites.TryAdd(reference.Field, 0);
     }
 
-    private static bool IsWrite(IFieldReferenceOperation reference)
+    private static bool IsWrite(IFieldReferenceOperation reference, ISymbol containingSymbol)
     {
         IOperation? current = reference;
-        while (current.Parent is IConversionOperation or IParenthesizedOperation)
+        while (current.Parent is IConversionOperation or IParenthesizedOperation ||
+            current.Parent is IConditionalOperation { IsRef: true } conditional &&
+            (ReferenceEquals(conditional.WhenTrue, current) || ReferenceEquals(conditional.WhenFalse, current)))
         {
             current = current.Parent;
         }
@@ -112,7 +114,8 @@ public sealed class CodeQlMissedReadonlyModifierAnalyzer : DiagnosticAnalyzer
         return current.Parent switch
         {
             ISimpleAssignmentOperation assignment =>
-                ReferenceEquals(assignment.Target, current),
+                ReferenceEquals(assignment.Target, current) ||
+                assignment.IsRef && ReferenceEquals(assignment.Value, current),
             ICompoundAssignmentOperation assignment =>
                 ReferenceEquals(assignment.Target, current),
             ICoalesceAssignmentOperation assignment =>
@@ -120,6 +123,9 @@ public sealed class CodeQlMissedReadonlyModifierAnalyzer : DiagnosticAnalyzer
             IIncrementOrDecrementOperation increment =>
                 ReferenceEquals(increment.Target, current),
             IArgumentOperation argument => argument.Parameter?.RefKind is RefKind.Ref or RefKind.Out,
+            IVariableInitializerOperation { Parent: IVariableDeclaratorOperation declarator } =>
+                declarator.Symbol.RefKind == RefKind.Ref,
+            IReturnOperation => containingSymbol is IMethodSymbol { ReturnsByRef: true },
             IAddressOfOperation => true,
             _ => false
         };
