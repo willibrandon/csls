@@ -1,5 +1,6 @@
 using Csls.Control.Contracts;
 using Csls.Debugger.Control;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -41,7 +42,13 @@ internal static class McpHost
         serializerOptions.TypeInfoResolverChain.Insert(
             0,
             McpJsonSerializerContext.Default);
-        HostApplicationBuilder builder = Host.CreateApplicationBuilder();
+        // Session selection and configuration come from the protocol client.
+        HostApplicationBuilder builder = Host.CreateApplicationBuilder(new HostApplicationBuilderSettings
+        {
+            DisableDefaults = true,
+            ContentRootPath = AppContext.BaseDirectory
+        });
+        builder.Configuration.AddEnvironmentVariables();
         builder.Logging.ClearProviders();
         builder.Logging.AddConsole(options =>
         {

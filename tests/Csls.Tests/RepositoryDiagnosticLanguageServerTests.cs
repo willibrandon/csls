@@ -33,11 +33,19 @@ public sealed class RepositoryDiagnosticLanguageServerTests
             "csls-worker.dll");
         Assert.IsTrue(File.Exists(workerPath), $"Worker not found at {workerPath}.");
 
+        string diagnosticsDirectory = Path.Join(repositoryRoot, "artifacts", "test-results",
+            $"repository-workspace-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(diagnosticsDirectory);
+        string diagnosticsPath = Path.Join(diagnosticsDirectory, "server.log");
+        using var diagnosticOutput = new StreamWriter(diagnosticsPath);
+        TestContext.AddResultFile(diagnosticsPath);
+
         LspProcessSession lsp = await LspProcessSession.StartAsync(
             "csls-repository-diagnostic-worker",
             EditorToolResolver.ResolveDotNetHost(),
             [workerPath],
-            repositoryRoot).ConfigureAwait(false);
+            repositoryRoot,
+            diagnosticOutput: diagnosticOutput).ConfigureAwait(false);
         await using ConfiguredAsyncDisposable lspCleanup = lsp.ConfigureAwait(false);
         using var capabilities = JsonDocument.Parse(
             """
@@ -176,6 +184,9 @@ public sealed class RepositoryDiagnosticLanguageServerTests
             reloadedSnapshot.Projects.Select(static project => project.Name));
         string standardError = await lsp.ShutdownAsync(TestContext.CancellationToken)
             .ConfigureAwait(false);
+        await diagnosticOutput.FlushAsync(TestContext.CancellationToken).ConfigureAwait(false);
+        Assert.AreEqual(standardError, await File.ReadAllTextAsync(diagnosticsPath, TestContext.CancellationToken)
+            .ConfigureAwait(false));
         TestContext.WriteLine(standardError);
 
         Assert.DoesNotContain("warn:", standardError, StringComparison.OrdinalIgnoreCase);
